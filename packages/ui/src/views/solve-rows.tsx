@@ -1,5 +1,6 @@
 import { withheldWords } from "../components/exam-side.tsx";
-import { Badge, DataTable } from "../components/primitives.tsx";
+import { Badge } from "../components/primitives.tsx";
+import { type Column as TableColumn, Table } from "../components/table.tsx";
 import {
   type CampaignReading,
   type SolveRow,
@@ -8,7 +9,7 @@ import {
   type Tone,
   type Withheld,
 } from "../models.ts";
-import { EndingBadge, harnessLabel, sideLabel } from "./drill.tsx";
+import { EndingBadge, endingOf, harnessLabel, sideLabel } from "./drill.tsx";
 import { money, seconds } from "./format.ts";
 import type { Ruling } from "../../../../src/referee/referee.ts";
 import { plural } from "../../../../src/meta/text.ts";
@@ -88,6 +89,8 @@ export function RulingsCell({
   );
 }
 
+/** Solves as a table (`Table`), sorted and narrowed by ending, side and comparison where the table
+ *  shows them. */
 export function SolveTable({
   rows,
   reading,
@@ -104,63 +107,85 @@ export function SolveTable({
   show: readonly Column[];
   onOpen: (id: string) => void;
 }) {
+  const task = (row: SolveRow) => row.taskId ?? shortHash(row.task, 8);
+  const comparison = (row: SolveRow) => row.comparison ?? "practice";
+  const columns: readonly (TableColumn<SolveRow> & { readonly part?: Column })[] = [
+    {
+      id: "solve",
+      head: "Solve",
+      sort: (row) => row.id,
+      cell: (row) => (
+        <button type="button" className="ana-row-select" data-row={row.id} onClick={() => onOpen(row.id)}>
+          {row.id}
+        </button>
+      ),
+    },
+    { id: "task", part: "task", head: "Task", className: "ana-mono", sort: task, cell: task },
+    {
+      id: "comparison",
+      part: "comparison",
+      head: "Comparison",
+      className: "ana-mono",
+      sort: comparison,
+      choice: comparison,
+      cell: comparison,
+    },
+    {
+      id: "side",
+      part: "side",
+      head: "Side",
+      sort: (row) => sideLabel(row.side),
+      choice: (row) => sideLabel(row.side),
+      cell: (row) => sideLabel(row.side),
+    },
+    {
+      id: "harness",
+      part: "harness",
+      head: "Harness",
+      className: "ana-mono",
+      sort: (row) => harnessLabel(reading, row.harness),
+      cell: (row) => harnessLabel(reading, row.harness),
+    },
+    {
+      id: "ending",
+      head: "Ending",
+      sort: (row) => endingOf(row.ending).label,
+      choice: (row) => endingOf(row.ending).label,
+      cell: (row) => <EndingBadge ending={row.ending} />,
+    },
+    {
+      id: "turns",
+      head: "Turns",
+      numeric: true,
+      sort: (row) => row.turns,
+      cell: (row) => row.turns ?? "open",
+    },
+    { id: "calls", head: "Calls", numeric: true, sort: (row) => row.calls, cell: (row) => row.calls },
+    {
+      id: "time",
+      head: "Time",
+      numeric: true,
+      sort: (row) => row.seconds,
+      cell: (row) => seconds(row.seconds),
+    },
+    { id: "cost", head: "Cost", numeric: true, sort: (row) => row.billed, cell: (row) => money(row.billed) },
+    {
+      id: "ruling",
+      part: "ruling",
+      head: "Ruling",
+      cell: (row) => <RulingCell row={row} tier={tier} withheld={awaiting.has(row.task) ? "label" : null} />,
+    },
+  ];
   return (
     <div className="ana-dense">
-      <DataTable>
-        <thead>
-          <tr>
-            <th>Solve</th>
-            {show.includes("task") ? <th>Task</th> : null}
-            {show.includes("comparison") ? <th>Comparison</th> : null}
-            {show.includes("side") ? <th>Side</th> : null}
-            {show.includes("harness") ? <th>Harness</th> : null}
-            <th>Ending</th>
-            <th className="ana-num">Turns</th>
-            <th className="ana-num">Calls</th>
-            <th className="ana-num">Time</th>
-            <th className="ana-num">Cost</th>
-            {show.includes("ruling") ? <th>Ruling</th> : null}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.id}>
-              <td>
-                <button
-                  type="button"
-                  className="ana-row-select"
-                  data-row={row.id}
-                  onClick={() => onOpen(row.id)}
-                >
-                  {row.id}
-                </button>
-              </td>
-              {show.includes("task") ? (
-                <td className="ana-mono">{row.taskId ?? shortHash(row.task, 8)}</td>
-              ) : null}
-              {show.includes("comparison") ? (
-                <td className="ana-mono">{row.comparison ?? "practice"}</td>
-              ) : null}
-              {show.includes("side") ? <td>{sideLabel(row.side)}</td> : null}
-              {show.includes("harness") ? (
-                <td className="ana-mono">{harnessLabel(reading, row.harness)}</td>
-              ) : null}
-              <td>
-                <EndingBadge ending={row.ending} />
-              </td>
-              <td className="ana-num">{row.turns ?? "open"}</td>
-              <td className="ana-num">{row.calls}</td>
-              <td className="ana-num">{seconds(row.seconds)}</td>
-              <td className="ana-num">{money(row.billed)}</td>
-              {show.includes("ruling") ? (
-                <td>
-                  <RulingCell row={row} tier={tier} withheld={awaiting.has(row.task) ? "label" : null} />
-                </td>
-              ) : null}
-            </tr>
-          ))}
-        </tbody>
-      </DataTable>
+      <Table
+        label="solves"
+        rows={rows}
+        columns={columns.filter(({ part }) => part === undefined || show.includes(part))}
+        rowKey={(row) => row.id}
+        search={(row) => `${row.id} ${task(row)} ${comparison(row)} ${harnessLabel(reading, row.harness)}`}
+        placeholder="Search solves by id, task or harness"
+      />
     </div>
   );
 }

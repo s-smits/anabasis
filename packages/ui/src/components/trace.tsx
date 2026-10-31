@@ -18,7 +18,8 @@ const FIRST_CHARACTERS = 480;
 /** One turn's text, cut where it is long. */
 function TurnText({ text }: { text: string }) {
   const [whole, setWhole] = useState(false);
-  if (text.trim() === "") return <p className="ana-turn-text is-empty">No text in this turn.</p>;
+  // A turn that only called tools says so by its calls, under it.
+  if (text.trim() === "") return null;
   const long = text.length > FIRST_CHARACTERS;
   return (
     <div className="ana-turn-text">
@@ -36,7 +37,7 @@ function TurnText({ text }: { text: string }) {
 export function Trace({ turns, calls }: { turns: readonly Turn[]; calls: readonly ToolCall[] }) {
   const [all, setAll] = useState(false);
   if (turns.length === 0 && calls.length === 0) {
-    return <p className="ana-exam-side">No turn and no call on record.</p>;
+    return <p className="ana-exam-side">No turn and no call on record</p>;
   }
   const ordered = turns.toSorted((one, other) => one.index - other.index);
   const shown = all ? ordered : ordered.slice(0, FIRST_TURNS);
@@ -52,7 +53,9 @@ export function Trace({ turns, calls }: { turns: readonly Turn[]; calls: readonl
               <div className="ana-turn-head">
                 <strong>Turn {turn.turn}</strong>
                 <span>{own.length === 1 ? "1 call" : `${String(own.length)} calls`}</span>
-                {turn.stopReason === null ? null : <span>{turn.stopReason}</span>}
+                {turn.stopReason === null || turn.stopReason === "toolUse" ? null : (
+                  <span>{turn.stopReason}</span>
+                )}
                 {turn.billed === null ? null : <span className="ana-num">{money(turn.billed)}</span>}
                 {turn.error === null ? null : (
                   <Badge tone="bad" title={turn.error}>

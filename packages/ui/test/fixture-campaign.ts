@@ -320,10 +320,17 @@ function writer(log: string, t0: string, starter: string) {
 }
 
 /** The opening, the drafted exam, its reading and its freeze. */
-function opened(w: Writer, project: string, prompt: string, budget: number, attended = false): void {
+function opened(
+  w: Writer,
+  project: string,
+  prompt: string,
+  budget: number,
+  { attended = false, led = false }: { attended?: boolean; led?: boolean } = {},
+): void {
   w.record("campaign.opened", {
     project,
     ...keyIfDefined("attended", attended || undefined),
+    ...keyIfDefined("led", led || undefined),
     budget: { dollars: budget, reserve: 0.5 },
     limit: 10,
     sessions: 1,
@@ -400,6 +407,8 @@ function examined(w: Writer, session: string, ids: readonly string[], refused: r
       },
     });
     if (refused.includes(id)) {
+      // The author's answer is on record for a refused task too, and stays on the exam side.
+      w.record("task.feasible", { version, session, answer: { count: `${MARKERS.answer}-${id}` } });
       w.record("task.gate", {
         version,
         gate: 1,
@@ -603,6 +612,15 @@ function keptStates(dir: string, digests: readonly string[]): void {
     );
     const guide = [...lines, `Version ${String(at)} of this guide.`, ...steps];
     writeFileSync(join(agent, "BUILT_AGENTS.md"), `${guide.join("\n")}\n`);
+    if (at < digests.length - 1) continue;
+    // The latest ran its one program, which left Python's bytecode cache beside it.
+    const bin = join(dir, "states", digest, ".toolchain", "bin");
+    mkdirSync(join(bin, "__pycache__"), { recursive: true });
+    writeFileSync(
+      join(bin, "count.py"),
+      "#!/usr/bin/env python3\n# count.py WORD\n# Prints how many letters WORD has.\n",
+    );
+    writeFileSync(join(bin, "__pycache__", "count.cpython-312.pyc"), "cache\n");
   }
   const model = join(dir, "states", digests[1] ?? "", "correctness-model");
   mkdirSync(model, { recursive: true });
@@ -798,9 +816,34 @@ function secondPart(w: Writer): string {
 function earlyCampaign(root: string, name: string): void {
   const dir = folderOf(root, name);
   const w = writer(join(dir, LOG_FILE), "2026-09-25T09:00:00.000Z", HARNESSES.starter);
-  opened(w, PROJECTS.vowels, PROMPT, 20, true);
+  opened(w, PROJECTS.vowels, PROMPT, 20, { attended: true });
   examined(w, "x-1", ["word-p8", "word-p9", ...range("word", 31, 36)], []);
   prepared(w, ["word-p8", "word-p9"]);
+}
+
+/** A campaign its Builder leads, written alone under `root`, whose open session `b-1` began the
+ *  Examiner session `x-2` and then ran one practice solve: the window the session's solves are read
+ *  over runs to its next start, as its head counts them, and not to the first move it made. */
+export function writeLedCampaign(root: string): string {
+  const name = "led";
+  try {
+    const w = writer(join(folderOf(root, name), LOG_FILE), "2026-09-26T09:00:00.000Z", HARNESSES.starter);
+    const practice = ["word-p1", "word-p2"];
+    opened(w, PROJECTS.vowels, PROMPT, 20, { led: true });
+    examined(w, "x-1", [...practice, ...range("word", 41, 46)], []);
+    prepared(w, practice);
+    w.record("build.started", {
+      session: "b-1",
+      parent: HARNESSES.starter,
+      tasks: practice.map(versionOf),
+      model: SEAT.model,
+    });
+    examined(w, "x-2", range("word", 47, 48), []);
+    w.solve({ task: versionOf("word-p1"), harness: HARNESSES.starter, ends: "pass", heldOut: false });
+    return `${resolve(root).split("/").at(-1) ?? ""}/${name}`;
+  } finally {
+    setSystemTime();
+  }
 }
 
 /** A campaign in another project that ended on its budget with two comparisons and no

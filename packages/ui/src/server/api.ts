@@ -30,6 +30,7 @@ import { campaignsAnswer } from "./campaigns.ts";
 import { type Handler, type Reading, type Trees, Unanswerable } from "./context.ts";
 import { harnessAnswer, harnessDiffAnswer, harnessFileAnswer } from "./harness.ts";
 import { eventAnswer, logAnswer } from "./log.ts";
+import { readAll } from "./logs.ts";
 import { moveAnswer } from "./move.ts";
 import { solveAnswer } from "./solve.ts";
 import { taskAnswer, tasksAnswer } from "./tasks.ts";
@@ -133,8 +134,9 @@ function answerOf<Name extends Endpoint>(
   return handler(reading, query);
 }
 
-/** Every `/api/*` request, answered. */
-export function handleApiRequest(options: ServerOptions, request: Request): Response {
+/** Every `/api/*` request, answered. The list reads every log first (`readAll`), letting a request
+ *  for one campaign in between its logs. */
+export async function handleApiRequest(options: ServerOptions, request: Request): Promise<Response> {
   const url = new URL(request.url);
   if (!loopbackHost(request.headers.get("host"))) {
     return refusal("host", "the API answers a loopback Host alone");
@@ -152,6 +154,7 @@ export function handleApiRequest(options: ServerOptions, request: Request): Resp
   if (refused !== null) return refused;
   try {
     const query = queryOf(endpoint, url);
+    if (endpoint === "campaigns") await readAll(options);
     return json(200, answerOf(endpoint, query, { repo: options.repo, trees: options.trees, tier }));
   } catch (error) {
     return json(error instanceof Unanswerable ? error.status : 500, { error: errorMessage(error) });

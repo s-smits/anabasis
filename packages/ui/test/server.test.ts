@@ -23,7 +23,7 @@ function get(
   path: string,
   served: ServerOptions = options,
   headers: Readonly<Record<string, string>> = { host: "127.0.0.1:5173", [TOKEN_HEADER]: TOKEN },
-): Response {
+): Promise<Response> {
   return handleApiRequest(served, new Request(`http://127.0.0.1:5173${path}`, { headers }));
 }
 
@@ -41,7 +41,7 @@ describe("the API's refusals", () => {
       { host: "127.0.0.1:5173" },
       { host: "127.0.0.1:5173", [TOKEN_HEADER]: "fake-token-that-is-wrong" },
     ]) {
-      const response = get("/api/campaigns", options, headers);
+      const response = await get("/api/campaigns", options, headers);
       expect(response.status).toBe(403);
       expect(await response.json()).toMatchObject({ refused: "token" });
     }
@@ -49,21 +49,21 @@ describe("the API's refusals", () => {
 
   test("refuses a Host that is not the loopback, whatever the token, and answers the loopback names", async () => {
     for (const host of ["evil.example", "127.0.0.1.evil.example:5173", "192.168.1.4:5173"]) {
-      const response = get("/api/campaigns", options, { host, [TOKEN_HEADER]: TOKEN });
+      const response = await get("/api/campaigns", options, { host, [TOKEN_HEADER]: TOKEN });
       expect(response.status).toBe(403);
       expect(await response.json()).toMatchObject({ refused: "host" });
     }
     for (const host of ["localhost:5173", "127.0.0.1", "[::1]:5173"]) {
-      expect(get("/api/campaigns", options, { host, [TOKEN_HEADER]: TOKEN }).status).toBe(200);
+      expect((await get("/api/campaigns", options, { host, [TOKEN_HEADER]: TOKEN })).status).toBe(200);
     }
   });
 
   test("refuses the exam-side endpoint without --exam-side and answers it with the flag", async () => {
     const event = { key: fixture.key, index: "3" };
-    const refused = get(pathOf("event", event));
+    const refused = await get(pathOf("event", event));
     expect(refused.status).toBe(403);
     expect(await refused.json()).toMatchObject({ refused: "exam-side" });
-    expect(get(pathOf("event", event), { ...options, examSide: true }).status).toBe(200);
+    expect((await get(pathOf("event", event), { ...options, examSide: true })).status).toBe(200);
   });
 });
 
@@ -76,10 +76,10 @@ describe("the router", () => {
       ["builder", "session"],
       ["comparison", "comparison"],
     ] as const) {
-      const opened = get(pathOf("move", { key: fixture.key, move: place(step) }));
+      const opened = await get(pathOf("move", { key: fixture.key, move: place(step) }));
       expect(parseJsonAs<AnswerOf<"move">>(await opened.text()).kind).toBe(kind);
     }
-    const refused = get(pathOf("move", { key: fixture.key, move: "b-1" }));
+    const refused = await get(pathOf("move", { key: fixture.key, move: "b-1" }));
     expect(refused.status).toBe(400);
     const error = parseJsonAs<ApiError>(await refused.text()).error;
     for (const fact of [
@@ -90,6 +90,6 @@ describe("the router", () => {
     ]) {
       expect(error).toContain(fact);
     }
-    expect(get(pathOf("move", { key: fixture.key, move: "1" })).status).toBe(404);
+    expect((await get(pathOf("move", { key: fixture.key, move: "1" }))).status).toBe(404);
   });
 });

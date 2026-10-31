@@ -67,7 +67,7 @@ export function TaskDetailView({
       <AnswerIssues answer={detail} />
       <Section title={`In ${String(results.length)} of ${String(grid.columns.length)} comparisons`}>
         {results.length === 0 ? (
-          <p className="ana-faint">No comparison has scored this task.</p>
+          <p className="ana-faint">No comparison has scored this task</p>
         ) : (
           <ul className="ana-task-results">
             {results.map(({ column, cell }) => {
@@ -121,7 +121,7 @@ export function TaskDetailView({
       </Section>
       <Section title={`Solves (${String(detail.solves.length)})`}>
         {detail.solves.length === 0 ? (
-          <p className="ana-faint">No solve of this task on record.</p>
+          <p className="ana-faint">No solve of this task on record</p>
         ) : (
           <SolveTable
             rows={detail.solves}

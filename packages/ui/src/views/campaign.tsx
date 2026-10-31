@@ -2,12 +2,12 @@ import { useCallback } from "react";
 import type { Decided } from "../../../../src/campaign/move.ts";
 import { plural } from "../../../../src/meta/text.ts";
 import { ComparisonsChart } from "../components/charts/comparisons.tsx";
-import { ShareKey, SpendChart, ValidShareChart } from "../components/charts/small.tsx";
+import { CarriedChart, CarriedKey, SpendChart } from "../components/charts/small.tsx";
 import { MetricCard, MetricGrid, Section } from "../components/layout.tsx";
 import { Badge, Card, Disclosure, NoSignal } from "../components/primitives.tsx";
 import type { CampaignReading, Tone } from "../models.ts";
 import type { PaneProps } from "../route.ts";
-import { digestText, pText, tallyText } from "./campaign-data.ts";
+import { carriedText, digestText, pText, tallyText } from "./campaign-data.ts";
 import { HarnessStrip } from "./campaign-harnesses.tsx";
 import { money, percent, time } from "./format.ts";
 
@@ -21,8 +21,9 @@ import { money, percent, time } from "./format.ts";
  *
  * What `bun run runs view` prints and the readouts do not stands one click or one line away: the
  * set-up line with the seats and the terms in one collapsed disclosure, the steps open at the log's
- * end in the next move's detail as the view words it, and when the log was last written beside the status, since an open campaign that last wrote long
- * ago is probably a process stopped with no ending, which the log cannot say.
+ * end in the next move's detail as the view words it, and when the log was last written beside the status of a campaign no process writes, since an open
+ * campaign that last wrote long ago is probably a process stopped with no ending, which the log
+ * cannot say; a running one leaves it out (operator, 30 October).
  */
 
 const MOVE_WORD = {
@@ -59,20 +60,21 @@ const READING_TONE = new Map<string, Tone>([
 
 function Head({ reading }: { reading: CampaignReading }) {
   const { row } = reading;
+  // The title is the whole name, as commands take it, alone: the project above it repeated the name's
+  // opening in 117 of 153 recorded campaigns on 30 October, and the picker groups by it.
   const status = row.ending === null ? row.status : `ended: ${row.ending.ending}`;
   const tone: Tone =
     row.status === "running" ? "info" : row.ending?.ending === "environment" ? "bad" : "neutral";
   return (
     <header className="ana-run-head ana-campaign-head">
       <div className="ana-campaign-title">
-        <p className="ana-eyebrow" title={row.project}>
-          {row.project}
-        </p>
         <h1>{row.name}</h1>
       </div>
       <div className="ana-campaign-status">
         <Badge tone={tone}>{status}</Badge>
-        <span className="ana-num">last wrote {time(row.lastEventAt)}</span>
+        {row.status === "running" ? null : (
+          <span className="ana-num">last wrote {time(row.lastEventAt)}</span>
+        )}
         <span className="ana-num">
           {money(row.billed)}
           {row.budget === null ? " billed" : ` of ${money(row.budget)}`}
@@ -80,6 +82,14 @@ function Head({ reading }: { reading: CampaignReading }) {
       </div>
     </header>
   );
+}
+
+/** A move's reason as its first clause, the rest behind a disclosure: until 30 October the card
+ *  printed the table's reason, the open sessions and the Builder's lead as one run-on line. */
+function reasonOf(line: string) {
+  const cut = line.indexOf("; ");
+  if (cut < 0) return line;
+  return <Disclosure title={line.slice(0, cut)}>{line.slice(cut + 2)}</Disclosure>;
 }
 
 function Readouts({ reading }: { reading: CampaignReading }) {
@@ -116,7 +126,9 @@ function Readouts({ reading }: { reading: CampaignReading }) {
         detail={
           lastReading === null
             ? "no comparison has reported"
-            : `${lastReading.reading} in ${lastReading.id}, won–lost–tied, ${pText(lastBar?.p ?? null)}`
+            : `${lastReading.reading} in ${lastReading.id}, won–lost–tied, ${pText(lastBar?.p ?? null)}${
+                lastBar?.carried == null ? "" : `; won on ${carriedText(lastBar.carried.won)}`
+              }`
         }
         tone={lastReading === null ? "neutral" : (READING_TONE.get(lastReading.reading) ?? "neutral")}
       />
@@ -133,7 +145,9 @@ function Readouts({ reading }: { reading: CampaignReading }) {
           detail={
             nextMove === null
               ? "the decision table could not be asked"
-              : `${nextMove.why}${open}${reading.attended ? (ATTENDED_WAITS.get(nextMove.move) ?? "") : ""}${advised ? "; the Builder leads this campaign and may make another move" : ""}`
+              : reasonOf(
+                  `${nextMove.why}${open}${reading.attended ? (ATTENDED_WAITS.get(nextMove.move) ?? "") : ""}${advised ? "; the Builder leads this campaign and may make another move" : ""}`,
+                )
           }
           tone={nextMove?.move === "end" ? "warn" : "neutral"}
         />
@@ -274,7 +288,7 @@ export function CampaignPane({ reading, navigation }: PaneProps) {
   const { push } = navigation;
   const open = useCallback((index: number) => push({ pane: "moves", move: index }), [push]);
   const { comparisons, spend, row } = reading;
-  const shares = comparisons.some((bar) => bar.valid !== null);
+  const carried = comparisons.some((bar) => bar.carried !== null);
   return (
     <div className="ana-campaign">
       <Head reading={reading} />
@@ -300,30 +314,38 @@ export function CampaignPane({ reading, navigation }: PaneProps) {
         title="Harnesses"
         aside={<span className="ana-campaign-qualifier">{plural(reading.harnesses.length, "version")}</span>}
       >
-        <HarnessStrip reading={reading} navigation={navigation} />
+        <HarnessStrip
+          reading={reading}
+          navigation={navigation}
+          beside={
+            carried || spend.length > 0 ? (
+              <div className="ana-campaign-pair">
+                {carried ? (
+                  <Card className="ana-campaign-small">
+                    <div className="ana-section-head">
+                      <h2>Wins by measure</h2>
+                      <CarriedKey />
+                    </div>
+                    <CarriedChart bars={comparisons} />
+                  </Card>
+                ) : null}
+                {spend.length > 0 ? (
+                  <Card className="ana-campaign-small">
+                    <div className="ana-section-head">
+                      <h2>Dollars billed</h2>
+                      <span className="ana-campaign-qualifier">
+                        {plural(spend.length, "move")}
+                        {row.budget === null ? "" : `, budget ${money(row.budget)}`}
+                      </span>
+                    </div>
+                    <SpendChart spend={spend} />
+                  </Card>
+                ) : null}
+              </div>
+            ) : null
+          }
+        />
       </Section>
-      {shares || spend.length > 0 ? (
-        <div className="ana-campaign-pair">
-          {shares ? (
-            <Card className="ana-campaign-small">
-              <div className="ana-section-head">
-                <h2>Valid share</h2>
-                <ShareKey />
-              </div>
-              <ValidShareChart bars={comparisons} />
-            </Card>
-          ) : null}
-          {spend.length > 0 ? (
-            <Card className="ana-campaign-small">
-              <div className="ana-section-head">
-                <h2>Dollars billed</h2>
-                <span className="ana-campaign-qualifier">{plural(spend.length, "move")}</span>
-              </div>
-              <SpendChart spend={spend} budget={row.budget} />
-            </Card>
-          ) : null}
-        </div>
-      ) : null}
       <Counters reading={reading} />
     </div>
   );

@@ -39,6 +39,7 @@ __pycache__/
 /.harness/
 /.scratch/
 /packages/ui/dist/
+/packages/ui/.token
 # Skills and other files set aside on this machine instead of shipped, such as a zipped skill a
 # pull request once carried (30 October 2026).
 /.archive/

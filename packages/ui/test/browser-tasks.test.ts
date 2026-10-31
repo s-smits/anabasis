@@ -1,6 +1,9 @@
 import { afterAll, beforeAll, describe, test } from "bun:test";
 import type { Browser, Locator, Page } from "@playwright/test";
 import {
+  choicesOf,
+  choose,
+  chooser,
   accessibilityViolations,
   DESKTOP,
   expect,
@@ -12,6 +15,7 @@ import {
   routeParameters,
   type Served,
   serveFixture,
+  tick,
   type Viewing,
 } from "./browser.ts";
 import { arm, expectFocusRing, framesOf, tabTo, watchFrames } from "./browser-watch.ts";
@@ -92,6 +96,32 @@ const LEGEND = [
   "Set aside for a label",
   "Counts: valid of solves, reference · new",
 ];
+/** Each filter's words for its values, as the grid offers them (`tasks-grid.tsx`). */
+const FILTER_WORDS = new Map([
+  ["State", new Map([["all", "Every state"]])],
+  [
+    "Label",
+    new Map([
+      ["all", "All tasks"],
+      ["yes", "Waits for a label"],
+      ["no", "Does not wait"],
+    ]),
+  ],
+  [
+    "Exhausted",
+    new Map([
+      ["all", "All tasks"],
+      ["yes", "Exhausted"],
+      ["no", "Not exhausted"],
+    ]),
+  ],
+]);
+const EVERY = { Exhausted: "All tasks" } as const;
+
+/** Choose the value `value` of the grid's filter `label`, by the words it is offered in. */
+function pick(on: Page, label: string, value: string): Promise<void> {
+  return choose(on, label, FILTER_WORDS.get(label)?.get(value) ?? value);
+}
 
 let served: Served;
 let exam: Served;
@@ -196,6 +226,9 @@ describe("the Tasks pane's grid", () => {
       }),
     ]);
     expect(await gridRows(on)).toEqual(expected);
+    // A cell with no outcome says why to a screen reader and shows nothing; its row names the state.
+    await expect(grid(on).locator("td.is-none").first()).toHaveText(/\S/u);
+    expect((await grid(on).locator("td.is-none span").first().boundingBox())?.width).toBeLessThanOrEqual(1);
     // Each tinted cell says in its title what its counts are, for a reader who hovers.
     await expect(grid(on).locator("tbody tr").nth(2).locator("td").first()).toHaveAttribute(
       "title",
@@ -235,48 +268,57 @@ describe("the Tasks pane's filters", () => {
   test("filters by state, by label and by exhaustion, alone and together", async () => {
     const opened = await openTasks(served);
     const on = opened.page;
-    const state = on.getByLabel("State");
-    const label = on.getByLabel("Label");
-    const exhausted = on.getByLabel("Exhausted");
-    expect(await state.locator("option").allTextContents()).toEqual([
-      "Every state",
-      "held",
-      "released",
-      "refused",
-      "disputed",
+    const state = chooser(on, "State");
+    const exhausted = chooser(on, "Exhausted");
+    expect(await choicesOf(on, "State")).toEqual([
+      "Every state 26",
+      "held 22",
+      "released 2",
+      "refused 1",
+      "disputed 1",
     ]);
     const counts = { held: 22, released: 2, refused: 1, disputed: 1 } as const;
     for (const [value, count] of Object.entries(counts)) {
-      await state.selectOption(value);
+      await pick(on, "State", value);
       await expect(corner(on)).toHaveText(`Tasks (${String(count)})`);
       const notes = await grid(on).locator("tbody th small").allTextContents();
       expect(notes.every((note) => note.startsWith(value))).toBe(true);
     }
-    await state.selectOption("all");
+    // A choice ticks several values, a task passing where it holds one, and stays open between ticks.
+    await pick(on, "State", "held");
+    await tick(on, "State", "released");
+    await expect(corner(on)).toHaveText("Tasks (24)");
+    await expect(on.getByRole("listbox", { name: "State", exact: true })).toBeVisible();
+    await tick(on, "State", "held");
+    await expect(corner(on)).toHaveText("Tasks (2)");
+    await on.getByRole("searchbox", { name: "Filter states" }).press("Escape");
+    await expect(state).toHaveText("released");
+    await pick(on, "State", "all");
     await expect(corner(on)).toHaveText("Tasks (26)");
 
-    await label.selectOption("yes");
+    await pick(on, "Label", "yes");
     expect(await shownIds(on)).toEqual(["word-06"]);
-    await label.selectOption("no");
+    await pick(on, "Label", "no");
     await expect(corner(on)).toHaveText("Tasks (25)");
-    await label.selectOption("all");
+    await pick(on, "Label", "all");
 
     // One task of the fixture is exhausted: the reference closed it in both comparisons it stood in.
-    await exhausted.selectOption("yes");
+    await pick(on, "Exhausted", "yes");
     expect(await shownIds(on)).toEqual(["word-03"]);
-    await exhausted.selectOption("no");
+    await pick(on, "Exhausted", "no");
     await expect(corner(on)).toHaveText("Tasks (25)");
 
-    await state.selectOption("held");
-    await label.selectOption("yes");
+    await pick(on, "State", "held");
+    await pick(on, "Label", "yes");
     expect(await shownIds(on)).toEqual(["word-06"]);
-    await state.selectOption("released");
-    await expect(on.getByText("No matching task")).toBeVisible();
-    await label.selectOption("all");
+    // A choice offers only the states the label leaves, so no pick of the two leaves the grid empty.
+    expect(await choicesOf(on, "State")).toEqual(["Every state 1", "held 1"]);
+    await pick(on, "Label", "all");
+    await pick(on, "State", "released");
     await search(on).fill("p2");
     expect(await shownIds(on)).toEqual(["word-p2"]);
-    await state.selectOption("held");
     await search(on).fill("word-0");
+    await pick(on, "State", "held");
     expect(await shownIds(on)).toEqual([
       "word-01",
       "word-02",
@@ -287,8 +329,8 @@ describe("the Tasks pane's filters", () => {
       "word-09",
     ]);
     await on.getByRole("button", { name: "Clear filters" }).click();
-    await expect(state).toHaveValue("all");
-    await expect(exhausted).toHaveValue("all");
+    await expect(state).toHaveText("Every state");
+    await expect(exhausted).toHaveText(EVERY.Exhausted);
     await expect(corner(on)).toHaveText("Tasks (26)");
     expectQuiet(opened);
     await opened.context.close();
@@ -362,7 +404,7 @@ describe("a task's detail", () => {
   test("shows disputed results in place, and Back restores the filters and focus", async () => {
     const opened = await openTasks(served);
     const on = opened.page;
-    await on.getByLabel("State").selectOption("disputed");
+    await pick(on, "State", "disputed");
     await search(on).fill("word");
     await taskRow(on, "word-05").click();
     await expect(detail(on)).toBeVisible();
@@ -386,7 +428,7 @@ describe("a task's detail", () => {
     await expect(grid(on)).toBeVisible();
     await expect(detail(on)).toHaveCount(0);
     expect(routeParameters(on).task).toBeUndefined();
-    await expect(on.getByLabel("State")).toHaveValue("disputed");
+    await expect(chooser(on, "State")).toHaveText("disputed");
     await expect(search(on)).toHaveValue("word");
     await expect(taskRow(on, "word-05")).toBeFocused();
     expectQuiet(opened);
@@ -485,11 +527,11 @@ describe("the Tasks pane between two readings", () => {
     const opened = await openWatched("[aria-busy=true]");
     const on = opened.page;
     await arm(on);
-    await on.getByLabel("State").selectOption("held");
+    await pick(on, "State", "held");
     await expect(corner(on)).toHaveText("Tasks (22)");
-    await on.getByLabel("Label").selectOption("no");
+    await pick(on, "Label", "no");
     await expect(corner(on)).toHaveText("Tasks (21)");
-    await on.getByLabel("Exhausted").selectOption("no");
+    await pick(on, "Exhausted", "no");
     await search(on).fill("word-1");
     await expect(corner(on)).toHaveText("Tasks (10)");
     await on.getByRole("button", { name: "Clear filters" }).click();

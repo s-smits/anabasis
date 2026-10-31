@@ -16,17 +16,16 @@
 
 .ana-campaign-title {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
   flex: 1 1 320px;
 }
 
-/* The project the campaign's opening names: one line, the whole of it on hover. */
-.ana-campaign-title .ana-eyebrow {
-  max-width: 72ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* The campaign's whole name, smaller than a page title so that names of 40 characters and more
+   fit their line, and broken anywhere on a phone. */
+.ana-campaign-head .ana-campaign-title h1 {
+  font-size: clamp(22px, 2.6vw, 32px);
+  overflow-wrap: anywhere;
 }
 
 /* The prompt the campaign opened from, in the page's one editorial voice, at the head of Set-up. */
@@ -121,7 +120,7 @@
   display: flex;
   flex-wrap: wrap;
   font-size: var(--ana-text-sm);
-  gap: 6px 18px;
+  gap: 4px 16px;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -130,7 +129,7 @@
 .ana-legend-list li {
   align-items: center;
   display: inline-flex;
-  gap: 7px;
+  gap: 8px;
 }
 
 .ana-legend-list .ana-num {
@@ -212,7 +211,7 @@
 .ana-harness-lineage {
   container-type: inline-size;
   display: grid;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -289,7 +288,7 @@
 .ana-harness-roles {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
 }
 
 .ana-harness-figure {
@@ -303,21 +302,39 @@
   font-size: var(--ana-text-xs);
 }
 
+/* The selected harness's detail and the small charts, two columns on a wide page; one alone takes
+   the row. The detail stacks its own two columns by its own width, which the slot measures. */
+.ana-harness-row {
+  align-items: start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+}
+
+.ana-harness-slot {
+  container-type: inline-size;
+  min-width: 0;
+}
+
+.ana-harness-row > .ana-campaign-pair {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .ana-harness-detail {
   background: var(--ana-card);
   border: 1px solid color-mix(in srgb, var(--ana-accent) 30%, var(--ana-border));
   border-radius: var(--ana-radius);
   box-shadow: var(--ana-shadow);
   display: grid;
-  gap: 14px 32px;
+  gap: 12px 32px;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  padding: 16px 18px;
+  padding: 16px 16px;
 }
 
 .ana-harness-facts {
   align-content: start;
   display: grid;
-  gap: 6px;
+  gap: 4px;
   margin: 0;
 }
 
@@ -353,14 +370,14 @@
 .ana-harness-comparisons li {
   align-items: baseline;
   display: grid;
-  gap: 10px;
+  gap: 8px;
   grid-template-columns: 34px 52px minmax(0, auto) minmax(0, 1fr);
 }
 
 .ana-harness-actions {
   align-items: start;
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .ana-harness-actions .ana-button {
@@ -370,6 +387,15 @@
 .ana-harness-files {
   display: grid;
   gap: 8px;
+}
+
+/* The parts' files scroll inside the panel past a few screens' lines, with the search above them. */
+.ana-harness-file-list {
+  display: grid;
+  gap: 8px;
+  max-height: 420px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 /* One part of a harness: its name over its files. */
 .ana-harness-part {
@@ -382,13 +408,14 @@
 /* A program's head comment under its path: its usage and what it computes. */
 .ana-harness-about {
   color: var(--ana-dim);
-  font-size: var(--ana-text-sm);
-  margin: 0 0 6px;
+  font-family: var(--font-mono);
+  font-size: var(--ana-text-xs);
+  margin: 0 0 4px;
   max-width: 80ch;
   white-space: pre-wrap;
 }
 
-/* The two small charts side by side, one above the other on a narrow page. */
+/* The small charts, one above the other in their column beside the harness detail. */
 .ana-campaign-pair {
   display: grid;
   gap: 12px;
@@ -397,7 +424,7 @@
 
 .ana-campaign-small {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   padding: 20px 20px 12px;
 }
 
@@ -422,7 +449,7 @@
 @media (max-width: 700px) {
   .ana-campaign-chart,
   .ana-campaign-small {
-    padding: 14px 12px 12px;
+    padding: 12px 12px 12px;
   }
 
   .ana-comparisons-frame .ana-climb-chart {
@@ -446,5 +473,13 @@
 
   .ana-harness-detail > .ana-harness-facts {
     grid-row: auto;
+  }
+}
+
+/* The three readouts take the widths their text needs: the move the table names and its reason run
+   longest, so they get the widest column instead of a third like the reference's name. */
+@media (min-width: 900px) {
+  .ana-campaign .ana-metric-grid {
+    grid-template-columns: minmax(190px, 1fr) minmax(190px, 1fr) minmax(260px, 1.6fr);
   }
 }

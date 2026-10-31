@@ -1,9 +1,11 @@
-import { useState } from "react";
 import { Button, NoSignal } from "../components/primitives.tsx";
 import { matchesTerms } from "../components/tool-call.tsx";
 import type { LeftOut, Outcome, TaskCell, TaskGrid, TaskLeftOut, TaskRow } from "../models.ts";
 import { shortHash } from "../models.ts";
-import { Filters, Search, Select } from "./controls.tsx";
+import { Choose } from "../components/picker.tsx";
+import { choiceCounts } from "../components/table.tsx";
+import { useKept } from "../route.ts";
+import { Filters, Search } from "./controls.tsx";
 import { OUTCOMES } from "./outcome.ts";
 import type { Share } from "../../../../src/campaign/climb.ts";
 
@@ -16,24 +18,24 @@ import type { Share } from "../../../../src/campaign/climb.ts";
  * task's state: a practice task is never scored, a refused draft never entered the exam, and a held
  * task the comparison did not draw was not scored. Until 19 October all three read "not scored", and
  * esp32-fresh-opus's grid showed 153 of its 177 rows so, every one a refused draft or a practice
- * task, while each of its 24 held tasks had been scored. The first column and the head stay in place while the grid scrolls inside its card, so a
- * campaign of twenty comparisons and sixty tasks stays readable.
+ * task, while each of its 24 held tasks had been scored. Since 30 October such a cell is left blank
+ * to the eye and says why to a screen reader only, since the row's own note already names its
+ * state and most cells of a long campaign's grid are of this kind. The first column and the head
+ * stay in place while the grid scrolls inside its card, so a campaign of twenty comparisons and
+ * sixty tasks stays readable.
  */
 
-const ALL = "all";
-const STATES = [ALL, "held", "released", "refused", "disputed"];
-const YES_NO = [ALL, "yes", "no"];
+const STATES = ["held", "released", "refused", "disputed"];
+const YES_NO = ["yes", "no"];
 const LABEL_WORDS = new Map([
-  ["all", "All tasks"],
   ["yes", "Waits for a label"],
   ["no", "Does not wait"],
 ]);
 const EXHAUSTED_WORDS = new Map([
-  ["all", "All tasks"],
   ["yes", "Exhausted"],
   ["no", "Not exhausted"],
 ]);
-const STATE_WORDS = new Map([["all", "Every state"]]);
+const STATE_WORDS = new Map<string, string>();
 /** Why a task has no cell in a comparison, where its state says more than that it was not scored. */
 const UNSCORED_WORDS = new Map([
   ["released", "practice"],
@@ -83,9 +85,15 @@ function taskNote(row: TaskRow): string {
 
 function Cell({ cell, state }: { cell: TaskCell | TaskLeftOut | null; state: TaskRow["state"] }) {
   if (cell === null) {
+    // A held task the comparison did not draw keeps a faint dash, so that it reads apart from practice.
+    const words = UNSCORED_WORDS.get(state);
     return (
-      <td className="ana-grid-cell is-none" data-outcome="none">
-        <span>{UNSCORED_WORDS.get(state) ?? "not scored"}</span>
+      <td
+        className={words === undefined ? "ana-grid-cell is-none is-undrawn" : "ana-grid-cell is-none"}
+        data-outcome="none"
+        title={words === undefined ? "not drawn in this comparison" : undefined}
+      >
+        <span className="ana-sr-only">{words ?? "not scored"}</span>
       </td>
     );
   }
@@ -118,54 +126,80 @@ function Cell({ cell, state }: { cell: TaskCell | TaskLeftOut | null; state: Tas
 
 /** The grid with its filters; a task's id opens its detail. */
 export function TaskGridView({ grid, onOpen }: { grid: TaskGrid; onOpen: (version: string) => void }) {
-  const [query, setQuery] = useState("");
-  const [state, setState] = useState(ALL);
-  const [label, setLabel] = useState(ALL);
-  const [exhausted, setExhausted] = useState(ALL);
+  const [query, setQuery] = useKept("tasks.search", "");
+  const [state, setState] = useKept<readonly string[]>("tasks.state", []);
+  const [label, setLabel] = useKept<readonly string[]>("tasks.label", []);
+  const [exhausted, setExhausted] = useKept<readonly string[]>("tasks.exhausted", []);
   if (grid.rows.length === 0) {
-    return <NoSignal title="No task yet">No task version has been proposed in this campaign.</NoSignal>;
+    return <NoSignal title="No task yet">No task version has been proposed in this campaign</NoSignal>;
   }
-  const holds = (filter: string, value: boolean) => filter === ALL || (filter === "yes") === value;
-  const rows = grid.rows.filter(
-    (row) =>
-      (state === ALL || row.state === state) &&
-      holds(label, row.awaitingLabel) &&
-      holds(exhausted, row.exhausted) &&
-      matchesTerms(`${row.id ?? ""} ${row.version} ${taskNote(row)}`, query),
+  const yesNo = (value: boolean) => (value ? "yes" : "no");
+  // Each choice with the value a row holds for it, as the page's tables have them (`table.tsx`): a
+  // choice offers what the search and the other choices leave, each with its count.
+  const choices = [
+    {
+      name: "State",
+      every: "Every state",
+      value: state,
+      set: setState,
+      of: (row: TaskRow) => row.state,
+      words: STATE_WORDS,
+    },
+    {
+      name: "Label",
+      every: "All tasks",
+      value: label,
+      set: setLabel,
+      of: (row: TaskRow) => yesNo(row.awaitingLabel),
+      words: LABEL_WORDS,
+    },
+    {
+      name: "Exhausted",
+      every: "All tasks",
+      value: exhausted,
+      set: setExhausted,
+      of: (row: TaskRow) => yesNo(row.exhausted),
+      words: EXHAUSTED_WORDS,
+    },
+  ];
+  const searched = grid.rows.filter((row) =>
+    matchesTerms(`${row.id ?? ""} ${row.version} ${taskNote(row)}`, query),
   );
-  const filtered = query.trim() !== "" || state !== ALL || label !== ALL || exhausted !== ALL;
+  const leaving = (skip: string | null) =>
+    searched.filter((row) =>
+      choices.every(({ name, value, of }) => name === skip || value.length === 0 || value.includes(of(row))),
+    );
+  const rows = leaving(null);
+  const filtered = query.trim() !== "" || choices.some(({ value }) => value.length > 0);
   return (
     <>
       <Filters>
         <Search value={query} onChange={setQuery} placeholder="Search tasks by id or version" />
-        <Select
-          label="State"
-          value={state}
-          onChange={setState}
-          values={STATES}
-          format={(value) => STATE_WORDS.get(value) ?? value}
-        />
-        <Select
-          label="Label"
-          value={label}
-          onChange={setLabel}
-          values={YES_NO}
-          format={(value) => LABEL_WORDS.get(value) ?? value}
-        />
-        <Select
-          label="Exhausted"
-          value={exhausted}
-          onChange={setExhausted}
-          values={YES_NO}
-          format={(value) => EXHAUSTED_WORDS.get(value) ?? value}
-        />
+        {choices.map(({ name, every, value, set, of, words }) => {
+          // As in `table.tsx`, a choice every task answers alike stands only while it is set.
+          if (value.length === 0 && new Set(grid.rows.map(of)).size < 2) return null;
+          const left = leaving(name);
+          const counts = choiceCounts(left, of);
+          return (
+            <Choose
+              key={name}
+              label={name}
+              chosen={value}
+              onChange={set}
+              values={(name === "State" ? STATES : YES_NO).filter(
+                (each) => value.includes(each) || counts.has(each),
+              )}
+              every={{ label: every, detail: String(left.length) }}
+              format={(each) => words.get(each) ?? each}
+              detail={(each) => String(counts.get(each) ?? 0)}
+            />
+          );
+        })}
         {filtered ? (
           <Button
             onClick={() => {
               setQuery("");
-              setState(ALL);
-              setLabel(ALL);
-              setExhausted(ALL);
+              for (const { set } of choices) set([]);
             }}
           >
             Clear filters
@@ -182,7 +216,7 @@ export function TaskGridView({ grid, onOpen }: { grid: TaskGrid; onOpen: (versio
         <li className="ana-faint">Counts: valid of solves, reference · new</li>
       </ul>
       {rows.length === 0 ? (
-        <NoSignal title="No matching task">Change the search or clear the filters.</NoSignal>
+        <NoSignal title="No matching task">Change the search or clear the filters</NoSignal>
       ) : (
         <div className="ana-grid-wrap" role="region" aria-label="Tasks by comparison" tabIndex={0}>
           <table className="ana-grid">

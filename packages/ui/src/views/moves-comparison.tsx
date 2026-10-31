@@ -1,18 +1,19 @@
-import { useState } from "react";
 import { Section } from "../components/layout.tsx";
-import { Badge, Button, Card, DataTable, Disclosure, HashValue } from "../components/primitives.tsx";
+import { Badge, Button, Card, Disclosure, HashValue } from "../components/primitives.tsx";
+import { type Column, Table } from "../components/table.tsx";
 import type {
   CampaignReading,
   ComparisonBar,
   ComparisonDetail,
   Outcome,
+  ScoredTask,
   Sensitivity,
   SolveRow,
   Tally,
 } from "../models.ts";
 import { shortHash } from "../models.ts";
-import type { Navigation } from "../route.ts";
-import { leftOutText } from "./campaign-data.ts";
+import { type Navigation, useKept } from "../route.ts";
+import { carriedText, leftOutText, pText } from "./campaign-data.ts";
 import { AnswerIssues, DetailHead, endingOf, enter, harnessLabel } from "./drill.tsx";
 import { duration, money, percent, time } from "./format.ts";
 import { kindOf, standingOf } from "./moves-list.tsx";
@@ -44,13 +45,26 @@ function rulingsText({ rulings }: Pick<ComparisonBar, "rulings">): string {
   return RULING_KINDS.map((kind) => `${String(rulings.kinds[kind])} ${rulingLabel(kind)}`).join(" · ");
 }
 
-/** A solve as a chip in a scored task's row: its ending in words, opened on a click. The ending
- *  alone would give every chip of a table one of four names, so each is named for its solve too. */
+/** A side's solves of one task in a scored task's row, each opened on a click, with what they
+ *  billed. Where every solve ended alike the ending is said once with its count, and each solve is a
+ *  numbered chip: on 30 October a comparison's 30 tasks drew 120 chips that each said "valid". The
+ *  ending alone would give every chip of a table one of four names, so each is named for its solve
+ *  too. */
 function SolveChips({ rows, onOpen }: { rows: readonly SolveRow[]; onOpen: (id: string) => void }) {
   if (rows.length === 0) return <span className="ana-faint">no solve</span>;
+  const labels = new Set(rows.map((row) => endingOf(row.ending).label));
+  const alike = labels.size === 1 ? endingOf(rows[0]?.ending ?? null) : null;
+  const billed = rows.some((row) => row.billed === null)
+    ? null
+    : rows.reduce((sum, row) => sum + (row.billed ?? 0), 0);
   return (
     <span className="ana-solve-chips">
-      {rows.map((row) => {
+      {alike === null ? null : (
+        <span className={`ana-solve-count ana-solve-count--${alike.tone}`}>
+          {`${String(rows.length)} ${alike.label}`}
+        </span>
+      )}
+      {rows.map((row, at) => {
         const { label, tone } = endingOf(row.ending);
         return (
           <button
@@ -62,10 +76,11 @@ function SolveChips({ rows, onOpen }: { rows: readonly SolveRow[]; onOpen: (id: 
             title={`Open solve ${row.id}`}
             onClick={() => onOpen(row.id)}
           >
-            {label}
+            {alike === null ? label : String(at + 1)}
           </button>
         );
       })}
+      <span className="ana-faint ana-num">{money(billed)}</span>
     </span>
   );
 }
@@ -147,7 +162,13 @@ function Readings({ detail, reading }: { detail: ComparisonDetail; reading: Camp
         ? "none"
         : `${String(bar.tally.wins)} won, ${String(bar.tally.losses)} lost, ${String(bar.tally.ties)} tied`,
     ],
-    ["Sign test", bar.p === null ? "not made" : `p ${bar.p.toFixed(3)} at level ${String(bar.level)}`],
+    ...(bar.carried === null
+      ? []
+      : ([
+          ["Won on", carriedText(bar.carried.won)],
+          ["Lost on", carriedText(bar.carried.lost)],
+        ] as const)),
+    ["Sign test", bar.p === null ? "not made" : `${pText(bar.p)} at level ${String(bar.level)}`],
     [
       "Valid, reference",
       bar.valid === null
@@ -165,7 +186,7 @@ function Readings({ detail, reading }: { detail: ComparisonDetail; reading: Camp
       : ([
           [
             "Frontier, where the step is read",
-            `${tallyWords(bar.sets.frontier.tally)} · p ${bar.sets.frontier.p.toFixed(3)}`,
+            `${tallyWords(bar.sets.frontier.tally)} · ${pText(bar.sets.frontier.p)}`,
           ],
           [
             "Retained, where a step may not lose more than it wins",
@@ -180,7 +201,7 @@ function Readings({ detail, reading }: { detail: ComparisonDetail; reading: Camp
       : ([
           [
             "Reference against itself",
-            `${String(bar.noise.tally.wins)} won, ${String(bar.noise.tally.losses)} lost · p ${bar.noise.p.toFixed(3)}`,
+            `${String(bar.noise.tally.wins)} won, ${String(bar.noise.tally.losses)} lost · ${pText(bar.noise.p)}`,
           ],
         ] as const)),
   ] as const;
@@ -282,6 +303,74 @@ function sensitivityFacts(seen: Sensitivity): (readonly [string, string])[] {
   ];
 }
 
+/** The columns of a comparison's tasks: each sorts, and the outcome and the measure that carried it
+ *  narrow the list (`Table`). */
+function scoredColumns(detail: ComparisonDetail, navigation: Navigation): readonly Column<ScoredTask>[] {
+  const openSolve = (id: string) => enter(navigation, { solve: id });
+  const outcomeOf = (task: ScoredTask) => OUTCOMES.find((each) => each.outcome === task.outcome);
+  const solves = (task: ScoredTask) => [...task.old, ...task.fresh];
+  return [
+    {
+      id: "task",
+      head: "Task",
+      sort: (task) => task.taskId ?? task.task,
+      cell: (task) => (
+        <button
+          type="button"
+          className="ana-row-select"
+          title="Open the task"
+          onClick={() => navigation.push({ pane: "tasks", task: task.task, solve: null })}
+        >
+          {task.taskId ?? shortHash(task.task, 8)}
+        </button>
+      ),
+    },
+    {
+      id: "outcome",
+      head: "Outcome",
+      sort: (task) => outcomeOf(task)?.label ?? null,
+      choice: (task) => outcomeOf(task)?.label ?? "no report yet",
+      cell: (task) => {
+        const outcome = outcomeOf(task);
+        return outcome === undefined ? (
+          <span className="ana-faint">no report yet</span>
+        ) : (
+          <span className="ana-outcome">
+            <span className="ana-swatch" style={{ background: outcome.color }} aria-hidden />
+            {outcome.label}
+          </span>
+        );
+      },
+    },
+    {
+      id: "carried",
+      head: "Carried by",
+      sort: (task) => task.carried,
+      choice: (task) => task.carried ?? "none",
+      chooser: "Measure",
+      cell: (task) => task.carried ?? <span className="ana-faint">none</span>,
+    },
+    {
+      id: "old",
+      head: "Reference solves",
+      sort: (task) => task.old.filter(({ ending }) => ending?.outcome === "pass").length,
+      cell: (task) => <SolveChips rows={task.old} onOpen={openSolve} />,
+    },
+    {
+      id: "fresh",
+      head: "New solves",
+      sort: (task) => task.fresh.filter(({ ending }) => ending?.outcome === "pass").length,
+      cell: (task) => <SolveChips rows={task.fresh} onOpen={openSolve} />,
+    },
+    {
+      id: "rulings",
+      head: "Rulings",
+      className: "ana-rulings-cell",
+      cell: (task) => <RulingsCell rows={solves(task)} tier={detail.tier} withheld={task.withheld} />,
+    },
+  ];
+}
+
 export function ComparisonDetailView({
   detail,
   reading,
@@ -291,12 +380,10 @@ export function ComparisonDetailView({
   reading: CampaignReading;
   navigation: Navigation;
 }) {
-  const [chosen, setChosen] = useState<Outcome | null>(null);
+  const [chosen, setChosen] = useKept<Outcome | null>("comparison.outcome", null);
   const { move, terms } = detail;
   const standing = standingOf(move);
   const tasks = detail.tasks.filter((task) => chosen === null || task.outcome === chosen);
-  const openSolve = (id: string) => enter(navigation, { solve: id });
-  const labelOf = (outcome: Outcome | null) => OUTCOMES.find((each) => each.outcome === outcome);
   const named = detail.bar.outcomes === null ? "Tasks fixed" : "Scored tasks";
   return (
     <div className="ana-detail">
@@ -346,59 +433,14 @@ export function ComparisonDetailView({
         aside={chosen === null ? null : <Button onClick={() => setChosen(null)}>Show every task</Button>}
       >
         <div className="ana-dense">
-          <DataTable>
-            <thead>
-              <tr>
-                <th>Task</th>
-                <th>Outcome</th>
-                <th>Reference solves</th>
-                <th>New solves</th>
-                <th>Rulings</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tasks.map((task) => {
-                const outcome = labelOf(task.outcome);
-                return (
-                  <tr key={task.task}>
-                    <td>
-                      <button
-                        type="button"
-                        className="ana-row-select"
-                        title="Open the task"
-                        onClick={() => navigation.push({ pane: "tasks", task: task.task, solve: null })}
-                      >
-                        {task.taskId ?? shortHash(task.task, 8)}
-                      </button>
-                    </td>
-                    <td>
-                      {outcome === undefined ? (
-                        <span className="ana-faint">no report yet</span>
-                      ) : (
-                        <span className="ana-outcome">
-                          <span className="ana-swatch" style={{ background: outcome.color }} aria-hidden />
-                          {outcome.label}
-                        </span>
-                      )}
-                    </td>
-                    <td>
-                      <SolveChips rows={task.old} onOpen={openSolve} />
-                    </td>
-                    <td>
-                      <SolveChips rows={task.fresh} onOpen={openSolve} />
-                    </td>
-                    <td className="ana-rulings-cell">
-                      <RulingsCell
-                        rows={[...task.old, ...task.fresh]}
-                        tier={detail.tier}
-                        withheld={task.withheld}
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </DataTable>
+          <Table
+            label="tasks"
+            rows={tasks}
+            columns={scoredColumns(detail, navigation)}
+            rowKey={(task) => task.task}
+            search={(task) => `${task.taskId ?? ""} ${task.task}`}
+            placeholder="Search tasks by id or version"
+          />
         </div>
       </Section>
     </div>

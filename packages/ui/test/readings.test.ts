@@ -19,7 +19,7 @@ import { type AnswerOf, type Endpoint, type Query, type Tier, TOKEN_HEADER } fro
 import { handleApiRequest } from "../src/server/api.ts";
 import { campaignsFound } from "../src/server/logs.ts";
 import { campaignReading, campaignRow } from "../src/server/reading.ts";
-import { type Fixture, MARKERS, writeFixtureCampaign } from "./fixture-campaign.ts";
+import { type Fixture, MARKERS, writeFixtureCampaign, writeLedCampaign } from "./fixture-campaign.ts";
 
 /** A copy of the fixture's root, and its campaign's folder. */
 interface Copied {
@@ -52,7 +52,7 @@ async function ask<Name extends Endpoint>(
   const search = new URLSearchParams(
     Object.entries(values).flatMap(([name, value]) => (value === undefined ? [] : [[name, value]])),
   );
-  const response = handleApiRequest(
+  const response = await handleApiRequest(
     { repo: root, trees: "directory", token: TOKEN, examSide: tier === "exam" },
     new Request(`http://127.0.0.1:5173/api/${endpoint}?${search.toString()}`, {
       headers: { host: "127.0.0.1:5173", [TOKEN_HEADER]: TOKEN },
@@ -86,11 +86,8 @@ async function everything(tier: Tier): Promise<string[]> {
   const grid = await said("tasks", { key: KEY });
   for (const row of grid.rows) await said("task", { key: KEY, id: row.version });
   const solves = new Set<string>();
-  for (let offset = 0; ; offset += 100) {
-    const page = await said("log", { key: KEY, offset: String(offset) });
-    for (const row of page.events) if (row.solve !== null) solves.add(row.solve);
-    if (!page.hasMore) break;
-  }
+  const timeline = await said("log", { key: KEY });
+  for (const row of timeline.rows) if (row.solve !== null) solves.add(row.solve);
   for (const id of solves) await said("solve", { key: KEY, id });
   const digests = reading.harnesses.flatMap(({ digest }) => (digest === null ? [] : [digest]));
   for (const digest of digests) {
@@ -139,6 +136,52 @@ describe("what a comparison came to", () => {
       const reading = campaignReading(found, log, { row, tier: "default", issues: [] });
       expect([reading.counters.controls, reading.counters.controlSteps]).toEqual([3, steps]);
     }
+  });
+});
+
+describe("what carried a comparison's wins", () => {
+  test("names the measure of every won and lost task and of no tie, and sums each side to the tally", async () => {
+    const { answer } = await ask("campaign", { key: KEY }, "default");
+    const reported = answer.comparisons.filter((bar) => bar.tally !== null && bar.carried !== null);
+    expect(reported.length).toBeGreaterThan(0);
+    const sum = ({ validity, objective, bill }: { validity: number; objective: number; bill: number }) =>
+      validity + objective + bill;
+    for (const bar of reported) {
+      expect({ id: bar.id, won: sum(bar.carried?.won ?? { validity: 0, objective: 0, bill: 0 }) }).toEqual({
+        id: bar.id,
+        won: bar.tally?.wins ?? -1,
+      });
+      expect({ id: bar.id, lost: sum(bar.carried?.lost ?? { validity: 0, objective: 0, bill: 0 }) }).toEqual({
+        id: bar.id,
+        lost: bar.tally?.losses ?? -1,
+      });
+      const { answer: detail } = await ask("move", { key: KEY, move: String(bar.move) }, "default");
+      if (detail.kind !== "comparison") throw new Error(`${bar.id} is a comparison`);
+      for (const task of detail.tasks) {
+        const decided = task.outcome === "won" || task.outcome === "lost";
+        expect({ task: task.task, outcome: task.outcome, carried: task.carried !== null }).toEqual({
+          task: task.task,
+          outcome: task.outcome,
+          carried: decided,
+        });
+      }
+    }
+    // A comparison with no report has nothing carried.
+    expect(answer.comparisons.filter((bar) => bar.tally === null).every((bar) => bar.carried === null)).toBe(
+      true,
+    );
+  });
+});
+
+describe("an open Builder session's practice solves", () => {
+  test("lists the solves its head counts, past an Examiner session the Builder began", async () => {
+    const root = join(scratch, "led");
+    const key = writeLedCampaign(root);
+    const { answer: reading } = await ask("campaign", { key }, "default", root);
+    const session = reading.moves.find((move) => move.step === "builder" && move.id === "b-1");
+    expect(session?.step === "builder" ? session.practiceSolves : null).toBe(1);
+    const { answer } = await ask("move", { key, move: String(session?.index) }, "default", root);
+    expect(answer.kind === "session" ? answer.solves.length : null).toBe(1);
   });
 });
 
@@ -257,6 +300,20 @@ describe("the rulings and the endings each tier may see", () => {
     expect(ended.answer.row.ending).toEqual({ ending: "environment" });
     expect(ended.text.includes(marker)).toBe(false);
     expect((await ask("campaign", { key }, "exam", root)).answer.row.ending?.why).toContain(marker);
+  });
+});
+
+describe("a list read cold", () => {
+  test("lets a campaign asked after it be answered first, between the logs it reads", async () => {
+    const { root } = copy();
+    const key = `${root.split("/").at(-1) ?? ""}/${fixture.name}`;
+    const settled: string[] = [];
+    const list = ask("campaigns", {}, "default", root).then(() => settled.push("list"));
+    const one = ask("campaign", { key }, "default", root).then(({ status }) =>
+      settled.push(`campaign ${status}`),
+    );
+    await Promise.all([list, one]);
+    expect(settled).toEqual(["campaign 200", "list"]);
   });
 });
 

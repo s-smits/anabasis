@@ -100,6 +100,14 @@ body {
   color: var(--ana-text);
 }
 
+/* The page's heaviest weight is 600: the browser's bold is 700, and on 30 October nine rules and
+   every strong and table head set it. */
+strong,
+b,
+th {
+  font-weight: 600;
+}
+
 button,
 select,
 input {
@@ -205,7 +213,6 @@ button.ana-hash.is-revealed {
   border-right: 1px solid var(--ana-border-soft);
   display: flex;
   flex-direction: column;
-  gap: 6px;
   height: 100vh;
   left: 0;
   overflow: visible;
@@ -222,32 +229,31 @@ button.ana-hash.is-revealed {
 
 .ana-sidebar-header {
   display: grid;
-  gap: 10px;
-  padding-bottom: 4px;
+  gap: 8px;
 }
 
+/* The brand stands bare, its mark 20px from the top and 20px from the left: the sidebar's padding
+   and the margin here, with no box drawn around it on hover (operator, 31 October). */
 .ana-brand {
   align-items: center;
   background: transparent;
   border: 0;
-  border-radius: 6px;
   cursor: pointer;
   display: flex;
   gap: 12px;
-  height: 40px;
-  padding: 8px;
+  margin: 0 8px 12px;
+  padding: 0;
   text-align: left;
-  width: 100%;
 }
 
-.ana-brand:hover {
-  background: var(--ana-card-2);
+.ana-brand:hover .ana-brand-word svg {
+  color: var(--ana-accent);
 }
 
 .ana-sidebar.is-collapsed .ana-brand {
   display: grid;
   justify-items: center;
-  padding: 8px 0;
+  margin: 0 0 12px;
 }
 
 .ana-brand-mark {
@@ -279,16 +285,14 @@ button.ana-hash.is-revealed {
 .ana-picker {
   border-bottom: 1px solid var(--ana-border-soft);
   display: grid;
-  gap: 6px;
-  padding: 12px 8px 18px;
+  gap: 4px;
+  padding: 8px 8px 12px;
   position: relative;
 }
 
 .ana-picker-label {
   color: var(--ana-faint);
   font-size: var(--ana-text-xs);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
 }
 
 .ana-picker-button {
@@ -323,6 +327,12 @@ button.ana-hash.is-revealed {
   cursor: not-allowed;
 }
 
+/* The list opens under its own box, wherever the label stands: above it in the sidebar, beside
+   it in a filter row. */
+.ana-picker-field {
+  position: relative;
+}
+
 .ana-picker-value {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -334,14 +344,29 @@ button.ana-hash.is-revealed {
   border: 1px solid var(--ana-border);
   border-radius: 8px;
   box-shadow: 0 16px 48px rgb(0 0 0 / 45%);
-  left: 8px;
+  left: 0;
   max-height: min(420px, 60dvh);
   overflow-y: auto;
   padding: 4px;
   position: absolute;
   width: min(420px, calc(100vw - 40px));
-  top: calc(100% - 4px);
+  top: calc(100% + 8px);
   z-index: 40;
+}
+
+.ana-picker-filter {
+  align-items: center;
+  color: var(--ana-faint);
+  display: flex;
+  font-size: var(--ana-text-xs);
+  gap: 8px;
+  margin-bottom: 4px;
+  white-space: nowrap;
+}
+
+.ana-picker-note {
+  color: var(--ana-faint);
+  display: block;
 }
 
 .ana-picker-group + .ana-picker-group {
@@ -354,9 +379,7 @@ button.ana-hash.is-revealed {
   color: var(--ana-faint);
   font-family: var(--font-technical);
   font-size: var(--ana-text-xs);
-  letter-spacing: 0.1em;
-  padding: 5px 8px 3px;
-  text-transform: uppercase;
+  padding: 4px 8px 4px;
 }
 
 .ana-picker-option {
@@ -368,11 +391,11 @@ button.ana-hash.is-revealed {
   cursor: pointer;
   display: grid;
   font-size: var(--ana-text-sm);
-  gap: 10px;
+  gap: 8px;
   grid-template-columns: 12px minmax(0, 1fr);
   line-height: 1.5;
   min-height: 40px;
-  padding: 9px 12px;
+  padding: 8px 12px;
   text-align: left;
   width: 100%;
 }
@@ -402,15 +425,48 @@ button.ana-hash.is-revealed {
   opacity: 1;
 }
 
-.ana-sidebar.is-collapsed .ana-picker {
+/* The trigger's icon shows only where the sidebar is collapsed, and is then the whole trigger, one
+   nav row high, opening the list beside the sidebar. Until 30 October the collapsed sidebar hid
+   the picker, so another campaign took opening it first (operator). */
+.ana-picker-icon {
   display: none;
+}
+
+@media (min-width: 761px) {
+  .ana-sidebar.is-collapsed .ana-picker {
+    padding: 0;
+  }
+
+  .ana-sidebar.is-collapsed :is(.ana-picker-label, .ana-picker-value, .ana-picker-button > svg:last-child) {
+    display: none;
+  }
+
+  .ana-sidebar.is-collapsed .ana-picker-button {
+    grid-template-columns: 1fr;
+    height: 44px;
+    justify-items: center;
+    /* The width of a nav row's left line, so the icon stands over theirs. */
+    padding-left: 2px;
+  }
+
+  .ana-sidebar.is-collapsed .ana-picker-icon {
+    display: block;
+    height: 15px;
+    width: 15px;
+  }
+
+  /* Past the sidebar's padding and border, and 8 px clear of its edge. */
+  .ana-sidebar.is-collapsed .ana-picker-panel {
+    left: calc(100% + 21px);
+    top: 0;
+  }
 }
 
 .ana-section-intro {
   color: var(--ana-dim);
   font-size: var(--ana-text-sm);
   line-height: 1.5;
-  margin: 0 0 14px;
+  margin: 0 0 12px;
 }
 
 .ana-project-backends {
@@ -424,7 +480,7 @@ button.ana-hash.is-revealed {
   border: 1px solid var(--ana-border);
   border-radius: var(--ana-radius);
   display: grid;
-  gap: 14px;
+  gap: 12px;
   min-width: 0;
   padding: 20px;
 }
@@ -432,8 +488,6 @@ button.ana-hash.is-revealed {
 .ana-project-backends label > span {
   color: var(--ana-faint);
   font-size: var(--ana-text-xs);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
 }
 
 .ana-project-backends select {
@@ -443,7 +497,7 @@ button.ana-hash.is-revealed {
   color: var(--ana-text);
   cursor: pointer;
   min-height: 38px;
-  padding: 7px 9px;
+  padding: 8px 8px;
   width: 100%;
 }
 
@@ -466,25 +520,27 @@ button.ana-hash.is-revealed {
  * A flat list of buttons needs no group state. A <details open={derivedState}> group would
  * override the browser's toggle, so a reader who collapsed it would see it open again on the
  * next render.
+ *
+ * The rows touch, and the first touches the picker's rule, so their left lines read as one lane
+ * (operator, 30 October).
  */
 .ana-sidebar-nav {
   display: grid;
-  gap: 2px;
-  padding: 6px 0;
 }
 
 /* The active row keeps the altimeter tick as its location marker. */
 .ana-nav-item {
-  align-items: baseline;
+  align-items: center;
   background: none;
   border: 0;
   border-left: 2px solid var(--ana-border-soft);
   color: var(--ana-dim);
   cursor: pointer;
   display: grid;
-  gap: 10px;
+  gap: 8px;
   grid-template-columns: 16px minmax(0, 1fr) auto;
-  padding: 12px 10px;
+  height: 44px;
+  padding: 0 8px;
   text-align: left;
   width: 100%;
 }
@@ -540,7 +596,7 @@ button.ana-hash.is-revealed {
   display: grid;
   gap: 8px;
   margin-top: auto;
-  padding-top: 10px;
+  padding-top: 8px;
 }
 
 .ana-status-dot {
@@ -601,7 +657,7 @@ button.ana-hash.is-revealed {
 
 .ana-section {
   display: grid;
-  gap: 14px;
+  gap: 12px;
   grid-template-columns: minmax(0, 1fr);
 }
 
@@ -618,10 +674,14 @@ button.ana-hash.is-revealed {
 .ana-group-label {
   color: var(--ana-faint);
   font-size: var(--ana-text-xs);
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  font-weight: 600;
   margin: 0;
-  text-transform: uppercase;
+}
+
+/* A section's title is 14 px, a step of Word's sizes above the 11.5 px it was (operator, 30 October). */
+.ana-section h2,
+.ana-section-head h2 {
+  font-size: 14px;
 }
 
 .ana-card {
@@ -630,7 +690,7 @@ button.ana-hash.is-revealed {
   border-radius: var(--ana-radius);
   box-shadow: var(--ana-shadow);
   min-width: 0;
-  padding: 14px;
+  padding: 12px;
 }
 
 /* auto-fit, not repeat(4): a page that has three facts to state should show three full-width
@@ -676,9 +736,7 @@ button.ana-hash.is-revealed {
 .ana-metric-label {
   color: var(--ana-faint);
   font-size: var(--ana-text-xs);
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-weight: 600;
 }
 
 /* `overflow-wrap: anywhere` has to stay — a metric value is sometimes a hash — but it will also
@@ -701,16 +759,18 @@ button.ana-hash.is-revealed {
   overflow-wrap: anywhere;
 }
 
+/* A status is quiet text: a tone tints a small square-cornered ground, and a neutral one is the
+   word alone. Until 30 October every status was a filled pill, so a row of them led the page. */
 .ana-badge {
   align-items: center;
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: 4px;
   display: inline-flex;
   font-size: var(--ana-text-xs);
-  font-weight: 700;
+  font-weight: 500;
   line-height: 1;
-  min-height: 21px;
-  padding: 3px 7px;
+  min-height: 20px;
+  padding: 4px 8px;
   white-space: nowrap;
   width: fit-content;
 }
@@ -732,9 +792,8 @@ button.ana-hash.is-revealed {
   color: var(--ana-info);
 }
 .ana-badge--neutral {
-  background: var(--ana-card-2);
-  border-color: var(--ana-border);
   color: var(--ana-neutral);
+  padding-inline: 0;
 }
 
 .ana-button {
@@ -769,13 +828,53 @@ button.ana-hash.is-revealed {
 }
 
 .ana-callout {
+  overflow-wrap: anywhere;
   background: var(--ana-card-2);
   border: 1px solid var(--ana-border-soft);
   border-radius: var(--ana-radius-inner);
   color: var(--ana-dim);
   font-size: var(--ana-text-sm);
   line-height: 1.6;
-  padding: 14px 16px;
+  padding: 12px 16px;
+}
+
+.ana-callout:has(> .ana-callout-tools) {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.ana-callout-source {
+  color: var(--ana-faint);
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--ana-text-xs);
+  margin-top: 4px;
+}
+
+.ana-callout-tools {
+  display: flex;
+  flex: none;
+  gap: 4px;
+}
+
+.ana-callout-tool {
+  background: transparent;
+  border: 0;
+  color: var(--ana-faint);
+  min-height: 0;
+  padding: 2px;
+}
+
+.ana-callout-tool:hover,
+.ana-callout-tool[aria-expanded="true"] {
+  color: var(--ana-text);
+}
+
+.ana-callout-tool svg {
+  height: 16px;
+  width: 16px;
 }
 
 .ana-callout b {
@@ -802,7 +901,7 @@ button.ana-hash.is-revealed {
   border-radius: var(--ana-radius-inner);
   display: grid;
   gap: 8px;
-  padding: 20px 18px;
+  padding: 20px 16px;
 }
 
 .ana-nosignal-rule {
@@ -857,6 +956,7 @@ button.ana-hash.is-revealed {
 .ana-table {
   border-collapse: collapse;
   font-size: var(--ana-text-sm);
+  font-variant-numeric: tabular-nums;
   width: 100%;
 }
 
@@ -864,7 +964,7 @@ button.ana-hash.is-revealed {
 .ana-table td {
   border-bottom: 1px solid var(--ana-border-soft);
   line-height: 1.45;
-  padding: 14px 16px;
+  padding: 12px 16px;
   text-align: left;
   vertical-align: top;
 }
@@ -872,9 +972,7 @@ button.ana-hash.is-revealed {
 .ana-table th {
   color: var(--ana-faint);
   font-size: var(--ana-text-xs);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-weight: 600;
   width: 180px;
 }
 
@@ -908,7 +1006,7 @@ button.ana-hash.is-revealed {
   gap: 12px;
   grid-template-columns: minmax(150px, 1fr) auto 16px;
   list-style: none;
-  padding: 16px 18px;
+  padding: 16px 16px;
 }
 
 .ana-disclosure > summary {
@@ -932,9 +1030,9 @@ button.ana-hash.is-revealed {
   color: var(--ana-dim);
   display: grid;
   font-size: var(--ana-text-sm);
-  gap: 10px;
+  gap: 8px;
   line-height: 1.6;
-  padding: 18px;
+  padding: 16px;
 }
 
 .ana-trial-figures .ana-num {
@@ -976,10 +1074,6 @@ button.ana-hash.is-revealed {
     display: none;
   }
 
-  .ana-sidebar.is-collapsed .ana-picker {
-    display: grid;
-  }
-
   /* One column a pane: five columns once held a fifth item, and left "Campaign" too narrow a
      cell, so its label ran into the next. */
   .ana-sidebar-nav {
@@ -993,9 +1087,10 @@ button.ana-hash.is-revealed {
     align-items: center;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
+    height: auto;
     min-width: 0;
-    padding: 10px 2px;
+    padding: 8px 2px;
   }
 
   .ana-sidebar .ana-nav-label {
@@ -1060,7 +1155,7 @@ button.ana-hash.is-revealed {
   flex-wrap: wrap;
   gap: 16px;
   justify-content: space-between;
-  padding-bottom: 14px;
+  padding-bottom: 12px;
 }
 
 .ana-run-head h1 {
@@ -1075,7 +1170,7 @@ button.ana-hash.is-revealed {
   color: var(--ana-dim);
   font-size: var(--ana-text-sm);
   line-height: 1.5;
-  margin: 0 0 10px;
+  margin: 0 0 8px;
   max-width: 76ch;
 }
 
@@ -1120,7 +1215,7 @@ button.ana-hash.is-revealed {
 
 .ana-variant-card {
   display: grid;
-  gap: 14px;
+  gap: 12px;
   padding: 16px;
 }
 
@@ -1153,7 +1248,7 @@ button.ana-hash.is-revealed {
   display: inline-flex;
   font-family: var(--font-technical);
   font-size: var(--ana-text-xs);
-  gap: 7px;
+  gap: 8px;
   justify-content: center;
   letter-spacing: 0.04em;
   transition:
@@ -1167,7 +1262,7 @@ button.ana-hash.is-revealed {
 }
 
 .ana-collapse-button {
-  padding: 7px 10px;
+  padding: 8px 8px;
   width: 100%;
 }
 
@@ -1220,7 +1315,7 @@ button.ana-hash.is-revealed {
 .ana-family-rate {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 .ana-family-rate meter {
   width: 100px;
@@ -1257,7 +1352,7 @@ button.ana-hash.is-revealed {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 8px;
 }
 .ana-file-pagination > span {
   margin-right: auto;

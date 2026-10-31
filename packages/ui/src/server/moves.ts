@@ -16,7 +16,13 @@
 import { nextBound } from "../../../../src/campaign/handover.ts";
 import { fixedIn, type Report, reported } from "../../../../src/campaign/comparison.ts";
 import type { Share } from "../../../../src/campaign/climb.ts";
-import { differenceOf, type Paired } from "../../../../src/kernel/compare.ts";
+import {
+  carriedBy,
+  differenceOf,
+  type Measures,
+  type Paired,
+  pointsOf,
+} from "../../../../src/kernel/compare.ts";
 import { pairsReported } from "../../../../src/kernel/reports.ts";
 import { isNumber, isString } from "../../../../src/meta/json-shape.ts";
 import type { ComparisonBar, LeftOut, Move, Outcome, Tally } from "../models.ts";
@@ -129,6 +135,19 @@ export function outcomeOf(pair: Paired): Outcome {
   return valid === 0 ? "tiedNone" : "tiedSome";
 }
 
+/** A comparison's won and lost tasks by the measure that carried each (`carriedBy`). */
+function carriedIn(pairs: readonly Paired[]): { won: Measures; lost: Measures } {
+  const won = { validity: 0, objective: 0, bill: 0 };
+  const lost = { ...won };
+  for (const pair of pairs) {
+    const by = carriedBy(pointsOf(pair));
+    if (by === null) continue;
+    if (differenceOf(pair) > 0) won[by] += 1;
+    else lost[by] += 1;
+  }
+  return { won, lost };
+}
+
 /** A side's valid answers over its solves on one task. */
 export const shareOf = (side: readonly boolean[]): Share => ({
   valid: side.filter(Boolean).length,
@@ -216,6 +235,7 @@ export const barsIn = once((log): ComparisonBar[] => {
               differences: report.noise.differences,
               unbilled: report.noise.unbilled ?? report.noise.differences,
             },
+      carried: report === null ? null : carriedIn(pairs.get(move.id) ?? []),
       rulings: move.rulings,
       sets:
         report?.frontier == null || report.retained === null

@@ -1,5 +1,4 @@
-import type { Share } from "../../../../src/campaign/climb.ts";
-import type { Tally } from "../../../../src/kernel/compare.ts";
+import type { Measures, Tally } from "../../../../src/kernel/compare.ts";
 import { short } from "../../../../src/campaign/move.ts";
 import type { ComparisonBar, Outcome, Outcomes } from "../models.ts";
 import { OUTCOMES } from "./outcome.ts";
@@ -89,14 +88,21 @@ export function tallyText(tally: Tally | null): string {
   return `${String(tally.wins)}–${String(tally.losses)}–${String(tally.ties)}`;
 }
 
-/** A sign test's p to two places, or "no test". */
+/** A sign test's p to three places, or "no test": at two places 0.016 prints as 0.02, the level itself. */
 export function pText(p: number | null): string {
-  return p === null ? "no test" : `p ${p.toFixed(2)}`;
+  return p === null ? "no test" : `p ${p.toFixed(3)}`;
 }
 
-/** Valid answers over solves, as a share; null where nothing was solved. */
-export function shareOf(share: Share): number | null {
-  return share.solves === 0 ? null : share.valid / share.solves;
+/** The three measures in the order the tally weighs them (`WEIGHTS`, `src/kernel/compare.ts`). */
+export const MEASURES = ["validity", "objective", "bill"] as const satisfies readonly (keyof Measures)[];
+
+/** Tasks by the measure that carried each, the measures that carried none left out: "objective 22,
+ *  bill 6", or "none". */
+export function carriedText(counts: Measures): string {
+  const said = MEASURES.flatMap((measure) =>
+    counts[measure] === 0 ? [] : [`${measure} ${String(counts[measure])}`],
+  );
+  return said.length === 0 ? "none" : said.join(", ");
 }
 
 /** A harness as the view, the closing report and promote.ts name it (`calledBy`,

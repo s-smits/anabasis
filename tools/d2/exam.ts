@@ -75,7 +75,7 @@ export function stageExam(dir: string, draft: Draft): Staged {
   const model = join(bundle, "correctness-model");
   mkdirSync(model, { recursive: true });
   mkdirSync(join(bundle, ".toolchain", "bin"), { recursive: true });
-  const hidden = draft.tasks.some((task) => task.hidden !== null) ? "required" : "none";
+  const hidden = draft.tasks.some((task) => task.hidden !== null) ? "whole" : "none";
   const write = <T>(file: string, value: T) =>
     writeFileSync(join(model, file), `${capturedJsonStringify(value, null, 2)}\n`);
   write("brief.json", {

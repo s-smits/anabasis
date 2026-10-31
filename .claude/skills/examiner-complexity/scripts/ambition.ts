@@ -22,7 +22,17 @@ import { basename, dirname, join } from "#src/meta/path.ts";
 import { runCommand } from "#skills/main/cli.ts";
 import { readingOf } from "#skills/system-path-simulation/scripts/live-seat.ts";
 
-const STARTS = new Set<string>(["exam.started", "draft.started"]);
+export const STARTS = new Set<string>(["exam.started", "draft.started"]);
+
+/** The reference harness in force at `index`: the last promoted harness's short digest, or the
+ *  starter, which is the first reference and stays the lower one (`AGENTS.md`, section 3). Read by
+ *  the session lines here and by `exams.ts` for each draft, so an exam's drafts are read against
+ *  the harness they had to leave room for. */
+export function referenceAt(events: readonly LogEvent[], index: number): string {
+  const promoted = events.slice(0, index).findLast((event) => event.kind === "harness.promoted")
+    ?.data.harness;
+  return isString(promoted) ? promoted.slice(0, 8) : "starter";
+}
 
 /** One line an Examiner session: its id, the reference in force, and its reading. */
 export function sessionLines(events: readonly LogEvent[]): string[] {
@@ -30,9 +40,7 @@ export function sessionLines(events: readonly LogEvent[]): string[] {
   return starts.map((start, nth) => {
     const end = starts[nth + 1] ?? events.length;
     const reading = readingOf(events.slice(0, end), start, []);
-    const promoted = events.slice(0, start).findLast((event) => event.kind === "harness.promoted")
-      ?.data.harness;
-    const reference = isString(promoted) ? promoted.slice(0, 8) : "starter";
+    const reference = referenceAt(events, start);
     const session = events[start]?.data.session;
     const words = Object.entries(reading.gates)
       .map(([word, count]) => `${word} ${String(count)}`)
@@ -67,7 +75,7 @@ export function campaignLine(events: readonly LogEvent[]): string {
 }
 
 /** A log's path from a log or its campaign folder. */
-const logOf = (path: string) =>
+export const logOf = (path: string) =>
   existsSync(path) && statSync(path).isDirectory() ? join(path, LOG_FILE) : path;
 
 if (import.meta.main) {

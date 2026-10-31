@@ -128,7 +128,7 @@ function namedAt(verb: string, args: readonly string[]): number[] {
 
 /** The routes of `verb args`, given the hosts that claim names among those no worktree here holds.
  *  A name nobody claims stays here, where the verb refuses it in its own words. */
-export function routesOf(verb: string, args: readonly string[], held: ReadonlyMap<string, Host>): Routes {
+function routesOf(verb: string, args: readonly string[], held: ReadonlyMap<string, Host>): Routes {
   const at = namedAt(verb, args);
   const names = at.map((index) => args[index] ?? "");
   const rest = args.filter((_, index) => !at.includes(index));

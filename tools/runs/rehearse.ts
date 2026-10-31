@@ -138,7 +138,7 @@ const contentOf = ({ family, publicInput, hidden }: Task): string => {
 
 /** `args` without the options `own` names and their values, as `parseArgs` tokenised them: what
  *  this command hands on to the round, the standalone comparison or the campaign command it rehearses. */
-export function passedOn(
+function passedOn(
   args: readonly string[],
   tokens: readonly { kind: string; index: number; name?: string; inlineValue?: boolean | undefined }[],
   own: ReadonlySet<string>,

@@ -28,7 +28,7 @@ import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { checkProgram, contractOf, packControls, readPack, toolOnPath } from "../m0/stored-sweep.ts";
 
 /** A draft as a pack on disk. */
-export interface Staged {
+interface Staged {
   /** The pack, laid out as a stored bundle is. */
   readonly bundle: string;
   /** Its check program, staged without the tasks and the control answers, as a verifier opens it. */

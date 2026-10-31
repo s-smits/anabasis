@@ -421,6 +421,7 @@ the runs it names and no others. The skills own the procedures:
 | --- | --- |
 | What to run next; reading what a run showed | `run-improvement-campaign` |
 | Testing a path before spending; tuning a seat's prompt | `system-path-simulation` |
+| How hard the Examiner's tasks are; tuning its ladder and examples | `examiner-complexity` |
 | Starting, continuing, pausing, moving or stopping a run | `run-management` |
 | Wording a claim | `attribution-and-proof` |
 | Doubting a reading; what a fail was | `whole-run-investigation` |

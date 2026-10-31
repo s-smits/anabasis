@@ -25,8 +25,8 @@
  * scored tasks of buffer (75), business records (24) and the ESP32 drafts (83) sat at grades 2 to 5,
  * and the reference answered 1,438 of 1,465 of their solves, a median of 3 to 5 turns, grade 5
  * included. A solver with a shell scripts every case and checks its own answer, so a first draft of
- * these fields, whose 7s rested on "a specialist misses a case", re-rated at 4 to 5. Each rung now
- * sits in one of the three places the closing paragraph names.
+ * these fields, whose 7s rested on "a specialist misses a case", re-rated at 4 to 5. Each rung above 1
+ * is set in one of the three places the closing paragraph names.
  *
  * Grades are a measure and never a target: no count or share is named, and code decides nothing on
  * a grade (`AGENTS.md`, section 2, consequence 2). The over-time rule the writing prompt states is

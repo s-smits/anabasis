@@ -52,6 +52,19 @@ describe("the runs pulse", () => {
     }
   });
 
+  it("warns of a killed solve, and not of a room solve the gate cut once the room was read", () => {
+    const killed = (cancelledBy: string) => [
+      event(0, "solve.started", { solve: "s-1", task: "ex-001" }),
+      event(1, "solve.finished", {
+        solve: "s-1",
+        ending: { outcome: "non-result", kind: "killed", reason: "the solve was cancelled", cancelledBy },
+      }),
+    ];
+    const said = (cancelledBy: string) => pulse(round, killed(cancelledBy), "open", lookedAt(1), START).said;
+    expect(said("caller")[0]).toMatch(/^⚠.*ex-001.*without a result/);
+    expect(said("admission")).toEqual(["· ex-001 cut once its room was read"]);
+  });
+
   it("warns of turns another model served than their seat asked for, and of no others", () => {
     const turn = (minute: number, kind: EventKind, id: JsonObject, responseModel: string) =>
       event(minute, kind, { ...id, turn: 1, responseModel, error: null });

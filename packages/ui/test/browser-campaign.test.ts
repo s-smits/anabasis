@@ -106,15 +106,12 @@ describe("the campaign's line and readouts", () => {
     await expect(next.detail).toContainText(/b-4.*not reported/u);
     const { a, c } = served.fixture.harnesses;
     const marks = page.locator(".ana-comparisons-marks");
-    await expect(marks.locator("text")).toContainText([
-      "setting ",
-      "cut",
-      `promoted B (${short(a)})`,
-      `promoted D (${short(c)}), despite`,
-      "back to the starter",
-    ]);
+    // A flag carries the harness's letter alone, and its words and digest only on hover.
+    await expect(marks.locator("text")).toContainText(["setting", "cut", "B", "D", "A"]);
     const titles = await marks.locator("title").allTextContents();
-    expect(titles).toContain("the operator's reason, given with --despite");
+    expect(titles).toContain(
+      `promoted D (${short(c)}), despite: the operator's reason, given with --despite`,
+    );
     expect(titles).toContain("back to the starter");
     expect(titles).toContain(`promoted B (${short(a)})`);
     expect(titles).toContain("r-1 repeats b-1");

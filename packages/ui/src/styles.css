@@ -232,28 +232,28 @@ button.ana-hash.is-revealed {
   gap: 8px;
 }
 
+/* The brand stands bare, its mark 20px from the top and 20px from the left: the sidebar's padding
+   and the margin here, with no box drawn around it on hover (operator, 31 October). */
 .ana-brand {
   align-items: center;
   background: transparent;
   border: 0;
-  border-radius: 6px;
   cursor: pointer;
   display: flex;
   gap: 12px;
-  height: 40px;
-  padding: 8px;
+  margin: 0 8px 12px;
+  padding: 0;
   text-align: left;
-  width: 100%;
 }
 
-.ana-brand:hover {
-  background: var(--ana-card-2);
+.ana-brand:hover .ana-brand-word svg {
+  color: var(--ana-accent);
 }
 
 .ana-sidebar.is-collapsed .ana-brand {
   display: grid;
   justify-items: center;
-  padding: 8px 0;
+  margin: 0 0 12px;
 }
 
 .ana-brand-mark {

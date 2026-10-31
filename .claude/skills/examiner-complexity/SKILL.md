@@ -1,6 +1,6 @@
 ---
 name: examiner-complexity
-description: "Tune the ambition of the Examiner's exam: the reach scale and worked examples it is shown (src/examiner/ladder.ts), the drafting prompt's rules on how hard an exam can be (src/examiner/draft.ts) and the writing prompt's \"How hard\" (src/examiner/prompt.ts), so that drafted tasks leave the reference room for a good reason and stay answerable. Calibrates the record with blind reach grades against the reference's outcomes (grades.ts), reads each Examiner session's admissions and a campaign's time to its first comparison and promotion (ambition.ts), and runs the edit through paired live seats and a pair of fresh campaigns. Use when the operator asks whether the queries or tasks are hard enough, to tune the ladder or its examples, to calibrate easy to very hard, or to read whether an exam change raised supply."
+description: "Tune the ambition of the Examiner's exam: the reach scale and worked examples it is shown (src/examiner/ladder.ts), the drafting prompt's rules on how hard an exam can be (src/examiner/draft.ts) and the writing prompt's \"How hard\" (src/examiner/prompt.ts), so that drafted tasks leave the reference room for a good reason and stay answerable. Calibrates the record with blind reach grades against the reference's outcomes (grades.ts), re-rates each worked example's rungs blind against their stated grades so that a rung can be overhauled (rungs.ts), reads each Examiner session's admissions and a campaign's time to its first comparison and promotion (ambition.ts), and runs the edit through paired live seats and a pair of fresh campaigns. Use when the operator asks whether the queries or tasks are hard enough, to tune the ladder or overhaul one of its examples, to calibrate easy to very hard, or to read whether an exam change raised supply."
 ---
 
 # Examiner complexity
@@ -48,7 +48,7 @@ drafted such rules, and their examples passed 9 of 9 solves at 3 turns.
 
 | What | Owner |
 | --- | --- |
-| The scale, the worked fields and the three places | `src/examiner/ladder.ts` (`GRADES`, `FIELDS`, `LADDER`) |
+| The scale, the worked fields and the three places | `src/examiner/ladder.ts` (`GRADES`, `FIELDS`, `SOLVER`) |
 | How hard an exam can be, how a rule is stated | `src/examiner/draft.ts`, the drafting system prompt |
 | Writing above the reference's grade | `src/examiner/prompt.ts`, "How hard" |
 
@@ -57,6 +57,21 @@ its neighbours out of the examples, and checks both modes are shown the ladder. 
 place it sits in; a rung that is a closed form, a search over a few variables or a finite list of
 cases is grade 2 for this solver whatever its words. Rewrite rather than add a sentence (rule 13),
 and record each edit's reason and count in the module's head comment.
+
+Each worked example is overhauled on a blind re-rating of its rungs, never on its author's grade:
+
+```sh
+bun .claude/skills/examiner-complexity/scripts/rungs.ts packet > <packet.md>
+bun .claude/skills/examiner-complexity/scripts/rungs.ts compare <rungs.tsv>
+```
+
+`packet` prints the scale, who the grades are for and every rung with its grade removed, one id a
+rung (`<field>.<rung>`). Hand it to a grader that has not read the ladder or this conversation,
+which writes `id<TAB>grade<TAB>place`. `compare` sets the blind grade beside the stated one and
+flags each rung graded `below` its grade or `flat` against the rung before it. Rewrite a flagged
+rung inside the place the grader named, or move it into one, then grade the new packet afresh with
+another grader: a rewrite read by the grader that flagged it is coached. A field whose rungs do not
+climb is replaced with another field outside every examined domain, which the test enforces.
 
 ## 4. Compose, then seat
 

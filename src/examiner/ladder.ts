@@ -46,7 +46,7 @@ export const GRADES = [
 ] as const;
 
 /** One field's tasks from easy to very hard, each with the grade it reaches and why. */
-const FIELDS: readonly { readonly field: string; readonly rungs: readonly string[] }[] = [
+export const FIELDS: readonly { readonly field: string; readonly rungs: readonly string[] }[] = [
   {
     field:
       "Orbital transfers by impulsive burns, decided by numerical propagation under the stated force model",
@@ -84,11 +84,15 @@ const FIELDS: readonly { readonly field: string; readonly rungs: readonly string
   },
 ];
 
+/** Who the grades are for, and the three places its ability stops. */
+export const SOLVER =
+  "The grades are for the solver this campaign seats, with a shell and the field's libraries. It forgets no case and skips no check: it scripts every case and checks its answer with an engine it writes from the stated rules. So a closed form, a search over a few continuous variables or a finite list of cases sits at grade 2 or below for it, however specialist the words, and so does a task made hard only by tight margins, size or new numbers. Its ability stops in three places. The obvious local search from the obvious start lands in the wrong basin, and only the field's own structure finds the right one. The convenient model it would build differs, near the specification, from the engine that decides the answer. Or the specification sits within a stated tolerance of a theoretical bound, so an approximate method falls short and a theorem rules out the class of answer a generalist searches. A task climbs a grade only by moving into one of these places.";
+
 /** The ladder as an Examiner reads it: the scale, then each field's tasks from easy to very hard. */
 export const LADDER = [
   `Reach is how hard a task is for a strong current model working in the field:\n${GRADES.map((grade) => `- ${grade}`).join("\n")}`,
   "Three fields that no exam here covers, each from easy to very hard. They show what each grade demands, and none is a task to copy:",
   ...FIELDS.map(({ field, rungs }) => `${field}:\n${rungs.map((rung) => `- ${rung}`).join("\n")}`),
-  "The grades are for the solver this campaign seats, with a shell and the field's libraries. It forgets no case and skips no check: it scripts every case and checks its answer with an engine it writes from the stated rules. So a closed form, a search over a few continuous variables or a finite list of cases sits at grade 2 or below for it, however specialist the words, and so does a task made hard only by tight margins, size or new numbers. Its ability stops in three places. The obvious local search from the obvious start lands in the wrong basin, and only the field's own structure finds the right one. The convenient model it would build differs, near the specification, from the engine that decides the answer. Or the specification sits within a stated tolerance of a theoretical bound, so an approximate method falls short and a theorem rules out the class of answer a generalist searches. A task climbs a grade only by moving into one of these places.",
+  SOLVER,
   "Use these fields to calibrate your own. Before you write, work out what in this domain puts a task in each of those three places, and climb your tasks along that, from the highest grade the reference already answers upward.",
 ].join("\n\n");

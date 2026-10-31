@@ -1,9 +1,10 @@
 // The examiner-complexity readers: one line an Examiner session under the reference in force, a
 // campaign's hours to its first comparison and promotion, and blind grades against outcomes with
-// non-results counted nowhere.
+// non-results counted nowhere, and the ladder's rungs re-rated blind against their stated grades.
 import { describe, expect, it } from "bun:test";
 import { campaignLine, sessionLines } from "#skills/examiner-complexity/scripts/ambition.ts";
 import { gradeLines, outcomesOf } from "#skills/examiner-complexity/scripts/grades.ts";
+import { compareLines, packetOf } from "#skills/examiner-complexity/scripts/rungs.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 
@@ -67,5 +68,24 @@ describe("grades", () => {
       "grade 2: 1 tasks, 2 of 2 solves valid, 1 tasks valid on every solve, median turns 3",
       "grade 5: 1 tasks, 0 of 1 solves valid, 0 tasks valid on every solve, median turns none",
     ]);
+  });
+});
+
+describe("rungs", () => {
+  it("hides each rung's grade from the grader and flags a rung graded below it", () => {
+    const packet = packetOf();
+    expect(packet).toContain("- 1.1: ");
+    expect(packet).not.toMatch(/- \d\.\d: \d: /u);
+    const lines = compareLines(
+      new Map([
+        ["1.1", { grade: 1, place: "none" }],
+        ["1.2", { grade: 1, place: "basin" }],
+      ]),
+    );
+    expect(lines).toContain("  1.1 stated 1, blind 1 (none)");
+    expect(lines).toContain("  1.2 stated 3, blind 1 (basin)  below, flat");
+    expect(lines.at(-1)).toMatch(
+      /^1 of 18 rungs at their stated grade, 1 below, 0 above, 1 not above the rung before, 16 not graded$/u,
+    );
   });
 });

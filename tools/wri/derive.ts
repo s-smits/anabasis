@@ -62,6 +62,7 @@ export const READERS: readonly Reader[] = [
   { name: "rows", args: (log) => ["tools/wri/wri.ts", "read", "--log", log] },
   skillReader("chain", "harness-audit/scripts/harness-versions.ts", "--blind"),
   { name: "tasks", args: (log) => ["tools/wri/tasks.ts", log] },
+  { name: "degradations", args: (log) => ["tools/runs/degradations.ts", log] },
   skillReader("versions", "harness-audit/scripts/harness-versions.ts"),
   skillReader("readings", "comparison-reading/scripts/reading.ts"),
   {

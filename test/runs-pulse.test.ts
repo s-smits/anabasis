@@ -52,6 +52,22 @@ describe("the runs pulse", () => {
     }
   });
 
+  it("warns of turns another model served than their seat asked for, and of no others", () => {
+    const turn = (minute: number, kind: EventKind, id: JsonObject, responseModel: string) =>
+      event(minute, kind, { ...id, turn: 1, responseModel, error: null });
+    const log = [
+      event(0, "exam.started", { session: "x-1", model: "claude/claude-opus-5-5" }),
+      event(0, "solve.started", { solve: "s-1", model: "claude/claude-opus-5-5" }),
+      turn(1, "exam.turn", { session: "x-1" }, "claude-opus-5"),
+      turn(2, "solve.turn", { solve: "s-1" }, "claude-opus-5"),
+      turn(3, "solve.turn", { solve: "s-1" }, "claude-opus-5-5-20261001"),
+      turn(4, "referee.turn", { reader: "r-1" }, "claude-sonnet-5-5"),
+    ];
+    const said = pulse(round, log, "open", lookedAt(2), START + 5 * 60_000).said;
+    expect(said).toEqual(["⚠ 2 turns served by another model: claude-opus-5 for claude/claude-opus-5-5"]);
+    expect(pulse(round, log, "open", lookedAt(4), START + 5 * 60_000).said).toEqual([]);
+  });
+
   it("reads a solve and a wait of a process gone before the last launch as over", () => {
     const root = mkdtempSync(join(tmpdir(), "ana-runs-pulse-"));
     afterAll(() => rmSync(root, { recursive: true, force: true }));

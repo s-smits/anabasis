@@ -674,7 +674,8 @@ every field but the harness and its `solverTools`, which may change with it. The
 condition does not hold: load, recorded at solve start and finish, which the solve queue in `tools/d2/host.ts` bounds at
 the start unless `--loaded` is named; the hour; the provider's
 served model, which `responseModels` names or leaves empty, and `SERVED ANOTHER MODEL` counts
-by side where it is not the one the condition asked for; how many solves ran at once. The round
+by side where it is not the one the condition asked for, or over the whole campaign where no
+scored solve shows it (row C and the derived `degradations.txt` count every seat's turns); how many solves ran at once. The round
 mirrors which harness takes the first place, slot by slot and task by task, so that neither has the
 quieter hours. One worker runs a task's slots in that order: each solve call, with its load wait,
 its provider reruns or reset and its one outer retry, returns before the next slot starts

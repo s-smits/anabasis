@@ -16,7 +16,7 @@
  * this observer, unless --here is named. A missing peer is a warning and exit 1. No local state path is sent to another machine.
  */
 import type { EventKind, LogEvent } from "#src/kernel/log.ts";
-import { billedAll, traceKind, tracesIn } from "#src/kernel/trace.ts";
+import { billedAll, degradations, traceKind, tracesIn } from "#src/kernel/trace.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
 import {
   existsSync,
@@ -252,11 +252,16 @@ export function pulse(
   const task = (solve: JsonValue | undefined) => tasks.get(word(solve)) ?? word(solve);
   const fresh = log.slice(before?.lines ?? log.length);
   const lines = fresh.flatMap(({ kind, data }) => SAID[kind]?.(data, task) ?? []);
-  const errors = tracesIn(fresh).flatMap((each) =>
-    each.part === "turn" && each.error !== null ? [each.error] : [],
-  );
+  const turns = tracesIn(fresh).flatMap((each) => (each.part === "turn" ? [each] : []));
+  const errors = turns.flatMap(({ error }) => (error === null ? [] : [error]));
   if (errors.length > 0) {
     lines.push(`⚠ ${plural(errors.length, "failed turn")}: ${[...new Set(errors)].map(short).join("; ")}`);
+  }
+  const others = degradations(log, before?.lines ?? log.length);
+  if (others.length > 0) {
+    const served = others.reduce((sum, row) => sum + row.turns, 0);
+    const which = [...new Set(others.map((row) => `${row.served} for ${row.asked}`))];
+    lines.push(`⚠ ${plural(served, "turn")} served by another model: ${which.join("; ")}`);
   }
   const quiet = open && log.length > 0 && now - stand.since > QUIET_MS;
   if (quiet && before?.quiet !== true) lines.push(`⚠ quiet for ${minutes(now - stand.since)}`);

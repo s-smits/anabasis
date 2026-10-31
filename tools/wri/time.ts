@@ -26,7 +26,7 @@
  */
 import type { LogEvent } from "#src/kernel/log.ts";
 import { AT_A_LIMIT } from "#src/kernel/reports.ts";
-import { roleOf, spendOf, type Turn, tracesIn } from "#src/kernel/trace.ts";
+import { degradations, roleOf, spendOf, type Turn, tracesIn } from "#src/kernel/trace.ts";
 import { isNumber, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy, median } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
@@ -154,10 +154,55 @@ function limitTriggers(log: Index): Trigger[] {
   ];
 }
 
+/** Where another model answered than a seat asked for: each comparison's scored solves, and the
+ *  campaign's other seats where no scored solve shows it. */
+function servedTriggers(log: Index, results: ReturnType<typeof scoredOf>): Trigger[] {
+  // The solves a model other than their condition's answered, by the fold the pulse and the gather
+  // read (`degradations`): on 23 October recode's comparisons ran on claude-opus-5 against a setting
+  // of claude-opus-5-5 (F19), and no live reader said so until 31 October.
+  const degraded = degradations(log.events);
+  const servedBy = Map.groupBy(
+    degraded.filter((row) => row.seat === "solve"),
+    (row) => row.id,
+  );
+  const otherModel = results.flatMap(({ session, own, scoring }) => {
+    const other = scoring.filter((solve) => servedBy.has(solve.id));
+    const under = other.filter((solve) => solve.harness === own.old).length;
+    const models = other.flatMap((solve) => (servedBy.get(solve.id) ?? []).map((row) => row.served));
+    return other.length === 0
+      ? []
+      : [
+          fired(
+            "SERVED ANOTHER MODEL",
+            `${session}: ${share(other.length, scoring.length)} solves, ${String(under)} of them under the reference harness; ${tally(
+              countBy(models, (model) => model),
+            )}`,
+          ),
+        ];
+  });
+  // A campaign whose comparisons scored none of the solves another model answered still opens the
+  // lane: recode's every seat ran on claude-opus-5 under a check-defects reading.
+  const turns = degraded.reduce((sum, row) => sum + row.turns, 0);
+  const anywhere =
+    otherModel.length === 0 && turns > 0
+      ? [
+          fired(
+            "SERVED ANOTHER MODEL",
+            `the campaign: ${plural(turns, "turn")} in ${String(new Set(degraded.map((row) => row.id)).size)} sessions and solves, none a comparison's scored solve; served by ${[...new Set(degraded.map((row) => row.served))].join(", ")}`,
+          ),
+        ]
+      : [];
+  return [...otherModel, ...anywhere];
+}
+
+/** Each comparison with the solves it scored. */
+const scoredOf = (log: Index) =>
+  log.compared.map((each) => ({ ...each, scoring: tallied(each).filter(measured) }));
+
 /** Lane 29: the misses at a limit, and over the solves each comparison measured, not the non-results
  *  it reran, the share of the deadline each harness used and the host's load when they started. */
 export function deadlineTriggers(log: Index): Trigger[] {
-  const results = log.compared.map((each) => ({ ...each, scoring: tallied(each).filter(measured) }));
+  const results = scoredOf(log);
   const deadlineShares = results.flatMap(({ session, own, scoring }) => {
     // The median share of its deadline a harness's solves used, or null for none under a deadline. v1 read
     // this share as the measure that moves on every task set and leads a fail (lane 29).
@@ -223,29 +268,6 @@ export function deadlineTriggers(log: Index): Trigger[] {
         ]
       : [];
   });
-  // The solves a model other than their condition's served, a dated name read as its model's: on
-  // 23 October recode's comparisons ran on claude-opus-5 against a setting of claude-opus-5-5 (F19).
-  // An exact match stands first, so a setting that asks for a dated snapshot is not read as another.
-  const asked = (solve: Solve) => solve.model.slice(solve.model.indexOf("/") + 1);
-  const otherModel = results.flatMap(({ session, own, scoring }) => {
-    const other = scoring.filter((solve) =>
-      solve.served.some((model) => model !== asked(solve) && model.replace(/-\d{8}$/u, "") !== asked(solve)),
-    );
-    const under = other.filter((solve) => solve.harness === own.old).length;
-    return other.length === 0
-      ? []
-      : [
-          fired(
-            "SERVED ANOTHER MODEL",
-            `${session}: ${share(other.length, scoring.length)} solves, ${String(under)} of them under the reference harness; ${tally(
-              countBy(
-                other.flatMap((solve) => solve.served),
-                (model) => model,
-              ),
-            )}`,
-          ),
-        ];
-  });
   const middles = loads.flatMap(({ halves }) => halves);
   const [calmest, busiest] = [Math.min(...middles), Math.max(...middles)];
   const moved = busiest >= LOAD_WORTH_A_LINE && busiest >= calmest * LOAD_MOVED;
@@ -254,7 +276,7 @@ export function deadlineTriggers(log: Index): Trigger[] {
     ...deadlineShares,
     ...loaded,
     ...outOfTurn,
-    ...otherModel,
+    ...servedTriggers(log, results),
     ...(moved
       ? [
           fired(

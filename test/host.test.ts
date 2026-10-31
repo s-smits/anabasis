@@ -184,6 +184,32 @@ describe("load and reserve admission", () => {
     expect(waits(log).map(({ data }) => data.load)).toEqual([99]);
   });
 
+  it("puts on record only the time slept at a high load, not the slot wait after it cleared", async () => {
+    const log = logIn("load-then-slot");
+    let [load, now] = [99, 0];
+    const free = Promise.withResolvers<void>();
+    // Each sleep is ten seconds on the clock: the load clears after the first, and the slot stays
+    // full for three more.
+    const host = hostOf(
+      () => load,
+      4,
+      (count) => {
+        now += 10_000;
+        if (count === 1) load = 0;
+        if (count === 4) free.resolve();
+      },
+    );
+    const clock = spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      const held = gate(log, host, false, 1);
+      await Promise.all([flying(log, () => free.promise), held.solve(TASK, HARNESS, undefined, "x-1")]);
+    } finally {
+      clock.mockRestore();
+    }
+    expect(host.slept).toHaveLength(4);
+    expect(waits(log).map(({ data }) => data.ms)).toEqual([10_000]);
+  });
+
   it("holds a solve while another is in flight and the reserve is short, until the kill, and puts nothing on record", async () => {
     const log = logIn("reserve");
     append(log, "campaign.opened", { budget: { dollars: 0.7, reserve: 0.4 } });
@@ -202,6 +228,64 @@ describe("load and reserve admission", () => {
     expect(held.calls).toEqual([TASK.taskId]);
     expect(host.slept).toHaveLength(3);
     expect(waits(log)).toEqual([]);
+  });
+});
+
+describe("a room solve beside a short reserve", () => {
+  /** A draft's task admission on a campaign of `dollars` left at a $0.40 reserve, whose reference's
+   *  solves each pass, measured while `flown` comparison solves are in flight until the host's first
+   *  sleep. */
+  const admitted = async (dollars: number, flown: number) => {
+    const s = examinerSeat("write", []);
+    append(s.log, "campaign.opened", { budget: { dollars, reserve: 0.4 } });
+    const release = Promise.withResolvers<void>();
+    const host = hostOf(
+      () => 0,
+      8,
+      () => release.resolve(),
+    );
+    const held = gated(
+      {
+        loaded: true,
+        host,
+        seated: () => ({
+          builder: null,
+          setting: "s",
+          solve: async (_task, _harness, _kill, comparison) => {
+            if (comparison === "g-1") await release.promise;
+            return { solve: "s-1", ending: { outcome: "pass" } };
+          },
+        }),
+      },
+      s.log,
+    );
+    // SAFETY: the scripted seat reads no campaign fields; the host reads only its solve limits.
+    const seats = held({ limits: { concurrency: 4 } } as Campaign, { builder: undefined, reference: "" });
+    const comparison = Array.from({ length: flown }, () => seats.solve(TASK, HARNESS, undefined, "g-1"));
+    const draft = await measured(
+      {
+        log: s.log,
+        id: "x-1",
+        contract: s.request.contract,
+        planted: new Set<string>(),
+        probe: async (task, session, kill) => (await seats.solve(task, HARNESS, kill, session)).ending,
+      },
+      s.request.pack(EXAMPLE),
+      new AbortController().signal,
+      async () => null,
+    );
+    release.resolve();
+    await Promise.all(comparison);
+    return draft.reason;
+  };
+
+  it("waits in the solve queue while others are in flight, as a comparison's solve does", async () => {
+    // Until 31 October the draft was refused unmeasured, and kernel-cyber2 lost 26 drafts so.
+    expect(await admitted(0.7, 1)).toContain("which leaves no room");
+  });
+
+  it("is refused where nothing is in flight to free the reserve", async () => {
+    expect(await admitted(0.3, 0)).toContain("holds no reserve");
   });
 });
 

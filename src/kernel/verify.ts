@@ -277,7 +277,7 @@ function projectJsonPaths(value: JsonValue, paths: readonly string[]): JsonValue
  *  what keeps the declared paths a wall rather than a note: `evaluate.ts` builds the tool-input
  *  leaves from this same value, so bytes a check may hand an installed tool are bytes it was
  *  already allowed to read, and a wider tool operand cannot be reached around the projection. */
-export function checkPublicInputs(
+function checkPublicInputs(
   check: BriefTruthCheck,
   request: Pick<EvaluationRequest, "artifact" | "publicTask">,
 ): Pick<EvaluationRequest, "artifact" | "publicTask"> {

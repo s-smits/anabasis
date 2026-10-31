@@ -835,7 +835,7 @@ describe("a session that writes tasks", () => {
   it("runs a draft's other two solves together where its first leaves no room, holds it at the first of them that does, and cancels the other", async () => {
     // Base 2 fails first with no answer of its author's: no room. Its second and third start
     // together; one passes, which leaves room, and the other, still running, is cancelled as the
-    // launcher cancels a solve, ending killed by its caller and counted nowhere.
+    // launcher cancels a solve, ending killed by the admission and counted nowhere.
     const s = seat("write", [call(TRY, { tasks: [instance(2)] }), finish, finish]);
     const both = Promise.withResolvers<void>();
     const reasons: unknown[] = [];
@@ -866,7 +866,7 @@ describe("a session that writes tasks", () => {
     expect(asked).toBe(3);
     expect(reasons).toHaveLength(1);
     expect(reasons[0]).toBeInstanceOf(Cancellation);
-    expect(reasons[0]).toMatchObject({ cancelledBy: "caller" });
+    expect(reasons[0]).toMatchObject({ cancelledBy: "admission" });
     expect(s.of(TASK_ADMISSION)).toMatchObject([
       { outcome: "passed", reference: { valid: 1, solves: 2, ran: 2 } },
     ]);

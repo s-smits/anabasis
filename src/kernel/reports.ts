@@ -127,7 +127,8 @@ interface TaskRecord {
   /** The last event at which a person kept it held (`task.state`), or -1. */
   keptAt: number;
   /** A known valid answer independent of the other harness: an author's answer, a room solve,
-   *  or a valid solve of the current reference. The practice allowance reads only this evidence. */
+   *  or a valid solve of a harness that is or was the reference. The practice allowance and the
+   *  wait for a person read only this evidence. */
   referenceHasValidAnswer: boolean;
   /** A solve's valid answer on record, or `task.feasible` records a passing author answer, or its
    *  task admission records that a reference solve under `try_task` gave a valid answer, which reveals no answer. */
@@ -166,6 +167,7 @@ const STEP = "step";
 /** How a Builder session ends when it was cut and left half a session's work. */
 const CUT: ReadonlySet<unknown> = new Set(["killed", "crashed"]);
 const REPORTED = "comparison.reported";
+const PROMOTED = "harness.promoted";
 const STARTED = "comparison.started";
 const BUILD_FINISHED = "build.finished";
 /** Whether a cap can hold anything: its dollars and its reserve are numbers above nothing. One
@@ -222,7 +224,7 @@ export function latestBuilt(events: readonly LogEvent[]): string | null {
  * authorised (`tools/d2/promote.ts`), and one that names the starter returns the campaign to it.
  */
 export function promoted(events: readonly LogEvent[]): string | null {
-  const harness = events.findLast(({ kind }) => kind === "harness.promoted")?.data.harness;
+  const harness = events.findLast(({ kind }) => kind === PROMOTED)?.data.harness;
   return isString(harness) ? harness : null;
 }
 
@@ -338,7 +340,7 @@ export function stopRule(events: readonly LogEvent[]) {
     (one, other) => one.index - other.index,
   );
   // A promotion starts an epoch, whose improvement patience is its own.
-  const epochAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
+  const epochAt = events.findLastIndex(({ kind }) => kind === PROMOTED);
   const epoch = moves.filter(({ index }) => index > epochAt);
   const sinceStep = epoch.length - 1 - epoch.findLastIndex(({ step }) => step);
   return { checkpoints: moves.length, sinceStep, stop: sinceStep >= patienceOf(events) };
@@ -451,7 +453,12 @@ function taskRecords(events: readonly LogEvent[]) {
       each.seat === "solve" && each.part === "turn" ? [[each.id, each]] : [],
     ),
   );
-  const reference = referenceOf(events);
+  // Every harness that has been the reference: a former one's valid answer stays a reference's
+  // after a promotion, so a task it answered never goes to a person as possibly infeasible.
+  const references = new Set([
+    referenceOf(events),
+    ...events.flatMap(({ kind, data }) => (kind === PROMOTED ? [data.harness, data.from] : [])),
+  ]);
   const wrong = wrongPassesIn(events);
   for (const solve of ranUnder(events)) {
     const { task, limits, harness } = solve.under;
@@ -463,7 +470,7 @@ function taskRecords(events: readonly LogEvent[]) {
     const budgeted = kind === "turns-ended" && isNumber(limits.modelTurns) && !interrupted;
     if (passed(solve) === true && !wrong.has(solve.id)) {
       of(task).knownValidAnswer = true;
-      if (harness === reference) of(task).referenceHasValidAnswer = true;
+      if (references.has(harness)) of(task).referenceHasValidAnswer = true;
     }
     if (isString(comparison) && AT_A_LIMIT.has(kind) && !budgeted) cut.add(cutIn(comparison, task, harness));
   }
@@ -539,9 +546,9 @@ function tallyReports(
  * three had been valid at two hours; a second comparison at that deadline would have taken them out
  * of the scored set as possibly infeasible.
  *
- * - A valid answer anywhere on record settles the question for good: under any harness, in any
- *   comparison or outside one, at any limits. Such a task has a known valid answer, stays in the set and ties
- *   where a budget is too short for it, which costs solves and biases nothing.
+ * - An author's, a room solve's or a current or former reference's valid answer settles it for
+ *   good, at any limits: the task stays and ties where a budget is too short. A candidate's does
+ *   not, since which task it won moved the frontier the Builder is told (rule 3, 31 October).
  * - A comparison in which a limit cut a solve of the task short (`taskRecords`: its deadline or its
  *   context) is not counted for it. What that solve would have answered is not known. A task cut
  *   at every comparison so never goes to a person on this rule, and stays a tie the reports show.
@@ -632,8 +639,8 @@ function tallyReports(
 export function poolOf(events: readonly LogEvent[]) {
   const { records, held } = taskRecords(events);
   const heldRecords = records.filter((record) => record.held);
-  const awaiting = placed(heldRecords, ({ knownValidAnswer, keptAt, tallied }) =>
-    runOf(tallied.filter(({ index, cut }) => !knownValidAnswer && index >= keptAt && !cut)),
+  const awaiting = placed(heldRecords, ({ referenceHasValidAnswer, keptAt, tallied }) =>
+    runOf(tallied.filter(({ index, cut }) => !referenceHasValidAnswer && index >= keptAt && !cut)),
   );
   const spent = placed(heldRecords, ({ tallied }) =>
     easyAt(
@@ -643,7 +650,7 @@ export function poolOf(events: readonly LogEvent[]) {
     ),
   );
   const out = new Set(awaiting);
-  const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
+  const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED);
   const before = new Set(taskSets(events.slice(0, Math.max(0, promotedAt))).held);
   const reference = referenceOf(events);
   const stood = new Set(

@@ -67,6 +67,8 @@ checkout's commit by default), and launches there as below. Opus is the default 
 seats `openai-codex/gpt-6.1-sol` through the Codex CLI's login, which `--login` does not select,
 and any other model a backend serves goes as its `<provider>/<id>`, at `hhhh` and named by its id:
 `--model openrouter/deepseek/deepseek-v4.1-flash-1017` makes `<pack>-fresh-deepseek-v4.1-flash-1017`.
+A run or a simulation seats Claude on a numbered login unless the operator names another model, and
+DeepInfra serves DeepSeek alone, only where the operator names DeepSeek (operator, 31 October).
 The solve defaults are the campaign's: 20 model turns and 30 minutes (`LIMITS`,
 `tools/d2/campaign.ts`).
 

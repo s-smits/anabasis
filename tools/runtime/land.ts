@@ -199,7 +199,7 @@ const trunkOf = (root: string): string =>
 
 /** The top of the longest chain of open pull requests above `from`, each based on the head of the
  *  one beneath it; `from` itself where none is. Of two chains of one length the older wins. */
-export function topAbove(open: readonly Pull[], from: Pull): Pull {
+function topAbove(open: readonly Pull[], from: Pull): Pull {
   const chain = (pull: Pull, seen: readonly Pull[]): Pull[] => {
     const above = open
       .filter((child) => child.baseRefName === pull.headRefName && !seen.includes(child))

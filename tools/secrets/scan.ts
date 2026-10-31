@@ -74,7 +74,7 @@ export function scanAdded(range: readonly string[]): ScanAddedResult {
   return { hits, refusedPaths };
 }
 
-export function scanTree(): ScanTreeResult {
+function scanTree(): ScanTreeResult {
   const tracked = git(["ls-files"]).split("\n").filter(Boolean);
   const hits: SecretHit[] = [];
   for (const path of tracked.filter(scannable)) {

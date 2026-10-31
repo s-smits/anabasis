@@ -548,7 +548,7 @@ async function served(opening: Opening, paid: "paid" | "scripted", named?: strin
 /** What is wrong with a manifest's Bun pins for the executing `version`, or null where
  *  `packageManager` and `engines.bun` both pin it exactly. A missing, ranged or other manager's pin
  *  differs as a wrong one does. */
-export function pinFault(manifest: JsonValue, version: string): string | null {
+function pinFault(manifest: JsonValue, version: string): string | null {
   const record = asRecord(manifest);
   const pins = { packageManager: record?.packageManager, "engines.bun": asRecord(record?.engines)?.bun };
   return pins.packageManager === `bun@${version}` && pins["engines.bun"] === version

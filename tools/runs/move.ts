@@ -53,6 +53,8 @@
  * unless `--from` names one, prints the copy's log, and run again brings the copy level with its
  * source. The run is left as it is. On 20 October a whole-run investigation of three runs on another
  * host read copies made by hand; until then a copy went to `.ana/fetched/`, which no reader read.
+ * With no name it brings every campaign whose log grew, and then records where another model served
+ * a seat than it asked for (`degradations.ts`).
  */
 import { LOG_FILE } from "#src/kernel/log.ts";
 import { cpSync, existsSync, mkdirSync, renameSync, rmSync, statSync } from "#src/meta/filesystem.ts";
@@ -68,6 +70,7 @@ import { quoted, rsync, shellPath, sshScript, worktreesIn } from "./host-command
 import { verbOn } from "./hosts.ts";
 import { CAMPAIGNS, HERE, keepers, processes, readNamed, writers } from "./registry.ts";
 import { syncRuns } from "./snapshots.ts";
+import { recordDegradations } from "./degradations.ts";
 import { continueRun, pause, said } from "./manage.ts";
 import { payerOf } from "./live.ts";
 import { roomToStart } from "./logins.ts";
@@ -254,6 +257,9 @@ export async function fetch(args: readonly string[]): Promise<void> {
     throw new Error(`no host ANA_HOSTS lists holds a campaign ${name}`);
   }
   for (const log of copies) console.log(log);
+  if (name === undefined) {
+    for (const line of recordDegradations(copies, runtimeProcess.cwd())) console.log(line);
+  }
 }
 
 /** `bun run runs copy`. */

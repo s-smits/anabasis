@@ -55,8 +55,9 @@
  * and drafted no check of mass, and the host's reading cannot see a requirement a draft leaves out
  * (lane 34 of the investigation of 27 October).
  *
- * It is shown the reach scale and its worked examples (`ladder.ts`), and told that a rule met by
- * matching a stated shape or writing one exact text caps every task at grade 3: on 31 October
+ * It is shown the reach scale and its worked examples (`ladder.ts`), and told that rules handing
+ * the solver the whole model, or met by matching a stated shape or writing one exact text, cap every
+ * task at grade 2, the solver's grade once the scale was re-rated against the record: on 31 October
  * kernel-cyber2-fresh-DeepSeek-V4.1-Flash-1017's drafted scope defined each weakness by its syntax
  * and its rule R3 each fix as one canonical edit, and no scored task graded above 3.
  */

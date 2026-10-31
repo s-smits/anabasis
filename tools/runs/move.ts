@@ -86,7 +86,7 @@ const USAGE =
   "usage: bun run runs move <name> --to <host> [--from <host>] [--login N] [--after <event>] [--hold] [--yes] [-- <flags>]";
 
 /** `flags` with each path under `from` named under `to` instead, whole or after a flag's `=`. */
-export function rehomed(flags: readonly string[], from: string, to: string): string[] {
+function rehomed(flags: readonly string[], from: string, to: string): string[] {
   const under = `${from}/`;
   return flags.map((flag) => {
     if (flag.startsWith(under)) return `${to}/${flag.slice(under.length)}`;
@@ -293,12 +293,12 @@ export function copy(args: readonly string[]): void {
 
 /** Where a run's folder is set aside in `tree` once a copy of it went elsewhere: one copy a name,
  *  which `runNamed` asks, so the folder left is no run any registry reads (`runs copy`, `runs move`). */
-export function asideOf(tree: string, name: string): string {
+function asideOf(tree: string, name: string): string {
   return join(tree, ".ana", "moved", `${name}-${new Date().toISOString().replaceAll(/[:.]/g, "")}`);
 }
 
 /** Moves `folder` to `aside`, making `.ana/moved/` where the tree has none yet. */
-export function setAside(folder: string, aside: string): void {
+function setAside(folder: string, aside: string): void {
   mkdirSync(dirname(aside), { recursive: true });
   renameSync(folder, aside);
 }

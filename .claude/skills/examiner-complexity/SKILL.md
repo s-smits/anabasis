@@ -1,6 +1,6 @@
 ---
 name: examiner-complexity
-description: "Tune the ambition of the Examiner's exam: the reach scale and worked examples it is shown (src/examiner/ladder.ts), the drafting prompt's rules on how hard an exam can be (src/examiner/draft.ts) and the writing prompt's \"How hard\" (src/examiner/prompt.ts), so that drafted tasks leave the reference room for a good reason and stay answerable. Calibrates the record with blind reach grades against the reference's outcomes (grades.ts), re-rates each worked example's rungs blind against their stated grades so that a rung can be overhauled (rungs.ts), reads each Examiner session's admissions and a campaign's time to its first comparison and promotion (ambition.ts), and runs the edit through paired live seats and a pair of fresh campaigns. Use when the operator asks whether the queries or tasks are hard enough, to tune the ladder or overhaul one of its examples, to calibrate easy to very hard, or to read whether an exam change raised supply."
+description: "Tune the ambition of the Examiner's exam: the reach scale and worked examples it is shown (src/examiner/ladder.ts), the drafting prompt's rules on how hard an exam can be (src/examiner/draft.ts) and the writing prompt's \"How hard\" (src/examiner/prompt.ts), so that drafted tasks leave the reference room for a good reason and stay answerable. Calibrates the record with blind reach grades against the reference's outcomes (grades.ts), re-rates each worked example's rungs blind against their stated grades so that a rung can be overhauled (rungs.ts), lists every draft an Examiner wrote beside the gate's reading of it as a CSV (exams.ts), reads each Examiner session's admissions and a campaign's time to its first comparison and promotion (ambition.ts), and runs the edit through paired live seats and a pair of fresh campaigns. Use when the operator asks whether the queries or tasks are hard enough, to tune the ladder or overhaul one of its examples, to calibrate easy to very hard, or to read whether an exam change raised supply."
 ---
 
 # Examiner complexity
@@ -46,6 +46,30 @@ drafted such rules, and their examples passed 9 of 9 solves at 3 turns. A frozen
 same way, so a ladder edit is seated only where the exam is still open (section 4): on the esp32
 wiring-plan seed, both ladders held none of 10 or more drafts at a writing position, while the
 drafts grew only in device count.
+
+Whether the ladder's words reached the drafts is read from the drafts themselves, beside what the
+gate made of each:
+
+```sh
+bun .claude/skills/examiner-complexity/scripts/exams.ts [--every] <campaign folder>... > exams.csv
+```
+
+writes one row a family a session, in the campaign's order (`--every`: one a draft): the drafts,
+how many the gate held and refused, how many of the refusals had the reference valid in every room
+solve (`noroom`, the ceiling) and how many drafts it answered in none, the author's proved answers,
+the public input's median length and a title. Read down a campaign for whether later sessions moved
+off the ceiling, and across arms for whether one ladder's drafts differ in kind or only in length.
+The drafted exam's own examples (`ex-001` on) are not rows, since their proposals hold no content.
+
+A ladder pitched too high shows as starved supply, not as bad tasks: refusals until the budget is
+gone, and no comparison to say what the exam was worth. On 31 October the first ladder's esp32 arm
+held 1 of 89 session drafts over 12 hours and $79, every refusal at the ceiling, its drafts about
+40% longer than the control's from the first session and no longer after; the control held 17 of 80
+and compared twice, its 59 refusals at the ceiling too, and neither wrote a draft the reference
+failed on every solve. A longer draft the reference still answers every time is the ladder reaching
+size and not method. An arm with no comparison by its domain's median first promotion
+(`promotion-tuner`: 9.8 h for buffer, 13.0 h for esp32) is read for starvation before its examples
+are rewritten again.
 
 ## 3. Edit the owner
 
@@ -113,7 +137,9 @@ on record before the first solve, and settle each by its count.
 ## 6. What may be claimed
 
 A seat round is two draws and a lead (rule 6). A fresh pair is one campaign an arm. "The exam is
-harder" needs blind grades of the held tasks above the control's; "supply rose" needs the arm's
-held share and its first comparison ahead of the control's on fresh campaigns, repeated in a second
-domain; neither says a harness got better, which only a comparison reads (rule 1). Keep counts with
+harder" needs blind grades of the held tasks above the control's, joined to the reference's outcomes
+by `grades.ts`: on 31 October two graders put the first ladder's esp32 drafts a grade above the
+control's while the reference answered 28 of 29 solves of its 5s and 6s at 3 turns. "Supply rose"
+needs the arm's held share and its first comparison ahead of the control's on fresh campaigns,
+repeated in a second domain; neither says a harness got better, which only a comparison reads (rule 1). Keep counts with
 their denominators and the logins' waits apart from the system's time (rule 15).

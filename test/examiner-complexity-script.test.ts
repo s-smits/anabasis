@@ -1,8 +1,10 @@
 // The examiner-complexity readers: one line an Examiner session under the reference in force, a
-// campaign's hours to its first comparison and promotion, and blind grades against outcomes with
-// non-results counted nowhere, and the ladder's rungs re-rated blind against their stated grades.
+// campaign's hours to its first comparison and promotion, every draft an Examiner wrote beside what
+// the gate measured on it, blind grades against outcomes with non-results counted nowhere, and the
+// ladder's rungs re-rated blind against their stated grades.
 import { describe, expect, it } from "bun:test";
 import { campaignLine, sessionLines } from "#skills/examiner-complexity/scripts/ambition.ts";
+import { csvLines, draftRows } from "#skills/examiner-complexity/scripts/exams.ts";
 import { gradeLines, outcomesOf } from "#skills/examiner-complexity/scripts/grades.ts";
 import { compareLines, packetOf } from "#skills/examiner-complexity/scripts/rungs.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
@@ -42,6 +44,112 @@ describe("ambition", () => {
       "first comparison 0.5 h / 0 solves / $0, first promotion 1.5 h / 0 solves / $0; 1 compared, 1 promoted",
     );
     expect(campaignLine(log.slice(0, 5))).toContain("first comparison none yet, first promotion none yet");
+  });
+});
+
+describe("exams", () => {
+  const draft = (version: string, session: string, family: string, input: JsonObject) =>
+    event(1, "task.proposed", {
+      version,
+      taskId: version,
+      session,
+      task: { taskId: version, family, publicInput: input },
+    });
+  const gated = (version: string, outcome: string, valid: number, solves: number, proved: boolean) =>
+    event(2, "task.gate", { version, gate: 1, outcome, reference: { valid, solves }, proved });
+  const parts = (count: number) => ({
+    title: "A board",
+    devices: Array.from({ length: count }, (_, at) => ({ id: at })),
+  });
+  const log = [
+    event(0, "exam.started", { session: "x-1" }),
+    draft("v1", "x-1", "leds", parts(3)),
+    gated("v1", "refused", 3, 3, true),
+    draft("v2", "x-1", "leds", parts(5)),
+    gated("v2", "passed", 3, 3, true),
+    draft("v3", "x-1", "pins", { cases: [1, 2] }),
+    gated("v3", "refused", 0, 3, false),
+    event(3, "harness.promoted", { harness: "abcdef0123456789" }),
+    event(4, "exam.started", { session: "x-2" }),
+    draft("v4", "x-2", "leds", parts(9)),
+    gated("v4", "passed", 2, 3, true),
+  ];
+
+  it("groups a session's drafts by family and counts the gate's reading of each group", () => {
+    expect(draftRows(log, "grouped")).toEqual([
+      {
+        session: "x-1",
+        reference: "starter",
+        family: "leds",
+        drafts: 2,
+        held: 1,
+        refused: 1,
+        noroom: 1,
+        none: 0,
+        proved: 2,
+        chars: 76,
+        title: "A board",
+      },
+      {
+        session: "x-1",
+        reference: "starter",
+        family: "pins",
+        drafts: 1,
+        held: 0,
+        refused: 1,
+        noroom: 0,
+        none: 1,
+        proved: 0,
+        chars: 15,
+        title: "pins",
+      },
+      {
+        session: "x-2",
+        reference: "abcdef01",
+        family: "leds",
+        drafts: 1,
+        held: 1,
+        refused: 0,
+        noroom: 0,
+        none: 0,
+        proved: 1,
+        chars: 112,
+        title: "A board",
+      },
+    ]);
+  });
+
+  it("gives a row a draft under every, so one session can be read close up", () => {
+    const rows = draftRows(log, "every");
+    expect(rows.map(({ family, drafts, chars }) => `${family} ${String(drafts)} ${String(chars)}`)).toEqual([
+      "leds 1 58",
+      "leds 1 76",
+      "pins 1 15",
+      "leds 1 112",
+    ]);
+  });
+
+  it("quotes a title holding a comma and leaves the drafted exam's own examples out", () => {
+    const examples = [
+      ...log,
+      event(5, "task.proposed", { version: "v5", taskId: "ex-001", task: {} }),
+      gated("v5", "passed", 1, 3, false),
+    ];
+    expect(draftRows(examples, "grouped")).toHaveLength(3);
+    const row = {
+      session: "x-1",
+      reference: "starter",
+      family: "leds",
+      drafts: 2,
+      held: 1,
+      refused: 1,
+      noroom: 1,
+      none: 0,
+      proved: 2,
+      chars: 76,
+    };
+    const lines = csvLines("a-run", [{ ...row, title: 'Two faders, one "mic"' }]);
+    expect(lines[0]).toBe('a-run,x-1,starter,leds,2,1,1,1,0,2,76,"Two faders, one ""mic"""');
   });
 });
 

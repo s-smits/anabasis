@@ -349,8 +349,8 @@ Starts from `EXAM DRAFTED (lane 8)`.
 
 The question is whether the exam a campaign drafted from the operator's prompt is the exam the
 prompt asked for. The host's reading (`draftReading`, `tools/d2/exam.ts`; `unreadFields`,
-`src/kernel/acceptance.ts`) checks shape, sources, one check per rule, controls and the fields an
-accept control moves; it cannot tell whether a rule belongs to the field, whether its source says
+`src/kernel/acceptance.ts`) checks shape, sources, one check per rule and controls, and notes the
+fields an accept control moves no verdict by; it cannot tell whether a rule belongs to the field, whether its source says
 what the rule says, or whether the objective measures what the prompt values (`AGENTS.md`,
 section 6). `EXAM DRAFTED` gives the number of `exam.drafted` events, and each drafting session's
 ending, whether its draft stands, and the measurement `draft.finished` recorded (complete,

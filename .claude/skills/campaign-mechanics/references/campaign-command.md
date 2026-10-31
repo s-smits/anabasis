@@ -44,9 +44,10 @@ room solve leaves its draft refused unmeasured.
 **It opens over a stored pack, or from a prompt** (`--prompt "<text>"` or `--prompt-file <path>`,
 with `--solver`), whose first move is the draft of row 0. A draft stands once the host's reading,
 without a model, finds no fault: its shape, a source on every rule, one check per rule, every
-control answer through the checks twice, the smallest answer refused on every example, and each
-field of an accept control answer moving some check's verdict or the objective (`draftReading`,
-`tools/d2/exam.ts`; `unreadFields`, `src/kernel/acceptance.ts`). It does not wait for the
+control answer through the checks twice, and the smallest answer refused on every example. Its notes
+leave the draft standing: a field of an accept control answer that moves no check's verdict and no
+objective, and a smallest answer the format itself refuses (`draftReading`, `tools/d2/exam.ts`;
+`unreadFields`, `src/kernel/acceptance.ts`). It does not wait for the
 reference's measurement: `draft.finished` records that as complete, interrupted with its first
 cancellation source, or not run. A killed solve records that source (`CancellationOrigin`,
 `src/kernel/solve.ts`; an unlabelled external abort is `caller`); older events leave it unknown,

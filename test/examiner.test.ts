@@ -153,7 +153,7 @@ describe("a session of any mode", () => {
               ...s.request,
               reading: async () => {
                 record();
-                return [];
+                return { faults: [], notes: [] };
               },
             }
           : {
@@ -192,7 +192,7 @@ describe("a session of any mode", () => {
       const { limits } = turned.request;
       const faulted = {
         ...turned.request,
-        reading: async () => ["a fault"],
+        reading: async () => ({ faults: ["a fault"], notes: [] }),
         limits: { ...limits, turns: 1 },
       };
       expect(await examine(faulted)).toMatchObject({ ended: "turns", puts: 1 });
@@ -382,7 +382,8 @@ describe("a session that drafts an exam", () => {
     let readings = 0;
     const reading = async () => {
       readings += 1;
-      return readings === 1 ? ["the accept control of t-1 did not pass: fail check-product"] : [];
+      const faults = readings === 1 ? ["the accept control of t-1 did not pass: fail check-product"] : [];
+      return { faults, notes: [] };
     };
     const examined = await examine({ ...s.request, reading });
     expect(examined).toEqual({ ended: "stands", puts: 2, held: [], refused: [] });

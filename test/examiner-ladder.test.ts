@@ -42,7 +42,7 @@ describe("the Examiner's ladder", () => {
         id: "d-1",
         log: "/nowhere/log.jsonl",
         prompt: "a domain",
-        reading: async () => [],
+        reading: async () => ({ faults: [], notes: [] }),
       },
       new AbortController().signal,
     );

@@ -58,7 +58,7 @@ describe("the shape of a draft", () => {
       ...s.request,
       reading: async (draft: Draft) => {
         reached.push(draft);
-        return [];
+        return { faults: [], notes: [] };
       },
     });
     expect(examined).toMatchObject({ ended: "stands", puts: 2 });
@@ -95,18 +95,20 @@ describe("a draft read without a model", () => {
   });
 
   it("finds no fault in a sound draft, and tells the faults of one whose check passes everything", async () => {
-    expect(await draftReading(join(root, "read"), SOUND, 2)).toEqual([]);
+    expect(await draftReading(join(root, "read"), SOUND, 2)).toEqual({ faults: [], notes: [] });
     const lax = { ...SOUND, evaluator: `export const checks = { "check-product": () => true };\n` };
-    const faults = await draftReading(join(root, "read"), lax, 2);
-    expect(faults).toHaveLength(6);
+    const { faults, notes } = await draftReading(join(root, "read"), lax, 2);
+    expect(faults).toHaveLength(5);
     for (const [index, facts] of [
       ["ex-001", "check-product", "reject control", "pass"],
       ["check-product", "refused nothing"],
       ...["ex-001", "ex-002", "ex-003"].map((id) => [id, "do-nothing", "pass"]),
-      ["field answer", "no check's verdict and no objective"],
     ].entries()) {
       for (const fact of facts) expect(faults[index]).toContain(fact);
     }
+    // A field no check reads is a note the draft stands with.
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toMatch(/field answer.*no check's verdict and no objective/u);
   });
 
   it("gives each check a task's hidden values as the author wrote them", async () => {
@@ -115,10 +117,10 @@ describe("a draft read without a model", () => {
       evaluator: `export const checks = {\n  "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * req.hidden.factor),\n};\n`,
       tasks: SOUND.tasks.map((task) => ({ ...task, hidden: { factor: 6 } })),
     };
-    expect(await draftReading(join(root, "read"), hidden, 2)).toEqual([]);
+    expect(await draftReading(join(root, "read"), hidden, 2)).toEqual({ faults: [], notes: [] });
   });
 
-  it("tells a field of the answer that no check reads, and leaves one the format allows no change of", async () => {
+  it("notes a field of the answer that no check reads, and leaves one the format allows no change of", async () => {
     for (const [format, count] of [
       [{ type: "string" }, 1],
       [{ const: "six times" }, 0],
@@ -131,9 +133,10 @@ describe("a draft read without a model", () => {
           answer: { answer: String(base * 6), note: "six times" },
         })),
       };
-      const faults = await draftReading(join(root, "read"), noted, 2);
-      expect(faults).toHaveLength(count);
-      if (count === 1) expect(faults[0]).toContain("field note");
+      const { faults, notes } = await draftReading(join(root, "read"), noted, 2);
+      expect(faults).toEqual([]);
+      expect(notes).toHaveLength(count);
+      if (count === 1) expect(notes[0]).toContain("field note");
     }
   });
 
@@ -143,12 +146,12 @@ describe("a draft read without a model", () => {
       evaluator: `export const checks = { "check-product": (req) => req.artifact.answer === ;\n`,
     };
     // Which control met it first is the pool's order.
-    const [fault, ...more] = await draftReading(join(root, "read"), broken, 2);
+    const [fault, ...more] = (await draftReading(join(root, "read"), broken, 2)).faults;
     expect(more).toEqual([]);
     for (const fact of ["ex-00", "check-product", "did not load", "Unexpected ;"]) {
       expect(fault).toContain(fact);
     }
-    const missing = await draftReading(join(root, "read"), { ...SOUND, reject: [] }, 2);
+    const missing = (await draftReading(join(root, "read"), { ...SOUND, reject: [] }, 2)).faults;
     expect(missing).toHaveLength(1);
     expect(missing[0]).toContain("check-product");
     expect(missing[0]).toContain("no reject control");

@@ -205,6 +205,64 @@ describe("load and reserve admission", () => {
   });
 });
 
+describe("a room solve beside a short reserve", () => {
+  /** A draft's task admission on a campaign of `dollars` left at a $0.40 reserve, whose reference's
+   *  solves each pass, measured while `flown` comparison solves are in flight until the host's first
+   *  sleep. */
+  const admitted = async (dollars: number, flown: number) => {
+    const s = examinerSeat("write", []);
+    append(s.log, "campaign.opened", { budget: { dollars, reserve: 0.4 } });
+    const release = Promise.withResolvers<void>();
+    const host = hostOf(
+      () => 0,
+      8,
+      () => release.resolve(),
+    );
+    const held = gated(
+      {
+        loaded: true,
+        host,
+        seated: () => ({
+          builder: null,
+          setting: "s",
+          solve: async (_task, _harness, _kill, comparison) => {
+            if (comparison === "g-1") await release.promise;
+            return { solve: "s-1", ending: { outcome: "pass" } };
+          },
+        }),
+      },
+      s.log,
+    );
+    // SAFETY: the scripted seat reads no campaign fields; the host reads only its solve limits.
+    const seats = held({ limits: { concurrency: 4 } } as Campaign, { builder: undefined, reference: "" });
+    const comparison = Array.from({ length: flown }, () => seats.solve(TASK, HARNESS, undefined, "g-1"));
+    const draft = await measured(
+      {
+        log: s.log,
+        id: "x-1",
+        contract: s.request.contract,
+        planted: new Set<string>(),
+        probe: async (task, session, kill) => (await seats.solve(task, HARNESS, kill, session)).ending,
+      },
+      s.request.pack(EXAMPLE),
+      new AbortController().signal,
+      async () => null,
+    );
+    release.resolve();
+    await Promise.all(comparison);
+    return draft.reason;
+  };
+
+  it("waits in the solve queue while others are in flight, as a comparison's solve does", async () => {
+    // Until 31 October the draft was refused unmeasured, and kernel-cyber2 lost 26 drafts so.
+    expect(await admitted(0.7, 1)).toContain("which leaves no room");
+  });
+
+  it("is refused where nothing is in flight to free the reserve", async () => {
+    expect(await admitted(0.3, 0)).toContain("holds no reserve");
+  });
+});
+
 describe("cancelling queued solves", () => {
   it("leaves a load, reserve or slot wait on cancellation without releasing the host's sleep", async () => {
     for (const queued of ["load", "reserve", "slot"]) {

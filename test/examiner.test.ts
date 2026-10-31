@@ -1165,6 +1165,27 @@ describe("a session that writes tasks", () => {
     }
   });
 
+  it("tells the author the Referee's reason where it ruled the checks at fault on a room solve, and no other", async () => {
+    const reason = "check-loop admits a loop one shorter than the conventions allow";
+    const told = async (said: string) => {
+      const s = seat("write", []);
+      const mode = writing(
+        { ...s.request, probe: async () => ({ outcome: "non-result", kind: "check", reason: said }) },
+        undefined,
+        "unseen",
+      );
+      await invoke(toolOf(mode), "put", { tasks: [instance(3)] });
+      await mode.settle(true);
+      const refused = s.of(TASK_ADMISSION)[0]?.reason;
+      return isString(refused) ? refused : "";
+    };
+    // `probing` gives the reason of a check-defect ruling and none of an unclear or missing one.
+    expect(await told(`the Referee ruled the checks at fault: ${reason}`)).toContain(
+      `3 times because the Referee ruled the checks at fault: ${reason}`,
+    );
+    expect(await told("")).not.toContain("because");
+  });
+
   it("takes an unmeasured draft again in the same session and keeps every measured or pending duplicate refused", async () => {
     const s = seat("write", []);
     const release = Promise.withResolvers<void>();

@@ -96,7 +96,7 @@ interface Carried {
 function legendOf(carried: Carried): string {
   const clauses = [
     carried.bill
-      ? `A win "on the bill alone" is one only the cost of its solves carried; a step is also read without the bill.`
+      ? `A win "on the bill alone" is one only the cost of its solves carried; a step is read without the bill.`
       : "",
     carried.admission
       ? `"Gate" is how many of the reference harness's solves at its gate were valid, of the solves it ran, at most ${String(TRIED)}, and their turns.`

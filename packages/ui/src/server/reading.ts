@@ -19,7 +19,7 @@
  * ending before the campaign has logged it.
  *
  * An A/A control reads a step, for the counter, as the whole-run reader reads one: where either
- * side's scored and unbilled tests clear the level together (`readsStepEitherWay`, `compare.ts`; `tools/wri/read.ts`, "REFERENCE
+ * side's scores without the bill clear the level (`readsStepEitherWay`, `compare.ts`; `tools/wri/read.ts`, "REFERENCE
  * AGAINST ITSELF"), since a step either way between two samples of one harness is a false one. The
  * report's own `p` is one-sided.
  */
@@ -219,7 +219,7 @@ const coreIn = once((log) => {
       labels: { tasks: campaign.supply.awaiting, rejections: unsettledCount(log) },
       controls: bars.filter((bar) => bar.noise !== null).length,
       controlSteps: bars.filter(
-        ({ noise, level }) => noise !== null && readsStepEitherWay(noise.differences, level, noise.unbilled),
+        ({ noise, level }) => noise !== null && readsStepEitherWay(noise.unbilled, level),
       ).length,
       risk: riskIn(log),
       runway: runwayIn(log),

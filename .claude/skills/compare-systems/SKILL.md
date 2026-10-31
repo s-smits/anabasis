@@ -29,7 +29,7 @@ campaign with its own solver and its own trial log (`openCampaign`, the path `cl
 takes), and solves through the campaign's paid seat held at the host's load (`solved`, `gated`), so
 every solve has the campaign's checks, limits and wall. Each candidate is scored against the
 baseline with the comparison's own functions: the tally and the sign-flip test (`scored`), the step
-rule with the bill and without it (`readsStep`), the least detectable shift (`detectable`) and the
+rule without the bill (`readsStep`), the least detectable shift (`detectable`) and the
 measure that carried each task (`carriedBy`). The checks give each answer its verdict, and the
 Referee `--reviewer` names rules every rejection before it counts: one ruled earned is a fail, and
 one ruled a check defect or unclear, or left unruled, sets its task aside for every system
@@ -89,7 +89,7 @@ operator's word.
 3. **The A/A**, only at an even count of two solves or more.
 4. **One block a candidate.** Wins, losses and ties against the baseline; which measure carried the
    untied tasks (validity, the objective, or the bill alone); p each way; and one verdict:
-   - `X is better`: a step at the level, with the bill and without it, as a campaign reads one.
+   - `X is better`: a step at the level without the bill, as a campaign reads one.
    - `no step either way`: this size found no difference. It is **no proof of equality**, and the
      line gives the smallest share of untied tasks a side must win for this size to show it.
 

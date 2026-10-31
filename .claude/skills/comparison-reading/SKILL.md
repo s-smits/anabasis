@@ -32,7 +32,7 @@ comparisons again under other weights or a candidate tree is `promotion-tuner` '
 | Change what `comparison.started` fixes, the draw (`poolOf`, `scoredSet`), the mirror or the endings of a solve | `references/draw-and-solves.md` |
 | Change `pointsOf`, `WEIGHTS`, `ROOM`, `FULL`, `CHEAPER`, `flipP`, `stepOf`, `readsStep` or the A/A | `references/tally-and-test.md`, then `promotion-tuner` to replay the record |
 | Ask how many tasks a step needs, which tallies clear the level, the false rate or the detectable share | `scripts/size.ts` |
-| Ask whether a given set of task scores reads a step, with and without the bill | `scripts/size.ts --scores ... --unbilled ...` |
+| Ask whether a given set of task scores reads a step without the bill, and what they read with it | `scripts/size.ts --scores ... --unbilled ...` |
 | Ask what the next comparison would score, why it scored fewer tasks than its target, or why admission refuses `held-short` | `scripts/draw.ts <log or name>`, then `references/draw-and-solves.md` |
 | Ask why a recorded comparison read `step`, `no-step` or `not-scored`, or what its A/A read | `scripts/reading.ts <log or name>`, then `references/tally-and-test.md` |
 | Change a rejection's ruling path, the cap, the budget, `roomOf`, `stopRule` or promotion | `references/limits-and-room.md` |
@@ -60,7 +60,7 @@ bun .claude/skills/comparison-reading/scripts/draw.ts <log.jsonl | campaign name
   `--scores` it reads one set of task scores (`testOf`, `power`, `detectable`, and `readsStep` with
   `--unbilled`).
 - `reading.ts` prints every comparison of a log by its last report (`lastReports`; ladder readings
-  of 14 to 16 October left out): the reading, the test with and without the bill, the frontier and
+  of 14 to 16 October left out): the reading, the test without the bill and the tally with it, the frontier and
   retained sets, the A/A read either way (`readsStepEitherWay`), the room (`roomOf`) and the tasks
   left out, and marks a recorded reading the tree's `stepOf` reads otherwise. A name is found on any
   host through `logAcross`.

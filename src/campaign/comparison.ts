@@ -46,8 +46,8 @@ import type { Ruling } from "../referee/referee.ts";
 import { type Worth, worthOf } from "./climb.ts";
 
 /**
- * A `step` requires the new harness to clear the fixed level against the reference on both task
- * scores and scores without the bill (`readsStep`, `compare.ts`). A comparison that tallied no task
+ * A `step` requires the new harness to clear the fixed level against the reference on its task
+ * scores without the bill (`readsStep`, `compare.ts`). A comparison that tallied no task
  * is `not-scored`: it tested nothing. Calling it `no-step` would imply a test found no gain.
  * Eight unscored rounds were labelled `no-step` on 8 October. `check-defects` marks a comparison
  * stopped for check defects; `no-change` marks a session with no new harness to compare. Historical reports from
@@ -64,7 +64,7 @@ type Tested = Omit<ReturnType<typeof scored>, "unbilled"> & { readonly unbilled?
 /** One of the two sets a comparison fixes at its start (`retained`, `Fixed`): the tasks that
  *  entered it, which are its denominator, those of them set aside, and its tally and test. */
 /** `of` names the task of each difference; a report from before 14 October holds none. `unbilled`
- *  holds each task's score without the bill in the same order, which the step clears as well
+ *  holds each task's score without the bill in the same order, which the step is read on
  *  (`readsStep`). */
 type Entered = Tested & {
   readonly tasks: readonly string[];
@@ -94,8 +94,10 @@ export interface Report {
   /** The new harness against the reference one, over `versions`: the tally and its test. `unsolved`
    *  counts the tied tasks no counted solve of either harness answered validly. The other ties are
    *  between valid answers, which is the share the plan's Phase 3 turns on. Null when nothing was
-   *  compared. The step is read on it (`readsStep`), with its `detectable` and `falseRate`, the test's
-   *  `power` at one half and never over the level. Before 20 October those two were the frontier's. */
+   *  compared. The step is read on its scores without the bill (`readsStep`), with its `detectable`
+   *  and `falseRate`, the test's `power` at one half and never over the level, read on the same
+   *  scores since 31 October and on the scores as they stand before. Before 20 October those two
+   *  were the frontier's. */
   readonly scored:
     | (Tested & {
         readonly unsolved: number;
@@ -120,13 +122,12 @@ export interface Report {
   readonly overlap: { readonly with: string; readonly tasks: readonly string[] } | null;
   /** The reference harness against itself on halves of its own solves mirrored in time, the A/A comparison,
    *  where it holds an even number of a task: how often two of its solves of a task
-   *  disagree (`flips`), the least share of its untied tasks one half has to win for the scored
-   *  test at the level to detect it four times in five (`detectable`), which says how much its
-   *  reading no step can show. A report of 12 to 18 October also holds the objective's margin its
-   *  own spread set, which the next comparison read by until one margin stood for all, and none
-   *  since 19 October (`SAME`, `compare.ts`). The step needs both scored and unbilled tests in
-   *  the same direction; `detectable` describes the scored test alone. Older reports without
-   *  unbilled scores retain their scored-only A/A reading. */
+   *  disagree (`flips`), the least share of its untied tasks one half has to win for the test
+   *  without the bill at the level to detect it four times in five (`detectable`, on the scores as
+   *  they stand before 31 October), which says how much its reading no step can show. A report of
+   *  12 to 18 October also holds the objective's margin its own spread set, which the next
+   *  comparison read by until one margin stood for all, and none since 19 October (`SAME`,
+   *  `compare.ts`). Older reports without unbilled scores are read on their scores as they stand. */
   readonly noise:
     | (Tested & {
         readonly flips: number | null;
@@ -469,14 +470,14 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
   const mirrored = fixed.solves >= 2 && fixed.solves % 2 === 0 ? itself() : null;
   const aa = mirrored === null ? null : scored(mirrored);
   const tested = scored(pairs);
-  const stepped = readsStep(tested.differences, tested.unbilled, fixed.level);
+  const stepped = readsStep(tested.unbilled, fixed.level);
   const reading: Reading = pairs.length === 0 ? "not-scored" : stepped ? "step" : "no-step";
   return {
     scored: {
       ...tested,
       unsolved: pairs.filter(unsolved).length,
-      detectable: detectable(tested.differences, fixed.level),
-      falseRate: power(tested.differences, 0.5, fixed.level),
+      detectable: detectable(tested.unbilled, fixed.level),
+      falseRate: power(tested.unbilled, 0.5, fixed.level),
     },
     frontier: sets.frontier,
     retained: sets.retained,
@@ -490,8 +491,7 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
         : {
             ...aa,
             flips: flipsOf(mirrored),
-            // Power of the scored test alone; the A/A step also needs the unbilled test.
-            detectable: detectable(aa.differences, fixed.level),
+            detectable: detectable(aa.unbilled, fixed.level),
           },
     counted: pairs.length === first.length ? null : scored(first),
     versions: pairs.map(({ task }) => task),

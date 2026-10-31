@@ -60,7 +60,9 @@ factor it affects, or the separate purpose it serves. Recorded values live in `d
   eight of them at the default level (`comparisonFloor`).
 - **1. Climb**: how much ability has accumulated, read as promotions within one campaign
   (`src/campaign/climb.ts`); promotions added up across campaigns make no climb. The milestone, six
-  confirmed promotions in one real campaign and then in a second domain, is for observation only,
+  confirmed promotions in one real campaign and then in a second domain, is for observation only
+  (a promotion is confirmed once a starter comparison of its epoch reads the reference above the
+  starter without the bill at its level: `confirmed`, `src/campaign/climb.ts`),
   so no prompt, tool or move names a count.
 - **2. Honesty**: could a gain be chance or drift? An A/A comparison beside every comparison, the
   reference's first solve of each task against its second, measures it. One reading clears between
@@ -285,8 +287,8 @@ answers, so a refused answer is never the better one, and two answers closer tha
 objective tie on it.
 
 **The test** is an exact one-sided sign-flip test on the nonzero task scores; ties are excluded. A
-step clears the level (0.02 by default, kept by each campaign's opening) both with and without the
-bill (operator, 25 October), so the bill alone never promotes. With equal margins it clears at 6 to
+step is read on the scores without the bill (0.02 by default, kept by each campaign's opening),
+so the bill alone never promotes; from 25 to 31 October it had to clear with the bill as well. With equal margins it clears at 6 to
 0, 8 to 1, 10 to 2 or 12 to 3 at 0.02.
 
 **The reading** is one of `step`, `no-step`, `not-scored`, `check-defects` and `no-change`.

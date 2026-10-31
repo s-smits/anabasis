@@ -237,8 +237,8 @@ function SetUp({ reading }: { reading: CampaignReading }) {
 function rateSource(risk: NonNullable<CampaignReading["counters"]["risk"]>): string {
   const controls =
     risk.controls === 0
-      ? "no A/A control with enough untied tasks in every test"
-      : `${String(risk.errors)} of ${plural(risk.controls, "A/A control")} with enough untied tasks in every test read a step; joint reachability unmeasured`;
+      ? "no A/A control with enough untied tasks to read a step"
+      : `${String(risk.errors)} of ${plural(risk.controls, "A/A control")} with enough untied tasks to read a step read one`;
   const incapable =
     risk.incapable === 0 ? "" : `, and ${String(risk.incapable)} too small to read one at their level`;
   return `${percent(risk.bound)} for the riskiest attempt by the rule's design; ${controls}${incapable}`;

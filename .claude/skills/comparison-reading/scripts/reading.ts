@@ -8,7 +8,7 @@
  * For each comparison's last report, show its reading, full and unbilled tests, frontier and retained
  * tallies, A/A control, room and omitted-task counts. Re-evaluate the step with stepOf and the A/A
  * with readsStepEitherWay, marking any disagreement with the recorded reading. Older reports may
- * lack the scores required by the current rule. --level uses the requested level for both tests.
+ * lack the scores required by the current rule. --level uses the requested level for the test.
  *
  * Names resolve through logAcross; read and lastReports own log parsing and report selection.
  * This script evaluates recorded scores. Use promotion-tuner/replay.ts to rescore recorded solves
@@ -110,7 +110,7 @@ function aaOf(noise: JsonValue | undefined, level: number): Row["aa"] {
     losses,
     ties,
     flips: isNumber(set.flips) ? set.flips : null,
-    either: readsStepEitherWay(differences, level, numbers(set.unbilled) ?? differences),
+    either: readsStepEitherWay(numbers(set.unbilled) ?? differences, level),
   };
 }
 

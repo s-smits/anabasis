@@ -105,7 +105,7 @@ async function everything(tier: Tier): Promise<string[]> {
 }
 
 describe("what a comparison came to", () => {
-  test("counts an A/A step only when both tests clear the level in the same direction", async () => {
+  test("counts an A/A step either way where its scores without the bill clear the level", async () => {
     const units = `${KEY.split("/")[0] ?? ""}/${fixture.units}`;
     const { answer: controlReading } = await ask("campaign", { key: units }, "default");
     // At two solves a side b-1 and b-2 carry an A/A too, the first solve against the second.
@@ -124,8 +124,8 @@ describe("what a comparison came to", () => {
     for (const [unbilled, steps] of [
       [[0, 0, 0, 0], 0],
       [[1, 1, 1, -1], 0],
-      [[1, 1, 1, 1], 0],
-      [[-1, -1, -1, -1], 1],
+      [[1, 1, 1, 1], 3],
+      [[-1, -1, -1, -1], 3],
     ] as const) {
       const log = {
         events: events.map((event) => {

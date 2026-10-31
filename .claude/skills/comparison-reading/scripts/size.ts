@@ -12,7 +12,7 @@
  *
  * --scores evaluates comma-separated task scores, with ties as zero. It reports the tally, p,
  * false-positive rate and detectable share at those margins. --unbilled supplies the same tasks
- * in the same order, allowing readsStep to check both tests. Without scores it also lists every
+ * in the same order, allowing readsStep to read the step on them. Without scores it also lists every
  * equal-margin tally that clears within --untied tasks (clearing), beyond the three sizeLines
  * names.
  *
@@ -31,7 +31,7 @@ const USAGE = `usage:
 --level     the step's level (0.02, the default level)
 --untied    how many untied tasks the test reads, each won or lost by one margin (24)
 --scores    one comparison's task scores, comma-separated, ties as 0: read them as its test does
---unbilled  the same tasks' scores without the bill, in the same order: whether both tests clear`;
+--unbilled  the same tasks' scores without the bill, in the same order: whether they read a step`;
 const OPTIONS = { level: "text", untied: "int", scores: "text", unbilled: "text" } as const;
 const LEVEL = 0.02;
 
@@ -59,7 +59,7 @@ export function scoresRead(scores: readonly number[], level: number, unbilled: r
     ...testOf(scores),
     falseRate: power(scores, 0.5, level),
     detectable: detectable(scores, level),
-    step: unbilled === null ? null : readsStep(scores, unbilled, level),
+    step: unbilled === null ? null : readsStep(unbilled, level),
   };
 }
 
@@ -96,7 +96,7 @@ function scoresLines(scores: readonly number[], level: number, unbilled: readonl
     ...(read.step === null
       ? []
       : [
-          `with the unbilled scores: ${read.step ? "step" : "no-step"} (readsStep: a step clears both tests)`,
+          `with the unbilled scores: ${read.step ? "step" : "no-step"} (readsStep: a step is read on these alone)`,
         ]),
   ];
 }

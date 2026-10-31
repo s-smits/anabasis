@@ -481,7 +481,7 @@ function comparisonTriggers(log: Index): Trigger[] {
         : [
             fired(
               "REFERENCE AGAINST ITSELF",
-              `${session}: ${String(count(noise.wins))} won, ${String(count(noise.losses))} lost and ${String(count(noise.ties))} tied between two samples of the reference harness${readsStepEitherWay(apart, level, unbilled) ? ", which reads a step where none can be" : ""}`,
+              `${session}: ${String(count(noise.wins))} won, ${String(count(noise.losses))} lost and ${String(count(noise.ties))} tied between two samples of the reference harness${readsStepEitherWay(unbilled ?? apart, level) ? ", which reads a step where none can be" : ""}`,
             ),
           ]),
     ];

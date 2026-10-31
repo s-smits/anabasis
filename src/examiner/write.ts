@@ -302,6 +302,8 @@ export async function measured(
   if (!startable(log, 1)) return { reason: UNAFFORDED, said: "" };
   const from = read(log).length - 1;
   const readings: Ending[] = [];
+  // The Referee's reasons where it ruled the checks at fault on a rejection (`probing`).
+  const faulted: string[] = [];
   let ran = 0;
   // Each reading is read after the one before, so the last read holds every reading.
   let reading = seenOf(admission, task, { from, readings, authorAnswer });
@@ -314,6 +316,7 @@ export async function measured(
       if (solved.outcome === "non-result" && signal.reason === held) return;
       ran += 1;
       if (solved.outcome !== "non-result") readings.push(solved);
+      else if (solved.kind === "check" && solved.reason !== "") faulted.push(solved.reason);
       reading = reading.then(() => seenOf(admission, task, { from, readings, authorAnswer }));
       if ((await reading).room) cut.abort(held);
     });
@@ -337,7 +340,7 @@ export async function measured(
   const { solves, valid, answers, authored, gap, widest, unsolved } = seen;
   const unread =
     solves < ran
-      ? `, ${String(ran - solves)} of them ending in no reading or in a rejection the Referee did not rule earned`
+      ? `, ${String(ran - solves)} of them ending in no reading or in a rejection the Referee did not rule earned${faulted.length === 0 ? "" : `, ${plural(faulted.length, "time")} because ${faulted.at(-1) ?? ""}`}`
       : "";
   // The turns each valid answer took, against the budget where it counts them: a refusal at 3 of 20
   // turns says the method reached the answer directly (esp32-fresh-opus-terra's x-4, 27 October).

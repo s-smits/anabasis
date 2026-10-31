@@ -31,7 +31,10 @@
  * solve id or a Referee call, so the task admission durably refuses the draft unmeasured.
  * Since 14 October a submitted rejection is ruled by the campaign's Referee before the task admission counts
  * it. An unclear, defective or unruled rejection leaves the draft unmeasured; other endings keep
- * their meaning. Neither the answer nor the ruling reaches the Examiner.
+ * their meaning. The answer never reaches the Examiner, and of a ruling only the reason of one that
+ * faults the checks: recode-fresh-opus-forkedPR370's drafting author (25 October) was told only that
+ * an example's rejection was not ruled earned, froze the off-by-one check the Referee had named, and
+ * its campaign ended on that check at its first comparison.
  * A model session that requests room solves is refused without `--reviewer` before it opens (`refereeNamed`).
  * From 9 to 12 October no solve ran here, and a task was held out on its shape check; until 9 October each
  * instance was put to a stronger solver and to the measured one, and the second live session spent $48.45 that way,
@@ -140,13 +143,12 @@ export async function probing(
     const { solve, ending } = result;
     if (ending.outcome !== "fail" || ending.kind !== "rejected") return ending;
     const finding = await reviewers?.referee(solve, task, kill);
-    return finding?.ruling === "earned"
-      ? ending
-      : ({
-          outcome: "non-result",
-          kind: "check",
-          reason: "the admission rejection is not ruled earned",
-        } as const);
+    if (finding?.ruling === "earned") return ending;
+    // The Referee's reason where it ruled the checks at fault, which the task admission tells the
+    // author (`measured`, `write.ts`): the exam side's own finding, and nothing of the answer.
+    const reason =
+      finding?.ruling === "check-defect" ? `the Referee ruled the checks at fault: ${finding.reason}` : "";
+    return { outcome: "non-result", kind: "check", reason } as const;
   };
 }
 

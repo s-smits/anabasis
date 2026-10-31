@@ -109,6 +109,15 @@ describe("a draft read without a model", () => {
     }
   });
 
+  it("gives each check a task's hidden values as the author wrote them", async () => {
+    const hidden = {
+      ...SOUND,
+      evaluator: `export const checks = {\n  "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * req.hidden.factor),\n};\n`,
+      tasks: SOUND.tasks.map((task) => ({ ...task, hidden: { factor: 6 } })),
+    };
+    expect(await draftReading(join(root, "read"), hidden, 2)).toEqual([]);
+  });
+
   it("tells a field of the answer that no check reads, and leaves one the format allows no change of", async () => {
     for (const [format, count] of [
       [{ type: "string" }, 1],

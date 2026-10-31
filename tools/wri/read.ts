@@ -67,6 +67,7 @@ import {
 import { safeguardTriggers } from "./climb.ts";
 import { promotionTriggers, testedOf } from "./promotion.ts";
 import { runTriggers } from "./run.ts";
+import { degradationLines } from "../runs/degradations.ts";
 import type { Receipt } from "../runs/receipt.ts";
 import { costTriggers, hoursLine, deadlineTriggers } from "./time.ts";
 
@@ -735,6 +736,9 @@ function rowsOf(log: Index, steps: readonly Handover[]): Row[] {
         `${plural(conditions.length, "condition")}: ${tally(countBy(conditions, (condition) => `${condition.side} ${condition.model}`))}`,
         `host code ${distinct((condition) => condition.host)}, sandbox ${distinct((condition) => condition.sandbox)}, verifier tools ${distinct((condition) => condition.verifierTools)}, harnesses ${distinct((condition) => condition.harness)}`,
         `${share(done.filter((solve) => solve.served.length === 0).length, done.length)} finished solves name no response model`,
+        // Every seat's turns, not only a comparison's scored solves: recode's campaigns ran every seat
+        // on claude-opus-5 for a check-defects reading that scored none, so no trigger fired (31 October).
+        ...degradationLines(log.events).slice(0, 1),
       ],
     },
     {

@@ -40,6 +40,17 @@ import { heldAtGate } from "./task.ts";
 export const SEATS = ["build", "exam", "draft", "repair", "referee", "solve"] as const;
 export type Seat = (typeof SEATS)[number];
 
+/** The turns of one session or solve that one model other than its seat's answered (`degradations`). */
+export interface Degradation {
+  readonly seat: Seat;
+  readonly id: string;
+  readonly asked: string;
+  readonly served: string;
+  readonly turns: number;
+  readonly first: string;
+  readonly last: string;
+}
+
 /** A session or a solve that began and has no end on record: what kind of start and its id, the
  *  dollars its turns and compactions metered, its turns, and when it began and wrote its last
  *  event (`unfinished`). Whose a solve is, is `ownersOf`'s to say. */
@@ -198,6 +209,43 @@ export function traced({ kind, at, data }: LogEvent, index: number): Traced | nu
   if (part !== "compacted") return null;
   const usages = Array.isArray(data.usages) ? data.usages : [];
   return { ...mark, part, billed: usages.reduce<number>((sum, usage) => sum + (costOf(usage) ?? 0), 0) };
+}
+
+/** The turns from `from` on that another model answered than their seat asked for, one row a
+ *  session or solve and model served. Every seat's start names the model asked for, as
+ *  `provider/model`; the Referee's turns have no start, so they go unread. A dated snapshot reads as
+ *  its model's, after an exact match, so a seat that asks for a snapshot is not read as served
+ *  another. Seats that asked for claude-opus-5-5 were answered by another model on 7,542 recorded
+ *  turns from 20 to 31 October, in seven recode campaigns and two buffer ones: as claude-opus-5 on
+ *  all but 24, which claude-opus-4-8 answered. Read by the pulse for each look's
+ *  new turns, by the gather for the record it keeps in `data/runs/degradations/` and by the
+ *  investigation. */
+export function degradations(events: readonly LogEvent[], from = 0): Degradation[] {
+  const asked = new Map<string, string>();
+  for (const { kind, data } of events) {
+    const seat = SEATS.find((each) => kind === `${each}.started`);
+    const id = seat === undefined ? undefined : data[whose(seat)];
+    if (isString(id) && isString(data.model)) asked.set(id, data.model);
+  }
+  const rows = new Map<string, Degradation>();
+  for (const each of tracesIn(events.slice(from))) {
+    const seat = each.part === "turn" ? asked.get(each.id) : undefined;
+    if (each.part !== "turn" || each.model === null || seat === undefined) continue;
+    const wanted = seat.slice(seat.indexOf("/") + 1);
+    if (each.model === wanted || each.model.replace(/-\d{8}$/u, "") === wanted) continue;
+    const key = `${each.id}\u0000${each.model}`;
+    const was = rows.get(key);
+    rows.set(key, {
+      seat: each.seat,
+      id: each.id,
+      asked: seat,
+      served: each.model,
+      turns: (was?.turns ?? 0) + 1,
+      first: was?.first ?? each.at,
+      last: each.at,
+    });
+  }
+  return [...rows.values()];
 }
 
 /** Every part of every trace in `events`, in the order logged. */

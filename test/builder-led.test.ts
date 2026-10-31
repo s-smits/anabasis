@@ -1089,71 +1089,72 @@ describe("a campaign tool where the table names more than the action", () => {
     expect(compares[1]?.why).toContain("where the table named a comparison of the starter harness");
   });
 
+  /** Everything the Builder read from its tools in a campaign whose two comparisons tied the
+   *  tasks `ties` names, by comparison, as the nth tasks that comparison solved or by id, with the
+   *  host's clock taken out. Three ties of five keep each reading below a step at the suite's level. */
+  const read_ = async (
+    name: string,
+    ties: Readonly<Record<string, readonly (number | string)[]>>,
+    flags: readonly string[] = FLAGS,
+  ): Promise<string> => {
+    const answering = passing();
+    const seen = new Map<string, string[]>();
+    const nth = (comparison: string, task: string) => {
+      const solved = seen.get(comparison) ?? [];
+      if (!solved.includes(task)) solved.push(task);
+      seen.set(comparison, solved);
+      return solved.indexOf(task);
+    };
+    const silent = scriptedSeats({ held: { old: "none", fresh: "none" }, starter: "none" }, GRADED, []);
+    const base: Seated = (campaign, given) => {
+      const [won, tie] = [answering(campaign, given), silent(campaign, given)];
+      return {
+        ...won,
+        solve: (task, harness, kill, comparison) =>
+          ([nth(comparison ?? "", task.taskId), task.taskId].some(
+            (key) => ties[comparison ?? ""]?.includes(key) === true,
+          )
+            ? tie
+            : won
+          ).solve(task, harness, kill, comparison),
+      };
+    };
+    const seats: Seats = {
+      seated: builderScript(base, [
+        CHANGE_GUIDE,
+        ["compare", {}],
+        CHANGE_AGAIN,
+        ["compare", {}],
+        ["campaign_status", {}],
+        ["read_opening", {}],
+        ["finish", { note: "Read two harnesses." }],
+        ["finish", { note: "Read two harnesses." }],
+      ]),
+    };
+    expect(await harnessBuilder([...seeded(name), ...flags], seats)).toMatchObject({ ending: "finished" });
+    expect(of(name, REPORTED).map(({ scored }) => scored)).toMatchObject(
+      ["g-1", "g-2"].map((comparison) => ({ wins: 2, losses: 0, ties: ties[comparison]?.length })),
+    );
+    // The campaign's facts end each campaign tool's result once, and no other tool's.
+    const facts = of(name, CALLED).map(({ tool, text }) => ({
+      campaign: tool === "compare" || tool === "campaign_status",
+      count: isString(text) ? text.split("Campaign facts:").length - 1 : 0,
+    }));
+    expect(facts.length).toBeGreaterThan(4);
+    for (const { campaign, count } of facts) expect(count).toBe(campaign ? 1 : 0);
+    return (
+      of(name, CALLED)
+        .map(({ tool, text }) => `${isString(tool) ? tool : ""}: ${isString(text) ? text : ""}`)
+        .join("\n")
+        .replaceAll(/\d+:\d\d of/gu, "0:00 of")
+        // A comparison's minutes are the host's clock: on 14 October CI read one campaign's g-1 at
+        // 0 minutes and the other's at 1, the same tally under a busier host.
+        .replaceAll(/took \d+ minutes?/gu, "took 0 minutes")
+    );
+  };
+
   it("tells the Builder the same whichever held-out task was won", async () => {
     layOutPack(root, bundle, MANY, FIXTURE);
-    /** Everything the Builder read from its tools in a campaign whose two comparisons tied the
-     *  tasks `ties` names, by comparison, as the nth tasks that comparison solved, with the host's
-     *  clock taken out. Three ties of five keep each reading below a step at the suite's level. */
-    const read_ = async (
-      name: string,
-      ties: Readonly<Record<string, readonly number[]>>,
-    ): Promise<string> => {
-      const answering = passing();
-      const seen = new Map<string, string[]>();
-      const nth = (comparison: string, task: string) => {
-        const solved = seen.get(comparison) ?? [];
-        if (!solved.includes(task)) solved.push(task);
-        seen.set(comparison, solved);
-        return solved.indexOf(task);
-      };
-      const silent = scriptedSeats({ held: { old: "none", fresh: "none" }, starter: "none" }, GRADED, []);
-      const base: Seated = (campaign, given) => {
-        const [won, tie] = [answering(campaign, given), silent(campaign, given)];
-        return {
-          ...won,
-          solve: (task, harness, kill, comparison) =>
-            (ties[comparison ?? ""]?.includes(nth(comparison ?? "", task.taskId)) === true ? tie : won).solve(
-              task,
-              harness,
-              kill,
-              comparison,
-            ),
-        };
-      };
-      const seats: Seats = {
-        seated: builderScript(base, [
-          CHANGE_GUIDE,
-          ["compare", {}],
-          CHANGE_AGAIN,
-          ["compare", {}],
-          ["campaign_status", {}],
-          ["read_opening", {}],
-          ["finish", { note: "Read two harnesses." }],
-          ["finish", { note: "Read two harnesses." }],
-        ]),
-      };
-      expect(await harnessBuilder([...seeded(name), ...FLAGS], seats)).toMatchObject({ ending: "finished" });
-      expect(of(name, REPORTED).map(({ scored }) => scored)).toMatchObject([
-        { wins: 2, losses: 0, ties: 3 },
-        { wins: 2, losses: 0, ties: 3 },
-      ]);
-      // The campaign's facts end each campaign tool's result once, and no other tool's.
-      const facts = of(name, CALLED).map(({ tool, text }) => ({
-        campaign: tool === "compare" || tool === "campaign_status",
-        count: isString(text) ? text.split("Campaign facts:").length - 1 : 0,
-      }));
-      expect(facts.length).toBeGreaterThan(4);
-      for (const { campaign, count } of facts) expect(count).toBe(campaign ? 1 : 0);
-      return (
-        of(name, CALLED)
-          .map(({ tool, text }) => `${isString(tool) ? tool : ""}: ${isString(text) ? text : ""}`)
-          .join("\n")
-          .replaceAll(/\d+:\d\d of/gu, "0:00 of")
-          // A comparison's minutes are the host's clock: on 14 October CI read one campaign's g-1 at
-          // 0 minutes and the other's at 1, the same tally under a busier host.
-          .replaceAll(/took \d+ minutes?/gu, "took 0 minutes")
-      );
-    };
     // The two campaigns tie other tasks in each comparison, and the tallies are the same. Until
     // 12 October the status counted the tasks waiting for a label and the exhausted ones, and two
     // such campaigns read differently (rule 3).
@@ -1162,6 +1163,33 @@ describe("a campaign tool where the table names more than the action", () => {
     expect(moved).toBe(same);
     expect(same).toContain("2 won, 0 lost, 3 tied");
     expect(same).toContain("Comparison g-2 took 0 minutes and billed");
+  });
+
+  it("tells the Builder the same whichever held-out task was won where the frontier falls below the target", async () => {
+    layOutPack(root, bundle, MANY, FIXTURE);
+    // A task no side answered in two comparisons waits for a label and leaves the frontier. Here
+    // the candidate's g-2 win takes the first task out of that wait or leaves it in, so the count a
+    // comparison would score differs unless no harness but the reference decides it (rule 3).
+    // The stored sweep accepted no answer, so no held-out task holds a valid answer on record
+    // before a comparison gives it one.
+    const grades = join(root, "grades", "s", "grades.tsv");
+    writeFileSync(grades, readFileSync(grades, "utf8").replaceAll("verified-pass", "verified-fail"));
+    const flags = [...FLAGS.slice(0, -LEVEL.length - 2), "--target", "8", ...LEVEL];
+    // The comparisons draw t-2, t-4, t-6, t-8 to t-12. Each ties six and the candidate wins two; in
+    // the second campaign g-2 wins t-2 in place of t-11.
+    const tied = ["t-2", "t-4", "t-6", "t-8", "t-9", "t-10"];
+    const same = await read_(`${STEM}-short-one`, { "g-1": tied, "g-2": tied }, flags);
+    const moved = await read_(
+      `${STEM}-short-other`,
+      { "g-1": tied, "g-2": [...tied.slice(1), "t-11"] },
+      flags,
+    );
+    const awaiting = ["one", "other"].map((world) => supplyOf(logOf(`${STEM}-short-${world}`)).awaiting);
+    // Until 31 October a candidate's pass took a task out of the wait: 6 and 5 waited, and the
+    // first campaign's Builder was told to examine where the second's was told to build.
+    expect(awaiting).toEqual([8, 8]);
+    expect(same).toContain("2 won, 0 lost, 6 tied");
+    expect(moved).toBe(same);
   });
 });
 

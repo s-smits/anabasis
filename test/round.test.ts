@@ -1855,14 +1855,15 @@ describe("the scored set", () => {
   });
 
   it("scores every frontier task, and of the retained tasks one for each three frontier tasks", () => {
-    // Nine tasks the reference answered in every solve, three it answered in none: all nine are
-    // retained, and the set takes one of them. Until 16 October the hash kept three of the nine
+    // Nine tasks the reference answered in every solve, three it answered in one of two: all nine
+    // are retained, and the set takes one of them. Since 31 October only the reference's own answer
+    // keeps a task out of the wait for a label, so the three are ones it answers sometimes. Until 16 October the hash kept three of the nine
     // and the set took all three, topping a set short of frontier up with tasks that can only tie.
     const closed = Array.from({ length: 9 }, (_, nth) => `c${String(nth)}`);
     const open = ["f1", "f2", "f3"];
     const outcomes = Object.fromEntries([
       ...closed.map((version) => [version, "PP PP"] as const),
-      ...open.map((version) => [version, "FF PP"] as const),
+      ...open.map((version) => [version, "FP PP"] as const),
     ]);
     // Two readings, since one calls no task easy.
     const logged: LogEvent[] = [...heldOut([...closed, ...open])];
@@ -1917,6 +1918,8 @@ describe("the scored set", () => {
     {
       // A cut solve says the budget was short, and nothing of the task.
       const s = await setup([], (version) => (version === "s1" ? LATE : PASS));
+      // Only the reference's answers keep a task from the wait (31 October): make the kept one it.
+      append(s.log, "harness.promoted", { harness: s.old, from: s.starter.digest, rests: [] });
       await checkpoint(s.paired("g-1"));
       await checkpoint(s.paired("g-2"));
       expect(poolOf(read(s.log)).awaiting).toEqual([]);

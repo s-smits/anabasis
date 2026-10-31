@@ -105,8 +105,12 @@ export async function loadTree(path: string): Promise<Tree> {
     readsStep: (differences, unbilled, level) =>
       compare.stepOf({ frontier: { differences, unbilled: unbilled ?? [] }, retained: UNMEASURED }, level) ===
       "step",
+    // From 31 October a tree's step reads the scores without the bill alone, and its `readsStep`
+    // takes them and the level; a tree before that reads the scores as they stand first.
     readsStepEitherWay: (differences, level, unbilled) =>
-      compare.readsStepEitherWay(differences, level, unbilled),
+      isFunction(compare.readsStep) && compare.readsStep.length === 2
+        ? compare.readsStepEitherWay(unbilled, level)
+        : Reflect.apply(compare.readsStepEitherWay, undefined, [differences, level, unbilled]) === true,
     measures: (value) => compare.measuresIn(value),
     billedBetween: (events, from, to) => trace.billedBetween(events, from, to),
     billed: trace.BILLED,

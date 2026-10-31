@@ -219,7 +219,7 @@ export function latestBuilt(events: readonly LogEvent[]): string | null {
 /**
  * The harness the operator last promoted to be the reference, by its digest, or null while none
  * has been: the reference harness is then the starter. A promotion is an event the operator
- * confirmed (`tools/d2/promote.ts`), and one that names the starter returns the campaign to it.
+ * authorised (`tools/d2/promote.ts`), and one that names the starter returns the campaign to it.
  */
 export function promoted(events: readonly LogEvent[]): string | null {
   const harness = events.findLast(({ kind }) => kind === "harness.promoted")?.data.harness;

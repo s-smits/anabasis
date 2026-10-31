@@ -36,7 +36,7 @@ comparison. A v1.0 release needs every row below. The values stand in
 | --- | --- | --- |
 | wall | the wall tests pass on macOS and on Linux (plan row H1) | `test/builder.test.ts`, `test/builder-led.test.ts`, the wall's start-up test |
 | supply | every comparison admitted on at least `comparisonFloor` informative tasks | `src/campaign/admission.ts`, `bun run runs view <name>` |
-| climb | six confirmed promotions in one measured campaign (`AGENTS.md`, section 10, item 9), then the same in a second domain (plan row L2). "Confirmed" needs one owner in source before it can be read | `src/campaign/climb.ts`, `promotion-tuner/scripts/table.ts --rows runs` |
+| climb | six confirmed promotions in one measured campaign (`AGENTS.md`, section 10, item 9), then the same in a second domain (plan row L2). "Confirmed" is `confirmed` in `src/campaign/climb.ts`: the epoch's last starter comparison reads the reference above the starter without the bill at its level | `src/campaign/climb.ts`, `promotion-tuner/scripts/table.ts --rows runs` |
 | honesty | no step in the ten A/A comparisons after the sixth promotion, so one campaign has to run past six | `falsePromotion` and `incapable` (`src/campaign/climb.ts`), the table's A/A column |
 | verdicts | at least 30 blind labels; three in four check defects caught; at most one in ten earned rejections voided; PABAK beside kappa | `tools/d2/settle.ts`, `src/referee/agreement.ts` |
 | grounding | one domain whose exam names the field's installed engine, so its checks stand without `--admit-authored` (rule 10, plan row F32) | `tools/c/accept.ts` |

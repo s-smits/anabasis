@@ -254,7 +254,7 @@ describe("one reading", () => {
     expect(onCost.unbilled).toEqual(units(0, 0, 0, 6));
     expect(onCost.p).toBeLessThanOrEqual(STRICT);
     expect(stepOf({ frontier: onCost, retained: "unmeasured" }, STRICT)).toBe("no-step");
-    // The same six a fifth better by the objective as well: both tests clear, and the bill adds
+    // The same six a fifth better by the objective as well: the test without the bill clears, and the bill adds
     // its points to a step the other measures carry.
     const better = cheaper.map((pair) => ({
       ...pair,
@@ -282,18 +282,14 @@ describe("one reading", () => {
     );
   });
 
-  it("requires scored and unbilled A/A tests to clear in the same direction, retaining old scored-only reports", () => {
+  it("reads an A/A either way on the scores without the bill alone", () => {
     const wins = units(6, 0);
     const losses = units(0, 6);
     expect(flipP(wins)).toBe(1 / 64);
-    expect(readsStepEitherWay(wins, STRICT, units(0, 0, 0, 6))).toBe(false);
-    expect(readsStepEitherWay(wins, STRICT, units(5, 1))).toBe(false);
-    expect(readsStepEitherWay(wins, STRICT, losses)).toBe(false);
-    expect(readsStepEitherWay(losses, STRICT, wins)).toBe(false);
-    expect(readsStepEitherWay(wins, STRICT, wins)).toBe(true);
-    expect(readsStepEitherWay(losses, STRICT, losses)).toBe(true);
     expect(readsStepEitherWay(wins, STRICT)).toBe(true);
     expect(readsStepEitherWay(losses, STRICT)).toBe(true);
+    expect(readsStepEitherWay(units(5, 1), STRICT)).toBe(false);
+    expect(readsStep(losses, STRICT)).toBe(false);
   });
 });
 
@@ -751,9 +747,7 @@ describe("the comparison reading", () => {
         const tested = scored(cases);
         expect(result.scored.differences).toEqual(tested.differences);
         expect(result.scored.unbilled).toEqual(tested.unbilled);
-        expect(result.reading).toBe(
-          readsStep(tested.differences, tested.unbilled, fixed.level) ? "step" : "no-step",
-        );
+        expect(result.reading).toBe(readsStep(tested.unbilled, fixed.level) ? "step" : "no-step");
         expect(result.reading).toBe(
           stepOf(
             {

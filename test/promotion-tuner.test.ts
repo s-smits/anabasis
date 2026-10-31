@@ -64,7 +64,7 @@ function replay(
   return totals;
 }
 
-it("promotes and diagnoses A/A steps only when both tests pass under the requested weights", async () => {
+it("promotes and diagnoses A/A steps by the tree's own rule under the requested weights", async () => {
   const tree = await loadTree(ROOT);
   for (const [pairs, steps] of [
     [CHEAP, 0],

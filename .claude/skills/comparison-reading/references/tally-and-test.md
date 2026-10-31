@@ -52,11 +52,13 @@ separately. An empty retained set is `unmeasured`, rather than evidence of no re
 Family tallies describe concentration; they do not establish independence.
 
 The step (`stepOf`) is the test at or under the level (0.02 by default; with equal margins 6 to 0, 8
-to 1, 10 to 2, 12 to 3; at 0.10: 4 to 0, 6 to 1, 7 to 2, 9 to 3), cleared twice: on each task's
-score, and on the same scores without the bill (`unbilled`). A step has to stand without the bill
-(the operator, 25 October), so the second test can only take a step away. The null is the fixed-task
-one. Every reading prints its untied count, the share it detects four times in five (`detectable`)
-and its false rate at its margins (`falseRate`), an upper bound under the two-test rule: at 24
+to 1, 10 to 2, 12 to 3; at 0.10: 4 to 0, 6 to 1, 7 to 2, 9 to 3), read on each task's score
+without the bill (`unbilled`), so the bill alone never promotes. From 25 to 31 October it had to
+clear on the score as it stands too; of 47 comparisons read under both, none cleared without the bill
+and failed with it, so that test went (decision D1). The null is the fixed-task one. Every reading
+prints its untied count, the share it detects four times in five (`detectable`) and its false rate
+at its margins (`falseRate`), both of the test without the bill (on the full score in a report from
+before 31 October): at 24
 untied tasks of equal margin 1.1% at 0.02 and 7.6% at 0.10, and other margins have rates of their
 own. A `step` counts for the stop rule as a gain. The level is recorded at the opening, so a
 campaign is read by its own rule.

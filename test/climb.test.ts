@@ -19,7 +19,6 @@
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { type Epoch, epochLine, epochsOf, riskLines, worthOf } from "../src/campaign/climb.ts";
 import { examine } from "../src/examiner/session.ts";
-import { readsStep } from "../src/kernel/compare.ts";
 import { type Condition, settingId } from "../src/kernel/condition.ts";
 import { type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
 import { GUIDE_FILE } from "../src/meta/bundle-layout.ts";
@@ -397,7 +396,7 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     });
     if (second === undefined) throw new Error("an epoch");
     expect(epochLine(second)).toContain(
-      "a false promotion among them estimated at 10%: 10% for the riskiest attempt by the rule's design; 0 of 1 A/A comparison with enough untied tasks in every test read a step; joint reachability unmeasured, and 3 too small to read one at their level",
+      "a false promotion among them estimated at 10%: 10% for the riskiest attempt by the rule's design; 0 of 1 A/A comparison with enough untied tasks to read a step read one, and 3 too small to read one at their level",
     );
     expect(riskLines(log)[2]).toStartWith(
       "Over the campaign, a false promotion in any epoch estimated at 50%:",
@@ -411,7 +410,7 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     ];
     expect(epochsOf(lucky)[0]?.falsePromotion).toMatchObject({ errors: 1, controls: 2, incapable: 0 });
     expect(riskLines(lucky)[0]).toContain(
-      "1 of 2 A/A comparisons with enough untied tasks in every test read a step; joint reachability unmeasured.",
+      "1 of 2 A/A comparisons with enough untied tasks to read a step read one.",
     );
     // Past one the sum is capped there.
     const many = Array.from({ length: 11 }, (_, at) =>
@@ -420,7 +419,7 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     expect(epochsOf([started, ...many])[0]?.falsePromotion.union).toBe(1);
   });
 
-  it("counts dual A/A steps and reports only marginal size, without claiming joint reachability", () => {
+  it("reads an A/A on its scores without the bill, so a bill-only sweep is too small to read a step", () => {
     const aa = (session: string, unbilled: readonly number[]) =>
       event("comparison.reported", {
         ...attempt(session, "S", "h2").data,
@@ -434,20 +433,56 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
       aa("both", [1, 1, 1, 1]),
     ];
     expect(epochsOf(log)[0]?.falsePromotion).toMatchObject({ errors: 1, controls: 3, incapable: 1 });
-    // Opposite scores can each pass after independent sign changes, but never under common flips.
-    const signs = Array.from({ length: 16 }, (_unused, mask) =>
-      Array.from({ length: 4 }, (_, at) => ((mask & (1 << at)) === 0 ? 1 : -1)),
+  });
+});
+
+describe("the starter comparison in an epoch's row", () => {
+  // In an objective domain the starter answers every task validly and still loses on the
+  // objective: the row reads the reference's tally against it without the bill, from the
+  // reference's side, and not the starter's share of valid answers.
+  const opened = event("comparison.started", { session: "g-1", old: "S", fresh: "h2", starter: "S" });
+  const promoted = event("harness.promoted", { harness: "h2" });
+  const starterRead = (scored: JsonObject) =>
+    event("comparison.reported", {
+      session: "g-2",
+      reading: "no-step",
+      old: "h2",
+      fresh: "S",
+      level: 0.02,
+      scored,
+    });
+
+  it("counts the reference's wins without the bill, where the bill alone turned one task", () => {
+    const log = [
+      opened,
+      promoted,
+      starterRead({ differences: [-1, -1, -0.1, 0.1], unbilled: [-1, -1, 0, 0.1] }),
+    ];
+    const [first, second] = epochsOf(log);
+    expect(first?.starter_tally).toBeNull();
+    expect(second?.starter_tally).toEqual({ wins: 2, losses: 1, ties: 1 });
+    expect(epochLine(present(second))).toContain(
+      "against the starter without the bill 2 won, 1 lost, 1 tied, no step",
     );
-    expect(
-      signs.some((one) =>
-        readsStep(
-          one,
-          one.map((value) => -value),
-          0.1,
-        ),
-      ),
-    ).toBe(false);
-    expect(epochLine(present(epochsOf(log)[0]))).toContain("joint reachability unmeasured");
+    expect([first?.confirmed, second?.confirmed]).toEqual([null, false]);
+  });
+
+  it("confirms the promotion only where the reference clears the level against the starter without the bill", () => {
+    // Six tasks won on the bill alone are no step without it; six won on validity are one at 0.02.
+    const onBill = starterRead({ differences: Array(6).fill(-0.1), unbilled: Array(6).fill(0) });
+    const onValidity = starterRead({ differences: Array(6).fill(-1), unbilled: Array(6).fill(-1) });
+    expect(epochsOf([opened, promoted, onBill])[1]?.confirmed).toBe(false);
+    const confirmed = present(epochsOf([opened, promoted, onValidity])[1]);
+    expect(confirmed.confirmed).toBe(true);
+    expect(epochLine(confirmed)).toContain("6 won, 0 lost, 0 tied, a step, so its promotion is confirmed");
+  });
+
+  it("says unread before a starter comparison reports, and nothing in the first epoch", () => {
+    const [first, second] = epochsOf([opened, promoted]);
+    expect(second?.starter_tally).toBeNull();
+    expect(second?.confirmed).toBe(false);
+    expect(epochLine(present(second))).toContain("against the starter unread");
+    expect(epochLine(present(first))).not.toContain("against the starter");
   });
 });
 

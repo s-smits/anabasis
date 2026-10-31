@@ -226,7 +226,7 @@ export interface ComparisonBar {
   /** The host's one-minute load when it began (`campaign.move`), null where not recorded. */
   readonly load: number | null;
   /** The two sets fixed at comparison start and tallied separately in its report. The step test
-   *  reads their weighted margins together, both with and without the bill. Retained tasks are
+   *  reads their weighted margins together without the bill. Retained tasks are
    *  `unmeasured` where none was tallied; that establishes no absence of losses. Null where no report holds
    *  them: a comparison with no report yet, or one from before the sets were read apart. */
   readonly sets: {

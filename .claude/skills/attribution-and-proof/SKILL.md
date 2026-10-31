@@ -72,7 +72,7 @@ Answer these from the log before using the word step in a sentence of your own:
   halves of the reference's solves mirrored in time. It is available at any even number of solves
   per side; at two, it compares the first solve with the second (`compared`,
   `src/campaign/comparison.ts`). An A/A reading ends nothing. A step in either direction, at the
-  comparison's level and with and without the bill (`readsStepEitherWay`), indicates that the two
+  comparison's level without the bill (`readsStepEitherWay`), indicates that the two
   halves were not interchangeable. Report it beside the candidate's step.
 - **How thin?** At `--level 0.02`, six untied tasks all won is the least that reads a step
   (p = 0.015625), and 5-0 (p = 0.03125) reads none. With equal pair margins, 8-1, 10-2 and

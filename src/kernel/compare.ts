@@ -29,16 +29,19 @@
  * set with no task tallied is `unmeasured`, never no loss. Until 16 October a step whose untied
  * tasks all fell in one family read `narrow`; in 1,598 recorded readings it never fired.
  *
- * One comparison's reading, `step`, is that test at or under the level, 0.02 by default, made twice
- * over the same tasks: on each task's score as it stands, and on its score with the bill's points
- * taken out (`scoresOf`, `unbilled`). Both have to clear the level, and a step against the reference
- * promotes (`readsStep`; `decide.ts`). The operator chose this on 25 October, after v065-a's aecc1c92
- * was promoted on 25-3 as scored where the same tasks read 0-10 without the bill, a harness worse by
- * the objective promoted on its cost. The bill still weighs a tenth of a task's score between two
- * valid answers, but a step it carries, alone or by moving the margins past the level, is no step. The
- * second test can only take a step away, since a step still needs the first: replayed by the promotion
- * tuner on 26 October over the 84 readings of 40 campaigns since 21 October, 7 of the 46 promotions
- * the scored test still reads lose their step, and none is added. The level is the caller's and
+ * One comparison's reading, `step`, is that test at or under the level, 0.02 by default, on each
+ * task's score with the bill's points taken out (`scoresOf`, `unbilled`), and a step against the
+ * reference promotes (`readsStep`; `decide.ts`). The bill still weighs a tenth of a task's score
+ * between two valid answers in the tally, but no step rests on it. From 25 to 31 October the step
+ * also had to clear the level on the score as it stands: the operator chose the second test after
+ * v065-a's aecc1c92 was promoted on 25-3 as scored where the same tasks read 0-10 without the bill, a
+ * harness worse by the objective promoted on its cost. Of 47 comparisons read under both tests, none
+ * cleared without the bill and failed as scored, so the scored test decided nothing the other did not,
+ * and it went (decision D1 of the cycle after v0.9.0). Replayed by the promotion tuner on 31 October
+ * over 214 readings since 15 October, dropping it added one step and took none: v070's g-4, 21-5-6
+ * without the bill and 17-15-0 as scored, a harness better by the objective on 16 tasks and dearer. Replayed by the promotion tuner on 26 October
+ * over the 84 readings of 40 campaigns since 21 October, the test without the bill took the step
+ * from 7 of the 46 promotions the scored test reads, and added none. The level is the caller's and
  * recorded with the campaign's opening, so a campaign reads by its own rule whatever the tree's
  * default (`7f0add79:docs/plan.md`, Statistical power and cost). From 10 to 19 October the step was
  * read in two stages: a first reading at or under a trigger, 0.25, bought a repeat on fresh solves,
@@ -279,30 +282,21 @@ export function flipP(differences: readonly number[]): number {
   return Math.min(1, above(signed(sizes, 0.5), Math.ceil((total(differences) + total(sizes)) / 2)));
 }
 
-/** Whether both the scored and unbilled tests clear `level` for the new harness. */
-export function readsStep(
-  differences: readonly number[],
-  unbilled: readonly number[],
-  level: number,
-): boolean {
-  return flipP(differences) <= level && flipP(unbilled) <= level;
+/** Whether the test on the scores without the bill (`unbilled`) clears `level` for the new harness. */
+export function readsStep(unbilled: readonly number[], level: number): boolean {
+  return flipP(unbilled) <= level;
 }
 
-/** Whether a reading of one harness against itself reads a step either way at `level`: both
- *  tests must clear in the same direction, as a comparison would read a step whichever
- *  sample it took for the new harness. Its two sides are interchangeable by construction, so such
+/** Whether a reading of one harness against itself reads a step either way at `level`, on its
+ *  scores without the bill, as a comparison would read a step whichever sample it took for the new
+ *  harness. Its two sides are interchangeable by construction, so such
  *  a step says the comparison moved, not a harness. The whole-run reader and the UI count it so,
  *  and no move waits on it: until 20 October the table ended a campaign on its epoch's first.
- *  An old report without unbilled scores retains its scored-only reading. */
-export function readsStepEitherWay(
-  differences: readonly number[],
-  level: number,
-  unbilled: readonly number[] = differences,
-): boolean {
+ *  An old report without unbilled scores is read on its scores as they stand. */
+export function readsStepEitherWay(unbilled: readonly number[], level: number): boolean {
   return (
-    readsStep(differences, unbilled, level) ||
+    readsStep(unbilled, level) ||
     readsStep(
-      differences.map((one) => -one),
       unbilled.map((one) => -one),
       level,
     )
@@ -332,22 +326,21 @@ export function sweepOf(level: number): number {
   return sweep;
 }
 
-/** The promotion tuner's reading at `level`: `step` where frontier and retained tasks clear it
- *  both as scored and without the bill (`readsStep`). It reads only sets this tree has just scored,
+/** The promotion tuner's reading at `level`: `step` where frontier and retained tasks together
+ *  clear it without the bill (`readsStep`). It reads only sets this tree has just scored,
  *  so a set without its scores is the caller's fault and is refused: a report before 12 October
  *  holds a pooled tally alone, and one before 26 October no `unbilled`. A recorded report keeps the
  *  reading it wrote; the promotion tuner scores its pairs again instead. */
 export function stepOf(report: JsonObject, level: number): "step" | "no-step" {
   const sets = [report.frontier, ...(report.retained === UNMEASURED ? [] : [report.retained])];
-  const together = (key: "differences" | "unbilled") =>
-    sets.flatMap((set) => {
-      const found = asRecord(set)?.[key];
-      if (!Array.isArray(found) || !found.every(isNumber)) {
-        throw new Error(`a reading needs a frontier and a retained set, each with its ${key}`);
-      }
-      return found;
-    });
-  return readsStep(together("differences"), together("unbilled"), level) ? "step" : "no-step";
+  const unbilled = sets.flatMap((set) => {
+    const found = asRecord(set)?.unbilled;
+    if (!Array.isArray(found) || !found.every(isNumber)) {
+      throw new Error("a reading needs a frontier and a retained set, each with its unbilled");
+    }
+    return found;
+  });
+  return readsStep(unbilled, level) ? "step" : "no-step";
 }
 
 /** The objective rule a comparison's start, or its report, carries, or undefined where it fixed
@@ -516,8 +509,7 @@ export function differenceOf(pair: Paired, kept: Kept = "scored"): number {
 }
 
 /** The measure that carried a task's result from its points (`pointsOf`), null for a tie: the bill
- *  where the score without it does not share the score's sign, a win `readsStep`'s second test reads
- *  without; validity where its points alone do; and otherwise the objective. In
+ *  where the score without it does not share the score's sign, a win `readsStep` reads without; validity where its points alone do; and otherwise the objective. In
  *  buffer-fresh-opus-v065-a's g-3 the bill carried 25 of 25 wins, and the Examiner was told each as a
  *  win (26 October). It reads points rather than a pair so that the promotion tuner, which scales
  *  them by other weights, credits a win by this rule too: until 29 October it credited the first

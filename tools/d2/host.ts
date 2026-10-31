@@ -93,18 +93,22 @@ function queued({ seated, loaded, host = seated === solved ? HOST : undefined }:
         }
         // The load is read at every look until the solve starts: on 27 October three room solves
         // of esp32-fresh-opus-terra read 3.2 on 12 cores, waited a minute for a slot, and began at 15.9.
-        let [looks, since, load] = [0, 0, 0];
+        // The wait on record is the time slept at a high load alone: until 31 October it ran from the
+        // first high look to the start, slot and reserve waits after the load cleared included.
+        let [looks, load, ms] = [0, 0, 0];
         for (;;) {
           const [now, flown] = [loaded || looks >= LOOKS ? 0 : host.load(), inFlight(log)];
           const full = flown >= campaign.limits.concurrency || (flown > 0 && !affords(log, 1));
           if (kill?.aborted === true || (now <= host.cores && !full)) break;
           if (now > host.cores && (looks += 1) === 1) {
-            [since, load] = [Date.now(), now];
+            load = now;
             console.log(
               `the host's load is ${load.toFixed(1)} on ${String(host.cores)} cores: a solve of ${task.taskId} waits until it is at or under them, at most half an hour, or pass --loaded`,
             );
           }
+          const slept = Date.now();
           await waiting(host.waitMs, kill, host.sleep);
+          if (now > host.cores) ms += Date.now() - slept;
         }
         if (looks > 0) {
           append(log, WAITED, {
@@ -113,7 +117,7 @@ function queued({ seated, loaded, host = seated === solved ? HOST : undefined }:
             ...keyIfDefined("comparison", comparison),
             load,
             cores: host.cores,
-            ms: Date.now() - since,
+            ms,
           });
         }
         kill?.throwIfAborted();

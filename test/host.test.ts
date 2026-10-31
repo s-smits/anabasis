@@ -184,6 +184,32 @@ describe("load and reserve admission", () => {
     expect(waits(log).map(({ data }) => data.load)).toEqual([99]);
   });
 
+  it("puts on record only the time slept at a high load, not the slot wait after it cleared", async () => {
+    const log = logIn("load-then-slot");
+    let [load, now] = [99, 0];
+    const free = Promise.withResolvers<void>();
+    // Each sleep is ten seconds on the clock: the load clears after the first, and the slot stays
+    // full for three more.
+    const host = hostOf(
+      () => load,
+      4,
+      (count) => {
+        now += 10_000;
+        if (count === 1) load = 0;
+        if (count === 4) free.resolve();
+      },
+    );
+    const clock = spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      const held = gate(log, host, false, 1);
+      await Promise.all([flying(log, () => free.promise), held.solve(TASK, HARNESS, undefined, "x-1")]);
+    } finally {
+      clock.mockRestore();
+    }
+    expect(host.slept).toHaveLength(4);
+    expect(waits(log).map(({ data }) => data.ms)).toEqual([10_000]);
+  });
+
   it("holds a solve while another is in flight and the reserve is short, until the kill, and puts nothing on record", async () => {
     const log = logIn("reserve");
     append(log, "campaign.opened", { budget: { dollars: 0.7, reserve: 0.4 } });

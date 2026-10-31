@@ -199,7 +199,8 @@ export async function examineCommand(
   const declared = readBrief(campaign.checks).truthChecks;
   const sofar = read(campaign.log);
   const before = taskStates(sofar);
-  const probe = seated === null ? null : await probing(campaign, seated, setting, values);
+  // Ablation arm free (round 8, 31 October): validity off, supply off. Never merged.
+  const probe = seated === null ? null : null;
   stayAwake();
   const examined = await session(
     {

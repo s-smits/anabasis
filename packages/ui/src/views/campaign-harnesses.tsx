@@ -1,8 +1,8 @@
-import { type KeyboardEvent, type ReactNode, useState } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import { Badge, Button, HashValue } from "../components/primitives.tsx";
 import { detailsOf, type Of } from "../live.ts";
 import type { CampaignReading, HarnessCard } from "../models.ts";
-import type { Navigation, PaneProps } from "../route.ts";
+import { type Navigation, type PaneProps, useKept } from "../route.ts";
 import { short } from "../../../../src/campaign/move.ts";
 import { digestText, STARTER_NAME, tallyText } from "./campaign-data.ts";
 import { matchesTerms } from "../components/tool-call.tsx";
@@ -67,7 +67,7 @@ function selectedIndex(cards: readonly HarnessCard[], harness: string | null): n
  *  card's are read (`held.ts`). */
 function Files({ of, digest, navigation }: { of: Of; digest: string; navigation: Navigation }) {
   const { files, view, stale, slow, listed, toggle } = useHarnessFiles(of, digest);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useKept("harness-files.search", "");
   if (files.error !== null) return <span className="ana-harness-note">{files.error}</span>;
   const shown = listed.filter(({ path, about }) => matchesTerms(`${path} ${about ?? ""}`, query));
   return (

@@ -31,6 +31,9 @@ import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
  * The filter forgives typos (Fuse.js, `FUZZY`) and puts the closest match first: the list is a few
  * hundred names, so a loose match costs a few extra rows and a strict one hid "stakced" (operator,
  * 30 October).
+ *
+ * A picker given `chosen` ticks several values: a pick toggles one and the list stays open, as a
+ * filter's does, until a press or a Tab outside it or Escape closes it.
  */
 
 interface PickerOption {
@@ -57,6 +60,9 @@ interface Entry {
 /** Lenient: a match anywhere in a field, at most 40% of it misspelt, the option's own name weighed
  *  first, and each word of the query matched apart (extended search), so that "opus air" finds the
  *  Opus campaign on the Air and not every Opus campaign. */
+/** The option of a choice that ticks nothing, which every row passes. */
+const EVERY = "\u0000every";
+
 const FUZZY = {
   keys: [
     { name: "option.label", weight: 2 },
@@ -123,6 +129,7 @@ function PickerInner({
   filtered = false,
   shown,
   icon: Icon,
+  chosen,
 }: {
   label: string;
   value: string | null;
@@ -131,6 +138,9 @@ function PickerInner({
   placeholder?: string;
   /** Typing narrows the list. */
   filtered?: boolean;
+  /** The values ticked in a list that holds several: a pick toggles one and leaves the list open
+   *  until focus leaves the picker or Escape closes it. */
+  chosen?: ReadonlySet<string>;
   /** What the trigger shows for the current option, where it differs from the option's own line. */
   shown?: { readonly label: string; readonly detail?: string };
   /** The trigger's icon, the whole trigger where the sidebar is collapsed. */
@@ -164,9 +174,11 @@ function PickerInner({
   function commit(index: number) {
     const option = flat[index];
     if (option !== undefined) onChange(option.value);
+    if (chosen !== undefined) return;
     close();
     trigger.current?.focus();
   }
+  const ticked = (option: PickerOption) => chosen?.has(option.value) ?? option.value === value;
 
   /** Types `next` into the filter and opens the list on its first match. */
   function filterTo(next: string) {
@@ -272,6 +284,7 @@ function PickerInner({
             className="ana-picker-panel"
             id={`${id}-listbox`}
             role="listbox"
+            aria-multiselectable={chosen === undefined ? undefined : true}
             aria-labelledby={`${id}-label`}
             onMouseDown={keepFocus}
           >
@@ -310,10 +323,10 @@ function PickerInner({
                         id={`${id}-option-${index}`}
                         ref={index === active ? scrollNearest : undefined}
                         tabIndex={-1}
-                        aria-selected={option.value === value}
+                        aria-selected={ticked(option)}
                         key={option.value}
                         className={`ana-picker-option ${index === active ? "is-active" : ""} ${
-                          option.value === value ? "is-current" : ""
+                          ticked(option) ? "is-current" : ""
                         }`}
                         onMouseEnter={() => setActive(index)}
                         onClick={() => commit(index)}
@@ -344,41 +357,59 @@ export const Picker = memo(PickerInner);
 
 /** A choice in a filter row, in the search box's style: the list opens with a box that finds a
  *  value by typing, as the campaign picker does (operator, 30 October: a native select could not
- *  be searched, and drew in the system's style). */
+ *  be searched, and drew in the system's style). It ticks any number of values, and a row passes
+ *  where it holds one of them; the first option, `every`, clears the ticks. Until 31 October it
+ *  held one value and closed on the pick (operator). */
 export function Choose({
   label,
-  value,
+  chosen,
   onChange,
   values,
+  every,
   format = (item: string) => item,
   detail,
 }: {
   label: string;
-  value: string;
-  onChange: (value: string) => void;
+  chosen: readonly string[];
+  onChange: (chosen: readonly string[]) => void;
   values: readonly string[];
+  /** The first option in words, which passes every row, and what it stands for beside them. */
+  every: { readonly label: string; readonly detail?: string };
   format?: (value: string) => string;
   /** What a value stands for beside its words, such as how many rows hold it. */
   detail?: (value: string) => string;
 }) {
+  const ticked = new Set(chosen.length === 0 ? [EVERY] : chosen);
   const groups = [
     {
       key: label,
       label: null,
-      options: values.map((item) => ({
-        value: item,
-        label: format(item),
-        ...keyIfDefined("detail", detail?.(item)),
-      })),
+      options: [
+        { value: EVERY, ...every },
+        ...values.map((item) => ({
+          value: item,
+          label: format(item),
+          ...keyIfDefined("detail", detail?.(item)),
+        })),
+      ],
     },
   ];
   return (
     <Picker
       label={label}
-      value={value}
+      value={chosen[0] ?? EVERY}
+      chosen={ticked}
       groups={groups}
-      onChange={onChange}
-      shown={{ label: format(value) }}
+      onChange={(item) =>
+        onChange(
+          item === EVERY
+            ? []
+            : chosen.includes(item)
+              ? chosen.filter((each) => each !== item)
+              : [...chosen, item],
+        )
+      }
+      shown={{ label: chosen.length === 0 ? every.label : chosen.map(format).join(", ") }}
       filtered
     />
   );

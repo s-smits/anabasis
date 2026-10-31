@@ -15,6 +15,7 @@ import {
   routeParameters,
   type Served,
   serveFixture,
+  tick,
   type Viewing,
 } from "./browser.ts";
 import { arm, expectFocusRing, framesOf, tabTo, watchFrames } from "./browser-watch.ts";
@@ -283,6 +284,15 @@ describe("the Tasks pane's filters", () => {
       const notes = await grid(on).locator("tbody th small").allTextContents();
       expect(notes.every((note) => note.startsWith(value))).toBe(true);
     }
+    // A choice ticks several values, a task passing where it holds one, and stays open between ticks.
+    await pick(on, "State", "held");
+    await tick(on, "State", "released");
+    await expect(corner(on)).toHaveText("Tasks (24)");
+    await expect(on.getByRole("listbox", { name: "State", exact: true })).toBeVisible();
+    await tick(on, "State", "held");
+    await expect(corner(on)).toHaveText("Tasks (2)");
+    await on.getByRole("searchbox", { name: "Filter states" }).press("Escape");
+    await expect(state).toHaveText("released");
     await pick(on, "State", "all");
     await expect(corner(on)).toHaveText("Tasks (26)");
 

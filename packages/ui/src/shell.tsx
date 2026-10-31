@@ -5,7 +5,7 @@ import { Badge, NoSignal } from "./components/primitives.tsx";
 import { ProjectSidebar } from "./components/project-sidebar.tsx";
 import type { Live } from "./live.ts";
 import type { CampaignList, CampaignReading, Issue } from "./models.ts";
-import { kept, type Navigation, type Pane, type PaneProps, type Route } from "./route.ts";
+import { kept, type Navigation, type Pane, type PaneProps, type Route, useKept } from "./route.ts";
 import { respelled, SpelledAddress } from "./spelling.ts";
 import { CampaignPane } from "./views/campaign.tsx";
 import { Inspector } from "./views/inspector.tsx";
@@ -162,7 +162,7 @@ export function Shell({
   campaigns: Live<CampaignList>;
   reading: Live<CampaignReading>;
 }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useKept("sidebar.collapsed", false, true);
   const { route, push } = navigation;
   const selection = selectionOf(campaigns.data, route);
   // The address names what is shown, in its one spelling (`spelling.ts`), once the list is read.

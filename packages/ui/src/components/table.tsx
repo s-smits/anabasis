@@ -9,7 +9,8 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
-import { Fragment, type ReactNode, useMemo, useState } from "react";
+import { Fragment, type ReactNode, useMemo } from "react";
+import { useKept } from "../route.ts";
 import { Filters, Search } from "../views/controls.tsx";
 import { Choose } from "./picker.tsx";
 import { Button, NoSignal } from "./primitives.tsx";
@@ -20,11 +21,10 @@ import { matchesTerms } from "./tool-call.tsx";
  * choice for each column that offers one, all in the browser over rows already read (TanStack
  * Table). Until 30 October each table filtered by hand with native selects of its own, and none
  * sorted (operator). A table draws `ROWS` rows and the rest on asking, since a log of a few
- * thousand events drawn whole held the page for a second.
+ * thousand events drawn whole held the page for a second. Its sort, search, ticks and rows drawn
+ * are kept across a reload of the view (`useKept`).
  */
 
-/** Every value of a choice, as its filter offers it first. */
-const EVERY = "\u0000every";
 const ROWS = 200;
 
 /** One column: its head, its cell, and what it sorts and filters by, where it does. */
@@ -50,13 +50,9 @@ function SortMark({ sorted }: { sorted: false | "asc" | "desc" }) {
   return <ArrowUpDown aria-hidden="true" className="ana-sort-idle" />;
 }
 
-/** How many rows hold each value of a choice, with all of them under `every`. */
-export function choiceCounts<Row>(
-  rows: readonly Row[],
-  choice: (row: Row) => string,
-  every: string,
-): Map<string, number> {
-  const counts = new Map([[every, rows.length]]);
+/** How many rows hold each value of a choice. */
+export function choiceCounts<Row>(rows: readonly Row[], choice: (row: Row) => string): Map<string, number> {
+  const counts = new Map<string, number>();
   for (const row of rows) counts.set(choice(row), (counts.get(choice(row)) ?? 0) + 1);
   return counts;
 }
@@ -88,10 +84,10 @@ export function Table<Row>({
   /** The sort the table opens with. */
   sorted?: SortingState;
 }) {
-  const [sorting, setSorting] = useState<SortingState>(sorted);
-  const [chosen, setChosen] = useState<ColumnFiltersState>([]);
-  const [query, setQuery] = useState("");
-  const [shown, setShown] = useState(ROWS);
+  const [sorting, setSorting] = useKept<SortingState>(`${label}.sort`, sorted);
+  const [chosen, setChosen] = useKept<ColumnFiltersState>(`${label}.chosen`, []);
+  const [query, setQuery] = useKept(`${label}.search`, "");
+  const [shown, setShown] = useKept(`${label}.shown`, ROWS);
   const defs = useMemo(
     () =>
       columns.map(
@@ -100,7 +96,8 @@ export function Table<Row>({
           accessorFn: (row) => column.sort?.(row) ?? undefined,
           enableSorting: column.sort !== undefined,
           sortUndefined: "last",
-          filterFn: (row, _id, value) => value === EVERY || column.choice?.(row.original) === value,
+          filterFn: (row, _id, value: readonly string[]) =>
+            value.includes(column.choice?.(row.original) ?? ""),
         }),
       ),
     [columns],
@@ -120,17 +117,17 @@ export function Table<Row>({
     getFacetedRowModel: getFacetedRowModel(),
     getSortedRowModel: getSortedRowModel(),
   });
-  const narrowed = query.trim() !== "" || chosen.some(({ value }) => value !== EVERY);
+  const narrowed = query.trim() !== "" || chosen.length > 0;
   const recorded = !narrowed && sorting.length === 0;
   const visible = table.getRowModel().rows;
   const choiceOf = (id: string) =>
-    // SAFETY: every filter value is set by a `Choose` below, whose values are strings.
-    (chosen.find((each) => each.id === id)?.value as string | undefined) ?? EVERY;
+    // SAFETY: every filter value is set by a `Choose` below, whose ticks are a list of strings.
+    (chosen.find((each) => each.id === id)?.value as readonly string[] | undefined) ?? [];
   // A choice every row answers alike would narrow nothing, so it stands only where the rows differ
   // or while it is set.
   const choices = columns.filter(
     ({ id, choice }) =>
-      choice !== undefined && (choiceOf(id) !== EVERY || new Set(rows.map(choice)).size > 1),
+      choice !== undefined && (choiceOf(id).length > 0 || new Set(rows.map(choice)).size > 1),
   );
   return (
     <>
@@ -140,30 +137,28 @@ export function Table<Row>({
         )}
         {choices.map((column) => {
           // A choice offers the values the search and the other choices leave, each with its count,
-          // in the order the rows first hold them, and keeps its own value while that holds none.
+          // in the order the rows first hold them, and keeps its own ticks while they hold none.
           const choice = column.choice ?? String;
-          const value = choiceOf(column.id);
-          const facet = table.getColumn(column.id)?.getFacetedRowModel().rows ?? [];
-          const counts = choiceCounts(
-            facet.map(({ original }) => original),
-            choice,
-            EVERY,
+          const ticked = choiceOf(column.id);
+          const facet = (table.getColumn(column.id)?.getFacetedRowModel().rows ?? []).map(
+            ({ original }) => original,
           );
+          const counts = choiceCounts(facet, choice);
+          const name = column.chooser ?? column.head;
           return (
             <Choose
               key={column.id}
-              label={column.chooser ?? column.head}
-              value={value}
-              values={[EVERY, ...new Set(rows.map(choice))].filter(
-                (each) => each === value || counts.has(each),
+              label={name}
+              chosen={ticked}
+              values={[...new Set(rows.map(choice))].filter(
+                (each) => ticked.includes(each) || counts.has(each),
               )}
-              format={(each) =>
-                each === EVERY
-                  ? `Every ${(column.chooser ?? column.head).toLowerCase()}`
-                  : (column.words?.(each) ?? each)
-              }
+              every={{ label: `Every ${name.toLowerCase()}`, detail: String(facet.length) }}
+              format={(each) => column.words?.(each) ?? each}
               detail={(each) => String(counts.get(each) ?? 0)}
-              onChange={(each) => table.getColumn(column.id)?.setFilterValue(each)}
+              onChange={(next) =>
+                table.getColumn(column.id)?.setFilterValue(next.length === 0 ? undefined : next)
+              }
             />
           );
         })}

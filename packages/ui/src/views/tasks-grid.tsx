@@ -1,10 +1,10 @@
-import { useState } from "react";
 import { Button, NoSignal } from "../components/primitives.tsx";
 import { matchesTerms } from "../components/tool-call.tsx";
 import type { LeftOut, Outcome, TaskCell, TaskGrid, TaskLeftOut, TaskRow } from "../models.ts";
 import { shortHash } from "../models.ts";
 import { Choose } from "../components/picker.tsx";
 import { choiceCounts } from "../components/table.tsx";
+import { useKept } from "../route.ts";
 import { Filters, Search } from "./controls.tsx";
 import { OUTCOMES } from "./outcome.ts";
 import type { Share } from "../../../../src/campaign/climb.ts";
@@ -25,20 +25,17 @@ import type { Share } from "../../../../src/campaign/climb.ts";
  * sixty tasks stays readable.
  */
 
-const ALL = "all";
-const STATES = [ALL, "held", "released", "refused", "disputed"];
-const YES_NO = [ALL, "yes", "no"];
+const STATES = ["held", "released", "refused", "disputed"];
+const YES_NO = ["yes", "no"];
 const LABEL_WORDS = new Map([
-  ["all", "All tasks"],
   ["yes", "Waits for a label"],
   ["no", "Does not wait"],
 ]);
 const EXHAUSTED_WORDS = new Map([
-  ["all", "All tasks"],
   ["yes", "Exhausted"],
   ["no", "Not exhausted"],
 ]);
-const STATE_WORDS = new Map([["all", "Every state"]]);
+const STATE_WORDS = new Map<string, string>();
 /** Why a task has no cell in a comparison, where its state says more than that it was not scored. */
 const UNSCORED_WORDS = new Map([
   ["released", "practice"],
@@ -129,10 +126,10 @@ function Cell({ cell, state }: { cell: TaskCell | TaskLeftOut | null; state: Tas
 
 /** The grid with its filters; a task's id opens its detail. */
 export function TaskGridView({ grid, onOpen }: { grid: TaskGrid; onOpen: (version: string) => void }) {
-  const [query, setQuery] = useState("");
-  const [state, setState] = useState(ALL);
-  const [label, setLabel] = useState(ALL);
-  const [exhausted, setExhausted] = useState(ALL);
+  const [query, setQuery] = useKept("tasks.search", "");
+  const [state, setState] = useKept<readonly string[]>("tasks.state", []);
+  const [label, setLabel] = useKept<readonly string[]>("tasks.label", []);
+  const [exhausted, setExhausted] = useKept<readonly string[]>("tasks.exhausted", []);
   if (grid.rows.length === 0) {
     return <NoSignal title="No task yet">No task version has been proposed in this campaign</NoSignal>;
   }
@@ -140,9 +137,17 @@ export function TaskGridView({ grid, onOpen }: { grid: TaskGrid; onOpen: (versio
   // Each choice with the value a row holds for it, as the page's tables have them (`table.tsx`): a
   // choice offers what the search and the other choices leave, each with its count.
   const choices = [
-    { name: "State", value: state, set: setState, of: (row: TaskRow) => row.state, words: STATE_WORDS },
+    {
+      name: "State",
+      every: "Every state",
+      value: state,
+      set: setState,
+      of: (row: TaskRow) => row.state,
+      words: STATE_WORDS,
+    },
     {
       name: "Label",
+      every: "All tasks",
       value: label,
       set: setLabel,
       of: (row: TaskRow) => yesNo(row.awaitingLabel),
@@ -150,6 +155,7 @@ export function TaskGridView({ grid, onOpen }: { grid: TaskGrid; onOpen: (versio
     },
     {
       name: "Exhausted",
+      every: "All tasks",
       value: exhausted,
       set: setExhausted,
       of: (row: TaskRow) => yesNo(row.exhausted),
@@ -161,27 +167,29 @@ export function TaskGridView({ grid, onOpen }: { grid: TaskGrid; onOpen: (versio
   );
   const leaving = (skip: string | null) =>
     searched.filter((row) =>
-      choices.every(({ name, value, of }) => name === skip || value === ALL || of(row) === value),
+      choices.every(({ name, value, of }) => name === skip || value.length === 0 || value.includes(of(row))),
     );
   const rows = leaving(null);
-  const filtered = query.trim() !== "" || choices.some(({ value }) => value !== ALL);
+  const filtered = query.trim() !== "" || choices.some(({ value }) => value.length > 0);
   return (
     <>
       <Filters>
         <Search value={query} onChange={setQuery} placeholder="Search tasks by id or version" />
-        {choices.map(({ name, value, set, of, words }) => {
+        {choices.map(({ name, every, value, set, of, words }) => {
           // As in `table.tsx`, a choice every task answers alike stands only while it is set.
-          if (value === ALL && new Set(grid.rows.map(of)).size < 2) return null;
-          const counts = choiceCounts(leaving(name), of, ALL);
+          if (value.length === 0 && new Set(grid.rows.map(of)).size < 2) return null;
+          const left = leaving(name);
+          const counts = choiceCounts(left, of);
           return (
             <Choose
               key={name}
               label={name}
-              value={value}
+              chosen={value}
               onChange={set}
               values={(name === "State" ? STATES : YES_NO).filter(
-                (each) => each === value || counts.has(each),
+                (each) => value.includes(each) || counts.has(each),
               )}
+              every={{ label: every, detail: String(left.length) }}
               format={(each) => words.get(each) ?? each}
               detail={(each) => String(counts.get(each) ?? 0)}
             />
@@ -191,7 +199,7 @@ export function TaskGridView({ grid, onOpen }: { grid: TaskGrid; onOpen: (versio
           <Button
             onClick={() => {
               setQuery("");
-              for (const { set } of choices) set(ALL);
+              for (const { set } of choices) set([]);
             }}
           >
             Clear filters

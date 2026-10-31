@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Section } from "../components/layout.tsx";
 import { Badge, Button, Card, Disclosure, HashValue } from "../components/primitives.tsx";
 import { type Column, Table } from "../components/table.tsx";
@@ -13,7 +12,7 @@ import type {
   Tally,
 } from "../models.ts";
 import { shortHash } from "../models.ts";
-import type { Navigation } from "../route.ts";
+import { type Navigation, useKept } from "../route.ts";
 import { carriedText, leftOutText, pText } from "./campaign-data.ts";
 import { AnswerIssues, DetailHead, endingOf, enter, harnessLabel } from "./drill.tsx";
 import { duration, money, percent, time } from "./format.ts";
@@ -381,7 +380,7 @@ export function ComparisonDetailView({
   reading: CampaignReading;
   navigation: Navigation;
 }) {
-  const [chosen, setChosen] = useState<Outcome | null>(null);
+  const [chosen, setChosen] = useKept<Outcome | null>("comparison.outcome", null);
   const { move, terms } = detail;
   const standing = standingOf(move);
   const tasks = detail.tasks.filter((task) => chosen === null || task.outcome === chosen);

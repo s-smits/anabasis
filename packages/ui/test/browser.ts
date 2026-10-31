@@ -322,15 +322,23 @@ export function chooser(scope: Page | Locator, label: string): Locator {
   return scope.getByRole("combobox", { name: new RegExp(`^${label} `, "u") });
 }
 
-/** Choose `option` in the picker `label` as a person does: open its list and press the option,
- *  named by its words and then, in a table's choice, how many rows hold it. */
+/** Tick `option` in the picker `label` as a person does: open its list if it is closed and press
+ *  the option, named by its words and then, in a table's choice, how many rows hold it. The list
+ *  stays open, as a choice of several values does. */
+export async function tick(scope: Page | Locator, label: string, option: string): Promise<void> {
+  const list = scope.getByRole("listbox", { name: label, exact: true });
+  if (!(await list.isVisible())) await chooser(scope, label).click();
+  const words = option.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`);
+  await list.getByRole("option", { name: new RegExp(`^${words}( \\d+)?$`, "u") }).click();
+}
+
+/** Choose `option` alone in the picker `label`: clear its ticks with its first option, tick
+ *  `option`, and close the list with Escape. */
 export async function choose(scope: Page | Locator, label: string, option: string): Promise<void> {
   await chooser(scope, label).click();
-  const words = option.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`);
-  await scope
-    .getByRole("listbox", { name: label, exact: true })
-    .getByRole("option", { name: new RegExp(`^${words}( \\d+)?$`, "u") })
-    .click();
+  await scope.getByRole("listbox", { name: label, exact: true }).getByRole("option").first().click();
+  await tick(scope, label, option);
+  await scope.getByRole("searchbox", { name: `Filter ${label.toLowerCase()}s` }).press("Escape");
 }
 
 /** What the picker `label` offers, each option's words and its count where it has one, read with

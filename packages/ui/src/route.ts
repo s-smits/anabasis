@@ -21,7 +21,14 @@
  * once beside the list rather than after it: a cold list took 4.4 s that day, and the newest
  * campaign is known only once the list is read.
  */
-import { useCallback, useMemo, useSyncExternalStore } from "react";
+import {
+  type Dispatch,
+  type SetStateAction,
+  useCallback,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { CampaignReading } from "./models.ts";
 import { TOKEN_PARAMETER } from "./models.ts";
 import { keysIf } from "../../../src/meta/optional-key.ts";
@@ -106,6 +113,20 @@ const INSIDE_CAMPAIGN = {
   event: null,
 } as const satisfies RouteChange;
 
+/** What a view's own state is kept under: the campaign and the pane, without the token, the
+ *  selection or the inspector. Keyed by the move as well, a reload of an open detail mounted the
+ *  hidden list under the detail's key, and the way back showed it unfiltered (31 October). */
+const OVER_VIEW: readonly string[] = [
+  TOKEN_PARAMETER,
+  "move",
+  "solve",
+  "task",
+  "harness",
+  "file",
+  "diff",
+  "event",
+];
+
 const listeners = new Set<() => void>();
 
 /** `value` where the URL names it, kept in this browser's storage under `key`; where it names
@@ -118,6 +139,39 @@ export function kept(key: string, value: string | null): string | null {
     // A page rendered without a window, or a browser that keeps no storage, reads the URL alone.
   }
   return value;
+}
+
+/** `useState` that a reload keeps. Until 31 October a refresh, a hot reload or the way back to a
+ *  view put every sort, search and choice back to its default (operator). The value is kept in this
+ *  tab's session storage under `key` and the campaign and pane the URL named as the component
+ *  mounted, so another pane or campaign starts afresh; `wide` keeps one value for every view.
+ *  Closed storage keeps nothing. */
+export function useKept<T>(key: string, initial: T, wide = false): [T, Dispatch<SetStateAction<T>>] {
+  const [stored] = useState(() => {
+    try {
+      const query = new URLSearchParams(window.location.search);
+      for (const each of OVER_VIEW) query.delete(each);
+      return `ana.view.${wide ? "" : query.toString()}.${key}`;
+    } catch {
+      return null;
+    }
+  });
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const held = stored === null ? null : window.sessionStorage.getItem(stored);
+      // SAFETY: only this hook writes under `stored`, from a value of the same `T`.
+      return held === null ? initial : (JSON.parse(held) as T);
+    } catch {
+      return initial;
+    }
+  });
+  // Written as it renders, so the stored value is always the one drawn; writing it again is harmless.
+  try {
+    if (stored !== null) window.sessionStorage.setItem(stored, JSON.stringify(value));
+  } catch {
+    // Closed or full storage keeps nothing, and the view still works.
+  }
+  return [value, setValue];
 }
 
 /** The route a query string names. An unknown pane reads as the Campaign pane, and a move or an

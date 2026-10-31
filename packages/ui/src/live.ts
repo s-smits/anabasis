@@ -14,6 +14,14 @@
  * event moved (`since`), so that a detail open on a campaign that runs does not go stale. An
  * answer to another request than the one asked now, the previous selection's or the previous
  * campaign's, is no answer to it: `current` says so, and every caller shows it as pending.
+ *
+ * The last answer of each endpoint is also kept in the tab's session storage, and a request that
+ * asks for the same path again, after a refresh or a hot reload, starts from it while the server
+ * is read. Until 31 October a refresh dropped the whole page to "Reading the campaign" and then the
+ * pane to "Reading the tasks" for a few hundred milliseconds, and for as long as a restarting
+ * server took (operator). One answer an endpoint is kept, so a long log cannot crowd the rest out
+ * of the storage, and the default tier's alone: the storage is a file on this machine, and an
+ * exam-side answer holds hidden values.
  */
 import { useMemo, useState, useSyncExternalStore } from "react";
 import {
@@ -99,7 +107,21 @@ class Reads<Answer> {
   #text: string | null = null;
   #data: Answer | null = null;
 
+  constructor(path: string | null) {
+    this.#seed(path);
+  }
+
   readonly snapshot = (): Omit<Live<Answer>, "current"> => this.#state;
+
+  /** Starts `path` from the answer the tab kept for it, where the store holds no answer to it. */
+  #seed(path: string | null): void {
+    const text = path === null || this.#state.key === path ? null : keptText(path);
+    if (path === null || text === null) return;
+    this.#text = text;
+    // SAFETY: `keep` stored the text of an answer to this same path.
+    this.#data = JSON.parse(text) as Answer;
+    this.#state = { data: this.#data, key: path, loading: true, error: null, refused: null };
+  }
 
   /** The subscription that reads `asked`, for React to start after it renders the request. */
   subscriber({ path, token, polled }: Asked): (notify: () => void) => () => void {
@@ -115,6 +137,7 @@ class Reads<Answer> {
         if (this.#state !== NOTHING_READ) show(NOTHING_READ);
         return () => undefined;
       }
+      this.#seed(path);
       let active = true;
       const abort = new AbortController();
       const read = async (): Promise<void> => {
@@ -130,6 +153,7 @@ class Reads<Answer> {
           // SAFETY: the server answers this endpoint with `Answer` (`server/api.ts` routes each
           // endpoint to the handler typed by the same map), and a failed answer threw above.
           const parsed = JSON.parse(text) as Answer;
+          keep(path, text, parsed);
           const before = this.#data;
           this.#data = before !== null && keptParts(before, parsed) ? before : parsed;
           show({ data: this.#data, key: path, loading: false, error: null, refused: null });
@@ -154,6 +178,30 @@ class Reads<Answer> {
         abort.abort();
       };
     };
+  }
+}
+
+/** Where an endpoint's last answer is kept, written as its path, a line break and its text. */
+const keptKey = (path: string): string => `ana.answer.${path.slice(API_PREFIX.length).split("?")[0] ?? ""}`;
+
+/** The text the tab kept for `path`, or null. Closed storage keeps nothing. */
+function keptText(path: string): string | null {
+  try {
+    const held = window.sessionStorage.getItem(keptKey(path));
+    const at = held?.indexOf("\n") ?? -1;
+    return held !== null && at >= 0 && held.slice(0, at) === path ? held.slice(at + 1) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Keeps a default-tier answer to `path` for the next page load of this tab. */
+function keep(path: string, text: string, answer: unknown): void {
+  if (!isRecord(answer) || answer.tier !== "default") return;
+  try {
+    window.sessionStorage.setItem(keptKey(path), `${path}\n${text}`);
+  } catch {
+    // Full or closed storage keeps nothing, and the next load reads the server as before.
   }
 }
 
@@ -230,7 +278,7 @@ function useAnswer<Name extends Endpoint>(
 ): Live<AnswerOf<Name>> {
   const { token } = useRoute().route;
   const path = query === null ? null : requestPath(endpoint, query);
-  const [reads] = useState(() => new Reads<AnswerOf<Name>>());
+  const [reads] = useState(() => new Reads<AnswerOf<Name>>(path));
   const polled = refresh === "poll";
   const since = polled ? null : refresh.since;
   const subscribe = useMemo(

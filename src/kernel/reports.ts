@@ -539,9 +539,9 @@ function tallyReports(
  * three had been valid at two hours; a second comparison at that deadline would have taken them out
  * of the scored set as possibly infeasible.
  *
- * - A valid answer anywhere on record settles the question for good: under any harness, in any
- *   comparison or outside one, at any limits. Such a task has a known valid answer, stays in the set and ties
- *   where a budget is too short for it, which costs solves and biases nothing.
+ * - An author's, a room solve's or the reference's valid answer settles it for good, at any limits:
+ *   the task stays and ties where a budget is too short. A candidate's does not, since which task it
+ *   won moved the frontier the Builder is told (rule 3, 31 October).
  * - A comparison in which a limit cut a solve of the task short (`taskRecords`: its deadline or its
  *   context) is not counted for it. What that solve would have answered is not known. A task cut
  *   at every comparison so never goes to a person on this rule, and stays a tie the reports show.
@@ -632,8 +632,8 @@ function tallyReports(
 export function poolOf(events: readonly LogEvent[]) {
   const { records, held } = taskRecords(events);
   const heldRecords = records.filter((record) => record.held);
-  const awaiting = placed(heldRecords, ({ knownValidAnswer, keptAt, tallied }) =>
-    runOf(tallied.filter(({ index, cut }) => !knownValidAnswer && index >= keptAt && !cut)),
+  const awaiting = placed(heldRecords, ({ referenceHasValidAnswer, keptAt, tallied }) =>
+    runOf(tallied.filter(({ index, cut }) => !referenceHasValidAnswer && index >= keptAt && !cut)),
   );
   const spent = placed(heldRecords, ({ tallied }) =>
     easyAt(

@@ -137,8 +137,9 @@ describe("what a log holds for the next comparison", () => {
     const once = [...EIGHT.flatMap(heldOut), ...roundLogged("g-1", ["h0", "h1"], solves)];
     expect(supplyOf(once)).toMatchObject({ held: 8 });
     const stepped = [...once, ...roundLogged("g-2", ["h0", "h1"], solves)];
-    // The reference's one closed task is retained, so the frontier is the seven it left open.
-    expect(supplyOf(stepped)).toMatchObject({ held: 7 });
+    // The reference's one closed task is retained, and the six it answered in no solve of two
+    // comparisons wait for a person whatever h1 answered (rule 3), so the frontier is one.
+    expect(supplyOf(stepped)).toMatchObject({ held: 1, awaiting: 6 });
     // Once h1 is promoted its own solves closed six of them, and it is left two.
     const promotion = event("harness.promoted", { harness: "h1", from: "h0", rests: [] });
     expect(supplyOf([...stepped, promotion])).toMatchObject({ held: 2 });

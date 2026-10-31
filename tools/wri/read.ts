@@ -527,7 +527,8 @@ function solveTriggers(log: Index, steps: readonly Handover[]): Trigger[] {
   const ids = (cut: boolean) => unended.flatMap((step) => (step.cut === cut ? [step.id] : [])).join(", ");
   const { cut, open } = unendedSolves(log);
   const solves = (many: number) => (many > 0 ? plural(many, "solve") : "");
-  const non = done.filter((solve) => solve.outcome === "non-result");
+  // A task admission's cut of the room solves it no longer needs is its design, not a kill.
+  const non = done.filter((solve) => solve.outcome === "non-result" && solve.cancelledBy !== "admission");
   const unjudged = countBy(
     missed.filter((solve) => solve.kind !== "rejected"),
     (solve) => solve.kind ?? "unkinded",

@@ -31,7 +31,7 @@
  */
 import type { SeatTool } from "../agent/session.ts";
 import { Type } from "typebox";
-import { affords, openingOf } from "../campaign/opening.ts";
+import { openingOf, startable } from "../campaign/opening.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { acceptedAnswers, proposalsOf, writtenTasks } from "../kernel/history.ts";
 import { poolOf } from "../kernel/reports.ts";
@@ -271,9 +271,9 @@ async function seenOf(
 
 /** What the task admission reads of one package: its shape check, and under `try_task` the reference harness's
  *  solves of a package whose shape check passed, at most `TRIED`: the first alone and, where it leaves the
- *  reference no room (`seenOf`), the rest together, as many as the campaign's reserve holds beside
- *  the solves in flight (`affords`), choosing again after an incomplete batch; each still waits
- *  for the host (`queued`, `tools/d2/host.ts`).
+ *  reference no room (`seenOf`), the rest together, as many as the solve queue will start
+ *  (`startable`), choosing again after an incomplete batch; each still waits for the host
+ *  (`queued`, `tools/d2/host.ts`), the reserve's wait among it.
  *  The draft is held at the first reading that leaves room, and the solves still running are
  *  cancelled through their signal: one still queued at the host starts no solve, and work already
  *  started stays billed. From 20 October they ran one at a time, and every refusal took three.
@@ -299,13 +299,13 @@ export async function measured(
   const packaged = checkPackage(contract, task);
   if (packaged.outcome === "refused") return { reason: packaged.reason, said: "" };
   if (solveRoom === null) return { reason: null, said: "" };
-  if (!affords(log, 1)) return { reason: UNAFFORDED, said: "" };
+  if (!startable(log, 1)) return { reason: UNAFFORDED, said: "" };
   const from = read(log).length - 1;
   const readings: Ending[] = [];
   let ran = 0;
   // Each reading is read after the one before, so the last read holds every reading.
   let reading = seenOf(admission, task, { from, readings, authorAnswer });
-  const held = new Cancellation("caller");
+  const held = new Cancellation("admission");
   const cut = new AbortController();
   const signal = AbortSignal.any([stop, cut.signal]);
   const together = async (count: number) => {
@@ -329,7 +329,7 @@ export async function measured(
   while (!(await reading).room && !stop.aborted) {
     if (ran === TRIED) break;
     let rest = 0;
-    while (rest < TRIED - ran && affords(log, rest + 1)) rest += 1;
+    while (rest < TRIED - ran && startable(log, rest + 1)) rest += 1;
     if (rest === 0) break;
     await together(rest);
   }

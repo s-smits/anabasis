@@ -169,6 +169,12 @@ const UNITS = {
   b: sha256("units harness b"),
 };
 const CAP = { dollars: 12, reserve: 0.5 };
+/** The held-out tasks the reference's room solves answered at the gate, as `try_task` records them
+ *  (`reference`, `task.gate`), as an Examiner's held task carries one. In the comparisons only
+ *  harnesses other than the campaign's last reference, the starter, answer them, and since
+ *  31 October a candidate's valid answer keeps no task out of the wait for a person's label
+ *  (`poolOf`), so without this each would wait as `word-06` does. */
+const ROOM_ANSWERED = new Set(["word-02", "word-07", "word-08", "word-10", "word-11", "word-12", "word-16"]);
 const range = (prefix: string, from: number, to: number): string[] =>
   Array.from({ length: to - from + 1 }, (_, at) => `${prefix}-${String(from + at).padStart(2, "0")}`);
 /** The verdict each ending's answer was given, where an answer reached the verifier. */
@@ -415,7 +421,12 @@ function examined(w: Writer, session: string, ids: readonly string[], refused: r
       });
       w.record("task.state", { version, state: "refused", session });
     } else {
-      w.record("task.gate", { version, gate: 1, outcome: "passed" });
+      w.record("task.gate", {
+        version,
+        gate: 1,
+        outcome: "passed",
+        ...keyIfDefined("reference", ROOM_ANSWERED.has(id) ? { valid: 1, solves: 2, ran: 2 } : undefined),
+      });
       held.push(version);
     }
   }

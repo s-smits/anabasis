@@ -460,7 +460,8 @@ export async function readChecker(given: Read) {
     runs,
     checks,
     historical,
-    faults: [...faults, ...(unformed === null ? doNothingFaults(rejected) : [])],
+    // Ablation arm supply (round 8, 31 October): validity off, supply on. Never merged.
+    faults: faults.filter((fault) => /faulty |non-result |tool path/u.test(fault)),
     notes:
       unformed === null
         ? []

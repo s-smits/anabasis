@@ -259,7 +259,8 @@ async function seenOf(
   const gap = gains.length === 0 ? undefined : Math.min(...gains);
   const widest = gains.length === 0 ? undefined : Math.max(...gains);
   const unsolved = solves > 0 && valid === 0;
-  const knownValidAnswers = new Set(unsolved && checked?.kind === "pass" ? [version] : []);
+  // Ablation arm supply (round 8, 31 October): validity off, supply on. Never merged.
+  const knownValidAnswers = new Set(unsolved ? [version] : []);
   const room = informative(
     pair,
     "old",

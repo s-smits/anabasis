@@ -417,19 +417,22 @@ describe("the tasks awaiting task review", () => {
   const once = compared(start, "b-1", "h2", F);
   const twice = compared(once, "b-2", "h3", F);
 
-  it("are never the ones a valid answer is on record for, by a solve anywhere or the author's own answer, which moves no pair", () => {
+  it("are never the ones the reference or the author answered validly, which moves no pair, and a candidate's answer moves none", () => {
     expect(poolOf(once)).toMatchObject({ awaiting: [], scorable: ["hard", "easy"] });
     expect(poolOf(twice)).toMatchObject({ awaiting: ["hard"], scorable: ["easy"] });
+    // A candidate's valid answer is a held-out win the Builder may not learn of by task (rule 3).
     const valid = compared(once, "b-2", "h3", P);
-    expect(awaiting(valid)).toEqual([]);
-    expect(awaiting(compared(compared(valid, "b-3", "h4", F), "b-4", "h5", F))).toEqual([]);
+    expect(awaiting(valid)).toEqual(["hard"]);
     const before = compared(compared(compared(start, "b-0", "h0", P), "b-1", "h2", F), "b-2", "h3", F);
-    expect(awaiting(before)).toEqual([]);
-    expect(awaiting(compared(twice, "b-3", "h4", P))).toEqual([]);
-    expect(awaiting([...twice, ...solved("g-9", "hard", "h9", [P])])).toEqual([]);
+    expect(awaiting(before)).toEqual(["hard"]);
+    expect(awaiting(compared(twice, "b-3", "h4", P))).toEqual(["hard"]);
+    expect(awaiting([...twice, ...solved("g-9", "hard", "h9", [P])])).toEqual(["hard"]);
+    expect(awaiting([...twice, ...solved("g-9", "hard", "h1", [P])])).toEqual([]);
+    // A former reference's answer stays a reference's once another is promoted.
+    expect(awaiting([...twice, ...solved("g-9", "hard", "h1", [P]), promotion])).toEqual([]);
     expect(
       awaiting([...twice.slice(0, -1), ...solved("b-2", "hard", "base", [P, F]), ...twice.slice(-1)]),
-    ).toEqual([]);
+    ).toEqual(["hard"]);
     const authorAnswer = event("task.feasible", { version: "hard", session: "x-1" });
     const atAdmission = twice.flatMap((each) =>
       each.kind === "task.gate" && each.data.version === "hard" ? [each, authorAnswer] : [each],
@@ -468,7 +471,8 @@ describe("the tasks awaiting task review", () => {
       expect(poolOf(cut)).toMatchObject({ awaiting: [], scorable: ["hard", "easy"] });
     }
     expect(awaiting([...spent, event("task.feasible", { version: "hard", session: "x-1" })])).toEqual([]);
-    expect(awaiting([...spent, ...solved(undefined, "hard", "h9", [P])])).toEqual([]);
+    expect(awaiting([...spent, ...solved(undefined, "hard", "h1", [P])])).toEqual([]);
+    expect(awaiting([...spent, ...solved(undefined, "hard", "h9", [P])])).toEqual(["hard"]);
     expect(poolOf(spent).histories.get("hard")?.reads).toEqual([
       { valid: "none", cut: false },
       { valid: "none", cut: false },

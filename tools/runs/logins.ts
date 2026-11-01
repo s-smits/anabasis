@@ -19,11 +19,12 @@
  * The pool: a run moves to another login when one is spent, so demand is one rate, in % of one
  * login's week an hour, summed over the logins; the forecast spends it in five-minute steps for
  * the next 4 weeks from the login whose week resets soonest, each refilling to 100% at its reset.
- * Two paces: the week's, each login's share over its window so far (floored at 12 hours, so a
- * window minutes old does not extrapolate), and the recent one, from the readings kept in the main
- * main worktree's `.ana/logins-history.jsonl` (8 days): a login still in the window of a reading 2 to 24
- * hours old gives its rise since, any other its week's pace. The 5-hour windows are left out: they
- * cap how fast one login spends, not what a week holds.
+ * Three paces: the week's, each login's share over its window so far (floored at 12 hours, so a
+ * window minutes old does not extrapolate); the recent one, from the readings kept in the main
+ * worktree's `.ana/logins-history.jsonl` (28 days): a login still in the window of a reading 2 to 24
+ * hours old gives its rise since, any other its week's pace; and the model's, hour by hour over the next
+ * day, once it beats the week pace and the per-run rate on hours held out (`usage-model.ts`, 1 November). The
+ * 5-hour windows are left out: they cap how fast one login spends, not what a week holds.
  *
  * `bun run runs active` names the runs a process writes, by the login each run's last launch named,
  * and the live seats of `system-path-simulation`, by the login each seat names (`liveHere`),
@@ -60,6 +61,7 @@ import { recordedSetting } from "../d2/setting.ts";
 import { asked } from "./hosts.ts";
 import { hostsOf } from "./host-config.ts";
 import { CODEX, type Live, liveHere, liveOf } from "./live.ts";
+import { ahead, assess, type Assessment, HORIZON, type Snapshot, weekPace } from "./usage-model.ts";
 
 interface Window {
   readonly pct: number | null;
@@ -85,12 +87,6 @@ interface Week {
   readonly pct: number;
   readonly reset: number;
 }
-interface Snapshot {
-  readonly at: number;
-  readonly weeks: Record<string, { pct: number; reset: number }>;
-  /** Each login's live runs when the reading was taken; readings before 22 October hold none. */
-  readonly runs?: Record<string, number>;
-}
 
 const TOKEN = "CLAUDE_CODE_OAUTH_TOKEN";
 const BASE = "https://api.anthropic.com";
@@ -100,7 +96,10 @@ const HOUR = 3_600_000;
 const WEEK = 168 * HOUR;
 const AHEAD = 4 * WEEK;
 const STEP = HOUR / 12;
-const KEPT_MS = 8 * 24 * HOUR;
+/** The readings kept, for the longest window of `usage-model.ts`; the per-run rate reads the last
+ *  `RATE_MS` of them, as it read all it kept until 1 November. */
+const KEPT_MS = 28 * 24 * HOUR;
+const RATE_MS = 8 * 24 * HOUR;
 /** The share of a day a run is taken to be active when a week is read for how many runs it fits:
  *  16 of 24 hours (operator, 22 October). */
 const ACTIVE_SHARE = 16 / 24;
@@ -482,7 +481,7 @@ function poolLines(
   now: number,
 ): string[] {
   const perDay = (rate: number) => `~${String(Math.round(rate * 24))}%/day`;
-  const weekRate = (week: Week) => paceOf(week, now);
+  const weekRate = (week: Week) => weekPace(week, now);
   // The oldest reading 2 to 24 hours back in the same window (resets agree within an hour).
   const recents = weeks.map((week) => {
     const then = history.find(({ at, weeks: read }) => {
@@ -498,11 +497,11 @@ function poolLines(
     const was = then?.weeks[week.login]?.pct ?? 0;
     return then === undefined ? null : { rate: Math.max(0, week.pct - was) / hours, hours };
   });
-  const weekPace = weeks.reduce((sum, week) => sum + weekRate(week), 0);
+  const poolPace = weeks.reduce((sum, week) => sum + weekRate(week), 0);
   const lines = [
-    `pool  ${perDay(weekPace)} of one login's week at the week's pace; ${String(weeks.length)} login${weeks.length > 1 ? "s" : ""} refill ~${String(Math.round((weeks.length * 100) / 7))}%/day` +
+    `pool  ${perDay(poolPace)} of one login's week at the week's pace; ${String(weeks.length)} login${weeks.length > 1 ? "s" : ""} refill ~${String(Math.round((weeks.length * 100) / 7))}%/day` +
       (unread > 0 ? ` (${String(unread)} unread, left out)` : ""),
-    `  week pace    ${forecast(weeks, weekPace, now)}`,
+    `  week pace    ${forecast(weeks, poolPace, now)}`,
   ];
   if (recents.every((recent) => recent === null)) {
     return [...lines, "  last hours   no reading 2 to 24h old yet; run again later for the recent pace"];
@@ -512,6 +511,36 @@ function poolLines(
   return [
     ...lines,
     `  last ${`${String(hours)}h`.padEnd(7)} ${perDay(recent)}: ${forecast(weeks, recent, now)}`,
+  ];
+}
+
+/** The model's lines (`usage-model.ts`): when the pool runs out at its pace over the next
+ *  `HORIZON` hours, and each login's rise at a few of those hours and the hour its week runs out
+ *  within them; or what keeps the model from speaking. */
+export function modelLines(
+  weeks: readonly Week[],
+  recorded: readonly Snapshot[],
+  assessment: Assessment | null,
+  now: number,
+): string[] {
+  if (assessment === null) return ["  model       off: no readings yet to fit on and hold out"];
+  const errors = `fitted on ${String(assessment.days)} days; held-out error ${assessment.error.toFixed(2)} vs ${assessment.week.toFixed(2)} for the week pace and ${assessment.run.toFixed(2)} for the per-run rate, % over ${String(assessment.held)} rows`;
+  if (assessment.model === null) return [`  model       not used: ${errors}`];
+  const rises = ahead(assessment.model, recorded);
+  const day = weeks.reduce((sum, { login }) => sum + (rises[login]?.at(-1) ?? 0), 0);
+  const each = weeks.map(({ login, pct }) => {
+    const curve = rises[login] ?? [];
+    const at = [1, 3, 6, 12, HORIZON].map(
+      (hours) => `+${String(hours)}h ${(curve[hours - 1] ?? 0).toFixed(1)}%`,
+    );
+    const out = pct < 100 ? curve.findIndex((rise) => pct + rise >= 100) : -1;
+    const ends = out === -1 ? "" : ` · week out ~${clock(now + (out + 1) * HOUR)}`;
+    return `  login ${login.padEnd(6)}${at.join("  ")}${ends}`;
+  });
+  return [
+    `  model ${`${String(HORIZON)}h`.padEnd(6)}~${String(Math.round((day * 24) / HORIZON))}%/day: ${forecast(weeks, day / HORIZON, now)}`,
+    ...each,
+    `              ${errors}`,
   ];
 }
 
@@ -536,16 +565,12 @@ export function perRunRate(history: readonly Snapshot[]): number | null {
   return runHours < LEAST_RUN_HOURS ? null : spans.reduce((sum, span) => sum + span.used, 0) / runHours;
 }
 
-/** The share of its week `week` has spent an hour since it opened, floored at 12 hours so a window
- *  minutes old does not extrapolate. */
-const paceOf = (week: Week, now: number) => week.pct / Math.max(12, (now - (week.reset - WEEK)) / HOUR);
-
 /** What one of `on` live runs on `week` spends an hour of the clock: the measured rate, active
  *  `ACTIVE_SHARE` of the time, or before there is one the week's own pace shared over its runs, so
  *  70% in 4 days with two runs left on it reads about 0.36% a run an hour. Null with neither. */
 export function perRunHour(week: Week, on: number, rate: number | null, now: number): number | null {
   if (rate !== null) return rate * ACTIVE_SHARE;
-  return on > 0 ? paceOf(week, now) / on : null;
+  return on > 0 ? weekPace(week, now) / on : null;
 }
 
 /** How many runs `week` carries for `RUN_HOURS`, or to its reset where that is sooner, each spending
@@ -664,7 +689,7 @@ export async function logins(args: readonly string[]): Promise<void> {
         .filter((line) => line !== "")
         .map((line) => parseJsonAs<Snapshot>(line))
     : [];
-  const rate = perRunRate(kept);
+  const rate = perRunRate(kept.filter(({ at }) => now - at < RATE_MS));
   const onEach = (login: string) => counted?.live.filter((run) => run.login === login).length ?? 0;
   if (values.json) console.log(capturedJsonStringify(readings, null, 2));
   for (const reading of values.json ? [] : readings) {
@@ -687,16 +712,7 @@ export async function logins(args: readonly string[]): Promise<void> {
     console.log(activeLines(codex, [CODEX], [], runtimeProcess.env).join("\n"));
   }
   if ((counted?.unasked.length ?? 0) > 0) console.log(uncounted(counted?.unasked ?? []));
-  if (!values.json && positionals.length === 0 && weeks.length > 0) {
-    console.log(poolLines(weeks, kept, held.length - weeks.length, now).join("\n"));
-    console.log(
-      rate === null
-        ? `  a run       no measured rate yet (under ${String(LEAST_RUN_HOURS)} run-hours): each login's week pace over its live runs`
-        : `  a run       ~${rate.toFixed(2)}% of a login's week an hour, active ${String(Math.round(ACTIVE_SHARE * 24))} of 24h: the most each login carries for ${String(RUN_HOURS)}h`,
-    );
-  }
   if (weeks.length === 0) return;
-  mkdirSync(dirname(history), { recursive: true });
   const snapshot: Snapshot = {
     at: now,
     weeks: Object.fromEntries(weeks.map(({ login, pct, reset }) => [login, { pct, reset }])),
@@ -704,8 +720,17 @@ export async function logins(args: readonly string[]): Promise<void> {
       runs: Object.fromEntries(weeks.map(({ login }) => [login, onEach(login)])),
     })),
   };
-  const lines = [...kept.filter(({ at }) => now - at < KEPT_MS), snapshot].map((one) =>
-    capturedJsonStringify(one),
-  );
+  const recorded = [...kept.filter(({ at }) => now - at < KEPT_MS), snapshot];
+  if (!values.json && positionals.length === 0) {
+    console.log(poolLines(weeks, kept, held.length - weeks.length, now).join("\n"));
+    console.log(
+      rate === null
+        ? `  a run       no measured rate yet (under ${String(LEAST_RUN_HOURS)} run-hours): each login's week pace over its live runs`
+        : `  a run       ~${rate.toFixed(2)}% of a login's week an hour, active ${String(Math.round(ACTIVE_SHARE * 24))} of 24h: the most each login carries for ${String(RUN_HOURS)}h`,
+    );
+    console.log(modelLines(weeks, recorded, assess(recorded, now, perRunRate), now).join("\n"));
+  }
+  mkdirSync(dirname(history), { recursive: true });
+  const lines = recorded.map((one) => capturedJsonStringify(one));
   writeFileSync(history, `${lines.join("\n")}\n`);
 }

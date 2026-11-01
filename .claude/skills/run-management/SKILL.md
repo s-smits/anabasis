@@ -319,9 +319,9 @@ every peer in one reading. The shared `scriptOn` and
 that parses through `.claude/skills/main/cli.ts` runs on a peer with `--host <name>`.
 
 `hosts --health` reports load against cores, performance cores where reported, the charger,
-disk free, sizes of run data, archive, controllers and other worktrees, Bun and controller
-readiness, live campaigns and seats, and the three busiest processes with their owning run.
-It marks a disk below 10% free and load above cores. Unknown OS facts are labelled; an unavailable
+sizes of run data, archive, controllers and other worktrees, Bun and controller readiness, live
+campaigns and seats, and the three busiest processes with their owning run. It marks load above
+cores, and warns of a disk below 10% free. Unknown OS facts are labelled; an unavailable
 machine is not an empty one. Use `stop <name> --yes` for an attributed campaign. Leave termination
 of unassigned processes manual because their owner is unknown. Cache eviction and power settings
 remain manual because they can affect work outside a campaign.

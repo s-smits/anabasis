@@ -30,7 +30,7 @@ import {
   writeFileSync,
 } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
-import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -98,9 +98,9 @@ const STARTS: ReadonlySet<string> = new Set(["build.started", "exam.started", "c
 
 /**
  * The investigation's triggers a watch says (`tools/wri/folds.ts`), by the factor each bears on
- * (`AGENTS.md`, section 1). An alarm is read again at every look where the log grew and said where
- * it fired or its detail moved; a reading moves with each solve, so it is said only after a
- * milestone. On 1 November an unconfirmed promotion and two unbilled compactions in a live buffer
+ * (`AGENTS.md`, section 1). An alarm is read again at every look where the log gained an event that
+ * can move one (`MOVES_A_TRIGGER`) and said where it fired or its key moved (`keyOf`); a reading
+ * moves with each solve, so it is said only after a milestone. On 1 November an unconfirmed promotion and two unbilled compactions in a live buffer
  * campaign were found only by running `wri.ts read` on it by hand. `overview` takes about 90 ms on
  * a log of 2,000 events. A trigger the pulse reads itself is left out (a model served, an
  * unfinished session), and so is one every promotion fires until its starter comparison reports.
@@ -147,6 +147,29 @@ const MILESTONES: ReadonlySet<string> = new Set([
   "build.finished",
   ENDED,
 ]);
+/**
+ * The events that can move a watched trigger, so a look reads the investigation only after one.
+ * Over 57 recorded logs, 27% of the looks where a log grew held one; `overview` takes about 3 s on a
+ * log of 46,000 events, and until 1 November ran at every such look. Replayed on those logs, 2 of
+ * 358 alarms were said later than before, the later by 29 minutes: a host's code that moved is said
+ * at the next of these events.
+ */
+const MOVES_A_TRIGGER: ReadonlySet<string> = new Set([
+  ...MILESTONES,
+  "referee.finding",
+  "referee.refused",
+  "task.gate",
+  "checker.read",
+  "contract.frozen",
+  "comparison.started",
+  "campaign.word",
+  "build.checkpoint",
+  "harness.version",
+]);
+/** The comparisons and sessions a trigger's detail names (`g-2`, `b-3`, `x-1`), not a task (`x-1-3`). */
+const NAMED = /\b[bgx]-\d+(?![-\d])/g;
+/** A load wait a person moves a run for (`AGENTS.md`, section 10, condition 4). */
+const LOAD_WAIT_MS = 15 * 60_000;
 
 const minutes = (ms: number) => `${String(Math.round(ms / 60_000))}m`;
 const dollars = (value: number) => `$${value.toFixed(2)}`;
@@ -219,10 +242,8 @@ function reportHead(data: JsonObject): string {
 }
 
 /** The line each event a reader wants earns; a kind not here is a trace, and null is one of its
- *  kind left unsaid. `task` names a solve's task. */
-const SAID: Partial<
-  Record<EventKind, (data: JsonObject, task: (solve: JsonValue | undefined) => string) => string | null>
-> = {
+ *  kind left unsaid. */
+const SAID: Partial<Record<EventKind, (data: JsonObject) => string | null>> = {
   "build.started": (data) => `· build ${word(data.session)} started on ${word(data.model)}`,
   "exam.started": (data) => `· exam ${word(data.session)} started on ${word(data.model)}`,
   "build.finished": (data) =>
@@ -231,21 +252,15 @@ const SAID: Partial<
   "exam.finished": (data) => `◆ exam ${word(data.session)} ended${cost(data)}`,
   "harness.version": (data) =>
     `· harness ${word(data.version).slice(0, 8)}${short(data.note) === "" ? "" : `: ${short(data.note)}`}`,
-  "solve.started": (data) => `· ${word(data.task)} started on ${word(data.model)}`,
-  "solve.finished": (data, task) => {
+  // A solve that ended is counted in one line a look (`solvesSaid`), and only a non-result has a
+  // line of its own, by its kind and reason: over 57 recorded logs, a line a solve started or
+  // passed was 74% of everything the pulse said, and no person acts on one.
+  "solve.finished": (data) => {
     const ending = asRecord(data.ending);
-    if (ending?.outcome === "pass") return `◆ ${task(data.solve)} passed${cost(data)}`;
-    if (ending?.outcome === "fail") return `· ${task(data.solve)} failed${cost(data)}`;
-    // A flag is its side's own fail (AGENTS.md rule 7): until 23 October it read as a non-result of kind "?".
-    if (ending?.outcome === "flagged") {
-      return `· ${task(data.solve)} flagged as malformed: ${short(ending.reason)}${cost(data)}`;
-    }
-    // The gate cut a room solve once another settled the task's room, from 31 October until it stopped
-    // solving on 1 November, as the investigation reads it; until 31 October each cut warned as a solve with no result.
-    if (ending?.cancelledBy === "admission") {
-      return `· ${task(data.solve)} cut once its room was read${cost(data)}`;
-    }
-    return `⚠ ${task(data.solve)} ended without a result, ${word(ending?.kind)}: ${short(ending?.reason)}${cost(data)}`;
+    // The gate cut a room solve once another settled the task's room, from 31 October until it
+    // stopped solving on 1 November; until 31 October each cut warned as a solve with no result.
+    if (ending?.outcome !== "non-result" || ending.cancelledBy === "admission") return null;
+    return `⚠ a solve ended without a result, ${word(ending.kind)}: ${short(ending.reason)}`;
   },
   // A campaign's ending, and a wait for the provider or the network: until 15 October the pulse
   // said neither, and a run waiting out a limit read as quiet. A wait on the load is one a solve.
@@ -260,13 +275,27 @@ const SAID: Partial<
   [REPORTED]: reportLine,
 };
 
-/** The watched triggers of `log` as they read now, and a line for each detail that is new since
- *  `before`; the first look of a run only remembers them. A trigger fires once for each comparison
- *  or session it names, so each name keeps every detail: until a fix of 1 November it kept one,
- *  and gate-free-r2's two comparisons with a task set aside said the first again at every look. */
+/**
+ * What a trigger's detail is about: the comparisons and sessions it names, else its first count,
+ * so a detail is said again when it names another or its count moves, and not when only its
+ * wording does. Until 1 November a whole detail was compared, and over 57 recorded logs 757 of 784
+ * lines of `SUPPLY THIN`, whose detail moves with each solve, said again what had been said; it is
+ * now said once.
+ */
+function keyOf(name: string, detail: string): string {
+  if (name === "SUPPLY THIN") return "";
+  const ids = detail.match(NAMED);
+  return ids === null ? (/\d+/.exec(detail)?.[0] ?? detail) : [...new Set(ids)].join(",");
+}
+
+/** The watched triggers of `log` as they read now, and a line for each detail whose key (`keyOf`)
+ *  is new since `before`; the first look of a run only remembers them. A trigger fires once for each
+ *  comparison or session it names, so each name keeps every key: until a fix of 1 November it kept
+ *  one, and gate-free-r2's two comparisons with a task set aside said the first again at every look. */
 function triggersSaid(log: readonly LogEvent[], fresh: readonly LogEvent[], before: Seen | undefined) {
   const kept = before?.triggers ?? {};
-  if (before !== undefined && fresh.length === 0) return { now: kept, said: [] };
+  const moves = fresh.some(({ kind }) => MOVES_A_TRIGGER.has(kind) || kind.endsWith(".compacted"));
+  if (before !== undefined && !moves) return { now: kept, said: [] };
   const milestone = fresh.some(({ kind }) => MILESTONES.has(kind));
   const read = new Map<keyof typeof TRIGGERS, string[]>();
   for (const { name, detail } of overview(log).triggers) {
@@ -280,7 +309,7 @@ function triggersSaid(log: readonly LogEvent[], fresh: readonly LogEvent[], befo
     return before === undefined
       ? []
       : details
-          .filter((detail) => !known.has(detail))
+          .filter((detail) => !known.has(keyOf(name, detail)))
           .map(
             (detail) =>
               `${kind === "alarm" ? "⚠" : "◆"} ${factor}: ${name} (lane ${String(TRIGGERS[name])}): ${short(detail)}`,
@@ -288,7 +317,9 @@ function triggersSaid(log: readonly LogEvent[], fresh: readonly LogEvent[], befo
   });
   const now = {
     ...kept,
-    ...Object.fromEntries([...read].map(([name, details]) => [name, details.join("\n")])),
+    ...Object.fromEntries(
+      [...read].map(([name, details]) => [name, details.map((detail) => keyOf(name, detail)).join("\n")]),
+    ),
   };
   return { now, said };
 }
@@ -325,7 +356,10 @@ function standing(run: Run, log: readonly LogEvent[]) {
   const solved = log.findLastIndex(({ kind }) => kind === "solve.started");
   const start = Math.max(0, opened);
   const work = log.slice(Math.max(start, solved));
-  const end: EventKind = log[start]?.kind === "exam.started" ? "exam.finished" : run.end;
+  // A campaign the Builder leads ends only in its ending: until 1 November one whose process died
+  // after an Examiner session or a report was taken as done, 4 of the 42 closes on record.
+  const led = log.some(({ kind }) => kind === "campaign.opened");
+  const end: EventKind = led ? ENDED : log[start]?.kind === "exam.started" ? "exam.finished" : run.end;
   const running = solves.filter(({ finished, started }) => finished === null && started >= begun).length;
   const until = log
     .slice(begun)
@@ -386,10 +420,30 @@ export function pulse(
 ): Look {
   const open = process === "open";
   const stand = standing(run, log);
-  const tasks = new Map(stand.solves.map(({ id, start }) => [id, word(start.task)]));
-  const task = (solve: JsonValue | undefined) => tasks.get(word(solve)) ?? word(solve);
   const fresh = log.slice(before?.lines ?? log.length);
-  const lines = fresh.flatMap(({ kind, data }) => SAID[kind]?.(data, task) ?? []);
+  const lines = fresh.flatMap(({ kind, data }) => SAID[kind]?.(data) ?? []);
+  const endings = fresh.flatMap(({ kind, data }) =>
+    kind === "solve.finished" ? [asRecord(data.ending)] : [],
+  );
+  const solved = [
+    [count(fresh, "solve.started"), "started"],
+    ...(["pass", "fail", "flagged"] as const).map(
+      (outcome) => [endings.filter((ending) => ending?.outcome === outcome).length, outcome] as const,
+    ),
+    [endings.filter((ending) => ending?.cancelledBy === "admission").length, "cut once its room was read"],
+  ].flatMap(([n, what]) => (n === 0 ? [] : [`${String(n)} ${what}`]));
+  if (solved.length > 0) lines.push(`· solves: ${solved.join(", ")}`);
+  const loaded = fresh.flatMap(({ kind, data }) =>
+    kind === "campaign.waited" && !isString(data.for) && isNumber(data.ms) && data.ms > LOAD_WAIT_MS
+      ? [data]
+      : [],
+  );
+  const longest = loaded.toSorted((a, b) => Number(b.ms) - Number(a.ms))[0];
+  if (longest !== undefined) {
+    lines.push(
+      `⚠ ${plural(loaded.length, "solve")} waited over ${minutes(LOAD_WAIT_MS)} for the load, the longest ${minutes(Number(longest.ms))} at load ${word(longest.load)} on ${word(longest.cores)} cores`,
+    );
+  }
   const turns = tracesIn(fresh).flatMap((each) => (each.part === "turn" ? [each] : []));
   const errors = turns.flatMap(({ error }) => (error === null ? [] : [error]));
   if (errors.length > 0) {

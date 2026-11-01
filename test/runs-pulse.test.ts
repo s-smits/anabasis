@@ -52,17 +52,49 @@ describe("the runs pulse", () => {
     }
   });
 
-  it("warns of a killed solve, and not of a room solve the gate cut once the room was read", () => {
-    const killed = (cancelledBy: string) => [
-      event(0, "solve.started", { solve: "s-1", task: "ex-001" }),
-      event(1, "solve.finished", {
-        solve: "s-1",
-        ending: { outcome: "non-result", kind: "killed", reason: "the solve was cancelled", cancelledBy },
-      }),
+  it("counts solves in one line, and warns of each kind of non-result once with its repeats", () => {
+    const finished = (solve: string, ending: JsonObject) => event(1, "solve.finished", { solve, ending });
+    const killed = { outcome: "non-result", kind: "killed", reason: "the solve was cancelled" };
+    const log = [
+      ...built,
+      event(1, "solve.started", { solve: "s-1", task: "ex-001" }),
+      event(1, "solve.started", { solve: "s-2", task: "ex-002" }),
+      finished("s-1", { outcome: "pass" }),
+      finished("s-2", { outcome: "fail" }),
+      finished("s-3", { outcome: "flagged", reason: "the task asks two things" }),
+      finished("s-4", { ...killed, cancelledBy: "admission" }),
+      finished("s-5", { ...killed, cancelledBy: "caller" }),
+      finished("s-6", { ...killed, cancelledBy: "caller" }),
     ];
-    const said = (cancelledBy: string) => pulse(round, killed(cancelledBy), "open", lookedAt(1), START).said;
-    expect(said("caller")[0]).toMatch(/^⚠.*ex-001.*without a result/);
-    expect(said("admission")).toEqual(["· ex-001 cut once its room was read"]);
+    expect(pulse(round, log, "open", lookedAt(1), START).said).toEqual([
+      "⚠ a solve ended without a result, killed: the solve was cancelled (×2)",
+      "· solves: 2 started, 1 pass, 1 fail, 1 flagged, 1 cut once its room was read",
+    ]);
+  });
+
+  it("warns of solves that waited on the load for over a quarter of an hour", () => {
+    const waited = (ms: number, load: number) =>
+      event(1, "campaign.waited", { task: "t-1", load, cores: 4, ms });
+    const log = [...built, waited(60_000, 5), waited(20 * 60_000, 6.5), waited(30 * 60_000, 7)];
+    expect(pulse(round, log, "open", lookedAt(1), START + 2 * 60_000).said).toEqual([
+      "⚠ 2 solves waited over 15m for the load, the longest 30m at load 7 on 4 cores",
+    ]);
+    expect(pulse(round, log.slice(0, 2), "open", lookedAt(1), START + 2 * 60_000).said).toEqual([]);
+  });
+
+  it("reads a campaign the Builder leads as done only at its ending", () => {
+    const examined = [
+      event(0, "campaign.opened", { project: "p" }),
+      event(1, "exam.started", { session: "x-1" }),
+      event(2, "exam.finished", { session: "x-1", ended: "finished" }),
+    ];
+    const seen = lookedAt(examined.length);
+    const gone = pulse(round, examined, "closed", seen, START + 3 * 60_000).said;
+    expect(gone).toEqual(["⚠ the process is gone before campaign.ended"]);
+    const ended = [...examined, event(3, "campaign.ended", { ending: "budget", why: "spent" })];
+    expect(pulse(round, ended, "closed", seen, START + 4 * 60_000).said).toEqual([
+      "◆ the campaign ended budget: spent",
+    ]);
   });
 
   it("warns of turns another model served than their seat asked for, and of no others", () => {
@@ -224,7 +256,7 @@ describe("the runs pulse", () => {
     for (const fact of ["◆", "environment", "the provider failed"]) expect(said[0]).toContain(fact);
     const gone = pulse(round, drafting, "closed", lookedAt(2), START + 3 * 60_000).said;
     expect(gone).toHaveLength(1);
-    expect(gone[0]).toMatch(/^⚠.*comparison[.]reported/);
+    expect(gone[0]).toMatch(/^⚠.*campaign[.]ended/);
   });
 
   it("counts omitted runs and names the archive's newest", () => {

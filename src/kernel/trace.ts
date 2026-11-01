@@ -286,43 +286,45 @@ export function callText(calls: readonly Call[], number: number): string {
  * served it, retried attempts included, and the sum over a session's or a solve's turns is what its
  * end carries as `billed`: equal to five decimals on every session and solve of one campaign of 10
  * October; a Builder session of another, killed at its seventh turn the same day, had metered 0.12
- * dollars that nothing summed. A
- * compaction of pi's loop is billed in the end's sum too, and its summary's price is on its
- * `*.compacted` event (`sit`, `src/agent/session.ts`); a stop and a pause read it too (`tools/runs`).
+ * dollars that nothing summed. A compaction of pi's loop is billed in the end's sum too, and its
+ * summary's price is on its `*.compacted` event (`sit`, `src/agent/session.ts`); a stop and a pause
+ * read it too (`tools/runs`). It reads the log twice for every seat at once, the ends and then the
+ * rest; until 1 November each seat read it twice of its own, which made it most of what the billing
+ * folds cost on a long log.
  */
 export function unfinished(events: readonly LogEvent[]): Unfinished[] {
-  return METERED.flatMap(({ of, id }) => {
-    const ended = new Set(
-      events.flatMap(({ kind, data }) =>
-        kind === `${of}.finished` || (of === "referee" && kind === "referee.finding") ? [data[id]] : [],
-      ),
-    );
-    const open = new Map<JsonValue | undefined, Unfinished>();
-    for (const [index, event] of events.entries()) {
-      const { at, kind, data } = event;
+  const seats = METERED.map(({ of, id }) => ({
+    of,
+    id,
+    starts: `${of}.started`,
+    ends: of === "referee" ? "referee.finding" : `${of}.finished`,
+    ended: new Set<JsonValue | undefined>(),
+    open: new Map<JsonValue | undefined, Unfinished>(),
+  }));
+  for (const { kind, data } of events) {
+    for (const { id, ends, ended } of seats) if (kind === ends) ended.add(data[id]);
+  }
+  for (const [index, event] of events.entries()) {
+    const { at, kind, data } = event;
+    let part: ReturnType<typeof traced> | undefined;
+    for (const { of, id, starts, ended, open } of seats) {
+      const which = data[id];
       if (
-        (kind === `${of}.started` || (of === "referee" && kind === "referee.turn" && !open.has(data[id]))) &&
-        !ended.has(data[id])
+        (kind === starts || (of === "referee" && kind === "referee.turn" && !open.has(which))) &&
+        !ended.has(which)
       ) {
-        open.set(data[id], {
-          of,
-          id: data[id],
-          dollars: 0,
-          turns: 0,
-          began: at,
-          last: at,
-        });
+        open.set(which, { of, id: which, dollars: 0, turns: 0, began: at, last: at });
       }
-      const found = open.get(data[id]);
+      const found = open.get(which);
       if (found === undefined) continue;
       found.last = at;
-      const part = traced(event, index);
+      part = part === undefined ? traced(event, index) : part;
       if (part?.seat !== of || part.part === "call") continue;
       found.dollars += part.billed ?? 0;
       found.turns += part.part === "turn" ? 1 : 0;
     }
-    return [...open.values()];
-  });
+  }
+  return seats.flatMap(({ open }) => [...open.values()]);
 }
 
 /** Open Builder and Examiner sessions, including drafts, with their recorded spend and duration.

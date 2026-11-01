@@ -1121,7 +1121,7 @@ Starts from `LONG SILENCES (lane 31)`, `SPEND LED BY A ROLE (lane 31)`,
 The question is where the hours and the dollars went, whether the bill holds all of them, and
 what each long silence was. Start with the bill's completeness, since every dollar below rests on
 it. Row F's `campaign` line sets the backend's own totals beside the host's calculated bill on the
-same ending records (`costLine`, `src/kernel/trace.ts`): a gap of more than a few percent says a
+same ending records (`costLine`, `src/kernel/meter.ts`): a gap of more than a few percent says a
 turn was priced at another model or a part of the work was priced at nothing. `UNBILLED
 COMPACTIONS` counts the compactions whose summary was billed nothing, by seat; a Claude Code
 compaction reports no usage of its own, so on 1 November three in one log billed nothing while

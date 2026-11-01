@@ -6,13 +6,14 @@
  * own time, its sessions less the other two, since a campaign its Builder leads runs both inside
  * the Builder's span; the rest is the host's, waiting or between moves. The dollars are the tree's
  * own sum over the epoch (`billedBetween`), split by who billed each event: a solve by the session
- * or comparison its start names. A Builder session open across a promotion bills where it ends.
+ * or comparison its start names. A session open across a promotion bills each epoch what its turns
+ * metered there.
  *
  * Written on 19 October, when a promotion in buffer-fresh-opus-forkedPR223_v0_5_4-r2 and -r3 was
  * seen to take six to seven hours and no reader said where they went.
  */
 import type { LogEvent } from "#src/kernel/log.ts";
-import { isNumber, isString } from "#src/meta/json-shape.ts";
+import { isString } from "#src/meta/json-shape.ts";
 import type { Tree } from "./tree.ts";
 
 interface Span {
@@ -88,7 +89,13 @@ function covered(spans: readonly Span[]): number {
   return total;
 }
 
-/** The dollars each part billed between two events, and the tree's own sum over them. */
+/**
+ * The dollars each part billed between two events, and the tree's own sum over them. Each part is
+ * billed through the tree's own fold over its events alone, so an open session or solve counts
+ * what its turns metered (`unfinished`), as the total does. Until 1 November the parts summed the
+ * ending records alone, and an Examiner session open at the log's end read $0.00 where the view
+ * read $4.53 (buffer-fresh-opus-gate-supply-r2, x-2).
+ */
 function billedOf(tree: Tree, events: readonly LogEvent[], from: number, to: number) {
   const owners = new Map<string, string>();
   const ids = new Map<string, Part>();
@@ -99,14 +106,28 @@ function billedOf(tree: Tree, events: readonly LogEvent[], from: number, to: num
       owners.set(data.solve, data.comparison);
     }
   }
-  const parts: Record<Part, number> = { examiner: 0, comparison: 0, builder: 0 };
-  for (const { kind, data } of events.slice(from, to)) {
-    if (!tree.billed.has(kind) || !isNumber(data.billed)) continue;
-    const owner = isString(data.solve) ? owners.get(data.solve) : undefined;
-    const ended = ENDS.get(kind);
-    const part = ended ?? (owner === undefined ? "builder" : (ids.get(owner) ?? "builder"));
-    parts[part] += data.billed;
-  }
+  const partOf = ({ data }: LogEvent): Part => {
+    const owner = isString(data.solve)
+      ? owners.get(data.solve)
+      : isString(data.session)
+        ? data.session
+        : undefined;
+    return (owner === undefined ? undefined : ids.get(owner)) ?? "builder";
+  };
+  const upto = events.slice(0, to);
+  const billed = (part: Part) => {
+    const own = upto.filter((event) => partOf(event) === part);
+    return tree.billedBetween(
+      own,
+      upto.slice(0, from).filter((event) => partOf(event) === part).length,
+      own.length,
+    );
+  };
+  const parts: Record<Part, number> = {
+    examiner: billed("examiner"),
+    comparison: billed("comparison"),
+    builder: billed("builder"),
+  };
   return { parts, total: tree.billedBetween(events, from, to) };
 }
 
@@ -132,7 +153,7 @@ function epochBlock(
     `  ${title}: ${hours(end - start)} h, ${dollars(total)} billed`,
     `    Examiner ${String(examiner.length)} sessions, ${hours(covered(examiner))} h${each(examiner)}, ${dollars(parts.examiner)}`,
     `    comparisons ${String(comparison.length)}, ${hours(covered(comparison))} h${each(comparison)}, ${dollars(parts.comparison)}`,
-    `    Builder alone ${hours(covered([...examiner, ...comparison, ...builder]) - others)} h, ${dollars(parts.builder)}; neither ${hours(end - start - covered([...examiner, ...comparison, ...builder]))} h; the tree's sum less the parts ${dollars(total - parts.examiner - parts.comparison - parts.builder)}`,
+    `    Builder alone ${hours(covered([...examiner, ...comparison, ...builder]) - others)} h, ${dollars(parts.builder)}; neither ${hours(end - start - covered([...examiner, ...comparison, ...builder]))} h`,
   ];
   return { lines, hours: (end - start) / HOUR_MS, dollars: total };
 }

@@ -183,8 +183,9 @@ Limits of the replay:
   them. Reports before 12 October hold no frontier and are left unread.
 - In a led campaign, Examiner sessions and comparisons run inside the Builder conversation.
   `Builder alone` subtracts their union; `neither` is time outside all three. A Builder session
-  across a promotion bills where it ends. `billedBetween` also meters unfinished work, so the
-  script prints the tree's sum less the parts to expose any difference.
+  across a promotion bills each epoch what its turns metered there: every part is billed through
+  the tree's `billedBetween` over its own events, so an open session counts its metered turns and
+  the parts add up to the epoch's total.
 
 ## The wall and the result
 

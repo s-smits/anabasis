@@ -1,4 +1,4 @@
-# Anabasis v2: the plan
+# Anabasis: the plan
 
 This file keeps the present only: the four factors with their recorded values, the rows still
 open with their level, the tuning that stands, and the decisions waiting for the operator. The

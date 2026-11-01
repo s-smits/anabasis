@@ -1,6 +1,6 @@
 ---
 name: zip-run
-description: "Zip recorded Anabasis v2 runs for handover at a chosen depth (--light, --medium, --verbose). Use when the operator asks to zip, bundle, archive or send a run, a round, its log, its harness or \"everything the model saw\", or names a size cap. One command, three cumulative levels, any number of runs, a README, a reading guide and a MANIFEST inside every zip."
+description: "Zip recorded Anabasis runs for handover at a chosen depth (--light, --medium, --verbose). Use when the operator asks to zip, bundle, archive or send a run, a round, its log, its harness or \"everything the model saw\", or names a size cap. One command, three cumulative levels, any number of runs, a README, a reading guide and a MANIFEST inside every zip."
 ---
 
 # Zip a run

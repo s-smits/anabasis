@@ -18,8 +18,10 @@ import { plural } from "#src/meta/text.ts";
 import type { Receipt } from "../runs/receipt.ts";
 import { fired, type Index, share, tally, text, type Trigger } from "./folds.ts";
 
-/** Lane 28: moves the Builder made where the table named another, endings the campaign went on
- *  from, and the operator's words with how many an event acted on. */
+/** Lane 28: moves the Builder made where the table named another, by what the table named as the
+ *  move's reason says it (`campaign-actions.ts`), endings the campaign went on from, and the
+ *  operator's words with how many an event acted on. On 1 November the ablation's displaced
+ *  starter comparisons read only as `compare 1` here, and lane 28 found them in the reasons. */
 function moveTriggers(log: Index): Trigger[] {
   const moves = log.of("campaign.move");
   const asked = moves.filter((data) => data.code === "asked");
@@ -36,7 +38,7 @@ function moveTriggers(log: Index): Trigger[] {
       ? [
           fired(
             "MOVES ASKED",
-            `${share(asked.length, moves.length)} moves the Builder asked for where the table named another: ${tally(countBy(asked, (data) => text(data.move)))}`,
+            `${share(asked.length, moves.length)} moves the Builder asked for where the table named another: ${tally(countBy(asked, (data) => `${text(data.move)} for ${text(data.why).split("where the table named ")[1] ?? "a move unnamed"}`))}`,
           ),
         ]
       : []),

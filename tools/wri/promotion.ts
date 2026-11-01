@@ -19,6 +19,7 @@
  * Split from `read.ts`, which stands near the size policy's ceiling, as `time.ts` and `folds.ts`
  * were. Nothing here reads a file beside the log.
  */
+import { epochsOf as epochsRead } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";
 import { flipP } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
@@ -367,6 +368,31 @@ export function promotionTriggers(log: Index): Trigger[] {
   const epochs = epochsOf(log.events);
   return [
     ...epochs.flatMap((epoch) => [...restTriggers(log, epoch), afterTrigger(log, epoch, starter)]),
+    ...unconfirmedTrigger(log),
     ...sharedTmpTrigger(log),
   ];
+}
+
+/** `PROMOTION UNCONFIRMED` (lane 24): each promotion whose epoch holds no starter comparison that
+ *  reads the reference above the starter (`confirmed`, `src/campaign/climb.ts`). On 1 November none
+ *  of the gate ablation's five promotions and the validity arm's one was confirmed, and lanes 24
+ *  and 28 found it by reading the moves. */
+function unconfirmedTrigger(log: Index): Trigger[] {
+  const epochs = epochsRead(log.events);
+  const lines = epochs.flatMap(({ nth, reference, to, starter_tally: against, confirmed }) => {
+    if (confirmed !== false) return [];
+    const read =
+      against === null
+        ? "no starter comparison reported"
+        : `against the starter ${String(against.wins)}-${String(against.losses)}-${String(against.ties)} without the bill, no step`;
+    return [`${short(reference)} in epoch ${String(nth)}, ${to === null ? "open" : "closed"}: ${read}`];
+  });
+  return lines.length > 0
+    ? [
+        fired(
+          "PROMOTION UNCONFIRMED",
+          `${share(lines.length, epochs.length - 1)} promotions: ${lines.join("; ")}`,
+        ),
+      ]
+    : [];
 }

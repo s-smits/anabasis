@@ -794,10 +794,10 @@ to `operator`, and to `host` (`src/kernel/compare.ts`) only for an arithmetic fa
 
 Importance: 0.9.
 
-Starts from `VALID BY HARNESS (lane 24)`.
+Starts from `VALID BY HARNESS (lane 24)` and `PROMOTION UNCONFIRMED (lane 24)`.
 
-The question is what the starter gives a campaign to build on, and whether the tasks leave a
-harness room to add anything to it. The Starter Built Harness is pi's coding agent with pi's four
+The question is what the starter gives a campaign to build on, whether the tasks leave a
+harness room to add anything to it, and whether each promotion still beats it. The Starter Built Harness is pi's coding agent with pi's four
 coding tools, no domain program and the starter instructions as its guide: two lines true in every
 domain, in `EXAMPLE`'s outline with its entries empty (`src/harness/starter.ts`). Until 27 October
 its guide was empty, and 38 of the 43 promoted guides then on record copied `EXAMPLE`'s outline
@@ -811,11 +811,21 @@ then asks the Examiner for others. Then read each built guide against the starte
 keeps the two lines, drops them, or rewrites them, and whether it still copies `EXAMPLE`'s outline
 or grows its own. After a promotion the starter comparison puts the starter against the reference: the tasks written for the
 promoted harness are read by the starter against it before a Builder session is paid for, which
-is where the plan reads whether the starter loses more each epoch. Read which tasks the starter
+is where the plan reads whether the starter loses more each epoch. A promotion is confirmed once
+that comparison reads the reference above the starter without the bill (`confirmed`,
+`src/campaign/climb.ts`), and the milestone counts confirmed promotions only. `PROMOTION
+UNCONFIRMED` names each promotion whose epoch holds no such reading, open or closed, and the
+tally where one read no step. For each, say which of three it is: the epoch is still open and
+the table has not yet named the comparison; the table named it and another move took its place
+(lane 28's `MOVES ASKED` tallies a Builder's compare by what the table named, so a compare made
+where the table named the starter is one); or it ran and the starter held level. On 1 November
+none of six promotions in four campaigns was confirmed, each for the second reason. Read which tasks the starter
 answers that a harness does not, by the solves' endings and never their text. The decision it
-changes is whether the starter's guide stays as it is, and at the first task admission whether the tasks are
-replaced; it routes to `host` (`src/harness/starter.ts`) for the starter's guide, `operator`, and
-`harness/guide` or `harness/tools` where a harness loses to the starter.
+changes is whether the starter's guide stays as it is, at the first task admission whether the
+tasks are replaced, and whether a promotion is counted towards the milestone; it routes to `host`
+(`src/harness/starter.ts`) for the starter's guide, `host` (`tools/d2/campaign-actions.ts`,
+`comparedOf`) for a starter comparison another move displaced, `operator`, and `harness/guide`
+or `harness/tools` where a harness loses to the starter.
 
 **25. Flips and solver variance.**
 
@@ -828,9 +838,13 @@ both answered validly and did not, under one condition, is a flip. v1 recorded a
 5 times in 21 on the same bytes, and in one truss run 13 tasks solved 59 times failed twice
 with both fails passing beside them. Under a fixed budget a flip is also a solve that needed a
 little more than the budget once and a little less the next time. `REFERENCE AGAINST ITSELF` is
-the direct measure: at four or more even solves per side, `compared` splits the reference's
-own solves into two halves mirrored in time, on the tasks the comparison tallied. It runs no
-extra solves. Two samples of one harness should tie on most tasks and win as
+the direct measure: at an even number of solves a side, two by default, `compared` splits the
+reference's own solves into two halves mirrored in time, on the tasks the comparison tallied, so
+at two a side it is the reference's first solve of each task against its second. It runs no
+extra solves. This lane owns the reference's spread; lane 23 owns what the test could show at its
+size. For each step, say how many of its untied wins fall on tasks where the reference's own
+halves disagree: a step that rests on those rests partly on the reference's spread, as the
+validity arm's did on 1 November. Two samples of one harness should tie on most tasks and win as
 often as lose; the tally's untied share is the noise every comparison at that budget has to
 exceed. `readsStepEitherWay` reads it either way, each half at the comparison's level, and its
 `detectable` is sized at the same level. An A/A that reads a step is a report and ends nothing;
@@ -893,7 +907,9 @@ pinned in its opening terms, or none, so the tree's default. Until 19 October a 
 stages: a first reading at or under a trigger bought a repeat on fresh solves, and the two read
 together had to clear the level. Since then one reading at the level promotes, and since
 20 October that reading is one test over the frontier and the retained tasks together. Set the tally beside its own A/A noise as evidence about
-variance, without replacing the recorded test with a threshold on untied share.
+variance, without replacing the recorded test with a threshold on untied share. Say whether the
+promotion is confirmed (lane 24's `PROMOTION UNCONFIRMED`): an unconfirmed promotion is reported
+as a step read once, and it does not count towards the milestone.
 
 Then what the step measured. `STARTER BARE` names a rest comparison where the reference answered
 none of its solves on more than half its tasks. There the step reads "a harness that carries an
@@ -966,10 +982,18 @@ The question is whether the campaign command made the moves its table names, and
 of its endings came for the reason it records. The table (`decide`, `src/campaign/decide.ts`)
 advises; inside a led campaign the Builder chooses, and the host makes what needs no Builder
 (`hostOwed`, `tools/d2/harness-builder.ts`). `MOVES ASKED` counts the `campaign.move` events with
-the code `asked`, by move, out of every move: the Builder asked for one move where the table named
-another. Read each beside the decision the table gave at that point (`bun run runs view` replays
-it as its last line) and say whether the move it took moved the chain (lane 26) or spent a
-comparison the table would have saved. Then read the endings. A `campaign.ended` is the last
+the code `asked`, by move and by what the table named, out of every move: the Builder asked for
+one move where the table named another. Read each beside the decision the table gave at that
+point (`bun run runs view` replays it as its last line) and say whether the move it took moved
+the chain (lane 26) or spent a comparison the table would have saved. A compare asked where the
+table named a comparison of the starter took that comparison's place, and its promotion stays
+unconfirmed (lane 24). A compare asked where the table named a comparison of the latest harness
+may be the table's own move under another code: say whether the harness compared is that latest
+one. Then, for each comparison of a harness that is not the latest one read against the same
+reference, diff it against that one (lane 15's diff). Where only wording, order or a default no
+solve reads moved, the comparison is a second draw of one pair in effect, which `AGENTS.md`
+section 4 allows only where the table names it; on 1 November a promoted harness and the no-step
+one read before it differed by one search default. Then read the endings. A `campaign.ended` is the last
 event of a run that stopped, so `ENDED AND WENT ON` names each ending that later events follow: a
 continuation, which is right after `operator`, `finished`, `environment` or a crash, and a fault
 after `budget`, `stop` or `no-room` unless an operator's word (`--budget`, `--past-stop`) stands
@@ -982,7 +1006,7 @@ twice took effect twice. Confirm that no seat's context names a word. The decisi
 whether the controller's moves and endings may be read as the table's, and whether a move the
 Builder chose instead is advice the table should give; it routes to `host`
 (`src/campaign/decide.ts`, `tools/d2/harness-builder.ts`, `tools/d2/campaign-actions.ts`) for a
-move or ending the table did not name, `builder-prompt` (`src/builder/prompt.ts`) for advice the
+move or ending the table did not name and for a second draw it let through (`readAgainst`), `builder-prompt` (`src/builder/prompt.ts`) for advice the
 Builder read and set aside, and `operator` for a word that did not act.
 
 ### The solve
@@ -1064,9 +1088,19 @@ Label: `economy`.
 
 Importance: 0.4.
 
-Starts from `LONG SILENCES (lane 31)` and `SPEND LED BY A ROLE (lane 31)`.
+Starts from `LONG SILENCES (lane 31)`, `SPEND LED BY A ROLE (lane 31)` and
+`UNBILLED COMPACTIONS (lane 31)`.
 
-The question is where the hours and the dollars went, and what each long silence was. Use
+The question is where the hours and the dollars went, whether the bill holds all of them, and
+what each long silence was. Start with the bill's completeness, since every dollar below rests on
+it. Row F's `campaign` line sets the backend's own totals beside the host's calculated bill on the
+same ending records (`costLine`, `src/kernel/trace.ts`): a gap of more than a few percent says a
+turn was priced at another model or a part of the work was priced at nothing. `UNBILLED
+COMPACTIONS` counts the compactions whose summary was billed nothing, by seat; a Claude Code
+compaction reports no usage of its own, so on 1 November three in one log billed nothing while
+the backend's totals ran about 0.19 dollars over the bill on two sessions. Name each part the bill
+leaves out and what it would add, and route it to `host` (`src/agent/session.ts`, the backend that
+reports it). Then use
 `spendOf`, which delegates billing to `billedAll`: ending records count closed work and turn
 records count work without an ending. Drafting and `try_task` admission solves, in a log from
 before 1 November, are the Examiner's spend. Read metered and backend-reported amounts separately where the events hold
@@ -1081,10 +1115,13 @@ tokens, or nothing open between moves. A fixed twenty minutes read nothing on bu
 10 October, whose longest gap was 19.5 minutes; recode's two gaps over it were each an Examiner
 turn of over 56,000 output tokens. For each silence, confirm what was running from the events on either side: a
 solve at its deadline, a Builder command, a provider wait, a machine asleep. Read the cost of one round at the plan's size
-from this one's parts and say what the next costs. `AGENTS.md` sections 1 and 6 own economy and
-the campaign's dollar cap. The decision it changes is what the next round is expected to cost and whether a role's
-spend is earning its place; it routes to `operator`, and to `environment` for a wait nobody
-chose.
+from this one's parts and say what the next costs. Last, read the economy factor as the closing
+report states it (`tools/d2/close.ts`): dollars and hours per promotion, and each epoch's promotion
+attempts after set-up against the bar of three (`worthOf`, `src/campaign/climb.ts`), with the
+epochs over it named. `AGENTS.md` sections 1 and 6 own economy and the campaign's dollar cap. The
+decision it changes is what the next round is expected to cost, whether the bill can be believed,
+and whether a role's spend is earning its place; it routes to `operator`, `host` for a part the
+bill leaves out, and `environment` for a wait nobody chose.
 
 ### The runs
 
@@ -1112,7 +1149,11 @@ each finding cites. Count the runs live on each login at each launch against the
 (`bun run runs active`), without naming a login, and say whether a launch went over it. Set each
 receipt's load against its cores, and read the `campaign.waited` events and any wait at a named
 reset (`waitOut`) as the host's time. Confirm that every comparison's condition names one host-code
-digest per launch (lane 21 reads the pairs). The decision it changes is whether the run's
+digest per launch (lane 21 reads the pairs). Where several campaigns are read as the arms of one
+experiment, set each arm's variables side by side: the pack or drafted exam, the host, the commit,
+the seats and their efforts, the budget and the opening's terms. Name every difference beyond the
+one the experiment moves as a confound, and say which findings it could explain; on 1 November an
+ablation's arms differed in their exam and their host at once, so neither could be read alone. The decision it changes is whether the run's
 promotions count towards the milestone, and whether a launch path let a run start at a commit or
 tree it should not; it routes to `operator` for a run whose promotions do not count, `environment`
 for a host, a login or a load, and `host` (`tools/runs/`, `tools/d2/harness-builder.ts`) for a
@@ -1140,10 +1181,16 @@ closing report's promotions and spend (`tools/d2/close.ts`), the pulse's open ru
 run-improvement-campaign's `scripts/cycle.ts` promotions and hours, and the page where it was used. A reader that disagrees
 with the fold it should call is a second reader of one fact (rule 12). Run `bun run runs replay`
 where the tree that reads differs from the tree that wrote, and say which event kinds this tree
-cannot read. The decision it changes is whether any count in the other reports can be believed as
-the log's, and which reader to correct; it routes to `host` (`src/kernel/log.ts`,
-`src/kernel/reports.ts`, `tools/d2/close.ts`, `tools/runs/`) for a writer or reader at fault, and
-`environment` for a log written by two processes.
+cannot read. Then read the copy under review against its log: a copy gathered from another host
+(`data/runs/<host>/<name>`) may lag the original, and every harness state the log names should lie
+under its `states/`. `versions.txt` in the derived folder marks each one not kept; count them, say
+which lanes could not read their diff because of it, and whether `runs fetch <name>` finds the
+original. On 1 November a gathered copy held 2 of 8 states and the fetch found no host holding the
+campaign. The decision it changes is whether any count in the other reports can be believed as
+the log's, which reader to correct, and whether the copy must be refreshed before the lanes run; it routes to `host` (`src/kernel/log.ts`,
+`src/kernel/reports.ts`, `tools/d2/close.ts`, `tools/runs/`) for a writer or reader at fault and
+for a copy that lacks what its log names (`tools/runs/move.ts`), and `environment` for a log
+written by two processes.
 
 ### The audit
 

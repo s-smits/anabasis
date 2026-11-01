@@ -51,6 +51,16 @@ function campaign() {
   return { log, put, compare };
 }
 
+/** A campaign whose held-out tasks are proposed and passed their gate. */
+function held() {
+  const made = campaign();
+  for (const version of HELD) {
+    made.put("task.proposed", { version });
+    made.put("task.gate", { version, gate: 1, outcome: "passed" });
+  }
+  return made;
+}
+
 const triggered = (log: readonly LogEvent[]) => {
   const { triggers } = overview(log);
   return (name: keyof typeof TRIGGERS) =>
@@ -160,6 +170,33 @@ describe("lane 27: a promotion and the climb after it", () => {
     const after = triggered(log)("AFTER THE PROMOTION")[0];
     expect(after).toContain(`valid ${expected} against ${expected}`);
     expect(after).toContain(`control g-3: the promoted harness valid on ${expected}`);
+  });
+
+  it("names a promotion no starter comparison confirmed, and leaves out one that a starter comparison did", () => {
+    // The gate ablation of 1 November: five promotions, a Builder's comparison in each starter
+    // comparison's place, and none confirmed.
+    const { log, put, compare } = held();
+    compare("g-1", "hbase", "hn", STEP)();
+    put("harness.promoted", { harness: "hn", from: "hbase", rests: [{ comparison: "g-1" }] });
+    compare("g-2", "hn", "hm", STEP)();
+    expect(triggered(log)("PROMOTION UNCONFIRMED")).toEqual([
+      "1 of 1 promotions: hn in epoch 2, open: no starter comparison reported",
+    ]);
+    // The starter loses every task to the promoted reference: six untied at level 0.1.
+    const lost = { wins: 0, losses: 6, ties: 0, p: 1, unbilled: [-1, -1, -1, -1, -1, -1] };
+    compare("g-3", "hn", "hbase", { ...STEP, scored: lost, reading: "no-step" })();
+    expect(triggered(log)("PROMOTION UNCONFIRMED")).toEqual([]);
+  });
+
+  it("names the compactions whose summary was billed nothing, by seat", () => {
+    const { log, put, compare } = held();
+    compare("g-1", "hbase", "hn", STEP)();
+    put("build.compacted", { session: "b-1", usages: [] });
+    put("build.compacted", { session: "b-1", usages: [{ cost: { total: 0.2 } }] });
+    put("exam.compacted", { session: "x-1", usages: [] });
+    expect(triggered(log)("UNBILLED COMPACTIONS")).toEqual([
+      "2 of 3 compactions billed nothing: build 1, exam 1",
+    ]);
   });
 
   it("reads a promotion on the differences its step tested: the frontier and the retained tasks since 20 October, the frontier alone before", () => {

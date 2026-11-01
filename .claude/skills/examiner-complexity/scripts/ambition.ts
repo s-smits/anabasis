@@ -14,12 +14,14 @@
  * record with one-off scripts, and the operator asked for the loop to be a skill with its own
  * scripts; this reader wraps the folds that the paired seats already read by.
  */
+import { campaignOf } from "#src/campaign/handover.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { billedAll } from "#src/kernel/trace.ts";
 import { existsSync, statSync } from "#src/meta/filesystem.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";
 import { runCommand } from "#skills/main/cli.ts";
+import { validitySteps } from "#tools/d2/close.ts";
 import { readingOf } from "#skills/system-path-simulation/scripts/live-seat.ts";
 
 export const STARTS = new Set<string>(["exam.started", "draft.started"]);
@@ -67,11 +69,27 @@ function reachedBy(events: readonly LogEvent[], kind: string, from: string | und
   return `${hours.toFixed(1)} h / ${String(solves)} solves / $${billedAll(upto).toFixed(0)}`;
 }
 
-/** The campaign's line: what it had spent by its first comparison and promotion, and their counts. */
+/** Where an exam's difficulty shows once tasks are scored: the scored tasks on which the reference
+ *  was valid in every solve, and the steps that won any point by validity. An admission says only
+ *  that a task left room; on 1 November buffer's reference was valid in every solve on 129 of 132
+ *  scored tasks across the gate ablation, and 1 of 6 steps won a validity point, which no
+ *  admission line showed. */
+function hardness(events: readonly LogEvent[]): string {
+  const compared = campaignOf(events).steps.flatMap((step) =>
+    step.step === "comparison" && step.valid !== null ? [step] : [],
+  );
+  const every = compared.reduce((sum, { valid }) => sum + (valid?.old.at(-1) ?? 0), 0);
+  const scored = compared.reduce((sum, { valid }) => sum + (valid?.old.reduce((a, b) => a + b, 0) ?? 0), 0);
+  const [onValidity, stepped] = validitySteps(compared);
+  return `reference valid every solve on ${String(every)} of ${String(scored)} scored tasks, ${String(onValidity)} of ${String(stepped)} steps won by validity`;
+}
+
+/** The campaign's line: what it had spent by its first comparison and promotion, their counts, and
+ *  how hard its scored tasks were for the reference. */
 export function campaignLine(events: readonly LogEvent[]): string {
   const opened = events.find((event) => event.kind === "campaign.opened")?.at;
   const count = (kind: string) => events.filter((event) => event.kind === kind).length;
-  return `first comparison ${reachedBy(events, "comparison.started", opened)}, first promotion ${reachedBy(events, "harness.promoted", opened)}; ${String(count("comparison.started"))} compared, ${String(count("harness.promoted"))} promoted`;
+  return `first comparison ${reachedBy(events, "comparison.started", opened)}, first promotion ${reachedBy(events, "harness.promoted", opened)}; ${String(count("comparison.started"))} compared, ${String(count("harness.promoted"))} promoted; ${hardness(events)}`;
 }
 
 /** A log's path from a log or its campaign folder. */

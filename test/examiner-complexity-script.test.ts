@@ -16,20 +16,34 @@ const event = (minutes: number, kind: EventKind, data: JsonObject): LogEvent => 
   data,
 });
 
-const gate = (minutes: number, outcome: string, valid: number) =>
-  event(minutes, "task.gate", { outcome, reference: { solves: 3, valid } });
+// A gate reads a proposed task, as every log holds it, so the campaign's fold can read the log whole.
+const gate = (minutes: number, outcome: string, valid: number) => {
+  const version = `v${String(minutes)}`;
+  const task = { taskId: version, family: "f", publicInput: {} };
+  return [
+    event(minutes, "task.proposed", { version, taskId: version, task }),
+    event(minutes, "task.gate", { version, outcome, reference: { solves: 3, valid } }),
+  ];
+};
 
 describe("ambition", () => {
   const log = [
     event(0, "campaign.opened", {}),
     event(1, "draft.started", { session: "d-1" }),
     event(2, "exam.started", { session: "x-1" }),
-    gate(3, "refused", 3),
-    gate(4, "passed", 1),
+    ...gate(3, "refused", 3),
+    ...gate(4, "passed", 1),
     event(30, "comparison.started", { session: "g-1" }),
+    event(89, "comparison.reported", {
+      session: "g-1",
+      reading: "step",
+      valid: { old: [1, 0, 5], fresh: [0, 0, 6], informative: { old: 6, fresh: 6 } },
+      points: { validity: 0, objective: 900, bill: 120 },
+      aside: [],
+    }),
     event(90, "harness.promoted", { harness: "abcdef0123456789" }),
     event(91, "exam.started", { session: "x-2" }),
-    gate(92, "passed", 0),
+    ...gate(92, "passed", 0),
   ];
 
   it("reads each session alone, under the reference in force when it opened", () => {
@@ -41,9 +55,10 @@ describe("ambition", () => {
 
   it("gives the hours to the first comparison and promotion, or says none yet", () => {
     expect(campaignLine(log)).toBe(
-      "first comparison 0.5 h / 0 solves / $0, first promotion 1.5 h / 0 solves / $0; 1 compared, 1 promoted",
+      "first comparison 0.5 h / 0 solves / $0, first promotion 1.5 h / 0 solves / $0; 1 compared, 1 promoted; reference valid every solve on 5 of 6 scored tasks, 0 of 1 steps won by validity",
     );
-    expect(campaignLine(log.slice(0, 5))).toContain("first comparison none yet, first promotion none yet");
+    expect(campaignLine(log.slice(0, 7))).toContain("first comparison none yet, first promotion none yet");
+    expect(campaignLine(log.slice(0, 7))).toContain("on 0 of 0 scored tasks, 0 of 0 steps");
   });
 });
 

@@ -280,7 +280,7 @@ function spend(row: Row, prices: PriceTable) {
     output: sum("outputTokens"),
   };
   // v1's rows hold no cache classes, so every input token is billed at the input price: metered.
-  const metered = billOf(prices, { [`${row.provider}/${row.model}`]: { tokens, dollars: 0 } });
+  const metered = billOf(prices, { [`${row.provider}/${row.model}`]: { ...tokens, dollars: 0 } });
   return { billed: sum("costUsd"), metered };
 }
 

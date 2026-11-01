@@ -87,7 +87,7 @@ bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/table.ts \
   numbers mean nothing from one cycle to the next.
 - **Hours say how fast, not on what.** `groups` and `runs` also give the room on validity (scored
   tasks the reference did not answer validly in every solve, of those scored, summed over the
-  reported comparisons), the steps won by validity (`validitySteps`) and the confirmed promotions.
+  reported comparisons), the steps won by validity (`validityOf`) and the confirmed promotions.
   A cycle whose room is near zero can promote only on the objective and the bill, whatever its
   hours: buffer after v0.8.0 held 7 of 571, its steps 5 of 17 on validity (1 November).
 - **`--has`** and **`--holds`** keep the runs whose every launch ran with a mechanism (`ranWith`),

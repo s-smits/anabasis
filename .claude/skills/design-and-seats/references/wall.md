@@ -2,7 +2,7 @@ Read this before changing what the Builder, solver or Examiner can read. This ex
 one wall" in `AGENTS.md` section 1. Use `scripts/seat-view.ts` to trace imports and identify the
 relevant wall tests.
 
-## 1. What Anabasis v2 does
+## 1. What Anabasis does
 
 ### Two sides and one wall
 

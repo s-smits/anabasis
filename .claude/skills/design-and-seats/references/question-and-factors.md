@@ -1,7 +1,7 @@
 Read this for the evaluation question, reported factors and v1 terminology. This expands `AGENTS.md`
 section 1; the information boundary is in `wall.md`.
 
-## 1. What Anabasis v2 does
+## 1. What Anabasis does
 
 One query names one technical domain. A campaign builds one **Built Harness** for it (a harness, for
 short): the guide and the programs a solving model uses to answer that domain's tasks. The
@@ -26,7 +26,7 @@ sets the cap and provides blind labels. All campaign state is derived from one a
 
 ### The four reported factors
 
-Anabasis v2 is a training loop in which the thing trained is a harness and the loss is measured by
+Anabasis is a training loop in which the thing trained is a harness and the loss is measured by
 running a fixed model. It needs a training signal that carries information, a held-out set the
 learner cannot see, an evaluation less noisy than the effect it seeks, correct labels, and a result
 worth its cost. The first, supply, is a condition of admission; the other four are reported: climb,

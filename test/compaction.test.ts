@@ -2,8 +2,8 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { createModels, fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { sit, type Seat } from "../src/agent/session.ts";
-import { tracesIn } from "../src/kernel/trace.ts";
 import { read } from "../src/kernel/log.ts";
+import { tracesIn } from "../src/kernel/trace.ts";
 import { text, tool } from "../src/tools/answer.ts";
 import { mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -65,7 +65,7 @@ function session(name: string, options: { failure?: boolean } = {}) {
 }
 
 describe("durable compaction", () => {
-  it("summarises through durable, traces the summary usage and bills it with the turns", async () => {
+  it("summarises through durable, prices each summary on its event and bills it once with the turns", async () => {
     const s = session("summarised");
     const sat = await sit(s.seat);
     expect(sat.crash).toBeNull();
@@ -75,15 +75,14 @@ describe("durable compaction", () => {
     const compacted = events.filter(({ kind }) => kind === "solve.compacted");
     expect(compacted.length).toBe(s.summaries.length);
     expect(compacted[0]?.data).toMatchObject({ error: null });
-    expect(compacted[0]?.data.usages).toHaveLength(1);
-    const billed = tracesIn(events).reduce(
-      (sum, part) => sum + (part.part === "call" ? 0 : (part.billed ?? 0)),
-      0,
-    );
-    expect(sat.spent.billed).toBeCloseTo(billed, 8);
+    const parts = tracesIn(events).filter((part) => part.part !== "call");
+    const summaries = parts.filter((part) => part.part === "compacted");
+    expect(summaries.every((part) => (part.billed ?? 0) > 0)).toBe(true);
+    const traced = parts.reduce((sum, part) => sum + (part.billed ?? 0), 0);
+    expect(sat.spent.billed).toBeCloseTo(traced, 8);
   });
 
-  it("retains the billed usage of a failed summary and ends the session as a crash", async () => {
+  it("keeps the usage of a failed summary and ends the session as a crash", async () => {
     const s = session("failed", { failure: true });
     const sat = await sit(s.seat);
     expect(s.summaries).toHaveLength(1);
@@ -91,7 +90,8 @@ describe("durable compaction", () => {
     const event = read(s.log).find(({ kind }) => kind === "solve.compacted");
     expect(event?.data.error).toContain("summary refused");
     expect(event?.data.usages).toHaveLength(1);
-    expect(sat.spent.tokens.input).toBeGreaterThan(0);
+    const turns = s.seat.turns.reduce((sum, turn) => sum + turn.usage.input, 0);
+    expect(sat.spent.tokens.input).toBeGreaterThan(turns);
   });
 
   it("runs the host bound before compaction and makes no summary when it throws", async () => {

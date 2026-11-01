@@ -14,9 +14,12 @@
  * Examiner's sessions imported for them; until 22 October each of the four spelled the loop's
  * wiring for itself; and until 23 October each spelled this frame around it. `src/kernel/trace.ts`
  * reads back what this writes.
- * A turn is billed at the price of the model that served it, as its provider's catalogue lists it,
- * and at the requested model's where the catalogue has no price for that one, which the turn's
- * `pricedAt` names. Until 25 October every turn was billed at the requested model: recode's seats
+ * The session's bill is its backend's own ledger at the host's frozen prices (`src/kernel/meter.ts`):
+ * Claude Code's last result, or pi-durable's `pi.usage` for every other backend, a retried attempt
+ * and a compaction summary included. Each turn is still priced as it ends, for the cap a seat reads
+ * while it runs and for a seat that never ended: at the model that served it, as its provider's
+ * catalogue lists it, and at the requested model's otherwise. Until 25 October every turn was billed
+ * at the requested model: recode's seats
  * asked for claude-opus-5-5 and Claude Code answered all 1,898 recorded turns of one campaign as
  * claude-opus-5, a quarter dearer per input and output token and two and a half times per cache
  * read, so calculated spend on recode's three campaigns ran 31 to 35% under what Claude Code reported
@@ -24,15 +27,7 @@
  * model, the same endings come within 3 to 7% of Claude Code's totals.
  */
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import type {
-  Api,
-  AssistantMessage,
-  Message,
-  Model,
-  Models,
-  ThinkingLevel,
-  Usage,
-} from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, Message, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { isRetryableAssistantError } from "@earendil-works/pi-ai/utils/retry";
 import {
   CompactionTask,
@@ -51,20 +46,30 @@ import {
   type ToolRegistration,
   type HookApi,
   type CommitPublication,
+  type UsageState,
 } from "@earendil-works/pi-durable";
 import type { Context } from "@earendil-works/chord";
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
-import { CLAUDE_COMPACTED, reportedCost } from "./backends/claude.ts";
+import { CLAUDE_COMPACTED, claudeLedger, servedByClaude } from "./backends/claude.ts";
 import { retryPolicy } from "./backends/models.ts";
 import { compactionPolicy, compactionTrace } from "./backends/compaction.ts";
 import { append } from "../kernel/log.ts";
-import { dollars, freezePrices, priceKey, tokensOf } from "../kernel/meter.ts";
+import {
+  billOf,
+  freezePrices,
+  type Ledger,
+  ledgerOf,
+  priceKey,
+  sessionLedger,
+  type Tokens,
+  tokensOf,
+} from "../kernel/meter.ts";
 import { type Seat as SeatKind, traceKind, whose } from "../kernel/trace.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { Cancellation } from "../kernel/solve.ts";
 import { rmSync } from "../meta/filesystem.ts";
 import { isString, type JsonObject } from "../meta/json-shape.ts";
-import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
+import { keysIf } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hostScratch } from "../wall/policy.ts";
 
@@ -121,15 +126,21 @@ export interface Sat {
   readonly cut: boolean;
   readonly thrown: string | null;
   readonly crash: string | null;
-  readonly spent: Awaited<ReturnType<typeof spentBy>>;
+  readonly spent: Spent;
 }
 
-/** Usages billed together, at one model's price. */
-interface Bill {
-  readonly usages: readonly Usage[];
-  readonly billed: number;
-  readonly metered: number;
-}
+/** What a seat spent, as its end records it: its model turns, its tokens and the dollars they come
+ *  to (`billOf`), and the total Claude Code reported where it served the seat. An unfinished seat is
+ *  counted by its turns' recorded dollars (`unfinished`, `src/kernel/trace.ts`). */
+type Spent = Readonly<{
+  turns: number;
+  tokens: Readonly<Record<keyof Tokens, number>>;
+  billed: number;
+  reportedCost: number | null;
+}>;
+
+/** What a seat that never sat spent. */
+export const NOTHING_SPENT: Spent = { turns: 0, tokens: tokensOf({}), billed: 0, reportedCost: null };
 
 /** Whose trace a log holds: a solve's, a Builder's session, an Examiner's that writes tasks, or
  *  the one in which it drafts the exam, or a Referee ruling. The word prefixes the event kinds
@@ -166,7 +177,7 @@ export function traceSink(log: string, of: Traced, id: string, turn: () => numbe
         ms: at === undefined ? null : performance.now() - at,
       });
     },
-    turn: (message: AssistantMessage, retried: readonly string[] = [], pricedAt?: string) => {
+    turn: (message: AssistantMessage, retried: readonly string[] = []) => {
       const { stopReason, errorMessage: error, responseModel, usage, content, diagnostics } = message;
       for (const { type, details } of diagnostics ?? []) {
         if (type !== CLAUDE_COMPACTED) continue;
@@ -187,72 +198,58 @@ export function traceSink(log: string, of: Traced, id: string, turn: () => numbe
         usage: { ...usage },
         text: traceText(content),
         ...keysIf(retried.length > 0, () => ({ retried: [...retried] })),
-        ...keyIfDefined("pricedAt", pricedAt),
       });
     },
   };
 }
 
-/** What a seat's model turns and its compactions' summaries spent, as its end records it: its
- *  turns, its tokens, the dollars each bill came to, and what Claude Code reported for them. An
- *  unfinished seat is counted by its turns' recorded dollars (`unfinished`, `src/kernel/trace.ts`). */
-export async function spentBy(id: string, turns: readonly AssistantMessage[], bills: readonly Bill[]) {
-  const sum = (part: (bill: Bill) => number) => bills.reduce((total, bill) => total + part(bill), 0);
-  return {
-    turns: turns.length,
-    tokens: { ...tokensOf(bills.flatMap(({ usages }) => usages)) },
-    billed: sum(({ billed }) => billed),
-    metered: sum(({ metered }) => metered),
-    reportedCost: await reportedCost(id, turns),
-  };
-}
-
-/** The seat's bills, each at the price of the model that served it where its provider's catalogue
- *  lists one, else at `model`'s; the catalogue is frozen once the seat's backends exist. */
-function meterOf(model: Model<Api>) {
-  const asked = priceKey(model);
-  const bills: Bill[] = [];
+/** The seat's prices, frozen once its backends exist: its own model's, then every model its
+ *  provider's catalogue prices. A turn is priced at the model that served it where that is listed,
+ *  and at the seat's own otherwise (recode, 25 October: Claude Code answered claude-opus-5-5's
+ *  requests as claude-opus-5). */
+function pricesOf(model: Model<Api>) {
   let prices = freezePrices([model]);
+  const keyOf = (served: string | undefined): string => {
+    const key = served === undefined ? priceKey(model) : priceKey({ provider: model.provider, id: served });
+    return Object.hasOwn(prices, key) ? key : priceKey(model);
+  };
   return {
-    bills,
     catalogue: (models: Models) => {
       const listed = models.getModels(model.provider).filter(({ cost }) => cost.input > 0 && cost.output > 0);
       prices = freezePrices([...listed, model]);
     },
-    /** Bills `usages` served by `served`, and names the requested price where that one has none. */
-    bill: (served: string | undefined, usages: readonly Usage[]) => {
-      const key = served === undefined ? asked : priceKey({ provider: model.provider, id: served });
-      const at = Object.hasOwn(prices, key) ? key : asked;
-      const bill = { usages, ...dollars(prices, at, tokensOf(usages)) };
-      bills.push(bill);
-      return { billed: bill.billed, pricedAt: at === key ? undefined : at };
-    },
+    bill: (ledger: Ledger) => billOf(prices, ledger),
+    /** The turns' ledger, each turn at the key it is priced at. */
+    turns: (turns: readonly AssistantMessage[]): Ledger =>
+      ledgerOf(turns.map(({ responseModel, usage }) => [keyOf(responseModel), usage])),
   };
 }
 
 /** One session of `seat`, on one in-memory Harness and one conversation. */
 export async function sit(seat: Seat): Promise<Sat> {
   const home = seat.home ?? hostScratch("claude-cli-seat-");
-  const meter = meterOf(seat.model);
+  const prices = pricesOf(seat.model);
   const stops = seat.stops.filter((stop) => stop !== undefined);
   const done = new AbortController();
   const shutdown = AbortSignal.any([...stops, done.signal]);
   const halt = Promise.withResolvers<void>();
-  const frame = sessionHooks(seat, halt.resolve, meter.bill);
-  const compactions = compactionTrace(({ usages, ...event }) => {
-    const priced = usages.map((usage) => ({
-      ...usage,
-      cost: { ...usage.cost, total: meter.bill(undefined, [usage]).billed },
-    }));
-    if (seat.trace !== undefined) {
-      append(seat.trace.log, traceKind(seat.trace.of, "compacted"), {
-        [whose(seat.trace.of)]: seat.id,
-        ...event,
-        usages: priced.map((usage) => ({ ...usage })),
-      });
-    }
+  const frame = sessionHooks(seat, halt.resolve, prices);
+  // Each summary's spend is traced at its price, one usage a model; the session's bill holds it
+  // through the backend's ledger, so it is priced here for the trace alone.
+  const compactions = compactionTrace(({ spent, ...event }) => {
+    if (seat.trace === undefined) return;
+    append(seat.trace.log, traceKind(seat.trace.of, "compacted"), {
+      [whose(seat.trace.of)]: seat.id,
+      ...event,
+      usages: Object.entries(spent).map(([model, spend]) => ({
+        model,
+        ...spend.tokens,
+        cost: { total: prices.bill({ [model]: spend }) },
+      })),
+    });
   });
   let harness: Harness | undefined;
+  let usage: UsageState | null;
   const wakeOnStop = () => halt.resolve();
   shutdown.addEventListener("abort", wakeOnStop, { once: true });
   try {
@@ -266,7 +263,7 @@ export async function sit(seat: Seat): Promise<Sat> {
       }),
     );
     const models = seat.models(home, shutdown);
-    meter.catalogue(models);
+    prices.catalogue(models);
     harness = await Harness.open(
       new MemoryStorage(),
       {
@@ -309,13 +306,30 @@ export async function sit(seat: Seat): Promise<Sat> {
     frame.fail(error);
   } finally {
     done.abort();
+    // pi-durable's ledger is read before the close, which drops it.
+    usage = (await harness?.usage(BACKGROUND_CONTEXT).catch(() => null)) ?? null;
     await harness?.close(BACKGROUND_CONTEXT);
     shutdown.removeEventListener("abort", wakeOnStop);
     if (seat.home === undefined) rmSync(home, { recursive: true, force: true });
   }
   const cut = stops.some((stop) => stop.aborted);
   const last = seat.turns.at(-1);
-  meter.bill(undefined, frame.unbilled());
+  // Claude Code's result where it served the seat, and pi-durable's ledger for every other backend.
+  const claude = servedByClaude(seat.model.provider) ? await claudeLedger(seat.id) : null;
+  const backend =
+    claude?.ledger ??
+    (usage === null || servedByClaude(seat.model.provider)
+      ? null
+      : ledgerOf([
+          ...Object.entries(usage.models),
+          ...Object.entries(usage.tools).map(([name, spent]) => [`tool/${name}`, spent] as const),
+        ]));
+  const served = prices.turns(seat.turns);
+  const filed =
+    claude === null
+      ? ledgerOf(seat.turns.map((turn) => [`${turn.provider}/${turn.model}`, turn.usage]))
+      : served;
+  const ledger = sessionLedger(backend, filed, served);
   return {
     cut,
     thrown: frame.thrown,
@@ -323,13 +337,18 @@ export async function sit(seat: Seat): Promise<Sat> {
       ? null
       : (frame.thrown ??
         (last?.stopReason === "error" ? (last.errorMessage ?? "the provider failed the turn") : null)),
-    spent: await spentBy(seat.id, seat.turns, meter.bills),
+    spent: {
+      turns: seat.turns.length,
+      tokens: { ...tokensOf(ledger) },
+      billed: prices.bill(ledger),
+      reportedCost: claude?.reported ?? null,
+    },
   };
 }
 
 /** Hooks cannot throw to end a run: durable reports a hook error and continues. A fence instead
  * wakes sit, which aborts from outside the invocation, then releases the hook's wait by its signal. */
-function sessionHooks(seat: Seat, halt: () => void, bill: ReturnType<typeof meterOf>["bill"]) {
+function sessionHooks(seat: Seat, halt: () => void, prices: ReturnType<typeof pricesOf>) {
   const sink =
     seat.trace === undefined
       ? undefined
@@ -337,8 +356,6 @@ function sessionHooks(seat: Seat, halt: () => void, bill: ReturnType<typeof mete
   const tools = toolHooks(seat, sink);
   const retry = retryPolicy(seat.model.provider);
   const retried: string[] = [];
-  const carried: Usage[] = [];
-  let billedUpTo = 0;
   let thrown: string | null = null;
   const frame = {
     get thrown(): string | null {
@@ -377,8 +394,6 @@ function sessionHooks(seat: Seat, halt: () => void, bill: ReturnType<typeof mete
   };
   return Object.assign(frame, {
     before,
-    /** Retried usages no later turn billed. */
-    unbilled: () => carried.slice(billedUpTo),
     committed: tools.committed,
     hooks: [
       hook(GenerationTask, {
@@ -386,9 +401,9 @@ function sessionHooks(seat: Seat, halt: () => void, bill: ReturnType<typeof mete
         afterResponse: async (message, api, context) => {
           try {
             // An error durable is about to retry is no model turn, as a retry inside the stream was
-            // none before this migration: a solver's turns are its budget. Its dollars are billed on
-            // the turn that follows, which carries `retried`, so the turns' sum stays the session's
-            // bill; its tokens stay off that turn, whose usage durable reads as the context's size.
+            // none before this migration: a solver's turns are its budget. The turn that follows
+            // carries `retried`; the attempt's spend is in durable's own ledger, which the session's
+            // bill reads (`sit`), and in no turn's.
             const attempt =
               (await api.snapshot(LiveDoc, api.conversationId, context))?.generation?.attempt ?? 1;
             if (
@@ -397,17 +412,13 @@ function sessionHooks(seat: Seat, halt: () => void, bill: ReturnType<typeof mete
               attempt <= retry.maxRetries &&
               isRetryableAssistantError(message)
             ) {
-              carried.push(message.usage);
               retried.push(message.errorMessage ?? "provider failure");
               return;
             }
-            const owed = carried.slice(billedUpTo);
-            billedUpTo = carried.length;
-            const { billed, pricedAt } = bill(message.responseModel, [...owed, message.usage]);
-            message.usage.cost = { ...message.usage.cost, total: billed };
+            message.usage.cost = { ...message.usage.cost, total: prices.bill(prices.turns([message])) };
             tools.reset();
             seat.turns.push(message);
-            sink?.turn(message, retried, pricedAt);
+            sink?.turn(message, retried);
             retried.length = 0;
             seat.onTurn?.(message);
             if (message.stopReason === "error" && over()) await fence(context);

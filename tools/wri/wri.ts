@@ -5,7 +5,7 @@
  *   bun tools/wri/wri.ts read --log .ana/d2/truss/log.jsonl
  *   bun tools/wri/wri.ts climb --log .ana/d2/truss/log.jsonl[,<log>,<log>]
  *   bun tools/wri/wri.ts start --log .ana/d2/truss/log.jsonl[,<log>,<log>] --out .ana/wri/20261008-truss
- *   bun tools/wri/wri.ts lanes --out .ana/wri/20261008-truss [--lanes 1-4,7]
+ *   bun tools/wri/wri.ts lanes --out .ana/wri/20261008-truss [--lanes 1-4,7] [--agents 3]
  *   bun tools/wri/wri.ts collect --out .ana/wri/20261008-truss
  *   bun tools/wri/wri.ts synthesis --out .ana/wri/20261008-truss
  *   bun tools/wri/wri.ts grade --log .ana/d2/truss/log.jsonl [--bundle <pack>] --task <taskId> --answer <file>
@@ -20,8 +20,10 @@
  *   filled in and two sections left for the primary to write. `--log` names one campaign or several,
  *   which the investigation reads as equals: every lane reads every one, and opens where a trigger
  *   fired on any of them (`tools/wri/investigation.ts`).
- * - `lanes` builds one prompt per lane, and `launch.json`, one session for each lane it built, in
- *   the manifest codex-gpt-swarm's launcher reads. With no `--lanes` it opens the lanes a trigger
+ * - `lanes` builds one prompt per lane, and `launch.json`, the manifest codex-gpt-swarm's launcher
+ *   reads: one session a lane it built, or with `--agents N` the lanes packed by label into N
+ *   sessions, a label never split and the sessions near one another in importance, and each
+ *   isolated lane a session of its own. With no `--lanes` it opens the lanes a trigger
  *   started and the standing ones; an isolated lane is built only when named. A prompt built before
  *   is kept and launched again by nobody: `launch.json` holds only what this call built.
  * - `collect` holds every expected report to its shape and writes `reports.md`. It exits 1 until
@@ -81,7 +83,10 @@ import {
   reportIndex,
   reportOf,
   selected,
+  sessionsOf,
   stem,
+  suggestedSessions,
+  weightOf,
 } from "./investigation.ts";
 import { overview, rendered } from "./read.ts";
 
@@ -102,6 +107,7 @@ const { values, positionals } = parseArgs({
     log: { type: "string" },
     out: { type: "string" },
     lanes: { type: "string" },
+    agents: { type: "string" },
     bundle: { type: "string" },
     task: { type: "string" },
     answer: { type: "string" },
@@ -288,16 +294,38 @@ function lanes(): number {
   const asked = [...open, ...isolated];
   const kept = asked.filter((lane) => existsSync(promptPath(out, lane.number)));
   const built = asked.filter((lane) => !kept.includes(lane));
-  // Each lane built is one session of `launch.json`, its one line and the report it writes itself,
-  // and nothing kept is in it, so its count is the spend (SKILL.md, step 3) and no session is started
-  // twice against one prompt. Until 15 October each launch turned a Markdown list into this by hand.
-  const sessions = built.map((lane) => {
-    const [prompt, report] = [promptPath(out, lane.number), reportPath(out, lane.number)];
-    writeFileSync(prompt, `${lanePrompt({ lane, shared, campaigns, catalogue, owners, report, climb })}\n`);
+  // With `--agents N` the lanes built go to that many sessions of `launch.json`, whole labels
+  // packed by importance (`sessionsOf`), each session reading its prompts in turn and writing their
+  // reports itself; without it each lane is a session. Nothing kept is in it, so its count is the
+  // spend (SKILL.md, step 3) and no session is started twice against one prompt. Until 15 October
+  // each launch turned a Markdown list into this by hand, and until 1 November it held one session
+  // a lane, which the operator asked to set by the number of subagents instead.
+  const count = values.agents === undefined ? null : Number(values.agents);
+  if (count !== null && (!Number.isInteger(count) || count < 1)) {
+    throw new Error(`--agents ${String(values.agents)}: name a whole number from 1`);
+  }
+  for (const lane of built) {
+    const report = reportPath(out, lane.number);
+    writeFileSync(
+      promptPath(out, lane.number),
+      `${lanePrompt({ lane, shared, campaigns, catalogue, owners, report, climb })}\n`,
+    );
+  }
+  const groups = count === null ? built.map((lane) => [lane]) : sessionsOf(built, count);
+  const sessions = groups.map((group) => {
+    const labels = [...new Set(group.map((lane) => lane.label))];
+    const [first] = group;
+    const prompts = group.map((lane) => `\`${promptPath(out, lane.number)}\``).join(", then ");
     return {
-      name: `lane_${stem(lane.number)}`,
-      task: `Read \`${prompt}\` and do exactly what it says.`,
-      ownedPaths: [report],
+      name:
+        group.length === 1 && first !== undefined
+          ? `lane_${stem(first.number)}`
+          : labels.join("_").slice(0, 48),
+      task:
+        group.length === 1
+          ? `Read ${prompts} and do exactly what it says.`
+          : `Read ${prompts}, one at a time, and do exactly what each says: each lane writes its own report.`,
+      ownedPaths: group.map((lane) => reportPath(out, lane.number)),
     };
   });
   // A lane reads campaign logs, which hold hidden values, so its sessions search nothing: a query
@@ -310,6 +338,22 @@ function lanes(): number {
     );
   }
   console.log(`${plural(built.length, "lane")} built: ${built.map((lane) => lane.number).join(", ")}`);
+  for (const [index, group] of (count === null ? [] : groups).entries()) {
+    console.log(
+      `session ${sessions[index]?.name ?? ""}: lanes ${group.map((lane) => lane.number).join(", ")}, weight ${weightOf(group).toFixed(1)}`,
+    );
+  }
+  const packed = groups.filter((group) => group.some((lane) => !lane.isolated)).length;
+  if (count !== null && packed < count) {
+    console.log(
+      `${plural(packed, "session")} of open lanes, not ${String(count)}: a label is never split; without --agents each lane is a session`,
+    );
+  }
+  if (built.some((lane) => !lane.isolated)) {
+    console.log(
+      `suggested: --agents ${String(suggestedSessions(built))}, the most sessions whose lightest weighs at least half the heaviest`,
+    );
+  }
   for (const lane of kept) console.log(`lane ${String(lane.number)}: built before, kept`);
   for (const lane of waiting) {
     console.log(
@@ -317,7 +361,9 @@ function lanes(): number {
     );
   }
   console.log(
-    built.length === 0 ? "nothing to launch" : `${launch}: ${plural(built.length, "session")} to launch`,
+    sessions.length === 0
+      ? "nothing to launch"
+      : `${launch}: ${plural(sessions.length, "session")} to launch`,
   );
   return 0;
 }

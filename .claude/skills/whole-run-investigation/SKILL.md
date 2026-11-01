@@ -63,8 +63,14 @@ start a step until the check named for the one before holds.
 2. **Edit the shared instructions.** Write the two blank sections: the orientation, which is the
    operator's question, and the moved variable with its prior state.
    *Check:* no `##` section is blank, and the hard rules are still there.
-3. **Build the lanes.** `wri.ts lanes --out <dir>` writes one prompt per lane under `<dir>/lanes/`
-   and `<dir>/launch.json`, one session for each lane it built. With no `--lanes` it opens every
+3. **Build the lanes.** `wri.ts lanes --out <dir> [--agents N]` writes one prompt per lane under
+   `<dir>/lanes/` and `<dir>/launch.json`: one session for each lane it built, or with
+   `--agents N` the lanes packed into N sessions by label. A label is never split, so N above the
+   count of labels gives one session a label; each session's lanes add up to about the same
+   importance (`Importance:` in each lane of the catalogue), and a light label joins another
+   instead of taking a session of its own. The verb prints each session's lanes and weight, and a
+   suggested N: the most sessions whose lightest weighs at least half the heaviest. The operator
+   names N; one session a lane, without the flag, stays available. With no `--lanes` it opens every
    lane a trigger started and the four standing lanes. By default it builds no isolated lane:
    it names the ones whose trigger fired for the primary to assess. A prompt built before is
    kept and excluded from any newly written `launch.json`.
@@ -98,7 +104,7 @@ Each runs as `bun tools/wri/wri.ts <verb>` from the checkout. The usage block at
 | read | `read --log <log>` | nothing: the rows, the triggers and the host line, printed |
 | compare climbs | `climb --log <log>,<log>[,<log>...]` | nothing: the campaign table and shared temporary paths, printed |
 | 1 | `start --log <log>[,<log>...] --out <dir>` | `overview.md`, `shared-instructions.md`, `investigation.json` |
-| 3 | `lanes --out <dir> [--lanes 1-4,7]` | `lanes/NN-prompt.md`, `launch.json` |
+| 3 | `lanes --out <dir> [--lanes 1-4,7] [--agents N]` | `lanes/NN-prompt.md`, `launch.json` |
 | 5 | `collect --out <dir>` | `reports.md` |
 | 6 | `synthesis --out <dir>` | `synthesis-prompt.md` |
 | lanes 1, 5 | `grade --log <log> [--bundle <pack>] --task <taskId> --answer <file>` | nothing: one verdict line. `--bundle` names a stored pack; a campaign that drafted its exam names none |

@@ -1,7 +1,7 @@
 /**
  * The whole-run investigation's catalogue, read from the one file that holds it:
  * `.claude/skills/whole-run-investigation/references/lanes.md`. A lane is its number, its title, the
- * triggers that start it and its body. Whether it is standing or runs alone is read from its own
+ * triggers that start it, its section's label, its importance and its body. Whether it is standing or runs alone is read from its own
  * `Starts from` paragraph, and the owners a finding may name from the catalogue's owner table, so
  * nothing here repeats what the catalogue says. `test/wri-catalogue.test.ts` holds this file's
  * reading to `tools/wri/read.ts`: every trigger the reader can print starts the lane it names.
@@ -22,6 +22,10 @@ export interface Lane {
   readonly isolated: boolean;
   /** Is given every campaign under review side by side, in lane 27's columns. */
   readonly sideBySide: boolean;
+  /** The label of the section the lane stands in. */
+  readonly label: string;
+  /** How much the lane weighs when lanes are packed into sessions, from 0 to 1. */
+  readonly importance: number;
   /** The lane whole, as a session is given it. */
   readonly body: string;
 }
@@ -32,6 +36,8 @@ export const REFERENCES = join(SKILL, "references");
 const HEADING = /^\*\*(\d+)\. (.+)\.\*\*$/;
 const TRIGGER = /`([A-Z][A-Z0-9 ,'-]+) \(lane (\d+)\)`/g;
 const OWNER_ROW = /^\| (`[^|]+) \|/;
+const LABEL = /^Label: `([a-z]+)`\.$/;
+const IMPORTANCE = /^Importance: (0(?:\.\d+)?|1)\.$/;
 
 export function catalogueText(): string {
   return readFileSync(join(REFERENCES, "lanes.md"), "utf8");
@@ -47,19 +53,29 @@ export function section(markdown: string, heading: string): string {
   return (end === -1 ? rest : rest.slice(0, end)).join("\n").trim();
 }
 
-/** The lanes, in the catalogue's order. A lane with no `Starts from` paragraph is a fault of the
- *  catalogue and is named. */
+/** The lanes, in the catalogue's order, each with the label of its section and its importance. A
+ *  lane with no `Starts from` paragraph, no label or no importance is a fault of the catalogue and
+ *  is named. The importance line is left out of the body a session is given. */
 export function lanesOf(markdown: string): Lane[] {
-  const blocks: string[][] = [];
+  const blocks: { label: string; lines: string[] }[] = [];
+  let label = "";
   for (const line of markdown.split("\n")) {
-    if (HEADING.test(line)) blocks.push([line]);
-    else if (line.startsWith("#")) blocks.push([]);
-    else blocks.at(-1)?.push(line);
+    label = LABEL.exec(line)?.[1] ?? label;
+    if (HEADING.test(line)) blocks.push({ label, lines: [line] });
+    else if (line.startsWith("#")) blocks.push({ label, lines: [] });
+    else blocks.at(-1)?.lines.push(line);
   }
-  return blocks.flatMap(([heading = "", ...rest]) => {
+  return blocks.flatMap(({ label: under, lines: [heading = "", ...rest] }) => {
     if (!HEADING.test(heading)) return [];
     const [, number = "", title = ""] = HEADING.exec(heading) ?? [];
-    const body = rest.join("\n").trim();
+    const [, weight] = rest.map((line) => IMPORTANCE.exec(line)).find((match) => match !== null) ?? [];
+    if (under === "" || weight === undefined) {
+      throw new Error(`lane ${number} has no label or no importance line`);
+    }
+    const body = rest
+      .filter((line) => !IMPORTANCE.test(line))
+      .join("\n")
+      .trim();
     const paragraph = body.split("\n\n").find((each) => each.startsWith("Starts from"));
     if (paragraph === undefined) throw new Error(`lane ${number} has no paragraph beginning "Starts from"`);
     // Read as one line, so a reflow cannot move a lane's standing: one split "It runs alone" over
@@ -74,6 +90,8 @@ export function lanesOf(markdown: string): Lane[] {
       standing: startsFrom.includes("standing"),
       isolated: startsFrom.includes("It runs alone"),
       sideBySide: startsFrom.includes("side by side"),
+      label: under,
+      importance: Number(weight),
       body,
     };
   });

@@ -201,4 +201,31 @@ describe("the lanes verb", () => {
     ]);
     expect(prompts()["04-prompt.md"]).toBe(built["04-prompt.md"]);
   });
+
+  it("packs the lanes it builds into as many sessions as asked, each label whole in one", () => {
+    const packed = join(dir, "packed");
+    execTextSync(capturedExecPath, ["tools/wri/wri.ts", "start", "--log", log, "--out", packed], {
+      cwd: REPO,
+    });
+    writeFileSync(join(packed, "shared-instructions.md"), shared);
+    execTextSync(capturedExecPath, ["tools/wri/wri.ts", "lanes", "--out", packed, "--agents", "2"], {
+      cwd: REPO,
+    });
+    const { sessions } = parseJsonAs<{ sessions: { name: string; ownedPaths: string[] }[] }>(
+      readFileSync(join(packed, "launch.json"), "utf8"),
+    );
+    const built = readdirSync(join(packed, "lanes")).filter((name) => name.endsWith("-prompt.md"));
+    expect(sessions).toHaveLength(2);
+    expect(sessions.flatMap(({ ownedPaths }) => ownedPaths).toSorted()).toEqual(
+      built.map((name) => join(packed, "lanes", name.replace("-prompt", "-report"))).toSorted(),
+    );
+    const labelOf = (path: string) => lane(Number(path.split("/").at(-1)?.slice(0, 2))).label;
+    const homes = new Map<string, Set<number>>();
+    for (const [index, { ownedPaths }] of sessions.entries()) {
+      for (const path of ownedPaths) {
+        homes.set(labelOf(path), (homes.get(labelOf(path)) ?? new Set()).add(index));
+      }
+    }
+    for (const at of homes.values()) expect(at.size).toBe(1);
+  });
 });

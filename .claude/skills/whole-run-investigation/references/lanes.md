@@ -70,7 +70,9 @@ check id and a count. A report never carries a task's text, an answer, a hidden 
 of a trace: the log holds all of them, and a report is read by people and sessions the walls were
 built to keep them from.
 
-Each lane body opens with exactly one paragraph beginning `Starts from`. The lanes fall into nine
+Each lane body opens with its importance, `Importance: <0 to 1>.`, which weighs it when `wri.ts
+lanes --agents N` packs whole labels into sessions and which no session is shown, and then exactly
+one paragraph beginning `Starts from`. The lanes fall into nine
 sections, one for each label of "Labels" below that has lanes, and the sections run from the label
 with the most lanes to the label with the fewest: verdicts (1–8), supply (9–14), harness (15–20),
 comparison (21–25), climb (26–28), solve (29–30), economy (31), runs (32) and log (33). Lane 34,
@@ -179,6 +181,8 @@ Label: `verdicts`.
 
 **1. Verdict chain: what a pass observes.**
 
+Importance: 0.9.
+
 Starts from `INSTRUMENT AUTHORED (lane 1)`, `REFUSALS BY CHECK (lane 1)` and from
 `PASSES UNREAD (lane 1)`, which is standing: no reviewer reads a pass, so every campaign with a pass
 leaves this open.
@@ -208,6 +212,8 @@ and `pack/brief` for a rule no check enforces.
 
 **2. Verifier dependency closure.**
 
+Importance: 0.4.
+
 Starts from `VERIFIER TOOLS MOVED (lane 2)` and `TOOL MISSING (lane 2)`.
 
 The question is which bytes decided the verdicts. A condition names `verifierTools`, the content
@@ -224,6 +230,8 @@ verdicts may be compared at all; it routes to `host` (`src/kernel/verify.ts`,
 `src/kernel/check-child.ts`) for an unhashed edge and `environment` for a tool that is not there.
 
 **3. Check discrimination and control answers.**
+
+Importance: 0.8.
 
 Starts from `NO CHECKER READING (lane 3)`, `CHECKER READ WITH FAULTS (lane 3)`,
 `CONTROL COVERAGE (lane 3)`, `CHECKER NOT FROZEN (lane 3)`, `FROZEN DESPITE FAULTS (lane 3)`,
@@ -249,6 +257,8 @@ whether the checker can be frozen as it stands; it routes to `pack/controls` for
 
 **4. False rejection among fails.**
 
+Importance: 0.9.
+
 Starts from `REFUSED UNREAD (lane 4)`, `CHECK DEFECT RULED (lane 4)` and `RULED UNCLEAR (lane 4)`.
 
 The question is whether a refused answer was wrong or a right one the checks refused. Every
@@ -271,6 +281,8 @@ read as the solver's limit or as the exam's noise; it routes to `pack/evaluator`
 
 **5. Valid-alternative rejection challenge.**
 
+Importance: 0.6.
+
 Starts from `FAILS ON ONE CHECK (lane 5)` and `DEFECT RULED BESIDE PASSES (lane 5)`, and only when
 lane 4 left a check undecided. It runs alone.
 
@@ -289,6 +301,8 @@ the checker's owner as the repair's accept controls.
 
 **6. Triage: the harness, the rules or the solver.**
 
+Importance: 0.5.
+
 Starts from `REPLAY MOVED THE VERDICT (lane 6)`.
 
 The question is which side each practice fail was on, and whether the successor repaired that
@@ -304,6 +318,8 @@ that cannot be right, `pack/evaluator` for a check that does not repeat, and `ha
 `harness/tools` for a repair on the wrong side.
 
 **7. Rulings, labels and what each role was told.**
+
+Importance: 0.7.
 
 Starts from `SET ASIDE AND UNSETTLED (lane 7)`, `READING MOVES WITH THE SET-ASIDE (lane 7)`,
 `SET ASIDE BY SIDE (lane 7)`, `SETTLED BY HAND (lane 7)`, `REVIEW FAULTS (lane 7)`,
@@ -346,6 +362,8 @@ may count without a person reading each; it routes to `operator` for the bar and
 
 **8. The drafted exam against its prompt.**
 
+Importance: 0.4.
+
 Starts from `EXAM DRAFTED (lane 8)`.
 
 The question is whether the exam a campaign drafted from the operator's prompt is the exam the
@@ -375,6 +393,8 @@ Label: `supply`.
 
 **9. Supply and task admission.**
 
+Importance: 1.
+
 Starts from `SUPPLY THIN (lane 9)`, `GATE REFUSED (lane 9)` and
 `SAFEGUARD-8 PROMOTION ON AUTHOR ROOM (lane 9)`.
 
@@ -403,6 +423,8 @@ them, where a step at 0.02 takes 6-0.
 
 **10. Tasks no harness answers.**
 
+Importance: 0.5.
+
 Starts from `NO VALID ANSWER (lane 10)` and `AWAITING A LABEL (lane 10)`.
 
 The question is why a task has no valid answer under either harness: it is hard, it is wrongly
@@ -422,6 +444,8 @@ gets; it routes to `operator` for the label, `pack/evaluator` where the rejectio
 fault, and `examiner/task` for an instance whose own limits exclude every answer.
 
 **11. Whether validity separates.**
+
+Importance: 0.8.
 
 Starts from `TIES BETWEEN VALID ANSWERS (lane 11)` and
 `SAFEGUARD-9 PROMOTION BEYOND VALIDITY (lane 11)`.
@@ -447,6 +471,8 @@ and to `host` (`src/kernel/compare.ts`) where the three tallies disagree with th
 
 **12. Ties and the budget.**
 
+Importance: 0.4.
+
 Starts from `TIED TASKS (lane 12)`.
 
 The question is what share of the tasks tie and why. A tie says nothing, and the share of untied
@@ -467,6 +493,8 @@ the budget and `examiner/task` for tasks every harness answers.
 
 **13. Public disclosure and one recipe.**
 
+Importance: 0.6.
+
 Starts from `PASSES AT A SMALL WALL SHARE (lane 13)`.
 
 The question is whether the task, the public resources and the tools publish a sufficient
@@ -485,6 +513,8 @@ an instance whose public input settles it, and `harness/guide` only where the re
 Builder's.
 
 **14. Pressure on the Examiner.**
+
+Importance: 0.4.
 
 Starts from `OUTCOMES BY SESSION (lane 14)`.
 
@@ -511,6 +541,8 @@ another session; it routes to `examiner-prompt`, and to `operator` for the readi
 Label: `harness`.
 
 **15. Harness delta against its note.**
+
+Importance: 0.6.
 
 Starts from `HARNESS CHANGED (lane 15)`, `BROKEN AT END (lane 15)`,
 `MEASURED AN EARLIER STATE (lane 15)` and `TOOLS EDITED (lane 15)`.
@@ -541,6 +573,8 @@ when the measured state is not the one the log names.
 
 **16. Operating guide and roster truth.**
 
+Importance: 0.4.
+
 Starts from `NEVER CHECKED (lane 16)`, `TOOLS CALLED (lane 16)` and `TOOL CALLS ERRED (lane 16)`.
 
 The question is whether the guide, the tool descriptions and the tools' replies tell the solver
@@ -559,6 +593,8 @@ routes to `harness/guide` and `harness/tools`, and to `host` for a sentence of t
 prompt that the condition contradicts.
 
 **17. Finish decision against practice evidence.**
+
+Importance: 0.4.
 
 Starts from `NO PRACTICE (lane 17)`, `FINAL BYTES NEVER PRACTISED (lane 17)`,
 `SESSION ENDED (lane 17)` and `PRACTICE FAILS (lane 17)`.
@@ -585,6 +621,8 @@ edit.
 
 **18. Exposure: what the Builder could see.**
 
+Importance: 1.
+
 Starts from `PRACTISED TASK MEASURED (lane 18)` and `SHELL COMMANDS (lane 18)`, and is standing.
 
 The question is whether the child could know the exam. A harness that carries the scored tasks'
@@ -604,6 +642,8 @@ the round's reading is admitted at all; it routes to `host` (`src/builder/tools.
 task content in the harness.
 
 **19. Trace challenge.**
+
+Importance: 0.6.
 
 Starts from `WIN AT A SMALL WALL SHARE (lane 19)`, and only when lane 13, 15 or 18 suspects a
 shortcut. That trigger counts the passed solves, in few calls and a small share of their deadline, of
@@ -634,6 +674,8 @@ or `host`, by where the value came from.
 
 **20. The Builder's conversation across compactions.**
 
+Importance: 0.3.
+
 Starts from `BUILDER COMPACTED (lane 20)`.
 
 The question is whether a Builder that leads its campaign keeps its place across compactions,
@@ -661,6 +703,8 @@ that did not carry.
 Label: `comparison`.
 
 **21. Pair identity and source reach.**
+
+Importance: 0.8.
 
 Starts from `HOST CODE MOVED (lane 21)`, `STARTS OUT OF TURN (lane 21)` and `SERVED ANOTHER MODEL (lane 21)`.
 
@@ -693,6 +737,8 @@ should hold and does not, and `environment` for load.
 
 **22. The scored set and what left it.**
 
+Importance: 0.6.
+
 Starts from `SCORED SET MOVED (lane 22)`.
 
 The question is whether the tasks a comparison tallied are the tasks it fixed before its first
@@ -714,6 +760,8 @@ The decision it changes is whether the tally is of the set that was fixed; it ro
 (`src/campaign/round.ts`) and to `operator` for the labels that would return a task.
 
 **23. Paired sign-flip test, ties and power.**
+
+Importance: 1.
 
 Starts from `NOTHING SCORED (lane 23)`, `CUT BY ITS CAP (lane 23)` and
 `SET SHORT (lane 23)`, and is standing.
@@ -744,6 +792,8 @@ to `operator`, and to `host` (`src/kernel/compare.ts`) only for an arithmetic fa
 
 **24. The starter.**
 
+Importance: 0.6.
+
 Starts from `VALID BY HARNESS (lane 24)`.
 
 The question is what the starter gives a campaign to build on, and whether the tasks leave a
@@ -768,6 +818,8 @@ replaced; it routes to `host` (`src/harness/starter.ts`) for the starter's guide
 `harness/guide` or `harness/tools` where a harness loses to the starter.
 
 **25. Flips and solver variance.**
+
+Importance: 0.8.
 
 Starts from `FLIPS (lane 25)` and `REFERENCE AGAINST ITSELF (lane 25)`.
 
@@ -795,6 +847,8 @@ Label: `climb`.
 
 **26. The chain of comparisons.**
 
+Importance: 0.7.
+
 Starts from `CHAIN (lane 26)` and `NO TASK HELD OUT (lane 26)`.
 
 The question is whether the campaign is climbing: whether a step was found, promoted, and built
@@ -817,6 +871,8 @@ scored. The decision it changes is what runs next:
 a promotion, another standalone comparison, an Examiner session, or a stop; it routes to `operator`.
 
 **27. The promotion and the climb after it.**
+
+Importance: 1.
 
 Starts from `PROMOTED (lane 27)`, `STARTER BARE (lane 27)`, `AFTER THE PROMOTION (lane 27)` and
 `SHARED TEMPORARY FOLDER (lane 27)`. Where several campaigns are under review, it is given their
@@ -902,6 +958,8 @@ written where there is none, and `environment` for the shared temporary folder a
 
 **28. The moves against the table.**
 
+Importance: 0.4.
+
 Starts from `MOVES ASKED (lane 28)`, `ENDED AND WENT ON (lane 28)` and `OPERATOR WORDS (lane 28)`.
 
 The question is whether the campaign command made the moves its table names, and whether each
@@ -932,6 +990,8 @@ Builder read and set aside, and `operator` for a word that did not act.
 Label: `solve`.
 
 **29. Solver process and deadlines.**
+
+Importance: 0.5.
 
 Starts from `MISSES AT A LIMIT (lane 29)`, `WALL SHARE (lane 29)`, `HOST LOADED (lane 29)`,
 `LOAD MOVED (lane 29)`.
@@ -972,6 +1032,8 @@ cannot hold, and `operator` for the deadline itself.
 
 **30. Failure mechanism and non-result honesty.**
 
+Importance: 0.7.
+
 Starts from `NON-RESULTS (lane 30)`, `SOLVE NEVER FINISHED (lane 30)`,
 `EXAMINER NEVER FINISHED (lane 30)`, `MISSES WITHOUT A VERDICT (lane 30)` and `SESSION CRASHED (lane 30)`.
 
@@ -1000,6 +1062,8 @@ Label: `economy`.
 
 **31. Time, spend and silence.**
 
+Importance: 0.4.
+
 Starts from `LONG SILENCES (lane 31)` and `SPEND LED BY A ROLE (lane 31)`.
 
 The question is where the hours and the dollars went, and what each long silence was. Use
@@ -1027,6 +1091,8 @@ chose.
 Label: `runs`.
 
 **32. The run's launches, logins and hosts.**
+
+Importance: 0.2.
 
 Starts from `LAUNCHES (lane 32)` and `NO LAUNCH RECEIPT (lane 32)`.
 
@@ -1058,6 +1124,8 @@ Label: `log`.
 
 **33. The log and what reads it.**
 
+Importance: 0.4.
+
 Starts from `LOG OUT OF ORDER (lane 33)`. It also opens where it is named, since every report
 rests on the folds it checks.
 
@@ -1082,6 +1150,8 @@ the log's, and which reader to correct; it routes to `host` (`src/kernel/log.ts`
 Label: `climb`.
 
 **34. Harness quality, version by version.**
+
+Importance: 0.8.
 
 Starts from every harness version the campaign kept, and is standing.
 

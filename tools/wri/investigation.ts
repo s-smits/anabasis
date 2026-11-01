@@ -114,6 +114,47 @@ export function selected(
   };
 }
 
+/** The sum of the lanes' importance. */
+export const weightOf = (lanes: readonly Lane[]) => lanes.reduce((sum, lane) => sum + lane.importance, 0);
+
+/**
+ * Lanes packed into at most `count` sessions by label, a label never split. Each label, heaviest
+ * first by the sum of its lanes' importance, joins the lightest session so far, so the sessions'
+ * weights land near one another rather than equal. An isolated lane is a session of its own. The
+ * operator asked for this on 1 November: four sessions of about eight lanes instead of one a lane.
+ */
+export function sessionsOf(lanes: readonly Lane[], count: number): Lane[][] {
+  const open = lanes.filter((lane) => !lane.isolated);
+  const labels = [...new Set(open.map((lane) => lane.label))]
+    .map((label) => open.filter((lane) => lane.label === label))
+    .toSorted((one, other) => weightOf(other) - weightOf(one));
+  const sessions: Lane[][] = Array.from({ length: Math.min(count, labels.length) }, () => []);
+  for (const label of labels) {
+    sessions
+      .reduce((lightest, each) => (weightOf(each) < weightOf(lightest) ? each : lightest))
+      .push(...label);
+  }
+  return [
+    ...sessions.map((each) => each.toSorted((one, other) => one.number - other.number)),
+    ...lanes.filter((lane) => lane.isolated).map((lane) => [lane]),
+  ];
+}
+
+/**
+ * The most sessions the open lanes fill where the lightest weighs at least half the heaviest, so a
+ * label of little importance joins another instead of taking a session to itself (operator,
+ * 1 November). It is advice printed beside the build; the operator names the count.
+ */
+export function suggestedSessions(lanes: readonly Lane[]): number {
+  const open = lanes.filter((lane) => !lane.isolated);
+  const labels = new Set(open.map((lane) => lane.label)).size;
+  const even = (count: number) => {
+    const weights = sessionsOf(open, count).map(weightOf);
+    return Math.min(...weights) >= Math.max(...weights) / 2;
+  };
+  return Array.from({ length: labels }, (_, index) => labels - index).find(even) ?? 1;
+}
+
 /** The `## ` sections of the shared instructions an author left blank. A comment is no text. */
 export function blankSections(shared: string): string[] {
   const text = shared.replaceAll(/<!--[\s\S]*?-->/g, "");

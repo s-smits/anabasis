@@ -13,6 +13,7 @@ every move the host makes as the table names it; the opening keeps the term eith
 
 Use the verbs of one CLI for a run's life on the host, `bun run runs`
 (`tools/runs/cli.ts`), over every run log in the repository's worktrees (`tools/runs/registry.ts`).
+A bare `bun run runs` lists every verb with what it does, and `<verb> --help` its options.
 `continue`, `pause`, `keep`, `copy` and `stop` route a whole campaign name to its machine. A missing
 host or more than one original refuses the route. `view` and `source` read through this checkout,
 refreshing remote records first; `replay` and `zip` discover matching campaigns on every machine.
@@ -27,7 +28,7 @@ archived campaign; `copy <name> --to <worktree>` brings this machine's back to g
 | `launch <name> [--login N] [--yes] -- <flags>` | starts the campaign command under a new name, in this worktree | `manage.ts` |
 | `continue <name> [--at <c>] [--login N] [--budget N] [--after <event>] [--yes] [-- <flags>]` | runs a campaign again from its log, on its kept flags or their replacement after `--` | `manage.ts` |
 | `pause <name> [--after <event>] [--yes]` | stops a campaign at its next finished solve or tool call, or, with a clean-point event, once its log gains one more of it and nothing but its Builder's conversation is open | `manage.ts` |
-| `keep <name> [--logins 2,3,4] [--wait-hours 1] [--yes]` | keeps a campaign going: moves it off a long provider wait, and continues it after a death or an `environment` ending | `keep.ts` |
+| `keep <name> [--logins <list>] [--wait-hours 1] [--yes]` | keeps a campaign going: moves it off a long provider wait, and continues it after a death or an `environment` ending | `keep.ts` |
 | `copy <name> --to <worktree> [--yes]` | copies a stopped campaign whole to another worktree, from a worktree or the archive, and sets the source aside | `move.ts` |
 | `move <name> --to <host> [--from <host>] [--login N] [--after <event>] [--hold] [--yes] [-- <flags>]` | pauses a campaign at a clean point, takes its folder whole to a new worktree on the other machine at the same commit, sets the source aside and continues it there on its kept flags | `move.ts` |
 | `stop <name> ... [--yes]` | ends the process that writes each log, and its keeper, and releases what its unfinished solves and sessions held | `stop.ts` |
@@ -66,6 +67,8 @@ checkout's commit by default), and launches there as below. Opus is the default 
 seats `openai-codex/gpt-6.1-sol` through the Codex CLI's login, which `--login` does not select,
 and any other model a backend serves goes as its `<provider>/<id>`, at `hhhh` and named by its id:
 `--model openrouter/deepseek/deepseek-v4.1-flash-1017` makes `<pack>-fresh-deepseek-v4.1-flash-1017`.
+A run or a simulation seats Claude unless the operator names another model, and DeepInfra serves
+DeepSeek alone, only where the operator names DeepSeek (operator, 31 October).
 The solve defaults are the campaign's: 20 model turns and 30 minutes (`LIMITS`,
 `tools/d2/campaign.ts`).
 
@@ -211,7 +214,7 @@ campaign with `--name <name>` and leave one word per command. A word reaches no 
 ## Keep a campaign going
 
 ```sh
-bun --env-file=<file> --env-file=<hosts file> run runs keep <name> [--logins 2,3,4] [--wait-hours 1] --yes
+bun --env-file=<file> --env-file=<hosts file> run runs keep <name> [--logins <list>] [--wait-hours 1] --yes
 ```
 
 A keeper takes its logins from `--logins`, then `ANA_LOGINS`, then the numbered logins in the
@@ -260,7 +263,7 @@ destination has no worktree `anabasis-<name>`, prepares its code, then pauses th
 source stands at, takes the folder over with rsync, checks the log's size, sets the source aside
 under `.ana/moved/` and runs `continue` there on the kept flags, a path under the folder of the
 source's worktrees named under the destination's. `--hold` stops before the continue and prints
-it. Without `--yes` it reads both ends and moves nothing. Stop a `runs keep` of the campaign first.
+it. Without `--yes` it reads both ends and moves nothing. The pause ends a `runs keep` of the campaign, running or not.
 A change of login on one machine needs no move: `continue --after <event> --login N`.
 
 ## Logins and other hosts

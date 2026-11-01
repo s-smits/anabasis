@@ -14,7 +14,7 @@
  * v1 check declared kept a tool's operands inside what the check could read, and these checks
  * run no tool.
  */
-import { type Draft, draftFaults, draftOf } from "#src/examiner/draft.ts";
+import { type Draft, type DraftReading, draftFaults, draftOf } from "#src/examiner/draft.ts";
 import { readChecker, unreadFields } from "#src/kernel/acceptance.ts";
 import { read } from "#src/kernel/log.ts";
 import { CHECK_PROGRAM_CONTRACT, openVerifier, readBrief } from "#src/kernel/verify.ts";
@@ -28,7 +28,7 @@ import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { checkProgram, contractOf, packControls, readPack, toolOnPath } from "../m0/stored-sweep.ts";
 
 /** A draft as a pack on disk. */
-export interface Staged {
+interface Staged {
   /** The pack, laid out as a stored bundle is. */
   readonly bundle: string;
   /** Its check program, staged without the tasks and the control answers, as a verifier opens it. */
@@ -75,7 +75,7 @@ export function stageExam(dir: string, draft: Draft): Staged {
   const model = join(bundle, "correctness-model");
   mkdirSync(model, { recursive: true });
   mkdirSync(join(bundle, ".toolchain", "bin"), { recursive: true });
-  const hidden = draft.tasks.some((task) => task.hidden !== null) ? "required" : "none";
+  const hidden = draft.tasks.some((task) => task.hidden !== null) ? "whole" : "none";
   const write = <T>(file: string, value: T) =>
     writeFileSync(join(model, file), `${capturedJsonStringify(value, null, 2)}\n`);
   write("brief.json", {
@@ -119,21 +119,21 @@ export function stageExam(dir: string, draft: Draft): Staged {
 
 /**
  * What the host reads of a draft without a model, one sentence a fault: its shape, then the
- * acceptance reading every checker is held to, less the faults that are the operator's to admit,
- * and then whether some check decides each field of the answer (`unreadFields`). A stored pack is
- * not held to that last reading: its author is not in a session to mend it.
+ * acceptance reading every checker is held to, less the faults that are the operator's to admit.
+ * Its notes are facts the author may act on and the draft stands with: the reading's own, and each
+ * field of the answer no check decides (`unreadFields`), which a stored pack is not read for.
  * A check program that does not load or a wall that is not there stops a verifier, and here that
  * is told as a fault too: the draft's author is in the session and can mend the first.
  */
-export async function draftReading(dir: string, draft: Draft, width: number): Promise<string[]> {
+export async function draftReading(dir: string, draft: Draft, width: number): Promise<DraftReading> {
   const unformed = draftFaults(draft);
-  if (unformed.length > 0) return unformed;
+  if (unformed.length > 0) return { faults: unformed, notes: [] };
   try {
     const { bundle, checks } = stageExam(dir, draft);
     const brief = readBrief(checks);
     const pack = readPack(bundle);
     const verify = openVerifier({ checks, tools: join(bundle, ".toolchain") });
-    const { faults, runs } = await readChecker({
+    const { faults, notes, runs } = await readChecker({
       verify,
       brief,
       contract: contractOf(pack.brief, draft.answerFormat),
@@ -143,8 +143,12 @@ export async function draftReading(dir: string, draft: Draft, width: number): Pr
       found: toolOnPath(bundle),
       width,
     });
-    return [...faults, ...(await unreadFields(verify, pack.tasks, runs, draft.answerFormat, width))];
+    const unread = await unreadFields(verify, pack.tasks, runs, draft.answerFormat, width);
+    return { faults, notes: [...notes, ...unread] };
   } catch (error) {
-    return [`the check program could not be put to its controls: ${errorMessage(error)}`];
+    return {
+      faults: [`the check program could not be put to its controls: ${errorMessage(error)}`],
+      notes: [],
+    };
   }
 }

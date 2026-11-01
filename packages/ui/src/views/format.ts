@@ -1,3 +1,5 @@
+import type { CampaignRow } from "../models.ts";
+
 /*
  * Presentation of a value that may not exist.
  *
@@ -59,4 +61,20 @@ export function percent(value: number | null): string {
   if (value === null) return UNRECORDED;
   const shown = value * 100;
   return `${shown < 10 ? shown.toFixed(1) : String(Math.round(shown))}%`;
+}
+
+/** How long ago `value` was, at `now` (milliseconds), in the largest unit that keeps it readable. */
+export function ago(value: string | null, now: number): string {
+  if (value === null) return UNRECORDED;
+  const at = Date.parse(value);
+  return Number.isNaN(at) ? value : `${seconds(Math.max(0, now - at) / 1000)} ago`;
+}
+
+/** A campaign's state as the sidebar and the campaign's line say it. An open campaign says when it
+ *  last wrote, since the log cannot say whether a process on another host still writes it: on
+ *  30 October 132 of 134 open campaigns had no process on the serving host, and some of those were
+ *  copies of live campaigns on a peer that the gather job refreshes every ten minutes. */
+export function standing(row: Pick<CampaignRow, "status" | "ending" | "lastEventAt">, now: number): string {
+  if (row.ending !== null) return `ended: ${row.ending.ending}`;
+  return row.status === "running" ? "running" : `open, wrote ${ago(row.lastEventAt, now)}`;
 }

@@ -257,6 +257,27 @@ describe("the reference measurement and task admissions", () => {
     expect(told.measured).toContain("0 on the objective alone");
     expect(told.measured).toContain("refused 2 drafts");
   });
+
+  it("counts a draft the gate held on its package alone, and names the room of a draft only where solves measured it", () => {
+    const log = logged();
+    log.add("exam.started", { session: "x-1" });
+    log.recordAdmission("shape", { outcome: "passed", proved: false });
+    log.recordAdmission("proved", { outcome: "passed", proved: true });
+    log.recordAdmission("bent", { outcome: "refused", reason: "its package names no family" });
+    const alone = heard(log.events, []).measured;
+    // Since 1 November no solve reads a draft at the gate, so its line says no source of room.
+    expect(alone).toContain("the gate held out 2 drafts.");
+    expect(alone).toContain("refused 1 draft");
+    for (const unsaid of ["on validity", "on the objective", "on an answer of yours"]) {
+      expect(alone).not.toContain(unsaid);
+    }
+    // An earlier log's room solves keep their kinds beside the drafts held on their package.
+    log.recordAdmission("solved", { outcome: "passed", reference: { valid: 3, solves: 3, billed: 0 } });
+    const mixed = heard(log.events, []).measured;
+    expect(mixed).toContain("held out 3 drafts");
+    expect(mixed).toContain("1 on the objective alone");
+    expect(mixed).toContain("2 on its package alone");
+  });
 });
 
 describe("task admissions after a promotion", () => {

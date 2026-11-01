@@ -34,8 +34,8 @@
  *
  * The run's states link their programs by relative paths, which hold in the new folder. What an
  * Examiner's or a Builder's shell left in its home links where that machine's tools are, and the
- * next session there builds its own again. A `runs keep` that keeps the campaign at its source is
- * not stopped by the move: stop it first.
+ * next session there builds its own again. A `runs keep` that keeps the campaign at its source
+ * ends with the pause (`pauseAt`), whether or not a process still wrote the log.
  *
  *   bun run runs copy <name> --to <worktree> [--yes]
  *
@@ -53,6 +53,8 @@
  * unless `--from` names one, prints the copy's log, and run again brings the copy level with its
  * source. The run is left as it is. On 20 October a whole-run investigation of three runs on another
  * host read copies made by hand; until then a copy went to `.ana/fetched/`, which no reader read.
+ * With no name it brings every campaign whose log grew, and then records where another model served
+ * a seat than it asked for (`degradations.ts`).
  */
 import { LOG_FILE } from "#src/kernel/log.ts";
 import { cpSync, existsSync, mkdirSync, renameSync, rmSync, statSync } from "#src/meta/filesystem.ts";
@@ -68,6 +70,7 @@ import { quoted, rsync, shellPath, sshScript, worktreesIn } from "./host-command
 import { verbOn } from "./hosts.ts";
 import { CAMPAIGNS, HERE, keepers, processes, readNamed, writers } from "./registry.ts";
 import { syncRuns } from "./snapshots.ts";
+import { recordDegradations } from "./degradations.ts";
 import { continueRun, pause, said } from "./manage.ts";
 import { payerOf } from "./live.ts";
 import { roomToStart } from "./logins.ts";
@@ -86,7 +89,7 @@ const USAGE =
   "usage: bun run runs move <name> --to <host> [--from <host>] [--login N] [--after <event>] [--hold] [--yes] [-- <flags>]";
 
 /** `flags` with each path under `from` named under `to` instead, whole or after a flag's `=`. */
-export function rehomed(flags: readonly string[], from: string, to: string): string[] {
+function rehomed(flags: readonly string[], from: string, to: string): string[] {
   const under = `${from}/`;
   return flags.map((flag) => {
     if (flag.startsWith(under)) return `${to}/${flag.slice(under.length)}`;
@@ -254,6 +257,9 @@ export async function fetch(args: readonly string[]): Promise<void> {
     throw new Error(`no host ANA_HOSTS lists holds a campaign ${name}`);
   }
   for (const log of copies) console.log(log);
+  if (name === undefined) {
+    for (const line of recordDegradations(copies, runtimeProcess.cwd())) console.log(line);
+  }
 }
 
 /** `bun run runs copy`. */
@@ -293,12 +299,12 @@ export function copy(args: readonly string[]): void {
 
 /** Where a run's folder is set aside in `tree` once a copy of it went elsewhere: one copy a name,
  *  which `runNamed` asks, so the folder left is no run any registry reads (`runs copy`, `runs move`). */
-export function asideOf(tree: string, name: string): string {
+function asideOf(tree: string, name: string): string {
   return join(tree, ".ana", "moved", `${name}-${new Date().toISOString().replaceAll(/[:.]/g, "")}`);
 }
 
 /** Moves `folder` to `aside`, making `.ana/moved/` where the tree has none yet. */
-export function setAside(folder: string, aside: string): void {
+function setAside(folder: string, aside: string): void {
   mkdirSync(dirname(aside), { recursive: true });
   renameSync(folder, aside);
 }

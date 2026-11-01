@@ -5,6 +5,7 @@
  * whole record, so the pulse keeps only how far it read and what it last said, in `--state`.
  *
  *   bun run runs pulse [<part of a name> ...] [--once] [--every 290] [--state .ana/runs-pulse.json]
+ *   bun run runs status [--all]
  *
  * With no names a look covers the open runs and those open at the last look, so a run's ending is
  * said once; an observer's first look of a run also covers one stopped in the last day without an
@@ -15,7 +16,7 @@
  * this observer, unless --here is named. A missing peer is a warning and exit 1. No local state path is sent to another machine.
  */
 import type { EventKind, LogEvent } from "#src/kernel/log.ts";
-import { billedAll, traceKind, tracesIn } from "#src/kernel/trace.ts";
+import { billedAll, degradations, traceKind, tracesIn } from "#src/kernel/trace.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
 import {
   existsSync,
@@ -139,6 +140,11 @@ const SAID: Partial<
     if (ending?.outcome === "flagged") {
       return `· ${task(data.solve)} flagged as malformed: ${short(ending.reason)}${cost(data)}`;
     }
+    // The gate cut a room solve once another settled the task's room, from 31 October until it stopped
+    // solving on 1 November, as the investigation reads it; until 31 October each cut warned as a solve with no result.
+    if (ending?.cancelledBy === "admission") {
+      return `· ${task(data.solve)} cut once its room was read${cost(data)}`;
+    }
     return `⚠ ${task(data.solve)} ended without a result, ${word(ending?.kind)}: ${short(ending?.reason)}${cost(data)}`;
   },
   // A campaign's ending, and a wait for the provider or the network: until 15 October the pulse
@@ -251,11 +257,16 @@ export function pulse(
   const task = (solve: JsonValue | undefined) => tasks.get(word(solve)) ?? word(solve);
   const fresh = log.slice(before?.lines ?? log.length);
   const lines = fresh.flatMap(({ kind, data }) => SAID[kind]?.(data, task) ?? []);
-  const errors = tracesIn(fresh).flatMap((each) =>
-    each.part === "turn" && each.error !== null ? [each.error] : [],
-  );
+  const turns = tracesIn(fresh).flatMap((each) => (each.part === "turn" ? [each] : []));
+  const errors = turns.flatMap(({ error }) => (error === null ? [] : [error]));
   if (errors.length > 0) {
     lines.push(`⚠ ${plural(errors.length, "failed turn")}: ${[...new Set(errors)].map(short).join("; ")}`);
+  }
+  const others = degradations(log, before?.lines ?? log.length);
+  if (others.length > 0) {
+    const served = others.reduce((sum, row) => sum + row.turns, 0);
+    const which = [...new Set(others.map((row) => `${row.served} for ${row.asked}`))];
+    lines.push(`⚠ ${plural(served, "turn")} served by another model: ${which.join("; ")}`);
   }
   const quiet = open && log.length > 0 && now - stand.since > QUIET_MS;
   if (quiet && before?.quiet !== true) lines.push(`⚠ quiet for ${minutes(now - stand.since)}`);

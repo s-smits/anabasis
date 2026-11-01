@@ -48,7 +48,7 @@ describe("the Moves pane on the exam side", () => {
     const opened = await openPage(browser, movesUrl("b-1", "comparison", id));
     const { page } = opened;
     const part = solvePart(page, id);
-    await expect(part.getByRole("heading", { level: 2, name: `${id} Solve` })).toBeVisible();
+    await expect(part.getByRole("heading", { level: 2, name: /Solve$/u })).toBeVisible();
     await expect(part.locator("dl.ana-facts").filter({ hasText: "Verdict" })).toContainText("pass");
     await expect(part).toContainText(MARKERS.answer);
     await expect(part.getByRole("heading", { name: "Trace · 2 turns" })).toBeVisible();
@@ -64,7 +64,7 @@ describe("the Moves pane on the exam side", () => {
     const opened = await openPage(browser, movesUrl("b-1", "comparison", id));
     const { page } = opened;
     const part = solvePart(page, id);
-    await expect(part.getByRole("heading", { level: 2, name: `${id} Solve` })).toBeVisible();
+    await expect(part.getByRole("heading", { level: 2, name: /Solve$/u })).toBeVisible();
     await expect(part.locator("code", { hasText: MARKERS.check })).toBeVisible();
     await expect(part.getByText("earned", { exact: true })).toBeVisible();
     await expect(part.getByText("by the Referee")).toBeVisible();

@@ -15,11 +15,11 @@
  * A writing session receives a copy of the reference harness in its home (`shell.ts`). Neither
  * mode receives a solver's trace or answer. Its shell is a walled home, closed to the repository.
  *
- * The session clock charges setup and author work. Only explicit task admission settlement pauses its one
- * timer; background admission still consumes author time. Nested waits share one host interval,
- * and kill and budget signals remain independent. Typed abort reasons latch the first parent
- * source before the agent loop aborts an invocation. A draft's end records the accepted draft's
- * measurement independently of acceptance, beside elapsed and host seconds.
+ * The session clock charges setup and every turn and tool call, and kill and budget signals stay
+ * independent of it. Typed abort reasons latch the first parent source before the agent loop
+ * aborts an invocation. Until 1 November the clock paused while the session waited on its gate's
+ * room solves, a tool result told what that gate had said since, and `finish` and the session's
+ * end waited for it; no solve runs at the gate now (`write.ts`).
  */
 import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
@@ -48,11 +48,11 @@ interface Sitting {
   readonly model: Model<Api>;
   readonly effort: ThinkingLevel;
   readonly limits: {
-    /** Author time from setup, including a wall's claim, excluding blocked task admission settlement. */
+    /** Author time from setup, including a wall's claim. */
     readonly wallSeconds: number;
     /** The model turn limit, each reply one, with or without a tool call. */
     readonly turns: number;
-    /** What the session may put to the host: drafts, or instances to the task admission. */
+    /** What the session may put to the host: drafts, or instances to the gate. */
     readonly puts: number;
   };
   /** The backends, built on the home the Examiner's model process keeps its state in. */
@@ -62,9 +62,6 @@ interface Sitting {
   readonly kill?: AbortSignal;
   /** Called once the session is on record, so a caller can let it run on beside other work. */
   readonly opened?: () => void;
-  /** How often a wait on the task admission looks at the campaign's budget: `BUDGET_LOOK_MS`, unless a test
-   *  names another. */
-  readonly budgetLookMs?: number;
 }
 
 /** What a session of each mode is handed beside who sits, as the mode's own file takes it. */
@@ -78,11 +75,11 @@ export interface Examined {
   /** How the session ended: with a draft that stands, by `finish`, with the tasks the host asked
    *  for, at a limit, or otherwise. */
   readonly ended: (typeof ENDINGS)[number] | "stopped";
-  /** The drafts it put to the host, or the instances it put to task admission. */
+  /** The drafts it put to the host, or the instances it put to the gate. */
   readonly puts: number;
   /** The versions of the tasks it held out, in the order it proposed them; none but in writing. */
   readonly held: readonly string[];
-  /** The versions of the instances the task admission refused. */
+  /** The versions of the instances the gate refused. */
   readonly refused: readonly string[];
 }
 
@@ -115,11 +112,6 @@ interface Mode {
   readonly declined: string | null;
   /** Whether the mode's work is done, which ends the session, and how that ending is named. */
   readonly done: () => "stands" | "supplied" | null;
-  /** What the mode's work running beside the session has said since it was last told, read into
-   *  each tool result; `last` where it is the turn's last call. */
-  readonly heard: ((last: boolean) => string) | undefined;
-  /** Waits for that work: all of it (`finish`, the end), or after a turn with no call its next word. */
-  readonly settle: ((all: boolean) => Promise<void>) | undefined;
   /** What its end event holds of its work, under the log's own words. */
   readonly counted: () => JsonObject;
   readonly result: () => Omit<Examined, "ended">;
@@ -135,14 +127,12 @@ interface Said {
 const REREAD =
   "The session's opening message again, as it was sent: the record of the campaign's tasks and drafts it began with. Read it after your context was compacted.";
 
-/** How often a wait on the task admission looks at the campaign's budget, as the host looks at its load. */
-const BUDGET_LOOK_MS = 30_000;
 /** The first of these that holds names a session's ending; none, and it `stopped`. */
 const ENDINGS = ["stands", "finished", "supplied", "killed", "wall", "crashed", "turns"] as const;
 /**
  * Whether the campaign's whole budget holds a reserve for one more, read before each request and
- * each compaction, which bills too, and while the session waits on the task admission: where it does not,
- * `spent` is aborted, which ends the session and the room solves. The log's sum counts this
+ * each compaction, which bills too: where it does not, `spent` is aborted, which ends the session.
+ * The log's sum counts this
  * session's own turns while it is unfinished (`billedAll`), so a session inside a live Builder's
  * conversation is held as the Builder is. A log with no opening, or an opening with no budget,
  * holds nothing.
@@ -154,28 +144,26 @@ function withinBudget(log: string, spent: AbortController): boolean {
   return false;
 }
 
-/** The session's `finish`: the work still running is waited for and told first, so that the
- *  session's end reads it, and a `finish` is declined where the mode declines one, its work is not
+/** The session's `finish`: declined where the mode declines one, its work is not
  *  done and its count moved since the last decline. Until 28 October only a first `finish` was:
  *  round 11's GPT arm proposed three more drafts after it and ended at its second, at 9 of 36
  *  drafts and 35 of 240 minutes; two in a row still end a session that has nothing left. A note
  *  is kept to its first 700 bytes, as a Referee's reason is: until 28 October a longer one was
  *  refused, 23 times in 417 calls, each a turn spent rewriting it. */
-function finishTool(mode: Mode, said: Said, told: (last: boolean, line: string) => string): SeatTool {
+function finishTool(mode: Mode, said: Said): SeatTool {
   return tool({
     name: "finish",
     description: mode.finish,
     parameters: Type.Object({ note: Type.String({ minLength: 1 }) }),
     executionMode: "sequential",
     execute: async (args) => {
-      await mode.settle?.(true);
       const counted = capturedJsonStringify(mode.counted());
       if (mode.declined !== null && said.declined !== counted && mode.done() === null) {
         said.declined = counted;
-        return text(told(true, mode.declined));
+        return text(mode.declined);
       }
       said.note = boundText(args.note, 700).shown;
-      return ending(text(told(true, "Finished.")));
+      return ending(text("Finished."));
     },
   });
 }
@@ -188,15 +176,12 @@ function finishTool(mode: Mode, said: Said, told: (last: boolean, line: string) 
  */
 async function examining(
   request: Sitting,
-  modeOf: (stop: AbortSignal, hostWait: (action: () => Promise<void>) => Promise<void>) => Mode,
+  modeOf: (stop: AbortSignal) => Mode,
   walls: Walls | undefined,
 ): Promise<Examined> {
   const began = walls?.began ?? performance.now();
   const spent = new AbortController();
-  const clock = sessionClock(began, request.limits.wallSeconds, {
-    every: request.budgetLookMs ?? BUDGET_LOOK_MS,
-    run: () => withinBudget(request.log, spent),
-  });
+  const clock = sessionClock(began, request.limits.wallSeconds);
   const { log, limits, model, id } = request;
   const caller = new AbortController();
   const cancel = () => {
@@ -207,7 +192,7 @@ async function examining(
   if (request.kill?.aborted === true) cancel();
   try {
     const stops = [clock.signal, spent.signal, caller.signal];
-    const mode = modeOf(AbortSignal.any(stops), clock.within);
+    const mode = modeOf(AbortSignal.any(stops));
     append(log, `${mode.kind}.started`, {
       session: id,
       model: priceKey(model),
@@ -216,9 +201,6 @@ async function examining(
     });
     request.opened?.();
     const said: Said = { note: null, declined: null };
-    // Every tool result ends with what the mode heard since, then its own line.
-    const told = (last: boolean, line: string) =>
-      [mode.heard?.(last) ?? "", line].filter((part) => part !== "").join("\n\n");
     const turns: AssistantMessage[] = [];
     // The current turn's last call, whose result says what the session has used: told its limits at the
     // opening alone, two of eleven sessions on 14 October were cut at their deadline while still proposing.
@@ -226,12 +208,12 @@ async function examining(
     const used = (call: string) => {
       const minutes = `${String(Math.floor(clock.seconds() / 60))} of ${plural(Math.round(limits.wallSeconds / 60), "minute")}`;
       const line = `Turn ${String(turns.length)} of ${String(limits.turns)}; ${minutes} used.`;
-      return call === lastCall ? told(true, line) : told(false, "");
+      return call === lastCall ? line : "";
     };
     const shell = await examinerShell(walls?.shell, mode.enters);
     const tools = [
       ...[...mode.tools, ...shell, openingTool(mode.opening, REREAD)].map((each) => endingWith(each, used)),
-      finishTool(mode, said, told),
+      finishTool(mode, said),
     ];
     let running = 0;
     const sat = await sit({
@@ -251,12 +233,10 @@ async function examining(
       most: limits.turns,
       // The session ends at `finish` and when its work is done, even beside another call in the turn.
       over: () => said.note !== null || mode.done() !== null,
-      next: async () => {
-        await mode.settle?.(false);
-        return said.note !== null || mode.done() !== null
+      next: async () =>
+        said.note !== null || mode.done() !== null
           ? null
-          : told(true, `You have not called finish. ${mode.nudge}, or call finish.`);
-      },
+          : `You have not called finish. ${mode.nudge}, or call finish.`,
       onTurn: (message) => {
         lastCall = message.content
           .flatMap((part) =>
@@ -267,8 +247,6 @@ async function examining(
       onTool: (phase) => {
         running += phase === "start" ? 1 : -1;
       },
-      // A crash leaves the task admission under its deadline, kill signal and budget, just as finish does (21 October).
-      settle: async () => mode.settle?.(true),
       stops,
     });
     const work = mode.done();
@@ -291,7 +269,6 @@ async function examining(
       ...keyIfDefined("running", ended === "crashed" ? running : undefined),
       ...sat.spent,
       seconds: (performance.now() - began) / 1000,
-      hostSeconds: clock.hostSeconds(),
     });
     return { ended, ...mode.result() };
   } finally {
@@ -316,10 +293,7 @@ export async function examine(request: ExamRequest, wall?: Wall): Promise<Examin
   const seated = async (walls?: Walls) =>
     examining(
       request,
-      (stop, hostWait) =>
-        request.mode === "draft"
-          ? drafting(request, stop)
-          : writing(request, walls, reference, stop, hostWait),
+      (stop) => (request.mode === "draft" ? drafting(request) : writing(request, walls, reference, stop)),
       walls,
     );
   if (wall === undefined) return await seated();

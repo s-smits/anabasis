@@ -252,7 +252,7 @@ describe("the reader of campaign spend", () => {
   });
 
   it("counts the solves an Examiner session asked for as the Examiner's, and says its cost a task held out", () => {
-    // `try_task`: about seven reference solves an admitted task at three a draft (the overhaul plan,
+    // An earlier log's `try_task`: about seven reference solves an admitted task at three a draft (the overhaul plan,
     // 4b), which until 12 October read as the solver's.
     const log = timed([
       [0, "exam.started", { session: "x-1" }],

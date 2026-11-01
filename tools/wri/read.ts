@@ -67,6 +67,7 @@ import {
 import { safeguardTriggers } from "./climb.ts";
 import { promotionTriggers, testedOf } from "./promotion.ts";
 import { runTriggers } from "./run.ts";
+import { degradationLines } from "../runs/degradations.ts";
 import type { Receipt } from "../runs/receipt.ts";
 import { costTriggers, hoursLine, deadlineTriggers } from "./time.ts";
 
@@ -114,7 +115,7 @@ function practiceTriggers(log: Index, { build, changed, child, read, round }: Pr
   // A practice solve's condition names the state it ran under, so the log says by digest whether
   // the harness that was measured is one the Builder tried: an edit made with the shell leaves no
   // call to count, and a digest misses none. Practice after its comparison began counts for none.
-  // A digest leaves out Python's bytecode caches (`BYTECODE`, `src/harness/open.ts`).
+  // A digest leaves out Python's bytecode caches (`BYTECODE`, `src/meta/bundle-layout.ts`).
   const lastPractice = round.practice.at(-1);
   const unpractised = read.flatMap((candidate) => {
     const prior = round.practice.filter((solve) => solve.index < candidate.began);
@@ -481,7 +482,7 @@ function comparisonTriggers(log: Index): Trigger[] {
         : [
             fired(
               "REFERENCE AGAINST ITSELF",
-              `${session}: ${String(count(noise.wins))} won, ${String(count(noise.losses))} lost and ${String(count(noise.ties))} tied between two samples of the reference harness${readsStepEitherWay(apart, level, unbilled) ? ", which reads a step where none can be" : ""}`,
+              `${session}: ${String(count(noise.wins))} won, ${String(count(noise.losses))} lost and ${String(count(noise.ties))} tied between two samples of the reference harness${readsStepEitherWay(unbilled ?? apart, level) ? ", which reads a step where none can be" : ""}`,
             ),
           ]),
     ];
@@ -527,7 +528,8 @@ function solveTriggers(log: Index, steps: readonly Handover[]): Trigger[] {
   const ids = (cut: boolean) => unended.flatMap((step) => (step.cut === cut ? [step.id] : [])).join(", ");
   const { cut, open } = unendedSolves(log);
   const solves = (many: number) => (many > 0 ? plural(many, "solve") : "");
-  const non = done.filter((solve) => solve.outcome === "non-result");
+  // The gate's cut of the room solves it no longer needed (until 1 November) is its design, not a kill.
+  const non = done.filter((solve) => solve.outcome === "non-result" && solve.cancelledBy !== "admission");
   const unjudged = countBy(
     missed.filter((solve) => solve.kind !== "rejected"),
     (solve) => solve.kind ?? "unkinded",
@@ -734,6 +736,9 @@ function rowsOf(log: Index, steps: readonly Handover[]): Row[] {
         `${plural(conditions.length, "condition")}: ${tally(countBy(conditions, (condition) => `${condition.side} ${condition.model}`))}`,
         `host code ${distinct((condition) => condition.host)}, sandbox ${distinct((condition) => condition.sandbox)}, verifier tools ${distinct((condition) => condition.verifierTools)}, harnesses ${distinct((condition) => condition.harness)}`,
         `${share(done.filter((solve) => solve.served.length === 0).length, done.length)} finished solves name no response model`,
+        // Every seat's turns, not only a comparison's scored solves: recode's campaigns ran every seat
+        // on claude-opus-5 for a check-defects reading that scored none, so no trigger fired (31 October).
+        ...degradationLines(log.events).slice(0, 1),
       ],
     },
     {

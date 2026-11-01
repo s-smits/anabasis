@@ -12,9 +12,8 @@ about and closes with an index of what its skill adds: the file under its `refer
 before you change that mechanism, and the scripts, each run as
 `bun .claude/skills/<skill>/scripts/<name>.ts`. The other
 skills own the procedures (section 10), `tools/oxlint/HABITS.md` how code is written (section 12),
-and `docs/plan.md` status. `docs/transfer.md`, `docs/v1.md`, `docs/prompts.md` and `studies/` hold
-v1's record, handed-off prompts and outside measurements; `7f0add79:docs/<file>` means that file at
-that commit.
+and `docs/plan.md` status. `docs/transfer.md`, `docs/v1.md` and `studies/` hold v1's
+record and outside measurements; `7f0add79:docs/<file>` means that file at that commit.
 
 Check descriptions against the source at the stack's head and each module's head comment. When a
 description no longer matches its mechanism, correct it in the change that finds it.
@@ -61,7 +60,9 @@ factor it affects, or the separate purpose it serves. Recorded values live in `d
   eight of them at the default level (`comparisonFloor`).
 - **1. Climb**: how much ability has accumulated, read as promotions within one campaign
   (`src/campaign/climb.ts`); promotions added up across campaigns make no climb. The milestone, six
-  confirmed promotions in one real campaign and then in a second domain, is for observation only,
+  confirmed promotions in one real campaign and then in a second domain, is for observation only
+  (a promotion is confirmed once a starter comparison of its epoch reads the reference above the
+  starter without the bill at its level: `confirmed`, `src/campaign/climb.ts`),
   so no prompt, tool or move names a count.
 - **2. Honesty**: could a gain be chance or drift? An A/A comparison beside every comparison, the
   reference's first solve of each task against its second, measures it. One reading clears between
@@ -139,8 +140,9 @@ consequences follow:
 Each seat has one job and a closed view, which is what lets the wall of section 1 hold:
 
 - **Examiner** (model, `src/examiner/`): writes tasks against a frozen contract and check program;
-  for a campaign that opens from a prompt, it first drafts that exam. The host admits a task only
-  where the reference's room solves leave it room (`try_task`).
+  for a campaign that opens from a prompt, it first drafts that exam. The host's gate holds a task
+  out on its package's shape alone, refusing one that carries a planted answer, and solves none
+  (`propose_tasks`).
 - **Builder** (model, `src/builder/`): edits `harness/`, chooses campaign moves and ends with a
   frozen harness, reading only section 1's closed list, its notes and the campaign's kept harnesses.
 - **Solver** (model, `src/solver/`): answers one task inside a harness with `read`, `bash`, `edit`,
@@ -286,8 +288,8 @@ answers, so a refused answer is never the better one, and two answers closer tha
 objective tie on it.
 
 **The test** is an exact one-sided sign-flip test on the nonzero task scores; ties are excluded. A
-step clears the level (0.02 by default, kept by each campaign's opening) both with and without the
-bill (operator, 25 October), so the bill alone never promotes. With equal margins it clears at 6 to
+step is read on the scores without the bill (0.02 by default, kept by each campaign's opening),
+so the bill alone never promotes; from 25 to 31 October it had to clear with the bill as well. With equal margins it clears at 6 to
 0, 8 to 1, 10 to 2 or 12 to 3 at 0.02.
 
 **The reading** is one of `step`, `no-step`, `not-scored`, `check-defects` and `no-change`.
@@ -420,13 +422,18 @@ the runs it names and no others. The skills own the procedures:
 | --- | --- |
 | What to run next; reading what a run showed | `run-improvement-campaign` |
 | Testing a path before spending; tuning a seat's prompt | `system-path-simulation` |
+| How hard the Examiner's tasks are; tuning its ladder and examples | `examiner-complexity` |
 | Starting, continuing, pausing, moving or stopping a run | `run-management` |
 | Wording a claim | `attribution-and-proof` |
 | Doubting a reading; what a fail was | `whole-run-investigation` |
 | Kept harnesses, before a promotion or a handover | `harness-audit` |
+| Rethinking the system: its biggest flaws, what to delete, how to harden it | `system-audit` |
 | Promotions on record; tuning the rule | `promotion-tuner` |
 | A cheap built system against a dear bare one | `compare-systems` |
 | Handing runs or a question outside | `zip-run`, `oracle-handover` |
+
+`bun run runs` lists every verb of the run CLI with what it does, and `bun run runs <verb> --help`
+prints that verb's options.
 
 Nine conditions hold in all of them:
 
@@ -459,7 +466,11 @@ and the wall's start-up test.
 Use Bun 1.4.4 throughout, with no Node, npm or npx. While editing, run the owning tests through
 `bun run test -- <paths>` rather than bare `bun test`. Run at most one full suite per host.
 `bun run gate` runs the CI gate. Keep hooks enabled (`bun run hooks:install`); a plain push
-checks whitespace and secrets only. `bun run land -- <top> --sanitize` validates the stack.
+checks whitespace and secrets, and marks its head and the pull requests above it pending. `bun run land -- <top>
+--sanitize` validates the stack. GitHub Actions runs only `ci.yml`, which `land --merge`
+dispatches, since its tests need a machine independent of this one. When you tune CI, prefer to
+keep a check here, in the hook, `stack.ts` or `land`, posting its status to GitHub where one should
+show (`local-checks`).
 Report wall-test failures caused by unavailable user namespaces as failures; do not describe that
 suite as passing.
 
@@ -471,11 +482,15 @@ and commit cited and each local change listed.
 
 ### The stack and pull requests
 
-Read `stack-pr` before you branch and again before you push, and read the stack itself every time
-(`bun .claude/skills/stack-pr/scripts/stack.ts`), because other sessions move it. Expand the open
-pull request a change belongs to before opening a new one, and never fork off the middle of a stack.
-Change another session's pull request only on the operator's word. Use one worktree per pull
-request, never `git stash` by hand, and make every published commit pass alone.
+Pull requests stack. A release cycle ideally builds one stack and lands it as one chain, so a new
+pull request goes on the top of that stack, even where it does not build on the one below it.
+Expand the open pull request a change belongs to before opening a new one. Read `stack-pr` before
+you branch and again before you push, and read the stack itself each time
+(`bun .claude/skills/stack-pr/scripts/stack.ts`), because other sessions move it: the top is the
+end of the chain, never its middle. A chain of its own on `main` suits a change that has to land
+before the stack, and is worth a word with the operator first. Change another session's pull
+request only on the operator's word. Use one worktree per pull request, never `git stash` by hand,
+and make every published commit pass alone.
 
 Each pull request needs one importance label and at least one category (`CATEGORIES`,
 `tools/runtime/land.ts`). `I0` blocks a release; `I1` protects evaluation validity,
@@ -483,7 +498,8 @@ prevents serious run failures or broadly simplifies the tree; `I2` is a bounded 
 `I3` covers reporting, wording and convenience. Write an imperative commit subject and explain
 the problem, resulting behaviour and evidence in the body. Follow `stack-pr` section 7 for PR
 text and update it after a push. Push only your authorised branch, with `--force-with-lease`
-when rewriting. Merging and restacking require the operator's authority; use
+when rewriting. Moving your own pull request onto the top of the stack is yours to do; merging,
+and restacking other sessions' branches, take the operator's authority. Use
 `bun run land -- <top> --merge` to land.
 
 ### Reviews and subagents

@@ -38,7 +38,6 @@ import {
   pairsReported,
   referenceOf,
 } from "../kernel/reports.ts";
-import { BILLED } from "../kernel/trace.ts";
 import { conditionsOf } from "../kernel/condition.ts";
 import { examinerSessions, solvesIn, verdictsOf } from "../kernel/solves.ts";
 import { spreadOf } from "../kernel/size.ts";
@@ -47,11 +46,9 @@ import type { Task } from "../kernel/verify.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
 
-/** At most three room solves per draft; the task admission stops at the first reading that leaves room. */
-export const TRIED = 3;
-/** Why a draft is not measured where the campaign's budget holds no reserve for its next solve. */
-export const UNAFFORDED =
-  "the campaign's budget holds no reserve for the reference harness's next solve of it beside the solves running, so it is not measured";
+/** At most three room solves per draft, as a gate ran them under `try_task` until 1 November; no
+ *  gate solves a draft now (`write.ts`), and an earlier log's gates are read by this count. */
+const TRIED = 3;
 
 /** One valid answer of the reference at a task admission. */
 interface RoomAnswer {
@@ -68,8 +65,8 @@ const SAID: Readonly<Record<Outcome, string>> = {
   "earlier-reference": "last compared between two other harnesses",
   disputed: "disputed: a rejection of an answer to it is not settled",
 };
-/** Where a held draft's room came from, as `informative` reads room solves: the clause the
- *  task admission says of a draft it holds (`measured`, `write.ts`), and the kinds the measurement counts. */
+/** Where a held draft's room came from, as `informative` read an earlier log's room solves: the
+ *  kinds the measurement counts of a gate that solved its draft. */
 const HELD_ON = {
   validity: "on validity, its solves valid in some and not all",
   yours: "on an answer of yours, where none of its solves was valid",
@@ -96,7 +93,7 @@ interface Carried {
 function legendOf(carried: Carried): string {
   const clauses = [
     carried.bill
-      ? `A win "on the bill alone" is one only the cost of its solves carried; a step is also read without the bill.`
+      ? `A win "on the bill alone" is one only the cost of its solves carried; a step is read without the bill.`
       : "",
     carried.admission
       ? `"Gate" is how many of the reference harness's solves at its gate were valid, of the solves it ran, at most ${String(TRIED)}, and their turns.`
@@ -112,25 +109,16 @@ function legendOf(carried: Carried): string {
   ].join(" ");
 }
 
-/** How an author's answer at a task admission stood against the reference harness's best valid answer by
- *  the objective, or against its worst (`of`), as a share of the larger magnitude (`gainOver`,
- *  `seenOf` in `write.ts`). Room is read against any one of its answers, so the worst decides it. */
-export function gapSaid(gap: number, of: "best" | "worst" = "best"): string {
-  return gap === 0
-    ? `the same as its ${of}`
-    : `${percent(gap)} ${gap > 0 ? "better" : "worse"} than its ${of}`;
-}
-
 /** Classify an admitted draft's room from the number of valid reference solves. */
-export function heldOn(valid: number, solves: number): string {
+function heldOn(valid: number, solves: number): string {
   if (valid === 0) return HELD_ON.yours;
   return valid < solves ? HELD_ON.validity : HELD_ON.objective;
 }
 
-/** Whether a task admission read its draft: one refused on fewer than the reference harness's `TRIED`
- *  readings, cut by a limit or never begun for want of the reserve, refused a draft it did not read,
- *  which may be proposed again and is solved afresh (14 October). A task admission that read all three, held
- *  its draft, or refused the package on its shape check, stands. */
+/** Whether a gate read its draft. Until 1 November one refused on fewer than the reference harness's
+ *  `TRIED` readings, cut by a limit or never begun for want of the reserve, refused a draft it did not
+ *  read, which may be proposed again (14 October). A gate that read all three, held its draft, or
+ *  refused the package on its shape check, stands, as every gate written now does. */
 export function measuredGate(data: JsonObject): boolean {
   const solves = asRecord(data.reference)?.solves;
   return !(
@@ -150,11 +138,13 @@ function inTurns(turns: readonly number[]): string {
   return turns.length === 0 ? "" : `, in ${turns.toSorted((a, b) => a - b).join(", ")} turns`;
 }
 
-/** How far the author's answer stood from the reference harness's best at the task admission, where the task admission
- *  measured both (`reference.gap`, `task.gate`). */
+/** How far the author's answer stood from the reference harness's best valid answer by the
+ *  objective at an earlier log's gate, where that gate measured both (`reference.gap`, `task.gate`),
+ *  as a share of the larger magnitude (`gainOver`). */
 function yoursSaid(reference: unknown): string {
   const gap = asRecord(reference)?.gap;
-  return isNumber(gap) ? `, yours ${gapSaid(gap)}` : "";
+  if (!isNumber(gap)) return "";
+  return `, yours ${gap === 0 ? "the same as its best" : `${percent(gap)} ${gap > 0 ? "better" : "worse"} than its best`}`;
 }
 
 /** One line a task among `tasks`, in their order (the module's head comment says what each holds),
@@ -331,7 +321,8 @@ function historyLine(history: History | undefined): string {
 /** Summarise the current reference's last comparison, whichever side it took: tasks with every,
  *  some or no solve valid, with set-aside tasks counted separately. Report task counts, never solve
  *  counts, which could reveal one task's result. Also summarise drafts admitted under this
- *  reference by source of room (`heldOn`), and measured refusals. Null where neither is recorded. */
+ *  reference, by source of room where an earlier log's room solves measured it (`heldOn`), and
+ *  measured refusals. Until 1 November a draft held on its package alone was left out of the count. Null where neither is recorded. */
 function measuredLine(
   events: readonly LogEvent[],
   admissions: ReadonlyMap<string, JsonObject>,
@@ -346,14 +337,18 @@ function measuredLine(
   const some = reads.filter((each) => spreadOf(each) === "some").length;
   const none = reads.filter((each) => spreadOf(each) === "none").length;
   const read = [...admissions.values()].filter((admission) => measuredGate(admission));
-  const held = read.flatMap(({ outcome, reference: counted }) => {
+  const held = read.filter(({ outcome }) => heldAtGate(outcome));
+  // The source of room of a draft an earlier log's room solves measured; a gate now reads the
+  // package alone, and its drafts are said to be held on it.
+  const solved = held.flatMap(({ reference: counted }) => {
     const { valid, solves: of } = asRecord(counted) ?? {};
-    return heldAtGate(outcome) && isNumber(valid) && isNumber(of) ? [heldOn(valid, of)] : [];
+    return isNumber(valid) && isNumber(of) ? [heldOn(valid, of)] : [];
   });
   const refused = read.filter(({ outcome }) => outcome === "refused").length;
-  const kinds = Object.values(HELD_ON).map(
-    (on) => `${String(held.filter((each) => each === on).length)} ${on}`,
-  );
+  const kinds = [
+    ...Object.values(HELD_ON).map((on) => `${String(solved.filter((each) => each === on).length)} ${on}`),
+    ...(solved.length < held.length ? [`${String(held.length - solved.length)} on its package alone`] : []),
+  ];
   const said = [
     ...(reads.length === 0
       ? []
@@ -363,7 +358,7 @@ function measuredLine(
     ...(held.length + refused === 0
       ? []
       : [
-          `Under the current reference harness the gate held out ${plural(held.length, "draft")}${held.length === 0 ? "" : `: ${kinds.join("; ")}`}. It refused ${plural(refused, "draft")} after reading them.`,
+          `Under the current reference harness the gate held out ${plural(held.length, "draft")}${solved.length === 0 ? "" : `: ${kinds.join("; ")}`}. It refused ${plural(refused, "draft")} after reading them.`,
         ]),
   ];
   return said.length === 0 ? null : `${said.join(" ")} These are measurements and no target.`;
@@ -427,7 +422,7 @@ function interruptedLines(
 }
 
 /** Each valid answer the reference harness gave at a task admission after event `from`, by draft version:
- *  the Examiner's solves under `try_task`, which no comparison counts, with the solver's own turns
+ *  the Examiner's solves under `try_task` until 1 November, which no comparison counts, with the solver's own turns
  *  each took and the objective the verifier measured of it, null where the log holds none. Read
  *  from a promotion on, they are the new reference's alone. The task admission reads the measures by the
  *  comparison's definition of room (`informative`); a later session is told the turns on the
@@ -455,24 +450,4 @@ export function gateAnswers(events: readonly LogEvent[], from: number): Map<stri
     ]);
   }
   return answers;
-}
-
-/** What draft `version`'s solves at session `session`'s task admission billed, read once every one has
- *  ended: their own and the Referee's rulings of them. Until 17 October a task admission was billed the
- *  session's sum across its solves, which moves with every draft once a call's are solved together
- *  (`proposeTool`, `write.ts`). */
-export function gateBilled(events: readonly LogEvent[], session: string, version: string): number {
-  const conditions = conditionsOf(events);
-  const own = new Set(
-    solvesIn(events).flatMap(({ id, start, condition }) =>
-      start.comparison === session && conditions.get(condition)?.task === version ? [id] : [],
-    ),
-  );
-  return events.reduce(
-    (sum, { kind, data }) =>
-      BILLED.has(kind) && isNumber(data.billed) && isString(data.solve) && own.has(data.solve)
-        ? sum + data.billed
-        : sum,
-    0,
-  );
 }

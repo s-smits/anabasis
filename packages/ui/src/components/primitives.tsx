@@ -81,14 +81,6 @@ export function HashValue({
   );
 }
 
-export function DataTable({ children }: { children: ReactNode }) {
-  return (
-    <div className="ana-table-wrap">
-      <table className="ana-table">{children}</table>
-    </div>
-  );
-}
-
 /** State what is missing and explain why, where known. */
 export function NoSignal({
   title,

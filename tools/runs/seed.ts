@@ -40,7 +40,7 @@ export interface Cut {
 }
 
 /** How many of a log's `lines` a cut keeps. */
-export function keptLines(lines: readonly string[], cut: Cut): number {
+function keptLines(lines: readonly string[], cut: Cut): number {
   if (cut.before !== undefined && cut.events !== undefined) {
     throw new Error("name --before or --events, not both");
   }

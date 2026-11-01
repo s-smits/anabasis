@@ -1,8 +1,5 @@
-#!/usr/bin/env bun
 /**
  * Open pull requests that repeat another open pull request's commits.
- *
- *   bun tools/runtime/doubled.ts [--pull <number>]
  *
  * A pull request shows the commits from its base to its head, so where its head holds the head of
  * another open pull request that is not on its chain of bases, it lists that one's commits as its
@@ -10,14 +7,13 @@
  * #529, because #530 had never been linked into it, and based #531 on #529's branch: #531 then
  * listed #530's commits beside its own eight, and nothing said so until the operator read it.
  * Pull requests may stack in any order. What is refused is a head that holds another's without
- * standing on it: `bun run land` refuses a landing that holds one, `stack.ts` lists them, and the
- * workflow `stacked.yml` fails on a pull request in one as it opens, moves or changes its base,
- * which `mergeable.yml`, run on pushes only, never saw. Exit 1 names each, with the base that
- * mends it.
+ * standing on it: `bun run land` refuses a landing that holds one, and `stack.ts` lists them, each
+ * with the base that mends it. Both run here. From 30 October the workflow `stacked.yml` also failed
+ * on such a pull request on GitHub, as it opened or changed its base; the operator moved the check
+ * back to this machine the same evening, since it needs no clean runner.
  */
-import { parseArgs, runtimeProcess } from "../../src/meta/process.ts";
 import { git, gitSays } from "./gate.ts";
-import { openPulls, type Pull } from "./pulls.ts";
+import type { Pull } from "./pulls.ts";
 
 /** The open pull requests beneath `pull`, each the one whose head the one above is based on. */
 function beneath(open: readonly Pull[], pull: Pull): Pull[] {
@@ -71,18 +67,4 @@ export function doubledLines(
         : `base it on ${nearest.headRefName}, and link its native stack in that order`;
     return `#${String(pull.number)} (${pull.headRefName}, on ${pull.baseRefName}) repeats the commits of ${named}: ${mend}.`;
   });
-}
-
-if (import.meta.main) {
-  const { values } = parseArgs({ args: runtimeProcess.argv.slice(2), options: { pull: { type: "string" } } });
-  const root = runtimeProcess.cwd();
-  const asked = values.pull === undefined ? null : Number(values.pull);
-  const lines = doubledLines(
-    root,
-    openPulls(root),
-    (pull, repeats) => asked === null || [pull, ...repeats].some((each) => each.number === asked),
-  );
-  for (const line of lines) console.error(line);
-  if (lines.length === 0) console.log("no open pull request repeats another's commits");
-  runtimeProcess.exitCode = lines.length === 0 ? 0 : 1;
 }

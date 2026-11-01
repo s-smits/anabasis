@@ -1,6 +1,6 @@
 .ana-stack {
   display: grid;
-  gap: 14px;
+  gap: 12px;
 }
 .ana-evaluation-detail {
   display: grid;
@@ -19,7 +19,7 @@
   display: grid;
   gap: 12px;
   grid-template-columns: 110px minmax(0, 1fr);
-  padding: 12px 14px;
+  padding: 12px 12px;
 }
 
 .ana-key-values > div:last-child {
@@ -29,8 +29,6 @@
 .ana-key-values span {
   color: var(--ana-faint);
   font-size: var(--ana-text-xs);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .ana-key-values strong {
@@ -68,8 +66,6 @@
 dt {
   color: var(--ana-faint);
   font-size: var(--ana-text-xs);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 dd {
@@ -79,20 +75,24 @@ dd {
 }
 
 .ana-filters {
-  align-items: end;
+  align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
 }
 
-.ana-filters input,
-.ana-filters select {
+/* One search box everywhere (operator, 30 October): a filter row's, a harness's file list's and the
+   campaign picker's are this rule, not the browser's grey field. */
+.ana-search input,
+.ana-filters .ana-picker-button {
   background: var(--ana-card);
   border: 1px solid var(--ana-border);
   border-radius: 6px;
+  color: var(--ana-text);
+  font: inherit;
   font-size: var(--ana-text-sm);
   min-height: 40px;
-  padding: 9px 12px;
+  padding: 8px 12px;
 }
 
 .ana-search {
@@ -103,7 +103,8 @@ dd {
 .ana-search > svg {
   position: absolute;
   left: 12px;
-  top: 12px;
+  top: 50%;
+  translate: 0 -50%;
   width: 16px;
   height: 16px;
   color: var(--ana-faint);
@@ -113,20 +114,74 @@ dd {
   width: 100%;
   padding-left: 38px;
 }
+/* The browser's own clear cross is drawn white and bold in WebKit; Escape clears the box. */
+.ana-search input::-webkit-search-cancel-button {
+  appearance: none;
+}
 .ana-search input::placeholder {
   color: var(--ana-faint);
 }
 
-.ana-filters label {
-  display: grid;
-  gap: 4px;
+/* A select's name stands beside it, so a row of filters is one line high under its section's title:
+   above it, it left 32 px between the title and the search box (operator, 30 October). */
+/* A choice in a filter row: its name beside a trigger drawn as the search box, opening the list
+   under it (`Choose`, `picker.tsx`). */
+.ana-filters .ana-picker {
+  align-items: center;
+  border: 0;
+  display: flex;
+  gap: 8px;
+  padding: 0;
 }
 
-.ana-filters label span {
+.ana-filters .ana-picker-button {
+  font-family: inherit;
+  grid-template-columns: minmax(0, 1fr) 13px;
+  max-width: 280px;
+  min-width: 168px;
+}
+
+/* A filter's list ends under its box's right edge and grows leftward, so the last choice in a row
+   opens inside the window (85 px past it on 30 October, when the list began at the box's left). */
+.ana-filters .ana-picker-panel {
+  left: auto;
+  right: 0;
+  top: calc(100% + 4px);
+  width: max(100%, 240px);
+}
+
+.ana-filter-count {
   color: var(--ana-faint);
   font-size: var(--ana-text-xs);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  margin-left: auto;
+}
+
+/* A sortable head: its name and an arrow, which says the way it sorts or, faint, that it can. */
+.ana-sort {
+  align-items: center;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  gap: 4px;
+  padding: 0;
+  text-transform: inherit;
+}
+
+.ana-sort svg {
+  height: 12px;
+  width: 12px;
+}
+
+.ana-sort:hover,
+th[aria-sort] .ana-sort {
+  color: var(--ana-text);
+}
+
+.ana-sort-idle {
+  opacity: 0.4;
 }
 
 .ana-record-meta,
@@ -154,7 +209,7 @@ dd {
   margin: 0;
   max-height: 560px;
   overflow: auto;
-  padding: 14px;
+  padding: 12px;
   white-space: pre-wrap;
 }
 
@@ -193,9 +248,7 @@ dd {
 .ana-case-grid h3 {
   font-family: var(--font-technical);
   font-size: var(--ana-text-sm);
-  letter-spacing: 0.06em;
-  margin: 0 0 10px;
-  text-transform: uppercase;
+  margin: 0 0 8px;
 }
 
 .ana-case-grid p {
@@ -220,15 +273,22 @@ dd {
   align-items: center;
   cursor: pointer;
   display: flex;
-  gap: 9px;
+  gap: 8px;
   padding: 12px;
 }
 
 .ana-tool-call summary::-webkit-details-marker {
   display: none;
 }
-.ana-tool-call summary > strong {
+/* The call's first line takes the row's room and is cut at its end. */
+.ana-tool-glimpse {
+  color: var(--ana-dim);
   flex: 1;
+  font-size: var(--ana-text-xs);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .ana-tool-call summary > span:first-child {
   width: 24px;
@@ -280,7 +340,7 @@ dd {
      tall as it is, with the whole panel scrolling. A last row stretched to fill left the payload's
      line floating midway with a file list above it. */
   align-content: start;
-  gap: 14px;
+  gap: 12px;
   overflow: auto;
   padding: 16px;
   position: fixed;
@@ -305,15 +365,13 @@ dd {
 
 .ana-inspector-head > div {
   display: grid;
-  gap: 5px;
+  gap: 4px;
   min-width: 0;
 }
 
 .ana-inspector-head span {
   color: var(--ana-faint);
   font-size: var(--ana-text-xs);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .ana-inspector-head strong {
@@ -330,7 +388,7 @@ dd {
    phone's width would otherwise stretch the column to, and the page with it. */
 .ana-empty-workspace {
   display: grid;
-  gap: 14px;
+  gap: 12px;
   grid-template-columns: minmax(0, 1fr);
   margin: 20vh auto;
   overflow-wrap: anywhere;
@@ -369,7 +427,7 @@ dd {
   }
 
   .ana-page {
-    padding: 18px 14px;
+    padding: 16px 12px;
   }
 
   .ana-story-head > .ana-badge {
@@ -385,13 +443,13 @@ dd {
 .ana-review-title {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 .ana-review-counts,
 .ana-review-counts > span {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
 .ana-review-counts {
   gap: 20px;
@@ -424,7 +482,7 @@ dd {
 .ana-record-field {
   display: flex;
   gap: 20px;
-  padding: 14px 0;
+  padding: 12px 0;
   border-bottom: 1px solid var(--ana-border-soft);
 }
 .ana-record-field dt {
@@ -468,7 +526,7 @@ dd {
 }
 .ana-record-group summary {
   cursor: pointer;
-  padding: 8px 10px;
+  padding: 8px 8px;
   border-radius: 4px;
 }
 .ana-record:not(.ana-record-input) > dl > .ana-record-field > dd > .ana-record-group {
@@ -482,7 +540,7 @@ dd {
   margin-left: 8px;
 }
 .ana-record-group > .ana-record {
-  margin: 8px 0 0 14px;
+  margin: 8px 0 0 12px;
 }
 .ana-record-pages {
   display: flex;
@@ -522,7 +580,7 @@ dd {
   z-index: 20;
   top: 100%;
   left: 0;
-  padding: 9px 12px;
+  padding: 8px 12px;
   width: max-content;
   max-width: min(280px, 65vw);
   color: var(--ana-text);
@@ -561,7 +619,7 @@ dd {
     overflow-y: auto;
   }
   .ana-picker-panel {
-    width: calc(100% - 16px);
+    width: 100%;
   }
 }
 @media (pointer: coarse) {
@@ -569,7 +627,7 @@ dd {
   .ana-picker-button,
   .ana-row-select,
   .ana-evidence-link,
-  .ana-filters input,
+  .ana-search input,
   .ana-filters select {
     min-height: 44px;
   }

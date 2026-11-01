@@ -20,6 +20,9 @@ import { SolveTable } from "./solve-rows.tsx";
  */
 
 const NO_AWAITING: ReadonlySet<string> = new Set();
+/** The one fact in prose, which takes half the row: in a sixth it ran to eleven lines (operator,
+ *  30 October). */
+const WIDE = "Table row";
 
 /** The handover's fields, as facts in a row. */
 function factsOf(detail: SessionDetail, reading: CampaignReading): (readonly [string, ReactNode])[] {
@@ -27,7 +30,7 @@ function factsOf(detail: SessionDetail, reading: CampaignReading): (readonly [st
   const common = [
     ["Turns", String(move.turns)],
     ["Last wrote", time(move.last)],
-    ["Table row", move.named === null ? "not recorded" : `${move.named.code} · ${move.named.why}`],
+    [WIDE, move.named === null ? "not recorded" : `${move.named.code} · ${move.named.why}`],
   ] as const;
   if (move.step === "examiner") {
     return [
@@ -82,7 +85,7 @@ export function SessionDetailView({
       <AnswerIssues answer={detail} />
       <dl className="ana-facts ana-facts--row">
         {factsOf(detail, reading).map(([label, value]) => (
-          <div key={label}>
+          <div key={label} className={label === WIDE ? "is-wide" : undefined}>
             <dt>{label}</dt>
             <dd>{value}</dd>
           </div>
@@ -114,7 +117,7 @@ export function SessionDetailView({
       {move.step === "builder" ? (
         <Section title={`Practice solves (${String(detail.solves.length)})`}>
           {detail.solves.length === 0 ? (
-            <p className="ana-faint">No practice solve on record.</p>
+            <p className="ana-faint">No practice solve on record</p>
           ) : (
             <SolveTable
               rows={detail.solves}

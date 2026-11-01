@@ -189,6 +189,7 @@ describe("a campaign's reading", () => {
         harness: HA,
         changed: true,
         practiceSolves: 2,
+        until: 21,
         fails: 1,
         // Its own turns, and its two practice solves.
         billed: 7,

@@ -169,6 +169,9 @@ describe("host execution", () => {
       'import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; console.log(hostsOf().length);';
     expect(made.run(code).out.trim()).toBe("1");
     expect(made.run(code, { ANA_HOP: "1" }).out.trim()).toBe("0");
+    // A worktree without `.env.runs` reads an empty list, and the refusal said "names" and nothing.
+    const named = 'import { hostNamed } from "REPOSITORY/tools/runs/host-config.ts"; hostNamed("runner");';
+    expect(made.run(named, { ANA_HOSTS: "[]" }).err).toContain("ANA_HOSTS names none here");
   });
 
   it("names the central host only where ANA_HOSTS lists it", () => {
@@ -336,17 +339,54 @@ describe("campaign snapshots", () => {
     };
     for (const extra of [
       duplicate,
-      { FAKE_OFFLINE: "1" },
       { FAKE_CATALOGUE: JSON.stringify([{ name: "../escape", path: remote.log }]) },
     ]) {
       expect(made.run(sync, extra).code).toBe(1);
     }
+    const silent = made.run(sync, { FAKE_OFFLINE: "1" });
+    expect(silent.code).toBe(0);
+    expect(silent.err).toContain("runner: no campaign catalogue");
     expect(made.recorded().filter((call) => call.tool === "rsync")).toHaveLength(0);
     const collection = made.run(sync.replace('{match:"exact"}', "{}"), duplicate);
     expect(collection.code).toBe(0);
     expect(collection.err).toContain("distant");
     expect(collection.err).toContain("runner");
     expect(made.recorded().filter((call) => call.tool === "rsync")).toHaveLength(1);
+  });
+
+  it("lets a silent host spoil only its own copies, and a verb on a run held here go on without it", () => {
+    const remote = campaign();
+    const { made } = remote;
+    const other = { ...made.host, name: "other", ssh: "fake-other" };
+    const two = { ANA_HOSTS: JSON.stringify([made.host, other]) };
+    const quiet = (ssh: string, catalogue: unknown[]) =>
+      JSON.stringify({
+        [ssh]: { offline: true },
+        [ssh === "fake-other" ? "fake-runner" : "fake-other"]: { catalogue },
+      });
+    const collection = made.run(sync.replace('{match:"exact"}', "{}"), {
+      ...two,
+      FAKE_FLEET: quiet("fake-other", [{ name: "distant", path: remote.log }]),
+    });
+    expect(collection.code).toBe(0);
+    expect(collection.err).toContain("other: no campaign catalogue");
+    const copied = join(made.main, "data", "runs", "runner", "distant", "log.jsonl");
+    expect(readFileSync(copied, "utf8")).toBe(readFileSync(remote.log, "utf8"));
+    const kept = made.run(
+      'import { readAcross } from "REPOSITORY/tools/runs/snapshots.ts"; console.log((await readAcross("distant")).path);',
+      { ...two, FAKE_FLEET: quiet("fake-runner", []) },
+    );
+    expect({ code: kept.code, out: kept.out.trim() }).toEqual({ code: 0, out: copied });
+    const near = join(made.main, ".ana", "d2", "near");
+    mkdirSync(near, { recursive: true });
+    append(join(near, "log.jsonl"), "campaign.ended", { ending: "finished" });
+    const routing = (name: string) =>
+      made.run(
+        `import { routed } from "REPOSITORY/tools/runs/hosts.ts"; console.log(JSON.stringify((await routed("stop", ["${name}"])).here));`,
+        { ...two, FAKE_FLEET: quiet("fake-other", []) },
+      );
+    expect(JSON.parse(routing("near").out)).toEqual(["near"]);
+    expect(routing("far").code).toBe(1);
   });
 });
 
@@ -367,7 +407,7 @@ describe("named snapshot readers", () => {
     }
     const audit = made.runScript(
       ".claude/skills/harness-audit/scripts/harness-versions.ts",
-      ["--name", "distant"],
+      ["distant"],
       remote.env,
     );
     expect({ code: audit.code, err: audit.err }).toEqual({ code: 0, err: "" });

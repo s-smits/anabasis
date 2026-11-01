@@ -560,8 +560,8 @@ describe("a campaign", () => {
     expect(took).toMatch(/\b2 tasks\b.*reference 11, new 5\b.*in no test/u);
     // Every reading says how many of its tallied tasks, frontier and retained together, were untied,
     // the least share of them it detects four times in five, its false rate, and, since 26 October,
-    // the same tasks' tally without the bill, which a step clears as well. The share and the rate
-    // are the full-score test's, an upper bound for the rule that needs both.
+    // and, since 26 October, the same tasks' tally with the bill beside the test without it, which
+    // alone reads the step (31 October).
     const scored = {
       unsolved: 0,
       wins: 4,
@@ -576,9 +576,9 @@ describe("a campaign", () => {
     const valid = { old: [8, 0, 0], fresh: [4, 0, 4], informative: { old: 0, fresh: 0 } };
     const frontier = { ...scored, tasks: ["v1", "v2", "v3", "v4", "v5", "v6", "v7"], aside: [] };
     const [size, rate, , bill] = reportLines({ valid, objective: null, scored, frontier, noise: null });
-    for (const fact of ["full score", "8 tallied", "4 of them untied", "95%"]) expect(size).toContain(fact);
-    for (const fact of ["full score", "2%", "upper bound"]) expect(rate).toContain(fact);
-    expect(bill).toContain("0-4-4, p 1");
+    for (const fact of ["the bill", "8 tallied", "4 of them untied", "95%"]) expect(size).toContain(fact);
+    expect(rate).toContain("2%");
+    expect(bill).toContain("4-0-4, p 0.063, which decides nothing by itself");
     // A report written before 20 October read its step, and these, on its frontier alone.
     expect(reportLines({ valid, objective: null, frontier, noise: null }).at(0)).toContain("8 tallied");
     const none = reportLines({
@@ -614,7 +614,7 @@ describe("a campaign", () => {
     for (const fact of ["8 tallied", "2 of them untied"]) expect(count).toContain(fact);
     expect(ties).toContain("75%");
     expect(flips).toContain("13%");
-    expect(shift).toMatch(/full score alone: none\b/u);
+    expect(shift).toMatch(/without the bill: none\b/u);
     expect(lines(0.9)[3]).toContain("90%");
     for (const fact of ["8 tasks", "6 were tallied", "1 set aside", "1 disputed"]) {
       expect(drew).toContain(fact);

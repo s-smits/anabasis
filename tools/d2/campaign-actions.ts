@@ -281,7 +281,7 @@ const examineAction =
       return { refused: "This campaign has no Examiner seat, so the host cannot write more tasks." };
     }
     const session = nextId(turn.events, "x");
-    const { args, tasks, roomSolves } = examinerRun(turn, session, seats.examine, "write");
+    const { args, tasks } = examinerRun(turn, session, "write");
     begin({
       session,
       ...keyIfDefined(
@@ -292,7 +292,7 @@ const examineAction =
     // The action returns once the session is on record: a throw before that is the action's.
     const { promise: onRecord, resolve } = Promise.withResolvers<void>();
     const sitting = seats.examine ?? examine;
-    // As task admission holds out each task the host releases what is owed since the last reading, one release at a time,
+    // As the gate holds out each task the host releases what is owed since the last reading, one release at a time,
     // and each release settles `next`, on which `wait` returns. A throw is the environment's ending.
     let releasing = Promise.resolve();
     let next = Promise.withResolvers<void>();
@@ -311,7 +311,6 @@ const examineAction =
     const work = examineCommand(
       args,
       (request, wall) => sitting({ ...request, opened: resolve, held }, wall),
-      roomSolves,
       // The host's halt, on its bounds or an ending, and the run's kill stop it; the
       // conversation's own end is neither.
       AbortSignal.any([bench.halt.signal, ...(bench.request.kill === undefined ? [] : [bench.request.kill])]),

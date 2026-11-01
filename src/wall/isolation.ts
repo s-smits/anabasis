@@ -170,7 +170,7 @@ export function toolTreeSearchDirs(toolTree: string): string[] {
  * started in the seat it read no environment: no `TMPDIR`, `/tmp` refused, and no `bun` on its
  * PATH. `executable` and `fallback` are the host's own but where a test names others.
  */
-export function commandSearchPath(
+function commandSearchPath(
   toolTree: string | null,
   executable: string = capturedExecPath,
   fallback: readonly string[] = toolchainPathDirs(),

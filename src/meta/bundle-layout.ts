@@ -50,3 +50,12 @@ export const GENERATED_TOOLS_FILE = "agent/tools.ts";
 
 /** A harness's installed programs, at its root: the tree the solver's shell finds them in. */
 export const TOOL_TREE_DIR = ".toolchain";
+
+/** The bytecode caches Python writes beside a program it runs. Python reads a file in one only while
+ *  the source beside it is there, and checks it against that source unless the file was compiled
+ *  as unchecked, so a cache holds nothing the source does not, and a harness whose programs ran
+ *  once is the harness it was before. Running its Python programs left `__pycache__` in 26 of the
+ *  54 states buffer-fresh-opus-v065-b kept, and on 24 October two states that differed from the one
+ *  practised by those caches alone read as never practised. A `.pyc` outside `__pycache__` is code
+ *  Python imports with no source beside it, and stays in. */
+export const BYTECODE = /(^|\/)__pycache__(\/|$)/;

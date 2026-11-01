@@ -80,9 +80,9 @@ async function sampled(query: string, title: string): Promise<Opened> {
   return opened;
 }
 
-/** Pick `option` in the sidebar's picker named `picker`. */
-async function pick(page: Page, picker: "Project" | "Campaign", option: string): Promise<void> {
-  await page.getByRole("combobox", { name: new RegExp(`^${picker}`, "u") }).click();
+/** Pick the campaign `option` in the sidebar's picker. */
+async function pick(page: Page, option: string): Promise<void> {
+  await page.getByRole("combobox", { name: /^Campaign/u }).click();
   await page.getByRole("option", { name: new RegExp(`^${option}`, "u") }).click();
 }
 
@@ -107,9 +107,9 @@ describe("a switch of project or campaign", () => {
     const opened = await sampled(`campaign=${keys.fixture}`, "fixture");
     const { page } = opened;
     await answerAtOnce(page);
-    await pick(page, "Project", "unit-conversion");
+    await pick(page, "units");
     await expect(page.getByRole("heading", { level: 1, name: "units" })).toBeVisible();
-    await pick(page, "Project", "vowel-counts");
+    await pick(page, "fixture");
     await expect(page.getByRole("heading", { level: 1, name: "fixture" })).toBeVisible();
     const seen = await framesSeen(page);
     expect(seen.frames).toBeGreaterThan(0);
@@ -122,9 +122,9 @@ describe("a switch of project or campaign", () => {
     const opened = await sampled(`campaign=${keys.fixture}`, "fixture");
     const { page } = opened;
     await answerAtOnce(page);
-    await pick(page, "Campaign", "early");
+    await pick(page, "early");
     await expect(page.getByRole("heading", { level: 1, name: "early" })).toBeVisible();
-    await pick(page, "Campaign", "fixture");
+    await pick(page, "fixture");
     await expect(page.getByRole("heading", { level: 1, name: "fixture" })).toBeVisible();
     const seen = await framesSeen(page);
     expect({ placeholder: seen.placeholder, blank: seen.blank }).toEqual({ placeholder: 0, blank: 0 });
@@ -173,7 +173,7 @@ describe("a switch of project or campaign", () => {
         characterData: true,
       });
     });
-    await pick(page, "Project", "unit-conversion");
+    await pick(page, "units");
     await expect(page.getByText("Reading the campaign", { exact: true })).toBeVisible();
     const timeline = await page.evaluate(() => window.anaTimeline);
     expect(timeline?.keptTitle).toBe(true);
@@ -205,7 +205,7 @@ describe("a switch of project or campaign", () => {
       await held;
       await route.continue();
     });
-    await pick(page, "Campaign", "early");
+    await pick(page, "early");
     const card = page
       .getByRole("list", { name: /Harness versions/u })
       .getByRole("button", { name: /^B\s*fa7c79d2/u });

@@ -32,7 +32,7 @@ the shapes with a worked example):
 | `agent/BUILT_AGENTS.md` | The guide, read once per task in the solver's system prompt |
 | `agent/tools.ts` | The harness's own tools beside pi's, each call alone under the wall; program, tool or both is the Builder's choice, told what each costs a solve |
 
-A harness is named by its digest (without `__pycache__`, `BYTECODE`, `src/harness/open.ts`), so a
+A harness is named by its digest (without `__pycache__`, `BYTECODE`, `src/meta/bundle-layout.ts`), so a
 changed part makes a different harness, and solves under the old do not count for the new. The
 **Starter Built Harness** is pi's coding agent as released, with no domain program and a few
 revisable starter lines as its guide (`src/harness/starter.ts`), not named `AGENTS.md` because a

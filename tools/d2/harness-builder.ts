@@ -263,16 +263,9 @@ async function make(
       throw new Error(`a rehearsal seats no Examiner, and the campaign needs one: ${decided.why}`);
     }
     const session = nextId(events, decided.move === "draft" ? "d" : "x");
-    const { args, roomSolves } = examinerRun(
-      turn,
-      session,
-      stand,
-      decided.move === "draft" ? "draft" : "write",
-    );
+    const { args } = examinerRun(turn, session, decided.move === "draft" ? "draft" : "write");
     begin({ session });
-    await (decided.move === "draft"
-      ? draftCommand(args, seats.draft, roomSolves)
-      : examineCommand(args, seats.examine, roomSolves));
+    await (decided.move === "draft" ? draftCommand(args, seats.draft) : examineCommand(args, seats.examine));
     return;
   }
   const { setting, cap, reviewer, pastStop } = sharedOf(turn);
@@ -548,7 +541,7 @@ async function served(opening: Opening, paid: "paid" | "scripted", named?: strin
 /** What is wrong with a manifest's Bun pins for the executing `version`, or null where
  *  `packageManager` and `engines.bun` both pin it exactly. A missing, ranged or other manager's pin
  *  differs as a wrong one does. */
-export function pinFault(manifest: JsonValue, version: string): string | null {
+function pinFault(manifest: JsonValue, version: string): string | null {
   const record = asRecord(manifest);
   const pins = { packageManager: record?.packageManager, "engines.bun": asRecord(record?.engines)?.bun };
   return pins.packageManager === `bun@${version}` && pins["engines.bun"] === version

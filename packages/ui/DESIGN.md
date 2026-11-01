@@ -31,8 +31,11 @@ The Campaign pane is the main page, top to bottom:
   selection; "Compare with previous" opens the diff in the inspector. No scaled,
   half-hidden or animated cards, and no two harnesses' numbers set side by side as if
   measured together: each card's tally names its own comparison;
-- two small charts: each side's valid share in each comparison, as two dots, and the
-  dollars billed over the moves against the total;
+- two small charts: each comparison's won tasks by the measure that carried each
+  (validity, the objective, the bill), one column a comparison in the won colour at three
+  strengths, and the dollars billed over the moves against the total. The last reading's
+  readout and a comparison's reading say the same split beside the tally, since a step won
+  on the bill reads 28–1–1 as plainly as one won on valid answers;
 - the counters as one line of plain text.
 
 The page works with no promotion, which is most campaigns. Before the first
@@ -51,7 +54,8 @@ Judge each element by the question it answers or the action it enables. Do not
 promote hashes, storage paths or schema fields into summaries; keep exact records
 accessible for auditing, without making them the primary workflow. Inputs show
 collection items and their field counts in one column; item contents and other field
-groups stay collapsed. Label tool calls by call number and tool name, and other items
+groups stay collapsed. Label tool calls by call number, tool name and the first line of
+the command or first text argument, cut to the row, and other items
 by their first scalar key-value pair; use a numbered item when that value is nested or
 missing.
 
@@ -65,6 +69,14 @@ caption, and stands with it.
 Sizes are tokens. Below a page title every font size is one of the five steps of
 `styles.css`, `--ana-text-xs` to `--ana-text-lg`, named for its role as a colour is.
 A title keeps its own clamp. A new rule names a step and never a literal size.
+
+Type and space are quiet. Labels, table heads and readout names are in sentence case at
+normal tracking, never capitals with wide letter spacing. The heaviest weight is 600.
+Padding, margins and gaps are steps of 4px. Every table sets tabular figures, and a p
+value is printed one way, to three places, through `pText`. A status is quiet text: a
+tone tints a small square-cornered ground and a neutral status is the word alone, never
+a filled pill. A label, a button or a one-line state ends without a full stop. Readouts
+side by side take the widths their text needs rather than equal thirds.
 
 Outcome colours are fixed. The six things a scored task comes to are drawn only in
 the `--ana-out-*` tokens, in the order and under the labels of `views/outcome.ts`:
@@ -134,3 +146,12 @@ Keep table labels and abbreviated identities intact, with horizontal scrolling w
 The project menu may extend beyond the sidebar to show full names, but stays within the
 viewport; short screens retain sidebar scrolling. Nested disclosures use the inner radius
 and a quieter border. Touch controls keep a minimum 44px target where practical.
+
+## Slop signs from unslop
+
+The type and space rules under House style follow the signs listed in
+[unslop](https://github.com/heydamir/unslop) by Damir Sokolovsky, CC BY 4.0, applied to
+this page on 30 October 2026: sentence case for labels, no weight above 600, the 4px
+scale, one number format with tabular figures, quiet status text, no trailing full stops
+and readouts of varied widths. Its signs are a checklist for a new rule, subordinate to
+the identity above.

@@ -116,8 +116,9 @@ a legacy sweep probe, not a campaign solve under the current default of 20 model
 - **One live seat a login at a time.** A login at its session limit fails every solve in flight. On
   8 October 2026 that took three solves and $8.25 with it.
 - **Size it in drafts, not in sessions.** An Examiner session that its task admission refuses finishes on its
-  own: on 18 October arm A finished after 20 drafts. Its dollars are its room solves, about $0.25
-  a draft at three solves of the reference, and its Examiner's turns besides. That is a dated
+  own: on 18 October arm A finished after 20 drafts. Its dollars were then its room solves, about
+  $0.25 a draft at three solves of the reference, and its Examiner's turns besides; since
+  1 November the gate solves no draft, so a seat's dollars are its Examiner's turns. That is a dated
   measurement, not a price estimate for another model or domain.
 - **A live seat's result is one sample.** One solve a side says the path works. It says nothing of
   a rate. Report it as a path proven, not as a model measured.

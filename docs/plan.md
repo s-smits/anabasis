@@ -14,15 +14,16 @@ its level here, and nowhere else.
 ## Goal and the four factors
 
 What each factor is, how it is measured and its bar are `AGENTS.md`'s ("The four reported
-factors"). The values below are read from the fresh campaigns' logs on the operator's Mac at
-20 October, 22:00; the two runners' logs are not counted.
+factors"). The values below are recounted on 30 October 2026, 22:00 UTC+01:00, from every
+campaign log on the three machines (152 campaigns, `promotion-tuner/scripts/table.ts --rows runs`),
+unless a row names another reading.
 
 | # | Factor | Now | Bar |
 | --- | --- | --- | --- |
-| S | Supply | Fresh buffer campaigns hold out tasks after each promotion: r3's Examiner proved 89 author answers (`task.feasible`) over 5 epochs | At least 4 informative tasks before each comparison |
-| M1 | Climb | One campaign with five promotions (buffer r3, 14 comparisons). Six with one each (five buffer, one esp32). Truss: none in 3 | 6 confirmed in one real campaign, observed, no quota; then a second domain (operator, 25 October; 12 until then) |
-| M2 | Honesty | 0 A/A steps in 31 A/A readings across those campaigns; the count that could have read one at 0.02 is in the PR | 0 in the ten controls after the six on record |
-| M3 | Verdicts | 0 hand labels. r3: 5 Referee rulings in 14 comparisons | 30 labels; 3 in 4 defects caught, at most 1 in 10 earned voided |
+| S | Supply | Fresh buffer campaigns hold out tasks after each promotion: on 20 October r3's Examiner proved 89 author answers (`task.feasible`) over 5 epochs | At least 4 informative tasks before each comparison |
+| M1 | Climb | Four fresh buffer campaigns reached six or more promotions, each at one commit: v065-a 7, r3 6, forkedPR377 6, forkedPR506 6. None counts as six *confirmed* (`confirmed`, `src/campaign/climb.ts`, replayed 31 October): v065-a and forkedPR377 read no starter comparison, and r3, forkedPR506 and v070 read none that cleared against the starter without the bill; in one of r3's and in v070's the starter won more tasks than the reference without the bill (10-15-7 and 15-17-0, from the reference's side). Of 64 logs that promoted, 2 hold a confirmed promotion (v065-b, forkedPR530). Elsewhere at most job 3, esp32 2, recode 2, truss 1 | 6 confirmed in one real campaign, observed, no quota; then a second domain (operator, 25 October; 12 until then) |
+| M2 | Honesty | 1 A/A step in the 111 A/A readings able to read one (buffer forkedPR294, v0.6.1); 0 in the four campaigns above (0 of 7, 6, 6 and 2). The bar's ten controls after the sixth promotion are unmeasured, since the release cycle stops a run at six | 0 in the ten controls after the six on record |
+| M3 | Verdicts | 0 hand labels: no `pass.labelled` or `diagnosis.labelled` event in any log on this machine or its archive, and no packet labelled | 30 labels; 3 in 4 defects caught, at most 1 in 10 earned voided |
 | W | Economy | r3: $401 billed for 5 promotions, 25 active hours. All fresh campaigns at 29 October: $8,060 for 92 promotions, $87.61 each; none ended on its budget ("Where the dollars went") | At most 3 promotion attempts an epoch, reported |
 
 ### Where the dollars went, 29 October
@@ -53,6 +54,13 @@ campaigns that never promoted.
   1,912 refused; the room solves of refused drafts billed $826.53 of $1,563.98 (52.8%). The refusal
   keeps a task the reference already closes out of every later comparison. At worst, one ESP32
   session put 36 drafts to 108 room solves, all valid within eight turns, and held none.
+- **The gate solves no draft since 1 November.** The gate ablation of 31 October on buffer (Opus
+  5.5, one campaign an arm) promoted on its first comparison in both arms, 8 to 0 without room
+  solves and 10 to 0 with them, each on the objective alone; the arm with room solves held the same
+  kind of task 1.1 hours later and for about $24 of reference solves. Across the record since
+  16 October, 5,664 of 6,225 gate readings with room solves had the reference valid on every solve.
+  So the room solves were removed (`src/examiner/write.ts`): Present in source, and an indication
+  from one campaign an arm, which a fresh pair of campaigns on another domain would settle.
 - **A long session costs little more a turn.** Over the 291 writing sessions of at least 40 turns,
   the context grew from 27,085 to 141,213 tokens a turn between the first ten turns and the last
   ten, and the bill from $0.058 to $0.076 a turn. Output is 42.5% of the writing sessions'
@@ -118,43 +126,20 @@ comparison and every task the reference answers only sometimes.
 | F30 | The checker's identity in every task version | Planned | |
 | F32 | No field engine behind buffer's or recode's checks; every drafted exam stands on `--admit-authored` | Planned | A domain whose exam names an installed engine |
 | F60 | Whether a line a task, with turns, the winning measure and one measured line, helps the Examiner more than the family counts it replaced | Proved without a model | The before-and-after Examiner seat over one seed: held drafts with validity room, and drafts held |
-| F61 | The room floor (`ROOM`, 1%, one constant), one judgement of what improvement counts: two answers closer than it tie in a pair, and a task an answer on record betters by less leaves no room. r6's g-2 would read 3-3-18 where it promoted on 23-0-1. Replayed on r6, it moves all 24 of the first promotion's tasks off the frontier, so the Examiner is asked for a whole comparison's tasks instead of 4 | Proved without a model, replayed | A fresh campaign's drafts held, frontier and comparisons after its first promotion |
+| F61 | The room floor (`ROOM`, 1%, one constant), one judgement of what improvement counts: two answers closer than it tie in a pair, and a task an answer on record betters by less leaves no room. r6's g-2 would read 3-3-18 where it promoted on 23-0-1. Replayed on r6, it moves all 24 of the first promotion's tasks off the frontier, so the Examiner is asked for a whole comparison's tasks instead of 4. Over 47 buffer and kernel comparisons to 31 October, 508 of 1,027 task readings tie without the bill: 254 identical answers and 248 closer than the floor. A floor of 0.5% would add 2 steps (buffer-r2 g-1, forkedPR530 g-2) and no A/A step (one research session's replay, not moving admission; not yet checked here) | Proved without a model, replayed | A fresh campaign's drafts held, frontier and comparisons after its first promotion |
 | F62 | The Examiner told each task's winner (the objective margin was withdrawn on 21 October; the switch that hid it was removed on 28 October), the gate's gap on later lines, and `read_opening` | Proved without a model | Drafts held and refused after a promotion, against r6's |
 | B6 | The investigation's reader still reads its own copy of the campaign | Planned | |
+| F63 | One pair drawn again unchanged until it reads a step. kernel-cyber2 (31 October) compared `756d142d` with its reference four times with no checkpoint between (g-2 to g-5, the table's `unread` row from g-3), and g-5 read a step and promoted on the fourth draw. Improvement patience counts one pair once (`stopRule`), and supply patience counts each draw that left room as a gain (`roomless`), so neither stops it | Exercised live | The operator's word on a bound for redraws of one pair, then a synthetic log of K redraws in `test/decide.test.ts` |
+| F64 | Practice owed after an Examiner session that held nothing. buffer-stackedPR534 released 5 tasks 13 minutes after x-2 ended holding 0, all tasks its new reference answers within 0.4% of the best on record, which used the reading's allowance before x-3 held 17 with room (`practiceDue`, `releaseOwed`) | Exercised live, one campaign | A synthetic log of that shape, then a fresh campaign's practice after its first promotion |
+| F65 | The Examiner's gate refuses a draft on the reserve while solves are in flight (`measured`, `src/examiner/write.ts`), where the solve queue waits on the same condition (`tools/d2/host.ts`). kernel-cyber2: 26 refusals, each with 4 solves in flight, on a $50 budget at the default $10 reserve with about $4 spent | Withdrawn (1 November): the gate solves no draft, so it holds no reserve and the solve queue is the one owner of the wait | |
+| F66 | The exam stays easy. kernel-cyber2 (31 October) graded every scored task 3 or below of 7 on lane 34's reach scale, and esp32-fresh-opus-stijn-pro's reference answered all 3 solves of 76 of 81 drafts. Both of the Examiner's modes are now shown that scale with worked examples from three fields no campaign examines (`src/examiner/ladder.ts`), and a drafted rule names its standard instead of restating it. The first ladder's paired esp32 arm held 1 of 89 session drafts against the control's 17 of 80, every refusal of both at the ceiling (`examiner-complexity`, `exams.ts`) | Exercised live; supply fell on the one paired reading | The rewritten ladder's held share and first comparison against a control on fresh campaigns in two domains, then blind grades of their held tasks |
 | H1 | The Seatbelt half of the per-seat `TMPDIR` | Proved without a model (Linux half) | A wall test on macOS |
-| C6 | A side reading of the newest candidate against the previous one (`regressionOf`) | Withdrawn, 21 October: it was in source and decided nothing, and a loss on the reference's answered tasks already counts in the step's one test through the retained tasks | |
 | C8 | Restart from the reference | Planned | |
-| L2 | A second domain | Planned | M1's milestone in buffer, then the operator names the domain |
+| L2 | A second domain | Planned | M1's milestone in buffer read as confirmed, then the operator names the domain |
 | F34 | The size policy runs in no script, CI job or hook | Present in source | The operator's word on running it in the gate |
 | Builder-led | The single conversation's value | Proved without a model | A matched ablation with `--no-builder-led` |
 | X1 | Whether a harness built without a benchmark's tasks or grades scores higher on it than pi's starter (WorkBuddy-Bench Code), then how it stands against Harness² (`studies/harness2/README.md`) | Present in source (`studies/harness2/run.ts`); WorkBuddy's dry run resolves its job, no container has run it | The operator's word on WorkBuddy-Bench's licence, then `run.ts check` of the starter in WorkBuddy's container and the domain fit, without a model; then the operator's word for the paid arms |
 | X2 | Whether buffer v065-a's later promotions carry over to fresh tasks selected against a third harness of its chain, or are patches against tasks chosen to beat the reference (`studies/transitivity/README.md`) | Exercised live: arms A and B ran at `87f0b07e`, P-A and P-B held, arm C not run ($46.32; `studies/runs/transitivity/`) | A second reading of f-1's pair on fresh solves, before the carry-over is claimed without qualification |
-
-Moved on 20 October by r3's log (`buffer-fresh-opus-forkedPR223_v0_5_4-r3`, commit `0b04d709`):
-
-| Row | Was | Now | Event |
-| --- | --- | --- | --- |
-| F29 | Proved without a model | Exercised live | `contract.frozen` and five `harness.promoted` written by the campaign command, no operator word |
-| F49 | Proved without a model | Exercised live | one total in `campaign.opened`, every move capped from it |
-| F53, F57 | Present in source | Exercised live | `exam.drafted` from the operator's prompt |
-| B13, B14 | Proved without a model | Exercised live | promotions two to five, each on tasks written after the one before |
-
-### The improvement plan of 20 October
-
-On `claude/plan-improve`, each commit proved without a model and replayed over the recorded logs:
-
-| Row | Change | Level |
-| --- | --- | --- |
-| D2 | A led Builder's practice bounded by the budget's reserve alone | Proved without a model |
-| D1 | Practice drawn from every task the reference left unfailed, all-valid ones among them | Proved without a model |
-| B1 | The opening no longer refuses on a summed rate (`FALSE_CAP` withdrawn) | Proved without a model |
-| B2 | Only the A/A controls that could read a step are counted; the others reported apart | Proved without a model |
-| B3 | Frontier and retained tasks read in one sign-flip test (`REGRESSION`, `regressed` withdrawn); 57 of 58 real readings unchanged | Proved without a model |
-| F1 | The affordability forecast removed from the table and the compare tool | Proved without a model |
-| F2 | An A/A step is a reading, ending nothing (`control`, `--cause` withdrawn) | Proved without a model |
-| C1 | The median objective gain on won frontier tasks, reported | Withdrawn, 21 October: it decided nothing, and the score's objective points now give a gain's size |
-| A2 | A pass a person labels wrong counts as its side's fail, through one owner (`wrongAsFailed`) | Proved without a model |
-| G1 | Checked, no change: a control's tally reaches the Builder as a tally, which section 1's closed list allows | n/a |
 
 ## Tuning
 
@@ -173,3 +158,5 @@ On `claude/plan-improve`, each commit proved without a model and replayed over t
 - **The network.** Keep it open, or add the proxy.
 - **The size policy.** Run it in the gate (F34), or leave it by hand.
 - **The second domain.** Which, and when (L2).
+- **Redraws of one pair.** Bound them, or keep the table's `unread` row as it is (F63).
+- **esp32's supply.** Install the field's compilers as engines (F32), or accept that its drafted exam leaves this solver no room: 59 of 59 drafts refused at 3 of 3 valid on 30 October.

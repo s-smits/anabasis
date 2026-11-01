@@ -128,8 +128,9 @@ epochs' hours and dollars.
 
 An A/A is the reference against itself on mirrored halves of its solves (`pairsOf` with
 `halves: "mirrored"`), available at four or more solves a side, an even count. The tree's
-`readsStepEitherWay` reads a step only where both the scored and unbilled tests clear the comparison's
-level in the same direction, as the whole-run reader and the UI do. An A/A step is false by construction.
+`readsStepEitherWay` reads a step where the scores clear the comparison's level in either direction,
+as the whole-run reader and the UI do: from 31 October on the unbilled scores alone, and in a tree
+before that where the scored and unbilled tests clear together. An A/A step is false by construction.
 Recorded reports without unbilled A/A scores retain their scored-only reading; the replay reconstructs
 both scores from the pairs. A reading with a stored task that has neither a pair nor an unbilled
 score cannot establish a replayed step.

@@ -14,13 +14,16 @@
  * On 26 October the two-process transition test reproduced a release validated against held while
  * a dispute was appended, leaving an unreadable history. One exclusive descriptor lock now covers
  * validation, the complete line's write and its sync. Closing the descriptor releases it on every
- * path, and a short write throws instead of reporting an event the log does not hold whole.
+ * path, and a short write throws instead of reporting an event the log does not hold whole. It also
+ * cuts the file back to its size before the write, under the same lock: those bytes were never an
+ * event, and until 30 October they tore the last line, after which every read and append refused.
  */
 import {
   closeSync,
   existsSync,
   fstatSync,
   fsyncSync,
+  ftruncateSync,
   lockExclusiveSync,
   openSync,
   readFileSync,
@@ -175,7 +178,13 @@ export function append(path: string, kind: EventKind, data: JsonObject): LogEven
       throw new Error(`${path}: the last line is torn, so nothing is appended`);
     }
     const line = Buffer.from(`${capturedJsonStringify(event)}\n`, "utf8");
-    if (writeSync(fd, line) !== line.length) throw new Error(`${path}: the log line was not written whole`);
+    let written = 0;
+    try {
+      written = writeSync(fd, line);
+    } finally {
+      if (written !== line.length) ftruncateSync(fd, size);
+    }
+    if (written !== line.length) throw new Error(`${path}: the log line was not written whole`);
     fsyncSync(fd);
   } finally {
     closeSync(fd);

@@ -45,7 +45,7 @@ const ROUTES: readonly Route[] = [
     id: "stack",
     command:
       /\b(git (worktree add|push|rebase|commit)|gh (pr (create|edit|ready)|stack)|bun run (land|follow))\b/u,
-    said: "Stack and pull requests (AGENTS.md section 11): inspect the current stack (`bun .claude/skills/stack-pr/scripts/stack.ts`). A fix to an open PR's own code belongs to that PR. Run `/simplify` before a code commit. Each PR needs one `importance:I0`-`I3` label and a category; claims follow `attribution-and-proof`. `bun .claude/skills/repository-practice/scripts/preflight.ts` lists suggested tests, UI checks, size and prose findings, and labels.",
+    said: "Stack and pull requests (AGENTS.md section 11): inspect the current stack (`bun .claude/skills/stack-pr/scripts/stack.ts`). A new PR goes on the top of the cycle's stack, even one that does not build on the PR below; a chain of its own on `main` suits a change that must land first, worth a word with the operator. A fix to an open PR's own code belongs to that PR. Run `/simplify` before a code commit. Each PR needs one `importance:I0`-`I3` label and a category; claims follow `attribution-and-proof`. `bun .claude/skills/repository-practice/scripts/preflight.ts` lists suggested tests, UI checks, size and prose findings, and labels.",
     skill: "stack-pr",
   },
   {
@@ -127,6 +127,12 @@ const ROUTES: readonly Route[] = [
     path: /(^|\/)(AGENTS\.md|docs\/.*\.md|\.claude\/skills\/.*\.md)$/u,
     said: "Writing (AGENTS.md section 13): use plain British English, inline code for identifiers and absolute dates. Avoid em dashes. Keep invariants in AGENTS.md, mechanisms in the corresponding numbered skill references, and procedures in their owning skills.",
     skill: "repository-practice",
+  },
+  {
+    id: "checks",
+    path: /(^|\/)(\.github\/|\.githooks\/)/u,
+    said: "Checks and CI (AGENTS.md section 11): GitHub Actions runs only `ci.yml`, which `land --merge` dispatches, because its tests need a machine independent of this one. Keep any other check here (the pre-push hook, `stack.ts` or `land`) and post its status through the API. Count Actions runs before and after with `bun .claude/skills/local-checks/scripts/actions.ts`.",
+    skill: "local-checks",
   },
   {
     id: "ui",

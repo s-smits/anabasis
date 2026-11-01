@@ -131,7 +131,7 @@ measure.
 
 `.github/workflows/ci.yml` runs on two platforms, because the isolation has two mechanisms and a
 suite passing on one platform says nothing of the other. The UI's CI gate has a macOS runner of its
-own. CI runs on pushes to `main` and by `workflow_dispatch`; a pull request push starts no run.
+own. CI runs by `workflow_dispatch` alone; neither a pull request push nor a merge into `main` starts a run.
 `bun run land -- <top> --merge` dispatches the top's run when none exists. After the root install,
 checks run despite earlier check failures; the UI build and tests both require its dependency
 install to pass.
@@ -181,7 +181,8 @@ When committing and pushing in one shell command, chain them with `&&`. With `;`
 still pushes the previous head (20 October).
 
 Read a refusal and correct its cause within your authority. Pass `--no-verify` only where the
-operator says so, and never push to `main`.
+operator says so, and never push to `main`. It skips the hook whole, so the pushed head shows no
+`mergeable` and the pull requests above it keep their green one until the next landing.
 
 A plain push runs `git diff --check` and the secret scan, which take seconds. `ANA_PUSH_VERIFY=1
 git push` also runs every other check, with the tests near each pushed head's own change in place
@@ -357,9 +358,31 @@ before the proof, with the `gh stack link` line that makes one. A refused merge 
 `ana/stack-gate` back to pending on every head. An uncertain merge, or one that went into a merge
 queue, leaves the statuses in place and asks for the trunk to be read before another landing.
 `--tag vX.Y.Z` cuts that release at the merge commit with GitHub's generated notes, which the
-release text of run-improvement-campaign then replaces; a tag origin already holds is refused before
-the proof. Test `land` against a fake `gh`
-only (`test/land.test.ts`); never against this repository.
+release notes below then replace; a tag origin already holds is refused before the proof. Test
+`land` against a fake `gh` only (`test/land.test.ts`); never against this repository.
+
+### Release notes, when the operator asks for the next version
+
+This step is optional: a landing takes `--tag vX.Y.Z` only when the operator asks to merge the next
+version. GitHub's generated notes are a placeholder, so save them in the scratchpad and replace them
+with `gh release edit vX.Y.Z --notes-file <file>`. Copy the shape of the last two or three releases
+(`gh release view <tag>`), and keep the text between 550 and 800 words; v0.9.0's first draft ran to
+1,435 and was cut by half. Open with at most three sentences: what the release changes, whether the
+minor moves and why (run-improvement-campaign step 10), and whether a fresh campaign has run on the
+release tree. Then one line: "Includes **N PRs from #a to #b**, merged at `<sha>`." Group the
+changes under three or four bold headers by subject, such as **Comparisons and task supply**,
+**Runs and hosts** and **Instructions and landing**, never one per pull request. Give each change
+that alters what a run measures a bullet of its own, and a group of smaller ones a short paragraph.
+A bullet leads with an imperative verb, says what changed instead of what, and ends with its pull
+requests in brackets. Bold the key counts, each with its denominator and axis ("**70 of 73 drafts
+refused**"). Keep one or two numbers a change and leave the rest to its pull request's body. Call a
+replay or a snapshot an estimate, and name a result unmeasured where no run shows it
+(`attribution-and-proof`). Keep every rule 3 fix and every finding carried to the next cycle,
+however short the text gets. Close with **Validation and limits**: one table with the columns
+Landing, Gate head, Tests passed / skipped / failed and Merge, the last linking the `ci.yml` run.
+Below it, at most three short paragraphs say how the proof ran, what the review found and what
+carries over, and what the cycle's stopped runs showed. Name no host, login or account ("the Linux
+runner", "a macOS runner"), and follow `AGENTS.md` section 13.
 
 ## 10. Consolidate the stack
 

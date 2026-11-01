@@ -11,12 +11,13 @@
  * it refused. Then the faults (`src/kernel/acceptance.ts`): a control that did not get the verdict
  * it is labelled with, or got two; a check never seen to refuse an answer, or to pass one; a tool a
  * check names that the verifier's tool path does not hold; a task on which the do-nothing answer,
- * the smallest the answer format allows, was not rejected, or a format the smallest value its
- * schema yields does not follow, so that no check was seen to refuse it (until 11 October that was
- * printed and was no fault); and a check its author's own computation decides, which stands only
- * once the operator admits it by name (`--admit a,b`), or every such check at once
- * (`--admit-authored`, which a campaign without `--hitl` gives). The reading goes into the campaign's log as
- * `checker.read`, under the contract's hash and the check program's digest. Exits 1 on any fault.
+ * the smallest the answer format allows, was not rejected; and a check its author's own computation
+ * decides, which stands only once the operator admits it by name (`--admit a,b`), or every such
+ * check at once (`--admit-authored`, which a campaign without `--hitl` gives). The reading goes into
+ * the campaign's log as `checker.read`, under the contract's hash and the check program's digest.
+ * Exits 1 on any fault. A format the smallest value its schema yields does not follow is printed as
+ * a note, since the format refuses that answer before a check reads it: from 11 to 31 October it
+ * was a fault.
  *
  * `--cycle` names the stored cycle the campaign opens over, as every other command of a campaign
  * names it; without it the cycle is the sweep's first graded row's.
@@ -110,6 +111,7 @@ export async function acceptCommand(args: readonly string[]): Promise<number> {
     checks,
     historical,
     faults: seen,
+    notes,
     idle,
     unformed,
     rejected,
@@ -164,6 +166,7 @@ export async function acceptCommand(args: readonly string[]): Promise<number> {
     }
   }
   for (const fault of faults) console.log(`fault: ${fault}`);
+  for (const note of notes) console.log(`note: ${note}`);
   console.log(faults.length === 0 ? "no fault" : `${String(faults.length)} faults`);
   const despite = values.despite?.trim() ?? "";
   if (values.freeze && faults.length > 0 && despite === "") {

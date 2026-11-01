@@ -34,19 +34,21 @@ its checks is admitted, and reports a step without promoting it.
 
 Launching, continuing, pausing and stopping go through `bun run runs` (the skill `run-management`),
 and each run keeps a receipt beside the log, `launch-run-<n>.json` (`tools/runs/receipt.ts`), which
-holds the commit the log does not. Every practice, comparison and room solve enters the solve queue:
+holds the commit the log does not. Every practice and comparison solve enters the solve queue:
 it starts once the one-minute load is at or under the cores, or after half an hour
 (`campaign.waited`, `tools/d2/host.ts`; `--loaded` skips the wait), and waits off the record while
 the budget holds no reserve for it beside the solves in flight (`affords`). A cancelled wait starts
-no solve: a comparison so cancelled ends killed, a practice solve ends its Builder session, and a
-room solve leaves its draft refused unmeasured.
+no solve: a comparison so cancelled ends killed, and a practice solve ends its Builder session.
+Until 1 November the gate's room solves queued too, and a cancelled one left its draft refused
+unmeasured.
 
 **It opens over a stored pack, or from a prompt** (`--prompt "<text>"` or `--prompt-file <path>`,
 with `--solver`), whose first move is the draft of row 0. A draft stands once the host's reading,
 without a model, finds no fault: its shape, a source on every rule, one check per rule, every
-control answer through the checks twice, the smallest answer refused on every example, and each
-field of an accept control answer moving some check's verdict or the objective (`draftReading`,
-`tools/d2/exam.ts`; `unreadFields`, `src/kernel/acceptance.ts`). It does not wait for the
+control answer through the checks twice, and the smallest answer refused on every example. Its notes
+leave the draft standing: a field of an accept control answer that moves no check's verdict and no
+objective, and a smallest answer the format itself refuses (`draftReading`, `tools/d2/exam.ts`;
+`unreadFields`, `src/kernel/acceptance.ts`). It does not wait for the
 reference's measurement: `draft.finished` records that as complete, interrupted with its first
 cancellation source, or not run. A killed solve records that source (`CancellationOrigin`,
 `src/kernel/solve.ts`; an unlabelled external abort is `caller`); older events leave it unknown,

@@ -15,13 +15,16 @@ Bun hands the arguments after the script's name on through both levels of `bun r
 last line starts `bun serve.ts --exam-side` in `packages/ui`, and the server says
 `answering in the exam side` (checked on 11 October with Bun 1.4.2).
 
-The server binds 127.0.0.1:5173 (`PORT` changes the port) and prints the page's address with a
-token drawn at its start; every API request needs it, and a `Host` that is not the loopback is
+The server binds 127.0.0.1:5173 (`PORT` changes the port) and prints the page's address with its
+token, drawn once and kept in the ignored `packages/ui/.token` so that a restart leaves open tabs
+working, and kept by the page in the browser so that the bare address works too; every API request needs it, and a `Host` that is not the loopback is
 refused. The page reads every campaign under `.ana/d2/` in the repository's worktrees, writes
 nothing, and shows the exam side only on a server started with `--exam-side`, which belongs on a
-host no Builder or solver shares. The Project picker lists the projects the campaigns' openings
-name (`--project` on the campaign command); a campaign whose opening names none stands under
-"No project recorded".
+host no Builder or solver shares. The Campaign picker groups the campaigns by the project their
+opening names (`--project` on the campaign command); a campaign whose opening names none stands
+under "No project recorded". Its search box forgives typos and matches each word apart (Fuse.js),
+the closest campaign first. A warning dismissed with its cross stays dismissed in that browser
+until the same source says something else.
 
 To look at the page without a campaign of your own, write the test fixture's three campaigns to a
 directory and point the server at it:

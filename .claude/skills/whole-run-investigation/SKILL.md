@@ -31,6 +31,7 @@ procedures; they are not commands to run inside a read-only investigation.
 | Does the checker stand on fresh controls? | `bun tools/c/accept.ts <the campaign's flags>`; stored answers are reported separately |
 | What does a repaired checker move, and does the repair stand? | `bun tools/c/repaired.ts --log <log> --bundle <repaired pack>` |
 | A report names tasks set aside on rejections: what does it read once they are labelled? | `bun tools/d2/settle.ts <the campaign's flags> --session <id>`, then label the rejections it draws |
+| Did a model other than the one asked for answer any seat? | `bun tools/runs/degradations.ts <name>`: each seat's share, the comparisons it reached, a line a session; `data/runs/degradations/` keeps one file a degraded campaign, which the ten-minute gather writes |
 | Which sessions ran, from which parent, with which reading? | `bun tools/wri/wri.ts read --log <log>`, row F and the `CHAIN` line |
 | Did a promotion climb, beside the campaigns that ran the same pack, and did one campaign's `/tmp` reach another's solves? | `bun tools/wri/wri.ts climb --log <log>,<log>,<log>`: one row a campaign, then each solve that named what another campaign's session left |
 | How do this run's hours and dollars a promotion stand against every run of its release, pack and setting? | `.claude/skills/promotion-tuner/scripts/table.ts --rows groups` (or `--name <part> --rows promotions`): across campaigns, without `climb`'s solves |
@@ -105,9 +106,12 @@ Each runs as `bun tools/wri/wri.ts <verb>` from the checkout. The usage block at
 
 ### The readers, derived
 
-Eight deterministic readers take one log and print what it holds (`READERS`,
-`tools/wri/derive.ts`): the rows and triggers, the kept versions, the readings, the next draw, the
-ending, the conditions, and what a Builder and an Examiner opening would be told. `derive` runs
+Eleven deterministic readers take one log and print what it holds (`READERS`,
+`tools/wri/derive.ts`): the rows and triggers, the kept versions blind (`chain`) and measured
+(`versions`), the scored tasks' public input (`tasks`), the readings, each promotion scored again
+with the measure that won each task (`replay`), the next draw, the ending, the conditions, and what
+a Builder and an Examiner opening would be told. `chain` and `tasks` carry no result, so a lane that
+grades before it reads an outcome (34) reads them first. `derive` runs
 them all over a log into the main worktree's `data/derived/<campaign>/`, one `<reader>.txt` each,
 and replaces the folder whole where the log or the commit reading it moved since; a folder whose
 log stands is kept. So the files always describe one moment of the log, the latest a pass saw.

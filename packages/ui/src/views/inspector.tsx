@@ -1,13 +1,14 @@
 import { ExamSide } from "../components/exam-side.tsx";
 import { Badge } from "../components/primitives.tsx";
 import { RecordView } from "../components/record.tsx";
-import { type Of, useEvent, useHarness, useHarnessDiff, useHarnessFile } from "../live.ts";
+import { type Of, useEvent, useHarnessDiff, useHarnessFile } from "../live.ts";
 import { useMemo } from "react";
 import type { CampaignReading, HarnessDiff, HarnessFile, Tier } from "../models.ts";
 import type { Navigation } from "../route.ts";
 import { AnswerIssues, harnessLabel } from "./drill.tsx";
 import { FileInspector } from "./file-inspector.tsx";
 import { bytes, time } from "./format.ts";
+import { useBuildFiles, useHarnessFiles } from "./harness-parts.tsx";
 import { useHeld } from "./held.ts";
 import { useLate } from "./late.ts";
 import { plural } from "../../../../src/meta/text.ts";
@@ -94,16 +95,15 @@ export function HarnessFiles({
   current: string | null;
   navigation: Navigation;
 }) {
-  const files = useHarness(of, digest);
-  const { view, stale, slow } = useHeld(digest, files.current ? files.data : null);
+  const { files, view, stale, slow, listed, toggle } = useHarnessFiles(of, digest);
   if (files.error !== null && !files.current) return <p className="ana-faint">{files.error}</p>;
   return (
     <div aria-busy={stale} inert={stale}>
-      {slow ? <p className="ana-faint">Reading the harness's files.</p> : null}
+      {slow ? <p className="ana-faint">Reading the harness's files</p> : null}
       {view === null ? null : <AnswerIssues answer={view} />}
       {view === null ? null : (
         <ul className="ana-file-links">
-          {view.files.map((file) => (
+          {listed.map((file) => (
             <li key={file.path}>
               <button
                 type="button"
@@ -118,58 +118,69 @@ export function HarnessFiles({
           ))}
         </ul>
       )}
+      {toggle}
     </div>
   );
 }
 
 /** Two harnesses' files compared, one unified diff a changed file, each line signed as well as
- *  tinted so that an addition and a removal read apart without colour. */
+ *  tinted so that an addition and a removal read apart without colour. The files stand in the
+ *  harness's part order, the guide first, and only the first is open, so the closed heads under it
+ *  index what changed: on 30 October one campaign's diff of harness H to J stood 11,461 pixels
+ *  tall, every file open and the guide last. */
 function DiffView({ diff }: { diff: HarnessDiff }) {
+  const { listed, toggle } = useBuildFiles(diff.files);
   return (
     <div className="ana-diff">
-      <p className="ana-faint">{plural(diff.files.length, "file")} changed.</p>
+      <p className="ana-faint">{plural(diff.files.length, "file")} changed</p>
       <AnswerIssues answer={diff} />
       {diff.files.length === 0 ? (
-        <p className="ana-exam-side">The two harnesses' agent files are the same.</p>
+        <p className="ana-exam-side">The two harnesses' agent files are the same</p>
       ) : null}
-      {diff.files.map((file) => {
-        // A file the server could not diff in its bound has no lines, and its issue says why.
-        const lines = file.diff === null ? [] : diffLines(file.diff);
-        const added = lines.filter((line) => line.kind === "add").length;
-        const removed = lines.filter((line) => line.kind === "remove").length;
-        return (
-          <section key={file.path} className="ana-diff-file" aria-label={`${file.path}, ${file.change}`}>
-            <header>
-              <code>{file.path}</code>
-              <Badge tone={CHANGE_TONES[file.change]}>{file.change}</Badge>
-              <span className="ana-num">
-                {file.diff === null ? (
-                  "not diffed"
-                ) : (
-                  <>
-                    +{added} −{removed}
-                  </>
-                )}
-              </span>
-            </header>
-            <table className="ana-diff-lines">
-              <tbody>
-                {lines.map((line, at) => (
-                  <tr key={`${String(at)}:${line.kind}`} className={`is-${line.kind}`}>
-                    <td className="ana-diff-no">{line.old ?? ""}</td>
-                    <td className="ana-diff-no">{line.fresh ?? ""}</td>
-                    <td className="ana-diff-sign" aria-label={line.kind === "same" ? undefined : line.kind}>
-                      {SIGNS[line.kind]}
-                    </td>
-                    <td className="ana-diff-text">{line.text}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-        );
-      })}
+      {listed.map((file, at) => (
+        <DiffFile key={file.path} file={file} open={at === 0} />
+      ))}
+      {toggle}
     </div>
+  );
+}
+
+/** One changed file: its head, which opens and closes it, over its lines. */
+function DiffFile({ file, open }: { file: HarnessDiff["files"][number]; open: boolean }) {
+  // A file the server could not diff in its bound has no lines, and its issue says why.
+  const lines = file.diff === null ? [] : diffLines(file.diff);
+  const added = lines.filter((line) => line.kind === "add").length;
+  const removed = lines.filter((line) => line.kind === "remove").length;
+  return (
+    <details className="ana-diff-file" open={open} aria-label={`${file.path}, ${file.change}`}>
+      <summary>
+        <code>{file.path}</code>
+        <Badge tone={CHANGE_TONES[file.change]}>{file.change}</Badge>
+        <span className="ana-num">
+          {file.diff === null ? (
+            "not diffed"
+          ) : (
+            <>
+              +{added} −{removed}
+            </>
+          )}
+        </span>
+      </summary>
+      <table className="ana-diff-lines">
+        <tbody>
+          {lines.map((line, at) => (
+            <tr key={`${String(at)}:${line.kind}`} className={`is-${line.kind}`}>
+              <td className="ana-diff-no">{line.old ?? ""}</td>
+              <td className="ana-diff-no">{line.fresh ?? ""}</td>
+              <td className="ana-diff-sign" aria-label={line.kind === "same" ? undefined : line.kind}>
+                {SIGNS[line.kind]}
+              </td>
+              <td className="ana-diff-text">{line.text}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </details>
   );
 }
 
@@ -184,7 +195,7 @@ function EventBody({ campaign, index, tier }: { campaign: string; index: number;
   }
   return (
     <>
-      {late ? <p className="ana-faint">Reading the event.</p> : null}
+      {late ? <p className="ana-faint">Reading the event</p> : null}
       <div className="ana-record-meta">
         <span>{live.data.kind}</span>
         <time>{time(live.data.at)}</time>

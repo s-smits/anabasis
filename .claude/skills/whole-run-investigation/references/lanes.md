@@ -15,8 +15,9 @@ the pen apart, and each part has its own way of going wrong.
 `AGENTS.md` sections 1 to 8 own the seats, their views, the wall and the promotion rule. Apply
 those rules to the campaign's recorded conditions. A stored pack supplies an imported exam;
 for a campaign opened from a prompt, the Examiner drafts the rules, checks and controls first.
-No seat repairs the check program during a campaign. In task-writing mode, `try_task` admits
-drafts by the reference harness's room, including an author's valid answer on record. A pass
+No seat repairs the check program during a campaign. In task-writing mode the gate holds a draft
+out on its package's shape; until 1 November `try_task` admitted drafts by the reference harness's
+room, including an author's valid answer on record. A pass
 establishes what the check reads; weigh that instrument before treating it as domain correctness.
 
 Six readings follow from that, and every row and lane applies them.
@@ -349,8 +350,8 @@ Starts from `EXAM DRAFTED (lane 8)`.
 
 The question is whether the exam a campaign drafted from the operator's prompt is the exam the
 prompt asked for. The host's reading (`draftReading`, `tools/d2/exam.ts`; `unreadFields`,
-`src/kernel/acceptance.ts`) checks shape, sources, one check per rule, controls and the fields an
-accept control moves; it cannot tell whether a rule belongs to the field, whether its source says
+`src/kernel/acceptance.ts`) checks shape, sources, one check per rule and controls, and notes the
+fields an accept control moves no verdict by; it cannot tell whether a rule belongs to the field, whether its source says
 what the rule says, or whether the objective measures what the prompt values (`AGENTS.md`,
 section 6). `EXAM DRAFTED` gives the number of `exam.drafted` events, and each drafting session's
 ending, whether its draft stands, and the measurement `draft.finished` recorded (complete,
@@ -380,8 +381,8 @@ Starts from `SUPPLY THIN (lane 9)`, `GATE REFUSED (lane 9)` and
 The question is where tasks are lost between a proposal and the scored set, and whether the task admission
 that refused was right to. v1's task admission audit kept 30 of 54 refusal codes at its bar of 98% sure
 that what was refused was wrong (`docs/transfer.md`); ask the same here. `packageGate`
-checks the shape check. Where `try_task` is available, task admission also runs up to three fresh
-reference solves and uses `informative` to decide room. It holds a draft the reference answers
+checks the shape check. In a log from before 1 November, where `try_task` was available, task admission also ran up to three fresh
+reference solves and used `informative` to decide room. It holds a draft the reference answers
 sometimes; one it never answers with the author's valid answer on record; or one whose valid
 reference answer is beaten by an answer on record under the objective. For each refusal read `task.gate`
 and say whether it named a real defect and whether the Examiner could have acted on the reason it
@@ -674,7 +675,8 @@ every field but the harness and its `solverTools`, which may change with it. The
 condition does not hold: load, recorded at solve start and finish, which the solve queue in `tools/d2/host.ts` bounds at
 the start unless `--loaded` is named; the hour; the provider's
 served model, which `responseModels` names or leaves empty, and `SERVED ANOTHER MODEL` counts
-by side where it is not the one the condition asked for; how many solves ran at once. The round
+by side where it is not the one the condition asked for, or over the whole campaign where no
+scored solve shows it (row C and the derived `degradations.txt` count every seat's turns); how many solves ran at once. The round
 mirrors which harness takes the first place, slot by slot and task by task, so that neither has the
 quieter hours. One worker runs a task's slots in that order: each solve call, with its load wait,
 its provider reruns or reset and its one outer retry, returns before the next slot starts
@@ -1002,8 +1004,8 @@ Starts from `LONG SILENCES (lane 31)` and `SPEND LED BY A ROLE (lane 31)`.
 
 The question is where the hours and the dollars went, and what each long silence was. Use
 `spendOf`, which delegates billing to `billedAll`: ending records count closed work and turn
-records count work without an ending. Drafting and `try_task` admission solves are the
-Examiner's spend. Read metered and backend-reported amounts separately where the events hold
+records count work without an ending. Drafting and `try_task` admission solves, in a log from
+before 1 November, are the Examiner's spend. Read metered and backend-reported amounts separately where the events hold
 them. Say what share the reviewers took here and what their rulings changed, which is lane 7's.
 Row A puts the hours by role beside the billed dollars: each Builder and Examiner session and
 each comparison from its start to its end, a session a stop cut to the stop, and the rest of the
@@ -1092,16 +1094,18 @@ lane reads what each promotion bought.
 
 Grade before you read a result, in this order, writing each grade into the report as it settles:
 
-1. From the campaign's derived folder (`wri.ts derive`, named in the campaigns section), read only
-   the `made:` and `parts:` lines of `versions.txt`: each kept version, its parent and its parts.
-   The comparison lines under each version are results; leave them for step 4.
-2. Diff each version against its parent: `harness-versions.ts --log <log> --diff <digest>` counts
-   the parts that moved, and `diff -r` of `states/<parent>/` and `states/<digest>/` beside the log
-   shows the lines ([harness-audit](../../harness-audit/SKILL.md)). Grade soundness.
-3. Read each scored task's public text in its `task.proposed` event and the checks it cites.
-   Grade reach.
-4. Only then read the comparison lines, `readings.txt` (each comparison's tally, the tally without
-   the bill and its A/A), and rows D and E in `rows.txt` (each task's valid share).
+1. From the campaign's derived folder (`wri.ts derive`, named in the campaigns section), read
+   `chain.txt`: each kept version, its parent, its parts and the count of what moved against its
+   parent, with no result (`harness-versions.ts --blind`).
+2. Read the lines that moved: `diff -r` of `states/<parent>/` and `states/<digest>/` beside the log
+   ([harness-audit](../../harness-audit/SKILL.md)). Grade soundness. A version
+   the copy does not keep (`versions.txt` says so) goes under `## Not read`, ungraded: refreshing
+   the copy is the primary's (`runs fetch <name>`), and no lane reads another host's folder.
+3. Read `tasks.txt`: each scored task's public input and the comparisons that scored it, with no
+   outcome (`tools/wri/tasks.ts`), and the checks under `exams/` it is held to. Grade reach.
+4. Only then read the results: `versions.txt` (each version's comparisons and promotions),
+   `readings.txt` (each comparison's tally, the tally without the bill and its A/A), and rows D and
+   E in `rows.txt` (each task's valid share).
 
 Grade on two scales of 0 to 7. A scale of ten left its lower half unused once current models solve
 routine work (operator, 30 October), so eight points carry the range that occurs. Each grade is a
@@ -1120,12 +1124,17 @@ before reading any outcome of it:
 - 6: work a specialist gets wrong on a first pass;
 - 7: the field's edge, where no published method fits whole.
 
+Before the first grade, write the features of this domain's tasks that place one at each grade you
+use (sizes, limits, tolerances), so a second reader grading from them reaches the same grades.
+
 Then set each grade beside the reference's valid share of the task (rows D and E, `rows.txt`). A
 task graded low that no harness answers is lane 10's question; one graded high that the starter
 answers every time says the grade is too high for this solver, and is regraded once with that
 reason. For each comparison, give the grades of the untied tasks the new harness won and those it
 lost, and say on which grades the step rests. A version's reach is the highest grade at which it
-holds valid answers on most of its solves.
+holds valid answers on most of its solves. Where the reference answers every scored task validly,
+reach cannot separate the versions: say so once, and for each step give instead how far its
+objective wins moved the objective, and on which grades.
 
 **Soundness** is whether a version's change is right for the domain, beyond whether it won. Grade
 each version against its parent from the diff alone, before reading its comparison:
@@ -1140,7 +1149,7 @@ each version against its parent from the diff alone, before reading its comparis
 - 7: what an expert would adopt unchanged.
 
 Then read whether the step's wins fall where the change acts. Set the version's weight beside its
-soundness: guide lines, tools and tool-tree files from `versions.txt`. Weight that grows while
+soundness: guide lines, tools and tool-tree files from `chain.txt`. Weight that grows while
 soundness stays flat is weight, not quality.
 
 Write the grades under a `## Grades` heading between the verdict line and `## Findings`: one row a version in chain order

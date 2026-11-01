@@ -415,6 +415,24 @@ describe("the reader of a round compared with another harness than its session s
     expect(endedLines.some((line) => line.startsWith("open at the log's end"))).toBe(false);
   });
 
+  it("counts a caller's kill among the non-results and a task admission's own cut of a room solve nowhere", () => {
+    const killedBy = (origins: readonly string[]) => {
+      const cut = [...log];
+      const more = appendTo(cut);
+      for (const [index, cancelledBy] of origins.entries()) {
+        const id = `k-${String(index)}`;
+        more(SOLVE_STARTED, { solve: id, condition: "c-k" });
+        more(SOLVE_FINISHED, {
+          solve: id,
+          ending: { outcome: "non-result", kind: "killed", reason: "cancelled", cancelledBy },
+        });
+      }
+      return overview(cut).triggers.find(({ name }) => name === "NON-RESULTS")?.detail ?? "";
+    };
+    expect(killedBy(["admission", "admission"])).not.toContain("killed");
+    expect(killedBy(["admission", "caller"])).toContain("killed 1");
+  });
+
   it("does not diagnose an A/A step carried by the bill", () => {
     const baselineNoise = overview(log).triggers.find(
       ({ name }) => name === "REFERENCE AGAINST ITSELF",

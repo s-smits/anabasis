@@ -1,129 +1,106 @@
 import { memo, useMemo } from "react";
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  type DotItemDotProps,
-  Line,
-  LineChart,
-  ReferenceLine,
-  XAxis,
-  YAxis,
-} from "recharts";
-import { keyIfDefined } from "../../../../../src/meta/optional-key.ts";
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import type { ComparisonBar, SpendPoint } from "../../models.ts";
-import { shareOf } from "../../views/campaign-data.ts";
+import { carriedText, MEASURES } from "../../views/campaign-data.ts";
 import { money, time } from "../../views/format.ts";
 import { ChartContainer, ChartTooltip } from "../ui/chart.tsx";
 
 /*
- * The Campaign pane's two small charts. Each side's share of valid answers in each comparison, as
- * two dots a comparison and no line between comparisons, since the scored tasks change from one to
- * the next; and the dollars billed, summed over the moves in log order, against the campaign's
- * total. Neither animates, and each is memoised on the reading's arrays.
+ * The Campaign pane's two small charts. Each comparison's won tasks by the measure that carried each,
+ * one column a comparison and no line between comparisons, since the scored tasks change from one to
+ * the next; and the dollars billed, summed over the moves in log order. Neither animates, and each
+ * is memoised on the reading's arrays.
  */
 
-interface ShareRow {
+interface CarriedRow {
   readonly key: string;
-  readonly old: number | null;
-  readonly fresh: number | null;
+  readonly validity: number;
+  readonly objective: number;
+  readonly bill: number;
   readonly bar: ComparisonBar;
 }
 
 const ACCENT = "var(--ana-accent)";
 const BORDER = "var(--ana-border)";
-const SIDES = [
-  { side: "old", label: "Reference", color: "var(--ana-out-tied-every)", shift: -4 },
-  { side: "fresh", label: "New harness", color: ACCENT, shift: 4 },
-] as const;
+/** Every column counts won tasks, so each is drawn in the won colour, a measure apart by its
+ *  strength: the colours of outcomes mean nothing else (DESIGN.md). */
+const STRENGTH = { validity: 1, objective: 0.6, bill: 0.3 } as const satisfies Record<
+  (typeof MEASURES)[number],
+  number
+>;
 const MARGIN = { top: 12, right: 16, bottom: 4, left: 0 } as const;
-const PERCENT = (value: number) => `${String(Math.round(value * 100))}%`;
 
-function ShareTooltip({
+function CarriedTooltip({
   active,
   payload,
 }: {
   active?: boolean;
-  payload?: ReadonlyArray<{ payload?: ShareRow }>;
+  payload?: ReadonlyArray<{ payload?: CarriedRow }>;
 }) {
   const row = payload?.[0]?.payload;
-  const valid = row?.bar.valid ?? null;
-  if (active !== true || row === undefined || valid === null) return null;
+  const carried = row?.bar.carried ?? null;
+  if (active !== true || row === undefined || carried === null) return null;
   return (
     <div className="ana-chart-tooltip">
       <strong>{row.key}</strong>
-      {SIDES.map(({ side, label }) => (
-        <span key={side} className="ana-num">
-          {label}: {valid[side].valid} of {valid[side].solves} solves valid
-        </span>
-      ))}
+      <span className="ana-num">Won on {carriedText(carried.won)}</span>
+      <span className="ana-num">Lost on {carriedText(carried.lost)}</span>
     </div>
   );
 }
 
-/** The two sides' dots, named. */
-export function ShareKey() {
+/** The three measures' swatches, named. */
+export function CarriedKey() {
   return (
     <ul className="ana-legend-list">
-      {SIDES.map(({ side, label, color }) => (
-        <li key={side}>
-          <span aria-hidden className="ana-swatch is-dot" style={{ background: color }} />
-          <span>{label}</span>
+      {MEASURES.map((measure) => (
+        <li key={measure}>
+          <span
+            aria-hidden
+            className="ana-swatch"
+            style={{ background: ACCENT, opacity: STRENGTH[measure] }}
+          />
+          <span>{measure}</span>
         </li>
       ))}
     </ul>
   );
 }
 
-/** Each side's valid share in each comparison that reported. */
-export const ValidShareChart = memo(function ValidShareChart({ bars }: { bars: readonly ComparisonBar[] }) {
-  const rows: ShareRow[] = useMemo(
-    () =>
-      bars.flatMap((bar) =>
-        bar.valid === null
-          ? []
-          : [{ key: bar.id, old: shareOf(bar.valid.old), fresh: shareOf(bar.valid.fresh), bar }],
-      ),
+/** Each reported comparison's won tasks, one column a comparison split by the measure that carried
+ *  each win (`carriedBy`). Until 30 October this place held each side's valid share, which read
+ *  100% on both sides in every comparison of a campaign that promoted six times on the objective
+ *  and the bill; the split says what the wins were made of. Columns stand apart, never joined,
+ *  since the scored tasks change from one comparison to the next. */
+export const CarriedChart = memo(function CarriedChart({ bars }: { bars: readonly ComparisonBar[] }) {
+  const rows: CarriedRow[] = useMemo(
+    () => bars.flatMap((bar) => (bar.carried === null ? [] : [{ key: bar.id, ...bar.carried.won, bar }])),
     [bars],
   );
   return (
     <ChartContainer>
-      <LineChart accessibilityLayer data={rows} margin={MARGIN}>
+      <BarChart accessibilityLayer data={rows} margin={MARGIN}>
         <CartesianGrid vertical={false} />
         <XAxis dataKey="key" interval={0} tickLine={false} axisLine={{ stroke: BORDER }} />
-        <YAxis
-          domain={[0, 1]}
-          ticks={[0, 0.5, 1]}
-          tickFormatter={PERCENT}
-          tickLine={false}
-          axisLine={false}
-          width={40}
+        <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={40} />
+        <ChartTooltip
+          cursor={{ fill: "var(--ana-card-2)" }}
+          isAnimationActive={false}
+          content={<CarriedTooltip />}
         />
-        <ChartTooltip cursor={{ stroke: BORDER }} isAnimationActive={false} content={<ShareTooltip />} />
-        {SIDES.map(({ side, label, color, shift }) => (
-          <Line
-            key={side}
-            name={label}
-            dataKey={side}
-            stroke="none"
+        {MEASURES.map((measure) => (
+          <Bar
+            key={measure}
+            name={measure}
+            dataKey={measure}
+            stackId="won"
+            fill={ACCENT}
+            fillOpacity={STRENGTH[measure]}
             isAnimationActive={false}
-            activeDot={false}
-            dot={({ cx, cy, index }: DotItemDotProps) =>
-              cx === undefined || cy === undefined ? null : (
-                <circle
-                  key={`${side}-${String(index)}`}
-                  cx={cx + shift}
-                  cy={cy}
-                  r={4.5}
-                  fill={color}
-                  stroke="var(--ana-card)"
-                  strokeWidth={2}
-                />
-              )
-            }
+            maxBarSize={28}
           />
         ))}
-      </LineChart>
+      </BarChart>
     </ChartContainer>
   );
 });
@@ -146,49 +123,33 @@ function SpendTooltip({
   );
 }
 
-/** The dollars billed over the moves, against the campaign's total where it has one. */
-export const SpendChart = memo(function SpendChart({
-  spend,
-  budget,
-}: {
-  spend: readonly SpendPoint[];
-  budget: number | null;
-}) {
-  const last = spend.at(-1)?.cumulative ?? 0;
-  const ceiling = Math.max(budget ?? 0, last) * 1.08 || 1;
-  // Under its budget the axis reads in halves of it; past it, Recharts picks the ticks.
-  const halves = budget !== null && budget > 0 && last <= budget ? [0, budget / 2, budget] : undefined;
+/** The dollars billed over the moves, on an axis of the spend itself. Until 30 October the axis
+ *  ran to the campaign's budget, so a campaign $34 into $800 drew a flat line on the floor, and
+ *  each step was held to the next move, so the last showed as a hook at the edge; the budget is in
+ *  the card's head and the hero. */
+export const SpendChart = memo(function SpendChart({ spend }: { spend: readonly SpendPoint[] }) {
   return (
     <ChartContainer>
       <AreaChart accessibilityLayer data={[...spend]} margin={MARGIN}>
         <CartesianGrid vertical={false} />
         <XAxis dataKey="move" tickLine={false} axisLine={{ stroke: BORDER }} minTickGap={16} />
         <YAxis
-          domain={[0, ceiling]}
-          {...keyIfDefined("ticks", halves)}
-          tickFormatter={(value: number) => `$${value.toFixed(0)}`}
+          domain={[0, "auto"]}
+          tickFormatter={(value: number) => `$${value.toFixed(Number.isInteger(value) ? 0 : 2)}`}
           tickLine={false}
           axisLine={false}
-          width={40}
+          width={48}
         />
-        {budget === null ? null : (
-          <ReferenceLine
-            y={budget}
-            stroke="var(--ana-dim)"
-            strokeDasharray="4 3"
-            label={{ value: `budget ${money(budget)}`, position: "insideTopRight", fill: "var(--ana-dim)" }}
-          />
-        )}
         <ChartTooltip cursor={{ stroke: BORDER }} isAnimationActive={false} content={<SpendTooltip />} />
         <Area
           dataKey="cumulative"
-          type="stepAfter"
+          type="linear"
           stroke={ACCENT}
           strokeWidth={2}
           fill={ACCENT}
           fillOpacity={0.1}
           isAnimationActive={false}
-          dot={false}
+          dot={{ r: 2, fill: ACCENT, strokeWidth: 0 }}
           activeDot={{ r: 4, fill: ACCENT, stroke: "var(--ana-card)", strokeWidth: 2 }}
         />
       </AreaChart>

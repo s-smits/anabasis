@@ -1,6 +1,6 @@
 import { ArrowLeft } from "lucide-react";
 import { type ReactNode, useCallback, useRef, useState } from "react";
-import { Callout } from "../components/layout.tsx";
+import { IssueCallout } from "../components/layout.tsx";
 import { Badge, Button, NoSignal } from "../components/primitives.tsx";
 import type { Live } from "../live.ts";
 import type { Answer, CampaignReading, Tone } from "../models.ts";
@@ -136,9 +136,7 @@ export function DetailHead({
 /** The issues an answer carries: shown, never swallowed. */
 export function AnswerIssues({ answer }: { answer: Answer }) {
   return answer.issues.map((issue) => (
-    <Callout key={`${issue.source}:${issue.message}`} tone={issue.level === "error" ? "bad" : "warn"}>
-      {issue.source}: {issue.message}
-    </Callout>
+    <IssueCallout key={`${issue.source}:${issue.message}`} issue={issue} />
   ));
 }
 
@@ -151,7 +149,7 @@ export function Pending<Value>({ live, what }: { live: Live<Value>; what: string
       </NoSignal>
     );
   }
-  return <NoSignal title={`Reading ${what}`}>The detail is loading.</NoSignal>;
+  return <NoSignal title={`Reading ${what}`}>The detail is loading</NoSignal>;
 }
 
 /** How a solve ended, as a badge says it: a valid answer, a fail by its kind, or a non-result. */

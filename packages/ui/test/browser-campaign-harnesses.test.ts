@@ -192,11 +192,27 @@ describe("the harness strip", () => {
     await expect(detail(page)).toContainText(/Builder.*b-5/u);
     await expect(detail(page)).toContainText(`Parent${named("C", b)}`);
     await expect(detail(page)).toContainText("no practice solve");
-    await expect(detail(page).locator(".ana-harness-files .ana-evidence-link")).toHaveText([
+    // The bytecode cache its program left is folded behind one counted line, which opens it in place.
+    const listed = detail(page).locator(".ana-harness-part .ana-evidence-link");
+    await expect(listed).toHaveText([
       "agent/BUILT_AGENTS.md",
       "agent/tools-spec.json",
+      ".toolchain/bin/count.py",
     ]);
-    await expect(detail(page).locator(".ana-harness-part > small")).toHaveText(["Guide", "Tools"]);
+    await expect(detail(page).locator(".ana-harness-part > small")).toHaveText([
+      "Guide",
+      "Tools",
+      "Programs",
+    ]);
+    await detail(page).getByRole("button", { name: "1 bytecode cache file hidden" }).click();
+    await expect(listed).toHaveText([
+      "agent/BUILT_AGENTS.md",
+      "agent/tools-spec.json",
+      ".toolchain/bin/__pycache__/count.cpython-312.pyc",
+      ".toolchain/bin/count.py",
+    ]);
+    await detail(page).getByRole("button", { name: "Hide 1 bytecode cache file" }).click();
+    await expect(listed).toHaveCount(3);
 
     await cardOf(page, "B", a).click();
     await expect(page).toHaveURL(new RegExp(`harness=${a}`, "u"));
@@ -245,6 +261,17 @@ describe("the harness inspector", () => {
     );
     await expect(inspector(page).locator(".ana-diff")).toBeVisible();
     await expect(inspector(page)).toBeFocused();
+    // The guide stands first and open; the program after it is closed, and its cache is hidden.
+    const changed = inspector(page).locator(".ana-diff-file");
+    await expect(changed.locator("summary code")).toHaveText([
+      "agent/BUILT_AGENTS.md",
+      ".toolchain/bin/count.py",
+    ]);
+    await expect(changed.first()).toHaveAttribute("open", "");
+    await expect(changed.last()).not.toHaveAttribute("open");
+    await expect(inspector(page).getByRole("button", { name: "1 bytecode cache file hidden" })).toBeVisible();
+    await changed.last().locator("summary").click();
+    await expect(changed.last()).toHaveAttribute("open", "");
     expect(await accessibilityViolations(page, "main")).toEqual([]);
     expect(await accessibilityViolations(page, ".ana-inspector")).toEqual([]);
     await detail(page).getByRole("button", { name: "agent/BUILT_AGENTS.md" }).click();

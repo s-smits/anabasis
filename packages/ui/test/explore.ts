@@ -223,6 +223,15 @@ async function take(page: Page, step: Step): Promise<void> {
 /** A run from `start` on a fresh load of it. */
 async function begin(opened: Opened, start: string, rules: Rules, label: string): Promise<Run> {
   const pending = inFlight(opened.page);
+  // A fresh load starts from the view's defaults: the page keeps a view's sorts, choices and the
+  // sidebar's width in the tab's session storage across a load (`useKept`, `route.ts`).
+  await opened.page.evaluate(() => {
+    try {
+      window.sessionStorage.clear();
+    } catch {
+      // A page with no origin yet, before its first load, keeps no storage to clear.
+    }
+  });
   await opened.page.goto(start);
   await settle(opened.page, pending);
   return { opened, pending, rules, label: `${label} from ${start}`, checked: new Set(), trail: [] };

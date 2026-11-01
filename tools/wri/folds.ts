@@ -63,6 +63,8 @@ export interface Solve {
   readonly cores: number | null;
   readonly outcome: string | null;
   readonly kind: string | null;
+  /** Who cancelled a killed solve (`CancellationOrigin`, `src/kernel/solve.ts`), or null. */
+  readonly cancelledBy: string | null;
   readonly seconds: number;
   readonly calls: string[];
   errors: number;
@@ -283,6 +285,7 @@ function solvesOf(
           cores: isNumber(start.cores) ? start.cores : null,
           outcome: end === null ? null : text(ending?.outcome),
           kind: isString(ending?.kind) ? ending.kind : null,
+          cancelledBy: isString(ending?.cancelledBy) ? ending.cancelledBy : null,
           seconds: count(end?.seconds),
           calls: [],
           errors: 0,
@@ -611,7 +614,7 @@ function tallyTriggers(compared: readonly Compared[]): Trigger[] {
 export function taskTriggers(log: Index): Trigger[] {
   const proposed = log.of("task.proposed").filter((data) => isString(data.session));
   const written = new Set(proposed.map((data) => text(data.version)));
-  // One task admission records the shape check and, where available, room solves. Older logs
+  // One gate reading records the shape check and, until 1 November, the room solves. Older logs
   // hold more numbered checks per task, which no command runs now and no trigger here reads.
   const admissions = log.of("task.gate").filter((data) => data.gate === 1 && written.has(text(data.version)));
   const passed = admissions.filter((data) => heldAtGate(data.outcome)).length;

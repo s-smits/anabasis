@@ -82,6 +82,8 @@ interface Built extends SoFar {
   readonly harness: string | null;
   readonly changed: boolean;
   readonly practiceSolves: number;
+  /** Where its window ends in the log, for a reader of what ran inside it (`soFar`). */
+  readonly until: number;
   /** Its established practice failures: only earned rejections count. */
   readonly fails: number;
   /** Its own turns, its practice solves and their reviewers. */
@@ -324,8 +326,9 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
               proposed: count(end.proposed),
               held: listed(end.held),
               refused: listed(end.refused),
-              // With the solves it asked for to try a draft task (`try_task`), which name it where a
-              // comparison's name the comparison: until 12 October no step held them.
+              // With the solves an earlier log's session asked for to try a draft task (`try_task`,
+              // until 1 November), which name it where a comparison's name the comparison: until
+              // 12 October no step held them.
               billed: count(end.billed) + billedParts(events, id).comparison,
             };
       return [{ step: "examiner", id, ...read, ...counts }];
@@ -348,6 +351,7 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
           practiceSolves: isNumber(end?.practiceSolves)
             ? end.practiceSolves
             : new Set(practised.filter(within).map((solve) => solve.id.replace(/-\d+$/u, ""))).size,
+          until,
           fails: fails.filter(within).length,
           // An open session's own turns are summed at its end, so until then they are its window's.
           billed: end === undefined ? billed : billedParts(events, id).session,

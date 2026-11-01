@@ -213,10 +213,10 @@ export function pairLines(
   const by = (measure: string) => carried.filter((one) => one === measure).length;
   const [x, y] = [candidate.name, baseline.name];
   const shift = detectable(differences, at.level);
-  const reading = readsStep(differences, unbilled, at.level)
-    ? `${x} is better: a step at the level ${String(at.level)}, with the bill and without it`
-    : readsStep(other.differences, other.unbilled, at.level)
-      ? `${y} is better: a step at the level ${String(at.level)}, with the bill and without it`
+  const reading = readsStep(unbilled, at.level)
+    ? `${x} is better: a step at the level ${String(at.level)}, without the bill`
+    : readsStep(other.unbilled, at.level)
+      ? `${y} is better: a step at the level ${String(at.level)}, without the bill`
       : `no step either way at the level ${String(at.level)}. That is no proof they are equal: ${shift === null ? "too few tasks are untied for any difference to show" : `this size shows four times in five a side that wins ${String(Math.round(shift * 100))}% of the untied tasks`}`;
   return [
     `${x} against ${y}, on the ${String(pairs.length)} tasks both solved ${String(at.solves)} times:`,

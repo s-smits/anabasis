@@ -1,7 +1,19 @@
-import { Activity, ChevronLeft, ChevronRight, FileJson, ListChecks, ListOrdered } from "lucide-react";
+import {
+  Activity,
+  ChevronLeft,
+  ChevronRight,
+  FileJson,
+  FolderSearch,
+  ListChecks,
+  ListOrdered,
+} from "lucide-react";
 import { useMemo } from "react";
+import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
+import { countBy } from "../../../../src/meta/tally.ts";
 import type { CampaignRow } from "../models.ts";
 import type { Pane } from "../route.ts";
+import { tallyText } from "../views/campaign-data.ts";
+import { standing } from "../views/format.ts";
 import { AnabasisMark, AnabasisWordmark } from "./brand.tsx";
 import { Picker } from "./picker.tsx";
 
@@ -13,13 +25,52 @@ const NAV: readonly { readonly id: Pane; readonly label: string; readonly icon: 
   { id: "log", label: "Log", icon: FileJson },
 ];
 
-/** v1's sidebar: the brand, the Project picker and the navigation, with a second picker under the
- *  first for the campaign within the project, newest first, each with its worktree as a small
- *  label, since a campaign's name repeats across worktrees, and a rehearsal's copy says so. */
+/** A campaign's name without its project's, which heads its group or the page's eyebrow. */
+function shortName(row: CampaignRow): string {
+  const prefix = `${row.project}-`;
+  return row.name.startsWith(prefix) && row.name.length > prefix.length
+    ? row.name.slice(prefix.length)
+    : row.name;
+}
+
+/** The campaigns grouped by project, in the list's order of projects, a group's running campaigns
+ *  first. Each option says the campaign's state and its last reading, and its worktree where its
+ *  name repeats in another. */
+function groupsOf(campaigns: readonly CampaignRow[], now: number) {
+  const repeated = countBy(campaigns, (row) => row.name);
+  const projects = [...new Set(campaigns.map((row) => row.project))];
+  return projects.map((project) => {
+    const rows = campaigns.filter((row) => row.project === project);
+    const ordered = [
+      ...rows.filter((row) => row.status === "running"),
+      ...rows.filter((row) => row.status !== "running"),
+    ];
+    return {
+      key: project,
+      label: project,
+      options: ordered.map((row) => {
+        const last = row.lastReading;
+        const reading = last === null ? null : `${last.id} ${last.reading} ${tallyText(last.tally)}`;
+        const notes = [reading, (repeated[row.name] ?? 0) > 1 ? row.tree : null].filter(
+          (note) => note !== null,
+        );
+        return {
+          value: row.key,
+          label: shortName(row),
+          detail: standing(row, now),
+          ...keyIfDefined("note", notes.length > 0 ? notes.join(" · ") : undefined),
+        };
+      }),
+    };
+  });
+}
+
+/** The sidebar: the brand, one campaign picker over every project, and the navigation. Until
+ *  30 October a Project picker stood above a Campaign picker that listed the project's campaigns by
+ *  bare name; with 176 campaigns in 28 projects, finding a live one took a guess at its project and
+ *  a scroll. One picker, grouped by project, filtered by typing, and saying each campaign's state,
+ *  answers which campaign is live in one place. */
 export function ProjectSidebar({
-  projects,
-  project,
-  onProject,
   campaigns,
   campaign,
   onCampaign,
@@ -28,11 +79,8 @@ export function ProjectSidebar({
   collapsed,
   onCollapse,
 }: {
-  projects: readonly string[];
-  project: string | null;
-  onProject: (project: string) => void;
-  /** The project's campaigns, newest first. */
-  campaigns: readonly CampaignRow[];
+  /** Every campaign, newest first, or null while the list is read. */
+  campaigns: readonly CampaignRow[] | null;
   campaign: string | null;
   onCampaign: (key: string) => void;
   pane: Pane;
@@ -40,24 +88,13 @@ export function ProjectSidebar({
   collapsed: boolean;
   onCollapse: () => void;
 }) {
-  // Memoised so that `Picker`'s own memo holds across a poll that changed nothing.
-  const projectGroups = useMemo(
-    () => [{ key: "projects", label: null, options: projects.map((item) => ({ value: item, label: item })) }],
-    [projects],
-  );
-  const campaignGroups = useMemo(
-    () => [
-      {
-        key: "campaigns",
-        label: null,
-        options: campaigns.map((row) => ({
-          value: row.key,
-          label: row.name,
-          detail: row.tree,
-        })),
-      },
-    ],
-    [campaigns],
+  // Memoised so that `Picker`'s own memo holds across a poll that changed nothing; the ages it says
+  // move with the list's poll.
+  const groups = useMemo(() => groupsOf(campaigns ?? [], Date.now()), [campaigns]);
+  const current = campaigns?.find((row) => row.key === campaign);
+  const shown = useMemo(
+    () => (current === undefined ? undefined : { label: current.name, detail: current.project }),
+    [current],
   );
 
   return (
@@ -75,13 +112,15 @@ export function ProjectSidebar({
             <AnabasisWordmark />
           </span>
         </button>
-        <Picker label="Project" value={project} groups={projectGroups} onChange={onProject} />
         <Picker
           label="Campaign"
           value={campaign}
-          groups={campaignGroups}
+          groups={groups}
           onChange={onCampaign}
-          placeholder="No campaign"
+          placeholder={campaigns === null ? "Reading campaigns" : "No campaigns"}
+          filtered
+          icon={FolderSearch}
+          {...keyIfDefined("shown", shown)}
         />
       </div>
       <nav className="ana-sidebar-nav" aria-label="Campaign panes">

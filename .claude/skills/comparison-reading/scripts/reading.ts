@@ -8,7 +8,7 @@
  * For each comparison's last report, show its reading, full and unbilled tests, frontier and retained
  * tallies, A/A control, room and omitted-task counts. Re-evaluate the step with stepOf and the A/A
  * with readsStepEitherWay, marking any disagreement with the recorded reading. Older reports may
- * lack the scores required by the current rule. --level uses the requested level for both tests.
+ * lack the scores required by the current rule. --level uses the requested level for the test.
  *
  * Names resolve through logAcross; read and lastReports own log parsing and report selection.
  * This script evaluates recorded scores. Use promotion-tuner/replay.ts to rescore recorded solves
@@ -20,11 +20,9 @@
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { calledBy, type Called, namesOf } from "#src/campaign/names.ts";
 import { readsStepEitherWay, stepOf, testOf, type Tally, UNMEASURED } from "#src/kernel/compare.ts";
-import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
+import { type LogEvent, read } from "#src/kernel/log.ts";
 import { lastReports, roomOf } from "#src/kernel/reports.ts";
-import { existsSync, statSync } from "#src/meta/filesystem.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
-import { join } from "#src/meta/path.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 
 const USAGE = `usage:
@@ -112,7 +110,7 @@ function aaOf(noise: JsonValue | undefined, level: number): Row["aa"] {
     losses,
     ties,
     flips: isNumber(set.flips) ? set.flips : null,
-    either: readsStepEitherWay(differences, level, numbers(set.unbilled) ?? differences),
+    either: readsStepEitherWay(numbers(set.unbilled) ?? differences, level),
   };
 }
 
@@ -246,9 +244,7 @@ if (import.meta.main) {
       const level = asked === null ? null : Number(asked);
       if (level !== null && !(level > 0 && level < 1)) args.die("--level must be a number between 0 and 1");
       const named = args.positionals[0] ?? "";
-      // A path stays a path; a campaign's name is found on whichever host holds it (`logAcross`).
-      const path = existsSync(named) ? named : await logAcross(named);
-      const events = read(statSync(path).isDirectory() ? join(path, LOG_FILE) : path);
+      const events = read(await logAcross(named));
       const only = args.value("comparison");
       const rows = rowsOf(events, level, only);
       if (only !== null && rows.length === 0) {

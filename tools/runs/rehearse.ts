@@ -20,11 +20,9 @@
  * wrote tasks for one epoch, and a rehearsal with `--held none:pass --starter pass --supply 30`
  * goes round the table again, from the promoted harness through other tasks, the starter comparison, a
  * session and a step, until the supply is spent (11 October).
- * Since 18 October 2026 the same scripted solver runs the room solves for task admission: esp32-fresh-opus
- * refused 45 of 50 drafts after promotion, while five rehearsals saw no reference solve there.
- * Room solves can stop after the first and follow the reference's scripted ending (`--held`'s old),
- * after a promotion too: `pass` refuses every draft, and `none` holds one on its recorded answer, tried through
- * try_answer.
+ * The scripted Examiner tries each task it has an answer for through try_answer and puts its tasks
+ * to the gate, which reads their packages alone; from 18 October to 1 November the scripted solver
+ * also ran the gate's room solves.
  * Everything under the seats is a paid round's: the campaign's log and sets, the Builder's tools on
  * the command wall and its freeze, each solve's deadline and root, the answer file and `submit`,
  * the verifier, the comparison and the report. It is `roundCommand` with other
@@ -138,7 +136,7 @@ const contentOf = ({ family, publicInput, hidden }: Task): string => {
 
 /** `args` without the options `own` names and their values, as `parseArgs` tokenised them: what
  *  this command hands on to the round, the standalone comparison or the campaign command it rehearses. */
-export function passedOn(
+function passedOn(
   args: readonly string[],
   tokens: readonly { kind: string; index: number; name?: string; inlineValue?: boolean | undefined }[],
   own: ReadonlySet<string>,
@@ -405,9 +403,7 @@ export function scriptedExaminer(
           ? []
           : [["try_answer", { ...instance, answer }]];
       }),
-      ...(batch.length === 0
-        ? []
-        : [[request.probe === null ? "propose_tasks" : "try_task", { tasks: batch }] as const]),
+      ...(batch.length === 0 ? [] : [["propose_tasks", { tasks: batch }] as const]),
       // Twice: a first finish while the host has not the tasks it needs is declined once.
       ...Array.from(
         { length: 2 },
@@ -480,7 +476,6 @@ export async function rehearse(args: readonly string[]): Promise<void> {
     if (values.campaign === true) {
       await harnessBuilder(flags, {
         seated: seats,
-        probe: seats,
         // The opening a seed copied names its source's reviewer, a live model.
         unreviewed: true,
         ...keyIfDefined(

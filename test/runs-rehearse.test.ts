@@ -1,8 +1,8 @@
 // A seed is a campaign's folder under another name with its log cut where a question starts. A
 // rehearsal's script takes each task's answers from what is on record, writes the one its side was
 // scripted to into the answer file with what the harness selects, and names a solve that ended
-// otherwise. On 18 October 2026 admission joins it: five rehearsals seated no reference,
-// although esp32-fresh-opus refused 45 of 50 drafts after promotion.
+// otherwise. Its scripted Examiner proves each task it can through try_answer and puts its tasks to
+// the gate, which reads their packages alone (since 1 November 2026).
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { normalizeContext } from "@earendil-works/pi-ai";
 import { type LogEvent, read } from "../src/kernel/log.ts";
@@ -22,7 +22,6 @@ import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
-import { decide } from "../src/campaign/decide.ts";
 import { starter } from "../tools/d2/campaign.ts";
 import type { Campaign } from "../tools/d2/round.ts";
 import { answersOf, scriptedExaminer, scriptedSeats, sidesOf } from "../tools/runs/rehearse.ts";
@@ -242,79 +241,31 @@ function campaignOver(folder: string, ending?: Ending) {
   return { campaign, calls, named, log };
 }
 
-describe("a rehearsal's seats", () => {
-  it("refuses answered drafts at three of three and holds a proved draft the reference does not answer", async () => {
-    for (const [old, refused] of [
-      ["pass", 2],
-      ["none", 0],
-    ] as const) {
-      const folder = campaignAt(`gate-${old}`, []);
-      writeFileSync(join(folder, SEED_FILE), "{}\n");
-      const { campaign, named } = campaignOver(folder);
-      const strayed: string[] = [];
-      const source = { taskId: "source", family: "fixture", publicInput: { base: 2 }, hidden: null };
-      const controls = [
-        {
-          taskId: source.taskId,
-          answer: { answer: "12", unit: "N" },
-          refusedBy: null,
-        },
-      ];
-      const factory = scriptedSeats({ held: { old, fresh: "none" }, starter: "pass" }, controls, strayed);
-      const reference = { dir: FIXTURE, digest: "promoted" };
-      const solver = factory(campaign, { builder: undefined, reference: reference.dir });
-      const session = seat("write", []);
-      const result = await scriptedExaminer(
-        [],
-        [source],
-        2,
-        controls,
-      )({
-        ...session.request,
-        log: campaign.log,
-        wanted: 2,
-        verify: async () => ({ kind: "pass" }),
-        probe: async (task, id, kill) => (await solver.solve(task, reference, kill, id)).ending,
-      });
-      const gates = read(campaign.log).flatMap(({ kind, data }) => (kind === "task.gate" ? [data] : []));
-      expect(result).toMatchObject({ puts: 2, ended: "finished" });
-      expect(result.refused).toHaveLength(refused);
-      expect(result.held).toHaveLength(2 - refused);
-      expect(gates.slice(0, refused)).toMatchObject(
-        Array.from({ length: refused }, () => ({ outcome: "refused", reference: { valid: 3, solves: 3 } })),
-      );
-      expect(gates.slice(refused)).toMatchObject(
-        Array.from({ length: 2 - refused }, () => ({
-          outcome: "passed",
-          reference: { valid: 0, solves: 1, ran: 1 },
-        })),
-      );
-      expect(named).toEqual(Array.from({ length: refused === 2 ? 6 : 2 }, () => "x-1"));
-      expect(strayed).toEqual([]);
-      if (refused === 2) {
-        const events: LogEvent[] = [
-          { at: AT, kind: "checker.read", data: { contract: "c", checks: "k", faults: [] } },
-          { at: AT, kind: "harness.promoted", data: { harness: reference.digest } },
-          ...read(campaign.log),
-        ];
-        expect(
-          decide(events, {
-            sessions: 1,
-            patience: 1,
-            unprepared: false,
-            practice: null,
-            wanted: { target: 2, level: 0.1 },
-            pastStop: null,
-            prompted: false,
-            admits: [],
-            left: null,
-          }),
-        ).toMatchObject({ move: "end", ending: "exam" });
-      }
-      const compared = await solver.solve({ ...held, taskId: "source" }, reference, undefined, "g-1");
-      expect(compared.ending.outcome).toBe(old === "pass" ? "pass" : "fail");
-      expect(strayed).toEqual([]);
-    }
+describe("a rehearsal's scripted Examiner", () => {
+  it("proves a source's task through try_answer and puts it and a copy to the gate, which solves neither", async () => {
+    const folder = campaignAt("gate", []);
+    writeFileSync(join(folder, SEED_FILE), "{}\n");
+    const { campaign, named } = campaignOver(folder);
+    const source = { taskId: "source", family: "fixture", publicInput: { base: 2 }, hidden: null };
+    const controls = [{ taskId: source.taskId, answer: { answer: "12", unit: "N" }, refusedBy: null }];
+    const session = seat("write", []);
+    const result = await scriptedExaminer(
+      [],
+      [source],
+      2,
+      controls,
+    )({
+      ...session.request,
+      log: campaign.log,
+      wanted: 2,
+      verify: async () => ({ kind: "pass" }),
+    });
+    const gates = read(campaign.log).flatMap(({ kind, data }) => (kind === "task.gate" ? [data] : []));
+    expect(result).toMatchObject({ puts: 2, ended: "supplied", refused: [] });
+    expect(result.held).toHaveLength(2);
+    expect(gates).toMatchObject([{ outcome: "passed" }, { outcome: "passed" }]);
+    expect(read(campaign.log).filter(({ kind }) => kind === "task.feasible")).toHaveLength(2);
+    expect(named).toEqual([]);
   });
 });
 

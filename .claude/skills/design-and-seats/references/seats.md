@@ -24,8 +24,8 @@ The **Examiner** reads the following view of the log (`src/examiner/record.ts`):
   reference's or author's answers over a reference answer.
 - Which harness won each task and on which measure (`carriedBy`), authorised on 20 October.
 - A summary of reference outcomes (`measuredLine`, `heldOn`).
-- Admission results under the current reference: objective gaps (`reference.gap` of `task.gate`),
-  refusals and interrupted drafts.
+- The gate's results: refusals with their reasons, and, from an earlier log's room solves, the
+  objective gaps (`reference.gap` of `task.gate`) and interrupted drafts.
 - The previous session's `finish` note and home, with the reference harness.
 - Check results obtained through `try_answer`.
 
@@ -38,13 +38,12 @@ solves nothing itself.
 
 The tools of each model seat, as its source names them:
 
-- Examiner: `propose_tasks` (no solve), or `try_task` and `wait` where the host can have the
-  reference solve a draft; then `read_example`, `try_answer`, `read_opening`, `bash`, `read`,
-  `write` and `finish`. Task admission runs in the background, and only awaiting it pauses the
-  four-hour clock (`settled`, `src/examiner/write.ts`; `src/examiner/session.ts`). An answer that
+- Examiner: `propose_tasks`, which puts each draft to the gate and solves none (until 1 November
+  `try_task` and `wait` had the reference solve a draft), then `read_example`, `try_answer`,
+  `read_opening`, `bash`, `read`, `write` and `finish` (`src/examiner/write.ts`). An answer that
   passed `try_answer` is checked again under its task's id, and a pass on a held task is logged as
   `task.feasible` for the Referee. The walled home is carried between sessions with a fresh
-  `reference-harness/`, and task admission is its only way into the exam. A drafting session has
+  `reference-harness/`, and the gate is its only way into the exam. A drafting session has
   `draft_exam`, its only way in, `read_opening`, `bash`, `read`, `write` and `finish`
   (`src/examiner/shell.ts`).
 - Builder: `read`, `bash`, `edit`, `write`, `practice`, `read_trace`, `read_opening`,

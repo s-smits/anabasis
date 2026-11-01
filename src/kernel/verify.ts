@@ -71,7 +71,11 @@ type CheckExecution = {
   families: "all" | string[];
   artifactPaths: string[];
   publicInputPaths: string[];
-  hidden: "none" | "required";
+  /** `whole`: the task's hidden values as their author wrote them, the form a drafted exam's
+   *  checks are told they read (`src/examiner/draft.ts`). Until 31 October a drafted exam with hidden
+   *  values declared `required`, whose rows by check id no draft writes, so all 6 such drafts on
+   *  record, in 3 campaigns, stopped on `check-hidden-operand-missing` before any check ran. */
+  hidden: "none" | "required" | "whole";
   requiredToolIds?: [string, ...string[]];
   evidence: { kind: "authored" } | { kind: "external"; requiredToolIds: [string, ...string[]] };
 };
@@ -277,7 +281,7 @@ function projectJsonPaths(value: JsonValue, paths: readonly string[]): JsonValue
  *  what keeps the declared paths a wall rather than a note: `evaluate.ts` builds the tool-input
  *  leaves from this same value, so bytes a check may hand an installed tool are bytes it was
  *  already allowed to read, and a wider tool operand cannot be reached around the projection. */
-export function checkPublicInputs(
+function checkPublicInputs(
   check: BriefTruthCheck,
   request: Pick<EvaluationRequest, "artifact" | "publicTask">,
 ): Pick<EvaluationRequest, "artifact" | "publicTask"> {
@@ -307,6 +311,9 @@ export function checkEvaluationRequest(
   check: BriefTruthCheck,
   request: EvaluationRequest,
 ): EvaluationRequest {
+  if (check.execution.hidden === "whole") {
+    return capturedStructuredClone({ ...checkPublicInputs(check, request), hidden: request.hidden });
+  }
   const hidden =
     check.execution.hidden === "none"
       ? []

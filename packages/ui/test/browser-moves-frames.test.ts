@@ -197,7 +197,10 @@ describe("the Moves pane between frames", () => {
       expect(waiting.blank).toBe(0);
       expect(waiting.firstLoading ?? 0).toBeGreaterThanOrEqual(300);
       held.resolve();
-      await expect(page.getByRole("heading", { level: 2, name: new RegExp(id, "u") })).toBeVisible();
+      // A move's heading names it; a solve's names its task, with its id in the line beneath.
+      await expect(
+        page.locator(".ana-detail-head", { hasText: id }).getByRole("heading", { level: 2 }),
+      ).toBeVisible();
       expect((await read()).blank).toBe(0);
       if (endpoint === "solve") {
         await page.getByRole("button", { name: "Back to b-1" }).click();

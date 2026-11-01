@@ -362,7 +362,7 @@ suite("preparation and rehearsal over a stored pack", () => {
     expect(events.filter(({ kind }) => kind === "task.feasible")).toHaveLength(1);
   });
 
-  it("names a do-nothing answer the format refuses as a fault, and freezes nothing over it", () => {
+  it("notes a do-nothing answer the format refuses, and freezes over it", () => {
     // The same sweep, its stored solves started under a format whose one string holds digits only.
     const digits = join(root, "digits");
     for (const part of ["runs", "grades"]) cpSync(join(root, part), join(digits, part), { recursive: true });
@@ -375,14 +375,12 @@ suite("preparation and rehearsal over a stored pack", () => {
     }
     const flags = { root: digits, sweep: "s", bundle, name: UNFORMED, ...ADMIT };
     const unformed = command("tools/c/accept.ts", flags, "--freeze");
-    expect(unformed.said).toMatch(/fault:.*do-nothing.*\{"answer":""\}.*answer format/u);
-    expect(unformed.said).toContain("not frozen");
-    expect(unformed.code).toBe(1);
+    expect(unformed.said).toMatch(/note:.*do-nothing.*\{"answer":""\}.*answer format/u);
+    expect(unformed.said).toContain("no fault");
+    expect(unformed.code).toBe(0);
     const log = read(join(REPO, ".ana", "d2", UNFORMED, LOG));
-    expect(log.filter(({ kind }) => kind === "contract.frozen")).toEqual([]);
-    expect(log.flatMap((event) => (event.kind === "checker.read" ? [event.data.faults] : []))).toEqual([
-      [matching(/^the do-nothing answer /)],
-    ]);
+    expect(log.filter(({ kind }) => kind === "contract.frozen")).toHaveLength(1);
+    expect(log.flatMap((event) => (event.kind === "checker.read" ? [event.data.faults] : []))).toEqual([[]]);
   });
 
   // The plan's checkpoint as its commands walk it (`7f0add79:docs/plan.md`, Phase 5): two Builder sessions,

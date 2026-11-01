@@ -8,7 +8,6 @@ import { afterAll, describe, expect, it, spyOn } from "bun:test";
 import { resetOf } from "../src/agent/backends/claude.ts";
 import { crashedRun } from "../src/campaign/ground.ts";
 import { affords, flying } from "../src/campaign/opening.ts";
-import { measured } from "../src/examiner/write.ts";
 import { append, type LogEvent, read } from "../src/kernel/log.ts";
 import type { TaskPackage } from "../src/kernel/task.ts";
 import { mkdtempSync } from "../src/meta/filesystem.ts";
@@ -68,7 +67,7 @@ function gate(log: string, host: Host, loaded = false, concurrency = 4) {
 }
 
 describe("shared solve slots", () => {
-  it("holds admission probes and comparison solves within the condition's shared concurrency", async () => {
+  it("holds the solves of two seatings within the condition's shared concurrency", async () => {
     const s = examinerSeat("write", []);
     const log = s.log;
     const release = Promise.withResolvers<void>();
@@ -103,23 +102,11 @@ describe("shared solve slots", () => {
     const campaign = { limits: { concurrency: 4 } } as Campaign;
     const given = { builder: undefined, reference: HARNESS.dir };
     const comparison = held(campaign, given);
-    const admission = held(campaign, given);
+    const other = held(campaign, given);
     const work = Promise.all([
       comparison.solve(TASK, HARNESS, undefined, "g-1"),
       ...Array.from({ length: 7 }, (_, index) =>
-        measured(
-          {
-            log,
-            id: "x-1",
-            contract: s.request.contract,
-            planted: new Set<string>(),
-            probe: async (task, session, kill) =>
-              (await admission.solve(task, HARNESS, kill, session)).ending,
-          },
-          s.request.pack({ ...EXAMPLE, taskId: `draft-${String(index)}` }),
-          new AbortController().signal,
-          async () => null,
-        ),
+        other.solve({ ...TASK, taskId: `t-${String(index)}` }, HARNESS, undefined, "x-1"),
       ),
     ]);
     await ready.promise;
@@ -129,7 +116,7 @@ describe("shared solve slots", () => {
       release.resolve();
       await work;
     }
-    expect(starts).toBe(22);
+    expect(starts).toBe(8);
     expect(peak).toBe(4);
     expect(running).toBe(0);
   });
@@ -182,6 +169,32 @@ describe("load and reserve admission", () => {
     ]);
     expect(ended).toMatchObject({ ending: { outcome: "pass" } });
     expect(waits(log).map(({ data }) => data.load)).toEqual([99]);
+  });
+
+  it("puts on record only the time slept at a high load, not the slot wait after it cleared", async () => {
+    const log = logIn("load-then-slot");
+    let [load, now] = [99, 0];
+    const free = Promise.withResolvers<void>();
+    // Each sleep is ten seconds on the clock: the load clears after the first, and the slot stays
+    // full for three more.
+    const host = hostOf(
+      () => load,
+      4,
+      (count) => {
+        now += 10_000;
+        if (count === 1) load = 0;
+        if (count === 4) free.resolve();
+      },
+    );
+    const clock = spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      const held = gate(log, host, false, 1);
+      await Promise.all([flying(log, () => free.promise), held.solve(TASK, HARNESS, undefined, "x-1")]);
+    } finally {
+      clock.mockRestore();
+    }
+    expect(host.slept).toHaveLength(4);
+    expect(waits(log).map(({ data }) => data.ms)).toEqual([10_000]);
   });
 
   it("holds a solve while another is in flight and the reserve is short, until the kill, and puts nothing on record", async () => {

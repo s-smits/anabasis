@@ -16,7 +16,7 @@ import { Type } from "typebox";
 import { type SeatTool, sit } from "../src/agent/session.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { read } from "../src/kernel/log.ts";
-import { type Ending, SILENT_SECONDS } from "../src/kernel/solve.ts";
+import { Cancellation, type Ending, SILENT_SECONDS } from "../src/kernel/solve.ts";
 import type { Verdict } from "../src/kernel/verify.ts";
 import { cpSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { isString, type JsonObject } from "../src/meta/json-shape.ts";
@@ -319,6 +319,20 @@ describe("a solve's ending precedence", () => {
     const silent = await attemptEnding({ wallEnded: true, silentSeconds: SILENT_SECONDS });
     expect(silent).toMatchObject({ outcome: "non-result", kind: "provider" });
     expect("reason" in silent && /\d+/.exec(silent.reason)?.[0]).toBe("10");
+  });
+
+  it("names a kill by the source its signal carries, an unlabelled one the caller's, and keeps a solve's own wall a fail", async () => {
+    for (const origin of ["session-wall", "caller"] as const) {
+      const killed = await attemptEnding({}, { kill: AbortSignal.abort(new Cancellation(origin)) });
+      expect(killed).toMatchObject({ outcome: "non-result", kind: "killed", cancelledBy: origin });
+      expect("reason" in killed ? killed.reason : "").not.toContain("the run was killed");
+    }
+    expect(await attemptEnding({}, { kill: AbortSignal.abort() })).toMatchObject({
+      outcome: "non-result",
+      kind: "killed",
+      cancelledBy: "caller",
+    });
+    expect(await attemptEnding({ wallEnded: true })).toEqual({ outcome: "fail", kind: "wall-ended" });
   });
 });
 

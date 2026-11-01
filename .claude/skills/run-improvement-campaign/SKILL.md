@@ -142,10 +142,7 @@ its end, and carry on in the same order; the window gives no step a reason to sk
    stack-pr's section 10, "Consolidate the stack".
 10. **Land and release.** `bun run land -- <top>` proves every commit; `--merge --tag v<x.y.z>`
    waits for CI, merges the native stack and cuts the release at the merge, with the notes GitHub
-   generates. Then rewrite the notes (`gh release edit v<x.y.z> --notes-file <file>`) in the form of
-   the last release: one sentence on what the release changes, "Includes N PRs from #a to #b,
-   merged into `main` at `<sha>`", one paragraph per change with its recorded counts, and
-   **Validation and limits** with the land counts, the CI run and what the stopped runs showed.
+   generates. Then rewrite the notes as stack-pr section 9, "Release notes", sets out.
    Where the proof fails, do not land: report the commit and step.
    One cycle is one stack and one release (`AGENTS.md`, section 11), and the number tells a reader
    which runs may be read side by side. The patch moves (0.7.2 to 0.7.3) where the cycle's runs
@@ -186,13 +183,13 @@ its runs `unread`.
 | `stop` | a run the cycle stops is live at or past the threshold | the `runs stop ... --yes` for those runs, through `runs on <host>` for a run on another host |
 | `run` | the remaining live runs have fewer promotions than the threshold | each such run and its count |
 | `investigate` | none is live | the `runs fetch --from <host>` of each run on another host, and the `wri.ts start` over all of them, a copy by its path |
-| `unread` (exit 1) | a run is found on no host that answered | the runs not found; no step is read past one that may be live |
+| `unread` (exit 1) | a run is found on no host that answered | the runs not found and the hosts that did not answer, or that no other host is configured (the script run without `--env-file=.env.runs`); no step is read past one that may be live |
 
 A run named with `--keep`, such as an ablation the operator keeps going, is shown and never waited
 for or stopped. The script reads and prints; it stops, fetches and launches nothing. The session or
 timer that runs it takes the step, under the cycle's word. A host answers by running the script in
-its own tree with `--here`, so a host's tree must hold the script: bring it to the release's commit
-before the fork, as step 2 does.
+its own tree with `--here`, so a host's tree must hold the script; a tree that predates it answers
+no rows and is named as not answering.
 
 The cycle's reviews are one-shot timers (section "Timers"), each of which runs the script and takes
 the step it names: about 30 minutes after the fork for M1, then at each run's comparisons and
@@ -259,9 +256,8 @@ the operator.
 
 ```text
 prompt → Examiner drafts exam → host reads it → contract.frozen
-Examiner drafts tasks → shape check → up to three room solves (try_task)
-                     → informative, or none valid and author's answer passes → held out
-                     → no room or no reading → refused
+Examiner drafts tasks → shape check (propose_tasks) → held out
+                     → a bad package or a planted answer → refused
 Builder practises and edits → comparison.reported: step → harness.promoted
                             → new epoch → Examiner writes for the new reference
 ```
@@ -333,7 +329,7 @@ walk chooses what to do about it.
 
 1. **Supply:** rows `tasks` or `short`, too few scorable tasks, refused drafts. Owners:
    `systemPrompt` and `firstMessage` in `src/examiner/prompt.ts`, `heard` in
-   `src/examiner/record.ts`, `try_task` in `src/examiner/write.ts`, or `--exam-tasks`.
+   `src/examiner/record.ts`, `propose_tasks` in `src/examiner/write.ts`, or `--exam-tasks`.
 2. **Instrument:** an `exam` ending, checker faults, check-defect stops or tasks set aside.
    Owners: `planOf` in `src/campaign/opening.ts` and `readChecker` in `src/kernel/acceptance.ts`
    for a host fault; otherwise the check program's author. Follow `AGENTS.md`, section 3, for

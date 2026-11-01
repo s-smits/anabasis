@@ -52,8 +52,11 @@ function movesQuery(move: number | null, solve?: string): string {
   return solve === undefined ? query : `${query}&solve=${solve}`;
 }
 
+/** A solve's heading names its task and side; its id stands in the line under it. */
 function solveHeading(page: Page, id: string) {
-  return page.getByRole("heading", { level: 2, name: `${id} Solve` });
+  return page
+    .locator(".ana-detail-head", { hasText: id })
+    .getByRole("heading", { level: 2, name: /Solve$/u });
 }
 
 /** The solve's own part of the page: the move it was opened from stays mounted, hidden. */
@@ -92,10 +95,12 @@ describe("a solve in the default tier", () => {
       ["1", "bash"],
       ["2", "write"],
     ]);
-    await expect(part.getByText("cat task.json")).toBeHidden();
+    // A closed call shows its command's first line; the whole of it and its result open with it.
+    await expect(calls.locator(".ana-tool-glimpse")).toHaveText(["cat task.json", "answer.json"]);
+    await expect(calls.first().locator(".ana-tool-content")).toBeHidden();
     await calls.first().locator("summary").click();
     await expect(part.getByRole("heading", { name: "Command" })).toBeVisible();
-    await expect(part.getByText("cat task.json")).toBeVisible();
+    await expect(calls.first().locator(".ana-tool-content pre").first()).toHaveText("cat task.json");
     await expect(part.getByText("a short word")).toBeVisible();
     expect(await accessibilityViolations(page, "main")).toEqual([]);
     await page.getByRole("button", { name: "Back to b-1" }).click();

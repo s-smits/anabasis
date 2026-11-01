@@ -27,15 +27,14 @@ A round changes one thing the seat is given and reads whether the count moves. F
 | Term | Where it lives | How a round changes it |
 | --- | --- | --- |
 | A sentence of the system prompt or the opening | `src/examiner/prompt.ts` | a commit, in the arm's tree |
-| A fact a tool result carries, such as the task admission's reply | `measured`, `src/examiner/write.ts`; the folds of `src/examiner/record.ts` | a commit |
+| A fact a tool result carries, such as the gate's reply | `admitDraft`, `src/examiner/write.ts`; the folds of `src/examiner/record.ts` | a commit |
 | What the session's home holds | `src/examiner/shell.ts` | a commit |
 | The session's terms: tasks asked for, proposals, minutes, turns | `tools/d1b/examine.ts` (`--tasks 12 --proposals 36 --minutes 240 --turns 200`) | the flag, both arms at one commit |
-| The room solves of a draft | `TRIED`, `src/examiner/record.ts` | a commit |
 | The solver and its budget | the campaign's setting (`AGENTS.md`, section 6) | none: a seed holds its source's, and another setting is another campaign |
 
 The first three are the host's code and land through a pull request like any change. Whatever they
 add to what the Examiner reads, the same pull request writes into `AGENTS.md` section 3's list. The
-session's terms and the room solves are the operator's conditions (`AGENTS.md`, section 6, "What
+session's terms are the operator's conditions (`AGENTS.md`, section 6, "What
 the log records of a campaign's conditions"), so a round that moves one is evidence brought to the
 operator with a recommendation, never a change made on its own, as the promotion tuner treats the
 weights and the level. The exam is no term: it is drafted once, and no seat repairs it (rule 2).
@@ -52,7 +51,7 @@ before anything runs.
 
 | seat | count | graded loss | guards |
 | --- | --- | --- | --- |
-| Examiner after a promotion | drafts held, by where their room came from (`some`, `none, proved`, an objective) | the author's gain over the reference's best answer at each task admission (`reference.gap`; `compare`'s `gap >= 1%` and `median gap`), and the share of task admissions that read `some` | dollars per admission attempt, room solves per draft |
+| Examiner after a promotion | drafts held, and in a tree from before 1 November by where their room came from (`some`, `none, proved`, an objective) | drafts refused; before 1 November, the author's gain over the reference's best answer at each task admission (`reference.gap`; `compare`'s `gap >= 1%` and `median gap`), and the share of task admissions that read `some` | dollars per admission attempt, and room solves per draft before 1 November |
 | Examiner at an opening | drafts held before the first comparison | drafts refused on their package | dollars per admission attempt |
 | Referee | rulings that agree with a recorded hand label | evidence refusals per ruling | rulings refused for their evidence |
 | Builder | practice solves before its first edit, edits that reach a comparison | practice solves that fail on the same check twice | dollars per session |
@@ -144,7 +143,7 @@ diff <(sed 's/sim-<what>-before/X/g' before.txt) <(sed 's/sim-<what>-after/X/g' 
 
 Each tree composes with its own modules, so the script need not exist at the before commit. The
 flags are the seat's own, the model and effort included, since `examine.ts` refuses a model no
-backend serves. It composes the task admission as `try_task` and leaves out the engines in the shell, so
+backend serves. It composes the session's tools as its tree has them and leaves out the engines in the shell, so
 those lines are equal in both arms. Every line the diff shows is the round's variable: account for
 each one, as before-after's step 2 asks, and run no seat while the diff holds a line you did not
 mean. This step costs nothing, so repeat it after every edit.

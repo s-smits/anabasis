@@ -217,6 +217,18 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
   ].join("\n\n");
 }
 
+/** The steps read that won any point by validity, and all the steps read with points. A step the
+ *  objective carried alone answers no task the reference failed: of the 100 step readings with
+ *  points on record since 16 October, 62 won no point by validity, 41 of buffer's 57 (counted over
+ *  every log here and gathered, 31 October). Read by the climb line here and by the Examiner's
+ *  `ambition.ts`. */
+export function validitySteps(steps: readonly Handover[]): readonly [number, number] {
+  const stepped = steps.flatMap((step) =>
+    step.step === "comparison" && step.reading === "step" && step.points !== null ? [step.points] : [],
+  );
+  return [stepped.filter(({ validity }) => validity > 0).length, stepped.length];
+}
+
 /** What each measured thing cost, from the log alone: the Examiner's as `spendOf` bills it, Referee aside. */
 function economyLines(events: readonly LogEvent[], steps: readonly Handover[]): string[] {
   const per = (dollars: number, count: number, what: string) =>
@@ -235,9 +247,14 @@ function economyLines(events: readonly LogEvent[], steps: readonly Handover[]): 
   const promotions = events.filter(({ kind }) => kind === "harness.promoted").length;
   const hours = (Date.parse(events.at(-1)?.at ?? "") - Date.parse(events[0]?.at ?? "")) / 3_600_000;
   const spent = billedAll(events);
+  const [onValidity, stepped] = validitySteps(steps);
+  const carried =
+    stepped === 0
+      ? ""
+      : ` ${String(onValidity)} of the ${plural(stepped, "step")} read won points by validity, and the rest by the objective and the bill alone.`;
   return [
     promotions > 0
-      ? `- The climb: calculated $${(spent / promotions).toFixed(2)} and ${(hours / promotions).toFixed(1)} hours a promotion (${String(promotions)}).`
+      ? `- The climb: calculated $${(spent / promotions).toFixed(2)} and ${(hours / promotions).toFixed(1)} hours a promotion (${String(promotions)}).${carried}`
       : `- The climb: no promotion over calculated $${spent.toFixed(2)} and ${hours.toFixed(1)} hours.`,
     `- The Examiner: calculated ${per(examined, held, "task held out")}.`,
     `- Comparisons: calculated ${per(compared, scored, "task scored")}; ${String(reported.length)} of the ${plural(all.length, "comparison")} that began reported.`,

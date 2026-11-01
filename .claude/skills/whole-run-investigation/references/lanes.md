@@ -478,7 +478,7 @@ Starts from `TIED TASKS (lane 12)`.
 The question is what share of the tasks tie and why. A tie says nothing, and the share of untied
 tasks is what sizes every later comparison. With two solves a side and no true difference, 38%
 of tasks tie when a solve is valid half the time, 51% at four times in five and 69% at nine in
-ten. These are historical two-solve illustrations, rather than the four-solve default.
+ten, at the default of two solves a side (`SIZE`, `src/kernel/size.ts`).
 `TIED TASKS` gives each comparison's ties and how many of them had no valid
 answer; the rest are ties between valid answers. A report written before 11 October also holds
 the same solves read at each shorter budget the comparison fixed (`budgets`), which no trigger
@@ -487,9 +487,9 @@ answered 0 of 10 solves read at two turns and 10 of 10 once it was told two. v1'
 bound: six tasks passed in 2.5 to 26 minutes of a 120-minute limit, and 265 of 299
 task sets passed whole. Say what demand the tied tasks make: v1 measured that requirements
 sharing one limit lowered pass counts, 7 of 20 against 22 of 23, where a tightened limit and a
-widened exam did not. Do not prescribe an instance. The decision it changes is the size of the
-budget the setting names and what the Examiner is asked for next; it routes to `operator` for
-the budget and `examiner/task` for tasks every harness answers.
+widened exam did not. Do not prescribe an instance. Whether the budget binds is lane 29's. The
+decision it changes is what the Examiner is asked for next and how large the next comparison must
+be; it routes to `examiner/task` for tasks every harness answers and `operator` for the size.
 
 **13. Public disclosure and one recipe.**
 
@@ -571,53 +571,68 @@ harness helping the solver work or answering for it; it routes to
 moved, to `builder-prompt` when the limit was crossed, and to `host` (`src/builder/session.ts`)
 when the measured state is not the one the log names.
 
-**16. Operating guide and roster truth.**
+**16. The guide against its programs and the solves.**
 
-Importance: 0.3.
+Importance: 0.5.
 
 Starts from `NEVER CHECKED (lane 16)`, `TOOLS CALLED (lane 16)` and `TOOL CALLS ERRED (lane 16)`.
 
-The question is whether the guide, the tool descriptions and the tools' replies tell the solver
-the truth. Read the child's guide and spec beside what solves under it did: the tools each
-solve called, in what order, how many calls returned an error, and whether a tool the guide leans
-on was ever called. An erred call is any non-zero exit, and a test the harness ships may report
-what is unmet that way by design, as all 44 erred calls under buffer's child did on 12 October:
-read what each call printed before counting it a tool that failed. A tool no solve calls is dead weight in every prompt; a tool most solves call
-once and abandon promised something its reply did not give. Compare the guide's account of how
-the tools combine with the sequences solves actually ran. A guide is appended to the solver's
-prompt on every task, so a line that is true of the practice tasks and false of the domain costs
-on every scored one. The round's prompt is the host's, in `src/solver/prompt.ts`, and its deadline
-sentence is the host's claim: check it against the condition's limits. Do not judge the solving
-method. The decision it changes is whether a failed solve failed the task or was misled; it
-routes to `harness/guide` and `harness/tools`, and to `host` for a sentence of the solver's
-prompt that the condition contradicts.
+The question is whether what a harness tells its solver is true of what it ships and of what its
+solves did. A guide is appended to every solve's prompt, so a claim it makes that its programs do
+not keep costs on every scored task, and no comparison can see why. Read the child's three
+accounts of itself side by side, from lane 15's diff and the kept state:
 
-**17. Finish decision against practice evidence.**
+1. **The guide's claims.** List each thing the guide says a program does, checks or guarantees:
+   a method, a check it says the program runs, a default, a limit, an order of steps.
+2. **The programs.** For each claim, find the code that keeps it in `.toolchain/` or
+   `agent/tools.ts`, and say whether it does, does in part, or does not. A cross-check the guide
+   promises that the program runs on one case is "in part". On 1 November a promoted guide
+   lagged its program, and the cross-check it claimed rested on one point.
+3. **The solves.** From `TOOLS CALLED` and `TOOL CALLS ERRED`, say which tools the solves under
+   this harness called, in what order, and which the guide leans on but no solve called. An erred
+   call is any non-zero exit, and a test the harness ships may report what is unmet that way by
+   design: read what each call printed before counting it a failure.
 
-Importance: 0.2.
+Then read the host's own claims in the solver's prompt (`src/solver/prompt.ts`) against the
+condition: its deadline and turn sentences, and the tools it names. Do not judge the solving
+method; lane 34 grades soundness, and this lane gives it the claims that are false. The decision
+it changes is whether a failed solve failed the task or was misled, and whether a version is
+graded 0 for a guide that claims what no tool does; it routes to `harness/guide` and
+`harness/tools` for the harness's claims, which are the Builder's to correct (`AGENTS.md`,
+section 2, consequence 3), and to `host` for a sentence of the solver's prompt the condition
+contradicts.
+
+**17. What practice taught the Builder.**
+
+Importance: 0.5.
 
 Starts from `NO PRACTICE (lane 17)`, `FINAL BYTES NEVER PRACTISED (lane 17)`,
 `SESSION ENDED (lane 17)` and `PRACTICE FAILS (lane 17)`.
 
-The question is what the Builder did with each practice verdict before it stopped. Read the
-session's `build.call` rows in order: edits, `check_harness`, `practice`, the ending and record
-each practice returned, and the task's record under this harness and under the parent. Read
-the Referee's rulings separately from the log; the Builder did not receive them. A session that edited after its last practice was measured on
-bytes it never tried; one that never practised was measured on belief. The trigger reads this by
-digest: a practice solve's condition names the state it ran under, so the harness that was
-measured either is one of those states or is not, whichever tool made the last edit. The Builder is told one
-solve is weak evidence and to read the record: say whether it practised a task again after a
-change, and whether it decided beforehand which tasks a change should move. A session cut at its
-deadline or its session turn limit is a whole session and is compared; say how many practice solves and turns it
-had left. Read the gap between the last edit and `finish`. Follow each practice fail ruled earned:
-what the Builder changed next, and whether the same task was practised again under the changed
-bytes and passed. A pass after a fail with no edit between them is a flip and answers nothing;
-a fail ruled a check defect that the Builder built around is a harness fitted to the exam's fault.
-Count fails, of which ruled earned, of which followed by an edit, of which passed after. The
-decision it changes is whether a no-step is read as the change not helping or as the change never having
-been tried; it routes to `builder-prompt` when the session's order shows it was not told what
-practice is for, and to `host` (`src/builder/session.ts`) for limits that ended a session mid
-edit.
+The question is whether the Builder used practice as evidence. In a led campaign a practice solve
+is the only outcome the Builder sees of its own harness: its ending, its kind, its trace through
+`read_trace` and, under an objective, the verifier's measure (`AGENTS.md`, section 1). Rule 6
+says one solve is weak evidence, and the Builder is told so. Read the session's `build.call` rows
+in order and build one table, a row a practice solve: the harness state it ran under (by digest),
+its task, its ending, the edit that followed and what that edit touched, and whether the next
+practice of the same task ran under the changed bytes. From the table, count:
+
+- practice solves per comparison the Builder asked for, and comparisons of bytes no practice ran
+  (`FINAL BYTES NEVER PRACTISED`, read by digest whichever tool made the last edit);
+- fails ruled earned that an edit followed, and of those, how many passed when practised again;
+- flips: a pass after a fail with no edit between them, which answers nothing;
+- edits that no practice result preceded, as against edits that followed a result they could
+  answer.
+
+Read the Referee's rulings apart: the Builder never received them, and a practice fail ruled a
+check defect that the Builder built around is a harness fitted to the exam's fault. A session cut
+at its deadline or turn limit (`SESSION ENDED`) is a whole session: say how many practice solves
+and turns it had left. The decision it changes is whether a no-step reads as the change not
+helping or as the change never having been tried, and whether the practice result the Builder
+reads tells it enough to act on; it routes to `builder-prompt` (`src/builder/prompt.ts`) for a
+result that misleads or underinforms, without telling the Builder what to do (`AGENTS.md`,
+section 2, consequence 1), and `host` (`src/builder/tools.ts`, `src/builder/session.ts`) for a
+practice limit that ended work mid edit.
 
 **18. Exposure: what the Builder could see.**
 
@@ -702,38 +717,35 @@ that did not carry.
 
 Label: `comparison`.
 
-**21. Pair identity and source reach.**
+**21. What the condition cannot hold.**
 
-Importance: 0.6.
+Importance: 0.4.
 
 Starts from `HOST CODE MOVED (lane 21)`, `STARTS OUT OF TURN (lane 21)` and `SERVED ANOTHER MODEL (lane 21)`.
 
-The question is whether the two sides of each comparison differ in the harness and in nothing
-else. A condition is a content address: the contract, the harness, the task version, the model
-and its effort, frozen prices, the runtime's pinned packages, the compaction mode, the solver's
-and the verifier's tool trees, the sandbox, the limits, the host's code and the side. A
-comparison counts a solve under one of its harnesses and its own setting, started after its
-`comparison.started` event, and no solve made before (`src/campaign/round.ts`). Confirm it from
-the log all the same: for the counted solves of each comparison, list the distinct values of
-every field but the harness and its `solverTools`, which may change with it. Then read what a
-condition does not hold: load, recorded at solve start and finish, which the solve queue in `tools/d2/host.ts` bounds at
-the start unless `--loaded` is named; the hour; the provider's
-served model, which `responseModels` names or leaves empty, and `SERVED ANOTHER MODEL` counts
-by side where it is not the one the condition asked for, or over the whole campaign where no
-scored solve shows it (row C and the derived `degradations.txt` count every seat's turns); how many solves ran at once. The round
-mirrors which harness takes the first place, slot by slot and task by task, so that neither has the
-quieter hours. One worker runs a task's slots in that order: each solve call, with its load wait,
-its provider reruns or reset and its one outer retry, returns before the next slot starts
-(`drain`, `src/campaign/round.ts`). A round that ran before that hold queued each solve on its own,
-so a load wait or a provider's rerun on one side let the other side's later slots start first.
-`STARTS OUT OF TURN` counts the tasks whose counted solves did not start balanced between the
-sides. In a comparison run with the hold it is a defect of the round; in an older one, read which
-side started late and what it waited for (`campaign.waited`). Where the host's code moved inside the
-campaign, name the commits between the two hashes if this checkout has them. A campaign command
-that ran names its commit, and whether the tree was dirty, in `launch-run-<n>.json` beside the
-log. The decision it changes is whether a difference between the sides is the harness's; it
-routes to `host` (`src/kernel/condition.ts`, `src/campaign/round.ts`) for a field a condition
-should hold and does not, and `environment` for load.
+The question is whether the two sides of a comparison differed in anything but the harness that
+the condition does not record. A condition is a content address of everything that could change a
+solve (`src/kernel/condition.ts`), and a comparison counts only solves under its own setting,
+started after its `comparison.started` (`src/campaign/round.ts`), so a differing field shows in
+the conditions and needs no lane to find. This lane reads the four things a condition leaves out:
+
+- **The model served.** `SERVED ANOTHER MODEL` counts by side the solves whose provider named
+  another model than the condition asked for, or over the campaign where no scored solve shows
+  it (row C, `degradations.txt`). Say whether it falls on one side.
+- **The order and the hour.** One worker runs a task's slots in their mirrored order (`drain`), so
+  a side that started late waited for something: `STARTS OUT OF TURN` names the tasks, and
+  `campaign.waited` and the provider's reruns say what each waited for. In a comparison run with
+  the hold it is a defect of the round.
+- **The load.** Set each side's median start load beside the cores; lane 29 reads what load did
+  to the budget.
+- **The host's code.** `HOST CODE MOVED` names a campaign whose host code changed inside it: name
+  the commits between the two hashes where this checkout has them, from the receipts beside the log
+  (lane 32), and say which comparisons straddle the change.
+
+Say "none" for each that did not occur; four nones is the expected result. The decision it changes
+is whether a difference between the sides is the harness's; it routes to `host`
+(`src/campaign/round.ts`, `src/kernel/condition.ts`) for a field a condition should hold and does
+not, and `environment` for a provider or a load.
 
 **22. The scored set and what left it.**
 
@@ -859,30 +871,36 @@ in hours of high load.
 
 Label: `climb`.
 
-**26. The chain of comparisons.**
+**26. Which link holds the next promotion.**
 
-Importance: 0.8.
+Importance: 0.9.
 
 Starts from `CHAIN (lane 26)` and `NO TASK HELD OUT (lane 26)`.
 
-The question is whether the campaign is climbing: whether a step was found, promoted, and built
-on. Read the chain: each comparison's reference harness, the harness compared with it, and its
-reading. The starter is the first reference; a `harness.promoted` event names each successor.
-Outside `--hitl`, the campaign command promotes the harness its rule names. A Builder session
-starts from the latest harness a session left, step or
-none, and the operator may send it back to an earlier one. So a chain of sessions each starting
-from the last, all compared with the same reference, is the plan's design and no fault. Since
-19 October one comparison that reads a step against the reference promotes its harness; until
-then a step was repeated once on fresh solves first, and a log of before may hold a step no
-second comparison of the same two harnesses followed, which promoted nothing. Row F's `campaign` line gives the
-moves the command made, how it ended and its billed dollars against its budget. `patienceOf`
-reads the opening's improvement patience, six by default. `stopRule` counts changed harnesses once against
-one reference by their last comparison that scored and left room, and unchanged whole sessions
-shown a failed practice solve. A step is a gain; a promotion starts the count again. Starter comparisons
-and readings with no score or no room do not count. A campaign with no held-out task measures nothing at all: eight rounds on the
-truss pack ran so on 8 October, for over $220, and each could only read that no task was
-scored. The decision it changes is what runs next:
-a promotion, another standalone comparison, an Examiner session, or a stop; it routes to `operator`.
+The question is what stops the campaign climbing now, named as one link with its count. Lanes 24,
+27 and 28 read each promotion and each move; this lane reads the chain as a whole and answers for
+the latest epoch. Read `CHAIN` (each comparison's reference, the harness compared and its
+reading) and row F's `campaign` line (the moves, the ending, the bill against the budget). Then
+walk the links of the latest epoch in order, and stop at the first that does not hold:
+
+1. **Tasks.** Did the epoch's Examiner sessions hold out tasks informative for the reference, at
+   least `comparisonFloor` of them at the campaign's level (`src/campaign/admission.ts`)? `NO TASK
+   HELD OUT` is this link broken at its root.
+2. **Build.** Did a Builder session change the harness and practise the change (lanes 15 and 17)?
+3. **Comparison.** Did each comparison against the reference tally enough untied tasks to read a
+   step at its level, and how many more wins would have cleared it (lane 23)?
+4. **Table.** Did the move the table named run, or did another take its place (lane 28)? A
+   starter comparison displaced leaves the promotion unconfirmed (lane 24).
+5. **Stop.** Where the campaign ended, was it the stop rule (`stopRule`, improvement patience of
+   six by default), the budget, or no room, and did the count that ended it match the log?
+
+Name the broken link, its count against what it needed, and the owner of that link. A chain of
+sessions each from the latest harness, all compared with one reference, is the design and no fault.
+Count promotions within this campaign only; promotions summed across campaigns make no climb
+(`AGENTS.md`, section 1). The decision it changes is what runs next: an Examiner session, a Builder
+session, a larger comparison, a fix to the host, or a stop; it routes to `examiner-prompt` for
+tasks, `builder-prompt` for builds, `operator` for a comparison's size or a stop, and `host`
+(`src/campaign/decide.ts`) for a table that named the wrong move.
 
 **27. The promotion and the climb after it.**
 
@@ -1013,46 +1031,37 @@ Builder read and set aside, and `operator` for a word that did not act.
 
 Label: `solve`.
 
-**29. Solver process and deadlines.**
+**29. Does the budget bind, and on which side.**
 
-Importance: 0.3.
+Importance: 0.6.
 
 Starts from `MISSES AT A LIMIT (lane 29)`, `WALL SHARE (lane 29)`, `HOST LOADED (lane 29)`,
 `LOAD MOVED (lane 29)`.
 
-The question is how the solver used its time before deadlines, and whether a miss measured the task or its
-deadline. The limits are the host's, in the condition: the solve's deadline, the turn cap, the shell's
-default and maximum, and concurrency. `LIMITS` defaults to 20 model turns, 30 minutes and 24
-prompts; read the solve's own recorded limits. There is no seat disk cap on either platform; until
-19 October a Mac runner mounted a 2 GiB image per seat. A solve the deadline ended is a fail in the count and a truncated
-solve, never a settled failure of capability, and so is one its model turns or its context
-ended. `MISSES AT A LIMIT` counts, for each comparison and each side, the misses that ended at
-one of the three, with every turn their bound allowed used by the end's count (`last turn`), or past 95% of
-the deadline, with their kinds and the turn bound the solves were
-told, and the misses outside any comparison on a line of their own: on 10 October recode ended
-41 of its 58 scored misses on turns, 12 of 18 reference misses and 4 of 4 new in g-2 at 8 turns,
-and a read of the deadline alone saw none. A side whose misses are all at a limit was limited by
-the recorded budget; each still counts as a fail. For each side, read the share of the deadline a solve
-used. Read the median share under the parent and
-the child on the scored set, and say whether the child's solves got shorter, longer or the same
-on the tasks both passed. Read `seconds` against the load at start and end. A deadline counts elapsed time, so a loaded host holds less
-work in it.
-`HOST LOADED` names a comparison whose solves started, at the median, under a load over the
-host's cores, where the log holds the cores (from 9 October). `LOAD MOVED` gives the median
-load of each comparison's first half of solves and its second, by start, where the busiest half
-ran under twice the calmest or more, within one comparison or across them: on 9 October one
-harness answered the same tasks in a median of 105 s under a load of 31 and of 40 s under a load
-of 6, so a step and its repeat, or two readings at one deadline, were not made under one budget. A
-`solve.finished` written before 11 October holds the CPU seconds of the solve's commands
-(`cpu`), which the meter read only of the children a command waited for, as a floor where a
-command was cut, and as zero under Bubblewrap; no trigger reads it since, and no budget was
-given in it after 9 October. The prompts a solve is given are v1's cap on nudges and every
-solve's: every finished solve of the first three rounds on 9 October was given one, and a
-budget in `prompts`, which was a unit until then, read what the full limit read. Since
-11 October a comparison is read at the one budget its solves were told. The decision it changes is whether a
-deadline-bound miss is the task's or the deadline's, and whether a gain shows first in time; it routes
-to `environment` for load, `harness/guide` when the guide sends the solver into work the deadline
-cannot hold, and `operator` for the deadline itself.
+The question is whether the solve budget separates the harnesses. Both sides solve under one
+setting's model turns and deadline (`LIMITS`, `tools/d2/campaign.ts`: 20 turns and 30 minutes by
+default), and a better harness shows as answers reached within it that the reference does not
+reach (`AGENTS.md`, section 7). A budget no solve comes near cannot show that: the comparison then
+separates the harnesses on validity and the objective alone. On 1 November both draws of one
+investigation found the budget never bound, and lane 12 found it, not this lane.
+
+Read, by comparison and side, from the solves each comparison counted:
+
+- the misses that ended at a limit (`MISSES AT A LIMIT`: turns, context, or past 95% of the
+  deadline), each a fail in the count and never a settled failure of capability;
+- the median and the largest share of the deadline a solve used (`WALL SHARE`), and the median and
+  largest share of its model turns;
+- on the tasks both sides answered, whether the new side used fewer turns or less time.
+
+Then say which of three holds: the budget binds on both sides; it binds on the reference only,
+which is where a harness that saves effort wins; or it binds on neither, and the comparison cannot
+register effort. A deadline counts elapsed time, so read the load beside it: `HOST LOADED` names a
+comparison whose solves started over the host's cores at the median, and `LOAD MOVED` one whose
+busiest half ran under twice the load of its calmest. On 9 October one harness answered the same
+tasks in a median of 105 s under a load of 31 and 40 s under a load of 6. The decision it changes
+is whether the setting's budget is one under which a harness can show it saves effort; it routes
+to `operator` for the limits, which only the operator changes (`AGENTS.md`, section 3), and
+`environment` for load.
 
 **30. Failure mechanism and non-result honesty.**
 

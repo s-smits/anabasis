@@ -270,12 +270,14 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
         // end as strayed: until 10 October it ended the campaign, and a rehearsal of the control
         // after a promotion (`heldSince`, `decide.ts`) fell at the first task no solve had ever answered.
         // A copied instance (`--supply`) is answered as the task it copies: by its id where a pack
-        // or this log holds the answer, and by what it asks where a seed's source does.
+        // or this log holds the answer, and by what it asks where a seed's source does, which wins:
+        // the source's id can name another task in the seed's log, and until 1 November a copy of
+        // the source's x-3-002 took the answer of the seed's own x-3-002 and was rejected.
         const copied = asRecord(asRecord(task.publicInput)?.[COPY])?.of;
         const known = {
-          ...answers.get(contentOf(task)),
           ...(isString(copied) ? answers.get(copied) : undefined),
           ...answers.get(task.taskId),
+          ...answers.get(contentOf(task)),
         };
         const answer = wanted === "none" ? null : asRecord(known[wanted]);
         const missing = wanted !== "none" && answer === null;

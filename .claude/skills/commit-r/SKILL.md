@@ -1,6 +1,6 @@
 ---
 name: commit-r
-description: "Rewrite one compartment of Anabasis v2 test-first, with the old code as an oracle. Use when the operator asks to rewrite, overhaul or rebuild code, or says commit R; also within an authorised change when the old shape needs another exception or about half the machinery could give the same result. A stack overhaul belongs to stack-pr."
+description: "Rewrite one compartment of Anabasis test-first, with the old code as an oracle. Use when the operator asks to rewrite, overhaul or rebuild code, or says commit R; also within an authorised change when the old shape needs another exception or about half the machinery could give the same result. A stack overhaul belongs to stack-pr."
 ---
 
 # Commit R

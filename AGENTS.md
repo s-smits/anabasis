@@ -29,7 +29,11 @@ subagents before acting on them. An audit, review or plan requested on its own r
 Ask only for missing permission or a decision reserved to the operator (section 3), with the
 concrete result ready for review.
 
-## 1. What Anabasis v2 does
+Work the operator puts in the backlog gets one file, `docs/backlog/<subject>.md`: the intended
+changes, then how it came to be, in time order with the operator's words. An agent's memory keeps
+only a failure that repeats; a fact the repository or the backlog holds stays there.
+
+## 1. What Anabasis does
 
 One query names one technical domain, and a campaign builds one **Built Harness** (a harness) for
 it: the guide and programs a fixed **solver** model uses to answer that domain's tasks. A solve is

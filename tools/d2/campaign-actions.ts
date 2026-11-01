@@ -39,7 +39,7 @@ import { pendingWords } from "#src/campaign/word.ts";
 import { examine } from "#src/examiner/session.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import { latestBuilt, patienceOf, promoted as lastPromoted, stopRule } from "#src/kernel/reports.ts";
-import { billedParts } from "#src/kernel/trace.ts";
+import { billedParts } from "#src/kernel/meter.ts";
 import { sizeLines } from "#src/kernel/size.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
 import { taskSets } from "#src/kernel/task.ts";

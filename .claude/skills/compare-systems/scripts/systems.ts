@@ -42,7 +42,7 @@ import { contractHash } from "#src/kernel/contract.ts";
 import { LOG_FILE, read } from "#src/kernel/log.ts";
 import { ended, passed, ranUnder, rejectionAside, verdictsOf } from "#src/kernel/solves.ts";
 import { taskSets } from "#src/kernel/task.ts";
-import { billedAll } from "#src/kernel/trace.ts";
+import { billedAll } from "#src/kernel/meter.ts";
 import { existsSync, mkdirSync } from "#src/meta/filesystem.ts";
 import { isNumber } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";

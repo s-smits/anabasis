@@ -14,7 +14,7 @@ import {
   type TaskId,
 } from "@earendil-works/pi-durable";
 import { SWEEP_COMPACT_WINDOW, servedByClaude } from "./claude.ts";
-import { type Ledger, ledgerOf, minus } from "../../kernel/meter.ts";
+import { durableSpend, type Ledger, minus } from "../../kernel/meter.ts";
 
 interface Compacted {
   readonly tokensBefore: number;
@@ -60,7 +60,7 @@ export function compactionTrace(record: (event: Compacted) => void) {
       for (const change of changes) {
         if (change.type === "document" && change.record.kind === "pi.usage" && change.value !== null) {
           // SAFETY: pi.usage is durable's own UsageState document, not model output.
-          totals = ledgerOf(Object.entries((change.value as UsageState).models));
+          totals = durableSpend(change.value as UsageState).ledger;
         }
       }
       const task = changes.find(

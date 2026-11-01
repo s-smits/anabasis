@@ -15,7 +15,7 @@ import { readsStep, type Tally, testOf } from "../kernel/compare.ts";
 import { conditionsOf } from "../kernel/condition.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { lastReports, type Reported } from "../kernel/reports.ts";
-import { billedBetween } from "../kernel/trace.ts";
+import { billedBetween } from "../kernel/meter.ts";
 import { countedSolves, passed } from "../kernel/solves.ts";
 import { heldAtGate } from "../kernel/task.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";

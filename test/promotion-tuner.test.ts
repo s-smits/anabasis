@@ -128,7 +128,7 @@ it("uses a candidate tree's own stepOf without requiring a readsStep export", as
     ] as const) {
       const tree = mkdtempSync(join(home, "tree-"));
       mkdirSync(join(tree, "src", "kernel"), { recursive: true });
-      for (const file of ["log.ts", "reports.ts", "trace.ts"]) {
+      for (const file of ["log.ts", "reports.ts", "meter.ts", "trace.ts"]) {
         writeFileSync(
           join(tree, "src", "kernel", file),
           `export * from "${join(ROOT, "src", "kernel", file)}";\n`,

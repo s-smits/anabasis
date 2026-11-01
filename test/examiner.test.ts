@@ -17,7 +17,7 @@ import { writing } from "../src/examiner/write.ts";
 import { conditionId } from "../src/kernel/condition.ts";
 import { writtenTasks } from "../src/kernel/history.ts";
 import { append, read } from "../src/kernel/log.ts";
-import { billedAll } from "../src/kernel/trace.ts";
+import { billedAll } from "../src/kernel/meter.ts";
 import { solvesIn } from "../src/kernel/solves.ts";
 import type { Verifier } from "../src/kernel/verify.ts";
 import { sha256OfFile } from "../src/meta/digest.ts";

@@ -31,7 +31,7 @@ import { namesOf } from "../../../../src/campaign/names.ts";
 import { budgetLeft } from "../../../../src/campaign/opening.ts";
 import { readsStepEitherWay } from "../../../../src/kernel/compare.ts";
 import { patienceOf } from "../../../../src/kernel/reports.ts";
-import { billedAll, billedParts } from "../../../../src/kernel/trace.ts";
+import { billedAll, billedParts } from "../../../../src/kernel/meter.ts";
 import { isString } from "../../../../src/meta/json-shape.ts";
 import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
 import { errorMessage } from "../../../../src/meta/runtime-values.ts";

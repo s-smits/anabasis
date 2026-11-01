@@ -136,6 +136,65 @@ describe("the runs pulse", () => {
     }
   });
 
+  it("reads a report in its factors, and marks one whose A/A cleared the level or whose supply is under the floor", () => {
+    const report = (noise: JsonObject, informative: number) => ({
+      reading: "no-step",
+      tasks: 8,
+      level: 0.02,
+      aside: [],
+      valid: { old: [0, 0, 8], fresh: [0, 0, 8], informative: { old: informative, fresh: 0 } },
+      noise,
+      worth: { bars: { cost: 3 }, cost: { attempts: 2, dollars: 40 } },
+    });
+    const said = (data: JsonObject) =>
+      pulse(round, [...built, event(5, "comparison.reported", data)], "closed", lookedAt(1), START).said[0] ??
+      "";
+    const quiet = { differences: [1, -1, 0, 0, 0, 0, 0, 0], unbilled: [1, -1, 0, 0, 0, 0, 0, 0] };
+    expect(said(report(quiet, 9))).toMatch(
+      /^◆ reported no-step · supply 9 of 8 informative, floor 8 · A\/A 1-1-6 · attempt 2 of 3/,
+    );
+    // The A/A is read as a step is, on the scores without the bill, and in either direction.
+    const swept = [-1, -1, -1, -1, -1, -1, -1, 0];
+    expect(said(report({ differences: swept, unbilled: swept }, 9))).toMatch(
+      /^⚠.*A\/A 0-7-1 cleared the level/,
+    );
+    const billOnly = { differences: [1, 1, 1, 1, 1, 1, 1, 0], unbilled: [0, 0, 0, 0, 0, 0, 0, 0] };
+    expect(said(report(billOnly, 9))).toMatch(/^◆.*A\/A 0-0-8 ·/);
+    expect(said(report(quiet, 0))).toMatch(/^⚠.*supply 0 of 8 informative, floor 8/);
+  });
+
+  it("says an investigation alarm once when it fires or moves, and remembers the ones a first look found", () => {
+    const compacted = (minute: number) => event(minute, "build.compacted", { session: "r1-b", usages: [] });
+    const first = [...built, compacted(1)];
+    const baseline = pulse(round, first, "open", undefined, START + 2 * 60_000);
+    expect(baseline.said).toEqual([]);
+    const second = [...first, compacted(2)];
+    const moved = pulse(round, second, "open", baseline.seen, START + 3 * 60_000);
+    expect(moved.said.filter((line) => line.includes("UNBILLED COMPACTIONS"))).toEqual([
+      "⚠ economy: UNBILLED COMPACTIONS (lane 31): 2 of 2 compactions billed nothing: build 2",
+    ]);
+    const solved = [...second, event(3, "solve.started", { solve: "s-1", task: "t-1" })];
+    const again = pulse(round, solved, "open", moved.seen, START + 4 * 60_000);
+    expect(again.said.some((line) => line.includes("UNBILLED"))).toBe(false);
+  });
+
+  it("says only the new one of a trigger that fires once for each comparison", () => {
+    const compared = (minute: number, session: string) => [
+      event(minute, "comparison.started", { session, tasks: ["v-1", "v-2"] }),
+      event(minute + 1, "comparison.reported", { session, reading: "no-step", versions: ["v-1"] }),
+    ];
+    const moved = (said: readonly string[]) => said.filter((line) => line.includes("SCORED SET MOVED"));
+    const one = [...built, ...compared(1, "g-1")];
+    const first = pulse(round, one, "open", undefined, START + 3 * 60_000);
+    const two = [...one, ...compared(3, "g-2")];
+    const second = pulse(round, two, "open", first.seen, START + 5 * 60_000);
+    expect(moved(second.said)).toEqual([
+      "⚠ honesty: SCORED SET MOVED (lane 22): g-2: 1 of 2 tasks it began with are not in its tally",
+    ]);
+    const grown = [...two, event(5, "build.started", { session: "b-2" })];
+    expect(moved(pulse(round, grown, "open", second.seen, START + 6 * 60_000).said)).toEqual([]);
+  });
+
   it("announces and counts promotions only where recorded", () => {
     const promoted = [
       ...built,
@@ -143,9 +202,10 @@ describe("the runs pulse", () => {
       event(6, "harness.promoted", { harness: "0a1b2c3d4e5f", from: "starter", rests: "g1" }),
     ];
     const look = pulse(round, promoted, "open", lookedAt(built.length), START + 7 * 60_000);
-    expect(look.said).toHaveLength(2);
+    expect(look.said).toHaveLength(3);
     expect(look.said[0]).toMatch(/^◆.*step/);
     expect(look.said[1]).toMatch(/^◆.*0a1b2c3d/);
+    expect(look.said[2]).toMatch(/^◆ climb: PROMOTION UNCONFIRMED/);
     expect(look.status).toContain("1 promoted");
     expect(pulse(round, built, "open", undefined, START + 5 * 60_000).status).not.toContain("promoted");
   });

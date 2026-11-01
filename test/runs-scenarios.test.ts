@@ -409,8 +409,8 @@ it("S9: a laptop with no open run still pulses the campaign that lives on a peer
   const result = made.runScript(CLI, ["pulse", "--once"], env);
   writer.kill();
   expect(result.code).toBe(0);
-  expect(result.out).toContain("── here");
-  expect(result.out).toContain("0 open");
+  // A host with nothing to say prints no line of its own, this laptop included.
+  expect(result.out).not.toContain("── here");
   expect(result.out).toContain("── runner");
   expect(result.out).toContain("1 open");
   expect(result.out).toContain("distant");

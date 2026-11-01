@@ -100,7 +100,7 @@ Read these from the v1 archive. Their original mechanism has no current lane wit
 | 32. Judge pass decidability | A person labels sampled passes in `settle.ts` |
 | 10. Difficulty calibration loop | The setting stays fixed; lanes 12 and 26 read ties and the chain |
 | 17. Round hand-off census | Lane 7 reads what each seat received |
-| 26. Builder memory and posture | `memory.ts` carries notes and scratch; lane 20 reads them with the conversation's compactions since 27 October |
+| 26. Builder memory and posture | `memory.ts` carries notes and scratch; lane 31 reads them with the conversation's compactions since 27 October |
 | 29. Hardware target coverage against public ground truth | Lane 1 weighs the instrument used by each check |
 | 30. Ground-truth verdict comparison | Lane 1 weighs what a pass establishes |
 

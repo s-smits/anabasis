@@ -747,6 +747,9 @@ describe("a campaign run by its live Builder", () => {
           ["compare", {}],
           ["examine", {}],
           CHANGE_GUIDE,
+          // The table names the starter comparison after a promotion, which goes first (1 November);
+          // the next compare reads the changed harness/.
+          ["compare", {}],
           ["compare", {}],
           // On the harness it last promoted, the first finish is told the run ends there.
           ["finish", { note: "Two harnesses are promoted and measured." }],
@@ -781,6 +784,7 @@ describe("a campaign run by its live Builder", () => {
       "examine",
       "prepare",
       "compare",
+      "compare",
       "promote",
       "examine",
       "prepare",
@@ -788,7 +792,8 @@ describe("a campaign run by its live Builder", () => {
     // The new reference's practice is released by the host as the Examiner session beside the
     // conversation ends: until 21 October only a Builder's own call released any inside one.
     expect(of(name, MOVED).findLast(({ move }) => move === "prepare")).toMatchObject({ code: "practice" });
-    const [first, second] = of(name, REPORTED);
+    const [first, starterComparison, second] = of(name, REPORTED);
+    expect(starterComparison).toMatchObject({ old: first?.fresh, fresh: first?.old });
     expect(of(name, CALLED).findLast(({ tool }) => tool === "compare")?.text).toContain(
       `Harness ${isString(second?.fresh) ? second.fresh.slice(0, 8) : ""} read a step against the reference, and the host has made it the campaign's reference.`,
     );
@@ -802,7 +807,7 @@ describe("a campaign run by its live Builder", () => {
       retained: { losses: 0 },
     });
     expect(second?.fresh).not.toBe(first?.fresh);
-    expect(of(name, REPORTED)).toHaveLength(2);
+    expect(of(name, REPORTED)).toHaveLength(3);
     expect(of(name, "harness.promoted")).toHaveLength(2);
     expect(of(name, "build.started")).toHaveLength(1);
     expect(of(name, FINISHED)).toHaveLength(1);
@@ -1029,7 +1034,7 @@ describe("a campaign tool where the table names more than the action", () => {
     expect(of(name, FINISHED)[0]).toMatchObject({ session: "b-1", ended: "finished" });
   });
 
-  it("promotes the harness each step froze as it reports, whatever harness/ holds since, and records the Builder's comparison of a changed harness/ as its own where the table named the starter comparison", async () => {
+  it("promotes the harness each step froze as it reports, whatever harness/ holds since, and runs the table's starter comparison before the Builder's comparison of a changed harness/", async () => {
     layOutPack(root, bundle, MANY, FIXTURE);
     const name = `${STEM}-asked`;
     const seats: Seats = {
@@ -1039,6 +1044,10 @@ describe("a campaign tool where the table names more than the action", () => {
         // The promoted harness closed the tasks it was read on: the next step is read on new ones.
         ["examine", {}],
         CHANGE_AGAIN,
+        // The table names the starter comparison, which confirms the promotion and goes first;
+        // the changed harness/ is read at the next call (1 November: a changed harness/ took the
+        // starter comparison's move, and no promotion of the gate ablation was confirmed).
+        ["compare", {}],
         ["compare", {}],
         ["promote", {}],
         ["finish", { note: "The change was read." }],
@@ -1046,8 +1055,10 @@ describe("a campaign tool where the table names more than the action", () => {
       ]),
       examine: writer,
     };
-    await harnessBuilder([...seeded(name), ...FLAGS, "--exam-tasks", "6", "--moves", "10"], seats);
-    const [first, second] = of(name, REPORTED);
+    await harnessBuilder([...seeded(name), ...FLAGS, "--exam-tasks", "6", "--moves", "12"], seats);
+    const [first, starterComparison, second] = of(name, REPORTED);
+    expect(starterComparison).toMatchObject({ fresh: first?.old, old: first?.fresh });
+    expect(said(name, "compare")[1]).toContain("The table's comparison of the starter ran first");
     const snapshots = of(name, "build.checkpoint");
     // One reading of a step promotes the harness it froze (19 October): until then a step was read
     // again on fresh solves before anything was promoted.
@@ -1074,7 +1085,7 @@ describe("a campaign tool where the table names more than the action", () => {
     // Each of the Builder's comparisons measured its working copy, and is recorded as asked. What a
     // move records: the comparison's id and flags, and the harness a promotion named. The host's
     // load is each solve's (`solve.started`), and a move holds none of its own.
-    expect(compares.map(({ code }) => code)).toEqual(["asked", "asked"]);
+    expect(compares.map(({ code }) => code)).toEqual(["asked", "unread", "asked"]);
     expect(compares[0]?.session).toBe("g-1");
     for (const move of compares) {
       expect(move).not.toHaveProperty("load");
@@ -1086,7 +1097,7 @@ describe("a campaign tool where the table names more than the action", () => {
     });
     // r3, 19 October: g-3 and g-6 kept the starter comparison's code and reason while measuring a harness
     // snapshot.
-    expect(compares[1]?.why).toContain("where the table named a comparison of the starter harness");
+    expect(compares[2]?.why).toContain("the Builder asked for it, where the table named");
   });
 
   /** Everything the Builder read from its tools in a campaign whose two comparisons tied the

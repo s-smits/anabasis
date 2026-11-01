@@ -61,8 +61,8 @@ factor it affects, or the separate purpose it serves. Recorded values live in `d
 - **1. Climb**: how much ability has accumulated, read as promotions within one campaign
   (`src/campaign/climb.ts`); promotions added up across campaigns make no climb. The milestone, six
   confirmed promotions in one real campaign and then in a second domain, is for observation only
-  (a promotion is confirmed once a starter comparison of its epoch reads the reference above the
-  starter without the bill at its level: `confirmed`, `src/campaign/climb.ts`),
+  (a promotion is confirmed when the last starter comparison of its epoch reads the reference
+  above the starter without the bill at its level: `confirmed`, `src/campaign/climb.ts`),
   so no prompt, tool or move names a count.
 - **2. Honesty**: could a gain be chance or drift? An A/A comparison beside every comparison, the
   reference's first solve of each task against its second, measures it. One reading clears between

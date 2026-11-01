@@ -203,9 +203,10 @@ function practiceTriggers(log: Index, { build, changed, child, read, round }: Pr
 }
 
 /**
- * Lane 19's wins, by solve: each comparison's tasks the new harness won, read as the comparison
- * paired them, with the solves under the new harness that passed them and under the reference that
- * failed them. The lane opens those solves' turns and calls, and until this it rebuilt the pairing
+ * Lane 20's wins, by solve: each comparison's tasks the new harness won, read as the comparison
+ * paired them, with every counted solve of the task on each side: since 31 October most wins
+ * are on the objective between two valid answers (1 November). Lanes 20 and 19 open those solves'
+ * turns and calls, and until this lane 19 rebuilt the pairing
  * by hand from a log of thousands of events: the #107 buffer campaign won 11 tasks over 3
  * comparisons in 5,531 (2026-10-10). A task the report's test names is read by the difference it
  * recorded (`testedOf`), and only another by this tree's score: on 22 October the score of weighted
@@ -226,16 +227,13 @@ function wonOf(log: Index) {
 
 function winTriggers(log: Index): Trigger[] {
   return wonOf(log).flatMap(({ session, pairs, won }) => {
-    const named = (side: "old" | "fresh", valid: boolean) =>
-      won.flatMap((pair) => pair.solves?.[side].filter((_, index) => pair[side][index] === valid) ?? []);
+    const solves = won.map(
+      (pair) =>
+        `${short(pair.task)} new ${pair.solves?.fresh.join(" ") ?? "-"}, reference ${pair.solves?.old.join(" ") ?? "-"}`,
+    );
     return won.length === 0
       ? []
-      : [
-          fired(
-            "WINS",
-            `${session}: ${share(won.length, pairs.length)} tasks won; passed under the new harness: ${named("fresh", true).join(" ")}; failed under the reference: ${named("old", false).join(" ")}`,
-          ),
-        ];
+      : [fired("WINS", `${session}: ${share(won.length, pairs.length)} tasks won: ${solves.join("; ")}`)];
   });
 }
 

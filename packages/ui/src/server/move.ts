@@ -19,7 +19,7 @@ import type { Move, MoveDetail, Outcome, Query, ScoredTask, Sensitivity, SolveRo
 import { Unanswerable, type Reading } from "./context.ts";
 import { type Log, practiceIn, proposalsIn, ranIn } from "./folds.ts";
 import { campaignAt } from "./logs.ts";
-import { barsIn, movesIn, outcomeOf, pairsIn } from "./moves.ts";
+import { barsIn, keptOf, movesIn, outcomeOf, pairsIn, steppedOf } from "./moves.ts";
 import { examTier, sessionTrace, solveRow } from "./trace.ts";
 import { rulingWithheld } from "./withheld.ts";
 
@@ -105,7 +105,7 @@ function scoredTasks(log: Log, move: ComparisonMove, tier: Tier): ScoredTask[] {
   const tallied = (pairsIn(log).get(move.id) ?? []).map((pair) =>
     scoredTask(
       pair.task,
-      outcomeOf(pair),
+      outcomeOf(pair, keptOf(report)),
       [byId(pair.solves?.old ?? []), byId(pair.solves?.fresh ?? [])],
       carriedBy(pointsOf(pair)),
     ),
@@ -125,13 +125,15 @@ function sensitivityOf(report: Report): Sensitivity | null {
   const { scored, frontier, valid, noise, families, overlap } = report;
   if (scored === null) return null;
   const untied = Object.values(families ?? {}).map(({ frontier: { wins, losses } }) => wins + losses);
-  // The set the step was read on: the scored tasks, or the frontier in a report before 20 October.
+  // The set the step was read on: the scored tasks, or the frontier in a report before 20 October;
+  // untied on the scores the step reads (`steppedOf`).
   const test = scored.falseRate === undefined ? frontier : scored;
+  const { wins, losses } = test === null ? { wins: 0, losses: 0 } : steppedOf(test).tally;
   return {
     frontier:
       test?.falseRate === undefined
         ? null
-        : { untied: test.wins + test.losses, detectable: test.detectable ?? null, falseRate: test.falseRate },
+        : { untied: wins + losses, detectable: test.detectable ?? null, falseRate: test.falseRate },
     informative: valid?.informative ?? null,
     unsolved: scored.unsolved,
     flagged: report.flagged.length,

@@ -19,6 +19,7 @@
  * Split from `read.ts`, which stands near the size policy's ceiling, as `time.ts` and `folds.ts`
  * were. Nothing here reads a file beside the log.
  */
+import { epochsOf as epochsRead } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";
 import { flipP } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
@@ -37,6 +38,7 @@ import {
   practiceOf,
   share,
   tally,
+  tallyOf,
   text,
   type Trigger,
 } from "./folds.ts";
@@ -71,8 +73,17 @@ export const sharedPaths = ({ args }: Call) =>
 /** `w-l-t p` of a test record, or "not scored" where there is none, as a stopped comparison's. */
 export function testSaid(tested: JsonValue | undefined): string {
   const record = asRecord(tested);
-  if (record === null) return "not scored";
-  return `${String(count(record.wins))}-${String(count(record.losses))}-${String(count(record.ties))} p ${pSaid(count(record.p))}`;
+  const step = tallyOf(tested);
+  if (record === null || step === null) return "not scored";
+  const said = ({ wins, losses, ties, p }: typeof step) =>
+    `${String(wins)}-${String(losses)}-${String(ties)} p ${pSaid(p)}`;
+  const billed = said({
+    wins: count(record.wins),
+    losses: count(record.losses),
+    ties: count(record.ties),
+    p: count(record.p),
+  });
+  return said(step) === billed ? billed : `${billed}, without the bill ${said(step)}`;
 }
 
 /** A test's p as a reading prints it. */
@@ -155,13 +166,11 @@ function ruleOf(log: Index): string {
     : "opened with no level in its terms (the tree's default)";
 }
 
-/** Of a tally, the tasks that did not tie, of all it tallied: `10 of 12`, or "-" where none was
- *  made, which until 25 October lane 27 read as "0 of 0". */
+/** Of a tally, the tasks that did not tie without the bill (`tallyOf`), of all it tallied: `10 of
+ *  12`, or "-" where none was made, which until 25 October lane 27 read as "0 of 0". */
 export function untied(tested: JsonValue | undefined): string {
-  const record = asRecord(tested);
-  if (record === null) return "-";
-  const [wins, losses, ties] = ["wins", "losses", "ties"].map((key) => count(record[key]));
-  return share((wins ?? 0) + (losses ?? 0), (wins ?? 0) + (losses ?? 0) + (ties ?? 0));
+  const step = tallyOf(tested);
+  return step === null ? "-" : share(step.wins + step.losses, step.wins + step.losses + step.ties);
 }
 
 /** One rest comparison as lane 27 reads it: the tally against its own A/A noise, the tally at each
@@ -359,6 +368,51 @@ export function promotionTriggers(log: Index): Trigger[] {
   const epochs = epochsOf(log.events);
   return [
     ...epochs.flatMap((epoch) => [...restTriggers(log, epoch), afterTrigger(log, epoch, starter)]),
+    ...unconfirmedTrigger(log),
+    ...carrierTrigger(log),
     ...sharedTmpTrigger(log),
   ];
+}
+
+/** `STEP CARRIERS` (lane 21): each step's untied tasks without the bill, and how many of its largest
+ *  wins it could lose to a tie and still clear its level. On 1 November the gate ablation's g-3 cleared at
+ *  6-0 with none to spare, and supply's g-2 lost its step without the 5 tasks priced in yen; lanes
+ *  15, 23, 25 and 34 each found a part of that. */
+function carrierTrigger(log: Index): Trigger[] {
+  const lines = log.compared.flatMap(({ session, last }) => {
+    const unbilled = items(asRecord(last.scored)?.unbilled).filter(isNumber);
+    if (text(last.reading) !== "step" || unbilled.length === 0) return [];
+    const wins = unbilled.filter((one) => one > 0).toSorted((one, other) => other - one);
+    const rest = unbilled.filter((one) => one <= 0);
+    const lost = wins.findIndex((_, index) => flipP([...rest, ...wins.slice(index + 1)]) > count(last.level));
+    const spare = lost === -1 ? wins.length : lost;
+    return [
+      `${session} won ${share(wins.length, unbilled.filter((one) => one !== 0).length)} untied, ${spare === 0 ? "none" : String(spare)} to spare`,
+    ];
+  });
+  return lines.length > 0 ? [fired("STEP CARRIERS", lines.join("; "))] : [];
+}
+
+/** `PROMOTION UNCONFIRMED` (lane 24): each promotion whose epoch has no starter comparison, or whose
+ *  last one does not read the reference above the starter (`confirmed`, `src/campaign/climb.ts`).
+ *  On 1 November none of the gate ablation's five promotions and the validity arm's one was
+ *  confirmed, and lanes 24 and 28 found it by reading the moves. */
+function unconfirmedTrigger(log: Index): Trigger[] {
+  const epochs = epochsRead(log.events);
+  const lines = epochs.flatMap(({ nth, reference, to, starter_tally: against, confirmed }) => {
+    if (confirmed !== false) return [];
+    const read =
+      against === null
+        ? "no starter comparison reported"
+        : `against the starter ${String(against.wins)}-${String(against.losses)}-${String(against.ties)} without the bill, no step`;
+    return [`${short(reference)} in epoch ${String(nth)}, ${to === null ? "open" : "closed"}: ${read}`];
+  });
+  return lines.length > 0
+    ? [
+        fired(
+          "PROMOTION UNCONFIRMED",
+          `${share(lines.length, epochs.length - 1)} promotions: ${lines.join("; ")}`,
+        ),
+      ]
+    : [];
 }

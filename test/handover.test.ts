@@ -199,6 +199,7 @@ describe("a campaign's reading", () => {
         id: "b-1",
         reading: "step",
         tally: { wins: 4, losses: 0, ties: 0 },
+        unbilled: null,
         valid: { old: [4, 0, 0], fresh: [0, 0, 4] },
         rulings: { earned: 1, "check-defect": 0, unclear: 0 },
         // Its two solves and the Referee's reading, and nothing of the session under the same id.
@@ -212,6 +213,7 @@ describe("a campaign's reading", () => {
         id: "g-1",
         reading: null,
         tally: null,
+        unbilled: null,
         valid: null,
         rulings: { earned: 0, "check-defect": 0, unclear: 0 },
         billed: 0,
@@ -427,5 +429,34 @@ describe("the Builder's filter over that reading", () => {
     );
     // No held-out task, no share of valid answers, no ruling and no cost.
     expect(told.join("\n")).not.toMatch(/s[1-4]\b|0\.0625|valid|earned|\$/);
+  });
+
+  it("gives the tally the step is read on beside the one with the bill, where the bill moved it", () => {
+    const c = campaign();
+    // Three tasks won with the bill tie without it, so the step is read on 1 won and 3 tied.
+    const billed = tallied("no-step", 4, 0);
+    const scored = { wins: 4, losses: 0, ties: 0, p: 0.0625, unsolved: 0 };
+    c.compared(
+      "g-1",
+      { old: HA, fresh: HB },
+      {
+        ...billed,
+        scored: { ...scored, unbilled: [0.6, 0, 0, 0] },
+      },
+    );
+    c.compared(
+      "g-2",
+      { old: HA, fresh: HB },
+      {
+        ...billed,
+        scored: { ...scored, unbilled: [0.6, 0.3, 0.3, 0.6] },
+      },
+    );
+    const [moved, same] = comparisonsTold(campaignOf(c.events()).steps);
+    expect(moved).toMatch(
+      /4 won, 0 lost, 0 tied, and without the bill.*1 won, 0 lost, 3 tied, which reads no step/u,
+    );
+    expect(same).toMatch(/4 won, 0 lost, 0 tied, which reads no step/u);
+    expect(same).not.toContain("without the bill");
   });
 });

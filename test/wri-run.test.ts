@@ -1,4 +1,4 @@
-// The triggers of lanes 7, 8, 20, 28, 32 and 33 read how a run was conducted: the moves against the table,
+// The triggers of lanes 7, 8, 28, 31, 32 and 33 read how a run was conducted: the moves against the table,
 // the Builder's compactions, the drafted exam, the launches and the log's order. Each case sets a
 // log that should fire beside the nearest one that should not.
 import { describe, expect, it } from "bun:test";
@@ -36,14 +36,18 @@ const hoursOf = (events: readonly LogEvent[]) =>
   overview(events).rows[0]?.lines.find((line) => line.startsWith("hours:")) ?? "";
 describe("the moves against the table (lane 28)", () => {
   it("counts the moves the Builder asked for where the table named another, and only those", () => {
+    // The reason `comparedOf` writes: the ablation's displaced starter comparisons of 1 November.
+    const starter = "the Builder asked for it, where the table named a comparison of the starter harness";
     const moves = logged(
-      ["campaign.move", { move: "compare", code: "asked", why: "" }],
+      ["campaign.move", { move: "compare", code: "asked", why: starter }],
       ["campaign.move", { move: "examine", code: "no-room", why: "" }],
+      ["campaign.move", { move: "compare", code: "asked", why: starter }],
       ["campaign.move", { move: "compare", code: "asked", why: "" }],
     );
     const detail = fired(moves, "MOVES ASKED");
-    expect(detail).toContain("2 of 3 moves");
-    expect(detail).toContain("compare 2");
+    expect(detail).toContain("3 of 4 moves");
+    expect(detail).toContain("compare for a comparison of the starter harness 2");
+    expect(detail).toContain("compare for a move unnamed 1");
     expect(fired(moves.slice(1, 2), "MOVES ASKED")).toBeUndefined();
   });
 
@@ -58,7 +62,7 @@ describe("the moves against the table (lane 28)", () => {
   });
 });
 
-describe("the Builder's conversation (lane 20)", () => {
+describe("the Builder's conversation (lane 31)", () => {
   it("gives a session's compactions beside its turns and its read_opening calls", () => {
     const compacted = logged(
       ["build.started", { session: "b-1", parent: "starter" }],

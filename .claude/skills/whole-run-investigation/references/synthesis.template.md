@@ -38,7 +38,7 @@ the event kinds, solve ids and counts the report cites: a report is a lead and n
    (a) the exam measured: the checker was frozen and read, and the refusals that entered the tally
    read sound (lanes 1 to 5); (b) the tasks bracketed: the scored set was held out, fixed before
    the comparison's first solve and chosen by no result of that comparison (lanes 9 to 14 and 22); (c) the pair differed in the
-   harness alone, and the harness could not know the exam (lanes 15, 18 and 21); (d) the reading
+   harness alone, and the harness could not know the exam (lanes 15, 18, 20 and 30); (d) the reading
    follows from the pairs at their number (lanes 23 to 25). Then one sentence a row: believed as
    written, believed with a named limit, or not believed.
 2. **The binding constraint.** The one mechanism that most limits the next round, and why it

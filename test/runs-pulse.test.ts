@@ -5,7 +5,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/files
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { leftOut, pulse } from "../tools/runs/pulse.ts";
+import { leftOut, pulse as pulseOf } from "../tools/runs/pulse.ts";
+import { overview } from "../tools/wri/read.ts";
 import type { Run } from "../tools/runs/registry.ts";
 
 const round: Run = { name: "r1", tree: "/wt", path: "/wt/.ana/d2/r1/log.jsonl", end: "comparison.reported" };
@@ -19,6 +20,14 @@ const event = (minute: number, kind: EventKind, data: JsonObject): LogEvent => (
 const lookedAt = (lines: number) => ({ lines, open: true, quiet: false });
 
 const built = [event(0, "build.started", { session: "r1-b" })];
+/** A look that reads the investigation's triggers in this process, as `wri.ts read` would print them. */
+const pulse = (
+  run: Run,
+  log: readonly LogEvent[],
+  process: "open" | "closed",
+  before: Parameters<typeof pulseOf>[3],
+  now: number,
+) => pulseOf(run, log, process, before, { now, alarms: () => overview(log).triggers });
 
 describe("the runs pulse", () => {
   it("reports missing processes and each session's own ending", () => {
@@ -52,17 +61,48 @@ describe("the runs pulse", () => {
     }
   });
 
-  it("warns of a killed solve, and not of a room solve the gate cut once the room was read", () => {
-    const killed = (cancelledBy: string) => [
-      event(0, "solve.started", { solve: "s-1", task: "ex-001" }),
-      event(1, "solve.finished", {
-        solve: "s-1",
-        ending: { outcome: "non-result", kind: "killed", reason: "the solve was cancelled", cancelledBy },
-      }),
+  it("warns of each kind of non-result once with its repeats, and of no other solve", () => {
+    const finished = (solve: string, ending: JsonObject) => event(1, "solve.finished", { solve, ending });
+    const killed = { outcome: "non-result", kind: "killed", reason: "the solve was cancelled" };
+    const log = [
+      ...built,
+      event(1, "solve.started", { solve: "s-1", task: "ex-001" }),
+      event(1, "solve.started", { solve: "s-2", task: "ex-002" }),
+      finished("s-1", { outcome: "pass" }),
+      finished("s-2", { outcome: "fail" }),
+      finished("s-3", { outcome: "flagged", reason: "the task asks two things" }),
+      finished("s-4", { ...killed, cancelledBy: "admission" }),
+      finished("s-5", { ...killed, cancelledBy: "caller" }),
+      finished("s-6", { ...killed, cancelledBy: "caller" }),
     ];
-    const said = (cancelledBy: string) => pulse(round, killed(cancelledBy), "open", lookedAt(1), START).said;
-    expect(said("caller")[0]).toMatch(/^⚠.*ex-001.*without a result/);
-    expect(said("admission")).toEqual(["· ex-001 cut once its room was read"]);
+    expect(pulse(round, log, "open", lookedAt(1), START).said).toEqual([
+      "⚠ a solve ended without a result, killed: the solve was cancelled (×2)",
+    ]);
+  });
+
+  it("warns of solves that waited on the load for over a quarter of an hour", () => {
+    const waited = (ms: number, load: number) =>
+      event(1, "campaign.waited", { task: "t-1", load, cores: 4, ms });
+    const log = [...built, waited(60_000, 5), waited(20 * 60_000, 6.5), waited(30 * 60_000, 7)];
+    expect(pulse(round, log, "open", lookedAt(1), START + 2 * 60_000).said).toEqual([
+      "⚠ 2 solves waited over 15m for the load, the longest 30m at load 7.0 on 4 cores",
+    ]);
+    expect(pulse(round, log.slice(0, 2), "open", lookedAt(1), START + 2 * 60_000).said).toEqual([]);
+  });
+
+  it("reads a campaign the Builder leads as done only at its ending", () => {
+    const examined = [
+      event(0, "campaign.opened", { project: "p" }),
+      event(1, "exam.started", { session: "x-1" }),
+      event(2, "exam.finished", { session: "x-1", ended: "finished" }),
+    ];
+    const seen = lookedAt(examined.length);
+    const gone = pulse(round, examined, "closed", seen, START + 3 * 60_000).said;
+    expect(gone).toEqual(["⚠ the process is gone before campaign.ended"]);
+    const ended = [...examined, event(3, "campaign.ended", { ending: "budget", why: "spent" })];
+    expect(pulse(round, ended, "closed", seen, START + 4 * 60_000).said).toEqual([
+      "◆ the campaign ended budget: spent",
+    ]);
   });
 
   it("warns of turns another model served than their seat asked for, and of no others", () => {
@@ -136,6 +176,72 @@ describe("the runs pulse", () => {
     }
   });
 
+  it("reads a report in its factors, and marks one whose A/A cleared the level or whose supply is under the floor", () => {
+    const report = (noise: JsonObject, informative: number) => ({
+      reading: "no-step",
+      tasks: 8,
+      level: 0.02,
+      aside: [],
+      valid: { old: [0, 0, 8], fresh: [0, 0, 8], informative: { old: informative, fresh: 0 } },
+      noise,
+      worth: { bars: { cost: 3 }, cost: { attempts: 2, dollars: 40 } },
+    });
+    const said = (data: JsonObject) =>
+      pulse(round, [...built, event(5, "comparison.reported", data)], "closed", lookedAt(1), START).said[0] ??
+      "";
+    const quiet = { differences: [1, -1, 0, 0, 0, 0, 0, 0], unbilled: [1, -1, 0, 0, 0, 0, 0, 0] };
+    expect(said(report(quiet, 9))).toMatch(
+      /^◆ reported no-step · supply 9 of 8 informative, floor 8 · A\/A 1-1-6 · attempt 2 of 3/,
+    );
+    // The A/A is read as a step is, on the scores without the bill, and in either direction.
+    const swept = [-1, -1, -1, -1, -1, -1, -1, 0];
+    expect(said(report({ differences: swept, unbilled: swept }, 9))).toMatch(
+      /^⚠.*A\/A 0-7-1 cleared the level/,
+    );
+    const billOnly = { differences: [1, 1, 1, 1, 1, 1, 1, 0], unbilled: [0, 0, 0, 0, 0, 0, 0, 0] };
+    expect(said(report(billOnly, 9))).toMatch(/^◆.*A\/A 0-0-8 ·/);
+    expect(said(report(quiet, 0))).toMatch(/^⚠.*supply 0 of 8 informative, floor 8/);
+    // Past the bar as the report's own `met` reads it: set-up's epoch meets it at any count.
+    const costing = (attempts: number, met: boolean) => ({
+      ...report(quiet, 9),
+      worth: { bars: { cost: 3 }, cost: { attempts, dollars: 40, met } },
+    });
+    expect(said(costing(4, true))).toMatch(/^◆.*attempt 4 of 3/);
+    expect(said(costing(4, false))).toMatch(/^⚠.*attempt 4 of 3/);
+  });
+
+  it("says an investigation alarm once when it fires or moves, and remembers the ones a first look found", () => {
+    const compacted = (minute: number) => event(minute, "build.compacted", { session: "r1-b", usages: [] });
+    const first = [...built, compacted(1)];
+    const baseline = pulse(round, first, "open", undefined, START + 2 * 60_000);
+    expect(baseline.said).toEqual([]);
+    const second = [...first, compacted(2)];
+    const moved = pulse(round, second, "open", baseline.seen, START + 3 * 60_000);
+    expect(moved.said.filter((line) => line.includes("UNBILLED COMPACTIONS"))).toEqual([
+      "⚠ economy: UNBILLED COMPACTIONS (lane 31): 2 of 2 compactions billed nothing: build 2",
+    ]);
+    const solved = [...second, event(3, "solve.started", { solve: "s-1", task: "t-1" })];
+    const again = pulse(round, solved, "open", moved.seen, START + 4 * 60_000);
+    expect(again.said.some((line) => line.includes("UNBILLED"))).toBe(false);
+  });
+
+  it("says only the new one of a trigger that fires once for each comparison", () => {
+    const compared = (minute: number, session: string) => [
+      event(minute, "comparison.started", { session, tasks: ["v-1", "v-2"] }),
+      event(minute + 1, "comparison.reported", { session, reading: "no-step", versions: ["v-1"] }),
+    ];
+    const moved = (said: readonly string[]) => said.filter((line) => line.includes("SCORED SET MOVED"));
+    const one = [...built, ...compared(1, "g-1")];
+    const first = pulse(round, one, "open", undefined, START + 3 * 60_000);
+    const two = [...one, ...compared(3, "g-2")];
+    const second = pulse(round, two, "open", first.seen, START + 5 * 60_000);
+    expect(moved(second.said)).toEqual([
+      "⚠ honesty: SCORED SET MOVED (lane 22): g-2: 1 of 2 tasks it began with are not in its tally",
+    ]);
+    const grown = [...two, event(5, "build.started", { session: "b-2" })];
+    expect(moved(pulse(round, grown, "open", second.seen, START + 6 * 60_000).said)).toEqual([]);
+  });
+
   it("announces and counts promotions only where recorded", () => {
     const promoted = [
       ...built,
@@ -143,9 +249,10 @@ describe("the runs pulse", () => {
       event(6, "harness.promoted", { harness: "0a1b2c3d4e5f", from: "starter", rests: "g1" }),
     ];
     const look = pulse(round, promoted, "open", lookedAt(built.length), START + 7 * 60_000);
-    expect(look.said).toHaveLength(2);
+    expect(look.said).toHaveLength(3);
     expect(look.said[0]).toMatch(/^◆.*step/);
     expect(look.said[1]).toMatch(/^◆.*0a1b2c3d/);
+    expect(look.said[2]).toMatch(/^◆ climb: PROMOTION UNCONFIRMED/);
     expect(look.status).toContain("1 promoted");
     expect(pulse(round, built, "open", undefined, START + 5 * 60_000).status).not.toContain("promoted");
   });
@@ -164,7 +271,7 @@ describe("the runs pulse", () => {
     for (const fact of ["◆", "environment", "the provider failed"]) expect(said[0]).toContain(fact);
     const gone = pulse(round, drafting, "closed", lookedAt(2), START + 3 * 60_000).said;
     expect(gone).toHaveLength(1);
-    expect(gone[0]).toMatch(/^⚠.*comparison[.]reported/);
+    expect(gone[0]).toMatch(/^⚠.*campaign[.]ended/);
   });
 
   it("counts omitted runs and names the archive's newest", () => {

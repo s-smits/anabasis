@@ -15,6 +15,8 @@
  * when it ends. Since 22 October each look also polls every configured host once, with a cursor for
  * this observer, unless --here is named. A missing peer is a warning and exit 1. No local state path is sent to another machine.
  */
+import { comparisonFloor } from "#src/campaign/admission.ts";
+import { readsStepEitherWay, testOf } from "#src/kernel/compare.ts";
 import type { EventKind, LogEvent } from "#src/kernel/log.ts";
 import { billedAll, degradations, traceKind, tracesIn } from "#src/kernel/trace.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
@@ -28,10 +30,11 @@ import {
   writeFileSync,
 } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
-import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
-import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { capturedExecPath, parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { mainTree } from "#src/meta/git.ts";
 import { countBy } from "#src/meta/tally.ts";
@@ -52,11 +55,20 @@ import {
   writers,
 } from "./registry.ts";
 
+/** One of the investigation's triggers of a log, as `wri.ts read` prints it. */
+interface Alarm {
+  readonly name: string;
+  readonly lane: number;
+  readonly detail: string;
+}
+
 /** What the last look saw of one log. */
 interface Seen {
   readonly lines: number;
   readonly open: boolean;
   readonly quiet: boolean;
+  /** Each watched investigation trigger's detail at the last look that read them. */
+  readonly triggers?: Readonly<Record<string, string>>;
 }
 
 /** One look at one run: its status line, what it says of the events since the last look, and what
@@ -85,8 +97,87 @@ const RECENT_MS = DAY_MS;
 const NEWEST = 3;
 const GIB = 2 ** 30;
 const REPORTED = "comparison.reported";
+const PROMOTED = "harness.promoted";
+const ENDED = "campaign.ended";
 /** The events that start something a run then has to finish. */
 const STARTS: ReadonlySet<string> = new Set(["build.started", "exam.started", "comparison.started"]);
+
+/**
+ * The investigation's triggers a watch says, by the factor each bears on (`AGENTS.md`, section 1).
+ * An alarm is read again at every look where the log gained an event that can move one
+ * (`MOVES_A_TRIGGER`) and said where it fired or its key moved (`keyOf`); a reading moves with each
+ * solve, so it is said only after a milestone. On 1 November an unconfirmed promotion and two
+ * unbilled compactions in a live buffer campaign were found only by running `wri.ts read` on it by
+ * hand. A trigger the pulse reads itself is left out (a model served, an unfinished session), and so
+ * is one every promotion fires until its starter comparison reports.
+ */
+const WATCHED = new Map<string, readonly [string, "alarm" | "reading"]>([
+  ["SUPPLY THIN", ["supply", "alarm"]],
+  ["NOTHING SCORED", ["supply", "alarm"]],
+  ["SET SHORT", ["supply", "alarm"]],
+  ["NO TASK HELD OUT", ["supply", "alarm"]],
+  ["NO VALID ANSWER", ["supply", "alarm"]],
+  ["AWAITING A LABEL", ["supply", "alarm"]],
+  ["GATE REFUSED", ["supply", "reading"]],
+  ["OUTCOMES BY SESSION", ["supply", "reading"]],
+  ["PROMOTION UNCONFIRMED", ["climb", "reading"]],
+  ["BROKEN AT END", ["climb", "alarm"]],
+  ["STEP CARRIERS", ["climb", "reading"]],
+  ["CHAIN", ["climb", "reading"]],
+  ["MOVES ASKED", ["honesty", "reading"]],
+  ["SCORED SET MOVED", ["honesty", "alarm"]],
+  ["HOST CODE MOVED", ["honesty", "alarm"]],
+  ["PRACTISED TASK MEASURED", ["honesty", "alarm"]],
+  ["MEASURED AN EARLIER STATE", ["honesty", "alarm"]],
+  ["STARTS OUT OF TURN", ["honesty", "alarm"]],
+  ["LOG OUT OF ORDER", ["honesty", "alarm"]],
+  ["SAFEGUARD-8 PROMOTION ON AUTHOR ROOM", ["honesty", "alarm"]],
+  ["SAFEGUARD-9 PROMOTION BEYOND VALIDITY", ["honesty", "alarm"]],
+  ["CHECK DEFECT RULED", ["verdicts", "alarm"]],
+  ["RULED UNCLEAR", ["verdicts", "alarm"]],
+  ["RULINGS REFUSED", ["verdicts", "alarm"]],
+  ["EARNED WITHOUT A PROBE", ["verdicts", "alarm"]],
+  ["REVIEW FAULTS", ["verdicts", "alarm"]],
+  ["SET ASIDE AND UNSETTLED", ["verdicts", "alarm"]],
+  ["REPLAY MOVED THE VERDICT", ["verdicts", "alarm"]],
+  ["CHECKER READ WITH FAULTS", ["verdicts", "alarm"]],
+  ["FROZEN DESPITE FAULTS", ["verdicts", "alarm"]],
+  ["UNBILLED COMPACTIONS", ["economy", "alarm"]],
+  ["SESSION CRASHED", ["economy", "alarm"]],
+]);
+/** The events after which a reading is said again. */
+const MILESTONES: ReadonlySet<string> = new Set([
+  REPORTED,
+  PROMOTED,
+  "exam.finished",
+  "build.finished",
+  ENDED,
+]);
+/**
+ * The events that can move a watched trigger, so a look reads the investigation only after one.
+ * Over 57 recorded logs, 27% of the looks where a log grew held one; the investigation takes about
+ * 3 s to read a log of 46,000 events, and until 1 November read one at every such look. Replayed on those logs, 2 of
+ * 358 alarms were said later than before, the later by 29 minutes: a host's code that moved is said
+ * at the next of these events.
+ */
+const MOVES_A_TRIGGER: ReadonlySet<string> = new Set([
+  ...MILESTONES,
+  "referee.finding",
+  "referee.refused",
+  "task.gate",
+  "checker.read",
+  "contract.frozen",
+  "comparison.started",
+  "campaign.word",
+  "build.checkpoint",
+  "harness.version",
+]);
+/** The comparisons and sessions a trigger's detail names (`g-2`, `b-3`, `x-1`), not a task (`x-1-3`). */
+const NAMED = /\b[bgx]-\d+(?![-\d])/g;
+/** One of the investigation's triggers as its command prints it: `NAME (lane N): detail`. */
+const TRIGGER_LINE = /^([A-Z][A-Z0-9 -]*[A-Z0-9]) \(lane (\d+)\): (.*)$/;
+/** A load wait a person moves a run for (`AGENTS.md`, section 10, condition 4). */
+const LOAD_WAIT_MS = 15 * 60_000;
 
 const minutes = (ms: number) => `${String(Math.round(ms / 60_000))}m`;
 const dollars = (value: number) => `$${value.toFixed(2)}`;
@@ -100,10 +191,52 @@ const word = (value: unknown) => (isString(value) || isNumber(value) ? String(va
 const cost = (data: JsonObject) =>
   `${isNumber(data.seconds) ? ` in ${minutes(data.seconds * 1000)}` : ""}${isNumber(data.billed) ? `, ${dollars(data.billed)}` : ""}`;
 
+/**
+ * A report in the four factors and supply (`AGENTS.md`, section 1), from the event alone: the tasks
+ * the reference left room on against the admission floor, the reference against itself, and the
+ * attempt this epoch against the economy's bar. Until 1 November the line said only the reading,
+ * and a watch learned that buffer's promoted harness left 0 of 8 tasks informative by reading the
+ * log by hand. An A/A that clears the level, a floor not met or a bar passed is one to look at.
+ */
+function factorsOf(data: JsonObject): { said: string; look: boolean } {
+  const informative = asRecord(asRecord(data.valid)?.informative)?.old;
+  const level = isNumber(data.level) ? data.level : 0.02;
+  const floor = comparisonFloor(level);
+  // The A/A is read as a step is since 1 November: on the scores without the bill, either way.
+  const noise = asRecord(data.noise);
+  const found = Array.isArray(noise?.unbilled) ? noise.unbilled : noise?.differences;
+  const scores = Array.isArray(found) ? found.filter(isNumber) : undefined;
+  const aa = scores === undefined ? null : testOf(scores);
+  const clears = scores !== undefined && readsStepEitherWay(scores, level);
+  const worth = asRecord(data.worth);
+  const bar = asRecord(worth?.bars)?.cost;
+  const spent = asRecord(worth?.cost);
+  const attempts = spent?.attempts;
+  const scant = isNumber(informative) && informative < floor;
+  // Past the bar as the report reads it (`met`, `costOf`, `climb.ts`): set-up's epoch never is.
+  const dear = spent?.met === false;
+  const parts = [
+    isNumber(informative)
+      ? `supply ${String(informative)} of ${word(data.tasks)} informative, floor ${String(floor)}`
+      : "",
+    aa === null
+      ? ""
+      : `A/A ${String(aa.wins)}-${String(aa.losses)}-${String(aa.ties)}${clears ? " cleared the level" : ""}`,
+    isNumber(attempts) ? `attempt ${String(attempts)} of ${word(bar)} this epoch` : "",
+  ].filter((part) => part !== "");
+  return { said: parts.map((part) => ` · ${part}`).join(""), look: clears || dear || scant };
+}
+
 /** What a comparison's report earns: one that scored nothing, one its cap cut, or one with tasks set
  *  aside on rejections nobody has settled is one to look at before it is believed
- *  (`src/campaign/round.ts`). */
+ *  (`src/campaign/round.ts`), and so is one whose factors say so (`factorsOf`). */
 function reportLine(data: JsonObject): string {
+  const head = reportHead(data);
+  const { said, look: flagged } = factorsOf(data);
+  return `${flagged ? head.replace(/^◆/, "⚠") : head}${said}`;
+}
+
+function reportHead(data: JsonObject): string {
   const settled = asRecord(data.settled);
   if (settled !== null) {
     return `◆ settled by hand as ${word(data.reading)}: ${word(settled.labelled)} labelled, ${word(settled.defects)} a check defect`;
@@ -119,10 +252,8 @@ function reportLine(data: JsonObject): string {
 }
 
 /** The line each event a reader wants earns; a kind not here is a trace, and null is one of its
- *  kind left unsaid. `task` names a solve's task. */
-const SAID: Partial<
-  Record<EventKind, (data: JsonObject, task: (solve: JsonValue | undefined) => string) => string | null>
-> = {
+ *  kind left unsaid. */
+const SAID: Partial<Record<EventKind, (data: JsonObject) => string | null>> = {
   "build.started": (data) => `· build ${word(data.session)} started on ${word(data.model)}`,
   "exam.started": (data) => `· exam ${word(data.session)} started on ${word(data.model)}`,
   "build.finished": (data) =>
@@ -131,27 +262,22 @@ const SAID: Partial<
   "exam.finished": (data) => `◆ exam ${word(data.session)} ended${cost(data)}`,
   "harness.version": (data) =>
     `· harness ${word(data.version).slice(0, 8)}${short(data.note) === "" ? "" : `: ${short(data.note)}`}`,
-  "solve.started": (data) => `· ${word(data.task)} started on ${word(data.model)}`,
-  "solve.finished": (data, task) => {
+  // A solve is counted in the status line, and only a non-result has a line of its own, by its kind
+  // and reason: over 57 recorded logs, a line a solve started or passed was 74% of everything the
+  // pulse said, and no person acts on one. A line a look counting its solves, replayed on those
+  // logs, became the most said line, and printed the row the status line already counts.
+  "solve.finished": (data) => {
     const ending = asRecord(data.ending);
-    if (ending?.outcome === "pass") return `◆ ${task(data.solve)} passed${cost(data)}`;
-    if (ending?.outcome === "fail") return `· ${task(data.solve)} failed${cost(data)}`;
-    // A flag is its side's own fail (AGENTS.md rule 7): until 23 October it read as a non-result of kind "?".
-    if (ending?.outcome === "flagged") {
-      return `· ${task(data.solve)} flagged as malformed: ${short(ending.reason)}${cost(data)}`;
-    }
-    // The gate cut a room solve once another settled the task's room, from 31 October until it stopped
-    // solving on 1 November, as the investigation reads it; until 31 October each cut warned as a solve with no result.
-    if (ending?.cancelledBy === "admission") {
-      return `· ${task(data.solve)} cut once its room was read${cost(data)}`;
-    }
-    return `⚠ ${task(data.solve)} ended without a result, ${word(ending?.kind)}: ${short(ending?.reason)}${cost(data)}`;
+    // The gate cut a room solve once another settled the task's room, from 31 October until it
+    // stopped solving on 1 November; until 31 October each cut warned as a solve with no result.
+    if (ending?.outcome !== "non-result" || ending.cancelledBy === "admission") return null;
+    return `⚠ a solve ended without a result, ${word(ending.kind)}: ${short(ending.reason)}`;
   },
   // A campaign's ending, and a wait for the provider or the network: until 15 October the pulse
   // said neither, and a run waiting out a limit read as quiet. A wait on the load is one a solve.
-  "campaign.ended": (data) => `◆ the campaign ended ${word(data.ending)}: ${short(data.why)}`,
+  [ENDED]: (data) => `◆ the campaign ended ${word(data.ending)}: ${short(data.why)}`,
   // Until 27 October a promotion had no line, and an hourly watch over the pulse missed one by 4.5 h.
-  "harness.promoted": (data) => `◆ promoted ${word(data.harness).slice(0, 8)} to the reference`,
+  [PROMOTED]: (data) => `◆ promoted ${word(data.harness).slice(0, 8)} to the reference`,
   "campaign.waited": (data) =>
     isString(data.for)
       ? `⚠ waited ${isNumber(data.ms) ? minutes(data.ms) : "?"} for the ${data.for}${isString(data.until) ? ` until ${data.until}` : ""}`
@@ -159,6 +285,82 @@ const SAID: Partial<
   "referee.finding": (data) => `· the Referee on ${word(data.task)}: ${short(data.reason)}`,
   [REPORTED]: reportLine,
 };
+
+/**
+ * The investigation's triggers of `run`'s log, from its own command, as `tools/runs/replay.ts`
+ * leaves it: production imports no helper (`AGENTS.md`, section 12), and until a review of
+ * 1 November the pulse imported the investigation's folds. A read that fails throws, and the look
+ * says so.
+ */
+function investigated(run: Run): Alarm[] {
+  const tree = resolve(import.meta.dir, "..", "..");
+  const read = runSync([capturedExecPath, join(tree, "tools", "wri", "wri.ts"), "read", "--log", run.path], {
+    cwd: tree,
+    timeout: 120_000,
+  });
+  if (read.exitCode !== 0) throw new Error(decodeOutput(read.stderr).trim().split("\n").at(-1));
+  return decodeOutput(read.stdout)
+    .split("\n")
+    .flatMap((line) => {
+      const [, name = "", lane = "", detail = ""] = TRIGGER_LINE.exec(line) ?? [];
+      return name === "" ? [] : [{ name, lane: Number(lane), detail }];
+    });
+}
+
+/**
+ * What a trigger's detail is about: the comparisons and sessions it names, else its first count,
+ * so a detail is said again when it names another or its count moves, and not when only its
+ * wording does. Until 1 November a whole detail was compared, and over 57 recorded logs 757 of 784
+ * lines of `SUPPLY THIN`, whose detail moves with each solve, said again what had been said; it is
+ * now said once.
+ */
+function keyOf(name: string, detail: string): string {
+  if (name === "SUPPLY THIN") return "";
+  const ids = detail.match(NAMED);
+  return ids === null ? (/\d+/.exec(detail)?.[0] ?? detail) : [...new Set(ids)].join(",");
+}
+
+/** The watched triggers of `log` as they read now, and a line for each detail whose key (`keyOf`)
+ *  is new since `before`; the first look of a run only remembers them. A trigger fires once for each
+ *  comparison or session it names, so each name keeps every key: until a fix of 1 November it kept
+ *  one, and gate-free-r2's two comparisons with a task set aside said the first again at every look. */
+function triggersSaid(fresh: readonly LogEvent[], before: Seen | undefined, alarms: () => readonly Alarm[]) {
+  const kept = before?.triggers ?? {};
+  const moves = fresh.some(({ kind }) => MOVES_A_TRIGGER.has(kind) || kind.endsWith(".compacted"));
+  if (before !== undefined && !moves) return { now: kept, said: [] };
+  const milestone = fresh.some(({ kind }) => MILESTONES.has(kind));
+  const read = new Map<string, { lane: number; details: string[] }>();
+  let found: readonly Alarm[];
+  try {
+    found = alarms();
+  } catch (error) {
+    return { now: kept, said: [`⚠ the investigation could not read the log: ${short(String(error))}`] };
+  }
+  for (const { name, lane, detail } of found) {
+    const watched = WATCHED.get(name);
+    if (watched === undefined || (watched[1] === "reading" && !milestone && before !== undefined)) continue;
+    read.set(name, { lane, details: [...(read.get(name)?.details ?? []), detail] });
+  }
+  const said = [...read].flatMap(([name, { lane, details }]) => {
+    const [factor, kind] = WATCHED.get(name) ?? ["", "alarm"];
+    const known = new Set((kept[name] ?? "").split("\n"));
+    return before === undefined
+      ? []
+      : details
+          .filter((detail) => !known.has(keyOf(name, detail)))
+          .map(
+            (detail) =>
+              `${kind === "alarm" ? "⚠" : "◆"} ${factor}: ${name} (lane ${String(lane)}): ${short(detail)}`,
+          );
+  });
+  const now = {
+    ...kept,
+    ...Object.fromEntries(
+      [...read].map(([name, { details }]) => [name, details.map((detail) => keyOf(name, detail)).join("\n")]),
+    ),
+  };
+  return { now, said };
+}
 
 /**
  * Where the process that writes `log` stands now, read once for the status line and the look.
@@ -192,14 +394,17 @@ function standing(run: Run, log: readonly LogEvent[]) {
   const solved = log.findLastIndex(({ kind }) => kind === "solve.started");
   const start = Math.max(0, opened);
   const work = log.slice(Math.max(start, solved));
-  const end: EventKind = log[start]?.kind === "exam.started" ? "exam.finished" : run.end;
+  // A campaign the Builder leads ends only in its ending: until 1 November one whose process died
+  // after an Examiner session or a report was taken as done, 4 of the 42 closes on record.
+  const led = log.some(({ kind }) => kind === "campaign.opened");
+  const end: EventKind = led ? ENDED : log[start]?.kind === "exam.started" ? "exam.finished" : run.end;
   const running = solves.filter(({ finished, started }) => finished === null && started >= begun).length;
   const until = log
     .slice(begun)
     .findLast(({ kind, data }) => kind === "campaign.waited" && isString(data.until))?.data.until;
   const last = log.at(-1);
   const since = Math.max(Date.parse(last?.at ?? ""), isString(until) ? Date.parse(until) : 0);
-  const ended = last?.kind === "campaign.ended" || (running === 0 && count(work, end) > 0);
+  const ended = last?.kind === ENDED || (running === 0 && count(work, end) > 0);
   return { solves, start, work, end, running, since, ended };
 }
 
@@ -231,7 +436,7 @@ function status(run: Run, log: readonly LogEvent[], stand: Standing, open: boole
   if (running > 0) said.push(`${String(running)} running`);
   if (unfinished > running) said.push(`${String(unfinished - running)} unfinished`);
   const last = log.at(-1);
-  const promoted = count(log, "harness.promoted");
+  const promoted = count(log, PROMOTED);
   if (promoted > 0) said.push(`${String(promoted)} promoted`);
   return [
     // A seed's counts and dollars are its source's up to the cut, and a script's or a run's after it.
@@ -249,14 +454,23 @@ export function pulse(
   log: readonly LogEvent[],
   process: "open" | "closed",
   before: Seen | undefined,
-  now: number,
+  { now, alarms }: { readonly now: number; readonly alarms: () => readonly Alarm[] },
 ): Look {
   const open = process === "open";
   const stand = standing(run, log);
-  const tasks = new Map(stand.solves.map(({ id, start }) => [id, word(start.task)]));
-  const task = (solve: JsonValue | undefined) => tasks.get(word(solve)) ?? word(solve);
   const fresh = log.slice(before?.lines ?? log.length);
-  const lines = fresh.flatMap(({ kind, data }) => SAID[kind]?.(data, task) ?? []);
+  const lines = fresh.flatMap(({ kind, data }) => SAID[kind]?.(data) ?? []);
+  const loaded = fresh.flatMap(({ kind, data }) =>
+    kind === "campaign.waited" && !isString(data.for) && isNumber(data.ms) && data.ms > LOAD_WAIT_MS
+      ? [data]
+      : [],
+  );
+  const longest = loaded.toSorted((a, b) => Number(b.ms) - Number(a.ms))[0];
+  if (longest !== undefined) {
+    lines.push(
+      `⚠ ${plural(loaded.length, "solve")} waited over ${minutes(LOAD_WAIT_MS)} for the load, the longest ${minutes(Number(longest.ms))} at load ${isNumber(longest.load) ? longest.load.toFixed(1) : "?"} on ${word(longest.cores)} cores`,
+    );
+  }
   const turns = tracesIn(fresh).flatMap((each) => (each.part === "turn" ? [each] : []));
   const errors = turns.flatMap(({ error }) => (error === null ? [] : [error]));
   if (errors.length > 0) {
@@ -272,15 +486,26 @@ export function pulse(
   if (quiet && before?.quiet !== true) lines.push(`⚠ quiet for ${minutes(now - stand.since)}`);
   if (!quiet && before?.quiet === true) lines.push("· not quiet any more");
   if (before?.open === true && !open && !stand.ended) lines.push(`⚠ the process is gone before ${stand.end}`);
+  const triggers = triggersSaid(fresh, before, alarms);
+  lines.push(...triggers.said);
   // A comparison starts each task under two harnesses, so a line may come twice.
   const said = Object.entries(countBy(lines, (line) => line)).map(([line, n]) =>
     n === 1 ? line : `${line} (×${String(n)})`,
   );
-  return { status: status(run, log, stand, open, now), said, seen: { lines: log.length, open, quiet } };
+  return {
+    status: status(run, log, stand, open, now),
+    said,
+    seen: { lines: log.length, open, quiet, triggers: triggers.now },
+  };
 }
 
-/** One look over the chosen runs, said to the console and remembered in `state`. */
-async function look(state: string, names: readonly string[]): Promise<void> {
+/**
+ * One look over the chosen runs, remembered in `state`: the lines it says, none where nothing moved.
+ * A run's row is said on its first look and with something new, and the host's line above any row.
+ * Until 1 November every look said every row and each closed run's reason again, so a watch of
+ * three hosts printed some twenty lines every five minutes with nothing in them a reader had not seen.
+ */
+async function look(state: string, names: readonly string[]): Promise<string[]> {
   const memory: Memory = existsSync(state)
     ? parseJsonAs<Memory>(readFileSync(state, "utf8"))
     : { freeGiB: null, logs: {} };
@@ -300,29 +525,33 @@ async function look(state: string, names: readonly string[]): Promise<void> {
         (before === undefined &&
           run.seed !== true &&
           Date.now() - statSync(run.path).mtimeMs < RECENT_MS &&
-          events.at(-1)?.kind !== "campaign.ended"),
+          events.at(-1)?.kind !== ENDED),
   );
   const disk = statfsSync(".");
   const free = Math.round((disk.bavail * disk.bsize) / GIB);
   const gained = memory.freeGiB === null ? 0 : free - memory.freeGiB;
   const since =
     memory.freeGiB === null ? "" : ` (${gained >= 0 ? "+" : ""}${String(gained)} since the last look)`;
-  console.log(
-    `${new Date(now).toISOString().slice(11, 16)}Z ${String(all.filter(({ open }) => open).length)} open · load ${(loadavg()[0] ?? 0).toFixed(1)} of ${String(availableParallelism())} cores · ${String(free)} GiB free${since}`,
-  );
+  const head = `${new Date(now).toISOString().slice(11, 16)}Z ${String(all.filter(({ open }) => open).length)} open · load ${(loadavg()[0] ?? 0).toFixed(1)} of ${String(availableParallelism())} cores · ${String(free)} GiB free${since}`;
   // A run this look left out keeps what the last look saw of it.
   const logs: Record<string, Seen> = { ...memory.logs };
+  const said: string[] = [];
   for (const { run, open, before, events } of chosen) {
-    const seen = pulse(run, events, open ? "open" : "closed", before, now);
-    console.log(seen.status);
-    for (const line of seen.said) console.log(`  ${line}`);
-    for (const line of await runReason(run, events, open ? "open" : "closed")) console.log(`  ${line}`);
+    const seen = pulse(run, events, open ? "open" : "closed", before, {
+      now,
+      alarms: () => investigated(run),
+    });
+    if (before === undefined || seen.said.length > 0) {
+      const reasons = await runReason(run, events, open ? "open" : "closed");
+      said.push(seen.status, ...[...seen.said, ...reasons].map((line) => `  ${line}`));
+    }
     logs[run.path] = seen.seen;
   }
   // A checkout no campaign ran in has no `.ana/`, as the Linux runner's had none on 20 October.
   mkdirSync(dirname(state), { recursive: true });
   writeFileSync(`${state}.tmp`, capturedJsonStringify({ freeGiB: free, logs } satisfies Memory));
   renameSync(`${state}.tmp`, state);
+  return said.length === 0 ? [] : [head, ...said];
 }
 
 /** `bun run runs pulse`. */
@@ -343,15 +572,19 @@ export async function watch(args: readonly string[]): Promise<void> {
     const away = values.here
       ? []
       : asked(["pulse", ...names, "--once", "--here", "--state", `.ana/pulse/${cursor}.json`]);
-    if (!values.here && hostsOf().length > 0) console.log("── here");
-    await look(values.here ? resolve(mainTree(runtimeProcess.cwd()), values.state) : values.state, names);
+    const here = await look(
+      values.here ? resolve(mainTree(runtimeProcess.cwd()), values.state) : values.state,
+      names,
+    );
+    if (here.length > 0) {
+      console.log([...(values.here || hostsOf().length === 0 ? [] : ["── here"]), ...here].join("\n"));
+    }
     for (const { host, lines, elapsedMs } of await away) {
-      console.log(`── ${host.name} (${(elapsedMs / 1000).toFixed(1)} s)`);
       if (lines === null) {
         console.error(`⚠ ${host.name}: pulse unavailable`);
         runtimeProcess.exitCode = 1;
-      } else {
-        console.log(lines.join("\n"));
+      } else if (lines.some((line) => line.trim() !== "")) {
+        console.log(`── ${host.name} (${(elapsedMs / 1000).toFixed(1)} s)\n${lines.join("\n")}`);
       }
     }
     if (values.once) break;
@@ -382,9 +615,9 @@ export async function runsStatus(args: readonly string[]): Promise<void> {
     }
     const log = logEvents(run.path);
     const kept = lastLaunch(run.path);
-    const ended = log.at(-1)?.kind === "campaign.ended" ? `ended ${word(log.at(-1)?.data.ending)}` : "";
+    const ended = log.at(-1)?.kind === ENDED ? `ended ${word(log.at(-1)?.data.ending)}` : "";
     const comparing = openComparisons(log);
-    const [steps, reads] = [count(log, "harness.promoted"), count(log, REPORTED)];
+    const [steps, reads] = [count(log, PROMOTED), count(log, REPORTED)];
     [promoted, compared] = [promoted + steps, compared + reads];
     const where = [
       basename(run.tree),
@@ -410,7 +643,7 @@ export async function runsStatus(args: readonly string[]): Promise<void> {
     .map(({ run, at }) => ({
       name: run.name,
       days: (now - at) / DAY_MS,
-      promoted: count(logEvents(run.path), "harness.promoted"),
+      promoted: count(logEvents(run.path), PROMOTED),
     }));
   for (const line of leftOut(quiet, archive.length, newest)) console.log(line);
   await away;

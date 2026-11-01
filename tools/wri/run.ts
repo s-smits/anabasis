@@ -1,7 +1,7 @@
 /**
  * The triggers of the lanes that read how a run was conducted rather than what it measured: the
  * moves the campaign command made against its table (lane 28), the Builder's conversation across
- * its compactions (lane 20), the exam a campaign drafted from its prompt (lane 8), the launches
+ * its compactions (lane 31), the exam a campaign drafted from its prompt (lane 8), the launches
  * that ran it (lane 32), and whether its log reads in order (lane 33). Lane 7's count of the
  * Referee's refused evidence sits here too, since `read.ts` stands near the size policy's ceiling.
  *
@@ -18,8 +18,10 @@ import { plural } from "#src/meta/text.ts";
 import type { Receipt } from "../runs/receipt.ts";
 import { fired, type Index, share, tally, text, type Trigger } from "./folds.ts";
 
-/** Lane 28: moves the Builder made where the table named another, endings the campaign went on
- *  from, and the operator's words with how many an event acted on. */
+/** Lane 28: moves the Builder made where the table named another, by what the table named as the
+ *  move's reason says it (`campaign-actions.ts`), endings the campaign went on from, and the
+ *  operator's words with how many an event acted on. On 1 November the ablation's displaced
+ *  starter comparisons read only as `compare 1` here, and lane 28 found them in the reasons. */
 function moveTriggers(log: Index): Trigger[] {
   const moves = log.of("campaign.move");
   const asked = moves.filter((data) => data.code === "asked");
@@ -36,7 +38,7 @@ function moveTriggers(log: Index): Trigger[] {
       ? [
           fired(
             "MOVES ASKED",
-            `${share(asked.length, moves.length)} moves the Builder asked for where the table named another: ${tally(countBy(asked, (data) => text(data.move)))}`,
+            `${share(asked.length, moves.length)} moves the Builder asked for where the table named another: ${tally(countBy(asked, (data) => `${text(data.move)} for ${text(data.why).split("where the table named ")[1] ?? "a move unnamed"}`))}`,
           ),
         ]
       : []),
@@ -52,7 +54,7 @@ function moveTriggers(log: Index): Trigger[] {
   ];
 }
 
-/** Lane 20: each Builder session's compactions beside its turns and its calls of `read_opening`. */
+/** Lane 31: each Builder session's compactions beside its turns and its calls of `read_opening`. */
 function conversationTriggers(log: Index): Trigger[] {
   const per = (kind: LogEvent["kind"]) => countBy(log.of(kind), (data) => text(data.session));
   const [compacted, turns] = [per("build.compacted"), per("build.turn")];

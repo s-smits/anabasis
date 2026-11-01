@@ -2,7 +2,7 @@
  * The climb, as one reading of a campaign's log: its epochs. An epoch runs from the opening, or a
  * promotion, to the next promotion or the log's end, under one reference harness. The climb the
  * system is for is a chain of epochs in which each promoted harness answers tasks the one before
- * it failed, so an epoch's row keeps apart what each side answered on the tasks held out in it:
+ * it failed, so an epoch's row keeps apart what each side answered on the tasks admitted in it:
  * the reference harness, as the A/A comparison and the other comparisons read it, and its starter
  * comparison's tally without the bill, which says whether the reference still beats the fixed lower
  * one. A row holds counts and nothing of a task.
@@ -63,7 +63,7 @@ export interface Epoch {
   readonly to: number | null;
   /** The harness promoted at its end, or null. */
   readonly promoted: string | null;
-  /** The task versions held out during the epoch. */
+  /** The task versions the gate admitted during the epoch, those later released to practice among them. */
   readonly tasks: readonly string[];
   /** Builder sessions that finished in the epoch, and how many changed the harness. */
   readonly sessions: number;
@@ -161,12 +161,14 @@ export function epochsOf(events: readonly LogEvent[]): Epoch[] {
     );
     const starterDigest = isString(starter) ? starter : null;
     const referenceDigest = reference === "starter" ? starterDigest : reference;
-    // The reference's solves on the epoch's held-out tasks, as valid or not, null where unjudged.
+    // The reference's comparison solves on the epoch's tasks, as valid or not, null where unjudged.
+    // A practice solve is none of it: on 1 November 6 of r2's 24 were, read as scored (WRI lane 33).
     const judged = solves.flatMap((solve) => {
       const condition = conditions.get(solve.condition);
       const verdict = passed(solve);
       return referenceDigest !== null &&
         within(solve.started) &&
+        solve.start.comparison !== undefined &&
         condition?.harness === referenceDigest &&
         held.has(condition.task) &&
         verdict !== null
@@ -288,7 +290,7 @@ export function epochLine(epoch: Epoch, called: Called = short): string {
   const rung = epoch.nth === 1 ? "as set-up (epoch 0)" : `as rung ${String(epoch.nth - 1)} of the climb`;
   const end = epoch.promoted === null ? "open" : `promoted ${called(epoch.promoted)} ${rung}`;
   const risk = epoch.falsePromotion;
-  return `epoch ${String(epoch.nth)}: reference ${reference}; ${String(epoch.tasks.length)} tasks held out; ${String(epoch.sessions)} sessions (${String(epoch.changed)} changed); comparisons ${readings}; ${share("reference", epoch.reference_share)} on them${starterOf(epoch)}; ${plural(risk.attempts, "promotion attempt")} under this reference, a false promotion among them estimated at ${percent(risk.union)}: ${sourceOf(risk)}; ${end}`;
+  return `epoch ${String(epoch.nth)}: reference ${reference}; ${String(epoch.tasks.length)} tasks admitted; ${String(epoch.sessions)} sessions (${String(epoch.changed)} changed); comparisons ${readings}; ${share("reference", epoch.reference_share)} in their comparisons${starterOf(epoch)}; ${plural(risk.attempts, "promotion attempt")} under this reference, a false promotion among them estimated at ${percent(risk.union)}: ${sourceOf(risk)}; ${end}`;
 }
 
 /** A chance in whole percent, or to a tenth under ten, where an attempt's rate of 1.8% read as 2%;

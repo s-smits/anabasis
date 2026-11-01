@@ -109,7 +109,7 @@ describe("the harnesses a campaign keeps", () => {
 });
 
 describe("a campaign its Builder leads", () => {
-  it("reads each checkpoint's parent as the session's checkpoint before it, or what it began from", async () => {
+  it("reads each checkpoint's parent as the session's checkpoint before it, or what it began from, and an open session by its last checkpoint", async () => {
     // A led conversation freezes with `build.checkpoint` alone: buffer-fresh-opus-v072's compared
     // harnesses all read "no record of its making" (the sweep of 27 October, lane 13).
     const led = join(root, "led");
@@ -130,6 +130,11 @@ describe("a campaign its Builder leads", () => {
     expect(made.get(child)?.made).toBe(`checkpoint of session b-1 from ${short(starter)}`);
     expect(made.get(later)?.made).toBe(`checkpoint of session b-1 from ${short(child)}`);
     expect(made.get(later)?.parent).toBe(child);
+    // An open session has handed nothing over: until 1 November the starter read "left it as it
+    // was" beside the three checkpoints its session had made (gate validity arm, F13).
+    expect(made.get(starter)?.sessions).toEqual([
+      `b-1: 0 practice solves, 0 counted fails, left ${short(later)} so far, open`,
+    ]);
   });
 
   it("preserves an imported harness's origin when a checkpoint reuses its digest", async () => {

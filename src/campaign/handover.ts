@@ -106,6 +106,9 @@ interface Compared {
   readonly modelTurns: number | null;
   readonly reading: string | null;
   readonly tally: Tally | null;
+  /** The tally of the scores without the bill, which the step is read on (`readsStep`); null in a
+   *  report from before 26 October, which holds none. */
+  readonly unbilled: Tally | null;
   /** Each harness by itself: the tasks with no, one, two... valid answers among its solves. */
   readonly valid: { readonly old: readonly number[]; readonly fresh: readonly number[] } | null;
   /** The points each measure gave the tallied tasks together (`pointsOf`); null where nothing was
@@ -269,6 +272,14 @@ function compared(events: readonly LogEvent[], id: string): Compared {
       report?.scored == null
         ? null
         : { wins: report.scored.wins, losses: report.scored.losses, ties: report.scored.ties },
+    unbilled:
+      report?.scored?.unbilled == null
+        ? null
+        : {
+            wins: report.scored.unbilled.filter((one) => one > 0).length,
+            losses: report.scored.unbilled.filter((one) => one < 0).length,
+            ties: report.scored.unbilled.filter((one) => one === 0).length,
+          },
     valid: report?.valid == null ? null : { old: report.valid.old, fresh: report.valid.fresh },
     points: report?.points ?? null,
     aside: report?.aside.length ?? 0,

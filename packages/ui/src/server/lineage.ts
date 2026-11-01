@@ -4,7 +4,8 @@
  *
  * A promotion is where an epoch begins (`epochsOf`): the harness promoted and the place of its
  * event. What the operator saw before it is `comparedAs` over the log up to that place, which is
- * what `tools/d2/promote.ts` showed and recorded. Its divider stands after the last comparison that
+ * what `tools/d2/promote.ts` showed and recorded; whether it is confirmed is its epoch's (`confirmed`,
+ * `src/campaign/climb.ts`), which the milestone counts (`AGENTS.md`, section 1). Its divider stands after the last comparison that
  * began before it, in the chart's order (`barsIn`), so that a comparison cut before its report
  * stands on the side of the divider it ran on. A harness version is one a Builder session left
  * (`campaignOf`), one its conversation froze for a comparison (`build.checkpoint`), or one the
@@ -40,7 +41,7 @@ export const promotionsIn = once((log): Promotion[] => {
   const bars = barsIn(log);
   return epochsIn(log)
     .slice(1)
-    .map(({ reference: harness, from: index }) => {
+    .map(({ reference: harness, from: index, starter_tally: againstStarter, confirmed }) => {
       // The reference before it and the operator's reason are fields of the event alone, which no
       // fold reads.
       const data = events[index]?.data ?? {};
@@ -50,6 +51,8 @@ export const promotionsIn = once((log): Promotion[] => {
         rests: comparedAs(events.slice(0, index), harness),
         despite: isString(data.despite) ? data.despite : null,
         toStarter: harness === starter,
+        againstStarter,
+        confirmed: confirmed === true,
         at: events[index]?.at ?? "",
         index,
         afterComparison: bars.findLast((bar) => bar.move < index)?.id ?? null,

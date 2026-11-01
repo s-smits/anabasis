@@ -7,7 +7,7 @@ import { asRecord, type JsonObject } from "../src/meta/json-shape.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { climbTable, safeguardTriggers } from "../tools/wri/climb.ts";
 import { indexOf, type TRIGGERS } from "../tools/wri/folds.ts";
-import { joinedTest, testedOf } from "../tools/wri/promotion.ts";
+import { joinedTest, testedOf, testSaid, untied } from "../tools/wri/promotion.ts";
 import { overview } from "../tools/wri/read.ts";
 import { conditionOf, roundSolves } from "./helpers/logged-round.ts";
 
@@ -49,6 +49,16 @@ function campaign() {
     return () => put("comparison.reported", { ...REPORT, ...terms, tasks: 4, ...reported });
   };
   return { log, put, compare };
+}
+
+/** A campaign whose held-out tasks are proposed and passed their gate. */
+function held() {
+  const made = campaign();
+  for (const version of HELD) {
+    made.put("task.proposed", { version });
+    made.put("task.gate", { version, gate: 1, outcome: "passed" });
+  }
+  return made;
 }
 
 const triggered = (log: readonly LogEvent[]) => {
@@ -162,6 +172,50 @@ describe("lane 27: a promotion and the climb after it", () => {
     expect(after).toContain(`control g-3: the promoted harness valid on ${expected}`);
   });
 
+  it("names a promotion no starter comparison confirmed, and leaves out one that a starter comparison did", () => {
+    // The gate ablation of 1 November: five promotions, a Builder's comparison in each starter
+    // comparison's place, and none confirmed.
+    const { log, put, compare } = held();
+    compare("g-1", "hbase", "hn", STEP)();
+    put("harness.promoted", { harness: "hn", from: "hbase", rests: [{ comparison: "g-1" }] });
+    compare("g-2", "hn", "hm", STEP)();
+    expect(triggered(log)("PROMOTION UNCONFIRMED")).toEqual([
+      "1 of 1 promotions: hn in epoch 2, open: no starter comparison reported",
+    ]);
+    // The starter loses every task to the promoted reference: six untied at level 0.1.
+    const lost = { wins: 0, losses: 6, ties: 0, p: 1, unbilled: [-1, -1, -1, -1, -1, -1] };
+    compare("g-3", "hn", "hbase", { ...STEP, scored: lost, reading: "no-step" })();
+    expect(triggered(log)("PROMOTION UNCONFIRMED")).toEqual([]);
+  });
+
+  it("says how many of a step's wins it could lose, and reads no comparison that did not step", () => {
+    // The gate ablation's g-3 of 1 November cleared at 6-0 with none to spare at 0.02; at 8-0 two
+    // wins can go before the seventh-largest sweep no longer clears.
+    const { log, compare } = held();
+    const step = (wins: number) => ({
+      ...STEP,
+      level: 0.02,
+      scored: { ...STEP.scored, unbilled: [...Array.from({ length: wins }, () => 1), 0, 0] },
+    });
+    compare("g-1", "hbase", "hn", { ...step(8), reading: "no-step" })();
+    expect(triggered(log)("STEP CARRIERS")).toEqual([]);
+    compare("g-2", "hbase", "hn", step(6))();
+    compare("g-3", "hbase", "hm", step(8))();
+    const [carriers = ""] = triggered(log)("STEP CARRIERS");
+    expect(carriers).toMatch(/g-2 won 6 .*6 untied, none to spare; g-3 won 8 .*8 untied, 2 to spare/);
+  });
+
+  it("names the compactions whose summary was billed nothing, by seat", () => {
+    const { log, put, compare } = held();
+    compare("g-1", "hbase", "hn", STEP)();
+    put("build.compacted", { session: "b-1", usages: [] });
+    put("build.compacted", { session: "b-1", usages: [{ cost: { total: 0.2 } }] });
+    put("exam.compacted", { session: "x-1", usages: [] });
+    expect(triggered(log)("UNBILLED COMPACTIONS")).toEqual([
+      "2 of 3 compactions billed nothing: build 1, exam 1",
+    ]);
+  });
+
   it("reads a promotion on the differences its step tested: the frontier and the retained tasks since 20 October, the frontier alone before", () => {
     const frontier = { differences: [4, 4], of: ["a", "b"] };
     const retained = { differences: [-4], of: ["c"] };
@@ -199,8 +253,14 @@ describe("lane 27 across campaigns", () => {
   it("sets each campaign in lane 27's columns, promoted or not", () => {
     const { log, put, compare } = campaign();
     put("campaign.opened", { budget: 300, terms: { level: "0.1", trigger: "0.25" } });
-    compare("g-1", "hbase", "hn", STEP)();
-    compare("g-2", "hbase", "hn", { ...STEP, valid: { old: [2, 2, 0], fresh: [0, 1, 3] } })();
+    // g-1 won on the objective alone and g-2 on validity; the reference was valid in every solve of
+    // no task in either, so all eight scored tasks left room.
+    compare("g-1", "hbase", "hn", { ...STEP, points: { validity: 0, objective: 1.2, bill: 0 } })();
+    compare("g-2", "hbase", "hn", {
+      ...STEP,
+      valid: { old: [2, 2, 0], fresh: [0, 1, 3] },
+      points: { validity: 2.4, objective: 0, bill: 0 },
+    })();
     put("harness.promoted", {
       harness: "hn",
       from: "hbase",
@@ -221,7 +281,10 @@ describe("lane 27 across campaigns", () => {
       4: "hn at 20:00Z",
       6: "g-1 4-0-0 p 0.063, 4 of 4, 1 of 4; g-2 4-0-0 p 0.063, 4 of 4, 1 of 4",
       7: "g-1 13%; g-2 25%",
+      10: "8 of 8 scored tasks",
+      11: "1 of 2, 0 confirmed",
     });
+    expect(cells[3]?.slice(10, 12)).toEqual(["-", "0 of 0, 0 confirmed"]);
     expect(cells[3]?.slice(1, 7)).toEqual(["building", "none", "default", "none yet", "-", "none reported"]);
   });
 
@@ -260,5 +323,27 @@ describe("lane 27 across campaigns", () => {
     ] as const) {
       expect(safeguardTriggers(indexOf(leaning(input)))).toEqual([...expected]);
     }
+  });
+});
+
+describe("a tally as its step is read", () => {
+  // g-3 of 1 November: 9 of 18 tied with the bill, 14 of 18 without it, which the step reads.
+  const scored = {
+    wins: 7,
+    losses: 2,
+    ties: 9,
+    p: 0.09,
+    unbilled: [0.4, 0.3, 0.2, -0.1, ...Array<number>(14).fill(0)],
+  };
+
+  it("counts the untied tasks without the bill where the report holds those scores", () => {
+    expect(untied(scored)).toBe(untied({ wins: 3, losses: 1, ties: 14 }));
+    expect(testSaid(scored)).toContain("without the bill 3-1-14");
+  });
+
+  it("reads a report from before the bill-free scores as it was tallied", () => {
+    const old = { wins: 7, losses: 2, ties: 9, p: 0.09 };
+    expect(untied(old)).toBe(untied({ wins: 7, losses: 2, ties: 9 }));
+    expect(testSaid(old)).toBe("7-2-9 p 0.090");
   });
 });

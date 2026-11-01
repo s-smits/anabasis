@@ -177,7 +177,7 @@ function actionTool(context: CampaignContext, bench: Bench, move: ActionMove, ru
         "Ask a separate Examiner to write tasks under the fixed exam. It returns at once and the Examiner writes beside you; the campaign's facts say what it has held out. A comparison is won on tasks the reference fails in some solve, or where the objective tells two valid answers apart.",
       release_practice: "Release the host's draw of public practice tasks into this workspace.",
       compare:
-        "Freeze harness/ and compare it with the current reference on fresh held-out solves. Where a comparison began and has not reported, it goes on under its original terms. A comparison that reads a step against the reference promotes the harness it froze.",
+        "Freeze harness/ and compare it with the current reference on fresh held-out solves. Where a comparison began and has not reported, it goes on under its original terms. Where the table names the starter comparison, this call runs that instead and harness/ is compared at the next one. A comparison that reads a step against the reference promotes the harness it froze.",
       promote:
         "Make the harness whose comparison read a step against the reference the campaign's reference, where the host has not already done so as the comparison reported. Nothing else is promoted, and this measures nothing.",
     }[move],
@@ -404,10 +404,11 @@ async function releaseOwed(context: CampaignContext, bench: Bench, session?: str
 /**
  * The two harnesses a `compare` reads, and what the Builder is told of the choice. A comparison
  * that began goes on; until 19 October so did the repeat of a reading under the trigger, of the
- * harness that reading froze. Otherwise the working copy is frozen and compared, unless it is
- * the reference harness, where the table's own comparison is made (the starter comparison, or the latest
- * harness on tasks written since), or one a comparison has read with nothing changed since, which
- * would be a second draw of one pair that no row of the table names.
+ * harness that reading froze. The table's starter comparison comes next, whatever harness/ holds.
+ * Otherwise the working copy is frozen and compared, unless it is the reference harness, where the
+ * table's own comparison is made (the latest harness on tasks written since), or one a comparison
+ * has read with nothing changed since, which would be a second draw of one pair that no row of the
+ * table names.
  */
 async function comparedOf(
   context: CampaignContext,
@@ -431,6 +432,15 @@ async function comparedOf(
           note: `harness/ is the reference harness, so the ${decided.fresh} harness was read against it.`,
         }
       : { refused: "harness/ is the reference harness: there is nothing to compare until it changes." };
+  }
+  // The table's starter comparison goes first, whatever harness/ holds: it is what confirms a
+  // promotion, and until 1 November a changed harness/ took its move, so 0 of 5 promotions in the
+  // gate ablation and none of 19 so displaced since 26 October were confirmed (WRI lanes 24, 28).
+  if (decided.move === "compare" && decided.fresh === "starter") {
+    return {
+      move: decided,
+      note: "The table's comparison of the starter ran first: compare reads harness/ next.",
+    };
   }
   // The latest harness, unchanged, where the table names it, is the table's own comparison: until
   // 28 October it was logged `asked`, as three of the seventeen `asked` comparisons of two runs were.
@@ -645,7 +655,7 @@ function namedLine(decided: Decided, size: string): string {
     return `compare goes on with comparison ${decided.id}, which began and has not reported.`;
   }
   return decided.fresh === "starter"
-    ? "While harness/ is the reference harness, compare reads the starter against it on the tasks held out since."
+    ? "compare reads the starter against the reference harness on the tasks held out since, before any change in harness/."
     : size;
 }
 

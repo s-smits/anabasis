@@ -57,8 +57,6 @@ export interface Tree {
   /** The points a report holds by measure, or undefined in a report from before the weights. */
   measures(value: JsonValue | undefined): Measures | undefined;
   billedBetween(events: readonly LogEvent[], from: number, to: number): number;
-  /** The event kinds that carry a `billed` field the tree sums. */
-  readonly billed: ReadonlySet<string>;
 }
 
 export interface Found {
@@ -113,7 +111,6 @@ export async function loadTree(path: string): Promise<Tree> {
         : Reflect.apply(compare.readsStepEitherWay, undefined, [differences, level, unbilled]) === true,
     measures: (value) => compare.measuresIn(value),
     billedBetween: (events, from, to) => trace.billedBetween(events, from, to),
-    billed: trace.BILLED,
   };
 }
 

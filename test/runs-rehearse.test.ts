@@ -19,6 +19,7 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
+import { hashJsonValue } from "../src/meta/stable-json.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
@@ -270,6 +271,30 @@ describe("a rehearsal's scripted Examiner", () => {
 });
 
 describe("scripted solves", () => {
+  it("answer a copy by what it asks where its source's id names another task in the seed's log", async () => {
+    const folder = campaignAt("copied", []);
+    writeFileSync(join(folder, SEED_FILE), "{}\n");
+    const { campaign, calls } = campaignOver(folder, { outcome: "pass" });
+    const asks = { family: "fixture", publicInput: { base: 7 }, hidden: null };
+    const answers = [
+      { taskId: hashJsonValue(asks), answer: { answer: "the copied task" }, refusedBy: null },
+      { taskId: "x-3-002", answer: { answer: "another task" }, refusedBy: null },
+    ];
+    const copy = { ...pack("x-11-002"), publicInput: { base: 7, rehearsal_copy: { of: "x-3-002", n: 1 } } };
+    const fresh = { dir: join(root, "fresh-copy"), digest: "f" };
+    cpSync(FIXTURE, fresh.dir, { recursive: true });
+    const strayed: string[] = [];
+    await scriptedSeats(
+      SCRIPT,
+      answers,
+      strayed,
+    )(campaign, { builder: undefined, reference: FIXTURE }).solve(copy, fresh, undefined);
+    expect(calls.at(-1)).toMatchObject({
+      arguments: { command: `printf %s '{"answer":"the copied task"}' > answer.json` },
+    });
+    expect(strayed).toEqual([]);
+  });
+
   it("are refused on a campaign that is no seed, whose next round would count their solves", () => {
     const { campaign } = campaignOver(campaignAt("real", []), { outcome: "pass" });
     expect(() =>

@@ -12,11 +12,13 @@
  * unmeasured rather than a measured zero.
  */
 import { pairsReported } from "#src/kernel/reports.ts";
+import { epochsOf as epochsRead } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";
 import { gateAnswers } from "#src/examiner/record.ts";
 import { differenceOf, flipP, informative, type Kept, type Paired } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { asRecord, isNumber } from "#src/meta/json-shape.ts";
+import { validityOf } from "#tools/d2/close.ts";
 import { type Compared, count, fired, type Index, indexOf, items, type Trigger, text } from "./folds.ts";
 import {
   epochsOf,
@@ -64,6 +66,8 @@ const COLUMNS = [
   "reference valid at the rests",
   "since",
   "comparisons after",
+  "room on validity",
+  "steps won by validity, confirmed",
   "spent so far",
   "last move ended",
 ] as const;
@@ -72,6 +76,16 @@ const COLUMNS = [
 function rowOf({ name, events }: Campaign): string[] {
   const log = indexOf(events);
   const [epoch] = epochsOf(events);
+  const { scored, room, onValidity, stepped } = validityOf(
+    log.compared.map(({ last }) => {
+      const points = asRecord(last.points);
+      return {
+        reading: text(last.reading),
+        valid: { old: items(asRecord(last.valid)?.old).map(count) },
+        points: isNumber(points?.validity) ? { validity: points.validity } : null,
+      };
+    }),
+  );
   const rests =
     epoch === undefined
       ? log.compared
@@ -107,6 +121,9 @@ function rowOf({ name, events }: Campaign): string[] {
       : after
           .map(({ session, last }) => `${session} ${testSaid(last.scored)} ${text(last.reading)}`)
           .join("; ") || "none",
+    // What the comparisons could win on validity, beside the hours (operator, 1 November).
+    scored === 0 ? "-" : `${String(room)} of ${String(scored)} scored tasks`,
+    `${String(onValidity)} of ${String(stepped)}, ${String(epochsRead(events).filter(({ confirmed }) => confirmed === true).length)} confirmed`,
     spentTo(log, 0, events.length),
     ended === "campaign.ended" ? "ended" : `${text(move?.move)} ${text(move?.session)}`.trim() || "opening",
   ];

@@ -22,7 +22,7 @@
 import { unadmitted } from "#src/kernel/acceptance.ts";
 import { type Condition, conditionsOf } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { unsolved as noneAnswered } from "#src/kernel/compare.ts";
+import { flipP, unsolved as noneAnswered } from "#src/kernel/compare.ts";
 import { lastReports, poolOf, pairsReported, referenceOf } from "#src/kernel/reports.ts";
 import { spendOf, type Traced, traced, tracesIn } from "#src/kernel/trace.ts";
 import { type Judged, refusedBy, solvesIn, verdictsOf } from "#src/kernel/solves.ts";
@@ -144,8 +144,8 @@ export const TRIGGERS = {
   "INSTRUMENT AUTHORED": 1,
   "PASSES UNREAD": 1,
   "REFUSALS BY CHECK": 1,
-  "VERIFIER TOOLS MOVED": 2,
-  "TOOL MISSING": 2,
+  "VERIFIER TOOLS MOVED": 1,
+  "TOOL MISSING": 30,
   "NO CHECKER READING": 3,
   "CHECKER READ WITH FAULTS": 3,
   "CONTROL COVERAGE": 3,
@@ -180,18 +180,20 @@ export const TRIGGERS = {
   "PRACTISED TASK MEASURED": 18,
   "SHELL COMMANDS": 18,
   "WIN AT A SMALL WALL SHARE": 19,
-  WINS: 19,
+  WINS: 20,
   "ANSWER FROM A PROGRAM": 19,
   "SCORED SET MOVED": 22,
   "NOTHING SCORED": 23,
   "CUT BY ITS CAP": 23,
   "SET SHORT": 23,
   "VALID BY HARNESS": 24,
+  "PROMOTION UNCONFIRMED": 24,
+  "STEP CARRIERS": 21,
   "FLIPS": 25,
   "REFERENCE AGAINST ITSELF": 25,
-  "HOST CODE MOVED": 21,
-  "STARTS OUT OF TURN": 21,
-  "SERVED ANOTHER MODEL": 21,
+  "HOST CODE MOVED": 32,
+  "STARTS OUT OF TURN": 29,
+  "SERVED ANOTHER MODEL": 30,
   "CHAIN": 26,
   "NO TASK HELD OUT": 26,
   "WALL SHARE": 29,
@@ -205,6 +207,7 @@ export const TRIGGERS = {
   "SESSION CRASHED": 30,
   "LONG SILENCES": 31,
   "SPEND LED BY A ROLE": 31,
+  "UNBILLED COMPACTIONS": 31,
   "REPLAY MOVED THE VERDICT": 6,
   "SET ASIDE AND UNSETTLED": 7,
   "READING MOVES WITH THE SET-ASIDE": 7,
@@ -220,7 +223,7 @@ export const TRIGGERS = {
   "MOVES ASKED": 28,
   "ENDED AND WENT ON": 28,
   "OPERATOR WORDS": 28,
-  "BUILDER COMPACTED": 20,
+  "BUILDER COMPACTED": 31,
   "EXAM DRAFTED": 8,
   "LAUNCHES": 32,
   "NO LAUNCH RECEIPT": 32,
@@ -231,6 +234,24 @@ export const TRIGGERS = {
 
 export const text = (value: JsonValue | undefined): string => (isString(value) ? value : "");
 export const count = (value: JsonValue | undefined): number => (isNumber(value) ? value : 0);
+/** A test's tally as its step is read: on its scores without the bill where the report holds them
+ *  (since 26 October), else as tallied. On 1 November lane 11 found the ties trigger silent on g-3,
+ *  9 of 18 tied with the bill and 14 of 18 without it. */
+export function tallyOf(tested: JsonValue | undefined) {
+  const record = asRecord(tested);
+  if (record === null) return null;
+  const unbilled = Array.isArray(record.unbilled) ? record.unbilled.filter(isNumber) : null;
+  if (unbilled === null) {
+    return {
+      wins: count(record.wins),
+      losses: count(record.losses),
+      ties: count(record.ties),
+      p: count(record.p),
+    };
+  }
+  const signed = (sign: number) => unbilled.filter((one) => Math.sign(one) === sign).length;
+  return { wins: signed(1), losses: signed(-1), ties: signed(0), p: flipP(unbilled) };
+}
 export const items = (value: JsonValue | undefined): readonly JsonValue[] =>
   Array.isArray(value) ? value : [];
 export const strings = (value: JsonValue | undefined): string[] => items(value).filter(isString);
@@ -551,7 +572,7 @@ export function instrumentTriggers(log: Index): Trigger[] {
 function tallyTriggers(compared: readonly Compared[]): Trigger[] {
   const decided = compared.flatMap(({ session, last, scoring }) => {
     const scored = asRecord(last.scored);
-    const [wins, losses, ties] = [count(scored?.wins), count(scored?.losses), count(scored?.ties)];
+    const { wins, losses, ties } = tallyOf(scored) ?? { wins: 0, losses: 0, ties: 0 };
     const tasks = wins + losses + ties;
     // The bound its solves were told, named beside "at its limits"; a log of 8 October told its
     // solves none.

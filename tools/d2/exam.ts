@@ -62,7 +62,7 @@ export function stagedExamOf(log: string): Staged | null {
 }
 
 /** The id of an example task, by its place in the draft. */
-const exampleId = (index: number): string => `ex-${String(index + 1).padStart(3, "0")}`;
+export const exampleId = (index: number): string => `ex-${String(index + 1).padStart(3, "0")}`;
 
 /**
  * Stage a draft under a campaign's folder, and return where. The folder is named by the draft's

@@ -204,12 +204,21 @@ function madeOf(events: readonly LogEvent[], digest: string, starter: string) {
   };
 }
 
-function measured(steps: readonly Handover[], digest: string) {
+/** An open session has handed nothing over yet, so what it left so far is its last snapshot: until
+ *  1 November an open led session that had made three read "left it as it was". */
+function measured(steps: readonly Handover[], digest: string, events: readonly LogEvent[]) {
   return {
     sessions: steps.flatMap((step) => {
       if (step.step !== "builder" || step.parent !== digest) return [];
+      const snapshot = events.findLast(
+        ({ kind, data }) => step.ended === null && kind === "build.checkpoint" && data.session === step.id,
+      )?.data.harness;
       const left =
-        step.changed && step.harness !== null ? `left ${short(step.harness)}` : "left it as it was";
+        step.changed && step.harness !== null
+          ? `left ${short(step.harness)}`
+          : isString(snapshot)
+            ? `left ${short(snapshot)} so far`
+            : "left it as it was";
       const end = step.ended === null && step.cut ? ", cut" : step.ended === null ? ", open" : "";
       return [
         `${step.id}: ${step.practiceSolves} practice solves, ${step.fails} counted fails, ${left}${end}`,
@@ -268,7 +277,7 @@ export async function versionsOf(keeping: Keeping): Promise<Version[]> {
         promoted: events.flatMap(({ at, kind, data }) =>
           kind === "harness.promoted" && data.harness === digest ? [at] : [],
         ),
-        ...measured(steps, digest),
+        ...measured(steps, digest, events),
         parts: kept ? await partsOf(dir) : null,
       };
     }),

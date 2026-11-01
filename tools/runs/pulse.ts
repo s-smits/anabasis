@@ -18,7 +18,8 @@
 import { comparisonFloor } from "#src/campaign/admission.ts";
 import { readsStepEitherWay, testOf } from "#src/kernel/compare.ts";
 import type { EventKind, LogEvent } from "#src/kernel/log.ts";
-import { billedAll, degradations, traceKind, tracesIn } from "#src/kernel/trace.ts";
+import { degradations, traceKind, tracesIn } from "#src/kernel/trace.ts";
+import { billedAll } from "#src/kernel/meter.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
 import {
   existsSync,

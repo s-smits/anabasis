@@ -15,7 +15,7 @@
  * (`practiceRan`); its comparisons are the bars it was the new harness of.
  */
 import { comparedAs } from "../../../../src/kernel/reports.ts";
-import { billedAll } from "../../../../src/kernel/trace.ts";
+import { billedAll } from "../../../../src/kernel/meter.ts";
 import { passed } from "../../../../src/kernel/solves.ts";
 import { isString } from "../../../../src/meta/json-shape.ts";
 import type { HarnessCard, Promotion, SpendPoint } from "../models.ts";

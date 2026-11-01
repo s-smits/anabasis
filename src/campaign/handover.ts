@@ -31,7 +31,8 @@
 import type { Measures, Tally } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { lastReports, latestBuilt, promoted } from "../kernel/reports.ts";
-import { billedAll, billedParts, ownedBy, traceKind } from "../kernel/trace.ts";
+import { ownedBy, traceKind } from "../kernel/trace.ts";
+import { billedAll, billedParts } from "../kernel/meter.ts";
 import { ended, passed, practiceRan, type Ran, rejectionAside, solvesIn } from "../kernel/solves.ts";
 import { heldAtGate, taskSets } from "../kernel/task.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";

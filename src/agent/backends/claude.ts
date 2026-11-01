@@ -32,7 +32,6 @@ import {
   type Query,
   query,
   type SDKAssistantMessage,
-  type SDKResultMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import {
   type Api,
@@ -69,7 +68,7 @@ import { asRecord, isString } from "../../meta/json-shape.ts";
 import { keyIfDefined } from "../../meta/optional-key.ts";
 import { dirname, join } from "../../meta/path.ts";
 import { runtimeProcess } from "../../meta/process.ts";
-import { type Ledger, ledgerOf } from "../../kernel/meter.ts";
+import { type BackendSpend, claudeSpend } from "../../kernel/meter.ts";
 import { errorMessage } from "../../meta/runtime-values.ts";
 
 const CLAUDE_PROVIDER = "claude";
@@ -186,16 +185,10 @@ const LONG_CONTEXT = new Set([
 /** The live queries of this process, by the caller's session id: two sessions that run at once need
  *  two ids, or the second one's turns go into the first one's query. */
 const sessions = new Map<string, Session>();
-/** What a query's `result` says it spent: Claude Code's own total and its ledger by served model. */
-interface ClaudeRead {
-  readonly reported: number;
-  readonly ledger: Ledger;
-}
-
 /** Each query's last `result`, by session id, until `claudeLedger` takes it: the one a turn read, or
  *  the one the host's close of a query no turn was reading brings. A turn that begins drops it,
  *  since it holds none of that turn. */
-const reads = new Map<string, Promise<ClaudeRead | null>>();
+const reads = new Map<string, Promise<BackendSpend | null>>();
 
 /**
  * The diagnostic a turn carries for each compaction Claude Code ran before it: `details.tokensBefore`
@@ -586,7 +579,7 @@ async function readMessages(
       limited = status === "rejected" && resetsAt !== undefined ? ` (limit reached|${String(resetsAt)})` : "";
     } else if (message.type === "result") {
       // The query stays open for a later prompt; what the result reports is the query's so far.
-      reads.set(key, Promise.resolve(readOf(session.provider, message)));
+      reads.set(key, Promise.resolve(claudeSpend(session.provider, message)));
       if (request.signal?.aborted === true) throw new Error("the Claude Code request was interrupted");
       const end = apiStop === null ? undefined : FINAL_STOPS.get(apiStop);
       if (message.subtype === "success" && !message.is_error && end !== undefined) return end;
@@ -707,41 +700,21 @@ function close(key: string, session: Session): void {
  * interrupts it: this waits on that close. Until 12 October the cost was read from the turns alone,
  * and on buffer 10.19 of 13.35 billed dollars had no figure of Claude Code's beside them.
  */
-export async function claudeLedger(key: string): Promise<ClaudeRead | null> {
+export async function claudeLedger(key: string): Promise<BackendSpend | null> {
   const read = (await reads.get(key)) ?? null;
   reads.delete(key);
   return read;
 }
 
-function readOf(provider: string, result: SDKResultMessage): ClaudeRead {
-  return {
-    reported: result.total_cost_usd,
-    ledger: ledgerOf(
-      Object.entries(result.modelUsage).map(([name, used]) => [
-        `${provider}/${used.canonicalModel ?? name}`,
-        {
-          input: used.inputTokens,
-          output: used.outputTokens,
-          cacheRead: used.cacheReadInputTokens,
-          cacheWrite: used.cacheCreationInputTokens,
-          cacheWrite1h: used.cacheCreationEphemeral1hInputTokens ?? 0,
-          totalTokens: 0,
-          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: used.costUSD },
-        },
-      ]),
-    ),
-  };
-}
-
 /** The query's next `result`, read, or null where the query ends or is aborted first. */
-async function resultAtClose(session: Session): Promise<ClaudeRead | null> {
+async function resultAtClose(session: Session): Promise<BackendSpend | null> {
   const aborted = new Promise<null>((resolve) => {
     session.abort.signal.addEventListener("abort", () => resolve(null), { once: true });
   });
   for (;;) {
     const next = await Promise.race([session.query.next(), aborted]).catch(() => null);
     if (next === null || next.done === true) return null;
-    if (next.value.type === "result") return readOf(session.provider, next.value);
+    if (next.value.type === "result") return claudeSpend(session.provider, next.value);
   }
 }
 

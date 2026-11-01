@@ -397,6 +397,7 @@ describe("the Claude backend", () => {
     expect(own.stopReason).toBe("stop");
     shutdown.abort();
     expect(await claudeLedger(options.sessionId)).toEqual({
+      byServed: true,
       reported: 0.75,
       ledger: {
         "claude/claude-haiku-4-5": {

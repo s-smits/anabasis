@@ -12,7 +12,7 @@ import {
   releaseOrder,
   stopRule as stopOf,
 } from "../src/kernel/reports.ts";
-import { billedAll, billedFor } from "../src/kernel/trace.ts";
+import { billedAll, billedFor } from "../src/kernel/meter.ts";
 import { taskSets } from "../src/kernel/task.ts";
 import { asRecord, isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";

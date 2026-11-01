@@ -516,18 +516,21 @@ async function look(state: string, names: readonly string[]): Promise<string[]> 
     run,
     open: writers(run, running).length > 0,
     before: memory.logs[run.path],
-    events: logEvents(run.path),
   }));
-  const chosen = all.filter(({ run, open, before, events }) =>
-    names.length > 0
-      ? names.some((name) => run.name.includes(name))
-      : open ||
-        before?.open === true ||
-        (before === undefined &&
-          run.seed !== true &&
-          Date.now() - statSync(run.path).mtimeMs < RECENT_MS &&
-          events.at(-1)?.kind !== ENDED),
-  );
+  // Only a log the look reports is read: until 2 November every look parsed every run's whole log,
+  // closed ones included, which was 0.55 s of a 2.5 s look on the Linux runner.
+  const chosen = all
+    .filter(({ run, open, before }) =>
+      names.length > 0
+        ? names.some((name) => run.name.includes(name))
+        : open ||
+          before?.open === true ||
+          (before === undefined &&
+            run.seed !== true &&
+            Date.now() - statSync(run.path).mtimeMs < RECENT_MS &&
+            logEvents(run.path).at(-1)?.kind !== ENDED),
+    )
+    .map((each) => ({ ...each, events: logEvents(each.run.path) }));
   const disk = statfsSync(".");
   const free = Math.round((disk.bavail * disk.bsize) / GIB);
   const gained = memory.freeGiB === null ? 0 : free - memory.freeGiB;

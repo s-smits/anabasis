@@ -155,20 +155,28 @@ function OutcomeSplit({
  *  rulings by kind and the reference against itself where it was read. */
 function Readings({ detail, reading }: { detail: ComparisonDetail; reading: CampaignReading }) {
   const { bar } = detail;
+  // What carried each task is read on the score with the bill, which the tally above leaves out.
+  const billed = bar.withBill === null ? "" : ", with the bill";
   const facts = [
     [
-      "Tally",
-      bar.tally === null
-        ? "none"
-        : `${String(bar.tally.wins)} won, ${String(bar.tally.losses)} lost, ${String(bar.tally.ties)} tied`,
+      bar.withBill === null ? "Tally" : "Tally without the bill, where the step is read",
+      bar.tally === null ? "none" : tallyWords(bar.tally),
     ],
+    ["Sign test", bar.p === null ? "not made" : `${pText(bar.p)} at level ${String(bar.level)}`],
+    ...(bar.withBill === null
+      ? []
+      : ([
+          [
+            "With the bill, which promotes nothing",
+            `${tallyWords(bar.withBill.tally)} · ${pText(bar.withBill.p)}`,
+          ],
+        ] as const)),
     ...(bar.carried === null
       ? []
       : ([
-          ["Won on", carriedText(bar.carried.won)],
-          ["Lost on", carriedText(bar.carried.lost)],
+          [`Won on${billed}`, carriedText(bar.carried.won)],
+          [`Lost on${billed}`, carriedText(bar.carried.lost)],
         ] as const)),
-    ["Sign test", bar.p === null ? "not made" : `${pText(bar.p)} at level ${String(bar.level)}`],
     [
       "Valid, reference",
       bar.valid === null
@@ -184,12 +192,9 @@ function Readings({ detail, reading }: { detail: ComparisonDetail; reading: Camp
     ...(bar.sets === null
       ? []
       : ([
+          ["Frontier", `${tallyWords(bar.sets.frontier.tally)} · ${pText(bar.sets.frontier.p)}`],
           [
-            "Frontier, where the step is read",
-            `${tallyWords(bar.sets.frontier.tally)} · ${pText(bar.sets.frontier.p)}`,
-          ],
-          [
-            "Retained, where a step may not lose more than it wins",
+            "Retained",
             bar.sets.retained === "unmeasured"
               ? "unmeasured: no retained task was tallied, which is not no loss"
               : tallyWords(bar.sets.retained),
@@ -198,12 +203,7 @@ function Readings({ detail, reading }: { detail: ComparisonDetail; reading: Camp
     ["Rulings", rulingsText(bar)],
     ...(bar.noise === null
       ? []
-      : ([
-          [
-            "Reference against itself",
-            `${String(bar.noise.tally.wins)} won, ${String(bar.noise.tally.losses)} lost · ${pText(bar.noise.p)}`,
-          ],
-        ] as const)),
+      : ([["Reference against itself", `${tallyWords(bar.noise.tally)} · ${pText(bar.noise.p)}`]] as const)),
   ] as const;
   const { terms } = detail;
   const termFacts = [

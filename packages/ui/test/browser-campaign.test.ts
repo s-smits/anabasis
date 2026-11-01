@@ -97,7 +97,7 @@ describe("the campaign's line and readouts", () => {
     // The campaign returned to the starter: the readout names it by the log's name for it.
     const reference = readout(page, "Reference harness");
     await expect(reference.value).toHaveText("Starter A");
-    await expect(reference.detail).toHaveText(/\b3\b.*promotions.*starter/u);
+    await expect(reference.detail).toHaveText(/\b3\b.*promotions, 0 confirmed against the starter.*starter/u);
     const last = readout(page, "Last reading");
     await expect(last.value).toHaveText("3–1–2");
     await expect(last.detail).toHaveText(/no-step.*g-9.*p 0\.31\d\b/u);
@@ -109,11 +109,14 @@ describe("the campaign's line and readouts", () => {
     // A flag carries the harness's letter alone, and its words and digest only on hover.
     await expect(marks.locator("text")).toContainText(["setting", "cut", "B", "D", "A"]);
     const titles = await marks.locator("title").allTextContents();
+    // Whether a promotion is confirmed is its starter comparison's reading without the bill.
     expect(titles).toContain(
-      `promoted D (${short(c)}), despite: the operator's reason, given with --despite`,
+      `promoted D (${short(c)}), despite: the operator's reason, given with --despite; not yet read against the starter`,
     );
     expect(titles).toContain("back to the starter");
-    expect(titles).toContain(`promoted B (${short(a)})`);
+    expect(titles).toContain(
+      `promoted B (${short(a)}); against the starter without the bill 1–1–0, not confirmed`,
+    );
     expect(titles).toContain("r-1 repeats b-1");
     expect(titles).toContain("r-3 repeats b-3");
     expect(titles.some((title) => /setting.*[a-f0-9]{8}/iu.test(title))).toBe(true);

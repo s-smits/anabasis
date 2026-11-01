@@ -24,7 +24,7 @@ import type {
 import { type Reading, Unanswerable } from "./context.ts";
 import { awaitingIn, exhaustedIn, type Log, once, proposalsIn, ranIn, retainedIn, setsIn } from "./folds.ts";
 import { campaignAt } from "./logs.ts";
-import { barsIn, outcomeOf, pairsIn, shareOf } from "./moves.ts";
+import { barsIn, keptOf, outcomeOf, pairsIn, shareOf } from "./moves.ts";
 import { examTier, solveRow } from "./trace.ts";
 
 /** When each task version was proposed. Derived: the place of its `task.proposed`, by version. */
@@ -72,10 +72,10 @@ function cellOf(
   const pair = pairsIn(log)
     .get(id)
     ?.find(({ task }) => task === version);
-  if (pair !== undefined) {
-    return { outcome: outcomeOf(pair), old: shareOf(pair.old), fresh: shareOf(pair.fresh) };
-  }
   const report = reported(log.events, id);
+  if (pair !== undefined) {
+    return { outcome: outcomeOf(pair, keptOf(report)), old: shareOf(pair.old), fresh: shareOf(pair.fresh) };
+  }
   if (!(report?.aside ?? []).includes(version)) {
     const leftOut = LEFT_OUT.find((list) => (report?.[list] ?? []).includes(version));
     return leftOut === undefined ? null : { leftOut };

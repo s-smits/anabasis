@@ -194,11 +194,15 @@ export interface ComparisonBar {
   readonly level: number;
   /** Its scored tasks, as its start fixed them. */
   readonly tasks: number;
+  /** The tally its step is read on (`keptOf`, `server/moves.ts`): without the bill, or as scored
+   *  in a report from before 26 October; and its test (`flipP`), null without one. */
   readonly tally: Tally | null;
   readonly reading: string | null;
-  /** The test of the tally (`flipP`), null without one. */
   readonly p: number | null;
-  /** Its scored tasks by outcome, computed from `pairsReported` and the report's `aside`, and the
+  /** The tally and test with the bill, where the report holds both and they read apart; the bill
+   *  weighs in this tally and promotes nothing (`readsStep`, `src/kernel/compare.ts`). */
+  readonly withBill: { readonly tally: Tally; readonly p: number } | null;
+  /** Its scored tasks by outcome on the same scores as `tally`, computed from `pairsReported` and the report's `aside`, and the
    *  rest of the tasks it fixed by why they were left out; the two sum to `tasks`. Null before it
    *  reports. */
   readonly outcomes: Outcomes | null;
@@ -206,13 +210,12 @@ export interface ComparisonBar {
   /** Each side's valid answers over its counted solves on the tallied tasks (the handover's `valid`
    *  read as a share). Null before it reports. */
   readonly valid: { readonly old: Share; readonly fresh: Share } | null;
-  /** The reference against itself beside the test, where the comparison solved four a side. */
+  /** The reference against itself beside the test, where the comparison solved two a side, read as
+   *  `tally` is. `unbilled` is each task's score without the bill, or its score where a report
+   *  written before 26 October holds none. */
   readonly noise: {
     readonly tally: Tally;
     readonly p: number;
-    readonly differences: readonly number[];
-    /** Each task's score without the bill, or its score where a report written before 26 October
-     *  holds none, which keeps that report's scored-only reading. */
     readonly unbilled: readonly number[];
   } | null;
   /** Its won and its lost tasks by the measure that carried each (`carriedBy`,
@@ -225,8 +228,8 @@ export interface ComparisonBar {
   readonly rulings: Rulings;
   /** The host's one-minute load when it began (`campaign.move`), null where not recorded. */
   readonly load: number | null;
-  /** The two sets fixed at comparison start and tallied separately in its report. The step test
-   *  reads their weighted margins together without the bill. Retained tasks are
+  /** The two sets fixed at comparison start and tallied separately in its report, read as `tally`
+   *  is. The step test reads their weighted margins together. Retained tasks are
    *  `unmeasured` where none was tallied; that establishes no absence of losses. Null where no report holds
    *  them: a comparison with no report yet, or one from before the sets were read apart. */
   readonly sets: {
@@ -254,6 +257,11 @@ export interface Promotion {
   readonly despite: string | null;
   /** It names the starter: the campaign returned to it. */
   readonly toStarter: boolean;
+  /** The promoted harness against the starter, without the bill and from its own side, in the last
+   *  starter comparison of its epoch; null before one reports. It is confirmed where that tally
+   *  reads a step at the comparison's level (`epochsOf`, `src/campaign/climb.ts`). */
+  readonly againstStarter: Tally | null;
+  readonly confirmed: boolean;
   readonly at: string;
   readonly index: number;
   /** The last comparison that began before it, where the divider stands; null before any. */

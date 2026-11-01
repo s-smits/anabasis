@@ -19,6 +19,7 @@ import {
   leftOutText,
   pText,
   type Slot,
+  tallyText,
 } from "../../views/campaign-data.ts";
 import { OUTCOMES } from "../../views/outcome.ts";
 import { ChartContainer, ChartTooltip } from "../ui/chart.tsx";
@@ -96,10 +97,18 @@ function rowOf(slot: Slot): Row {
   return { key: slot.key, ...row };
 }
 
+/** A promotion in words, as its flag's hover says it: what it promoted, the operator's reason
+ *  where the rule did not name it, and whether its starter comparison confirmed it. */
 function promotionWord(promotion: Promotion, names: Readonly<Record<string, string>>): string {
   if (promotion.toStarter) return "back to the starter";
   const named = `promoted ${digestText(promotion.harness, names)}`;
-  return promotion.despite === null ? named : `${named}, despite`;
+  const despite = promotion.despite === null ? "" : `, despite: ${promotion.despite}`;
+  const tally = promotion.againstStarter;
+  const starter =
+    tally === null
+      ? "; not yet read against the starter"
+      : `; against the starter without the bill ${tallyText(tally)}, ${promotion.confirmed ? "confirmed" : "not confirmed"}`;
+  return `${named}${despite}${starter}`;
 }
 
 /** Up to four sessions as one glyph each; more as one glyph and a count. */
@@ -169,7 +178,7 @@ function promotionFlags(
     const said = promotionWord(promotion, names);
     return (
       <g key={`promotion-${String(promotion.index)}`}>
-        <title>{promotion.despite === null ? said : `${said}: ${promotion.despite}`}</title>
+        <title>{said}</title>
         <line
           x1={at}
           x2={at}
@@ -356,8 +365,14 @@ function SlotTooltip({
         {tally === null
           ? "No tally"
           : `${String(tally.wins)} won, ${String(tally.losses)} lost, ${String(tally.ties)} tied`}
+        {bar.withBill === null ? "" : " without the bill"}
         {` · ${bar.reading ?? "no reading"} · level ${bar.level.toFixed(2)} · ${pText(bar.p)}`}
       </span>
+      {bar.withBill === null ? null : (
+        <span className="ana-num">
+          With the bill {tallyText(bar.withBill.tally)} · {pText(bar.withBill.p)}
+        </span>
+      )}
     </div>
   );
 }

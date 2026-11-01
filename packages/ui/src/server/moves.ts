@@ -19,13 +19,15 @@ import type { Share } from "../../../../src/campaign/climb.ts";
 import {
   carriedBy,
   differenceOf,
+  type Kept,
   type Measures,
   type Paired,
   pointsOf,
+  testOf,
 } from "../../../../src/kernel/compare.ts";
 import { pairsReported } from "../../../../src/kernel/reports.ts";
 import { isNumber, isString } from "../../../../src/meta/json-shape.ts";
-import type { ComparisonBar, LeftOut, Move, Outcome, Tally } from "../models.ts";
+import type { ComparisonBar, LeftOut, Move, Outcome } from "../models.ts";
 import { campaignIn, type Log, once, reportsIn } from "./folds.ts";
 import { rulingsOf } from "./withheld.ts";
 
@@ -126,9 +128,17 @@ export const starterIn = once((log): string | null => {
   return named ?? (isString(reportedAs) ? reportedAs : null);
 });
 
-/** What one scored task came to. A tie is split by the reference harness (the old side) alone. */
-export function outcomeOf(pair: Paired): Outcome {
-  const difference = differenceOf(pair);
+/** What a comparison's step was read on (`readsStep`, `compare.ts`): each task's score without the
+ *  bill, or its score as it stands in a report from before 26 October, which holds none. Until
+ *  1 November the page drew every bar and tally as scored, so a comparison that read no step on
+ *  3 won, 0 lost, 13 tied without the bill showed 13 won, 1 lost, 2 tied. */
+export const keptOf = (report: Pick<Report, "scored"> | null): Kept =>
+  report?.scored?.unbilled === undefined ? "scored" : "unbilled";
+
+/** What one scored task came to on the scores `kept`. A tie is split by the reference harness (the
+ *  old side) alone. */
+export function outcomeOf(pair: Paired, kept: Kept): Outcome {
+  const difference = differenceOf(pair, kept);
   if (difference !== 0) return difference > 0 ? "won" : "lost";
   const valid = pair.old.filter(Boolean).length;
   if (valid === pair.old.length) return "tiedEvery";
@@ -164,8 +174,24 @@ function validShare(counts: readonly number[]): Share {
   return { valid, solves: tasks * Math.max(0, counts.length - 1) };
 }
 
-/** The three counts of a tally that carries more. */
-const tallyOf = ({ wins, losses, ties }: Tally): Tally => ({ wins, losses, ties });
+/** The tally and the test of a set's scores as its step reads them (`keptOf`). */
+export function steppedOf(tested: {
+  readonly differences: readonly number[];
+  readonly unbilled?: readonly number[];
+}) {
+  const { wins, losses, ties, p } = testOf(tested.unbilled ?? tested.differences);
+  return { tally: { wins, losses, ties }, p };
+}
+
+/** A report's tally and test with the bill, where it holds the scores without the bill too and the
+ *  two read apart; null where they agree, which is the bar's own `tally` and `p`. */
+function withBillOf(report: Pick<Report, "scored"> | null): ComparisonBar["withBill"] {
+  if (report?.scored == null || keptOf(report) === "scored") return null;
+  const { wins, losses, ties, p } = report.scored;
+  const stepped = steppedOf(report.scored);
+  const same = stepped.p === p && stepped.tally.wins === wins && stepped.tally.losses === losses;
+  return same ? null : { tally: { wins, losses, ties }, p };
+}
 
 /** A comparison's kind and, for a repeat, the comparison it repeats: a control sets the starter,
  *  or a harness, against the reference; a repeat sets the same two harnesses as an earlier
@@ -219,9 +245,10 @@ export const barsIn = once((log): ComparisonBar[] => {
       setting: isString(setting) ? setting : null,
       level: move.level,
       tasks: move.tasks,
-      tally: move.tally,
+      tally: move.unbilled ?? move.tally,
       reading: move.reading,
-      p: report?.scored?.p ?? null,
+      p: report?.scored == null ? null : steppedOf(report.scored).p,
+      withBill: withBillOf(report),
       outcomes: split?.outcomes ?? null,
       leftOut: split?.leftOut ?? null,
       valid:
@@ -229,20 +256,15 @@ export const barsIn = once((log): ComparisonBar[] => {
       noise:
         report?.noise == null
           ? null
-          : {
-              tally: tallyOf(report.noise),
-              p: report.noise.p,
-              differences: report.noise.differences,
-              unbilled: report.noise.unbilled ?? report.noise.differences,
-            },
+          : { ...steppedOf(report.noise), unbilled: report.noise.unbilled ?? report.noise.differences },
       carried: report === null ? null : carriedIn(pairs.get(move.id) ?? []),
       rulings: move.rulings,
       sets:
         report?.frontier == null || report.retained === null
           ? null
           : {
-              frontier: { tally: tallyOf(report.frontier), p: report.frontier.p },
-              retained: report.retained === "unmeasured" ? report.retained : tallyOf(report.retained),
+              frontier: steppedOf(report.frontier),
+              retained: report.retained === "unmeasured" ? report.retained : steppedOf(report.retained).tally,
             },
       load: records.get(`comparison ${move.id}`)?.load ?? null,
       named: move.named,
@@ -259,7 +281,7 @@ export const barsIn = once((log): ComparisonBar[] => {
  *  a task can be both set aside and short of its solves, and the report names it in both lists. */
 function splitOf(
   pairs: readonly Paired[],
-  report: Pick<Report, "aside" | "disputed" | "short" | "withdrawn">,
+  report: Pick<Report, "scored" | "aside" | "disputed" | "short" | "withdrawn">,
 ) {
   const counted = new Set(pairs.map(({ task }) => task));
   const take = (tasks: readonly string[]) => {
@@ -279,7 +301,7 @@ function splitOf(
     tiedNone: 0,
     aside: take(report.aside),
   };
-  for (const pair of pairs) outcomes[outcomeOf(pair)] += 1;
+  for (const pair of pairs) outcomes[outcomeOf(pair, keptOf(report))] += 1;
   const disputed = take(report.disputed);
   const short = take(report.short);
   const leftOut: LeftOut = { disputed, short, withdrawn: take(report.withdrawn) };

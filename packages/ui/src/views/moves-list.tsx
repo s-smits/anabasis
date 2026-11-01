@@ -90,10 +90,13 @@ function handedOver(move: Move, reading: CampaignReading): string {
   }
   const sides = `${harnessLabel(reading, move.fresh)} against ${harnessLabel(reading, move.old)}`;
   const size = `${plural(move.tasks, "task")} × ${String(move.solves)}`;
+  // The tally the step is read on, as its bar holds it (`withBill`, `models.ts`).
+  const bar = reading.comparisons.find((each) => each.id === move.id);
+  const stepped = bar?.tally ?? move.tally;
   const tally =
-    move.tally === null
+    stepped === null
       ? "no task tallied"
-      : `${String(move.tally.wins)} won, ${String(move.tally.losses)} lost, ${String(move.tally.ties)} tied`;
+      : `${String(stepped.wins)} won, ${String(stepped.losses)} lost, ${String(stepped.ties)} tied${bar?.withBill == null ? "" : " without the bill"}`;
   const aside = move.aside > 0 ? ` · ${String(move.aside)} set aside` : "";
   return `${sides} · ${size} · ${tally}${aside}`;
 }

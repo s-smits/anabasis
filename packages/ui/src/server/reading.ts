@@ -49,7 +49,7 @@ import {
 import { campaignIn, epochsIn, type Log, once, openingIn, reportsIn, stopIn } from "./folds.ts";
 import { harnessesIn, promotionsIn, spendIn } from "./lineage.ts";
 import { type Found, type Process, sourceOf } from "./logs.ts";
-import { barsIn, movesIn, starterIn } from "./moves.ts";
+import { barsIn, movesIn, starterIn, steppedOf } from "./moves.ts";
 import { examTier } from "./trace.ts";
 import { unsettledCount } from "./withheld.ts";
 
@@ -109,10 +109,7 @@ const factsIn = once((log) => {
         : {
             id: last.session,
             reading: report.reading,
-            tally:
-              report.scored === null
-                ? null
-                : { wins: report.scored.wins, losses: report.scored.losses, ties: report.scored.ties },
+            tally: report.scored === null ? null : steppedOf(report.scored).tally,
           },
     billed: billedAll(events),
     budget: opening?.budget?.dollars ?? null,

@@ -85,6 +85,11 @@ bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/table.ts \
   `by 6 h`, `by 12 h` and `by 24 h` count the runs promoted by then over those that were or lasted
   that long, so a young run is no miss. Grouping by stack pull request was rejected: a stack's
   numbers mean nothing from one cycle to the next.
+- **Hours say how fast, not on what.** `groups` and `runs` also give the room on validity (scored
+  tasks the reference did not answer validly in every solve, of those scored, summed over the
+  reported comparisons), the steps won by validity (`validitySteps`) and the confirmed promotions.
+  A cycle whose room is near zero can promote only on the objective and the bill, whatever its
+  hours: buffer after v0.8.0 held 7 of 571, its steps 5 of 17 on validity (1 November).
 - **`--has`** and **`--holds`** keep the runs whose every launch ran with a mechanism (`ranWith`),
   which is how a change is read against the runs without it (`AGENTS.md`, section 9, "Evidence").
 - Hours are on the log's clock, the same on macOS and Linux. Active hours subtract the union of every

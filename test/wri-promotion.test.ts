@@ -199,8 +199,14 @@ describe("lane 27 across campaigns", () => {
   it("sets each campaign in lane 27's columns, promoted or not", () => {
     const { log, put, compare } = campaign();
     put("campaign.opened", { budget: 300, terms: { level: "0.1", trigger: "0.25" } });
-    compare("g-1", "hbase", "hn", STEP)();
-    compare("g-2", "hbase", "hn", { ...STEP, valid: { old: [2, 2, 0], fresh: [0, 1, 3] } })();
+    // g-1 won on the objective alone and g-2 on validity; the reference was valid in every solve of
+    // no task in either, so all eight scored tasks left room.
+    compare("g-1", "hbase", "hn", { ...STEP, points: { validity: 0, objective: 1.2, bill: 0 } })();
+    compare("g-2", "hbase", "hn", {
+      ...STEP,
+      valid: { old: [2, 2, 0], fresh: [0, 1, 3] },
+      points: { validity: 2.4, objective: 0, bill: 0 },
+    })();
     put("harness.promoted", {
       harness: "hn",
       from: "hbase",
@@ -221,7 +227,10 @@ describe("lane 27 across campaigns", () => {
       4: "hn at 20:00Z",
       6: "g-1 4-0-0 p 0.063, 4 of 4, 1 of 4; g-2 4-0-0 p 0.063, 4 of 4, 1 of 4",
       7: "g-1 13%; g-2 25%",
+      10: "8 of 8 scored tasks",
+      11: "1 of 2, 0 confirmed",
     });
+    expect(cells[3]?.slice(10, 12)).toEqual(["-", "0 of 0, 0 confirmed"]);
     expect(cells[3]?.slice(1, 7)).toEqual(["building", "none", "default", "none yet", "-", "none reported"]);
   });
 

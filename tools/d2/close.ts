@@ -217,16 +217,33 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
   ].join("\n\n");
 }
 
-/** The steps read that won any point by validity, and all the steps read with points. A step the
- *  objective carried alone answers no task the reference failed: of the 100 step readings with
- *  points on record since 16 October, 62 won no point by validity, 41 of buffer's 57 (counted over
- *  every log here and gathered, 31 October). Read by the climb line here and by the Examiner's
- *  `ambition.ts`. */
-export function validitySteps(steps: readonly Handover[]): readonly [number, number] {
-  const stepped = steps.flatMap((step) =>
-    step.step === "comparison" && step.reading === "step" && step.points !== null ? [step.points] : [],
+/** What a campaign's comparisons could win on validity: the scored tasks summed over them, those the
+ *  reference did not answer validly in every solve (its room), the steps read with points and those
+ *  that won any point by validity. A step the objective carried alone answers no task the reference
+ *  failed: of the 100 step readings with points on record since 16 October, 62 won no point by
+ *  validity, 41 of buffer's 57 (counted over every log here and gathered, 31 October), and on
+ *  1 November buffer's room stood at 7 of 571 scored tasks before v0.9.0. Read by the climb line
+ *  here, the Examiner's `ambition.ts`, promotion-tuner's `table.ts` and `wri.ts climb`, which hands
+ *  it the reports of a log too thin for `campaignOf`. Only a comparison carries the three fields. */
+export function validityOf(
+  steps: readonly {
+    readonly step?: string;
+    readonly reading?: string | null;
+    readonly valid?: { readonly old: readonly number[] } | null;
+    readonly points?: { readonly validity: number } | null;
+  }[],
+) {
+  const shares = steps.flatMap(({ valid }) => (valid == null ? [] : [valid.old]));
+  const scored = shares.reduce((sum, old) => sum + old.reduce((a, b) => a + b, 0), 0);
+  const stepped = steps.flatMap(({ reading, points }) =>
+    reading === "step" && points != null ? [points] : [],
   );
-  return [stepped.filter(({ validity }) => validity > 0).length, stepped.length];
+  return {
+    scored,
+    room: scored - shares.reduce((sum, old) => sum + (old.at(-1) ?? 0), 0),
+    onValidity: stepped.filter(({ validity }) => validity > 0).length,
+    stepped: stepped.length,
+  };
 }
 
 /** What each measured thing cost, from the log alone: the Examiner's as `spendOf` bills it, Referee aside. */
@@ -247,7 +264,7 @@ function economyLines(events: readonly LogEvent[], steps: readonly Handover[]): 
   const promotions = events.filter(({ kind }) => kind === "harness.promoted").length;
   const hours = (Date.parse(events.at(-1)?.at ?? "") - Date.parse(events[0]?.at ?? "")) / 3_600_000;
   const spent = billedAll(events);
-  const [onValidity, stepped] = validitySteps(steps);
+  const { onValidity, stepped } = validityOf(steps);
   const carried =
     stepped === 0
       ? ""

@@ -48,6 +48,15 @@
  * elapsed time: "by 12 h" counts the runs promoted within 12 hours of those that either did or lasted
  * that long, so a run still young is not counted as a miss.
  *
+ * What the hours leave out. A promotion's hours say how fast a run climbed, not what it climbed on,
+ * so three counts stand beside them (operator, 1 November, after this cycle's buffer runs matched
+ * the last cycle's median first promotion while the reference answered nearly every task). **Room
+ * on validity** is the scored tasks, summed over the reported comparisons, that the reference did
+ * not answer validly in every solve, as `ambition.ts` reads them: where it is near zero, a step can
+ * be won only on the objective and the bill. **Steps won by validity** counts them as the
+ * closing report counts it. **Confirmed** is the promotions a starter comparison of their epoch
+ * read above the starter (`confirmed`, `src/campaign/climb.ts`).
+ *
  * The first promotion over the Starter is set-up (epoch 0), as the closing report counts it
  * (`epochLine`); `promotions` counts it, and the climb is one fewer.
  *
@@ -59,6 +68,7 @@
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { epochsOf } from "#src/campaign/climb.ts";
 import { comparisonsOf } from "#src/campaign/ground.ts";
+import { campaignOf } from "#src/campaign/handover.ts";
 import { type EventKind, type LogEvent, read } from "#src/kernel/log.ts";
 import { billedBetween } from "#src/kernel/trace.ts";
 import { gitMaybe } from "#src/meta/git.ts";
@@ -66,6 +76,7 @@ import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-sha
 import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { median } from "#src/meta/tally.ts";
+import { validityOf } from "#tools/d2/close.ts";
 import { ranWith, receipts } from "#tools/runs/receipt.ts";
 import { overloadOf, waitedMs, waitsOf } from "#tools/wri/time.ts";
 import { campaignLogs, type Found, rehearsed } from "./tree.ts";
@@ -119,6 +130,9 @@ const ACTIVE = "active h";
 const UNLOADED = "unloaded h";
 const FIRST_PROMOTION = "1st promotion h";
 const AA = "A/A steps/capable";
+const ROOM = "room on validity";
+const ON_VALIDITY = "steps won by validity";
+const CONFIRMED = "confirmed";
 const GROUP_HEAD = [
   "group",
   "runs",
@@ -132,6 +146,9 @@ const GROUP_HEAD = [
   `${ACTIVE} a rung`,
   `${UNLOADED} a rung`,
   "$ a rung",
+  ROOM,
+  ON_VALIDITY,
+  CONFIRMED,
   AA,
   "settings",
 ];
@@ -150,7 +167,10 @@ const RUN_HEAD = [
   "1st reported h",
   "promotions",
   FIRST_PROMOTION,
+  CONFIRMED,
   "$",
+  ROOM,
+  ON_VALIDITY,
   AA,
   "ending",
 ];
@@ -237,6 +257,15 @@ interface Run {
   readonly firstReported: number | null;
   readonly promotions: readonly Promotion[];
   readonly dollars: number;
+  /** Scored tasks, summed over the reported comparisons, and those of them the reference did not
+   *  answer validly in every solve: the room a harness can win on validity alone. */
+  readonly scored: number;
+  readonly room: number;
+  /** The comparisons that read a step, and those whose step won points by validity (`validityOf`). */
+  readonly stepped: number;
+  readonly onValidity: number;
+  /** The promotions a starter comparison of their epoch confirmed (`confirmed`, `epochsOf`). */
+  readonly confirmed: number;
   /** The A/A comparisons able to read a step, and those that did (`falsePromotion`). */
   readonly controls: number;
   readonly aaSteps: number;
@@ -368,6 +397,8 @@ function runOf(
     firstReported: firstOf("comparison.reported"),
     promotions,
     dollars: billedBetween(events, 0),
+    ...validityOf(campaignOf(events).steps),
+    confirmed: epochs.filter((epoch) => epoch.confirmed === true).length,
     controls: noise?.controls ?? 0,
     aaSteps: noise?.errors ?? 0,
     ending: isString(ended) ? ended : "no ending",
@@ -381,6 +412,18 @@ function promotedBy(runs: readonly Run[], mark: number): string {
   const known = runs.filter((run) => run.elapsed >= mark || by(run));
   return known.length === 0 ? MISSING : `${String(known.filter(by).length)}/${String(known.length)}`;
 }
+
+const sumOf = (runs: readonly Run[], key: "scored" | "room" | "stepped" | "onValidity" | "confirmed") =>
+  runs.reduce((sum, run) => sum + run[key], 0);
+/** The room on validity of a list of runs, as tasks and a share of the scored ones. */
+function roomOf(runs: readonly Run[]): string {
+  const [room, scored] = [sumOf(runs, "room"), sumOf(runs, "scored")];
+  return scored === 0
+    ? MISSING
+    : `${String(room)}/${String(scored)} (${String(Math.round((100 * room) / scored))}%)`;
+}
+const onValidityOf = (runs: readonly Run[]) =>
+  `${String(sumOf(runs, "onValidity"))}/${String(sumOf(runs, "stepped"))}`;
 
 const aaOf = (runs: readonly Run[]) =>
   `${String(runs.reduce((sum, run) => sum + run.aaSteps, 0))}/${String(runs.reduce((sum, run) => sum + run.controls, 0))}`;
@@ -408,6 +451,9 @@ function groupRows(runs: readonly Run[], by: readonly By[]): string[][] {
       tenths(median(rungs.map((rung) => rung.epochActive))),
       tenths(median(rungs.map((rung) => rung.epochUnloaded))),
       money(median(rungs.map((rung) => rung.dollars))),
+      roomOf(list),
+      onValidityOf(list),
+      String(sumOf(list, "confirmed")),
       aaOf(list),
       settings === 1 ? "1" : `${String(settings)} POOLED`,
     ];
@@ -430,7 +476,10 @@ const runRows = (runs: readonly Run[]) =>
     tenths(run.firstReported),
     String(run.promotions.length),
     tenths(run.promotions[0]?.elapsed),
+    String(run.confirmed),
     money(run.dollars),
+    roomOf([run]),
+    onValidityOf([run]),
     aaOf([run]),
     run.live ? "live" : run.ending,
   ]);

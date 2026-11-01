@@ -244,8 +244,9 @@ and runs no solve.
 
 To read this cycle's runs against the last cycle's, or a live run against the finished ones, use
 promotion-tuner's `scripts/table.ts`: `--rows recent` for the live runs beside the latest that
-promoted, `--rows groups` for time to the first promotion and hours and dollars a rung by release,
-pack and setting. Supply binds before a comparison can say anything; economy reports and refuses
+promoted, `--rows groups` for time to the first promotion, hours and dollars a rung, room on
+validity, steps won by validity and confirmed promotions by release, pack and setting. Read the
+room first: the hours of a cycle with none say nothing of ability. Supply binds before a comparison can say anything; economy reports and refuses
 nothing.
 
 A different level, target or number of solves a side changes what the instrument can show. Name that

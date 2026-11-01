@@ -697,8 +697,9 @@ function pairs(args: CommandArgs, specs: readonly string[]): number {
 }
 
 /** What the Examiner session of `command` would be told, composed by `tree`'s own code: the session
- *  stands in for `examine`, prints its mode, and exits before any turn, task admission or event. A task admission is
- *  composed as `try_task` whatever the seed's host may seat; the engines in its shell are left out. */
+ *  stands in for `examine`, prints its mode, and exits before any turn, gate or event. The engines
+ *  in its shell are left out. Until 1 November it was composed as `try_task`; a tree from before
+ *  then composes `propose_tasks` here, as it did where no room solve was seated. */
 async function prompt(args: CommandArgs, command: readonly string[]): Promise<number> {
   const tree = args.required("tree");
   const name = args.required("name");
@@ -716,12 +717,7 @@ async function prompt(args: CommandArgs, command: readonly string[]): Promise<nu
   const { writing } = (await import(join(tree, "src/examiner/write.ts"))) as { writing: typeof Writing };
   runtimeProcess.chdir(tree);
   await examineCommand([...flags, "--name", name], (request, wall) => {
-    const roomSolves = () => Promise.reject(new Error("a composed prompt seats no task admission"));
-    const mode = writing(
-      { ...request, probe: roomSolves },
-      undefined,
-      wall?.reference === undefined ? "unseen" : "in-home",
-    );
+    const mode = writing(request, undefined, wall?.reference === undefined ? "unseen" : "in-home");
     console.log(`=== SYSTEM\n${mode.system}\n\n=== OPENING\n${mode.opening}`);
     for (const tool of mode.tools) console.log(`\n=== TOOL ${tool.name}\n${tool.description}`);
     console.log(`\n=== NUDGE ${mode.nudge}\n=== FINISH ${mode.finish}\n=== DECLINED ${mode.declined}`);

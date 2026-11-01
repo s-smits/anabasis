@@ -26,9 +26,8 @@
  * its checks run, since a v1 Builder installed its own tools beside them, so a program no check
  * names stays off the path: the Examiner computes with the instruments, and is never given a
  * solver. The tree itself is open to read, since an engine runs from it, so such a program is off
- * the path and not out of reach. Its tasks still enter through the task admission alone (`propose_tasks`, or
- * `try_task` where the reference harness solves a draft task), and its answers are ruled on by
- * `try_answer` alone.
+ * the path and not out of reach. Its tasks still enter through the gate alone (`propose_tasks`),
+ * and its answers are ruled on by `try_answer` alone.
  */
 import type { SeatTool } from "../agent/session.ts";
 import { copyHarness } from "../builder/kept.ts";

@@ -12,7 +12,7 @@
  * - **The reserve, beside the solves in flight.** A solve waits while others fly and the budget
  *   holds no reserve for it (`affords`); until 14 October each kind of solve held its own.
  * - **The solve slots, shared by every seat.** The same in-flight count holds comparison workers,
- *   practice and room solves to the concurrency the condition records. On 26 October,
+ *   practice and, until 1 November, the gate's room solves to the concurrency the condition records. On 26 October,
  *   buffer-fresh-opus-v072 showed 13 overlapping room solves at a recorded concurrency of 4:
  *   each draft and its remaining room solves could start together, outside the comparison's workers.
  * - **A provider's named reset.** A usage limit that names when it lifts is slept out, not a crash:

@@ -169,7 +169,7 @@ const UNITS = {
   b: sha256("units harness b"),
 };
 const CAP = { dollars: 12, reserve: 0.5 };
-/** The held-out tasks the reference's room solves answered at the gate, as `try_task` records them
+/** The held-out tasks the reference's room solves answered at the gate, as `try_task` recorded them until 1 November
  *  (`reference`, `task.gate`), as an Examiner's held task carries one. In the comparisons only
  *  harnesses other than the campaign's last reference, the starter, answer them, and since
  *  31 October a candidate's valid answer keeps no task out of the wait for a person's label

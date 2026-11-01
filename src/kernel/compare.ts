@@ -366,7 +366,7 @@ export function measuresIn(value: unknown): Measures | undefined {
 
 /**
  * Whether a task tells something of the harness on `side` (the overhaul plan's one definition of
- * informative, section 4b, the one `try_task` admits a draft by, and whose objective half the
+ * informative, section 4b, the one `try_task` admitted a draft by until 1 November, and whose objective half the
  * exhausted fold reads, `hasObjectiveGap`): valid on some of its solves and not all; valid on all
  * where a better answer is on record (`hasObjectiveGap`); or valid on none where the task is among
  * `feasible`, the versions a valid answer is on record for (`poolOf`, `reports.ts`): another

@@ -131,7 +131,7 @@ interface TaskRecord {
    *  wait for a person read only this evidence. */
   referenceHasValidAnswer: boolean;
   /** A solve's valid answer on record, or `task.feasible` records a passing author answer, or its
-   *  task admission records that a reference solve under `try_task` gave a valid answer, which reveals no answer. */
+   *  an earlier log's gate records that a reference solve under `try_task` gave a valid answer, which reveals no answer. */
   knownValidAnswer: boolean;
   /** The best measure by the objective of an author's answer on record (`task.feasible`), or null
    *  where none carries one (`informative`, `compare.ts`; 19 October). */
@@ -593,7 +593,7 @@ function tallyReports(
  *
  * **Known valid answers** are recorded for task versions: a solve's, under any harness
  * and at any limits, an author's answer the host saw pass on the task under its own id
- * (`task.feasible`), or a reference solve's under `try_task`, which task admission counts. It is the one
+ * (`task.feasible`), or a reference solve's under `try_task` in an earlier log, which its gate counted. It is the one
  * fact an author may hear beside a task's outcome that names no side: a task the reference
  * answers in no solve is then told apart from one nobody has answered. **Bests** are the best
  * measure by the objective an author's answer on record took of each, where its `task.feasible`

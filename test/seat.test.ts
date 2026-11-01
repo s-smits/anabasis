@@ -130,15 +130,10 @@ describe("a seat's session", () => {
     }
   });
 
-  it("settles its seat's work before the model's process is closed, and removes the scratch home it made", async () => {
-    let open: boolean[] = [];
-    const s = seated([look, fauxAssistantMessage("Done.")], {
-      settle: async () => {
-        open = s.shutdowns.map((signal) => !signal.aborted);
-      },
-    });
+  it("closes the model's process at the session's end, and removes the scratch home it made", async () => {
+    const s = seated([look, fauxAssistantMessage("Done.")]);
     await sit(s.seat);
-    expect(open).toEqual([true]);
+    expect(s.shutdowns.length).toBeGreaterThan(0);
     expect(s.shutdowns.every((signal) => signal.aborted)).toBe(true);
     expect(s.homes.map(existsSync)).toEqual([false]);
 

@@ -110,8 +110,6 @@ export interface Seat {
   readonly onTurn?: (message: AssistantMessage) => void;
   /** Each tool call as it starts and as it ends. */
   readonly onTool?: (phase: "start" | "end", callId: string, tool: string) => void;
-  /** Awaited once the session's last round is over, before its signal closes the model's process. */
-  readonly settle?: () => Promise<void>;
   /** What ends the session from outside: its deadline, a kill, a bound. */
   readonly stops: readonly (AbortSignal | undefined)[];
 }
@@ -310,14 +308,10 @@ export async function sit(seat: Seat): Promise<Sat> {
   } catch (error) {
     frame.fail(error);
   } finally {
-    try {
-      await seat.settle?.();
-    } finally {
-      done.abort();
-      await harness?.close(BACKGROUND_CONTEXT);
-      shutdown.removeEventListener("abort", wakeOnStop);
-      if (seat.home === undefined) rmSync(home, { recursive: true, force: true });
-    }
+    done.abort();
+    await harness?.close(BACKGROUND_CONTEXT);
+    shutdown.removeEventListener("abort", wakeOnStop);
+    if (seat.home === undefined) rmSync(home, { recursive: true, force: true });
   }
   const cut = stops.some((stop) => stop.aborted);
   const last = seat.turns.at(-1);
@@ -480,24 +474,17 @@ function toolHooks(seat: Seat, sink: ReturnType<typeof traceSink> | undefined) {
 }
 
 /** A seat's own deadline, one timer that pauses while the host works (`within`): the Builder's while a
- *  campaign action runs, the Examiner's while it awaits task admission. Overlapping waits share one
- *  interval; the last to end arms the remaining allowance, unless the owner has closed it. Through
- *  that interval an optional `look` runs at its start and every `every` milliseconds: with the
- *  Examiner's clock paused, a budget a peer spent would otherwise wait for the gate's solves to end.
- *  Until 28 October the Builder and the Examiner each kept a copy, and the Builder's neither
- *  nested nor named its cancellation. */
-export function sessionClock(
-  began: number,
-  seconds: number,
-  look?: { readonly every: number; readonly run: () => void },
-) {
+ *  campaign action runs. Overlapping waits share one interval; the last to end arms the remaining
+ *  allowance, unless the owner has closed it. Until 28 October the Builder and the Examiner each
+ *  kept a copy, and the Builder's neither nested nor named its cancellation; until 1 November the
+ *  Examiner's paused while it awaited its gate's room solves. */
+export function sessionClock(began: number, seconds: number) {
   const deadline = new AbortController();
   let aside = 0;
   let since = 0;
   let depth = 0;
   let closed = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let looking: ReturnType<typeof setInterval> | undefined;
   const hostMilliseconds = () => aside + (depth === 0 ? 0 : performance.now() - since);
   const ownSeconds = () => (performance.now() - began - hostMilliseconds()) / 1000;
   const arm = () => {
@@ -513,16 +500,11 @@ export function sessionClock(
     began,
     signal: deadline.signal,
     seconds: ownSeconds,
-    hostSeconds: () => hostMilliseconds() / 1000,
     within: async <T>(action: () => Promise<T>): Promise<T> => {
       if (depth === 0) {
         if (ownSeconds() >= seconds) deadline.abort(new Cancellation("session-wall"));
         clearTimeout(timer);
         since = performance.now();
-        if (look !== undefined) {
-          look.run();
-          looking = setInterval(look.run, look.every);
-        }
       }
       depth += 1;
       try {
@@ -530,7 +512,6 @@ export function sessionClock(
       } finally {
         depth -= 1;
         if (depth === 0) {
-          clearInterval(looking);
           aside += performance.now() - since;
           arm();
         }

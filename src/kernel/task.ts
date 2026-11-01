@@ -1,11 +1,11 @@
 /**
- * Examiner task admission checks a package's shape, then runs room solves under the reference harness.
+ * The Examiner's gate checks a task package's shape (`src/examiner/write.ts`).
  *
  * The id, the family and the inputs are what the solver reads; the rule ids are the contract rules
  * the check enforces, which the shape check holds it to. The check is a program the solver never sees,
  * with hidden values only the check's own runs receive.
  *
- * A draft is held out when its shape check passes and its room solves leave room (`src/examiner/write.ts`).
+ * A draft is held out when its shape check passes; until 1 November its room solves had to leave room too.
  * Every comparison may score it (`compare.ts`). It leaves that set three ways. It is
  * released to a Builder as practice, and a practice task is never scored. It is disputed when a
  * check is found at fault on an answer to it, from either set, and is then neither scored nor

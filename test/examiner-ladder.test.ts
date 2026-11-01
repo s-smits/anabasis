@@ -34,18 +34,15 @@ describe("the Examiner's ladder", () => {
   });
 
   it("is shown to a writing session and to a drafting one", () => {
-    expect(systemPrompt(3, "in-home")).toContain(LADDER);
-    expect(systemPrompt(undefined, "unseen")).toContain(LADDER);
-    const session = drafting(
-      {
-        limits: { wallSeconds: 60, turns: 1, puts: 1 },
-        id: "d-1",
-        log: "/nowhere/log.jsonl",
-        prompt: "a domain",
-        reading: async () => ({ faults: [], notes: [] }),
-      },
-      new AbortController().signal,
-    );
+    expect(systemPrompt("in-home")).toContain(LADDER);
+    expect(systemPrompt("unseen")).toContain(LADDER);
+    const session = drafting({
+      limits: { wallSeconds: 60, turns: 1, puts: 1 },
+      id: "d-1",
+      log: "/nowhere/log.jsonl",
+      prompt: "a domain",
+      reading: async () => ({ faults: [], notes: [] }),
+    });
     expect(session.system).toContain(LADDER);
   });
 });

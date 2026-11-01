@@ -34,12 +34,13 @@ its checks is admitted, and reports a step without promoting it.
 
 Launching, continuing, pausing and stopping go through `bun run runs` (the skill `run-management`),
 and each run keeps a receipt beside the log, `launch-run-<n>.json` (`tools/runs/receipt.ts`), which
-holds the commit the log does not. Every practice, comparison and room solve enters the solve queue:
+holds the commit the log does not. Every practice and comparison solve enters the solve queue:
 it starts once the one-minute load is at or under the cores, or after half an hour
 (`campaign.waited`, `tools/d2/host.ts`; `--loaded` skips the wait), and waits off the record while
 the budget holds no reserve for it beside the solves in flight (`affords`). A cancelled wait starts
-no solve: a comparison so cancelled ends killed, a practice solve ends its Builder session, and a
-room solve leaves its draft refused unmeasured.
+no solve: a comparison so cancelled ends killed, and a practice solve ends its Builder session.
+Until 1 November the gate's room solves queued too, and a cancelled one left its draft refused
+unmeasured.
 
 **It opens over a stored pack, or from a prompt** (`--prompt "<text>"` or `--prompt-file <path>`,
 with `--solver`), whose first move is the draft of row 0. A draft stands once the host's reading,

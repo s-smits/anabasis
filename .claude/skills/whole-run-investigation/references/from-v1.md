@@ -71,7 +71,7 @@ whose author is not the Builder.
 | 14. Finding routing and recurrence | 30. Rulings, labels and feedback | Referee rulings, blind labels and what each seat received |
 | 19. Semantic repair closure | 6. Checker identity and repair closure | Separate campaigns and the reading from `repaired.ts` |
 | 20. Task movement and attribution | 13. Harness delta | Kept harness states and the Builder's note |
-| 27. Task-admission cost and confidence | 9. Supply and task admission | Package refusals and `try_task` admission |
+| 27. Task-admission cost and confidence | 9. Supply and task admission | Package refusals, and `try_task` admission in logs before 1 November |
 | 33. Reference provenance and author's answer strength | 8. Tasks no harness answers | Recorded valid answers, including `task.feasible`, and infeasibility labels |
 
 ## Merged (5)

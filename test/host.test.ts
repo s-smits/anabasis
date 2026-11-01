@@ -8,7 +8,6 @@ import { afterAll, describe, expect, it, spyOn } from "bun:test";
 import { resetOf } from "../src/agent/backends/claude.ts";
 import { crashedRun } from "../src/campaign/ground.ts";
 import { affords, flying } from "../src/campaign/opening.ts";
-import { measured } from "../src/examiner/write.ts";
 import { append, type LogEvent, read } from "../src/kernel/log.ts";
 import type { TaskPackage } from "../src/kernel/task.ts";
 import { mkdtempSync } from "../src/meta/filesystem.ts";
@@ -68,7 +67,7 @@ function gate(log: string, host: Host, loaded = false, concurrency = 4) {
 }
 
 describe("shared solve slots", () => {
-  it("holds admission probes and comparison solves within the condition's shared concurrency", async () => {
+  it("holds the solves of two seatings within the condition's shared concurrency", async () => {
     const s = examinerSeat("write", []);
     const log = s.log;
     const release = Promise.withResolvers<void>();
@@ -103,23 +102,11 @@ describe("shared solve slots", () => {
     const campaign = { limits: { concurrency: 4 } } as Campaign;
     const given = { builder: undefined, reference: HARNESS.dir };
     const comparison = held(campaign, given);
-    const admission = held(campaign, given);
+    const other = held(campaign, given);
     const work = Promise.all([
       comparison.solve(TASK, HARNESS, undefined, "g-1"),
       ...Array.from({ length: 7 }, (_, index) =>
-        measured(
-          {
-            log,
-            id: "x-1",
-            contract: s.request.contract,
-            planted: new Set<string>(),
-            probe: async (task, session, kill) =>
-              (await admission.solve(task, HARNESS, kill, session)).ending,
-          },
-          s.request.pack({ ...EXAMPLE, taskId: `draft-${String(index)}` }),
-          new AbortController().signal,
-          async () => null,
-        ),
+        other.solve({ ...TASK, taskId: `t-${String(index)}` }, HARNESS, undefined, "x-1"),
       ),
     ]);
     await ready.promise;
@@ -129,7 +116,7 @@ describe("shared solve slots", () => {
       release.resolve();
       await work;
     }
-    expect(starts).toBe(22);
+    expect(starts).toBe(8);
     expect(peak).toBe(4);
     expect(running).toBe(0);
   });
@@ -228,64 +215,6 @@ describe("load and reserve admission", () => {
     expect(held.calls).toEqual([TASK.taskId]);
     expect(host.slept).toHaveLength(3);
     expect(waits(log)).toEqual([]);
-  });
-});
-
-describe("a room solve beside a short reserve", () => {
-  /** A draft's task admission on a campaign of `dollars` left at a $0.40 reserve, whose reference's
-   *  solves each pass, measured while `flown` comparison solves are in flight until the host's first
-   *  sleep. */
-  const admitted = async (dollars: number, flown: number) => {
-    const s = examinerSeat("write", []);
-    append(s.log, "campaign.opened", { budget: { dollars, reserve: 0.4 } });
-    const release = Promise.withResolvers<void>();
-    const host = hostOf(
-      () => 0,
-      8,
-      () => release.resolve(),
-    );
-    const held = gated(
-      {
-        loaded: true,
-        host,
-        seated: () => ({
-          builder: null,
-          setting: "s",
-          solve: async (_task, _harness, _kill, comparison) => {
-            if (comparison === "g-1") await release.promise;
-            return { solve: "s-1", ending: { outcome: "pass" } };
-          },
-        }),
-      },
-      s.log,
-    );
-    // SAFETY: the scripted seat reads no campaign fields; the host reads only its solve limits.
-    const seats = held({ limits: { concurrency: 4 } } as Campaign, { builder: undefined, reference: "" });
-    const comparison = Array.from({ length: flown }, () => seats.solve(TASK, HARNESS, undefined, "g-1"));
-    const draft = await measured(
-      {
-        log: s.log,
-        id: "x-1",
-        contract: s.request.contract,
-        planted: new Set<string>(),
-        probe: async (task, session, kill) => (await seats.solve(task, HARNESS, kill, session)).ending,
-      },
-      s.request.pack(EXAMPLE),
-      new AbortController().signal,
-      async () => null,
-    );
-    release.resolve();
-    await Promise.all(comparison);
-    return draft.reason;
-  };
-
-  it("waits in the solve queue while others are in flight, as a comparison's solve does", async () => {
-    // Until 31 October the draft was refused unmeasured, and kernel-cyber2 lost 26 drafts so.
-    expect(await admitted(0.7, 1)).toContain("which leaves no room");
-  });
-
-  it("is refused where nothing is in flight to free the reserve", async () => {
-    expect(await admitted(0.3, 0)).toContain("holds no reserve");
   });
 });
 

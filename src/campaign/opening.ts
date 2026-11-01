@@ -101,10 +101,10 @@ export const SEATS = ["builder", "examiner", "reviewer"] as const;
 export const SESSIONS = 2;
 const SETTING = "campaign.setting";
 
-/** The paid solves of each campaign in flight in this process, by its log: a Builder's practice,
- *  a comparison's solves and the Examiner's tries of a draft task share one budget (14 October:
- *  until then a `try_task` solve was held to no reserve, and two remaining reserves could start a
- *  three-solve admission beside a Builder's practice). */
+/** The paid solves of each campaign in flight in this process, by its log: a Builder's practice
+ *  and a comparison's solves share one budget (14 October: until then a `try_task` solve of the
+ *  gate's was held to no reserve, and two remaining reserves could start a three-solve gate beside
+ *  a Builder's practice). */
 const FLYING = new Map<string, number>();
 
 /** How many paid solves of the campaign whose log is `log` are in flight in this process. */
@@ -125,14 +125,6 @@ export function budgetLeft(events: readonly LogEvent[]): Cap | null {
 export function affords(log: string, count: number): boolean {
   const left = budgetLeft(read(log));
   return left === null || left.dollars >= (inFlight(log) + count) * left.reserve;
-}
-
-/** Whether `count` more solves asked for now will start: the reserve holds them, or others are in
- *  flight and the solve queue holds each until theirs end (`queued`, `tools/d2/host.ts`). Until
- *  31 October a room solve was refused where the queue would have waited, and kernel-cyber2's
- *  Examiner lost 26 drafts so. */
-export function startable(log: string, count: number): boolean {
-  return inFlight(log) > 0 || affords(log, count);
 }
 
 /** `run`, counted in flight for the campaign whose log is `log` while it runs. */

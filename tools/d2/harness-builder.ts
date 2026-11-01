@@ -263,16 +263,9 @@ async function make(
       throw new Error(`a rehearsal seats no Examiner, and the campaign needs one: ${decided.why}`);
     }
     const session = nextId(events, decided.move === "draft" ? "d" : "x");
-    const { args, roomSolves } = examinerRun(
-      turn,
-      session,
-      stand,
-      decided.move === "draft" ? "draft" : "write",
-    );
+    const { args } = examinerRun(turn, session, decided.move === "draft" ? "draft" : "write");
     begin({ session });
-    await (decided.move === "draft"
-      ? draftCommand(args, seats.draft, roomSolves)
-      : examineCommand(args, seats.examine, roomSolves));
+    await (decided.move === "draft" ? draftCommand(args, seats.draft) : examineCommand(args, seats.examine));
     return;
   }
   const { setting, cap, reviewer, pastStop } = sharedOf(turn);

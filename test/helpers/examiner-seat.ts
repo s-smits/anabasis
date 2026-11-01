@@ -249,7 +249,6 @@ export function seat<M extends Mode>(mode: M, responses: readonly FauxResponseSt
       pack,
       budget: null,
       verify: null,
-      probe: null,
     },
   } satisfies Requests;
   return {

@@ -15,8 +15,9 @@ the pen apart, and each part has its own way of going wrong.
 `AGENTS.md` sections 1 to 8 own the seats, their views, the wall and the promotion rule. Apply
 those rules to the campaign's recorded conditions. A stored pack supplies an imported exam;
 for a campaign opened from a prompt, the Examiner drafts the rules, checks and controls first.
-No seat repairs the check program during a campaign. In task-writing mode, `try_task` admits
-drafts by the reference harness's room, including an author's valid answer on record. A pass
+No seat repairs the check program during a campaign. In task-writing mode the gate holds a draft
+out on its package's shape; until 1 November `try_task` admitted drafts by the reference harness's
+room, including an author's valid answer on record. A pass
 establishes what the check reads; weigh that instrument before treating it as domain correctness.
 
 Six readings follow from that, and every row and lane applies them.
@@ -380,8 +381,8 @@ Starts from `SUPPLY THIN (lane 9)`, `GATE REFUSED (lane 9)` and
 The question is where tasks are lost between a proposal and the scored set, and whether the task admission
 that refused was right to. v1's task admission audit kept 30 of 54 refusal codes at its bar of 98% sure
 that what was refused was wrong (`docs/transfer.md`); ask the same here. `packageGate`
-checks the shape check. Where `try_task` is available, task admission also runs up to three fresh
-reference solves and uses `informative` to decide room. It holds a draft the reference answers
+checks the shape check. In a log from before 1 November, where `try_task` was available, task admission also ran up to three fresh
+reference solves and used `informative` to decide room. It holds a draft the reference answers
 sometimes; one it never answers with the author's valid answer on record; or one whose valid
 reference answer is beaten by an answer on record under the objective. For each refusal read `task.gate`
 and say whether it named a real defect and whether the Examiner could have acted on the reason it
@@ -1003,8 +1004,8 @@ Starts from `LONG SILENCES (lane 31)` and `SPEND LED BY A ROLE (lane 31)`.
 
 The question is where the hours and the dollars went, and what each long silence was. Use
 `spendOf`, which delegates billing to `billedAll`: ending records count closed work and turn
-records count work without an ending. Drafting and `try_task` admission solves are the
-Examiner's spend. Read metered and backend-reported amounts separately where the events hold
+records count work without an ending. Drafting and `try_task` admission solves, in a log from
+before 1 November, are the Examiner's spend. Read metered and backend-reported amounts separately where the events hold
 them. Say what share the reviewers took here and what their rulings changed, which is lane 7's.
 Row A puts the hours by role beside the billed dollars: each Builder and Examiner session and
 each comparison from its start to its end, a session a stop cut to the stop, and the rest of the

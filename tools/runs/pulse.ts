@@ -140,8 +140,8 @@ const SAID: Partial<
     if (ending?.outcome === "flagged") {
       return `· ${task(data.solve)} flagged as malformed: ${short(ending.reason)}${cost(data)}`;
     }
-    // The gate cuts a room solve once another settled the task's room (`src/examiner/write.ts`), as
-    // the investigation reads it; until 31 October each cut warned as a solve with no result.
+    // The gate cut a room solve once another settled the task's room, from 31 October until it stopped
+    // solving on 1 November, as the investigation reads it; until 31 October each cut warned as a solve with no result.
     if (ending?.cancelledBy === "admission") {
       return `· ${task(data.solve)} cut once its room was read${cost(data)}`;
     }

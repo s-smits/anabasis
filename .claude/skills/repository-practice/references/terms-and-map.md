@@ -19,8 +19,8 @@ Read this for the fixed terminology, the meaning of a sed and the directory map.
 | Known valid answer | A valid answer on record for a task, `task.feasible` included |
 | Rejection | An answer at least one check rejects: a true fail when wrong, a check defect when right |
 | Shape check | A task package has every part, and its rule ids belong to the contract |
-| Room solves | Up to three fresh reference solves that measure whether a draft leaves room |
-| Task admission | The decision on an Examiner draft: shape check, then room solves where available (`task.gate`) |
+| Room solves | Up to three fresh reference solves that measured whether a draft left room, until 1 November |
+| Task admission | The decision on an Examiner draft (`task.gate`): its shape check and, until 1 November, room solves |
 | Comparison admission | What code checks before a comparison may start (section 6) |
 | Session admission | What code checks before a Builder session may start |
 | Solve queue | Waiting for load, budget reserve or a slot before a solve starts |

@@ -52,7 +52,7 @@ const HOSTED = runtimeProcess.env.ANA_CLIMB === "host";
 const RAISE = 2;
 /** Tasks an Examiner asked for writes, by how far above the reference's strength each is: one
  *  past it, which the reference answers on some of its solves and not all, so that a task is
- *  informative for it as room asks (`informative`, `roomOf`) and as `try_task` admits a draft;
+ *  informative for it as room asks (`informative`, `roomOf`);
  *  and harder ones, some past any harness so far. */
 const ABOVE = [1, 1, 2, 2, 3, 4];
 /** A led Builder's finish in a conversation after its first, said twice where finish first gives

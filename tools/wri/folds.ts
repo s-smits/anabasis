@@ -614,7 +614,7 @@ function tallyTriggers(compared: readonly Compared[]): Trigger[] {
 export function taskTriggers(log: Index): Trigger[] {
   const proposed = log.of("task.proposed").filter((data) => isString(data.session));
   const written = new Set(proposed.map((data) => text(data.version)));
-  // One task admission records the shape check and, where available, room solves. Older logs
+  // One gate reading records the shape check and, until 1 November, the room solves. Older logs
   // hold more numbered checks per task, which no command runs now and no trigger here reads.
   const admissions = log.of("task.gate").filter((data) => data.gate === 1 && written.has(text(data.version)));
   const passed = admissions.filter((data) => heldAtGate(data.outcome)).length;

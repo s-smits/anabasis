@@ -635,10 +635,12 @@ export function awaitingLines(campaign: {
  * since the trace holds the host's tools alone. A solver's backends are the sweep's as they stand
  * (`solveOnce`), with the search.
  *
- * A Builder's and an Examiner's cache lives an hour, since they wait on practice solves and
- * room solves: over the recorded turns of 20 October, 8.4% of a Builder's and 5.0% of an Examiner's came
- * more than five minutes after the one before, and five-minute writes would have billed 48% and 28%
- * more. A reviewer's ruling takes minutes, so its cache lives five.
+ * A Builder's and an Examiner's cache lives an hour, since they waited on practice solves and,
+ * until 1 November, the gate's room solves: over the recorded turns of 20 October, 8.4% of a
+ * Builder's and 5.0% of an Examiner's came more than five minutes after the one before, and
+ * five-minute writes would have billed 48% and 28% more. An Examiner's own computing in its shell
+ * still runs that long between turns, and no record since measures it, so its hour stays. A
+ * reviewer's ruling takes minutes, so its cache lives five.
  */
 function hostSession(seat: { readonly webSearch: boolean; readonly cacheTtl: "5m" | "1h" }) {
   return (home: string, shutdown: AbortSignal) =>

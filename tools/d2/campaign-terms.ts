@@ -2,9 +2,9 @@
  * What a campaign's command and a live Builder's campaign tools share (`harness-builder.ts`,
  * `campaign-actions.ts`): the command's flags, what a campaign runs by and keeps in its opening,
  * and the flags of each move's command. Nothing here knows who makes a move.
- * A paid campaign needs a Referee before it opens (20 October). The 81 unruled admission
- * rejections in the recent logs predate task admission review, but source triage found a campaign could
- * still omit its reviewer and silently leave every admission rejection unmeasured.
+ * A paid campaign needs a Referee before it opens (20 October), so that no rejection it counts goes
+ * unruled: until then source triage found a campaign could omit its reviewer, and 81 rejections at
+ * the gate's room solves of that time went unruled.
  */
 import { shortOf } from "#src/campaign/decide.ts";
 import { cutShort, type Plan } from "#src/campaign/ground.ts";
@@ -31,8 +31,6 @@ import { recordedSetting, SETTING_OPTIONS } from "./setting.ts";
 /** Who sits in a campaign's model seats: a session's and a comparison's, and an Examiner's. */
 export interface Seats {
   readonly seated: Seated;
-  /** An explicitly seated solver for room solves beside a scripted Examiner. */
-  readonly probe?: Seated;
   /** An Examiner session: `examine`, unless a rehearsal's script stands in for it. */
   readonly examine?: Session<"write"> | undefined;
   /** The session that drafts the exam of a campaign opened from a prompt: `examine`, or a script. */
@@ -451,18 +449,17 @@ export function sharedOf({ events, plan, opening, values, seats }: Turn) {
   };
 }
 
-/** How the campaign runs Examiner session `session`, with `stand` in the seat (`examine`, or a
- *  rehearsal's script): its flags, for `draft.ts` where it drafts the exam and `examine.ts` where it
- *  writes tasks; the count of tasks a writing session is asked for; and the seat that solves its
- *  drafts, which is the campaign's own, so the tries wait on the load and share the reserve
- *  (14 October), and none beside a script unless a test seats one. */
-export function examinerRun(turn: Turn, session: string, stand: unknown, kind: "draft" | "write") {
+/** How the campaign runs Examiner session `session`: its flags, for `draft.ts` where it drafts the
+ *  exam and `examine.ts` where it writes tasks, and the count of tasks a writing session is asked
+ *  for. A writing session is given the campaign's setting before one is recorded, for the budget
+ *  it is told; neither solves anything. */
+export function examinerRun(turn: Turn, session: string, kind: "draft" | "write") {
   const { opening, values, seats } = turn;
   const { examiner } = opening.seats;
   if (seats.seated === solved && examiner === null) {
     throw new Error("name --examiner: the campaign needs an Examiner session");
   }
-  const { setting, reviewer } = sharedOf(turn);
+  const { setting } = sharedOf(turn);
   const seat = [
     "--session",
     session,
@@ -470,9 +467,6 @@ export function examinerRun(turn: Turn, session: string, stand: unknown, kind: "
     examiner?.model ?? SCRIPTED,
     "--examiner-effort",
     examiner?.effort ?? DEFAULTS.effort,
-    // The campaign's setting before one is recorded: the Examiner's budget, and its solves'.
-    ...setting,
-    ...reviewer,
   ];
   const tasks = values["exam-tasks"] ?? examTasks(turn);
   return {
@@ -482,13 +476,14 @@ export function examinerRun(turn: Turn, session: string, stand: unknown, kind: "
         : [
             ...packOf(values),
             ...seat,
+            // The campaign's setting before one is recorded: the budget the Examiner is told.
+            ...setting,
             ...flag("tasks", tasks),
             ...flag("proposals", values["exam-proposals"]),
             ...flag("minutes", values["exam-minutes"]),
             ...flag("turns", values["exam-turns"]),
           ],
     tasks,
-    roomSolves: seats.probe ?? (stand === undefined ? turn.held : null),
   };
 }
 

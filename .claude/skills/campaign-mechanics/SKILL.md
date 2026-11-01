@@ -79,5 +79,5 @@ bun .claude/skills/campaign-mechanics/scripts/conditions.ts <name | /abs/path/to
 It lists settings in first-use order (`settingId`) and their changes: model, effort, compaction
 and side values; limit and runtime keys; short digests for other fields. For each comparison,
 it reports differences beyond harness, tool tree and task, or `comparable` when none exist.
-It also groups Examiner room solves and practice solves. A host-code change appears as a changed
+It also groups practice solves, and an earlier log's Examiner room solves (until 1 November). A host-code change appears as a changed
 `host`. Output omits tasks but remains exam-side and must stay out of tracked files.

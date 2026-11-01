@@ -129,7 +129,8 @@ prints what each campaign had spent by its first `comparison.started` and `harne
 hours, solves and dollars, since a host's load moves only the hours, and one line per Examiner
 session: the reference in force, drafts held of those admitted, the admission words
 (`every`, `some`, `none, proved`), the median turns of the reference's valid room solves and the
-dollars. Read in this order: whether each arm's sessions received their text, the share of
+dollars; the words and turns come from room solves, which the gate ran until 1 November, so a later
+session shows its drafts held and refused alone. Read in this order: whether each arm's sessions received their text, the share of
 admissions reading `every` (the ceiling), the drafts held, answerability (the author's answer or a
 valid solve on record), then the steps to the first comparison and promotion. Put the predictions
 on record before the first solve, and settle each by its count.

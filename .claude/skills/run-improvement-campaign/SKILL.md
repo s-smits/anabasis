@@ -256,9 +256,8 @@ the operator.
 
 ```text
 prompt → Examiner drafts exam → host reads it → contract.frozen
-Examiner drafts tasks → shape check → up to three room solves (try_task)
-                     → informative, or none valid and author's answer passes → held out
-                     → no room or no reading → refused
+Examiner drafts tasks → shape check (propose_tasks) → held out
+                     → a bad package or a planted answer → refused
 Builder practises and edits → comparison.reported: step → harness.promoted
                             → new epoch → Examiner writes for the new reference
 ```
@@ -330,7 +329,7 @@ walk chooses what to do about it.
 
 1. **Supply:** rows `tasks` or `short`, too few scorable tasks, refused drafts. Owners:
    `systemPrompt` and `firstMessage` in `src/examiner/prompt.ts`, `heard` in
-   `src/examiner/record.ts`, `try_task` in `src/examiner/write.ts`, or `--exam-tasks`.
+   `src/examiner/record.ts`, `propose_tasks` in `src/examiner/write.ts`, or `--exam-tasks`.
 2. **Instrument:** an `exam` ending, checker faults, check-defect stops or tasks set aside.
    Owners: `planOf` in `src/campaign/opening.ts` and `readChecker` in `src/kernel/acceptance.ts`
    for a host fault; otherwise the check program's author. Follow `AGENTS.md`, section 3, for

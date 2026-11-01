@@ -54,6 +54,13 @@ campaigns that never promoted.
   1,912 refused; the room solves of refused drafts billed $826.53 of $1,563.98 (52.8%). The refusal
   keeps a task the reference already closes out of every later comparison. At worst, one ESP32
   session put 36 drafts to 108 room solves, all valid within eight turns, and held none.
+- **The gate solves no draft since 1 November.** The gate ablation of 31 October on buffer (Opus
+  5.5, one campaign an arm) promoted on its first comparison in both arms, 8 to 0 without room
+  solves and 10 to 0 with them, each on the objective alone; the arm with room solves held the same
+  kind of task 1.1 hours later and for about $24 of reference solves. Across the record since
+  16 October, 5,664 of 6,225 gate readings with room solves had the reference valid on every solve.
+  So the room solves were removed (`src/examiner/write.ts`): Present in source, and an indication
+  from one campaign an arm, which a fresh pair of campaigns on another domain would settle.
 - **A long session costs little more a turn.** Over the 291 writing sessions of at least 40 turns,
   the context grew from 27,085 to 141,213 tokens a turn between the first ten turns and the last
   ten, and the bill from $0.058 to $0.076 a turn. Output is 42.5% of the writing sessions'
@@ -124,7 +131,7 @@ comparison and every task the reference answers only sometimes.
 | B6 | The investigation's reader still reads its own copy of the campaign | Planned | |
 | F63 | One pair drawn again unchanged until it reads a step. kernel-cyber2 (31 October) compared `756d142d` with its reference four times with no checkpoint between (g-2 to g-5, the table's `unread` row from g-3), and g-5 read a step and promoted on the fourth draw. Improvement patience counts one pair once (`stopRule`), and supply patience counts each draw that left room as a gain (`roomless`), so neither stops it | Exercised live | The operator's word on a bound for redraws of one pair, then a synthetic log of K redraws in `test/decide.test.ts` |
 | F64 | Practice owed after an Examiner session that held nothing. buffer-stackedPR534 released 5 tasks 13 minutes after x-2 ended holding 0, all tasks its new reference answers within 0.4% of the best on record, which used the reading's allowance before x-3 held 17 with room (`practiceDue`, `releaseOwed`) | Exercised live, one campaign | A synthetic log of that shape, then a fresh campaign's practice after its first promotion |
-| F65 | The Examiner's gate refuses a draft on the reserve while solves are in flight (`measured`, `src/examiner/write.ts`), where the solve queue waits on the same condition (`tools/d2/host.ts`). kernel-cyber2: 26 refusals, each with 4 solves in flight, on a $50 budget at the default $10 reserve with about $4 spent | Exercised live | One owner for the wait; or a launch with `--reserve` sized to its solves |
+| F65 | The Examiner's gate refuses a draft on the reserve while solves are in flight (`measured`, `src/examiner/write.ts`), where the solve queue waits on the same condition (`tools/d2/host.ts`). kernel-cyber2: 26 refusals, each with 4 solves in flight, on a $50 budget at the default $10 reserve with about $4 spent | Withdrawn (1 November): the gate solves no draft, so it holds no reserve and the solve queue is the one owner of the wait | |
 | F66 | The exam stays easy. kernel-cyber2 (31 October) graded every scored task 3 or below of 7 on lane 34's reach scale, and esp32-fresh-opus-stijn-pro's reference answered all 3 solves of 76 of 81 drafts. Both of the Examiner's modes are now shown that scale with worked examples from three fields no campaign examines (`src/examiner/ladder.ts`), and a drafted rule names its standard instead of restating it. The first ladder's paired esp32 arm held 1 of 89 session drafts against the control's 17 of 80, every refusal of both at the ceiling (`examiner-complexity`, `exams.ts`) | Exercised live; supply fell on the one paired reading | The rewritten ladder's held share and first comparison against a control on fresh campaigns in two domains, then blind grades of their held tasks |
 | H1 | The Seatbelt half of the per-seat `TMPDIR` | Proved without a model (Linux half) | A wall test on macOS |
 | C8 | Restart from the reference | Planned | |

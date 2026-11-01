@@ -140,8 +140,9 @@ consequences follow:
 Each seat has one job and a closed view, which is what lets the wall of section 1 hold:
 
 - **Examiner** (model, `src/examiner/`): writes tasks against a frozen contract and check program;
-  for a campaign that opens from a prompt, it first drafts that exam. The host admits a task only
-  where the reference's room solves leave it room (`try_task`).
+  for a campaign that opens from a prompt, it first drafts that exam. The host's gate holds a task
+  out on its package's shape alone, refusing one that carries a planted answer, and solves none
+  (`propose_tasks`).
 - **Builder** (model, `src/builder/`): edits `harness/`, chooses campaign moves and ends with a
   frozen harness, reading only section 1's closed list, its notes and the campaign's kept harnesses.
 - **Solver** (model, `src/solver/`): answers one task inside a harness with `read`, `bash`, `edit`,

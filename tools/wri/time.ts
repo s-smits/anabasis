@@ -467,7 +467,7 @@ export function costTriggers(log: Index): Trigger[] {
   const total = spend.reduce((sum, [, dollars]) => sum + dollars, 0);
   const [[leader, most] = ["", 0]] = spend;
   // A compaction whose summary was priced at nothing: on 1 November the validity arm's three Claude
-  // Code compactions each held an empty `usages`, which lane 20 found by chance and lane 31 missed.
+  // Code compactions each held an empty `usages`, which the compaction lane found by chance and lane 31 missed.
   const compactions = log.traces.filter((each) => each.part === "compacted");
   const unbilled = compactions.filter((each) => each.billed === 0);
   return [

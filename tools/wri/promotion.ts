@@ -369,8 +369,28 @@ export function promotionTriggers(log: Index): Trigger[] {
   return [
     ...epochs.flatMap((epoch) => [...restTriggers(log, epoch), afterTrigger(log, epoch, starter)]),
     ...unconfirmedTrigger(log),
+    ...carrierTrigger(log),
     ...sharedTmpTrigger(log),
   ];
+}
+
+/** `STEP CARRIERS` (lane 21): each step's untied tasks without the bill, and how many of its largest
+ *  wins it could lose and still clear its level. On 1 November the gate ablation's g-3 cleared at
+ *  6-0 with none to spare, and supply's g-2 lost its step without the 5 tasks priced in yen; lanes
+ *  15, 23, 25 and 34 each found a part of that. */
+function carrierTrigger(log: Index): Trigger[] {
+  const lines = log.compared.flatMap(({ session, last }) => {
+    const unbilled = items(asRecord(last.scored)?.unbilled).filter(isNumber);
+    if (text(last.reading) !== "step" || unbilled.length === 0) return [];
+    const wins = unbilled.filter((one) => one > 0).toSorted((one, other) => other - one);
+    const rest = unbilled.filter((one) => one <= 0);
+    const lost = wins.findIndex((_, index) => flipP([...rest, ...wins.slice(index + 1)]) > count(last.level));
+    const spare = lost === -1 ? wins.length : lost;
+    return [
+      `${session} won ${share(wins.length, unbilled.filter((one) => one !== 0).length)} untied, ${spare === 0 ? "none" : String(spare)} to spare`,
+    ];
+  });
+  return lines.length > 0 ? [fired("STEP CARRIERS", lines.join("; "))] : [];
 }
 
 /** `PROMOTION UNCONFIRMED` (lane 24): each promotion whose epoch holds no starter comparison that

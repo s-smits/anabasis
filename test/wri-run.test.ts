@@ -1,4 +1,4 @@
-// The triggers of lanes 7, 8, 20, 28, 32 and 33 read how a run was conducted: the moves against the table,
+// The triggers of lanes 7, 8, 28, 31, 32 and 33 read how a run was conducted: the moves against the table,
 // the Builder's compactions, the drafted exam, the launches and the log's order. Each case sets a
 // log that should fire beside the nearest one that should not.
 import { describe, expect, it } from "bun:test";
@@ -62,7 +62,7 @@ describe("the moves against the table (lane 28)", () => {
   });
 });
 
-describe("the Builder's conversation (lane 20)", () => {
+describe("the Builder's conversation (lane 31)", () => {
   it("gives a session's compactions beside its turns and its read_opening calls", () => {
     const compacted = logged(
       ["build.started", { session: "b-1", parent: "starter" }],

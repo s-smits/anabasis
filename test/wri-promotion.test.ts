@@ -188,6 +188,23 @@ describe("lane 27: a promotion and the climb after it", () => {
     expect(triggered(log)("PROMOTION UNCONFIRMED")).toEqual([]);
   });
 
+  it("says how many of a step's wins it could lose, and reads no comparison that did not step", () => {
+    // The gate ablation's g-3 of 1 November cleared at 6-0 with none to spare at 0.02; at 8-0 two
+    // wins can go before the seventh-largest sweep no longer clears.
+    const { log, compare } = held();
+    const step = (wins: number) => ({
+      ...STEP,
+      level: 0.02,
+      scored: { ...STEP.scored, unbilled: [...Array.from({ length: wins }, () => 1), 0, 0] },
+    });
+    compare("g-1", "hbase", "hn", { ...step(8), reading: "no-step" })();
+    expect(triggered(log)("STEP CARRIERS")).toEqual([]);
+    compare("g-2", "hbase", "hn", step(6))();
+    compare("g-3", "hbase", "hm", step(8))();
+    const [carriers = ""] = triggered(log)("STEP CARRIERS");
+    expect(carriers).toMatch(/g-2 won 6 .*6 untied, none to spare; g-3 won 8 .*8 untied, 2 to spare/);
+  });
+
   it("names the compactions whose summary was billed nothing, by seat", () => {
     const { log, put, compare } = held();
     compare("g-1", "hbase", "hn", STEP)();

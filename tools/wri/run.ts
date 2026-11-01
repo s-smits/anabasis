@@ -1,7 +1,7 @@
 /**
  * The triggers of the lanes that read how a run was conducted rather than what it measured: the
  * moves the campaign command made against its table (lane 28), the Builder's conversation across
- * its compactions (lane 20), the exam a campaign drafted from its prompt (lane 8), the launches
+ * its compactions (lane 31), the exam a campaign drafted from its prompt (lane 8), the launches
  * that ran it (lane 32), and whether its log reads in order (lane 33). Lane 7's count of the
  * Referee's refused evidence sits here too, since `read.ts` stands near the size policy's ceiling.
  *
@@ -54,7 +54,7 @@ function moveTriggers(log: Index): Trigger[] {
   ];
 }
 
-/** Lane 20: each Builder session's compactions beside its turns and its calls of `read_opening`. */
+/** Lane 31: each Builder session's compactions beside its turns and its calls of `read_opening`. */
 function conversationTriggers(log: Index): Trigger[] {
   const per = (kind: LogEvent["kind"]) => countBy(log.of(kind), (data) => text(data.session));
   const [compacted, turns] = [per("build.compacted"), per("build.turn")];

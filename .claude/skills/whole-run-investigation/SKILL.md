@@ -71,7 +71,7 @@ start a step until the check named for the one before holds.
    instead of taking a session of its own. The verb prints each session's lanes and weight, and a
    suggested N: the most sessions whose lightest weighs at least half the heaviest. The operator
    names N; one session a lane, without the flag, stays available. With no `--lanes` it opens every
-   lane a trigger started and the four standing lanes. By default it builds no isolated lane:
+   lane a trigger started and the five standing lanes. By default it builds no isolated lane:
    it names the ones whose trigger fired for the primary to assess. A prompt built before is
    kept and excluded from any newly written `launch.json`.
    *Check:* exit 0, and count the sessions that this call built. If it built none, launch nothing:
@@ -84,7 +84,7 @@ start a step until the check named for the one before holds.
    *Check:* read the model each transcript recorded before using its report.
 5. **Collect.** `wri.ts collect --out <dir>` holds every expected report to its shape and writes
    `<dir>/reports.md`. Read lane 4's report, then decide lane 5; read lanes 13, 15 and 18, then
-   decide lane 19, applying the `WINS` limitation below. Build lane 5 with
+   decide lane 19, as named below. Build lane 5 with
    `wri.ts lanes --out <dir> --lanes 5`, or lane 19 with `--lanes 19`, then launch the one lane it
    says it built, alone, and collect again.
    *Check:* `collect` exits 0. It exits 1 while a report is missing or invalid, or no report is
@@ -142,7 +142,7 @@ under a checker and one under its repair, are read apart, and lane 3 of the late
 ## Sizing
 
 One session reads one lane, on every campaign under review: more campaigns make each session
-longer, and add none. `selected` opens all four standing lanes even before a comparison
+longer, and add none. `selected` opens all five standing lanes even before a comparison
 reports, alongside any triggered open lanes. Count the manifest rather than assuming a size.
 When the budget is
 smaller than the build, read the groups in this order, because each rests on the one before:
@@ -176,8 +176,9 @@ owner from the catalogue. It does not check the cited evidence or enforce exactl
 - `reporting` gives a `no finding` verdict its own `## Checked` section, which says what the lane
   checked and found sound, with `## Findings` left empty. The collector does not read that section,
   so read it before accepting the verdict: an empty one leaves the lane unsubstantiated.
-- `WINS` lists lane 19's solve ids and starts nothing by itself (`selected`). Lane 19 runs alone:
-  it opens only where it is named and `WIN AT A SMALL WALL SHARE` or `ANSWER FROM A PROGRAM` fired.
+- Lane 19 runs alone: it opens only where it is named and `WIN AT A SMALL WALL SHARE` or
+  `ANSWER FROM A PROGRAM` fired. `WINS` starts lane 20, which reads the same won solves for the
+  part of the harness that made each win.
 
 ## Hard rules
 

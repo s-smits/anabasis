@@ -54,8 +54,8 @@
  * on validity** is the scored tasks, summed over the reported comparisons, that the reference did
  * not answer validly in every solve, as `ambition.ts` reads them: where it is near zero, a step can
  * be won only on the objective and the bill. **Steps won by validity** counts them as the
- * closing report counts it. **Confirmed** is the promotions a starter comparison of their epoch
- * read above the starter (`confirmed`, `src/campaign/climb.ts`).
+ * closing report counts it. **Confirmed** is the promotions the last starter comparison of their
+ * epoch read above the starter (`confirmed`, `src/campaign/climb.ts`).
  *
  * The first promotion over the Starter is set-up (epoch 0), as the closing report counts it
  * (`epochLine`); `promotions` counts it, and the climb is one fewer.
@@ -264,7 +264,7 @@ interface Run {
   /** The comparisons that read a step, and those whose step won points by validity (`validityOf`). */
   readonly stepped: number;
   readonly onValidity: number;
-  /** The promotions a starter comparison of their epoch confirmed (`confirmed`, `epochsOf`). */
+  /** The promotions the last starter comparison of their epoch confirmed (`confirmed`, `epochsOf`). */
   readonly confirmed: number;
   /** The A/A comparisons able to read a step, and those that did (`falsePromotion`). */
   readonly controls: number;

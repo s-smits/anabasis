@@ -393,10 +393,10 @@ function carrierTrigger(log: Index): Trigger[] {
   return lines.length > 0 ? [fired("STEP CARRIERS", lines.join("; "))] : [];
 }
 
-/** `PROMOTION UNCONFIRMED` (lane 24): each promotion whose epoch holds no starter comparison that
- *  reads the reference above the starter (`confirmed`, `src/campaign/climb.ts`). On 1 November none
- *  of the gate ablation's five promotions and the validity arm's one was confirmed, and lanes 24
- *  and 28 found it by reading the moves. */
+/** `PROMOTION UNCONFIRMED` (lane 24): each promotion whose epoch has no starter comparison, or whose
+ *  last one does not read the reference above the starter (`confirmed`, `src/campaign/climb.ts`).
+ *  On 1 November none of the gate ablation's five promotions and the validity arm's one was
+ *  confirmed, and lanes 24 and 28 found it by reading the moves. */
 function unconfirmedTrigger(log: Index): Trigger[] {
   const epochs = epochsRead(log.events);
   const lines = epochs.flatMap(({ nth, reference, to, starter_tally: against, confirmed }) => {

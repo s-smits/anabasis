@@ -65,3 +65,44 @@ instead of running out of informative tasks after one or two promotions.
     and the draw takes the newest epoch by hash, not by outcome (`scoredSet`,
     `src/campaign/round.ts`), so such a task fills a slot until two comparisons set it aside for a
     person's label.
+- **2 November, about 01:00.** Three independent read-only sessions (Opus 5.5) took the doubt from the
+  statistics, the record and the loop's design, at f8fc8627e. What held when checked against the
+  source and a rerun of their scripts:
+  - **The doubt as worded is refuted.** No reading uses a total win ratio. Under a calibrated
+    Examiner (each epoch's tasks equally hard for its reference) a simulated climb steps as often
+    in every epoch, 0.38 to 0.43 a comparison for a candidate one log-odds unit better.
+  - **The power hump, exactly.** 24 frontier and 8 retained tasks, 2 solves a side, level 0.02,
+    a candidate one log-odds unit better: a step 3.5% of the time where the reference passes 2% of
+    solves, 29% at 10%, 53% at 30%, 52% at 50%, 19% at 85% and 3% at 95%. Between equal harnesses
+    it never exceeds 1.2%. 4 solves a side about double the chance at the hard end (0.15 to 0.35
+    where the reference passes 5%).
+  - **The record is at the easy end.** Of 1,699 ties in candidate comparisons, 1,686 had both
+    sides valid in every solve and 6 had both fail every solve. Before 21 October the step rate
+    fell after a promotion (14 of 41 comparisons); from then on it did not (57 of 82 after a
+    promotion, 34 of 54 before one). Where the exam did get harder for the reference (five
+    campaigns whose own-epoch share fell 10 points or more), 5 of 8 comparisons stepped, all on
+    validity, and the candidate won all 107 tasks the reference failed in every solve.
+  - **Where harder tasks do cost: confirmation.** A starter comparison scores only the tasks held
+    since the last comparison began (`sinceOnly`, `tools/d2/checkpoint.ts`), which the Examiner
+    was told to write above the new reference's grade (`src/examiner/prompt.ts`). The epoch's last
+    such comparison decides `confirmed` (`src/campaign/climb.ts`), the milestone's count. In the 6
+    on record, the reference beat the starter 61 to 20 on older tasks and lost 23 to 33 on its own
+    epoch's, all on the objective. Three readings fit and are not yet split: the tasks are aimed at
+    the reference, its gains do not carry to new kinds of task, or objective noise (in the A/A
+    comparisons of epoch 1, 53% of tasks were untied). Confirmation decides no move.
+- **Found on the way, not yet decided.** Each holds in the source at f8fc8627e; none has a live
+  case counted yet.
+  - A starter comparison is admitted on the whole frontier's size, so it can score 1 to 5 tasks,
+    where no reading can confirm (`heldSince`, `src/campaign/decide.ts`; `sized`,
+    `src/campaign/admission.ts`).
+  - The prompt raises the target after every promotion with no upper limit, and calls a failure at
+    a grade the reference usually answers "chance, not a better method", which steers the Examiner
+    away from the tasks where the test is strongest.
+  - `referenceHasValidAnswer` also turns true on the Examiner's own answer (`taskRecords`,
+    `src/kernel/reports.ts`). 2,085 of 2,269 held tasks carry one, so `awaiting` was empty at the
+    end of all 74 real campaigns. A task both sides fail leaves only by practice release, which
+    takes such tasks first (`releaseOrder`) at most down to the admission floor (`practiceDue`).
+  - A comparison with one informative task counts against patience (`roomOf`, `stopRule`) even
+    where it has fewer than six untied tasks and could not step.
+  - The head comment of `scoredSet` (`src/campaign/round.ts`) still says a step may not lose more
+    pairs than it wins; one test has decided since the retained test went.

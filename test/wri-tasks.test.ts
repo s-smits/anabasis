@@ -45,4 +45,27 @@ describe("the scored tasks", () => {
     expect(out).not.toContain("x-1-002");
     expect(out).not.toContain("HIDDEN-VALUE");
   });
+
+  it("reads a drafted exam's task from the draft by its id, and none of its hidden values", () => {
+    const drafted = join(dir, "drafted", "log.jsonl");
+    mkdirSync(join(dir, "drafted"), { recursive: true });
+    const example = {
+      family: "drafted family",
+      publicInput: { load: "DRAFT-INPUT" },
+      hidden: { secret: "HIDDEN-VALUE" },
+    };
+    append(drafted, "exam.drafted", {
+      session: "d-1",
+      draft: { tasks: [example, { ...example, publicInput: {} }] },
+    });
+    append(drafted, "task.proposed", { version: "d".repeat(64), taskId: "ex-001", family: "drafted family" });
+    append(drafted, "comparison.started", { session: "g-1", tasks: ["d".repeat(64)], retained: [] });
+    const out = decodeOutput(
+      runSync([capturedExecPath, resolve(import.meta.dir, "../tools/wri/tasks.ts"), drafted]).stdout,
+    );
+    expect(out).toContain("ex-001  written by the draft  scored in g-1");
+    expect(out).toContain('"load":"DRAFT-INPUT"');
+    expect(out).not.toContain("in the pack");
+    expect(out).not.toContain("HIDDEN-VALUE");
+  });
 });

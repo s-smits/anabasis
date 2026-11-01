@@ -13,7 +13,7 @@ import { claudeExecutable, SWEEP_COMPACT_WINDOW } from "#src/agent/backends/clau
 import { type BackendOptions, backends } from "#src/agent/backends/models.ts";
 import type { Control } from "#src/kernel/acceptance.ts";
 import { type Contract, type Objective, objectiveLine } from "#src/kernel/contract.ts";
-import { dollars, freezePrices, type PriceTable } from "#src/kernel/meter.ts";
+import { billOf, freezePrices, type PriceTable } from "#src/kernel/meter.ts";
 import type { Ending } from "#src/kernel/solve.ts";
 import type { TaskPackage } from "#src/kernel/task.ts";
 import { applicableTruthChecks, readBrief, type Task, type Verdict } from "#src/kernel/verify.ts";
@@ -279,7 +279,9 @@ function spend(row: Row, prices: PriceTable) {
     cacheWrite1h: 0,
     output: sum("outputTokens"),
   };
-  return { billed: sum("costUsd"), metered: dollars(prices, `${row.provider}/${row.model}`, tokens).metered };
+  // v1's rows hold no cache classes, so every input token is billed at the input price: metered.
+  const metered = billOf(prices, { [`${row.provider}/${row.model}`]: { tokens, dollars: 0 } });
+  return { billed: sum("costUsd"), metered };
 }
 
 /** The rows with both dollar readings, and apart from them the rows whose cost was never reported. */

@@ -192,7 +192,6 @@ describe("the three backends", () => {
       const [turn] = traceOf(read(log), "solve", id).turns;
       expect(turn?.model).toBe(served ?? null);
       expect(turn?.usage).toMatchObject({ input: 7, output: 4, cacheRead: 3, reasoning: 2 });
-      expect(sat.spent.reportedCost).toBeNull();
       served = undefined;
     }
   });

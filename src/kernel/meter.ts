@@ -1,13 +1,19 @@
 /**
- * The meter: a solve's tokens by the classes a provider bills, and the dollars they come to at a price
- * table frozen into the condition, so a provider's price change moves nothing already measured.
+ * The meter: what a session spent, as one ledger of tokens and dollars by the model that served
+ * them, and the bill it comes to at prices frozen into the condition, so a provider's price change
+ * moves nothing already measured.
  *
- * Dollars come two ways from the same tokens, and neither converts to the other: on the truss sweep
- * metered ran 4.49 times billed on one run and 4.97 times on another.
- * - Billed is calculated at the list price of the model that served each turn, cache reads at
- *   their discount and cache writes at their premium. Admission checks and reports read it.
- * - Metered charges every input token at the full input price, so a solve costs the same whether its
- *   prompt prefix was warm or cold. Reports carry it beside billed.
+ * Every backend keeps such a ledger, and the meter prices that one instead of adding up turns.
+ * Claude Code's `result` carries `modelUsage`, the whole query's tokens and dollars by served model,
+ * its own compactions and its calls on other models included (`claudeLedger`,
+ * `src/agent/backends/claude.ts`); pi-durable keeps `pi.usage` for Codex and pi's own providers,
+ * every assistant entry, a retried attempt and a compaction summary included. Until 1 November the
+ * session's bill was the sum of its turns: 305 exam and 19 build compactions Claude Code ran billed
+ * $0 in the archive, and a retried attempt's dollars rode on the next turn.
+ *
+ * The price rule: a model the table lists is billed at its frozen list price, cache reads at their
+ * discount and writes at their premium; a model it does not list, such as one Claude Code called on
+ * its own, at the dollars its backend reported, never at zero.
  */
 import type { Api, Model, Usage } from "@earendil-works/pi-ai";
 
@@ -26,12 +32,23 @@ export type PriceTable = Readonly<Record<string, Price>>;
 export interface Tokens {
   /** Input neither read from nor written to the cache. */
   readonly input: number;
+  readonly output: number;
   readonly cacheRead: number;
   readonly cacheWrite: number;
   /** The part of `cacheWrite` kept for an hour, which Anthropic bills at twice the input price. */
   readonly cacheWrite1h: number;
-  readonly output: number;
 }
+
+/** One model's tokens and the dollars its backend reported for them. */
+interface Spend {
+  readonly tokens: Tokens;
+  readonly dollars: number;
+}
+
+/** Spend by `provider/model`, or `tool/<name>` for a tool's own usage. */
+export type Ledger = Readonly<Record<string, Spend>>;
+
+const CLASSES = ["input", "output", "cacheRead", "cacheWrite", "cacheWrite1h"] as const;
 
 export function priceKey(model: Pick<Model<Api>, "provider" | "id">): string {
   return `${model.provider}/${model.id}`;
@@ -54,34 +71,81 @@ export function freezePrices(models: readonly Model<Api>[]): PriceTable {
   );
 }
 
-/** pi's per-turn usage, summed by class. */
-export function tokensOf(usages: readonly Usage[]): Tokens {
-  const sum = (count: (usage: Usage) => number) => usages.reduce((total, usage) => total + count(usage), 0);
-  return {
-    input: sum((usage) => usage.input),
-    cacheRead: sum((usage) => usage.cacheRead),
-    cacheWrite: sum((usage) => usage.cacheWrite),
-    cacheWrite1h: sum((usage) => usage.cacheWrite1h ?? 0),
-    output: sum((usage) => usage.output),
-  };
+/** pi usages added up by the key each is filed under, with the dollars each reported. */
+export function ledgerOf(entries: Iterable<readonly [string, Usage]>): Ledger {
+  const ledger = new Map<string, Spend>();
+  for (const [key, usage] of entries) {
+    const held = ledger.get(key);
+    const tokens = { ...usage, cacheWrite1h: usage.cacheWrite1h ?? 0 };
+    ledger.set(key, {
+      tokens: sumOf((part) => (held?.tokens[part] ?? 0) + tokens[part]),
+      dollars: (held?.dollars ?? 0) + usage.cost.total,
+    });
+  }
+  return Object.fromEntries(ledger);
+}
+
+/** A ledger's tokens over every key. */
+export function tokensOf(ledger: Ledger): Tokens {
+  const spends = Object.values(ledger);
+  return sumOf((part) => spends.reduce((total, { tokens }) => total + tokens[part], 0));
+}
+
+/** `later` less `earlier`, key by key over both; a key that comes to nothing is left out. */
+export function minus(later: Ledger, earlier: Ledger): Ledger {
+  return Object.fromEntries(
+    [...new Set([...Object.keys(later), ...Object.keys(earlier)])].flatMap((key) => {
+      const tokens = sumOf((part) => (later[key]?.tokens[part] ?? 0) - (earlier[key]?.tokens[part] ?? 0));
+      const dollars = (later[key]?.dollars ?? 0) - (earlier[key]?.dollars ?? 0);
+      return dollars === 0 && sizeOf(tokens) === 0 ? [] : [[key, { tokens, dollars }]];
+    }),
+  );
+}
+
+/** The dollars `ledger` comes to: each listed key at its frozen price, any other at its backend's dollars. */
+export function billOf(prices: PriceTable, ledger: Ledger): number {
+  let total = 0;
+  for (const [key, { tokens, dollars }] of Object.entries(ledger)) {
+    const price = prices[key];
+    total +=
+      price === undefined
+        ? dollars
+        : (tokens.input * price.input +
+            tokens.output * price.output +
+            tokens.cacheRead * price.cacheRead +
+            (tokens.cacheWrite - tokens.cacheWrite1h) * price.cacheWrite +
+            tokens.cacheWrite1h * 2 * price.input) /
+          1_000_000;
+  }
+  return total;
 }
 
 /**
- * The billed and metered dollars of `tokens` on `model`. Billed is pi-ai's `calculateCost`
- * (dist/models.js:658) on the summed classes, departing from it only in leaving out the tier, as
- * `freezePrices` does: a session's bill is the sum of its turns', each at its own model's price.
+ * The ledger a session is billed on: its turns at the model that served each, and whatever its
+ * backend's ledger holds beyond them, a retried attempt, a compaction summary or a tool's own calls.
+ * A backend files a turn under its own key, pi-durable under the model asked for, so that excess is
+ * read against the turns as the backend filed them (`filed`) and the turns are billed as served
+ * (`served`); a backend that files by served model, as Claude Code does, passes one ledger twice.
+ * A backend holding fewer tokens than its turns, a Claude Code result that crashed zeroed or a query
+ * cleared mid-session, or none read, leaves the turns' own.
  */
-export function dollars(prices: PriceTable, model: string, tokens: Tokens) {
-  const price = prices[model];
-  if (price === undefined) throw new Error(`${model} is not in the condition's price table`);
-  const shortWrite = tokens.cacheWrite - tokens.cacheWrite1h;
-  const billed =
-    tokens.input * price.input +
-    tokens.output * price.output +
-    tokens.cacheRead * price.cacheRead +
-    shortWrite * price.cacheWrite +
-    tokens.cacheWrite1h * 2 * price.input;
-  const metered =
-    (tokens.input + tokens.cacheRead + tokens.cacheWrite) * price.input + tokens.output * price.output;
-  return { billed: billed / 1_000_000, metered: metered / 1_000_000 };
+export function sessionLedger(backend: Ledger | null, filed: Ledger, served: Ledger): Ledger {
+  if (backend === null || sizeOf(tokensOf(backend)) < sizeOf(tokensOf(filed))) return served;
+  return minus(served, minus(filed, backend));
+}
+
+function sumOf(part: (name: (typeof CLASSES)[number]) => number): Tokens {
+  const [input, output, cacheRead, cacheWrite, cacheWrite1h] = CLASSES.map(part);
+  return {
+    input: input ?? 0,
+    output: output ?? 0,
+    cacheRead: cacheRead ?? 0,
+    cacheWrite: cacheWrite ?? 0,
+    cacheWrite1h: cacheWrite1h ?? 0,
+  };
+}
+
+/** Every token once: the hour-long writes are inside `cacheWrite`. */
+function sizeOf(tokens: Tokens): number {
+  return tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite;
 }

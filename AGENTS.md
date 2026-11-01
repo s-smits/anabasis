@@ -76,7 +76,7 @@ factor it affects, or the separate purpose it serves. Recorded values live in `d
   in four true check defects and voids at most one in ten earned rejections, with PABAK beside
   kappa.
 - **4. Economy**: what did each gain cost? The closing report reads dollars and hours per promotion
-  from the log alone (`tools/d2/close.ts`), at list price (`pricedAt`, `src/agent/session.ts`). Its
+  from the log alone (`tools/d2/close.ts`), at list price (`billOf`, `src/kernel/meter.ts`). Its
   one bar, an opening term that refuses nothing, is at most 3 promotion attempts per epoch after
   set-up (`worthOf`, `src/campaign/climb.ts`).
 

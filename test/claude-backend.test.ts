@@ -401,11 +401,19 @@ describe("the Claude backend", () => {
       reported: 0.75,
       ledger: {
         "claude/claude-haiku-4-5": {
-          tokens: { input: 10, output: 47, cacheRead: 0, cacheWrite: 10_088, cacheWrite1h: 10_000 },
+          input: 10,
+          output: 47,
+          cacheRead: 0,
+          cacheWrite: 10_088,
+          cacheWrite1h: 10_000,
           dollars: 0.7,
         },
         "claude/claude-side-model": {
-          tokens: { input: 900, output: 30, cacheRead: 0, cacheWrite: 0, cacheWrite1h: 0 },
+          input: 900,
+          output: 30,
+          cacheRead: 0,
+          cacheWrite: 0,
+          cacheWrite1h: 0,
           dollars: 0.05,
         },
       },
@@ -424,7 +432,7 @@ describe("the Claude backend", () => {
     shutdown.abort();
     const taken = await claudeLedger(options.sessionId);
     expect(taken?.reported).toBeCloseTo(0.0056776, 10);
-    expect(taken?.ledger["claude/claude-haiku-4-5"]?.tokens).toEqual({
+    expect(taken?.ledger["claude/claude-haiku-4-5"]).toMatchObject({
       input: 20,
       output: 312,
       cacheRead: 19_516,

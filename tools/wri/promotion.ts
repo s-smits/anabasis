@@ -37,6 +37,7 @@ import {
   practiceOf,
   share,
   tally,
+  tallyOf,
   text,
   type Trigger,
 } from "./folds.ts";
@@ -71,8 +72,17 @@ export const sharedPaths = ({ args }: Call) =>
 /** `w-l-t p` of a test record, or "not scored" where there is none, as a stopped comparison's. */
 export function testSaid(tested: JsonValue | undefined): string {
   const record = asRecord(tested);
-  if (record === null) return "not scored";
-  return `${String(count(record.wins))}-${String(count(record.losses))}-${String(count(record.ties))} p ${pSaid(count(record.p))}`;
+  const step = tallyOf(tested);
+  if (record === null || step === null) return "not scored";
+  const said = ({ wins, losses, ties, p }: typeof step) =>
+    `${String(wins)}-${String(losses)}-${String(ties)} p ${pSaid(p)}`;
+  const billed = said({
+    wins: count(record.wins),
+    losses: count(record.losses),
+    ties: count(record.ties),
+    p: count(record.p),
+  });
+  return said(step) === billed ? billed : `${billed}, without the bill ${said(step)}`;
 }
 
 /** A test's p as a reading prints it. */
@@ -155,13 +165,11 @@ function ruleOf(log: Index): string {
     : "opened with no level in its terms (the tree's default)";
 }
 
-/** Of a tally, the tasks that did not tie, of all it tallied: `10 of 12`, or "-" where none was
- *  made, which until 25 October lane 27 read as "0 of 0". */
+/** Of a tally, the tasks that did not tie without the bill (`tallyOf`), of all it tallied: `10 of
+ *  12`, or "-" where none was made, which until 25 October lane 27 read as "0 of 0". */
 export function untied(tested: JsonValue | undefined): string {
-  const record = asRecord(tested);
-  if (record === null) return "-";
-  const [wins, losses, ties] = ["wins", "losses", "ties"].map((key) => count(record[key]));
-  return share((wins ?? 0) + (losses ?? 0), (wins ?? 0) + (losses ?? 0) + (ties ?? 0));
+  const step = tallyOf(tested);
+  return step === null ? "-" : share(step.wins + step.losses, step.wins + step.losses + step.ties);
 }
 
 /** One rest comparison as lane 27 reads it: the tally against its own A/A noise, the tally at each

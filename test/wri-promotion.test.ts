@@ -7,7 +7,7 @@ import { asRecord, type JsonObject } from "../src/meta/json-shape.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { climbTable, safeguardTriggers } from "../tools/wri/climb.ts";
 import { indexOf, type TRIGGERS } from "../tools/wri/folds.ts";
-import { joinedTest, testedOf } from "../tools/wri/promotion.ts";
+import { joinedTest, testedOf, testSaid, untied } from "../tools/wri/promotion.ts";
 import { overview } from "../tools/wri/read.ts";
 import { conditionOf, roundSolves } from "./helpers/logged-round.ts";
 
@@ -269,5 +269,27 @@ describe("lane 27 across campaigns", () => {
     ] as const) {
       expect(safeguardTriggers(indexOf(leaning(input)))).toEqual([...expected]);
     }
+  });
+});
+
+describe("a tally as its step is read", () => {
+  // g-3 of 1 November: 9 of 18 tied with the bill, 14 of 18 without it, which the step reads.
+  const scored = {
+    wins: 7,
+    losses: 2,
+    ties: 9,
+    p: 0.09,
+    unbilled: [0.4, 0.3, 0.2, -0.1, ...Array<number>(14).fill(0)],
+  };
+
+  it("counts the untied tasks without the bill where the report holds those scores", () => {
+    expect(untied(scored)).toBe(untied({ wins: 3, losses: 1, ties: 14 }));
+    expect(testSaid(scored)).toContain("without the bill 3-1-14");
+  });
+
+  it("reads a report from before the bill-free scores as it was tallied", () => {
+    const old = { wins: 7, losses: 2, ties: 9, p: 0.09 };
+    expect(untied(old)).toBe(untied({ wins: 7, losses: 2, ties: 9 }));
+    expect(testSaid(old)).toBe("7-2-9 p 0.090");
   });
 });

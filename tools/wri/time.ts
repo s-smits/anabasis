@@ -26,7 +26,8 @@
  */
 import type { LogEvent } from "#src/kernel/log.ts";
 import { AT_A_LIMIT } from "#src/kernel/reports.ts";
-import { degradations, roleOf, spendOf, type Turn, tracesIn } from "#src/kernel/trace.ts";
+import { degradations, type Turn, tracesIn } from "#src/kernel/trace.ts";
+import { roleOf, spendOf } from "#src/kernel/meter.ts";
 import { isNumber, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy, median } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";

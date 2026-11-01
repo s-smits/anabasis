@@ -67,7 +67,7 @@ import { writtenTasks } from "#src/kernel/history.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { comparisonsOf } from "#src/campaign/ground.ts";
 import { lastReports, promoted } from "#src/kernel/reports.ts";
-import { billedAll, billedParts, costLine, spendOf } from "#src/kernel/trace.ts";
+import { billedAll, billedParts, costLine, spendOf } from "#src/kernel/meter.ts";
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";

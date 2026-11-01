@@ -42,6 +42,13 @@ import type { ConversationRetryPolicy } from "@earendil-works/pi-durable";
 
 const CODEX = "openai-codex";
 
+/** DeepSeek V4.1 Flash of 17 October as DeepInfra serves it at fp8, on either route: its list price
+ *  per million tokens and its output limit. */
+const DEEPSEEK_FLASH = {
+  cost: { input: 0.098, output: 0.294, cacheRead: 0.00294, cacheWrite: 0 },
+  maxTokens: 131_072,
+};
+
 /**
  * OpenAI-compatible endpoints, each served by pi's chat completions API at its `/v1` base with
  * pi's compat for that base, on the key the environment holds under `key`. A campaign names a model
@@ -63,14 +70,7 @@ const ENDPOINTS: readonly {
     id: "deepinfra",
     baseUrl: "https://api.deepinfra.com/v1/openai",
     key: "DEEPINFRA_KEY",
-    models: [
-      {
-        id: "deepseek-ai/DeepSeek-V4.1-Flash-1017",
-        cost: { input: 0.098, output: 0.294, cacheRead: 0.00294, cacheWrite: 0 },
-        contextWindow: 1_048_576,
-        maxTokens: 131_072,
-      },
-    ],
+    models: [{ id: "deepseek-ai/DeepSeek-V4.1-Flash-1017", ...DEEPSEEK_FLASH, contextWindow: 1_048_576 }],
   },
 ];
 
@@ -232,8 +232,7 @@ export function openrouter(): Provider<"anthropic-messages" | "openai-completion
   const dated = router.getModels().find(({ id }) => id === "deepseek/deepseek-v4.1-flash-1017");
   const pinned = dated && {
     ...dated,
-    cost: { input: 0.098, output: 0.294, cacheRead: 0.00294, cacheWrite: 0 },
-    maxTokens: 131_072,
+    ...DEEPSEEK_FLASH,
     compat: { ...dated.compat, openRouterRouting: { only: ["deepinfra/fp8"], allow_fallbacks: false } },
   };
   const pin = <M extends { readonly id: string }>(model: M) => (model.id === pinned?.id ? pinned : model);

@@ -50,20 +50,11 @@ import {
 } from "@earendil-works/pi-durable";
 import type { Context } from "@earendil-works/chord";
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
-import { CLAUDE_COMPACTED, claudeLedger, servedByClaude } from "./backends/claude.ts";
+import { CLAUDE_COMPACTED, claudeLedger } from "./backends/claude.ts";
 import { retryPolicy } from "./backends/models.ts";
 import { compactionPolicy, compactionTrace } from "./backends/compaction.ts";
 import { append } from "../kernel/log.ts";
-import {
-  billOf,
-  freezePrices,
-  type Ledger,
-  ledgerOf,
-  priceKey,
-  sessionLedger,
-  type Tokens,
-  tokensOf,
-} from "../kernel/meter.ts";
+import { durableSpend, seatMeter, type Spent } from "../kernel/meter.ts";
 import { type Seat as SeatKind, traceKind, whose } from "../kernel/trace.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { Cancellation } from "../kernel/solve.ts";
@@ -129,19 +120,6 @@ export interface Sat {
   readonly spent: Spent;
 }
 
-/** What a seat spent, as its end records it: its model turns, its tokens and the dollars they come
- *  to (`billOf`), and the total Claude Code reported where it served the seat. An unfinished seat is
- *  counted by its turns' recorded dollars (`unfinished`, `src/kernel/trace.ts`). */
-type Spent = Readonly<{
-  turns: number;
-  tokens: Readonly<Record<keyof Tokens, number>>;
-  billed: number;
-  reportedCost: number | null;
-}>;
-
-/** What a seat that never sat spent. */
-export const NOTHING_SPENT: Spent = { turns: 0, tokens: tokensOf({}), billed: 0, reportedCost: null };
-
 /** Whose trace a log holds: a solve's, a Builder's session, an Examiner's that writes tasks, or
  *  the one in which it drafts the exam, or a Referee ruling. The word prefixes the event kinds
  *  (`draft.turn`), which `src/kernel/trace.ts` reads. */
@@ -203,37 +181,15 @@ export function traceSink(log: string, of: Traced, id: string, turn: () => numbe
   };
 }
 
-/** The seat's prices, frozen once its backends exist: its own model's, then every model its
- *  provider's catalogue prices. A turn is priced at the model that served it where that is listed,
- *  and at the seat's own otherwise (recode, 25 October: Claude Code answered claude-opus-5-5's
- *  requests as claude-opus-5). */
-function pricesOf(model: Model<Api>) {
-  let prices = freezePrices([model]);
-  const keyOf = (served: string | undefined): string => {
-    const key = served === undefined ? priceKey(model) : priceKey({ provider: model.provider, id: served });
-    return Object.hasOwn(prices, key) ? key : priceKey(model);
-  };
-  return {
-    catalogue: (models: Models) => {
-      const listed = models.getModels(model.provider).filter(({ cost }) => cost.input > 0 && cost.output > 0);
-      prices = freezePrices([...listed, model]);
-    },
-    bill: (ledger: Ledger) => billOf(prices, ledger),
-    /** The turns' ledger, each turn at the key it is priced at. */
-    turns: (turns: readonly AssistantMessage[]): Ledger =>
-      ledgerOf(turns.map(({ responseModel, usage }) => [keyOf(responseModel), usage])),
-  };
-}
-
 /** One session of `seat`, on one in-memory Harness and one conversation. */
 export async function sit(seat: Seat): Promise<Sat> {
   const home = seat.home ?? hostScratch("claude-cli-seat-");
-  const prices = pricesOf(seat.model);
+  const meter = seatMeter(seat.model);
   const stops = seat.stops.filter((stop) => stop !== undefined);
   const done = new AbortController();
   const shutdown = AbortSignal.any([...stops, done.signal]);
   const halt = Promise.withResolvers<void>();
-  const frame = sessionHooks(seat, halt.resolve, prices);
+  const frame = sessionHooks(seat, halt.resolve, meter);
   // Each summary's spend is traced at its price, one usage a model; the session's bill holds it
   // through the backend's ledger, so it is priced here for the trace alone.
   const compactions = compactionTrace(({ spent, ...event }) => {
@@ -241,11 +197,7 @@ export async function sit(seat: Seat): Promise<Sat> {
     append(seat.trace.log, traceKind(seat.trace.of, "compacted"), {
       [whose(seat.trace.of)]: seat.id,
       ...event,
-      usages: Object.entries(spent).map(([model, spend]) => ({
-        model,
-        ...spend.tokens,
-        cost: { total: prices.bill({ [model]: spend }) },
-      })),
+      usages: meter.rows(spent),
     });
   });
   let harness: Harness | undefined;
@@ -263,7 +215,7 @@ export async function sit(seat: Seat): Promise<Sat> {
       }),
     );
     const models = seat.models(home, shutdown);
-    prices.catalogue(models);
+    meter.catalogue(models);
     harness = await Harness.open(
       new MemoryStorage(),
       {
@@ -314,22 +266,6 @@ export async function sit(seat: Seat): Promise<Sat> {
   }
   const cut = stops.some((stop) => stop.aborted);
   const last = seat.turns.at(-1);
-  // Claude Code's result where it served the seat, and pi-durable's ledger for every other backend.
-  const claude = servedByClaude(seat.model.provider) ? await claudeLedger(seat.id) : null;
-  const backend =
-    claude?.ledger ??
-    (usage === null || servedByClaude(seat.model.provider)
-      ? null
-      : ledgerOf([
-          ...Object.entries(usage.models),
-          ...Object.entries(usage.tools).map(([name, spent]) => [`tool/${name}`, spent] as const),
-        ]));
-  const served = prices.turns(seat.turns);
-  const filed =
-    claude === null
-      ? ledgerOf(seat.turns.map((turn) => [`${turn.provider}/${turn.model}`, turn.usage]))
-      : served;
-  const ledger = sessionLedger(backend, filed, served);
   return {
     cut,
     thrown: frame.thrown,
@@ -337,18 +273,17 @@ export async function sit(seat: Seat): Promise<Sat> {
       ? null
       : (frame.thrown ??
         (last?.stopReason === "error" ? (last.errorMessage ?? "the provider failed the turn") : null)),
-    spent: {
-      turns: seat.turns.length,
-      tokens: { ...tokensOf(ledger) },
-      billed: prices.bill(ledger),
-      reportedCost: claude?.reported ?? null,
-    },
+    // Claude Code's last result where a query of this process served the seat, else pi-durable's.
+    spent: meter.spent(
+      seat.turns,
+      (await claudeLedger(seat.id)) ?? (usage === null ? null : durableSpend(usage)),
+    ),
   };
 }
 
 /** Hooks cannot throw to end a run: durable reports a hook error and continues. A fence instead
  * wakes sit, which aborts from outside the invocation, then releases the hook's wait by its signal. */
-function sessionHooks(seat: Seat, halt: () => void, prices: ReturnType<typeof pricesOf>) {
+function sessionHooks(seat: Seat, halt: () => void, meter: ReturnType<typeof seatMeter>) {
   const sink =
     seat.trace === undefined
       ? undefined
@@ -415,7 +350,7 @@ function sessionHooks(seat: Seat, halt: () => void, prices: ReturnType<typeof pr
               retried.push(message.errorMessage ?? "provider failure");
               return;
             }
-            message.usage.cost = { ...message.usage.cost, total: prices.bill(prices.turns([message])) };
+            message.usage.cost = { ...message.usage.cost, total: meter.turn(message) };
             tools.reset();
             seat.turns.push(message);
             sink?.turn(message, retried);

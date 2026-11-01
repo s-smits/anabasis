@@ -25,7 +25,7 @@
  */
 import { type LogEvent, read } from "../kernel/log.ts";
 import { type Cap, patienceOf } from "../kernel/reports.ts";
-import { billedAll } from "../kernel/trace.ts";
+import { billedAll } from "../kernel/meter.ts";
 import { SIZE } from "../kernel/size.ts";
 import { unadmitted } from "../kernel/acceptance.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";

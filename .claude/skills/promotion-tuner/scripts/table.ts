@@ -70,7 +70,7 @@ import { epochsOf } from "#src/campaign/climb.ts";
 import { comparisonsOf } from "#src/campaign/ground.ts";
 import { campaignOf } from "#src/campaign/handover.ts";
 import { type EventKind, type LogEvent, read } from "#src/kernel/log.ts";
-import { billedBetween } from "#src/kernel/trace.ts";
+import { billedBetween } from "#src/kernel/meter.ts";
 import { gitMaybe } from "#src/meta/git.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { runtimeProcess } from "#src/meta/process.ts";

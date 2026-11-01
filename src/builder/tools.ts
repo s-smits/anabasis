@@ -49,7 +49,8 @@ import { type LogEvent, read } from "../kernel/log.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { limitsIn } from "../kernel/condition.ts";
 import type { Contract } from "../kernel/contract.ts";
-import { billedParts, callList, callText, closingOf, traceOf } from "../kernel/trace.ts";
+import { callList, callText, closingOf, traceOf } from "../kernel/trace.ts";
+import { billedParts } from "../kernel/meter.ts";
 import { ended, passed, practiceRan, rejectionAside, solvesIn, verdictsOf } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
 import {

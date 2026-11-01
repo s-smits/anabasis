@@ -76,12 +76,16 @@ export async function loadTree(path: string): Promise<Tree> {
   // as this tree's, and the check below refuses a tree whose scores have a different shape.
   const kernel = async <Module>(file: string): Promise<Module> =>
     (await import(join(path, "src", "kernel", file))) as Module;
-  const [log, reports, compare, trace] = await Promise.all([
+  const [log, reports, compare, meter, trace] = await Promise.all([
     kernel<typeof import("#src/kernel/log.ts")>("log.ts"),
     kernel<typeof import("#src/kernel/reports.ts")>("reports.ts"),
     kernel<typeof import("#src/kernel/compare.ts")>("compare.ts"),
-    kernel<typeof import("#src/kernel/trace.ts")>("trace.ts"),
+    kernel<object>("meter.ts"),
+    kernel<object>("trace.ts"),
   ]);
+  // From 1 November a tree's billing folds are its meter's; a tree before keeps them in its trace.
+  const billing: unknown = Reflect.get(meter, "billedBetween") ?? Reflect.get(trace, "billedBetween");
+  if (!isFunction(billing)) throw new Error(`${path} has no billedBetween in its meter or its trace`);
   if (!isFunction(compare.pointsOf) || asRecord(compare.WEIGHTS) === null) {
     throw new Error(`${path} scores no weighted measures (pointsOf, WEIGHTS): a tree from before 21 October`);
   }
@@ -110,7 +114,7 @@ export async function loadTree(path: string): Promise<Tree> {
         ? compare.readsStepEitherWay(unbilled, level)
         : Reflect.apply(compare.readsStepEitherWay, undefined, [differences, level, unbilled]) === true,
     measures: (value) => compare.measuresIn(value),
-    billedBetween: (events, from, to) => trace.billedBetween(events, from, to),
+    billedBetween: (events, from, to) => Number(Reflect.apply(billing, undefined, [events, from, to])),
   };
 }
 

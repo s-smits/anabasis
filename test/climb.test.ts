@@ -19,7 +19,7 @@
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { type Epoch, epochLine, epochsOf, riskLines, worthOf } from "../src/campaign/climb.ts";
 import { examine } from "../src/examiner/session.ts";
-import { type Condition, settingId } from "../src/kernel/condition.ts";
+import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import { type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
 import { GUIDE_FILE } from "../src/meta/bundle-layout.ts";
 import {
@@ -35,6 +35,7 @@ import { asRecord, isNumber, isString, type JsonObject } from "../src/meta/json-
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
+import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { ANSWER_FILE } from "../src/tools/answer.ts";
 import type { Seats } from "../tools/d2/campaign-terms.ts";
 import { harnessBuilder } from "../tools/d2/harness-builder.ts";
@@ -541,5 +542,34 @@ describe("the bar a promotion is read against, beside an old ladder's readings",
     const tied = { ...stepRead("g-5", "ha", "hb").data, reading: "no-step", frontier: { differences: [0] } };
     const again = [...log.slice(0, step + 1), event("comparison.reported", tied)];
     expect(worthOf(again, "g-6").cost).toMatchObject({ attempts: 3 });
+  });
+});
+
+describe("an epoch's reference share", () => {
+  it("reads the reference's comparison solves and leaves a practice solve of an admitted task out", () => {
+    // WRI lane 33, 1 November: six of the 24 solves in one run's "reference valid 24 of 24" were
+    // practice solves, and the line called the gate's admissions, released ones among them, held out.
+    const ran = condition("v-a", "S");
+    const id = conditionId(ran);
+    const solve = (name: string, asked: JsonObject, kind: "pass" | "fail") => [
+      event("solve.started", { solve: name, condition: id, ...asked }),
+      event("verdict", { solve: name, kind, answer: { answer: "x" } }),
+      event("solve.finished", {
+        solve: name,
+        ending: { outcome: kind, kind: kind === "pass" ? "pass" : "rejected" },
+      }),
+    ];
+    const log = [
+      event("comparison.started", { session: "g-1", old: "S", fresh: "h2", starter: "S" }),
+      ...heldOut("v-a"),
+      event("condition.recorded", { id, condition: requireJsonValue(ran) }),
+      ...solve("t-1", { comparison: "g-1" }, "pass"),
+      ...solve("t-2", {}, "fail"),
+    ];
+    const [epoch] = epochsOf(log);
+    expect(epoch?.reference_share).toEqual({ valid: 1, solves: 1 });
+    if (epoch === undefined) throw new Error("an epoch");
+    expect(epochLine(epoch)).toContain("1 tasks admitted;");
+    expect(epochLine(epoch)).toContain("reference valid 1 of 1 in their comparisons");
   });
 });

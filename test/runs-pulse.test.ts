@@ -5,7 +5,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/files
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { leftOut, pulse } from "../tools/runs/pulse.ts";
+import { leftOut, pulse as pulseOf } from "../tools/runs/pulse.ts";
+import { overview } from "../tools/wri/read.ts";
 import type { Run } from "../tools/runs/registry.ts";
 
 const round: Run = { name: "r1", tree: "/wt", path: "/wt/.ana/d2/r1/log.jsonl", end: "comparison.reported" };
@@ -19,6 +20,14 @@ const event = (minute: number, kind: EventKind, data: JsonObject): LogEvent => (
 const lookedAt = (lines: number) => ({ lines, open: true, quiet: false });
 
 const built = [event(0, "build.started", { session: "r1-b" })];
+/** A look that reads the investigation's triggers in this process, as `wri.ts read` would print them. */
+const pulse = (
+  run: Run,
+  log: readonly LogEvent[],
+  process: "open" | "closed",
+  before: Parameters<typeof pulseOf>[3],
+  now: number,
+) => pulseOf(run, log, process, before, { now, alarms: () => overview(log).triggers });
 
 describe("the runs pulse", () => {
   it("reports missing processes and each session's own ending", () => {
@@ -52,7 +61,7 @@ describe("the runs pulse", () => {
     }
   });
 
-  it("counts solves in one line, and warns of each kind of non-result once with its repeats", () => {
+  it("warns of each kind of non-result once with its repeats, and of no other solve", () => {
     const finished = (solve: string, ending: JsonObject) => event(1, "solve.finished", { solve, ending });
     const killed = { outcome: "non-result", kind: "killed", reason: "the solve was cancelled" };
     const log = [
@@ -68,7 +77,6 @@ describe("the runs pulse", () => {
     ];
     expect(pulse(round, log, "open", lookedAt(1), START).said).toEqual([
       "⚠ a solve ended without a result, killed: the solve was cancelled (×2)",
-      "· solves: 2 started, 1 pass, 1 fail, 1 flagged, 1 cut once its room was read",
     ]);
   });
 
@@ -77,7 +85,7 @@ describe("the runs pulse", () => {
       event(1, "campaign.waited", { task: "t-1", load, cores: 4, ms });
     const log = [...built, waited(60_000, 5), waited(20 * 60_000, 6.5), waited(30 * 60_000, 7)];
     expect(pulse(round, log, "open", lookedAt(1), START + 2 * 60_000).said).toEqual([
-      "⚠ 2 solves waited over 15m for the load, the longest 30m at load 7 on 4 cores",
+      "⚠ 2 solves waited over 15m for the load, the longest 30m at load 7.0 on 4 cores",
     ]);
     expect(pulse(round, log.slice(0, 2), "open", lookedAt(1), START + 2 * 60_000).said).toEqual([]);
   });
@@ -193,6 +201,13 @@ describe("the runs pulse", () => {
     const billOnly = { differences: [1, 1, 1, 1, 1, 1, 1, 0], unbilled: [0, 0, 0, 0, 0, 0, 0, 0] };
     expect(said(report(billOnly, 9))).toMatch(/^◆.*A\/A 0-0-8 ·/);
     expect(said(report(quiet, 0))).toMatch(/^⚠.*supply 0 of 8 informative, floor 8/);
+    // Past the bar as the report's own `met` reads it: set-up's epoch meets it at any count.
+    const costing = (attempts: number, met: boolean) => ({
+      ...report(quiet, 9),
+      worth: { bars: { cost: 3 }, cost: { attempts, dollars: 40, met } },
+    });
+    expect(said(costing(4, true))).toMatch(/^◆.*attempt 4 of 3/);
+    expect(said(costing(4, false))).toMatch(/^⚠.*attempt 4 of 3/);
   });
 
   it("says an investigation alarm once when it fires or moves, and remembers the ones a first look found", () => {

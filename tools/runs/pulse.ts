@@ -33,7 +33,8 @@ import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
-import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { capturedExecPath, parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { mainTree } from "#src/meta/git.ts";
 import { countBy } from "#src/meta/tally.ts";
@@ -42,8 +43,6 @@ import { asked, hosts } from "./hosts.ts";
 import { hostsOf } from "./host-config.ts";
 import { lastLaunch } from "./receipt.ts";
 import { runReason } from "./diagnosis.ts";
-import { TRIGGERS } from "#tools/wri/folds.ts";
-import { overview } from "#tools/wri/read.ts";
 import {
   ARCHIVE,
   archived,
@@ -55,6 +54,13 @@ import {
   runs,
   writers,
 } from "./registry.ts";
+
+/** One of the investigation's triggers of a log, as `wri.ts read` prints it. */
+interface Alarm {
+  readonly name: string;
+  readonly lane: number;
+  readonly detail: string;
+}
 
 /** What the last look saw of one log. */
 interface Seen {
@@ -97,48 +103,48 @@ const ENDED = "campaign.ended";
 const STARTS: ReadonlySet<string> = new Set(["build.started", "exam.started", "comparison.started"]);
 
 /**
- * The investigation's triggers a watch says (`tools/wri/folds.ts`), by the factor each bears on
- * (`AGENTS.md`, section 1). An alarm is read again at every look where the log gained an event that
- * can move one (`MOVES_A_TRIGGER`) and said where it fired or its key moved (`keyOf`); a reading
- * moves with each solve, so it is said only after a milestone. On 1 November an unconfirmed promotion and two unbilled compactions in a live buffer
- * campaign were found only by running `wri.ts read` on it by hand. `overview` takes about 90 ms on
- * a log of 2,000 events. A trigger the pulse reads itself is left out (a model served, an
- * unfinished session), and so is one every promotion fires until its starter comparison reports.
+ * The investigation's triggers a watch says, by the factor each bears on (`AGENTS.md`, section 1).
+ * An alarm is read again at every look where the log gained an event that can move one
+ * (`MOVES_A_TRIGGER`) and said where it fired or its key moved (`keyOf`); a reading moves with each
+ * solve, so it is said only after a milestone. On 1 November an unconfirmed promotion and two
+ * unbilled compactions in a live buffer campaign were found only by running `wri.ts read` on it by
+ * hand. A trigger the pulse reads itself is left out (a model served, an unfinished session), and so
+ * is one every promotion fires until its starter comparison reports.
  */
-const WATCHED: Partial<Record<keyof typeof TRIGGERS, readonly [string, "alarm" | "reading"]>> = {
-  "SUPPLY THIN": ["supply", "alarm"],
-  "NOTHING SCORED": ["supply", "alarm"],
-  "SET SHORT": ["supply", "alarm"],
-  "NO TASK HELD OUT": ["supply", "alarm"],
-  "NO VALID ANSWER": ["supply", "alarm"],
-  "AWAITING A LABEL": ["supply", "alarm"],
-  "GATE REFUSED": ["supply", "reading"],
-  "OUTCOMES BY SESSION": ["supply", "reading"],
-  "PROMOTION UNCONFIRMED": ["climb", "reading"],
-  "BROKEN AT END": ["climb", "alarm"],
-  "STEP CARRIERS": ["climb", "reading"],
-  "CHAIN": ["climb", "reading"],
-  "MOVES ASKED": ["honesty", "reading"],
-  "SCORED SET MOVED": ["honesty", "alarm"],
-  "HOST CODE MOVED": ["honesty", "alarm"],
-  "PRACTISED TASK MEASURED": ["honesty", "alarm"],
-  "MEASURED AN EARLIER STATE": ["honesty", "alarm"],
-  "STARTS OUT OF TURN": ["honesty", "alarm"],
-  "LOG OUT OF ORDER": ["honesty", "alarm"],
-  "SAFEGUARD-8 PROMOTION ON AUTHOR ROOM": ["honesty", "alarm"],
-  "SAFEGUARD-9 PROMOTION BEYOND VALIDITY": ["honesty", "alarm"],
-  "CHECK DEFECT RULED": ["verdicts", "alarm"],
-  "RULED UNCLEAR": ["verdicts", "alarm"],
-  "RULINGS REFUSED": ["verdicts", "alarm"],
-  "EARNED WITHOUT A PROBE": ["verdicts", "alarm"],
-  "REVIEW FAULTS": ["verdicts", "alarm"],
-  "SET ASIDE AND UNSETTLED": ["verdicts", "alarm"],
-  "REPLAY MOVED THE VERDICT": ["verdicts", "alarm"],
-  "CHECKER READ WITH FAULTS": ["verdicts", "alarm"],
-  "FROZEN DESPITE FAULTS": ["verdicts", "alarm"],
-  "UNBILLED COMPACTIONS": ["economy", "alarm"],
-  "SESSION CRASHED": ["economy", "alarm"],
-};
+const WATCHED = new Map<string, readonly [string, "alarm" | "reading"]>([
+  ["SUPPLY THIN", ["supply", "alarm"]],
+  ["NOTHING SCORED", ["supply", "alarm"]],
+  ["SET SHORT", ["supply", "alarm"]],
+  ["NO TASK HELD OUT", ["supply", "alarm"]],
+  ["NO VALID ANSWER", ["supply", "alarm"]],
+  ["AWAITING A LABEL", ["supply", "alarm"]],
+  ["GATE REFUSED", ["supply", "reading"]],
+  ["OUTCOMES BY SESSION", ["supply", "reading"]],
+  ["PROMOTION UNCONFIRMED", ["climb", "reading"]],
+  ["BROKEN AT END", ["climb", "alarm"]],
+  ["STEP CARRIERS", ["climb", "reading"]],
+  ["CHAIN", ["climb", "reading"]],
+  ["MOVES ASKED", ["honesty", "reading"]],
+  ["SCORED SET MOVED", ["honesty", "alarm"]],
+  ["HOST CODE MOVED", ["honesty", "alarm"]],
+  ["PRACTISED TASK MEASURED", ["honesty", "alarm"]],
+  ["MEASURED AN EARLIER STATE", ["honesty", "alarm"]],
+  ["STARTS OUT OF TURN", ["honesty", "alarm"]],
+  ["LOG OUT OF ORDER", ["honesty", "alarm"]],
+  ["SAFEGUARD-8 PROMOTION ON AUTHOR ROOM", ["honesty", "alarm"]],
+  ["SAFEGUARD-9 PROMOTION BEYOND VALIDITY", ["honesty", "alarm"]],
+  ["CHECK DEFECT RULED", ["verdicts", "alarm"]],
+  ["RULED UNCLEAR", ["verdicts", "alarm"]],
+  ["RULINGS REFUSED", ["verdicts", "alarm"]],
+  ["EARNED WITHOUT A PROBE", ["verdicts", "alarm"]],
+  ["REVIEW FAULTS", ["verdicts", "alarm"]],
+  ["SET ASIDE AND UNSETTLED", ["verdicts", "alarm"]],
+  ["REPLAY MOVED THE VERDICT", ["verdicts", "alarm"]],
+  ["CHECKER READ WITH FAULTS", ["verdicts", "alarm"]],
+  ["FROZEN DESPITE FAULTS", ["verdicts", "alarm"]],
+  ["UNBILLED COMPACTIONS", ["economy", "alarm"]],
+  ["SESSION CRASHED", ["economy", "alarm"]],
+]);
 /** The events after which a reading is said again. */
 const MILESTONES: ReadonlySet<string> = new Set([
   REPORTED,
@@ -149,8 +155,8 @@ const MILESTONES: ReadonlySet<string> = new Set([
 ]);
 /**
  * The events that can move a watched trigger, so a look reads the investigation only after one.
- * Over 57 recorded logs, 27% of the looks where a log grew held one; `overview` takes about 3 s on a
- * log of 46,000 events, and until 1 November ran at every such look. Replayed on those logs, 2 of
+ * Over 57 recorded logs, 27% of the looks where a log grew held one; the investigation takes about
+ * 3 s to read a log of 46,000 events, and until 1 November read one at every such look. Replayed on those logs, 2 of
  * 358 alarms were said later than before, the later by 29 minutes: a host's code that moved is said
  * at the next of these events.
  */
@@ -168,6 +174,8 @@ const MOVES_A_TRIGGER: ReadonlySet<string> = new Set([
 ]);
 /** The comparisons and sessions a trigger's detail names (`g-2`, `b-3`, `x-1`), not a task (`x-1-3`). */
 const NAMED = /\b[bgx]-\d+(?![-\d])/g;
+/** One of the investigation's triggers as its command prints it: `NAME (lane N): detail`. */
+const TRIGGER_LINE = /^([A-Z][A-Z0-9 -]*[A-Z0-9]) \(lane (\d+)\): (.*)$/;
 /** A load wait a person moves a run for (`AGENTS.md`, section 10, condition 4). */
 const LOAD_WAIT_MS = 15 * 60_000;
 
@@ -202,9 +210,11 @@ function factorsOf(data: JsonObject): { said: string; look: boolean } {
   const clears = scores !== undefined && readsStepEitherWay(scores, level);
   const worth = asRecord(data.worth);
   const bar = asRecord(worth?.bars)?.cost;
-  const attempts = asRecord(worth?.cost)?.attempts;
+  const spent = asRecord(worth?.cost);
+  const attempts = spent?.attempts;
   const scant = isNumber(informative) && informative < floor;
-  const dear = isNumber(bar) && isNumber(attempts) && attempts > bar;
+  // Past the bar as the report reads it (`met`, `costOf`, `climb.ts`): set-up's epoch never is.
+  const dear = spent?.met === false;
   const parts = [
     isNumber(informative)
       ? `supply ${String(informative)} of ${word(data.tasks)} informative, floor ${String(floor)}`
@@ -252,9 +262,10 @@ const SAID: Partial<Record<EventKind, (data: JsonObject) => string | null>> = {
   "exam.finished": (data) => `◆ exam ${word(data.session)} ended${cost(data)}`,
   "harness.version": (data) =>
     `· harness ${word(data.version).slice(0, 8)}${short(data.note) === "" ? "" : `: ${short(data.note)}`}`,
-  // A solve that ended is counted in one line a look (`solvesSaid`), and only a non-result has a
-  // line of its own, by its kind and reason: over 57 recorded logs, a line a solve started or
-  // passed was 74% of everything the pulse said, and no person acts on one.
+  // A solve is counted in the status line, and only a non-result has a line of its own, by its kind
+  // and reason: over 57 recorded logs, a line a solve started or passed was 74% of everything the
+  // pulse said, and no person acts on one. A line a look counting its solves, replayed on those
+  // logs, became the most said line, and printed the row the status line already counts.
   "solve.finished": (data) => {
     const ending = asRecord(data.ending);
     // The gate cut a room solve once another settled the task's room, from 31 October until it
@@ -276,6 +287,27 @@ const SAID: Partial<Record<EventKind, (data: JsonObject) => string | null>> = {
 };
 
 /**
+ * The investigation's triggers of `run`'s log, from its own command, as `tools/runs/replay.ts`
+ * leaves it: production imports no helper (`AGENTS.md`, section 12), and until a review of
+ * 1 November the pulse imported the investigation's folds. A read that fails throws, and the look
+ * says so.
+ */
+function investigated(run: Run): Alarm[] {
+  const tree = resolve(import.meta.dir, "..", "..");
+  const read = runSync([capturedExecPath, join(tree, "tools", "wri", "wri.ts"), "read", "--log", run.path], {
+    cwd: tree,
+    timeout: 120_000,
+  });
+  if (read.exitCode !== 0) throw new Error(decodeOutput(read.stderr).trim().split("\n").at(-1));
+  return decodeOutput(read.stdout)
+    .split("\n")
+    .flatMap((line) => {
+      const [, name = "", lane = "", detail = ""] = TRIGGER_LINE.exec(line) ?? [];
+      return name === "" ? [] : [{ name, lane: Number(lane), detail }];
+    });
+}
+
+/**
  * What a trigger's detail is about: the comparisons and sessions it names, else its first count,
  * so a detail is said again when it names another or its count moves, and not when only its
  * wording does. Until 1 November a whole detail was compared, and over 57 recorded logs 757 of 784
@@ -292,19 +324,25 @@ function keyOf(name: string, detail: string): string {
  *  is new since `before`; the first look of a run only remembers them. A trigger fires once for each
  *  comparison or session it names, so each name keeps every key: until a fix of 1 November it kept
  *  one, and gate-free-r2's two comparisons with a task set aside said the first again at every look. */
-function triggersSaid(log: readonly LogEvent[], fresh: readonly LogEvent[], before: Seen | undefined) {
+function triggersSaid(fresh: readonly LogEvent[], before: Seen | undefined, alarms: () => readonly Alarm[]) {
   const kept = before?.triggers ?? {};
   const moves = fresh.some(({ kind }) => MOVES_A_TRIGGER.has(kind) || kind.endsWith(".compacted"));
   if (before !== undefined && !moves) return { now: kept, said: [] };
   const milestone = fresh.some(({ kind }) => MILESTONES.has(kind));
-  const read = new Map<keyof typeof TRIGGERS, string[]>();
-  for (const { name, detail } of overview(log).triggers) {
-    const watched = WATCHED[name];
-    if (watched === undefined || (watched[1] === "reading" && !milestone && before !== undefined)) continue;
-    read.set(name, [...(read.get(name) ?? []), detail]);
+  const read = new Map<string, { lane: number; details: string[] }>();
+  let found: readonly Alarm[];
+  try {
+    found = alarms();
+  } catch (error) {
+    return { now: kept, said: [`⚠ the investigation could not read the log: ${short(String(error))}`] };
   }
-  const said = [...read].flatMap(([name, details]) => {
-    const [factor, kind] = WATCHED[name] ?? ["", "alarm"];
+  for (const { name, lane, detail } of found) {
+    const watched = WATCHED.get(name);
+    if (watched === undefined || (watched[1] === "reading" && !milestone && before !== undefined)) continue;
+    read.set(name, { lane, details: [...(read.get(name)?.details ?? []), detail] });
+  }
+  const said = [...read].flatMap(([name, { lane, details }]) => {
+    const [factor, kind] = WATCHED.get(name) ?? ["", "alarm"];
     const known = new Set((kept[name] ?? "").split("\n"));
     return before === undefined
       ? []
@@ -312,13 +350,13 @@ function triggersSaid(log: readonly LogEvent[], fresh: readonly LogEvent[], befo
           .filter((detail) => !known.has(keyOf(name, detail)))
           .map(
             (detail) =>
-              `${kind === "alarm" ? "⚠" : "◆"} ${factor}: ${name} (lane ${String(TRIGGERS[name])}): ${short(detail)}`,
+              `${kind === "alarm" ? "⚠" : "◆"} ${factor}: ${name} (lane ${String(lane)}): ${short(detail)}`,
           );
   });
   const now = {
     ...kept,
     ...Object.fromEntries(
-      [...read].map(([name, details]) => [name, details.map((detail) => keyOf(name, detail)).join("\n")]),
+      [...read].map(([name, { details }]) => [name, details.map((detail) => keyOf(name, detail)).join("\n")]),
     ),
   };
   return { now, said };
@@ -416,23 +454,12 @@ export function pulse(
   log: readonly LogEvent[],
   process: "open" | "closed",
   before: Seen | undefined,
-  now: number,
+  { now, alarms }: { readonly now: number; readonly alarms: () => readonly Alarm[] },
 ): Look {
   const open = process === "open";
   const stand = standing(run, log);
   const fresh = log.slice(before?.lines ?? log.length);
   const lines = fresh.flatMap(({ kind, data }) => SAID[kind]?.(data) ?? []);
-  const endings = fresh.flatMap(({ kind, data }) =>
-    kind === "solve.finished" ? [asRecord(data.ending)] : [],
-  );
-  const solved = [
-    [count(fresh, "solve.started"), "started"],
-    ...(["pass", "fail", "flagged"] as const).map(
-      (outcome) => [endings.filter((ending) => ending?.outcome === outcome).length, outcome] as const,
-    ),
-    [endings.filter((ending) => ending?.cancelledBy === "admission").length, "cut once its room was read"],
-  ].flatMap(([n, what]) => (n === 0 ? [] : [`${String(n)} ${what}`]));
-  if (solved.length > 0) lines.push(`· solves: ${solved.join(", ")}`);
   const loaded = fresh.flatMap(({ kind, data }) =>
     kind === "campaign.waited" && !isString(data.for) && isNumber(data.ms) && data.ms > LOAD_WAIT_MS
       ? [data]
@@ -441,7 +468,7 @@ export function pulse(
   const longest = loaded.toSorted((a, b) => Number(b.ms) - Number(a.ms))[0];
   if (longest !== undefined) {
     lines.push(
-      `⚠ ${plural(loaded.length, "solve")} waited over ${minutes(LOAD_WAIT_MS)} for the load, the longest ${minutes(Number(longest.ms))} at load ${word(longest.load)} on ${word(longest.cores)} cores`,
+      `⚠ ${plural(loaded.length, "solve")} waited over ${minutes(LOAD_WAIT_MS)} for the load, the longest ${minutes(Number(longest.ms))} at load ${isNumber(longest.load) ? longest.load.toFixed(1) : "?"} on ${word(longest.cores)} cores`,
     );
   }
   const turns = tracesIn(fresh).flatMap((each) => (each.part === "turn" ? [each] : []));
@@ -459,7 +486,7 @@ export function pulse(
   if (quiet && before?.quiet !== true) lines.push(`⚠ quiet for ${minutes(now - stand.since)}`);
   if (!quiet && before?.quiet === true) lines.push("· not quiet any more");
   if (before?.open === true && !open && !stand.ended) lines.push(`⚠ the process is gone before ${stand.end}`);
-  const triggers = triggersSaid(log, fresh, before);
+  const triggers = triggersSaid(fresh, before, alarms);
   lines.push(...triggers.said);
   // A comparison starts each task under two harnesses, so a line may come twice.
   const said = Object.entries(countBy(lines, (line) => line)).map(([line, n]) =>
@@ -510,7 +537,10 @@ async function look(state: string, names: readonly string[]): Promise<string[]> 
   const logs: Record<string, Seen> = { ...memory.logs };
   const said: string[] = [];
   for (const { run, open, before, events } of chosen) {
-    const seen = pulse(run, events, open ? "open" : "closed", before, now);
+    const seen = pulse(run, events, open ? "open" : "closed", before, {
+      now,
+      alarms: () => investigated(run),
+    });
     if (before === undefined || seen.said.length > 0) {
       const reasons = await runReason(run, events, open ? "open" : "closed");
       said.push(seen.status, ...[...seen.said, ...reasons].map((line) => `  ${line}`));

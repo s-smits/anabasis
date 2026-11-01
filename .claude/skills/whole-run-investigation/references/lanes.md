@@ -753,7 +753,7 @@ Starts from `STEP CARRIERS (lane 21)`.
 
 The question is whether a step stands on the harness across the scored tasks, or on a few tasks
 that share something else. `STEP CARRIERS` gives each step's untied tasks without the bill and how
-many of its largest wins it could lose and still clear its level; "none to spare" is a step at its
+many of its largest wins it could lose to a tie and still clear its level; "none to spare" is a step at its
 smallest sweep. For each step, from `readings.txt` and `tasks.txt`:
 
 1. find the smallest set of won tasks whose removal takes the step below its level;

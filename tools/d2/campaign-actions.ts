@@ -177,7 +177,7 @@ function actionTool(context: CampaignContext, bench: Bench, move: ActionMove, ru
         "Ask a separate Examiner to write tasks under the fixed exam. It returns at once and the Examiner writes beside you; the campaign's facts say what it has held out. A comparison is won on tasks the reference fails in some solve, or where the objective tells two valid answers apart.",
       release_practice: "Release the host's draw of public practice tasks into this workspace.",
       compare:
-        "Freeze harness/ and compare it with the current reference on fresh held-out solves. Where a comparison began and has not reported, it goes on under its original terms. A comparison that reads a step against the reference promotes the harness it froze.",
+        "Freeze harness/ and compare it with the current reference on fresh held-out solves. Where a comparison began and has not reported, it goes on under its original terms. Where the table names the starter comparison, this call runs that instead and harness/ is compared at the next one. A comparison that reads a step against the reference promotes the harness it froze.",
       promote:
         "Make the harness whose comparison read a step against the reference the campaign's reference, where the host has not already done so as the comparison reported. Nothing else is promoted, and this measures nothing.",
     }[move],

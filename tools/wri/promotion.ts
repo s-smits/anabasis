@@ -375,7 +375,7 @@ export function promotionTriggers(log: Index): Trigger[] {
 }
 
 /** `STEP CARRIERS` (lane 21): each step's untied tasks without the bill, and how many of its largest
- *  wins it could lose and still clear its level. On 1 November the gate ablation's g-3 cleared at
+ *  wins it could lose to a tie and still clear its level. On 1 November the gate ablation's g-3 cleared at
  *  6-0 with none to spare, and supply's g-2 lost its step without the 5 tasks priced in yen; lanes
  *  15, 23, 25 and 34 each found a part of that. */
 function carrierTrigger(log: Index): Trigger[] {

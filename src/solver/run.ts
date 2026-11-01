@@ -39,7 +39,7 @@ import { availableParallelism, loadavg } from "../meta/os.ts";
 import { join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
-import { type Sat, type SeatTool, sit, spentBy } from "../agent/session.ts";
+import { NOTHING_SPENT, type Sat, type SeatTool, sit } from "../agent/session.ts";
 import { claimRoot, type ReleaseRoot } from "../wall/seat-root.ts";
 import { type Desk, openDesk, type PublicResource, submitTool } from "../tools/answer.ts";
 import { codingTools, selectedCodingTools, wallExec } from "../tools/coding.ts";
@@ -340,7 +340,7 @@ async function play(
     harness: digest,
     turns,
     prompts,
-    spent: spentOn ?? (await spentBy(id, [], [])),
+    spent: spentOn ?? NOTHING_SPENT,
     submitted: desk.submitted,
     flagged: desk.flagged,
     wallEnded: deadline?.signal.aborted ?? false,

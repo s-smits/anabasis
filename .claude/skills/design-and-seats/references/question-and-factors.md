@@ -94,8 +94,8 @@ person calls a check defect, and voiding at most one in ten of those a person ca
 **4. Economy: what did each measured gain cost?** Statistical significance alone does not make a
 gain useful. Evaluate the climb achieved under the operator's cap, rather than money left
 unspent. The closing report derives dollars and hours per promotion from the log
-(`tools/d2/close.ts`, "Work and spend"). It uses calculated list-price spending
-(`pricedAt`, `src/agent/session.ts`), as does the cap, and shows available backend totals
+(`tools/d2/close.ts`, "Work and spend"). It bills each session's backend ledger at
+frozen list prices (`billOf`, `src/kernel/meter.ts`), as the cap bills each turn, and shows available backend totals
 alongside it (`costLine`, `src/kernel/trace.ts`). The operator may record a target of at most
 three promotion attempts per epoch after setup (`worthOf`, `src/campaign/climb.ts`). This is
 a reporting target and refuses no action.

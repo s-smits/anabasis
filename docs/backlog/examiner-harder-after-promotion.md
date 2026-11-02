@@ -1,6 +1,6 @@
 # Harder Examiner tasks after each promotion
 
-Status: planned. The starter comparison draws as every comparison since 2 November; measuring the Examiner after a promotion waits for the live runs at this stack.
+Status: planned. The starter comparison draws as every comparison and confirms on its first reading since 2 November; measuring the Examiner after a promotion waits for the live runs at this stack.
 
 ## The question
 
@@ -138,3 +138,69 @@ instead of running out of informative tasks after one or two promotions.
   the two comparisons of 30 October did. The split between the two remaining readings (tasks aimed
   at the reference, gains that do not carry to new kinds of task) is a research question; no move
   waits on it.
+- **2 November, afternoon.** The operator asked for three observations of the most brittle parts,
+  then: "Synthesize and build improvement plan, then implement the plan", and "Tune through
+  prompting as well, the model adheres to prompts well". Three read-only sessions read the floor of
+  ten, the starter losses and the stack's diff. Each finding was recounted before it was used.
+  - *The floor of ten.* Withdrawn (#566): on 51 of 53 comparisons the first eight tasks read as
+    the first ten did, and the floor would have refused 7 step readings since 31 October.
+  - *Why a promoted harness loses to the starter.* Recounted from the per-task rows of the 8
+    starter comparisons on record (197 tasks, read from the reference's side): on tasks written in
+    the promotion's own epoch it won 33, lost 44 and tied 9; on older tasks it won 67, lost 20 and
+    tied 24. The objective decided all 64 losses and validity none, and the reference answered
+    every own-epoch task validly in every solve. 21 losses come from one harness promoted on the
+    bill (v070), which no longer counts. In 27 of the 64 the four pairings disagree in sign, so
+    another draw could turn them; the starter's two solves of a task differ by the objective's
+    floor on 109 of 197 tasks, the reference's on 14. Two of the 8 read a step for the reference if
+    their set-aside tasks are counted as ruled.
+  - *A second starter comparison in one epoch.* Confirmed: with no harness waiting, the table names
+    the pair again where tasks are held out after it, and the epoch's last reading set
+    `confirmed`. Replaying `decide` at the stack's head over the archive, it names one in 4 of the
+    11 epochs where a starter comparison had reported.
+  - *The host-led idle ending.* Confirmed by a probe: under `--sessions 4`, three sessions that each
+    changed the harness ended a host-led campaign before their comparison. No recorded opening was
+    host-led.
+  - *`tools/runs/view.ts` printed a starter comparison's tally from the starter's side.* Confirmed;
+    it made postplan's 7 to 3 lead read as a loss.
+
+  The plan, as carried out:
+  1. Draw the starter comparison as every comparison (already at the head), and read confirmation
+     on the epoch's first starter comparison that tallied a task, so a redraw replaces no reading.
+  2. Name the tasks a starter comparison set aside for labels in the epoch line and lane 24, and
+     the side a tally counts from in `runs view`.
+  3. Hold a host-led campaign's idle ending until it has run as many sessions as a comparison
+     follows.
+  4. State in the Builder's system prompt, as a count, where promoted harnesses lost to the
+     starter: the Builder reads only its own campaign's tallies. Then review every text the
+     Builder, the Examiner and the Referee read for a model that follows prompts closely.
+
+  The review read each seat whole, one session a seat, and every finding was checked against the
+  source before an edit. Applied, each as a fact in place of a course or a second limit:
+  - *Builder.* The one limit stated once, as "names a task, copies its text or holds its answer",
+    in place of "answers a particular task" and "leaves the solving method to the solver", which a
+    literal reader takes as bans on the search the prompt permits. One retained task is scored for
+    every three the reference does not answer. A solve cut at its limit fails. The starter
+    comparison promotes and stops nothing. The patience line says what counts against it. A redraw
+    of a harness changed in little draws the level's chance again. `HARNESS.md` shows the guide's
+    outline as an example rather than an outline to keep.
+  - *Examiner.* Objective spread between a harness's own solves is chance: 314 of 1,373 tasks in
+    the archive's A/A comparisons. A grade is what the field demands, never one harness's fault,
+    since the starter is compared on the new tasks too. The drafting target "the top of this scale"
+    and the climb "from the highest grade the reference already answers" are gone, as is "varying
+    what they ask" on a declined finish. Two stale statements were corrected.
+  - *Referee.* The probe that tells a correct check from a too-strict one: the allowed value
+    nearest the answer's. In 389 of 438 earned rulings no probe tried one. The host's evidence test
+    is necessary, not sufficient, and unclear sets the task aside.
+
+  Not done: an A/A line in the Examiner's record, the solve budget in the drafting opening, and the
+  number of solves a side in place of "several times". Each needs a value the prompt does not hold
+  yet. The solver's texts are the operator's (`AGENTS.md`, section 3), so they are listed instead:
+  the malformed flag is a fail but is not presented as one (484 flagged against 2,439 rejected
+  endings), "choose your solving method" reads the guide as optional, and "You help users" names
+  nobody. Whether a check may compare an answer with a hidden value is also the operator's to say.
+  A pair of tuning rounds would measure the edits.
+
+  Left for the operator: labelling the 3 set-aside rejections of postplan's g-2 and forkedPR506's
+  g-6; whether a starter comparison should run 4 solves a side, which would settle the 27 losses a
+  draw could turn; and a fresh run at the stack's top, its first starter comparison the test of
+  the full draw.

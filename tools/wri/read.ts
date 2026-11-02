@@ -314,7 +314,7 @@ function harnessTriggers(log: Index): Trigger[] {
     // calls are what the end record would have said, so they stand in for `changed` wherever a
     // trigger asks whether this session touched its harness at all.
     const edited = finished === null ? written.length > 0 : finished.changed === true;
-    const fresh = log.solves.filter((solve) => edited && solve.harness === child && solve.side === TEST);
+    const fresh = edited ? round.scoring : [];
     const erring = fresh.filter((solve) => solve.errors > 0).length;
     return [
       ...(edited
@@ -340,7 +340,7 @@ function harnessTriggers(log: Index): Trigger[] {
         ? [
             fired(
               "TOOLS CALLED",
-              `${short(child)}, left by ${session}, over ${plural(fresh.length, "test-side solve")}: ${tally(
+              `${[...new Set(fresh.map((solve) => short(solve.harness)))].join(", ")}, left by ${session}, over ${plural(fresh.length, "test-side solve")}: ${tally(
                 countBy(
                   fresh.flatMap((solve) => solve.calls),
                   (tool) => tool,
@@ -447,7 +447,7 @@ function comparisonTriggers(log: Index): Trigger[] {
       seen.set(key, (seen.get(key) ?? new Set()).add(String(solve.outcome === "pass")));
     }
     const flips = [...seen.values()].filter((outcomes) => outcomes.size > 1).length;
-    const noise = asRecord(last.noise);
+    const noise = tallyOf(last.noise);
     return [
       ...(moved > 0
         ? [
@@ -479,7 +479,7 @@ function comparisonTriggers(log: Index): Trigger[] {
         : [
             fired(
               "REFERENCE AGAINST ITSELF",
-              `${session}: ${String(count(noise.wins))} won, ${String(count(noise.losses))} lost and ${String(count(noise.ties))} tied between two samples of the reference harness${readsStepEitherWay(scoresIn(noise), level) ? ", which reads a step where none can be" : ""}`,
+              `${session}: ${String(noise.wins)} won, ${String(noise.losses)} lost and ${String(noise.ties)} tied between two samples of the reference harness${readsStepEitherWay(scoresIn(last.noise), level) ? ", which reads a step where none can be" : ""}`,
             ),
           ]),
     ];

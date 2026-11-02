@@ -504,7 +504,7 @@ function unread(ground: Ground): Move | null {
 }
 
 /**
- * A comparison on the tasks held out since the last reading, before anything is built. With no
+ * A comparison that draws the tasks held out since the last reading first, before anything is built. With no
  * harness waiting, a starter comparison says whether they leave the reference room before a
  * Builder session is paid for (on 10 October three campaigns built three times on tasks every
  * practice solve passed). After a promotion it is owed until one reports in the epoch, whatever
@@ -525,7 +525,7 @@ function heldSince({ events, read, reports, waiting, reference, starter }: Groun
   const owed = reference !== null && starter !== null && reference !== starter && since > 0;
   if (owed && (waiting === null || !confirmed)) {
     return compare(
-      `harness ${short(reference)} is the reference, and ${plural(since, "task")} ${since === 1 ? "was" : "were"} held out since the last comparison: the starter is compared with it on them, to read whether they leave it room`,
+      `harness ${short(reference)} is the reference, and ${plural(since, "task")} ${since === 1 ? "was" : "were"} held out since the last comparison: the starter is compared with it, those tasks first, to read whether they leave it room and whether it stands above the starter`,
       "starter",
     );
   }
@@ -567,7 +567,7 @@ function leftBySessions(ground: Ground): Move | null {
 function buildsOn(ground: Ground): string {
   const { read, waiting, reference } = ground;
   if (read?.starterComparison === true) {
-    return `comparison ${read.id} read the starter against harness ${short(reference ?? "")} on the tasks held out since, and they leave it room: the Builder builds`;
+    return `comparison ${read.id} read the starter against harness ${short(reference ?? "")}, the tasks held out since first, and they leave it room: the Builder builds`;
   }
   if (read !== null) {
     return `comparison ${read.id} read no step with room to gain: harness ${short(read.fresh)} did not help`;

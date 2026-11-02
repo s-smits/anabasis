@@ -259,15 +259,18 @@ const UNCOMPARED: ReadonlySet<string> = new Set(["session", "tasks", "retained"]
  * first stage's untied tasks again first and that stage's other tasks last; one reading promotes
  * since, and every comparison draws alike.
  *
- * `sinceOnly` draws the frontier tasks held out since the last comparison began, and no retained
- * one: the starter comparison asks of those tasks alone whether they leave the reference room.
+ * The starter comparison after a promotion draws alike. From 30 October to 2 November it scored
+ * the tasks held out since alone, which the Examiner writes above the new reference's grade, so
+ * the promotion's confirmation (`confirmed`, `climb.ts`) read the reference only where it was
+ * weakest: in the six on record it lost those tasks to the starter 23 to 33 and won the older
+ * ones 61 to 20.
  */
-export function scoredSet(events: readonly LogEvent[], target: number, contract: string, sinceOnly = false) {
+export function scoredSet(events: readonly LogEvent[], target: number, contract: string) {
   const pool = poolOf(events);
   const began = events.findLastIndex(({ kind }) => kind === STARTED);
   const since = new Set(tasksByEpoch(events.slice(began + 1)).flat());
-  const kept = sinceOnly ? [] : pool.retained.filter((task) => pool.scorable.includes(task));
-  const held = new Set(pool.frontier.filter((task) => !sinceOnly || since.has(task)));
+  const kept = pool.retained.filter((task) => pool.scorable.includes(task));
+  const held = new Set(pool.frontier);
   const count = Math.min(target, held.size);
   const picked = draw(kept, Math.min(kept.length, Math.ceil(count / 3)), `${contract}:retained`);
   // The newest epoch first, and of each the tasks held out since the last comparison began first.

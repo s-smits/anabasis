@@ -60,8 +60,9 @@ factor it affects, or the separate purpose it serves. Recorded values live in `d
 - **Supply**, the condition before the four: is there gradient? Only an informative task can
   register a difference: one the reference answers sometimes, never while a valid answer is on
   record, or every time while an answer on record beats one of its answers by at least the objective
-  gap floor (`ROOM`, 1%; `informative`, `src/kernel/compare.ts`). Comparison admission requires
-  eight of them at the default level (`comparisonFloor`).
+  gap floor (`ROOM`, 1%; `informative`, `src/kernel/compare.ts`). Which tasks are informative is
+  known only once they are solved, so comparison admission counts frontier tasks instead, those the
+  reference has not closed, and requires eight at the default level (`comparisonFloor`).
 - **1. Climb**: how much ability has accumulated, read as promotions within one campaign
   (`src/campaign/climb.ts`); promotions added up across campaigns make no climb. The milestone, six
   confirmed promotions in one real campaign and then in a second domain, is for observation only

@@ -18,11 +18,12 @@ these terms. A request to change them is refused.
 The scored tasks are `--target` held-out ones, the newest epoch's first and, within it, those held
 out since the last comparison began, each drawn by the contract's hash. The draw (`poolOf`) leaves
 out a task with no valid answer after two comparisons until a person labels it, and takes off the
-frontier as **exhausted** a task answered in every solve of the last two comparisons the reference
-stood in for it, on either side (the other side's only where that is a later harness, so the next
-harness must answer it too). A bill saving can still win an exhausted task. A task stays open where
-an answer on record betters one of the reference's by the objective gap floor (`bettered`), since
-the next harness can still win it. The counts live in one place (`SIZE`, `RUNS`,
+frontier as **exhausted** a task the reference answered in every one of its own solves in the last
+two comparisons it stood in for it, on either side (`ownOf`): the other harness's solves never
+count, so which held-out task it won moves no size the Builder is told (rule 3). A bill saving can
+still win an exhausted task. A task stays open where one of the reference's own answers or its
+author's betters another of its answers by the objective gap floor (`objectiveGap`), since the next
+harness can still win it. The counts live in one place (`SIZE`, `RUNS`,
 `src/kernel/size.ts`), and every rule reads a side's every, some or none, so they hold at any
 number of solves.
 

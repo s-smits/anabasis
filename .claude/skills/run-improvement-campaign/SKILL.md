@@ -191,9 +191,9 @@ timer that runs it takes the step, under the cycle's word. A host answers by run
 its own tree with `--here`, so a host's tree must hold the script; a tree that predates it answers
 no rows and is named as not answering.
 
-The cycle's reviews are one-shot timers (section "Timers"), each of which runs the script and takes
-the step it names: about 30 minutes after the fork for M1, then at each run's comparisons and
-promotions, and once the script reads `stop`, at each step of the improvement window. Each review
+The cycle's reviews start from the pulse's lines (section "Timers"); each runs the script and takes
+the step it names: at M1 after the fork, then at each run's comparisons and promotions, and once
+the script reads `stop`, at each step of the improvement window. Each review
 may move the plan forward within the order above, and add, move or delete the cycle's own timers to
 reach its goal.
 
@@ -555,14 +555,15 @@ At step 4 of the cycle every row still open is marked `unreached`.
 
 | Timer | When | Its step 3 |
 | --- | --- | --- |
-| watch | hourly, off the hour and the half hour (`13 * * * *`) | every run's milestone and possible stall on every host |
-| pass (the cycle's driver) | every three hours (`17 */3 * * *`) | the first cycle step not done, ended runs closed out, `runs usage`, and the timers reviewed from the ledger alone |
+| pulse (the watch and the cycle's driver) | every 290 seconds: one Monitor on `bun run runs pulse --every 290`, its actionable lines only | every run's milestone, ending and stall on every host; a line naming a milestone, an ending or a stall starts the protocol, with the first cycle step not done, ended runs closed out and `runs usage` |
 | milestone | one-shot at a predicted event, or at a prediction's deadline | the named milestone or row, and any investigation it owes |
 | cycle review | one-shot at each step of the release cycle: the stop at the latest opening plus twelve hours, and the end of the improvement window at the last stop plus twelve hours | the step `cycle.ts` names; at the window's end, what is proved and what is left |
 | handover | one-shot at the agreed handover time | five points, changes and decisions waiting, and which timers were useful by their ledger rows |
 
-Review the Firings rows in the pass: three empty watches may justify two-hour spacing, and M3 or M5
-approaching needs a one-shot.
+The pulse is the one recurring watch (operator, 2 November): no hourly or longer watch beside it. A
+Claude Code Monitor lasts at most its tool's limit, so re-arm the same command at each expiry
+notice; a one-off wait for a promotion never stands in for it, since on 2 November that swap left
+the runs unwatched for hours. Pass `--state <file>` so a re-armed pulse says nothing twice.
 
 A Claude Code timer (`CronCreate`) lives only in the session that armed it. It dies when that
 session exits, and a recurring one expires after seven days. It fires only while the session is
@@ -572,13 +573,10 @@ idle, a few minutes off the time it names. So:
   the rows it settles, the runs it reads, its authority, and "follow the firing protocol of
   run-improvement-campaign's Timers". It fires after compactions that will have dropped the context
   it was armed in.
-- Review timers from the ledger inside the pass, not with a separate recurring Codex session: on 24
-  October one fired four times in about eight and a half hours (16:39, 19:13, 22:13, 01:13); the
-  19:13 firing changed the cadence usefully, and the others read a stale ledger, found no change or
-  found the timer redundant. A Codex review is for a new kind of timer or three empty firings in a
-  row.
-- Write the time with its UTC offset in the ledger and the prompt (DST ended 25 October 03:00), and
-  keep recurring minutes off :00 and :30.
+- Review the one-shots from the ledger at each protocol run, not with a separate recurring Codex
+  session: on 24 October one fired four times in about eight and a half hours, and three of the
+  four read a stale ledger, found no change or found the timer redundant.
+- Write the time with its UTC offset in the ledger and the prompt (DST ended 25 October 03:00).
 
 Use [references/cycle-ledger.md](references/cycle-ledger.md) for the evidence fields. The release
 cycle above owns the steps and authority for the next cycle too.

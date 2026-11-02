@@ -211,18 +211,19 @@ describe("the runs pulse", () => {
   });
 
   it("says an investigation alarm once when it fires or moves, and remembers the ones a first look found", () => {
-    const compacted = (minute: number) => event(minute, "build.compacted", { session: "r1-b", usages: [] });
-    const first = [...built, compacted(1)];
+    const crashed = (minute: number, session: string) =>
+      event(minute, "exam.finished", { session, ended: "crashed" });
+    const first = [...built, crashed(1, "x-1")];
     const baseline = pulse(round, first, "open", undefined, START + 2 * 60_000);
     expect(baseline.said).toEqual([]);
-    const second = [...first, compacted(2)];
+    const second = [...first, crashed(2, "x-2")];
     const moved = pulse(round, second, "open", baseline.seen, START + 3 * 60_000);
-    expect(moved.said.filter((line) => line.includes("UNBILLED COMPACTIONS"))).toEqual([
-      "⚠ economy: UNBILLED COMPACTIONS (lane 31): 2 of 2 compactions billed nothing: build 2",
+    expect(moved.said.filter((line) => line.includes("SESSION CRASHED"))).toEqual([
+      "⚠ economy: SESSION CRASHED (lane 30): x-1, x-2",
     ]);
     const solved = [...second, event(3, "solve.started", { solve: "s-1", task: "t-1" })];
     const again = pulse(round, solved, "open", moved.seen, START + 4 * 60_000);
-    expect(again.said.some((line) => line.includes("UNBILLED"))).toBe(false);
+    expect(again.said.some((line) => line.includes("SESSION CRASHED"))).toBe(false);
   });
 
   it("says only the new one of a trigger that fires once for each comparison", () => {

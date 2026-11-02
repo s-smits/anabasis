@@ -463,6 +463,23 @@ describe("the reader of a round compared with another harness than its session s
     const supported = withUnbilled([-2, -2, -2, -2]);
     expect(withUnbilled([0, 0, 0, 0])).not.toBe(supported);
     expect(supported).toBe(baselineNoise);
+    // The counts are read without the bill too, as the step is: until 2 November the billed ones.
+    expect(withUnbilled([0, 0, 0, 0])).toContain("0 won, 0 lost and 4 tied");
+  });
+
+  it("reads the tools a new harness called whether its Builder session finished or not", () => {
+    // A led session freezes its harness for a comparison and may never finish: until 2 November
+    // these triggers keyed on the finished harness and opened lane 16 in none of seven led runs.
+    const called = (read: readonly LogEvent[]) =>
+      overview(read).triggers.find(({ name }) => name === "TOOLS CALLED")?.detail;
+    const open = events.map(
+      (event): LogEvent =>
+        event.kind === BUILD_FINISHED
+          ? { ...event, kind: "build.checkpoint", data: { session: "b-1", harness: "hc" } }
+          : event,
+    );
+    expect(called(events)).toContain("hc, left by b-1, over 4 test-side solves");
+    expect(called(open)).toBe(called(events));
   });
 
   it("names a reading the set-aside moves only where the tests without the bill disagree", () => {

@@ -41,6 +41,7 @@ describe("the Examiner's ladder", () => {
       id: "d-1",
       log: "/nowhere/log.jsonl",
       prompt: "a domain",
+      budget: { modelTurns: null, minutes: 30, solves: 2 },
       reading: async () => ({ faults: [], notes: [] }),
     });
     expect(session.system).toContain(LADDER);

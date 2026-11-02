@@ -65,6 +65,14 @@ import { plural } from "../meta/text.ts";
 import { LADDER } from "./ladder.ts";
 import type { heard } from "./record.ts";
 
+/** The budget every solve is held to and how many times a comparison solves a task under each
+ *  harness, as the campaign's setting names them: the solver's own turns, null where unlimited. */
+export interface SolveBudget {
+  readonly modelTurns: number | null;
+  readonly minutes: number;
+  readonly solves: number;
+}
+
 /** A check as its author's brief declares it and an Examiner is shown it: never its program. */
 export interface CheckRow {
   readonly id: string;
@@ -85,13 +93,19 @@ export function systemPrompt(reference: "in-home" | "unseen"): string {
         ? "A copy of the reference harness is in your home under reference-harness/, to read and run: its guide (reference-harness/agent/BUILT_AGENTS.md), its tools (reference-harness/agent/tools-spec.json and tools.ts) and the programs its solver runs by name (reference-harness/.toolchain/bin). An answer these programs compute is one its solver can reach by running them. You never see a solver's answers or its mistakes."
         : "You never see the solver: not its tools, its guide, its answers or its mistakes."
     }`,
-    `## How a task is scored\n\nEach task is solved several times under the reference harness and several times under the new one, each solve fresh and held to the budget. An answer that passes every check within the budget is valid. Each task is scored over every pairing of a solve of each harness: by validity first and most, a valid answer beating one that is not, and between two valid answers by how much better one is by the objective, where the domain declares one. What a solve billed decides nothing. The harness the score favours wins the task. A comparison scores only tasks the gate held out.\n\nA task leaves the reference harness room in one of three ways:\n- on validity: its solves are valid in some and not all. A solve fails where the model's method misses something the public rules require, or reaches no answer within the budget.\n- on an answer of yours: none of its solves is valid, while a valid answer is on record, such as yours that passed try_answer on the same instance.\n- on the objective, where the domain declares one: an answer on record, another of its own or yours among them, is better by the objective than one of its own by at least ${floor} of the larger measure, even where every one of its solves is valid.\n\nA task it answers every time, with no answer on record that much better than its own, leaves none: a smaller difference decides no pair of a comparison, and a comparison takes it off the frontier. One nobody has answered may have no valid answer.`,
+    `## How a task is scored\n\nIn a comparison each task is solved under the reference harness and under the new one as many times each as your opening states, each solve fresh and held to the budget. An answer that passes every check within the budget is valid. Each task is scored over every pairing of a solve of each harness: by validity first and most, a valid answer beating one that is not, and between two valid answers by how much better one is by the objective, where the domain declares one. What a solve billed decides nothing. The harness the score favours wins the task. A comparison scores only tasks the gate held out.\n\nA task leaves the reference harness room in one of three ways:\n- on validity: its solves are valid in some and not all. A solve fails where the model's method misses something the public rules require, or reaches no answer within the budget.\n- on an answer of yours: none of its solves is valid, while a valid answer is on record, such as yours that passed try_answer on the same instance.\n- on the objective, where the domain declares one: an answer on record, another of its own or yours among them, is better by the objective than one of its own by at least ${floor} of the larger measure, even where every one of its solves is valid.\n\nA task it answers every time, with no answer on record that much better than its own, leaves none: a smaller difference decides no pair of a comparison, and a comparison takes it off the frontier. One nobody has answered may have no valid answer.`,
     "## What the exam needs\n\nTasks within the domain's scope that leave the reference harness room and still have a valid answer, demanding and fair as a practitioner of the domain would judge them. You are not told how many tasks are wanted.\n- The turns a valid answer took are what its method cost. An answer in a few of the budget's turns is one the method reaches directly.\n- A limit, state or duty the field does not hold measures your wording rather than the solver. Add none.\n- Everything a task demands is in its public input and the public rules, so that a solver that follows every public rule never fails on one it could not read. Nothing a solver needs is in the hidden values.",
     `## How hard\n\n${LADDER}\n\nGrade each draft on this scale before you put it, from its public input and the rules it cites. A task the reference answers in every solve within a few of its turns is at grade 2 or below for this solver, whatever grade you gave it. A grade at which the reference harness answers every solve of the tasks on record measures nothing more. Room it leaves on such a task, by failing a solve now and then or by its own valid answers differing on the objective, is chance and not a better method: a harness compared with itself differs that way too: the reference's first solve against its second differed on the objective alone on 314 of the 1,373 tasks on record that have an objective. Write above the highest such grade. A task's grade is what the field demands of it: a fault of one harness's programs is no grade, and the starter, which holds no program of the domain, is compared on the tasks written after a promotion too. An exam that stays at the grades the reference already answers tells no harness from another.`,
     "## A valid answer must exist\n\nA task with no valid answer measures nothing, since every harness fails it alike. try_answer runs every check on an answer of yours to one instance, so a pass there shows that instance has a valid answer. How you reach that answer, before the task or after it, is yours.",
     "## The gate\n\npropose_tasks takes instances and puts each to the host's gate. The gate reads the shape of its package: its family, its inputs, and that the checks have what they need to run on it. No solver is put to it while you wait, so you hear nothing more of it in this session. Of each it says held out, or refused with its reason. A task held out is in the exam from then on.",
     "## The session\n\nPropose in rounds: put drafts to the gate, read what it said, and propose more. When you have no more tasks worth proposing, call finish. The session also ends at its limits, and when the host has the tasks it needs.",
   ].join("\n\n");
+}
+
+/** The budget as a fact for an Examiner, writing tasks or drafting the exam they are written
+ *  under. */
+export function budgetLine({ modelTurns, minutes, solves }: SolveBudget): string {
+  return `Every solve of a task is held to ${modelTurns === null ? "no fixed number of the solver's own turns" : `${plural(modelTurns, "turn")} of the solver's own`}, a turn being one reply with the tool calls in it, and ${plural(minutes, "minute")}, and a comparison solves each task ${plural(solves, "time")} under each harness. This is the budget, and it may change as the campaign goes on; it is no target of yours.`;
 }
 
 /** The opening message: the operator's brief where the campaign opened from one, the domain's
@@ -109,7 +123,7 @@ export function firstMessage(
   told: { readonly wallSeconds: number; readonly turns: number; readonly puts: number },
   campaign: {
     readonly brief: string | null;
-    readonly budget: { readonly modelTurns: number | null; readonly minutes: number } | null;
+    readonly budget: SolveBudget | null;
     readonly lastNote: string | null;
   },
 ): string {
@@ -131,11 +145,7 @@ ${brief}`,
     `A solver's answer follows this schema: ${capturedJsonStringify(contract.answerFormat)}`,
     // The budget as a fact: a task that tells two harnesses apart is one a better method answers
     // within it and a worse one does not, which nobody can write without knowing it.
-    ...(budget === null
-      ? []
-      : [
-          `Every solve of a task is held to ${budget.modelTurns === null ? "no fixed number of the solver's own turns" : `${plural(budget.modelTurns, "turn")} of the solver's own`}, a turn being one reply with the tool calls in it, and ${plural(budget.minutes, "minute")}. This is the budget, and it may change as the campaign goes on; it is no target of yours.`,
-        ]),
+    ...(budget === null ? [] : [budgetLine(budget)]),
     `The checks, by id:\n${checks.map((row) => `- ${row.id} (${families(row)}): ${row.assertion}`).join("\n") || "(none)"}`,
     `${tasks.legend}\n${tasks.lines.map((line) => `- ${line}`).join("\n") || "(none)"}`,
     ...(tasks.promoted === null ? [] : [tasks.promoted]),

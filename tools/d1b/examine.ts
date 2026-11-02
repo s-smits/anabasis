@@ -126,7 +126,7 @@ export async function examineCommand(
       id,
       mode: "write",
       verify: campaign.verify,
-      budget: budgetOf(sofar, campaign, values),
+      budget: { ...budgetOf(sofar, campaign, values), solves: setting.solves },
       contract: campaign.contract,
       checks: declared.map((check, index) => ({
         id: check.id,

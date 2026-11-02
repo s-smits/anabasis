@@ -237,6 +237,7 @@ export function seat<M extends Mode>(mode: M, responses: readonly FauxResponseSt
       ...common,
       mode: "draft",
       prompt: "A fixture.",
+      budget: { modelTurns: 20, minutes: 30, solves: 2 },
       reading: async () => ({ faults: [], notes: [] }),
     },
     write: {

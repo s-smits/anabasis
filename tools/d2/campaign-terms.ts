@@ -452,8 +452,8 @@ export function sharedOf({ events, plan, opening, values, seats }: Turn) {
 
 /** How the campaign runs Examiner session `session`: its flags, for `draft.ts` where it drafts the
  *  exam and `examine.ts` where it writes tasks, and the count of tasks a writing session is asked
- *  for. A writing session is given the campaign's setting before one is recorded, for the budget
- *  it is told; neither solves anything. */
+ *  for. Each session is given the campaign's setting before one is recorded, for the budget it
+ *  is told; neither solves anything. */
 export function examinerRun(turn: Turn, session: string, kind: "draft" | "write") {
   const { opening, values, seats } = turn;
   const { examiner } = opening.seats;
@@ -473,11 +473,10 @@ export function examinerRun(turn: Turn, session: string, kind: "draft" | "write"
   return {
     args:
       kind === "draft"
-        ? [...flag("name", values.name), ...seat]
+        ? [...flag("name", values.name), ...seat, ...setting]
         : [
             ...packOf(values),
             ...seat,
-            // The campaign's setting before one is recorded: the budget the Examiner is told.
             ...setting,
             ...flag("tasks", tasks),
             ...flag("proposals", values["exam-proposals"]),

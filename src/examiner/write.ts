@@ -43,7 +43,7 @@ import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
 import { ending, text, tool } from "../tools/answer.ts";
-import { type CheckRow, firstMessage, systemPrompt } from "./prompt.ts";
+import { type CheckRow, firstMessage, type SolveBudget, systemPrompt } from "./prompt.ts";
 import type { Walls } from "./shell.ts";
 import { heard, measuredGate as admissionSettled } from "./record.ts";
 
@@ -66,8 +66,8 @@ interface Terms {
   /** An instance as a package: the caller's rule ids and check program for it. */
   readonly pack: (task: Task) => TaskPackage;
   /** The budget every solve is held to, as a fact for the Examiner: the solver's own turns, null
-   *  where unlimited, and the minutes. Null where the caller knows none, as a test may. */
-  readonly budget: { readonly modelTurns: number | null; readonly minutes: number } | null;
+   *  where unlimited, the minutes, and the solves a side of each scored task. Null where the caller knows none, as a test may. */
+  readonly budget: SolveBudget | null;
   /** The campaign's verifier, for `try_answer`: the checks run on an instance with an answer of the
    *  Examiner's own. Null, the tool is not given. */
   readonly verify: Verifier | null;

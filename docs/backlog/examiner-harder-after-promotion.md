@@ -192,9 +192,11 @@ instead of running out of informative tasks after one or two promotions.
     nearest the answer's. In 389 of 438 earned rulings no probe tried one. The host's evidence test
     is necessary, not sufficient, and unclear sets the task aside.
 
-  Not done: an A/A line in the Examiner's record, the solve budget in the drafting opening, and the
-  number of solves a side in place of "several times". Each needs a value the prompt does not hold
-  yet. The solver's texts are the operator's (`AGENTS.md`, section 3), so they are listed instead:
+  Three facts the prompts lacked a value for were then plumbed: the Examiner's record says on how
+  many tasks the reference's own two solves differed in its last comparison's A/A, the drafting
+  opening states the solve budget a writing session is told, and both say how many times a
+  comparison solves each task under each harness instead of "several times". The solver's texts are
+  the operator's (`AGENTS.md`, section 3), so they are listed instead:
   the malformed flag is a fail but is not presented as one (484 flagged against 2,439 rejected
   endings), "choose your solving method" reads the guide as optional, and "You help users" names
   nobody. Whether a check may compare an answer with a hidden value is also the operator's to say.

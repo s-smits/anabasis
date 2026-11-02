@@ -172,6 +172,10 @@ describe("a draft put to the host", () => {
     // Its system prompt says what the host reads of a draft, and of no solve of it.
     expect(s.sent[0]).toContain("draft_exam puts a whole draft to the host");
     expect(s.sent[0]).not.toContain("is then measured");
+    // Its opening says the budget the exam's solves will be held to, as a writing session's does.
+    expect(s.sent.join("\n")).toMatch(
+      /held to 20 turns of the solver's own[^.]*, and 30 minutes, and a comparison solves each task 2 times under each harness\./u,
+    );
   });
 
   it("counts a drafting session's solves as the Examiner's, as a writing session's", () => {

@@ -61,6 +61,7 @@
 import { type Static, Type } from "typebox";
 import { answerFormatFault, type Objective } from "../kernel/contract.ts";
 import { LADDER } from "./ladder.ts";
+import { budgetLine, type SolveBudget } from "./prompt.ts";
 import { append, type LogEvent } from "../kernel/log.ts";
 import { capturedJsonStringify, decodedJsonText, parseJsonAs } from "../meta/json-runtime.ts";
 import { asRecord, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
@@ -118,6 +119,8 @@ interface DraftingTerms {
   readonly log: string;
   /** The operator's prompt, as the campaign's opening holds it. */
   readonly prompt: string;
+  /** The budget the exam's solves will be held to, as the campaign's setting names it. */
+  readonly budget: SolveBudget;
   /** What the host reads of a draft whose shape holds, without a model: its control answers through its
    *  checks. */
   readonly reading: (draft: Draft) => Promise<DraftReading>;
@@ -416,7 +419,7 @@ export function drafting(terms: DraftingTerms) {
   return {
     kind,
     system: SYSTEM,
-    opening: `The operator's prompt:\n\n${terms.prompt}\n\nThis session has ${plural(Math.round(limits.wallSeconds / 60), "minute")}, ${plural(limits.turns, "turn")} and ${plural(limits.puts, kind)}.`,
+    opening: `The operator's prompt:\n\n${terms.prompt}\n\n${budgetLine(terms.budget)}\n\nThis session has ${plural(Math.round(limits.wallSeconds / 60), "minute")}, ${plural(limits.turns, "turn")} and ${plural(limits.puts, kind)}.`,
     started: {
       limits: { wallSeconds: limits.wallSeconds, turns: limits.turns, tries: limits.puts },
       prompt: terms.prompt,

@@ -35,6 +35,7 @@ import { dirname } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { campaignLog, examinerSession, REPO, stayAwake, worktreesOf } from "../d2/campaign.ts";
 import { draftReading } from "../d2/exam.ts";
+import { recordedSetting, SETTING_OPTIONS, settingAsked } from "../d2/setting.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 
 const OPTIONS = {
@@ -46,6 +47,10 @@ const OPTIONS = {
   minutes: { type: "string", default: "60" },
   turns: { type: "string", default: "40" },
   jobs: { type: "string", default: "4" },
+  /** The campaign's setting, as the campaign command passes it before one is recorded: the budget
+   *  the drafting Examiner is told. */
+  ...SETTING_OPTIONS,
+  target: { type: "string" },
 } as const;
 
 /** `bun tools/d1b/draft.ts`. `session` runs the Examiner's session: `examine`, unless a caller
@@ -60,18 +65,22 @@ export async function draftCommand(
     throw new Error("name --name, --session and --examiner");
   }
   const log = campaignLog(name);
-  const prompt = openingOf(read(log))?.prompt;
+  const events = read(log);
+  const prompt = openingOf(events)?.prompt;
   if (!isString(prompt)) {
     throw new Error(
       `campaign ${name} did not open from a prompt, so there is nothing to draft its exam from: open it with tools/d2/harness-builder.ts --prompt`,
     );
   }
+  const setting = settingAsked(values, recordedSetting(events));
+  const { wallSeconds, modelTurns } = setting.named.limits;
   stayAwake();
   const drafted = await session(
     {
       id,
       mode: "draft",
       prompt,
+      budget: { modelTurns: modelTurns ?? null, minutes: wallSeconds / 60, solves: setting.solves },
       reading: (draft) => draftReading(dirname(log), draft, Number(values.jobs)),
       model: modelNamed(examiner),
       // SAFETY: an effort is one of pi's levels, and a backend refuses one it does not serve.

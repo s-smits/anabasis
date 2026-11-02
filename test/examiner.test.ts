@@ -489,8 +489,15 @@ describe("a session that writes tasks", () => {
     // The budget every solve is held to, as a fact and no target; and the next session opens with
     // what the last one said at its finish, in its own words.
     const next = seat("write", [finish, finish]);
-    await examine({ ...next.request, id: "x-2", log: s.log, budget: { modelTurns: 3, minutes: 8 } });
-    expect(next.sent[0]).toMatch(/held to 3 turns of the solver's own[^.]*, and 8 minutes\./u);
+    await examine({
+      ...next.request,
+      id: "x-2",
+      log: s.log,
+      budget: { modelTurns: 3, minutes: 8, solves: 2 },
+    });
+    expect(next.sent[0]).toMatch(
+      /held to 3 turns of the solver's own[^.]*, and 8 minutes, and a comparison solves each task 2 times under each harness\./u,
+    );
     expect(next.sent[0]).toContain("it is no target of yours");
     expect(next.sent[0]).toContain(String.raw`said at its finish, in its own words:\n${NOTE}`);
     // A note written under a reference since replaced is not handed on: it is about the tasks

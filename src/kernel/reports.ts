@@ -272,8 +272,8 @@ export function patienceOf(events: readonly LogEvent[]): number {
   return isNumber(named) ? named : PATIENCE;
 }
 
-/** Established practice failures, shared by the stop rule and the next move. */
-export function practiceFailures(events: readonly LogEvent[]) {
+/** Established practice failures: what a Builder session was shown and declined (`stopRule`). */
+function practiceFailures(events: readonly LogEvent[]) {
   return practiceRan(events).filter(
     (solve) => solve.ending?.outcome === "fail" && !rejectionAside(events, solve),
   );

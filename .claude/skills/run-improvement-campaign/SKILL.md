@@ -355,7 +355,7 @@ walk chooses what to do about it.
    `unmeasured`.
 8. **Next epoch:** refused drafts, idle conversations or few frontier tasks after promotion.
    Read `heard`, `campaignStatus` and `hostOwed` in `tools/d2/harness-builder.ts`, then `ROWS`
-   in `src/campaign/decide.ts`: its `build` row handles `practice` and `unshown`.
+   in `src/campaign/decide.ts`: its `build` row first releases owed practice (`practice`).
 
 ## 1. Choose one change, aimed at the next promotion
 

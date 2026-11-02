@@ -345,9 +345,10 @@ export function examTasks({ events, plan }: Turn): string | undefined {
 }
 
 /**
- * The Builder conversations in a row, the latest included, that have made no campaign move since
- * the campaign last ended: the trailing run of its moves that are conversations (`build`, `led`).
- * Any other move, the host's own among them, is progress. A run of the command after an ending
+ * The Builder sessions in a row, the latest included, that have made no campaign move since the
+ * campaign last ended: the trailing run of its moves that are sessions (`build`), a conversation
+ * of a led campaign or a session its host makes. Any other move, the host's own among them, is
+ * progress. A run of the command after an ending
  * starts the count afresh, as Codex audits a resumed goal afresh. A conversation the provider
  * crashed or a stop killed chose nothing and is left out, as the table leaves it out of the
  * sessions run (`sessionsRun`): until 15 October finished, crashed, finished counted three. So is
@@ -364,7 +365,7 @@ export function idleOf(events: readonly LogEvent[]): number {
     ...named.filter((session) => named.indexOf(session) === named.lastIndexOf(session)),
   ]);
   const moves = since.flatMap(({ kind, data }) => (kind === MOVED && !cut.has(data.session) ? [data] : []));
-  return moves.length - 1 - moves.findLastIndex(({ move, code }) => move !== "build" || code !== "led");
+  return moves.length - 1 - moves.findLastIndex(({ move }) => move !== "build");
 }
 
 /** The next free id under `prefix`, as `b-3` after `b-1` and `b-2`. */

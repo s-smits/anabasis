@@ -305,8 +305,8 @@ shows as answers reached within it that the reference does not reach.
 
 **The next move** comes from `decide` (`src/campaign/decide.ts`), which checks ten rows in
 order: `stop`, `exam`, `bound`, `tasks`, `unfinished`, `step`, `no-room`,
-`short`, `unread` and `build`. The `build` row also handles `practice` and
-`unshown`. Improvement patience stops the campaign after six eligible moves without a gain
+`short`, `unread` and `build`. The `build` row first releases owed practice
+(`practice`). Improvement patience stops the campaign after six eligible moves without a gain
 since the last promotion (`stopRule`, `src/kernel/reports.ts`). Continuing then requires
 `--past-stop`.
 

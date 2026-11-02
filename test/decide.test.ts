@@ -720,7 +720,7 @@ describe("the build conditions", () => {
     expect(practiceDue(read, null, 0.1)).toBeNull();
   });
 
-  it("releases practice before asking for tasks after an unchanged session, preserving both codes", () => {
+  it("releases practice before an unchanged session's next build, and builds where none is owed", () => {
     const log = [
       ...SET_UP,
       ...heldOut("v13"),
@@ -733,11 +733,8 @@ describe("the build conditions", () => {
       practice: 2,
       why: "1 of the 2 practice tasks the campaign names are released, and tasks were held out since the last release: the contract's draw releases more before the Builder builds",
     });
-    expect(decide(log, PLAN)).toEqual({
-      move: "examine",
-      code: "unshown",
-      why: "Builder session b-idle left its harness as it was, and no practice solve of its failed: it had nothing to work on, so the tasks have to change before another session is paid for",
-    });
+    // The Builder that had nothing to work on asks the Examiner itself: the table builds.
+    expect(decide(log, PLAN)).toMatchObject({ move: "build", code: "build" });
     const cases = [
       { events: [...log, event("campaign.word", { word: "stop" })], plan: PLAN, code: "stop" },
       { events: log.slice(1), plan: PLAN, code: "exam" },
@@ -768,7 +765,7 @@ describe("the build conditions", () => {
     }
   });
 
-  it("unshown and the stop rule agree that only an established practice failure was shown", () => {
+  it("counts an unchanged session towards the stop only where an established practice failure was shown", () => {
     const condition = conditionOf("p1", "start");
     for (const ruling of [null, "unclear", "check-defect", "earned"]) {
       const log = [
@@ -781,7 +778,7 @@ describe("the build conditions", () => {
         built("b-1", "start", { changed: false }),
       ];
       expect(stopRule(log).checkpoints).toBe(ruling === "earned" ? 1 : 0);
-      expect(decide(log, PLAN).code).toBe(ruling === "earned" ? "build" : "unshown");
+      expect(decide(log, PLAN).code).toBe("build");
     }
   });
 });

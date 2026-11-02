@@ -715,7 +715,8 @@ order. Show the step at which the answer's deciding value first appears and what
 tool's computation from the task's public input, the solver's own working, a line of the guide,
 or nothing in the trace at all. A value that arrives whole in the first turn, on a task the
 solver worked at under the reference harness and missed, has no recorded derivation at that point.
-Freeze the table, win by win with the step and the source's kind, and open no other lane's report.
+Freeze the table as counts by the source's kind, each with up to three solve ids and their steps,
+and open no other lane's report.
 The primary compares the frozen table with lanes 15 and 18 afterwards. This lane
 reads traces of scored tasks, which no Builder may see: its report stays with
 the primary, names solves and steps, and quotes nothing. The decision it changes is whether a
@@ -978,8 +979,8 @@ exactly and still measure little.
    none": real, but silent on how good the engine is, which a second promotion is the first to
    show. Read `VALID BY HARNESS` at the recorded budget, lane 15's account of what changed and lane
    19's of the winning solves: whether the wins came from the change the note claims, from a
-   program the harness ships, or from the solver's own work. Name which measure won the tasks:
-   validity, the objective, or both.
+   program the harness ships, or from the solver's own work. Which measure won
+   the tasks is lane 11's.
 3. **What touched both sides.** `SHARED TEMPORARY FOLDER` counts the solves and sessions that named
    a path under the host's `/tmp` or `/var/tmp`, their `/private` spellings included, solves by
    comparison and side and practice apart, with `/bin/` paths and paths more than one solve or
@@ -1178,7 +1179,8 @@ bill leaves out, and `environment` for a wait nobody chose.
 Label: `runs`.
 Importance: 0.25.
 
-Starts from `LAUNCHES (lane 32)`, `NO LAUNCH RECEIPT (lane 32)` and `HOST CODE MOVED (lane 32)`.
+Starts from `LAUNCHES (lane 32)`, `NO LAUNCH RECEIPT (lane 32)` and `HOST CODE MOVED (lane 32)`,
+and is standing.
 
 The question is whether the run is the run its readings claim: fresh from a prompt, at one commit,
 from a clean tree, and continued only after a pause, a restart or a change of login (`AGENTS.md`,

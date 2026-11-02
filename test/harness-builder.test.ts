@@ -498,15 +498,16 @@ describe("a campaign run by its log", () => {
       old: first?.fresh,
     });
     // The script answers nothing under the reference nor the starter, so the starter comparison reads the
-    // eight new tasks, and those alone, as beyond both: no room on them, and the table asks for
-    // other tasks before a Builder session is paid for. Until 30 October it filled its draw with three
-    // retained tasks as well, and their room sent the Builder to build on tasks written before.
+    // eight new tasks as beyond both, and draws three retained tasks beside them, one for each three
+    // frontier tasks, as every comparison does: a valid answer to each is on record, so the reference
+    // failing it now is room. From 30 October to 2 November it scored the eight alone, found no room
+    // and asked for tasks, and the promotion it confirms was read only where the reference was weakest.
     expect(of(name, "comparison.reported").at(-1)).toMatchObject({
       session: "g-2",
       reading: "no-step",
-      valid: { old: [8, 0, 0], fresh: [8, 0, 0], informative: { old: 0, fresh: 0 } },
+      valid: { old: [11, 0, 0], fresh: [11, 0, 0], informative: { old: 3, fresh: 3 } },
     });
-    expect(after).toMatchObject({ move: "examine", code: "no-room" });
+    expect(after).toMatchObject({ move: "prepare", code: "practice" });
     expect(strayed).toEqual([]);
 
     // A person answers g-1's packet, drawn by the comparison's id, so asked again it is the same:

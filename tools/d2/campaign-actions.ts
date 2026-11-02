@@ -655,7 +655,7 @@ function namedLine(decided: Decided, size: string): string {
     return `compare goes on with comparison ${decided.id}, which began and has not reported.`;
   }
   return decided.fresh === "starter"
-    ? "compare reads the starter against the reference harness on the tasks held out since, before any change in harness/."
+    ? "compare reads the starter against the reference harness, the tasks held out since first, before any change in harness/."
     : size;
 }
 

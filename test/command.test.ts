@@ -267,6 +267,61 @@ describe("a solve's walled commands", () => {
     60_000,
   );
 
+  // Linux hides the seats' parent under an empty tmpfs and binds a seat's root back inside it.
+  // Seatbelt closes the parent, and the per-user temporary directory it lies in, by rule, and opens
+  // the seat's root again after both (`darwinCommandProfile`). With either closure alone this
+  // passes; with both taken out of the profile it fails on a macOS runner (2 November).
+  it.skipIf(!osIsolationSupport().ok)(
+    "keep a seat's temporary directory across its commands, and close it to every other seat",
+    async () => {
+      const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-seat-tmp-")));
+      try {
+        await inSeat(repoRoot, async (own) => {
+          await inSeat(repoRoot, async (other) => {
+            const left = join(own.dirs.temp, "left");
+            const planted = join(own.dirs.temp, "planted");
+            const first = await run(own, 'echo "$TMPDIR"; echo own-canary > "$TMPDIR/left"');
+            expect(first.output).toBe(`${own.dirs.temp}\n`);
+            expect(own.dirs.temp.startsWith(`${own.dirs.root}/`)).toBe(true);
+            expect((await run(own, 'cat "$TMPDIR/left"')).output).toBe("own-canary\n");
+            // The other seat, whose TMPDIR is its own, finds nothing of the first seat's by its path:
+            // no read, no listing, no stat, no write, no folder and no removal, and no name of it in
+            // the seats' parent.
+            const refused = await run(
+              other,
+              [
+                'echo "$TMPDIR"',
+                `cat ${left} 2>/dev/null || echo unread`,
+                `ls ${own.dirs.temp} >/dev/null 2>&1 && echo listed || echo unlisted`,
+                `test -e ${left} && echo seen || echo unseen`,
+                `{ echo x > ${planted}; } 2>/dev/null || echo unwritten`,
+                `mkdir ${join(own.dirs.temp, "made")} 2>/dev/null || echo unmade`,
+                `rm ${left} 2>/dev/null || echo unremoved`,
+                `ls ${dirname(own.dirs.root)} 2>/dev/null`,
+              ].join("; "),
+            );
+            const [said, ...rest] = refused.output.split("\n");
+            expect(said).toBe(other.dirs.temp);
+            expect(rest.slice(0, 6)).toEqual([
+              "unread",
+              "unlisted",
+              "unseen",
+              "unwritten",
+              "unmade",
+              "unremoved",
+            ]);
+            expect(refused.output).not.toContain(basename(own.dirs.root));
+            expect(existsSync(planted)).toBe(false);
+            expect(readFileSync(left, "utf8")).toBe("own-canary\n");
+          });
+        });
+      } finally {
+        rmSync(repoRoot, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
+
   it.skipIf(runtimeProcess.platform !== "darwin")(
     "close the host's /tmp and /var/tmp to a command: what another seat left there is neither read nor run, and a command leaves nothing there",
     async () => {

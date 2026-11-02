@@ -382,6 +382,21 @@ describe("the Builder's filter over that reading", () => {
     expect(promoted).not.toContain("b-3");
   });
 
+  it("names a session cut before its end as the one that left what it last froze", () => {
+    const c = campaign();
+    c.record("build.started", { session: "b-1", parent: STARTER, tasks: ["p1"] });
+    c.record("build.checkpoint", { session: "b-1", harness: HA });
+    c.record("build.checkpoint", { session: "b-1", harness: HB });
+    const told = startTold(campaignOf(c.events()), HB, "b-2");
+    expect(told).toMatch(/\bbbbbbbbb\b.*\bb-1\b/u);
+    expect(told).not.toContain("no Builder session");
+    // A checkpoint of the parent itself changed nothing, so no session left the starter.
+    const same = campaign();
+    same.record("build.started", { session: "b-1", parent: STARTER, tasks: ["p1"] });
+    same.record("build.checkpoint", { session: "b-1", harness: STARTER });
+    expect(startTold(campaignOf(same.events()), STARTER, "b-2")).toContain("no Builder session");
+  });
+
   it("tells each comparison as its tally and its reading, with no task and no other count", () => {
     const c = campaign();
     c.compared("b-1", { old: STARTER, fresh: HA }, tallied("step", 4, 0));

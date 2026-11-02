@@ -462,9 +462,7 @@ describe("the starter comparison in an epoch's row", () => {
     const [first, second] = epochsOf(log);
     expect(first?.starter_tally).toBeNull();
     expect(second?.starter_tally).toEqual({ wins: 2, losses: 1, ties: 1 });
-    expect(epochLine(present(second))).toContain(
-      "against the starter without the bill 2 won, 1 lost, 1 tied, no step",
-    );
+    expect(epochLine(present(second))).toContain("against the starter 2 won, 1 lost, 1 tied, no step");
     expect([first?.confirmed, second?.confirmed]).toEqual([null, false]);
   });
 

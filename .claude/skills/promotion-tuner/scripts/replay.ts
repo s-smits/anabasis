@@ -33,7 +33,7 @@
  * and the two-stage rule of older trees, and the rule-by-rule tally, none of which `main` holds.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import { carriedBy, type Measures, type Paired, scoresOf } from "#src/kernel/compare.ts";
+import { carriedBy as carriedOn, type Paired, wholePoints } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import type { Reported } from "#src/kernel/reports.ts";
 import { type JsonValue, asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
@@ -41,7 +41,7 @@ import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { median } from "#src/meta/tally.ts";
 import { epochLines } from "./time.ts";
-import { type Found, type Tree, campaignLogs, loadTree, rehearsed } from "./tree.ts";
+import { type Found, type Points, type Tree, campaignLogs, loadTree, rehearsed } from "./tree.ts";
 
 const USAGE = `usage:
   bun .claude/skills/promotion-tuner/scripts/replay.ts --tree <worktree>
@@ -75,7 +75,7 @@ type Measure = (typeof MEASURES)[number];
  *  the tree's own. */
 interface Score {
   readonly tree: Tree;
-  readonly scale: Measures;
+  readonly scale: Points;
   /** Whether the weights are the tree's own, so a weighted report's differences reconcile. */
   readonly own: boolean;
   readonly level: number | null;
@@ -170,8 +170,22 @@ const lost = (differences: readonly number[]) => differences.filter((one) => one
 const wlt = (differences: readonly number[]) =>
   `${String(won(differences))}-${String(lost(differences))}-${String(differences.length - won(differences) - lost(differences))}`;
 
+/** A task's scores from its points: with the bill where the tree scores one (before 2 November),
+ *  and without it, which a step is read on. */
+function scoresOf({ validity, objective, bill }: Points) {
+  return { scored: wholePoints(validity + objective + bill), unbilled: wholePoints(validity + objective) };
+}
+
+/** The measure that carried a task's result: the bill where the score without it does not share
+ *  the score's sign, and otherwise this tree's reading (`carriedBy`). */
+function carriedBy(points: Points): Measure | null {
+  const { scored, unbilled } = scoresOf(points);
+  if (scored === 0) return null;
+  return Math.sign(unbilled) === Math.sign(scored) ? carriedOn(points) : "bill";
+}
+
 /** A task's points by measure under the weights asked. */
-function pointsOf(score: Score, pair: Paired): Measures {
+function pointsOf(score: Score, pair: Paired): Points {
   const points = score.tree.points(pair);
   return {
     validity: points.validity * score.scale.validity,
@@ -195,7 +209,7 @@ function scoredSet(
     Array.isArray(record?.of) && record.of.length === stored.length ? record.of : stored.map(() => null);
   const without = numbers(record?.unbilled);
   const unbilled = without.length === stored.length ? without : [];
-  const points: Measures[] = [];
+  const points: Points[] = [];
   const scores = tasks.map((task, at) => {
     const pair = isString(task) ? pairs.get(task) : undefined;
     if (pair === undefined) {
@@ -443,7 +457,7 @@ function numberOption(args: CommandArgs, name: string): number | null {
 }
 
 /** The scale of each measure for `--weights v,o,b`, in hundredths, over the tree's own weights. */
-function scaleOf(args: CommandArgs, tree: Tree): Measures {
+function scaleOf(args: CommandArgs, tree: Tree): Points {
   const raw = args.value("weights");
   if (raw === null) return { validity: 1, objective: 1, bill: 1 };
   const asked = raw.split(",").map(Number);
@@ -452,8 +466,9 @@ function scaleOf(args: CommandArgs, tree: Tree): Measures {
   }
   const [validity = 0, objective = 0, bill = 0] = asked.map((one, at) => {
     const own = tree.weights[MEASURES[at] ?? "validity"];
-    return own > 0
-      ? one / 100 / own
+    if (own > 0) return one / 100 / own;
+    return one === 0
+      ? 0
       : args.die(`the tree weighs ${MEASURES[at] ?? ""} at 0; change it in a candidate tree`);
   });
   return { validity, objective, bill };

@@ -303,7 +303,7 @@ describe("lane 27 across campaigns", () => {
             lane: 11,
             name: "SAFEGUARD-9 PROMOTION BEYOND VALIDITY",
             detail:
-              "hn 6-0 p 0.016 joined at level 0.02, 0-0 p 1.000 on validity alone, 6-0 p 0.016 without the bill by the current score",
+              "hn 6-0 p 0.016 joined at level 0.02, 0-0 p 1.000 on validity alone, 6-0 p 0.016 by the current score",
           },
         ],
       ],
@@ -314,7 +314,7 @@ describe("lane 27 across campaigns", () => {
             lane: 11,
             name: "SAFEGUARD-9 PROMOTION BEYOND VALIDITY",
             detail:
-              "hn 6-0 p 0.016 joined at level 0.02, 0-0 p 1.000 on validity alone, 0-0 p 1.000 without the bill by the current score",
+              "hn 6-0 p 0.016 joined at level 0.02, 0-0 p 1.000 on validity alone, 0-0 p 1.000 by the current score",
           },
         ],
       ],

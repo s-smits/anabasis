@@ -7,22 +7,25 @@ the middle of `AGENTS.md` section 7. Use `scripts/size.ts` for sample-size figur
 ## The tally
 
 Every solve of the new harness is paired with every solve of the reference on the task, and the task
-is scored by three measures over those pairings, each from -1 to 1, by fixed weights (`pointsOf`,
+is scored by two measures over those pairings, each from -1 to 1, by fixed weights (`pointsOf`,
 `WEIGHTS`, `src/kernel/compare.ts`):
 
 - **validity**, 0.6: the share of pairings where only the new side's answer is valid, less the share
   where only the reference's is;
 - **the objective**, 0.3: between two valid answers, how much better the new one is as a share of
-  the larger measure, counted from the floor (`ROOM`, 1%) and full at a tenth (`FULL`);
-- **the bill**, 0.1: between two valid answers, the base-2 logarithm of the reference's bill over the
-  new one's, counted from a fifth less (`CHEAPER`) and full at half.
+  the larger measure, counted from the floor (`ROOM`, 1%) and full at a tenth (`FULL`).
+
+What a solve billed is reported and scores nothing. Until 2 November a third measure, the bill at
+0.1, scored a fifth less to half; from 26 October the step was read without it, and a report of
+26 October to 2 November keeps both, its scores without the bill as `unbilled`, which every reader
+takes through `scoresIn`.
 
 The weighted sum determines the task's outcome: positive is a win, negative is a loss and zero is a
 tie. `wholePoints` rounds to thousandths, with half points away from zero; reports and the promotion
 tuner's replay share it. Swapping sides negates the score. Ties are excluded from the test. A
-pairing with an invalid answer reads neither the objective nor the bill, so a refused answer is
-never better and a fast failure never cheaper. The measures trade: valid in 3 solves of 4 against 4
-of 4 still wins where the valid answers measure a fifth better and bill half. The weights and floors
+pairing with an invalid answer reads no objective, so a refused answer is never better. The
+measures trade: valid in 3 solves of 4 against 4 of 4 still wins where the valid answers measure a
+fifth better. The weights and floors
 are the operator's constants of the host; a comparison continued under other code is refused on its
 setting, so none is read by two sets of weights; a recorded comparison read again by this tree is
 scored by them, while its own report stays what it said. The report gives each measure's points
@@ -33,12 +36,11 @@ scored by them, while its own report stays what it said. The report gives each m
 An **objective** is a quantity the check program's evaluator computes from a valid answer, with a
 direction, verified after the checks pass (`brief.objective`, `objective(request)`; `OBJECTIVE`,
 `src/kernel/verify.ts`): public, in the contract and the solver's resources, and fixed as a term at
-the start (`ObjectiveRule`). With none, two valid answers differ only by their bill. The test says
+the start (`ObjectiveRule`). With none, two valid answers tie. The test says
 whether a difference is believable and the floors whether it is worth counting: without `ROOM`, six
 tasks won by 0.01% would read p = 0.016 (0.015625) and promote; under it such gains score zero and
 tie. A task the reference closes on validity and the objective has no room in supply
-(`informative`), so a harness that only bills less wins it as a retained task, while the Examiner is
-still asked for tasks the reference fails.
+(`informative`), and the Examiner is asked for tasks the reference fails.
 
 ## The test and the step
 
@@ -53,12 +55,11 @@ Family tallies describe concentration; they do not establish independence.
 
 The step (`stepOf`) is the test at or under the level (0.02 by default; with equal margins 6 to 0, 8
 to 1, 10 to 2, 12 to 3; at 0.10: 4 to 0, 6 to 1, 7 to 2, 9 to 3), read on each task's score
-without the bill (`unbilled`), so the bill alone never promotes. From 25 to 31 October it had to
-clear on the score as it stands too; of 47 comparisons read under both, none cleared without the bill
-and failed with it, so that test went (decision D1). The null is the fixed-task one. Every reading
+(`scoresIn` for a recorded report). From 25 to 31 October it had to clear on the score with the
+bill too; of 47 comparisons read under both, none cleared without the bill and failed with it, so
+that test went (decision D1), and on 2 November the bill left the score. The null is the fixed-task one. Every reading
 prints its untied count, the share it detects four times in five (`detectable`) and its false rate
-at its margins (`falseRate`), both of the test without the bill (on the full score in a report from
-before 31 October): at 24
+at its margins (`falseRate`), both of the test the step reads: at 24
 untied tasks of equal margin 1.1% at 0.02 and 7.6% at 0.10, and other margins have rates of their
 own. A `step` counts for the stop rule as a gain. The level is recorded at the opening, so a
 campaign is read by its own rule.
@@ -89,6 +90,5 @@ The report shows how each harness did alone (`valid`: tasks where every, some or
 valid), which tasks entered each set, the overlap with the previous comparison of the same pair, and
 each measure's points. Beside it stands the A/A comparison, the reference on halves of its own
 solves mirrored in time, read either way at the level by the step's rule (`readsStepEitherWay`),
-with its flip rate; a report written before 26 October has no scores without the bill and keeps its
-scored-only reading. It should read no step, and it ends nothing: the climb counts it (section 1,
+with its flip rate. It should read no step, and it ends nothing: the climb counts it (section 1,
 factor 2).

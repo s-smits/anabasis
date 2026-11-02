@@ -19,10 +19,10 @@ import type { Share } from "../../../../src/campaign/climb.ts";
 import {
   carriedBy,
   differenceOf,
-  type Kept,
   type Measures,
   type Paired,
   pointsOf,
+  scoresIn,
   testOf,
 } from "../../../../src/kernel/compare.ts";
 import { pairsReported } from "../../../../src/kernel/reports.ts";
@@ -128,17 +128,10 @@ export const starterIn = once((log): string | null => {
   return named ?? (isString(reportedAs) ? reportedAs : null);
 });
 
-/** What a comparison's step was read on (`readsStep`, `compare.ts`): each task's score without the
- *  bill, or its score as it stands in a report from before 26 October, which holds none. Until
- *  1 November the page drew every bar and tally as scored, so a comparison that read no step on
- *  3 won, 0 lost, 13 tied without the bill showed 13 won, 1 lost, 2 tied. */
-export const keptOf = (report: Pick<Report, "scored"> | null): Kept =>
-  report?.scored?.unbilled === undefined ? "scored" : "unbilled";
-
-/** What one scored task came to on the scores `kept`. A tie is split by the reference harness (the
- *  old side) alone. */
-export function outcomeOf(pair: Paired, kept: Kept): Outcome {
-  const difference = differenceOf(pair, kept);
+/** What one scored task came to on its score. A tie is split by the reference harness (the old
+ *  side) alone. */
+export function outcomeOf(pair: Paired): Outcome {
+  const difference = differenceOf(pair);
   if (difference !== 0) return difference > 0 ? "won" : "lost";
   const valid = pair.old.filter(Boolean).length;
   if (valid === pair.old.length) return "tiedEvery";
@@ -147,7 +140,7 @@ export function outcomeOf(pair: Paired, kept: Kept): Outcome {
 
 /** A comparison's won and lost tasks by the measure that carried each (`carriedBy`). */
 function carriedIn(pairs: readonly Paired[]): { won: Measures; lost: Measures } {
-  const won = { validity: 0, objective: 0, bill: 0 };
+  const won = { validity: 0, objective: 0 };
   const lost = { ...won };
   for (const pair of pairs) {
     const by = carriedBy(pointsOf(pair));
@@ -174,23 +167,16 @@ function validShare(counts: readonly number[]): Share {
   return { valid, solves: tasks * Math.max(0, counts.length - 1) };
 }
 
-/** The tally and the test of a set's scores as its step reads them (`keptOf`). */
+/** The tally and the test of a set's scores as its step reads them: a report of
+ *  26 October to 2 November also scored the bill, and until 1 November the page drew every bar
+ *  and tally with it, so a comparison that read no step on 3 won, 0 lost, 13 tied without the
+ *  bill showed 13 won, 1 lost, 2 tied. */
 export function steppedOf(tested: {
   readonly differences: readonly number[];
   readonly unbilled?: readonly number[];
 }) {
   const { wins, losses, ties, p } = testOf(tested.unbilled ?? tested.differences);
   return { tally: { wins, losses, ties }, p };
-}
-
-/** A report's tally and test with the bill, where it holds the scores without the bill too and the
- *  two read apart; null where they agree, which is the bar's own `tally` and `p`. */
-function withBillOf(report: Pick<Report, "scored"> | null): ComparisonBar["withBill"] {
-  if (report?.scored == null || keptOf(report) === "scored") return null;
-  const { wins, losses, ties, p } = report.scored;
-  const stepped = steppedOf(report.scored);
-  const same = stepped.p === p && stepped.tally.wins === wins && stepped.tally.losses === losses;
-  return same ? null : { tally: { wins, losses, ties }, p };
 }
 
 /** A comparison's kind and, for a repeat, the comparison it repeats: a control sets the starter,
@@ -245,18 +231,14 @@ export const barsIn = once((log): ComparisonBar[] => {
       setting: isString(setting) ? setting : null,
       level: move.level,
       tasks: move.tasks,
-      tally: move.unbilled ?? move.tally,
+      tally: move.tally,
       reading: move.reading,
       p: report?.scored == null ? null : steppedOf(report.scored).p,
-      withBill: withBillOf(report),
       outcomes: split?.outcomes ?? null,
       leftOut: split?.leftOut ?? null,
       valid:
         move.valid === null ? null : { old: validShare(move.valid.old), fresh: validShare(move.valid.fresh) },
-      noise:
-        report?.noise == null
-          ? null
-          : { ...steppedOf(report.noise), unbilled: report.noise.unbilled ?? report.noise.differences },
+      noise: report?.noise == null ? null : { ...steppedOf(report.noise), scores: scoresIn(report.noise) },
       carried: report === null ? null : carriedIn(pairs.get(move.id) ?? []),
       rulings: move.rulings,
       sets:
@@ -301,7 +283,7 @@ function splitOf(
     tiedNone: 0,
     aside: take(report.aside),
   };
-  for (const pair of pairs) outcomes[outcomeOf(pair, keptOf(report))] += 1;
+  for (const pair of pairs) outcomes[outcomeOf(pair)] += 1;
   const disputed = take(report.disputed);
   const short = take(report.short);
   const leftOut: LeftOut = { disputed, short, withdrawn: take(report.withdrawn) };

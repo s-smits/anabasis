@@ -198,10 +198,13 @@ export function epochsOf(events: readonly LogEvent[]): Epoch[] {
   });
 }
 
-/** The reference's tally without the bill in the last starter comparison within the epoch, and
- *  whether it reads a step for the reference: the starter is that comparison's new side, so the
- *  reference wins what the starter loses. A report before 26 October holds no unbilled scores and
- *  is read as scored. A null `reference` is the first epoch's, which has no starter comparison. */
+/** The reference's tally without the bill in the first starter comparison within the epoch that
+ *  tallied a task, and whether it reads a step for the reference: the starter is that comparison's
+ *  new side, so the reference wins what the starter loses. The first, since the table names the
+ *  pair again where tasks are held out after it (`heldSince`), mostly after a reading that left
+ *  no room: until 2 November the last one set `confirmed`, which let a later draw replace a
+ *  reading that confirmed nothing. A report before 26 October holds no unbilled scores and is read
+ *  as scored. A null `reference` is the first epoch's, which has no starter comparison. */
 function againstStarter(
   reports: readonly Reported[],
   within: (at: number) => boolean,
@@ -209,16 +212,19 @@ function againstStarter(
   starter: string | null,
 ): Pick<Epoch, "starter_tally" | "confirmed"> {
   if (reference === null) return { starter_tally: null, confirmed: null };
-  const last = reports.findLast(
-    ({ index, data }) => within(index) && data.old === reference && data.fresh === starter,
+  const first = reports.find(
+    ({ index, data }) =>
+      within(index) &&
+      data.old === reference &&
+      data.fresh === starter &&
+      data.reading !== "not-scored" &&
+      asRecord(data.scored) !== null,
   );
-  if (last === undefined || asRecord(last.data.scored) === null) {
-    return { starter_tally: null, confirmed: false };
-  }
-  const ahead = scoresIn(last.data.scored).map((one) => -one);
+  if (first === undefined) return { starter_tally: null, confirmed: false };
+  const ahead = scoresIn(first.data.scored).map((one) => -one);
   const { wins, losses, ties } = testOf(ahead);
-  const level = isNumber(last.data.level) ? last.data.level : 0;
-  const aside = Array.isArray(last.data.aside) ? last.data.aside.length : 0;
+  const level = isNumber(first.data.level) ? first.data.level : 0;
+  const aside = Array.isArray(first.data.aside) ? first.data.aside.length : 0;
   return { starter_tally: { wins, losses, ties, aside }, confirmed: readsStep(ahead, level) };
 }
 

@@ -443,7 +443,7 @@ describe("the starter comparison in an epoch's row", () => {
   // reference's side, and not the starter's share of valid answers.
   const opened = event("comparison.started", { session: "g-1", old: "S", fresh: "h2", starter: "S" });
   const promoted = event("harness.promoted", { harness: "h2" });
-  const starterRead = (scored: JsonObject, aside: string[] = []) =>
+  const starterRead = (scored: JsonObject, aside: string[] = [], more: JsonObject = {}) =>
     event("comparison.reported", {
       session: "g-2",
       reading: "no-step",
@@ -452,6 +452,7 @@ describe("the starter comparison in an epoch's row", () => {
       level: 0.02,
       scored,
       aside,
+      ...more,
     });
 
   it("counts the reference's wins without the bill, where the bill alone turned one task", () => {
@@ -487,6 +488,17 @@ describe("the starter comparison in an epoch's row", () => {
     );
     const clear = starterRead({ differences: Array(6).fill(-1), unbilled: Array(6).fill(-1) }, ["t-1"]);
     expect(epochLine(present(epochsOf([opened, promoted, clear])[1]))).not.toContain("labels");
+  });
+
+  it("confirms on the epoch's first starter comparison that tallied a task, so a later draw of the pair replaces no reading", () => {
+    const short = starterRead({ differences: Array(5).fill(-1), unbilled: Array(5).fill(-1) });
+    const six = { differences: Array(6).fill(-1), unbilled: Array(6).fill(-1) };
+    const again = starterRead(six, [], { session: "g-3", reading: "step" });
+    const redrawn = epochsOf([opened, promoted, short, again])[1];
+    expect([redrawn?.starter_tally?.wins, redrawn?.confirmed]).toEqual([5, false]);
+    // One that tallied nothing tested nothing, so the comparison after it is the first reading.
+    const empty = starterRead({ differences: [], unbilled: [] }, [], { reading: "not-scored" });
+    expect(epochsOf([opened, promoted, empty, again])[1]?.confirmed).toBe(true);
   });
 
   it("says unread before a starter comparison reports, and nothing in the first epoch", () => {

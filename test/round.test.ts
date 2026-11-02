@@ -35,7 +35,8 @@ import { type Condition, recordCondition, settingId } from "../src/kernel/condit
 import { draw, pairsOf, WEIGHTS } from "../src/kernel/compare.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
-import { latestBuilt, poolOf, stopRule } from "../src/kernel/reports.ts";
+import { stopRule } from "../src/campaign/admission.ts";
+import { latestBuilt, poolOf } from "../src/kernel/reports.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import { passed, ranUnder } from "../src/kernel/solves.ts";
 import { taskStates } from "../src/kernel/task.ts";

@@ -8,7 +8,8 @@ import { checkpoint, settleReading, type CheckpointRequest } from "../src/campai
 import { scored } from "../src/kernel/compare.ts";
 import { recordCondition, settingId } from "../src/kernel/condition.ts";
 import { append, read } from "../src/kernel/log.ts";
-import { lastReports, pairsReported, stopRule } from "../src/kernel/reports.ts";
+import { stopRule } from "../src/campaign/admission.ts";
+import { lastReports, pairsReported } from "../src/kernel/reports.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import { taskStates } from "../src/kernel/task.ts";
 import {

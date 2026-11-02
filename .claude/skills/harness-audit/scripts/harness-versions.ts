@@ -33,6 +33,7 @@ import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { type Handover, campaignOf } from "#src/campaign/handover.ts";
 import { DIGEST, namesOf } from "#src/campaign/names.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
+import { practiceRan } from "#src/kernel/solves.ts";
 import {
   AGENT_DIR,
   BYTECODE,
@@ -195,8 +196,11 @@ function madeOf(events: readonly LogEvent[], digest: string, starter: string) {
   if (isString(parent)) {
     return { made: `checkpoint of session ${recorded(session)} from ${short(parent)}`, parent };
   }
-  if (digest === starter) {
-    return { made: "the Starter Built Harness as this checkout writes it", parent: null };
+  // A led session practises states it never freezes: until 2 November each read as made by no
+  // record, 28 of them in seven campaigns (lane 15), though the log's practice solves name each.
+  if (digest === starter) return { made: "the Starter Built Harness as this checkout writes it", parent: null };
+  if (practiceRan(events).some(({ under }) => under.harness === digest)) {
+    return { made: "a state its Builder practised and never froze", parent: null };
   }
   return {
     made: "no record of its making: a stored sweep's harness, a starter of another checkout, or a programs-of control",

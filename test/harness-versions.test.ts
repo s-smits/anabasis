@@ -5,7 +5,9 @@
 // (`tree-*`), which a kept state links to and which is no harness.
 import { afterAll, describe, expect, it } from "bun:test";
 import { type Version, versionsOf } from "#skills/harness-audit/scripts/harness-versions.ts";
+import { recordCondition } from "../src/kernel/condition.ts";
 import { append } from "../src/kernel/log.ts";
+import { LIMITS } from "../tools/d2/campaign.ts";
 import {
   cpSync,
   mkdirSync,
@@ -126,14 +128,53 @@ describe("a campaign its Builder leads", () => {
     append(ledLog, "build.started", { session: "b-1", parent: starter });
     append(ledLog, "build.checkpoint", { session: "b-1", harness: child });
     append(ledLog, "build.checkpoint", { session: "b-1", harness: later });
+    // A state the session practised and never froze, and one only a comparison solved: until
+    // 2 November both read "no record of its making" (lane 15, 28 states in seven campaigns).
+    const practised = await keep(
+      (dir) => writeHarness(dir, { ...EXAMPLE, guide: `${EXAMPLE.guide}\nPractised.` }),
+      ledStates,
+    );
+    const compared = await keep(
+      (dir) => writeHarness(dir, { ...EXAMPLE, guide: `${EXAMPLE.guide}\nCompared.` }),
+      ledStates,
+    );
+    for (const [harness, comparison] of [
+      [practised, undefined],
+      [compared, "g-1"],
+    ] as const) {
+      const condition = recordCondition(ledLog, {
+        contract: "c1",
+        harness,
+        task: "v1",
+        model: "faux/faux-solver",
+        effort: "medium",
+        prices: { "faux/faux-solver": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } },
+        runtime: {},
+        compaction: "off",
+        solverTools: harness,
+        verifierTools: "t1",
+        sandbox: "p1",
+        limits: LIMITS,
+        host: "h1",
+        side: "test",
+      });
+      append(ledLog, "solve.started", {
+        solve: `s-${harness}`,
+        condition,
+        task: "v1",
+        ...(comparison === undefined ? {} : { comparison }),
+      });
+    }
     const made = new Map((await versionsOf({ log: ledLog, states: ledStates })).map((v) => [v.digest, v]));
     expect(made.get(child)?.made).toBe(`checkpoint of session b-1 from ${short(starter)}`);
     expect(made.get(later)?.made).toBe(`checkpoint of session b-1 from ${short(child)}`);
     expect(made.get(later)?.parent).toBe(child);
+    expect(made.get(practised)?.made).toBe("a state its Builder practised and never froze");
+    expect(made.get(compared)?.made).toStartWith("no record of its making");
     // An open session has handed nothing over: until 1 November the starter read "left it as it
     // was" beside the three checkpoints its session had made (gate validity arm, F13).
     expect(made.get(starter)?.sessions).toEqual([
-      `b-1: 0 practice solves, 0 counted fails, left ${short(later)} so far, open`,
+      `b-1: 1 practice solves, 0 counted fails, left ${short(later)} so far, open`,
     ]);
   });
 

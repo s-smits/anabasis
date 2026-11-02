@@ -59,6 +59,7 @@ import {
   type Solve,
   strings,
   tally,
+  tallyOf,
   taskTriggers,
   TEST,
   text,
@@ -595,10 +596,11 @@ function reviewTriggers(log: Index): Trigger[] {
         ]
       : []),
     ...log.compared.flatMap(({ session, own, last }) => {
-      // The tally were every rejection that set a task aside to stand, beside the one without them.
-      const [counted, scored] = [asRecord(own.counted), asRecord(own.scored)];
+      // The tally were every rejection that set a task aside to stand, beside the one without them,
+      // both read without the bill as the step is (`tallyOf`); until 2 November it read the billed p.
+      const [counted, scored] = [tallyOf(own.counted), tallyOf(own.scored)];
       const level = count(own.level);
-      const clears = (tested: JsonObject) => count(tested.p) <= level;
+      const clears = (tested: { readonly p: number }) => tested.p <= level;
       const settled = asRecord(last.settled);
       return [
         ...(counted === null || scored === null || clears(counted) === clears(scored)
@@ -606,7 +608,7 @@ function reviewTriggers(log: Index): Trigger[] {
           : [
               fired(
                 "READING MOVES WITH THE SET-ASIDE",
-                `${session}: ${String(count(scored.wins))}-${String(count(scored.losses))} without the ${plural(items(own.aside).length, "task")} set aside, ${String(count(counted.wins))}-${String(count(counted.losses))} were their rejections to stand, and only one of the two clears its level`,
+                `${session}: ${String(scored.wins)}-${String(scored.losses)} without the ${plural(items(own.aside).length, "task")} set aside, ${String(counted.wins)}-${String(counted.losses)} were their rejections to stand, and only one of the two clears its level`,
               ),
             ]),
         ...(settled === null

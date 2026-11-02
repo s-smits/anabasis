@@ -35,8 +35,8 @@
  *
  * With `--dry-run` it does everything but call the model: it opens the harness, lists its tools,
  * composes the system prompt, runs `command -v` for each installed program through the solver's own
- * shell and writes all three to the result, so the study's check stage proves the path in the
- * container for free.
+ * shell, asks the job's proxy for its `/health` from inside the container, and writes all four to the
+ * result, so the study's check stage proves the path in the container for free.
  *
  * Until 2 November a harness that declared tools of its own was refused, so a learned harness that
  * wrote any could not be scored.
@@ -253,7 +253,18 @@ async function solve(ask: Asked) {
   if (listed === undefined) throw new Error(`OpenRouter as the backends serve it has no ${ask.model}`);
   if (ask.dryRun) {
     const tools = defined.map(({ name }) => name);
-    return { ending: "dry-run", harness: harness.digest, tools, prompt, found: resolved(prefix, programs) };
+    const proxy = await fetch(new URL("/health", ask.baseUrl)).then(
+      async (response) => ({ status: response.status, body: await response.text() }),
+      (error: unknown) => ({ status: null, body: errorMessage(error) }),
+    );
+    return {
+      ending: "dry-run",
+      harness: harness.digest,
+      tools,
+      prompt,
+      found: resolved(prefix, programs),
+      proxy,
+    };
   }
   const model = { ...listed, baseUrl: ask.baseUrl };
   const models = createModels({

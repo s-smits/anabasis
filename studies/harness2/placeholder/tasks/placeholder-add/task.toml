@@ -1,0 +1,14 @@
+version = "1.0"
+
+[metadata]
+source_case = "placeholder-add"
+
+[verifier]
+import_path = "workbuddy_bench.judge:CompositeVerifier"
+timeout_sec = 600.0
+
+[agent]
+timeout_sec = 900.0
+
+[environment]
+build_timeout_sec = 600.0

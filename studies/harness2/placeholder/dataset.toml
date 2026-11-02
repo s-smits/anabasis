@@ -1,0 +1,12 @@
+# A dataset of one synthetic task in the shape of a WorkBuddy-Bench Code task, written by the
+# study and holding nothing of the benchmark's: a repository with a bug, hidden pytest tests, and
+# the CompositeVerifier contract (`workbuddy_bench.judge.registry`). `run.ts check --placeholder`
+# runs an arm on it before the licence word, so the container, the mount, the agent and the
+# verifier are proved without the dataset.
+[dataset]
+id = "anabasis-placeholder-code"
+version = "0.1"
+
+[verifier]
+schema = "workbuddy.verifier.v1"
+engine = "composite"

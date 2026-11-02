@@ -5,7 +5,7 @@
  *
  *   bun studies/harness2/run.ts setup [--dataset]
  *   bun studies/harness2/run.ts bundle --arm <name> --from <starter | campaign> [--harness <kept>]
- *   bun studies/harness2/run.ts check --arm <name>
+ *   bun studies/harness2/run.ts check --arm <name> [--placeholder]
  *   bun --env-file=<file> studies/harness2/run.ts score --run <name> --arm <name> [--streams 3] --yes
  *   bun studies/harness2/run.ts read --run <name> --a <arm> [--b <arm>]
  *
@@ -23,7 +23,12 @@
  * `opencode-base` needs no bundle: it is Harness²'s own base, OpenCode at the version and variant
  * Harness² runs it (`_job_yaml`, `workbuddy.py`), over the same route to the same solver.
  *
- * `check` runs one test task with the solver's `--dry-run`, which calls no model. `score` runs every
+ * `check` runs one test task with the solver's `--dry-run`, which calls no model, and prints the
+ * trial as `trialsOf` reads it. `--placeholder` runs it on the study's own synthetic task instead
+ * (`placeholder/`), so the container, the mount, the agent and the verifier are proved before the
+ * licence word: the task is put beside the benchmark's datasets under the Code subset's bench
+ * settings, and its trial is found by name, since Harness²'s `_trials_in` resolves a trial
+ * against the Code tasks and needs the dataset. `score` runs every
  * test task `--streams` times and is paid, so it asks for `--yes`. A trial that ends in a non-result
  * is run again, as a campaign solves one again (rule 7): after the job, each task short of its
  * streams is run again for what it lacks, into the same jobs folder as Harness²'s `run_batch`
@@ -62,6 +67,10 @@ const WORK = join(REPO, "studies", "external", "harness2-work");
 const RECORDS = join(REPO, "studies", "runs", "harness2");
 const PYTHON = join(HARNESS2, ".venv", "bin", "python");
 const SPLIT = join(WORK, "split-wb-code.json");
+const CODE = "wb-bench-code-v1.0";
+/** The study's synthetic task in a Code task's form (`placeholder/dataset.toml`), and its name. */
+const PLACEHOLDER = "anabasis-placeholder-code";
+const PLACEHOLDER_TASK = "placeholder-add";
 
 /** Harness² as the protocol read it (`README.md`, "What Harness² is"). */
 const PIN = "1cfe254e8d25b15f37048c3730134686abe60335";
@@ -87,6 +96,7 @@ const RETRIES = 2;
 
 const OPTIONS = {
   dataset: { type: "boolean" },
+  placeholder: { type: "boolean" },
   arm: { type: "string" },
   from: { type: "string" },
   harness: { type: "string" },
@@ -181,10 +191,11 @@ const testTasks = (): string[] =>
 
 const armDir = (arm: string) => join(WORK, "arms", arm);
 
-/** A job of `tasks` under arm `arm`, as Harness² writes its own (`_job_yaml`, `workbuddy.py`). */
+/** A job of `tasks` of the dataset folder `dataset` under arm `arm`, as Harness² writes its own
+ *  (`_job_yaml`, `workbuddy.py`). */
 function jobOf(
   arm: string,
-  tasks: readonly string[],
+  { dataset, tasks }: { readonly dataset: string; readonly tasks: readonly string[] },
   attempts: number,
   jobs: string,
   solving: "dry-run" | "solve",
@@ -209,7 +220,7 @@ function jobOf(
   return [
     `model: ${ROUTE}`,
     `harness: ${base ? OPENCODE_HARNESS : HARNESS}`,
-    "dataset: datasets/wb-bench-code-v1.0/tasks",
+    `dataset: datasets/${dataset}/tasks`,
     "harness_backend: local",
     "model_connection: local_proxy",
     `n_attempts: ${String(attempts)}`,
@@ -258,14 +269,15 @@ async function score(run: string, arm: string, streams: number): Promise<void> {
   const tasks = testTasks();
   const ranAt = standing(REPO);
   const slug = `_anabasis-${run}-${arm}`;
-  const text = await job(slug, jobOf(arm, tasks, streams, jobs, "solve"));
+  const text = await job(slug, jobOf(arm, { dataset: CODE, tasks }, streams, jobs, "solve"));
   for (let round = 1; round <= RETRIES; round += 1) {
     const missing = shortfall(trialsOf(harness2Read(["trials", jobs, SPLIT])), tasks, streams);
     if (missing.size === 0) break;
     // One job a count of missing trials, since a job gives every task it names the same attempts.
     for (const count of new Set(missing.values())) {
       const short = [...missing].flatMap(([task, lacks]) => (lacks === count ? [task] : []));
-      await job(`${slug}-r${String(round)}-${String(count)}`, jobOf(arm, short, count, jobs, "solve"));
+      const again = jobOf(arm, { dataset: CODE, tasks: short }, count, jobs, "solve");
+      await job(`${slug}-r${String(round)}-${String(count)}`, again);
     }
   }
   const record = join(RECORDS, run, arm);
@@ -291,6 +303,26 @@ async function score(run: string, arm: string, streams: number): Promise<void> {
   const short = [...shortfall(trials, tasks, streams).keys()];
   console.log(
     `score: ${String(trials.length)} trials of ${String(tasks.length)} tasks, ${String(short.length)} still short of ${String(streams)} scored (${short.join(", ") || "none"}), record in ${relative(REPO, record)}`,
+  );
+}
+
+/** One dry trial of arm `arm`, on the first test task or on the placeholder, printed as read. */
+async function check(arm: string, on: "dataset" | "placeholder"): Promise<void> {
+  const placeholder = on === "placeholder";
+  if (placeholder) {
+    cpSync(join(STUDY, "placeholder"), join(WB, "datasets", PLACEHOLDER), { recursive: true });
+    const bench = join(WB, "configs", "bench");
+    copyFileSync(join(bench, `${CODE}.yaml`), join(bench, `${PLACEHOLDER}.yaml`));
+  }
+  const task = placeholder ? PLACEHOLDER_TASK : testTasks()[0];
+  if (task === undefined) throw new Error("the split holds no test task; run setup --dataset first");
+  const jobs = join(WORK, "checks", `${arm}-${String(Date.now())}`);
+  const dataset = placeholder ? PLACEHOLDER : CODE;
+  await job(`_anabasis-check-${arm}`, jobOf(arm, { dataset, tasks: [task] }, 1, jobs, "dry-run"));
+  const verb = placeholder ? ["named", jobs, task] : ["trials", jobs, SPLIT];
+  // The dry result (`agent/pi-result.json`) holds the prompt, the programs found and the proxy's reply.
+  console.log(
+    `check: ${relative(REPO, jobs)} ${capturedJsonStringify(trialsOf(harness2Read(verb)), null, 2)}`,
   );
 }
 
@@ -342,13 +374,7 @@ async function main(args: readonly string[]): Promise<void> {
   if (verb === "check") {
     const arm = needArm(values.arm);
     if (arm === OPENCODE) throw new Error(`${OPENCODE} has no dry run: every trial of it calls the model`);
-    const [task] = testTasks();
-    if (task === undefined) throw new Error("the split holds no test task; run setup --dataset first");
-    await job(
-      `_anabasis-check-${arm}`,
-      jobOf(arm, [task], 1, join(WORK, "checks", `${arm}-${String(Date.now())}`), "dry-run"),
-    );
-    return;
+    return await check(arm, values.placeholder === true ? "placeholder" : "dataset");
   }
   if (verb === "score") {
     if (values.yes !== true) throw new Error("score is paid; --yes is the operator's word for this run");

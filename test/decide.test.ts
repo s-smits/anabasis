@@ -591,6 +591,18 @@ describe("unread harnesses and tasks", () => {
     });
     expect(move(starterComparison("step", [8, 2, 2], [6, 0, 6]))).toMatchObject({ move: "build" });
     expect(move(starterComparison("no-step", ALL, [0, 0, 12]))).toMatchObject({ move: "examine" });
+    // A session that changed harness/ beside the Examiner leaves the promotion still to be confirmed:
+    // the starter comparison stays owed until one reports in the epoch, and then the change is read.
+    expect(decide([...written, built("b-2", "h2")], PLAN)).toMatchObject({
+      move: "compare",
+      fresh: "starter",
+    });
+    expect(
+      decide(
+        [...starterComparison("no-step", HALF, [2, 2, 8]), ...examined("x-2", ["v14"]), built("b-2", "h2")],
+        PLAN,
+      ),
+    ).not.toMatchObject({ fresh: "starter" });
 
     expect(move(PROMOTED)).toMatchObject({ move: "examine" });
     expect(move([...PROMOTED, ...examined("x-9")])).toMatchObject({ move: "build" });

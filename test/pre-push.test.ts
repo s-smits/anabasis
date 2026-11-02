@@ -160,7 +160,11 @@ describe("pre-push", () => {
     const result = push([update(second, docs)], verify);
     expect(result.status).toBe(0);
     expect(gatesRun(log)).toEqual([`${second} -`]);
-    expect(stepsOver(second)).toEqual(STATIC);
+    // The install, format check and secret scan run in turn; typecheck and lint then run side by
+    // side, so they finish in either order (a proof of 3 November read lint first).
+    const steps = stepsOver(second);
+    expect(steps.slice(0, 3)).toEqual(STATIC.slice(0, 3));
+    expect(steps.slice(3).toSorted()).toEqual(STATIC.slice(3).toSorted());
     expect(stepsOver(source)).toEqual([]);
     rmSync(log, { force: true });
     expect(push([update(source, docs)], verify).status).toBe(0);

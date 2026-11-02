@@ -4,7 +4,7 @@
  * path, a scored run of one arm, and the reading of two arms.
  *
  *   bun studies/harness2/run.ts setup [--dataset]
- *   bun studies/harness2/run.ts bundle --arm <name> --harness <a kept harness's folder | starter>
+ *   bun studies/harness2/run.ts bundle --arm <name> --from <starter | campaign> [--harness <kept>]
  *   bun studies/harness2/run.ts check --arm <name>
  *   bun --env-file=<file> studies/harness2/run.ts score --run <name> --arm <name> [--streams 3] --yes
  *   bun studies/harness2/run.ts read --run <name> --a <arm> [--b <arm>]
@@ -18,8 +18,17 @@
  * dataset only with `--dataset`, which is the operator's word that WorkBuddy-Bench's licence is
  * accepted, and then writes the paper's split with Harness²'s `scripts/split_tasks.py`.
  *
+ * `bundle` makes an arm from the starter or from a campaign by name, its reference at its ending
+ * unless `--harness` names another kept one as `keptAs` takes it (`../shared/bundle.ts`). The arm
+ * `opencode-base` needs no bundle: it is Harness²'s own base, OpenCode at the version and variant
+ * Harness² runs it (`_job_yaml`, `workbuddy.py`), over the same route to the same solver.
+ *
  * `check` runs one test task with the solver's `--dry-run`, which calls no model. `score` runs every
- * test task `--streams` times and is paid, so it asks for `--yes`. Each scored run leaves a record
+ * test task `--streams` times and is paid, so it asks for `--yes`. A trial that ends in a non-result
+ * is run again, as a campaign solves one again (rule 7): after the job, each task short of its
+ * streams is run again for what it lacks, into the same jobs folder as Harness²'s `run_batch`
+ * resumes one, up to `RETRIES` rounds, and the tasks still short are left out of every reading and
+ * named. Each scored run leaves a record
  * in the tracked `studies/runs/harness2/<run>/`: the terms it ran on, the job it ran, and each
  * trial's score and spend as `trials.py` and `trialsOf` read them. The trajectories stay with the
  * job folders until the licence decision says they may be published. `read` sets two arms of a run
@@ -39,9 +48,11 @@ import {
 import { join, relative, resolve } from "#src/meta/path.ts";
 import { capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
+import type { JsonObject } from "#src/meta/json-shape.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { LIMITS } from "#tools/d2/campaign.ts";
 import { bundleArm, MOUNT_RECORD } from "../shared/bundle.ts";
-import { halves, readArms, trialsOf } from "../shared/scores.ts";
+import { halves, readArms, shortfall, streamOf, trialsOf } from "../shared/scores.ts";
 
 const STUDY = import.meta.dir;
 const REPO = resolve(STUDY, "..", "..");
@@ -68,10 +79,16 @@ const HARNESS = "anabasis-pi/1";
 const MOUNT = "/opt/anabasis";
 /** Trials at once in one job, as Harness² runs its own (`WB_MAX_TRIALS`, `harness2/config.py`). */
 const AT_ONCE = 2;
+/** Harness²'s base arm (`WB_OC_HARNESS_VER`, `harness2/config.py`), which takes no mount. */
+const OPENCODE = "opencode-base";
+const OPENCODE_HARNESS = "opencode/1.14.18";
+/** Rounds of trials run again for the tasks a job left short. */
+const RETRIES = 2;
 
 const OPTIONS = {
   dataset: { type: "boolean" },
   arm: { type: "string" },
+  from: { type: "string" },
   harness: { type: "string" },
   run: { type: "string" },
   streams: { type: "string", default: "3" },
@@ -180,9 +197,18 @@ function jobOf(
     PI_PROMPTS: LIMITS.turns,
     PI_DRY_RUN: solving === "dry-run",
   };
+  const base = arm === OPENCODE;
+  const mounted = [
+    "environment_override:",
+    "  mounts:",
+    "    - type: bind",
+    `      source: ${armDir(arm)}`,
+    `      target: ${MOUNT}`,
+    "      read_only: true",
+  ];
   return [
     `model: ${ROUTE}`,
-    `harness: ${HARNESS}`,
+    `harness: ${base ? OPENCODE_HARNESS : HARNESS}`,
     "dataset: datasets/wb-bench-code-v1.0/tasks",
     "harness_backend: local",
     "model_connection: local_proxy",
@@ -194,14 +220,11 @@ function jobOf(
     ...tasks.map((task) => `    - ${task}`),
     "orchestrator_override:",
     `  n_concurrent_trials: ${String(AT_ONCE)}`,
-    "environment_override:",
-    "  mounts:",
-    "    - type: bind",
-    `      source: ${armDir(arm)}`,
-    `      target: ${MOUNT}`,
-    "      read_only: true",
+    ...(base ? [] : mounted),
     "harness_params_override:",
-    ...Object.entries(params).map(([key, value]) => `  ${key}: ${capturedJsonStringify(value)}`),
+    ...Object.entries(base ? { OPENCODE_VARIANT: EFFORT } : params).map(
+      ([key, value]) => `  ${key}: ${capturedJsonStringify(value)}`,
+    ),
     "",
   ].join("\n");
 }
@@ -223,7 +246,9 @@ async function job(slug: string, text: string): Promise<string> {
 
 function needArm(arm: string | undefined): string {
   if (arm === undefined) throw new Error("name the arm with --arm");
-  if (!existsSync(join(armDir(arm), MOUNT_RECORD))) throw new Error(`no arm ${arm}; bundle it first`);
+  if (arm !== OPENCODE && !existsSync(join(armDir(arm), MOUNT_RECORD))) {
+    throw new Error(`no arm ${arm}; bundle it first`);
+  }
   return arm;
 }
 
@@ -232,14 +257,27 @@ async function score(run: string, arm: string, streams: number): Promise<void> {
   if (existsSync(jobs)) throw new Error(`${jobs} is there already; a run's arm is scored once`);
   const tasks = testTasks();
   const ranAt = standing(REPO);
-  const text = await job(`_anabasis-${run}-${arm}`, jobOf(arm, tasks, streams, jobs, "solve"));
+  const slug = `_anabasis-${run}-${arm}`;
+  const text = await job(slug, jobOf(arm, tasks, streams, jobs, "solve"));
+  for (let round = 1; round <= RETRIES; round += 1) {
+    const missing = shortfall(trialsOf(harness2Read(["trials", jobs, SPLIT])), tasks, streams);
+    if (missing.size === 0) break;
+    // One job a count of missing trials, since a job gives every task it names the same attempts.
+    for (const count of new Set(missing.values())) {
+      const short = [...missing].flatMap(([task, lacks]) => (lacks === count ? [task] : []));
+      await job(`${slug}-r${String(round)}-${String(count)}`, jobOf(arm, short, count, jobs, "solve"));
+    }
+  }
   const record = join(RECORDS, run, arm);
   mkdirSync(record, { recursive: true });
   const terms = {
     ...ranAt,
     harness2: PIN,
     workbuddy: standing(WB).commit,
-    arm: readFileSync(join(armDir(arm), MOUNT_RECORD), "utf8"),
+    arm:
+      arm === OPENCODE
+        ? { harness: OPENCODE_HARNESS, variant: EFFORT }
+        : parseJsonAs<JsonObject>(readFileSync(join(armDir(arm), MOUNT_RECORD), "utf8")),
     solver: SOLVER,
     effort: EFFORT,
     limits: LIMITS,
@@ -250,8 +288,9 @@ async function score(run: string, arm: string, streams: number): Promise<void> {
   writeFileSync(join(record, "job.yaml"), text);
   const trials = trialsOf(harness2Read(["trials", jobs, SPLIT]));
   writeFileSync(join(record, "trials.json"), `${capturedJsonStringify(trials, null, 2)}\n`);
+  const short = [...shortfall(trials, tasks, streams).keys()];
   console.log(
-    `score: ${String(trials.length)} trials of ${String(tasks.length)} tasks, record in ${relative(REPO, record)}`,
+    `score: ${String(trials.length)} trials of ${String(tasks.length)} tasks, ${String(short.length)} still short of ${String(streams)} scored (${short.join(", ") || "none"}), record in ${relative(REPO, record)}`,
   );
 }
 
@@ -261,11 +300,23 @@ function read(run: string, a: string, b: string | undefined): void {
   const streams = (arm: string) =>
     parseJsonAs<{ readonly streams: number }>(readFileSync(join(RECORDS, run, arm, "terms.json"), "utf8"))
       .streams;
+  if (b !== undefined && streams(a) !== streams(b)) {
+    throw new Error(
+      `${a} ran ${String(streams(a))} streams and ${b} ${String(streams(b))}: the terms differ`,
+    );
+  }
   const [first, second] = b === undefined ? halves(trialsOfArm(a)) : [trialsOfArm(a), trialsOfArm(b)];
-  const reading = readArms(first, second, b === undefined ? Math.floor(streams(a) / 2) : streams(a));
+  const count = b === undefined ? Math.floor(streams(a) / 2) : streams(a);
+  const reading = readArms(first, second, count);
+  // Each stream alone, for an arm whose harness moves between attempts (Harness²'s improver).
+  const byStream =
+    b === undefined
+      ? []
+      : Array.from({ length: count }, (_, at) => readArms(streamOf(first, at), streamOf(second, at), 1));
   const name = b === undefined ? `${a}-aa` : `${a}-${b}`;
-  writeFileSync(join(RECORDS, run, `${name}.json`), `${capturedJsonStringify(reading, null, 2)}\n`);
-  console.log(capturedJsonStringify(reading, null, 2));
+  const written = { ...reading, byStream };
+  writeFileSync(join(RECORDS, run, `${name}.json`), `${capturedJsonStringify(written, null, 2)}\n`);
+  console.log(capturedJsonStringify(written, null, 2));
 }
 
 async function main(args: readonly string[]): Promise<void> {
@@ -273,14 +324,24 @@ async function main(args: readonly string[]): Promise<void> {
   const { values } = parseArgs({ args: [...rest], options: OPTIONS });
   if (verb === "setup") return await setup(values.dataset === true ? "fetch" : "leave");
   if (verb === "bundle") {
-    if (values.arm === undefined || values.harness === undefined) {
-      throw new Error("bundle needs --arm and --harness");
+    if (values.arm === undefined || values.from === undefined) {
+      throw new Error("bundle needs --arm and --from");
     }
-    console.log(`bundle: ${values.arm} is harness ${await bundleArm(armDir(values.arm), values.harness)}`);
+    if (values.arm === OPENCODE) throw new Error(`${OPENCODE} is Harness²'s base and takes no bundle`);
+    if (values.from === "starter" && values.harness !== undefined) {
+      throw new Error("--harness names a campaign's kept harness; the starter is one harness");
+    }
+    const source =
+      values.from === "starter"
+        ? "starter"
+        : { campaign: values.from, ...keyIfDefined("harness", values.harness) };
+    const { digest, origin } = await bundleArm(armDir(values.arm), source);
+    console.log(`bundle: ${values.arm} is harness ${digest}, ${capturedJsonStringify(origin)}`);
     return;
   }
   if (verb === "check") {
     const arm = needArm(values.arm);
+    if (arm === OPENCODE) throw new Error(`${OPENCODE} has no dry run: every trial of it calls the model`);
     const [task] = testTasks();
     if (task === undefined) throw new Error("the split holds no test task; run setup --dataset first");
     await job(

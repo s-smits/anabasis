@@ -27,7 +27,7 @@ import { unadmitted } from "../kernel/acceptance.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { poolOf, roomOf } from "../kernel/reports.ts";
 import { heldAtGate, taskSets } from "../kernel/task.ts";
-import { isNumber } from "../meta/json-shape.ts";
+import { isNumber, isString } from "../meta/json-shape.ts";
 import { draftOf } from "../examiner/draft.ts";
 import { plural } from "../meta/text.ts";
 import { comparisonFloor } from "./admission.ts";
@@ -119,10 +119,18 @@ export function unpromoted(events: readonly LogEvent[], plan: Plan, harness: str
     : `harness ${short(harness)} has no comparison that read a step against the reference harness`;
 }
 
-/** The tasks held out after the log's index `after`. */
+/** The tasks held out after the log's index `after` that are held out still. Until 2 November a
+ *  task released since counted, and a rehearsal named a starter comparison on six tasks that were
+ *  all released after a promotion, whose draw then held none. */
 export function heldAfter(events: readonly LogEvent[], after: number): number {
+  const held = new Set(taskSets(events).held);
   return events.filter(
-    ({ kind, data }, index) => index > after && kind === "task.gate" && heldAtGate(data.outcome),
+    ({ kind, data }, index) =>
+      index > after &&
+      kind === "task.gate" &&
+      heldAtGate(data.outcome) &&
+      isString(data.version) &&
+      held.has(data.version),
   ).length;
 }
 

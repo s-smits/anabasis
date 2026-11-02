@@ -118,7 +118,7 @@ const SUPPLIED = "The host has the tasks it needs. The session ends here.";
  *  and finished, of two hundred turns and twelve tasks it had, so a campaign paid a session's
  *  opening six times for what one session could have written. The need, and no count. */
 const MORE =
-  "Noted, and the session goes on: the host does not yet have the tasks it needs from it. Propose further tasks, varying what they ask, and call finish again when you have none left worth proposing.";
+  "Noted. The host would take more tasks from this session. A second finish with nothing proposed since ends it.";
 
 /** Whether `value` holds, as itself or anywhere inside it, a value whose hash is in `planted`. */
 function carries(value: JsonValue, planted: ReadonlySet<string>): boolean {

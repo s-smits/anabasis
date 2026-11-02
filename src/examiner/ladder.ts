@@ -107,8 +107,8 @@ export const SOLVER =
 /** The ladder as an Examiner reads it: the scale, then each field's tasks from easy to very hard. */
 export const LADDER = [
   `Reach is how hard a task is for a strong current model working in the field:\n${GRADES.map((grade) => `- ${grade}`).join("\n")}`,
-  "Three fields that no exam here covers, each from easy to very hard. They show what each grade demands, none is a task to copy, and each would be held only with a valid answer on record:",
+  "Three fields that no exam here covers, each from easy to very hard. They show what each grade demands, none is a task to copy, and each measures something only where a valid answer exists:",
   ...FIELDS.map(({ field, rungs }) => `${field}:\n${rungs.map((rung) => `- ${rung}`).join("\n")}`),
   SOLVER,
-  "Use these fields to calibrate your own. Before you write, work out what in this domain puts a task in each of those three places, and climb your tasks along that, from the highest grade the reference already answers upward.",
+  "Use these fields to calibrate your own. Before you write, work out what in this domain puts a task in each of those three places.",
 ].join("\n\n");

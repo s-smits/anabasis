@@ -40,8 +40,9 @@ better by it. A task the reference solves every time with no better answer on re
 nobody has solved, carry no signal; a scored set of them reads "no room" whatever the new harness is
 like. The informative tasks lie between (`informative`, `src/kernel/compare.ts`; section 7, "Room
 for improvement"). Here the solver stays fixed and the Examiner keeps the exam at its frontier
-(section 3). Supply is the number of informative tasks in a scored set, held to
-`comparisonFloor(level)` by comparison admission (section 6, "What refuses a move"). It binds first,
+(section 3). Supply is the number of informative tasks in a scored set. It is known only after the
+solves, so comparison admission holds the frontier, the held-out tasks the reference has not closed,
+to `comparisonFloor(level)` instead (section 6, "What refuses a move"). It binds first,
 since every other number is undefined without it, and is not reported, since passing it shows only
 that a difference could be shown.
 

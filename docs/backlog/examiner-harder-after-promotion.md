@@ -1,6 +1,6 @@
 # Harder Examiner tasks after each promotion
 
-Status: planned. Waits for the cost overhaul, and for the operator's word on the fresh runs it needs.
+Status: planned. The starter comparison draws as every comparison since 2 November; measuring the Examiner after a promotion waits for the live runs at this stack.
 
 ## The question
 
@@ -125,3 +125,16 @@ instead of running out of informative tasks after one or two promotions.
   task, and the 16 unseen older tasks come from 3 campaigns only. Splitting them takes blind reach
   grades of the own-epoch and older tasks from graders who read the public inputs alone, set beside
   each side's results (`grades.ts`, examiner-complexity): grader sessions, and no campaign solve.
+- **2 November, about 04:20.** The operator asked whether this was properly tackled: "the more
+  complex harness coming out worse because it has harder tasks even though the harness is better".
+  One form of it was still live. From 30 October a starter comparison scored the tasks held out
+  since alone (`sinceOnly`, added to save the $15 and $19 two such comparisons cost), and those are
+  the tasks the Examiner writes above the new reference's grade. `confirmed`, the milestone's count,
+  reads that comparison, so a promotion was confirmed only where the reference also beat the
+  starter on the tasks aimed at it. Re-scored on the recorded solves of the six starter comparisons
+  that drew the whole set, the epoch's own tasks alone would have read the reference 23 won, 33
+  lost against the starter. The starter comparison now draws as every comparison does: the tasks
+  held out since first, then older ones, with one retained task for each three. It costs about as
+  the two comparisons of 30 October did. The split between the two remaining readings (tasks aimed
+  at the reference, gains that do not carry to new kinds of task) is a research question; no move
+  waits on it.

@@ -133,7 +133,18 @@ describe("the suggested labels", () => {
       "a/b/c.ts",
     ];
     for (const path of paths) expect(CATEGORIES.has(labelsOf([path]).category.label)).toBe(true);
-    expect(labelsOf(["test/compare.test.ts"]).category.label).toBe("misc");
+    expect(labelsOf(["test/compare.test.ts"]).category.label).toBe("docs");
+  });
+
+  it("files the drafted exam and the investigation under their own labels", () => {
+    expect(labelsOf(["src/examiner/draft.ts"]).category.label).toBe("exam");
+    expect(labelsOf(["src/examiner/write.ts"]).category.label).toBe("supply");
+    expect(labelsOf(["tools/wri/read.ts"]).category.label).toBe("investigation");
+    expect(labelsOf([".claude/skills/whole-run-investigation/references/lanes.md"]).category.label).toBe(
+      "investigation",
+    );
+    expect(labelsOf(["src/kernel/log.ts"]).category.label).toBe("log");
+    expect(labelsOf(["src/kernel/verify.ts"]).importance.label).toBe("importance:I1");
   });
 });
 

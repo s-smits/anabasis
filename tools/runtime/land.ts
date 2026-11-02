@@ -167,19 +167,20 @@ const SHOWN = String.raw`.data.repository[] | select(. != null) | .oid as $sha |
 const IMPORTANCE = /^importance:I[0-3]$/u;
 /** Subject labels: each pull request in a landing needs at least one. */
 export const CATEGORIES = new Set([
-  "harness",
-  "climb",
-  "comparison",
-  "solve",
-  "supply",
+  "exam",
   "verdicts",
+  "supply",
+  "harness",
+  "comparison",
+  "climb",
+  "solve",
   "economy",
-  "log",
   "runs",
+  "log",
+  "investigation",
   "landing",
   "quality",
   "docs",
-  "misc",
 ]);
 const USAGE =
   "usage: bun run land -- [<pull request>] [--auto] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]";

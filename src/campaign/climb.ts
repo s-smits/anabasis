@@ -73,15 +73,17 @@ export interface Epoch {
   /** What the reference answered of the solves of the epoch's own tasks within it: null where no
    *  solve of it on those tasks is on record. */
   readonly reference_share: Share | null;
-  /** The reference against the starter in the epoch's last starter comparison, without the bill
-   *  and counted from the reference's side; null in the first epoch and before one reports. Until
+  /** The reference against the starter in the epoch's first starter comparison that tallied a
+   *  task, without the bill and counted from the reference's side; null in the first epoch and
+   *  before one reports. Until
    *  31 October this was the starter's share of valid answers, which read 4 to 28 in the
    *  reference's favour as a near tie in an objective domain (buffer-forkedPR530's g-6). `aside`
    *  counts the tasks it set aside for a person's labels: on 2 November two of eight starter
    *  comparisons read a step once theirs were counted as ruled. */
   readonly starter_tally: (Tally & { readonly aside: number }) | null;
-  /** Whether the promotion that opened the epoch is confirmed: its last starter comparison reads
-   *  the reference above the starter without the bill, at that comparison's level (`AGENTS.md`,
+  /** Whether the promotion that opened the epoch is confirmed: its first starter comparison that
+   *  tallied a task reads the reference above the starter without the bill, at that comparison's
+   *  level (`AGENTS.md`,
    *  section 1, the milestone). Null in the first epoch, false before a starter comparison
    *  reports. */
   readonly confirmed: boolean | null;

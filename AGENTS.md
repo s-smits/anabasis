@@ -66,9 +66,10 @@ factor it affects, or the separate purpose it serves. Recorded values live in `d
 - **1. Climb**: how much ability has accumulated, read as promotions within one campaign
   (`src/campaign/climb.ts`); promotions added up across campaigns make no climb. The milestone, six
   confirmed promotions in one real campaign and then in a second domain, is for observation only
-  (a promotion is confirmed when the last starter comparison of its epoch reads the reference
-  above the starter at its level: `confirmed`, `src/campaign/climb.ts`),
-  so no prompt, tool or move names a count.
+  (a promotion is confirmed when the first starter comparison of its epoch that tallied a task
+  reads the reference above the starter at its level: `confirmed`, `src/campaign/climb.ts`),
+  so no prompt, tool or move names a count. A release cycle stops most runs at two promotions while
+  the system changes, so the milestone is read from a run the operator lets go on.
 - **2. Honesty**: could a gain be chance or drift? An A/A comparison beside every comparison, the
   reference's first solve of each task against its second, measures it. One reading clears between
   equal harnesses at most as often as its level (`falseRate`: 1.1% at 0.02 on 24 untied tasks), and
@@ -84,6 +85,55 @@ factor it affects, or the separate purpose it serves. Recorded values live in `d
   from the log alone (`tools/d2/close.ts`), at list price (`billOf`, `src/kernel/meter.ts`). Its
   one bar, an opening term that refuses nothing, is at most 3 promotion attempts per epoch after
   set-up (`worthOf`, `src/campaign/climb.ts`).
+
+### Trade-offs to keep in view
+
+Each lever below buys one factor with another. A change names the side it moves, and its claim
+reads the sign to watch (section 9).
+
+- **Harder tasks against the test's power.** A task both harnesses fail is a tie and leaves the
+  test, so hard tasks never dilute a win share; they cost power. At 2 solves a side a step is
+  likeliest where the reference passes 30 to 50% of solves, and nears chance at 0 and 100%. The
+  archive sits at the easy end (the reference valid in 96% of solves after one promotion, 99%
+  after two), so the usual failure is an exam that stops getting harder. Watch the reference's
+  valid share and the untied tasks a comparison, epoch by epoch (`examiner-complexity`).
+- **A stricter step against a faster climb.** More solves a side or a lower level cut false steps
+  and slow promotion. 2 solves at 0.02 with an A/A beside each comparison is the balance; 4 solves
+  roughly double the power only on hard tasks, at twice the cost. A step in an A/A means the level
+  is loose for the noise.
+- **The objective against chance.** Once the reference is valid almost everywhere, the objective
+  decides most steps, and a harness's own two solves differ past the 1% floor on about one task in
+  four of the archive's A/A comparisons. Say which measure carried a step (`reading`,
+  promotion-tuner).
+- **Promotion against confirmation.** A step reads the frontier; confirmation is one read of the
+  reference against the starter, at a step's level, on tasks the Examiner aimed at that reference.
+  In the archive the reference leads the starter in eight of ten such reads and four clear the
+  level, so a miss is mostly the read's power on few untied tasks, and six confirmed promotions
+  take about fifteen. Confirmation decides no move. Losses on validity matter; losses on the
+  objective are mostly noise. The host owes one starter comparison
+  after every promotion and runs it at the Builder's next `compare` (`heldSince`,
+  `src/campaign/decide.ts`), at about one comparison a promotion. The host, not the Builder,
+  chooses when, so a Builder can never put off a test of its own reference.
+- **Cost against value.** A dearer promotion may buy more and a cheaper one may be thin. The bill
+  decides no step; economy is read apart, as dollars per promotion and per confirmed promotion on
+  one meter (`promotion-tuner/scripts/cost.ts`), and as a cheap built system against a dear bare one
+  (`compare-systems`). Dollars a solve rising across promotions without validity gains is bloat.
+- **Supply against the clock.** After a promotion the frontier closes and an Examiner session
+  writes new tasks before the next comparison; one that aims higher takes longer and admits fewer.
+  Read hours to the next comparison beside the tasks it admitted.
+- **Practice against held-out supply.** A released task teaches the Builder and is never scored;
+  at most half the tasks with room are released. Watch the frontier near the floor of eight.
+- **Builder freedom against fitting practice.** The one limit is that a harness names no task
+  (section 2), so it can grow programs shaped to practice tasks. Practice gains that held-out
+  comparisons do not repeat are the sign.
+- **Patience against stopping too soon.** Six eligible moves without a gain end a campaign; each
+  further move is another draw at the level's false rate. Treat a step after `--past-stop` warily.
+- **Comparability against change.** A run is evidence about its own code, and the meter, the step
+  rule and the prompts move between releases. Set cycles side by side only under one setting,
+  priced on today's meter and replayed under today's rule.
+- **Simplicity against performance.** Section 2, consequence 7, takes four fifths of a result for a
+  fifth of the code, never at the measurement's cost; a new guard is measured against what it
+  replaces.
 
 ### Two sides and one wall
 

@@ -495,12 +495,14 @@ function unread(ground: Ground): Move | null {
 }
 
 /**
- * A comparison on the tasks held out since the last reading, before anything is built: on
- * 10 October a campaign held out four on the supply row, then ran two sessions that left the
- * harness as it was, and stopped before any comparison on them. With a harness waiting it is
- * compared on them; with none but the reference, the starter is, in a starter comparison that says whether
- * they leave the reference room before a Builder session is paid for: on 10 October three
- * campaigns built three times on tasks every practice solve passed.
+ * A comparison on the tasks held out since the last reading, before anything is built. With no
+ * harness waiting, a starter comparison says whether they leave the reference room before a
+ * Builder session is paid for (on 10 October three campaigns built three times on tasks every
+ * practice solve passed). A waiting harness whose last reading tested nothing, or left no room, is
+ * read on them. One whose reading had room and read no step is not: that would be a second draw of
+ * one pair (`AGENTS.md`, section 4). Until 2 November this row redrew it, 13 times in the archive,
+ * and the one step (buffer-159-opus g-7) came the comparison after a 5-0 no-step of the same
+ * harness. The Builder changes it, and the next comparison reads the change.
  */
 function heldSince({ events, read, reports, waiting, reference, starter }: Ground): Move | null {
   if (waiting === null) {
@@ -515,12 +517,10 @@ function heldSince({ events, read, reports, waiting, reference, starter }: Groun
   if (read === null || heldAfter(events, read.reported) === 0) return null;
   const since = "and tasks were written since";
   if (read.report.reading === "not-scored") return compare(`comparison ${read.id} tallied no task, ${since}`);
-  const left = {
-    room: `read no step with room to gain, ${since}: harness ${short(waiting)} is compared on them`,
-    none: `left no room, ${since}`,
-    "too-hard": `left neither harness an answer, ${since}`,
-  }[roomOf(read.report)];
-  return compare(`comparison ${read.id} ${left}`);
+  const left = { none: "left no room", "too-hard": "left neither harness an answer", room: null }[
+    roomOf(read.report)
+  ];
+  return left === null ? null : compare(`comparison ${read.id} ${left}, ${since}`);
 }
 
 /** The whole Builder sessions since the last comparison began, and how many a comparison follows:

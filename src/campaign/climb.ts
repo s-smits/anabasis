@@ -65,9 +65,9 @@ export interface Epoch {
   readonly promoted: string | null;
   /** The task versions the gate admitted during the epoch, those later released to practice among them. */
   readonly tasks: readonly string[];
-  /** Builder sessions that finished in the epoch, and how many changed the harness. */
+  /** Builder sessions that acted in the epoch, and their turns in it. */
   readonly sessions: number;
-  readonly changed: number;
+  readonly turns: number;
   /** The comparisons reported in the epoch, by id, with their readings. */
   readonly comparisons: readonly { readonly id: string; readonly reading: string }[];
   /** What the reference answered of the solves of the epoch's own tasks within it: null where no
@@ -152,7 +152,9 @@ export function epochsOf(events: readonly LogEvent[]): Epoch[] {
     const within = (at: number) => at >= from && (to === null || at < to);
     const tasks = byEpoch[nth] ?? [];
     const held = new Set(tasks);
-    const builds = events.filter(({ kind }, at) => within(at) && kind === "build.finished");
+    // A led session spans epochs and finishes in none, so until 2 November counting the sessions
+    // that finished read 0 in every epoch of a led campaign (WRI lane 31).
+    const built = events.filter(({ kind }, at) => within(at) && kind.startsWith("build."));
     // An old ladder's readings are no comparison of the epoch's (`lastReports`).
     const comparisons = events.flatMap(({ kind, data }, at) =>
       within(at) && kind === "comparison.reported" && isString(data.session) && data.ladder !== true
@@ -182,8 +184,8 @@ export function epochsOf(events: readonly LogEvent[]): Epoch[] {
       to,
       promoted: next?.harness ?? null,
       tasks,
-      sessions: builds.length,
-      changed: builds.filter(({ data }) => data.changed === true).length,
+      sessions: new Set(built.flatMap(({ data }) => (isString(data.session) ? [data.session] : []))).size,
+      turns: built.filter(({ kind }) => kind === "build.turn").length,
       comparisons,
       reference_share:
         judged.length === 0 ? null : { valid: judged.filter(Boolean).length, solves: judged.length },
@@ -285,7 +287,7 @@ export function epochLine(epoch: Epoch, called: Called = short): string {
   const rung = epoch.nth === 1 ? "as set-up (epoch 0)" : `as rung ${String(epoch.nth - 1)} of the climb`;
   const end = epoch.promoted === null ? "open" : `promoted ${called(epoch.promoted)} ${rung}`;
   const risk = epoch.falsePromotion;
-  return `epoch ${String(epoch.nth)}: reference ${reference}; ${String(epoch.tasks.length)} tasks admitted; ${String(epoch.sessions)} sessions (${String(epoch.changed)} changed); comparisons ${readings}; ${share("reference", epoch.reference_share)} in their comparisons${starterOf(epoch)}; ${plural(risk.attempts, "promotion attempt")} under this reference, a false promotion among them estimated at ${percent(risk.union)}: ${sourceOf(risk)}; ${end}`;
+  return `epoch ${String(epoch.nth)}: reference ${reference}; ${String(epoch.tasks.length)} tasks admitted; ${plural(epoch.sessions, "Builder session")}, ${plural(epoch.turns, "turn")}; comparisons ${readings}; ${share("reference", epoch.reference_share)} in their comparisons${starterOf(epoch)}; ${plural(risk.attempts, "promotion attempt")} under this reference, a false promotion among them estimated at ${percent(risk.union)}: ${sourceOf(risk)}; ${end}`;
 }
 
 /** A chance in whole percent, or to a tenth under ten, where an attempt's rate of 1.8% read as 2%;

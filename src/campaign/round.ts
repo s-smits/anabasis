@@ -247,8 +247,8 @@ const UNCOMPARED: ReadonlySet<string> = new Set(["session", "tasks", "retained"]
  * held tasks two or three the reference failed, so three comparisons read one win short and the
  * campaign stopped (`7f0add79:docs/plan.md`, B14). A task that waits for a person's label is left out, and
  * an exhausted one, which can only tie again, is retained (`poolOf`). Of the retained, one for
- * each three frontier tasks is scored beside the target, where a step may not lose more pairs than
- * it wins (`compare.ts`). Until 16 October it was what the frontier left of the target: 16 of 94
+ * each three frontier tasks is scored beside the target, and the step's one test reads them with the
+ * frontier (`stepOf`, `compare.ts`). Until 16 October it was what the frontier left of the target: 16 of 94
  * starts on record drew fewer than one for each three, 12 of them where the frontier filled it.
  *
  * Within each epoch the tasks held out since the last comparison began come first, by the hash:

@@ -231,23 +231,58 @@ const SYSTEM = [
 const twice = (ids: readonly string[]): string | undefined =>
   ids.find((id, index) => ids.indexOf(id) !== index);
 
+/**
+ * The fields an answer carries that its format leaves unnamed, as paths. A solver learns an
+ * answer's fields from the format alone, so a check that reads one refuses a right answer spelled
+ * another way. On 2 November esp32-fresh-opus-forkedPR569 drafted a `pwm` object with no
+ * properties, its PWM check read `clk_div_q8` from it, and the Referee ruled all 16 rejections it
+ * made check defects; of 159 drafted exams on record, 2 carried such a field, both esp32 PWM
+ * settings. An accept control carries every field its checks need, so reading the controls
+ * covers every check. A reference, a combination or a pattern this does not read counts as naming.
+ */
+function unnamed(schema: JsonValue | undefined, answer: JsonValue, path: string): string[] {
+  const held = asRecord(schema);
+  if (held === null || ["$ref", "allOf", "patternProperties"].some((key) => key in held)) return [];
+  const choice = [held.anyOf, held.oneOf].find((options) => Array.isArray(options));
+  if (Array.isArray(choice)) {
+    const readings = choice.map((option) => unnamed(option, answer, path));
+    return readings.reduce(
+      (fewest, each) => (each.length < fewest.length ? each : fewest),
+      readings[0] ?? [],
+    );
+  }
+  if (Array.isArray(answer)) return answer.flatMap((item) => unnamed(held.items, item, `${path}[]`));
+  const properties = asRecord(held.properties) ?? {};
+  const rest = asRecord(held.additionalProperties);
+  return Object.entries(asRecord(answer) ?? {}).flatMap(([name, value]) => {
+    const inner = name in properties ? properties[name] : rest;
+    return inner === null ? [`${path}.${name}`] : unnamed(inner, value, `${path}.${name}`);
+  });
+}
+
 /** What a draft's controls are short of or get wrong, one sentence each. */
 function controlFaults(draft: Draft): string[] {
   const controls = [
-    ...draft.accept.map((each) => ({ ...each, named: "an accept control" })),
-    ...draft.reject.map((each) => ({ ...each, named: `a reject control for ${each.check}` })),
+    ...draft.accept.map((each) => ({ ...each, named: "an accept control", accept: true })),
+    ...draft.reject.map((each) => ({ ...each, named: `a reject control for ${each.check}`, accept: false })),
   ];
-  const placed = controls.flatMap(({ task, answer, named }) => {
+  const placed = controls.flatMap(({ task, answer, named, accept }) => {
     if (draft.tasks[task] === undefined) {
       return [
         `${named} names example ${String(task)}, and the examples are 0 to ${String(draft.tasks.length - 1)}`,
       ];
     }
     const unformed = answerFormatFault(draft.answerFormat, answer);
-    return unformed === null
+    if (unformed !== null) {
+      return [
+        `${named} of example ${String(task)} does not follow the answer format (${unformed}): a solver's answer that does not is refused before any check reads it`,
+      ];
+    }
+    const loose = accept ? [...new Set(unnamed(draft.answerFormat, answer, "$"))] : [];
+    return loose.length === 0
       ? []
       : [
-          `${named} of example ${String(task)} does not follow the answer format (${unformed}): a solver's answer that does not is refused before any check reads it`,
+          `${named} of example ${String(task)} carries ${loose.join(", ")}, which the answer format does not name: a solver learns an answer's fields from the format alone, so a check that reads one refuses a right answer spelled another way`,
         ];
   });
   return [

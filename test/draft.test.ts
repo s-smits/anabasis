@@ -9,6 +9,7 @@ import { examine } from "../src/examiner/session.ts";
 import { append, read } from "../src/kernel/log.ts";
 import { examinerSessions, solvesIn } from "../src/kernel/solves.ts";
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
+import type { JsonObject, JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { draftReading, stageExam } from "../tools/d2/exam.ts";
@@ -48,6 +49,38 @@ describe("the shape of a draft", () => {
     ]) {
       expect(draftFaults(draft)).toEqual([]);
     }
+  });
+
+  it("refuses an accept control that carries a field the answer format does not name, wherever it sits", () => {
+    const settings: JsonObject = { channel: 0, clk_div_q8: 1000 };
+    const pwmAs = (pwm: JsonObject): JsonObject => ({
+      ...FORMAT,
+      properties: { ...FORMAT.properties, pwm: { type: ["object", "null"], ...pwm } },
+    });
+    const carrying = (answerFormat: JsonValue): Draft => ({
+      ...SOUND,
+      answerFormat,
+      accept: [2, 3, 4].map((base, task) => ({ task, answer: { answer: String(base * 6), pwm: settings } })),
+    });
+    // An object with no properties, as esp32's `pwm` was, and one that names some of them.
+    for (const format of [pwmAs({}), pwmAs({ properties: { channel: { type: "integer" } } })]) {
+      const faults = draftFaults(carrying(format));
+      expect(faults).toHaveLength(3);
+      expect(faults[0]).toContain("$.pwm.clk_div_q8");
+      expect(faults[0]).toContain("does not name");
+    }
+    // Named in the properties, under a typed map, in one branch of a choice, or behind a reference.
+    for (const format of [
+      pwmAs({ properties: { channel: { type: "integer" }, clk_div_q8: { type: "integer" } } }),
+      pwmAs({ additionalProperties: { type: "integer" } }),
+      pwmAs({ anyOf: [{ properties: { duty: {} } }, { properties: { channel: {}, clk_div_q8: {} } }] }),
+      { ...FORMAT, properties: { ...FORMAT.properties, pwm: { $ref: "#/$defs/pwm" } }, $defs: { pwm: {} } },
+    ]) {
+      expect(draftFaults(carrying(format))).toEqual([]);
+    }
+    // A reject control may carry what it likes: the check it names is what refuses it.
+    const reject = [{ task: 0, answer: { answer: "13", pwm: settings }, check: "check-product" }];
+    expect(draftFaults({ ...SOUND, answerFormat: pwmAs({}), reject })).toEqual([]);
   });
 
   it("is read by the session before the host's reading, which a draft out of shape never reaches", async () => {

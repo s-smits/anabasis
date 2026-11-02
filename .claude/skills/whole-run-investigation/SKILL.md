@@ -71,7 +71,7 @@ start a step until the check named for the one before holds.
    instead of taking a session of its own. The verb prints each session's lanes and weight, and a
    suggested N: the most sessions whose lightest weighs at least half the heaviest. The operator
    names N; one session a lane, without the flag, stays available. With no `--lanes` it opens every
-   lane a trigger started and the five standing lanes. By default it builds no isolated lane:
+   lane a trigger started and the six standing lanes. By default it builds no isolated lane:
    it names the ones whose trigger fired for the primary to assess. A prompt built before is
    kept and excluded from any newly written `launch.json`.
    *Check:* exit 0, and count the sessions that this call built. If it built none, launch nothing:
@@ -142,7 +142,7 @@ under a checker and one under its repair, are read apart, and lane 3 of the late
 ## Sizing
 
 One session reads one lane, on every campaign under review: more campaigns make each session
-longer, and add none. `selected` opens all five standing lanes even before a comparison
+longer, and add none. `selected` opens all six standing lanes even before a comparison
 reports, alongside any triggered open lanes. Count the manifest rather than assuming a size.
 When the budget is
 smaller than the build, read the groups in this order, because each rests on the one before:

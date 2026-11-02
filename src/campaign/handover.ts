@@ -340,17 +340,24 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
       return [{ step: "examiner", id, ...read, ...counts }];
     }
     if (kind === "build.started") {
-      const { read, closed, until, billed } = soFar(events, index, id, "build", led);
+      const { read, closed, until, window, billed } = soFar(events, index, id, "build", led);
       const end = events[closed]?.data;
       const within = ({ started }: { readonly started: number }) => started > index && started < until;
+      // A session cut before its end left what it last froze: until 2 November a Builder resumed
+      // after one was told that harness came from no session (esp32-fresh-opus-forkedPR569, lane 2).
+      const frozen = window.findLast(
+        (event) => event.kind === "build.checkpoint" && event.data.session === id,
+      );
+      const harness = text((end ?? frozen?.data)?.harness);
       return [
         {
           step: "builder",
           id,
           ...read,
           parent: text(data.parent),
-          harness: text(end?.harness),
-          changed: end?.changed === true,
+          harness,
+          changed:
+            end === undefined ? harness !== null && harness !== text(data.parent) : end.changed === true,
           // Each attempt of one solve is logged as `<id>-<attempt>`, and the session charged the
           // solve once: until 29 October an open session of buffer-fresh-deepseek read 7 practice
           // solves where its ending wrote 4, one of them tried four times.

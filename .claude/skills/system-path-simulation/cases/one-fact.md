@@ -22,8 +22,8 @@ writes `contract.frozen`. Run any of them on a seed when the fact you want is wh
 ## A fact no reader gives
 
 Read the log with the product's own readers, not with a parser of your own: `read`
-(`src/kernel/log.ts`), `taskStates` and `taskSets` (`src/kernel/task.ts`), `poolOf` and `stopRule`
-(`src/kernel/reports.ts`), `conditionsOf` (`src/kernel/condition.ts`). A reader of your own agrees
+(`src/kernel/log.ts`), `taskStates` and `taskSets` (`src/kernel/task.ts`), `poolOf`
+(`src/kernel/reports.ts`), `stopRule` (`src/campaign/admission.ts`), `conditionsOf` (`src/kernel/condition.ts`). A reader of your own agrees
 with the product until the day an event's shape moves, and then it is wrong in silence.
 
 What the log holds whole, and so answers without a run:

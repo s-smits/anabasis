@@ -26,7 +26,7 @@
  */
 import { Type } from "typebox";
 import type { SeatTool } from "#src/agent/session.ts";
-import { Refused, supplyOf } from "#src/campaign/admission.ts";
+import { Refused, stopRule, supplyOf } from "#src/campaign/admission.ts";
 import { CRASHES, decide, heldAfter, practiceDue, unpromoted } from "#src/campaign/decide.ts";
 import { comparisonsOf, crashedRun } from "#src/campaign/ground.ts";
 import { campaignOf } from "#src/campaign/handover.ts";
@@ -38,7 +38,7 @@ import { type Bench, endingWith, snapshot, waitTool } from "#src/builder/tools.t
 import { pendingWords } from "#src/campaign/word.ts";
 import { examine } from "#src/examiner/session.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
-import { latestBuilt, patienceOf, promoted as lastPromoted, stopRule } from "#src/kernel/reports.ts";
+import { latestBuilt, patienceOf, promoted as lastPromoted } from "#src/kernel/reports.ts";
 import { billedParts } from "#src/kernel/meter.ts";
 import { sizeLines } from "#src/kernel/size.ts";
 import { solvesIn } from "#src/kernel/solves.ts";

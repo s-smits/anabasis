@@ -41,7 +41,7 @@ Room can therefore come from validity differences or from the objective.
 ## Improvement patience
 
 **Improvement patience** stops the campaign after `--patience` (six) eligible moves in a row show no
-gain (`stopRule`, `src/kernel/reports.ts`). A move is eligible where a harness a session changed is
+gain (`stopRule`, `src/campaign/admission.ts`). A move is eligible where a harness a session changed is
 read by its last comparison against one reference and that comparison tallied a task and left room,
 or where a whole session left its harness unchanged although a practice solve failed (one whose
 every practice solve passed had nothing to work on). Starter comparisons, and those that scored

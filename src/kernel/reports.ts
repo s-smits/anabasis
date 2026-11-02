@@ -16,10 +16,8 @@
  * Practice priority reads each task's last scored or disputed result, as its outcome does.
  * Its allowance keeps a reference-only frontier in this same fold (26 October, rule 3).
  *
- * The stop rule is the plan's: as many moves in a row that could have shown a gain and showed none
- * as the campaign's improvement patience (`stopRule`, `patienceOf`).
- * The Referee triage of 20 October found unresolved practice rejections counted as failures;
- * those are set aside here too, rather than evidence that a Builder declined an established fail.
+ * The improvement patience a campaign keeps is `patienceOf`'s; the stop rule that counts it is
+ * admission's (`stopRule`, `src/campaign/admission.ts`).
  * The audit of 29 October 2026 found passes a person labelled wrong still read as valid in
  * reported pairs and known valid answers. Both now read history's view of those labels.
  *
@@ -40,7 +38,7 @@ import {
 import { failWrongPasses, wrongPasses, wrongPassesIn } from "./history.ts";
 import type { LogEvent } from "./log.ts";
 import { providerFailed, windowEnded } from "./solve.ts";
-import { passed, practiceRan, ranUnder, rejectionAside } from "./solves.ts";
+import { passed, ranUnder } from "./solves.ts";
 import { RUNS, spreadOf } from "./size.ts";
 import { taskSets } from "./task.ts";
 import { tracesIn } from "./trace.ts";
@@ -160,9 +158,8 @@ export const PATIENCE = 6;
  *  investigation reads every one as a miss at a limit (`tools/wri/time.ts`); the pool reads all but
  *  one as a cut whose answer is not known (`taskRecords`). */
 export const AT_A_LIMIT: ReadonlySet<unknown> = new Set(["wall-ended", "turns-ended", "context-ended"]);
-const STEP = "step";
 /** How a Builder session ends when it was cut and left half a session's work. */
-const CUT: ReadonlySet<unknown> = new Set(["killed", "crashed"]);
+export const CUT: ReadonlySet<unknown> = new Set(["killed", "crashed"]);
 const REPORTED = "comparison.reported";
 const PROMOTED = "harness.promoted";
 const STARTED = "comparison.started";
@@ -272,77 +269,6 @@ export function patienceOf(events: readonly LogEvent[]): number {
   return isNumber(named) ? named : PATIENCE;
 }
 
-/** Established practice failures: what a Builder session was shown and declined (`stopRule`). */
-function practiceFailures(events: readonly LogEvent[]) {
-  return practiceRan(events).filter(
-    (solve) => solve.ending?.outcome === "fail" && !rejectionAside(events, solve),
-  );
-}
-
-/**
- * The plan's stop rule over a log: how many moves could have shown a gain, how many of them have
- * passed since the last step, and whether that is the campaign's improvement patience
- * (`7f0add79:docs/plan.md`, row F48; `patienceOf`).
- *
- * A move that counts is one of two. The first is a harness a Builder session changed, compared
- * with one reference, where the comparison tallied a task and left room (`roomOf`), or read a step.
- * Such a pair counts once, where it first reported, and showed a gain where any of its comparisons
- * read a step, which promotes it: three readings of one harness are one harness. The count is of
- * the epoch, the moves since the last promotion, so a step restarts it. On 9 October one harness
- * compared with the starter three times, each time on more tasks, stopped a campaign. Until
- * 19 October a reading under the trigger counted as a gain too, since it bought the repeat.
- *
- * The second is a whole session that left its harness as it was, where a practice solve of the session
- * failed: it was shown a failure and declined it. A session whose every practice solve passed, or that
- * ran none, had nothing to work on, which is a fault of the supply and no evidence about the domain:
- * all ten campaigns of 9 and 10 October stopped on three such sessions after a promotion, each
- * practising on tasks the promoted harness passed (`7f0add79:docs/plan.md`, row F52).
- *
- * What does not count: a comparison of two harnesses no session made, which a starter comparison and an
- * A/A comparison are; one stopped on its check defects, cut by its cap,
- * or with every task set aside, which tested nothing; and one that left no room, whose answer is
- * other tasks and no other harness. Every comparison on record is read, whatever the setting id
- * it carries, since the id names the host's code and a tree moved to a new commit changes it.
- */
-export function stopRule(events: readonly LogEvent[]) {
-  const practised = practiceFailures(events);
-  /** The harnesses a whole session changed or a live one froze as a harness snapshot, where each session began, and the whole sessions that left
-   *  their harness as it was after a practice solve of theirs failed. */
-  const built = new Set<unknown>();
-  const began = new Map<unknown, number>();
-  const idle: { index: number; step: boolean }[] = [];
-  for (const [index, { kind, data }] of events.entries()) {
-    if (kind === "build.started") began.set(data.session, index);
-    if (kind === "build.checkpoint" && isString(data.harness)) built.add(data.harness);
-    if (kind !== BUILD_FINISHED) continue;
-    if (data.changed === true && !CUT.has(data.ended) && isString(data.harness)) built.add(data.harness);
-    if (data.changed !== false || CUT.has(data.ended)) continue;
-    const from = began.get(data.session) ?? -1;
-    const shown = practised.some((solve) => solve.started > from && solve.started < index);
-    if (shown) idle.push({ index, step: false });
-  }
-  /** Each pair of a harness and a reference, where it first reported, and whether any of its
-   *  comparisons read a step or left room. */
-  const pairs = new Map<string, { index: number; step: boolean; counts: boolean }>();
-  for (const { index, data } of lastReports(events)) {
-    const { old, fresh, versions } = data;
-    const tallied = asRecord(data.scored) !== null && Array.isArray(versions) && versions.length > 0;
-    if (!tallied || !isString(fresh) || !built.has(fresh)) continue;
-    const pair = `${fresh} ${isString(old) ? old : ""}`;
-    const was = pairs.get(pair);
-    const step = was?.step === true || data.reading === STEP;
-    pairs.set(pair, { index: was?.index ?? index, step, counts: step || roomOf(data) === "room" });
-  }
-  const moves = [...pairs.values().filter(({ counts }) => counts), ...idle].toSorted(
-    (one, other) => one.index - other.index,
-  );
-  // A promotion starts an epoch, whose improvement patience is its own.
-  const epochAt = events.findLastIndex(({ kind }) => kind === PROMOTED);
-  const epoch = moves.filter(({ index }) => index > epochAt);
-  const sinceStep = epoch.length - 1 - epoch.findLastIndex(({ step }) => step);
-  return { checkpoints: moves.length, sinceStep, stop: sinceStep >= patienceOf(events) };
-}
-
 /**
  * The pairs a comparison's last report tallied, read as the comparison found them: from the log up
  * to its first report, so a task released, refused or disputed since is still the scored task it
@@ -423,9 +349,7 @@ function taskRecords(events: readonly LogEvent[]) {
     const { measure, direction } = asRecord(data.objective) ?? {};
     if (kind !== "task.feasible" || !isNumber(measure)) continue;
     const record = of(data.version);
-    const beaten =
-      direction === "lower" ? measure < (record.best ?? Infinity) : measure > (record.best ?? -Infinity);
-    if (beaten) record.best = measure;
+    record.best = (direction === "lower" ? Math.min : Math.max)(measure, record.best ?? measure);
   }
   /**
    * Each comparison's tasks a solve of which a limit cut short, by harness, as `cutIn` names them:

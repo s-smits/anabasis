@@ -72,7 +72,7 @@ import { settleReading } from "#src/campaign/round.ts";
 import { draw } from "#src/kernel/compare.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
-import { stopRule } from "#src/kernel/reports.ts";
+import { stopRule } from "#src/campaign/admission.ts";
 import { refusedBy, verdictsOf } from "#src/kernel/solves.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";

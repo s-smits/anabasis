@@ -306,7 +306,7 @@ shows as answers reached within it that the reference does not reach.
 order: `stop`, `exam`, `bound`, `tasks`, `unfinished`, `step`, `no-room`,
 `short`, `unread` and `build`. The `build` row first releases owed practice
 (`practice`). Improvement patience stops the campaign after six eligible moves without a gain
-since the last promotion (`stopRule`, `src/kernel/reports.ts`). Continuing then requires
+since the last promotion (`stopRule`, `src/campaign/admission.ts`). Continuing then requires
 `--past-stop`.
 
 **In `comparison-reading`, section 7** (`draw-and-solves.md`, `tally-and-test.md`,

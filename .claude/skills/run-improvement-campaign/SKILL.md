@@ -499,7 +499,7 @@ Choose one move. `decide` in `src/campaign/decide.ts` advises accept, prepare, e
 compare, promote or end. A led Builder chooses its tools; code keeps admissions and scoring, and
 `hostOwed` makes comparisons and promotions between conversations.
 
-The stop rule counts since the last promotion (`stopRule`, `src/kernel/reports.ts`). A changed
+The stop rule counts since the last promotion (`stopRule`, `src/campaign/admission.ts`). A changed
 harness/reference pair counts once when tallied with room or a step; a whole unchanged session
 counts only where practice failed. A step shows gain. Starter comparisons, unscored comparisons and
 non-step readings without room do not count. Improvement patience defaults to six (`PATIENCE`);

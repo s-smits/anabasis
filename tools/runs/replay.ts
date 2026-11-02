@@ -17,7 +17,8 @@
 import { conditionsOf } from "#src/kernel/condition.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { read } from "#src/kernel/log.ts";
-import { lastReports, stopRule } from "#src/kernel/reports.ts";
+import { stopRule } from "#src/campaign/admission.ts";
+import { lastReports } from "#src/kernel/reports.ts";
 import { taskSets } from "#src/kernel/task.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";

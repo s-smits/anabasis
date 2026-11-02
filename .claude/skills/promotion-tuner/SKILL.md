@@ -1,6 +1,6 @@
 ---
 name: promotion-tuner
-description: "Replay recorded comparisons under a tree's scoring rules without model calls or spending. Use to inspect whether recorded promotions are supported, which measure won each task, A/A results and promotion costs. Sweep weights or levels, compare candidate floors or tests, and describe runs by release, pack and setting with scripts/table.ts. Applies to questions about past promotions, changed scoring or comparisons between release cycles; replay estimates do not establish a live improvement."
+description: "Replay recorded comparisons under a tree's scoring rules without model calls or spending. Use to inspect whether recorded promotions are supported, which measure won each task, A/A results and promotion costs. Sweep weights or levels, compare candidate floors or tests, and describe runs by release, pack and setting with scripts/table.ts, and dollars a promotion priced on one meter with scripts/cost.ts. Applies to questions about past promotions, changed scoring or comparisons between release cycles; replay estimates do not establish a live improvement."
 ---
 
 # Promotion tuner
@@ -98,6 +98,25 @@ bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/table.ts \
   the median solve stand beside them as indicators; no hour is scaled by them.
 - A run sitting out a provider reset longer than two hours reads as finished with `no ending`.
   One run is one draw: read a group's medians beside its run count.
+
+### Dollars a promotion on one meter
+
+`table.ts` reads each run's dollars as its own meter billed them, and the meter moved (25 October:
+each turn at the model that served it; 1 November: a session on its backend's ledger). Before
+saying a cycle is cheaper, price every run the same way:
+
+```sh
+bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/cost.ts \
+  [--since <date>] [--name <part>]... [--by week|pack|setting|none] [--format md|tsv]
+```
+
+It prices every recorded turn with today's seat meter (`seatMeter` on its provider's catalogue),
+sets that beside the recorded bill, and pools the finished runs of each week (or pack) and
+setting into dollars a promotion. Turns are the one measure every log holds; a backend's excess
+over them (compactions, retries) is billed only by runs from 1 November on, so `repriced/recorded`
+just under 1 on those runs is that excess. On 2 November buffer at Opus 5.5 medium read $320 a
+promotion in the week of 12 October, then $58 and $56, with repriced and recorded within 1% from
+19 October on: the fall was the system's, not the meter's.
 
 ## What to read
 

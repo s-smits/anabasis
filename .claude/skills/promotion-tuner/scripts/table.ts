@@ -530,8 +530,12 @@ const promotionRows = (runs: readonly Run[]) =>
   );
 
 /** A table as GitHub markdown, or tab-separated lines for a spreadsheet. */
-function printed(head: readonly string[], rows: readonly (readonly string[])[], tsv: boolean): string {
-  if (tsv) return [head, ...rows].map((row) => row.join("\t")).join("\n");
+export function printed(
+  head: readonly string[],
+  rows: readonly (readonly string[])[],
+  format: "md" | "tsv",
+): string {
+  if (format === "tsv") return [head, ...rows].map((row) => row.join("\t")).join("\n");
   const line = (row: readonly string[]) => `| ${row.join(" | ")} |`;
   return [line(head), line(head.map(() => "---")), ...rows.map(line)].join("\n");
 }
@@ -581,15 +585,14 @@ async function main(args: CommandArgs): Promise<number> {
       args.int("last") ?? LAST,
     ),
   ];
-  const tsv = format === "tsv";
   const table = {
-    recent: () => printed(RECENT_HEAD, recentRows(listed), tsv),
-    groups: () => printed(GROUP_HEAD, groupRows(runs, by), tsv),
-    runs: () => printed(RUN_HEAD, runRows(runs), tsv),
-    promotions: () => printed(PROMOTION_HEAD, promotionRows(runs), tsv),
+    recent: () => printed(RECENT_HEAD, recentRows(listed), format),
+    groups: () => printed(GROUP_HEAD, groupRows(runs, by), format),
+    runs: () => printed(RUN_HEAD, runRows(runs), format),
+    promotions: () => printed(PROMOTION_HEAD, promotionRows(runs), format),
   }[rows];
   console.log(table());
-  if (tsv) return 0;
+  if (format === "tsv") return 0;
   if (rows === "recent") console.log(`\n${recentSummary(listed)}`);
   const only = has.length + holds.length > 0 ? `, only runs with ${[...has, ...holds].join(", ")}` : "";
   const promotions = runs.reduce((sum, run) => sum + run.promotions.length, 0);

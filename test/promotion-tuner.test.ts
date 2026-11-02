@@ -2,7 +2,7 @@
 import { expect, it } from "bun:test";
 import { campaignLines, emptyTotals } from "#skills/promotion-tuner/scripts/replay.ts";
 import { campaignLogs, loadTree, type Tree } from "#skills/promotion-tuner/scripts/tree.ts";
-import { type Paired, scored, scoresOf } from "../src/kernel/compare.ts";
+import { type Paired, scored } from "../src/kernel/compare.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
@@ -81,8 +81,14 @@ it("promotes and diagnoses A/A steps by the tree's own rule under the requested 
   }
 });
 
-it("credits a won task to the measure that carried it, the bill where the score without it loses", async () => {
-  const tree = await loadTree(ROOT);
+it("credits a won task to the measure that carried it, the bill where a tree before 2 November scored one", async () => {
+  const own = await loadTree(ROOT);
+  // A tree before 2 November also scored the bill: half the bill gave its whole 100 points.
+  const tree: Tree = {
+    ...own,
+    weights: { ...own.weights, bill: 0.1 },
+    points: (pair) => ({ ...own.points(pair), bill: pair.task === "rescued" ? 100 : 0 }),
+  };
   // Valid in four solves of four against three, worse by 9% on the objective and billed half.
   const rescued: Paired = {
     task: "rescued",
@@ -94,8 +100,9 @@ it("credits a won task to the measure that carried it, the bill where the score 
       fresh: Array.from({ length: 4 }, () => ({ billed: 1 })),
     },
   };
-  const one = scoresOf(tree.points(rescued));
-  expect([one.scored, one.unbilled, one.validity].map(Math.sign)).toEqual([1, -1, 1]);
+  const { validity, objective, bill } = tree.points(rescued);
+  expect([validity + objective + bill, validity + objective, validity].map(Math.sign)).toEqual([1, -1, 1]);
+  expect(own.points(rescued).bill).toBe(0);
   const won: Paired[] = CHEAP.map(({ task }) => ({
     task,
     old: [false, false, false, false],
@@ -106,7 +113,7 @@ it("credits a won task to the measure that carried it, the bill where the score 
   expect(totals.wonBy).toEqual({ validity: 6, objective: 0, bill: 1 });
 });
 
-it("keeps stored scores but requires complete evidence without cost to replay a step", async () => {
+it("keeps stored scores, which a tree that scores no bill reads as they stand", async () => {
   const tree = await loadTree(ROOT);
   const differences = Array<number>(6).fill(600);
   for (const of of [undefined, CHEAP.map(({ task }) => task)]) {
@@ -114,7 +121,7 @@ it("keeps stored scores but requires complete evidence without cost to replay a 
       const frontier = { differences, ...keyIfDefined("of", of), ...keyIfDefined("unbilled", unbilled) };
       const totals = replay(tree, [], frontier);
       expect(totals.storedTasks).toBe(6);
-      expect(totals.rightful + totals.doubted).toBe(unbilled === undefined ? 0 : 1);
+      expect(totals.rightful + totals.doubted).toBe(1);
     }
   }
 });
@@ -122,8 +129,10 @@ it("keeps stored scores but requires complete evidence without cost to replay a 
 it("uses a candidate tree's own stepOf without requiring a readsStep export", async () => {
   const home = mkdtempSync(join(tmpdir(), "ana-tuner-tree-"));
   try {
+    // Six tasks the new harness answers and the reference does not: the tree's own rule decides.
+    const won = CHEAP.map((pair) => ({ ...pair, old: [false, false] }));
     for (const [rule, steps] of [
-      ["real.stepOf", 0],
+      ['() => "no-step"', 0],
       ['(report, level) => real.flipP(report.frontier.differences) <= level ? "step" : "no-step"', 1],
     ] as const) {
       const tree = mkdtempSync(join(home, "tree-"));
@@ -154,7 +163,7 @@ it("uses a candidate tree's own stepOf without requiring a readsStep export", as
         "-m",
         "t",
       ]);
-      const totals = replay(await loadTree(tree), CHEAP);
+      const totals = replay(await loadTree(tree), won);
       expect(totals.rightful + totals.doubted).toBe(steps);
     }
   } finally {

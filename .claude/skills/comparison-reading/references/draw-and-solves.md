@@ -47,7 +47,7 @@ How a solve ends (`src/kernel/solve.ts`), and its part in a pair:
 
 | Ending | Kinds | In a pair |
 | --- | --- | --- |
-| pass | | Valid. It beats an answer that is not valid; against another valid one it gains by how much better it is by the objective, where the comparison fixed one, and by how much less its solve billed |
+| pass | | Valid. It beats an answer that is not valid; against another valid one it gains by how much better it is by the objective, where the comparison fixed one |
 | fail | `rejected`, once the rejection is ruled a true fail | Not valid |
 | fail | `wall-ended`, `turns-ended`, `context-ended`, `no-answer` | Not valid, with nothing to recompute and no ruling. A deadline on a model silent ten minutes with no tool running is the provider's non-result instead (`SILENT_SECONDS`) |
 | fail | `broken-harness` | Not valid. The harness is what is compared, and one that cannot open answers nothing |

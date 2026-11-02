@@ -18,7 +18,7 @@ import { join } from "../../../src/meta/path.ts";
 import { type AnswerOf, type Endpoint, type Query, type Tier, TOKEN_HEADER } from "../src/models.ts";
 import { handleApiRequest } from "../src/server/api.ts";
 import { campaignsFound } from "../src/server/logs.ts";
-import { keptOf, steppedOf } from "../src/server/moves.ts";
+import { steppedOf } from "../src/server/moves.ts";
 import { campaignReading, campaignRow } from "../src/server/reading.ts";
 import { type Fixture, MARKERS, writeFixtureCampaign, writeLedCampaign } from "./fixture-campaign.ts";
 
@@ -141,39 +141,33 @@ describe("what a comparison came to", () => {
 });
 
 describe("the scores a comparison is read on", () => {
-  test("are those without the bill where a report holds them, and those as scored before 26 October", () => {
+  test("are those without the bill where a report of 26 October to 2 November holds them, else its differences", () => {
     // g-2 of a gate-ablation run on 1 November: 13 won, 1 lost, 2 tied with the bill, and 3 won,
     // 0 lost, 13 tied without it, which is what the step read. Scores are whole points.
     const differences = [...Array.from({ length: 13 }, () => 10), -10, 0, 0];
     const unbilled = [60, 60, 30, ...Array.from({ length: 13 }, () => 0)];
     const scored = { wins: 13, losses: 1, ties: 2, p: 0.001, differences, unbilled, unsolved: 0 };
-    expect(keptOf({ scored })).toBe("unbilled");
     expect(steppedOf(scored)).toEqual({ tally: { wins: 3, losses: 0, ties: 13 }, p: 0.125 });
     const { unbilled: _, ...before } = scored;
-    expect(keptOf({ scored: before })).toBe("scored");
     expect(steppedOf(before).tally).toEqual({ wins: 13, losses: 1, ties: 2 });
-    expect(keptOf(null)).toBe("scored");
   });
 });
 
 describe("what carried a comparison's wins", () => {
-  test("names the measure of every won and lost task and sums each side to the tally with the bill", async () => {
+  test("names the measure of every won and lost task and sums each side to the tally", async () => {
     const { answer } = await ask("campaign", { key: KEY }, "default");
     const reported = answer.comparisons.filter((bar) => bar.tally !== null && bar.carried !== null);
     expect(reported.length).toBeGreaterThan(0);
-    const sum = ({ validity, objective, bill }: { validity: number; objective: number; bill: number }) =>
-      validity + objective + bill;
+    const sum = ({ validity, objective }: { validity: number; objective: number }) => validity + objective;
     for (const bar of reported) {
-      // What carried a task is read on its score with the bill, which is the bar's own tally where
-      // the two agree.
-      const billed = bar.withBill?.tally ?? bar.tally;
-      expect({ id: bar.id, won: sum(bar.carried?.won ?? { validity: 0, objective: 0, bill: 0 }) }).toEqual({
+      const none = { validity: 0, objective: 0 };
+      expect({ id: bar.id, won: sum(bar.carried?.won ?? none) }).toEqual({
         id: bar.id,
-        won: billed?.wins ?? -1,
+        won: bar.tally?.wins ?? -1,
       });
-      expect({ id: bar.id, lost: sum(bar.carried?.lost ?? { validity: 0, objective: 0, bill: 0 }) }).toEqual({
+      expect({ id: bar.id, lost: sum(bar.carried?.lost ?? none) }).toEqual({
         id: bar.id,
-        lost: billed?.losses ?? -1,
+        lost: bar.tally?.losses ?? -1,
       });
       const { answer: detail } = await ask("move", { key: KEY, move: String(bar.move) }, "default");
       if (detail.kind !== "comparison") throw new Error(`${bar.id} is a comparison`);

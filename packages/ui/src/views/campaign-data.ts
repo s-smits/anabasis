@@ -93,11 +93,11 @@ export function pText(p: number | null): string {
   return p === null ? "no test" : `p ${p.toFixed(3)}`;
 }
 
-/** The three measures in the order the tally weighs them (`WEIGHTS`, `src/kernel/compare.ts`). */
-export const MEASURES = ["validity", "objective", "bill"] as const satisfies readonly (keyof Measures)[];
+/** The two measures in the order the tally weighs them (`WEIGHTS`, `src/kernel/compare.ts`). */
+export const MEASURES = ["validity", "objective"] as const satisfies readonly (keyof Measures)[];
 
-/** Tasks by the measure that carried each, the measures that carried none left out: "objective 22,
- *  bill 6", or "none". */
+/** Tasks by the measure that carried each, the measures that carried none left out: "validity 4,
+ *  objective 22", or "none". */
 export function carriedText(counts: Measures): string {
   const said = MEASURES.flatMap((measure) =>
     counts[measure] === 0 ? [] : [`${measure} ${String(counts[measure])}`],

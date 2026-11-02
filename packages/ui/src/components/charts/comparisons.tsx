@@ -107,7 +107,7 @@ function promotionWord(promotion: Promotion, names: Readonly<Record<string, stri
   const starter =
     tally === null
       ? "; not yet read against the starter"
-      : `; against the starter without the bill ${tallyText(tally)}, ${promotion.confirmed ? "confirmed" : "not confirmed"}`;
+      : `; against the starter ${tallyText(tally)}, ${promotion.confirmed ? "confirmed" : "not confirmed"}`;
   return `${named}${despite}${starter}`;
 }
 
@@ -365,14 +365,8 @@ function SlotTooltip({
         {tally === null
           ? "No tally"
           : `${String(tally.wins)} won, ${String(tally.losses)} lost, ${String(tally.ties)} tied`}
-        {bar.withBill === null ? "" : " without the bill"}
         {` · ${bar.reading ?? "no reading"} · level ${bar.level.toFixed(2)} · ${pText(bar.p)}`}
       </span>
-      {bar.withBill === null ? null : (
-        <span className="ana-num">
-          With the bill {tallyText(bar.withBill.tally)} · {pText(bar.withBill.p)}
-        </span>
-      )}
     </div>
   );
 }

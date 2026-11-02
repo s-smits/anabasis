@@ -458,12 +458,11 @@ export function reportLines({
   const took = (side: "old" | "fresh") => String(median(both.map((each) => each[side])));
   const test = scored?.falseRate === undefined ? frontier : scored;
   const share = test?.detectable ?? null;
-  // The step reads each task's score without the bill, which a report from before 26 October holds
-  // none of; such a report's step, share and rate were read on the full score.
+  // A report of 26 October to 2 November read its step on its scores without the bill (`scoresIn`).
   const unbilled = test?.unbilled === undefined ? null : testOf(test.unbilled);
   const stepped = unbilled ?? test;
   const untied = stepped === null ? 0 : stepped.wins + stepped.losses;
-  const on = unbilled === null ? "on the full score" : "without the bill";
+  const on = unbilled === null ? "on the score" : "without the bill";
   return [
     ...(test?.falseRate === undefined || stepped === null
       ? []
@@ -485,7 +484,7 @@ export function reportLines({
     ...(points === null
       ? []
       : [
-          `the score weighs validity ${String(WEIGHTS.validity)}, the objective ${String(WEIGHTS.objective)} and the bill ${String(WEIGHTS.bill)}, and over the tallied tasks gave the new harness ${signed(points.validity)}, ${signed(points.objective)} and ${signed(points.bill)} points, a task's score running from -1000 to 1000`,
+          `the score weighs validity ${String(WEIGHTS.validity)} and the objective ${String(WEIGHTS.objective)}, and over the tallied tasks gave the new harness ${signed(points.validity)} and ${signed(points.objective)} points, a task's score running from -900 to 900`,
         ]),
     ...(objective === null ? [] : [`the objective: ${objective.direction} is better`]),
     ...(both.length === 0
@@ -524,7 +523,7 @@ function aaLines(noise: NonNullable<Report["noise"]>): string[] {
     `the reference against itself, on halves of its own solves mirrored in time (the A/A), over the ${plural(tasks, "tallied task")}, ${String(noise.wins + noise.losses)} of them untied:`,
     `  tie share ${tasks === 0 ? "none" : percent(noise.ties / tasks)}: the share of tasks two equal harnesses tied at half the comparison's solves a side, where equal harnesses tie more often than at the comparison's own, so no floor for its ties`,
     `  flip rate ${noise.flips === null ? "none" : percent(noise.flips)}: how often two of its solves of one task disagree on validity`,
-    `  least detectable shift without the bill: ${shift === null ? "none, too few of its tasks are untied for any shift between its halves to clear the level, so its reading no step shows little" : `one reading of it, either half read at the level, detects four times in five a half that wins ${percent(shift)} of its untied tasks`}`,
+    `  least detectable shift: ${shift === null ? "none, too few of its tasks are untied for any shift between its halves to clear the level, so its reading no step shows little" : `one reading of it, either half read at the level, detects four times in five a half that wins ${percent(shift)} of its untied tasks`}`,
   ];
 }
 

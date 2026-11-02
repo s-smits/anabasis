@@ -155,27 +155,14 @@ function OutcomeSplit({
  *  rulings by kind and the reference against itself where it was read. */
 function Readings({ detail, reading }: { detail: ComparisonDetail; reading: CampaignReading }) {
   const { bar } = detail;
-  // What carried each task is read on the score with the bill, which the tally above leaves out.
-  const billed = bar.withBill === null ? "" : ", with the bill";
   const facts = [
-    [
-      bar.withBill === null ? "Tally" : "Tally without the bill, where the step is read",
-      bar.tally === null ? "none" : tallyWords(bar.tally),
-    ],
+    ["Tally", bar.tally === null ? "none" : tallyWords(bar.tally)],
     ["Sign test", bar.p === null ? "not made" : `${pText(bar.p)} at level ${String(bar.level)}`],
-    ...(bar.withBill === null
-      ? []
-      : ([
-          [
-            "With the bill, which promotes nothing",
-            `${tallyWords(bar.withBill.tally)} · ${pText(bar.withBill.p)}`,
-          ],
-        ] as const)),
     ...(bar.carried === null
       ? []
       : ([
-          [`Won on${billed}`, carriedText(bar.carried.won)],
-          [`Lost on${billed}`, carriedText(bar.carried.lost)],
+          ["Won on", carriedText(bar.carried.won)],
+          ["Lost on", carriedText(bar.carried.lost)],
         ] as const)),
     [
       "Valid, reference",
@@ -280,7 +267,7 @@ function sensitivityFacts(seen: Sensitivity): (readonly [string, string])[] {
       : ([
           [
             "Points to the new",
-            `validity ${String(seen.points.validity)}, objective ${String(seen.points.objective)}, bill ${String(seen.points.bill)}`,
+            `validity ${String(seen.points.validity)}, objective ${String(seen.points.objective)}`,
           ],
         ] as const)),
     ...(overlap === null

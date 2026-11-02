@@ -9,8 +9,8 @@
  *   on record over a reference answer (`room` of `poolOf`'s standings), and the admission counts
  *   and turns. It also gives comparison history where there are at least two readings, and whether
  *   a valid answer is on record where the other facts show none (`poolOf`). Winning alone does not
- *   explain the source of room (`7f0add79:docs/simplify.md`, F3). Naming the measure distinguishes
- *   method gains from the 25 bill-only wins recorded in buffer-fresh-opus-v065-a's g-3 (26 October).
+ *   explain the source of room (`7f0add79:docs/simplify.md`, F3). Until 2 November it also named
+ *   the bill, which carried 25 wins in buffer-fresh-opus-v065-a's g-3 (26 October).
  * - One summary of the reference across the exam (`measuredLine`): tasks in its last comparison,
  *   grouped by every, some or no solve valid; and drafts admitted under it, grouped by source of
  *   room. Across 26 October's buffer runs it was valid in 93 to 100% of each comparison's solves while most
@@ -72,29 +72,22 @@ const HELD_ON = {
   yours: "on an answer of yours, where none of its solves was valid",
   objective: "on the objective alone, every one of its solves valid",
 } as const;
-/** Which measure of a task's score carried a win (`carriedBy`): a step must also clear its level
- *  with the bill's points taken out (`stepOf`), so wins the bill alone carried cannot make one. */
+/** Which measure of a task's score carried a win (`carriedBy`). */
 const CARRIED = {
   validity: "on validity",
   objective: "on the objective",
-  bill: "on the bill alone",
 } as const;
 
 /** The clauses some line carries, so the legend explains those and no other: at job-fresh-opus-v071's
- *  x-4 it explained a task admission and a history no line held, and said on each of seven lines what a win on
- *  the bill alone means (26 October). */
+ *  x-4 it explained a task admission and a history no line held (26 October). */
 interface Carried {
   admission: boolean;
   history: boolean;
-  bill: boolean;
 }
 
 /** What the lines say before them: once, what each clause some line carries means. */
 function legendOf(carried: Carried): string {
   const clauses = [
-    carried.bill
-      ? `A win "on the bill alone" is one only the cost of its solves carried; a step is read without the bill.`
-      : "",
     carried.admission
       ? `"Gate" is how many of the reference harness's solves at its gate were valid, of the solves it ran, at most ${String(TRIED)}, and their turns.`
       : "",
@@ -171,7 +164,7 @@ export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "t
   // Count listed tasks admitted under the current reference separately from those admitted before it.
   let under = 0;
   let listed = 0;
-  const carried: Carried = { admission: false, history: false, bill: false };
+  const carried: Carried = { admission: false, history: false };
   const elsewhere = new Map<string, string[]>();
   const lines = tasks.flatMap(({ taskId, family }) => {
     const version = versions.get(taskId) ?? "";
@@ -217,7 +210,6 @@ export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "t
     }
     carried.admission ||= admission.said !== "";
     carried.history ||= history !== "";
-    carried.bill ||= won !== "" && standing?.by === "bill";
     return [`${named}: ${said}${answered ? inTurns(compared.get(version) ?? []) : ""}${known}${rest}`];
   });
   return {

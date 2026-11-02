@@ -607,7 +607,6 @@ describe("a round", () => {
         scored: {
           ...tested,
           differences: [600, 600, 600, 600],
-          unbilled: [600, 600, 600, 600],
           unsolved: 0,
           detectable: 0.95,
           falseRate: 1 / 16,
@@ -618,7 +617,6 @@ describe("a round", () => {
           tasks: HELD,
           aside: [],
           differences: [600, 600, 600, 600],
-          unbilled: [600, 600, 600, 600],
           of: HELD,
         },
         retained: "unmeasured",
@@ -637,7 +635,7 @@ describe("a round", () => {
         noise: objectWith({ wins: 0, losses: 0, ties: 4, flips: 0 }),
         counted: null,
         objective: null,
-        points: { validity: 2400, objective: 0, bill: 0 },
+        points: { validity: 2400, objective: 0 },
         // The turns each harness's valid answers took, by task: in no tally.
         turns: Object.fromEntries(HELD.map((task) => [task, { old: null, fresh: 10 }])),
         versions: HELD,
@@ -911,7 +909,7 @@ describe("a round", () => {
     expect(report).toMatchObject({
       scored: { wins: 2, losses: 0, ties: 2, p: 0.25, unsolved: 1 },
       objective,
-      points: { validity: 0, objective: 2 * full, bill: 0 },
+      points: { validity: 0, objective: 2 * full },
       reading: NO_STEP,
     });
     // The objective is a term of the comparison, fixed at its start.

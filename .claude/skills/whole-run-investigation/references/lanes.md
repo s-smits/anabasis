@@ -98,34 +98,36 @@ cites the old numbers; read them through this table, old number first.
 
 Every pull request carries at least one area label beside its importance label, and may carry
 several: the label of each area its change touches. The areas are cut where a change lands in the
-code, so a pull request's files point to its labels. Nine are groups of lanes, each under one of
-the five points every change is judged by (`AGENTS.md`, section 1: supply and the four factors).
-Three name areas of the repository that no run exercises, and `misc` names a change none of the
-twelve holds.
+code, so a pull request's files point to its labels. Each lane carries the label of the pull
+requests that change what it reads, on the line beside its importance, so a lane may sit under any
+label wherever it stands in this file. Ten labels hold lanes, each under one of the five points
+every change is judged by (`AGENTS.md`, section 1: supply and the four factors), and four name
+areas of the repository that no run exercises.
 `bun run land` refuses a stack in which a pull request carries none (`checkLabels`,
 `tools/runtime/land.ts`). A release cycle's `Predictions.md` gives each row its pull request's
 labels, and the row's lanes are drawn from those labels' lanes (run-improvement-campaign, step 1).
 
 | point | lanes | label | a pull request carries it when it changes |
 | --- | --- | --- | --- |
-| verdicts | 1–8 | `verdicts` | the check program's reading, the verifier, drafting an exam and the host's reading of a draft, its freeze or admission, the Referee, its evidence, hand labels and `settle.ts` |
-| supply | 9–14 | `supply` | the Examiner, its task admission, which tasks are held out or released, or what the Examiner is told |
+| verdicts | 1, 3, 8, 13 | `exam` | drafting an exam and the host's reading of a draft, the check program's reading, the verifier, control answers, the freeze or admission, or what a task's public part discloses |
+| verdicts | 2, 4–7 | `verdicts` | the Referee, its evidence and rulings, the tasks a rejection sets aside, hand labels and `settle.ts`, or what each seat is told of them |
+| supply | 9, 10, 12, 14 | `supply` | the Examiner's task writing, its task admission, which tasks are held out or released, room and the frontier, or what the Examiner is told |
 | climb | 15–20 | `harness` | the Builder session or conversation, its prompt, tools, compaction or notes, practice, the harness contract, or what crosses the wall to the Builder |
-| honesty | 21–25 | `comparison` | a comparison's terms, pairing, scored set, test, A/A comparison or condition identity |
-| climb | 26–28, 34 | `climb` | the move table, the campaign command's moves, promotion, the stop rule, the campaign's endings, the operator's words, or what follows a promotion |
+| honesty | 11, 21–23, 25 | `comparison` | a comparison's terms, pairing, scored set, tally and which measure decided it, test, A/A comparison or condition identity |
+| climb | 24, 26–28, 34 | `climb` | the move table, the campaign command's moves, the starter comparison, promotion, the stop rule, the campaign's endings, the operator's words, or what follows a promotion |
 | honesty | 29–30 | `solve` | a solve's run, a backend, the wall, how a solve ends, non-results, or the host's solve slots and load |
-| economy | 31 | `economy` | billing, the budget, time and silence readers, or the closing report's work and spend |
+| economy | 31 | `economy` | billing, the meter, the budget, time and silence readers, or the closing report's work and spend |
 | honesty | 32 | `runs` | launching, continuing, moving and stopping runs, logins, hosts, controllers, receipts and run records |
-| honesty | rows A–F, 33 | `log` | the campaign log, its append and locks, event kinds, conditions, the folds every reader shares, and the readers over them: the investigation, the cycle's scripts, `view`, `replay`, the closing report's text, the page and studies |
+| honesty | rows A–F, 33 | `log` | the campaign log, its append and locks, event kinds, conditions, the folds every reader shares, `view`, `replay`, the closing report's text, the page and studies |
+| none | none | `investigation` | the whole-run investigation itself: `tools/wri/`, this catalogue and its skill, and the skill scripts its lanes run |
 | none | none | `landing` | the stack, `bun run land`, the hooks, the CI gate |
 | none | none | `quality` | lint, the simplify census, the size policy, and guidance on how code and designs are written |
 | none | none | `docs` | `AGENTS.md`, `docs/` and other prose of record, where the text itself is the change |
-| none | none | `misc` | anything no other label holds |
 
 A row with no lane is settled by its tests or its own reader, named in its prediction, and says
-what it moves instead of a point (`AGENTS.md`, section 1). The investigation is not exhaustive, so
-`misc` is a label like the others; a run of `misc` pull requests on one subject is the sign that
-the table lacks a row.
+what it moves instead of a point (`AGENTS.md`, section 1). A change no label holds takes the label
+of the code nearest it; a run of such pull requests on one subject is the sign that the table lacks
+a row.
 
 ## Deterministic rows A–F
 
@@ -179,10 +181,9 @@ campaign command records a move as it begins; use the step's own ending to estab
 
 ### The verdicts: the instrument, its review and its draft
 
-Label: `verdicts`.
-
 **1. Verdict chain: what a pass observes.**
 
+Label: `exam`.
 Importance: 0.6.
 
 Starts from `INSTRUMENT AUTHORED (lane 1)`, `REFUSALS BY CHECK (lane 1)`,
@@ -217,6 +218,7 @@ and `pack/brief` for a rule no check enforces.
 
 **2. What each seat was told.**
 
+Label: `verdicts`.
 Importance: 0.7.
 
 Starts from each seat's opening at the campaign's commit, and is standing.
@@ -252,6 +254,7 @@ to what the Builder reads keeps every message byte-identical under a changed hid
 
 **3. Check discrimination and control answers.**
 
+Label: `exam`.
 Importance: 0.3.
 
 Starts from `NO CHECKER READING (lane 3)`, `CHECKER READ WITH FAULTS (lane 3)`,
@@ -278,6 +281,7 @@ whether the checker can be frozen as it stands; it routes to `pack/controls` for
 
 **4. False rejection among fails.**
 
+Label: `verdicts`.
 Importance: 0.5.
 
 Starts from `REFUSED UNREAD (lane 4)`, `CHECK DEFECT RULED (lane 4)` and `RULED UNCLEAR (lane 4)`.
@@ -302,6 +306,7 @@ read as the solver's limit or as the exam's noise; it routes to `pack/evaluator`
 
 **5. Valid-alternative rejection challenge.**
 
+Label: `verdicts`.
 Importance: 0.3.
 
 Starts from `FAILS ON ONE CHECK (lane 5)` and `DEFECT RULED BESIDE PASSES (lane 5)`, and only when
@@ -322,6 +327,7 @@ the checker's owner as the repair's accept controls.
 
 **6. Triage: the harness, the rules or the solver.**
 
+Label: `verdicts`.
 Importance: 0.2.
 
 Starts from `REPLAY MOVED THE VERDICT (lane 6)`.
@@ -340,6 +346,7 @@ that cannot be right, `pack/evaluator` for a check that does not repeat, and `ha
 
 **7. Rulings, labels and what each role was told.**
 
+Label: `verdicts`.
 Importance: 0.5.
 
 Starts from `SET ASIDE AND UNSETTLED (lane 7)`, `READING MOVES WITH THE SET-ASIDE (lane 7)`,
@@ -383,6 +390,7 @@ may count without a person reading each; it routes to `operator` for the bar and
 
 **8. The drafted exam against its prompt.**
 
+Label: `exam`.
 Importance: 0.6.
 
 Starts from `EXAM DRAFTED (lane 8)`.
@@ -410,10 +418,9 @@ prompt that left the exam open to more than one reading.
 
 ### The supply: the tasks
 
-Label: `supply`.
-
 **9. Supply and task admission.**
 
+Label: `supply`.
 Importance: 0.65.
 
 Starts from `SUPPLY THIN (lane 9)`, `GATE REFUSED (lane 9)` and
@@ -444,6 +451,7 @@ them, where a step at 0.02 takes 6-0.
 
 **10. Tasks no harness answers.**
 
+Label: `supply`.
 Importance: 0.3.
 
 Starts from `NO VALID ANSWER (lane 10)` and `AWAITING A LABEL (lane 10)`.
@@ -466,6 +474,7 @@ fault, and `examiner/task` for an instance whose own limits exclude every answer
 
 **11. Whether validity separates.**
 
+Label: `comparison`.
 Importance: 0.75.
 
 Starts from `TIES BETWEEN VALID ANSWERS (lane 11)` and
@@ -492,6 +501,7 @@ and to `host` (`src/kernel/compare.ts`) where the three tallies disagree with th
 
 **12. Ties and the budget.**
 
+Label: `supply`.
 Importance: 0.5.
 
 Starts from `TIED TASKS (lane 12)`.
@@ -514,6 +524,7 @@ be; it routes to `examiner/task` for tasks every harness answers and `operator` 
 
 **13. Public disclosure and one recipe.**
 
+Label: `exam`.
 Importance: 0.35.
 
 Starts from `PASSES AT A SMALL WALL SHARE (lane 13)`.
@@ -535,6 +546,7 @@ Builder's.
 
 **14. Pressure on the Examiner.**
 
+Label: `supply`.
 Importance: 0.65.
 
 Starts from `OUTCOMES BY SESSION (lane 14)`.
@@ -559,10 +571,9 @@ another session; it routes to `examiner-prompt`, and to `operator` for the readi
 
 ### The harness
 
-Label: `harness`.
-
 **15. Harness delta against its note.**
 
+Label: `harness`.
 Importance: 0.8.
 
 Starts from `HARNESS CHANGED (lane 15)`, `BROKEN AT END (lane 15)`,
@@ -594,6 +605,7 @@ when the measured state is not the one the log names.
 
 **16. The guide against its programs and the solves.**
 
+Label: `harness`.
 Importance: 0.3.
 
 Starts from `NEVER CHECKED (lane 16)`, `TOOLS CALLED (lane 16)` and `TOOL CALLS ERRED (lane 16)`.
@@ -625,6 +637,7 @@ contradicts.
 
 **17. What practice taught the Builder.**
 
+Label: `harness`.
 Importance: 0.25.
 
 Starts from `NO PRACTICE (lane 17)`, `FINAL BYTES NEVER PRACTISED (lane 17)`,
@@ -657,6 +670,7 @@ practice limit that ended work mid edit.
 
 **18. Exposure: what the Builder could see.**
 
+Label: `harness`.
 Importance: 0.3.
 
 Starts from `PRACTISED TASK MEASURED (lane 18)` and `SHELL COMMANDS (lane 18)`, and is standing.
@@ -679,6 +693,7 @@ task content in the harness.
 
 **19. Trace challenge.**
 
+Label: `harness`.
 Importance: 0.3.
 
 Starts from `WIN AT A SMALL WALL SHARE (lane 19)`, and only when lane 13, 15 or 18 suspects a
@@ -709,6 +724,7 @@ or `host`, by where the value came from.
 
 **20. What made each win.**
 
+Label: `harness`.
 Importance: 0.6.
 
 Starts from `WINS (lane 20)`.
@@ -743,10 +759,9 @@ against `programs-of:<digest>` would settle it; it routes to `operator`, and to 
 
 ### The comparison
 
-Label: `comparison`.
-
 **21. What a step rests on.**
 
+Label: `comparison`.
 Importance: 0.7.
 
 Starts from `STEP CARRIERS (lane 21)`.
@@ -775,6 +790,7 @@ resting on spread, and whether the operator reads such steps at more solves a si
 
 **22. The scored set and what left it.**
 
+Label: `comparison`.
 Importance: 0.35.
 
 Starts from `SCORED SET MOVED (lane 22)`.
@@ -799,6 +815,7 @@ The decision it changes is whether the tally is of the set that was fixed; it ro
 
 **23. What the test could show at its size.**
 
+Label: `comparison`.
 Importance: 0.75.
 
 Starts from `NOTHING SCORED (lane 23)`, `CUT BY ITS CAP (lane 23)` and
@@ -833,6 +850,7 @@ arithmetic fault.
 
 **24. The starter.**
 
+Label: `climb`.
 Importance: 0.65.
 
 Starts from `VALID BY HARNESS (lane 24)` and `PROMOTION UNCONFIRMED (lane 24)`.
@@ -870,6 +888,7 @@ or `harness/tools` where a harness loses to the starter.
 
 **25. Flips and solver variance.**
 
+Label: `comparison`.
 Importance: 0.45.
 
 Starts from `FLIPS (lane 25)` and `REFERENCE AGAINST ITSELF (lane 25)`.
@@ -898,10 +917,9 @@ in hours of high load.
 
 ### The climb
 
-Label: `climb`.
-
 **26. Which link holds the next promotion.**
 
+Label: `climb`.
 Importance: 0.6.
 
 Starts from `CHAIN (lane 26)` and `NO TASK HELD OUT (lane 26)`.
@@ -933,6 +951,7 @@ tasks, `builder-prompt` for builds, `operator` for a comparison's size or a stop
 
 **27. The promotion and the climb after it.**
 
+Label: `climb`.
 Importance: 0.75.
 
 Starts from `PROMOTED (lane 27)`, `STARTER BARE (lane 27)`, `AFTER THE PROMOTION (lane 27)` and
@@ -1003,6 +1022,7 @@ written where there is none, and `environment` for the shared temporary folder a
 
 **28. The moves against the table.**
 
+Label: `climb`.
 Importance: 0.6.
 
 Starts from `MOVES ASKED (lane 28)`, `ENDED AND WENT ON (lane 28)` and `OPERATOR WORDS (lane 28)`.
@@ -1040,10 +1060,9 @@ Builder read and set aside, and `operator` for a word that did not act.
 
 ### The solve
 
-Label: `solve`.
-
 **29. Does the budget bind, and on which side.**
 
+Label: `solve`.
 Importance: 0.4.
 
 Starts from `MISSES AT A LIMIT (lane 29)`, `WALL SHARE (lane 29)`, `HOST LOADED (lane 29)`,
@@ -1079,6 +1098,7 @@ to `operator` for the limits, which only the operator changes (`AGENTS.md`, sect
 
 **30. Failure mechanism and non-result honesty.**
 
+Label: `solve`.
 Importance: 0.45.
 
 Starts from `NON-RESULTS (lane 30)`, `SOLVE NEVER FINISHED (lane 30)`,
@@ -1109,10 +1129,9 @@ not open.
 
 ### The economy
 
-Label: `economy`.
-
 **31. Time, spend and silence.**
 
+Label: `economy`.
 Importance: 0.35.
 
 Starts from `LONG SILENCES (lane 31)`, `SPEND LED BY A ROLE (lane 31)` and
@@ -1154,10 +1173,9 @@ bill leaves out, and `environment` for a wait nobody chose.
 
 ### The runs
 
-Label: `runs`.
-
 **32. The run's launches, logins and hosts.**
 
+Label: `runs`.
 Importance: 0.25.
 
 Starts from `LAUNCHES (lane 32)`, `NO LAUNCH RECEIPT (lane 32)` and `HOST CODE MOVED (lane 32)`.
@@ -1191,10 +1209,9 @@ receipt missing or wrong.
 
 ### The log
 
-Label: `log`.
-
 **33. The log and what reads it.**
 
+Label: `log`.
 Importance: 0.45.
 
 Starts from `LOG OUT OF ORDER (lane 33)`. It also opens where it is named, since every report
@@ -1224,10 +1241,9 @@ written by two processes.
 
 ### The audit
 
-Label: `climb`.
-
 **34. Harness quality, version by version.**
 
+Label: `climb`.
 Importance: 1.
 
 Starts from every harness version the campaign kept, and is standing.

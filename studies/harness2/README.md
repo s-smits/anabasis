@@ -199,9 +199,17 @@ and its checks run in verifier cells with the network closed (`src/kernel/task.t
 `src/kernel/verify.ts`). A Code task in WorkBuddy is a diff against a real repository, judged by
 hidden tests. For D or U to practise on anything like it, the Examiner has to draft an exam whose
 tasks carry a small repository in their inputs and whose checks apply a patch and run tests inside
-a cell. Whether a drafted exam can do that, and whether the cells hold the interpreters it needs, is
-unverified. If it cannot, the Code subset is the wrong place to start, and the Office subset, whose
-deliverables are files on disk, is the next candidate.
+a cell. The cell can: `domain-fit.ts` drives the real verifier on a synthetic task whose input
+carries a five-file repository, with a check program that applies the answer's diff with `git apply`
+and runs hidden tests with `unittest` and pytest, and on the Linux runner's Bubblewrap wall it gives
+the 4 expected verdicts of 4 (the fix passes; a change to the docs only, a diff that does not apply
+and an answer that ships tests of its own fail). Two things stay open. The cell holds only the host's
+programs and the verifier's tool tree, and cannot install, so pytest came from a virtual environment
+the probe built in that tree beforehand; a WorkBuddy Code task brings its own image with its
+dependencies, and nothing installs a field engine for a drafted exam yet (`src/examiner/draft.ts`).
+Reading the Code subset's images, once the dataset is fetched, shows whether one tool tree can hold
+what its tests need. If it cannot, the Office subset, whose deliverables are files on disk, is the
+next candidate. The probe has not run under the macOS wall.
 
 ## Stage 2: against Harness²
 
@@ -271,8 +279,10 @@ paper's control: the base harness run `k` times with the same selector choosing 
    licence is accepted, `run.ts setup --dataset`, which fetches the Code subset and writes the
    paper's split.
 2. **Without a model.** `run.ts bundle --from starter`, then `run.ts check`: one test task in its
-   container through the job's proxy, the solver dry. Then read whether a verifier cell can apply a
-   patch and run a test (domain fit). Either failing stops stage 1 as written.
+   container through the job's proxy, the solver dry. Before the dataset, `run.ts check
+   --placeholder` runs the same path on the study's own task in `placeholder/`, and `domain-fit.ts`
+   reads whether a verifier cell can apply a patch and run a test (domain fit). Either failing stops
+   stage 1 as written.
 3. **Paid, on the operator's word.** S in two sets of three streams on the 40 tasks: the A/A.
 4. **Paid, on the operator's word.** Campaigns D and U, each opened fresh at a published commit and
    run to a typed ending under the fixed build budget (`AGENTS.md`, section 10, item 9); then their

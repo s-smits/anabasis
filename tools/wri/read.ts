@@ -103,6 +103,7 @@ interface PractisedSession {
   readonly read: readonly PracticeCandidate[];
   readonly round: {
     readonly practice: readonly Solve[];
+    /** The new side's solves in each comparison of a harness the session froze, finished or not. */
     readonly scoring: readonly Solve[];
     /** The scored tasks a practice solve of the session ran before the comparison that scored
      *  them began: a task released after a comparison scored it was not exposed to it. */
@@ -111,7 +112,7 @@ interface PractisedSession {
 }
 
 /** Lanes 17 to 19: one session's practice, and what its comparison then showed of it. */
-function practiceTriggers(log: Index, { build, changed, child, read, round }: PractisedSession): Trigger[] {
+function practiceTriggers(log: Index, { build, changed, read, round }: PractisedSession): Trigger[] {
   const { session, finished, calls } = build;
   // A practice solve's condition names the state it ran under, so the log says by digest whether
   // the harness that was measured is one the Builder tried: an edit made with the shell leaves no
@@ -163,7 +164,6 @@ function practiceTriggers(log: Index, { build, changed, child, read, round }: Pr
   );
   const quickWins = round.scoring.filter(
     (solve) =>
-      solve.harness === child &&
       solve.outcome === "pass" &&
       wonTasks.has(`${String(solve.comparison)} ${solve.version}`) &&
       solve.seconds < solve.wallSeconds * SMALL_DEADLINE_SHARE &&
@@ -292,7 +292,7 @@ function harnessTriggers(log: Index): Trigger[] {
     const practice = practiceOf(log, build);
     const round = {
       practice,
-      scoring: compared.flatMap((each) => each.scoring),
+      scoring: compared.flatMap(({ own, scoring }) => scoring.filter((solve) => solve.harness === own.fresh)),
       exposed: new Set(
         compared.flatMap(({ scoredSet, began }) =>
           [...scoredSet].filter((version) =>

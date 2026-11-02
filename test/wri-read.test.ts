@@ -761,8 +761,18 @@ describe("the reader of comparisons the campaign command named apart from its Bu
         ? { ...event, data: { ...event.data, frontier: { of: ["v1", "v2"], differences: [3, 0] } } }
         : event,
     );
-    const quick = overview(onObjective).triggers.find(({ name }) => name === "WIN AT A SMALL WALL SHARE");
-    expect(quick?.detail).toContain("b-1: 2 passed solves of tasks the new harness won");
+    const quick = (read: readonly LogEvent[]) =>
+      overview(read).triggers.find(({ name }) => name === "WIN AT A SMALL WALL SHARE")?.detail;
+    expect(quick(onObjective)).toContain("b-1: 2 passed solves of tasks the new harness won");
+    // A led session is still open when its comparisons report: until 2 November its quick wins were
+    // keyed on the harness it finished with, and seven led campaigns read none (WRI lane 19).
+    const open = onObjective.map(
+      (event): LogEvent =>
+        event.kind === BUILD_FINISHED
+          ? { ...event, kind: "build.checkpoint", data: { session: "b-1", harness: "hc" } }
+          : event,
+    );
+    expect(quick(open)).toContain("b-1: 2 passed solves of tasks the new harness won");
   });
 
   it("reads a task its report's test names by the difference that report recorded", () => {

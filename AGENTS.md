@@ -46,7 +46,7 @@ attributes the difference to the harness. Every mechanism serves one question:
 A comparison in code answers it (section 7). Both harnesses solve the same held-out tasks afresh,
 under one setting, on terms logged before the first solve. A hidden check program decides each
 answer's validity and the Referee rules each rejection, so every task becomes a win, a loss or a tie
-by its score over validity, the objective and the bill. A one-sided paired sign-flip test over those
+by its score over validity and the objective. A one-sided paired sign-flip test over those
 scores reads a **step** or nothing, and a step promotes. The wider aim is for a built system with a
 cheaper solver to match a bare system with a more expensive solver. That requires a separate
 evaluation (`compare-systems`).
@@ -67,7 +67,7 @@ factor it affects, or the separate purpose it serves. Recorded values live in `d
   (`src/campaign/climb.ts`); promotions added up across campaigns make no climb. The milestone, six
   confirmed promotions in one real campaign and then in a second domain, is for observation only
   (a promotion is confirmed when the last starter comparison of its epoch reads the reference
-  above the starter without the bill at its level: `confirmed`, `src/campaign/climb.ts`),
+  above the starter at its level: `confirmed`, `src/campaign/climb.ts`),
   so no prompt, tool or move names a count.
 - **2. Honesty**: could a gain be chance or drift? An A/A comparison beside every comparison, the
   reference's first solve of each task against its second, measures it. One reading clears between
@@ -287,15 +287,14 @@ rejection ruled `check-defect`, `unclear` or not yet ruled sets the task aside f
 harnesses. `provider`, `sandbox-crash`, `killed`, `moved-files`, `check` and
 `verifier` are non-results: they are retried and excluded from pairings.
 
-**The tally** (`pointsOf`, `WEIGHTS`, `src/kernel/compare.ts`) weighs three measures: validity
-0.6, the objective 0.3 and the bill 0.1. The objective and the bill count only between two valid
-answers, so a refused answer is never the better one, and two answers closer than 1% by the
-objective tie on it.
+**The tally** (`pointsOf`, `WEIGHTS`, `src/kernel/compare.ts`) weighs two measures: validity
+0.6 and the objective 0.3. The objective counts only between two valid answers, so a refused
+answer is never the better one, and two answers closer than 1% by it tie on it. What a solve
+billed is reported and decides nothing.
 
 **The test** is an exact one-sided sign-flip test on the nonzero task scores; ties are excluded. A
-step is read on the scores without the bill (0.02 by default, kept by each campaign's opening),
-so the bill alone never promotes; from 25 to 31 October it had to clear with the bill as well. With equal margins it clears at 6 to
-0, 8 to 1, 10 to 2 or 12 to 3 at 0.02.
+step is read on these scores at the level (0.02 by default, kept by each campaign's opening).
+With equal margins it clears at 6 to 0, 8 to 1, 10 to 2 or 12 to 3 at 0.02.
 
 **The reading** is one of `step`, `no-step`, `not-scored`, `check-defects` and `no-change`.
 `not-scored` tested nothing, while `no-step` tested and found no gain.

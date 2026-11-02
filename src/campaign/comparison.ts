@@ -47,7 +47,7 @@ import { type Worth, worthOf } from "./climb.ts";
 
 /**
  * A `step` requires the new harness to clear the fixed level against the reference on its task
- * scores without the bill (`readsStep`, `compare.ts`). A comparison that tallied no task
+ * scores (`readsStep`, `compare.ts`). A comparison that tallied no task
  * is `not-scored`: it tested nothing. Calling it `no-step` would imply a test found no gain.
  * Eight unscored rounds were labelled `no-step` on 8 October. `check-defects` marks a comparison
  * stopped for check defects; `no-change` marks a session with no new harness to compare. Historical reports from
@@ -58,14 +58,12 @@ import { type Worth, worthOf } from "./climb.ts";
  * starter comparison after a promotion (`decide.ts`).
  */
 type Reading = "step" | "no-step" | "regressed" | "narrow" | "not-scored" | "check-defects" | "no-change";
-/** One test's tally, each task's score, and its p; and each task's score without the bill, which a
- *  report from before 26 October holds none of. */
-type Tested = Omit<ReturnType<typeof scored>, "unbilled"> & { readonly unbilled?: readonly number[] };
+/** One test's tally, each task's score, and its p; and, in a report of 26 October to 2 November,
+ *  each task's score without the bill, which its step was read on (`scoresIn`, `compare.ts`). */
+type Tested = ReturnType<typeof scored> & { readonly unbilled?: readonly number[] };
 /** One of the two sets a comparison fixes at its start (`retained`, `Fixed`): the tasks that
  *  entered it, which are its denominator, those of them set aside, and its tally and test. */
-/** `of` names the task of each difference; a report from before 14 October holds none. `unbilled`
- *  holds each task's score without the bill in the same order, which the step is read on
- *  (`readsStep`). */
+/** `of` names the task of each difference; a report from before 14 October holds none. */
 type Entered = Tested & {
   readonly tasks: readonly string[];
   readonly aside: readonly string[];
@@ -470,14 +468,14 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
   const mirrored = fixed.solves >= 2 && fixed.solves % 2 === 0 ? itself() : null;
   const aa = mirrored === null ? null : scored(mirrored);
   const tested = scored(pairs);
-  const stepped = readsStep(tested.unbilled, fixed.level);
+  const stepped = readsStep(tested.differences, fixed.level);
   const reading: Reading = pairs.length === 0 ? "not-scored" : stepped ? "step" : "no-step";
   return {
     scored: {
       ...tested,
       unsolved: pairs.filter(unsolved).length,
-      detectable: detectable(tested.unbilled, fixed.level),
-      falseRate: power(tested.unbilled, 0.5, fixed.level),
+      detectable: detectable(tested.differences, fixed.level),
+      falseRate: power(tested.differences, 0.5, fixed.level),
     },
     frontier: sets.frontier,
     retained: sets.retained,
@@ -491,7 +489,7 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
         : {
             ...aa,
             flips: flipsOf(mirrored),
-            detectable: detectable(aa.unbilled, fixed.level),
+            detectable: detectable(aa.differences, fixed.level),
           },
     counted: pairs.length === first.length ? null : scored(first),
     versions: pairs.map(({ task }) => task),
@@ -513,7 +511,7 @@ function pointsIn(pairs: readonly Paired[]): Measures {
   const each = pairs.map(pointsOf);
   const sum = (measure: keyof Measures) =>
     wholePoints(each.reduce((total, points) => total + points[measure], 0));
-  return { validity: sum("validity"), objective: sum("objective"), bill: sum("bill") };
+  return { validity: sum("validity"), objective: sum("objective") };
 }
 
 /** The mean billed dollars of a counted solve under one side of `pairs`, or null where none billed. */

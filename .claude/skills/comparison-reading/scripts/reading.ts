@@ -47,8 +47,9 @@ export interface Row {
   readonly fresh: string | null;
   readonly level: number;
   readonly solves: number | null;
-  /** The test the step is read on, and the same tasks without the bill; null where nothing was
-   *  tallied, and `unbilled` null in a report without those scores. */
+  /** The test as tallied, and the same tasks without the bill in a report of 26 October to
+   *  2 November, which the step read; null where nothing was tallied, and `unbilled` null in any
+   *  other report. */
   readonly scored:
     | (Tested & {
         /** The share detected four times in five: null where none is, undefined where unrecorded. */
@@ -202,7 +203,7 @@ function testLines({ scored, unbilled, frontier, retained }: Row): string[] {
         ? "none"
         : `${wlt(retained)} p ${pOf(retained.p)}`;
   return [
-    `  scored ${wlt(scored)} p ${pOf(scored.p)}, ${String(untied)} untied; without the bill ${unbilled === null ? "not recorded (a report before 26 October)" : `${wlt(unbilled)} p ${pOf(unbilled.p)}`}`,
+    `  scored ${wlt(scored)} p ${pOf(scored.p)}, ${String(untied)} untied${unbilled === null ? "" : `; without the bill (a report of 26 October to 2 November, which the step read) ${wlt(unbilled)} p ${pOf(unbilled.p)}`}`,
     `  detects four times in five ${scored.detectable === undefined ? "a share not recorded" : `${percent(scored.detectable)} of untied tasks won`}; false rate ${scored.falseRate === null ? "not recorded" : `${(100 * scored.falseRate).toFixed(1)}%`}`,
     `  frontier ${frontier === null ? "none" : `${wlt(frontier)} p ${pOf(frontier.p)}`}; retained ${retainedSaid}`,
   ];

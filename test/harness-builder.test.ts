@@ -627,7 +627,7 @@ describe("a campaign run by its log", () => {
     // The points each measure of the score gave it, all by validity here, and its cost beside
     // them, read against the bar and reported only (the plan's W).
     expect(report).toMatch(
-      /tied 0, the score giving it [1-9]\d* points by validity, 0 by the objective and 0 by the bill\./,
+      /tied 0, the score giving it [1-9]\d* points by validity and 0 by the objective\./,
     );
     expect(report).toContain("1 promotion attempt this epoch (bar 3 after set-up): met");
     expect(report).not.toContain("ladder");

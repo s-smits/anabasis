@@ -206,22 +206,22 @@ export function pairLines(
       ),
     }),
   );
-  const { wins, losses, ties, p, differences, unbilled } = scored(pairs);
+  const { wins, losses, ties, p, differences } = scored(pairs);
   // Exchanging the sides negates every score, so the other way is the same scores negated.
-  const other = { differences: differences.map((one) => -one), unbilled: unbilled.map((one) => -one) };
+  const other = differences.map((one) => -one);
   const carried = pairs.map((pair) => carriedBy(pointsOf(pair)));
   const by = (measure: string) => carried.filter((one) => one === measure).length;
   const [x, y] = [candidate.name, baseline.name];
   const shift = detectable(differences, at.level);
-  const reading = readsStep(unbilled, at.level)
-    ? `${x} is better: a step at the level ${String(at.level)}, without the bill`
-    : readsStep(other.unbilled, at.level)
-      ? `${y} is better: a step at the level ${String(at.level)}, without the bill`
+  const reading = readsStep(differences, at.level)
+    ? `${x} is better: a step at the level ${String(at.level)}`
+    : readsStep(other, at.level)
+      ? `${y} is better: a step at the level ${String(at.level)}`
       : `no step either way at the level ${String(at.level)}. That is no proof they are equal: ${shift === null ? "too few tasks are untied for any difference to show" : `this size shows four times in five a side that wins ${String(Math.round(shift * 100))}% of the untied tasks`}`;
   return [
     `${x} against ${y}, on the ${String(pairs.length)} tasks both solved ${String(at.solves)} times:`,
-    `  ${x} won ${String(wins)}, lost ${String(losses)}, tied ${String(ties)}; untied tasks carried by validity ${String(by("validity"))}, by the objective ${String(by("objective"))}, by the bill alone ${String(by("bill"))}`,
-    `  p ${p.toFixed(3)} that ${x} is better, ${flipP(other.differences).toFixed(3)} that ${y} is; ${reading}`,
+    `  ${x} won ${String(wins)}, lost ${String(losses)}, tied ${String(ties)}; untied tasks carried by validity ${String(by("validity"))}, by the objective ${String(by("objective"))}`,
+    `  p ${p.toFixed(3)} that ${x} is better, ${flipP(other).toFixed(3)} that ${y} is; ${reading}`,
     `  ${String(solvedBoth.length - both.length)} more tasks both solved are set aside on a rejection the Referee did not rule earned`,
   ];
 }

@@ -16,7 +16,7 @@
  * this observer, unless --here is named. A missing peer is a warning and exit 1. No local state path is sent to another machine.
  */
 import { comparisonFloor } from "#src/campaign/admission.ts";
-import { readsStepEitherWay, testOf } from "#src/kernel/compare.ts";
+import { readsStepEitherWay, scoresIn, testOf } from "#src/kernel/compare.ts";
 import type { EventKind, LogEvent } from "#src/kernel/log.ts";
 import { degradations, traceKind, tracesIn } from "#src/kernel/trace.ts";
 import { billedAll } from "#src/kernel/meter.ts";
@@ -203,10 +203,9 @@ function factorsOf(data: JsonObject): { said: string; look: boolean } {
   const informative = asRecord(asRecord(data.valid)?.informative)?.old;
   const level = isNumber(data.level) ? data.level : 0.02;
   const floor = comparisonFloor(level);
-  // The A/A is read as a step is since 1 November: on the scores without the bill, either way.
+  // The A/A is read as a step is, either way, on the scores the step is read on (`scoresIn`).
   const noise = asRecord(data.noise);
-  const found = Array.isArray(noise?.unbilled) ? noise.unbilled : noise?.differences;
-  const scores = Array.isArray(found) ? found.filter(isNumber) : undefined;
+  const scores = Array.isArray(noise?.differences) ? scoresIn(noise) : undefined;
   const aa = scores === undefined ? null : testOf(scores);
   const clears = scores !== undefined && readsStepEitherWay(scores, level);
   const worth = asRecord(data.worth);

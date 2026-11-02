@@ -31,7 +31,7 @@
 import { comparisonsOf } from "#src/campaign/ground.ts";
 import { short } from "#src/campaign/move.ts";
 import { campaignOf as handoverOf, type Handover, nextBound, openSteps } from "#src/campaign/handover.ts";
-import { differenceOf, readsStepEitherWay } from "#src/kernel/compare.ts";
+import { differenceOf, readsStepEitherWay, scoresIn } from "#src/kernel/compare.ts";
 import type { Condition } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { pairsReported } from "#src/kernel/reports.ts";
@@ -447,8 +447,6 @@ function comparisonTriggers(log: Index): Trigger[] {
     }
     const flips = [...seen.values()].filter((outcomes) => outcomes.size > 1).length;
     const noise = asRecord(last.noise);
-    const apart = items(noise?.differences).filter(isNumber);
-    const unbilled = Array.isArray(noise?.unbilled) ? noise.unbilled.filter(isNumber) : undefined;
     return [
       ...(moved > 0
         ? [
@@ -480,7 +478,7 @@ function comparisonTriggers(log: Index): Trigger[] {
         : [
             fired(
               "REFERENCE AGAINST ITSELF",
-              `${session}: ${String(count(noise.wins))} won, ${String(count(noise.losses))} lost and ${String(count(noise.ties))} tied between two samples of the reference harness${readsStepEitherWay(unbilled ?? apart, level) ? ", which reads a step where none can be" : ""}`,
+              `${session}: ${String(count(noise.wins))} won, ${String(count(noise.losses))} lost and ${String(count(noise.ties))} tied between two samples of the reference harness${readsStepEitherWay(scoresIn(noise), level) ? ", which reads a step where none can be" : ""}`,
             ),
           ]),
     ];

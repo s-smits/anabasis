@@ -11,7 +11,7 @@
  * had promoted once each and none twice, and no view said at which epoch a campaign stood or what
  * its tasks had done since the promotion. `runs view` prints the rows.
  */
-import { readsStep, type Tally, testOf } from "../kernel/compare.ts";
+import { readsStep, scoresIn, type Tally, testOf } from "../kernel/compare.ts";
 import { conditionsOf } from "../kernel/condition.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { lastReports, type Reported } from "../kernel/reports.ts";
@@ -246,17 +246,12 @@ function falsePromotionOf(
   const read = reports.flatMap((each) => {
     const noise = asRecord(each.data.noise);
     if (!Array.isArray(noise?.differences)) return [];
-    const differences = noise.differences.filter(isNumber);
     return [
-      {
-        level: levelOf(each),
-        differences,
-        unbilled: Array.isArray(noise.unbilled) ? noise.unbilled.filter(isNumber) : differences,
-      },
+      { level: levelOf(each), differences: noise.differences.filter(isNumber), scores: scoresIn(noise) },
     ];
   });
-  const aaComparisons = read.filter(({ unbilled, level }) => readsStep(unbilled.map(Math.abs), level));
-  const errors = aaComparisons.filter(({ unbilled, level }) => readsStep(unbilled, level)).length;
+  const aaComparisons = read.filter(({ scores, level }) => readsStep(scores.map(Math.abs), level));
+  const errors = aaComparisons.filter(({ scores, level }) => readsStep(scores, level)).length;
   const rates = attempts.map(rateOf);
   return {
     attempts: attempts.length,
@@ -276,7 +271,7 @@ function starterOf({ reference, starter_tally: tally, confirmed }: Epoch): strin
   if (reference === "starter") return "";
   if (tally === null) return ", against the starter unread";
   const read = confirmed === true ? "a step, so its promotion is confirmed" : "no step";
-  return `, against the starter without the bill ${String(tally.wins)} won, ${String(tally.losses)} lost, ${String(tally.ties)} tied, ${read}`;
+  return `, against the starter ${String(tally.wins)} won, ${String(tally.losses)} lost, ${String(tally.ties)} tied, ${read}`;
 }
 
 /** One line an epoch, as the view prints them, each harness `called` as the view names it, and the

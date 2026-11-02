@@ -194,14 +194,11 @@ export interface ComparisonBar {
   readonly level: number;
   /** Its scored tasks, as its start fixed them. */
   readonly tasks: number;
-  /** The tally its step is read on (`keptOf`, `server/moves.ts`): without the bill, or as scored
-   *  in a report from before 26 October; and its test (`flipP`), null without one. */
+  /** The tally its step is read on (`steppedOf`, `server/moves.ts`), and its test (`flipP`), null
+   *  without one. */
   readonly tally: Tally | null;
   readonly reading: string | null;
   readonly p: number | null;
-  /** The tally and test with the bill, where the report holds both and they read apart; the bill
-   *  weighs in this tally and promotes nothing (`readsStep`, `src/kernel/compare.ts`). */
-  readonly withBill: { readonly tally: Tally; readonly p: number } | null;
   /** Its scored tasks by outcome on the same scores as `tally`, computed from `pairsReported` and the report's `aside`, and the
    *  rest of the tasks it fixed by why they were left out; the two sum to `tasks`. Null before it
    *  reports. */
@@ -211,12 +208,11 @@ export interface ComparisonBar {
    *  read as a share). Null before it reports. */
   readonly valid: { readonly old: Share; readonly fresh: Share } | null;
   /** The reference against itself beside the test, where the comparison solved two a side, read as
-   *  `tally` is. `unbilled` is each task's score without the bill, or its score where a report
-   *  written before 26 October holds none. */
+   *  `tally` is, with each task's score (`scoresIn`). */
   readonly noise: {
     readonly tally: Tally;
     readonly p: number;
-    readonly unbilled: readonly number[];
+    readonly scores: readonly number[];
   } | null;
   /** Its won and its lost tasks by the measure that carried each (`carriedBy`,
    *  `src/kernel/compare.ts`). A headline of 28 won, 1 lost, 1 tied read alike whether the new
@@ -257,7 +253,7 @@ export interface Promotion {
   readonly despite: string | null;
   /** It names the starter: the campaign returned to it. */
   readonly toStarter: boolean;
-  /** The promoted harness against the starter, without the bill and from its own side, in the last
+  /** The promoted harness against the starter, on the scores its step reads and from its own side, in the last
    *  starter comparison of its epoch; null before one reports. It is confirmed where that tally
    *  reads a step at the comparison's level (`epochsOf`, `src/campaign/climb.ts`). */
   readonly againstStarter: Tally | null;
@@ -492,7 +488,7 @@ export interface Sensitivity {
    *  October). */
   readonly unsolved: number;
   readonly flagged: number;
-  readonly points: { readonly validity: number; readonly objective: number; readonly bill: number } | null;
+  readonly points: { readonly validity: number; readonly objective: number } | null;
   /** The comparison of the same two harnesses before this one, and the tasks both scored. */
   readonly overlap: { readonly with: string; readonly tasks: number } | null;
   /** The mean billed dollars of a counted solve under each harness. */

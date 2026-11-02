@@ -182,7 +182,7 @@ export function safeguardTriggers(log: Index): Trigger[] {
     const harness = `${short(text(data.harness))} ${said(joined)} joined at level ${String(level)}`;
     const without = joinedTest(reports, authored);
     const valid = measuredOf(log.events, rests, "validity");
-    return [{ level, harness, without, valid, unbilled: measuredOf(log.events, rests, "unbilled") }];
+    return [{ level, harness, without, valid, scored: measuredOf(log.events, rests, "scored") }];
   });
   const author = promotions.filter(({ without, level }) => flipP(without) > level);
   const beyond = promotions.filter(({ valid, level }) => flipP(valid) > level);
@@ -206,8 +206,8 @@ export function safeguardTriggers(log: Index): Trigger[] {
             "SAFEGUARD-9 PROMOTION BEYOND VALIDITY",
             beyond
               .map(
-                ({ harness, valid, unbilled }) =>
-                  `${harness}, ${said(valid)} on validity alone, ${said(unbilled)} without the bill by the current score`,
+                ({ harness, valid, scored }) =>
+                  `${harness}, ${said(valid)} on validity alone, ${said(scored)} by the current score`,
               )
               .join("; "),
           ),

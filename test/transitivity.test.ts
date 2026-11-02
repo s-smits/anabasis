@@ -9,7 +9,7 @@ import { runSync } from "../src/meta/subprocess.ts";
 import { roundSolves } from "./helpers/logged-round.ts";
 import { present } from "./helpers/matchers.ts";
 
-it("reads two comparisons from one stream, each with its whole draw, and scores each with and without the bill", () => {
+it("reads two comparisons from one stream, each with its whole draw, and scores each without the bill and as stored with it", () => {
   const pair: Paired = {
     task: "v1",
     old: [true, true],
@@ -59,7 +59,8 @@ it("reads two comparisons from one stream, each with its whole draw, and scores 
           level: 0.02,
           reading: "no-step",
           scored: {},
-          frontier: { tasks: [pair.task], of: [pair.task], differences: [differenceOf(pair)] },
+          // A report of 25 October stored its scores with the bill, which decided this task.
+          frontier: { tasks: [pair.task], of: [pair.task], differences: [10] },
           retained: "unmeasured",
         },
       },
@@ -87,10 +88,9 @@ it("reads two comparisons from one stream, each with its whole draw, and scores 
   expect(output.match(/of 2 tasks/g)).toHaveLength(2);
   expect(new TextDecoder().decode(result.stderr)).toBe("");
   expect(result.exitCode).toBe(0);
-  expect(differenceOf(pair, "unbilled")).toBe(0);
+  expect(differenceOf(pair)).toBe(0);
   expect(output.match(/frontier without the bill  0-0-1/g)).toHaveLength(2);
   expect(output.match(/frontier with the bill     1-0-0/g)).toHaveLength(2);
-  expect(output.match(/frontier yes, retained yes/g)).toHaveLength(2);
 });
 
 it("reads settled wrong passes as failures and matches the settled report's tally", () => {
@@ -140,5 +140,4 @@ it("reads settled wrong passes as failures and matches the settled report's tall
   const output = new TextDecoder().decode(result.stdout);
   expect(output).toContain("frontier without the bill  6-0-0, untied 6, p 0.0156");
   expect(output).toContain("frontier with the bill     6-0-0, untied 6, p 0.0156");
-  expect(output).toContain("frontier yes, retained yes");
 });

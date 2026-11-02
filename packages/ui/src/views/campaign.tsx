@@ -102,9 +102,8 @@ function Readouts({ reading }: { reading: CampaignReading }) {
       : `${plural(promotions.length, "promotion")}, ${String(promotions.filter((each) => each.confirmed).length)} confirmed against the starter${last.despite === null && !last.toStarter ? "" : lastWay}`;
   const lastReading = row.lastReading;
   const lastBar = reading.comparisons.find((bar) => bar.id === lastReading?.id);
-  // Beside the step's tally, the one with the bill where the report holds both, else what carried its wins.
-  const carried = lastBar?.carried == null ? "" : `; won on ${carriedText(lastBar.carried.won)}`;
-  const beside = lastBar?.withBill == null ? carried : `; with the bill ${tallyText(lastBar.withBill.tally)}`;
+  // Beside the step's tally, what carried its wins.
+  const beside = lastBar?.carried == null ? "" : `; won on ${carriedText(lastBar.carried.won)}`;
   const ended = row.ending;
   const advised = reading.led && nextMove !== null && !HOSTS_OWN.has(nextMove.move);
   const open =
@@ -129,7 +128,7 @@ function Readouts({ reading }: { reading: CampaignReading }) {
         detail={
           lastReading === null
             ? "no comparison has reported"
-            : `${lastReading.reading} in ${lastReading.id}, won–lost–tied${lastBar?.withBill == null ? "" : " without the bill"}, ${pText(lastBar?.p ?? null)}${beside}`
+            : `${lastReading.reading} in ${lastReading.id}, won–lost–tied, ${pText(lastBar?.p ?? null)}${beside}`
         }
         tone={lastReading === null ? "neutral" : (READING_TONE.get(lastReading.reading) ?? "neutral")}
       />

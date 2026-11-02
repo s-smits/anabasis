@@ -88,20 +88,12 @@ export function comparisonsTold(steps: readonly Handover[]): string[] {
     const reading = step.step === "comparison" ? READ.get(step.reading ?? "") : undefined;
     if (step.step !== "comparison" || step.tally === null || reading === undefined) return [];
     const { wins, losses, ties } = step.tally;
-    // The step is read without the bill (since 26 October), so where the bill moved the tally the
-    // line gives both: on 1 November a Builder was told "13 won, 1 lost, 2 tied, which reads no
-    // step" of a comparison whose tally without the bill was 3-0 with 13 tied.
-    const { unbilled } = step;
-    const apart =
-      unbilled === null || (unbilled.wins === wins && unbilled.losses === losses && unbilled.ties === ties)
-        ? ""
-        : `, and without the bill, which the step is read on, ${String(unbilled.wins)} won, ${String(unbilled.losses)} lost, ${String(unbilled.ties)} tied`;
     const held =
       step.modelTurns === null
         ? ""
         : `, each solve held to ${plural(step.modelTurns, "turn")} of the solver's`;
     return [
-      `- Harness ${short(step.fresh)} against harness ${short(step.old)}, one comparison over ${plural(wins + losses + ties, "task")}${held}: ${String(wins)} won, ${String(losses)} lost, ${String(ties)} tied${apart}, which reads ${reading}.`,
+      `- Harness ${short(step.fresh)} against harness ${short(step.old)}, one comparison over ${plural(wins + losses + ties, "task")}${held}: ${String(wins)} won, ${String(losses)} lost, ${String(ties)} tied, which reads ${reading}.`,
     ];
   });
 }

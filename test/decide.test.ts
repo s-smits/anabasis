@@ -604,6 +604,9 @@ describe("unread harnesses and tasks", () => {
         PLAN,
       ),
     ).not.toMatchObject({ fresh: "starter" });
+    // Tasks written since and all released for practice leave the starter comparison nothing to draw.
+    const releasedAll = [...written, event("task.state", { version: "v13", state: "released" })];
+    expect(decide([...releasedAll, built("b-2", "h2")], PLAN)).not.toMatchObject({ fresh: "starter" });
 
     expect(move(PROMOTED)).toMatchObject({ move: "examine" });
     expect(move([...PROMOTED, ...examined("x-9")])).toMatchObject({ move: "build" });

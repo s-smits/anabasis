@@ -395,7 +395,8 @@ function carrierTrigger(log: Index): Trigger[] {
 }
 
 /** `PROMOTION UNCONFIRMED` (lane 24): each promotion whose epoch has no starter comparison, or whose
- *  last one does not read the reference above the starter (`confirmed`, `src/campaign/climb.ts`).
+ *  first one that tallied a task does not read the reference above the starter (`confirmed`,
+ *  `src/campaign/climb.ts`; the last one until 2 November).
  *  On 1 November none of the gate ablation's five promotions and the validity arm's one was
  *  confirmed, and lanes 24 and 28 found it by reading the moves. */
 function unconfirmedTrigger(log: Index): Trigger[] {

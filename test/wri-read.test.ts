@@ -464,6 +464,44 @@ describe("the reader of a round compared with another harness than its session s
     expect(withUnbilled([0, 0, 0, 0])).not.toBe(supported);
     expect(supported).toBe(baselineNoise);
   });
+
+  it("names a reading the set-aside moves only where the tests without the bill disagree", () => {
+    // Billed, the counted test clears (six wins) and the scored one does not; without the bill
+    // both read the same six wins, or the counted test loses them.
+    const moved = (counted: readonly number[]) =>
+      overview(
+        log.map((each) =>
+          each.kind === REPORTED
+            ? {
+                ...each,
+                data: {
+                  ...each.data,
+                  level: 0.02,
+                  aside: ["t9"],
+                  counted: {
+                    wins: 6,
+                    losses: 0,
+                    ties: 0,
+                    p: 0.016,
+                    differences: [1, 1, 1, 1, 1, 1],
+                    unbilled: [...counted],
+                  },
+                  scored: {
+                    wins: 5,
+                    losses: 1,
+                    ties: 0,
+                    p: 0.11,
+                    differences: [1, 1, 1, 1, 1, -1],
+                    unbilled: [1, 1, 1, 1, 1, 1],
+                  },
+                },
+              }
+            : each,
+        ),
+      ).triggers.filter(({ name }) => name === "READING MOVES WITH THE SET-ASIDE");
+    expect(moved([1, 1, 1, 1, 1, 1])).toHaveLength(0);
+    expect(moved([0, 0, 0, 0, 0, 0])).toHaveLength(1);
+  });
 });
 
 describe("the reader of the load a comparison's solves started under", () => {

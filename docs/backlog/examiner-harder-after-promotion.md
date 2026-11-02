@@ -90,19 +90,38 @@ instead of running out of informative tasks after one or two promotions.
     epoch's, all on the objective. Three readings fit and are not yet split: the tasks are aimed at
     the reference, its gains do not carry to new kinds of task, or objective noise (in the A/A
     comparisons of epoch 1, 53% of tasks were untied). Confirmation decides no move.
-- **Found on the way, not yet decided.** Each holds in the source at f8fc8627e; none has a live
-  case counted yet.
-  - A starter comparison is admitted on the whole frontier's size, so it can score 1 to 5 tasks,
-    where no reading can confirm (`heldSince`, `src/campaign/decide.ts`; `sized`,
-    `src/campaign/admission.ts`).
-  - The prompt raises the target after every promotion with no upper limit, and calls a failure at
-    a grade the reference usually answers "chance, not a better method", which steers the Examiner
-    away from the tasks where the test is strongest.
-  - `referenceHasValidAnswer` also turns true on the Examiner's own answer (`taskRecords`,
-    `src/kernel/reports.ts`). 2,085 of 2,269 held tasks carry one, so `awaiting` was empty at the
-    end of all 74 real campaigns. A task both sides fail leaves only by practice release, which
-    takes such tasks first (`releaseOrder`) at most down to the admission floor (`practiceDue`).
-  - A comparison with one informative task counts against patience (`roomOf`, `stopRule`) even
-    where it has fewer than six untied tasks and could not step.
-  - The head comment of `scoredSet` (`src/campaign/round.ts`) still says a step may not lose more
-    pairs than it wins; one test has decided since the retained test went.
+- **2 November, about 01:30. Five points found on the way, then read against the whole of their
+  owners** (`decide.ts`, `admission.ts`, `climb.ts`, `round.ts`, `checkpoint.ts`, `reports.ts`,
+  `compare.ts`, `src/examiner/prompt.ts`). Four were not defects:
+  - *A starter comparison may score 1 to 5 tasks.* True: `heldSince` starts one on a single task
+    held since, and admission counts the whole frontier. But its first purpose is room ("whether
+    they leave it room before a Builder session is paid for"), which one task can show; only
+    confirmation needs six untied tasks. The 6 starter comparisons in the archive scored 10 to 32
+    tasks, and each had six untied or more. Left as it is.
+  - *The prompt's target rises with no upper limit.* Refuted. "Above the highest grade the reference
+    answers in every solve" moves with the reference's own record, so it stops where the reference
+    starts failing, at the power peak. "Chance, not a better method" is said only of room at a grade
+    the reference answers every solve.
+  - *`referenceHasValidAnswer` turns true on the author's answer.* Intended: the head comment of
+    `poolOf` says an author's answer settles a task's feasibility for good, so that a short budget
+    never sends it to a person. The field is now named for what it holds,
+    `independentValidAnswer`. A task both sides fail in every solve then stays a tie on the
+    frontier; 6 of the 1,699 recorded ties were such.
+  - *A comparison that cannot step counts against patience.* Whether it could step is not known
+    from the reference's side: a candidate can untie a task the reference answers every time with
+    a better answer than any on record. 12 of 49 candidate comparisons in the archive (harnesses
+    that a whole session changed) had fewer than six untied tasks and read room, so counted. Left as
+    it is.
+  - *The `scoredSet` head comment.* Stale, and corrected, with three docs that said admission
+    counts informative tasks (it counts frontier tasks) or that exhaustion pools the other side's
+    solves (only the reference's own count since the v0.9.0 review).
+
+  The confirmation question above was then narrowed. Split by whether the comparison that promoted
+  the reference had scored the task, the 6 starter comparisons read the reference against the
+  starter 49 won, 20 lost, 20 tied on older tasks it had scored, 12 won, 0 lost, 4 tied on older
+  tasks it had not, and 23 won, 33 lost, 5 tied on the epoch's own. So the winner's curse does not
+  explain the own-epoch losses: older tasks the promotion never saw still go to the reference. Two
+  readings remain, tasks aimed at the reference and gains that do not carry to the new kinds of
+  task, and the 16 unseen older tasks come from 3 campaigns only. Splitting them takes blind reach
+  grades of the own-epoch and older tasks from graders who read the public inputs alone, set beside
+  each side's results (`grades.ts`, examiner-complexity): grader sessions, and no campaign solve.

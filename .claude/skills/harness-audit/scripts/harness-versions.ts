@@ -198,7 +198,9 @@ function madeOf(events: readonly LogEvent[], digest: string, starter: string) {
   }
   // A led session practises states it never freezes: until 2 November each read as made by no
   // record, 28 of them in seven campaigns (lane 15), though the log's practice solves name each.
-  if (digest === starter) return { made: "the Starter Built Harness as this checkout writes it", parent: null };
+  if (digest === starter) {
+    return { made: "the Starter Built Harness as this checkout writes it", parent: null };
+  }
   if (practiceRan(events).some(({ under }) => under.harness === digest)) {
     return { made: "a state its Builder practised and never froze", parent: null };
   }

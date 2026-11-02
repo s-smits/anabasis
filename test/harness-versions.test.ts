@@ -138,9 +138,9 @@ describe("a campaign its Builder leads", () => {
       (dir) => writeHarness(dir, { ...EXAMPLE, guide: `${EXAMPLE.guide}\nCompared.` }),
       ledStates,
     );
-    for (const [harness, comparison] of [
-      [practised, undefined],
-      [compared, "g-1"],
+    for (const [harness, inside] of [
+      [practised, {}],
+      [compared, { comparison: "g-1" }],
     ] as const) {
       const condition = recordCondition(ledLog, {
         contract: "c1",
@@ -162,7 +162,7 @@ describe("a campaign its Builder leads", () => {
         solve: `s-${harness}`,
         condition,
         task: "v1",
-        ...(comparison === undefined ? {} : { comparison }),
+        ...inside,
       });
     }
     const made = new Map((await versionsOf({ log: ledLog, states: ledStates })).map((v) => [v.digest, v]));

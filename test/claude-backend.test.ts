@@ -14,18 +14,20 @@ import {
   Type,
 } from "@earendil-works/pi-ai";
 import {
+  claudeExecutable,
   claudeProvider,
   REPORTED_COST,
   reportedCost,
   SWEEP_COMPACT_WINDOW,
 } from "../src/agent/backends/claude.ts";
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
-import { capturedJsonParse } from "../src/meta/json-runtime.ts";
+import { capturedJsonParse, capturedJsonStringify } from "../src/meta/json-runtime.ts";
 import { asRecord, isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
+import { anthropicStub } from "./helpers/anthropic-stub.ts";
 
 /** What one launch of the CLI saw: its arguments, its environment and the SDK's lines to it. */
 interface Launch {
@@ -415,4 +417,51 @@ describe("the Claude backend", () => {
     expect(refused.stopReason).toBe("error");
     expect(launches()).toBe(1);
   });
+});
+
+// The real Claude Code binary, against a local stand-in for the API at the address the options name,
+// so the request it builds is read without a credential or a model. The request's `tools` is what the
+// model is offered, the CLI's own tools included, which `--tools` alone does not show.
+describe("Claude Code's request, as the bundled CLI sends it", () => {
+  it("offers the model the session's tools alone with WebSearch off, and the search beside them with it on", async () => {
+    for (const webSearch of [false, true]) {
+      const stub = anthropicStub([{ text: "Done." }]);
+      const own = new AbortController();
+      try {
+        const onKey = claudeProvider(
+          {
+            executable: claudeExecutable(),
+            compaction: "off",
+            home: mkdtempSync(join(home, "real-")),
+            webSearch,
+            baseUrl: stub.url,
+            shutdown: own.signal,
+          },
+          "claude-api",
+        );
+        const model = onKey.getModels().find(({ id }) => id === recorded.id);
+        if (model === undefined) throw new Error(`the catalog has no ${recorded.id}`);
+        const options = { sessionId: `real-${String(webSearch)}`, apiKey: "fake-trial::route" };
+        const said = await onKey.streamSimple(model, solverContext([opening]), options).result();
+        expect(said.errorMessage).toBeUndefined();
+        const offered = stub.offered();
+        expect(offered.length).toBeGreaterThan(0);
+        const builtIn = offered.flat().filter((name) => !name.startsWith("mcp__custom-tools__"));
+        expect(builtIn).toStrictEqual(webSearch ? ["WebSearch"] : []);
+        expect(offered.flat()).toContain("mcp__custom-tools__read");
+        // The route's token is the one credential, sent where the benchmark's proxy reads it.
+        const asked = stub.heard.filter(({ path }) => path === "/v1/messages");
+        expect(asked.map(({ apiKey }) => apiKey)).toStrictEqual(asked.map(() => "fake-trial::route"));
+        // The session's own request is the one offering its tools; Claude Code may also ask the model
+        // for a session title, offering none.
+        const session = asked.find(({ body }) =>
+          (capturedJsonStringify(body.tools) ?? "").includes("custom-tools"),
+        );
+        expect(capturedJsonStringify(session?.body.system)).toContain("You are a solver.");
+      } finally {
+        own.abort();
+        await stub.stop();
+      }
+    }
+  }, 120_000);
 });

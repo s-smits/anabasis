@@ -231,6 +231,56 @@ its venv (`trials.py`), and the spend from the solver's own trace by the kernel'
 (`../shared/scores.ts`). `run.ts read` sets two arms beside each other, or one arm's streams split
 in two, the A/A, as "Metric and statistics" says.
 
+### A Claude solver through Claude Code
+
+The container solver can take its model through Claude Code instead of OpenRouter:
+`pi-solve.ts --provider claude --claude <the CLI>` on a Claude Code login, or `--provider
+claude-api` on an API key. Claude Code is then the transport alone, through the production Claude
+backend (`claudeProvider`, `src/agent/backends/claude.ts`), the one a campaign's Claude solve runs
+on. The loop stays pi's: its system prompt, its turn handling, the model-turn cap and the nudge,
+and its tools, `read`, `bash`, `edit`, `write` and `submit`, which reach the model through the
+backend's MCP server as `mcp__custom-tools__*`. One pi turn is one API message. Claude Code's own
+tools are all off: the solver passes `webSearch: false`, and the backend then gives the CLI
+`tools: []`, which the Agent SDK documents as "Disable all built-in tools" (`sdk.d.ts` of 0.3.311,
+the `tools` option). So a Claude solve is a bare solver on Claude in the starter arm, and the
+built one in a campaign's arm, with no Bash, Read, Edit, WebSearch or other tool of Claude Code's
+that an OpenRouter arm lacks. Every arm `pi-solve.ts` runs takes the same transport once its
+provider names it; Harness²'s own arms run their own agents and are not reached.
+
+`test/claude-backend.test.ts` runs the real bundled CLI against a local stub of the API and reads
+the requests it sends: with WebSearch off they offer only the session's tools, and with it on they
+offer `WebSearch` beside them, which the same assertion catches. `test/studies-pi-solve-claude.test.ts`
+runs `pi-solve.ts` itself that way to a submitted ending, on a login and on an API key.
+
+The container holds no credential. The backend sets `ANTHROPIC_BASE_URL` to `--base-url` (the
+proxy's address without `/v1`, since Claude Code appends `/v1/messages`) and puts `--key`, the
+route's token `{trial}::{route}`, where its account's credential goes. On a login Claude Code sends
+it as `Authorization: Bearer` with the OAuth beta in `anthropic-beta`; on an API key it sends it as
+`x-api-key`. WorkBuddy's proxy reads either as the route token, passes the other headers on, and
+puts `Authorization: Bearer <the route's key>` in its place (`proxy/main.py` and `proxy/sender.py`
+at the pin). With Anthropic's API behind the route and the login as its key, the request that
+leaves the host carries the headers Claude Code sends on a login, the login itself among them, so
+the login's billing can serve a container that never holds it.
+
+What is not yet wired:
+
+- The CLI inside the container is the Agent SDK's Linux build,
+  `@anthropic-ai/claude-agent-sdk-linux-x64`, which `claudeExecutable("linux-x64")` finds where it
+  is installed: natively on a Linux host, and on a Mac only after `bun install --os=linux
+  --cpu=x64`. The mount would carry it beside `pi-solve` (about 280 MB), and
+  `harbor/pi_agent.py` would pass `--provider` and `--claude <mount>/claude` and the proxy URL
+  without `/v1`.
+- The proxy needs a route that speaks Anthropic's protocol (`protocols: ["anthropic"]`), with
+  Anthropic's API as its backend and the login or key as its key, and a harness family of that
+  protocol in the adapter (`wb/anabasis-pi-adapter.diff`).
+- Whether Anthropic's API takes the login through the proxy, which rewrites the request's model
+  and adds the route's parameters, takes one live call to settle.
+- Claude Code adds text of its own that no option removes, so a Claude solver reads more than an
+  OpenRouter one: one line before the system prompt, and reminders in the first user message
+  naming the CLI's working directory (the seat's Claude home, not the task's), the platform, the
+  shell, the model's name and cutoff, and the date. On one Linux run the CLI also asked the model
+  for a session title, a side call with no tools that the proxy would bill to the trial.
+
 ## Predictions
 
 None is recorded yet. Each paid step commits its prediction here before its first solve. The

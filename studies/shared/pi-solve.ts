@@ -12,8 +12,10 @@
  * - the study's system prompt, with the harness's guide as project context under the
  *   sentence a campaign's solver reads, and a duty that names the benchmark's deliverable;
  * - the solve wall and the model-turn cap, told on every tool result by `timed`, the nudge after a
- *   turn that stops without `submit`, durable's compaction and retries, and OpenRouter as the
- *   backends serve it (`openrouter`, `src/agent/backends/models.ts`);
+ *   turn that stops without `submit`, and the backend a campaign's solve runs on, its compaction and
+ *   retries with it: OpenRouter as the backends serve it (`openrouter`, `src/agent/backends/models.ts`),
+ *   or, with `--provider claude` (a Claude Code login) or `claude-api` (an API key), Claude Code
+ *   through the production Claude backend (`claudeProvider`, `src/agent/backends/claude.ts`);
  * - the trace as `solve.turn`, `solve.call` and `solve.compacted` events in a log of its own,
  *   written by `sit` (`src/agent/session.ts`) and read by `src/kernel/trace.ts`, and the spend
  *   as `sit` sums a campaign's solve, so a change to the log's format has one owner to change;
@@ -25,14 +27,29 @@
  * provider's key stays on the host and the container holds only the token that names its route.
  * The model keeps its entry and its prices as the backends serve them, and only its URL changes.
  *
+ * On Claude Code, Claude Code is the transport and nothing more: this loop, its prompt and its tools
+ * stay pi's, one pi turn is one API message, and pi's tools reach the model through the backend's
+ * MCP server. The CLI's own tools are off (`webSearch: false`, so its `tools` option is empty), so a
+ * Claude arm gains no Bash, Read, Edit, WebSearch or any other tool of Claude Code's that the
+ * benchmark's other arms lack. The CLI is the one `--claude` names, built for the container's
+ * platform, and the route's token stands where Claude Code reads its credential: the login's
+ * `Authorization: Bearer` or the API key's `x-api-key`, both of which the proxy reads as the route
+ * and replaces with the provider's credential on the host.
+ *
  * With `--dry-run` it does everything but call the model: it opens the harness, composes the
- * system prompt, runs `command -v` for each installed program through the solver's own shell and
- * writes both to the result, so the study's check stage proves the path in the container for free.
+ * system prompt, runs `command -v` for each installed program through the solver's own shell, asks
+ * the arm's Claude Code its version where the solve runs on it, and writes all of it to the result,
+ * so the study's check stage proves the path in the container for free.
  *
  * A harness that declares its own tools (`agent/tools.ts`) is refused: no harness kept on record
  * declared one on 21 October 2026 (0 of 193), and serving them would need the harness shim.
  */
-import { type AssistantMessage, createModels, type ThinkingLevel } from "@earendil-works/pi-ai";
+import {
+  type AssistantMessage,
+  createModels,
+  type Provider,
+  type ThinkingLevel,
+} from "@earendil-works/pi-ai";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import {
   createBashTool,
@@ -41,6 +58,7 @@ import {
   createWriteTool,
 } from "@earendil-works/pi-durable/tools";
 import { Type } from "typebox";
+import { claudeProvider, servedByClaude, SWEEP_COMPACT_WINDOW } from "#src/agent/backends/claude.ts";
 import { openrouter } from "#src/agent/backends/models.ts";
 import { trajectoryOf } from "#src/kernel/atif.ts";
 import { read } from "#src/kernel/log.ts";
@@ -48,6 +66,7 @@ import { unanswered } from "#src/kernel/solve.ts";
 import { GUIDE_FILE } from "#src/meta/bundle-layout.ts";
 import { readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
@@ -65,11 +84,15 @@ import { shellQuote, toolTreeSearchDirs } from "#src/wall/isolation.ts";
 /** The file names the Harbor agent reads back from the trial's log folder (`harbor/pi_agent.py`). */
 export const TRACE_FILE = "pi-log.jsonl";
 export const RESULT_FILE = "pi-result.json";
+/** The provider a solve runs on where `--provider` names none. */
+const OPENROUTER = "openrouter";
 
 const OPTIONS = {
   harness: { type: "string" },
   instruction: { type: "string" },
   model: { type: "string" },
+  provider: { type: "string", default: OPENROUTER },
+  claude: { type: "string" },
   "base-url": { type: "string" },
   key: { type: "string" },
   effort: { type: "string" },
@@ -87,6 +110,11 @@ interface Asked {
   readonly harness: string;
   readonly instruction: string;
   readonly model: string;
+  /** OpenRouter, or Claude Code's account: a login or an API key, either of which is here the
+   *  route's token. */
+  readonly provider: string;
+  /** The Claude Code binary a solve on Claude Code runs; null on OpenRouter. */
+  readonly claude: string | null;
   readonly baseUrl: string;
   readonly key: string;
   readonly effort: ThinkingLevel;
@@ -99,20 +127,26 @@ interface Asked {
 
 function asked(args: readonly string[]): Asked {
   const { values } = parseArgs({ args: [...args], options: OPTIONS });
-  const need = (name: Exclude<keyof typeof OPTIONS, "dry-run">) => {
+  const need = (name: Exclude<keyof typeof OPTIONS, "dry-run" | "provider">) => {
     const value = values[name];
     if (value === undefined || value === "") throw new Error(`pi-solve needs --${name}`);
     return value;
   };
-  const count = (name: Exclude<keyof typeof OPTIONS, "dry-run">) => {
+  const count = (name: Exclude<keyof typeof OPTIONS, "dry-run" | "provider">) => {
     const value = Number(need(name));
     if (!Number.isInteger(value) || value <= 0) throw new Error(`--${name} is a whole number above 0`);
     return value;
   };
+  const { provider } = values;
+  if (provider !== OPENROUTER && !servedByClaude(provider)) {
+    throw new Error(`--provider is ${OPENROUTER} or a Claude Code account, not ${provider}`);
+  }
   return {
     harness: need("harness"),
     instruction: readFileSync(need("instruction"), "utf8"),
     model: need("model"),
+    provider,
+    claude: provider === OPENROUTER ? null : need("claude"),
     baseUrl: need("base-url"),
     key: need("key"),
     // SAFETY: pi refuses a level its catalogue entry does not map, on the first call.
@@ -185,21 +219,30 @@ async function solve(ask: Asked) {
       ? []
       : [`Project-specific instructions and guidelines (${GUIDE_FILE}):\n${harness.guide}`]),
   ].join("\n\n");
-  const provider = openrouter();
-  const listed = provider.getModels().find(({ id }) => id === ask.model);
-  if (listed === undefined) throw new Error(`OpenRouter as the backends serve it has no ${ask.model}`);
+  // Only the catalogue is read here; Claude Code's home is the seat's own (`sit`).
+  const listed = served(ask, { home: cwd })
+    .getModels()
+    .find(({ id }) => id === ask.model);
+  if (listed === undefined) throw new Error(`${ask.provider} as the backends serve it has no ${ask.model}`);
   if (ask.dryRun) {
-    return { ending: "dry-run", harness: harness.digest, prompt, found: resolved(prefix, programs) };
+    // Proof, calling no model, that the arm's Claude Code runs in the container: its version.
+    const version = ask.claude === null ? null : runSync([ask.claude, "--version"]);
+    return {
+      ending: "dry-run",
+      harness: harness.digest,
+      prompt,
+      found: resolved(prefix, programs),
+      ...keyIfDefined(
+        "claude",
+        version === null
+          ? undefined
+          : decodeOutput(version.exitCode === 0 ? version.stdout : version.stderr).trim(),
+      ),
+    };
   }
   const model = { ...listed, baseUrl: ask.baseUrl };
-  const models = createModels({
-    authContext: {
-      env: async (name) => (name === "OPENROUTER_API_KEY" ? ask.key : undefined),
-      fileExists: async () => false,
-    },
-  });
-  // sit resolves the model by provider and id, including for compaction; keep the proxy URL there.
-  models.setProvider({ ...provider, getModels: () => [model], getAllModels: () => [model] });
+  // The solve holds one key, the route's token, under whichever variable its provider reads.
+  const models = createModels({ authContext: { env: async () => ask.key, fileExists: async () => false } });
   const turns: AssistantMessage[] = [];
   const started = performance.now();
   const clock: SolveClock = { started, seconds: ask.wallSeconds };
@@ -210,7 +253,12 @@ async function solve(ask: Asked) {
   const log = join(ask.logs, TRACE_FILE);
   let prompts = 1;
   const { thrown: crash, spent } = await sit({
-    models: () => models,
+    // sit resolves the model by provider and id, including for compaction; keep the proxy URL there.
+    models: (home, shutdown) => {
+      const provider = served(ask, { home, shutdown });
+      models.setProvider({ ...provider, getModels: () => [model], getAllModels: () => [model] });
+      return models;
+    },
     id: "pi-solve",
     model,
     effort: ask.effort,
@@ -244,12 +292,33 @@ async function solve(ask: Asked) {
     ending: endingOf({ crash, submitted: said.submitted, wall, turns, ask }),
     crash,
     harness: harness.digest,
+    provider: ask.provider,
     model: ask.model,
     effort: ask.effort,
     prompts,
     seconds: (performance.now() - started) / 1000,
     ...spent,
   };
+}
+
+/**
+ * The provider of the solve's model: OpenRouter as the backends serve it, or Claude Code on the
+ * account `--provider` names as a campaign's solve runs it (its compaction window, its own HOME), with the
+ * CLI's own tools off and its requests sent to the proxy at `--base-url`.
+ */
+function served(ask: Asked, seat: { readonly home: string; readonly shutdown?: AbortSignal }): Provider {
+  if (ask.claude === null) return openrouter();
+  return claudeProvider(
+    {
+      executable: ask.claude,
+      compaction: { window: SWEEP_COMPACT_WINDOW },
+      home: seat.home,
+      webSearch: false,
+      baseUrl: ask.baseUrl,
+      shutdown: seat.shutdown,
+    },
+    ask.provider,
+  );
 }
 
 /** What a shell with the solver's PATH finds of each installed program, as `command -v` prints it. */

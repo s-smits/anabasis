@@ -21,10 +21,14 @@
  * harness's appended. That prompt is a coding assistant's, about a repository and Claude Code's own
  * tools, none of which a session here has: every tool is pi's, served through the MCP server. So
  * every session, a solver's, a Builder's, an Examiner's and a reviewer's alike, is sent its own
- * prompt and nothing before it. A solver's is pi coding-agent's (`src/solver/prompt.ts`).
+ * prompt in place of it. A solver's is pi coding-agent's (`src/solver/prompt.ts`). Claude Code still
+ * adds text of its own that no option removes: one line before the prompt ("You are a Claude agent,
+ * built on Anthropic's Claude Agent SDK.") and reminders in the first user message naming its working
+ * directory, platform, shell and OS, the model and its knowledge cutoff, and the date. So the bundled
+ * CLI 0.3.311 sent a local stub of the API on 2 November 2026 (`test/claude-backend.test.ts`).
  *
  * One difference is left, and it reaches no model: v1 ran Claude Code in an empty environment; here
- * HOME, the solve's own, PATH and TMPDIR are set as well.
+ * HOME, the solve's own, PATH and TMPDIR are set as well, and the API's address where a seat names one.
  * Backend cost is the query's closing or last diagnostic total, taken once; it neither replaces
  * nor constrains the host's calculated billing, and is null where no total was reported.
  */
@@ -234,6 +238,10 @@ export interface ClaudeOptions {
   /** How long Claude Code keeps its prompt cache. Left out, it keeps it for an hour on a login and
    *  five minutes on an API key, as the CLI chooses. */
   readonly cacheTtl?: "5m" | "1h";
+  /** Where Claude Code sends its API requests (`ANTHROPIC_BASE_URL`). Left out, Anthropic's own
+   *  host. A study's container solve names the benchmark's proxy on the host, which holds the
+   *  provider's key, so the credential handed to the CLI is only the token naming the proxy's route. */
+  readonly baseUrl?: string;
   /** The seat's lifetime, independent of the invocation signal pi passes to each request. */
   readonly shutdown?: AbortSignal | undefined;
   /** How long a turn waits for Claude Code's next message. Left out, `QUIET_MS`. */
@@ -273,11 +281,12 @@ export function servedByClaude(provider: string): boolean {
  * The Claude Code binary the Agent SDK ships in its platform package, resolved on the host. The SDK
  * resolves it itself from its own module URL (`SV` in `sdk.mjs` 0.3.285), which fails inside a bundled
  * worker and would point into the repository the solve wall denies; the host resolves it here instead,
- * passes it in and reopens it read-only, as v1 did.
+ * passes it in and reopens it read-only, as v1 did. `target` names another platform's package, as
+ * a study's container takes the Linux one (`studies/shared/bundle.ts`), where it is installed.
  */
-export function claudeExecutable(): string {
+export function claudeExecutable(target = `${runtimeProcess.platform}-${runtimeProcess.arch}`): string {
   const sdk = dirname(Bun.resolveSync("@anthropic-ai/claude-agent-sdk", import.meta.dir));
-  const platform = `@anthropic-ai/claude-agent-sdk-${runtimeProcess.platform}-${runtimeProcess.arch}`;
+  const platform = `@anthropic-ai/claude-agent-sdk-${target}`;
   const cli = join(dirname(Bun.resolveSync(`${platform}/package.json`, sdk)), "claude");
   if (!existsSync(cli)) throw new Error(`${platform} ships no Claude Code binary at ${cli}`);
   return cli;
@@ -451,13 +460,14 @@ function claudeEffort(model: Model<Api>, level: ThinkingLevel | undefined): Effo
 }
 
 /**
- * The whole environment Claude Code runs in: HOME, the solve's own, PATH and TMPDIR; nothing else of
- * the host's reaches the CLI, so no host variable can move its compaction, its account or its MCP
- * servers. Its one credential is its provider's: a Claude Code login for `claude`, an API key for
- * `claude-api`, each under the variable Claude Code reads it from and never both.
+ * The whole environment Claude Code runs in: HOME, the solve's own, PATH and TMPDIR, and the API's
+ * address where the options name one; nothing else of the host's reaches the CLI, so no host
+ * variable can move its compaction, its account, its endpoint or its MCP servers. Its one credential
+ * is its provider's: a Claude Code login for `claude`, an API key for `claude-api`, each under the
+ * variable Claude Code reads it from and never both.
  */
 function claudeEnv(
-  { cacheTtl, compaction, home }: ClaudeOptions,
+  { baseUrl, cacheTtl, compaction, home }: ClaudeOptions,
   credential: { readonly provider: string; readonly token: string | undefined },
 ): Record<string, string> {
   const account = ACCOUNTS.get(credential.provider);
@@ -477,6 +487,7 @@ function claudeEnv(
     ...keyIfDefined("TMPDIR", Bun.env.TMPDIR),
     CLAUDE_CONFIG_DIR: config,
     [account.variable]: token,
+    ...keyIfDefined("ANTHROPIC_BASE_URL", baseUrl),
     // claude.ai's cloud MCP servers load past strict MCP config and empty setting sources unless this
     // is off, as the sweep set it.
     ENABLE_CLAUDEAI_MCP_SERVERS: "0",

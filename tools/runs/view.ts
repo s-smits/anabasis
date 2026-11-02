@@ -101,7 +101,7 @@ function stepLine(step: Handover, now: number, called: Called): string {
   const read =
     step.reading === null
       ? `no report yet, ${step.cut ? "cut before it" : "open at the log's end"}: ${unended}`
-      : `${tally === null ? "no task tallied" : `${String(tally.wins)} won, ${String(tally.losses)} lost, ${String(tally.ties)} tied`}, which reads ${step.reading}`;
+      : `${tally === null ? "no task tallied" : `${String(tally.wins)} won, ${String(tally.losses)} lost, ${String(tally.ties)} tied by ${called(step.fresh)}`}, which reads ${step.reading}`;
   const ruled = [
     ...(rulings.earned > 0 ? [`${plural(rulings.earned, "rejection")} ruled earned`] : []),
     ...(rulings["check-defect"] > 0 ? [`${String(rulings["check-defect"])} ruled a check defect`] : []),

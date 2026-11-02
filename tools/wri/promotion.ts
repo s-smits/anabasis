@@ -405,7 +405,7 @@ function unconfirmedTrigger(log: Index): Trigger[] {
     const read =
       against === null
         ? "no starter comparison reported"
-        : `against the starter ${String(against.wins)}-${String(against.losses)}-${String(against.ties)} without the bill, no step`;
+        : `against the starter ${String(against.wins)}-${String(against.losses)}-${String(against.ties)} without the bill, no step${against.aside > 0 ? `, ${String(against.aside)} set aside for labels` : ""}`;
     return [`${short(reference)} in epoch ${String(nth)}, ${to === null ? "open" : "closed"}: ${read}`];
   });
   return lines.length > 0

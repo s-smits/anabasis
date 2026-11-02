@@ -443,7 +443,7 @@ describe("the starter comparison in an epoch's row", () => {
   // reference's side, and not the starter's share of valid answers.
   const opened = event("comparison.started", { session: "g-1", old: "S", fresh: "h2", starter: "S" });
   const promoted = event("harness.promoted", { harness: "h2" });
-  const starterRead = (scored: JsonObject) =>
+  const starterRead = (scored: JsonObject, aside: string[] = []) =>
     event("comparison.reported", {
       session: "g-2",
       reading: "no-step",
@@ -451,6 +451,7 @@ describe("the starter comparison in an epoch's row", () => {
       fresh: "S",
       level: 0.02,
       scored,
+      aside,
     });
 
   it("counts the reference's wins without the bill, where the bill alone turned one task", () => {
@@ -461,8 +462,8 @@ describe("the starter comparison in an epoch's row", () => {
     ];
     const [first, second] = epochsOf(log);
     expect(first?.starter_tally).toBeNull();
-    expect(second?.starter_tally).toEqual({ wins: 2, losses: 1, ties: 1 });
-    expect(epochLine(present(second))).toContain("against the starter 2 won, 1 lost, 1 tied, no step");
+    expect(second?.starter_tally).toEqual({ wins: 2, losses: 1, ties: 1, aside: 0 });
+    expect(epochLine(present(second))).toContain("against the starter 2 won, 1 lost, 1 tied, no step;");
     expect([first?.confirmed, second?.confirmed]).toEqual([null, false]);
   });
 
@@ -474,6 +475,18 @@ describe("the starter comparison in an epoch's row", () => {
     const confirmed = present(epochsOf([opened, promoted, onValidity])[1]);
     expect(confirmed.confirmed).toBe(true);
     expect(epochLine(confirmed)).toContain("6 won, 0 lost, 0 tied, a step, so its promotion is confirmed");
+  });
+
+  it("names the tasks a starter comparison set aside where it reads no step, and none once it reads one", () => {
+    const short = starterRead({ differences: Array(5).fill(-1), unbilled: Array(5).fill(-1) }, [
+      "t-1",
+      "t-2",
+    ]);
+    expect(epochLine(present(epochsOf([opened, promoted, short])[1]))).toContain(
+      "5 won, 0 lost, 0 tied, no step, 2 tasks set aside for a person's labels",
+    );
+    const clear = starterRead({ differences: Array(6).fill(-1), unbilled: Array(6).fill(-1) }, ["t-1"]);
+    expect(epochLine(present(epochsOf([opened, promoted, clear])[1]))).not.toContain("labels");
   });
 
   it("says unread before a starter comparison reports, and nothing in the first epoch", () => {

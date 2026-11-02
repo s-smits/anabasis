@@ -43,7 +43,7 @@ import { hashJsonValue } from "../meta/stable-json.ts";
 import { shellQuote } from "../wall/isolation.ts";
 import { CODING_TOOLS } from "../tools/coding.ts";
 import { text, tool } from "../tools/answer.ts";
-import { type CommandWall, runWalled } from "../tools/command.ts";
+import type { Launch } from "../tools/command.ts";
 import { DRAFT_TOOL } from "./shim.ts";
 import { type PublicTask, publicView } from "../solver/prompt.ts";
 
@@ -142,7 +142,10 @@ function located(module: string, dir: string, toolTree: string | null): string {
     .replace(BUNDLED_PATH, "");
 }
 
-export async function openHarness(dir: string): Promise<Harness> {
+/** The harness `dir`, opened. `bundled` is its tools module as `openHarness` bundled it before, for
+ *  a process with no host source to bundle over: the compiled container solver, whose mount carries
+ *  the module its host bundled (`bundleArm`, `studies/shared/bundle.ts`). */
+export async function openHarness(dir: string, bundled?: string): Promise<Harness> {
   // The three files the host reads by name are the harness's own: a guide or a spec linked to a host
   // file would be read here, outside every wall, and handed to the solver.
   const root = realpathSync(dir);
@@ -177,7 +180,7 @@ export async function openHarness(dir: string): Promise<Harness> {
       `${TOOLS_SPEC_FILE} names a tool ${taken.join(", ")}: ${HOST_TOOLS.join(", ")} are the host's own`,
     );
   }
-  const module = await bundle(join(dir, GENERATED_TOOLS_FILE));
+  const module = bundled ?? (await bundle(join(dir, GENERATED_TOOLS_FILE)));
   const toolchain = resolve(dir, TOOL_TREE_DIR);
   const toolTree = existsSync(toolchain) ? toolchain : null;
   const tree = toolTree === null ? null : keptTreeContent(toolTree);
@@ -317,7 +320,8 @@ function besideTree(root: string): string[] {
 
 /**
  * The harness's domain tools for one task, in the factory's order, after one walled listing. The
- * name check is v1's.
+ * name check is v1's. Each call is a fresh process `launch` starts: on the solve's command wall
+ * (`launchOn`), or in a benchmark's container, which is the wall there.
  *
  * An artifact-writer is listed and not served: the answer is a file the host reads at `submit`
  * (`answer.ts`), so no harness carries the answer's path and none can break it. When a harness had
@@ -325,14 +329,10 @@ function besideTree(root: string): string[] {
  * harness without one, and every solve under each ended with no answer. A harness kept with a
  * writer still opens.
  */
-export async function harnessTools(
-  harness: Harness,
-  task: PublicTask,
-  wall: CommandWall,
-): Promise<SeatTool[]> {
+export async function harnessTools(harness: Harness, task: PublicTask, launch: Launch): Promise<SeatTool[]> {
   const view = publicView(task);
   const call = <T>(name: string | null, params: unknown, signal?: AbortSignal) =>
-    callHarness<T>({ harness, wall, input: { task: view, name, params }, signal });
+    callHarness<T>({ harness, launch, input: { task: view, name, params }, signal });
   const { tools: rows } = await call<{ tools: ToolRow[] }>(null, null);
   const actual = rows.map(({ name }) => name).sort();
   const expected = [...harness.kinds.keys()].sort();
@@ -362,17 +362,17 @@ export async function harnessTools(
     );
 }
 
-/** One walled run of the caller: the listing when `name` is null, otherwise one tool call. Returns
+/** One launched run of the caller: the listing when `name` is null, otherwise one tool call. Returns
  *  the marker line's value, or throws the harness's own error message. */
 async function callHarness<T>(run: {
   harness: Harness;
-  wall: CommandWall;
+  launch: Launch;
   input: { task: PublicTask; name: string | null; params: unknown };
   signal?: AbortSignal | undefined;
 }): Promise<T> {
   const chunks: Buffer[] = [];
   let held = 0;
-  const { exitCode } = await runWalled(run.wall, `${shellQuote(capturedExecPath)} caller.mjs`, {
+  const { exitCode } = await run.launch(`${shellQuote(capturedExecPath)} caller.mjs`, {
     onData: (data) => {
       chunks.push(data);
       held += data.length;

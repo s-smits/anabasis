@@ -19,7 +19,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { CODING_TOOLS, codingTools, selectedCodingTools } from "../src/tools/coding.ts";
-import { type CommandWall, makeSeatDirs, solveDirs } from "../src/tools/command.ts";
+import { type CommandWall, launchOn, makeSeatDirs, solveDirs } from "../src/tools/command.ts";
 import { walledEnv } from "../src/tools/env.ts";
 import { harnessTools, openHarness } from "../src/harness/open.ts";
 import { EXAMPLE, HARNESS_ACCOUNT, WITHOUT_SHELL, writeStarter } from "../src/harness/starter.ts";
@@ -157,7 +157,7 @@ describe("the Starter and its worked harnesses", () => {
         expect(said(over)).toEndWith("Command exited with code 1");
         expect(said(await run("check-rota absent.json"))).toEndWith("Command exited with code 2");
         // The harness without the shell: its tool lists and computes behind the same wall.
-        const tools = await harnessTools(shellless, TASK, { ...wall, toolTree: null });
+        const tools = await harnessTools(shellless, TASK, launchOn({ ...wall, toolTree: null }));
         expect(tools.map(({ name }) => name)).toEqual(["count_hours"]);
         // SAFETY: a harness tool uses no durable API methods, only the context's abort signal.
         const counted = await tools[0]?.execute(OVER, undefined as never, BACKGROUND_CONTEXT);

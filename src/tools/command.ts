@@ -121,6 +121,16 @@ interface WalledOptions {
   readonly stage?: ((into: string) => void) | undefined;
 }
 
+/** How one command of a seat is launched: `runWalled` on a wall, or, inside a benchmark's container,
+ *  which is itself the wall, the container solver's own launch (`studies/shared/pi-solve.ts`). */
+export type Launch = (command: string, options: WalledOptions) => Promise<{ exitCode: number | null }>;
+
+/** Every command launched on `wall`. */
+export const launchOn =
+  (wall: CommandWall): Launch =>
+  (command, options) =>
+    runWalled(wall, command, options);
+
 /** The host's launcher, outside the wall: it writes the leader's pid and `exec`s the wall, and a
  *  seat's command reaches it only quoted, to run in `/bin/bash` inside (`stageCommandIsolation`). */
 const SHELL = new NodeExecutionEnv({ cwd: "/", shellPath: "/bin/sh", shellEnv: {} });

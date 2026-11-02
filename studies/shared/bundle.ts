@@ -1,6 +1,8 @@
 /**
  * What a benchmark's container is given of an Anabasis arm: one folder, bind-mounted read-only,
- * holding the container solver compiled to one executable and the harness it solves inside.
+ * holding the container solver compiled to one executable, the harness it solves inside, and the
+ * harness's tools module as `openHarness` bundles it here, which the compiled solver cannot: it holds
+ * none of the host's source to bundle over (`MODULE_FILE`).
  *
  * An arm is the Starter Built Harness or a harness a campaign kept, named by the campaign alone.
  * The study finds and copies it with the owners the campaign's own handover uses
@@ -37,11 +39,12 @@ import { writeStarter } from "#src/harness/starter.ts";
 import { keptAs, PROMOTED } from "#tools/d2/campaign.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 
-/** The solver's executable, the harness and the record, as the Harbor agent names them inside the
- *  mount (`harbor/pi_agent.py`). */
+/** The solver's executable, the harness, the record and the harness's tools module, as the Harbor
+ *  agent names them inside the mount (`harbor/pi_agent.py`). */
 export const SOLVER_FILE = "pi-solve";
 export const HARNESS_DIR = "harness";
 export const MOUNT_RECORD = "mount.json";
+export const MODULE_FILE = "tools.mjs";
 
 /** Bun's name for the container's platform. The baseline build runs on any x86-64 processor. */
 const TARGET = "bun-linux-x64-baseline";
@@ -117,9 +120,7 @@ export async function bundleArm(
   mkdirSync(into, { recursive: true });
   const origin = await placeHarness(join(into, HARNESS_DIR), source);
   const opened = await openHarness(join(into, HARNESS_DIR));
-  if (opened.kinds.size > 0) {
-    throw new Error(`the harness declares tools of its own, which the container solver does not serve`);
-  }
+  writeFileSync(join(into, MODULE_FILE), opened.module);
   runTextSyncOrThrow([
     capturedExecPath,
     "build",

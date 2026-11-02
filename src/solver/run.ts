@@ -46,6 +46,7 @@ import { codingTools, selectedCodingTools, wallExec } from "../tools/coding.ts";
 import { walledEnv } from "../tools/env.ts";
 import {
   type CommandWall,
+  launchOn,
   networkReach,
   type SolveClock,
   solveDirs,
@@ -430,7 +431,7 @@ export async function solverTools(
   desk: Desk,
 ): Promise<SeatTool[]> {
   const coding = codingTools(wall, selectedCodingTools(harness.presets));
-  const domain = await harnessTools(harness, request.task, wall);
+  const domain = await harnessTools(harness, request.task, launchOn(wall));
   return [...coding, ...domain, submitTool(desk, request.contract, wall.dirs.home, wallExec(wall))];
 }
 

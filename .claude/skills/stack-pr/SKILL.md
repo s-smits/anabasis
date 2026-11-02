@@ -232,8 +232,8 @@ definitions). The title carries no "Ix:" prefix; the label replaced it on 25 Oct
 refuses a stack in which any pull request has no importance label or more than one, or no category
 label, naming each, before it runs any checks, so `--sanitize` shows such a stack as not ready
 (`gh pr edit <number> --add-label <label>` repairs it). The categories are the subjects a pull request
-is filed under, mostly the investigation's lane groups: `harness`, `climb`, `comparison`, `solve`,
-`supply`, `verdicts`, `economy`, `log`, `runs`, `landing`, `quality`, `docs` and `misc` (`CATEGORIES`,
+is filed under, mostly the investigation's lane groups: `exam`, `verdicts`, `supply`, `harness`,
+`comparison`, `climb`, `solve`, `economy`, `runs`, `log`, `investigation`, `landing`, `quality` and `docs` (`CATEGORIES`,
 `tools/runtime/land.ts`); `gh label list` gives what each holds, and a pull request may carry several. `stack.ts` ends each line in the label, and a
 consolidation spends its time by it: `I0` and `I1` through commit-r, `I3` folded
 (`references/consolidate.md`, "Spend by importance").

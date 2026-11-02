@@ -2,6 +2,7 @@
 import { describe, expect, it } from "bun:test";
 import { catalogueText, type Lane, lanesOf } from "../tools/wri/catalogue.ts";
 import { sessionsOf, suggestedSessions, weightOf } from "../tools/wri/investigation.ts";
+import { CATEGORIES } from "../tools/runtime/land.ts";
 
 describe("the lane catalogue", () => {
   it("holds thirty-four lanes, numbered in order", () => {
@@ -10,14 +11,36 @@ describe("the lane catalogue", () => {
     );
   });
 
-  it("gives every lane its section's label and an importance from 0 to 1", () => {
+  it("gives every lane a label the landing accepts and an importance from 0 to 1", () => {
     const lanes = lanesOf(catalogueText());
-    expect(new Set(lanes.map(({ label }) => label))).toEqual(
-      new Set(["verdicts", "supply", "harness", "comparison", "climb", "solve", "economy", "runs", "log"]),
+    const held = new Set(lanes.map(({ label }) => label));
+    expect(held).toEqual(
+      new Set([
+        "exam",
+        "verdicts",
+        "supply",
+        "harness",
+        "comparison",
+        "climb",
+        "solve",
+        "economy",
+        "runs",
+        "log",
+      ]),
     );
+    for (const label of held) expect(CATEGORIES.has(label)).toBe(true);
     for (const { importance } of lanes) expect(importance >= 0 && importance <= 1).toBe(true);
+    // A lane's own label holds wherever it stands: lane 24 sits among the comparison's lanes.
+    expect(lanes.find(({ number }) => number === 24)?.label).toBe("climb");
     expect(lanes.find(({ number }) => number === 34)?.label).toBe("climb");
-    for (const { body } of lanes) expect(body).not.toContain("Importance:");
+    for (const { body } of lanes) expect(body).not.toMatch(/Importance:|Label:/u);
+  });
+
+  it("names a lane that carries no label of its own", () => {
+    const lane = (label: string) =>
+      `### A section\n\n**1. A lane.**\n\n${label}Importance: 0.5.\n\nStarts from \`A (lane 1)\`.\n`;
+    expect(lanesOf(lane("Label: `exam`.\n"))[0]?.label).toBe("exam");
+    expect(() => lanesOf(lane(""))).toThrow("lane 1 has no label");
   });
 });
 

@@ -99,30 +99,36 @@ const SHOWN = 5;
 /** Paths to the category whose description names them, first match wins (`gh label list`, 30
  *  October). A test file is left out of the vote: it takes the subject of what it tests. */
 const CATEGORY_OF: readonly (readonly [RegExp, string])[] = [
+  [/^tools\/wri\/|^\.claude\/skills\/whole-run-investigation\//u, "investigation"],
   [/^(?:AGENTS\.md|README\.md|docs\/)|\.md$/u, "docs"],
-  [/^src\/kernel\/(?:log|task|trace|reports)\.ts$|^tools\/wri\/|^packages\/ui\//u, "log"],
-  [/^tools\/d2\/(?:close|host)\.ts$|^src\/agent\/session\.ts$/u, "economy"],
+  [/^src\/kernel\/(?:log|task|trace|reports)\.ts$|^packages\/ui\//u, "log"],
+  [/^tools\/d2\/(?:close|host)\.ts$|^src\/agent\/session\.ts$|^src\/kernel\/meter\.ts$/u, "economy"],
   [
-    /^src\/kernel\/(?:compare|size|condition)\.ts$|^src\/campaign\/(?:comparison|round|admission)\.ts$|^tools\/d2\/checkpoint\.ts$/u,
+    /^src\/kernel\/(?:compare|size|condition)\.ts$|^src\/campaign\/(?:comparison|round|admission)\.ts$|^tools\/d2\/checkpoint\.ts$|^\.claude\/skills\/(?:comparison-reading|compare-systems|promotion-tuner)\//u,
     "comparison",
   ],
-  [/^src\/campaign\/(?:climb|decide|ground)\.ts$|^tools\/d2\/promote\.ts$/u, "climb"],
-  [/^src\/(?:builder|harness)\/|^tools\/d2\/campaign-actions\.ts$/u, "harness"],
-  [/^src\/examiner\/|^tools\/d1b\/|^tools\/d2\/(?:prepare|exam)\.ts$/u, "supply"],
+  [/^src\/campaign\/(?:climb|decide|ground)\.ts$|^tools\/d2\/(?:promote|campaign-actions)\.ts$/u, "climb"],
+  [/^src\/(?:builder|harness)\/|^\.claude\/skills\/harness-audit\//u, "harness"],
   [
-    /^src\/referee\/|^src\/kernel\/(?:verify|acceptance)\.ts$|^tools\/c\/|^tools\/d2\/settle\.ts$/u,
-    "verdicts",
+    /^src\/examiner\/draft\.ts$|^src\/kernel\/(?:verify|acceptance|contract|check-child)\.ts$|^tools\/c\//u,
+    "exam",
   ],
+  [
+    /^src\/examiner\/|^tools\/d1b\/|^tools\/d2\/(?:prepare|exam)\.ts$|^\.claude\/skills\/examiner-complexity\//u,
+    "supply",
+  ],
+  [/^src\/referee\/|^tools\/d2\/settle\.ts$/u, "verdicts"],
   [/^src\/(?:solver|agent|wall|tools)\/|^src\/kernel\/solve\.ts$|^vendor\//u, "solve"],
   [/^src\/campaign\/|^tools\/d2\//u, "climb"],
-  [/^tools\/runs\//u, "runs"],
-  [/^tools\/runtime\/|^\.githooks\/|^\.github\//u, "landing"],
+  [/^tools\/runs\/|^\.claude\/skills\/(?:run-management|system-path-simulation)\//u, "runs"],
+  [/^tools\/runtime\/|^\.githooks\/|^\.github\/|^\.claude\/skills\/(?:stack-pr|local-checks)\//u, "landing"],
   [/^tools\/(?:oxlint|loc)\/|^biome\.json$|^\.oxlintrc\.json$/u, "quality"],
 ];
-/** The categories that name a subject only where no other does: prose beside code is the code's. */
-const FALLBACK = new Set(["docs", "misc"]);
+/** The category that names a subject only where no other does: prose beside code is the code's,
+ *  and a file no rule holds is counted with it. */
+const FALLBACK = new Set(["docs"]);
 /** The categories whose change may bear on comparison validity, so I1 is worth asking about. */
-const VALIDITY = new Set(["comparison", "verdicts"]);
+const VALIDITY = new Set(["comparison", "exam", "verdicts"]);
 
 /** The diff of one commit against its first parent, or of the working tree against `base`. */
 export function changeOf(
@@ -184,14 +190,14 @@ const inside = (file: string, path: string): boolean => file === path || file.st
 export function labelsOf(files: readonly string[]): Pick<Owed, "category" | "importance"> {
   const counts: Record<string, number> = {};
   for (const file of files.filter((each) => !TEST_FILE.test(each))) {
-    const kind = CATEGORY_OF.find(([pattern]) => pattern.test(file))?.[1] ?? "misc";
+    const kind = CATEGORY_OF.find(([pattern]) => pattern.test(file))?.[1] ?? "docs";
     counts[kind] = (counts[kind] ?? 0) + 1;
   }
   const subjects = Object.entries(counts).filter(([kind]) => !FALLBACK.has(kind));
   const ranked = (subjects.length > 0 ? subjects : Object.entries(counts)).toSorted((a, b) =>
     a[1] === b[1] ? a[0].localeCompare(b[0]) : b[1] - a[1],
   );
-  const label = ranked[0]?.[0] ?? "misc";
+  const label = ranked[0]?.[0] ?? "docs";
   if (!CATEGORIES.has(label)) throw new CommandFailure(`category ${label} is not one land accepts`);
   const validity = Object.keys(counts).filter((kind) => VALIDITY.has(kind));
   const importance =

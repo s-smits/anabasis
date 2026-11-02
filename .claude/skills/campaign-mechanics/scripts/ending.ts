@@ -19,13 +19,12 @@
  * Written on 30 October: the archive then held 158 logs whose endings had no reader.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import { refusals, supplyOf } from "#src/campaign/admission.ts";
+import { refusals, stopRule, supplyOf } from "#src/campaign/admission.ts";
 import { CRASHES, decide, supplyRun } from "#src/campaign/decide.ts";
 import { crashedRun } from "#src/campaign/ground.ts";
 import { decidedLine } from "#src/campaign/move.ts";
 import { pendingWords } from "#src/campaign/word.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { stopRule } from "#src/kernel/reports.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { isAbsolute } from "#src/meta/path.ts";
 import { countBy } from "#src/meta/tally.ts";

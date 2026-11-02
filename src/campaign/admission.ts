@@ -48,9 +48,11 @@
 import { frozenChecker } from "../kernel/acceptance.ts";
 import { sweepOf } from "../kernel/compare.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
-import { type Cap, poolOf, stopRule } from "../kernel/reports.ts";
+import { type Cap, CUT, lastReports, patienceOf, poolOf, roomOf } from "../kernel/reports.ts";
+import { practiceRan, rejectionAside } from "../kernel/solves.ts";
 import { sizeLines } from "../kernel/size.ts";
 import { taskSets } from "../kernel/task.ts";
+import { asRecord, isString, type JsonObject } from "../meta/json-shape.ts";
 
 /** What a log holds for the next comparison. */
 export interface Supply {
@@ -147,6 +149,75 @@ export function supplyOf(events: readonly LogEvent[]): Supply {
     frozen: frozenChecker(events) !== null,
     stop: stopRule(events),
   };
+}
+
+/**
+ * The plan's stop rule over a log: how many moves could have shown a gain, how many of them have
+ * passed since the last step, and whether that is the campaign's improvement patience
+ * (`7f0add79:docs/plan.md`, row F48; `patienceOf`).
+ *
+ * A move that counts is one of two. The first is a harness a Builder session changed, compared
+ * with one reference, where the comparison tallied a task and left room (`roomOf`), or read a step.
+ * Such a pair counts once, where it first reported, and showed a gain where any of its comparisons
+ * read a step, which promotes it: three readings of one harness are one harness. The count is of
+ * the epoch, the moves since the last promotion, so a step restarts it. On 9 October one harness
+ * compared with the starter three times, each time on more tasks, stopped a campaign. Until
+ * 19 October a reading under the trigger counted as a gain too, since it bought the repeat.
+ *
+ * The second is a whole session that left its harness as it was, where a practice solve of the session
+ * failed: it was shown a failure and declined it. A session whose every practice solve passed, or that
+ * ran none, had nothing to work on, which is a fault of the supply and no evidence about the domain:
+ * all ten campaigns of 9 and 10 October stopped on three such sessions after a promotion, each
+ * practising on tasks the promoted harness passed (`7f0add79:docs/plan.md`, row F52).
+ *
+ * What does not count: a comparison of two harnesses no session made, which a starter comparison and an
+ * A/A comparison are; one stopped on its check defects, cut by its cap,
+ * or with every task set aside, which tested nothing; and one that left no room, whose answer is
+ * other tasks and no other harness. Every comparison on record is read, whatever the setting id
+ * it carries, since the id names the host's code and a tree moved to a new commit changes it.
+ *
+ * A practice failure a Referee left unresolved is set aside, as a comparison sets it aside, rather
+ * than read as an established fail a Builder declined (the Referee triage of 20 October).
+ */
+export function stopRule(events: readonly LogEvent[]) {
+  const failed = practiceRan(events).filter(
+    (solve) => solve.ending?.outcome === "fail" && !rejectionAside(events, solve),
+  );
+  const whole = (data: JsonObject, changed: boolean) => data.changed === changed && !CUT.has(data.ended);
+  // The harnesses a whole session changed, or a live one froze as a snapshot.
+  const built = new Set(
+    events.flatMap(({ kind, data }) =>
+      kind === "build.checkpoint" || (kind === "build.finished" && whole(data, true)) ? [data.harness] : [],
+    ),
+  );
+  // The whole sessions that left their harness as it was after a practice solve of theirs failed.
+  const idle = events.flatMap(({ kind, data }, index) => {
+    if (kind !== "build.finished" || !whole(data, false)) return [];
+    const from = events.findLastIndex(
+      (began, at) => at < index && began.kind === "build.started" && began.data.session === data.session,
+    );
+    return failed.some(({ started }) => started > from && started < index) ? [{ index, step: false }] : [];
+  });
+  // Each pair of a harness and a reference, where it first reported, whether any of its
+  // comparisons read a step, and whether it counts: a step, or room as it last read.
+  const pairs = new Map<string, { index: number; step: boolean; counts: boolean }>();
+  for (const { index, data } of lastReports(events)) {
+    const { old, fresh, versions } = data;
+    const tallied = asRecord(data.scored) !== null && Array.isArray(versions) && versions.length > 0;
+    if (!tallied || !isString(fresh) || !built.has(fresh)) continue;
+    const pair = `${fresh} ${isString(old) ? old : ""}`;
+    const was = pairs.get(pair);
+    const step = was?.step === true || data.reading === "step";
+    pairs.set(pair, { index: was?.index ?? index, step, counts: step || roomOf(data) === "room" });
+  }
+  const moves = [...pairs.values().filter(({ counts }) => counts), ...idle].toSorted(
+    (one, other) => one.index - other.index,
+  );
+  // A promotion starts an epoch, whose improvement patience is its own.
+  const epochAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
+  const epoch = moves.filter(({ index }) => index > epochAt);
+  const sinceStep = epoch.length - 1 - epoch.findLastIndex(({ step }) => step);
+  return { checkpoints: moves.length, sinceStep, stop: sinceStep >= patienceOf(events) };
 }
 
 /** The least frontier a paid comparison starts on, also left held by practice releases. */

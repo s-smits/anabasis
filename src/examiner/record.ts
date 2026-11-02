@@ -28,6 +28,7 @@
  * contribute no counts or turns. Nothing here names a harness, a check or a target, and no count carries a band or
  * a number to reach (the operator's decision of 11 October).
  */
+import { scoresIn } from "../kernel/compare.ts";
 import { proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import {
@@ -314,7 +315,10 @@ function historyLine(history: History | undefined): string {
  *  some or no solve valid, with set-aside tasks counted separately. Report task counts, never solve
  *  counts, which could reveal one task's result. Also summarise drafts admitted under this
  *  reference, by source of room where an earlier log's room solves measured it (`heldOn`), and
- *  measured refusals. Until 1 November a draft held on its package alone was left out of the count. Null where neither is recorded. */
+ *  measured refusals. Until 1 November a draft held on its package alone was left out of the count.
+ *  Since 2 November it also says how many tasks the reference's own solves told apart in that
+ *  comparison's A/A: in the archive's objective domains they differed on the objective alone on
+ *  314 of 1,373 tasks, which the prompt had named no chance. Null where nothing is recorded. */
 function measuredLine(
   events: readonly LogEvent[],
   admissions: ReadonlyMap<string, JsonObject>,
@@ -328,6 +332,9 @@ function measuredLine(
   const aside = Array.isArray(report?.data.aside) ? report.data.aside.length : 0;
   const some = reads.filter((each) => spreadOf(each) === "some").length;
   const none = reads.filter((each) => spreadOf(each) === "none").length;
+  // The A/A pairs the old side's solves with each other, so it measures the reference only there.
+  const own = side === "old" ? scoresIn(report?.data.noise) : [];
+  const apart = own.filter((score) => score !== 0).length;
   const read = [...admissions.values()].filter((admission) => measuredGate(admission));
   const held = read.filter(({ outcome }) => heldAtGate(outcome));
   // The source of room of a draft an earlier log's room solves measured; a gate now reads the
@@ -346,6 +353,11 @@ function measuredLine(
       ? []
       : [
           `In the last comparison the reference harness stood in, it was valid in every solve on ${String(reads.length - some - none)} of ${plural(reads.length, "task")} tallied, in some on ${String(some)}, in none on ${String(none)}${aside === 0 ? "" : `; ${String(aside)} more ${aside === 1 ? "was" : "were"} set aside`}.`,
+        ]),
+    ...(own.length === 0
+      ? []
+      : [
+          `Set against each other there, its own solves differed on ${String(apart)} of ${plural(own.length, "task")}: this much differs between a harness and itself.`,
         ]),
     ...(held.length + refused === 0
       ? []

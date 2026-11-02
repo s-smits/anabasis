@@ -76,6 +76,7 @@ function logged() {
       [old, fresh]: readonly [string, string],
       ids: readonly string[],
       aside: readonly string[] = [],
+      noise: JsonObject | null = null,
     ) =>
       add("comparison.reported", {
         session,
@@ -87,6 +88,7 @@ function logged() {
         setting: settingId(condition("any", "any")),
         versions: ids.map((id) => `v-${id}`),
         aside: aside.map((id) => `v-${id}`),
+        noise,
       }),
   };
 }
@@ -168,8 +170,10 @@ describe("the reference measurement and task admissions", () => {
     log.solved("c-1", "b", "h2", [true, true]);
     log.solved("c-1", "c", "h1", [false, false]);
     log.solved("c-1", "c", "h2", [false, false]);
-    log.reported("c-1", ["h1", "h2"], ["a", "b", "c"], ["d"]);
+    log.reported("c-1", ["h1", "h2"], ["a", "b", "c"], ["d"], { differences: [0, 600, -120] });
     const told = heard(log.events, tasks);
+    // The reference set against itself there: how many tasks its own solves told apart.
+    expect(told.measured).toContain("its own solves differed on 2 of 3 tasks");
     // Tasks by every, some or none of their solves valid, with the task set aside counted beside them.
     expect(told.measured).toContain("every solve on 1 of 3 tasks");
     expect(told.measured).toContain("some on 1");

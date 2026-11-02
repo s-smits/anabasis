@@ -107,9 +107,8 @@ const STARTS: ReadonlySet<string> = new Set(["build.started", "exam.started", "c
  * The investigation's triggers a watch says, by the factor each bears on (`AGENTS.md`, section 1).
  * An alarm is read again at every look where the log gained an event that can move one
  * (`MOVES_A_TRIGGER`) and said where it fired or its key moved (`keyOf`); a reading moves with each
- * solve, so it is said only after a milestone. On 1 November an unconfirmed promotion and two
- * unbilled compactions in a live buffer campaign were found only by running `wri.ts read` on it by
- * hand. A trigger the pulse reads itself is left out (a model served, an unfinished session), and so
+ * solve, so it is said only after a milestone. On 1 November an unconfirmed promotion in a live
+ * buffer campaign was found only by running `wri.ts read` on it by hand. A trigger the pulse reads itself is left out (a model served, an unfinished session), and so
  * is one every promotion fires until its starter comparison reports.
  */
 const WATCHED = new Map<string, readonly [string, "alarm" | "reading"]>([
@@ -143,7 +142,6 @@ const WATCHED = new Map<string, readonly [string, "alarm" | "reading"]>([
   ["REPLAY MOVED THE VERDICT", ["verdicts", "alarm"]],
   ["CHECKER READ WITH FAULTS", ["verdicts", "alarm"]],
   ["FROZEN DESPITE FAULTS", ["verdicts", "alarm"]],
-  ["UNBILLED COMPACTIONS", ["economy", "alarm"]],
   ["SESSION CRASHED", ["economy", "alarm"]],
 ]);
 /** The events after which a reading is said again. */

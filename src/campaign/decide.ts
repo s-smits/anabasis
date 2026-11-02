@@ -8,8 +8,11 @@
  * content: what a harness holds, what a task asks and how it is solved stay a model's.
  *
  * The table is `ROWS`, asked in order of one reading of the log (`groundOf`, `ground.ts`): the
- * first row that names a move chooses it. The build row releases practice before asking for tasks
- * after an unchanged session, preserving the `practice` and `unshown` codes. Comparison admission
+ * first row that names a move chooses it. The build row releases practice owed before a Builder
+ * session (`practice`). Until 2 November it also asked for tasks after a session that left its
+ * harness as it was with no practice failure shown (`unshown`); it named that move twice in 146
+ * archived logs and none after 26 October, and a Builder with nothing to work on asks the Examiner
+ * itself. Comparison admission
  * owns its refusals (`refusals`, `admission.ts`), and the rows read its codes.
  * Since 26 October its floor leaves one set-aside task and one tie above a sweep: g-1 of
  * truss-fresh-opus-v071 lost its chance to promote when one of six tasks was set aside. The
@@ -22,9 +25,9 @@
  */
 import { unadmitted } from "../kernel/acceptance.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import { poolOf, practiceFailures, roomOf } from "../kernel/reports.ts";
+import { poolOf, roomOf } from "../kernel/reports.ts";
 import { heldAtGate, taskSets } from "../kernel/task.ts";
-import { isNumber, isString } from "../meta/json-shape.ts";
+import { isNumber } from "../meta/json-shape.ts";
 import { draftOf } from "../examiner/draft.ts";
 import { plural } from "../meta/text.ts";
 import { comparisonFloor } from "./admission.ts";
@@ -71,9 +74,7 @@ const ROWS: readonly {
     code: "build",
     move: (ground) => {
       const practice = toPractise(ground);
-      if (practice !== null) return { ...practice, code: "practice" };
-      const unseen = unshown(ground);
-      return unseen === null ? { move: "build", why: buildsOn(ground) } : { ...unseen, code: "unshown" };
+      return practice === null ? { move: "build", why: buildsOn(ground) } : { ...practice, code: "practice" };
     },
   },
 ];
@@ -628,36 +629,4 @@ function toPractise({ events, plan, supply }: Ground): Move | null {
         practice: due.to,
         why: `${due.said}, and tasks were held out since the last release: the contract's draw releases more before the Builder builds`,
       };
-}
-
-/**
- * Tasks, where the last Builder session left its harness as it was and no practice solve of its
- * failed: it had nothing to work on, which is the supply's fault, so the table does not build
- * again on the same practice. Such a session counts nothing towards the stop (`stopRule`), and a
- * table that built again on it did so three times in every campaign on record. The Examiner is
- * asked for tasks that leave room.
- */
-function unshown(ground: Ground): Move | null {
-  const { events } = ground;
-  const at = events.findLastIndex(({ kind }) => kind === "build.finished");
-  const finished = events[at];
-  if (finished === undefined || cutShort(finished) || finished.data.changed !== false) {
-    return null;
-  }
-  const last = finished.data;
-  const began = events.findLastIndex(
-    (event, index) => index < at && event.kind === "build.started" && event.data.session === last.session,
-  );
-  const shown = practiceFailures(events).some(({ started }) => started > began && started < at);
-  // Tasks held out since the session ended are what it lacked: the next rows read them, by a
-  // release for practice or a comparison, and not another Examiner session. A simulated climb that
-  // asked again here wrote four tasks the starter failed, then three sessions more, and ended
-  // `no-room` with none of them read.
-  return shown || heldAfter(events, at) > 0
-    ? null
-    : examine(
-        ground,
-        "room",
-        `Builder session ${isString(last.session) ? last.session : "?"} left its harness as it was, and no practice solve of its failed: it had nothing to work on, so the tasks have to change before another session is paid for`,
-      );
 }

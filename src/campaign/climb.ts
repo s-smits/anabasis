@@ -76,8 +76,10 @@ export interface Epoch {
   /** The reference against the starter in the epoch's last starter comparison, without the bill
    *  and counted from the reference's side; null in the first epoch and before one reports. Until
    *  31 October this was the starter's share of valid answers, which read 4 to 28 in the
-   *  reference's favour as a near tie in an objective domain (buffer-forkedPR530's g-6). */
-  readonly starter_tally: Tally | null;
+   *  reference's favour as a near tie in an objective domain (buffer-forkedPR530's g-6). `aside`
+   *  counts the tasks it set aside for a person's labels: on 2 November two of eight starter
+   *  comparisons read a step once theirs were counted as ruled. */
+  readonly starter_tally: (Tally & { readonly aside: number }) | null;
   /** Whether the promotion that opened the epoch is confirmed: its last starter comparison reads
    *  the reference above the starter without the bill, at that comparison's level (`AGENTS.md`,
    *  section 1, the milestone). Null in the first epoch, false before a starter comparison
@@ -210,13 +212,14 @@ function againstStarter(
   const last = reports.findLast(
     ({ index, data }) => within(index) && data.old === reference && data.fresh === starter,
   );
-  const scored = asRecord(last?.data.scored);
-  const scores = Array.isArray(scored?.unbilled) ? scored.unbilled : scored?.differences;
-  if (last === undefined || !Array.isArray(scores)) return { starter_tally: null, confirmed: false };
-  const ahead = scores.filter(isNumber).map((one) => -one);
+  if (last === undefined || asRecord(last.data.scored) === null) {
+    return { starter_tally: null, confirmed: false };
+  }
+  const ahead = scoresIn(last.data.scored).map((one) => -one);
   const { wins, losses, ties } = testOf(ahead);
   const level = isNumber(last.data.level) ? last.data.level : 0;
-  return { starter_tally: { wins, losses, ties }, confirmed: readsStep(ahead, level) };
+  const aside = Array.isArray(last.data.aside) ? last.data.aside.length : 0;
+  return { starter_tally: { wins, losses, ties, aside }, confirmed: readsStep(ahead, level) };
 }
 
 /**
@@ -270,7 +273,8 @@ function falsePromotionOf(
 function starterOf({ reference, starter_tally: tally, confirmed }: Epoch): string {
   if (reference === "starter") return "";
   if (tally === null) return ", against the starter unread";
-  const read = confirmed === true ? "a step, so its promotion is confirmed" : "no step";
+  const waiting = tally.aside > 0 ? `, ${plural(tally.aside, "task")} set aside for a person's labels` : "";
+  const read = confirmed === true ? "a step, so its promotion is confirmed" : `no step${waiting}`;
   return `, against the starter ${String(tally.wins)} won, ${String(tally.losses)} lost, ${String(tally.ties)} tied, ${read}`;
 }
 

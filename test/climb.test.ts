@@ -566,6 +566,26 @@ describe("the bar a promotion is read against, beside an old ladder's readings",
     const again = [...log.slice(0, step + 1), event("comparison.reported", tied)];
     expect(worthOf(again, "g-6").cost).toMatchObject({ attempts: 3 });
   });
+
+  it("counts a led session in each epoch it acted in, and a finished one in its own epoch alone", () => {
+    // WRI lane 31, 2 November: a led session finishes in no epoch, so 11 of 11 steps in seven
+    // campaigns read "over 0 Builder sessions".
+    const led = [
+      event("campaign.opened", { terms: { cost: "2" } }),
+      event("comparison.started", { session: "g-1", old: "S", fresh: "ha", starter: "S" }),
+      event("build.started", { session: "b-1", parent: "S" }),
+      event("build.turn", { session: "b-1" }),
+      event("build.turn", { session: "b-1" }),
+      stepRead("g-1", "S", "ha"),
+      event("harness.promoted", { harness: "ha", from: "S" }),
+      event("build.turn", { session: "b-1" }),
+    ];
+    expect(epochsOf(led).map(({ sessions, turns }) => [sessions, turns])).toEqual([
+      [1, 2],
+      [1, 1],
+    ]);
+    expect(epochsOf(log).map(({ sessions }) => sessions)).toEqual([1, 1, 0]);
+  });
 });
 
 describe("an epoch's reference share", () => {

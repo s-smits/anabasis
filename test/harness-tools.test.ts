@@ -24,7 +24,7 @@ import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { type CommandWall, makeSeatDirs, solveDirs } from "../src/tools/command.ts";
+import { type CommandWall, launchOn, makeSeatDirs, solveDirs } from "../src/tools/command.ts";
 import { harnessTools, openHarness } from "../src/harness/open.ts";
 import { claimRoot } from "../src/wall/seat-root.ts";
 import { solveIsolationPolicy } from "../src/wall/base.ts";
@@ -293,7 +293,7 @@ export const createDomainHarness = () => ({ tools: [defineDraftTool({
     });
     const harness = await openHarness(dir);
     await withWall(async (wall) => {
-      const [registered] = await harnessTools(harness, TASK, wall);
+      const [registered] = await harnessTools(harness, TASK, launchOn(wall));
       expect(registered?.executionMode).toBe("sequential");
       expect(await registered?.execute({}, UNUSED_API, BACKGROUND_CONTEXT)).toMatchObject({
         output: [{ type: "text", text: "Done." }],
@@ -311,7 +311,7 @@ it.skipIf(!walled)(
     const harness = await openHarness(FIXTURE);
     await withWall(async (wall) => {
       writeFileSync(join(wall.dirs.host, "config"), "host-canary");
-      const tools = await harnessTools(harness, TASK, wall);
+      const tools = await harnessTools(harness, TASK, launchOn(wall));
       // The fixture is a harness kept before the answer was a file: its factory lists a writer,
       // its spec declares it, and no solve is given it.
       expect([...harness.kinds]).toEqual([

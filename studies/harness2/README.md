@@ -115,12 +115,19 @@ then applied and scored in WorkBuddy's container. That keeps every solve identic
 campaign's, but the solver then works without the container's installed environment. The
 container route comes first, because the environment is part of what the benchmark measures.
 
-**The harness's own tools do not reach the container yet.** The container solver serves pi's
-tools and the harness's guide and programs, and refuses a harness whose `agent/tools.ts` declares
-tools (`bundleArm`): a campaign runs those tools behind the host's wall (`openHarness`,
-`src/harness/open.ts`), which a compiled solver inside WorkBuddy's container cannot start. Until
-it can, a learned harness that wrote tools of its own cannot be scored, and that refusal is a
-result to report, not a reason to strip the tools.
+**The harness's own tools reach the container.** The container solver serves pi's tools, the
+harness's guide and programs, and the tools its `agent/tools.ts` declares, listed and called by the
+loader a campaign's solve uses (`harnessTools`, `src/harness/open.ts`): each call is a fresh process
+in a folder of its own, with the harness's programs on its PATH. A campaign starts that process
+behind the host's wall; in the container, the container is the wall, and the compiled solver,
+acting as Bun, starts it. The compiled solver holds none of the host's source to bundle a harness's
+tools over, so the mount carries the module the host bundled when it made the arm (`tools.mjs`,
+`bundleArm`). The factory is given the task's instruction as its public input, since a benchmark
+task has no campaign id or family. A harness whose tools cannot be opened or listed in the
+container ends the trial as `broken-harness`: the container is still scored, and the score counts as
+that arm's own, as a campaign counts a broken harness against its side (rule 7). The dry run
+of `run.ts check` writes the tools it listed to its result, so a harness that cannot serve them
+shows before a paid solve.
 
 **The solve budget matches.** The benchmark's executor took 29.6 steps per Code task under OpenCode
 at base, and Anabasis's default solve is 20 model turns and 30 minutes (`LIMITS`,

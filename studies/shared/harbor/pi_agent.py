@@ -2,7 +2,8 @@
 benchmark's container, through the study's container solver (studies/shared/pi-solve.ts).
 
 The arm's mount (studies/shared/bundle.ts) is bind-mounted read-only at PI_MOUNT: the solver
-compiled to one executable, `pi-solve`, and the harness beside it, `harness/`. The model is
+compiled to one executable, `pi-solve`, the harness beside it, `harness/`, and the harness's tools
+module as the host bundled it, `tools.mjs`. The model is
 reached through the benchmark's own proxy on the host (`model_connection: local_proxy`), as
 WorkBuddy's cbc agent and Harness²'s OpenCode agent reach it: the URL comes in the `connection`
 kwarg prepare_job injects, and the bearer token is `{trial}::{route}`, which selects the job's
@@ -91,6 +92,7 @@ class PiAgent(BaseInstalledAgent):
         asked = f"/logs/agent/{_INSTRUCTION_FILENAME}"
         flags = [
             "--harness", f"{self._mount}/harness",
+            "--module", f"{self._mount}/tools.mjs",
             "--instruction", asked,
             "--model", self._model,
             "--base-url", url,

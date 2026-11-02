@@ -68,7 +68,6 @@ const EXEC_CODES = [
   "callback_error",
 ] as const satisfies readonly ExecutionErrorCode[];
 const QUEUES = new WeakMap<CommandWall, Promise<void>>();
-const ENV_DIR = dirname(Bun.fileURLToPath(import.meta.resolve("@earendil-works/pi-durable/env")));
 const ENV_FILES = ["decode.js", "index.js", "line-scan.js", "node-watch.js", "node.js"];
 let envSources: readonly (readonly [string, string])[] | undefined;
 
@@ -188,7 +187,11 @@ class WalledEnv implements ExecutionEnv {
     const signal = this.signal(context);
     return await this.serial<Wire<T>>(async () => {
       if (signal.aborted) return { ok: false, error: { code: "aborted", message: "aborted" } };
-      envSources ??= ENV_FILES.map((name) => [name, readFileSync(join(ENV_DIR, name), "utf8")] as const);
+      // Resolved at the first operation, not at import: a compiled solver has no installed packages.
+      envSources ??= ENV_FILES.map((name) => {
+        const dir = dirname(Bun.fileURLToPath(import.meta.resolve("@earendil-works/pi-durable/env")));
+        return [name, readFileSync(join(dir, name), "utf8")] as const;
+      });
       const sources = envSources;
       const bounded = new AbortController();
       let pending = "";

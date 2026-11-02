@@ -77,7 +77,7 @@ import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
 import { ending as endSession, openDesk, text, tool } from "../tools/answer.ts";
 import { CODING_TOOLS, codingTools, selectedCodingTools } from "../tools/coding.ts";
-import { type CommandWall, type NetworkReach, networkReach } from "../tools/command.ts";
+import { type CommandWall, launchOn, type NetworkReach, networkReach } from "../tools/command.ts";
 import { type Harness, harnessTools, openHarness, pathsUnder, toolTreeStamp } from "../harness/open.ts";
 import { installedPrograms } from "../harness/programs.ts";
 import { systemPrompt } from "../solver/prompt.ts";
@@ -809,7 +809,7 @@ export function walledTools(bench: Bench, wall: CommandWall, network: NetworkRea
     const sample = bench.tasks[0];
     return sample === undefined
       ? null
-      : (await harnessTools(harness, sample.task, wall)).map(({ name }) => name);
+      : (await harnessTools(harness, sample.task, launchOn(wall))).map(({ name }) => name);
   };
   return [
     ...codingTools(wall, CODING_TOOLS).map((each) =>

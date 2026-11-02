@@ -1,9 +1,13 @@
-// The Harness² study's two halves that need no container: an arm's harness taken from a campaign by
-// the owners the campaign's own handover uses, and two arms read as a campaign reads a comparison.
-// The campaign is written here with the log's own `append`, and its kept states under the digests
-// they open as, as a session's freeze keeps them.
+// The Harness² study's halves that need no container: an arm's harness taken from a campaign by
+// the owners the campaign's own handover uses, its own tools served as the container solver serves
+// them, and two arms read as a campaign reads a comparison. The campaign is written here with the
+// log's own `append`, and its kept states under the digests they open as, as a session's freeze
+// keeps them. The compiled solver is run where the container's platform is the host's.
 import { afterAll, describe, expect, it } from "bun:test";
-import { placeHarness } from "../studies/shared/bundle.ts";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
+import { bundleArm, MODULE_FILE, placeHarness } from "../studies/shared/bundle.ts";
+import { harnessIn, RESULT_FILE } from "../studies/shared/pi-solve.ts";
 import { halves, readArms, shortfall, streamOf, type Trial, trialsOf } from "../studies/shared/scores.ts";
 import { append } from "../src/kernel/log.ts";
 import {
@@ -11,23 +15,49 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   renameSync,
   rmSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import { capturedJsonStringify } from "../src/meta/json-runtime.ts";
+import { capturedJsonStringify, parseJsonAs } from "../src/meta/json-runtime.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
+import { runtimeProcess } from "../src/meta/process.ts";
+import { runSync } from "../src/meta/subprocess.ts";
 import { openHarness } from "../src/harness/open.ts";
 import { EXAMPLE, writeStarter } from "../src/harness/starter.ts";
 import { writeHarness } from "./helpers/write-harness.ts";
 
+// SAFETY: the harness tool below uses only the context's abort signal, no tool API methods.
+const UNUSED_API = undefined as never;
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-study-harness2-test-")));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
+/** A harness with one tool of its own, `doubled`, whose call reads the task's public input and runs
+ *  one of the harness's programs; `load` is the line its module runs first. */
+const tooled = (load = "") => ({
+  spec: { presets: ["bash"], tools: [{ name: "doubled", kind: "reader" }] },
+  tools: `import { defineDraftTool } from "@ana/agent-bundle";
+import { Type } from "@earendil-works/pi-ai";
+import { execFileSync } from "node:child_process";
+${load}
+export const createDomainHarness = (task) => ({ tools: [defineDraftTool({
+  name: "doubled", label: "Doubled", description: "Doubles n.",
+  parameters: Type.Object({ n: Type.Number() }),
+  run: ({ n }) => ({ text: \`\${task.publicInput.instruction} \${String(n * 2)} \${execFileSync("mark", { encoding: "utf8" }).trim()}\` }),
+})] });`,
+  programs: { mark: "#!/bin/sh\necho marked\n" },
+});
+const clock = () => ({ started: null, seconds: 600 });
+
 /** A campaign folder `name` with the starter and one child kept, and `events` in its log. */
-async function campaign(name: string, events: (log: string, starter: string, child: string) => void) {
+async function campaign(
+  name: string,
+  events: (log: string, starter: string, child: string) => void,
+  child: Parameters<typeof writeHarness>[1] = EXAMPLE,
+) {
   const dir = join(root, name);
   const states = join(dir, "states");
   mkdirSync(states, { recursive: true });
@@ -39,12 +69,12 @@ async function campaign(name: string, events: (log: string, starter: string, chi
     return digest;
   };
   const starter = await keep(writeStarter);
-  const child = await keep((into) => writeHarness(into, EXAMPLE));
+  const kept = await keep((into) => writeHarness(into, child));
   const log = join(dir, "log.jsonl");
   append(log, "build.started", { session: "b-1", parent: starter });
-  append(log, "build.finished", { session: "b-1", ended: "finished", harness: child, changed: true });
-  events(log, starter, child);
-  return { log, states, starter, child };
+  append(log, "build.finished", { session: "b-1", ended: "finished", harness: kept, changed: true });
+  events(log, starter, kept);
+  return { log, states, starter, child: kept };
 }
 
 const ended = await campaign("ended", (log, starter, child) => {
@@ -97,6 +127,63 @@ describe("an arm's harness, taken from a campaign", () => {
       placeHarness(join(root, "arm-misnamed"), { campaign: ended.log, harness: misnamed }),
     ).rejects.toThrow(/no longer opens/u);
   });
+});
+
+describe("the harness's own tools, served in the container", () => {
+  it("lists and calls a harness's tool through the loader a campaign uses, and names a tool that fails to load", async () => {
+    const dir = join(root, "tooled");
+    writeHarness(dir, tooled());
+    const { module } = await openHarness(dir);
+    const env = new NodeExecutionEnv({ cwd: root });
+    const { domain } = await harnessIn({ harness: dir, module, instruction: "Fix it." }, env, clock());
+    expect(domain.map(({ name }) => name)).toStrictEqual(["doubled"]);
+    const [doubled] = domain;
+    const result = await doubled?.execute({ n: 4 }, UNUSED_API, BACKGROUND_CONTEXT);
+    expect(result?.output).toStrictEqual([{ type: "text", text: "Fix it. 8 marked" }]);
+    const broken = join(root, "tooled-broken");
+    writeHarness(broken, tooled('throw new Error("no engine here");'));
+    const failing = (await openHarness(broken)).module;
+    await expect(
+      harnessIn({ harness: broken, module: failing, instruction: "Fix it." }, env, clock()),
+    ).rejects.toThrow("no engine here");
+  });
+
+  const native = runtimeProcess.platform === "linux" && runtimeProcess.arch === "x64";
+  it.skipIf(!native)(
+    "bundles a harness with tools, and the compiled solver lists them or ends a broken one as its own fail",
+    async () => {
+      const dry = async (name: string, load?: string) => {
+        const made = await campaign(name, () => undefined, tooled(load));
+        const mount = join(root, `mount-${name}`);
+        await bundleArm(mount, { campaign: made.log, harness: made.child });
+        const logs = join(root, `logs-${name}`);
+        mkdirSync(logs);
+        writeFileSync(join(logs, "instruction.md"), "Fix it.");
+        const flags = [
+          ["--harness", join(mount, "harness")],
+          ["--module", join(mount, MODULE_FILE)],
+          ["--instruction", join(logs, "instruction.md")],
+          ["--model", "google/gemini-3.5-flash"],
+          ["--base-url", "http://127.0.0.1:9/v1"],
+          ["--key", "unused"],
+          ["--effort", "high"],
+          ["--model-turns", "20"],
+          ["--wall-minutes", "30"],
+          ["--prompts", "24"],
+          ["--logs", logs],
+        ].flat();
+        runSync([join(mount, "pi-solve"), ...flags, "--dry-run"], { cwd: logs });
+        return parseJsonAs<{ ending: string; tools?: string[]; reason?: string }>(
+          readFileSync(join(logs, RESULT_FILE), "utf8"),
+        );
+      };
+      expect(await dry("served")).toMatchObject({ ending: "dry-run", tools: ["bash", "doubled", "submit"] });
+      const unloaded = await dry("unloaded", 'throw new Error("no engine here");');
+      expect(unloaded.ending).toBe("broken-harness");
+      expect(unloaded.reason).toContain("no engine here");
+    },
+    240_000,
+  );
 });
 
 /** A trial of `task` scored `score`, started at minute `minute`. */

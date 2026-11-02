@@ -101,9 +101,6 @@ interface TalliedIn {
   readonly cut: boolean;
   /** Whether one of the reference harness's own solves of it did: all its author hears (rule 4). */
   readonly referenceCut: boolean;
-  /** Whether one of the reference's own measures, or its author's, betters one of its valid answers
-   *  by the floor (`objectiveGap`): never the other harness's, which are its result on the task. */
-  readonly gapped: boolean;
   /** The side that won the task in this comparison's tally (`tally`), or null for a tie. */
   readonly won: "old" | "fresh" | null;
   /** The measure that carried the win (`carriedBy`), null for a tie. */
@@ -129,7 +126,7 @@ interface TaskRecord {
   /** A known valid answer independent of the other harness: an author's answer, a room solve,
    *  or a valid solve of a harness that is or was the reference. The practice allowance and the
    *  wait for a person read only this evidence. */
-  referenceHasValidAnswer: boolean;
+  independentValidAnswer: boolean;
   /** A solve's valid answer on record, or `task.feasible` records a passing author answer, or its
    *  an earlier log's gate records that a reference solve under `try_task` gave a valid answer, which reveals no answer. */
   knownValidAnswer: boolean;
@@ -405,7 +402,7 @@ function taskRecords(events: readonly LogEvent[]) {
       version,
       held: held.has(version),
       keptAt: -1,
-      referenceHasValidAnswer: false,
+      independentValidAnswer: false,
       knownValidAnswer: false,
       best: null,
       tallied: [],
@@ -421,7 +418,7 @@ function taskRecords(events: readonly LogEvent[]) {
     const tried = kind === "task.gate" ? asRecord(data.reference)?.valid : undefined;
     if (kind === "task.feasible" || (isNumber(tried) && tried > 0)) {
       of(data.version).knownValidAnswer = true;
-      of(data.version).referenceHasValidAnswer = true;
+      of(data.version).independentValidAnswer = true;
     }
     const { measure, direction } = asRecord(data.objective) ?? {};
     if (kind !== "task.feasible" || !isNumber(measure)) continue;
@@ -470,7 +467,7 @@ function taskRecords(events: readonly LogEvent[]) {
     const budgeted = kind === "turns-ended" && isNumber(limits.modelTurns) && !interrupted;
     if (passed(solve) === true && !wrong.has(solve.id)) {
       of(task).knownValidAnswer = true;
-      if (references.has(harness)) of(task).referenceHasValidAnswer = true;
+      if (references.has(harness)) of(task).independentValidAnswer = true;
     }
     if (isString(comparison) && AT_A_LIMIT.has(kind) && !budgeted) cut.add(cutIn(comparison, task, harness));
   }
@@ -512,7 +509,6 @@ function tallyReports(
         reference: side,
         cut: cutOn(data.old) || cutOn(data.fresh),
         referenceCut: side !== null && cutOn(data[side]),
-        gapped: (gap ?? 0) > 0,
         won: wins > 0 ? "fresh" : losses > 0 ? "old" : null,
         by: carriedBy(pointsOf(pair)),
         room: gap,
@@ -639,14 +635,14 @@ function tallyReports(
 export function poolOf(events: readonly LogEvent[]) {
   const { records, held } = taskRecords(events);
   const heldRecords = records.filter((record) => record.held);
-  const awaiting = placed(heldRecords, ({ referenceHasValidAnswer, keptAt, tallied }) =>
-    runOf(tallied.filter(({ index, cut }) => !referenceHasValidAnswer && index >= keptAt && !cut)),
+  const awaiting = placed(heldRecords, ({ independentValidAnswer, keptAt, tallied }) =>
+    runOf(tallied.filter(({ index, cut }) => !independentValidAnswer && index >= keptAt && !cut)),
   );
   const spent = placed(heldRecords, ({ tallied }) =>
     easyAt(
       tallied.filter(({ reference, referenceCut }) => reference !== null && !referenceCut),
       ownOf,
-      ({ gapped }) => gapped,
+      roomOn,
     ),
   );
   const out = new Set(awaiting);
@@ -663,25 +659,28 @@ export function poolOf(events: readonly LogEvent[]) {
   const unstood = held.filter((task) => before.has(task) && !out.has(task) && !stood.has(task));
   const retained = [...new Set([...spent, ...unstood])];
   const scorable = held.filter((task) => !out.has(task));
-  // Practice keeps a conservative sweep using reference-only known valid answers, limits and objective
-  // gaps, while the comparison frontier still reads the objective gap against every answer on record.
-  const practiceOut = placed(heldRecords, ({ referenceHasValidAnswer, keptAt, tallied }) => {
-    const own = tallied.filter((reading) => reading.reference !== null);
-    const easy = easyAt(
-      own.filter(({ referenceCut }) => !referenceCut),
-      ownOf,
-      roomOn,
-    );
-    if (easy !== undefined || referenceHasValidAnswer) return easy;
-    return runOf(own.filter(({ index, referenceCut }) => index >= keptAt && !referenceCut));
-  });
+  // Practice's allowance also leaves out a task with no independent valid answer that the reference
+  // answered in none of two comparisons: unlike `awaiting`, only the reference's own cut solves pass
+  // a comparison over, so the allowance reads nothing of the other harness (rule 3).
+  const practiceOut = new Set([
+    ...spent,
+    ...placed(heldRecords, ({ independentValidAnswer, keptAt, tallied }) =>
+      independentValidAnswer
+        ? undefined
+        : runOf(
+            tallied.filter(
+              ({ reference: side, index, referenceCut }) => side !== null && index >= keptAt && !referenceCut,
+            ),
+          ),
+    ),
+  ]);
   const first = ({ tallied, asideOrder }: TaskRecord) =>
     Math.min(tallied[0]?.order ?? asideOrder, asideOrder);
   return {
     scorable,
     frontier: scorable.filter((task) => !retained.includes(task)),
     practiceFrontier: held.filter(
-      (task) => !(before.has(task) && !stood.has(task)) && !practiceOut.includes(task),
+      (task) => !(before.has(task) && !stood.has(task)) && !practiceOut.has(task),
     ),
     awaiting,
     exhausted: spent,

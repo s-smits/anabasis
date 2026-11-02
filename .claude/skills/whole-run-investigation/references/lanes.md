@@ -1115,8 +1115,8 @@ Label: `economy`.
 
 Importance: 0.35.
 
-Starts from `LONG SILENCES (lane 31)`, `SPEND LED BY A ROLE (lane 31)`,
-`UNBILLED COMPACTIONS (lane 31)` and `BUILDER COMPACTED (lane 31)`.
+Starts from `LONG SILENCES (lane 31)`, `SPEND LED BY A ROLE (lane 31)` and
+`BUILDER COMPACTED (lane 31)`.
 
 The question is where the hours and the dollars went, whether the bill holds all of them, and
 what each long silence was. Start with the bill's completeness, since every dollar below rests on

@@ -63,7 +63,7 @@ const SAID: Readonly<Record<Outcome, string>> = {
   "reference-some": "valid in some solves",
   "reference-none": "valid in no solve",
   "earlier-reference": "last compared between two other harnesses",
-  disputed: "disputed: a rejection of an answer to it is not settled",
+  disputed: "set aside: a rejection of an answer to it is not yet ruled",
 };
 /** Where a held draft's room came from, as `informative` read an earlier log's room solves: the
  *  kinds the measurement counts of a gate that solved its draft. */
@@ -236,7 +236,7 @@ function promotedLine(promotion: LogEvent | undefined, before: number, listed: n
   if (promotion === undefined) return null;
   const rests = promotion.data.rests;
   const on = Array.isArray(rests) ? asRecord(rests[0])?.comparison : undefined;
-  return `The reference harness was promoted${isString(on) ? ` on the step of comparison ${on}` : ""}. ${String(before)} of the ${String(listed)} tasks listed were held out before then, under the harness it replaced; a line reads the harness that is the reference now wherever it stood in the comparison that last scored the task. Files in your home from sessions before then were written against the harness it replaced.`;
+  return `The reference harness was promoted${isString(on) ? ` on the step of comparison ${on}` : ""}. ${String(before)} of the ${String(listed)} tasks listed were held out before then, under the harness it replaced; a line reads the harness that is the reference now wherever it stood in the comparison that last scored the task. Files in your home from sessions before then were written while the harness it replaced was the reference.`;
 }
 
 /** Each proposed version's last task admission, with where it stands in the log. */

@@ -499,29 +499,35 @@ function unread(ground: Ground): Move | null {
  * A comparison on the tasks held out since the last reading, before anything is built. With no
  * harness waiting, a starter comparison says whether they leave the reference room before a
  * Builder session is paid for (on 10 October three campaigns built three times on tasks every
- * practice solve passed). A waiting harness whose last reading tested nothing, or left no room, is
+ * practice solve passed). After a promotion it is owed until one reports in the epoch, whatever
+ * harness waits, since it confirms the promotion: a session that changed harness/ beside the
+ * Examiner took its move, 5 of 5 promotions in the rehearsal of 2 November (sim-postplan) and the
+ * base alike. A waiting harness whose last reading tested nothing, or left no room, is
  * read on them. One whose reading had room and read no step is not: that would be a second draw of
  * one pair (`AGENTS.md`, section 4). Until 2 November this row redrew it, 13 times in the archive,
  * and the one step (buffer-159-opus g-7) came the comparison after a 5-0 no-step of the same
  * harness. The Builder changes it, and the next comparison reads the change.
  */
 function heldSince({ events, read, reports, waiting, reference, starter }: Ground): Move | null {
-  if (waiting === null) {
-    const since = heldAfter(events, reports.at(-1)?.reported ?? -1);
-    return reference === null || starter === null || reference === starter || since === 0
-      ? null
-      : compare(
-          `harness ${short(reference)} is the reference, and ${plural(since, "task")} ${since === 1 ? "was" : "were"} held out since the last comparison: the starter is compared with it on them, to read whether they leave it room before a Builder session is paid for`,
-          "starter",
-        );
+  const since = heldAfter(events, reports.at(-1)?.reported ?? -1);
+  const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED);
+  const confirmed = reports.some(
+    ({ fresh, old, reported }) => fresh === starter && old === reference && reported > promotedAt,
+  );
+  const owed = reference !== null && starter !== null && reference !== starter && since > 0;
+  if (owed && (waiting === null || !confirmed)) {
+    return compare(
+      `harness ${short(reference)} is the reference, and ${plural(since, "task")} ${since === 1 ? "was" : "were"} held out since the last comparison: the starter is compared with it on them, to read whether they leave it room`,
+      "starter",
+    );
   }
-  if (read === null || heldAfter(events, read.reported) === 0) return null;
-  const since = "and tasks were written since";
-  if (read.report.reading === "not-scored") return compare(`comparison ${read.id} tallied no task, ${since}`);
+  if (waiting === null || read === null || heldAfter(events, read.reported) === 0) return null;
+  const later = "and tasks were written since";
+  if (read.report.reading === "not-scored") return compare(`comparison ${read.id} tallied no task, ${later}`);
   const left = { none: "left no room", "too-hard": "left neither harness an answer", room: null }[
     roomOf(read.report)
   ];
-  return left === null ? null : compare(`comparison ${read.id} ${left}, ${since}`);
+  return left === null ? null : compare(`comparison ${read.id} ${left}, ${later}`);
 }
 
 /** The whole Builder sessions since the last comparison began, and how many a comparison follows:

@@ -132,7 +132,24 @@ shows before a paid solve.
 **The solve budget matches.** The benchmark's executor took 29.6 steps per Code task under OpenCode
 at base, and Anabasis's default solve is 20 model turns and 30 minutes (`LIMITS`,
 `tools/d2/campaign.ts`), fixed in a campaign's setting. D and U open with the turn limit and wall
-the container will give each scored solve, so a harness is built for the budget it is scored at.
+the container will give each scored solve, so a harness is built for the budget it is scored at:
+`--solve-model-turns` and `--solve-minutes` at the launch equal the job's `PI_MODEL_TURNS` and
+`PI_WALL_MINUTES` (20 and 30 on both sides unless one is named), and a call of the harness's own
+tools is held to a campaign's shell default in both.
+
+**D's and U's prompts** are drafted in `prompts/D-draft.txt` and `prompts/U-draft.txt`; the wording
+is the operator's. D's is built from the benchmark's public description (its README: repository-level
+work in Python, a real project at a baseline commit, code located and edited across modules, hidden
+tests, 18 categories across developer, product, algorithm, QA and operations roles), and asks for
+tasks whose answer is a unified diff against a project the public input carries. U's adds the
+train half's task inputs as examples, in a marked slot that waits for the dataset. The prompt reaches
+every Examiner session and no other seat (`brief`, `src/examiner/write.ts`; the drafting session,
+`src/examiner/draft.ts`), so carrying the examples in it gives U exactly the exposure the table
+names, with no host mechanism. A prompt cannot carry 40 whole repositories, so the slot holds each
+task's instruction verbatim and its project's name, baseline commit and file list; every Examiner
+session rereads them. Giving the Examiner the projects themselves would need a folder its wall opens
+and the Builder's and the solver's close, since a seat's reads are otherwise open; that changes what
+a seat is given, which is the operator's decision (`AGENTS.md`, section 3).
 
 **The build budget is fixed** before either campaign opens: the same total in dollars
 (`--budget`), the same Builder and Examiner model, the same patience. The paper's editor is
@@ -146,6 +163,36 @@ the host blocks `huggingface.co`, `hf.co`, `*.hf.co` and the benchmark's GitHub 
 or an egress rule, as Harness² advises for its own executor, and the container is blocked the same
 way in every arm. In Harness²'s own validation a Codex rollout on JobBench downloaded its task's
 rubric unasked. The restrictions are reported with the results.
+
+The proposal, not applied on any machine: block the names by resolver, on the runner that carries D
+and U, for the campaign's length.
+
+- **macOS.** A file `/etc/resolver/<domain>` sends every lookup in that domain and all its
+  subdomains to the resolver it names, so `/etc/resolver/hf.co` and `/etc/resolver/huggingface.co`,
+  each holding `nameserver 127.0.0.1` and `port 9` (a port nothing answers), make `*.hf.co` fail for
+  every process that resolves through the system, Seatbelt's seats included. Removing the two files
+  reverts it; `scutil --dns` shows them in force.
+- **Linux.** Where `systemd-resolved` answers (`/etc/resolv.conf` is its stub), a routing domain on
+  a link of its own sends those names to a server that does not answer, without touching its
+  configuration files: `ip link add ana-block type dummy`, `resolvectl dns ana-block 127.0.0.2`,
+  `resolvectl domain ana-block '~hf.co' '~huggingface.co'`. Bubblewrap's seats share the host's
+  resolver, so they are covered. `ip link del ana-block`, or a reboot, reverts it.
+- **The check**, before the first seat and again at the ending: a command run under a seat's wall
+  fails to resolve `huggingface.co` and `cdn-lfs.hf.co` and still reaches `https://pypi.org/simple/pip/`
+  (`networkReach`, `src/tools/command.ts`, still reads `reached`). A program that resolves names
+  itself, or connects to an address, passes a resolver block; the trace audit below covers that.
+- **The benchmark's GitHub repositories** (`Tencent/workbuddy-bench`, `google-research/harness2`)
+  cannot be blocked by resolver or by a proxy that does not break TLS, since both see only
+  `github.com`. The simplest honest course is to leave GitHub open and audit: at the ending, search
+  every seat's commands in the campaign's log for those repository names and the blocked hosts, and
+  report each hit with the scores. Blocking `github.com`, `codeload.github.com` and
+  `*.githubusercontent.com` the same way is the stronger choice, at the cost of every seat's use of
+  GitHub; that is the operator's.
+- **The container** does not use the host's resolver this way: Docker on Linux hands a container
+  the stub's upstream servers (`/run/systemd/resolve/resolv.conf`), past the routing domain, and
+  Docker Desktop's resolver on macOS is unverified. Its block is a job setting (a DNS server for
+  the job's network, or `extra_hosts` for the named hosts), settled with `run.ts check`, which reads
+  it from inside the container for free.
 
 **Domain fit.** An Anabasis task is a JSON input with hidden values, its answer is `answer.json`,
 and its checks run in verifier cells with the network closed (`src/kernel/task.ts`,
@@ -282,4 +329,7 @@ authoring session proposes, for step 4: "D's mean over three streams is above S'
   committed under `studies/runs/harness2/`. Until it is settled a run's record keeps its scores,
   bills and terms, and its trajectories stay in the ignored clone.
 - The closeness margin, if a "gets close" claim is wanted.
-- The wording of D's prompt and the choice of U's examples.
+- The wording of D's prompt and the choice of U's examples (drafts in `prompts/`), and whether U's
+  Examiner is given the train half's projects themselves, which needs a folder only its wall opens.
+- The network block: applying the resolver block on the runner, and whether GitHub is blocked
+  whole or audited.

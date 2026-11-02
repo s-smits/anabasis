@@ -1,0 +1,7 @@
+Make a requested change to a Python project that the public input supplies whole, as its files at a baseline commit, together with a work request of the kind a developer, product manager, algorithm engineer, QA engineer or operations engineer writes. Locate the code the request concerns across the project's modules, edit it, and answer with one unified diff against the baseline that `git apply` applies cleanly.
+
+Meet the requirement that, with the diff applied, the project's own tests and tests of the request that the solver does not see pass under the project's pinned Python interpreter with the network closed; that the tests which passed at the baseline still pass; that every file the request names is present with what it asks for; and that the diff changes no file the request gives no reason to change.
+
+The work requests of real tasks of this kind follow, each with the name, baseline commit and file list of the project it was given in, as examples of what such requests ask and how large their projects are. They come without their tests, grades or any solution.
+
+[[SLOT, to be filled before launch and removed with this line: the instruction of each of the 40 train-half Code tasks of WorkBuddy-Bench (the paper's split), verbatim, each followed by its project's name, baseline commit and file list. Waits for the operator's word on WorkBuddy-Bench's licence, since the inputs come from its dataset.]]

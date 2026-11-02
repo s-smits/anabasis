@@ -557,8 +557,11 @@ describe("unread harnesses and tasks", () => {
       expect(chosen.why.match(/\d+/g)).toEqual([...counts]);
     }
     const six = ["v13", "v14", "v15", "v16", "v17", "v18"].flatMap(heldOut);
+    // A reading with room that read no step is not drawn again on new tasks: the Builder builds.
+    expect(decide([...FIRST, ...compared("g-1", "h1", "no-step"), ...six], PLAN)).toMatchObject({
+      move: "build",
+    });
     for (const reading of [
-      compared("g-1", "h1", "no-step"),
       full("g-1"),
       compared("g-1", "h1", "no-step", { tally: [0, 0, 12], valid: { old: NONE, fresh: NONE } }),
       compared("g-1", "h1", "not-scored", { extra: { versions: [], aside: HELD } }),

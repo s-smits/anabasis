@@ -69,11 +69,15 @@ describe("the shape of a draft", () => {
       expect(faults[0]).toContain("$.pwm.clk_div_q8");
       expect(faults[0]).toContain("does not name");
     }
-    // Named in the properties, under a typed map, in one branch of a choice, or behind a reference.
+    // Named in the properties, under a typed map, in one branch of a choice, beside a choice that
+    // only requires, under a condition, or behind a reference.
+    const both = { channel: { type: "integer" }, clk_div_q8: { type: "integer" } };
     for (const format of [
-      pwmAs({ properties: { channel: { type: "integer" }, clk_div_q8: { type: "integer" } } }),
+      pwmAs({ properties: both }),
       pwmAs({ additionalProperties: { type: "integer" } }),
       pwmAs({ anyOf: [{ properties: { duty: {} } }, { properties: { channel: {}, clk_div_q8: {} } }] }),
+      pwmAs({ properties: both, anyOf: [{ required: ["channel"] }, { required: ["clk_div_q8"] }] }),
+      pwmAs({ dependentSchemas: { channel: { properties: both } } }),
       { ...FORMAT, properties: { ...FORMAT.properties, pwm: { $ref: "#/$defs/pwm" } }, $defs: { pwm: {} } },
     ]) {
       expect(draftFaults(carrying(format))).toEqual([]);

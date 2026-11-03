@@ -61,7 +61,7 @@ interface PromptParts {
 
 const CAMPAIGN_HEADING = "Campaigns under review";
 const RULES_HEADING = "Hard rules";
-const VERDICTS = ["finding", "no finding", "could not read"] as const;
+const VERDICTS = ["finding", "no finding", "could not read", "omitted"] as const;
 const FIELDS = ["Observation:", "Cause:", "Owner:", "Reverses if:", "Decision:"] as const;
 const SEEN = "Seen in:";
 
@@ -170,7 +170,7 @@ function reporting(lane: Lane, report: string, owners: readonly string[], names:
     "",
     "```",
     `# Lane ${String(lane.number)}: ${lane.title}`,
-    "Verdict: <finding | no finding | could not read>, then one sentence",
+    `Verdict: <${VERDICTS.join(" | ")}>, then one sentence`,
     "",
     "## Findings",
     "",
@@ -191,6 +191,14 @@ function reporting(lane: Lane, report: string, owners: readonly string[], names:
     "What you could not read, and why.",
     "```",
     "",
+    ...(lane.isolated
+      ? []
+      : [
+          // The operator, 3 November 2026: a session should follow a problem where it leads and
+          // write only the lanes that matter for these runs (`docs/backlog/wri-free-lanes.md`).
+          "Where this lane's evidence leads past its question, follow it, and write what you find here with the same fields. Where this lane matters less for these campaigns, at the point their logs have reached, than the other lanes your session was given, you may leave it unread: write only the heading and `Verdict: omitted`, then one sentence why (its question does not arise here, the primary's section already settles it, or another of your lanes covers it).",
+          "",
+        ]),
     `Each of the ${several ? "six" : "five"} fields starts a line of its own, as above: the collector counts them by the line's first word, and a finding written as one paragraph is refused (abl175-new's lane 11, 13 October).`,
     "",
     `An owner is one of: ${owners.map((owner) => `\`${owner}\``).join(", ")}. Name the file beside \`host\` and a prompt owner.`,
@@ -370,8 +378,8 @@ export function reportOf(
       : []),
     ...(verdict === "finding" && findings === 0 ? ["the verdict is a finding and none is written"] : []),
     // Recode's lane 15 on 10 October said no finding over two written findings, and was accepted.
-    ...(verdict === "no finding" && findings > 0
-      ? [`the verdict is no finding and the report writes ${plural(findings, "finding")}`]
+    ...((verdict === "no finding" || verdict === "omitted") && findings > 0
+      ? [`the verdict is ${verdict} and the report writes ${plural(findings, "finding")}`]
       : []),
     ...(unowned > 0
       ? [`${String(unowned)} of ${String(named.length)} owners are not in the owner table`]
@@ -381,11 +389,21 @@ export function reportOf(
   return { lane: lane.number, state: faults.length === 0 ? "ok" : "invalid", faults, verdict, findings };
 }
 
-/** The report index the synthesis is given, one line per lane. */
-export function reportIndex(reports: readonly Report[], pathOf: (lane: number) => string): string {
+/**
+ * The report index the synthesis is given, one line per lane. A lane a session left out while its
+ * trigger fired on one of the `campaigns` says so, since that is the lane most likely missed.
+ */
+export function reportIndex(
+  reports: readonly Report[],
+  pathOf: (lane: number) => string,
+  campaigns: readonly Campaign[],
+): string {
+  const fired = new Set(campaigns.flatMap(({ overview }) => overview.triggers.map(({ lane }) => lane)));
   return reports
     .map(({ lane, state, verdict, findings, faults }) => {
-      const tail = state === "ok" ? `${verdict ?? ""}, ${plural(findings, "finding")}` : faults.join("; ");
+      const trigger = fired.has(lane) ? " although its trigger fired" : "";
+      const read = verdict === "omitted" ? `omitted${trigger}` : verdict;
+      const tail = state === "ok" ? `${read ?? ""}, ${plural(findings, "finding")}` : faults.join("; ");
       return `- lane ${String(lane)}: ${state}${tail === "" ? "" : `, ${tail}`}, at \`${pathOf(lane)}\``;
     })
     .join("\n");

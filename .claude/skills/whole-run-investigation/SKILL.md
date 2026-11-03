@@ -44,7 +44,7 @@ start a step until the check named for the one before holds.
 
 1. **Start.** `wri.ts start --log <log>[,<log>...] --out <dir>` folds each log into the six rows and
    the triggers, writes them to `<dir>/overview.md`, and writes `<dir>/shared-instructions.md` with
-   each campaign's row filled in and two sections left blank. Where one question spans several
+   each campaign's row filled in and three sections left blank. Where one question spans several
    campaigns (other domains, other hosts, other commits of one pack), name them all: they are read
    as equals. Every lane reads every campaign, opens where a trigger fired on any of them, and
    triages each finding against the others on its `Seen in:` line; lane 27 is also given their
@@ -60,8 +60,8 @@ start a step until the check named for the one before holds.
    *Check:* read the `host-code digest` line. Use the matching campaign tree it names, where one
    exists; otherwise say beside each source claim that it concerns another tree. The digest is
    not a commit: the launch receipt supplies the commit separately. Settle rows A to F from the log.
-2. **Edit the shared instructions.** Write the two blank sections: the orientation, which is the
-   operator's question, and the moved variable with its prior state.
+2. **Edit the shared instructions.** Write the three blank sections: the orientation, which is the
+   operator's question, the moved variable with its prior state, and what you already read.
    *Check:* no `##` section is blank, and the hard rules are still there.
 3. **Build the lanes.** `wri.ts lanes --out <dir> [--agents N]` writes one prompt per lane under
    `<dir>/lanes/` and `<dir>/launch.json`: one session for each lane it built, or with
@@ -171,10 +171,16 @@ lanes in one selection, so the primary must build and launch each alone.
 
 ### Report checks
 
-`reportOf` accepts `finding`, `no finding` and `could not read`. It checks the lane heading,
-equal counts of lines beginning `Observation:`, `Cause:`, `Owner:`, `Reverses if:` and `Decision:`,
-a written finding for a `finding` verdict, no finding fields for a `no finding` verdict, and an
-owner from the catalogue. It does not check the cited evidence or enforce exactly one owner.
+`reportOf` accepts `finding`, `no finding`, `could not read` and `omitted`. It checks the lane
+heading, equal counts of lines beginning `Observation:`, `Cause:`, `Owner:`, `Reverses if:` and
+`Decision:`, a written finding for a `finding` verdict, no finding fields for a `no finding` or
+`omitted` verdict, and an owner from the catalogue. It does not check the cited evidence or enforce
+exactly one owner.
+
+An open lane's prompt lets its session follow a problem past the lane's question, and leave a lane
+that matters less for these campaigns `omitted`, with one sentence why. `collect` counts the lanes
+read and omitted, and the index marks an omitted lane whose trigger fired; the synthesis lists every
+omitted lane. An isolated lane is never omitted, since it runs alone.
 
 - `reporting` gives a `no finding` verdict its own `## Checked` section, which says what the lane
   checked and found sound, with `## Findings` left empty. The collector does not read that section,
@@ -228,6 +234,7 @@ and deleting a heading drops its section on purpose.
 | --- | --- | --- |
 | Orientation | the primary | the operator's question and where its evidence is, never the answer expected |
 | The moved variable and prior state | the primary | what changed since the campaign before, the earlier findings this one checks and what would falsify each; "none" when nothing moved |
+| Already read by the primary | the primary | what you already investigated, each with its evidence, so a lane builds on it instead of reading it again; never the answer a lane should reach; "nothing" when you read nothing |
 | Campaigns under review | `start` | each campaign, its log, its size, the checkout and its host line |
 | Hard rules | the preset | the rules above |
 

@@ -16,7 +16,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
 import { catalogueText, type Lane, lanesOf, ownersOf } from "../tools/wri/catalogue.ts";
-import { lanePrompt, reportOf } from "../tools/wri/investigation.ts";
+import { lanePrompt, reportIndex, reportOf } from "../tools/wri/investigation.ts";
 import { execTextSync } from "./helpers/bun-spawn-sync.ts";
 import { containing } from "./helpers/matchers.ts";
 
@@ -124,6 +124,22 @@ describe("an investigation's lanes", () => {
         ]);
       }
     }
+  });
+
+  it("lets a session leave an open lane omitted with its reason, never an isolated one, and names one whose trigger fired", () => {
+    expect(lanePrompt({ ...parts, lane: lane(4) })).toContain("Verdict: omitted");
+    expect(lanePrompt({ ...parts, lane: lane(5), report: "/r/05.md" })).not.toContain("Verdict: omitted");
+    const omitted =
+      "# Lane 4: False rejection among fails\nVerdict: omitted, lane 7 of this session covers it.\n";
+    const ok = reportOf(lane(4), omitted, owners, ["buffer-a"]);
+    expect(ok).toMatchObject({ state: "ok", verdict: "omitted", findings: 0 });
+    const written = `${omitted}## Findings\n### x\nObservation: a\nCause: b\nOwner: pack/evaluator\nReverses if: c\nDecision: d\n`;
+    expect(reportOf(lane(4), written, owners, ["buffer-a"]).faults).toEqual([
+      "the verdict is omitted and the report writes 1 finding",
+    ]);
+    const index = reportIndex([ok, { ...ok, lane: 6 }], (number) => `/r/${String(number)}.md`, one);
+    expect(index).toContain("lane 4: ok, omitted although its trigger fired");
+    expect(index).toContain("lane 6: ok, omitted, 0 findings");
   });
 });
 

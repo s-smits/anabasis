@@ -23,6 +23,8 @@ report: write nothing else, commit nothing and edit no source.
 ## The reports
 
 Read each report marked `ok`, including the `## Checked` section behind each `no finding` verdict.
+A lane marked `omitted` was left unread by its session, for the reason its report gives: list each
+such lane in your note with that reason, and name first any omitted although its trigger fired.
 The collector checks shape only and does not read that section. A report whose `## Checked` is empty
 leaves its lane unsubstantiated.
 A report marked `missing` or `invalid` is a gap: name it in your note

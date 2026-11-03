@@ -95,6 +95,7 @@ const OPTIONS = {
   "exam-minutes": { type: "string" },
   "exam-turns": { type: "string" },
   cost: { type: "string" },
+  promotions: { type: "string" },
   moves: { type: "string" },
   handover: { type: "string" },
   loaded: { type: "boolean", default: false },
@@ -153,6 +154,7 @@ const EXPLAINED: Readonly<Record<keyof typeof OPTIONS, string>> = {
   "exam-minutes": "an Examiner session's deadline in minutes (240)",
   "exam-turns": "an Examiner session's turn limit (200)",
   cost: "reported target for promotion attempts per epoch after set-up; limits nothing (3)",
+  promotions: "the promotions after which the campaign ends on the operator's word; none to lift it (none)",
   moves: "the most campaign moves this run makes",
   handover: "a directory, outside the repository, to write what the campaign hands over at its end",
   loaded: "start solves without waiting for the host's load",
@@ -302,6 +304,10 @@ export function opened(
     named.patience,
     `--patience ${String(values.patience)}: the moves without a gain the campaign bears in a row`,
   );
+  const cap = named.terms.promotions;
+  if (cap !== undefined && cap !== "none") {
+    counted(Number(cap), `--promotions ${cap}: the promotions before the campaign ends`);
+  }
   const project = projectOf(log, values.project, was);
   const record: JsonObject = {
     project,

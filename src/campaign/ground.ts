@@ -37,6 +37,9 @@ export interface Plan {
   /** The dollars left of the campaign's total and the reserve one solve is held at; null for a
    *  campaign with no total, as a rehearsal's, whose seats are paid nothing. */
   readonly left: { readonly dollars: number; readonly reserve: number } | null;
+  /** The promotions after which the campaign ends on the operator's word (`--promotions`); null
+   *  for no cap. */
+  readonly promotions: number | null;
 }
 
 /** One comparison as move 7 reads it: where it began, its two harnesses, and its last report with

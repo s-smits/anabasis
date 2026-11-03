@@ -47,7 +47,7 @@ describe("a run's writers", () => {
       ["/wt", ["bun", "tools/runs/cli.ts", "pulse", "--name", "r1"]],
       ["/wt", ["bun", "tools/runs/cli.ts", "launch", "r1", "--", "--project", "p"]],
       ["/wt", ["bun", "run", "runs", "continue", "r1", "--login", "4"]],
-      ["/wt", ["bun", "tools/runs/cli.ts", "pause", "r1", "--after", "promoted"]],
+      ["/wt", ["bun", "tools/runs/cli.ts", "pause", "r1", "--after", "reported"]],
       ["/wt", ["bun", "tools/d2/harness-builder.ts", "--name", "r1", "--unattended"]],
       ["/wt", ["bun", "tools/d2/harness-builder.ts", "--name", "r10"]],
       ["/wt", ["bun", "tools/d1b/draft.ts", "--name", "r1", "--session", "d-1"]],

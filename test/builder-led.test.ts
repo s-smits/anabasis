@@ -1015,6 +1015,27 @@ describe("a campaign tool where the table names more than the action", () => {
     expect(of(name, FINISHED)[0]).toMatchObject({ session: "b-1", ended: "finished" });
   });
 
+  it("ends the campaign on the operator's cap at its first promotion, and tells the Builder no count", async () => {
+    layOutPack(root, bundle, MANY, FIXTURE);
+    const name = `${STEM}-capped`;
+    const seats: Seats = {
+      seated: builderScript(passing(), [CHANGE_GUIDE, ["compare", {}], ["examine", {}], FINISH_IDLE]),
+      examine: writer,
+    };
+    const ending = await harnessBuilder([...seeded(name), ...FLAGS, "--promotions", "1"], seats);
+    expect(ending).toMatchObject({ move: "end", ending: "operator", code: "stop" });
+    expect(of(name, "harness.promoted")).toHaveLength(1);
+    expect(of(name, "comparison.started")).toHaveLength(1);
+    expect(of(name, "campaign.opened").at(-1)).toMatchObject({ terms: { promotions: "1" } });
+    const told = of(name, CALLED)
+      .flatMap(({ text }) => (isString(text) ? [text] : []))
+      .join("\n");
+    expect(told).not.toMatch(/\bcap\b|promotions?\b.*\b1\b/u);
+    await expect(harnessBuilder([...seeded(name), ...FLAGS, "--promotions", "0"], seats)).rejects.toThrow(
+      "--promotions 0",
+    );
+  });
+
   it("promotes the harness each step froze as it reports, whatever harness/ holds since, and runs the table's starter comparison before the Builder's comparison of a changed harness/", async () => {
     layOutPack(root, bundle, MANY, FIXTURE);
     const name = `${STEM}-asked`;

@@ -331,6 +331,7 @@ describe("a draft the starter solves", () => {
       prompted: true,
       admits: [],
       left: null,
+      promotions: null,
     };
     expect(decide(events, plan)).toMatchObject({ move: "end", ending: "exam" });
     expect(decide(events, plan).why).toContain("3 drafts in 2 sessions did not stand");

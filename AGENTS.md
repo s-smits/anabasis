@@ -314,7 +314,7 @@ refusal, so a refused move leaves the log as it was.
 
 **Defaults**: 24 scored tasks; 2 solves a side (`SIZE`, `src/kernel/size.ts`); level 0.02;
 improvement and supply patience of 6; a gap floor of 1% (`ROOM`); a stop after more than 3 tasks
-with a check defect; a reserve of 10 dollars a solve; a solve of 20 model turns, 30 minutes and 24
+with a check defect; a reserve of 3 dollars a solve; a solve of 20 model turns, 30 minutes and 24
 prompts (`LIMITS`, `tools/d2/campaign.ts`); a Builder session of 24 hours and 300 turns.
 
 **In `campaign-mechanics`, section 6** (`campaign-command.md`, `terms-and-refusals.md`): the hand

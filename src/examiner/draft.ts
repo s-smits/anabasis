@@ -227,6 +227,18 @@ const SYSTEM = [
   `draft_exam puts a whole draft to the host, which reads it without a model: its shape, then every control through the checks, twice, and the smallest answer on every example. It returns the faults it found, or that the draft stands. A draft that stands is the campaign's exam, and the session ends there. When a draft has faults, mend them and put the whole draft again. Call finish only if no exam can be drafted for the prompt, and say why.`,
 ].join("\n");
 
+// The answer-format keys that name an object's fields other than `properties` (`unnamed`).
+const NAMING = [
+  "$ref",
+  "allOf",
+  "anyOf",
+  "oneOf",
+  "if",
+  "dependentSchemas",
+  "unevaluatedProperties",
+  "patternProperties",
+];
+
 /** A name spelled twice among `ids`, or undefined. */
 const twice = (ids: readonly string[]): string | undefined =>
   ids.find((id, index) => ids.indexOf(id) !== index);
@@ -238,19 +250,13 @@ const twice = (ids: readonly string[]): string | undefined =>
  * properties, its PWM check read `clk_div_q8` from it, and the Referee ruled all 8 rejections it
  * made check defects; of 159 drafted exams on record, 2 carried such a field, both esp32 PWM
  * settings. An accept control carries every field its checks need, so reading the controls
- * covers every check. A reference, a combination or a pattern this does not read counts as naming.
+ * covers every check. A reference, a combination, a condition or a pattern counts as naming: until
+ * the release review of 3 November the `anyOf` and `oneOf` options were read without the
+ * `properties` beside them, which refused a sound "at least one of" format.
  */
 function unnamed(schema: JsonValue | undefined, answer: JsonValue, path: string): string[] {
   const held = asRecord(schema);
-  if (held === null || ["$ref", "allOf", "patternProperties"].some((key) => key in held)) return [];
-  const choice = [held.anyOf, held.oneOf].find((options) => Array.isArray(options));
-  if (Array.isArray(choice)) {
-    const readings = choice.map((option) => unnamed(option, answer, path));
-    return readings.reduce(
-      (fewest, each) => (each.length < fewest.length ? each : fewest),
-      readings[0] ?? [],
-    );
-  }
+  if (held === null || NAMING.some((key) => key in held)) return [];
   if (Array.isArray(answer)) return answer.flatMap((item) => unnamed(held.items, item, `${path}[]`));
   const properties = asRecord(held.properties) ?? {};
   const rest = asRecord(held.additionalProperties);

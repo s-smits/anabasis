@@ -28,7 +28,7 @@
  * was about 430.
  *
  * `--cap` is the round's dollar cap and is required: no solve starts that a reserve for it and for
- * each one running (`--reserve`, $10) would take past it, and the session's spend counts against
+ * each one running (`--reserve`, $3) would take past it, and the session's spend counts against
  * the same cap. A comparison the cap cuts short reads `not-scored`. On 2026-10-08 eight rounds
  * cost over $220 and scored no task, under no cap.
  *
@@ -154,7 +154,7 @@ export const COMPARISON_OPTIONS = {
   level: { type: "string", default: "0.02" },
   defects: { type: "string", default: "3" },
   cap: { type: "string" },
-  reserve: { type: "string", default: "10" },
+  reserve: { type: "string", default: "3" },
   predict: { type: "string" },
   "past-stop": { type: "string" },
 } as const;
@@ -353,7 +353,7 @@ export function capRead(cap: string, reserve: string): Cap {
   const named = { dollars: Number(cap), reserve: Number(reserve) };
   if (!capHolds(named)) {
     throw new Error(
-      `--cap ${cap} --reserve ${reserve}: a cap and its reserve are dollars as plain numbers, each above nothing, as --cap 40 --reserve 10`,
+      `--cap ${cap} --reserve ${reserve}: a cap and its reserve are dollars as plain numbers, each above nothing, as --cap 40 --reserve 3`,
     );
   }
   return named;

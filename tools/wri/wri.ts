@@ -10,6 +10,7 @@
  *   bun tools/wri/wri.ts synthesis --out .ana/wri/20261008-truss
  *   bun tools/wri/wri.ts grade --log .ana/d2/truss/log.jsonl [--bundle <pack>] --task <taskId> --answer <file>
  *   bun tools/wri/wri.ts derive (--log <log>[,<log>...] | --all) [--verbose] [--force]
+ *   bun tools/wri/wri.ts index [--root <dir>] [--out <file>]
  *
  * - `climb` prints lane 27's columns for every log `--log` names, one row each, and the paths
  *   under the host's `/tmp` one campaign named before another's solve ran them. It reads the logs as they stand, so it can be run on campaigns still running.
@@ -35,6 +36,12 @@
  *   file as well, for a session that wants to read them all. `--all` takes every campaign this
  *   machine reads (`readable`, `tools/runs/registry.ts`), which is how a job keeps them current.
  *   `start` derives its logs the same way, quietly, and names the folders in the instructions.
+ * - `index` reads every investigation under `--root` (the main worktree's `.ana/wri/` by default)
+ *   and writes one page over them to `--out` (`<root>/INDEX.md`): a row a folder, newest first,
+ *   then each campaign group's binding constraints in time order, each cycle folder and prediction
+ *   ledger there and in the main checkout's `notes/`, and each campaign whose log moved in the last
+ *   fourteen days (`tools/wri/index.ts`). It prints each section's row count and how many folders
+ *   it read whole, in part or not at all, and never the page, which holds hidden values.
  * - `grade` puts one answer to the campaign's own checker and prints the verdict in one line. It
  *   writes nothing and logs nothing. It needs the pack and its tool tree, and the Mac's verifier wall.
  *   An answer outside a drafted exam's answer format is refused first, as `judge` refuses a
@@ -61,13 +68,15 @@ import { openVerifier, spelled } from "#src/kernel/verify.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
+import { mainTree } from "#src/meta/git.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { codeOf } from "../d2/campaign.ts";
 import { receipts } from "../runs/receipt.ts";
-import { isCampaign, readable } from "../runs/registry.ts";
+import { isCampaign, processes, readable } from "../runs/registry.ts";
+import { stillRunning } from "../runs/diagnosis.ts";
 import { type Derived, derive, derivedLine, derivedOf, derivedText } from "./derive.ts";
 import { logAcross } from "../runs/snapshots.ts";
 import { stagedExamOf } from "../d2/exam.ts";
@@ -88,6 +97,7 @@ import {
   suggestedSessions,
   weightOf,
 } from "./investigation.ts";
+import { INVESTIGATION, investigationIndex } from "./index.ts";
 import { overview, rendered } from "./read.ts";
 
 interface Investigation {
@@ -99,13 +109,14 @@ interface Investigation {
 const REPO = resolve(import.meta.dir, "..", "..");
 const SHARED = "shared-instructions.md";
 const USAGE =
-  "usage: bun tools/wri/wri.ts read | climb | start | lanes | collect | synthesis | grade | derive";
+  "usage: bun tools/wri/wri.ts read | climb | start | lanes | collect | synthesis | grade | derive | index";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
   options: {
     log: { type: "string" },
     out: { type: "string" },
+    root: { type: "string" },
     lanes: { type: "string" },
     agents: { type: "string" },
     bundle: { type: "string" },
@@ -207,10 +218,31 @@ async function deriveStep(): Promise<number> {
   return done.some(({ failed }) => failed.length > 0) ? 1 : 0;
 }
 
+/**
+ * Refuse an investigation of a campaign that may still write its log. The operator's rule of 3
+ * November: the run is stopped before its investigation starts, so every lane reads one sheet and
+ * no finding is about events that arrived after another lane read the log. A log the registry does
+ * not list has no campaign command writing it.
+ */
+function refuseRunning(logs: readonly string[]): void {
+  const known = readable(REPO);
+  const running = processes();
+  const live = logs.filter((log) => {
+    const run = known.find(({ path }) => path === log);
+    return run !== undefined && stillRunning(run, running);
+  });
+  if (live.length === 0) return;
+  const names = live.map((log) => nameOf(log)).join(", ");
+  throw new Error(
+    `${names} may still write its log: stop it first (\`bun run runs stop <name> --yes\`, or \`pause\`), so every lane reads one log`,
+  );
+}
+
 async function start(): Promise<number> {
   needed("log");
   const [logs, out] = [resolvedLogs, resolve(needed("out"))];
   if (existsSync(join(out, SHARED))) throw new Error(`${out} already holds ${SHARED}`);
+  refuseRunning(logs);
   if (new Set(logs.map((log) => nameOf(log))).size < logs.length) throw new Error("--log names a log twice");
   mkdirSync(join(out, "lanes"), { recursive: true });
   const { done, line } = await derived(logs);
@@ -238,18 +270,17 @@ async function start(): Promise<number> {
       ? texts.join("")
       : texts.map((each, index) => `## ${nameOf(logs[index] ?? "")}\n\n${each}`).join("\n");
   writeFileSync(join(out, "overview.md"), text);
-  writeFileSync(join(out, "investigation.json"), `${JSON.stringify({ logs }, null, 2)}\n`);
+  writeFileSync(join(out, INVESTIGATION), `${JSON.stringify({ logs }, null, 2)}\n`);
   console.log(text);
   console.log(line);
   console.log(`wrote ${join(out, SHARED)}: write its three blank sections, then run lanes`);
   return 0;
 }
 
-/** The investigation `start` wrote, each campaign read as its log stands now, so a campaign still
- *  running is read as it stands when the lanes are built. */
+/** The investigation `start` wrote, each campaign read as its log stands now. */
 function opened(): Investigation {
   const out = resolve(needed("out"));
-  const { logs } = parseJsonAs<{ logs: string[] }>(readFileSync(join(out, "investigation.json"), "utf8"));
+  const { logs } = parseJsonAs<{ logs: string[] }>(readFileSync(join(out, INVESTIGATION), "utf8"));
   const campaigns = logs.map((log) => ({
     name: nameOf(log, logs),
     log,
@@ -277,6 +308,7 @@ const reportPath = (out: string, lane: number) => join(out, "lanes", `${stem(lan
 
 function lanes(): number {
   const { out, shared, campaigns } = opened();
+  refuseRunning(campaigns.map(({ log }) => log));
   const climb = campaigns.length > 1 ? climbText(campaigns.map(({ log }) => log)) : "";
   const blank = blankSections(shared);
   if (blank.length > 0) throw new Error(`write these sections of ${SHARED} first: ${blank.join(", ")}`);
@@ -456,6 +488,22 @@ async function main(): Promise<number> {
   }
   if (verb === "grade") return grade();
   if (verb === "derive") return deriveStep();
+  if (verb === "index") {
+    const checkout = mainTree(REPO);
+    const root = resolve(values.root ?? join(checkout, ".ana", "wri"));
+    const out = resolve(values.out ?? join(root, "INDEX.md"));
+    const { text, parsed, rows } = investigationIndex(root, {
+      notes: join(checkout, "notes"),
+      runs: readable(REPO),
+      now: Date.now(),
+    });
+    writeFileSync(out, text);
+    const how = Object.entries(parsed).map(([way, count]) => `${String(count)} ${way}`);
+    console.log(
+      `wrote ${out}: ${plural(rows.investigations, "investigation")} (${how.join(", ")}), ${plural(rows.ledgers, "ledger folder")}, ${plural(rows.runs, "recent campaign")}`,
+    );
+    return 0;
+  }
   if (verb === "climb") {
     needed("log");
     console.log(climbText(resolvedLogs));

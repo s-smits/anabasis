@@ -1,11 +1,11 @@
 /** Bounded stderr and the current wait, shared by view, pulse and remote record snapshots. */
 import type { LogEvent } from "#src/kernel/log.ts";
-import { existsSync, lstatSync, readdirSync, renameSync } from "#src/meta/filesystem.ts";
+import { existsSync, lstatSync, readdirSync, readFileSync, renameSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { isNumber, isString } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { boundText } from "#src/meta/bounded-text.ts";
-import { HERE, type Run } from "./registry.ts";
+import { HERE, keepers, type Run, type Running, writers } from "./registry.ts";
 
 interface Observation {
   readonly open: boolean;
@@ -52,16 +52,26 @@ export async function keepObservation(folder: string, observation: Observation):
   renameSync(temporary, join(folder, OBSERVATION));
 }
 
-/** A snapshot carries remote liveness; local pids never decide whether a remote campaign lives. */
+/** What the last fetch of a peer's campaign saw there, or null for this machine's own: a snapshot
+ *  carries remote liveness, and local pids never decide whether a remote campaign lives. */
+function observationOf(run: Run): Observation | null {
+  const stored = join(dirname(run.path), OBSERVATION);
+  const remote = run.archived !== undefined && run.archived !== HERE;
+  return remote && existsSync(stored) ? parseJsonAs<Observation>(readFileSync(stored, "utf8")) : null;
+}
+
+/** Whether `run` may still write its log: a peer's by its last fetch, this machine's by a process
+ *  in `running` that writes it or a `runs keep` that would start it again. */
+export const stillRunning = (run: Run, running: readonly Running[]): boolean =>
+  observationOf(run)?.open ?? (writers(run, running).length > 0 || keepers(run.name).length > 0);
+
 export async function runReason(
   run: Run,
   events: readonly LogEvent[],
   state: "open" | "closed",
 ): Promise<string[]> {
-  const stored = join(dirname(run.path), OBSERVATION);
   const remote = run.archived !== undefined && run.archived !== HERE;
-  const observation =
-    remote && existsSync(stored) ? parseJsonAs<Observation>(await Bun.file(stored).text()) : null;
+  const observation = observationOf(run);
   const alive = observation?.open ?? state === "open";
   const last = events.at(-1);
   if (last?.kind === "campaign.ended") return [];

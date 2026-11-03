@@ -21,6 +21,7 @@ import { type TaskPackage, taskVersion } from "../../src/kernel/task.ts";
 import type { Task } from "../../src/kernel/verify.ts";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../../src/meta/filesystem.ts";
 import { isFunction, isString, type JsonObject } from "../../src/meta/json-shape.ts";
+import { keyIfDefined } from "../../src/meta/optional-key.ts";
 import { tmpdir } from "../../src/meta/os.ts";
 import { join, resolve } from "../../src/meta/path.ts";
 import { present } from "./matchers.ts";
@@ -96,24 +97,26 @@ export const instance = (base: number | null) => ({
   hidden: { seed: 1 },
 });
 export const propose = (...bases: (number | null)[]) => call("propose_tasks", { tasks: bases.map(instance) });
+/** A draft as `draft_exam` takes its arguments. */
+export const draftArgs = (draft: Draft): JsonObject => ({
+  domain: draft.domain,
+  scope: draft.scope,
+  conventions: draft.conventions,
+  rules: draft.rules.map((rule) => ({ ...rule })),
+  answer_format: draft.answerFormat,
+  checks: draft.checks.map((check) => ({ ...check })),
+  evaluator: draft.evaluator,
+  tasks: draft.tasks.map(({ family, publicInput, hidden }) => ({
+    family,
+    public_input: publicInput,
+    hidden,
+  })),
+  accept_controls: draft.accept.map((control) => ({ ...control })),
+  reject_controls: draft.reject.map((control) => ({ ...control })),
+  ...keyIfDefined("objective", draft.objective && { ...draft.objective }),
+});
 /** A draft as `draft_exam` takes it. */
-export const drafted = (draft: Draft) =>
-  call("draft_exam", {
-    domain: draft.domain,
-    scope: draft.scope,
-    conventions: draft.conventions,
-    rules: draft.rules.map((rule) => ({ ...rule })),
-    answer_format: draft.answerFormat,
-    checks: draft.checks.map((check) => ({ ...check })),
-    evaluator: draft.evaluator,
-    tasks: draft.tasks.map(({ family, publicInput, hidden }) => ({
-      family,
-      public_input: publicInput,
-      hidden,
-    })),
-    accept_controls: draft.accept.map((control) => ({ ...control })),
-    reject_controls: draft.reject.map((control) => ({ ...control })),
-  });
+export const drafted = (draft: Draft) => call("draft_exam", draftArgs(draft));
 /** What a session of each mode puts once: a sound draft, one task. */
 export const PUT = { draft: drafted(SOUND), write: propose(7) } as const;
 /** A solve's condition, as the launcher records one: the task version, the harness, the test side. */

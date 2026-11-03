@@ -1,6 +1,7 @@
 # Handing a campaign what is known about a benchmark
 
-Status: planned. Nothing of it is in source.
+Status: planned. Nothing of it is in source. The working behind it, commit by commit, with the
+operator's decisions, predictions and open questions, is in `docs/progress/known-bench-plan.md`.
 
 ## The question
 

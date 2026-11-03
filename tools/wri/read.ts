@@ -598,19 +598,37 @@ function reviewTriggers(log: Index): Trigger[] {
     ...log.compared.flatMap(({ session, own, last }) => {
       // The tally were every rejection that set a task aside to stand, beside the one without them,
       // both read without the bill as the step is (`tallyOf`); until 2 November it read the billed p.
-      const [counted, scored] = [tallyOf(own.counted), tallyOf(own.scored)];
+      // A starter comparison is also read from the reference's side, which is what confirms a
+      // promotion: until 3 November only the starter's side was, and postplan g-2 (the reference
+      // 7-3-2 at p 0.0244 without its set-aside task, 8-3-2 at p 0.0151 with it) stayed silent.
       const level = count(own.level);
       const clears = (tested: { readonly p: number }) => tested.p <= level;
+      const flipped = (tested: JsonValue | undefined) => {
+        // As `tallyOf` reads it: the unbilled scores where a report keeps them apart, else its own.
+        const record = asRecord(tested);
+        const scores = record?.unbilled ?? record?.differences;
+        return Array.isArray(scores)
+          ? tallyOf({ unbilled: scores.filter(isNumber).map((one) => -one) })
+          : null;
+      };
+      const sides = [
+        [tallyOf(own.counted), tallyOf(own.scored), ""],
+        ...(own.fresh === own.starter
+          ? [[flipped(own.counted), flipped(own.scored), " for the reference"] as const]
+          : []),
+      ] as const;
       const settled = asRecord(last.settled);
       return [
-        ...(counted === null || scored === null || clears(counted) === clears(scored)
-          ? []
-          : [
-              fired(
-                "READING MOVES WITH THE SET-ASIDE",
-                `${session}: ${String(scored.wins)}-${String(scored.losses)} without the ${plural(items(own.aside).length, "task")} set aside, ${String(counted.wins)}-${String(counted.losses)} were their rejections to stand, and only one of the two clears its level`,
-              ),
-            ]),
+        ...sides.flatMap(([counted, scored, side]) =>
+          counted === null || scored === null || clears(counted) === clears(scored)
+            ? []
+            : [
+                fired(
+                  "READING MOVES WITH THE SET-ASIDE",
+                  `${session}: ${String(scored.wins)}-${String(scored.losses)}${side} without the ${plural(items(own.aside).length, "task")} set aside, ${String(counted.wins)}-${String(counted.losses)} were their rejections to stand, and only one of the two clears its level`,
+                ),
+              ],
+        ),
         ...(settled === null
           ? []
           : [

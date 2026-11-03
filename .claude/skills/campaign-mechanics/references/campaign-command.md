@@ -11,7 +11,7 @@ comment of each file is its manual and lists its flags.
 
 | Order | Command | What it puts in the log |
 | --- | --- | --- |
-| 0 | `bun tools/d1b/draft.ts --name <name> --session d-1 --examiner <model>` | For a campaign opened from a prompt: the Examiner's drafting session, and the whole draft that stood (`exam.drafted`), read by the host without a model |
+| 0 | `bun tools/d1b/draft.ts --name <name> --session d-1 --examiner <model>` | For a campaign opened from a prompt: the Examiner's drafting session, and the whole draft that stood (`exam.drafted`), read by the host without a model and then solved by the starter, which must leave one example room (`starterFaults`) |
 | 1 | `bun tools/c/accept.ts ... [--admit <checks> \| --admit-authored] [--freeze [--despite "<why>"]]` | What the check program was seen to do (`checker.read`), and the operator's word that the contract and that version stand (`contract.frozen`) |
 | 2 | `bun tools/d2/prepare.ts ... [--practice N]` | The pack's tasks held out and the practice tasks released |
 | 3 | `bun tools/d1b/examine.ts ... --session x-1 --examiner <model>` | More held-out tasks, written by an Examiner session |

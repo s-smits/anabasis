@@ -293,7 +293,8 @@ export async function examine(request: ExamRequest, wall?: Wall): Promise<Examin
   const seated = async (walls?: Walls) =>
     examining(
       request,
-      (stop) => (request.mode === "draft" ? drafting(request) : writing(request, walls, reference, stop)),
+      (stop) =>
+        request.mode === "draft" ? drafting(request, stop) : writing(request, walls, reference, stop),
       walls,
     );
   if (wall === undefined) return await seated();

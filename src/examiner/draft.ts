@@ -37,11 +37,28 @@
  * answered in all three solves, and esp32-fresh-opus-zbook held out none in six sessions. Until
  * 31 October it was also told to choose rules that act together; both of that day's paired esp32
  * arms did, and the reference answered 34 of 35 of their first room solves validly, since a search
- * answers interacting rules as surely as separate ones. From 22 October to 1 November a draft with
- * no fault was also measured before it stood: the reference harness solved each example as the
- * gate's room solves did, and the Examiner was told the budget and, an example a line, how many
- * solves were valid and their turns. The gate reads no solve now (`write.ts`), so a draft with no
- * fault stands at once. Where it has a shell (`shell.ts`) it is told what the shell is
+ * answers interacting rules as surely as separate ones.
+ *
+ * A draft with no fault at either reading is solved before it stands: the caller's reading has the
+ * Starter Built Harness solve each example under the campaign's setting, and refuses the draft
+ * where no example leaves the starter room as a comparison reads a task (`starterFaults`,
+ * `tools/d1b/draft.ts`). The author is told, an example a line, how many solves were valid and
+ * their turns, and the fact that the starter answered every example; it is told no course. A
+ * rejection counts as room whether or not a Referee would rule it earned, and so does an example
+ * with no counted solve, since a draft is allowed where in doubt (`AGENTS.md`, section 2,
+ * consequence 6); no Referee sits at drafting. The operator chose this on 3 November, after a
+ * drafted exam left the starter nothing to gain two days in a row: esp32 on 2 November, and
+ * jobstat-fresh-opus-forkedPR580 on 3 November, where the starter was valid on 18 of 18 solves and
+ * the first comparison, g-1, tied 0-0-8. From 22 October to 1 November the same solves were a
+ * report: the Examiner was told the budget and, an example a line, the valid solves and their
+ * turns, and the same draft put again stood. esp32-fresh-opus-stackedPR506's drafting session of
+ * 28 October was told 3 of 3 valid on every example, put the same draft again, and its task admission
+ * then refused 70 of 73 drafts, 210 of 210 room solves valid. The measure went on 1 November with
+ * the gate's room solves (`8f901e459`), and comes back as a refusal, which the same draft put again
+ * meets again. A caller with no solver (a script in the seat, a test) reads no solve, and its draft
+ * stands on the readings alone.
+ *
+ * Where it has a shell (`shell.ts`) it is told what the shell is
  * and what the wall test found of the network, and not what to use it for. Nothing hidden
  * exists at drafting, and the wall closes the repository, where the log lies.
  *
@@ -121,9 +138,10 @@ interface DraftingTerms {
   readonly prompt: string;
   /** The budget the exam's solves will be held to, as the campaign's setting names it. */
   readonly budget: SolveBudget;
-  /** What the host reads of a draft whose shape holds, without a model: its control answers through its
-   *  checks. */
-  readonly reading: (draft: Draft) => Promise<DraftReading>;
+  /** What the host reads of a draft whose shape holds: its control answers through its checks, and
+   *  where those hold and the caller can solve, the starter's solves of its examples. `stop` is the
+   *  session's, which ends those solves with it. */
+  readonly reading: (draft: Draft, stop: AbortSignal) => Promise<DraftReading>;
 }
 
 /** The fewest example tasks a draft holds: the reading needs each check seen to pass and to
@@ -224,7 +242,7 @@ const SYSTEM = [
   "Where the field has an objective, a quantity every valid answer has and practitioners minimise or maximise, such as a mass, a cost or a length, declare it: two valid answers to one task are then compared by it, and a task on which both tools find a valid answer still tells them apart. The check program then also exports `objective`, a function that takes the same `request` and returns that quantity of the answer as a finite number, computed from the answer and the public input alone; it is told nothing hidden. A field with no such quantity declares none.",
   "Write one check for each rule, and no other. The check program is one TypeScript module that exports `checks`, an object with a function under each check id. A function takes one argument, `request`, and returns a boolean, or a promise of one: `request.publicTask` is `{ taskId, family, publicInput }`, `request.artifact` is the answer, and `request.hidden` is the task's hidden values. It runs offline in a closed cell and imports nothing, so it computes from its argument alone, and the same answer always gets the same verdict. It returns true where the answer keeps its rule and false where it breaks it. An answer that breaks another rule is that rule's check's to refuse. It does not throw on any answer the format allows.",
   `Give at least ${plural(EXAMPLES, "example task")}, different in what they ask and not only in their numbers. Either every task carries hidden values or none does. For each example give one accept control: an answer that keeps every rule. You choose the task, so you can start from an answer and derive the task from it. For each check give at least one reject control: an answer to an example that follows the answer format, breaks that check's rule, and names the check. The smallest answer the format allows, such as empty strings and empty lists, has to be rejected on every task: where it would pass, the format or the rules ask too little.`,
-  `draft_exam puts a whole draft to the host, which reads it without a model: its shape, then every control through the checks, twice, and the smallest answer on every example. It returns the faults it found, or that the draft stands. A draft that stands is the campaign's exam, and the session ends there. When a draft has faults, mend them and put the whole draft again. Call finish only if no exam can be drafted for the prompt, and say why.`,
+  `draft_exam puts a whole draft to the host, which reads it without a model: its shape, then every control through the checks, twice, and the smallest answer on every example. A draft with no fault there is then solved: the starter harness, the one every campaign starts from, solves each example afresh under the budget, as many times as a comparison solves a task, and a draft whose every example it answered validly on every solve, with no valid answer better than another by the objective, does not stand. It returns the faults it found, or that the draft stands. A draft that stands is the campaign's exam, and the session ends there. When a draft has faults, mend them and put the whole draft again. Call finish only if no exam can be drafted for the prompt, and say why.`,
 ].join("\n");
 
 // The answer-format keys that name an object's fields other than `properties` (`unnamed`).
@@ -413,7 +431,7 @@ export function draftOf(events: readonly LogEvent[]): Draft | null {
 /** The drafting mode as `examine` seats it (`session.ts`): what the session is told, the
  *  tool it puts a draft by, the shape a draft is held to before the caller's reading, and the event
  *  a draft that stands is kept in. */
-export function drafting(terms: DraftingTerms) {
+export function drafting(terms: DraftingTerms, stop: AbortSignal) {
   const { limits } = terms;
   const kind = "draft";
   const desk = { tries: 0, stands: false };
@@ -421,7 +439,7 @@ export function drafting(terms: DraftingTerms) {
   const put = tool({
     name: "draft_exam",
     description:
-      "Put a whole draft of the exam to the host's reading, which uses no model. It returns the faults it found, or that the draft stands. A draft that stands is the campaign's exam.",
+      "Put a whole draft of the exam to the host: its reading without a model, then the starter harness's solves of its examples. It returns the faults it found, or that the draft stands. A draft that stands is the campaign's exam.",
     parameters: DRAFT_PARAMETERS,
     executionMode: "sequential",
     execute: async (args) => {
@@ -431,7 +449,7 @@ export function drafting(terms: DraftingTerms) {
       const seen = capturedJsonStringify(draft);
       const unformed = draftFaults(draft);
       const { faults, notes } =
-        unformed.length > 0 ? { faults: unformed, notes: [] } : await terms.reading(draft);
+        unformed.length > 0 ? { faults: unformed, notes: [] } : await terms.reading(draft, stop);
       const noted =
         notes.length === 0
           ? []

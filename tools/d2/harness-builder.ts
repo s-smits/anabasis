@@ -265,7 +265,10 @@ async function make(
     const session = nextId(events, decided.move === "draft" ? "d" : "x");
     const { args } = examinerRun(turn, session, decided.move === "draft" ? "draft" : "write");
     begin({ session });
-    await (decided.move === "draft" ? draftCommand(args, seats.draft) : examineCommand(args, seats.examine));
+    // A draft's examples are solved by the starter as a comparison's tasks are, in the solve queue.
+    await (decided.move === "draft"
+      ? draftCommand(args, seats.draft, turn.held)
+      : examineCommand(args, seats.examine));
     return;
   }
   const { setting, cap, reviewer, pastStop } = sharedOf(turn);

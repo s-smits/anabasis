@@ -10,6 +10,37 @@ distinctive property here is learning without benchmark-provided grades: it stil
 verdicts, but from checks it generated itself. The second question, once the first has an answer,
 is how a harness built that way compares with Harness², which adapts on each scored task.
 
+## Read every result against how uneven the comparison is
+
+The two systems are not given the same chance, and every reading of this study states it first.
+The yardstick still has to be a benchmark: an outside comparison needs a grader that nobody in
+either loop wrote, and a benchmark is the only such grader on hand. It is also the setting
+Harness² was designed for, so the unevenness below comes with the yardstick and cannot be removed
+from it.
+
+- **Harness² trains on the task it is scored on.** For each scored task it sees the real inputs,
+  files and expected deliverable, runs `4k` rollouts on that task, lets its improver read them, and
+  delivers its best output for that same task. It sees no grade, but it sees the instance.
+- **Anabasis never sees a benchmark task.** Its Examiner writes stand-in tasks from a description
+  of the domain, its own check programs grade them, and it freezes one harness before the first
+  scored solve. That harness then answers each benchmark task once, without adapting.
+- **Anabasis climbs on a different grading.** Its checks verify what a program can verify:
+  recomputed numbers, formats, declared properties. The benchmark grades by its own verifier, which
+  may reward other things (JobBench's rubric also scores completeness, interpretation and
+  presentation). A climb on the checks may not move the benchmark's score at all.
+- **Anabasis is scored on another runtime than the one it built on.** It builds on pi's tools and is
+  scored after export, with `agent/tools.ts` dropped (stage 2).
+
+So a lower score for Anabasis is the expected outcome and says little against it. **An Anabasis
+harness that matches Harness², or comes within a margin fixed before its first scored solve, is a
+strong result**: one harness built on tasks it wrote itself, graded by checks it wrote itself,
+equal on unseen tasks to a method that fits each task it is scored on, at one rollout a task
+against `4k` rollouts and `3k` improver sessions.
+
+The like-for-like reading is Harness² on tasks it has not adapted to: the library a stream built on
+the other tasks of its domain, frozen, one rollout a task. Each comparison reports that arm beside
+Harness²'s own delivered outputs, and the economy beside both ("Economy, apart from quality").
+
 This is a protocol. No benchmark task has run under it. Its level is kept in `docs/plan.md`
 (row X1). How to run it is under "Running it".
 

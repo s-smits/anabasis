@@ -405,7 +405,11 @@ describe("the reader of a round compared with another harness than its session s
     expect(unfinished).toBe("1 solve open at the log's end");
     const lines = open.rows.flatMap((row) => row.lines);
     expect(lines).toContain("0 solves never finished, 1 open at the log's end");
-    expect(lines).toContain("open at the log's end: g-9, a comparison: 0 solves ended and 1 open");
+    // The Examiner session x-9 runs beside the Builder's conversation, so it stays open until its
+    // own seat starts again or the campaign ends, and the comparison started since does not cut it.
+    const openLine = lines.find((line) => line.startsWith("open at the log's end:"));
+    expect(openLine).toContain("x-9, an Examiner session: 2 turns and 0 tasks held out so far");
+    expect(openLine).toEndWith("; g-9, a comparison: 0 solves ended and 1 open");
     more("campaign.ended", { ending: "no-room" });
     const ended = overview(live);
     const never = ended.triggers.find(({ name }) => name === "SOLVE NEVER FINISHED")?.detail;

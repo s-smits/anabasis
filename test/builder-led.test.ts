@@ -284,9 +284,7 @@ describe("a campaign run by its live Builder", () => {
       flagsOf(["--root", root, "--name", "terms", "--project", PROJECT, "--budget", "100", ...more]);
     expect(() => opened(log, flags(), "paid")).toThrow("--reviewer");
     expect(read(log)).toEqual([]);
-    // A campaign that opens now is led by its Builder, on record.
-    expect(opened(log, flags(), "scripted")).toMatchObject({ seats: { reviewer: null }, led: true });
-    expect(read(log)[0]?.data).toMatchObject({ led: true });
+    expect(opened(log, flags(), "scripted")).toMatchObject({ seats: { reviewer: null } });
     expect(() => opened(log, flags(), "paid")).toThrow("--reviewer");
     expect(read(log)).toHaveLength(1);
     const model = "claude/claude-opus-5-5";

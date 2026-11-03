@@ -56,10 +56,6 @@ export interface Opening {
    *  command's flag alone, so that a reopen that does not name the flag still waits; `--no-hitl`
    *  gives it back. The record keeps the key it had as `--attended`, before 16 October. */
   readonly attended: boolean;
-  /** Whether the Builder makes the campaign's moves after set-up, in one live conversation with
-   *  the campaign's tools (`--builder-led`, `tools/d2/harness-builder.ts`), or the host makes
-   *  every move the table names. Kept as `attended` is; a record without it is the host's. */
-  readonly led: boolean;
   /** The operator's prompt, for a campaign that opened from one: its exam is drafted from it
    *  (`src/examiner/draft.ts`). Null for a campaign that opened over a stored pack. */
   readonly prompt: string | null;
@@ -159,7 +155,6 @@ export function openingOf(events: readonly LogEvent[]): Opening | null {
     patience: patienceOf(events),
     seats: { builder: seat("builder"), examiner: seat("examiner"), reviewer: seat("reviewer") },
     attended: data.attended === true,
-    led: data.led === true,
     prompt: isString(data.prompt) ? data.prompt : null,
     solver: seated(asRecord(data.solver)),
     terms: Object.fromEntries(

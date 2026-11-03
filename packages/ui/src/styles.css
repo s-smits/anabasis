@@ -354,6 +354,14 @@ button.ana-hash.is-revealed {
   z-index: 40;
 }
 
+/* In the sidebar the list spans the picker's whole row, its 8 px padding on each side included, so
+   it covers the nav row under it whole: until 3 November it began at the box, and left a sliver of
+   a nav row beside it at either width, a target too small to press (axe, target-size). */
+.ana-sidebar .ana-picker-panel {
+  left: -8px;
+  min-width: calc(100% + 16px);
+}
+
 .ana-picker-filter {
   align-items: center;
   color: var(--ana-faint);

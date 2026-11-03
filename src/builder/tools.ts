@@ -412,7 +412,7 @@ async function practise(bench: Bench, task: PracticeTask, kept: HarnessSnapshot,
 /**
  * The practice solves a session may still start. A Builder that leads its campaign has as many as
  * what is left of the campaign's total holds a reserve for, and no count of its own: r3's b-1 ran
- * out of its 24 at turn 161 with $560 left (deep dive, 20 October). A session the host runs keeps
+ * out of its 24 at turn 161 with $560 left (deep dive, 20 October). A session by hand keeps
  * its count, and no more than its own part of the log leaves its cap a reserve for (`billedParts`).
  * The Builder is told a count and never a sum.
  */
@@ -663,8 +663,8 @@ export async function harnessNow(bench: Bench): Promise<string | Error> {
  * Public opening facts, supplied as a fixed message or rebuilt on each read. A session whose
  * conversation was compacted, or lost with its process, has the public rules, practice tasks,
  * failed practice solves and comparisons in no other place: the host builds them from the log,
- * and the Builder's own notes are its prose about them. A Builder-led session rebuilds them; a host-led
- * session keeps the original message. An Examiner's opening holds the record of every task and,
+ * and the Builder's own notes are its prose about them. A campaign's conversation rebuilds them; a session
+ * by hand keeps the original message. An Examiner's opening holds the record of every task and,
  * since 21 October, serves it again: 65 Examiner sessions on record compacted, and the summary
  * kept what the model chose of that record.
  */

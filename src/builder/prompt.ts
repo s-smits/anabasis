@@ -145,12 +145,12 @@ export interface Said {
 }
 
 /**
- * Who makes a campaign's moves, and every text of a Builder's that differs by it. Under `host` the
- * campaign command makes each move the table names, and a session ends in a harness the host
- * measures. Under `builder` one live conversation makes them through its campaign tools
- * (`BuildRequest.campaign`; `--builder-led` on the campaign command, `tools/d2/harness-builder.ts`).
- * A session takes its row once (`Bench.said`), and no text asks which it is anywhere else, so the
- * texts of a campaign the host runs are these and no others whatever the other row says. What a
+ * Who makes a campaign's moves, and every text of a Builder's that differs by it. Under `host` a
+ * session by hand (`tools/d2/session.ts`, `round.ts`) ends in a harness its operator has measured.
+ * Under `builder` the campaign command's one live conversation makes them through its campaign
+ * tools (`BuildRequest.campaign`, `tools/d2/harness-builder.ts`). A session takes its row once
+ * (`Bench.said`), and no text asks which it is anywhere else, so the texts of a session by hand
+ * are these and no others whatever the other row says. What a
  * session does differently with campaign tools, and not what it says, is asked of the same
  * request where it is done: its turns are metered as they end and its opening is served as the log
  * stands (`session.ts`), and its practice is held to the campaign's total (`practiceLeft`,

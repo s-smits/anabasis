@@ -354,7 +354,8 @@ walk chooses what to do about it.
    retained tasks were a second test that could read `regressed`. No retained task tallied is
    `unmeasured`.
 8. **Next epoch:** refused drafts, idle conversations or few frontier tasks after promotion.
-   Read `heard`, `campaignStatus` and `hostOwed` in `tools/d2/harness-builder.ts`, then `ROWS`
+   Read `make` in `tools/d2/harness-builder.ts` and `campaignStatus` in
+   `tools/d2/campaign-actions.ts`, then `ROWS`
    in `src/campaign/decide.ts`: its `build` row first releases owed practice (`practice`).
 
 ## 1. Choose one change, aimed at the next promotion
@@ -508,7 +509,7 @@ First say what happened to the link:
 
 Choose one move. `decide` in `src/campaign/decide.ts` advises accept, prepare, examine, build,
 compare, promote or end. A led Builder chooses its tools; code keeps admissions and scoring, and
-`hostOwed` makes comparisons and promotions between conversations.
+`make` (`tools/d2/harness-builder.ts`) makes comparisons and promotions between conversations.
 
 The stop rule counts since the last promotion (`stopRule`, `src/campaign/admission.ts`). A changed
 harness/reference pair counts once when tallied with room or a step; a whole unchanged session

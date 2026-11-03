@@ -189,7 +189,6 @@ const coreIn = once((log) => {
     prompt: openingIn(log)?.prompt ?? null,
     terms: openingIn(log)?.terms ?? {},
     attended: openingIn(log)?.attended ?? false,
-    led: openingIn(log)?.led ?? false,
     bars: barsOf(log.events),
     supply: campaign.supply,
     reference: campaign.reference,

@@ -8,8 +8,7 @@ description: "Start, continue, keep, pause, copy, watch and stop authorised Anab
 A campaign is one command over one log (`tools/d2/harness-builder.ts`): it prepares the exam and
 opens one live Builder conversation, which edits the harness and calls campaign tools for the
 Examiner, practice release, comparison and promotion. The decision table supplies public advice;
-the commands keep their admissions, budget and privacy checks. `--no-builder-led` opens one whose
-every move the host makes as the table names it; the opening keeps the term either way.
+the commands keep their admissions, budget and privacy checks.
 
 Use the verbs of one CLI for a run's life on the host, `bun run runs`
 (`tools/runs/cli.ts`), over every run log in the repository's worktrees (`tools/runs/registry.ts`).

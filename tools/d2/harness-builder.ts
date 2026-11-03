@@ -18,9 +18,8 @@
  * the command an operator would run, and reads the log again, until the campaign ends or `--moves`
  * are made. It chooses nothing of its own: the table chooses, and every refusal is the command's.
  *
- * **Who makes the moves after set-up** is the campaign's own term, kept by its opening
- * (`--builder-led`, on for a campaign that opens now; `--no-builder-led` gives the other). Led by
- * its Builder, the host still drafts and reads the exam and sets the tasks apart, and from there
+ * **The Builder makes the moves after set-up.** The host drafts and reads the exam, sets the tasks
+ * apart, makes the promotion the rule names and the comparison it owes (`converse`), and from there
  * one live Builder conversation makes the moves through its campaign tools: an Examiner session,
  * a release, a comparison, a promotion (`campaign-actions.ts`). The table's move is its advice,
  * and every condition above stays the host's at each action. A conversation that ends at its own
@@ -28,9 +27,9 @@
  * `finish`, until three in a row have made no campaign move (`finished`). Every ending the table
  * names ends a live conversation too, a lack of room among them: until 22 October that one was
  * advice while a conversation lived, and a Builder bought an Examiner session past its supply patience.
- * Without the term the command makes every move itself, a Builder session among them, as it did
- * before 13 October, and nothing a Builder reads differs from then (`SAID`,
- * `src/builder/prompt.ts`). A campaign on record without the term runs so.
+ * From 13 October to 3 November a campaign could also run with the host making every move the
+ * table names, a Builder session among them (`--no-builder-led`); no run on record made a move
+ * past its draft so, and a log from before the term runs led like any other.
  *
  * **A campaign opens over a stored pack, which four flags name, or from a prompt** (row F53).
  * The prompt and who solves are then part of what it runs by, its first move is the Examiner's
@@ -47,8 +46,8 @@
  *   read the exam       tools/c/accept.ts, with `--freeze --admit-authored` unless `--hitl`, and
  *                       the checks a reading under `--hitl` left unadmitted (`planOf`, `opening.ts`)
  *   set the tasks apart tools/d2/prepare.ts
- *   an Examiner session tools/d1b/examine.ts, under the next free id `x-N`
- *   a Builder session   tools/d2/session.ts, under `b-N`
+ *   a conversation      tools/d2/session.ts with the campaign's tools, under `b-N`, where the
+ *                       table names a Builder or an Examiner session (`converse`)
  *   a comparison        tools/d2/checkpoint.ts, under `g-N`; one that began goes on under its id
  *                       and its own terms
  *   a promotion         tools/d2/promote.ts `--yes`
@@ -82,8 +81,8 @@
  * runs by from that move on. A word changes nothing in the move that was running when it came.
  *
  * **Endings.** A campaign ends on its budget, on the stop rule, on an exam that was not accepted,
- * on tasks that could not be made to leave room, on its environment, on the operator's word or, led
- * by its Builder, once three of its conversations in a row made no campaign move (`idleOf`), and
+ * on tasks that could not be made to leave room, on its environment, on the operator's word, or
+ * once three of its Builder's conversations in a row made no campaign move (`idleOf`), and
  * its log's last event says which (`campaign.ended`). With `--handover <dir>` it then writes what
  * it hands over there: the reference harness as a directory that stands by itself, the public rules
  * and the closing report (`close.ts`, row F51). A move that threw after it had begun is the
@@ -132,7 +131,6 @@ import { waitOut } from "#src/solver/run.ts";
 import { acceptCommand } from "../c/accept.ts";
 import { modelNamed, sweepOptions } from "../m0/stored-sweep.ts";
 import { draftCommand } from "../d1b/draft.ts";
-import { examineCommand } from "../d1b/examine.ts";
 import { nextRun, writeReceipt } from "../runs/receipt.ts";
 import { standing } from "../runs/registry.ts";
 import { campaignLog, openCampaign, packNamed, REPO, treeFault } from "./campaign.ts";
@@ -166,38 +164,13 @@ import { sessionCommand } from "./session.ts";
 import { recordedSetting, settingAsked } from "./setting.ts";
 
 const ENDED = "campaign.ended";
-/** The moves the host makes itself whoever leads the campaign: the exam's draft and reading, the
- *  tasks set apart, and the promotion the rule names (14 October; inside a conversation the compare
- *  tool makes it, `promoteOwed`), which `--hitl` leaves to the operator. */
-const SETUP: ReadonlySet<Decided["move"]> = new Set(["draft", "accept", "prepare", "promote"]);
 /** How a Builder's campaign conversation ended where the campaign goes on with another: at its
  *  own limits, or crashed, which the table's crash rule bounds (`crashedRun`). */
 const AGAIN: ReadonlySet<unknown> = new Set(["wall", "turns", "crashed"]);
 
-/**
- * Whether the table names a move that measures what a conversation left and asks no Builder for
- * anything: any comparison, or a promotion. Until 14 October a Builder's `finish` ended the
- * campaign whatever was owed: buffer-159-opus's Builder finished a minute after a 9-0-1 step
- * bought a repeat, and the campaign ended as its Examiner session settled two and a half hours
- * later, the repeat never run; until 19 October the tasks a repeat waited for were owed too.
- * Until 15 October an ordinary
- * comparison was the Builder's alone, so three conversations that each changed the harness and
- * finished ended the campaign with the table naming its comparison (truss-151-m1 b-1,
- * buffer-151-haiku b-1 and buffer-pr169-opus b-1 finished on a harness no comparison read). The
- * host makes a comparison that began under other code as its first move, and its terms refuse it
- * with the campaign's environment ending (`begin`, `src/campaign/round.ts`), where the Builder's
- * tool was refused it again and again (main0_5_1, three times at 8e0371c58). Every other Examiner
- * session the table names starts as the next conversation opens, beside it (`campaignTools`).
- * Until 16 October only the campaign's first did, and tasks for want of room were the host's once
- * IDLE conversations in a row made no campaign move: buffer-159-opus's first promotion waited
- * 5.9 hours for its next Examiner session and its second 2.1 hours, seven conversations that made
- * no move, and a campaign short of tasks could end `finished` with the table naming them. A
- * session that holds out nothing counts towards the table's own ending for want of room
- * (`roomless`).
- */
-function hostOwed(decided: Decided): boolean {
-  return decided.move === "promote" || decided.move === "compare";
-}
+/** The moves the host makes itself, by the command an operator would run: the exam's draft and
+ *  reading, the tasks set apart, a comparison and a promotion. Every other is a conversation's. */
+type Made = Extract<Decided, { move: "draft" | "accept" | "prepare" | "compare" | "promote" }>;
 
 /**
  * Whether the campaign goes on from a move that threw, which began where the log held `from`
@@ -219,14 +192,9 @@ async function goesOn(log: string, from: number, error: unknown, host: Seats["ho
 
 /** Make one decided move by the command an operator would run, after `begin` is given what names
  *  it in the log: a session's or a comparison's id, a harness, the checks admitted, or nothing. */
-async function make(
-  decided: Exclude<Decided, { move: "end" }>,
-  turn: Turn,
-  begin: (named: JsonObject) => void,
-): Promise<void> {
+async function make(decided: Made, turn: Turn, begin: (named: JsonObject) => void): Promise<void> {
   const { events, opening, values, seats } = turn;
   const pack = packOf(values);
-  const { builder } = opening.seats;
   if (decided.move === "accept") {
     const admits = turn.plan.admits.length === 0 ? undefined : turn.plan.admits;
     begin(keyIfDefined("admitted", admits && [...admits]));
@@ -249,47 +217,21 @@ async function make(
     await promoteCommand([...flag("name", values.name), "--harness", decided.harness, "--yes"]);
     return;
   }
-  if (decided.move === "compare") {
-    const { session, args } = comparisonOf(decided, turn);
-    // The comparison's own flags beside the pack's, so the log says what command the move ran
-    // (11 October: the trigger had been left off, and no record could show it).
-    begin({ session, args: args.slice(pack.length) });
-    await checkpointCommand(args, turn.held);
-    return;
-  }
-  if (decided.move === "draft" || decided.move === "examine") {
-    const stand = decided.move === "draft" ? seats.draft : seats.examine;
-    if (seats.seated !== solved && stand === undefined) {
+  if (decided.move === "draft") {
+    if (seats.seated !== solved && seats.draft === undefined) {
       throw new Error(`a rehearsal seats no Examiner, and the campaign needs one: ${decided.why}`);
     }
-    const session = nextId(events, decided.move === "draft" ? "d" : "x");
-    const { args } = examinerRun(turn, session, decided.move === "draft" ? "draft" : "write");
+    const session = nextId(events, "d");
     begin({ session });
     // A draft's examples are solved by the starter as a comparison's tasks are, in the solve queue.
-    await (decided.move === "draft"
-      ? draftCommand(args, seats.draft, turn.held)
-      : examineCommand(args, seats.examine));
+    await draftCommand(examinerRun(turn, session, "draft").args, seats.draft, turn.held);
     return;
   }
-  const { setting, cap, reviewer, pastStop } = sharedOf(turn);
-  const session = nextId(events, "b");
-  begin({ session });
-  await sessionCommand(
-    [
-      ...pack,
-      ...setting,
-      "--session",
-      session,
-      ...(builder === null ? [] : ["--builder", builder.model, "--builder-effort", builder.effort]),
-      ...flag("minutes", values.minutes),
-      ...flag("turns", values.turns),
-      ...flag("practice-solves", values["practice-solves"]),
-      ...cap,
-      ...reviewer,
-      ...pastStop,
-    ],
-    turn.held,
-  );
+  const { session, args } = comparisonOf(decided, turn);
+  // The comparison's own flags beside the pack's, so the log says what command the move ran
+  // (11 October: the trigger had been left off, and no record could show it).
+  begin({ session, args: args.slice(pack.length) });
+  await checkpointCommand(args, turn.held);
 }
 /**
  * What an operator reads where a campaign ends on its exam: the faults of the checker's last
@@ -381,18 +323,9 @@ function ended(log: string, events: readonly LogEvent[], decided: Extract<Decide
 /** What writes a move's event as it begins (the overhaul plan's P9): the move, the code of the row that chose
  *  it, its reason and start, and what `make` names it by, so a move that throws is on record with
  *  the reason it was made for. Until 12 October it was written when the move ended. */
-function beginning(log: string, decided: Exclude<Decided, { move: "end" }>) {
+function beginning(log: string, decided: Made) {
   return (named: JsonObject) =>
-    append(log, MOVED, {
-      move: decided.move,
-      code: decided.code,
-      why: decided.why,
-      ...named,
-      ...keyIfDefined(
-        "answers",
-        decided.move === "examine" && decided.answers ? [...decided.answers] : undefined,
-      ),
-    });
+    append(log, MOVED, { move: decided.move, code: decided.code, why: decided.why, ...named });
 }
 
 /**
@@ -458,8 +391,24 @@ async function converse(
   // and the two that promoted finished within seconds of the promotion.
   const idle = how === "finished" || how === "wall" || how === "turns" ? idleOf(after) : 0;
   const table = decide(after, turnOf(context).plan);
-  // A measurement the conversations bought, and a promotion, are the host's to make first (`hostOwed`), which moves the campaign, and an ending the table names stands.
-  if (idle < IDLE || hostOwed(table)) {
+  // A comparison, any of them, and a promotion measure what a conversation left and ask no Builder for
+  // anything, so the host makes them first, and an ending the table names stands. Until 14 October a
+  // Builder's `finish` ended the campaign whatever was owed: buffer-159-opus's Builder finished a minute
+  // after a 9-0-1 step bought a repeat, and the campaign ended as its Examiner session settled two and a
+  // half hours later, the repeat never run; until 19 October the tasks a repeat waited for were owed
+  // too. Until 15 October an ordinary comparison was the Builder's alone, so three conversations that
+  // each changed the harness and finished ended the campaign with the table naming its comparison
+  // (truss-151-m1 b-1, buffer-151-haiku b-1 and buffer-pr169-opus b-1 finished on a harness no
+  // comparison read). The host makes a comparison that began under other code as its first move, and its
+  // terms refuse it with the campaign's environment ending (`begin`, `src/campaign/round.ts`), where the
+  // Builder's tool was refused it again and again (main0_5_1, three times at 8e0371c58). Every other
+  // Examiner session the table names starts as the next conversation opens, beside it (`campaignTools`).
+  // Until 16 October only the campaign's first did, and tasks for want of room were the host's once IDLE
+  // conversations in a row made no campaign move: buffer-159-opus's first promotion waited 5.9 hours for
+  // its next Examiner session and its second 2.1 hours, seven conversations that made no move, and a
+  // campaign short of tasks could end `finished` with the table naming them. A session that holds out
+  // nothing counts towards the table's own ending for want of room (`roomless`).
+  if (idle < IDLE || table.move === "promote" || table.move === "compare") {
     return how === "finished" || (AGAIN.has(how) && context.used < context.maxMoves) ? null : table;
   }
   if (table.move === "end") return table;
@@ -609,22 +558,12 @@ export async function harnessBuilder(
         throw new Error(`${size[0] ?? ""}: name a --target of at least ${String(floor)}`);
       }
     }
-    const table = decide(events, plan);
-    // A campaign its host leads ends as a led one does, once IDLE sessions in a row moved nothing:
-    // until 2 November the table sent such a session's Builder an Examiner session (`unshown`).
-    // Its sessions make no campaign move, so it waits for as many as a comparison follows: under
-    // `--sessions 4`, three that each changed harness/ ended it before their comparison.
-    const enough = Math.max(IDLE, plan.sessions);
-    const idle = !opening.led && table.move === "build" && idleOf(events) >= enough;
-    const why = `${String(enough)} Builder sessions in a row made no campaign move`;
-    const decided: Decided = idle ? { move: "end", ending: "finished", code: "finished", why } : table;
-    // Led by its Builder, every move but set-up, an ending and what the host owes (`hostOwed`) is
-    // the conversation's.
-    const led = opening.led && !SETUP.has(decided.move) && !hostOwed(decided) && decided.move !== "end";
+    const decided = decide(events, plan);
     console.log(
       `\n${made < most && !values["dry-run"] ? `move ${String(made + 1)}` : "next"} · ${decidedLine(decided)}`,
     );
-    if (led) {
+    // A Builder or an Examiner session the table names is the conversation's to make.
+    if (decided.move === "build" || decided.move === "examine") {
       if (values["dry-run"] || made >= most) return decided;
       campaign ??= await openCampaign(packNamed(values));
       const turns = { maxMoves: most, used: made, failed: null };

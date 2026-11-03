@@ -75,6 +75,11 @@ function readout(page: Page, label: string) {
   return { value: card.locator(".ana-metric-value"), detail: card.locator(".ana-metric-detail") };
 }
 
+/** The set-up's disclosure, beside any other the pane holds. */
+function setUpOf(page: Page) {
+  return page.locator("details.ana-disclosure", { has: page.locator("> summary", { hasText: "Set-up" }) });
+}
+
 /** Where the column of comparison `id` stands, from its axis label: its middle, and a height inside
  *  the plot where a pointer is over the column's band. */
 async function columnPoint(page: Page, id: string): Promise<{ x: number; y: number }> {
@@ -101,9 +106,10 @@ describe("the campaign's line and readouts", () => {
     const last = readout(page, "Last reading");
     await expect(last.value).toHaveText("3–1–2");
     await expect(last.detail).toHaveText(/no-step.*g-9.*p 0\.31\d\b/u);
-    const next = readout(page, "Next move");
+    // The Builder leads every campaign, so a move past set-up the table names is its advice.
+    const next = readout(page, "Table advises");
     await expect(next.value).toHaveText("Comparison");
-    await expect(next.detail).toContainText(/b-4.*not reported/u);
+    await expect(next.detail).toContainText(/b-4.*not reported.*may make another move/u);
     const { a, c } = served.fixture.harnesses;
     const marks = page.locator(".ana-comparisons-marks");
     // A flag carries the harness's letter alone, and its words and digest only on hover.
@@ -150,9 +156,10 @@ describe("the campaign's line and readouts", () => {
   test("keep the set-up closed until asked, by pointer or by keyboard", async () => {
     const opened = await openCampaign();
     const { page } = opened;
-    const summary = page.locator(".ana-disclosure > summary", { hasText: "Set-up" });
-    const body = page.locator(".ana-disclosure-body");
-    const details = page.locator("details.ana-disclosure");
+    // The next move's reason is a disclosure of its own, so the set-up is found by its summary.
+    const details = setUpOf(page);
+    const summary = details.locator("> summary");
+    const body = details.locator(".ana-disclosure-body");
     await expect(body).toBeHidden();
     await summary.click();
     await expect(details).toHaveAttribute("open", "");
@@ -161,7 +168,6 @@ describe("the campaign's line and readouts", () => {
     );
     await expect(body).toContainText(/checker.*\b0\b.*faults.*frozen/u);
     await expect(body.getByText(/faux\/solver-1.*high/u)).toBeVisible();
-    await expect(body.getByText(/the host:/u)).toBeVisible();
     await summary.click();
     await expect(body).toBeHidden();
     await summary.focus();
@@ -322,8 +328,8 @@ describe("the other campaigns", () => {
     await expect(readout(page, "Last reading").detail).toHaveText("no comparison has reported");
     await expect(page.getByRole("heading", { name: "Wins by measure" })).toHaveCount(0);
     await expect(page.locator(".ana-campaign-counters")).toContainText("A/A controls 0");
-    await page.locator(".ana-disclosure > summary").click();
-    await expect(page.locator(".ana-disclosure-body")).toContainText(/freeze.*promotion.*operator/u);
+    await setUpOf(page).locator("> summary").click();
+    await expect(setUpOf(page).locator(".ana-disclosure-body")).toContainText(/freeze.*promotion.*operator/u);
     expect(await accessibilityViolations(page, "main")).toEqual([]);
     expectQuiet(opened);
     await opened.context.close();
@@ -378,7 +384,7 @@ describe("accessibility", () => {
     const opened = await openCampaign();
     const { page } = opened;
     expect(await accessibilityViolations(page, "main")).toEqual([]);
-    await page.locator(".ana-disclosure > summary").click();
+    await setUpOf(page).locator("> summary").click();
     await page.locator(".ana-shown-on-focus").getByRole("button", { name: "b-1" }).focus();
     expect(await accessibilityViolations(page, "main")).toEqual([]);
     expectQuiet(opened);

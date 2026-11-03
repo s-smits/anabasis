@@ -280,11 +280,38 @@ function afterTrigger(log: Index, { at, until, data }: Epoch, starter: string): 
     ),
   );
   const compared = log.compared.filter((each) => within(each.at));
+  // A control's tasks drawn before the promotion are mostly those the promoted harness was promoted
+  // on, so its confirmation is read from the reference's side on each age apart: on 3 November
+  // fullrun g-4 read 10-0-0 on the older and 2-6-3 on the newer, last g-2 8-0-6 and 4-1-1.
+  const drawn = new Map<string, number>();
+  for (const [index, { kind, data: start }] of log.events.entries()) {
+    if (kind !== "comparison.started") continue;
+    for (const task of items(start.tasks).filter(isString)) if (!drawn.has(task)) drawn.set(task, index);
+  }
+  const byAge = (last: JsonObject) => {
+    const ages = ["frontier", "retained"].flatMap((part) => {
+      // `of` names the task of each score; `tasks` also holds the short and disputed ones.
+      const record = asRecord(last[part]);
+      const tasks = items(record?.of);
+      const scores = scoresIn(record);
+      return tasks.length === scores.length
+        ? tasks.map((task, i) => ({ newer: (drawn.get(text(task)) ?? 0) > at, score: -(scores[i] ?? 0) }))
+        : [];
+    });
+    const said = (newer: boolean) => {
+      const scores = ages.filter((one) => one.newer === newer).map(({ score }) => score);
+      const step = tallyOf({ unbilled: scores });
+      return step === null || scores.length === 0
+        ? "none"
+        : `${String(step.wins)}-${String(step.losses)}-${String(step.ties)} p ${pSaid(step.p)}`;
+    };
+    return `; for the reference on tasks first drawn after the promotion ${said(true)}, before it ${said(false)}`;
+  };
   const read = ({ session, last }: Compared) => {
     const old = validOf(asRecord(last.valid)?.old);
     const control = last.fresh === starter && last.old === promoted;
     return control
-      ? `control ${session}: the promoted harness valid on ${validSaid(old.share)} of its solves of ${plural(old.tasks, "task")}, ${testSaid(last.scored)}`
+      ? `control ${session}: the promoted harness valid on ${validSaid(old.share)} of its solves of ${plural(old.tasks, "task")}, ${testSaid(last.scored)}${byAge(last)}`
       : `${session} ${short(text(last.fresh))} against ${last.old === promoted ? "the promoted harness" : short(text(last.old))} ${testSaid(last.scored)}, ${text(last.reading)}, valid ${validSaid(validOf(asRecord(last.valid)?.fresh).share)} against ${validSaid(old.share)}`;
   };
   // Every report, a ladder reading of 14 to 16 October among them, which `compared` leaves out.

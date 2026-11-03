@@ -235,7 +235,7 @@ const twice = (ids: readonly string[]): string | undefined =>
  * The fields an answer carries that its format leaves unnamed, as paths. A solver learns an
  * answer's fields from the format alone, so a check that reads one refuses a right answer spelled
  * another way. On 2 November esp32-fresh-opus-forkedPR569 drafted a `pwm` object with no
- * properties, its PWM check read `clk_div_q8` from it, and the Referee ruled all 16 rejections it
+ * properties, its PWM check read `clk_div_q8` from it, and the Referee ruled all 8 rejections it
  * made check defects; of 159 drafted exams on record, 2 carried such a field, both esp32 PWM
  * settings. An accept control carries every field its checks need, so reading the controls
  * covers every check. A reference, a combination or a pattern this does not read counts as naming.

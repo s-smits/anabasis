@@ -11,11 +11,11 @@ import { systemPrompt } from "../src/examiner/prompt.ts";
 
 /** The domains campaigns examined by 31 October, and the field beside each, by the words that name
  *  them: buffer formulation, business records, trusses, ESP32 pin maps, C memory safety and event
- *  seating, and structural frames, chemistry, circuit hardware and timetabling beside them. On the
+ *  seating, then statistical analysis from 2 November, and structural frames, chemistry, circuit hardware and timetabling beside them. On the
  *  operator's word of 31 October seating replaced codon recoding, which left with its neighbour
  *  molecular biology. */
 const EXAMINED =
-  /buffer|ledger|invoice|reconcil|truss|beam|column|esp32|gpio|pin map|microcontroller|kernel|memory.safety|overflow|double.free|C11|chemi|reaction|circuit|impedance|seating|guest|timetabl|roster/i;
+  /buffer|ledger|invoice|reconcil|truss|beam|column|esp32|gpio|pin map|microcontroller|kernel|memory.safety|overflow|double.free|C11|chemi|reaction|circuit|impedance|seating|guest|timetabl|roster|statistic|regression|biostat/i;
 
 describe("the Examiner's ladder", () => {
   it("grades on lane 34's reach scale, word for word", () => {

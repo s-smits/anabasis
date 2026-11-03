@@ -44,6 +44,14 @@
  * description already ranked tight margins at grade 2 and the Examiner wrote them anyway, so it
  * now names those forms and says when a tolerance does punish approximation.
  *
+ * On 3 November two fresh jobstat campaigns (`jobstat-fresh-opus-forkedPR588-m1-air-r2`,
+ * `jobstat-fresh-opus-forkedPR589-stijn-pro`) ended `exam`: six drafts, the starter valid on 36 of
+ * 36 of their solves. Each draft's analysis plan named the exact method, and the Examiner's note of
+ * the second reads that censoring traps, a stratified interval and a design-based estimator changed
+ * nothing, since a solver with a shell recomputes a named method from the supplied files. The solver's
+ * description listed a closed form, a search and a list of cases at grade 2, and now lists a method a
+ * rule or the scope names as well.
+ *
  * Grades are a measure and never a target: no count or share is named, and code decides nothing on
  * a grade (`AGENTS.md`, section 2, consequence 2). The over-time rule the writing prompt states is
  * relative to measured facts: a grade the reference answers on every solve measures nothing more.
@@ -102,7 +110,7 @@ export const FIELDS: readonly { readonly field: string; readonly rungs: readonly
 
 /** Who the grades are for, and the three places its ability stops. */
 export const SOLVER =
-  "The grades are for the solver this campaign seats, with a shell and the field's libraries. It forgets no case and skips no check: it scripts every case and checks its answer with an engine it writes from the stated rules. So a closed form, a search over a few continuous variables or a finite list of cases sits at grade 2 or below for it, however specialist the words. So does a task made hard only by margins, size or new numbers, such as a total held within a hair of its limit, every resource in use at once or one admissible value a part: exact arithmetic and enumeration meet each, and a tolerance punishes approximation only where the engine that decides has no exact form. Its ability stops in three places. The obvious local search from the obvious start lands in the wrong basin, and only the field's own structure finds the right one. The convenient model it would build differs, near the specification, from the engine that decides the answer. Or the specification sits within a stated tolerance of a theoretical bound, so an approximate method falls short and a theorem rules out the class of answer a generalist searches. A task climbs a grade only by moving into one of these places.";
+  "The grades are for the solver this campaign seats, with a shell and the field's libraries. It forgets no case and skips no check: it scripts every case and checks its answer with an engine it writes from the stated rules. So a closed form, a search over a few continuous variables, a finite list of cases, or a method a rule or the scope names, which the field's libraries run on the supplied inputs, sits at grade 2 or below for it, however specialist the words or the traps in the data. So does a task made hard only by margins, size or new numbers, such as a total held within a hair of its limit, every resource in use at once or one admissible value a part: exact arithmetic and enumeration meet each, and a tolerance punishes approximation only where the engine that decides has no exact form. Its ability stops in three places. The obvious local search from the obvious start lands in the wrong basin, and only the field's own structure finds the right one. The convenient model it would build differs, near the specification, from the engine that decides the answer. Or the specification sits within a stated tolerance of a theoretical bound, so an approximate method falls short and a theorem rules out the class of answer a generalist searches. A task climbs a grade only by moving into one of these places.";
 
 /** The ladder as an Examiner reads it: the scale, then each field's tasks from easy to very hard. */
 export const LADDER = [

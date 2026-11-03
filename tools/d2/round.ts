@@ -484,7 +484,7 @@ export function reportLines({
     ...(points === null
       ? []
       : [
-          `the score weighs validity ${String(WEIGHTS.validity)} and the objective ${String(WEIGHTS.objective)}, and over the tallied tasks gave the new harness ${signed(points.validity)} and ${signed(points.objective)} points, a task's score running from -900 to 900`,
+          `the score weighs validity ${String(WEIGHTS.validity)} and the objective ${String(WEIGHTS.objective)}, and over the tallied tasks gave the new harness ${signed(points.validity)} and ${signed(points.objective)} points, a task's score running from -600 to 600`,
         ]),
     ...(objective === null ? [] : [`the objective: ${objective.direction} is better`]),
     ...(both.length === 0

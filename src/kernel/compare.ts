@@ -203,8 +203,9 @@ export const ROOM = 0.01;
 /**
  * How much each measure weighs in a task's score (`pointsOf`): whether an answer was valid, then
  * between two valid answers how much better it is by the objective.
- * Each measure is the mean over the task's pairings of a solve of each side, from -1 to 1, so a task's
- * score runs from -1 to 1 and is read in thousandths (`POINTS`) by the one test.
+ * Each measure is the mean over the task's pairings of a solve of each side, from -1 to 1, and a
+ * pairing counts on one measure only, so a task's score runs from -0.6 to 0.6 and is read in
+ * thousandths (`POINTS`), -600 to 600, by the one test.
  *
  * Until 21 October a task was read by validity, then the objective, then the bill, one rule to a
  * task, and the size of a gain counted nowhere: a harness that won 23 tasks by 0.01% read as
@@ -457,7 +458,8 @@ function told(pair: Paired, f: number, o: number): number {
 /** One task's score by measure, the new side's against the reference's over every pairing of a solve
  *  of each: each measure is its mean over the pairings, from -1 to 1, times its weight (`WEIGHTS`),
  *  in thousandths (`POINTS`): `validity` where one answer of the two was valid, the `objective`
- *  between two valid answers (`told`). */
+ *  between two valid answers (`told`). A pairing counts on one of the two, so the sum runs from
+ *  -600 to 600. */
 export function pointsOf(pair: Paired): Measures {
   const sums = { validity: 0, objective: 0 };
   for (const [f, freshValid] of pair.fresh.entries()) {

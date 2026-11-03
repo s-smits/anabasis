@@ -377,6 +377,9 @@ export function reportOf(
         ]
       : []),
     ...(verdict === "finding" && findings === 0 ? ["the verdict is a finding and none is written"] : []),
+    // An isolated lane is a session of its own with one lane, so it has no other lane to weigh
+    // against and may not leave its lane unread (release review, 3 November).
+    ...(verdict === "omitted" && lane.isolated ? ["an isolated lane may not be omitted"] : []),
     // Recode's lane 15 on 10 October said no finding over two written findings, and was accepted.
     ...((verdict === "no finding" || verdict === "omitted") && findings > 0
       ? [`the verdict is ${verdict} and the report writes ${plural(findings, "finding")}`]

@@ -6,12 +6,19 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
-import { bundleArm, MODULE_FILE, placeHarness } from "../studies/shared/bundle.ts";
+import {
+  bundleArm,
+  foreignHead,
+  foreignPrograms,
+  MODULE_FILE,
+  placeHarness,
+} from "../studies/shared/bundle.ts";
 import { harnessIn, RESULT_FILE } from "../studies/shared/pi-solve.ts";
 import { halves, readArms, shortfall, streamOf, type Trial, trialsOf } from "../studies/shared/scores.ts";
 import { append } from "../src/kernel/log.ts";
 import {
   cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -22,6 +29,7 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "../src/meta/json-runtime.ts";
+import { errorMessage } from "../src/meta/runtime-values.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
@@ -240,5 +248,84 @@ describe("two arms read as a campaign reads a comparison", () => {
     expect(first.map(({ score }) => score)).toStrictEqual([0, 0.3]);
     expect(last.map(({ score }) => score)).toStrictEqual([0.1, 0.2]);
     expect(streamOf(ordered, 2).map(({ score }) => score)).toStrictEqual([0.2]);
+  });
+
+  it("gives a non-result retried later no half's or stream's place, so the retry takes the one it stood in", () => {
+    const retried = [
+      trial("t1", 0, 0),
+      trial("t1", null, 1),
+      trial("t1", 0.1, 2),
+      trial("t1", 0.2, 3),
+      trial("t1", 0.3, 4),
+    ];
+    const [first, last] = halves(retried);
+    expect(first.map(({ score }) => score)).toStrictEqual([0, 0.3]);
+    expect(last.map(({ score }) => score)).toStrictEqual([0.1, 0.2]);
+    expect(streamOf(retried, 1).map(({ score }) => score)).toStrictEqual([0.1]);
+  });
+
+  it("reads a Harbor exception as a non-result, keeps an agent's timeout as its fail, and puts a trial with no start last", () => {
+    const line = (
+      name: string,
+      harbor: { started_at?: string; exception_info?: { exception_type: string } },
+    ) => {
+      const path = join(root, "thrown", name);
+      mkdirSync(path, { recursive: true });
+      writeFileSync(join(path, "result.json"), capturedJsonStringify(harbor));
+      return capturedJsonStringify({ task: "t1", trial: name, path, score: 0 });
+    };
+    const at = "2026-11-02T10:00:00Z";
+    const read = trialsOf(
+      [
+        line("unstarted", {}),
+        line("crashed", { started_at: at, exception_info: { exception_type: "RuntimeError" } }),
+        line("timed", { started_at: at, exception_info: { exception_type: "AgentTimeoutError" } }),
+      ].join("\n"),
+    );
+    expect(read.map(({ trial: name, score }) => [name, score])).toStrictEqual([
+      ["crashed", null],
+      ["timed", 0],
+      ["unstarted", 0],
+    ]);
+  });
+});
+
+describe("a harness's programs, checked against the container", () => {
+  const head = (...bytes: number[]) => Buffer.from(bytes);
+  const elf = (machine: number) => {
+    const bytes = Buffer.alloc(20);
+    bytes.writeUInt32BE(0x7f_45_4c_46, 0);
+    bytes.writeUInt16LE(machine, 18);
+    return bytes;
+  };
+
+  it("names a Mach-O binary, an ELF for another processor and a host interpreter, and passes what the container runs", () => {
+    expect(foreignHead(head(0xcf, 0xfa, 0xed, 0xfe))).toBe("a Mach-O binary");
+    expect(foreignHead(elf(183))).toBe("an ELF binary for machine 183");
+    expect(foreignHead(Buffer.from("#!/Users/me/venv/bin/python3\n"))).toContain("host path");
+    expect(foreignHead(elf(62))).toBeNull();
+    expect(foreignHead(Buffer.from("#!/usr/bin/env python3\n"))).toBeNull();
+    expect(foreignHead(Buffer.from("#!/bin/sh\n"))).toBeNull();
+    expect(foreignHead(Buffer.from("plain text"))).toBeNull();
+  });
+
+  it("refuses a tool tree holding foreign programs by path, and passes one the container runs", async () => {
+    const tree = join(root, "programs");
+    mkdirSync(join(tree, "venv", "bin"), { recursive: true });
+    writeFileSync(join(tree, "fine"), "#!/bin/sh\necho ok\n");
+    writeFileSync(join(tree, "linux"), elf(62));
+    await foreignPrograms(tree);
+    writeFileSync(join(tree, "venv", "bin", "tool"), "#!/private/tmp/venv/bin/python\n");
+    writeFileSync(join(tree, "mac"), head(0xcf, 0xfa, 0xed, 0xfe));
+    await expect(foreignPrograms(tree)).rejects.toThrow(/mac \(a Mach-O binary\), venv\/bin\/tool/u);
+  });
+
+  it("leaves no mount behind when a bundle fails, so the next attempt is not refused as made", async () => {
+    const into = join(root, "mount-failed");
+    const missing = { campaign: join(root, "no-campaign", "log.jsonl") };
+    const why = async () => bundleArm(into, missing).then(() => "made", errorMessage);
+    expect(await why()).not.toContain("there already");
+    expect(existsSync(into)).toBe(false);
+    expect(await why()).not.toContain("there already");
   });
 });

@@ -23,7 +23,9 @@
  * mirrored halves, the first and last of each four against the two between, so a drift over the
  * job's hours falls on both halves (`halves`). Until 2 November tasks short on a side were paired
  * on what they had, the step was read at 0.10, and the halves split first against last in the
- * order of Harbor's random trial names.
+ * order of Harbor's random trial names. Until 3 November a non-result took a place in the halves
+ * and the streams, so a retry shifted every later one, and a Harbor exception in an agent other
+ * than the study's solver counted as whatever its verifier found.
  */
 import { flipP, readsStep, readsStepEitherWay } from "#src/kernel/compare.ts";
 import { read } from "#src/kernel/log.ts";
@@ -47,7 +49,7 @@ export interface Trial {
   readonly calls: number | null;
   readonly seconds: number | null;
   /** When Harbor started the trial (`started_at` in its `result.json`), which orders a task's
-   *  trials; null where it recorded none, and the trial's name orders it then. */
+   *  trials; null where it recorded none, which puts it after those that have one. */
   readonly started: string | null;
 }
 
@@ -79,6 +81,9 @@ const LEVEL = 0.02;
 /** The solver's endings that measured nothing (`src/kernel/solve.ts`, "non-result"). */
 const NON_RESULT = new Set(["provider", "crash"]);
 
+/** Harbor's exception for an agent that ran out of its time (`harbor/models/trial/result.py`). */
+const AGENT_TIMEOUT = "AgentTimeoutError";
+
 /** The JSON object at `path`, or null where it is missing, torn or not an object. */
 function jsonAt(path: string): JsonObject | null {
   if (!existsSync(path)) return null;
@@ -103,10 +108,14 @@ function trialOf(line: JsonObject): Trial {
   const harbor = jsonAt(join(path, "result.json"));
   const trace = join(path, "agent", TRACE_FILE);
   const traced = existsSync(trace) ? tracesIn(read(trace)) : null;
+  // Harbor records an agent or a verifier that threw; only the agent's own timeout is the side's
+  // fail, as `wall-ended` is in a campaign. This holds for an agent that writes no result of ours.
+  const thrown = asRecord(harbor?.["exception_info"])?.["exception_type"];
+  const lost = (ending !== null && NON_RESULT.has(ending)) || (isString(thrown) && thrown !== AGENT_TIMEOUT);
   return {
     task,
     trial,
-    score: ending !== null && NON_RESULT.has(ending) ? null : counted(score),
+    score: lost ? null : counted(score),
     ending,
     billed: counted(result?.["billed"]),
     turns: counted(result?.["turns"]),
@@ -118,6 +127,8 @@ function trialOf(line: JsonObject): Trial {
 
 /** The trials `trials.py` printed, one JSON line each, in the order they started. */
 export function trialsOf(printed: string): Trial[] {
+  // A trial with no start time goes last; ties keep the printed order, which is Harness²'s run
+  // folders in name order (`_run_dirs`), since Harbor's trial names are random.
   return printed
     .split("\n")
     .filter((line) => line.trim() !== "")
@@ -126,17 +137,20 @@ export function trialsOf(printed: string): Trial[] {
       if (parsed === null) throw new Error(`trials.py printed a line that is no object: ${line}`);
       return trialOf(parsed);
     })
-    .sort(
-      (one, other) =>
-        (one.started ?? "").localeCompare(other.started ?? "") || one.trial.localeCompare(other.trial),
-    );
+    .toSorted((one, other) => (one.started ?? "\uffff").localeCompare(other.started ?? "\uffff"));
 }
 
 /** Each task's scores, in the order its trials started, of the trials the reader scored. */
 function scoresByTask(trials: readonly Trial[]): Map<string, number[]> {
   const by = new Map<string, number[]>();
-  for (const { task, score } of trials) if (score !== null) by.set(task, [...(by.get(task) ?? []), score]);
+  for (const { task, score } of scored(trials)) by.set(task, [...(by.get(task) ?? []), score]);
   return by;
+}
+
+/** The trials the reader scored, in their order: what every reading counts, so a non-result
+ *  retried later takes no stream's or half's place. */
+function scored(trials: readonly Trial[]): (Trial & { readonly score: number })[] {
+  return trials.filter((each): each is Trial & { readonly score: number } => each.score !== null);
 }
 
 /** How many more scored trials each of `tasks` needs to reach `streams`; a task at its streams is
@@ -146,10 +160,10 @@ export function shortfall(
   tasks: readonly string[],
   streams: number,
 ): Map<string, number> {
-  const scored = scoresByTask(trials);
+  const byTask = scoresByTask(trials);
   return new Map(
     tasks.flatMap((task) => {
-      const missing = streams - (scored.get(task)?.length ?? 0);
+      const missing = streams - (byTask.get(task)?.length ?? 0);
       return missing > 0 ? [[task, missing] as const] : [];
     }),
   );
@@ -210,13 +224,13 @@ export function readArms(
   };
 }
 
-/** One arm's trials split in two by the campaign's mirrored halves (`pairsOf`): within each task,
- *  in the order they started, the first and last of each four against the two between. */
+/** One arm's scored trials split in two by the campaign's mirrored halves (`pairsOf`): within
+ *  each task, in the order they started, the first and last of each four against the two between. */
 export function halves(trials: readonly Trial[]): [Trial[], Trial[]] {
   const seen = new Map<string, number>();
   const first: Trial[] = [];
   const last: Trial[] = [];
-  for (const trial of trials) {
+  for (const trial of scored(trials)) {
     const at = seen.get(trial.task) ?? 0;
     seen.set(trial.task, at + 1);
     (at % 4 === 0 || at % 4 === 3 ? first : last).push(trial);
@@ -224,10 +238,10 @@ export function halves(trials: readonly Trial[]): [Trial[], Trial[]] {
   return [first, last];
 }
 
-/** The `stream`th trial of each task, counted from 0 in the order they started: one stream of an
+/** The `stream`th scored trial of each task, counted from 0 in the order they started: one stream of an
  *  arm whose harness changes between attempts, as Harness²'s improver's does, read alone. */
 export function streamOf(trials: readonly Trial[], stream: number): Trial[] {
-  return [...Map.groupBy(trials, ({ task }) => task).values()].flatMap((own) =>
+  return [...Map.groupBy(scored(trials), ({ task }) => task).values()].flatMap((own) =>
     own.slice(stream, stream + 1),
   );
 }

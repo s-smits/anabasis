@@ -355,6 +355,9 @@ its venv (`trials.py`), and the spend from the solver's own trace by the kernel'
 (`../shared/scores.ts`). `run.ts read` sets two arms beside each other, or one arm's streams split
 in two, the A/A, as "Metric and statistics" says.
 
+A first pilot on JobBench's statistics tasks, every arm scored under `claude -p`, has its own
+protocol in `jobbench-pilot.md`.
+
 ## Predictions
 
 None is recorded yet. Each paid step commits its prediction here before its first solve. The

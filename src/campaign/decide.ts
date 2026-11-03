@@ -32,6 +32,7 @@ import { isNumber, isString } from "../meta/json-shape.ts";
 import { draftOf } from "../examiner/draft.ts";
 import { plural } from "../meta/text.ts";
 import { comparisonFloor } from "./admission.ts";
+import { epochsOf } from "./climb.ts";
 import { crashedRun, cutShort, groundOf, heldOut, type Plan } from "./ground.ts";
 import { type Decided, type Ending, short } from "./move.ts";
 import { pendingWords } from "./word.ts";
@@ -511,10 +512,11 @@ function unread(ground: Ground): Move | null {
  * A comparison that draws the tasks held out since the last reading first, before anything is built. With no
  * harness waiting, a starter comparison says whether they leave the reference room before a
  * Builder session is paid for (on 10 October three campaigns built three times on tasks every
- * practice solve passed). After a promotion it is owed until one reports in the epoch, whatever
- * harness waits, since it confirms the promotion: a session that changed harness/ beside the
- * Examiner took its move, 5 of 5 promotions in the rehearsal of 2 November (sim-postplan) and the
- * base alike. A waiting harness whose last reading tested nothing, or left no room, is
+ * practice solve passed). After a promotion it is owed until one tallies a task in the epoch,
+ * whatever harness waits, since that reading confirms the promotion (`confirmed`, `climb.ts`, its
+ * one reader): a session that changed harness/ beside the Examiner took its move, 5 of 5
+ * promotions in the rehearsal of 2 November (sim-postplan) and the base alike. Until 3 November
+ * any report of the pair stopped the debt, so one that tallied nothing left the epoch unconfirmed. A waiting harness whose last reading tested nothing, or left no room, is
  * read on them. One whose reading had room and read no step is not: that would be a second draw of
  * one pair (`AGENTS.md`, section 4). Until 2 November this row redrew it, 13 times in the archive,
  * and the one step (buffer-159-opus g-7) came the comparison after a 5-0 no-step of the same
@@ -523,12 +525,8 @@ function unread(ground: Ground): Move | null {
 function heldSince(ground: Ground): Move | null {
   const { events, read, reports, waiting, reference, starter } = ground;
   const since = heldAfter(events, reports.at(-1)?.reported ?? -1);
-  const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED);
-  const confirmed = reports.some(
-    ({ fresh, old, reported }) => fresh === starter && old === reference && reported > promotedAt,
-  );
   const owed = reference !== null && starter !== null && reference !== starter && since > 0;
-  if (owed && (waiting === null || !confirmed)) {
+  if (owed && (waiting === null || epochsOf(events).at(-1)?.starter_tally === null)) {
     return compare(
       `harness ${short(reference)} is the reference, and ${plural(since, "task")} ${since === 1 ? "was" : "were"} held out since the last comparison: the starter is compared with it, those tasks first, to read whether they leave it room and whether it stands above the starter`,
       "starter",

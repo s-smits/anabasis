@@ -247,3 +247,17 @@ instead of running out of informative tasks after one or two promotions.
   - The more complicated path was the planned blind share (item 4), never in source; it is
     withdrawn. Nothing in source served the doubt alone: confirmation and the epoch line's split
     are readings that decide no move.
+- **3 November, later.** The operator: "Okay, so it's already working. That's really cool. Okay,
+  remove all complexity along the way ambitiously and stack PR for that then, because that's the
+  only thing we may have had, that there's complexity." Each reading around a promotion was mapped
+  as rule 13 asks. Five decided no move and were no pillar's measure, so they went from the epoch
+  line, the UI and lane 24: the reference's share of valid solves on the epoch's tasks (the
+  examiner-complexity script `ambition.ts` reads it), the epoch's Builder turns, the set-aside
+  count of the starter comparison (its own report and `runs view` print it), the split of the
+  starter tally into own-epoch and older tasks, and the riskiest attempt's rate (each comparison's
+  report states its rate). Confirmation, the false-promotion estimate and the cost bar stay, the
+  pillars' measures. The table now owes the starter comparison until one tallies a task in the
+  epoch, the reading `confirmed` takes, instead of until any reports; replayed over the 215 archived
+  logs, 0 of 2,700 decisions changed. The tasks held out before a promotion that the new reference
+  has stood in no comparison of stay retained: at 101 of 303 archived comparison starts they held
+  tasks out of the frontier, so removing them would change draws and admission.

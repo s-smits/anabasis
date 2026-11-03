@@ -613,6 +613,15 @@ describe("unread harnesses and tasks", () => {
         PLAN,
       ),
     ).not.toMatchObject({ fresh: "starter" });
+    // A starter comparison that tallied no task leaves its debt: with tasks held out since and a
+    // harness waiting, the starter is compared again before the harness is read.
+    const untallied = [
+      ...written,
+      ...compared("g-3", "start", "check-defects", { old: "h1", extra: { scored: null } }),
+      ...examined("x-2", ["v19"]),
+      built("b-2", "h2"),
+    ];
+    expect(decide(untallied, PLAN)).toMatchObject({ move: "compare", fresh: "starter" });
     // Tasks written since and all released for practice leave the starter comparison nothing to draw.
     const releasedAll = [
       ...written,

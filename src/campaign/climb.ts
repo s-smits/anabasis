@@ -169,9 +169,9 @@ export function epochsOf(events: readonly LogEvent[]): Epoch[] {
  *  new side, so the reference wins what the starter loses. The first, since with no harness
  *  waiting the table names the pair again where tasks are held out after it (`heldSince`,
  *  `decide.ts`), mostly after a reading that left no room: until 2 November the last one set
- *  `confirmed`, which let a later draw replace a reading that confirmed nothing. A report before
- *  26 October holds no unbilled scores and is read as scored. A null `reference` is the first
- *  epoch's, which has no starter comparison. */
+ *  `confirmed`, which let a later draw replace a reading that confirmed nothing. The table owes
+ *  the pair until this reads a tally. A report before 26 October holds no unbilled scores and is
+ *  read as scored. A null `reference` is the first epoch's, which has no starter comparison. */
 function againstStarter(
   reports: readonly Reported[],
   within: (at: number) => boolean,

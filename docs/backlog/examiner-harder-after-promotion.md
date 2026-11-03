@@ -24,6 +24,17 @@ instead of running out of informative tasks after one or two promotions.
 3. **Keep what protects the comparison.** Both harnesses solve the same tasks afresh, a step is
    read within one comparison, and one retained task joins each three frontier tasks. Harder tasks
    change supply, never how a comparison is read.
+4. **A blind share of each post-promotion Examiner session.** Before `reference-harness/` opens in
+   its home, the session writes a few tasks whose room comes from its own construction, not from
+   reading the reference's program. The starter comparison draws those first, and a candidate
+   comparison holds them as its regression check. This is a change to what a seat is given, so it
+   takes the operator's word (`AGENTS.md`, section 3), and it is tuned in paired live seats before
+   any campaign. Measure it by the split the epoch line now prints: the reference's tally against
+   the starter on the epoch's own tasks against older ones.
+5. **No fixed mix of own-epoch and older tasks in the draw.** The older tasks carry the opposite
+   bias, since they were kept for room against the starter, so a 50/50 mix sets one bias against the
+   other at an arbitrary ratio, and an epoch with fewer than half the draw on either side cannot fill
+   it.
 
 ## How it came to be
 
@@ -206,3 +217,13 @@ instead of running out of informative tasks after one or two promotions.
   g-6; whether a starter comparison should run 4 solves a side, which would settle the 27 losses a
   draw could turn; and a fresh run at the stack's top, its first starter comparison the test of
   the full draw.
+- **3 November.** An outside review of the starter comparisons (`BACKLOG_review.md`, kept out of
+  the tree) read the reference as losing the tasks its own epoch's Examiner wrote and winning the
+  older ones. The epoch line now prints that split (#580). On buffer-fresh-opus-fullrun-m1-air:
+  - epoch 3's confirmed 12 won, 6 lost and 3 tied was 2-6-3 on its own tasks and 10-0-0 on older
+    ones;
+  - epoch 2's 9-8-2 was 3-8-2 and 6-0-0.
+
+  The review proposed three changes. The first, this split, is in source. The second, a fixed mix
+  in the draw, is rejected for the reason in item 5. The third, blind tasks drafted before the
+  reference opens, is item 4.

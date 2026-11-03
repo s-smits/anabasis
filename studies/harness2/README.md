@@ -374,3 +374,13 @@ authoring session proposes, for step 4: "D's mean over three streams is above S'
   Examiner is given the train half's projects themselves, which needs a folder only its wall opens.
 - The network block: applying the resolver block on the runner, and whether GitHub is blocked
   whole or audited.
+
+## Appendix: a known-benchmark mode
+
+The handicaps above could also be measured rather than only stated, by a campaign mode that hands
+Anabasis what is known about a benchmark: `--known-bench <dir>`, the benchmark's train half, read
+at no more than ten places in the host. Level K1 hands over the task inputs only and is this
+study's arm U; level K2 also makes the train half's tasks and verifier the exam, which is
+Meta-Harness's exposure under Anabasis's optimiser. The test half stays held out at both levels, so
+the mode never becomes adaptation on the scored task. It is planned, not in source; the plan and
+its places are in `docs/backlog/known-bench.md`.

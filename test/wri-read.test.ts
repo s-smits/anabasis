@@ -519,6 +519,32 @@ describe("the reader of a round compared with another harness than its session s
     expect(moved([1, 1, 1, 1, 1, 1])).toHaveLength(0);
     expect(moved([0, 0, 0, 0, 0, 0])).toHaveLength(1);
   });
+
+  it("reads a starter comparison's set-aside from the reference's side too, which is what confirms a promotion", () => {
+    // Postplan g-2: the starter is the new side, so the reference's wins are the tally's losses;
+    // without its one set-aside task the reference reads 7-3 at p 0.035, with it 8-3 at p 0.0195.
+    const reference = [-300, -300, -300, -300, -300, -300, -300, 150, 150, 150, 0, 0];
+    const starterComparison = (starter: string) =>
+      overview(
+        log.map((each) =>
+          each.kind === REPORTED
+            ? {
+                ...each,
+                data: {
+                  ...each.data,
+                  starter,
+                  level: 0.02,
+                  aside: ["t9"],
+                  counted: { unbilled: [...reference, -300] },
+                  scored: { unbilled: reference },
+                },
+              }
+            : each,
+        ),
+      ).triggers.filter(({ name }) => name === "READING MOVES WITH THE SET-ASIDE");
+    expect(starterComparison("hy")).toHaveLength(1);
+    expect(starterComparison("another-harness")).toHaveLength(0);
+  });
 });
 
 describe("the reader of the load a comparison's solves started under", () => {

@@ -431,22 +431,35 @@ export function practiceLeft({ request, spent }: Bench, events: readonly LogEven
 const UNDER = { harness: "", reference: " under the reference harness" } as const;
 
 /** A task's practice record under each harness `roles` names, each digest once with every role
- *  it plays. Until 27 October it named harness/ and the parent whatever ran, so the 129 practice
- *  calls under the reference on record (of 852, 8 to 26 October) were told nothing of its record. */
+ *  it plays, and under an objective each valid answer's measure. Until 27 October it named
+ *  harness/ and the parent whatever ran, so the 129 practice calls under the reference on record
+ *  (of 852, 8 to 26 October) were told nothing of its record. Until 3 November it counted passes
+ *  alone: on the buffer runs from v0.9.1, 283 of 285 record clauses read "passed N of N", and the
+ *  measures that told the harnesses apart lay scattered over earlier results (lane 17). */
 function recordText(
   events: readonly LogEvent[],
   version: string,
   roles: readonly (readonly [string | null, string])[],
+  contract: Contract,
 ) {
   const named = new Map<string, string[]>();
   for (const [digest, role] of roles) {
     if (digest !== null) named.set(digest, [...(named.get(digest) ?? []), role]);
   }
+  const verdicts = verdictsOf(events);
   return [...named]
     .map(([digest, [role, ...also]], index) => {
       const kept = record(events, version, digest);
       const which = `${role ?? ""}${also.length > 0 ? `, which is also ${also.join(" and ")}` : ""}`;
-      return `${index === 0 ? "Record under" : "Under"} ${which}: ${index === 0 ? "passed " : ""}${String(kept.passed)} of ${String(kept.solves.length)}.`;
+      const measures = kept.solves.flatMap((solve) => {
+        const checker = verdicts.get(solve)?.checker;
+        return checker?.kind === "pass" && checker.objective !== undefined ? [String(checker.objective)] : [];
+      });
+      const measured =
+        contract.objective === undefined || measures.length === 0
+          ? ""
+          : `, ${contract.objective.quantity} ${measures.join(", ")}`;
+      return `${index === 0 ? "Record under" : "Under"} ${which}: ${index === 0 ? "passed " : ""}${String(kept.passed)} of ${String(kept.solves.length)}${measured}.`;
     })
     .join(" ");
 }
@@ -545,7 +558,7 @@ export function practiceTool(bench: Bench): SeatTool {
           : endingText(ending);
         return [
           `${task.task.taskId}${UNDER[under]}: ${shown}. Solve ${solve}.${usedText(events, solve)}${measuredText(events, solve, request.contract)}`,
-          recordText(events, task.version, roles),
+          recordText(events, task.version, roles, request.contract),
           ...lines,
         ].join("\n");
       });

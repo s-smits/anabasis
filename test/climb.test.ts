@@ -463,9 +463,32 @@ describe("the starter comparison in an epoch's row", () => {
     ];
     const [first, second] = epochsOf(log);
     expect(first?.starter_tally).toBeNull();
-    expect(second?.starter_tally).toEqual({ wins: 2, losses: 1, ties: 1, aside: 0 });
+    expect(second?.starter_tally).toEqual({ wins: 2, losses: 1, ties: 1, aside: 0, own: null });
     expect(epochLine(present(second))).toContain("against the starter 2 won, 1 lost, 1 tied, no step;");
     expect([first?.confirmed, second?.confirmed]).toEqual([null, false]);
+  });
+
+  it("splits the starter tally into the tasks the epoch admitted and the older ones, and leaves no split without task versions", () => {
+    const admitted = (version: string) => event("task.gate", { version, gate: 1, outcome: "passed" });
+    const scored = { differences: [-1, -1, 1, 1, 0] };
+    const versions = ["old-1", "old-2", "new-1", "new-2", "new-3"];
+    const log = [
+      opened,
+      admitted("old-1"),
+      admitted("old-2"),
+      promoted,
+      admitted("new-1"),
+      admitted("new-2"),
+      admitted("new-3"),
+    ];
+    const split = epochsOf([...log, starterRead(scored, [], { versions })])[1];
+    expect(split?.starter_tally?.own).toEqual({ wins: 0, losses: 2, ties: 1 });
+    expect(epochLine(present(split))).toContain(
+      "against the starter 2 won, 2 lost, 1 tied (this epoch's tasks 0 won, 2 lost, 1 tied; older 2 won, 0 lost, 0 tied), no step;",
+    );
+    const torn = epochsOf([...log, starterRead(scored, [], { versions: versions.slice(1) })])[1];
+    expect(torn?.starter_tally?.own).toBeNull();
+    expect(epochLine(present(torn))).toContain("against the starter 2 won, 2 lost, 1 tied, no step;");
   });
 
   it("confirms the promotion only where the reference clears the level against the starter without the bill", () => {

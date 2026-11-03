@@ -388,6 +388,21 @@ describe("campaign snapshots", () => {
     expect(JSON.parse(routing("near").out)).toEqual(["near"]);
     expect(routing("far").code).toBe(1);
   });
+
+  it("reads a copy as it stands where no host is named, and leaves it out once a named host stops listing it", () => {
+    const remote = campaign();
+    const { made } = remote;
+    expect(made.run(sync, remote.env).code).toBe(0);
+    const collect = (env: Record<string, string>) =>
+      made.run(
+        'import { readableAcross } from "REPOSITORY/tools/runs/snapshots.ts"; console.log(JSON.stringify((await readableAcross(["distant"])).map((run) => run.name)));',
+        env,
+      );
+    const unnamed = collect({ ANA_HOSTS: "[]" });
+    expect({ code: unnamed.code, out: unnamed.out.trim() }).toEqual({ code: 0, out: '["distant"]' });
+    const unlisted = collect({ FAKE_CATALOGUE: "[]" });
+    expect({ code: unlisted.code, out: unlisted.out.trim() }).toEqual({ code: 0, out: "[]" });
+  });
 });
 
 describe("named snapshot readers", () => {

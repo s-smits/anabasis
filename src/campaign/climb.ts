@@ -1,22 +1,23 @@
 /**
  * The climb, as one reading of a campaign's log: its epochs. An epoch runs from the opening, or a
- * promotion, to the next promotion or the log's end, under one reference harness. The climb the
- * system is for is a chain of epochs in which each promoted harness answers tasks the one before
- * it failed, so an epoch's row keeps apart what each side answered on the tasks admitted in it:
- * the reference harness, as the A/A comparison and the other comparisons read it, and its starter
- * comparison's tally without the bill, which says whether the reference still beats the fixed lower
- * one. A row holds counts and nothing of a task.
+ * promotion, to the next promotion or the log's end, under one reference harness. An epoch's row
+ * holds what the pillars read of it: its starter comparison's tally without the bill, which
+ * confirms the promotion (the milestone), the false-promotion estimate over its attempts beside
+ * the A/A comparisons (honesty), and the cost of its promotion (economy). A row holds counts and
+ * nothing of a task. On 3 November the zigzag was found to need no reading of its own: every
+ * comparison solves both harnesses afresh on one draw, and the starter comparison after a
+ * promotion draws the tasks held out since first, so the reference's share of valid solves, the
+ * set-aside count and the split of the starter tally into the epoch's own tasks and older ones,
+ * which decided no move, went (the examiner-complexity scripts read the reference's share).
  *
  * Written when the operator asked for the climb to be read as such: ten campaigns
  * had promoted once each and none twice, and no view said at which epoch a campaign stood or what
  * its tasks had done since the promotion. `runs view` prints the rows.
  */
 import { readsStep, scoresIn, type Tally, testOf } from "../kernel/compare.ts";
-import { conditionsOf } from "../kernel/condition.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { lastReports, type Reported } from "../kernel/reports.ts";
 import { billedBetween } from "../kernel/meter.ts";
-import { countedSolves, passed } from "../kernel/solves.ts";
 import { heldAtGate } from "../kernel/task.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
@@ -39,18 +40,9 @@ interface FalsePromotion {
   readonly errors: number;
   readonly controls: number;
   readonly incapable: number;
-  /** The riskiest attempt's rate by the rule's design: the largest of the attempts' own rates at
-   *  their margins (`falseRate`), the level where a report holds none. An estimate, no bound. */
-  readonly bound: number;
   /** min(1, the sum of the attempts' rates): the union bound's form, which assumes nothing of their
    *  independence, over estimates, so an estimate and no bound. */
   readonly union: number;
-}
-
-/** Valid answers and solves of one harness on a set of tasks. */
-export interface Share {
-  readonly valid: number;
-  readonly solves: number;
 }
 
 export interface Epoch {
@@ -65,26 +57,16 @@ export interface Epoch {
   readonly promoted: string | null;
   /** The task versions the gate admitted during the epoch, those later released to practice among them. */
   readonly tasks: readonly string[];
-  /** Builder sessions that acted in the epoch, and their turns in it. */
+  /** Builder sessions that acted in the epoch. */
   readonly sessions: number;
-  readonly turns: number;
   /** The comparisons reported in the epoch, by id, with their readings. */
   readonly comparisons: readonly { readonly id: string; readonly reading: string }[];
-  /** What the reference answered of the solves of the epoch's own tasks within it: null where no
-   *  solve of it on those tasks is on record. */
-  readonly reference_share: Share | null;
   /** The reference against the starter in the epoch's first starter comparison that tallied a
    *  task, without the bill and counted from the reference's side; null in the first epoch and
-   *  before one reports. Until
-   *  31 October this was the starter's share of valid answers, which read 4 to 28 in the
-   *  reference's favour as a near tie in an objective domain (buffer-forkedPR530's g-6). `aside`
-   *  counts the tasks it set aside for a person's labels: on 2 November two of eight starter
-   *  comparisons read a step once theirs were counted as ruled. `own` is the same tally on the tasks
-   *  admitted in this epoch alone, which an Examiner that read the reference wrote against it, and
-   *  the rest is the older tasks. In buffer-fresh-opus-fullrun-m1-air the reference's 12 won, 6 lost
-   *  and 3 tied in epoch 3 (confirmed) was 2-6-3 on its own epoch's tasks and 10-0-0 on older ones,
-   *  and epoch 2's 9-8-2 was 3-8-2 and 6-0-0. Null where the report names no task versions. */
-  readonly starter_tally: (Tally & { readonly aside: number; readonly own: Tally | null }) | null;
+   *  before one reports. Until 31 October this was the starter's share of valid answers, which read
+   *  4 to 28 in the reference's favour as a near tie in an objective domain (buffer-forkedPR530's
+   *  g-6). */
+  readonly starter_tally: Tally | null;
   /** Whether the promotion that opened the epoch is confirmed: its first starter comparison that
    *  tallied a task reads the reference above the starter without the bill, at that comparison's
    *  level (`AGENTS.md`,
@@ -147,10 +129,8 @@ export function tasksByEpoch(events: readonly LogEvent[]): string[][] {
 
 /** The epochs of a log, oldest first. A log with no promotion is one epoch. */
 export function epochsOf(events: readonly LogEvent[]): Epoch[] {
-  const starter = events.find(({ kind }) => kind === "comparison.started")?.data.starter;
-  const conditions = conditionsOf(events);
-  // A solve an Examiner session asked for, to try a draft task, is none of a share (`countedSolves`).
-  const solves = countedSolves(events);
+  const named = events.find(({ kind }) => kind === "comparison.started")?.data.starter;
+  const starter = isString(named) ? named : null;
   const bounds = boundsOf(events);
   const byEpoch = tasksByEpoch(events);
   const reports = lastReports(events);
@@ -159,7 +139,6 @@ export function epochsOf(events: readonly LogEvent[]): Epoch[] {
     const to = next?.index ?? null;
     const within = (at: number) => at >= from && (to === null || at < to);
     const tasks = byEpoch[nth] ?? [];
-    const held = new Set(tasks);
     // A led session spans epochs and finishes in none, so until 2 November counting the sessions
     // that finished read 0 in every epoch of a led campaign (WRI lane 31).
     const built = events.filter(({ kind }, at) => within(at) && kind.startsWith("build."));
@@ -169,22 +148,7 @@ export function epochsOf(events: readonly LogEvent[]): Epoch[] {
         ? [{ id: data.session, reading: isString(data.reading) ? data.reading : "" }]
         : [],
     );
-    const starterDigest = isString(starter) ? starter : null;
-    const referenceDigest = reference === "starter" ? starterDigest : reference;
-    // The reference's comparison solves on the epoch's tasks, as valid or not, null where unjudged.
-    // A practice solve is none of it: on 1 November 6 of r2's 24 were, read as scored (WRI lane 33).
-    const judged = solves.flatMap((solve) => {
-      const condition = conditions.get(solve.condition);
-      const verdict = passed(solve);
-      return referenceDigest !== null &&
-        within(solve.started) &&
-        solve.start.comparison !== undefined &&
-        condition?.harness === referenceDigest &&
-        held.has(condition.task) &&
-        verdict !== null
-        ? [verdict]
-        : [];
-    });
+    const referenceDigest = reference === "starter" ? starter : reference;
     return {
       nth: nth + 1,
       reference,
@@ -193,38 +157,26 @@ export function epochsOf(events: readonly LogEvent[]): Epoch[] {
       promoted: next?.harness ?? null,
       tasks,
       sessions: new Set(built.flatMap(({ data }) => (isString(data.session) ? [data.session] : []))).size,
-      turns: built.filter(({ kind }) => kind === "build.turn").length,
       comparisons,
-      reference_share:
-        judged.length === 0 ? null : { valid: judged.filter(Boolean).length, solves: judged.length },
-      ...againstStarter(
-        reports,
-        within,
-        reference === "starter" ? null : referenceDigest,
-        starterDigest,
-        held,
-      ),
-      falsePromotion: falsePromotionOf(reports, within, {
-        reference: referenceDigest,
-        starter: starterDigest,
-      }),
+      ...againstStarter(reports, within, reference === "starter" ? null : referenceDigest, starter),
+      falsePromotion: falsePromotionOf(reports, within, { reference: referenceDigest, starter }),
     };
   });
 }
 
 /** The reference's tally without the bill in the first starter comparison within the epoch that
  *  tallied a task, and whether it reads a step for the reference: the starter is that comparison's
- *  new side, so the reference wins what the starter loses. The first, since the table names the
- *  pair again where tasks are held out after it (`heldSince`), mostly after a reading that left
- *  no room: until 2 November the last one set `confirmed`, which let a later draw replace a
- *  reading that confirmed nothing. A report before 26 October holds no unbilled scores and is read
- *  as scored. A null `reference` is the first epoch's, which has no starter comparison. */
+ *  new side, so the reference wins what the starter loses. The first, since with no harness
+ *  waiting the table names the pair again where tasks are held out after it (`heldSince`,
+ *  `decide.ts`), mostly after a reading that left no room: until 2 November the last one set
+ *  `confirmed`, which let a later draw replace a reading that confirmed nothing. A report before
+ *  26 October holds no unbilled scores and is read as scored. A null `reference` is the first
+ *  epoch's, which has no starter comparison. */
 function againstStarter(
   reports: readonly Reported[],
   within: (at: number) => boolean,
   reference: string | null,
   starter: string | null,
-  held: ReadonlySet<string>,
 ): Pick<Epoch, "starter_tally" | "confirmed"> {
   if (reference === null) return { starter_tally: null, confirmed: null };
   const first = reports.find(
@@ -239,18 +191,7 @@ function againstStarter(
   const ahead = scoresIn(first.data.scored).map((one) => -one);
   const { wins, losses, ties } = testOf(ahead);
   const level = isNumber(first.data.level) ? first.data.level : 0;
-  const aside = Array.isArray(first.data.aside) ? first.data.aside.length : 0;
-  const versions = Array.isArray(first.data.versions) ? first.data.versions.filter(isString) : null;
-  const own =
-    versions?.length === ahead.length ? testOf(ahead.filter((_, at) => held.has(versions[at] ?? ""))) : null;
-  const tally = {
-    wins,
-    losses,
-    ties,
-    aside,
-    own: own && { wins: own.wins, losses: own.losses, ties: own.ties },
-  };
-  return { starter_tally: tally, confirmed: readsStep(ahead, level) };
+  return { starter_tally: { wins, losses, ties }, confirmed: readsStep(ahead, level) };
 }
 
 /**
@@ -292,7 +233,6 @@ function falsePromotionOf(
     errors,
     controls: aaComparisons.length,
     incapable: read.length - aaComparisons.length,
-    bound: Math.max(0, ...rates),
     union: Math.min(
       1,
       rates.reduce((sum, rate) => sum + rate, 0),
@@ -304,30 +244,20 @@ function falsePromotionOf(
 function starterOf({ reference, starter_tally: tally, confirmed }: Epoch): string {
   if (reference === "starter") return "";
   if (tally === null) return ", against the starter unread";
-  const waiting = tally.aside > 0 ? `, ${plural(tally.aside, "task")} set aside for a person's labels` : "";
-  const read = confirmed === true ? "a step, so its promotion is confirmed" : `no step${waiting}`;
-  const count = ({ wins, losses, ties }: Tally) =>
-    `${String(wins)} won, ${String(losses)} lost, ${String(ties)} tied`;
-  const { own } = tally;
-  const split =
-    own === null
-      ? ""
-      : ` (this epoch's tasks ${count(own)}; older ${count({ wins: tally.wins - own.wins, losses: tally.losses - own.losses, ties: tally.ties - own.ties })})`;
-  return `, against the starter ${count(tally)}${split}, ${read}`;
+  const read = confirmed === true ? "a step, so its promotion is confirmed" : "no step";
+  return `, against the starter ${String(tally.wins)} won, ${String(tally.losses)} lost, ${String(tally.ties)} tied, ${read}`;
 }
 
 /** One line an epoch, as the view prints them, each harness `called` as the view names it, and the
  *  promotion that ends it. */
 export function epochLine(epoch: Epoch, called: Called = short): string {
-  const share = (named: string, found: Share | null) =>
-    found === null ? `${named} unread` : `${named} valid ${String(found.valid)} of ${String(found.solves)}`;
   const reference = epoch.reference === "starter" ? "the starter" : called(epoch.reference);
   const readings = epoch.comparisons.map(({ id, reading }) => `${id} ${reading}`).join(", ") || "none";
   // The first harness promoted over the Starter is set-up, epoch 0, and the climb counts from it.
   const rung = epoch.nth === 1 ? "as set-up (epoch 0)" : `as rung ${String(epoch.nth - 1)} of the climb`;
   const end = epoch.promoted === null ? "open" : `promoted ${called(epoch.promoted)} ${rung}`;
   const risk = epoch.falsePromotion;
-  return `epoch ${String(epoch.nth)}: reference ${reference}; ${String(epoch.tasks.length)} tasks admitted; ${plural(epoch.sessions, "Builder session")}, ${plural(epoch.turns, "turn")}; comparisons ${readings}; ${share("reference", epoch.reference_share)} in their comparisons${starterOf(epoch)}; ${plural(risk.attempts, "promotion attempt")} under this reference, a false promotion among them estimated at ${percent(risk.union)}: ${sourceOf(risk)}; ${end}`;
+  return `epoch ${String(epoch.nth)}: reference ${reference}; ${String(epoch.tasks.length)} tasks admitted; ${plural(epoch.sessions, "Builder session")}; comparisons ${readings}${starterOf(epoch)}; ${plural(risk.attempts, "promotion attempt")} under this reference, a false promotion among them estimated at ${percent(risk.union)}; ${sourceOf(risk)}; ${end}`;
 }
 
 /** A chance in whole percent, or to a tenth under ten, where an attempt's rate of 1.8% read as 2%;
@@ -338,7 +268,8 @@ function percent(chance: number): string {
   return chance < 0.1 ? `${(100 * chance).toFixed(1)}%` : `${String(Math.round(100 * chance))}%`;
 }
 
-/** The riskiest attempt's rate by design, an estimate, and the A/A comparisons read beside it. */
+/** The A/A comparisons read beside an estimate. Until 3 November the riskiest attempt's rate was
+ *  said first, which each comparison's own report already states. */
 function sourceOf(risk: FalsePromotion): string {
   const comparisons =
     risk.controls === 0
@@ -346,7 +277,7 @@ function sourceOf(risk: FalsePromotion): string {
       : `${String(risk.errors)} of ${plural(risk.controls, "A/A comparison")} with enough untied tasks to read a step read one`;
   const incapable =
     risk.incapable === 0 ? "" : `, and ${String(risk.incapable)} too small to read one at their level`;
-  return `${percent(risk.bound)} for the riskiest attempt by the rule's design; ${comparisons}${incapable}`;
+  return `${comparisons}${incapable}`;
 }
 
 /**
@@ -365,7 +296,7 @@ export function riskLines(events: readonly LogEvent[]): string[] {
   return [
     ...epochs.map(({ nth, falsePromotion: risk }) => {
       const attempts = plural(risk.attempts, "promotion attempt");
-      return `- Epoch ${String(nth)}: ${attempts}, a false promotion among them estimated at ${percent(risk.union)}: ${sourceOf(risk)}.`;
+      return `- Epoch ${String(nth)}: ${attempts}, a false promotion among them estimated at ${percent(risk.union)}; ${sourceOf(risk)}.`;
     }),
     `Over the campaign, a false promotion in any epoch estimated at ${percent(total)}: the sum of the epochs' estimates, capped at one, which assumes nothing of how the attempts depend on one another. It sums estimates, so it is an estimate and no bound.`,
     "The rule assumes each untied task is as likely won as lost between equal harnesses; solver drift can violate that assumption. A/A comparisons provide an empirical check: each step is an observed false positive, but one alone does not establish miscalibration. With no steps in n independent comparisons sharing one false-positive rate, the approximate 95% upper limit is 3/n. The recorded comparisons do not establish those conditions, so they give no such bound by themselves. These estimates cover only recorded attempts; further attempts increase the campaign's estimate.",

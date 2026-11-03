@@ -30,7 +30,8 @@ instead of running out of informative tasks after one or two promotions.
    tasks as the candidate. A blind share of each post-promotion Examiner session was planned here
    on 3 November and is withdrawn (operator, 3 November): it adds a second kind of task to the
    Examiner and the draw, where the zigzag already reads the new tasks on both sides. The split the
-   epoch line prints (own-epoch tasks against older ones) stays the measure.
+   epoch line printed (own-epoch tasks against older ones) went on 3 November with the other
+   readings that decided no move; whether the Examiner aims at the reference is item 1's reading.
 5. **No fixed mix of own-epoch and older tasks in the draw.** The older tasks carry the opposite
    bias, since they were kept for room against the starter, so a 50/50 mix sets one bias against the
    other at an arbitrary ratio, and an epoch with fewer than half the draw on either side cannot fill

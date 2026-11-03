@@ -171,15 +171,6 @@ const solverIn = once((log) => {
   }
 });
 
-/** What the promotion attempts under the current reference risk together (`falsePromotion`,
- *  `climb.ts`). Until 16 October the table held the next attempt past a quarter of it. */
-function riskIn(log: Log): Counters["risk"] {
-  const epoch = epochsIn(log).at(-1);
-  if (epoch === undefined) return null;
-  const { attempts, union, bound, controls, incapable, errors } = epoch.falsePromotion;
-  return { attempts, union, bound, controls, incapable, errors };
-}
-
 /** What is left of the campaign's total, and what the last comparison the cap did not cut billed. */
 function runwayIn(log: Log): Counters["runway"] {
   const left = budgetLeft(log.events);
@@ -218,7 +209,9 @@ const coreIn = once((log) => {
       controlSteps: bars.filter(
         ({ noise, level }) => noise !== null && readsStepEitherWay(noise.scores, level),
       ).length,
-      risk: riskIn(log),
+      // What the promotion attempts under the current reference risk together (`falsePromotion`,
+      // `climb.ts`). Until 16 October the table held the next attempt past a quarter of it.
+      risk: epochsIn(log).at(-1)?.falsePromotion ?? null,
       runway: runwayIn(log),
     },
   };

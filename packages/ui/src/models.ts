@@ -24,7 +24,7 @@
  * shows, never a silent empty list.
  */
 import type { Supply } from "../../../src/campaign/admission.ts";
-import type { Share, Worth } from "../../../src/campaign/climb.ts";
+import type { Worth } from "../../../src/campaign/climb.ts";
 import type { Handover } from "../../../src/campaign/handover.ts";
 import type { Decided, Ending as CampaignEnding } from "../../../src/campaign/move.ts";
 import type { Seat, Terms } from "../../../src/campaign/opening.ts";
@@ -41,6 +41,12 @@ import type { Ruling } from "../../../src/referee/referee.ts";
 import { hasText } from "../../../src/meta/text.ts";
 
 export type Tone = "good" | "bad" | "warn" | "info" | "neutral";
+
+/** Valid answers and solves of one harness on a set of tasks. */
+export interface Share {
+  readonly valid: number;
+  readonly solves: number;
+}
 
 /** Which tier the server answers in: `--exam-side` makes it `exam`. */
 export type Tier = "default" | "exam";
@@ -253,8 +259,8 @@ export interface Promotion {
   readonly despite: string | null;
   /** It names the starter: the campaign returned to it. */
   readonly toStarter: boolean;
-  /** The promoted harness against the starter, on the scores its step reads and from its own side, in the last
-   *  starter comparison of its epoch; null before one reports. It is confirmed where that tally
+  /** The promoted harness against the starter, on the scores its step reads and from its own side, in the first
+   *  starter comparison of its epoch that tallied a task; null before one reports. It is confirmed where that tally
    *  reads a step at the comparison's level (`epochsOf`, `src/campaign/climb.ts`). */
   readonly againstStarter: Tally | null;
   readonly confirmed: boolean;
@@ -318,7 +324,6 @@ export interface Counters {
   readonly risk: {
     readonly attempts: number;
     readonly union: number;
-    readonly bound: number;
     readonly controls: number;
     readonly incapable: number;
     readonly errors: number;

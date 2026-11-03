@@ -872,7 +872,7 @@ keeps the two lines, drops them, or rewrites them, and whether it still copies `
 or grows its own. After a promotion the starter comparison puts the starter against the reference: the tasks written for the
 promoted harness are read by the starter against it before a Builder session is paid for, which
 is where the plan reads whether the starter loses more each epoch. A promotion is confirmed when
-the last such comparison of its epoch reads the reference above the starter without the bill
+the first such comparison of its epoch that tallied a task reads the reference above the starter without the bill
 (`confirmed`, `src/campaign/climb.ts`), and the milestone counts confirmed promotions only. `PROMOTION
 UNCONFIRMED` names each promotion whose epoch holds no such reading, open or closed, and the
 tally where one read no step. For each, say which of three it is: the epoch is still open and

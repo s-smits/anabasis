@@ -515,7 +515,7 @@ describe("a campaign", () => {
     }
     await expect(
       sessionCommand([...flags, "--session", "z-8", "--builder", "faux/none", "--cap", "$40"]),
-    ).rejects.toThrow("--cap $40 --reserve 10: a cap and its reserve are dollars as plain numbers");
+    ).rejects.toThrow("--cap $40 --reserve 3: a cap and its reserve are dollars as plain numbers");
     // A simulation's seats are scripts, which are paid nothing, and may name none.
     expect(capNamed({ reserve: "10" }, "scripted")).toBeUndefined();
     expect(capNamed({ cap: "40", reserve: "5" }, "scripted")).toEqual({ dollars: 40, reserve: 5 });

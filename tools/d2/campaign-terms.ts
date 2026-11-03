@@ -108,7 +108,7 @@ const OPTIONS = {
  *  3 November, when 44,573 Opus solves under the 20-turn, 30-minute limits had billed at most $2.83
  *  (p99 $0.64), and an $800 campaign's every comparison told its Builder that the cap would cut its
  *  96 solves short at 80. */
-const DEFAULTS = { reserve: "3", sessions: SESSIONS, effort: "high" } as const;
+const DEFAULTS = { reserve: COMPARISON_OPTIONS.reserve.default, sessions: SESSIONS, effort: "high" } as const;
 /**
  * Every flag of the campaign command with what it does: the one list of them, printed by
  * `--help` (`flagsHelp`). Typed by `OPTIONS`, so no flag is added without its line. A term the

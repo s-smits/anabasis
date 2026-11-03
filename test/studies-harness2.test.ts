@@ -13,6 +13,7 @@ import {
   MODULE_FILE,
   placeHarness,
 } from "../studies/shared/bundle.ts";
+import { exportForClaudeCode } from "../studies/shared/claude-export.ts";
 import { harnessIn, RESULT_FILE } from "../studies/shared/pi-solve.ts";
 import { halves, readArms, shortfall, streamOf, type Trial, trialsOf } from "../studies/shared/scores.ts";
 import { append } from "../src/kernel/log.ts";
@@ -327,5 +328,35 @@ describe("a harness's programs, checked against the container", () => {
     expect(await why()).not.toContain("there already");
     expect(existsSync(into)).toBe(false);
     expect(await why()).not.toContain("there already");
+  });
+});
+
+describe("a harness written out for Claude Code", () => {
+  it("makes the guide CLAUDE.md, copies the programs under scripts and names the harness's own tools as unavailable", async () => {
+    const made = await campaign("exported", () => undefined, tooled());
+    const into = join(root, "claude-tooled");
+    const record = await exportForClaudeCode(into, { campaign: made.log, harness: made.child });
+    expect(record.harness).toBe(made.child);
+    expect(record.dropped).toStrictEqual(["agent/tools-spec.json", "agent/tools.ts"]);
+    expect(record.unavailable).toStrictEqual(["doubled"]);
+    const guide = readFileSync(join(into, "CLAUDE.md"), "utf8");
+    expect(guide).toContain("doubled. They are not available here");
+    expect(guide).toContain('export PATH="$PWD/scripts/toolchain/bin:$PATH"');
+    expect(readFileSync(join(into, "scripts", "toolchain", "bin", "mark"), "utf8")).toContain("echo marked");
+    expect(parseJsonAs<{ harness: string }>(readFileSync(join(into, "export.json"), "utf8")).harness).toBe(
+      made.child,
+    );
+  });
+
+  it("writes the starter's guide under the note with no tool or program line, and refuses a tree already made", async () => {
+    const into = join(root, "claude-starter");
+    const record = await exportForClaudeCode(into, "starter");
+    expect(record).toMatchObject({ campaign: null, unavailable: [], toolchain: null, searched: [] });
+    const guide = readFileSync(join(into, "CLAUDE.md"), "utf8");
+    expect(guide.startsWith("# How this harness reaches you")).toBe(true);
+    expect(guide).not.toContain("not available here");
+    expect(guide).not.toContain("scripts/toolchain");
+    expect(existsSync(join(into, "scripts"))).toBe(false);
+    await expect(exportForClaudeCode(into, "starter")).rejects.toThrow(/there already/u);
   });
 });

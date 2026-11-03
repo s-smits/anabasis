@@ -1,7 +1,10 @@
 # Lane sessions that follow the evidence and choose their lanes
 
-Status: planned. Nothing of it is in source. The next whole-run investigation after 3 November
-2026 is where it applies first.
+Status: present in source on #580 (3 November 2026): the primary's section in the shared
+instructions, a lane prompt that lets a session follow a problem and leave a lane `omitted`, and
+`collect` counting omitted lanes apart and naming one whose trigger fired. Not yet exercised: the
+jobstat investigation of 3 November was built before it. The pair of investigations under "Limits
+known now" is not run.
 
 ## The question
 

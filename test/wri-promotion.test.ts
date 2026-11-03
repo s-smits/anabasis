@@ -172,6 +172,44 @@ describe("lane 27: a promotion and the climb after it", () => {
     expect(after).toContain(`control g-3: the promoted harness valid on ${expected}`);
   });
 
+  it("reads a control's confirmation on tasks first drawn after the promotion apart from older ones", () => {
+    // Q5 of the climb investigation, 3 November: both confirmations on record rested on tasks the
+    // promoted harness had been promoted on. The starter is the fresh side, so the reference wins
+    // what the starter loses, and a task set aside is left out of both ages.
+    const { log, put, compare } = held();
+    compare("g-1", "hbase", "hn", STEP)();
+    put("harness.promoted", { harness: "hn", from: "hbase", rests: [{ comparison: "g-1" }] });
+    const terms = {
+      session: "g-2",
+      old: "hn",
+      fresh: "hbase",
+      starter: "hbase",
+      setting: "set-1",
+      solves: 2,
+      level: 0.1,
+    };
+    const tasks = ["v1", "v2", "v5", "v6", "v7"];
+    put("comparison.started", { ...terms, budgets: [], cap: null, tasks });
+    const frontier = { tasks, aside: ["v7"], differences: [-1, -1, 1, 0] };
+    put("comparison.reported", { ...REPORT, ...terms, tasks: 5, ...STEP, frontier });
+    const after = triggered(log)("AFTER THE PROMOTION")[0];
+    expect(after).toContain("first drawn after the promotion 0-1-1 p 1.000, before it 2-0-0 p 0.250");
+    // A part whose scores do not line up with its tasks is read as holding none.
+    put("comparison.started", { ...terms, session: "g-3", budgets: [], cap: null, tasks });
+    put("comparison.reported", {
+      ...REPORT,
+      ...terms,
+      session: "g-3",
+      tasks: 5,
+      ...STEP,
+      frontier: { tasks, differences: [1] },
+    });
+    expect(triggered(log)("AFTER THE PROMOTION")[0]).toContain(
+      "control g-3: the promoted harness valid on 13%",
+    );
+    expect(triggered(log)("AFTER THE PROMOTION")[0]).toContain("after the promotion none, before it none");
+  });
+
   it("names a promotion no starter comparison confirmed, and leaves out one that a starter comparison did", () => {
     // The gate ablation of 1 November: five promotions, a Builder's comparison in each starter
     // comparison's place, and none confirmed.

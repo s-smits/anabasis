@@ -17,8 +17,8 @@ belong to code or models (section 2), and what each seat can do and read (sectio
 
 | Section of `AGENTS.md` | Reference |
 | --- | --- |
-| 1. What Anabasis v2 does: the question, "The four reported factors", "What changed from v1" | `references/question-and-factors.md` |
-| 1. What Anabasis v2 does: "Two sides and one wall" | `references/wall.md` |
+| 1. What Anabasis does: the question, "The four reported factors", "What changed from v1" | `references/question-and-factors.md` |
+| 1. What Anabasis does: "Two sides and one wall" | `references/wall.md` |
 | 2. The stance: code owns the conditions, models own the content | `references/stance.md` |
 | 3. The seats: the seats' table, what the Examiner reads and never reads, each seat's tools | `references/seats.md` |
 | 3. The seats: "What waits for the operator", "The harness" | `references/operator-and-harness.md` |

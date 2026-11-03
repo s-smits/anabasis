@@ -21,9 +21,10 @@
  */
 import { epochsOf as epochsRead } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";
-import { flipP } from "#src/kernel/compare.ts";
+import { flipP, scoresIn } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { billedBetween, type Call, type Seat } from "#src/kernel/trace.ts";
+import type { Call, Seat } from "#src/kernel/trace.ts";
+import { billedBetween } from "#src/kernel/meter.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy, median } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
@@ -374,13 +375,13 @@ export function promotionTriggers(log: Index): Trigger[] {
   ];
 }
 
-/** `STEP CARRIERS` (lane 21): each step's untied tasks without the bill, and how many of its largest
+/** `STEP CARRIERS` (lane 21): each step's untied tasks on the scores it is read on (`scoresIn`), and how many of its largest
  *  wins it could lose to a tie and still clear its level. On 1 November the gate ablation's g-3 cleared at
  *  6-0 with none to spare, and supply's g-2 lost its step without the 5 tasks priced in yen; lanes
  *  15, 23, 25 and 34 each found a part of that. */
 function carrierTrigger(log: Index): Trigger[] {
   const lines = log.compared.flatMap(({ session, last }) => {
-    const unbilled = items(asRecord(last.scored)?.unbilled).filter(isNumber);
+    const unbilled = scoresIn(last.scored);
     if (text(last.reading) !== "step" || unbilled.length === 0) return [];
     const wins = unbilled.filter((one) => one > 0).toSorted((one, other) => other - one);
     const rest = unbilled.filter((one) => one <= 0);
@@ -394,7 +395,8 @@ function carrierTrigger(log: Index): Trigger[] {
 }
 
 /** `PROMOTION UNCONFIRMED` (lane 24): each promotion whose epoch has no starter comparison, or whose
- *  last one does not read the reference above the starter (`confirmed`, `src/campaign/climb.ts`).
+ *  first one that tallied a task does not read the reference above the starter (`confirmed`,
+ *  `src/campaign/climb.ts`; the last one until 2 November).
  *  On 1 November none of the gate ablation's five promotions and the validity arm's one was
  *  confirmed, and lanes 24 and 28 found it by reading the moves. */
 function unconfirmedTrigger(log: Index): Trigger[] {
@@ -404,7 +406,7 @@ function unconfirmedTrigger(log: Index): Trigger[] {
     const read =
       against === null
         ? "no starter comparison reported"
-        : `against the starter ${String(against.wins)}-${String(against.losses)}-${String(against.ties)} without the bill, no step`;
+        : `against the starter ${String(against.wins)}-${String(against.losses)}-${String(against.ties)} without the bill${against.own === null ? "" : ` (this epoch's tasks ${String(against.own.wins)}-${String(against.own.losses)}-${String(against.own.ties)})`}, no step${against.aside > 0 ? `, ${String(against.aside)} set aside for labels` : ""}`;
     return [`${short(reference)} in epoch ${String(nth)}, ${to === null ? "open" : "closed"}: ${read}`];
   });
   return lines.length > 0

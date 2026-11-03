@@ -4,13 +4,16 @@
 file `scripts/split_tasks.py` wrote. `trials` prints every trial of a job folder with its score:
 `_trials_in` finds each task's trials across the folder's runs (resolving Harbor's 32-character
 trial names), and `score_from_payload` reads the verifier's `score.json` by the benchmark scorer's
-precedence, null where it gives none. A null is a non-result and is counted apart, never as a zero.
+precedence, null where it gives none. `named` prints the trials of one task named as it is, the
+study's placeholder (`run.ts check --placeholder`), which `_trials_in` cannot resolve without the
+dataset. A null is a non-result and is counted apart, never as a zero.
 So both arms of a comparison are picked and scored by the functions Harness² scores its own
 rollouts by, and porting their precedence to TypeScript would have made a second reader of one
 file. `run.ts` runs this in Harness²'s own venv:
 
     .venv/bin/python -I trials.py tasks <split file>
     .venv/bin/python -I trials.py trials <job folder> <split file>
+    .venv/bin/python -I trials.py named <job folder> <task>
 """
 from __future__ import annotations
 
@@ -19,7 +22,13 @@ import sys
 from pathlib import Path
 
 from harness2.benchmarks.tasks import discover, select
-from harness2.benchmarks.workbuddy import _json_or_none, _run_dirs, _trials_in, score_from_payload
+from harness2.benchmarks.workbuddy import (
+    _TRIAL_RE,
+    _json_or_none,
+    _run_dirs,
+    _trials_in,
+    score_from_payload,
+)
 
 SUBSET = "code"
 
@@ -28,12 +37,24 @@ def tested(split: Path) -> list[str]:
     return select(discover("wb", SUBSET), "test", split, benchmark=f"wb-{SUBSET}")
 
 
+def printed(task: str, trial: Path) -> None:
+    payload = _json_or_none(trial / "verifier" / "score.json")
+    score = None if payload is None else score_from_payload(payload)
+    print(json.dumps({"task": task, "trial": trial.name, "path": str(trial), "score": score}))
+
+
 def trials(jobs: Path, split: Path) -> None:
     for task in tested(split):
         for trial in _trials_in(_run_dirs(jobs), task, SUBSET):
-            payload = _json_or_none(trial / "verifier" / "score.json")
-            score = None if payload is None else score_from_payload(payload)
-            print(json.dumps({"task": task, "trial": trial.name, "path": str(trial), "score": score}))
+            printed(task, trial)
+
+
+def named(jobs: Path, task: str) -> None:
+    for run in _run_dirs(jobs):
+        for trial in sorted(run.iterdir()):
+            found = _TRIAL_RE.match(trial.name)
+            if trial.is_dir() and found and found.group("task") == task:
+                printed(task, trial)
 
 
 if __name__ == "__main__":
@@ -42,5 +63,7 @@ if __name__ == "__main__":
             print(json.dumps(task))
     elif len(sys.argv) == 4 and sys.argv[1] == "trials":
         trials(Path(sys.argv[2]), Path(sys.argv[3]))
+    elif len(sys.argv) == 4 and sys.argv[1] == "named":
+        named(Path(sys.argv[2]), sys.argv[3])
     else:
-        sys.exit("usage: trials.py tasks <split file> | trials <job folder> <split file>")
+        sys.exit("usage: trials.py tasks <split file> | trials <job folder> <split file> | named <job folder> <task>")

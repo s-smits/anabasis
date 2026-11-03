@@ -1,6 +1,6 @@
 ---
 name: run-improvement-campaign
-description: "Run the Anabasis v2 improvement loop, the Super Loop, and the release cycle around it: fork fresh campaigns at the last release, read each at its milestones and resolve predictions, then stop them, investigate them, plan and implement the patches, land the release, and only then fork the next cycle. Inside the cycle each pass scores the five points, finds the link that holds the next promotion, fixes its owner, proves the path and predicts. Use when the operator asks to keep campaigns going, fork runs, work towards a release, run a pass or an hourly audit, read a promotion, investigate a campaign that is not promoting, or choose the next run. Owns the experiment and its evidence; AGENTS.md section 3 owns the operator's decisions."
+description: "Run the Anabasis improvement loop, the Super Loop, and the release cycle around it: fork fresh campaigns at the last release, read each at its milestones and resolve predictions, then stop them, investigate them, plan and implement the patches, land the release, and only then fork the next cycle. Inside the cycle each pass scores the five points, finds the link that holds the next promotion, fixes its owner, proves the path and predicts. Use when the operator asks to keep campaigns going, fork runs, work towards a release, run a pass or an hourly audit, read a promotion, investigate a campaign that is not promoting, or choose the next run. Owns the experiment and its evidence; AGENTS.md section 3 owns the operator's decisions."
 ---
 
 # Run improvement campaign (the Super Loop)
@@ -191,9 +191,9 @@ timer that runs it takes the step, under the cycle's word. A host answers by run
 its own tree with `--here`, so a host's tree must hold the script; a tree that predates it answers
 no rows and is named as not answering.
 
-The cycle's reviews are one-shot timers (section "Timers"), each of which runs the script and takes
-the step it names: about 30 minutes after the fork for M1, then at each run's comparisons and
-promotions, and once the script reads `stop`, at each step of the improvement window. Each review
+The cycle's reviews start from the pulse's lines (section "Timers"); each runs the script and takes
+the step it names: at M1 after the fork, then at each run's comparisons and promotions, and once
+the script reads `stop`, at each step of the improvement window. Each review
 may move the plan forward within the order above, and add, move or delete the cycle's own timers to
 reach its goal.
 
@@ -355,7 +355,7 @@ walk chooses what to do about it.
    `unmeasured`.
 8. **Next epoch:** refused drafts, idle conversations or few frontier tasks after promotion.
    Read `heard`, `campaignStatus` and `hostOwed` in `tools/d2/harness-builder.ts`, then `ROWS`
-   in `src/campaign/decide.ts`: its `build` row handles `practice` and `unshown`.
+   in `src/campaign/decide.ts`: its `build` row first releases owed practice (`practice`).
 
 ## 1. Choose one change, aimed at the next promotion
 
@@ -385,6 +385,17 @@ comparisons miss alike, or a prediction fails, walk the links again before choos
 - **Rehearsal:** `bun run runs seed --from <campaign folder> --name <seed>`, then
   `bun run runs rehearse` over the seed. Scripts replace the working seats; no Referee runs, and
   an Examiner is scripted only over a drafted exam. Use `--campaign` for a campaign path.
+- **One exam, two commits:** a fresh campaign drafts its own exam, so two fresh campaigns of one
+  domain differ in their exam as well as in the change. For a mechanism that acts after the
+  freeze (the Builder, the table, the comparison, the Examiner's writing), seed one finished
+  campaign cut at its `contract.frozen` (`--events <its line>`) into a worktree at each commit,
+  and run each seed on the source's launch flags (its `launch-run-1.json`), dry run first. Both
+  arms hold one contract, one check program and the draft's tasks, and write the rest themselves.
+  On 3 November a drafted ESP32 campaign cut at 21 of 2,387 events dry-ran at the stack's top with
+  its log unchanged and named holding the drafted tasks next. The seed keeps the source's opening
+  terms, its reserve included. Its promotions are no climb (`AGENTS.md`, section 10, item 9) and
+  each arm is one stream, so the result is a lead for a fresh run, never a step. Each arm is a paid
+  run and takes the operator's word.
 
 For model-visible text, render and read the whole composed surface. Check for duplicated facts and
 whether a literal reading can finish within its limits. A test double proves its interface; better
@@ -499,7 +510,7 @@ Choose one move. `decide` in `src/campaign/decide.ts` advises accept, prepare, e
 compare, promote or end. A led Builder chooses its tools; code keeps admissions and scoring, and
 `hostOwed` makes comparisons and promotions between conversations.
 
-The stop rule counts since the last promotion (`stopRule`, `src/kernel/reports.ts`). A changed
+The stop rule counts since the last promotion (`stopRule`, `src/campaign/admission.ts`). A changed
 harness/reference pair counts once when tallied with room or a step; a whole unchanged session
 counts only where practice failed. A step shows gain. Starter comparisons, unscored comparisons and
 non-step readings without room do not count. Improvement patience defaults to six (`PATIENCE`);
@@ -555,14 +566,15 @@ At step 4 of the cycle every row still open is marked `unreached`.
 
 | Timer | When | Its step 3 |
 | --- | --- | --- |
-| watch | hourly, off the hour and the half hour (`13 * * * *`) | every run's milestone and possible stall on every host |
-| pass (the cycle's driver) | every three hours (`17 */3 * * *`) | the first cycle step not done, ended runs closed out, `runs usage`, and the timers reviewed from the ledger alone |
+| pulse (the watch and the cycle's driver) | every 290 seconds: one Monitor on `bun run runs pulse --every 290`, its actionable lines only | every run's milestone, ending and stall on every host; a line naming a milestone, an ending or a stall starts the protocol, with the first cycle step not done, ended runs closed out and `runs usage` |
 | milestone | one-shot at a predicted event, or at a prediction's deadline | the named milestone or row, and any investigation it owes |
 | cycle review | one-shot at each step of the release cycle: the stop at the latest opening plus twelve hours, and the end of the improvement window at the last stop plus twelve hours | the step `cycle.ts` names; at the window's end, what is proved and what is left |
 | handover | one-shot at the agreed handover time | five points, changes and decisions waiting, and which timers were useful by their ledger rows |
 
-Review the Firings rows in the pass: three empty watches may justify two-hour spacing, and M3 or M5
-approaching needs a one-shot.
+The pulse is the one recurring watch (operator, 2 November): no hourly or longer watch beside it. A
+Claude Code Monitor lasts at most its tool's limit, so re-arm the same command at each expiry
+notice; a one-off wait for a promotion never stands in for it, since on 2 November that swap left
+the runs unwatched for hours. Pass `--state <file>` so a re-armed pulse says nothing twice.
 
 A Claude Code timer (`CronCreate`) lives only in the session that armed it. It dies when that
 session exits, and a recurring one expires after seven days. It fires only while the session is
@@ -572,13 +584,10 @@ idle, a few minutes off the time it names. So:
   the rows it settles, the runs it reads, its authority, and "follow the firing protocol of
   run-improvement-campaign's Timers". It fires after compactions that will have dropped the context
   it was armed in.
-- Review timers from the ledger inside the pass, not with a separate recurring Codex session: on 24
-  October one fired four times in about eight and a half hours (16:39, 19:13, 22:13, 01:13); the
-  19:13 firing changed the cadence usefully, and the others read a stale ledger, found no change or
-  found the timer redundant. A Codex review is for a new kind of timer or three empty firings in a
-  row.
-- Write the time with its UTC offset in the ledger and the prompt (DST ended 25 October 03:00), and
-  keep recurring minutes off :00 and :30.
+- Review the one-shots from the ledger at each protocol run, not with a separate recurring Codex
+  session: on 24 October one fired four times in about eight and a half hours, and three of the
+  four read a stale ledger, found no change or found the timer redundant.
+- Write the time with its UTC offset in the ledger and the prompt (DST ended 25 October 03:00).
 
 Use [references/cycle-ledger.md](references/cycle-ledger.md) for the evidence fields. The release
 cycle above owns the steps and authority for the next cycle too.

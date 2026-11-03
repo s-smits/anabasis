@@ -67,7 +67,7 @@ import { writtenTasks } from "#src/kernel/history.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { comparisonsOf } from "#src/campaign/ground.ts";
 import { lastReports, promoted } from "#src/kernel/reports.ts";
-import { billedAll, billedParts, costLine, spendOf } from "#src/kernel/trace.ts";
+import { billedAll, billedParts, costLine, spendOf } from "#src/kernel/meter.ts";
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
@@ -268,7 +268,7 @@ function economyLines(events: readonly LogEvent[], steps: readonly Handover[]): 
   const carried =
     stepped === 0
       ? ""
-      : ` ${String(onValidity)} of the ${plural(stepped, "step")} read won points by validity, and the rest by the objective and the bill alone.`;
+      : ` ${String(onValidity)} of the ${plural(stepped, "step")} read won points by validity, and the rest by the objective.`;
   return [
     promotions > 0
       ? `- The climb: calculated $${(spent / promotions).toFixed(2)} and ${(hours / promotions).toFixed(1)} hours a promotion (${String(promotions)}).${carried}`
@@ -311,7 +311,7 @@ function promotionLines(
     const held =
       last === undefined
         ? ". No comparison of it tallied a task"
-        : `. In ${last.id} it won ${String(last.tally.wins)}, lost ${String(last.tally.losses)} and tied ${String(last.tally.ties)}${last.points === null ? "" : `, the score giving it ${String(last.points.validity)} points by validity, ${String(last.points.objective)} by the objective and ${String(last.points.bill)} by the bill`}`;
+        : `. In ${last.id} it won ${String(last.tally.wins)}, lost ${String(last.tally.losses)} and tied ${String(last.tally.ties)}${last.points === null ? "" : `, the score giving it ${String(last.points.validity)} points by validity and ${String(last.points.objective)} by the objective`}`;
     return [
       `- ${at.slice(0, 10)}: harness ${called(data.harness)}, ${rung}, read by ${stepped.map((each) => each.id).join(" and ") || "no comparison on record"}${held}${isString(data.despite) ? `. Promoted on the operator's reason, where the rule did not name it: ${data.despite}` : ""}${origin}${worth === undefined ? "" : `. Its ${worthLine(worth)}`}`,
     ];

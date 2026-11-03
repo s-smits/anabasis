@@ -104,8 +104,11 @@ const OPTIONS = {
   "past-stop": COMPARISON_OPTIONS["past-stop"],
 } as const;
 /** What a campaign runs by where neither a flag nor its record says: the reserve of one solve in
- *  dollars, the Builder sessions before a comparison, and a seat's effort. */
-const DEFAULTS = { reserve: "10", sessions: SESSIONS, effort: "high" } as const;
+ *  dollars, the Builder sessions before a comparison, and a seat's effort. The reserve was 10 until
+ *  3 November, when 44,573 Opus solves under the 20-turn, 30-minute limits had billed at most $2.83
+ *  (p99 $0.64), and an $800 campaign's every comparison told its Builder that the cap would cut its
+ *  96 solves short at 80. */
+const DEFAULTS = { reserve: COMPARISON_OPTIONS.reserve.default, sessions: SESSIONS, effort: "high" } as const;
 /**
  * Every flag of the campaign command with what it does: the one list of them, printed by
  * `--help` (`flagsHelp`). Typed by `OPTIONS`, so no flag is added without its line. A term the
@@ -345,9 +348,10 @@ export function examTasks({ events, plan }: Turn): string | undefined {
 }
 
 /**
- * The Builder conversations in a row, the latest included, that have made no campaign move since
- * the campaign last ended: the trailing run of its moves that are conversations (`build`, `led`).
- * Any other move, the host's own among them, is progress. A run of the command after an ending
+ * The Builder sessions in a row, the latest included, that have made no campaign move since the
+ * campaign last ended: the trailing run of its moves that are sessions (`build`), a conversation
+ * of a led campaign or a session its host makes. Any other move, the host's own among them, is
+ * progress. A run of the command after an ending
  * starts the count afresh, as Codex audits a resumed goal afresh. A conversation the provider
  * crashed or a stop killed chose nothing and is left out, as the table leaves it out of the
  * sessions run (`sessionsRun`): until 15 October finished, crashed, finished counted three. So is
@@ -364,7 +368,7 @@ export function idleOf(events: readonly LogEvent[]): number {
     ...named.filter((session) => named.indexOf(session) === named.lastIndexOf(session)),
   ]);
   const moves = since.flatMap(({ kind, data }) => (kind === MOVED && !cut.has(data.session) ? [data] : []));
-  return moves.length - 1 - moves.findLastIndex(({ move, code }) => move !== "build" || code !== "led");
+  return moves.length - 1 - moves.findLastIndex(({ move }) => move !== "build");
 }
 
 /** The next free id under `prefix`, as `b-3` after `b-1` and `b-2`. */
@@ -451,8 +455,8 @@ export function sharedOf({ events, plan, opening, values, seats }: Turn) {
 
 /** How the campaign runs Examiner session `session`: its flags, for `draft.ts` where it drafts the
  *  exam and `examine.ts` where it writes tasks, and the count of tasks a writing session is asked
- *  for. A writing session is given the campaign's setting before one is recorded, for the budget
- *  it is told; neither solves anything. */
+ *  for. Each session is given the campaign's setting before one is recorded, for the budget it
+ *  is told; neither solves anything. */
 export function examinerRun(turn: Turn, session: string, kind: "draft" | "write") {
   const { opening, values, seats } = turn;
   const { examiner } = opening.seats;
@@ -472,11 +476,10 @@ export function examinerRun(turn: Turn, session: string, kind: "draft" | "write"
   return {
     args:
       kind === "draft"
-        ? [...flag("name", values.name), ...seat]
+        ? [...flag("name", values.name), ...seat, ...setting]
         : [
             ...packOf(values),
             ...seat,
-            // The campaign's setting before one is recorded: the budget the Examiner is told.
             ...setting,
             ...flag("tasks", tasks),
             ...flag("proposals", values["exam-proposals"]),

@@ -54,8 +54,8 @@
  * on validity** is the scored tasks, summed over the reported comparisons, that the reference did
  * not answer validly in every solve, as `ambition.ts` reads them: where it is near zero, a step can
  * be won only on the objective and the bill. **Steps won by validity** counts them as the
- * closing report counts it. **Confirmed** is the promotions the last starter comparison of their
- * epoch read above the starter (`confirmed`, `src/campaign/climb.ts`).
+ * closing report counts it. **Confirmed** is the promotions the first starter comparison of their
+ * epoch to tally a task read above the starter (`confirmed`, `src/campaign/climb.ts`).
  *
  * The first promotion over the Starter is set-up (epoch 0), as the closing report counts it
  * (`epochLine`); `promotions` counts it, and the climb is one fewer.
@@ -70,7 +70,7 @@ import { epochsOf } from "#src/campaign/climb.ts";
 import { comparisonsOf } from "#src/campaign/ground.ts";
 import { campaignOf } from "#src/campaign/handover.ts";
 import { type EventKind, type LogEvent, read } from "#src/kernel/log.ts";
-import { billedBetween } from "#src/kernel/trace.ts";
+import { billedBetween } from "#src/kernel/meter.ts";
 import { gitMaybe } from "#src/meta/git.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
@@ -264,7 +264,8 @@ interface Run {
   /** The comparisons that read a step, and those whose step won points by validity (`validityOf`). */
   readonly stepped: number;
   readonly onValidity: number;
-  /** The promotions the last starter comparison of their epoch confirmed (`confirmed`, `epochsOf`). */
+  /** The promotions the first starter comparison of their epoch to tally a task confirmed
+   *  (`confirmed`, `epochsOf`). */
   readonly confirmed: number;
   /** The A/A comparisons able to read a step, and those that did (`falsePromotion`). */
   readonly controls: number;
@@ -530,8 +531,12 @@ const promotionRows = (runs: readonly Run[]) =>
   );
 
 /** A table as GitHub markdown, or tab-separated lines for a spreadsheet. */
-function printed(head: readonly string[], rows: readonly (readonly string[])[], tsv: boolean): string {
-  if (tsv) return [head, ...rows].map((row) => row.join("\t")).join("\n");
+export function printed(
+  head: readonly string[],
+  rows: readonly (readonly string[])[],
+  format: "md" | "tsv",
+): string {
+  if (format === "tsv") return [head, ...rows].map((row) => row.join("\t")).join("\n");
   const line = (row: readonly string[]) => `| ${row.join(" | ")} |`;
   return [line(head), line(head.map(() => "---")), ...rows.map(line)].join("\n");
 }
@@ -581,15 +586,14 @@ async function main(args: CommandArgs): Promise<number> {
       args.int("last") ?? LAST,
     ),
   ];
-  const tsv = format === "tsv";
   const table = {
-    recent: () => printed(RECENT_HEAD, recentRows(listed), tsv),
-    groups: () => printed(GROUP_HEAD, groupRows(runs, by), tsv),
-    runs: () => printed(RUN_HEAD, runRows(runs), tsv),
-    promotions: () => printed(PROMOTION_HEAD, promotionRows(runs), tsv),
+    recent: () => printed(RECENT_HEAD, recentRows(listed), format),
+    groups: () => printed(GROUP_HEAD, groupRows(runs, by), format),
+    runs: () => printed(RUN_HEAD, runRows(runs), format),
+    promotions: () => printed(PROMOTION_HEAD, promotionRows(runs), format),
   }[rows];
   console.log(table());
-  if (tsv) return 0;
+  if (format === "tsv") return 0;
   if (rows === "recent") console.log(`\n${recentSummary(listed)}`);
   const only = has.length + holds.length > 0 ? `, only runs with ${[...has, ...holds].join(", ")}` : "";
   const promotions = runs.reduce((sum, run) => sum + run.promotions.length, 0);

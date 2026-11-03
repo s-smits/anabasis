@@ -29,7 +29,7 @@ import { resetOf } from "../agent/backends/claude.ts";
 import type { Limits } from "../kernel/condition.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { append } from "../kernel/log.ts";
-import { priceKey } from "../kernel/meter.ts";
+import { NOTHING_SPENT, priceKey } from "../kernel/meter.ts";
 import { Cancellation, type Ending, unanswered } from "../kernel/solve.ts";
 import type { Task, Verifier } from "../kernel/verify.ts";
 import { lstatSync, rmSync } from "../meta/filesystem.ts";
@@ -39,13 +39,14 @@ import { availableParallelism, loadavg } from "../meta/os.ts";
 import { join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
-import { type Sat, type SeatTool, sit, spentBy } from "../agent/session.ts";
+import { type Sat, type SeatTool, sit } from "../agent/session.ts";
 import { claimRoot, type ReleaseRoot } from "../wall/seat-root.ts";
 import { type Desk, openDesk, type PublicResource, submitTool } from "../tools/answer.ts";
 import { codingTools, selectedCodingTools, wallExec } from "../tools/coding.ts";
 import { walledEnv } from "../tools/env.ts";
 import {
   type CommandWall,
+  launchOn,
   networkReach,
   type SolveClock,
   solveDirs,
@@ -340,7 +341,7 @@ async function play(
     harness: digest,
     turns,
     prompts,
-    spent: spentOn ?? (await spentBy(id, [], [])),
+    spent: spentOn ?? NOTHING_SPENT,
     submitted: desk.submitted,
     flagged: desk.flagged,
     wallEnded: deadline?.signal.aborted ?? false,
@@ -430,7 +431,7 @@ export async function solverTools(
   desk: Desk,
 ): Promise<SeatTool[]> {
   const coding = codingTools(wall, selectedCodingTools(harness.presets));
-  const domain = await harnessTools(harness, request.task, wall);
+  const domain = await harnessTools(harness, request.task, launchOn(wall));
   return [...coding, ...domain, submitTool(desk, request.contract, wall.dirs.home, wallExec(wall))];
 }
 

@@ -606,7 +606,15 @@ export async function harnessBuilder(
         throw new Error(`${size[0] ?? ""}: name a --target of at least ${String(floor)}`);
       }
     }
-    const decided = decide(events, plan);
+    const table = decide(events, plan);
+    // A campaign its host leads ends as a led one does, once IDLE sessions in a row moved nothing:
+    // until 2 November the table sent such a session's Builder an Examiner session (`unshown`).
+    // Its sessions make no campaign move, so it waits for as many as a comparison follows: under
+    // `--sessions 4`, three that each changed harness/ ended it before their comparison.
+    const enough = Math.max(IDLE, plan.sessions);
+    const idle = !opening.led && table.move === "build" && idleOf(events) >= enough;
+    const why = `${String(enough)} Builder sessions in a row made no campaign move`;
+    const decided: Decided = idle ? { move: "end", ending: "finished", code: "finished", why } : table;
     // Led by its Builder, every move but set-up, an ending and what the host owes (`hostOwed`) is
     // the conversation's.
     const led = opening.led && !SETUP.has(decided.move) && !hostOwed(decided) && decided.move !== "end";

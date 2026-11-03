@@ -29,7 +29,11 @@ subagents before acting on them. An audit, review or plan requested on its own r
 Ask only for missing permission or a decision reserved to the operator (section 3), with the
 concrete result ready for review.
 
-## 1. What Anabasis v2 does
+Work the operator puts in the backlog gets one file, `docs/backlog/<subject>.md`: the intended
+changes, then how it came to be, in time order with the operator's words. An agent's memory keeps
+only a failure that repeats; a fact the repository or the backlog holds stays there.
+
+## 1. What Anabasis does
 
 One query names one technical domain, and a campaign builds one **Built Harness** (a harness) for
 it: the guide and programs a fixed **solver** model uses to answer that domain's tasks. A solve is
@@ -42,7 +46,7 @@ attributes the difference to the harness. Every mechanism serves one question:
 A comparison in code answers it (section 7). Both harnesses solve the same held-out tasks afresh,
 under one setting, on terms logged before the first solve. A hidden check program decides each
 answer's validity and the Referee rules each rejection, so every task becomes a win, a loss or a tie
-by its score over validity, the objective and the bill. A one-sided paired sign-flip test over those
+by its score over validity and the objective. A one-sided paired sign-flip test over those
 scores reads a **step** or nothing, and a step promotes. The wider aim is for a built system with a
 cheaper solver to match a bare system with a more expensive solver. That requires a separate
 evaluation (`compare-systems`).
@@ -56,14 +60,16 @@ factor it affects, or the separate purpose it serves. Recorded values live in `d
 - **Supply**, the condition before the four: is there gradient? Only an informative task can
   register a difference: one the reference answers sometimes, never while a valid answer is on
   record, or every time while an answer on record beats one of its answers by at least the objective
-  gap floor (`ROOM`, 1%; `informative`, `src/kernel/compare.ts`). Comparison admission requires
-  eight of them at the default level (`comparisonFloor`).
+  gap floor (`ROOM`, 1%; `informative`, `src/kernel/compare.ts`). Which tasks are informative is
+  known only once they are solved, so comparison admission counts frontier tasks instead, those the
+  reference has not closed, and requires eight at the default level (`comparisonFloor`).
 - **1. Climb**: how much ability has accumulated, read as promotions within one campaign
   (`src/campaign/climb.ts`); promotions added up across campaigns make no climb. The milestone, six
   confirmed promotions in one real campaign and then in a second domain, is for observation only
-  (a promotion is confirmed when the last starter comparison of its epoch reads the reference
-  above the starter without the bill at its level: `confirmed`, `src/campaign/climb.ts`),
-  so no prompt, tool or move names a count.
+  (a promotion is confirmed when the first starter comparison of its epoch that tallied a task
+  reads the reference above the starter at its level: `confirmed`, `src/campaign/climb.ts`),
+  so no prompt, tool or move names a count. A release cycle stops most runs at two promotions while
+  the system changes, so the milestone is read from a run the operator lets go on.
 - **2. Honesty**: could a gain be chance or drift? An A/A comparison beside every comparison, the
   reference's first solve of each task against its second, measures it. One reading clears between
   equal harnesses at most as often as its level (`falseRate`: 1.1% at 0.02 on 24 untied tasks), and
@@ -76,9 +82,58 @@ factor it affects, or the separate purpose it serves. Recorded values live in `d
   in four true check defects and voids at most one in ten earned rejections, with PABAK beside
   kappa.
 - **4. Economy**: what did each gain cost? The closing report reads dollars and hours per promotion
-  from the log alone (`tools/d2/close.ts`), at list price (`pricedAt`, `src/agent/session.ts`). Its
+  from the log alone (`tools/d2/close.ts`), at list price (`billOf`, `src/kernel/meter.ts`). Its
   one bar, an opening term that refuses nothing, is at most 3 promotion attempts per epoch after
   set-up (`worthOf`, `src/campaign/climb.ts`).
+
+### Trade-offs to keep in view
+
+Each lever below buys one factor with another. A change names the side it moves, and its claim
+reads the sign to watch (section 9).
+
+- **Harder tasks against the test's power.** A task both harnesses fail is a tie and leaves the
+  test, so hard tasks never dilute a win share; they cost power. At 2 solves a side a step is
+  likeliest where the reference passes 30 to 50% of solves, and nears chance at 0 and 100%. The
+  archive sits at the easy end (the reference valid in 96% of solves after one promotion, 99%
+  after two), so the usual failure is an exam that stops getting harder. Watch the reference's
+  valid share and the untied tasks a comparison, epoch by epoch (`examiner-complexity`).
+- **A stricter step against a faster climb.** More solves a side or a lower level cut false steps
+  and slow promotion. 2 solves at 0.02 with an A/A beside each comparison is the balance; 4 solves
+  roughly double the power only on hard tasks, at twice the cost. A step in an A/A means the level
+  is loose for the noise.
+- **The objective against chance.** Once the reference is valid almost everywhere, the objective
+  decides most steps, and a harness's own two solves differ past the 1% floor on about one task in
+  four of the archive's A/A comparisons. Say which measure carried a step (`reading`,
+  promotion-tuner).
+- **Promotion against confirmation.** A step reads the frontier; confirmation is one read of the
+  reference against the starter, at a step's level, on tasks the Examiner aimed at that reference.
+  In the archive the reference leads the starter in eight of ten such reads and four clear the
+  level, so a miss is mostly the read's power on few untied tasks, and six confirmed promotions
+  take about fifteen. Confirmation decides no move. Losses on validity matter; losses on the
+  objective are mostly noise. The host owes one starter comparison
+  after every promotion and runs it at the Builder's next `compare` (`heldSince`,
+  `src/campaign/decide.ts`), at about one comparison a promotion. The host, not the Builder,
+  chooses when, so a Builder can never put off a test of its own reference.
+- **Cost against value.** A dearer promotion may buy more and a cheaper one may be thin. The bill
+  decides no step; economy is read apart, as dollars per promotion and per confirmed promotion on
+  one meter (`promotion-tuner/scripts/cost.ts`), and as a cheap built system against a dear bare one
+  (`compare-systems`). Dollars a solve rising across promotions without validity gains is bloat.
+- **Supply against the clock.** After a promotion the frontier closes and an Examiner session
+  writes new tasks before the next comparison; one that aims higher takes longer and admits fewer.
+  Read hours to the next comparison beside the tasks it admitted.
+- **Practice against held-out supply.** A released task teaches the Builder and is never scored;
+  at most half the tasks with room are released. Watch the frontier near the floor of eight.
+- **Builder freedom against fitting practice.** The one limit is that a harness names no task
+  (section 2), so it can grow programs shaped to practice tasks. Practice gains that held-out
+  comparisons do not repeat are the sign.
+- **Patience against stopping too soon.** Six eligible moves without a gain end a campaign; each
+  further move is another draw at the level's false rate. Treat a step after `--past-stop` warily.
+- **Comparability against change.** A run is evidence about its own code, and the meter, the step
+  rule and the prompts move between releases. Set cycles side by side only under one setting,
+  priced on today's meter and replayed under today's rule.
+- **Simplicity against performance.** Section 2, consequence 7, takes four fifths of a result for a
+  fifth of the code, never at the measurement's cost; a new guard is measured against what it
+  replaces.
 
 ### Two sides and one wall
 
@@ -259,7 +314,7 @@ refusal, so a refused move leaves the log as it was.
 
 **Defaults**: 24 scored tasks; 2 solves a side (`SIZE`, `src/kernel/size.ts`); level 0.02;
 improvement and supply patience of 6; a gap floor of 1% (`ROOM`); a stop after more than 3 tasks
-with a check defect; a reserve of 10 dollars a solve; a solve of 20 model turns, 30 minutes and 24
+with a check defect; a reserve of 3 dollars a solve; a solve of 20 model turns, 30 minutes and 24
 prompts (`LIMITS`, `tools/d2/campaign.ts`); a Builder session of 24 hours and 300 turns.
 
 **In `campaign-mechanics`, section 6** (`campaign-command.md`, `terms-and-refusals.md`): the hand
@@ -282,15 +337,14 @@ rejection ruled `check-defect`, `unclear` or not yet ruled sets the task aside f
 harnesses. `provider`, `sandbox-crash`, `killed`, `moved-files`, `check` and
 `verifier` are non-results: they are retried and excluded from pairings.
 
-**The tally** (`pointsOf`, `WEIGHTS`, `src/kernel/compare.ts`) weighs three measures: validity
-0.6, the objective 0.3 and the bill 0.1. The objective and the bill count only between two valid
-answers, so a refused answer is never the better one, and two answers closer than 1% by the
-objective tie on it.
+**The tally** (`pointsOf`, `WEIGHTS`, `src/kernel/compare.ts`) weighs two measures: validity
+0.6 and the objective 0.3. The objective counts only between two valid answers, so a refused
+answer is never the better one, and two answers closer than 1% by it tie on it. What a solve
+billed is reported and decides nothing.
 
 **The test** is an exact one-sided sign-flip test on the nonzero task scores; ties are excluded. A
-step is read on the scores without the bill (0.02 by default, kept by each campaign's opening),
-so the bill alone never promotes; from 25 to 31 October it had to clear with the bill as well. With equal margins it clears at 6 to
-0, 8 to 1, 10 to 2 or 12 to 3 at 0.02.
+step is read on these scores at the level (0.02 by default, kept by each campaign's opening).
+With equal margins it clears at 6 to 0, 8 to 1, 10 to 2 or 12 to 3 at 0.02.
 
 **The reading** is one of `step`, `no-step`, `not-scored`, `check-defects` and `no-change`.
 `not-scored` tested nothing, while `no-step` tested and found no gain.
@@ -300,9 +354,9 @@ shows as answers reached within it that the reference does not reach.
 
 **The next move** comes from `decide` (`src/campaign/decide.ts`), which checks ten rows in
 order: `stop`, `exam`, `bound`, `tasks`, `unfinished`, `step`, `no-room`,
-`short`, `unread` and `build`. The `build` row also handles `practice` and
-`unshown`. Improvement patience stops the campaign after six eligible moves without a gain
-since the last promotion (`stopRule`, `src/kernel/reports.ts`). Continuing then requires
+`short`, `unread` and `build`. The `build` row first releases owed practice
+(`practice`). Improvement patience stops the campaign after six eligible moves without a gain
+since the last promotion (`stopRule`, `src/campaign/admission.ts`). Continuing then requires
 `--past-stop`.
 
 **In `comparison-reading`, section 7** (`draw-and-solves.md`, `tally-and-test.md`,
@@ -465,7 +519,10 @@ and the wall's start-up test.
 
 Use Bun 1.4.4 throughout, with no Node, npm or npx. While editing, run the owning tests through
 `bun run test -- <paths>` rather than bare `bun test`. Run at most one full suite per host.
-`bun run gate` runs the CI gate. Keep hooks enabled (`bun run hooks:install`); a plain push
+`bun run gate` runs the CI gate: the install, format check, secret scan and the UI's install in
+turn, then the UI's gate, typecheck, strict lint and tests side by side. Run independent checks side by side, in the
+gate and by hand, and add a new step to the parallel group unless it reads what another writes.
+Keep hooks enabled (`bun run hooks:install`); a plain push
 checks whitespace and secrets, and marks its head and the pull requests above it pending. `bun run land -- <top>
 --sanitize` validates the stack. GitHub Actions runs only `ci.yml`, which `land --merge`
 dispatches, since its tests need a machine independent of this one. When you tune CI, prefer to
@@ -499,8 +556,10 @@ prevents serious run failures or broadly simplifies the tree; `I2` is a bounded 
 the problem, resulting behaviour and evidence in the body. Follow `stack-pr` section 7 for PR
 text and update it after a push. Push only your authorised branch, with `--force-with-lease`
 when rewriting. Moving your own pull request onto the top of the stack is yours to do; merging,
-and restacking other sessions' branches, take the operator's authority. Use
-`bun run land -- <top> --merge` to land.
+and restacking other sessions' branches, take the operator's authority. Before
+`bun run land -- <top> --merge`, three reviewer subagents read the landing side by side, each a
+slice of its pull requests, given the code and no conclusion (below). Their confirmed findings go
+on the top as commits, the stack is proved again with `--sanitize`, and only then does it merge.
 
 ### Reviews and subagents
 

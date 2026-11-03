@@ -8,7 +8,8 @@
  * after the proof, and again after `ci.yml` before a merge, it reads the chain again and lands its
  * new top where one was stacked meanwhile (`topAbove`). Proofs are remembered by tree, so a moved
  * top costs only its new commits. Named without `--auto`, a landing stops at the pull request named,
- * and a pull request stacked above it during the run stays open. With no pull request named, it
+ * and a pull request stacked above it stays open, moved onto the trunk once the merge goes
+ * through. With no pull request named, it
  * lands the stack that holds the oldest stacked pull request, its bottom on main with another above
  * it, and follows its top (`oldestStack`; operator, 27 October). It never follows into another
  * chain on main.
@@ -166,19 +167,20 @@ const SHOWN = String.raw`.data.repository[] | select(. != null) | .oid as $sha |
 const IMPORTANCE = /^importance:I[0-3]$/u;
 /** Subject labels: each pull request in a landing needs at least one. */
 export const CATEGORIES = new Set([
-  "harness",
-  "climb",
-  "comparison",
-  "solve",
-  "supply",
+  "exam",
   "verdicts",
+  "supply",
+  "harness",
+  "comparison",
+  "climb",
+  "solve",
   "economy",
-  "log",
   "runs",
+  "log",
+  "investigation",
   "landing",
   "quality",
   "docs",
-  "misc",
 ]);
 const USAGE =
   "usage: bun run land -- [<pull request>] [--auto] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]";
@@ -754,7 +756,23 @@ async function landTo(root: string, target: number, mode: Mode): Promise<number 
   await awaitCi(root, top);
   if (mode.auto && moved(root, top)) return "moved";
   const sha = await merge(root, target, landing);
-  return sha === null ? 1 : release(root, mode, sha);
+  if (sha === null) return 1;
+  // A pull request left on the top's branch would sit on a merged branch that no landing reads as
+  // a bottom (#560 in the landing of v0.9.1, 1 November), so its base moves to the trunk; a failed read
+  // is said, since the merge has gone through.
+  let above: readonly Pull[] = [];
+  try {
+    above = openPulls(root).filter((pull) => pull.baseRefName === top.headRefName);
+  } catch (error) {
+    say(`could not list the open pull requests (${String(error)}); move any on the top's branch.`);
+  }
+  for (const { number } of above) {
+    const ok = gh(root, ["pr", "edit", String(number), "--base", landing.trunk]).ok;
+    say(
+      `#${String(number)} ${ok ? "is based on" : "could not be moved; run gh pr edit --base"} ${landing.trunk}.`,
+    );
+  }
+  return release(root, mode, sha);
 }
 
 async function main(argv: readonly string[]): Promise<number> {

@@ -31,11 +31,11 @@
 import { comparisonsOf } from "#src/campaign/ground.ts";
 import { short } from "#src/campaign/move.ts";
 import { campaignOf as handoverOf, type Handover, nextBound, openSteps } from "#src/campaign/handover.ts";
-import { differenceOf, readsStepEitherWay } from "#src/kernel/compare.ts";
+import { differenceOf, readsStepEitherWay, scoresIn } from "#src/kernel/compare.ts";
 import type { Condition } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { pairsReported } from "#src/kernel/reports.ts";
-import { billedAll, costLine, spendOf } from "#src/kernel/trace.ts";
+import { billedAll, costLine, spendOf } from "#src/kernel/meter.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
@@ -59,6 +59,7 @@ import {
   type Solve,
   strings,
   tally,
+  tallyOf,
   taskTriggers,
   TEST,
   text,
@@ -102,6 +103,7 @@ interface PractisedSession {
   readonly read: readonly PracticeCandidate[];
   readonly round: {
     readonly practice: readonly Solve[];
+    /** The new side's solves in each comparison of a harness the session froze, finished or not. */
     readonly scoring: readonly Solve[];
     /** The scored tasks a practice solve of the session ran before the comparison that scored
      *  them began: a task released after a comparison scored it was not exposed to it. */
@@ -110,7 +112,7 @@ interface PractisedSession {
 }
 
 /** Lanes 17 to 19: one session's practice, and what its comparison then showed of it. */
-function practiceTriggers(log: Index, { build, changed, child, read, round }: PractisedSession): Trigger[] {
+function practiceTriggers(log: Index, { build, changed, read, round }: PractisedSession): Trigger[] {
   const { session, finished, calls } = build;
   // A practice solve's condition names the state it ran under, so the log says by digest whether
   // the harness that was measured is one the Builder tried: an edit made with the shell leaves no
@@ -162,7 +164,6 @@ function practiceTriggers(log: Index, { build, changed, child, read, round }: Pr
   );
   const quickWins = round.scoring.filter(
     (solve) =>
-      solve.harness === child &&
       solve.outcome === "pass" &&
       wonTasks.has(`${String(solve.comparison)} ${solve.version}`) &&
       solve.seconds < solve.wallSeconds * SMALL_DEADLINE_SHARE &&
@@ -291,7 +292,7 @@ function harnessTriggers(log: Index): Trigger[] {
     const practice = practiceOf(log, build);
     const round = {
       practice,
-      scoring: compared.flatMap((each) => each.scoring),
+      scoring: compared.flatMap(({ own, scoring }) => scoring.filter((solve) => solve.harness === own.fresh)),
       exposed: new Set(
         compared.flatMap(({ scoredSet, began }) =>
           [...scoredSet].filter((version) =>
@@ -313,7 +314,7 @@ function harnessTriggers(log: Index): Trigger[] {
     // calls are what the end record would have said, so they stand in for `changed` wherever a
     // trigger asks whether this session touched its harness at all.
     const edited = finished === null ? written.length > 0 : finished.changed === true;
-    const fresh = log.solves.filter((solve) => edited && solve.harness === child && solve.side === TEST);
+    const fresh = edited ? round.scoring : [];
     const erring = fresh.filter((solve) => solve.errors > 0).length;
     return [
       ...(edited
@@ -339,7 +340,7 @@ function harnessTriggers(log: Index): Trigger[] {
         ? [
             fired(
               "TOOLS CALLED",
-              `${short(child)}, left by ${session}, over ${plural(fresh.length, "test-side solve")}: ${tally(
+              `${[...new Set(fresh.map((solve) => short(solve.harness)))].join(", ")}, left by ${session}, over ${plural(fresh.length, "test-side solve")}: ${tally(
                 countBy(
                   fresh.flatMap((solve) => solve.calls),
                   (tool) => tool,
@@ -446,9 +447,7 @@ function comparisonTriggers(log: Index): Trigger[] {
       seen.set(key, (seen.get(key) ?? new Set()).add(String(solve.outcome === "pass")));
     }
     const flips = [...seen.values()].filter((outcomes) => outcomes.size > 1).length;
-    const noise = asRecord(last.noise);
-    const apart = items(noise?.differences).filter(isNumber);
-    const unbilled = Array.isArray(noise?.unbilled) ? noise.unbilled.filter(isNumber) : undefined;
+    const noise = tallyOf(last.noise);
     return [
       ...(moved > 0
         ? [
@@ -480,7 +479,7 @@ function comparisonTriggers(log: Index): Trigger[] {
         : [
             fired(
               "REFERENCE AGAINST ITSELF",
-              `${session}: ${String(count(noise.wins))} won, ${String(count(noise.losses))} lost and ${String(count(noise.ties))} tied between two samples of the reference harness${readsStepEitherWay(unbilled ?? apart, level) ? ", which reads a step where none can be" : ""}`,
+              `${session}: ${String(noise.wins)} won, ${String(noise.losses)} lost and ${String(noise.ties)} tied between two samples of the reference harness${readsStepEitherWay(scoresIn(last.noise), level) ? ", which reads a step where none can be" : ""}`,
             ),
           ]),
     ];
@@ -597,10 +596,11 @@ function reviewTriggers(log: Index): Trigger[] {
         ]
       : []),
     ...log.compared.flatMap(({ session, own, last }) => {
-      // The tally were every rejection that set a task aside to stand, beside the one without them.
-      const [counted, scored] = [asRecord(own.counted), asRecord(own.scored)];
+      // The tally were every rejection that set a task aside to stand, beside the one without them,
+      // both read without the bill as the step is (`tallyOf`); until 2 November it read the billed p.
+      const [counted, scored] = [tallyOf(own.counted), tallyOf(own.scored)];
       const level = count(own.level);
-      const clears = (tested: JsonObject) => count(tested.p) <= level;
+      const clears = (tested: { readonly p: number }) => tested.p <= level;
       const settled = asRecord(last.settled);
       return [
         ...(counted === null || scored === null || clears(counted) === clears(scored)
@@ -608,7 +608,7 @@ function reviewTriggers(log: Index): Trigger[] {
           : [
               fired(
                 "READING MOVES WITH THE SET-ASIDE",
-                `${session}: ${String(count(scored.wins))}-${String(count(scored.losses))} without the ${plural(items(own.aside).length, "task")} set aside, ${String(count(counted.wins))}-${String(count(counted.losses))} were their rejections to stand, and only one of the two clears its level`,
+                `${session}: ${String(scored.wins)}-${String(scored.losses)} without the ${plural(items(own.aside).length, "task")} set aside, ${String(counted.wins)}-${String(counted.losses)} were their rejections to stand, and only one of the two clears its level`,
               ),
             ]),
         ...(settled === null

@@ -443,7 +443,7 @@ describe("the starter comparison in an epoch's row", () => {
   // reference's side, and not the starter's share of valid answers.
   const opened = event("comparison.started", { session: "g-1", old: "S", fresh: "h2", starter: "S" });
   const promoted = event("harness.promoted", { harness: "h2" });
-  const starterRead = (scored: JsonObject) =>
+  const starterRead = (scored: JsonObject, aside: string[] = [], more: JsonObject = {}) =>
     event("comparison.reported", {
       session: "g-2",
       reading: "no-step",
@@ -451,6 +451,8 @@ describe("the starter comparison in an epoch's row", () => {
       fresh: "S",
       level: 0.02,
       scored,
+      aside,
+      ...more,
     });
 
   it("counts the reference's wins without the bill, where the bill alone turned one task", () => {
@@ -461,11 +463,32 @@ describe("the starter comparison in an epoch's row", () => {
     ];
     const [first, second] = epochsOf(log);
     expect(first?.starter_tally).toBeNull();
-    expect(second?.starter_tally).toEqual({ wins: 2, losses: 1, ties: 1 });
-    expect(epochLine(present(second))).toContain(
-      "against the starter without the bill 2 won, 1 lost, 1 tied, no step",
-    );
+    expect(second?.starter_tally).toEqual({ wins: 2, losses: 1, ties: 1, aside: 0, own: null });
+    expect(epochLine(present(second))).toContain("against the starter 2 won, 1 lost, 1 tied, no step;");
     expect([first?.confirmed, second?.confirmed]).toEqual([null, false]);
+  });
+
+  it("splits the starter tally into the tasks the epoch admitted and the older ones, and leaves no split without task versions", () => {
+    const admitted = (version: string) => event("task.gate", { version, gate: 1, outcome: "passed" });
+    const scored = { differences: [-1, -1, 1, 1, 0] };
+    const versions = ["old-1", "old-2", "new-1", "new-2", "new-3"];
+    const log = [
+      opened,
+      admitted("old-1"),
+      admitted("old-2"),
+      promoted,
+      admitted("new-1"),
+      admitted("new-2"),
+      admitted("new-3"),
+    ];
+    const split = epochsOf([...log, starterRead(scored, [], { versions })])[1];
+    expect(split?.starter_tally?.own).toEqual({ wins: 0, losses: 2, ties: 1 });
+    expect(epochLine(present(split))).toContain(
+      "against the starter 2 won, 2 lost, 1 tied (this epoch's tasks 0 won, 2 lost, 1 tied; older 2 won, 0 lost, 0 tied), no step;",
+    );
+    const torn = epochsOf([...log, starterRead(scored, [], { versions: versions.slice(1) })])[1];
+    expect(torn?.starter_tally?.own).toBeNull();
+    expect(epochLine(present(torn))).toContain("against the starter 2 won, 2 lost, 1 tied, no step;");
   });
 
   it("confirms the promotion only where the reference clears the level against the starter without the bill", () => {
@@ -476,6 +499,29 @@ describe("the starter comparison in an epoch's row", () => {
     const confirmed = present(epochsOf([opened, promoted, onValidity])[1]);
     expect(confirmed.confirmed).toBe(true);
     expect(epochLine(confirmed)).toContain("6 won, 0 lost, 0 tied, a step, so its promotion is confirmed");
+  });
+
+  it("names the tasks a starter comparison set aside where it reads no step, and none once it reads one", () => {
+    const short = starterRead({ differences: Array(5).fill(-1), unbilled: Array(5).fill(-1) }, [
+      "t-1",
+      "t-2",
+    ]);
+    expect(epochLine(present(epochsOf([opened, promoted, short])[1]))).toContain(
+      "5 won, 0 lost, 0 tied, no step, 2 tasks set aside for a person's labels",
+    );
+    const clear = starterRead({ differences: Array(6).fill(-1), unbilled: Array(6).fill(-1) }, ["t-1"]);
+    expect(epochLine(present(epochsOf([opened, promoted, clear])[1]))).not.toContain("labels");
+  });
+
+  it("confirms on the epoch's first starter comparison that tallied a task, so a later draw of the pair replaces no reading", () => {
+    const short = starterRead({ differences: Array(5).fill(-1), unbilled: Array(5).fill(-1) });
+    const six = { differences: Array(6).fill(-1), unbilled: Array(6).fill(-1) };
+    const again = starterRead(six, [], { session: "g-3", reading: "step" });
+    const redrawn = epochsOf([opened, promoted, short, again])[1];
+    expect([redrawn?.starter_tally?.wins, redrawn?.confirmed]).toEqual([5, false]);
+    // One that tallied nothing tested nothing, so the comparison after it is the first reading.
+    const empty = starterRead({ differences: [], unbilled: [] }, [], { reading: "not-scored" });
+    expect(epochsOf([opened, promoted, empty, again])[1]?.confirmed).toBe(true);
   });
 
   it("says unread before a starter comparison reports, and nothing in the first epoch", () => {
@@ -542,6 +588,26 @@ describe("the bar a promotion is read against, beside an old ladder's readings",
     const tied = { ...stepRead("g-5", "ha", "hb").data, reading: "no-step", frontier: { differences: [0] } };
     const again = [...log.slice(0, step + 1), event("comparison.reported", tied)];
     expect(worthOf(again, "g-6").cost).toMatchObject({ attempts: 3 });
+  });
+
+  it("counts a led session in each epoch it acted in, and a finished one in its own epoch alone", () => {
+    // WRI lane 31, 2 November: a led session finishes in no epoch, so 11 of 11 steps in seven
+    // campaigns read "over 0 Builder sessions".
+    const led = [
+      event("campaign.opened", { terms: { cost: "2" } }),
+      event("comparison.started", { session: "g-1", old: "S", fresh: "ha", starter: "S" }),
+      event("build.started", { session: "b-1", parent: "S" }),
+      event("build.turn", { session: "b-1" }),
+      event("build.turn", { session: "b-1" }),
+      stepRead("g-1", "S", "ha"),
+      event("harness.promoted", { harness: "ha", from: "S" }),
+      event("build.turn", { session: "b-1" }),
+    ];
+    expect(epochsOf(led).map(({ sessions, turns }) => [sessions, turns])).toEqual([
+      [1, 2],
+      [1, 1],
+    ]);
+    expect(epochsOf(log).map(({ sessions }) => sessions)).toEqual([1, 1, 0]);
   });
 });
 

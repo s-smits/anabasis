@@ -1,6 +1,7 @@
 // Settled pass labels must reach the pairs and the Examiner's known-answer facts together.
 // The audit of 29 October 2026 found both still reading a wrong pass as valid.
 import { describe, expect, it } from "bun:test";
+import { stopRule as stopOf } from "../src/campaign/admission.ts";
 import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import {
@@ -10,9 +11,8 @@ import {
   pairsReported,
   poolOf,
   releaseOrder,
-  stopRule as stopOf,
 } from "../src/kernel/reports.ts";
-import { billedAll, billedFor } from "../src/kernel/trace.ts";
+import { billedAll, billedFor } from "../src/kernel/meter.ts";
 import { taskSets } from "../src/kernel/task.ts";
 import { asRecord, isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";

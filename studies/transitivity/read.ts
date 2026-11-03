@@ -11,16 +11,16 @@
  * retained set together with the bill, and the promotion tuner weighs a reading again but tests the
  * two sets together and leaves seeds out (`.claude/skills/promotion-tuner/scripts/tree.ts`), while
  * the study's comparisons run on seeds. Every fact here is a production owner's: the pairs
- * with settlement labels applied (`pairsReported`), each task's score with and without the bill (`differenceOf`),
+ * with settlement labels applied (`pairsReported`), each task's score without the bill (`differenceOf`),
  * the test (`flipP`), the A/A's reading (`readsStepEitherWay`) and the epochs (`tasksByEpoch`).
  * Two comparisons drawn from one log read the same scored set where their `set` digests agree:
  * the digest of the tasks their starts fixed, sorted.
- * Without the bill a task's score is its validity and objective points, the tuner's
- * `--weights 60,30,0`.
+ * Without the bill a task's score is its validity and objective points, as the tree scores it.
  *
- * As a check on itself it scores each set again with the bill and says whether that matches the
- * differences the report stored, which it must at the weights that wrote them. Over the seven
- * comparisons of buffer-fresh-opus-v065-a on 25 October it matched all fourteen sets.
+ * The scores with the bill are the differences the report stored: the tree has not scored the bill
+ * since 2 November, and the study's reports, of 25 October, were written with it. Until then the
+ * study scored each set again with the bill as a check on itself, and over the seven comparisons
+ * of buffer-fresh-opus-v065-a it matched all fourteen sets.
  *
  * It prints counts, digests and comparison ids, never a task's content, answer or measure: the log
  * is on the exam side (AGENTS.md, section 5).
@@ -56,7 +56,8 @@ function tallyLine(scores: readonly number[]): string {
   return `${wlt(scores)}, untied ${String(untied)}, p ${flipP(scores).toFixed(4)}`;
 }
 
-/** The tasks a report's set tallied, in the order of its differences, each scored again. */
+/** The tasks a report's set tallied, in the order of its differences, each scored again without
+ *  the bill and with the bill as stored. */
 function scoredIn(
   set: JsonValue | undefined,
   pairs: ReadonlyMap<string, Paired>,
@@ -64,24 +65,19 @@ function scoredIn(
 ): Scored[] {
   const of = asRecord(set)?.of;
   if (!Array.isArray(of)) return [];
-  return of.filter(isString).map((task) => {
+  const stored = asRecord(set)?.differences;
+  const billed = Array.isArray(stored) ? stored : [];
+  return of.filter(isString).map((task, at) => {
     const pair = pairs.get(task);
     if (pair === undefined) {
       throw new Error(`task ${task} is tallied in the report and has no pair in the log`);
     }
     return {
       epoch: epochOf.get(task) ?? 0,
-      bare: differenceOf(pair, "unbilled"),
-      billed: differenceOf(pair),
+      bare: differenceOf(pair),
+      billed: isNumber(billed[at]) ? billed[at] : Number.NaN,
     };
   });
-}
-
-/** Whether the scores with the bill are the differences `set` stored. */
-function asStored(set: JsonValue | undefined, scored: readonly Scored[]): boolean {
-  const stored = asRecord(set)?.differences;
-  const differences = Array.isArray(stored) ? stored.filter(isNumber) : [];
-  return differences.length === scored.length && scored.every(({ billed }, at) => billed === differences[at]);
 }
 
 /** The lines of one comparison's reading. */
@@ -117,7 +113,6 @@ function readingOf(events: readonly LogEvent[], log: string, id: string): string
       .map((epoch) => `e${String(epoch)} ${wlt(within(frontier, epoch))} | ${wlt(within(retained, epoch))}`)
       .join(", ")}`,
     `  A/A as stored, with the bill: ${control}`,
-    `  with the bill, as the report stored it: frontier ${asStored(data.frontier, frontier) ? "yes" : "NO"}, retained ${data.retained === UNMEASURED || asStored(data.retained, retained) ? "yes" : "NO"}`,
   ];
 }
 

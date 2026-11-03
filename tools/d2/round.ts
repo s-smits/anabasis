@@ -28,7 +28,7 @@
  * was about 430.
  *
  * `--cap` is the round's dollar cap and is required: no solve starts that a reserve for it and for
- * each one running (`--reserve`, $10) would take past it, and the session's spend counts against
+ * each one running (`--reserve`, $3) would take past it, and the session's spend counts against
  * the same cap. A comparison the cap cuts short reads `not-scored`. On 2026-10-08 eight rounds
  * cost over $220 and scored no task, under no cap.
  *
@@ -67,7 +67,7 @@
  * Not run here: see `campaign.ts`.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
-import { admitComparison, type Wanted } from "#src/campaign/admission.ts";
+import { admitComparison, stopRule, type Wanted } from "#src/campaign/admission.ts";
 import { worthLine } from "#src/campaign/climb.ts";
 import { predicted, type Report } from "#src/campaign/comparison.ts";
 import { refuseTerms, type RoundRequest, round, scoredSet } from "#src/campaign/round.ts";
@@ -77,7 +77,7 @@ import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { read } from "#src/kernel/log.ts";
 import { priceKey } from "#src/kernel/meter.ts";
-import { type Cap, capHolds, stopRule } from "#src/kernel/reports.ts";
+import { type Cap, capHolds } from "#src/kernel/reports.ts";
 import { solverLast } from "#src/kernel/solves.ts";
 import { readBrief } from "#src/kernel/verify.ts";
 import { type TaskPackage, taskSets } from "#src/kernel/task.ts";
@@ -154,7 +154,7 @@ export const COMPARISON_OPTIONS = {
   level: { type: "string", default: "0.02" },
   defects: { type: "string", default: "3" },
   cap: { type: "string" },
-  reserve: { type: "string", default: "10" },
+  reserve: { type: "string", default: "3" },
   predict: { type: "string" },
   "past-stop": { type: "string" },
 } as const;
@@ -353,7 +353,7 @@ export function capRead(cap: string, reserve: string): Cap {
   const named = { dollars: Number(cap), reserve: Number(reserve) };
   if (!capHolds(named)) {
     throw new Error(
-      `--cap ${cap} --reserve ${reserve}: a cap and its reserve are dollars as plain numbers, each above nothing, as --cap 40 --reserve 10`,
+      `--cap ${cap} --reserve ${reserve}: a cap and its reserve are dollars as plain numbers, each above nothing, as --cap 40 --reserve 3`,
     );
   }
   return named;
@@ -458,12 +458,11 @@ export function reportLines({
   const took = (side: "old" | "fresh") => String(median(both.map((each) => each[side])));
   const test = scored?.falseRate === undefined ? frontier : scored;
   const share = test?.detectable ?? null;
-  // The step reads each task's score without the bill, which a report from before 26 October holds
-  // none of; such a report's step, share and rate were read on the full score.
+  // A report of 26 October to 2 November read its step on its scores without the bill (`scoresIn`).
   const unbilled = test?.unbilled === undefined ? null : testOf(test.unbilled);
   const stepped = unbilled ?? test;
   const untied = stepped === null ? 0 : stepped.wins + stepped.losses;
-  const on = unbilled === null ? "on the full score" : "without the bill";
+  const on = unbilled === null ? "on the score" : "without the bill";
   return [
     ...(test?.falseRate === undefined || stepped === null
       ? []
@@ -485,7 +484,7 @@ export function reportLines({
     ...(points === null
       ? []
       : [
-          `the score weighs validity ${String(WEIGHTS.validity)}, the objective ${String(WEIGHTS.objective)} and the bill ${String(WEIGHTS.bill)}, and over the tallied tasks gave the new harness ${signed(points.validity)}, ${signed(points.objective)} and ${signed(points.bill)} points, a task's score running from -1000 to 1000`,
+          `the score weighs validity ${String(WEIGHTS.validity)} and the objective ${String(WEIGHTS.objective)}, and over the tallied tasks gave the new harness ${signed(points.validity)} and ${signed(points.objective)} points, a task's score running from -600 to 600`,
         ]),
     ...(objective === null ? [] : [`the objective: ${objective.direction} is better`]),
     ...(both.length === 0
@@ -524,7 +523,7 @@ function aaLines(noise: NonNullable<Report["noise"]>): string[] {
     `the reference against itself, on halves of its own solves mirrored in time (the A/A), over the ${plural(tasks, "tallied task")}, ${String(noise.wins + noise.losses)} of them untied:`,
     `  tie share ${tasks === 0 ? "none" : percent(noise.ties / tasks)}: the share of tasks two equal harnesses tied at half the comparison's solves a side, where equal harnesses tie more often than at the comparison's own, so no floor for its ties`,
     `  flip rate ${noise.flips === null ? "none" : percent(noise.flips)}: how often two of its solves of one task disagree on validity`,
-    `  least detectable shift without the bill: ${shift === null ? "none, too few of its tasks are untied for any shift between its halves to clear the level, so its reading no step shows little" : `one reading of it, either half read at the level, detects four times in five a half that wins ${percent(shift)} of its untied tasks`}`,
+    `  least detectable shift: ${shift === null ? "none, too few of its tasks are untied for any shift between its halves to clear the level, so its reading no step shows little" : `one reading of it, either half read at the level, detects four times in five a half that wins ${percent(shift)} of its untied tasks`}`,
   ];
 }
 

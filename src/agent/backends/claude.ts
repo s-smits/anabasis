@@ -25,8 +25,7 @@
  *
  * One difference is left, and it reaches no model: v1 ran Claude Code in an empty environment; here
  * HOME, the solve's own, PATH and TMPDIR are set as well.
- * Backend cost is the query's closing or last diagnostic total, taken once; it neither replaces
- * nor constrains the host's calculated billing, and is null where no total was reported.
+ * A query's spend is read from its last `result` (`claudeLedger`), which the meter bills.
  */
 import {
   type EffortLevel,
@@ -38,7 +37,6 @@ import {
   type Api,
   type AssistantMessage,
   type AssistantMessageEventStream,
-  calculateCost,
   createAssistantMessageEventStream,
   createProvider,
   envApiKeyAuth,
@@ -66,10 +64,11 @@ import {
 } from "../../../vendor/pi-claude-bridge/prompt-stream.ts";
 import { updateUsage } from "../../../vendor/pi-claude-bridge/usage.ts";
 import { existsSync, mkdirSync } from "../../meta/filesystem.ts";
-import { asRecord, isNumber, isString } from "../../meta/json-shape.ts";
+import { asRecord, isString } from "../../meta/json-shape.ts";
 import { keyIfDefined } from "../../meta/optional-key.ts";
 import { dirname, join } from "../../meta/path.ts";
 import { runtimeProcess } from "../../meta/process.ts";
+import { type BackendSpend, claudeSpend } from "../../kernel/meter.ts";
 import { errorMessage } from "../../meta/runtime-values.ts";
 
 const CLAUDE_PROVIDER = "claude";
@@ -142,6 +141,8 @@ interface Session {
   reading: boolean;
   /** How long a turn waits for the query's next message (`QUIET_MS`). */
   readonly quiet: number;
+  /** The provider the query serves, which keys its ledger. */
+  readonly provider: string;
 }
 
 /** How one API message can end a pi turn; a failure ends it by throwing. */
@@ -184,15 +185,10 @@ const LONG_CONTEXT = new Set([
 /** The live queries of this process, by the caller's session id: two sessions that run at once need
  *  two ids, or the second one's turns go into the first one's query. */
 const sessions = new Map<string, Session>();
-/** The cost Claude Code reported at the host's close of a query no turn was reading, by session id,
- *  until `reportedCost` takes it. */
-const closings = new Map<string, Promise<number | null>>();
-
-/**
- * The diagnostic the query's last turn carries: `details.totalCostUsd` is the whole query's cost as
- * Claude Code reports it, which the meter's billed dollars are held to.
- */
-export const REPORTED_COST = "claude-code-total-cost";
+/** Each query's last `result`, by session id, until `claudeLedger` takes it: the one a turn read, or
+ *  the one the host's close of a query no turn was reading brings. A turn that begins drops it,
+ *  since it holds none of that turn. */
+const reads = new Map<string, Promise<BackendSpend | null>>();
 
 /**
  * The diagnostic a turn carries for each compaction Claude Code ran before it: `details.tokensBefore`
@@ -431,6 +427,7 @@ function open(
     early,
     reading: false,
     quiet: claude.quiet ?? QUIET_MS,
+    provider: model.provider,
   };
   sessions.set(key, session);
   claude.shutdown?.addEventListener("abort", () => close(key, session), {
@@ -530,6 +527,7 @@ async function readTurn(
     session.query.interrupt().catch(() => close(key, session));
   };
   session.reading = true;
+  reads.delete(key);
   signal?.addEventListener("abort", interrupt, { once: true });
   if (signal?.aborted === true) interrupt();
   try {
@@ -538,7 +536,6 @@ async function readTurn(
     signal?.removeEventListener("abort", interrupt);
     session.reading = false;
     for (const usage of spent) addUsage(turn.usage, usage);
-    calculateCost(model, turn.usage);
   }
 }
 
@@ -581,11 +578,8 @@ async function readMessages(
       const { status, resetsAt } = message.rate_limit_info;
       limited = status === "rejected" && resetsAt !== undefined ? ` (limit reached|${String(resetsAt)})` : "";
     } else if (message.type === "result") {
-      // The query stays open for a later prompt; the cost Claude Code reports is the query's so far.
-      turn.diagnostics = [
-        ...(turn.diagnostics ?? []),
-        { type: REPORTED_COST, timestamp: Date.now(), details: { totalCostUsd: message.total_cost_usd } },
-      ];
+      // The query stays open for a later prompt; what the result reports is the query's so far.
+      reads.set(key, Promise.resolve(claudeSpend(session.provider, message)));
       if (request.signal?.aborted === true) throw new Error("the Claude Code request was interrupted");
       const end = apiStop === null ? undefined : FINAL_STOPS.get(apiStop);
       if (message.subtype === "success" && !message.is_error && end !== undefined) return end;
@@ -669,8 +663,8 @@ function take(message: SDKAssistantMessage, model: Model<Api>, turn: AssistantMe
  * day's solves hold such a call after 14 of 35. Interrupted first, it called nothing and was gone
  * inside a second. The timer is for a child that never answers the interrupt.
  *
- * A query no turn is reading is read on to the result the interrupt brings, which carries the cost,
- * and ends there (`reportedCost`); a turn being read takes that result itself.
+ * A query no turn is reading is read on to the result the interrupt brings, which carries the
+ * ledger, and ends there (`claudeLedger`); a turn being read takes that result itself.
  */
 function close(key: string, session: Session): void {
   if (sessions.get(key) !== session) return;
@@ -681,7 +675,13 @@ function close(key: string, session: Session): void {
   if (session.reading) void interrupted.then(end, end);
   else {
     void interrupted.catch(end);
-    closings.set(key, costAtClose(session).finally(end));
+    const before = reads.get(key) ?? Promise.resolve(null);
+    reads.set(
+      key,
+      resultAtClose(session)
+        .then(async (read) => read ?? (await before))
+        .finally(end),
+    );
   }
   setTimeout(end, INTERRUPT_MS).unref();
   for (const resolve of session.parked.values()) {
@@ -692,31 +692,29 @@ function close(key: string, session: Session): void {
 }
 
 /**
- * What Claude Code reported session `key`'s query cost, separate from the meter's calculated dollars,
- * or null where it reported none, as a provider other than Claude Code reports none. A session that
- * ended on a call of its own, `finish` or `submit`, leaves Claude Code waiting on that call's result,
- * and the query's `result` comes only after the host's close interrupts it: this waits on that close.
- * Until 12 October every reader took the cost from the turns alone, so a session that ended the
- * ordinary way had none, and only one that failed did: on buffer, 10.19 of 13.35 billed dollars had
- * no figure of Claude Code's beside them.
+ * What session `key`'s query spent by its last `result`, taken once: Claude Code's own total, and
+ * `modelUsage`, the whole query's tokens and dollars by the model that served them, its compactions
+ * and its calls on other models included, which no turn shows. Null where no query of this process
+ * served the session. A session that ended on a call of its own, `finish` or `submit`, leaves Claude
+ * Code waiting on that call's result, and the query's `result` comes only after the host's close
+ * interrupts it: this waits on that close. Until 12 October the cost was read from the turns alone,
+ * and on buffer 10.19 of 13.35 billed dollars had no figure of Claude Code's beside them.
  */
-export async function reportedCost(key: string, turns: readonly AssistantMessage[]): Promise<number | null> {
-  const closing = await closings.get(key);
-  closings.delete(key);
-  const last = turns.flatMap((turn) => turn.diagnostics ?? []).findLast(({ type }) => type === REPORTED_COST);
-  const reported = asRecord(last?.details)?.totalCostUsd;
-  return closing ?? (isNumber(reported) ? reported : null);
+export async function claudeLedger(key: string): Promise<BackendSpend | null> {
+  const read = (await reads.get(key)) ?? null;
+  reads.delete(key);
+  return read;
 }
 
-/** The cost on the query's next `result`, or null where the query ends or is aborted first. */
-async function costAtClose(session: Session): Promise<number | null> {
+/** The query's next `result`, read, or null where the query ends or is aborted first. */
+async function resultAtClose(session: Session): Promise<BackendSpend | null> {
   const aborted = new Promise<null>((resolve) => {
     session.abort.signal.addEventListener("abort", () => resolve(null), { once: true });
   });
   for (;;) {
     const next = await Promise.race([session.query.next(), aborted]).catch(() => null);
     if (next === null || next.done === true) return null;
-    if (next.value.type === "result") return next.value.total_cost_usd;
+    if (next.value.type === "result") return claudeSpend(session.provider, next.value);
   }
 }
 

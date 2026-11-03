@@ -3,8 +3,8 @@
  *
  * Both harnesses solve the same held-out tasks under the same compute budget, and each task
  * counts once. Every solve of the new harness is paired with every solve of the reference one, and
- * each task is scored by three weighted measures over its pairings (`pointsOf`, `WEIGHTS`): validity,
- * and between two valid answers the objective and the bill. A task with a positive score is won, a
+ * each task is scored by two weighted measures over its pairings (`pointsOf`, `WEIGHTS`): validity,
+ * and between two valid answers the objective. A task with a positive score is won, a
  * negative one lost, and one at zero tied (`tally`). The weighted sum is rounded to whole points
  * by its magnitude, with half points away from zero and zero normalised, so exchanging sides
  * negates the score (`differenceOf`).
@@ -30,9 +30,13 @@
  * tasks all fell in one family read `narrow`; in 1,598 recorded readings it never fired.
  *
  * One comparison's reading, `step`, is that test at or under the level, 0.02 by default, on each
- * task's score with the bill's points taken out (`scoresOf`, `unbilled`), and a step against the
- * reference promotes (`readsStep`; `decide.ts`). The bill still weighs a tenth of a task's score
- * between two valid answers in the tally, but no step rests on it. From 25 to 31 October the step
+ * task's score, and a step against the reference promotes (`readsStep`; `decide.ts`). The bill is
+ * no measure: from 21 October to 2 November it weighed a tenth of a task's score between two valid
+ * answers, and from 26 October no step rested on it, so the tally a seat was told and the one the
+ * step was read on parted (on 1 November a Builder was told 13-1-2 of a comparison read on 3-0-13).
+ * On 2 November it left the score, which reads every step as before; the closing report owns the
+ * cost (`close.ts`). A report written before then holds its scores without the bill as `unbilled`,
+ * which its readers read in place of `differences`. From 25 to 31 October the step
  * also had to clear the level on the score as it stands: the operator chose the second test after
  * v065-a's aecc1c92 was promoted on 25-3 as scored where the same tasks read 0-10 without the bill, a
  * harness worse by the objective promoted on its cost. Of 47 comparisons read under both tests, none
@@ -64,8 +68,8 @@
  * | non-result of any kind | no measurement. It was solved again, and is in no pair; a task left short of its solves is in no tally |
  *
  * Validity is the measure that weighs most, and it is read alone where one answer of a pairing is
- * valid: the objective and the bill are read only between two valid answers, so no answer the checks
- * refuse is ever the better or the cheaper one. Where the check program declares an objective, a
+ * valid: the objective is read only between two valid answers, so no answer the checks refuse is
+ * ever the better one. Where the check program declares an objective, a
  * quantity its evaluator computes from a valid answer (`verify.ts`, `OBJECTIVE`), its direction is a
  * term of the comparison, fixed at its start (`comparison.started`, `objective`). The value is the
  * host's: no value the answer reports about itself is read. The weights and floors are this tree's
@@ -129,9 +133,9 @@ export interface Paired {
   readonly used?: { readonly old: readonly Used[]; readonly fresh: readonly Used[] };
 }
 
-/** A number for each of the three measures a task is scored by (`pointsOf`): its weight, or the
+/** A number for each of the two measures a task is scored by (`pointsOf`): its weight, or the
  *  points it gave. */
-export type Measures = Readonly<Record<"validity" | "objective" | "bill", number>>;
+export type Measures = Readonly<Record<"validity" | "objective", number>>;
 
 export interface Tally {
   readonly wins: number;
@@ -140,7 +144,7 @@ export interface Tally {
 }
 
 /** The measures retained in a task's score (`scoresOf`). */
-export type Kept = "scored" | "unbilled" | "validity";
+export type Kept = "scored" | "validity";
 
 /** What a comparison is made between: the two harnesses by digest, and the setting every counted
  *  solve ran under (`settingId`). */
@@ -198,9 +202,10 @@ export const ROOM = 0.01;
 
 /**
  * How much each measure weighs in a task's score (`pointsOf`): whether an answer was valid, then
- * between two valid answers how much better it is by the objective and how much less its solve billed.
- * Each measure is the mean over the task's pairings of a solve of each side, from -1 to 1, so a task's
- * score runs from -1 to 1 and is read in thousandths (`POINTS`) by the one test.
+ * between two valid answers how much better it is by the objective.
+ * Each measure is the mean over the task's pairings of a solve of each side, from -1 to 1, and a
+ * pairing counts on one measure only, so a task's score runs from -0.6 to 0.6 and is read in
+ * thousandths (`POINTS`), -600 to 600, by the one test.
  *
  * Until 21 October a task was read by validity, then the objective, then the bill, one rule to a
  * task, and the size of a gain counted nowhere: a harness that won 23 tasks by 0.01% read as
@@ -209,17 +214,15 @@ export const ROOM = 0.01;
  * were read, and none of the 26 A/A comparisons reads one; the five steps it drops rested on objective
  * gaps of a ten-thousandth, and the ones it adds mostly halved the bill on tasks that otherwise tied.
  * The test reads the signs of the task scores more than their size, so a harness a little better on
- * enough tasks still steps: the floors below (`ROOM`, `CHEAPER`) set the least gain a pairing counts.
+ * enough tasks still steps: the floor (`ROOM`) sets the least gain a pairing counts. The bill's
+ * tenth went on 2 November (above), leaving these two as they were.
  * The weights are a constant of the tree, as the floors are, and this tree reads every comparison by
  * them, those begun before 21 October included: the report each wrote is its record.
  */
-export const WEIGHTS: Measures = { validity: 0.6, objective: 0.3, bill: 0.1 };
+export const WEIGHTS: Measures = { validity: 0.6, objective: 0.3 };
 /** The objective's gain, as a share of the larger magnitude, at which a pairing takes the whole of
  *  the objective's weight: an answer a tenth better. */
 export const FULL = 0.1;
-/** The least ratio of two valid answers' bills that counts, a fifth less of the dearer; half the bill
- *  takes the whole of the bill's weight (`saved`). */
-export const CHEAPER = 1.25;
 /** A task's score in whole points: thousandths, since the test's convolution is over whole numbers. */
 const POINTS = 1000;
 /**
@@ -282,25 +285,32 @@ export function flipP(differences: readonly number[]): number {
   return Math.min(1, above(signed(sizes, 0.5), Math.ceil((total(differences) + total(sizes)) / 2)));
 }
 
-/** Whether the test on the scores without the bill (`unbilled`) clears `level` for the new harness. */
-export function readsStep(unbilled: readonly number[], level: number): boolean {
-  return flipP(unbilled) <= level;
+/** Whether the test on the task scores clears `level` for the new harness. */
+export function readsStep(scores: readonly number[], level: number): boolean {
+  return flipP(scores) <= level;
 }
 
-/** Whether a reading of one harness against itself reads a step either way at `level`, on its
- *  scores without the bill, as a comparison would read a step whichever sample it took for the new
- *  harness. Its two sides are interchangeable by construction, so such
- *  a step says the comparison moved, not a harness. The whole-run reader and the UI count it so,
- *  and no move waits on it: until 20 October the table ended a campaign on its epoch's first.
- *  An old report without unbilled scores is read on its scores as they stand. */
-export function readsStepEitherWay(unbilled: readonly number[], level: number): boolean {
+/** Whether a reading of one harness against itself reads a step either way at `level`, as a
+ *  comparison would read a step whichever sample it took for the new harness. Its two sides are
+ *  interchangeable by construction, so such a step says the comparison moved, not a harness. The
+ *  whole-run reader and the UI count it so, and no move waits on it: until 20 October the table
+ *  ended a campaign on its epoch's first. */
+export function readsStepEitherWay(scores: readonly number[], level: number): boolean {
   return (
-    readsStep(unbilled, level) ||
+    readsStep(scores, level) ||
     readsStep(
-      unbilled.map((one) => -one),
+      scores.map((one) => -one),
       level,
     )
   );
+}
+
+/** The scores a recorded test is read on: `unbilled` where a report of 26 October to 2 November
+ *  holds them (its `differences` had the bill's points in), else its `differences`. */
+export function scoresIn(test: unknown): number[] {
+  const { unbilled, differences } = asRecord(test) ?? {};
+  const found = Array.isArray(unbilled) ? unbilled : differences;
+  return Array.isArray(found) ? found.filter(isNumber) : [];
 }
 
 /** The chance that a reading at `level` of untied tasks with the margins of `differences` reads a
@@ -327,20 +337,20 @@ export function sweepOf(level: number): number {
 }
 
 /** The promotion tuner's reading at `level`: `step` where frontier and retained tasks together
- *  clear it without the bill (`readsStep`). It reads only sets this tree has just scored,
- *  so a set without its scores is the caller's fault and is refused: a report before 12 October
- *  holds a pooled tally alone, and one before 26 October no `unbilled`. A recorded report keeps the
- *  reading it wrote; the promotion tuner scores its pairs again instead. */
+ *  clear it (`readsStep`). It reads only sets this tree has just scored, so a set without its
+ *  scores is the caller's fault and is refused: a report before 12 October holds a pooled tally
+ *  alone. A recorded report keeps the reading it wrote; the promotion tuner scores its pairs again
+ *  instead. */
 export function stepOf(report: JsonObject, level: number): "step" | "no-step" {
   const sets = [report.frontier, ...(report.retained === UNMEASURED ? [] : [report.retained])];
-  const unbilled = sets.flatMap((set) => {
-    const found = asRecord(set)?.unbilled;
+  const scores = sets.flatMap((set) => {
+    const found = asRecord(set)?.differences;
     if (!Array.isArray(found) || !found.every(isNumber)) {
-      throw new Error("a reading needs a frontier and a retained set, each with its unbilled");
+      throw new Error("a reading needs a frontier and a retained set, each with its differences");
     }
-    return found;
+    return scoresIn(set);
   });
-  return readsStep(unbilled, level) ? "step" : "no-step";
+  return readsStep(scores, level) ? "step" : "no-step";
 }
 
 /** The objective rule a comparison's start, or its report, carries, or undefined where it fixed
@@ -354,10 +364,8 @@ export function objectiveRuleIn(data: JsonObject): ObjectiveRule | undefined {
 /** A number for each measure where `value` holds one, as a report holds the points each measure
  *  gave; undefined otherwise, as in every report before 21 October. */
 export function measuresIn(value: unknown): Measures | undefined {
-  const { validity, objective, bill } = asRecord(value) ?? {};
-  return isNumber(validity) && isNumber(objective) && isNumber(bill)
-    ? { validity, objective, bill }
-    : undefined;
+  const { validity, objective } = asRecord(value) ?? {};
+  return isNumber(validity) && isNumber(objective) ? { validity, objective } : undefined;
 }
 
 // Two other readings of a tally, the trinomial test and the chance that the new harness is the
@@ -444,45 +452,26 @@ export function gainOver(rule: ObjectiveRule, one: number | null, other: number 
 function told(pair: Paired, f: number, o: number): number {
   const rule = pair.objective;
   const gain = rule === undefined ? 0 : (gainOver(rule, rule.fresh[f] ?? null, rule.old[o] ?? null) ?? 0);
-  return Math.abs(gain) < ROOM ? 0 : capped(gain / FULL);
-}
-
-/** How much less the new side's solve of pairing (`f`, `o`) billed, between two valid answers: the
- *  base-2 logarithm of the reference's bill over the new one's, at most one either way, so half the
- *  bill takes the whole weight; 0 where the two are within `CHEAPER` of each other or a bill is
- *  missing. */
-function saved(pair: Paired, f: number, o: number): number {
-  const [fresh, old] = [pair.used?.fresh[f]?.billed ?? 0, pair.used?.old[o]?.billed ?? 0];
-  if (fresh <= 0 || old <= 0) return 0;
-  const ratio = Math.log2(old / fresh);
-  // A fifth less is at the floor, though log2(0.5 / 0.4) reads a hair over log2(1.25).
-  return Math.abs(ratio) < Math.log2(CHEAPER) - SAME ? 0 : capped(ratio);
-}
-
-/** `value`, held between -1 and 1. */
-function capped(value: number): number {
-  return Math.max(-1, Math.min(1, value));
+  return Math.abs(gain) < ROOM ? 0 : Math.max(-1, Math.min(1, gain / FULL));
 }
 
 /** One task's score by measure, the new side's against the reference's over every pairing of a solve
  *  of each: each measure is its mean over the pairings, from -1 to 1, times its weight (`WEIGHTS`),
- *  in thousandths (`POINTS`): `validity` where one answer of the two was valid, the `objective` and the
- *  `bill` between two valid answers (`told`, `saved`). */
+ *  in thousandths (`POINTS`): `validity` where one answer of the two was valid, the `objective`
+ *  between two valid answers (`told`). A pairing counts on one of the two, so the sum runs from
+ *  -600 to 600. */
 export function pointsOf(pair: Paired): Measures {
-  const sums = { validity: 0, objective: 0, bill: 0 };
+  const sums = { validity: 0, objective: 0 };
   for (const [f, freshValid] of pair.fresh.entries()) {
     for (const [o, oldValid] of pair.old.entries()) {
       if (freshValid !== oldValid) sums.validity += freshValid ? 1 : -1;
-      if (!freshValid || !oldValid) continue;
-      sums.objective += told(pair, f, o);
-      sums.bill += saved(pair, f, o);
+      else if (freshValid) sums.objective += told(pair, f, o);
     }
   }
   const each = POINTS / Math.max(1, pair.fresh.length * pair.old.length);
   return {
     validity: sums.validity * WEIGHTS.validity * each,
     objective: sums.objective * WEIGHTS.objective * each,
-    bill: sums.bill * WEIGHTS.bill * each,
   };
 }
 
@@ -494,13 +483,9 @@ export function wholePoints(points: number): number {
 }
 
 /** Project one task's weighted components, rounding only after adding the kept measures.
- * All three readings share this arithmetic, including replay under different weights. */
-export function scoresOf({ validity, objective, bill }: Measures): Readonly<Record<Kept, number>> {
-  return {
-    scored: wholePoints(validity + objective + bill),
-    unbilled: wholePoints(validity + objective),
-    validity: wholePoints(validity),
-  };
+ * Both readings share this arithmetic, including replay under different weights. */
+export function scoresOf({ validity, objective }: Measures): Readonly<Record<Kept, number>> {
+  return { scored: wholePoints(validity + objective), validity: wholePoints(validity) };
 }
 
 /** One task's rounded score on the measures `kept` names. */
@@ -508,17 +493,16 @@ export function differenceOf(pair: Paired, kept: Kept = "scored"): number {
   return scoresOf(pointsOf(pair))[kept];
 }
 
-/** The measure that carried a task's result from its points (`pointsOf`), null for a tie: the bill
- *  where the score without it does not share the score's sign, a win `readsStep` reads without; validity where its points alone do; and otherwise the objective. In
- *  buffer-fresh-opus-v065-a's g-3 the bill carried 25 of 25 wins, and the Examiner was told each as a
- *  win (26 October). It reads points rather than a pair so that the promotion tuner, which scales
- *  them by other weights, credits a win by this rule too: until 29 October it credited the first
- *  measure with positive points, validity for a task the objective's loss and the bill's gain decided. */
+/** The measure that carried a task's result from its points (`pointsOf`), null for a tie: validity
+ *  where its points alone share the score's sign, and otherwise the objective. It reads points
+ *  rather than a pair so that the promotion tuner, which scales them by other weights, credits a
+ *  win by this rule too: until 29 October it credited the first measure with positive points. Until
+ *  2 November it also named the bill (in buffer-fresh-opus-v065-a's g-3 the bill carried 25 of 25
+ *  wins). */
 export function carriedBy(points: Measures): keyof Measures | null {
   const score = scoresOf(points);
   const sign = Math.sign(score.scored);
   if (sign === 0) return null;
-  if (Math.sign(score.unbilled) !== sign) return "bill";
   return Math.sign(score.validity) === sign ? "validity" : "objective";
 }
 
@@ -547,11 +531,10 @@ export function testOf(differences: readonly number[]): Tally & { readonly p: nu
   return { wins: count(1), losses: count(-1), ties: count(0), p: flipP(differences) };
 }
 
-/** Full and cost-excluded scores of the same tasks, in the same order. */
+/** The scores of `pairs`, in their order, and their test. */
 export function scored(pairs: readonly Paired[]) {
-  const scores = differencesOf(pairs);
-  const differences = scores.map((one) => one.scored);
-  return { ...testOf(differences), differences, unbilled: scores.map((one) => one.unbilled) };
+  const differences = differencesOf(pairs).map((one) => one.scored);
+  return { ...testOf(differences), differences };
 }
 
 /** The tally of `scored` alone. */

@@ -43,7 +43,9 @@ const fake = (mkdirSync(bin), fakeBun(bin, gateLog));
 const GH = String.raw`#!/bin/sh
 printf '%s\n' "$*" >> "$ANA_GH_LOG"
 case "$*" in
-"pr list"*) if [ -n "$ANA_FAKE_PULLS_NEXT" ] && [ -e "$ANA_FAKE_PULLS_NEXT.read" ]; then
+"pr list"*) if [ -n "$ANA_FAKE_PULLS_DOWN_MERGED" ] && grep -q merge-async "$ANA_GH_LOG"; then
+  echo "gh: Bad Gateway (HTTP 502)" >&2; exit 1
+elif [ -n "$ANA_FAKE_PULLS_NEXT" ] && [ -e "$ANA_FAKE_PULLS_NEXT.read" ]; then
   cat "$ANA_FAKE_PULLS_NEXT"
 else
   printf '%s\n' "$ANA_FAKE_PULLS"
@@ -477,10 +479,34 @@ describe("bun run land", () => {
     const calls = logLines(ghLog);
     const asked = calls.findIndex((line) => line.startsWith(askedStack));
     expect(calls.findLastIndex((line) => line.includes("context=ana/stack-gate"))).toBeLessThan(asked);
-    expect(calls.slice(asked + 1).map((line) => line.split(" --jq")[0])).toEqual([
+    // After the merge, the open pull requests are read once more for any left on the top's branch.
+    expect(calls.slice(asked + 1).map((line) => line.split(" --jq")[0]?.split(" --json")[0])).toEqual([
       "api repos/{owner}/{repo}/pulls/12/merge-async/u1",
+      "pr list --state open --limit 200",
     ]);
     expect(calls.some((line) => /pulls\/\d+\/merge -f/u.test(line) || line.includes("-X PATCH"))).toBe(false);
+    expect(calls.some((line) => line.startsWith("pr edit"))).toBe(false);
+  });
+
+  it("says a failed read of the open pull requests after a merge and still ends as merged", () => {
+    writeFileSync(ghLog, "");
+    const result = stackMerge("merged", { ANA_FAKE_STACK_SHA: upper, ANA_FAKE_PULLS_DOWN_MERGED: "1" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("merged into main as stack 7");
+    expect(result.stdout).toContain("land: could not list the open pull requests");
+    expect(logLines(ghLog).some((line) => line.startsWith("pr edit"))).toBe(false);
+  });
+
+  it("moves a pull request left on the merged top's branch onto main, and none based elsewhere", () => {
+    // #15 is stacked on #12 and in no stack of GitHub's, as #560 was in the landing of v0.9.1.
+    const result = stackMerge("merged", {
+      ANA_FAKE_PULLS: stack(upper, pull(15, "c", "b", stacked)),
+      ANA_FAKE_STACK: "7 11,12",
+      ANA_FAKE_STACK_SHA: upper,
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("land: #15 is based on main.");
+    expect(logLines(ghLog).filter((line) => line.startsWith("pr edit"))).toEqual(["pr edit 15 --base main"]);
   });
 
   it("cuts the release at the merge it made with --tag, with notes GitHub writes, and refuses a tag origin holds before gating", () => {

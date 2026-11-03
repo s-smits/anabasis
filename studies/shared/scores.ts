@@ -12,14 +12,22 @@
  * one reader of model traces (`tracesIn`, `src/kernel/trace.ts`). A trial whose solver ended on its
  * provider or crashed is a non-result too, whatever the verifier then found in the container.
  *
- * Two arms are read as the protocol says (`studies/harness2/README.md`, "Metric and statistics"):
- * the mean difference in percentage points over the tasks both arms scored, with a seeded
- * bootstrap interval over tasks, and the one-sided paired sign-flip test a campaign uses (`flipP`,
- * `src/kernel/compare.ts`) on each task's difference in whole hundredths of a score, summed over
- * the streams the terms fixed, since the test convolves over integer margins. The A/A is the same
- * reading of one arm's streams split in two (`halves`).
+ * Two arms are read as a campaign reads a comparison (`pairsOf`, `src/kernel/compare.ts`): a task
+ * counts only where each side has the streams the terms fixed, each cut to its first in the order
+ * the trials started, and a task short on either side is named and left out, as a non-result is
+ * solved again rather than counted (rule 7). `shortfall` says how many more trials each task needs,
+ * which `run.ts score` asks for again. The reading is the mean difference in percentage points
+ * with a seeded bootstrap interval over tasks, and the one-sided paired sign-flip test a campaign
+ * uses (`flipP`) on each task's summed difference in whole hundredths of a score, read at the
+ * campaign's level (0.02, `tools/d2/round.ts`). The A/A splits one arm's trials by the campaign's
+ * mirrored halves, the first and last of each four against the two between, so a drift over the
+ * job's hours falls on both halves (`halves`). Until 2 November tasks short on a side were paired
+ * on what they had, the step was read at 0.10, and the halves split first against last in the
+ * order of Harbor's random trial names. Until 3 November a non-result took a place in the halves
+ * and the streams, so a retry shifted every later one, and a Harbor exception in an agent other
+ * than the study's solver counted as whatever its verifier found.
  */
-import { flipP, readsStepEitherWay } from "#src/kernel/compare.ts";
+import { flipP, readsStep, readsStepEitherWay } from "#src/kernel/compare.ts";
 import { read } from "#src/kernel/log.ts";
 import { tracesIn } from "#src/kernel/trace.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
@@ -40,13 +48,18 @@ export interface Trial {
   readonly turns: number | null;
   readonly calls: number | null;
   readonly seconds: number | null;
+  /** When Harbor started the trial (`started_at` in its `result.json`), which orders a task's
+   *  trials; null where it recorded none, which puts it after those that have one. */
+  readonly started: string | null;
 }
 
-/** Two arms over the tasks both scored. */
+/** Two arms over the tasks each scored in full. */
 export interface Reading {
   readonly tasks: number;
-  /** Tasks one arm scored and the other did not, left out of the reading. */
-  readonly unpaired: number;
+  /** Tasks with fewer scored trials than the streams on either side, left out of the reading. */
+  readonly short: readonly string[];
+  readonly streams: number;
+  readonly level: number;
   readonly meanA: number;
   readonly meanB: number;
   /** B less A, in percentage points, and its 95% bootstrap interval over tasks. */
@@ -55,13 +68,21 @@ export interface Reading {
   readonly won: number;
   readonly lost: number;
   readonly tied: number;
-  /** The one-sided sign-flip p that B is better, and whether either side reads a step at 0.10. */
+  /** The one-sided sign-flip p that B is better, whether that clears the level, and whether
+   *  either side does, which an A/A reads. */
   readonly p: number;
+  readonly step: boolean;
   readonly eitherWay: boolean;
 }
 
+/** The campaign's default level (`tools/d2/round.ts`). */
+const LEVEL = 0.02;
+
 /** The solver's endings that measured nothing (`src/kernel/solve.ts`, "non-result"). */
 const NON_RESULT = new Set(["provider", "crash"]);
+
+/** Harbor's exception for an agent that ran out of its time (`harbor/models/trial/result.py`). */
+const AGENT_TIMEOUT = "AgentTimeoutError";
 
 /** The JSON object at `path`, or null where it is missing, torn or not an object. */
 function jsonAt(path: string): JsonObject | null {
@@ -84,22 +105,30 @@ function trialOf(line: JsonObject): Trial {
   }
   const result = jsonAt(join(path, "agent", RESULT_FILE));
   const ending = isString(result?.["ending"]) ? result["ending"] : null;
+  const harbor = jsonAt(join(path, "result.json"));
   const trace = join(path, "agent", TRACE_FILE);
   const traced = existsSync(trace) ? tracesIn(read(trace)) : null;
+  // Harbor records an agent or a verifier that threw; only the agent's own timeout is the side's
+  // fail, as `wall-ended` is in a campaign. This holds for an agent that writes no result of ours.
+  const thrown = asRecord(harbor?.["exception_info"])?.["exception_type"];
+  const lost = (ending !== null && NON_RESULT.has(ending)) || (isString(thrown) && thrown !== AGENT_TIMEOUT);
   return {
     task,
     trial,
-    score: ending !== null && NON_RESULT.has(ending) ? null : counted(score),
+    score: lost ? null : counted(score),
     ending,
     billed: counted(result?.["billed"]),
     turns: counted(result?.["turns"]),
     calls: traced === null ? null : traced.filter((each) => each.part === "call").length,
     seconds: counted(result?.["seconds"]),
+    started: isString(harbor?.["started_at"]) ? harbor["started_at"] : null,
   };
 }
 
-/** The trials `trials.py` printed, one JSON line each, in trial order. */
+/** The trials `trials.py` printed, one JSON line each, in the order they started. */
 export function trialsOf(printed: string): Trial[] {
+  // A trial with no start time goes last; ties keep the printed order, which is Harness²'s run
+  // folders in name order (`_run_dirs`), since Harbor's trial names are random.
   return printed
     .split("\n")
     .filter((line) => line.trim() !== "")
@@ -108,14 +137,36 @@ export function trialsOf(printed: string): Trial[] {
       if (parsed === null) throw new Error(`trials.py printed a line that is no object: ${line}`);
       return trialOf(parsed);
     })
-    .sort((one, other) => one.trial.localeCompare(other.trial));
+    .toSorted((one, other) => (one.started ?? "\uffff").localeCompare(other.started ?? "\uffff"));
 }
 
-/** Each task's scores, in trial order, of the trials the reader scored. */
+/** Each task's scores, in the order its trials started, of the trials the reader scored. */
 function scoresByTask(trials: readonly Trial[]): Map<string, number[]> {
   const by = new Map<string, number[]>();
-  for (const { task, score } of trials) if (score !== null) by.set(task, [...(by.get(task) ?? []), score]);
+  for (const { task, score } of scored(trials)) by.set(task, [...(by.get(task) ?? []), score]);
   return by;
+}
+
+/** The trials the reader scored, in their order: what every reading counts, so a non-result
+ *  retried later takes no stream's or half's place. */
+function scored(trials: readonly Trial[]): (Trial & { readonly score: number })[] {
+  return trials.filter((each): each is Trial & { readonly score: number } => each.score !== null);
+}
+
+/** How many more scored trials each of `tasks` needs to reach `streams`; a task at its streams is
+ *  left out. */
+export function shortfall(
+  trials: readonly Trial[],
+  tasks: readonly string[],
+  streams: number,
+): Map<string, number> {
+  const byTask = scoresByTask(trials);
+  return new Map(
+    tasks.flatMap((task) => {
+      const missing = streams - (byTask.get(task)?.length ?? 0);
+      return missing > 0 ? [[task, missing] as const] : [];
+    }),
+  );
 }
 
 const mean = (values: readonly number[]) => values.reduce((sum, each) => sum + each, 0) / values.length;
@@ -131,45 +182,66 @@ function seeded(seed: number): () => number {
   };
 }
 
-/** Arm B against arm A, each task's difference in hundredths of a score times `streams`. */
-export function readArms(a: readonly Trial[], b: readonly Trial[], streams: number, seed = 1): Reading {
+/** Arm B against arm A over the tasks each scored `streams` times, each task's difference the
+ *  summed scores of B less A's, in hundredths. */
+export function readArms(
+  a: readonly Trial[],
+  b: readonly Trial[],
+  streams: number,
+  { seed = 1, level = LEVEL }: { readonly seed?: number; readonly level?: number } = {},
+): Reading {
   const scoredA = scoresByTask(a);
   const scoredB = scoresByTask(b);
-  const tasks = [...scoredA.keys()].filter((task) => scoredB.has(task)).sort();
-  const all = new Set([...scoredA.keys(), ...scoredB.keys()]);
-  const gaps = tasks.map((task) => mean(scoredB.get(task) ?? []) - mean(scoredA.get(task) ?? []));
+  const all = [...new Set([...scoredA.keys(), ...scoredB.keys()])].sort();
+  const full = (by: Map<string, number[]>, task: string) => (by.get(task)?.length ?? 0) >= streams;
+  const tasks = all.filter((task) => full(scoredA, task) && full(scoredB, task));
+  const cut = (by: Map<string, number[]>, task: string) => (by.get(task) ?? []).slice(0, streams);
+  const meansA = tasks.map((task) => mean(cut(scoredA, task)));
+  const meansB = tasks.map((task) => mean(cut(scoredB, task)));
+  const gaps = tasks.map((_, at) => (meansB[at] ?? 0) - (meansA[at] ?? 0));
   const units = gaps.map((gap) => Math.round(gap * 100 * streams));
   const draw = seeded(seed);
   const resampled = Array.from({ length: 10_000 }, () =>
     mean(tasks.map(() => gaps[Math.floor(draw() * gaps.length)] ?? 0)),
   ).sort((one, other) => one - other);
   const at = (share: number) => (resampled[Math.floor(share * (resampled.length - 1))] ?? 0) * 100;
+  const none = tasks.length === 0;
   return {
     tasks: tasks.length,
-    unpaired: all.size - tasks.length,
-    meanA: tasks.length === 0 ? 0 : mean(tasks.map((task) => mean(scoredA.get(task) ?? []))) * 100,
-    meanB: tasks.length === 0 ? 0 : mean(tasks.map((task) => mean(scoredB.get(task) ?? []))) * 100,
-    difference: tasks.length === 0 ? 0 : mean(gaps) * 100,
-    interval: tasks.length === 0 ? [0, 0] : [at(0.025), at(0.975)],
+    short: all.filter((task) => !tasks.includes(task)),
+    streams,
+    level,
+    meanA: none ? 0 : mean(meansA) * 100,
+    meanB: none ? 0 : mean(meansB) * 100,
+    difference: none ? 0 : mean(gaps) * 100,
+    interval: none ? [0, 0] : [at(0.025), at(0.975)],
     won: units.filter((each) => each > 0).length,
     lost: units.filter((each) => each < 0).length,
     tied: units.filter((each) => each === 0).length,
     p: flipP(units),
-    eitherWay: readsStepEitherWay(units, 0.1),
+    step: readsStep(units, level),
+    eitherWay: readsStepEitherWay(units, level),
   };
 }
 
-/** One arm's trials split in two by their order within each task: its first trials against its
- *  last, which an A/A reads. */
+/** One arm's scored trials split in two by the campaign's mirrored halves (`pairsOf`): within
+ *  each task, in the order they started, the first and last of each four against the two between. */
 export function halves(trials: readonly Trial[]): [Trial[], Trial[]] {
-  const seen = new Map<string, Trial[]>();
-  for (const trial of trials) seen.set(trial.task, [...(seen.get(trial.task) ?? []), trial]);
+  const seen = new Map<string, number>();
   const first: Trial[] = [];
   const last: Trial[] = [];
-  for (const own of seen.values()) {
-    const cut = Math.floor(own.length / 2);
-    first.push(...own.slice(0, cut));
-    last.push(...own.slice(own.length - cut));
+  for (const trial of scored(trials)) {
+    const at = seen.get(trial.task) ?? 0;
+    seen.set(trial.task, at + 1);
+    (at % 4 === 0 || at % 4 === 3 ? first : last).push(trial);
   }
   return [first, last];
+}
+
+/** The `stream`th scored trial of each task, counted from 0 in the order they started: one stream of an
+ *  arm whose harness changes between attempts, as Harness²'s improver's does, read alone. */
+export function streamOf(trials: readonly Trial[], stream: number): Trial[] {
+  return [...Map.groupBy(scored(trials), ({ task }) => task).values()].flatMap((own) =>
+    own.slice(stream, stream + 1),
+  );
 }

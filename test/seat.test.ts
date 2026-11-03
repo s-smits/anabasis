@@ -9,7 +9,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { read } from "../src/kernel/log.ts";
-import { dollars, freezePrices, tokensOf } from "../src/kernel/meter.ts";
+import { billOf, freezePrices, ledgerOf } from "../src/kernel/meter.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { isFunction } from "../src/meta/json-shape.ts";
 import { existsSync, mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
@@ -166,7 +166,9 @@ describe("durable session boundaries", () => {
     expect(read(log).map(({ kind }) => kind)).toEqual(["build.turn", "build.call", "build.turn"]);
   });
 
-  it("bills a retried attempt on the following turn without counting it as a turn", async () => {
+  // pi-durable records every assistant entry in the conversation's `pi.usage`, an attempt it retried
+  // included, so the session's bill is that ledger's and no turn carries another's tokens or dollars.
+  it("bills a retried attempt in the session's bill once, without a turn and without the next turn's dollars", async () => {
     const log = join(scratch, "retry.jsonl");
     const failed = fauxAssistantMessage("charged partial", {
       stopReason: "error",
@@ -178,52 +180,42 @@ describe("durable session boundaries", () => {
       "openai-codex",
     );
     const sat = await sit(s.seat);
-    expect(sat.crash).toBeNull();
     expect(s.faux.state.callCount).toBe(2);
     expect(sat.spent.turns).toBe(1);
     const events = read(log).filter((event) => event.kind === "solve.turn");
-    expect(events).toHaveLength(1);
-    expect(events[0]?.data.retried).toEqual(["WebSocket closed 1000"]);
-    expect(sat.spent.tokens.input).toBeGreaterThan(s.seat.turns[0]?.usage.input ?? 0);
-    expect(sat.spent.billed).toBeCloseTo(s.seat.turns[0]?.usage.cost.total ?? 0, 10);
+    expect(events.map(({ data }) => data.retried)).toEqual([["WebSocket closed 1000"]]);
+    const [only] = s.seat.turns;
+    if (only === undefined) throw new Error("the session took no turn");
+    const own = billOf(freezePrices([s.seat.model]), ledgerOf([["openai-codex/faux-seat", only.usage]]));
+    expect(only.usage.cost.total).toBeCloseTo(own, 10);
+    expect(sat.spent.tokens.input).toBeGreaterThan(only.usage.input);
+    expect(sat.spent.billed).toBeGreaterThan(own);
   });
 
-  it("bills each turn at the model that served it, and at the seat's own where the catalogue has no price", async () => {
+  it("prices each turn, and the session, at the model that served it where the seat's catalogue lists it, and at its own otherwise", async () => {
     // Recode on 25 October: Claude Code answered claude-opus-5-5's requests as claude-opus-5.
-    const log = join(scratch, "served.jsonl");
     const served = (responseModel: string | undefined) => (): AssistantMessage => ({
       ...fauxAssistantMessage([fauxToolCall("look", {})], TOOL_USE),
       ...keyIfDefined("responseModel", responseModel),
     });
-    const s = seated(
-      [served("faux-served"), served("faux-unlisted"), served(undefined), fauxAssistantMessage("Done.")],
-      {
-        trace: { log, of: "build" },
-      },
-    );
+    const s = seated([
+      served("faux-served"),
+      served("faux-unlisted"),
+      served(undefined),
+      fauxAssistantMessage("Done."),
+    ]);
     const sat = await sit(s.seat);
     const prices = freezePrices(s.faux.models);
-    const priced = s.seat.turns.map(
-      ({ responseModel, usage }) =>
-        dollars(
-          prices,
-          responseModel === "faux-served" ? "faux/faux-served" : "faux/faux-seat",
-          tokensOf([usage]),
-        ).billed,
-    );
-    expect(s.seat.turns.map(({ usage }) => usage.cost.total)).toEqual(priced);
-    expect(priced[0]).toBeGreaterThan(0);
-    expect(sat.spent.billed).toBeCloseTo(
-      priced.reduce((sum, each) => sum + each, 0),
-      10,
-    );
-    const turns = read(log).filter((event) => event.kind === "build.turn");
-    expect(turns.map(({ data }) => data.pricedAt)).toEqual([
-      undefined,
-      "faux/faux-seat",
-      undefined,
-      undefined,
-    ]);
+    const at = (key: string, turn: AssistantMessage) => billOf(prices, ledgerOf([[key, turn.usage]]));
+    // pi-durable files every turn under the model asked for; the session's bill keeps the served one.
+    const turnsBill = s.seat.turns.reduce((sum, turn) => sum + turn.usage.cost.total, 0);
+    expect(sat.spent.billed).toBeCloseTo(turnsBill, 10);
+    const [first, second, third] = s.seat.turns;
+    if (first === undefined || second === undefined || third === undefined) throw new Error("too few turns");
+    expect(first.usage.cost.total).toBeCloseTo(at("faux/faux-served", first), 10);
+    expect(first.usage.cost.total).toBeGreaterThan(at("faux/faux-seat", first));
+    expect(second.usage.cost.total).toBeCloseTo(at("faux/faux-seat", second), 10);
+    expect(third.usage.cost.total).toBeCloseTo(at("faux/faux-seat", third), 10);
   });
 });
 

@@ -109,14 +109,12 @@ describe("the campaign's line and readouts", () => {
     // A flag carries the harness's letter alone, and its words and digest only on hover.
     await expect(marks.locator("text")).toContainText(["setting", "cut", "B", "D", "A"]);
     const titles = await marks.locator("title").allTextContents();
-    // Whether a promotion is confirmed is its starter comparison's reading without the bill.
+    // Whether a promotion is confirmed is its starter comparison's reading.
     expect(titles).toContain(
       `promoted D (${short(c)}), despite: the operator's reason, given with --despite; not yet read against the starter`,
     );
     expect(titles).toContain("back to the starter");
-    expect(titles).toContain(
-      `promoted B (${short(a)}); against the starter without the bill 1–1–0, not confirmed`,
-    );
+    expect(titles).toContain(`promoted B (${short(a)}); against the starter 1–1–0, not confirmed`);
     expect(titles).toContain("r-1 repeats b-1");
     expect(titles).toContain("r-3 repeats b-3");
     expect(titles.some((title) => /setting.*[a-f0-9]{8}/iu.test(title))).toBe(true);
@@ -131,7 +129,8 @@ describe("the campaign's line and readouts", () => {
     await expect(ticks.filter({ hasText: "r-1" }).locator("text.is-step")).toHaveText("r-1");
     await expect(ticks.filter({ hasText: "c-1" })).toContainText("control");
     const share = page.locator(".ana-campaign-small", { hasText: "Wins by measure" });
-    for (const measure of ["validity", "objective", "bill"]) await expect(share).toContainText(measure);
+    for (const measure of ["validity", "objective"]) await expect(share).toContainText(measure);
+    await expect(share).not.toContainText("bill");
     // One column a comparison that reported: the cut one has none.
     for (const id of COLUMNS.filter((each) => each !== "b-4")) await expect(share).toContainText(id);
     const dollars = page.locator(".ana-campaign-small", { hasText: "Dollars billed" });

@@ -18,11 +18,12 @@ these terms. A request to change them is refused.
 The scored tasks are `--target` held-out ones, the newest epoch's first and, within it, those held
 out since the last comparison began, each drawn by the contract's hash. The draw (`poolOf`) leaves
 out a task with no valid answer after two comparisons until a person labels it, and takes off the
-frontier as **exhausted** a task answered in every solve of the last two comparisons the reference
-stood in for it, on either side (the other side's only where that is a later harness, so the next
-harness must answer it too). A bill saving can still win an exhausted task. A task stays open where
-an answer on record betters one of the reference's by the objective gap floor (`bettered`), since
-the next harness can still win it. The counts live in one place (`SIZE`, `RUNS`,
+frontier as **exhausted** a task the reference answered in every one of its own solves in the last
+two comparisons it stood in for it, on either side (`ownOf`): the other harness's solves never
+count, so which held-out task it won moves no size the Builder is told (rule 3). A bill saving can
+still win an exhausted task. A task stays open where one of the reference's own answers or its
+author's betters another of its answers by the objective gap floor (`objectiveGap`), since the next
+harness can still win it. The counts live in one place (`SIZE`, `RUNS`,
 `src/kernel/size.ts`), and every rule reads a side's every, some or none, so they hold at any
 number of solves.
 
@@ -46,7 +47,7 @@ How a solve ends (`src/kernel/solve.ts`), and its part in a pair:
 
 | Ending | Kinds | In a pair |
 | --- | --- | --- |
-| pass | | Valid. It beats an answer that is not valid; against another valid one it gains by how much better it is by the objective, where the comparison fixed one, and by how much less its solve billed |
+| pass | | Valid. It beats an answer that is not valid; against another valid one it gains by how much better it is by the objective, where the comparison fixed one |
 | fail | `rejected`, once the rejection is ruled a true fail | Not valid |
 | fail | `wall-ended`, `turns-ended`, `context-ended`, `no-answer` | Not valid, with nothing to recompute and no ruling. A deadline on a model silent ten minutes with no tool running is the provider's non-result instead (`SILENT_SECONDS`) |
 | fail | `broken-harness` | Not valid. The harness is what is compared, and one that cannot open answers nothing |

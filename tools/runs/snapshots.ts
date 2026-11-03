@@ -262,8 +262,13 @@ export async function syncRuns(
   }
   // The archive is named once: asking git for the main worktree for each of 145 copies took 2.6 s
   // of a 38 s reading of the table of runs on 30 October.
+  // A copy whose host no `ANA_HOSTS` names cannot be refreshed, so it is read as it stands: until
+  // 3 November a reader run without `.env.runs` dropped every peer's copy, and the promotion table
+  // read 0 confirmed promotions where fullrun and v065-b each hold one.
+  const known = new Set(hostsOf().map(({ name }) => name));
+  const stale = (from = HERE) => silent.has(from) || (from !== HERE && !known.has(from));
   const archive = archiveOf(repo);
-  const left = readable(repo).filter((run) => silent.has(run.archived ?? HERE) && matches(run.name));
+  const left = readable(repo).filter((run) => stale(run.archived) && matches(run.name));
   const brought = await pooled(kept, AT_ONCE, ({ host, run }) =>
     bring(run, host, archive, options.depth ?? "whole"),
   );

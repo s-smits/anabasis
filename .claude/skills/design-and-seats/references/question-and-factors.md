@@ -1,7 +1,7 @@
 Read this for the evaluation question, reported factors and v1 terminology. This expands `AGENTS.md`
 section 1; the information boundary is in `wall.md`.
 
-## 1. What Anabasis v2 does
+## 1. What Anabasis does
 
 One query names one technical domain. A campaign builds one **Built Harness** for it (a harness, for
 short): the guide and the programs a solving model uses to answer that domain's tasks. The
@@ -26,7 +26,7 @@ sets the cap and provides blind labels. All campaign state is derived from one a
 
 ### The four reported factors
 
-Anabasis v2 is a training loop in which the thing trained is a harness and the loss is measured by
+Anabasis is a training loop in which the thing trained is a harness and the loss is measured by
 running a fixed model. It needs a training signal that carries information, a held-out set the
 learner cannot see, an evaluation less noisy than the effect it seeks, correct labels, and a result
 worth its cost. The first, supply, is a condition of admission; the other four are reported: climb,
@@ -40,8 +40,9 @@ better by it. A task the reference solves every time with no better answer on re
 nobody has solved, carry no signal; a scored set of them reads "no room" whatever the new harness is
 like. The informative tasks lie between (`informative`, `src/kernel/compare.ts`; section 7, "Room
 for improvement"). Here the solver stays fixed and the Examiner keeps the exam at its frontier
-(section 3). Supply is the number of informative tasks in a scored set, held to
-`comparisonFloor(level)` by comparison admission (section 6, "What refuses a move"). It binds first,
+(section 3). Supply is the number of informative tasks in a scored set. It is known only after the
+solves, so comparison admission holds the frontier, the held-out tasks the reference has not closed,
+to `comparisonFloor(level)` instead (section 6, "What refuses a move"). It binds first,
 since every other number is undefined without it, and is not reported, since passing it shows only
 that a difference could be shown.
 
@@ -94,9 +95,9 @@ person calls a check defect, and voiding at most one in ten of those a person ca
 **4. Economy: what did each measured gain cost?** Statistical significance alone does not make a
 gain useful. Evaluate the climb achieved under the operator's cap, rather than money left
 unspent. The closing report derives dollars and hours per promotion from the log
-(`tools/d2/close.ts`, "Work and spend"). It uses calculated list-price spending
-(`pricedAt`, `src/agent/session.ts`), as does the cap, and shows available backend totals
-alongside it (`costLine`, `src/kernel/trace.ts`). The operator may record a target of at most
+(`tools/d2/close.ts`, "Work and spend"). It bills each session's backend ledger at
+frozen list prices (`billOf`, `src/kernel/meter.ts`), as the cap bills each turn, and shows available backend totals
+alongside it (`costLine`, `src/kernel/meter.ts`). The operator may record a target of at most
 three promotion attempts per epoch after setup (`worthOf`, `src/campaign/climb.ts`). This is
 a reporting target and refuses no action.
 

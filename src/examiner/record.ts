@@ -9,8 +9,8 @@
  *   on record over a reference answer (`room` of `poolOf`'s standings), and the admission counts
  *   and turns. It also gives comparison history where there are at least two readings, and whether
  *   a valid answer is on record where the other facts show none (`poolOf`). Winning alone does not
- *   explain the source of room (`7f0add79:docs/simplify.md`, F3). Naming the measure distinguishes
- *   method gains from the 25 bill-only wins recorded in buffer-fresh-opus-v065-a's g-3 (26 October).
+ *   explain the source of room (`7f0add79:docs/simplify.md`, F3). Until 2 November it also named
+ *   the bill, which carried 25 wins in buffer-fresh-opus-v065-a's g-3 (26 October).
  * - One summary of the reference across the exam (`measuredLine`): tasks in its last comparison,
  *   grouped by every, some or no solve valid; and drafts admitted under it, grouped by source of
  *   room. Across 26 October's buffer runs it was valid in 93 to 100% of each comparison's solves while most
@@ -28,6 +28,7 @@
  * contribute no counts or turns. Nothing here names a harness, a check or a target, and no count carries a band or
  * a number to reach (the operator's decision of 11 October).
  */
+import { scoresIn } from "../kernel/compare.ts";
 import { proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import {
@@ -63,7 +64,7 @@ const SAID: Readonly<Record<Outcome, string>> = {
   "reference-some": "valid in some solves",
   "reference-none": "valid in no solve",
   "earlier-reference": "last compared between two other harnesses",
-  disputed: "disputed: a rejection of an answer to it is not settled",
+  disputed: "set aside: a rejection of an answer to it is not yet ruled",
 };
 /** Where a held draft's room came from, as `informative` read an earlier log's room solves: the
  *  kinds the measurement counts of a gate that solved its draft. */
@@ -72,29 +73,22 @@ const HELD_ON = {
   yours: "on an answer of yours, where none of its solves was valid",
   objective: "on the objective alone, every one of its solves valid",
 } as const;
-/** Which measure of a task's score carried a win (`carriedBy`): a step must also clear its level
- *  with the bill's points taken out (`stepOf`), so wins the bill alone carried cannot make one. */
+/** Which measure of a task's score carried a win (`carriedBy`). */
 const CARRIED = {
   validity: "on validity",
   objective: "on the objective",
-  bill: "on the bill alone",
 } as const;
 
 /** The clauses some line carries, so the legend explains those and no other: at job-fresh-opus-v071's
- *  x-4 it explained a task admission and a history no line held, and said on each of seven lines what a win on
- *  the bill alone means (26 October). */
+ *  x-4 it explained a task admission and a history no line held (26 October). */
 interface Carried {
   admission: boolean;
   history: boolean;
-  bill: boolean;
 }
 
 /** What the lines say before them: once, what each clause some line carries means. */
 function legendOf(carried: Carried): string {
   const clauses = [
-    carried.bill
-      ? `A win "on the bill alone" is one only the cost of its solves carried; a step is read without the bill.`
-      : "",
     carried.admission
       ? `"Gate" is how many of the reference harness's solves at its gate were valid, of the solves it ran, at most ${String(TRIED)}, and their turns.`
       : "",
@@ -171,7 +165,7 @@ export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "t
   // Count listed tasks admitted under the current reference separately from those admitted before it.
   let under = 0;
   let listed = 0;
-  const carried: Carried = { admission: false, history: false, bill: false };
+  const carried: Carried = { admission: false, history: false };
   const elsewhere = new Map<string, string[]>();
   const lines = tasks.flatMap(({ taskId, family }) => {
     const version = versions.get(taskId) ?? "";
@@ -217,7 +211,6 @@ export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "t
     }
     carried.admission ||= admission.said !== "";
     carried.history ||= history !== "";
-    carried.bill ||= won !== "" && standing?.by === "bill";
     return [`${named}: ${said}${answered ? inTurns(compared.get(version) ?? []) : ""}${known}${rest}`];
   });
   return {
@@ -244,7 +237,7 @@ function promotedLine(promotion: LogEvent | undefined, before: number, listed: n
   if (promotion === undefined) return null;
   const rests = promotion.data.rests;
   const on = Array.isArray(rests) ? asRecord(rests[0])?.comparison : undefined;
-  return `The reference harness was promoted${isString(on) ? ` on the step of comparison ${on}` : ""}. ${String(before)} of the ${String(listed)} tasks listed were held out before then, under the harness it replaced; a line reads the harness that is the reference now wherever it stood in the comparison that last scored the task. Files in your home from sessions before then were written against the harness it replaced.`;
+  return `The reference harness was promoted${isString(on) ? ` on the step of comparison ${on}` : ""}. ${String(before)} of the ${String(listed)} tasks listed were held out before then, under the harness it replaced; a line reads the harness that is the reference now wherever it stood in the comparison that last scored the task. Files in your home from sessions before then were written while the harness it replaced was the reference.`;
 }
 
 /** Each proposed version's last task admission, with where it stands in the log. */
@@ -322,7 +315,10 @@ function historyLine(history: History | undefined): string {
  *  some or no solve valid, with set-aside tasks counted separately. Report task counts, never solve
  *  counts, which could reveal one task's result. Also summarise drafts admitted under this
  *  reference, by source of room where an earlier log's room solves measured it (`heldOn`), and
- *  measured refusals. Until 1 November a draft held on its package alone was left out of the count. Null where neither is recorded. */
+ *  measured refusals. Until 1 November a draft held on its package alone was left out of the count.
+ *  Since 2 November it also says how many tasks the reference's own solves told apart in that
+ *  comparison's A/A: in the archive's objective domains they differed on the objective alone on
+ *  314 of 1,373 tasks, which the prompt had named no chance. Null where nothing is recorded. */
 function measuredLine(
   events: readonly LogEvent[],
   admissions: ReadonlyMap<string, JsonObject>,
@@ -336,6 +332,9 @@ function measuredLine(
   const aside = Array.isArray(report?.data.aside) ? report.data.aside.length : 0;
   const some = reads.filter((each) => spreadOf(each) === "some").length;
   const none = reads.filter((each) => spreadOf(each) === "none").length;
+  // The A/A pairs the old side's solves with each other, so it measures the reference only there.
+  const own = side === "old" ? scoresIn(report?.data.noise) : [];
+  const apart = own.filter((score) => score !== 0).length;
   const read = [...admissions.values()].filter((admission) => measuredGate(admission));
   const held = read.filter(({ outcome }) => heldAtGate(outcome));
   // The source of room of a draft an earlier log's room solves measured; a gate now reads the
@@ -354,6 +353,11 @@ function measuredLine(
       ? []
       : [
           `In the last comparison the reference harness stood in, it was valid in every solve on ${String(reads.length - some - none)} of ${plural(reads.length, "task")} tallied, in some on ${String(some)}, in none on ${String(none)}${aside === 0 ? "" : `; ${String(aside)} more ${aside === 1 ? "was" : "were"} set aside`}.`,
+        ]),
+    ...(own.length === 0
+      ? []
+      : [
+          `Set against each other there, its own solves differed on ${String(apart)} of ${plural(own.length, "task")}: this much differs between a harness and itself.`,
         ]),
     ...(held.length + refused === 0
       ? []

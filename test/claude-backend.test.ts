@@ -13,12 +13,7 @@ import {
   type ThinkingLevel,
   Type,
 } from "@earendil-works/pi-ai";
-import {
-  claudeProvider,
-  REPORTED_COST,
-  reportedCost,
-  SWEEP_COMPACT_WINDOW,
-} from "../src/agent/backends/claude.ts";
+import { claudeLedger, claudeProvider, SWEEP_COMPACT_WINDOW } from "../src/agent/backends/claude.ts";
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { capturedJsonParse } from "../src/meta/json-runtime.ts";
 import { asRecord, isString, type JsonObject } from "../src/meta/json-shape.ts";
@@ -46,6 +41,18 @@ const home = mkdtempSync(join(tmpdir(), "ana-claude-backend-"));
 const executable = join(home, "claude");
 const fake = join(import.meta.dir, "fixtures", "fake-claude-cli.ts");
 writeFileSync(executable, `#!/bin/sh\nexec '${runtimeProcess.execPath}' '${fake}' "$@"\n`, { mode: 0o755 });
+/** One model's line of a result's `modelUsage`, every count zero, as Claude Code writes it. */
+const USAGE = {
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheReadInputTokens: 0,
+  cacheCreationInputTokens: 0,
+  webSearchRequests: 0,
+  costUSD: 0,
+  contextWindow: 200_000,
+  maxOutputTokens: 32_000,
+  costBasis: "list",
+};
 let shutdown = new AbortController();
 let sweep = claudeProvider({ executable, compaction: { window: SWEEP_COMPACT_WINDOW }, home });
 // The model the fixtures were recorded on, so its list prices are the ones Claude Code billed.
@@ -79,6 +86,14 @@ function solveOptions() {
 afterAll(() => {
   rmSync(home, { recursive: true, force: true });
 });
+
+/** A recording whose closing `result` reports `total` dollars and `modelUsage`. */
+function resulting(text: string, total: number, modelUsage: JsonObject): string {
+  const lines = text.trim().split("\n");
+  const result = asRecord(capturedJsonParse(lines.pop() ?? ""));
+  if (result?.type !== "result") throw new Error("the recording does not end on its result");
+  return `${[...lines, JSON.stringify({ ...result, total_cost_usd: total, modelUsage })].join("\n")}\n`;
+}
 
 function replay(name: string, edit: (text: string) => string = (text) => text): void {
   const text = readFileSync(join(FIXTURES, name), "utf8");
@@ -348,9 +363,6 @@ describe("the Claude backend", () => {
     solve.abort();
     const first = await pending;
     expect(first.stopReason).toBe("aborted");
-    expect(
-      first.diagnostics?.find((entry) => entry.type === REPORTED_COST)?.details?.totalCostUsd,
-    ).toBeCloseTo(0.020421, 10);
     replay(TEXT);
     const nudge: Message = { role: "user", content: "Again.", timestamp: 0 };
     const after = await provider
@@ -363,32 +375,89 @@ describe("the Claude backend", () => {
     expect(launches()).toBe(1);
   });
 
-  // A session that ends on its own call, `finish` or `submit`, leaves the query's `result`, which
-  // alone carries Claude Code's cost, to come after its last turn. On buffer (12 October) 10.19 of
-  // 13.35 billed dollars had no figure of Claude Code's beside them for it.
-  it("takes Claude Code's cost from the result that follows a session's last call, closing the query on the seat's kill signal", async () => {
-    replay("parallel-tools.jsonl");
-    const context = solverContext([opening]);
+  // Claude Code's `result` carries `modelUsage`, the whole query's tokens by the model that served
+  // them, its own compactions and its calls on other models included, which no turn shows.
+  it("reads a query's ledger by served model from its last result, side calls and hour-long writes included", async () => {
+    replay(TEXT, (text) =>
+      resulting(text, 0.75, {
+        "claude-haiku-4-5-20251001": {
+          ...USAGE,
+          inputTokens: 10,
+          outputTokens: 47,
+          cacheCreationInputTokens: 10_088,
+          cacheCreationEphemeral1hInputTokens: 10_000,
+          canonicalModel: "claude-haiku-4-5",
+          costUSD: 0.7,
+        },
+        "claude-side-model": { ...USAGE, inputTokens: 900, outputTokens: 30, costUSD: 0.05 },
+      }),
+    );
     const options = solveOptions();
-    const last = await sweep.streamSimple(recorded, context, options).result();
-    expect(last.stopReason).toBe("toolUse");
-    expect(last.diagnostics ?? []).toEqual([]);
+    const own = await sweep.streamSimple(recorded, solverContext([opening]), options).result();
+    expect(own.stopReason).toBe("stop");
     shutdown.abort();
-    expect(await reportedCost(options.sessionId, [last])).toBeCloseTo(0.0056776, 10);
-    // The fake CLI logs its stdin as it reads it, which can come after the closing cost.
+    expect(await claudeLedger(options.sessionId)).toEqual({
+      byServed: true,
+      reported: 0.75,
+      ledger: {
+        "claude/claude-haiku-4-5": {
+          input: 10,
+          output: 47,
+          cacheRead: 0,
+          cacheWrite: 10_088,
+          cacheWrite1h: 10_000,
+          dollars: 0.7,
+        },
+        "claude/claude-side-model": {
+          input: 900,
+          output: 30,
+          cacheRead: 0,
+          cacheWrite: 0,
+          cacheWrite1h: 0,
+          dollars: 0.05,
+        },
+      },
+    });
+    expect(await claudeLedger(options.sessionId)).toBeNull();
+  });
+
+  // A session that ends on its own call, `finish` or `submit`, leaves the query's `result` to come
+  // after its last turn: on buffer (12 October) 10.19 of 13.35 billed dollars had no figure of
+  // Claude Code's beside them while the result was read from the turns alone.
+  it("takes the ledger from the result the close brings after a session's last call, and none for a session no query served", async () => {
+    replay("parallel-tools.jsonl");
+    const options = solveOptions();
+    const last = await sweep.streamSimple(recorded, solverContext([opening]), options).result();
+    expect(last.stopReason).toBe("toolUse");
+    shutdown.abort();
+    const taken = await claudeLedger(options.sessionId);
+    expect(taken?.reported).toBeCloseTo(0.0056776, 10);
+    expect(taken?.ledger["claude/claude-haiku-4-5"]).toMatchObject({
+      input: 20,
+      output: 312,
+      cacheRead: 19_516,
+      cacheWrite: 1_073,
+      cacheWrite1h: 0,
+    });
     for (let waited = 0; waited < 2000 && !interrupted(); waited += 20) await Bun.sleep(20);
     expect(interrupted()).toBe(true);
-    expect((await turn([opening, last, ...answered(last)])).stopReason).toBe("aborted");
-    // A turn that read its own result carries it, and no provider but Claude Code reports one.
-    replay(TEXT);
-    const other = new AbortController();
-    const own = { ...options, sessionId: `${options.sessionId}-text` };
-    const stopped = await claudeProvider({ executable, compaction: "off", home, shutdown: other.signal })
-      .streamSimple(recorded, context, own)
-      .result();
-    other.abort();
-    expect(await reportedCost(own.sessionId, [stopped])).toBeCloseTo(0.020421, 10);
-    expect(await reportedCost("solve-elsewhere", [])).toBeNull();
+    expect(await claudeLedger("solve-elsewhere")).toBeNull();
+  });
+
+  // A result read before a later turn holds none of that turn, so it is no ledger of the session.
+  it("drops a result once a later turn begins, and takes the next one", async () => {
+    replay(TEXT, (text) =>
+      resulting(text, 0.1, { "claude-haiku-4-5": { ...USAGE, inputTokens: 1, costUSD: 0.1 } }),
+    );
+    const options = solveOptions();
+    const first = await sweep.streamSimple(recorded, solverContext([opening]), options).result();
+    replay(TEXT, (text) =>
+      resulting(text, 0.3, { "claude-haiku-4-5": { ...USAGE, inputTokens: 3, costUSD: 0.3 } }),
+    );
+    const nudge: Message = { role: "user", content: "Again.", timestamp: 0 };
+    await sweep.streamSimple(recorded, solverContext([opening, first, nudge]), options).result();
+    shutdown.abort();
+    expect((await claudeLedger(options.sessionId))?.reported).toBe(0.3);
   });
 
   // An abort listener never fires for a signal that has already aborted, so a turn asked under one

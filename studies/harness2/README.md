@@ -10,6 +10,37 @@ distinctive property here is learning without benchmark-provided grades: it stil
 verdicts, but from checks it generated itself. The second question, once the first has an answer,
 is how a harness built that way compares with Harness², which adapts on each scored task.
 
+## Read every result against how uneven the comparison is
+
+The two systems are not given the same chance, and every reading of this study states it first.
+The yardstick still has to be a benchmark: an outside comparison needs a grader that nobody in
+either loop wrote, and a benchmark is the only such grader on hand. It is also the setting
+Harness² was designed for, so the unevenness below comes with the yardstick and cannot be removed
+from it.
+
+- **Harness² trains on the task it is scored on.** For each scored task it sees the real inputs,
+  files and expected deliverable, runs `4k` rollouts on that task, lets its improver read them, and
+  delivers its best output for that same task. It sees no grade, but it sees the instance.
+- **Anabasis never sees a benchmark task.** Its Examiner writes stand-in tasks from a description
+  of the domain, its own check programs grade them, and it freezes one harness before the first
+  scored solve. That harness then answers each benchmark task once, without adapting.
+- **Anabasis climbs on a different grading.** Its checks verify what a program can verify:
+  recomputed numbers, formats, declared properties. The benchmark grades by its own verifier, which
+  may reward other things (JobBench's rubric also scores completeness, interpretation and
+  presentation). A climb on the checks may not move the benchmark's score at all.
+- **Anabasis is scored on another runtime than the one it built on.** It builds on pi's tools and is
+  scored after export, with `agent/tools.ts` dropped (stage 2).
+
+So a lower score for Anabasis is the expected outcome and says little against it. **An Anabasis
+harness that matches Harness², or comes within a margin fixed before its first scored solve, is a
+strong result**: one harness built on tasks it wrote itself, graded by checks it wrote itself,
+equal on unseen tasks to a method that fits each task it is scored on, at one rollout a task
+against `4k` rollouts and `3k` improver sessions.
+
+The like-for-like reading is Harness² on tasks it has not adapted to: the library a stream built on
+the other tasks of its domain, frozen, one rollout a task. Each comparison reports that arm beside
+Harness²'s own delivered outputs, and the economy beside both ("Economy, apart from quality").
+
 This is a protocol. No benchmark task has run under it. Its level is kept in `docs/plan.md`
 (row X1). How to run it is under "Running it".
 
@@ -115,14 +146,46 @@ then applied and scored in WorkBuddy's container. That keeps every solve identic
 campaign's, but the solver then works without the container's installed environment. The
 container route comes first, because the environment is part of what the benchmark measures.
 
+**The harness's own tools reach the container.** The container solver serves pi's tools, the
+harness's guide and programs, and the tools its `agent/tools.ts` declares, listed and called by the
+loader a campaign's solve uses (`harnessTools`, `src/harness/open.ts`): each call is a fresh process
+in a folder of its own, with the harness's programs on its PATH. A campaign starts that process
+behind the host's wall; in the container, the container is the wall, and the compiled solver,
+acting as Bun, starts it. The compiled solver holds none of the host's source to bundle a harness's
+tools over, so the mount carries the module the host bundled when it made the arm (`tools.mjs`,
+`bundleArm`). The factory is given the task's instruction as its public input, since a benchmark
+task has no campaign id or family. A harness whose tools cannot be opened or listed in the
+container ends the trial as `broken-harness`: the container is still scored, and the score counts as
+that arm's own, as a campaign counts a broken harness against its side (rule 7). The dry run
+of `run.ts check` writes the tools it listed to its result, so a harness that cannot serve them
+shows before a paid solve.
+
 **The solve budget matches.** The benchmark's executor took 29.6 steps per Code task under OpenCode
 at base, and Anabasis's default solve is 20 model turns and 30 minutes (`LIMITS`,
 `tools/d2/campaign.ts`), fixed in a campaign's setting. D and U open with the turn limit and wall
-the container will give each scored solve, so a harness is built for the budget it is scored at.
+the container will give each scored solve, so a harness is built for the budget it is scored at:
+`--solve-model-turns` and `--solve-minutes` at the launch equal the job's `PI_MODEL_TURNS` and
+`PI_WALL_MINUTES` (20 and 30 on both sides unless one is named), and a call of the harness's own
+tools is held to a campaign's shell default in both.
+
+**D's and U's prompts** are drafted in `prompts/D-draft.txt` and `prompts/U-draft.txt`; the wording
+is the operator's. D's is built from the benchmark's public description (its README: repository-level
+work in Python, a real project at a baseline commit, code located and edited across modules, hidden
+tests, 18 categories across developer, product, algorithm, QA and operations roles), and asks for
+tasks whose answer is a unified diff against a project the public input carries. U's adds the
+train half's task inputs as examples, in a marked slot that waits for the dataset. The prompt reaches
+every Examiner session and no other seat (`brief`, `src/examiner/write.ts`; the drafting session,
+`src/examiner/draft.ts`), so carrying the examples in it gives U exactly the exposure the table
+names, with no host mechanism. A prompt cannot carry 40 whole repositories, so the slot holds each
+task's instruction verbatim and its project's name, baseline commit and file list; every Examiner
+session rereads them. Giving the Examiner the projects themselves would need a folder its wall opens
+and the Builder's and the solver's close, since a seat's reads are otherwise open; that changes what
+a seat is given, which is the operator's decision (`AGENTS.md`, section 3).
 
 **The build budget is fixed** before either campaign opens: the same total in dollars
-(`--budget`), the same Builder and Examiner model (Claude Opus 4.8, Harness²'s editor), the same
-patience. A campaign
+(`--budget`), the same Builder and Examiner model, the same patience. The paper's editor is
+Claude Opus 4.8 and the campaigns' build seats are Claude Opus 5.5, so stage 2 runs Harness²'s
+editor on Opus 5.5 too (`HARNESS2_IMPROVER_MODEL`), and both build sides use one model. A campaign
 that ends on its budget and one that ends on its patience are both read at their ending.
 
 **Network.** Every Anabasis seat can reach the network (`AGENTS.md`, section 10). A seat's wall can
@@ -132,23 +195,66 @@ or an egress rule, as Harness² advises for its own executor, and the container 
 way in every arm. In Harness²'s own validation a Codex rollout on JobBench downloaded its task's
 rubric unasked. The restrictions are reported with the results.
 
+The proposal, not applied on any machine: block the names by resolver, on the runner that carries D
+and U, for the campaign's length.
+
+- **macOS.** A file `/etc/resolver/<domain>` sends every lookup in that domain and all its
+  subdomains to the resolver it names, so `/etc/resolver/hf.co` and `/etc/resolver/huggingface.co`,
+  each holding `nameserver 127.0.0.1` and `port 9` (a port nothing answers), make `*.hf.co` fail for
+  every process that resolves through the system, Seatbelt's seats included. Removing the two files
+  reverts it; `scutil --dns` shows them in force.
+- **Linux.** Where `systemd-resolved` answers (`/etc/resolv.conf` is its stub), a routing domain on
+  a link of its own sends those names to a server that does not answer, without touching its
+  configuration files: `ip link add ana-block type dummy`, `resolvectl dns ana-block 127.0.0.2`,
+  `resolvectl domain ana-block '~hf.co' '~huggingface.co'`. Bubblewrap's seats share the host's
+  resolver, so they are covered. `ip link del ana-block`, or a reboot, reverts it.
+- **The check**, before the first seat and again at the ending: a command run under a seat's wall
+  fails to resolve `huggingface.co` and `cdn-lfs.hf.co` and still reaches `https://pypi.org/simple/pip/`
+  (`networkReach`, `src/tools/command.ts`, still reads `reached`). A program that resolves names
+  itself, or connects to an address, passes a resolver block; the trace audit below covers that.
+- **The benchmark's GitHub repositories** (`Tencent/workbuddy-bench`, `google-research/harness2`)
+  cannot be blocked by resolver or by a proxy that does not break TLS, since both see only
+  `github.com`. The simplest honest course is to leave GitHub open and audit: at the ending, search
+  every seat's commands in the campaign's log for those repository names and the blocked hosts, and
+  report each hit with the scores. Blocking `github.com`, `codeload.github.com` and
+  `*.githubusercontent.com` the same way is the stronger choice, at the cost of every seat's use of
+  GitHub; that is the operator's.
+- **The container** does not use the host's resolver this way: Docker on Linux hands a container
+  the stub's upstream servers (`/run/systemd/resolve/resolv.conf`), past the routing domain, and
+  Docker Desktop's resolver on macOS is unverified. Its block is a job setting (a DNS server for
+  the job's network, or `extra_hosts` for the named hosts), settled with `run.ts check`, which reads
+  it from inside the container for free.
+
 **Domain fit.** An Anabasis task is a JSON input with hidden values, its answer is `answer.json`,
 and its checks run in verifier cells with the network closed (`src/kernel/task.ts`,
 `src/kernel/verify.ts`). A Code task in WorkBuddy is a diff against a real repository, judged by
 hidden tests. For D or U to practise on anything like it, the Examiner has to draft an exam whose
 tasks carry a small repository in their inputs and whose checks apply a patch and run tests inside
-a cell. Whether a drafted exam can do that, and whether the cells hold the interpreters it needs, is
-unverified. If it cannot, the Code subset is the wrong place to start, and the Office subset, whose
-deliverables are files on disk, is the next candidate.
+a cell. The cell can: `domain-fit.ts` drives the real verifier on a synthetic task whose input
+carries a five-file repository, with a check program that applies the answer's diff with `git apply`
+and runs hidden tests with `unittest` and pytest, and on the Linux runner's Bubblewrap wall it gives
+the 4 expected verdicts of 4 (the fix passes; a change to the docs only, a diff that does not apply
+and an answer that ships tests of its own fail). Two things stay open. The cell holds only the host's
+programs and the verifier's tool tree, and cannot install, so pytest came from a virtual environment
+the probe built in that tree beforehand; a WorkBuddy Code task brings its own image with its
+dependencies, and nothing installs a field engine for a drafted exam yet (`src/examiner/draft.ts`).
+Reading the Code subset's images, once the dataset is fetched, shows whether one tool tree can hold
+what its tests need. If it cannot, the Office subset, whose deliverables are files on disk, is the
+next candidate. The probe has not run under the macOS wall.
 
 ## Stage 2: against Harness²
 
 Once stage 1 has a result, Harness² `k=1` joins, rerun on the same 40 tasks rather than read from
 the paper. It runs on its own executor (OpenCode), since it cannot run on pi, so this comparison
-crosses runtimes, and it is read only against the OpenCode base rerun beside it. To set a learned
-Anabasis harness on OpenCode beside it, the harness is translated into Harness²'s editable tree
-(the guide into the always-on files, programs into `scripts/` or skills, `tools.ts` into an OpenCode
-plugin where one is possible) through a patch kept in `wb/` that lets a run start from a given tree.
+crosses runtimes, and it is read only against the OpenCode base rerun beside it: the arm
+`opencode-base` of `run.ts`, OpenCode at the version and variant Harness² runs it (`_job_yaml`,
+`harness2/benchmarks/workbuddy.py`), over the study's route to the same solver. To set a learned
+Anabasis harness on OpenCode beside it, the harness would be translated into Harness²'s editable
+tree (the guide into the always-on files, programs into `scripts/` or skills, `tools.ts` into an
+OpenCode plugin where one is possible) through a patch that lets a run start from a given tree.
+Neither that patch nor a verb that runs Harness²'s own `k=1` sweep
+(`harness2.cli.run_sweep --bench wb --subset code --substrate oc --k 1 --split test`) is in the
+study yet; the base arm is.
 That result is reported as the transfer of an exported Anabasis harness, with what the translation
 dropped listed beside it. The export reproducing the starter's score shows the export path works,
 and nothing about whether learned tools keep their behaviour.
@@ -174,8 +280,19 @@ read.
 - **Paired test.** Each task's difference in mean score between two arms, read with the one-sided
   paired sign-flip test a campaign uses (`flipP`, `src/kernel/compare.ts`). `flipP` builds its
   distribution over integer margins, so each difference is first put in whole units: hundredths of
-  a task's score, summed over its three streams. S scored twice, in two sets of streams, is the
-  A/A: it should read no step, and its spread is the noise every other pair has to beat.
+  a task's score, summed over its three streams, and read at a campaign's level, 0.02. S scored
+  twice, in two sets of streams, is the A/A: it should read no step either way, and its spread is
+  the noise every other pair has to beat. A single arm's A/A splits its trials by a campaign's
+  mirrored halves (the first and last of each four against the two between, in the order the
+  trials started), so a drift across a job's hours falls on both halves.
+- **A non-result is run again, never counted.** A trial whose solver ended on its provider or
+  crashed, or that the benchmark's reader gave no score, is a non-result (`AGENTS.md`, rule 7).
+  `run.ts score` runs each task short of its streams again for what it lacks, into the same jobs
+  folder, up to two rounds, as Harness²'s `run_batch` resumes a batch. A task still short on either
+  side is named and left out of the reading, as a campaign leaves a short task out of its pairs
+  (`pairsOf`), and each side is cut to its first streams in start order.
+- **An arm whose harness moves between attempts** (Harness²'s improver) is also read one stream at
+  a time (`byStream` in `run.ts read`), since its streams are not repeats of one harness.
 
 ## Economy, apart from quality
 
@@ -192,9 +309,11 @@ paper's control: the base harness run `k` times with the same selector choosing 
 1. **Without a model.** `run.ts setup`, then, on the operator's word that WorkBuddy-Bench's
    licence is accepted, `run.ts setup --dataset`, which fetches the Code subset and writes the
    paper's split.
-2. **Without a model.** `run.ts bundle` for the starter, then `run.ts check`: one test task in its
-   container through the job's proxy, the solver dry. Then read whether a verifier cell can apply a
-   patch and run a test (domain fit). Either failing stops stage 1 as written.
+2. **Without a model.** `run.ts bundle --from starter`, then `run.ts check`: one test task in its
+   container through the job's proxy, the solver dry. Before the dataset, `run.ts check
+   --placeholder` runs the same path on the study's own task in `placeholder/`, and `domain-fit.ts`
+   reads whether a verifier cell can apply a patch and run a test (domain fit). Either failing stops
+   stage 1 as written.
 3. **Paid, on the operator's word.** S in two sets of three streams on the 40 tasks: the A/A.
 4. **Paid, on the operator's word.** Campaigns D and U, each opened fresh at a published commit and
    run to a typed ending under the fixed build budget (`AGENTS.md`, section 10, item 9); then their
@@ -215,8 +334,13 @@ benchmark brings stays in the ignored `studies/external/`:
 - `harness2-work/` holds each arm's mount (`run.ts bundle`, `bundleArm`), the free checks, and the
   job folders of every scored run.
 
-An arm is a frozen harness, the starter or a kept one, bundled once with the container solver
-compiled for the container (`../shared/bundle.ts`). WorkBuddy's runner starts every trial in a
+An arm is a frozen harness, the starter or one a campaign kept, bundled once with the container
+solver compiled for the container (`../shared/bundle.ts`). A campaign's arm is named by the
+campaign alone: `run.ts bundle --arm D --from <campaign>` finds its log on any host (`logAcross`),
+takes the reference at its typed ending, or the kept harness `--harness` names (`keptAs`,
+`tools/d2/campaign.ts`), copies it as the campaign's handover does (`copyHarness`), and refuses a
+copy that does not open as the digest the log names. The mount's record keeps the digest, the
+campaign, its ending and whether the harness's epoch was confirmed against the starter. WorkBuddy's runner starts every trial in a
 fresh container. In it, the study's Harbor agent (`../shared/harbor/pi_agent.py`) runs the solver
 (`../shared/pi-solve.ts`), which answers with pi's coding tools inside the harness. The solver
 reaches the model through the job's own proxy on the host, as Harness²'s OpenCode arm does, so
@@ -230,6 +354,9 @@ score, ending, bill, turns, calls and seconds. The scores are read by Harness²'
 its venv (`trials.py`), and the spend from the solver's own trace by the kernel's readers
 (`../shared/scores.ts`). `run.ts read` sets two arms beside each other, or one arm's streams split
 in two, the A/A, as "Metric and statistics" says.
+
+A first pilot on JobBench's statistics tasks, every arm scored under `claude -p`, has its own
+protocol in `jobbench-pilot.md`.
 
 ## Predictions
 
@@ -246,4 +373,20 @@ authoring session proposes, for step 4: "D's mean over three streams is above S'
   committed under `studies/runs/harness2/`. Until it is settled a run's record keeps its scores,
   bills and terms, and its trajectories stay in the ignored clone.
 - The closeness margin, if a "gets close" claim is wanted.
-- The wording of D's prompt and the choice of U's examples.
+- The wording of D's prompt and the choice of U's examples (drafts in `prompts/`), and whether U's
+  Examiner is given the train half's projects themselves, which needs a folder only its wall opens.
+- The network block: applying the resolver block on the runner, and whether GitHub is blocked
+  whole or audited.
+
+## Appendix: a known-benchmark mode
+
+The handicaps above could also be measured rather than only stated, by handing a campaign what is
+known about a benchmark. That is a recipe of this study, not a flag of the host. Level K1 is this
+study's arm U: a prompt filled from the train half (`run.ts examples`), which already reaches the
+Examiner and no other seat, and an audit of every seat's commands for the benchmark's hosts at each
+ending (`run.ts audit`), since every seat reaches the network until the resolver block below is
+applied. Level K2 makes the train half's tasks and tests the exam, which is Meta-Harness's exposure
+under Anabasis's optimiser, and is built only if a score on the train half after U shows the
+benchmark's grader disagreeing with U's own checks. The test half stays held out at both levels, so
+neither becomes adaptation on the scored task. Both are planned, not in source; the plan is in
+`docs/backlog/known-bench.md`.

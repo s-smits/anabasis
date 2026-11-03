@@ -515,7 +515,7 @@ describe("a campaign", () => {
     }
     await expect(
       sessionCommand([...flags, "--session", "z-8", "--builder", "faux/none", "--cap", "$40"]),
-    ).rejects.toThrow("--cap $40 --reserve 10: a cap and its reserve are dollars as plain numbers");
+    ).rejects.toThrow("--cap $40 --reserve 3: a cap and its reserve are dollars as plain numbers");
     // A simulation's seats are scripts, which are paid nothing, and may name none.
     expect(capNamed({ reserve: "10" }, "scripted")).toBeUndefined();
     expect(capNamed({ cap: "40", reserve: "5" }, "scripted")).toEqual({ dollars: 40, reserve: 5 });
@@ -614,7 +614,7 @@ describe("a campaign", () => {
     for (const fact of ["8 tallied", "2 of them untied"]) expect(count).toContain(fact);
     expect(ties).toContain("75%");
     expect(flips).toContain("13%");
-    expect(shift).toMatch(/without the bill: none\b/u);
+    expect(shift).toMatch(/least detectable shift: none\b/u);
     expect(lines(0.9)[3]).toContain("90%");
     for (const fact of ["8 tasks", "6 were tallied", "1 set aside", "1 disputed"]) {
       expect(drew).toContain(fact);
@@ -624,10 +624,10 @@ describe("a campaign", () => {
       valid: { old: [0, 0, 2], fresh: [0, 0, 2], informative: { old: 0, fresh: 0 } },
       frontier: null,
       objective: { direction: "lower" },
-      points: { validity: -150, objective: 225, bill: 75 },
+      points: { validity: -150, objective: 225 },
       noise: null,
     }).slice(-2);
-    expect(points).toMatch(/validity 0\.6\b.*objective 0\.3\b.*bill 0\.1\b.*-150, \+225 and \+75\b/u);
+    expect(points).toMatch(/validity 0\.6\b.*objective 0\.3\b.*-150 and \+225\b/u);
     expect(objective).toContain("lower");
   });
 

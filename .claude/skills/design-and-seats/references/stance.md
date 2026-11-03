@@ -3,7 +3,7 @@ classifier or file-access rule. This expands `AGENTS.md` section 2.
 
 ## 2. The stance: code owns the conditions, models own the content
 
-From the outside Anabasis v2 is a workflow; inside its steps the agents are free. Most design
+From the outside Anabasis is a workflow; inside its steps the agents are free. Most design
 questions are settled by asking which side of that split a decision falls on.
 
 | Code decides | A model decides |

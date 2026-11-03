@@ -120,13 +120,13 @@ describe("proveCommits", () => {
     const steps = readFileSync(log, "utf8")
       .split("\n")
       .filter((line) => line.startsWith(source));
-    expect(steps.map((line) => line.split("\t")[1])).toEqual([
-      "install --frozen-lockfile",
-      "run format:check",
-      "run secrets",
-      "run typecheck",
+    // The cheap steps run first and in turn; the rest start side by side, in no fixed order.
+    const ran = steps.map((line) => line.split("\t")[1] ?? "");
+    expect(ran.slice(0, 3)).toEqual(["install --frozen-lockfile", "run format:check", "run secrets"]);
+    expect(ran.slice(3).toSorted((one, other) => one.localeCompare(other))).toEqual([
       "run lint -- --strict",
       "run test -- test/owner.test.ts",
+      "run typecheck",
     ]);
   });
 
@@ -167,11 +167,13 @@ describe("proveCommits", () => {
     ]);
     const imported = git("commit-tree", into(away, "src", src), "-p", away, "-m", "what the UI imports");
     const head = git("commit-tree", withFile(imported, "d.ts"), "-p", imported, "-m", "head");
+    // The UI's steps of a commit's gate, in their order: they run in turn, beside the other steps.
     const ran = (sha: string): string[] =>
       readFileSync(log, "utf8")
         .split("\n")
         .filter((row) => row.startsWith(sha))
-        .map((row) => row.split("\t")[1] ?? "");
+        .map((row) => row.split("\t")[1] ?? "")
+        .filter((args) => args.startsWith("run ui:") || args.startsWith("run test -- packages/ui/"));
     const near = (...names: string[]): string[] => [
       "run ui:deps",
       "run ui:build",
@@ -184,22 +186,23 @@ describe("proveCommits", () => {
       expect(prove([`${held}:static`, `${away}:static`, `${imported}:static`, `${head}:whole`]).status).toBe(
         0,
       );
-      expect(ran(held)[1]).toBe("run ui:gate");
-      expect(ran(away)[1]).toBe("run format:check");
-      expect(ran(imported).slice(1, 4)).toEqual(near("deep.test.ts"));
-      expect(ran(head)[1]).toBe("run ui:gate");
+      // The UI's install runs first wherever the UI is, since the lint reads what it installs.
+      expect(ran(held)).toEqual(["run ui:deps", "run ui:gate"]);
+      expect(ran(away)).toEqual(["run ui:deps"]);
+      expect(ran(imported)).toEqual(near("deep.test.ts"));
+      expect(ran(head)).toEqual(["run ui:deps", "run ui:gate"]);
       // Main holding the UI: a whole pass over the same change runs the browser's file too.
       git("update-ref", "refs/remotes/origin/main", away);
       rmSync(log, { force: true });
       forgetPasses();
       expect(prove([`${imported}:static`, `${head}:whole`]).status).toBe(0);
-      expect(ran(head).slice(1, 4)).toEqual(near("browser-page.test.ts", "deep.test.ts"));
+      expect(ran(head)).toEqual(near("browser-page.test.ts", "deep.test.ts"));
       // Main holding the change: a whole pass over a head that leaves what the UI reads alone.
       git("update-ref", "refs/remotes/origin/main", imported);
       rmSync(log, { force: true });
       forgetPasses();
       expect(prove([`${head}:whole`]).status).toBe(0);
-      expect(ran(head)[1]).toBe("run format:check");
+      expect(ran(head)).toEqual(["run ui:deps"]);
     } finally {
       git("update-ref", "refs/remotes/origin/main", base);
     }
@@ -240,7 +243,8 @@ describe("proveCommits", () => {
   it("stops at the commit that fails and names the failing step and its log", () => {
     const result = prove(landing, { ANA_FAKE_FAIL: `${source} lint` });
     expect(result.status).toBe(1);
-    expect(gatesRun(log)).toEqual([`${source} -`]);
+    // The tests start beside the lint, so they ran; the next commit's gate did not start.
+    expect(gatesRun(log)).toEqual([`${source} test/owner.test.ts`]);
     const last = result.stderr.trimEnd().split("\n").at(-1) ?? "";
     expect(last).toStartWith("FAILS lint Log: ");
     expect(readFileSync(last.slice(last.indexOf("Log: ") + 5), "utf8")).toContain(

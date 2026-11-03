@@ -162,11 +162,11 @@ describe("a log's comparisons read again", () => {
     expect(rows.filter(({ reread, reading }) => reread !== null && reread !== reading).length).toBe(1);
   });
 
-  it("tests nothing where nothing was tallied, and reads no older report again", () => {
+  it("tests nothing where nothing was tallied, and reads an older report on the scores it holds", () => {
     const empty = bySession.get("g-3");
     expect([empty?.scored, empty?.reread, empty?.tallied, empty?.apart.aside]).toEqual([null, null, 0, 1]);
     const older = bySession.get("g-5");
-    expect([older?.reread, older?.unbilled, older?.scored?.wins]).toEqual([null, null, 7]);
+    expect([older?.reread, older?.unbilled, older?.scored?.wins]).toEqual(["step", null, 7]);
   });
 
   it("reads an A/A step in either direction and none where its halves split evenly", () => {

@@ -28,10 +28,11 @@
  * billed every move made inside its span, which those moves' own lines billed again.
  * The Referee triage of 20 October found unclear and unread practice rejections counted as failures.
  */
-import type { Measures, Tally } from "../kernel/compare.ts";
+import { type Measures, scoresIn, type Tally, testOf } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { lastReports, latestBuilt, promoted } from "../kernel/reports.ts";
-import { billedAll, billedParts, ownedBy, traceKind } from "../kernel/trace.ts";
+import { ownedBy, traceKind } from "../kernel/trace.ts";
+import { billedAll, billedParts } from "../kernel/meter.ts";
 import { ended, passed, practiceRan, type Ran, rejectionAside, solvesIn } from "../kernel/solves.ts";
 import { heldAtGate, taskSets } from "../kernel/task.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
@@ -105,10 +106,10 @@ interface Compared {
    *  turns were not limited. A changed limit is another setting, and no tally is read across two. */
   readonly modelTurns: number | null;
   readonly reading: string | null;
+  /** The tally the step is read on: a report from 26 October to 2 November also scored the bill,
+   *  and its tally here is of its scores without it (`scoresIn`); any other report's is as tallied,
+   *  since one from before 21 October holds no scores. */
   readonly tally: Tally | null;
-  /** The tally of the scores without the bill, which the step is read on (`readsStep`); null in a
-   *  report from before 26 October, which holds none. */
-  readonly unbilled: Tally | null;
   /** Each harness by itself: the tasks with no, one, two... valid answers among its solves. */
   readonly valid: { readonly old: readonly number[]; readonly fresh: readonly number[] } | null;
   /** The points each measure gave the tallied tasks together (`pointsOf`); null where nothing was
@@ -271,15 +272,9 @@ function compared(events: readonly LogEvent[], id: string): Compared {
     tally:
       report?.scored == null
         ? null
-        : { wins: report.scored.wins, losses: report.scored.losses, ties: report.scored.ties },
-    unbilled:
-      report?.scored?.unbilled == null
-        ? null
-        : {
-            wins: report.scored.unbilled.filter((one) => one > 0).length,
-            losses: report.scored.unbilled.filter((one) => one < 0).length,
-            ties: report.scored.unbilled.filter((one) => one === 0).length,
-          },
+        : (({ wins, losses, ties }) => ({ wins, losses, ties }))(
+            "unbilled" in report.scored ? testOf(scoresIn(report.scored)) : report.scored,
+          ),
     valid: report?.valid == null ? null : { old: report.valid.old, fresh: report.valid.fresh },
     points: report?.points ?? null,
     aside: report?.aside.length ?? 0,
@@ -345,17 +340,24 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
       return [{ step: "examiner", id, ...read, ...counts }];
     }
     if (kind === "build.started") {
-      const { read, closed, until, billed } = soFar(events, index, id, "build", led);
+      const { read, closed, until, window, billed } = soFar(events, index, id, "build", led);
       const end = events[closed]?.data;
       const within = ({ started }: { readonly started: number }) => started > index && started < until;
+      // A session cut before its end left what it last froze: until 2 November a Builder resumed
+      // after one was told that harness came from no session (esp32-fresh-opus-forkedPR569, lane 2).
+      const frozen = window.findLast(
+        (event) => event.kind === "build.checkpoint" && event.data.session === id,
+      );
+      const harness = text((end ?? frozen?.data)?.harness);
       return [
         {
           step: "builder",
           id,
           ...read,
           parent: text(data.parent),
-          harness: text(end?.harness),
-          changed: end?.changed === true,
+          harness,
+          changed:
+            end === undefined ? harness !== null && harness !== text(data.parent) : end.changed === true,
           // Each attempt of one solve is logged as `<id>-<attempt>`, and the session charged the
           // solve once: until 29 October an open session of buffer-fresh-deepseek read 7 practice
           // solves where its ending wrote 4, one of them tried four times.

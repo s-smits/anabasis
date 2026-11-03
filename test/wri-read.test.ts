@@ -463,6 +463,61 @@ describe("the reader of a round compared with another harness than its session s
     const supported = withUnbilled([-2, -2, -2, -2]);
     expect(withUnbilled([0, 0, 0, 0])).not.toBe(supported);
     expect(supported).toBe(baselineNoise);
+    // The counts are read without the bill too, as the step is: until 2 November the billed ones.
+    expect(withUnbilled([0, 0, 0, 0])).toContain("0 won, 0 lost and 4 tied");
+  });
+
+  it("reads the tools a new harness called whether its Builder session finished or not", () => {
+    // A led session freezes its harness for a comparison and may never finish: until 2 November
+    // these triggers keyed on the finished harness and opened lane 16 in none of seven led runs.
+    const called = (read: readonly LogEvent[]) =>
+      overview(read).triggers.find(({ name }) => name === "TOOLS CALLED")?.detail;
+    const open = events.map(
+      (event): LogEvent =>
+        event.kind === BUILD_FINISHED
+          ? { ...event, kind: "build.checkpoint", data: { session: "b-1", harness: "hc" } }
+          : event,
+    );
+    expect(called(events)).toContain("hc, left by b-1, over 4 test-side solves");
+    expect(called(open)).toBe(called(events));
+  });
+
+  it("names a reading the set-aside moves only where the tests without the bill disagree", () => {
+    // Billed, the counted test clears (six wins) and the scored one does not; without the bill
+    // both read the same six wins, or the counted test loses them.
+    const moved = (counted: readonly number[]) =>
+      overview(
+        log.map((each) =>
+          each.kind === REPORTED
+            ? {
+                ...each,
+                data: {
+                  ...each.data,
+                  level: 0.02,
+                  aside: ["t9"],
+                  counted: {
+                    wins: 6,
+                    losses: 0,
+                    ties: 0,
+                    p: 0.016,
+                    differences: [1, 1, 1, 1, 1, 1],
+                    unbilled: [...counted],
+                  },
+                  scored: {
+                    wins: 5,
+                    losses: 1,
+                    ties: 0,
+                    p: 0.11,
+                    differences: [1, 1, 1, 1, 1, -1],
+                    unbilled: [1, 1, 1, 1, 1, 1],
+                  },
+                },
+              }
+            : each,
+        ),
+      ).triggers.filter(({ name }) => name === "READING MOVES WITH THE SET-ASIDE");
+    expect(moved([1, 1, 1, 1, 1, 1])).toHaveLength(0);
+    expect(moved([0, 0, 0, 0, 0, 0])).toHaveLength(1);
   });
 });
 
@@ -723,8 +778,18 @@ describe("the reader of comparisons the campaign command named apart from its Bu
         ? { ...event, data: { ...event.data, frontier: { of: ["v1", "v2"], differences: [3, 0] } } }
         : event,
     );
-    const quick = overview(onObjective).triggers.find(({ name }) => name === "WIN AT A SMALL WALL SHARE");
-    expect(quick?.detail).toContain("b-1: 2 passed solves of tasks the new harness won");
+    const quick = (read: readonly LogEvent[]) =>
+      overview(read).triggers.find(({ name }) => name === "WIN AT A SMALL WALL SHARE")?.detail;
+    expect(quick(onObjective)).toContain("b-1: 2 passed solves of tasks the new harness won");
+    // A led session is still open when its comparisons report: until 2 November its quick wins were
+    // keyed on the harness it finished with, and seven led campaigns read none (WRI lane 19).
+    const open = onObjective.map(
+      (event): LogEvent =>
+        event.kind === BUILD_FINISHED
+          ? { ...event, kind: "build.checkpoint", data: { session: "b-1", harness: "hc" } }
+          : event,
+    );
+    expect(quick(open)).toContain("b-1: 2 passed solves of tasks the new harness won");
   });
 
   it("reads a task its report's test names by the difference that report recorded", () => {

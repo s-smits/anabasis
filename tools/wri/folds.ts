@@ -24,7 +24,8 @@ import { type Condition, conditionsOf } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { flipP, unsolved as noneAnswered } from "#src/kernel/compare.ts";
 import { lastReports, poolOf, pairsReported, referenceOf } from "#src/kernel/reports.ts";
-import { spendOf, type Traced, traced, tracesIn } from "#src/kernel/trace.ts";
+import { type Traced, traced, tracesIn } from "#src/kernel/trace.ts";
+import { spendOf } from "#src/kernel/meter.ts";
 import { type Judged, refusedBy, solvesIn, verdictsOf } from "#src/kernel/solves.ts";
 import { heldAtGate, taskSets } from "#src/kernel/task.ts";
 import { OBJECTIVE } from "#src/kernel/verify.ts";
@@ -207,7 +208,6 @@ export const TRIGGERS = {
   "SESSION CRASHED": 30,
   "LONG SILENCES": 31,
   "SPEND LED BY A ROLE": 31,
-  "UNBILLED COMPACTIONS": 31,
   "REPLAY MOVED THE VERDICT": 6,
   "SET ASIDE AND UNSETTLED": 7,
   "READING MOVES WITH THE SET-ASIDE": 7,

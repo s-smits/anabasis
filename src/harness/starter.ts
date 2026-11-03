@@ -28,7 +28,9 @@
  * (Meta-Harness, Harness², DGM), and in AHE's ablation the evolved prompt alone scored below its
  * seed while the whole evolved harness scored above it. So the starter's guide is short, holds only
  * what is true in every domain, and is the Builder's to revise, replace or remove on the evidence
- * of its practice.
+ * of its practice. Until 2 November `HARNESS.md` also said to keep to `EXAMPLE`'s outline, which
+ * contradicted that for a reader that follows a prompt literally: 551 of the 675 guides kept across
+ * the archived campaigns carried all three of its headings. It is now shown as an example.
  *
  * It is written out in v1's on-disk format like any other harness state, and is named by its digest
  * like any other: the three files below are the whole of it, so a change to any is another harness,
@@ -289,11 +291,10 @@ ${STARTER.guide.trimEnd()}
 
 They are yours to revise, replace or remove, the file included.
 
-It is words: code the solver would copy out and run is a program. It says nothing of
-time or turns: the host tells the solver its limits and appends how much of them is used to results
-of tools that execute; argument refusals and unavailable tools carry no reminder. Keep to this
-outline, with one entry a program or a tool, so that one harness's
-guide can be read against another's:
+The host tells the solver its limits and appends how much of them is used to results of tools
+that execute; argument refusals and unavailable tools carry no reminder. Solvers told in their
+guide that time was short have submitted answers their own check refused, with most of their time
+left. An example guide, with one entry a program or a tool:
 
 \`\`\`markdown
 ${EXAMPLE.guide.trimEnd()}

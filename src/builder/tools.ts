@@ -49,7 +49,8 @@ import { type LogEvent, read } from "../kernel/log.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { limitsIn } from "../kernel/condition.ts";
 import type { Contract } from "../kernel/contract.ts";
-import { billedParts, callList, callText, closingOf, traceOf } from "../kernel/trace.ts";
+import { callList, callText, closingOf, traceOf } from "../kernel/trace.ts";
+import { billedParts } from "../kernel/meter.ts";
 import { ended, passed, practiceRan, rejectionAside, solvesIn, verdictsOf } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
 import {
@@ -76,7 +77,7 @@ import { asError, errorMessage } from "../meta/runtime-values.ts";
 import { plural } from "../meta/text.ts";
 import { ending as endSession, openDesk, text, tool } from "../tools/answer.ts";
 import { CODING_TOOLS, codingTools, selectedCodingTools } from "../tools/coding.ts";
-import { type CommandWall, type NetworkReach, networkReach } from "../tools/command.ts";
+import { type CommandWall, launchOn, type NetworkReach, networkReach } from "../tools/command.ts";
 import { type Harness, harnessTools, openHarness, pathsUnder, toolTreeStamp } from "../harness/open.ts";
 import { installedPrograms } from "../harness/programs.ts";
 import { systemPrompt } from "../solver/prompt.ts";
@@ -455,7 +456,7 @@ export function practiceTool(bench: Bench): SeatTool {
   return tool({
     name: "practice",
     description:
-      "Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host's limits. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, the time, the model turns and the tokens it took, the task's record under the harness that ran it, under harness/ as last practised and under the harness you started from, the solve's id for read_trace and, for a fail, what the Referee read. It never says which check refused an answer. A harness that does not open spends no solve. With `under: \"reference\"` the tasks are solved under the reference harness instead, the one yours is compared with; it costs the same solves and shows what your change is measured against.",
+      "Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host's limits. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, the time, the model turns and the tokens it took, the task's record under the harness that ran it, under harness/ as last practised and under the harness you started from, the solve's id for read_trace and, for a rejection the Referee set aside, that it was set aside. It never says which check refused an answer. A harness that does not open spends no solve. With `under: \"reference\"` the tasks are solved under the reference harness instead, the one yours is compared with; it costs the same solves and shows what your change is measured against.",
     parameters: Type.Object({
       tasks: Type.Array(Type.String(), {
         minItems: 1,
@@ -808,7 +809,7 @@ export function walledTools(bench: Bench, wall: CommandWall, network: NetworkRea
     const sample = bench.tasks[0];
     return sample === undefined
       ? null
-      : (await harnessTools(harness, sample.task, wall)).map(({ name }) => name);
+      : (await harnessTools(harness, sample.task, launchOn(wall))).map(({ name }) => name);
   };
   return [
     ...codingTools(wall, CODING_TOOLS).map((each) =>

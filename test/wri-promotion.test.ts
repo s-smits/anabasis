@@ -205,17 +205,6 @@ describe("lane 27: a promotion and the climb after it", () => {
     expect(carriers).toMatch(/g-2 won 6 .*6 untied, none to spare; g-3 won 8 .*8 untied, 2 to spare/);
   });
 
-  it("names the compactions whose summary was billed nothing, by seat", () => {
-    const { log, put, compare } = held();
-    compare("g-1", "hbase", "hn", STEP)();
-    put("build.compacted", { session: "b-1", usages: [] });
-    put("build.compacted", { session: "b-1", usages: [{ cost: { total: 0.2 } }] });
-    put("exam.compacted", { session: "x-1", usages: [] });
-    expect(triggered(log)("UNBILLED COMPACTIONS")).toEqual([
-      "2 of 3 compactions billed nothing: build 1, exam 1",
-    ]);
-  });
-
   it("reads a promotion on the differences its step tested: the frontier and the retained tasks since 20 October, the frontier alone before", () => {
     const frontier = { differences: [4, 4], of: ["a", "b"] };
     const retained = { differences: [-4], of: ["c"] };
@@ -303,7 +292,7 @@ describe("lane 27 across campaigns", () => {
             lane: 11,
             name: "SAFEGUARD-9 PROMOTION BEYOND VALIDITY",
             detail:
-              "hn 6-0 p 0.016 joined at level 0.02, 0-0 p 1.000 on validity alone, 6-0 p 0.016 without the bill by the current score",
+              "hn 6-0 p 0.016 joined at level 0.02, 0-0 p 1.000 on validity alone, 6-0 p 0.016 by the current score",
           },
         ],
       ],
@@ -314,7 +303,7 @@ describe("lane 27 across campaigns", () => {
             lane: 11,
             name: "SAFEGUARD-9 PROMOTION BEYOND VALIDITY",
             detail:
-              "hn 6-0 p 0.016 joined at level 0.02, 0-0 p 1.000 on validity alone, 0-0 p 1.000 without the bill by the current score",
+              "hn 6-0 p 0.016 joined at level 0.02, 0-0 p 1.000 on validity alone, 0-0 p 1.000 by the current score",
           },
         ],
       ],

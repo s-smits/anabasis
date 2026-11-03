@@ -16,7 +16,7 @@
  */
 import { campaignOf } from "#src/campaign/handover.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
-import { billedAll } from "#src/kernel/trace.ts";
+import { billedAll } from "#src/kernel/meter.ts";
 import { existsSync, statSync } from "#src/meta/filesystem.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";

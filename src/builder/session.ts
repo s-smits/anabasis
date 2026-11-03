@@ -49,10 +49,10 @@ import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earen
 import { conditionsOf, type Limits } from "../kernel/condition.ts";
 import type { Contract } from "../kernel/contract.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
-import { priceKey } from "../kernel/meter.ts";
+import { billedParts, priceKey } from "../kernel/meter.ts";
 import type { Ending } from "../kernel/solve.ts";
 import type { Cap } from "../kernel/reports.ts";
-import { billedParts, ownedBy } from "../kernel/trace.ts";
+import { ownedBy } from "../kernel/trace.ts";
 import { ended as endedSolves, practiceRan, solvesIn } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "../meta/filesystem.ts";

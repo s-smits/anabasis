@@ -1,4 +1,4 @@
-# Anabasis v2: the plan
+# Anabasis: the plan
 
 This file keeps the present only: the four factors with their recorded values, the rows still
 open with their level, the tuning that stands, and the decisions waiting for the operator. The
@@ -21,7 +21,7 @@ unless a row names another reading.
 | # | Factor | Now | Bar |
 | --- | --- | --- | --- |
 | S | Supply | Fresh buffer campaigns hold out tasks after each promotion: on 20 October r3's Examiner proved 89 author answers (`task.feasible`) over 5 epochs | At least 4 informative tasks before each comparison |
-| M1 | Climb | Four fresh buffer campaigns reached six or more promotions, each at one commit: v065-a 7, r3 6, forkedPR377 6, forkedPR506 6. None counts as six *confirmed* (`confirmed`, `src/campaign/climb.ts`, replayed 31 October): v065-a and forkedPR377 read no starter comparison, and r3, forkedPR506 and v070 read none that cleared against the starter without the bill; in one of r3's and in v070's the starter won more tasks than the reference without the bill (10-15-7 and 15-17-0, from the reference's side). Of 64 logs that promoted, 2 hold a confirmed promotion (v065-b, forkedPR530). Elsewhere at most job 3, esp32 2, recode 2, truss 1 | 6 confirmed in one real campaign, observed, no quota; then a second domain (operator, 25 October; 12 until then) |
+| M1 | Climb | Four fresh buffer campaigns reached six or more promotions, each at one commit: v065-a 7, r3 6, forkedPR377 6, forkedPR506 6. None counts as six *confirmed* (`confirmed`, `src/campaign/climb.ts`, recounted 2 November on the epoch's first starter comparison that tallied a task): v065-a and forkedPR377 read no starter comparison, and r3, forkedPR506 and v070 read none that cleared against the starter without the bill; in one of r3's and in v070's the starter won more tasks than the reference without the bill (10-15-7 and 15-17-0, from the reference's side). Of the 10 epochs whose starter comparison tallied a task, the reference led in 8 and 4 cleared: v065-b, forkedPR530, fullrun and last, one each. Elsewhere at most job 3, esp32 2, recode 2, truss 1 | 6 confirmed in one real campaign, observed, no quota; then a second domain (operator, 25 October; 12 until then) |
 | M2 | Honesty | 1 A/A step in the 111 A/A readings able to read one (buffer forkedPR294, v0.6.1); 0 in the four campaigns above (0 of 7, 6, 6 and 2). The bar's ten controls after the sixth promotion are unmeasured, since the release cycle stops a run at six | 0 in the ten controls after the six on record |
 | M3 | Verdicts | 0 hand labels: no `pass.labelled` or `diagnosis.labelled` event in any log on this machine or its archive, and no packet labelled | 30 labels; 3 in 4 defects caught, at most 1 in 10 earned voided |
 | W | Economy | r3: $401 billed for 5 promotions, 25 active hours. All fresh campaigns at 29 October: $8,060 for 92 promotions, $87.61 each; none ended on its budget ("Where the dollars went") | At most 3 promotion attempts an epoch, reported |
@@ -133,7 +133,6 @@ comparison and every task the reference answers only sometimes.
 | F64 | Practice owed after an Examiner session that held nothing. buffer-stackedPR534 released 5 tasks 13 minutes after x-2 ended holding 0, all tasks its new reference answers within 0.4% of the best on record, which used the reading's allowance before x-3 held 17 with room (`practiceDue`, `releaseOwed`) | Exercised live, one campaign | A synthetic log of that shape, then a fresh campaign's practice after its first promotion |
 | F65 | The Examiner's gate refuses a draft on the reserve while solves are in flight (`measured`, `src/examiner/write.ts`), where the solve queue waits on the same condition (`tools/d2/host.ts`). kernel-cyber2: 26 refusals, each with 4 solves in flight, on a $50 budget at the default $10 reserve with about $4 spent | Withdrawn (1 November): the gate solves no draft, so it holds no reserve and the solve queue is the one owner of the wait | |
 | F66 | The exam stays easy. kernel-cyber2 (31 October) graded every scored task 3 or below of 7 on lane 34's reach scale, and esp32-fresh-opus-stijn-pro's reference answered all 3 solves of 76 of 81 drafts. Both of the Examiner's modes are now shown that scale with worked examples from three fields no campaign examines (`src/examiner/ladder.ts`), and a drafted rule names its standard instead of restating it. The first ladder's paired esp32 arm held 1 of 89 session drafts against the control's 17 of 80, every refusal of both at the ceiling (`examiner-complexity`, `exams.ts`) | Exercised live; supply fell on the one paired reading | The rewritten ladder's held share and first comparison against a control on fresh campaigns in two domains, then blind grades of their held tasks |
-| H1 | The Seatbelt half of the per-seat `TMPDIR` | Proved without a model (Linux half) | A wall test on macOS |
 | C8 | Restart from the reference | Planned | |
 | L2 | A second domain | Planned | M1's milestone in buffer read as confirmed, then the operator names the domain |
 | F34 | The size policy runs in no script, CI job or hook | Present in source | The operator's word on running it in the gate |
@@ -147,7 +146,7 @@ comparison and every task the reference answers only sometimes.
 | --- | --- | --- |
 | Level | 0.02, one step promotes (since 19 October) | |
 | Scored set, solves | 24 tasks, 2 solves a side in every domain by default; the setting may name another count once (`--solves`, 29 October); replays in "Solves a side" | Whether two climbs faster live: no campaign at two had read a comparison on 30 October |
-| Score | Validity 0.6, the objective 0.3 from the room floor (1%) to a tenth better, the bill 0.1 from a fifth less to half; constants of the host | Whether 60/30/10 is the right trade |
+| Score | Validity 0.6, the objective 0.3 from the room floor (1%) to a tenth better; constants of the host. The bill left the score on 2 November: the step had been read without it since 26 October | Whether 60/30 is the right trade |
 | Solve budget | 20 model turns, 30 minutes | |
 | Network in a solve | Open in every solve, both harnesses alike | A registry-only proxy, once a trace shows a fetch from anywhere else |
 | Reader of fails | The Referee with probes; labels override | F24 |

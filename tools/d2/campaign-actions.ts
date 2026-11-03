@@ -26,7 +26,7 @@
  */
 import { Type } from "typebox";
 import type { SeatTool } from "#src/agent/session.ts";
-import { Refused, supplyOf } from "#src/campaign/admission.ts";
+import { Refused, stopRule, supplyOf } from "#src/campaign/admission.ts";
 import { CRASHES, decide, heldAfter, practiceDue, unpromoted } from "#src/campaign/decide.ts";
 import { comparisonsOf, crashedRun } from "#src/campaign/ground.ts";
 import { campaignOf } from "#src/campaign/handover.ts";
@@ -38,8 +38,8 @@ import { type Bench, endingWith, snapshot, waitTool } from "#src/builder/tools.t
 import { pendingWords } from "#src/campaign/word.ts";
 import { examine } from "#src/examiner/session.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
-import { latestBuilt, patienceOf, promoted as lastPromoted, stopRule } from "#src/kernel/reports.ts";
-import { billedParts } from "#src/kernel/trace.ts";
+import { latestBuilt, patienceOf, promoted as lastPromoted } from "#src/kernel/reports.ts";
+import { billedParts } from "#src/kernel/meter.ts";
 import { sizeLines } from "#src/kernel/size.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
 import { taskSets } from "#src/kernel/task.ts";
@@ -449,7 +449,7 @@ async function comparedOf(
   }
   if (readAgainst(events, working, reference) && decided.move !== "compare") {
     return {
-      refused: `harness/ is harness ${short(working)}, which a comparison has read against the reference, and nothing in it has changed since: there is nothing new to compare.`,
+      refused: `harness/ is harness ${short(working)}, which a comparison has read against the reference, and nothing in it has changed since: there is nothing new to compare. Between equal harnesses one comparison reads a step as often as its level, and a harness changed in little draws that chance again.`,
     };
   }
   // Another comparison than the table's is the Builder's own, on record as `asked` with what the
@@ -635,7 +635,7 @@ function spentLines({ events }: Turn): string[] {
           // after a kill, and the time since would count the downtime (14 October).
           `Comparison ${last.id} ${last.reported === null ? "has run" : "took"} ${minutesFrom(events[last.at]?.at, events[last.reported ?? lastSolveOf(events, last.id)]?.at)} and billed ${billedParts(events, last.id).comparison.toFixed(2)} dollars.`,
         ]),
-    `Moves without a gain since the last step: ${String(sinceStep)} of the patience's ${String(patienceOf(events))}.`,
+    `Moves without a gain since the last step: ${String(sinceStep)} of the patience's ${String(patienceOf(events))}. A move here is a changed harness compared with room to gain, or a conversation that leaves harness/ unchanged after a practice solve of its own failed.`,
     ...(count === 0
       ? []
       : [
@@ -655,7 +655,7 @@ function namedLine(decided: Decided, size: string): string {
     return `compare goes on with comparison ${decided.id}, which began and has not reported.`;
   }
   return decided.fresh === "starter"
-    ? "compare reads the starter against the reference harness on the tasks held out since, before any change in harness/."
+    ? "compare reads the starter against the reference harness, the tasks held out since first, before any change in harness/."
     : size;
 }
 

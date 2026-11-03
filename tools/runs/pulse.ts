@@ -16,9 +16,10 @@
  * this observer, unless --here is named. A missing peer is a warning and exit 1. No local state path is sent to another machine.
  */
 import { comparisonFloor } from "#src/campaign/admission.ts";
-import { readsStepEitherWay, testOf } from "#src/kernel/compare.ts";
+import { readsStepEitherWay, scoresIn, testOf } from "#src/kernel/compare.ts";
 import type { EventKind, LogEvent } from "#src/kernel/log.ts";
-import { billedAll, degradations, traceKind, tracesIn } from "#src/kernel/trace.ts";
+import { degradations, traceKind, tracesIn } from "#src/kernel/trace.ts";
+import { billedAll } from "#src/kernel/meter.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
 import {
   existsSync,
@@ -106,9 +107,8 @@ const STARTS: ReadonlySet<string> = new Set(["build.started", "exam.started", "c
  * The investigation's triggers a watch says, by the factor each bears on (`AGENTS.md`, section 1).
  * An alarm is read again at every look where the log gained an event that can move one
  * (`MOVES_A_TRIGGER`) and said where it fired or its key moved (`keyOf`); a reading moves with each
- * solve, so it is said only after a milestone. On 1 November an unconfirmed promotion and two
- * unbilled compactions in a live buffer campaign were found only by running `wri.ts read` on it by
- * hand. A trigger the pulse reads itself is left out (a model served, an unfinished session), and so
+ * solve, so it is said only after a milestone. On 1 November an unconfirmed promotion in a live
+ * buffer campaign was found only by running `wri.ts read` on it by hand. A trigger the pulse reads itself is left out (a model served, an unfinished session), and so
  * is one every promotion fires until its starter comparison reports.
  */
 const WATCHED = new Map<string, readonly [string, "alarm" | "reading"]>([
@@ -142,7 +142,6 @@ const WATCHED = new Map<string, readonly [string, "alarm" | "reading"]>([
   ["REPLAY MOVED THE VERDICT", ["verdicts", "alarm"]],
   ["CHECKER READ WITH FAULTS", ["verdicts", "alarm"]],
   ["FROZEN DESPITE FAULTS", ["verdicts", "alarm"]],
-  ["UNBILLED COMPACTIONS", ["economy", "alarm"]],
   ["SESSION CRASHED", ["economy", "alarm"]],
 ]);
 /** The events after which a reading is said again. */
@@ -202,10 +201,9 @@ function factorsOf(data: JsonObject): { said: string; look: boolean } {
   const informative = asRecord(asRecord(data.valid)?.informative)?.old;
   const level = isNumber(data.level) ? data.level : 0.02;
   const floor = comparisonFloor(level);
-  // The A/A is read as a step is since 1 November: on the scores without the bill, either way.
+  // The A/A is read as a step is, either way, on the scores the step is read on (`scoresIn`).
   const noise = asRecord(data.noise);
-  const found = Array.isArray(noise?.unbilled) ? noise.unbilled : noise?.differences;
-  const scores = Array.isArray(found) ? found.filter(isNumber) : undefined;
+  const scores = Array.isArray(noise?.differences) ? scoresIn(noise) : undefined;
   const aa = scores === undefined ? null : testOf(scores);
   const clears = scores !== undefined && readsStepEitherWay(scores, level);
   const worth = asRecord(data.worth);
@@ -515,18 +513,21 @@ async function look(state: string, names: readonly string[]): Promise<string[]> 
     run,
     open: writers(run, running).length > 0,
     before: memory.logs[run.path],
-    events: logEvents(run.path),
   }));
-  const chosen = all.filter(({ run, open, before, events }) =>
-    names.length > 0
-      ? names.some((name) => run.name.includes(name))
-      : open ||
-        before?.open === true ||
-        (before === undefined &&
-          run.seed !== true &&
-          Date.now() - statSync(run.path).mtimeMs < RECENT_MS &&
-          events.at(-1)?.kind !== ENDED),
-  );
+  // Only a log the look reports is read: until 2 November every look parsed every run's whole log,
+  // closed ones included, which was 0.55 s of a 2.5 s look on the Linux runner.
+  const chosen = all
+    .filter(({ run, open, before }) =>
+      names.length > 0
+        ? names.some((name) => run.name.includes(name))
+        : open ||
+          before?.open === true ||
+          (before === undefined &&
+            run.seed !== true &&
+            Date.now() - statSync(run.path).mtimeMs < RECENT_MS &&
+            logEvents(run.path).at(-1)?.kind !== ENDED),
+    )
+    .map((each) => ({ ...each, events: logEvents(each.run.path) }));
   const disk = statfsSync(".");
   const free = Math.round((disk.bavail * disk.bsize) / GIB);
   const gained = memory.freeGiB === null ? 0 : free - memory.freeGiB;

@@ -16,7 +16,6 @@ interface CarriedRow {
   readonly key: string;
   readonly validity: number;
   readonly objective: number;
-  readonly bill: number;
   readonly bar: ComparisonBar;
 }
 
@@ -24,10 +23,7 @@ const ACCENT = "var(--ana-accent)";
 const BORDER = "var(--ana-border)";
 /** Every column counts won tasks, so each is drawn in the won colour, a measure apart by its
  *  strength: the colours of outcomes mean nothing else (DESIGN.md). */
-const STRENGTH = { validity: 1, objective: 0.6, bill: 0.3 } as const satisfies Record<
-  (typeof MEASURES)[number],
-  number
->;
+const STRENGTH = { validity: 1, objective: 0.6 } as const satisfies Record<(typeof MEASURES)[number], number>;
 const MARGIN = { top: 12, right: 16, bottom: 4, left: 0 } as const;
 
 function CarriedTooltip({
@@ -70,7 +66,7 @@ export function CarriedKey() {
 /** Each reported comparison's won tasks, one column a comparison split by the measure that carried
  *  each win (`carriedBy`). Until 30 October this place held each side's valid share, which read
  *  100% on both sides in every comparison of a campaign that promoted six times on the objective
- *  and the bill; the split says what the wins were made of. Columns stand apart, never joined,
+ *  and the bill; the split says what the wins were made of (the bill no longer scores, from 2 November). Columns stand apart, never joined,
  *  since the scored tasks change from one comparison to the next. */
 export const CarriedChart = memo(function CarriedChart({ bars }: { bars: readonly ComparisonBar[] }) {
   const rows: CarriedRow[] = useMemo(

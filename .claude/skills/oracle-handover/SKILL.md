@@ -1,6 +1,6 @@
 ---
 name: oracle-handover
-description: "Hand a question about Anabasis v2 to an outside Oracle model as one task document and one zip. The Oracle reads GitHub; the zip carries what it cannot fetch: campaign logs and kept harnesses through `bun run runs zip`, a reader's output, predictions with how each resolved, patches for commits never pushed. Use when the operator asks to prepare an Oracle question, a report request, a problem statement or a second opinion on a run, a reading or a design, or to send the latest runs to an outside model. Produces local files; uploading is the operator's."
+description: "Hand a question about Anabasis to an outside Oracle model as one task document and one zip. The Oracle reads GitHub; the zip carries what it cannot fetch: campaign logs and kept harnesses through `bun run runs zip`, a reader's output, predictions with how each resolved, patches for commits never pushed. Use when the operator asks to prepare an Oracle question, a report request, a problem statement or a second opinion on a run, a reading or a design, or to send the latest runs to an outside model. Produces local files; uploading is the operator's."
 ---
 
 # Oracle handover

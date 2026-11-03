@@ -89,8 +89,9 @@ bun run runs fresh | launch | continue | keep | pause | copy | fetch | retire | 
   than it tie, and a better answer on record by less leaves a task no room, in task admission, on
   the frontier and in `roomOf`;
 - a stop after more than 3 tasks with a check defect (`--defects`);
-- a reserve of 10 dollars a solve (`--reserve`); for a small campaign, set it near what one solve of
-  that solver bills (`solve.finished.billed` in an earlier log);
+- a reserve of 3 dollars a solve (`--reserve`), above the most an Opus solve billed under the
+  default limits (2.83); for longer solves or a small campaign, set it near what one solve of that
+  solver bills (`solve.finished.billed` in an earlier log);
 - `--parent latest` and `--reference promoted` (the starter until a promotion);
 - a Builder session of 1,440 minutes of its own time, 300 session turns and 24 practice solves; a
   Builder that leads its campaign has only as many as the remaining total holds a reserve for

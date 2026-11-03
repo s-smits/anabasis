@@ -61,6 +61,7 @@
 import { type Static, Type } from "typebox";
 import { answerFormatFault, type Objective } from "../kernel/contract.ts";
 import { LADDER } from "./ladder.ts";
+import { budgetLine, type SolveBudget } from "./prompt.ts";
 import { append, type LogEvent } from "../kernel/log.ts";
 import { capturedJsonStringify, decodedJsonText, parseJsonAs } from "../meta/json-runtime.ts";
 import { asRecord, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
@@ -118,6 +119,8 @@ interface DraftingTerms {
   readonly log: string;
   /** The operator's prompt, as the campaign's opening holds it. */
   readonly prompt: string;
+  /** The budget the exam's solves will be held to, as the campaign's setting names it. */
+  readonly budget: SolveBudget;
   /** What the host reads of a draft whose shape holds, without a model: its control answers through its
    *  checks. */
   readonly reading: (draft: Draft) => Promise<DraftReading>;
@@ -214,9 +217,9 @@ const DRAFT_PARAMETERS = Type.Object({
 /** The system prompt. */
 const SYSTEM = [
   "You are the Examiner. An operator has named a technical domain in a prompt, and you draft the exam on which a solving model will be measured in that domain: its public rules, its answer format, one check for each rule, a few example tasks, and controls. You do this once, at the opening of a campaign. Later sessions write further tasks against what you draft here, and a draft that stands is not changed afterwards.",
-  "A task is a family, a public input, which with the public rules is all a solver reads, and hidden values, which only the checks receive. A solver answers a task with one JSON value that follows the answer format. A check is a program that reads one answer with its task and returns whether the answer keeps one rule, and an answer every check passes is valid. Two harnesses for the solver are then compared on tasks neither has seen, scoring validity first and, between valid answers, the objective where the domain declares one and the solve's bill. A check must also be right on a task with no known valid answer: it verifies the property its rule states, and never compares an answer with one you worked out.",
+  "A task is a family, a public input, which with the public rules is all a solver reads, and hidden values, which only the checks receive. A solver answers a task with one JSON value that follows the answer format. A check is a program that reads one answer with its task and returns whether the answer keeps one rule, and an answer every check passes is valid. Two harnesses for the solver are then compared on tasks neither has seen, scoring validity first and, between valid answers, the objective where the domain declares one. A check must also be right on a task with no known valid answer: it verifies the property its rule states, and never compares an answer with one you worked out.",
   "Take the rules from the field's own public standard, and give each its source: the standard, specification, reference manual or textbook that states it, named precisely enough to look up, and one that states the limit as your rule does: a nominal or typical value is no limit. A limit, state or duty the field does not hold measures your wording and no solver, so add none. A solver that follows every public rule must never be rejected for something it could not read: whatever a check enforces is stated in a rule, the scope or the conventions, with its units and tolerances, or is defined by a public standard a rule names, and nothing a solver needs is in the hidden values. Stating a rule means stating its property and naming what defines it, never restating the standard's tables and equations: the solver can look those up. A check holds its rule exactly: it allows no tolerance the rule does not state, so a check of a quantity a rule calls zero or absent refuses any trace of it. The solver measured on this exam is a capable model with a shell and time to compute: where the rules can be met by a lookup, a matching or a search over the cases they leave, it answers every task correctly every time, however tightly they bind the parts of one answer to each other, and the exam then measures nothing.",
-  `How hard the exam can be is set here, by its rules and scope, before any task is written. ${LADDER}\n\nDraft rules and a scope under which tasks reach the top of this scale in this field. Rules that hand the solver the whole model, every equation and number it needs, and a scope that leaves out the effects that make the field hard, turn every task into writing that model once and searching it: grade 2, however the tasks are written. So does a rule a solver meets by matching a shape the scope spells out, or by writing the one exact text a rule gives. State each rule as the property the field decides, such as a bound that holds, a state the field's own engine reaches or a value that is tested before use, name the standard that defines the engine rather than restating its working, keep in scope the effects that decide answers near the limits, and leave the way to reach it to the solver.`,
+  `How hard the exam can be is set here, by its rules and scope, before any task is written. ${LADDER}\n\nDraft rules and a scope under which tasks can be written at every grade of this scale that this field reaches. Rules that hand the solver the whole model, every equation and number it needs, and a scope that leaves out the effects that make the field hard, turn every task into writing that model once and searching it: grade 2, however the tasks are written. So does a rule a solver meets by matching a shape the scope spells out, or by writing the one exact text a rule gives. State each rule as the property the field decides, such as a bound that holds, a state the field's own engine reaches or a value that is tested before use, name the standard that defines the engine rather than restating its working, keep in scope the effects that decide answers near the limits, and leave the way to reach it to the solver.`,
   "The operator's prompt outranks your choice of rules. Every requirement it names, such as a limit, a quantity to meet or an analysis an answer has to pass, stays in the exam at the strength the prompt states, as a rule with its check, and a quantity it asks to minimise or maximise is the objective. Where no check can decide such a requirement from its argument alone, say so in the scope, and do not check a weaker property under its name.",
   "Where the field has an objective, a quantity every valid answer has and practitioners minimise or maximise, such as a mass, a cost or a length, declare it: two valid answers to one task are then compared by it, and a task on which both tools find a valid answer still tells them apart. The check program then also exports `objective`, a function that takes the same `request` and returns that quantity of the answer as a finite number, computed from the answer and the public input alone; it is told nothing hidden. A field with no such quantity declares none.",
   "Write one check for each rule, and no other. The check program is one TypeScript module that exports `checks`, an object with a function under each check id. A function takes one argument, `request`, and returns a boolean, or a promise of one: `request.publicTask` is `{ taskId, family, publicInput }`, `request.artifact` is the answer, and `request.hidden` is the task's hidden values. It runs offline in a closed cell and imports nothing, so it computes from its argument alone, and the same answer always gets the same verdict. It returns true where the answer keeps its rule and false where it breaks it. An answer that breaks another rule is that rule's check's to refuse. It does not throw on any answer the format allows.",
@@ -224,27 +227,68 @@ const SYSTEM = [
   `draft_exam puts a whole draft to the host, which reads it without a model: its shape, then every control through the checks, twice, and the smallest answer on every example. It returns the faults it found, or that the draft stands. A draft that stands is the campaign's exam, and the session ends there. When a draft has faults, mend them and put the whole draft again. Call finish only if no exam can be drafted for the prompt, and say why.`,
 ].join("\n");
 
+// The answer-format keys that name an object's fields other than `properties` (`unnamed`).
+const NAMING = [
+  "$ref",
+  "allOf",
+  "anyOf",
+  "oneOf",
+  "if",
+  "dependentSchemas",
+  "unevaluatedProperties",
+  "patternProperties",
+];
+
 /** A name spelled twice among `ids`, or undefined. */
 const twice = (ids: readonly string[]): string | undefined =>
   ids.find((id, index) => ids.indexOf(id) !== index);
 
+/**
+ * The fields an answer carries that its format leaves unnamed, as paths. A solver learns an
+ * answer's fields from the format alone, so a check that reads one refuses a right answer spelled
+ * another way. On 2 November esp32-fresh-opus-forkedPR569 drafted a `pwm` object with no
+ * properties, its PWM check read `clk_div_q8` from it, and the Referee ruled all 8 rejections it
+ * made check defects; of 159 drafted exams on record, 2 carried such a field, both esp32 PWM
+ * settings. An accept control carries every field its checks need, so reading the controls
+ * covers every check. A reference, a combination, a condition or a pattern counts as naming: until
+ * the release review of 3 November the `anyOf` and `oneOf` options were read without the
+ * `properties` beside them, which refused a sound "at least one of" format.
+ */
+function unnamed(schema: JsonValue | undefined, answer: JsonValue, path: string): string[] {
+  const held = asRecord(schema);
+  if (held === null || NAMING.some((key) => key in held)) return [];
+  if (Array.isArray(answer)) return answer.flatMap((item) => unnamed(held.items, item, `${path}[]`));
+  const properties = asRecord(held.properties) ?? {};
+  const rest = asRecord(held.additionalProperties);
+  return Object.entries(asRecord(answer) ?? {}).flatMap(([name, value]) => {
+    const inner = name in properties ? properties[name] : rest;
+    return inner === null ? [`${path}.${name}`] : unnamed(inner, value, `${path}.${name}`);
+  });
+}
+
 /** What a draft's controls are short of or get wrong, one sentence each. */
 function controlFaults(draft: Draft): string[] {
   const controls = [
-    ...draft.accept.map((each) => ({ ...each, named: "an accept control" })),
-    ...draft.reject.map((each) => ({ ...each, named: `a reject control for ${each.check}` })),
+    ...draft.accept.map((each) => ({ ...each, named: "an accept control", accept: true })),
+    ...draft.reject.map((each) => ({ ...each, named: `a reject control for ${each.check}`, accept: false })),
   ];
-  const placed = controls.flatMap(({ task, answer, named }) => {
+  const placed = controls.flatMap(({ task, answer, named, accept }) => {
     if (draft.tasks[task] === undefined) {
       return [
         `${named} names example ${String(task)}, and the examples are 0 to ${String(draft.tasks.length - 1)}`,
       ];
     }
     const unformed = answerFormatFault(draft.answerFormat, answer);
-    return unformed === null
+    if (unformed !== null) {
+      return [
+        `${named} of example ${String(task)} does not follow the answer format (${unformed}): a solver's answer that does not is refused before any check reads it`,
+      ];
+    }
+    const loose = accept ? [...new Set(unnamed(draft.answerFormat, answer, "$"))] : [];
+    return loose.length === 0
       ? []
       : [
-          `${named} of example ${String(task)} does not follow the answer format (${unformed}): a solver's answer that does not is refused before any check reads it`,
+          `${named} of example ${String(task)} carries ${loose.join(", ")}, which the answer format does not name: a solver learns an answer's fields from the format alone, so a check that reads one refuses a right answer spelled another way`,
         ];
   });
   return [
@@ -416,7 +460,7 @@ export function drafting(terms: DraftingTerms) {
   return {
     kind,
     system: SYSTEM,
-    opening: `The operator's prompt:\n\n${terms.prompt}\n\nThis session has ${plural(Math.round(limits.wallSeconds / 60), "minute")}, ${plural(limits.turns, "turn")} and ${plural(limits.puts, kind)}.`,
+    opening: `The operator's prompt:\n\n${terms.prompt}\n\n${budgetLine(terms.budget)}\n\nThis session has ${plural(Math.round(limits.wallSeconds / 60), "minute")}, ${plural(limits.turns, "turn")} and ${plural(limits.puts, kind)}.`,
     started: {
       limits: { wallSeconds: limits.wallSeconds, turns: limits.turns, tries: limits.puts },
       prompt: terms.prompt,

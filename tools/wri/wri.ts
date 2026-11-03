@@ -17,7 +17,7 @@
  *   the host hash of the last condition beside this checkout's, and beside the campaign's own
  *   tree's when this checkout's differs.
  * - `start` writes that as `overview.md`, and the shared instructions with each campaign's row
- *   filled in and two sections left for the primary to write. `--log` names one campaign or several,
+ *   filled in and three sections left for the primary to write. `--log` names one campaign or several,
  *   which the investigation reads as equals: every lane reads every one, and opens where a trigger
  *   fired on any of them (`tools/wri/investigation.ts`).
  * - `lanes` builds one prompt per lane, and `launch.json`, the manifest codex-gpt-swarm's launcher
@@ -241,7 +241,7 @@ async function start(): Promise<number> {
   writeFileSync(join(out, "investigation.json"), `${JSON.stringify({ logs }, null, 2)}\n`);
   console.log(text);
   console.log(line);
-  console.log(`wrote ${join(out, SHARED)}: write its two blank sections, then run lanes`);
+  console.log(`wrote ${join(out, SHARED)}: write its three blank sections, then run lanes`);
   return 0;
 }
 
@@ -383,11 +383,14 @@ function collected({ out, campaigns }: Investigation) {
 function collect(): number {
   const investigation = opened();
   const reports = collected(investigation);
-  const index = reportIndex(reports, (lane) => reportPath(investigation.out, lane));
+  const index = reportIndex(reports, (lane) => reportPath(investigation.out, lane), investigation.campaigns);
   writeFileSync(join(investigation.out, "reports.md"), `# Reports\n\n${index}\n`);
   console.log(index);
   const open = reports.filter(({ state }) => state !== "ok").length;
-  console.log(open === 0 ? "every report is in" : `${plural(open, "report")} missing or invalid`);
+  const omitted = reports.filter(({ verdict }) => verdict === "omitted").length;
+  console.log(
+    `${open === 0 ? "every report is in" : `${plural(open, "report")} missing or invalid`}; ${String(reports.length - omitted)} read, ${String(omitted)} omitted`,
+  );
   return open === 0 && reports.length > 0 ? 0 : 1;
 }
 
@@ -403,7 +406,7 @@ function synthesis(): number {
       out,
       synthesis: join(out, "synthesis.md"),
       overview: readFileSync(join(out, "overview.md"), "utf8").trim(),
-      reports: reportIndex(reports, (lane) => reportPath(out, lane)),
+      reports: reportIndex(reports, (lane) => reportPath(out, lane), investigation.campaigns),
       sharedInstructions: shared.replaceAll(/<!--[\s\S]*?-->\n?/g, "").trim(),
     }),
   );

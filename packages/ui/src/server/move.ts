@@ -19,7 +19,7 @@ import type { Move, MoveDetail, Outcome, Query, ScoredTask, Sensitivity, SolveRo
 import { Unanswerable, type Reading } from "./context.ts";
 import { type Log, practiceIn, proposalsIn, ranIn } from "./folds.ts";
 import { campaignAt } from "./logs.ts";
-import { barsIn, keptOf, movesIn, outcomeOf, pairsIn, steppedOf } from "./moves.ts";
+import { barsIn, movesIn, outcomeOf, pairsIn, steppedOf } from "./moves.ts";
 import { examTier, sessionTrace, solveRow } from "./trace.ts";
 import { rulingWithheld } from "./withheld.ts";
 
@@ -105,7 +105,7 @@ function scoredTasks(log: Log, move: ComparisonMove, tier: Tier): ScoredTask[] {
   const tallied = (pairsIn(log).get(move.id) ?? []).map((pair) =>
     scoredTask(
       pair.task,
-      outcomeOf(pair, keptOf(report)),
+      outcomeOf(pair),
       [byId(pair.solves?.old ?? []), byId(pair.solves?.fresh ?? [])],
       carriedBy(pointsOf(pair)),
     ),

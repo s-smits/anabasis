@@ -19,7 +19,7 @@
  * ending before the campaign has logged it.
  *
  * An A/A control reads a step, for the counter, as the whole-run reader reads one: where either
- * side's scores without the bill clear the level (`readsStepEitherWay`, `compare.ts`; `tools/wri/read.ts`, "REFERENCE
+ * side's scores clear the level (`readsStepEitherWay`, `compare.ts`; `tools/wri/read.ts`, "REFERENCE
  * AGAINST ITSELF"), since a step either way between two samples of one harness is a false one. The
  * report's own `p` is one-sided.
  */
@@ -31,7 +31,7 @@ import { namesOf } from "../../../../src/campaign/names.ts";
 import { budgetLeft } from "../../../../src/campaign/opening.ts";
 import { readsStepEitherWay } from "../../../../src/kernel/compare.ts";
 import { patienceOf } from "../../../../src/kernel/reports.ts";
-import { billedAll, billedParts } from "../../../../src/kernel/trace.ts";
+import { billedAll, billedParts } from "../../../../src/kernel/meter.ts";
 import { isString } from "../../../../src/meta/json-shape.ts";
 import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
 import { errorMessage } from "../../../../src/meta/runtime-values.ts";
@@ -216,7 +216,7 @@ const coreIn = once((log) => {
       labels: { tasks: campaign.supply.awaiting, rejections: unsettledCount(log) },
       controls: bars.filter((bar) => bar.noise !== null).length,
       controlSteps: bars.filter(
-        ({ noise, level }) => noise !== null && readsStepEitherWay(noise.unbilled, level),
+        ({ noise, level }) => noise !== null && readsStepEitherWay(noise.scores, level),
       ).length,
       risk: riskIn(log),
       runway: runwayIn(log),

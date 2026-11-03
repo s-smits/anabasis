@@ -8,7 +8,8 @@ import { checkpoint, settleReading, type CheckpointRequest } from "../src/campai
 import { scored } from "../src/kernel/compare.ts";
 import { recordCondition, settingId } from "../src/kernel/condition.ts";
 import { append, read } from "../src/kernel/log.ts";
-import { lastReports, pairsReported, stopRule } from "../src/kernel/reports.ts";
+import { stopRule } from "../src/campaign/admission.ts";
+import { lastReports, pairsReported } from "../src/kernel/reports.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import { taskStates } from "../src/kernel/task.ts";
 import {
@@ -333,17 +334,20 @@ it("uses the promotion reader's settled wrong passes in safeguard nine", async (
   );
   const s = fixture(wins);
   await checkpoint(s.request);
-  const fixed = present(comparison.fixedIn(read(s.log), ID));
   const reference = new Set(
     comparison
-      .solvesUnder(read(s.log), fixed)
+      .solvesUnder(read(s.log), present(comparison.fixedIn(read(s.log), ID)))
       .flatMap(({ id, under }) => (under.harness === "old" ? [id] : [])),
   );
+  // Every answer is valid, and the new harness's are lighter: the step is the objective's alone.
   const billed = read(s.log).map((event) =>
-    event.kind === "solve.finished" && isString(event.data.solve)
-      ? { ...event, data: { ...event.data, billed: reference.has(event.data.solve) ? 2 : 1 } }
-      : event,
+    event.kind === comparison.STARTED
+      ? { ...event, data: { ...event.data, objective: { direction: "lower" } } }
+      : event.kind === "verdict" && isString(event.data.solve)
+        ? { ...event, data: { ...event.data, objective: reference.has(event.data.solve) ? 10 : 8 } }
+        : event,
   );
+  const fixed = present(comparison.fixedIn(billed, ID));
   const passes = { [present(comparison.passesIn(billed, ID)[4])]: "wrong" };
   const failed = comparison.wrongAsFailed(billed, new Map(), passes);
   const settled = comparison.compared(failed.events, fixed, failed.labels);
@@ -362,7 +366,7 @@ it("uses the promotion reader's settled wrong passes in safeguard nine", async (
   });
   const safeguard = safeguardTriggers(indexOf(events)).find(({ name }) => name.startsWith("SAFEGUARD-9"));
   expect(safeguard?.detail).toContain("0-1 p 1.000 on validity alone");
-  expect(safeguard?.detail).toContain("0-1 p 1.000 without the bill");
+  expect(safeguard?.detail).toMatch(/\d-\d p [\d.]+ by the current score/u);
 });
 
 it("reads a settled flip against this tree's unlabelled reading, apart from the reading on record", async () => {

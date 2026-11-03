@@ -1,13 +1,14 @@
 ---
 name: promotion-tuner
-description: "Replay recorded comparisons under a tree's scoring rules without model calls or spending. Use to inspect whether recorded promotions are supported, which measure won each task, A/A results and promotion costs. Sweep weights or levels, compare candidate floors or tests, and describe runs by release, pack and setting with scripts/table.ts. Applies to questions about past promotions, changed scoring or comparisons between release cycles; replay estimates do not establish a live improvement."
+description: "Replay recorded comparisons under a tree's scoring rules without model calls or spending. Use to inspect whether recorded promotions are supported, which measure won each task, A/A results and promotion costs. Sweep weights or levels, compare candidate floors or tests, and describe runs by release, pack and setting with scripts/table.ts, and dollars a promotion priced on one meter with scripts/cost.ts. Applies to questions about past promotions, changed scoring or comparisons between release cycles; replay estimates do not establish a live improvement."
 ---
 
 # Promotion tuner
 
-A comparison scores each task by three weighted measures over the pairings of its solves, and one
-test over those scores and another without the bill must both clear the level to promote (`AGENTS.md`, section 7, "The tally" and
-"The test"). This skill asks whether a tree's score supports the recorded promotions, and how other
+A comparison scores each task by two weighted measures over the pairings of its solves, validity
+and the objective, and one test over those scores must clear the level to promote (`AGENTS.md`,
+section 7, "The tally" and "The test"). A tree from before 2 November also scored the bill, and
+the replay scores it where the tree under replay weighs it (`Points`, `scripts/tree.ts`). This skill asks whether a tree's score supports the recorded promotions, and how other
 weights, another level or a candidate tree read the same solves. A replay starts no solve, calls no
 model and writes nothing of a campaign's.
 
@@ -20,9 +21,9 @@ as this skill reads a replay.
 
 | Term | Where it lives | How the replay changes it |
 | --- | --- | --- |
-| The weights of validity, the objective and the bill | `WEIGHTS`, `src/kernel/compare.ts`; the operator's, in steps of five | `--weights v,o,b`, in hundredths |
+| The weights of validity and the objective (and the bill, in a tree before 2 November) | `WEIGHTS`, `src/kernel/compare.ts`; the operator's, in steps of five | `--weights v,o,b`, in hundredths, `b` 0 for a tree that weighs no bill |
 | The level | the campaign's opening; the operator's | `--level` |
-| The objective gap floor, the objective's full gain, the bill's floor | `ROOM`, `FULL`, `CHEAPER` | a candidate tree |
+| The objective gap floor and the objective's full gain | `ROOM`, `FULL` | a candidate tree |
 | How a measure is read over the pairings, and the test | `pointsOf`, `flipP`, `stepOf` | a candidate tree |
 
 The weights and the level are the operator's conditions, so a sweep of them is evidence brought to
@@ -88,7 +89,7 @@ bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/table.ts \
 - **Hours say how fast, not on what.** `groups` and `runs` also give the room on validity (scored
   tasks the reference did not answer validly in every solve, of those scored, summed over the
   reported comparisons), the steps won by validity (`validityOf`) and the confirmed promotions.
-  A cycle whose room is near zero can promote only on the objective and the bill, whatever its
+  A cycle whose room is near zero can promote only on the objective (and, before 2 November, the bill), whatever its
   hours: buffer after v0.8.0 held 7 of 571, its steps 5 of 17 on validity (1 November).
 - **`--has`** and **`--holds`** keep the runs whose every launch ran with a mechanism (`ranWith`),
   which is how a change is read against the runs without it (`AGENTS.md`, section 9, "Evidence").
@@ -97,6 +98,25 @@ bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/table.ts \
   the median solve stand beside them as indicators; no hour is scaled by them.
 - A run sitting out a provider reset longer than two hours reads as finished with `no ending`.
   One run is one draw: read a group's medians beside its run count.
+
+### Dollars a promotion on one meter
+
+`table.ts` reads each run's dollars as its own meter billed them, and the meter moved (25 October:
+each turn at the model that served it; 1 November: a session on its backend's ledger). Before
+saying a cycle is cheaper, price every run the same way:
+
+```sh
+bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/cost.ts \
+  [--since <date>] [--name <part>]... [--by week|pack|setting|none] [--format md|tsv]
+```
+
+It prices every recorded turn with today's seat meter (`seatMeter` on its provider's catalogue),
+sets that beside the recorded bill, and pools the finished runs of each week (or pack) and
+setting into dollars a promotion. Turns are the one measure every log holds; a backend's excess
+over them (compactions, retries) is billed only by runs from 1 November on, so `repriced/recorded`
+just under 1 on those runs is that excess. On 2 November buffer at Opus 5.5 medium read $320 a
+promotion in the week of 12 October, then $58 and $56, with repriced and recorded within 1% from
+19 October on: the fall was the system's, not the meter's.
 
 ## What to read
 
@@ -108,8 +128,9 @@ For each pair of harnesses, old digest first:
   campaign did not promote.
 - **Which measure won each task** of that reading: validity where validity gave it points, the
   objective where only the measures between two valid answers did and the objective among them,
-  and the bill alone. This is the count to watch when the weights move: the bill takes a tenth of
-  the weight, yet a task every solve of both sides answers validly can be won by the bill alone.
+  and, under a tree before 2 November, the bill alone. This is the count to watch when the
+  weights move: the bill took a tenth of the weight, yet a task every solve of both sides answered
+  validly could be won by the bill alone, which is why it left the score.
 - A pair that never steps: each reading, short of its level, with its A/A. `NOT PROMOTED by this
   score` marks a recorded promotion the score rejects.
 - Each promoted epoch and the open one: hours and billed dollars, split into the Examiner,

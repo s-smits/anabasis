@@ -1,9 +1,9 @@
 <!--
 The shared instructions every open lane of this investigation carries, whole. `wri.ts start` filled
-in each campaign's row; write the two marked sections before `wri.ts lanes`, and edit any other line
+in each campaign's row; write the three marked sections before `wri.ts lanes`, and edit any other line
 every lane should read. Comments like this one are dropped when the prompts are built. A `##`
 section left blank refuses `wri.ts lanes`; delete its heading to drop it on purpose. An isolated
-lane is given the campaigns' rows and the hard rules, and neither of the two sections you write.
+lane is given the campaigns' rows and the hard rules, and none of the three sections you write.
 -->
 
 ## Orientation
@@ -18,6 +18,13 @@ from the log. -->
 code, the model, the Builder's or the Examiner's prompt), the earlier findings this investigation
 checks, and what would falsify each. Write "none" when nothing moved. An earlier diagnosis goes here
 as a hypothesis, never above as a premise. -->
+
+## Already read by the primary
+
+<!-- AUTHOR: what you have already investigated, one line each with its evidence (a reader's count,
+a source path and line, a mechanism checked), so a lane builds on it or contradicts it with
+evidence and does not read it again. Name what was checked, never the answer a lane should reach.
+Write "nothing" when you read nothing yet. -->
 
 ## Campaigns under review
 

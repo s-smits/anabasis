@@ -101,7 +101,7 @@ function stepLine(step: Handover, now: number, called: Called): string {
   const read =
     step.reading === null
       ? `no report yet, ${step.cut ? "cut before it" : "open at the log's end"}: ${unended}`
-      : `${tally === null ? "no task tallied" : `${String(tally.wins)} won, ${String(tally.losses)} lost, ${String(tally.ties)} tied`}, which reads ${step.reading}`;
+      : `${tally === null ? "no task tallied" : `${String(tally.wins)} won, ${String(tally.losses)} lost, ${String(tally.ties)} tied by ${called(step.fresh)}`}, which reads ${step.reading}`;
   const ruled = [
     ...(rulings.earned > 0 ? [`${plural(rulings.earned, "rejection")} ruled earned`] : []),
     ...(rulings["check-defect"] > 0 ? [`${String(rulings["check-defect"])} ruled a check defect`] : []),
@@ -119,7 +119,7 @@ function stepLine(step: Handover, now: number, called: Called): string {
       ...(step.points === null
         ? []
         : [
-            `points to the new harness by validity ${String(step.points.validity)}, the objective ${String(step.points.objective)}, the bill ${String(step.points.bill)}`,
+            `points to the new harness by validity ${String(step.points.validity)}, the objective ${String(step.points.objective)}`,
           ]),
       ...(step.aside > 0 ? [`${plural(step.aside, "task")} set aside for a person's labels`] : []),
       ...(ruled.length === 0 ? [] : [ruled.join(", ")]),

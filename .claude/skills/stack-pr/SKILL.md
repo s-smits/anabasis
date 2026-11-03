@@ -1,6 +1,6 @@
 ---
 name: stack-pr
-description: "Put a change on an open stack of Anabasis v2 pull requests, or start one: find the real top, keep local work while moving to it, expand the open pull request a change belongs to before opening a new one, shape commits that each pass alone, run the checks CI runs (by hand where the runners do not), publish through the checking pre-push hook, prove the stack with `bun run land -- <top> --sanitize`, write the body, repair your own children when a parent moves, consolidate the whole stack by subject (review in groups, fix in lanes, regroup, republish), and land a stack with `bun run land`. Use when asked to open, append to, stack, restack, consolidate or overhaul, rebase, hop to the latest head, sanitize or land a pull request, or when a push, a hook or a base refuses. v1's stack-hop and setup-pr in one."
+description: "Put a change on an open stack of Anabasis pull requests, or start one: find the real top, keep local work while moving to it, expand the open pull request a change belongs to before opening a new one, shape commits that each pass alone, run the checks CI runs (by hand where the runners do not), publish through the checking pre-push hook, prove the stack with `bun run land -- <top> --sanitize`, write the body, repair your own children when a parent moves, consolidate the whole stack by subject (review in groups, fix in lanes, regroup, republish), and land a stack with `bun run land`. Use when asked to open, append to, stack, restack, consolidate or overhaul, rebase, hop to the latest head, sanitize or land a pull request, or when a push, a hook or a base refuses. v1's stack-hop and setup-pr in one."
 ---
 
 # Stack a pull request
@@ -232,8 +232,8 @@ definitions). The title carries no "Ix:" prefix; the label replaced it on 25 Oct
 refuses a stack in which any pull request has no importance label or more than one, or no category
 label, naming each, before it runs any checks, so `--sanitize` shows such a stack as not ready
 (`gh pr edit <number> --add-label <label>` repairs it). The categories are the subjects a pull request
-is filed under, mostly the investigation's lane groups: `harness`, `climb`, `comparison`, `solve`,
-`supply`, `verdicts`, `economy`, `log`, `runs`, `landing`, `quality`, `docs` and `misc` (`CATEGORIES`,
+is filed under, mostly the investigation's lane groups: `exam`, `verdicts`, `supply`, `harness`,
+`comparison`, `climb`, `solve`, `economy`, `runs`, `log`, `investigation`, `landing`, `quality` and `docs` (`CATEGORIES`,
 `tools/runtime/land.ts`); `gh label list` gives what each holds, and a pull request may carry several. `stack.ts` ends each line in the label, and a
 consolidation spends its time by it: `I0` and `I1` through commit-r, `I3` folded
 (`references/consolidate.md`, "Spend by importance").

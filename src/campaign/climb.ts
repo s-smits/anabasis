@@ -11,11 +11,11 @@
  * had promoted once each and none twice, and no view said at which epoch a campaign stood or what
  * its tasks had done since the promotion. `runs view` prints the rows.
  */
-import { readsStep, type Tally, testOf } from "../kernel/compare.ts";
+import { readsStep, scoresIn, type Tally, testOf } from "../kernel/compare.ts";
 import { conditionsOf } from "../kernel/condition.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { lastReports, type Reported } from "../kernel/reports.ts";
-import { billedBetween } from "../kernel/trace.ts";
+import { billedBetween } from "../kernel/meter.ts";
 import { countedSolves, passed } from "../kernel/solves.ts";
 import { heldAtGate } from "../kernel/task.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
@@ -65,21 +65,29 @@ export interface Epoch {
   readonly promoted: string | null;
   /** The task versions the gate admitted during the epoch, those later released to practice among them. */
   readonly tasks: readonly string[];
-  /** Builder sessions that finished in the epoch, and how many changed the harness. */
+  /** Builder sessions that acted in the epoch, and their turns in it. */
   readonly sessions: number;
-  readonly changed: number;
+  readonly turns: number;
   /** The comparisons reported in the epoch, by id, with their readings. */
   readonly comparisons: readonly { readonly id: string; readonly reading: string }[];
   /** What the reference answered of the solves of the epoch's own tasks within it: null where no
    *  solve of it on those tasks is on record. */
   readonly reference_share: Share | null;
-  /** The reference against the starter in the epoch's last starter comparison, without the bill
-   *  and counted from the reference's side; null in the first epoch and before one reports. Until
+  /** The reference against the starter in the epoch's first starter comparison that tallied a
+   *  task, without the bill and counted from the reference's side; null in the first epoch and
+   *  before one reports. Until
    *  31 October this was the starter's share of valid answers, which read 4 to 28 in the
-   *  reference's favour as a near tie in an objective domain (buffer-forkedPR530's g-6). */
-  readonly starter_tally: Tally | null;
-  /** Whether the promotion that opened the epoch is confirmed: its last starter comparison reads
-   *  the reference above the starter without the bill, at that comparison's level (`AGENTS.md`,
+   *  reference's favour as a near tie in an objective domain (buffer-forkedPR530's g-6). `aside`
+   *  counts the tasks it set aside for a person's labels: on 2 November two of eight starter
+   *  comparisons read a step once theirs were counted as ruled. `own` is the same tally on the tasks
+   *  admitted in this epoch alone, which an Examiner that read the reference wrote against it, and
+   *  the rest is the older tasks. In buffer-fresh-opus-fullrun-m1-air the reference's 12 won, 6 lost
+   *  and 3 tied in epoch 3 (confirmed) was 2-6-3 on its own epoch's tasks and 10-0-0 on older ones,
+   *  and epoch 2's 9-8-2 was 3-8-2 and 6-0-0. Null where the report names no task versions. */
+  readonly starter_tally: (Tally & { readonly aside: number; readonly own: Tally | null }) | null;
+  /** Whether the promotion that opened the epoch is confirmed: its first starter comparison that
+   *  tallied a task reads the reference above the starter without the bill, at that comparison's
+   *  level (`AGENTS.md`,
    *  section 1, the milestone). Null in the first epoch, false before a starter comparison
    *  reports. */
   readonly confirmed: boolean | null;
@@ -152,7 +160,9 @@ export function epochsOf(events: readonly LogEvent[]): Epoch[] {
     const within = (at: number) => at >= from && (to === null || at < to);
     const tasks = byEpoch[nth] ?? [];
     const held = new Set(tasks);
-    const builds = events.filter(({ kind }, at) => within(at) && kind === "build.finished");
+    // A led session spans epochs and finishes in none, so until 2 November counting the sessions
+    // that finished read 0 in every epoch of a led campaign (WRI lane 31).
+    const built = events.filter(({ kind }, at) => within(at) && kind.startsWith("build."));
     // An old ladder's readings are no comparison of the epoch's (`lastReports`).
     const comparisons = events.flatMap(({ kind, data }, at) =>
       within(at) && kind === "comparison.reported" && isString(data.session) && data.ladder !== true
@@ -182,12 +192,18 @@ export function epochsOf(events: readonly LogEvent[]): Epoch[] {
       to,
       promoted: next?.harness ?? null,
       tasks,
-      sessions: builds.length,
-      changed: builds.filter(({ data }) => data.changed === true).length,
+      sessions: new Set(built.flatMap(({ data }) => (isString(data.session) ? [data.session] : []))).size,
+      turns: built.filter(({ kind }) => kind === "build.turn").length,
       comparisons,
       reference_share:
         judged.length === 0 ? null : { valid: judged.filter(Boolean).length, solves: judged.length },
-      ...againstStarter(reports, within, reference === "starter" ? null : referenceDigest, starterDigest),
+      ...againstStarter(
+        reports,
+        within,
+        reference === "starter" ? null : referenceDigest,
+        starterDigest,
+        held,
+      ),
       falsePromotion: falsePromotionOf(reports, within, {
         reference: referenceDigest,
         starter: starterDigest,
@@ -196,27 +212,45 @@ export function epochsOf(events: readonly LogEvent[]): Epoch[] {
   });
 }
 
-/** The reference's tally without the bill in the last starter comparison within the epoch, and
- *  whether it reads a step for the reference: the starter is that comparison's new side, so the
- *  reference wins what the starter loses. A report before 26 October holds no unbilled scores and
- *  is read as scored. A null `reference` is the first epoch's, which has no starter comparison. */
+/** The reference's tally without the bill in the first starter comparison within the epoch that
+ *  tallied a task, and whether it reads a step for the reference: the starter is that comparison's
+ *  new side, so the reference wins what the starter loses. The first, since the table names the
+ *  pair again where tasks are held out after it (`heldSince`), mostly after a reading that left
+ *  no room: until 2 November the last one set `confirmed`, which let a later draw replace a
+ *  reading that confirmed nothing. A report before 26 October holds no unbilled scores and is read
+ *  as scored. A null `reference` is the first epoch's, which has no starter comparison. */
 function againstStarter(
   reports: readonly Reported[],
   within: (at: number) => boolean,
   reference: string | null,
   starter: string | null,
+  held: ReadonlySet<string>,
 ): Pick<Epoch, "starter_tally" | "confirmed"> {
   if (reference === null) return { starter_tally: null, confirmed: null };
-  const last = reports.findLast(
-    ({ index, data }) => within(index) && data.old === reference && data.fresh === starter,
+  const first = reports.find(
+    ({ index, data }) =>
+      within(index) &&
+      data.old === reference &&
+      data.fresh === starter &&
+      data.reading !== "not-scored" &&
+      asRecord(data.scored) !== null,
   );
-  const scored = asRecord(last?.data.scored);
-  const scores = Array.isArray(scored?.unbilled) ? scored.unbilled : scored?.differences;
-  if (last === undefined || !Array.isArray(scores)) return { starter_tally: null, confirmed: false };
-  const ahead = scores.filter(isNumber).map((one) => -one);
+  if (first === undefined) return { starter_tally: null, confirmed: false };
+  const ahead = scoresIn(first.data.scored).map((one) => -one);
   const { wins, losses, ties } = testOf(ahead);
-  const level = isNumber(last.data.level) ? last.data.level : 0;
-  return { starter_tally: { wins, losses, ties }, confirmed: readsStep(ahead, level) };
+  const level = isNumber(first.data.level) ? first.data.level : 0;
+  const aside = Array.isArray(first.data.aside) ? first.data.aside.length : 0;
+  const versions = Array.isArray(first.data.versions) ? first.data.versions.filter(isString) : null;
+  const own =
+    versions?.length === ahead.length ? testOf(ahead.filter((_, at) => held.has(versions[at] ?? ""))) : null;
+  const tally = {
+    wins,
+    losses,
+    ties,
+    aside,
+    own: own && { wins: own.wins, losses: own.losses, ties: own.ties },
+  };
+  return { starter_tally: tally, confirmed: readsStep(ahead, level) };
 }
 
 /**
@@ -246,17 +280,12 @@ function falsePromotionOf(
   const read = reports.flatMap((each) => {
     const noise = asRecord(each.data.noise);
     if (!Array.isArray(noise?.differences)) return [];
-    const differences = noise.differences.filter(isNumber);
     return [
-      {
-        level: levelOf(each),
-        differences,
-        unbilled: Array.isArray(noise.unbilled) ? noise.unbilled.filter(isNumber) : differences,
-      },
+      { level: levelOf(each), differences: noise.differences.filter(isNumber), scores: scoresIn(noise) },
     ];
   });
-  const aaComparisons = read.filter(({ unbilled, level }) => readsStep(unbilled.map(Math.abs), level));
-  const errors = aaComparisons.filter(({ unbilled, level }) => readsStep(unbilled, level)).length;
+  const aaComparisons = read.filter(({ scores, level }) => readsStep(scores.map(Math.abs), level));
+  const errors = aaComparisons.filter(({ scores, level }) => readsStep(scores, level)).length;
   const rates = attempts.map(rateOf);
   return {
     attempts: attempts.length,
@@ -275,8 +304,16 @@ function falsePromotionOf(
 function starterOf({ reference, starter_tally: tally, confirmed }: Epoch): string {
   if (reference === "starter") return "";
   if (tally === null) return ", against the starter unread";
-  const read = confirmed === true ? "a step, so its promotion is confirmed" : "no step";
-  return `, against the starter without the bill ${String(tally.wins)} won, ${String(tally.losses)} lost, ${String(tally.ties)} tied, ${read}`;
+  const waiting = tally.aside > 0 ? `, ${plural(tally.aside, "task")} set aside for a person's labels` : "";
+  const read = confirmed === true ? "a step, so its promotion is confirmed" : `no step${waiting}`;
+  const count = ({ wins, losses, ties }: Tally) =>
+    `${String(wins)} won, ${String(losses)} lost, ${String(ties)} tied`;
+  const { own } = tally;
+  const split =
+    own === null
+      ? ""
+      : ` (this epoch's tasks ${count(own)}; older ${count({ wins: tally.wins - own.wins, losses: tally.losses - own.losses, ties: tally.ties - own.ties })})`;
+  return `, against the starter ${count(tally)}${split}, ${read}`;
 }
 
 /** One line an epoch, as the view prints them, each harness `called` as the view names it, and the
@@ -290,7 +327,7 @@ export function epochLine(epoch: Epoch, called: Called = short): string {
   const rung = epoch.nth === 1 ? "as set-up (epoch 0)" : `as rung ${String(epoch.nth - 1)} of the climb`;
   const end = epoch.promoted === null ? "open" : `promoted ${called(epoch.promoted)} ${rung}`;
   const risk = epoch.falsePromotion;
-  return `epoch ${String(epoch.nth)}: reference ${reference}; ${String(epoch.tasks.length)} tasks admitted; ${String(epoch.sessions)} sessions (${String(epoch.changed)} changed); comparisons ${readings}; ${share("reference", epoch.reference_share)} in their comparisons${starterOf(epoch)}; ${plural(risk.attempts, "promotion attempt")} under this reference, a false promotion among them estimated at ${percent(risk.union)}: ${sourceOf(risk)}; ${end}`;
+  return `epoch ${String(epoch.nth)}: reference ${reference}; ${String(epoch.tasks.length)} tasks admitted; ${plural(epoch.sessions, "Builder session")}, ${plural(epoch.turns, "turn")}; comparisons ${readings}; ${share("reference", epoch.reference_share)} in their comparisons${starterOf(epoch)}; ${plural(risk.attempts, "promotion attempt")} under this reference, a false promotion among them estimated at ${percent(risk.union)}: ${sourceOf(risk)}; ${end}`;
 }
 
 /** A chance in whole percent, or to a tenth under ten, where an attempt's rate of 1.8% read as 2%;

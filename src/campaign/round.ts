@@ -108,7 +108,7 @@
 import { draw, type ObjectiveRule } from "../kernel/compare.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { type Cap, capHolds, poolOf } from "../kernel/reports.ts";
-import { billedFor } from "../kernel/trace.ts";
+import { billedFor } from "../kernel/meter.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { ranUnder, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
@@ -247,8 +247,8 @@ const UNCOMPARED: ReadonlySet<string> = new Set(["session", "tasks", "retained"]
  * held tasks two or three the reference failed, so three comparisons read one win short and the
  * campaign stopped (`7f0add79:docs/plan.md`, B14). A task that waits for a person's label is left out, and
  * an exhausted one, which can only tie again, is retained (`poolOf`). Of the retained, one for
- * each three frontier tasks is scored beside the target, where a step may not lose more pairs than
- * it wins (`compare.ts`). Until 16 October it was what the frontier left of the target: 16 of 94
+ * each three frontier tasks is scored beside the target, and the step's one test reads them with the
+ * frontier (`stepOf`, `compare.ts`). Until 16 October it was what the frontier left of the target: 16 of 94
  * starts on record drew fewer than one for each three, 12 of them where the frontier filled it.
  *
  * Within each epoch the tasks held out since the last comparison began come first, by the hash:
@@ -259,15 +259,18 @@ const UNCOMPARED: ReadonlySet<string> = new Set(["session", "tasks", "retained"]
  * first stage's untied tasks again first and that stage's other tasks last; one reading promotes
  * since, and every comparison draws alike.
  *
- * `sinceOnly` draws the frontier tasks held out since the last comparison began, and no retained
- * one: the starter comparison asks of those tasks alone whether they leave the reference room.
+ * The starter comparison after a promotion draws alike. From 30 October to 2 November it scored
+ * the tasks held out since alone, which the Examiner writes above the new reference's grade, so
+ * the promotion's confirmation (`confirmed`, `climb.ts`) read the reference only where it was
+ * weakest: in the six on record it lost those tasks to the starter 23 to 33 and won the older
+ * ones 61 to 20.
  */
-export function scoredSet(events: readonly LogEvent[], target: number, contract: string, sinceOnly = false) {
+export function scoredSet(events: readonly LogEvent[], target: number, contract: string) {
   const pool = poolOf(events);
   const began = events.findLastIndex(({ kind }) => kind === STARTED);
   const since = new Set(tasksByEpoch(events.slice(began + 1)).flat());
-  const kept = sinceOnly ? [] : pool.retained.filter((task) => pool.scorable.includes(task));
-  const held = new Set(pool.frontier.filter((task) => !sinceOnly || since.has(task)));
+  const kept = pool.retained.filter((task) => pool.scorable.includes(task));
+  const held = new Set(pool.frontier);
   const count = Math.min(target, held.size);
   const picked = draw(kept, Math.min(kept.length, Math.ceil(count / 3)), `${contract}:retained`);
   // The newest epoch first, and of each the tasks held out since the last comparison began first.

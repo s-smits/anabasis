@@ -6,7 +6,7 @@ import { campaignOf, type Handover, openSteps } from "../src/campaign/handover.t
 import { comparisonsTold, failsTold, startTold } from "../src/builder/past.ts";
 import { type Condition, recordCondition } from "../src/kernel/condition.ts";
 import { append, type EventKind, read } from "../src/kernel/log.ts";
-import { billedAll, billedFor } from "../src/kernel/trace.ts";
+import { billedAll, billedFor } from "../src/kernel/meter.ts";
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
@@ -199,7 +199,6 @@ describe("a campaign's reading", () => {
         id: "b-1",
         reading: "step",
         tally: { wins: 4, losses: 0, ties: 0 },
-        unbilled: null,
         valid: { old: [4, 0, 0], fresh: [0, 0, 4] },
         rulings: { earned: 1, "check-defect": 0, unclear: 0 },
         // Its two solves and the Referee's reading, and nothing of the session under the same id.
@@ -213,7 +212,6 @@ describe("a campaign's reading", () => {
         id: "g-1",
         reading: null,
         tally: null,
-        unbilled: null,
         valid: null,
         rulings: { earned: 0, "check-defect": 0, unclear: 0 },
         billed: 0,
@@ -384,6 +382,21 @@ describe("the Builder's filter over that reading", () => {
     expect(promoted).not.toContain("b-3");
   });
 
+  it("names a session cut before its end as the one that left what it last froze", () => {
+    const c = campaign();
+    c.record("build.started", { session: "b-1", parent: STARTER, tasks: ["p1"] });
+    c.record("build.checkpoint", { session: "b-1", harness: HA });
+    c.record("build.checkpoint", { session: "b-1", harness: HB });
+    const told = startTold(campaignOf(c.events()), HB, "b-2");
+    expect(told).toMatch(/\bbbbbbbbb\b.*\bb-1\b/u);
+    expect(told).not.toContain("no Builder session");
+    // A checkpoint of the parent itself changed nothing, so no session left the starter.
+    const same = campaign();
+    same.record("build.started", { session: "b-1", parent: STARTER, tasks: ["p1"] });
+    same.record("build.checkpoint", { session: "b-1", harness: STARTER });
+    expect(startTold(campaignOf(same.events()), STARTER, "b-2")).toContain("no Builder session");
+  });
+
   it("tells each comparison as its tally and its reading, with no task and no other count", () => {
     const c = campaign();
     c.compared("b-1", { old: STARTER, fresh: HA }, tallied("step", 4, 0));
@@ -431,32 +444,15 @@ describe("the Builder's filter over that reading", () => {
     expect(told.join("\n")).not.toMatch(/s[1-4]\b|0\.0625|valid|earned|\$/);
   });
 
-  it("gives the tally the step is read on beside the one with the bill, where the bill moved it", () => {
+  it("tells a report that also scored the bill by the tally its step was read on", () => {
     const c = campaign();
-    // Three tasks won with the bill tie without it, so the step is read on 1 won and 3 tied.
+    // Three tasks won with the bill tie without it (26 October to 2 November), so the line says
+    // 1 won and 3 tied, and nothing of the bill.
     const billed = tallied("no-step", 4, 0);
-    const scored = { wins: 4, losses: 0, ties: 0, p: 0.0625, unsolved: 0 };
-    c.compared(
-      "g-1",
-      { old: HA, fresh: HB },
-      {
-        ...billed,
-        scored: { ...scored, unbilled: [0.6, 0, 0, 0] },
-      },
-    );
-    c.compared(
-      "g-2",
-      { old: HA, fresh: HB },
-      {
-        ...billed,
-        scored: { ...scored, unbilled: [0.6, 0.3, 0.3, 0.6] },
-      },
-    );
-    const [moved, same] = comparisonsTold(campaignOf(c.events()).steps);
-    expect(moved).toMatch(
-      /4 won, 0 lost, 0 tied, and without the bill.*1 won, 0 lost, 3 tied, which reads no step/u,
-    );
-    expect(same).toMatch(/4 won, 0 lost, 0 tied, which reads no step/u);
-    expect(same).not.toContain("without the bill");
+    const scored = { wins: 4, losses: 0, ties: 0, p: 0.0625, unsolved: 0, differences: [700, 100, 100, 100] };
+    c.compared("g-1", { old: HA, fresh: HB }, { ...billed, scored: { ...scored, unbilled: [600, 0, 0, 0] } });
+    const [told] = comparisonsTold(campaignOf(c.events()).steps);
+    expect(told).toMatch(/1 won, 0 lost, 3 tied, which reads no step/u);
+    expect(told).not.toContain("bill");
   });
 });

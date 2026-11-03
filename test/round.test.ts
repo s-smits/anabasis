@@ -35,7 +35,8 @@ import { type Condition, recordCondition, settingId } from "../src/kernel/condit
 import { draw, pairsOf, WEIGHTS } from "../src/kernel/compare.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import { append, type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
-import { latestBuilt, poolOf, stopRule } from "../src/kernel/reports.ts";
+import { stopRule } from "../src/campaign/admission.ts";
+import { latestBuilt, poolOf } from "../src/kernel/reports.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import { passed, ranUnder } from "../src/kernel/solves.ts";
 import { taskStates } from "../src/kernel/task.ts";
@@ -607,7 +608,6 @@ describe("a round", () => {
         scored: {
           ...tested,
           differences: [600, 600, 600, 600],
-          unbilled: [600, 600, 600, 600],
           unsolved: 0,
           detectable: 0.95,
           falseRate: 1 / 16,
@@ -618,7 +618,6 @@ describe("a round", () => {
           tasks: HELD,
           aside: [],
           differences: [600, 600, 600, 600],
-          unbilled: [600, 600, 600, 600],
           of: HELD,
         },
         retained: "unmeasured",
@@ -637,7 +636,7 @@ describe("a round", () => {
         noise: objectWith({ wins: 0, losses: 0, ties: 4, flips: 0 }),
         counted: null,
         objective: null,
-        points: { validity: 2400, objective: 0, bill: 0 },
+        points: { validity: 2400, objective: 0 },
         // The turns each harness's valid answers took, by task: in no tally.
         turns: Object.fromEntries(HELD.map((task) => [task, { old: null, fresh: 10 }])),
         versions: HELD,
@@ -911,7 +910,7 @@ describe("a round", () => {
     expect(report).toMatchObject({
       scored: { wins: 2, losses: 0, ties: 2, p: 0.25, unsolved: 1 },
       objective,
-      points: { validity: 0, objective: 2 * full, bill: 0 },
+      points: { validity: 0, objective: 2 * full },
       reading: NO_STEP,
     });
     // The objective is a term of the comparison, fixed at its start.
@@ -1896,9 +1895,10 @@ describe("the scored set", () => {
     );
   });
 
-  it("draws for the starter comparison the tasks held out since alone, with nothing retained", () => {
-    // 30 October: two starter comparisons, told they read the tasks held out since, filled the
-    // draw with older tasks the reference had been read on, at $15 and $19.
+  it("draws the tasks held out since first and fills the rest from older epochs, whichever sides it compares", () => {
+    // From 30 October to 2 November a starter comparison scored the tasks held out since alone.
+    // Those were written above the new reference's grade, and in the six starter comparisons on
+    // record the reference lost them 23 to 33 while it won the older tasks 61 to 20.
     const started = { at, kind: "comparison.started", data: { session: "g-1", tasks: held } } as const;
     const climbed: LogEvent[] = [
       ...heldOut(held),
@@ -1906,12 +1906,9 @@ describe("the scored set", () => {
       { at, kind: "harness.promoted", data: { harness: "h1" } } as const,
       ...heldOut(["v7", "v8"]),
     ];
-    expect(scoredSet(climbed, 24, "contract-a", true)).toEqual({
-      tasks: drawn(heldOut(["v7", "v8"]), 2),
-      retained: [],
-    });
-    // Every other comparison fills the draw as before.
-    expect(scoredSet(climbed, 24, "contract-a").tasks).toHaveLength(3);
+    const { tasks } = scoredSet(climbed, 24, "contract-a");
+    expect(tasks).toHaveLength(3);
+    expect(tasks.slice(0, 2).toSorted()).toEqual(["v7", "v8"]);
   });
 
   it("keeps a task whose solves were cut at their limits, and leaves out one with no valid answer after two comparisons and the tasks the reference closed twice, until a person keeps the first", async () => {

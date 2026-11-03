@@ -33,6 +33,7 @@ import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { type Handover, campaignOf } from "#src/campaign/handover.ts";
 import { DIGEST, namesOf } from "#src/campaign/names.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
+import { practiceRan } from "#src/kernel/solves.ts";
 import {
   AGENT_DIR,
   BYTECODE,
@@ -195,8 +196,13 @@ function madeOf(events: readonly LogEvent[], digest: string, starter: string) {
   if (isString(parent)) {
     return { made: `checkpoint of session ${recorded(session)} from ${short(parent)}`, parent };
   }
+  // A led session practises states it never freezes: until 2 November each read as made by no
+  // record, 28 of them in seven campaigns (lane 15), though the log's practice solves name each.
   if (digest === starter) {
     return { made: "the Starter Built Harness as this checkout writes it", parent: null };
+  }
+  if (practiceRan(events).some(({ under }) => under.harness === digest)) {
+    return { made: "a state its Builder practised and never froze", parent: null };
   }
   return {
     made: "no record of its making: a stored sweep's harness, a starter of another checkout, or a programs-of control",
@@ -204,21 +210,16 @@ function madeOf(events: readonly LogEvent[], digest: string, starter: string) {
   };
 }
 
-/** An open session has handed nothing over yet, so what it left so far is its last snapshot: until
- *  1 November an open led session that had made three read "left it as it was". */
-function measured(steps: readonly Handover[], digest: string, events: readonly LogEvent[]) {
+/** An open session has handed nothing over yet, so its handover carries its last checkpoint and reads
+ *  "so far": until 1 November an open led session that had made three read "left it as it was". */
+function measured(steps: readonly Handover[], digest: string) {
   return {
     sessions: steps.flatMap((step) => {
       if (step.step !== "builder" || step.parent !== digest) return [];
-      const snapshot = events.findLast(
-        ({ kind, data }) => step.ended === null && kind === "build.checkpoint" && data.session === step.id,
-      )?.data.harness;
       const left =
         step.changed && step.harness !== null
-          ? `left ${short(step.harness)}`
-          : isString(snapshot)
-            ? `left ${short(snapshot)} so far`
-            : "left it as it was";
+          ? `left ${short(step.harness)}${step.ended === null ? " so far" : ""}`
+          : "left it as it was";
       const end = step.ended === null && step.cut ? ", cut" : step.ended === null ? ", open" : "";
       return [
         `${step.id}: ${step.practiceSolves} practice solves, ${step.fails} counted fails, ${left}${end}`,
@@ -277,7 +278,7 @@ export async function versionsOf(keeping: Keeping): Promise<Version[]> {
         promoted: events.flatMap(({ at, kind, data }) =>
           kind === "harness.promoted" && data.harness === digest ? [at] : [],
         ),
-        ...measured(steps, digest, events),
+        ...measured(steps, digest),
         parts: kept ? await partsOf(dir) : null,
       };
     }),

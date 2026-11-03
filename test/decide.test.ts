@@ -477,9 +477,11 @@ describe("room for the reference", () => {
       move: "examine",
       code: "no-room",
     });
-    // One reading closes no task (`easyAt`), so the task x-1 wrote is compared with g-1's; after a
-    // second closed reading the tasks leave the frontier and the Examiner is asked again.
-    expect(move([...tied, ...examined("x-1", ["v13"])])).toMatchObject({ move: "compare" });
+    // One task cannot clear the level alone, so the Examiner is asked for more (`sweepOf`); six can, and
+    // after a second closed reading the tasks leave the frontier and the Examiner is asked again.
+    expect(move([...tied, ...examined("x-1", ["v13"])])).toMatchObject({ move: "examine" });
+    const sixMore = examined("x-1", ["v13", "v14", "v15", "v16", "v17", "v18"]);
+    expect(move([...tied, ...sixMore])).toMatchObject({ move: "compare" });
     const again = compared("g-2", "h1", "no-step", { tally: [0, 0, 24], solved: EVERY });
     expect(move([...tied, ...again, ...examined("x-1", ["v13"])])).toMatchObject({ move: "examine" });
     const closedReference = decide(promotedAll, PLAN);
@@ -573,8 +575,15 @@ describe("unread harnesses and tasks", () => {
         fresh: "latest",
       });
     }
+    // Five new tasks cannot clear 0.02 alone, so a no-room reading is not drawn again on them.
+    const noRoom = compared("g-1", "h1", "no-step", { tally: [0, 0, 12], valid: { old: ALL, fresh: ALL } });
+    expect(decide([...FIRST, ...noRoom, ...six.slice(0, 5)], PLAN)).not.toMatchObject({ code: "unread" });
+    expect(decide([...FIRST, ...noRoom, ...six], PLAN)).toMatchObject({ move: "compare", code: "unread" });
 
-    const written = [...promotedAll, ...examined("x-1", ["v13"])];
+    // After a promotion the starter is compared once the tasks written for the new reference could
+    // clear the level alone; one is not enough, and the Examiner is asked for more.
+    expect(move([...promotedAll, ...examined("x-1", ["v13"])])).toMatchObject({ move: "examine" });
+    const written = [...promotedAll, ...examined("x-1", ["v13", "v14", "v15", "v16", "v17", "v18"])];
     expect(decide(written, PLAN)).toMatchObject({
       move: "compare",
       code: "unread",
@@ -582,7 +591,7 @@ describe("unread harnesses and tasks", () => {
       reference: "promoted",
     });
     expect(decide(written, PLAN).why).toContain("h1");
-    expect(decide(written, PLAN).why.match(/\b1\b/g)).toHaveLength(1);
+    expect(decide(written, PLAN).why.match(/\b6\b/g)).toHaveLength(1);
     const starterComparison = (reading: string, old: Valid, tally: [number, number, number]) => [
       ...written,
       ...compared("g-3", "start", reading, { old: "h1", tally, valid: { old, fresh: HALF } }),
@@ -600,12 +609,17 @@ describe("unread harnesses and tasks", () => {
     });
     expect(
       decide(
-        [...starterComparison("no-step", HALF, [2, 2, 8]), ...examined("x-2", ["v14"]), built("b-2", "h2")],
+        [...starterComparison("no-step", HALF, [2, 2, 8]), ...examined("x-2", ["v19"]), built("b-2", "h2")],
         PLAN,
       ),
     ).not.toMatchObject({ fresh: "starter" });
     // Tasks written since and all released for practice leave the starter comparison nothing to draw.
-    const releasedAll = [...written, event("task.state", { version: "v13", state: "released" })];
+    const releasedAll = [
+      ...written,
+      ...["v13", "v14", "v15", "v16", "v17", "v18"].map((version) =>
+        event("task.state", { version, state: "released" }),
+      ),
+    ];
     expect(decide([...releasedAll, built("b-2", "h2")], PLAN)).not.toMatchObject({ fresh: "starter" });
 
     expect(move(PROMOTED)).toMatchObject({ move: "examine" });

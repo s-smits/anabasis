@@ -24,6 +24,7 @@
  * log is read, at the one budget it names (`7f0add79:docs/simplify.md`, package A).
  */
 import { unadmitted } from "../kernel/acceptance.ts";
+import { sweepOf } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { poolOf, roomOf } from "../kernel/reports.ts";
 import { heldAtGate, taskSets } from "../kernel/task.ts";
@@ -135,9 +136,12 @@ export function heldAfter(events: readonly LogEvent[], after: number): number {
 }
 
 /** Whether tasks were held out after `reading` and enough are now held to start a comparison.
- *  If so, compare them before asking for another Examiner session. */
-function writtenSince({ events, refused }: Ground, reading: Reading): boolean {
-  return heldAfter(events, reading.reported) > 0 && !SHORT.some((code) => refused.has(code));
+ *  If so, compare them before asking for another Examiner session. Enough is as many new tasks as
+ *  could clear the level alone (`sweepOf`): on 3 November esp32-fresh-opus-forkedPR579 g-2 paid 72
+ *  solves on 4 new tasks beside 14 the reference had closed. */
+function writtenSince({ events, refused, plan }: Ground, reading: Reading): boolean {
+  const enough = heldAfter(events, reading.reported) >= sweepOf(plan.wanted.level);
+  return enough && !SHORT.some((code) => refused.has(code));
 }
 
 /**
@@ -516,7 +520,8 @@ function unread(ground: Ground): Move | null {
  * and the one step (buffer-159-opus g-7) came the comparison after a 5-0 no-step of the same
  * harness. The Builder changes it, and the next comparison reads the change.
  */
-function heldSince({ events, read, reports, waiting, reference, starter }: Ground): Move | null {
+function heldSince(ground: Ground): Move | null {
+  const { events, read, reports, waiting, reference, starter } = ground;
   const since = heldAfter(events, reports.at(-1)?.reported ?? -1);
   const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED);
   const confirmed = reports.some(
@@ -529,7 +534,7 @@ function heldSince({ events, read, reports, waiting, reference, starter }: Groun
       "starter",
     );
   }
-  if (waiting === null || read === null || heldAfter(events, read.reported) === 0) return null;
+  if (waiting === null || read === null || !writtenSince(ground, read)) return null;
   const later = "and tasks were written since";
   if (read.report.reading === "not-scored") return compare(`comparison ${read.id} tallied no task, ${later}`);
   const left = { none: "left no room", "too-hard": "left neither harness an answer", room: null }[

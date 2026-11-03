@@ -385,6 +385,17 @@ comparisons miss alike, or a prediction fails, walk the links again before choos
 - **Rehearsal:** `bun run runs seed --from <campaign folder> --name <seed>`, then
   `bun run runs rehearse` over the seed. Scripts replace the working seats; no Referee runs, and
   an Examiner is scripted only over a drafted exam. Use `--campaign` for a campaign path.
+- **One exam, two commits:** a fresh campaign drafts its own exam, so two fresh campaigns of one
+  domain differ in their exam as well as in the change. For a mechanism that acts after the
+  freeze (the Builder, the table, the comparison, the Examiner's writing), seed one finished
+  campaign cut at its `contract.frozen` (`--events <its line>`) into a worktree at each commit,
+  and run each seed on the source's launch flags (its `launch-run-1.json`), dry run first. Both
+  arms hold one contract, one check program and the draft's tasks, and write the rest themselves.
+  On 3 November a drafted ESP32 campaign cut at 21 of 2,387 events dry-ran at the stack's top with
+  its log unchanged and named holding the drafted tasks next. The seed keeps the source's opening
+  terms, its reserve included. Its promotions are no climb (`AGENTS.md`, section 10, item 9) and
+  each arm is one stream, so the result is a lead for a fresh run, never a step. Each arm is a paid
+  run and takes the operator's word.
 
 For model-visible text, render and read the whole composed surface. Check for duplicated facts and
 whether a literal reading can finish within its limits. A test double proves its interface; better

@@ -186,10 +186,11 @@ describe("proveCommits", () => {
       expect(prove([`${held}:static`, `${away}:static`, `${imported}:static`, `${head}:whole`]).status).toBe(
         0,
       );
-      expect(ran(held)).toEqual(["run ui:gate"]);
-      expect(ran(away)).toEqual([]);
+      // The UI's install runs first wherever the UI is, since the lint reads what it installs.
+      expect(ran(held)).toEqual(["run ui:deps", "run ui:gate"]);
+      expect(ran(away)).toEqual(["run ui:deps"]);
       expect(ran(imported)).toEqual(near("deep.test.ts"));
-      expect(ran(head)).toEqual(["run ui:gate"]);
+      expect(ran(head)).toEqual(["run ui:deps", "run ui:gate"]);
       // Main holding the UI: a whole pass over the same change runs the browser's file too.
       git("update-ref", "refs/remotes/origin/main", away);
       rmSync(log, { force: true });
@@ -201,7 +202,7 @@ describe("proveCommits", () => {
       rmSync(log, { force: true });
       forgetPasses();
       expect(prove([`${head}:whole`]).status).toBe(0);
-      expect(ran(head)).toEqual([]);
+      expect(ran(head)).toEqual(["run ui:deps"]);
     } finally {
       git("update-ref", "refs/remotes/origin/main", base);
     }

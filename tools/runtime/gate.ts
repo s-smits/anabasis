@@ -6,9 +6,10 @@
  *                                typecheck, strict lint, the suite
  *   bun run gate -- --static     the same, with the suite replaced by the tests near what HEAD changed
  *
- * The steps are `ci.yml`'s two Darwin jobs. The install, the format check and the secret scan run first,
- * one after another, so a format slip fails in a second; then the UI's gate, the typecheck, the strict
- * lint and the tests run side by side, since none reads what another writes. Until 2 November they
+ * The steps are `ci.yml`'s two Darwin jobs. The install, the format check, the secret scan and the
+ * UI's install run first, one after another, so a format slip fails in a second; then the UI's gate,
+ * the typecheck, the strict lint and the tests run side by side, since none reads what another
+ * writes once the UI's dependencies are in place. Until 2 November they
  * ran one after another too, and the UI's browser tests left a four-core runner 68% idle for seven
  * minutes before the suite began. A step run beside others holds its output until it ends, so each
  * prints whole; the tests stream theirs, which the pulse reads. A failed step no longer keeps the
@@ -345,11 +346,7 @@ async function uiStep(root: string, pass: Pass): Promise<number> {
     files.filter((file) => UI_TEST.test(file) && (pass === "whole" || !BROWSER_FILE.test(file))),
     NEAR.ui,
   );
-  for (const args of [
-    ["run", "ui:deps"],
-    ["run", "ui:build"],
-    ...(tests.length > 0 ? [["run", "test", "--", ...tests]] : []),
-  ]) {
+  for (const args of [["run", "ui:build"], ...(tests.length > 0 ? [["run", "test", "--", ...tests]] : [])]) {
     const code = await step(root, "ui", args, true);
     if (code !== 0) return code;
   }
@@ -395,8 +392,13 @@ async function gate(argv: readonly string[]): Promise<number> {
   const near =
     pass === "whole" ? [] : nearbyTests(root, changedSince(root, parentOf(root, "HEAD")), tests, NEAR.root);
   if (pass === "static" && near.length === 0) console.log("gate: no test file is near what HEAD changed.");
+  // The strict lint reads whether the UI's dependencies are there as it starts, so they are
+  // installed before the steps that run side by side (the release review of 3 November).
+  const ui = existsSync(join(root, UI_PACKAGE));
+  const installed = ui ? await step(root, "ui-deps", ["run", "ui:deps"]) : 0;
+  if (installed !== 0) return installed;
   const codes = await Promise.all([
-    existsSync(join(root, UI_PACKAGE)) ? uiStep(root, pass) : 0,
+    ui ? uiStep(root, pass) : 0,
     ...BESIDE.map(([name, args]) => step(root, name, args, true)),
     pass === "whole" || near.length > 0
       ? step(root, "test", ["run", "test", ...(near.length > 0 ? ["--", ...near] : [])])

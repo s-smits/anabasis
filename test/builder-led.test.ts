@@ -284,9 +284,7 @@ describe("a campaign run by its live Builder", () => {
       flagsOf(["--root", root, "--name", "terms", "--project", PROJECT, "--budget", "100", ...more]);
     expect(() => opened(log, flags(), "paid")).toThrow("--reviewer");
     expect(read(log)).toEqual([]);
-    // A campaign that opens now is led by its Builder, on record.
-    expect(opened(log, flags(), "scripted")).toMatchObject({ seats: { reviewer: null }, led: true });
-    expect(read(log)[0]?.data).toMatchObject({ led: true });
+    expect(opened(log, flags(), "scripted")).toMatchObject({ seats: { reviewer: null } });
     expect(() => opened(log, flags(), "paid")).toThrow("--reviewer");
     expect(read(log)).toHaveLength(1);
     const model = "claude/claude-opus-5-5";
@@ -1163,6 +1161,11 @@ describe("a campaign tool where the table names more than the action", () => {
         // A comparison's minutes are the host's clock: on 14 October CI read one campaign's g-1 at
         // 0 minutes and the other's at 1, the same tally under a busier host.
         .replaceAll(/took \d+ minutes?/gu, "took 0 minutes")
+        // A scripted solve bills by the length of what it reads (`fixture-pack.ts`), so which task a
+        // side answered moves a comparison's sum across a cent's rounding: 0.89 and 0.90 on
+        // 3 November, once at #589's base and again at #590's. What a comparison billed crosses with
+        // the remaining budget (section 1's closed list), so the tally, not the bill, is held equal.
+        .replaceAll(/billed \d+\.\d\d dollars/gu, "billed 0.00 dollars")
     );
   };
 

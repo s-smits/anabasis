@@ -1,8 +1,8 @@
 /**
  * The campaign's moves as a live Builder makes them: the tools its conversation is given beside
- * its own, and the advice their results end with. This module is the whole of what a campaign
- * led by its Builder adds to one the host runs (`--builder-led`, `harness-builder.ts`); the flags
- * and terms both run by are `campaign-terms.ts`.
+ * its own, and the advice their results end with. This module is the whole of what the campaign
+ * command (`harness-builder.ts`) adds to a Builder session by hand (`session.ts`); the flags and
+ * terms a campaign runs by are `campaign-terms.ts`.
  *
  * The Builder keeps one conversation and one working copy while it asks a separate Examiner for
  * tasks (`examine`), has the host release practice tasks (`release_practice`), freezes its harness

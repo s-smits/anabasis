@@ -252,7 +252,7 @@ tests; `examiner-view <name>` counts what an Examiner opening would be told, and
 
 ## 4. The Harness Builder
 
-One Builder conversation leads the campaign (`tools/d2/harness-builder.ts`, `--builder-led`).
+One Builder conversation leads the campaign (`tools/d2/harness-builder.ts`).
 Its campaign tools are `examine`, `release_practice`, `compare`, `promote`,
 `campaign_status` and `wait`. Each uses the same admission checks as the operator's command.
 The move table advises the Builder, while code enforces endings and selects the promotable
@@ -268,7 +268,7 @@ Preserve the Builder conversation across campaign actions. Standing facts appear
 result because messages sent between tool-call turns do not reach the Builder.
 
 **In `campaign-mechanics`, section 4** (`builder-conversation.md`): Examiner sessions beside the
-conversation; which moves are recorded; the Builder's clock; `--no-builder-led`.
+conversation; which moves are recorded; the Builder's clock; sessions by hand.
 
 ## 5. The log
 

@@ -137,8 +137,8 @@ type Shown<Step> = Step extends { readonly step: "comparison" }
   : Step;
 
 /** The decision table's row a move was made by, as the move records it (`campaign.move`): the
- *  row's code and its reason. Where a Builder leads its campaign, a move it made that the table did
- *  not name carries `asked` and what the table named, and its conversation carries `led`. */
+ *  row's code and its reason. A move the Builder made that the table did not name carries `asked`
+ *  and what the table named, and its conversation carries `led`. */
 export interface Named {
   readonly code: string;
   readonly why: string;
@@ -355,10 +355,6 @@ export interface CampaignReading extends Answer {
   /** Whether the freeze and a promotion wait for the operator's word (`Opening.attended`,
    *  `--attended`). The table names such a move all the same, and the campaign command waits. */
   readonly attended: boolean;
-  /** Whether the campaign's Builder leads it (`Opening.led`, `--builder-led`): past the exam's
-   *  set-up one Builder conversation makes the moves, and the table's next move is its advice.
-   *  False where the host makes every move the table names. */
-  readonly led: boolean;
   /** The bar a promotion's cost is read against, as the opening sets it or by default
    *  (`barsOf`, `src/campaign/climb.ts`): read and printed, refusing nothing. */
   readonly bars: Worth["bars"];

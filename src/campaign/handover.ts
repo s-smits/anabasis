@@ -18,13 +18,14 @@
  * A session is read from its own events while it has no end, and from its end once it has one:
  * read from its end alone, an Examiner session still running read "0 proposed, 0 held out" and
  * $0.00 when it had held out seven tasks and metered $8.23. A step with no end is `cut`
- * where the campaign went past it, and open at the log's end otherwise (`nextBound`); an open one
+ * where the campaign went past it, and open at the log's end otherwise (`nextBound`, `soFar`); an open one
  * may be running or stopped, which the log cannot tell apart, so the view says when it last wrote.
- * In a campaign its Builder leads, the Examiner's sessions and the comparisons run inside the
- * Builder's conversation, and an Examiner session can outlast it: a session there is gone past
- * only at its own seat's next start or the campaign's end (`soFar`). Until 14 October a Builder
- * read as cut once its first Examiner session began. A session is billed its own dollars alone,
- * open or ended (`ownedBy`, `src/kernel/reports.ts`): until 19 October an ended led Builder was
+ * The Examiner's sessions and the comparisons run inside the Builder's conversation, and an
+ * Examiner session can outlast it, so a session is gone past only at its own seat's next start or
+ * the campaign's end (`soFar`). Until 14 October a Builder read as cut once its first Examiner
+ * session began, and until 3 November a session of a campaign its host led was gone past at the
+ * next bound: no such campaign made a move past its draft. A session is billed its own dollars
+ * alone, open or ended (`ownedBy`, `src/kernel/reports.ts`): until 19 October an ended Builder was
  * billed every move made inside its span, which those moves' own lines billed again.
  * The Referee triage of 20 October found unclear and unread practice rejections counted as failures.
  */
@@ -37,7 +38,6 @@ import { ended, passed, practiceRan, type Ran, rejectionAside, solvesIn } from "
 import { heldAtGate, taskSets } from "../kernel/task.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { type Supply, supplyOf } from "./admission.ts";
-import { openingOf } from "./opening.ts";
 import { reported, STARTED } from "./comparison.ts";
 
 /** A failed practice solve, and where it stands now by the task's later solves. */
@@ -58,7 +58,7 @@ export interface PracticeFail {
 interface SoFar {
   /** How it ended; null while it is open, or where it was cut. */
   readonly ended: string | null;
-  /** It has no end, and the campaign went past it (`nextBound`). */
+  /** It has no end, and the campaign went past it (`soFar`). */
   readonly cut: boolean;
   readonly turns: number;
   /** When it last wrote an event of its own. */
@@ -192,18 +192,16 @@ export function nextBound(events: readonly LogEvent[], index: number): number {
 }
 
 /** Session `id`, started at event `index` with turns of kind `seat.turn`, as the log holds it, and
- *  the place in the log its window ends: at its end, else at the next bound, else at the log's end.
- *  Where the Builder leads (`led`), the next bound is its own seat's next start or the campaign's end. */
-function soFar(events: readonly LogEvent[], index: number, id: string, seat: "exam" | "build", led: boolean) {
+ *  the place in the log its window ends: at its end, else at its own seat's next start or the
+ *  campaign's end, else at the log's end. */
+function soFar(events: readonly LogEvent[], index: number, id: string, seat: "exam" | "build") {
   const own = ({ kind, data }: LogEvent) => kind.startsWith(`${seat}.`) && data.session === id;
   const closed = events.findIndex(
     (event, at) => at > index && own(event) && event.kind === `${seat}.finished`,
   );
-  const past = led
-    ? events.findIndex(
-        ({ kind }, at) => at > index && (kind === `${seat}.started` || kind === "campaign.ended"),
-      )
-    : nextBound(events, index);
+  const past = events.findIndex(
+    ({ kind }, at) => at > index && (kind === `${seat}.started` || kind === "campaign.ended"),
+  );
   const until = [closed, past, events.length].find((at) => at !== -1) ?? events.length;
   const window = events.slice(index, closed === -1 ? until : closed + 1);
   const read: SoFar = {
@@ -311,12 +309,11 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
     ),
   );
   const comparisons = new Set<string>();
-  const led = openingOf(events)?.led === true;
   const steps = events.flatMap(({ kind, data }, index): Handover[] => {
     const id = data.session;
     if (!isString(id)) return [];
     if (kind === "exam.started") {
-      const { read, closed, window, billed } = soFar(events, index, id, "exam", led);
+      const { read, closed, window, billed } = soFar(events, index, id, "exam");
       const end = events[closed]?.data;
       // One `task.proposed` an instance the session took, and one task admission or refusal of it
       // (`src/examiner/write.ts`), so an open session is counted by its proposals and their admissions.
@@ -340,7 +337,7 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
       return [{ step: "examiner", id, ...read, ...counts }];
     }
     if (kind === "build.started") {
-      const { read, closed, until, window, billed } = soFar(events, index, id, "build", led);
+      const { read, closed, until, window, billed } = soFar(events, index, id, "build");
       const end = events[closed]?.data;
       const within = ({ started }: { readonly started: number }) => started > index && started < until;
       // A session cut before its end left what it last froze: until 2 November a Builder resumed

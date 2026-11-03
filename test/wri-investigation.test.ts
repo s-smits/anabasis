@@ -137,6 +137,10 @@ describe("an investigation's lanes", () => {
     expect(reportOf(lane(4), written, owners, ["buffer-a"]).faults).toEqual([
       "the verdict is omitted and the report writes 1 finding",
     ]);
+    const isolated = omitted.replace("# Lane 4: False rejection among fails", "# Lane 5: x");
+    expect(reportOf(lane(5), isolated, owners, ["buffer-a"]).faults).toEqual([
+      "an isolated lane may not be omitted",
+    ]);
     const index = reportIndex([ok, { ...ok, lane: 6 }], (number) => `/r/${String(number)}.md`, one);
     expect(index).toContain("lane 4: ok, omitted although its trigger fired");
     expect(index).toContain("lane 6: ok, omitted, 0 findings");

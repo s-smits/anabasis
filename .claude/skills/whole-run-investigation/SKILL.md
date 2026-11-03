@@ -70,7 +70,7 @@ start a step until the check named for the one before holds.
    importance (`Importance:` in each lane of the catalogue), and a light label joins another
    instead of taking a session of its own. The verb prints each session's lanes and weight, and a
    suggested N: the most sessions whose lightest weighs at least half the heaviest. The operator
-   names N; one session a lane, without the flag, stays available. With no `--lanes` it opens every
+   names N, or "Sizing" below does; one session a lane, without the flag, stays available. With no `--lanes` it opens every
    lane a trigger started and the six standing lanes. By default it builds no isolated lane:
    it names the ones whose trigger fired for the primary to assess. A prompt built before is
    kept and excluded from any newly written `launch.json`.
@@ -144,6 +144,9 @@ under a checker and one under its repair, are read apart, and lane 3 of the late
 One session reads one lane, on every campaign under review: more campaigns make each session
 longer, and add none. `selected` opens all six standing lanes even before a comparison
 reports, alongside any triggered open lanes. Count the manifest rather than assuming a size.
+Where the operator names no N, size `--agents` by the run under review: 2 sessions for a small
+run (no promotion, a few hours), 8 for one with 3 or more promotions, and 4 to 6 in between,
+more the longer the run. Several campaigns read together are sized by the largest.
 When the budget is
 smaller than the build, read the groups in this order, because each rests on the one before:
 

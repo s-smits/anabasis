@@ -15,11 +15,12 @@
  * A writing session receives a copy of the reference harness in its home (`shell.ts`). Neither
  * mode receives a solver's trace or answer. Its shell is a walled home, closed to the repository.
  *
- * The session clock charges setup and every turn and tool call, and kill and budget signals stay
- * independent of it. Typed abort reasons latch the first parent source before the agent loop
- * aborts an invocation. Until 1 November the clock paused while the session waited on its gate's
- * room solves, a tool result told what that gate had said since, and `finish` and the session's
- * end waited for it; no solve runs at the gate now (`write.ts`).
+ * The session clock charges setup and every turn and tool call except a drafting session's wait for
+ * the host's reading of a draft, whose starter solves are the host's time (`drafting`), and kill
+ * and budget signals stay independent of it. Typed abort reasons latch the first parent source
+ * before the agent loop aborts an invocation. Until 1 November the clock paused while the session
+ * waited on its gate's room solves, a tool result told what that gate had said since, and `finish`
+ * and the session's end waited for it; no solve runs at the gate now (`write.ts`).
  */
 import type { Api, AssistantMessage, Model, Models, ThinkingLevel } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
@@ -40,6 +41,8 @@ import { walledEnv } from "../tools/env.ts";
 import { drafting } from "./draft.ts";
 import { examinerShell, inExaminerWall, type Wall, type Walls } from "./shell.ts";
 import { writing } from "./write.ts";
+
+type Clock = ReturnType<typeof sessionClock>;
 
 /** Who sits, whatever the mode: its name, its model, its limits and its log. */
 interface Sitting {
@@ -176,7 +179,7 @@ function finishTool(mode: Mode, said: Said): SeatTool {
  */
 async function examining(
   request: Sitting,
-  modeOf: (stop: AbortSignal) => Mode,
+  modeOf: (stop: AbortSignal, within: Clock["within"]) => Mode,
   walls: Walls | undefined,
 ): Promise<Examined> {
   const began = walls?.began ?? performance.now();
@@ -192,7 +195,7 @@ async function examining(
   if (request.kill?.aborted === true) cancel();
   try {
     const stops = [clock.signal, spent.signal, caller.signal];
-    const mode = modeOf(AbortSignal.any(stops));
+    const mode = modeOf(AbortSignal.any(stops), clock.within);
     append(log, `${mode.kind}.started`, {
       session: id,
       model: priceKey(model),
@@ -293,8 +296,8 @@ export async function examine(request: ExamRequest, wall?: Wall): Promise<Examin
   const seated = async (walls?: Walls) =>
     examining(
       request,
-      (stop) =>
-        request.mode === "draft" ? drafting(request, stop) : writing(request, walls, reference, stop),
+      (stop, within) =>
+        request.mode === "draft" ? drafting(request, stop, within) : writing(request, walls, reference, stop),
       walls,
     );
   if (wall === undefined) return await seated();

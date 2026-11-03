@@ -430,8 +430,15 @@ export function draftOf(events: readonly LogEvent[]): Draft | null {
 
 /** The drafting mode as `examine` seats it (`session.ts`): what the session is told, the
  *  tool it puts a draft by, the shape a draft is held to before the caller's reading, and the event
- *  a draft that stands is kept in. */
-export function drafting(terms: DraftingTerms, stop: AbortSignal) {
+ *  a draft that stands is kept in. The reading runs `within` the session's clock, which pauses for
+ *  it: its starter solves are the host's time. On 3 November a truss session put its first draft at
+ *  44 of its 60 minutes, and the clock ended it during the solves, so the draft got no reading and
+ *  still counted as one of the campaign's tries. */
+export function drafting(
+  terms: DraftingTerms,
+  stop: AbortSignal,
+  within: <T>(action: () => Promise<T>) => Promise<T>,
+) {
   const { limits } = terms;
   const kind = "draft";
   const desk = { tries: 0, stands: false };
@@ -449,7 +456,9 @@ export function drafting(terms: DraftingTerms, stop: AbortSignal) {
       const seen = capturedJsonStringify(draft);
       const unformed = draftFaults(draft);
       const { faults, notes } =
-        unformed.length > 0 ? { faults: unformed, notes: [] } : await terms.reading(draft, stop);
+        unformed.length > 0
+          ? { faults: unformed, notes: [] }
+          : await within(async () => await terms.reading(draft, stop));
       const noted =
         notes.length === 0
           ? []

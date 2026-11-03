@@ -46,6 +46,7 @@ describe("the Examiner's ladder", () => {
         reading: async () => ({ faults: [], notes: [] }),
       },
       new AbortController().signal,
+      async (action) => await action(),
     );
     expect(session.system).toContain(LADDER);
   });

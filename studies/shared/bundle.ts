@@ -28,7 +28,8 @@ import { copyHarness } from "#src/builder/kept.ts";
 import { epochsOf } from "#src/campaign/climb.ts";
 import { read } from "#src/kernel/log.ts";
 import { promoted } from "#src/kernel/reports.ts";
-import { existsSync, mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
+import { existsSync, mkdirSync, renameSync, writeFileSync } from "#src/meta/filesystem.ts";
+import { TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";
@@ -50,6 +51,12 @@ export const MODULE_FILE = "tools.mjs";
 const TARGET = "bun-linux-x64-baseline";
 
 const SOLVER = join(import.meta.dir, "pi-solve.ts");
+
+/** Where a program's interpreter may sit to exist in a benchmark's container as on a host. */
+const CONTAINER_ROOTS = ["/usr/", "/bin/"];
+
+/** ELF's machine number for x86-64. */
+const X86_64 = 62;
 
 /** Where an arm's harness came from, as its mount records it. */
 interface Origin {
@@ -106,7 +113,7 @@ export async function placeHarness(dir: string, source: "starter" | Source): Pro
       `the copy of ${kept.digest} opens as ${digest}: a score of it would be another harness's`,
     );
   }
-  const led = epochsOf(events).find(({ reference }) => reference === digest);
+  const led = epochsOf(events).findLast(({ reference }) => reference === digest);
   return { campaign, ending, confirmed: led?.confirmed ?? null };
 }
 
@@ -117,10 +124,14 @@ export async function bundleArm(
   source: "starter" | Source,
 ): Promise<{ digest: string; origin: Origin }> {
   if (existsSync(into)) throw new Error(`${into} is there already; an arm's mount is made once`);
-  mkdirSync(into, { recursive: true });
-  const origin = await placeHarness(join(into, HARNESS_DIR), source);
-  const opened = await openHarness(join(into, HARNESS_DIR));
-  writeFileSync(join(into, MODULE_FILE), opened.module);
+  // Built beside its place and renamed into it whole, so a failure leaves no half-made mount that
+  // would refuse every later one.
+  const part = `${into}.part-${String(process.pid)}-${String(Date.now())}`;
+  mkdirSync(part, { recursive: true });
+  const origin = await placeHarness(join(part, HARNESS_DIR), source);
+  await foreignPrograms(join(part, HARNESS_DIR, TOOL_TREE_DIR));
+  const opened = await openHarness(join(part, HARNESS_DIR));
+  writeFileSync(join(part, MODULE_FILE), opened.module);
   runTextSyncOrThrow([
     capturedExecPath,
     "build",
@@ -128,9 +139,45 @@ export async function bundleArm(
     `--target=${TARGET}`,
     SOLVER,
     "--outfile",
-    join(into, SOLVER_FILE),
+    join(part, SOLVER_FILE),
   ]);
   const record = { harness: opened.digest, ...origin, target: TARGET };
-  writeFileSync(join(into, MOUNT_RECORD), `${capturedJsonStringify(record, null, 2)}\n`);
+  writeFileSync(join(part, MOUNT_RECORD), `${capturedJsonStringify(record, null, 2)}\n`);
+  renameSync(part, into);
   return { digest: opened.digest, origin };
+}
+
+/** Refuses a tool tree holding a program the Linux x86-64 container cannot run: a Mach-O binary,
+ *  an ELF binary for another processor, or a script whose interpreter is a host path, as a Python
+ *  venv's entry points are. A campaign on a Mac keeps such programs, and `command -v` in the
+ *  container's dry run finds them all the same. */
+export async function foreignPrograms(tree: string): Promise<void> {
+  if (!existsSync(tree)) return;
+  const foreign: string[] = [];
+  for await (const path of new Bun.Glob("**/*").scan({ cwd: tree, onlyFiles: true, dot: true })) {
+    const why = foreignHead(Buffer.from(await Bun.file(join(tree, path)).slice(0, 128).bytes()));
+    if (why !== null) foreign.push(`${path} (${why})`);
+  }
+  if (foreign.length > 0) {
+    throw new Error(
+      `the harness's ${TOOL_TREE_DIR} holds programs a Linux x86-64 container cannot run: ${foreign.sort().join(", ")}`,
+    );
+  }
+}
+
+/** Why the opening bytes of a file name a program foreign to the container, or null. */
+export function foreignHead(head: Buffer): string | null {
+  const magic = head.length >= 4 ? head.readUInt32BE(0) : 0;
+  if ([0xfe_ed_fa_ce, 0xfe_ed_fa_cf, 0xce_fa_ed_fe, 0xcf_fa_ed_fe, 0xca_fe_ba_be].includes(magic)) {
+    return "a Mach-O binary";
+  }
+  if (magic === 0x7f_45_4c_46 && head.length >= 20 && head.readUInt16LE(18) !== X86_64) {
+    return `an ELF binary for machine ${String(head.readUInt16LE(18))}`;
+  }
+  const text = head.toString("latin1");
+  if (!text.startsWith("#!")) return null;
+  const interpreter = text.slice(2).trimStart().split(/\s/u, 1)[0] ?? "";
+  return CONTAINER_ROOTS.some((root) => interpreter.startsWith(root))
+    ? null
+    : `its interpreter ${interpreter} is a host path`;
 }

@@ -337,8 +337,13 @@ function read(run: string, a: string, b: string | undefined): void {
       `${a} ran ${String(streams(a))} streams and ${b} ${String(streams(b))}: the terms differ`,
     );
   }
+  if (b === undefined && streams(a) % 2 !== 0) {
+    throw new Error(
+      `${a} ran ${String(streams(a))} streams: an A/A of one arm splits them in mirrored halves, so it needs an even count (2, 4 or 6), or score a second copy of the arm and read --a against --b`,
+    );
+  }
   const [first, second] = b === undefined ? halves(trialsOfArm(a)) : [trialsOfArm(a), trialsOfArm(b)];
-  const count = b === undefined ? Math.floor(streams(a) / 2) : streams(a);
+  const count = b === undefined ? streams(a) / 2 : streams(a);
   const reading = readArms(first, second, count);
   // Each stream alone, for an arm whose harness moves between attempts (Harness²'s improver).
   const byStream =

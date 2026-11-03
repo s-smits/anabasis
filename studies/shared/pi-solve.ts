@@ -149,6 +149,9 @@ function duty(ask: Asked, guide: string | null): string {
     "Complete the task the first message gives with the available tools; the method is yours to choose.",
     "For source code or files, write complete working files, not fragments or descriptions.",
     "Your work is graded as the working directory and the files the task names stand when the task ends, by checks you cannot see; call submit when it is complete.",
+    // A harness built in a campaign learned a contract of `input.json` in and `answer.json` out;
+    // a benchmark has neither, so its guide's word on them is named as not applying here.
+    "This task has no input.json and no answer.json: the first message is the whole task, and the files you leave are the answer, whatever a guide says of those two files.",
     `The case has ${String(Math.round(ask.wallSeconds / 60))} minutes of solve time and ${String(ask.modelTurns)} turns of yours, a turn being one reply of yours with the tool calls in it. Every tool result ends with how much of both is used. When either runs out the task ends with the files as they stand.`,
     ...(guide === null
       ? []

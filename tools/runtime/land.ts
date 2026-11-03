@@ -758,8 +758,15 @@ async function landTo(root: string, target: number, mode: Mode): Promise<number 
   const sha = await merge(root, target, landing);
   if (sha === null) return 1;
   // A pull request left on the top's branch would sit on a merged branch that no landing reads as
-  // a bottom (#560 in the landing of v0.9.1, 1 November), so its base moves to the trunk.
-  for (const { number } of openPulls(root).filter((pull) => pull.baseRefName === top.headRefName)) {
+  // a bottom (#560 in the landing of v0.9.1, 1 November), so its base moves to the trunk; a failed read
+  // is said, since the merge has gone through.
+  let above: readonly Pull[] = [];
+  try {
+    above = openPulls(root).filter((pull) => pull.baseRefName === top.headRefName);
+  } catch (error) {
+    say(`could not list the open pull requests (${String(error)}); move any on the top's branch.`);
+  }
+  for (const { number } of above) {
     const ok = gh(root, ["pr", "edit", String(number), "--base", landing.trunk]).ok;
     say(
       `#${String(number)} ${ok ? "is based on" : "could not be moved; run gh pr edit --base"} ${landing.trunk}.`,

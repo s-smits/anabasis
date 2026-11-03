@@ -43,7 +43,9 @@ const fake = (mkdirSync(bin), fakeBun(bin, gateLog));
 const GH = String.raw`#!/bin/sh
 printf '%s\n' "$*" >> "$ANA_GH_LOG"
 case "$*" in
-"pr list"*) if [ -n "$ANA_FAKE_PULLS_NEXT" ] && [ -e "$ANA_FAKE_PULLS_NEXT.read" ]; then
+"pr list"*) if [ -n "$ANA_FAKE_PULLS_DOWN_MERGED" ] && grep -q merge-async "$ANA_GH_LOG"; then
+  echo "gh: Bad Gateway (HTTP 502)" >&2; exit 1
+elif [ -n "$ANA_FAKE_PULLS_NEXT" ] && [ -e "$ANA_FAKE_PULLS_NEXT.read" ]; then
   cat "$ANA_FAKE_PULLS_NEXT"
 else
   printf '%s\n' "$ANA_FAKE_PULLS"
@@ -484,6 +486,15 @@ describe("bun run land", () => {
     ]);
     expect(calls.some((line) => /pulls\/\d+\/merge -f/u.test(line) || line.includes("-X PATCH"))).toBe(false);
     expect(calls.some((line) => line.startsWith("pr edit"))).toBe(false);
+  });
+
+  it("says a failed read of the open pull requests after a merge and still ends as merged", () => {
+    writeFileSync(ghLog, "");
+    const result = stackMerge("merged", { ANA_FAKE_STACK_SHA: upper, ANA_FAKE_PULLS_DOWN_MERGED: "1" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("merged into main as stack 7");
+    expect(result.stdout).toContain("land: could not list the open pull requests");
+    expect(logLines(ghLog).some((line) => line.startsWith("pr edit"))).toBe(false);
   });
 
   it("moves a pull request left on the merged top's branch onto main, and none based elsewhere", () => {

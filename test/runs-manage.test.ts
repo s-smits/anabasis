@@ -48,17 +48,17 @@ describe("going on with a campaign", () => {
     ];
     // The Builder's conversation is open throughout a led campaign, and a pause cuts it: the
     // campaign run again opens a new one on its notes.
-    expect(restsAfter(promoted, "promoted", 0)).toBe(true);
-    expect(restsAfter(promoted, "promoted", 1)).toBe(false);
+    expect(restsAfter(promoted, "reported", 0)).toBe(true);
+    expect(restsAfter(promoted, "reported", 1)).toBe(false);
     // An old ladder's reading left open is no comparison: no move goes on with it.
     const read = [...promoted, event("comparison.started", { session: "l-1", ladder: true })];
-    expect(restsAfter(read, "promoted", 0)).toBe(true);
+    expect(restsAfter(read, "reported", 0)).toBe(true);
     for (const open of [
       event("comparison.started", { session: "g-3" }),
       event("exam.started", { session: "x-1" }),
       event("draft.started", { session: "d-1" }),
     ]) {
-      expect(restsAfter([...read, open], "promoted", 0)).toBe(false);
+      expect(restsAfter([...read, open], "reported", 0)).toBe(false);
     }
   });
 

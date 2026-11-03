@@ -31,6 +31,7 @@ const PLAN: Plan = {
   prompted: false,
   admits: [],
   left: null,
+  promotions: null,
 };
 const event = (kind: EventKind, data: JsonObject): LogEvent => ({ at, kind, data });
 const EXAM_FINISHED = "exam.finished" as const;
@@ -150,6 +151,15 @@ describe("a row of the table", () => {
     expect(move([...stopped, ended])).toMatchObject({ move: "compare" });
     expect(pendingWords([...stopped, ended])).toEqual([]);
     expect(move([word({ word: "stop" })])).toMatchObject({ ending: "operator" });
+  });
+
+  it("stop: the operator's cap ends the campaign once its log holds that many promotions, and no cap goes on", () => {
+    const capped = { ...PLAN, promotions: 1 };
+    expect(decide(PROMOTED, capped)).toMatchObject({ move: "end", ending: "operator", code: "stop" });
+    expect(decide(PROMOTED, capped).why).toContain("cap of 1 promotion");
+    expect(decide(PROMOTED, { ...PLAN, promotions: 2 }).code).not.toBe("stop");
+    expect(decide(PROMOTED, PLAN).code).not.toBe("stop");
+    expect(decide(FIRST, capped).code).not.toBe("stop");
   });
 
   it("reads a stop before the exam, the exam before the total, and the provider before a want of tasks", () => {

@@ -181,7 +181,7 @@ the name, the project and why into the prediction ledger before the launch, besi
 
 ```sh
 bun --env-file=<file> run runs continue <name> [--at <commit>] [--login N] [--budget N] [--after <event>] --yes [-- <flags>]
-bun run runs pause <name> [--after next|promoted|compacted|reported|finished] --yes
+bun run runs pause <name> [--after next|compacted|reported|finished] --yes
 ```
 
 `continue` runs a stopped campaign again in the worktree that holds its log, on the flags its last
@@ -195,8 +195,7 @@ every live run but the one it starts. `move` asks the same of the destination, a
 on it instead. For a measured run, continue at its opening commit and measure a fix with a fresh run
 (`AGENTS.md`, section 10, item 9).
 
-`pause` waits until the log has gained one more of the event (`harness.promoted`,
-`build.compacted`, `comparison.reported`, `build.finished`) at a point where no comparison,
+`pause` waits until the log has gained one more of the event (`build.compacted`, `comparison.reported`, `build.finished`) at a point where no comparison,
 Examiner session or draft is open, and then stops the run. The Builder's conversation is open
 throughout a led campaign, and a pause cuts it: the campaign continued opens a new one on its
 notes, and the session the stop fell inside has spent its id. `continue --after <event>` is that
@@ -210,6 +209,12 @@ A word left with `tools/d2/word.ts` acts at the next move boundary and spends no
 `--stop "<why>"` ends the campaign `operator`, which is a pause the operator words; `--budget N`
 sets its total; `--tasks "<why>"` asks for an Examiner session first. Name the
 campaign with `--name <name>` and leave one word per command. A word reaches no seat.
+
+A cap on promotions is a campaign flag, not a pause: `--promotions N` after `--` at `fresh`,
+`launch` or `continue` ends the campaign `operator` once its log holds N promotions (the `stop` row,
+`src/campaign/decide.ts`), and the opening keeps it, so a continue that names none runs by it;
+`--promotions none` lifts it. Unset, a campaign has no cap. The Builder is told only that the
+campaign is at its operator gate.
 
 ## Keep a campaign going
 

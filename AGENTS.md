@@ -69,7 +69,8 @@ factor it affects, or the separate purpose it serves. Recorded values live in `d
   (a promotion is confirmed when the first starter comparison of its epoch that tallied a task
   reads the reference above the starter at its level: `confirmed`, `src/campaign/climb.ts`),
   so no prompt, tool or move names a count. A release cycle stops most runs at two promotions while
-  the system changes, so the milestone is read from a run the operator lets go on.
+  the system changes (`--promotions 2`, the campaign's cap, which ends it `operator`), so the
+  milestone is read from a run the operator lets go on.
 - **2. Honesty**: could a gain be chance or drift? An A/A comparison beside every comparison, the
   reference's first solve of each task against its second, measures it. One reading clears between
   equal harnesses at most as often as its level (`falseRate`: 1.1% at 0.02 on 24 untied tasks), and

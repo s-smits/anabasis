@@ -50,7 +50,8 @@ const ROWS: readonly {
   readonly code: string;
   readonly move: (ground: Ground) => (Move & { readonly code?: string }) | null;
 }[] = [
-  // A stop the operator left ends the campaign, whatever the log holds.
+  // A stop the operator left, or the operator's cap of promotions reached, ends the campaign,
+  // whatever else the log holds.
   { code: "stop", move: stop },
   // The exam does not stand: it is drafted, read, or the campaign ends on it. Before the bounds,
   // since reading it bills nothing; a draft bills, so it asks the bounds first.
@@ -213,10 +214,19 @@ function examine(ground: Ground, wants: "tasks" | "room", why: string): Move {
   return spent(ground, wants, why) ?? { move: "examine", why };
 }
 
-function stop({ events }: Ground): Move | null {
+function stop({ events, plan }: Ground): Move | null {
   const words = pendingWords(events);
   const stopped = words.find(({ word }) => word === "stop");
-  if (stopped === undefined) return null;
+  if (stopped === undefined) {
+    const promoted = events.filter(({ kind }) => kind === PROMOTED).length;
+    return plan.promotions === null || promoted < plan.promotions
+      ? null
+      : {
+          move: "end",
+          ending: "operator",
+          why: `the operator's cap of ${plural(plan.promotions, "promotion")}`,
+        };
+  }
   return {
     move: "end",
     ending: "operator",

@@ -90,7 +90,13 @@ afterAll(() => {
 /** A scratch with the fixture harness as the parent, and a log in which v1 and v2 are released and
  *  v0 and v3 are held out. `endings` are what the practice solves end in, in order.
  *  With `tree`, the parent has an installed program. */
-async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree = false, check = CHECK) {
+async function setup(
+  responses: FauxResponseStep[],
+  endings: Ending[] = [],
+  tree = false,
+  check = CHECK,
+  contract = CONTRACT,
+) {
   const scratch = realpathSync(mkdtempSync(join(tmpdir(), "ana-builder-")));
   scratches.push(scratch);
   const parent = join(scratch, "parent");
@@ -152,6 +158,9 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree
     if (ending.outcome === "non-result" || (ending.outcome === "fail" && ending.kind === "rejected")) {
       record_("verdict", { solve, answer: { answer: "41" }, kind: "fail", blocking: [check] });
     }
+    if (ending.outcome === "pass" && contract.objective !== undefined) {
+      record_("verdict", { solve, answer: { answer: "42" }, kind: "pass", objective: solves * 10 });
+    }
     record_("solve.finished", { solve, ending });
     return solve;
   };
@@ -193,7 +202,7 @@ async function setup(responses: FauxResponseStep[], endings: Ending[] = [], tree
     states: join(scratch, "states"),
     memory: join(scratch, "memory"),
     tasks: TASKS,
-    contract: CONTRACT,
+    contract,
     resources: [publicResource("span table", { maxSpan: 12 })],
     model: faux.getModel(),
     effort: "medium",
@@ -709,6 +718,21 @@ describe("a Builder session", () => {
     expect(s.sent[3]).toContain("which is also the harness you started from: passed 1 of 2.");
     expect(s.sent[3]).toContain("Under harness/ as last practised: 1 of 1.");
     expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ practiceSolves: 2 });
+  });
+
+  it("is told each valid practice answer's measure in the task's record under an objective, and none without one", async () => {
+    // Under an objective every harness may pass every task, so a count of passes cannot tell two
+    // harnesses apart: on the buffer runs from v0.9.1, 283 of 285 record clauses read "passed N of N".
+    const steps = [edit, call("practice", { tasks: ["t-1", "t-1"] }), finish];
+    const measured = await setup(steps, [], false, CHECK, {
+      ...CONTRACT,
+      objective: { quantity: "cost", direction: "lower" },
+    });
+    await session(measured.request, measured, measured.walled);
+    expect(measured.sent[2]).toContain("passed 2 of 2, cost 30, 40.");
+    const plain = await setup(steps);
+    await session(plain.request, plain, plain.walled);
+    expect(plain.sent[2]).toContain("passed 2 of 2.");
   });
 
   it("is not given the correctness model a v1 state carries, whose exam holds hidden values", async () => {

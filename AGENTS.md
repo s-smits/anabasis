@@ -519,8 +519,8 @@ and the wall's start-up test.
 
 Use Bun 1.4.4 throughout, with no Node, npm or npx. While editing, run the owning tests through
 `bun run test -- <paths>` rather than bare `bun test`. Run at most one full suite per host.
-`bun run gate` runs the CI gate: the install, format check and secret scan in turn, then the UI's
-gate, typecheck, strict lint and tests side by side. Run independent checks side by side, in the
+`bun run gate` runs the CI gate: the install, format check, secret scan and the UI's install in
+turn, then the UI's gate, typecheck, strict lint and tests side by side. Run independent checks side by side, in the
 gate and by hand, and add a new step to the parallel group unless it reads what another writes.
 Keep hooks enabled (`bun run hooks:install`); a plain push
 checks whitespace and secrets, and marks its head and the pull requests above it pending. `bun run land -- <top>
@@ -556,8 +556,10 @@ prevents serious run failures or broadly simplifies the tree; `I2` is a bounded 
 the problem, resulting behaviour and evidence in the body. Follow `stack-pr` section 7 for PR
 text and update it after a push. Push only your authorised branch, with `--force-with-lease`
 when rewriting. Moving your own pull request onto the top of the stack is yours to do; merging,
-and restacking other sessions' branches, take the operator's authority. Use
-`bun run land -- <top> --merge` to land.
+and restacking other sessions' branches, take the operator's authority. Before
+`bun run land -- <top> --merge`, three reviewer subagents read the landing side by side, each a
+slice of its pull requests, given the code and no conclusion (below). Their confirmed findings go
+on the top as commits, the stack is proved again with `--sanitize`, and only then does it merge.
 
 ### Reviews and subagents
 

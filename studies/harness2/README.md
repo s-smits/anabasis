@@ -377,10 +377,13 @@ authoring session proposes, for step 4: "D's mean over three streams is above S'
 
 ## Appendix: a known-benchmark mode
 
-The handicaps above could also be measured rather than only stated, by a campaign mode that hands
-Anabasis what is known about a benchmark: `--known-bench <dir>`, the benchmark's train half, read
-at no more than ten places in the host. Level K1 hands over the task inputs only and is this
-study's arm U; level K2 also makes the train half's tasks and verifier the exam, which is
-Meta-Harness's exposure under Anabasis's optimiser. The test half stays held out at both levels, so
-the mode never becomes adaptation on the scored task. It is planned, not in source; the plan and
-its places are in `docs/backlog/known-bench.md`.
+The handicaps above could also be measured rather than only stated, by handing a campaign what is
+known about a benchmark. That is a recipe of this study, not a flag of the host. Level K1 is this
+study's arm U: a prompt filled from the train half (`run.ts examples`), which already reaches the
+Examiner and no other seat, and an audit of every seat's commands for the benchmark's hosts at each
+ending (`run.ts audit`), since every seat reaches the network until the resolver block below is
+applied. Level K2 makes the train half's tasks and tests the exam, which is Meta-Harness's exposure
+under Anabasis's optimiser, and is built only if a score on the train half after U shows the
+benchmark's grader disagreeing with U's own checks. The test half stays held out at both levels, so
+neither becomes adaptation on the scored task. Both are planned, not in source; the plan is in
+`docs/backlog/known-bench.md`.

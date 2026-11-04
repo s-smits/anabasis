@@ -52,7 +52,9 @@ WRI)". Every fresh run carries `--promotions 2`, which ends it `operator` at its
 2. **Investigate** it with whole-run-investigation (step 5 below), with the other ended runs
    of the same code as equals where there are any. Do not wait for a run still going.
 3. **Vet, then plan** (steps 6 and 7): `vetting.md` and `plan.md` in the investigation's folder.
-   A row the operator must decide is asked now, and implementing goes on around it.
+   The plan holds repairs and tunings: read [the levers](references/levers.md) against the binding
+   link, and give each lever the run's evidence selects a row, tuned or kept with one checkable
+   sentence. A row the operator must decide is asked now, and implementing goes on around it.
 4. **Implement the plan as one pull request** on the top of the stack (step 8), with each row's
    hostile test, proved with `bun run land -- <top> --sanitize`. One iteration is one pull
    request, so a later reading can name the fix it measures. A row whose label an open pull

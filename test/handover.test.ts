@@ -390,6 +390,11 @@ describe("the Builder's filter over that reading", () => {
     const told = startTold(campaignOf(c.events()), HB, "b-2");
     expect(told).toMatch(/\bbbbbbbbb\b.*\bb-1\b/u);
     expect(told).not.toContain("no Builder session");
+    // A killed session's ending names no harness, and its last checkpoint is still what it left.
+    c.record("build.finished", { session: "b-1", ended: "killed", turns: 9, seconds: 60, billed: 1 });
+    const killed = startTold(campaignOf(c.events()), HB, "b-2");
+    expect(killed).toMatch(/\bbbbbbbbb\b.*\bb-1\b.*\bkilled\b/su);
+    expect(killed).not.toContain("no Builder session");
     // A checkpoint of the parent itself changed nothing, so no session left the starter.
     const same = campaign();
     same.record("build.started", { session: "b-1", parent: STARTER, tasks: ["p1"] });

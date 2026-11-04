@@ -221,7 +221,9 @@ function claimOf(proposal: Proposal | undefined): string {
 }
 
 /** Who won a task in the last comparison that scored it and on which measure, and an answer on
- *  record better by the objective than one of the reference's own. */
+ *  record better by the objective than one of the reference's own. Until 4 November the line did
+ *  not say whose: in a truss campaign of #588 all five such lines came from the
+ *  reference's own two solves, its spread rather than a better answer (WRI lane 14). */
 function standingOf(standing: Standing | undefined): string[] {
   if (standing === undefined) return [];
   const won =
@@ -230,7 +232,10 @@ function standingOf(standing: Standing | undefined): string[] {
       : `won there by ${WON[standing.won]}${standing.by === null ? "" : ` ${CARRIED[standing.by]}`}`;
   // A share as a percentage of two significant digits.
   const room = Number(((standing.room ?? 0) * 100).toPrecision(2));
-  return [won, ...(room > 0 ? [`an answer on record ${String(room)}% better than one of its own`] : [])];
+  const gap = standing.own
+    ? `its own solves ${String(room)}% apart by the objective, with no better answer on record`
+    : `an answer on record ${String(room)}% better than one of its own`;
+  return [won, ...(room > 0 ? [gap] : [])];
 }
 
 /** A task's last comparisons with the reference harness, newest first, where it stood in at least

@@ -92,9 +92,10 @@ function endingOf(log: Log): { readonly ending: Ending; readonly why: string } |
   return { ending, why: isString(last.data.why) ? last.data.why : "" };
 }
 
-/** What a campaign's row holds of its log alone, kept with the log: the list is polled every few
- *  seconds, and most logs have not moved since the last poll. */
-const factsIn = once((log) => {
+/** What a campaign's row holds of its log alone, kept with the log, and by the list in place of the
+ *  log (`campaigns.ts`): the list is polled every few seconds, and most logs have not moved since
+ *  the last poll. */
+export const factsIn = once((log) => {
   const { events } = log;
   const opening = openingIn(log);
   const last = reportsIn(log).at(-1);
@@ -113,17 +114,17 @@ const factsIn = once((log) => {
           },
     billed: billedAll(events),
     budget: opening?.budget?.dollars ?? null,
+    opened: events[0]?.at ?? "",
   };
 });
 
-/** A campaign's row in the list, in `tier`, with `process` as the processes on the host say:
- *  `open` while one writes its log. */
+/** A campaign's row in the list, from its log's facts (`factsIn`), in `tier`, with `process` as
+ *  the processes on the host say: `open` while one writes its log. */
 export function campaignRow(
   found: Found,
-  log: Log,
+  { project, ending, opened: _opened, ...facts }: ReturnType<typeof factsIn>,
   { process, tier }: { readonly process: Process | null; readonly tier: Tier },
 ): CampaignRow {
-  const { project, ending, ...facts } = factsIn(log);
   const status = ending === null ? "open" : "ended";
   const said = ending !== null && reasonSaid(ending.ending, tier);
   return {

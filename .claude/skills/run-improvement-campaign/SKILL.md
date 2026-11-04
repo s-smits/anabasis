@@ -153,6 +153,28 @@ its end, and carry on in the same order; the window gives no step a reason to sk
    waits for CI, merges the native stack and cuts the release at the merge, with the notes GitHub
    generates. Then rewrite the notes as stack-pr section 9, "Release notes", sets out.
    Where the proof fails, do not land: report the commit and step.
+
+   **A run proves the release, and `--sanitize` does not.** `land` proves that each commit passes
+   its checks. Whether the stack still climbs takes a run. So a stack lands only once a fresh campaign
+   launched at the top's head has reached the milestone the operator's landing word names (for
+   v0.9.3, a reported comparison in a jobstat run). Four conditions decide whether that run proves
+   the landing:
+   - **The commit.** `bun run runs source <name>` names the top's head, or a commit whose `src`,
+     `tools` and `vendor` match it (`git diff --stat`), with a clean tree.
+   - **The mechanisms ran.** Each pull request that changes a run's conditions shows the event its
+     mechanism writes in that run's log (`AGENTS.md`, section 9, "A mechanism"). A pull request
+     whose trigger never came is named as unmeasured in the release notes.
+   - **No defect ending.** The run reached the milestone with no `environment` ending and no crash. A
+     credit or session limit is no defect (rule 15): continue it at the same commit.
+   - **Nothing above it.** A pull request published above the run's commit is not proved by it. Land
+     the proved top by its number and leave the newer one above. A pull request that changes what a
+     seat reads waits for its paired round of seats first (system-path-simulation, `cases/optimize.md`),
+     then for a run of its own. On 4 November #601, a draft rewording the seats, was stacked above
+     v0.9.3's proved top before its round.
+
+   The release notes name the proof run, its commit and the event that reached the milestone.
+   A smaller release needs one such run at its top. A major release carries one big change and its
+   own run.
    One cycle is one stack and one release (`AGENTS.md`, section 11), and the number tells a reader
    which runs may be read side by side. The patch moves (0.7.2 to 0.7.3) where the cycle's runs
    measure what the last release's runs measured. The minor moves (0.7 to 0.8) where the release

@@ -8,12 +8,12 @@
  * The Examiner writes task instances against the pack's contract and check program. Each is put to
  * the gate, which holds it out on its package's shape check (`propose_tasks`,
  * `src/examiner/write.ts`). The session is shown every task the campaign holds, the pack's own
- * and the ones earlier sessions wrote, and the opening message says one outcome of each: how the
- * reference harness did on it in the last comparison that scored it, disputed, or no longer
- * scored, who won it and on which measure, and whether a valid answer to it is on record, with one
- * line of what the reference was measured to do across the exam (`src/examiner/record.ts`). The home the
- * last session computed in, and what it said at its finish, are carried into this one, and its
- * shell runs the engines the pack's checks run (12 October).
+ * and the ones earlier sessions wrote, and the opening message groups them under how the reference
+ * harness did on each in the last comparison that scored it, with who won it and on which measure,
+ * whether a valid answer to it is on record and its author's grade and words while it is open, after
+ * the last comparison the reference stood in (`src/examiner/record.ts`). The home the last session
+ * computed in is carried into this one, and its shell runs the engines the pack's checks run
+ * (12 October).
  *
  * No solve runs here. From 12 October to 1 November the gate also put each draft to up to three
  * room solves by the reference harness, through the launcher a comparison uses and with each

@@ -152,6 +152,8 @@ const proposing = (count: number, from = 0): readonly [string, JsonObject] => [
       family: "fixture",
       public_input: { base: 2, rehearsal_copy: { of: "t-1", n: n + from } },
       hidden: null,
+      grade: 3,
+      stops: "A scripted draft.",
     })),
   },
 ];

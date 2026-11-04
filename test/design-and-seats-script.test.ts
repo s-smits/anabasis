@@ -147,20 +147,11 @@ describe("the Examiner's view in counts", () => {
     return events;
   }
 
-  it("counts admission outcomes and room sources without exposing hidden values or refusal reasons", () => {
+  it("counts the tasks under each heading and the refusals by reason, without exposing hidden values or refusal reasons", () => {
     const lines = examinerCounts(admitted());
-    const summary = lines.find((line) => line.startsWith("summary: ")) ?? "";
-    for (const fact of [
-      "held out 3 drafts",
-      "1 on validity",
-      "1 on an answer of yours",
-      "1 on the objective alone",
-      "refused 1 draft",
-    ]) {
-      expect(summary).toContain(fact);
-    }
-    expect(lines.some((line) => line.includes("1 group") && line.includes("1 interrupted draft"))).toBe(true);
-    expect(lines.some((line) => line.startsWith("promotion: none"))).toBe(true);
+    expect(lines.find((line) => line.startsWith("blocks: "))).toContain('3 under "Not yet compared');
+    expect(lines).toContain("refused drafts in 1 group by reason");
+    expect(lines).toContain("promotion: none");
     for (const canary of [HIDDEN, REASON]) expect(lines.join("\n")).not.toContain(canary);
   });
 
@@ -176,8 +167,10 @@ describe("the Examiner's view in counts", () => {
     ] satisfies LogEvent[];
     const lines = examinerCounts(promoted);
     expect(lines.find((line) => line.startsWith("promotion: "))).toContain("g-9");
-    // Admissions before the promotion measured the replaced reference, so the summary holds none of them.
-    expect(lines.find((line) => line.startsWith("summary: "))).toBe("summary: none");
+    // No comparison is on record, so there is no last one to tell, and refusals before the promotion
+    // were the replaced reference's.
+    expect(lines).toContain("last: none");
+    expect(lines).toContain("refused drafts in 0 groups by reason");
   });
 });
 

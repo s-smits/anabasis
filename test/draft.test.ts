@@ -293,7 +293,7 @@ const told = (log: string) =>
 describe("a draft the starter solves", () => {
   const sixfold = answering((base) => base * 6);
 
-  it("does not stand where the starter answered every example on every solve, and three such drafts end the campaign on its exam", async () => {
+  it("refuses a session's first draft the starter answered on every solve, and stands its next with that reading as a note", async () => {
     const name = `${STEM}-answered`;
     const flags = opened(name);
     const log = campaignLog(name);
@@ -316,11 +316,33 @@ describe("a draft the starter solves", () => {
     expect(new Set(solves.map(({ start }) => start.comparison))).toEqual(new Set(["d-1"]));
     expect(examinerSessions(read(log))).toEqual(new Set(["d-1"]));
 
-    // Two more drafts like it in a second session, and the campaign's drafts are spent.
-    await draftCommand([...flags, "--session", "d-2"], putting(SOUND, SOUND), sixfold);
+    expect(refusal).toContain("This reading refuses one draft a session");
+
+    // A second session refuses its first such draft too, and its next stands with the note.
+    const second = await draftCommand([...flags, "--session", "d-2"], putting(SOUND, SOUND), sixfold);
+    expect(second).toMatchObject({ ended: "stands", puts: 2 });
+    const events = read(log);
+    expect(draftOf(events)).toEqual(SOUND);
+    expect(events.filter(({ kind }) => kind === "campaign.setting")).toHaveLength(1);
+    const readings = told(log).filter((text) => text.startsWith("The draft "));
+    expect(readings.map((text) => text.split(".")[0])).toEqual([
+      "The draft does not stand",
+      "The draft does not stand",
+      "The draft stands: it is the campaign's exam",
+    ]);
+    expect(readings[2]).toContain("Notes, which leave the draft standing:");
+    expect(readings[2]).toContain("answered every example validly on every solve");
+  });
+
+  it("ends the campaign on its exam once three drafts in two sessions did not stand", async () => {
+    const name = `${STEM}-spent`;
+    const flags = opened(name);
+    const log = campaignLog(name);
+    const unformed: Draft = { ...SOUND, answerFormat: { type: "string" } };
+    await draftCommand([...flags, "--session", "d-1"], putting(unformed), null);
+    await draftCommand([...flags, "--session", "d-2"], putting(unformed, unformed), null);
     const events = read(log);
     expect(draftOf(events)).toBeNull();
-    expect(events.filter(({ kind }) => kind === "campaign.setting")).toHaveLength(1);
     const plan = {
       sessions: 1,
       patience: 3,

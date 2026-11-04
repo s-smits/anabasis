@@ -16,8 +16,9 @@
  * uses. Each solve's start names the session, so it is the Examiner's: never scored and on no
  * task's record (`examinerSessions`, `src/kernel/solves.ts`). A non-result is solved once more, as
  * a comparison's is, and a second is counted nowhere. Where no example leaves the starter room as a
- * comparison reads it (`informative`, `src/kernel/compare.ts`), the draft does not stand, and its
- * author is told, an example a line, how many solves were valid and the turns each took. An example
+ * comparison reads it (`informative`, `src/kernel/compare.ts`), the session's first such draft does
+ * not stand, and its author is told, an example a line, how many solves were valid and the turns
+ * each took; a later draft with no other fault stands with that reading as a note. An example
  * with no counted solve, or with a solve that is not valid, leaves room: a rejection counts as
  * room whether or not it would be ruled earned, so no Referee is seated here. Its draft's accept
  * control is the valid answer on record that makes an example no solve answered informative.
@@ -207,6 +208,8 @@ export async function draftCommand(
   const setting = settingAsked(values, recordedSetting(events));
   const { wallSeconds, modelTurns } = setting.named.limits;
   stayAwake();
+  // The starter's reading refuses one draft a session; a later one stands with it as a note.
+  const desk = { refused: false };
   const drafted = await session(
     {
       id,
@@ -216,9 +219,15 @@ export async function draftCommand(
       reading: async (draft, stop) => {
         const reading = await draftReading(dirname(log), draft, Number(values.jobs));
         if (reading.faults.length > 0 || seated === null) return reading;
+        const starterRead = await starterFaults({ name, session: id, setting, seated }, draft, stop);
+        if (desk.refused) return { ...reading, notes: [...reading.notes, ...starterRead] };
+        desk.refused = starterRead.length > 0;
         return {
           ...reading,
-          faults: await starterFaults({ name, session: id, setting, seated }, draft, stop),
+          faults: starterRead.map(
+            (fault) =>
+              `${fault}\n  This reading refuses one draft a session: the next draft with no other fault stands, with this reading as a note.`,
+          ),
         };
       },
       model: modelNamed(examiner),

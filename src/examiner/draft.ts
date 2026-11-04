@@ -58,6 +58,12 @@
  * meets again. A caller with no solver (a script in the seat, a test) reads no solve, and its draft
  * stands on the readings alone.
  *
+ * Since 4 November the refusal holds one draft a session, and a later draft with no other fault
+ * stands with the reading as a note (operator: a gate "too-strict" or wrongly tuned can bring down
+ * a system that would otherwise do well). Under the refusal on every draft, four jobstat campaigns
+ * put 10 drafts, 60 of 60 example solves valid, and three ended `exam` with nothing compared; an
+ * easy exam costs a comparison's power and dollars, and the A/A and the test still read it.
+ *
  * Where it has a shell (`shell.ts`) it is told what the shell is
  * and what the wall test found of the network, and not what to use it for. Nothing hidden
  * exists at drafting, and the wall closes the repository, where the log lies.
@@ -242,7 +248,7 @@ const SYSTEM = [
   "Where the field has an objective, a quantity every valid answer has and practitioners minimise or maximise, such as a mass, a cost or a length, declare it: two valid answers to one task are then compared by it, and a task on which both tools find a valid answer still tells them apart. The check program then also exports `objective`, a function that takes the same `request` and returns that quantity of the answer as a finite number, computed from the answer and the public input alone; it is told nothing hidden. A field with no such quantity declares none.",
   "Write one check for each rule, and no other. The check program is one TypeScript module that exports `checks`, an object with a function under each check id. A function takes one argument, `request`, and returns a boolean, or a promise of one: `request.publicTask` is `{ taskId, family, publicInput }`, `request.artifact` is the answer, and `request.hidden` is the task's hidden values. It runs offline in a closed cell and imports nothing, so it computes from its argument alone, and the same answer always gets the same verdict. It returns true where the answer keeps its rule and false where it breaks it. An answer that breaks another rule is that rule's check's to refuse. It returns false only where the answer breaks the rule: where its own computation cannot reach a verdict on an answer the format allows, such as a solver that does not converge, it throws, which drops the task as the check's defect instead of refusing the answer.",
   `Give at least ${plural(EXAMPLES, "example task")}, different in what they ask and not only in their numbers. Either every task carries hidden values or none does. For each example give one accept control: an answer that keeps every rule. You choose the task, so you can start from an answer and derive the task from it. For each check give at least one reject control: an answer to an example that follows the answer format, breaks that check's rule, and names the check. The smallest answer the format allows, such as empty strings and empty lists, has to be rejected on every task: where it would pass, the format or the rules ask too little.`,
-  `draft_exam puts a whole draft to the host, which reads it without a model: its shape, then every control through the checks, twice, and the smallest answer on every example. A draft with no fault there is then solved: the starter harness, the one every campaign starts from, solves each example afresh under the budget, as many times as a comparison solves a task, and a draft whose every example it answered validly on every solve, with no valid answer better than another by the objective, does not stand. It returns the faults it found, or that the draft stands. A draft that stands is the campaign's exam, and the session ends there. When a draft has faults, mend them and put the whole draft again. Call finish only if no exam can be drafted for the prompt, and say why.`,
+  `draft_exam puts a whole draft to the host, which reads it without a model: its shape, then every control through the checks, twice, and the smallest answer on every example. A draft with no fault there is then solved: the starter harness, the one every campaign starts from, solves each example afresh under the budget, as many times as a comparison solves a task, and a draft whose every example it answered validly on every solve, with no valid answer better than another by the objective, does not stand the first time in a session; a later draft with no other fault stands with that reading as a note. It returns the faults it found, or that the draft stands. A draft that stands is the campaign's exam, and the session ends there. When a draft has faults, mend them and put the whole draft again. Call finish only if no exam can be drafted for the prompt, and say why.`,
 ].join("\n");
 
 // The answer-format keys that name an object's fields other than `properties` (`unnamed`).
@@ -470,7 +476,9 @@ export function drafting(
           draft: parseJsonAs<JsonObject>(seen),
         });
         desk.stands = true;
-        return ending(text("The draft stands: it is the campaign's exam. The session ends here."));
+        return ending(
+          text(["The draft stands: it is the campaign's exam. The session ends here.", ...noted].join("\n")),
+        );
       }
       return text(
         [

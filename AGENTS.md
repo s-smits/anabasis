@@ -135,6 +135,12 @@ reads the sign to watch (section 9).
 - **Simplicity against performance.** Section 2, consequence 7, takes four fifths of a result for a
   fifth of the code, never at the measurement's cost; a new guard is measured against what it
   replaces.
+- **A strict gate against a capable model.** A refusal before a comparison guesses what the
+  comparison would read, and a wrong guess sinks the whole campaign: three jobstat campaigns ended
+  `exam` at the draft gate, 9 drafts of 9 refused, with nothing compared. An easy exam costs power
+  and dollars, never honesty, since the A/A and the test still read every comparison. So trust a
+  seat with what a capable model handles itself, and refuse only what would make a reading
+  dishonest or a spend certain to be wasted (rule 14). Watch the endings no comparison read.
 
 ### Two sides and one wall
 

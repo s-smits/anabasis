@@ -88,7 +88,12 @@ start a step until the check named for the one before holds.
    `subagent_type: "wri-lane"`), handed its row's `task`, one line, and nothing else; start them all
    in one message. Its hook (`tools/wri/lane-guard.ts`) refuses a write outside the lane's report, a
    spend, a change to a run or the tree and a read of an env file, so those hard rules hold in code.
-   *Check:* read the model each transcript recorded before using its report.
+   Claude Code offers the type only where the session's own checkout holds the file. Where the Agent
+   tool lists no `wri-lane`, start the lanes from a session opened in a worktree at the stack's top,
+   never as `general-purpose`: on 4 November 72 lane sessions ran that way, unguarded, from a main
+   checkout the stack had moved past.
+   *Check:* read the model each transcript recorded before using its report, and that each lane ran
+   as `wri-lane` (its `subagent_type`).
 5. **Collect.** `wri.ts collect --out <dir>` holds every expected report to its shape and writes
    `<dir>/reports.md`. Read lane 4's report, then decide lane 5; read lanes 13, 15 and 18, then
    decide lane 19, as named below. Build lane 5 with

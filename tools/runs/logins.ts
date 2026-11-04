@@ -61,7 +61,15 @@ import { recordedSetting } from "../d2/setting.ts";
 import { asked } from "./hosts.ts";
 import { hostsOf } from "./host-config.ts";
 import { CODEX, type Live, liveHere, liveOf } from "./live.ts";
-import { ahead, assess, type Assessment, HORIZON, type Snapshot, weekPace } from "./usage-model.ts";
+import {
+  ahead,
+  assess,
+  type Assessment,
+  HORIZON,
+  sameWindow,
+  type Snapshot,
+  weekPace,
+} from "./usage-model.ts";
 
 interface Window {
   readonly pct: number | null;
@@ -482,20 +490,15 @@ function poolLines(
 ): string[] {
   const perDay = (rate: number) => `~${String(Math.round(rate * 24))}%/day`;
   const weekRate = (week: Week) => weekPace(week, now);
-  // The oldest reading 2 to 24 hours back in the same window (resets agree within an hour).
+  // The oldest reading 2 to 24 hours back in the same window (`sameWindow`).
   const recents = weeks.map((week) => {
     const then = history.find(({ at, weeks: read }) => {
       const was = read[week.login];
-      return (
-        was !== undefined &&
-        now - at >= 2 * HOUR &&
-        now - at <= 24 * HOUR &&
-        Math.abs(was.reset - week.reset) < HOUR
-      );
+      return was !== undefined && now - at >= 2 * HOUR && now - at <= 24 * HOUR && sameWindow(was, week);
     });
     const hours = then === undefined ? 0 : (now - then.at) / HOUR;
     const was = then?.weeks[week.login]?.pct ?? 0;
-    return then === undefined ? null : { rate: Math.max(0, week.pct - was) / hours, hours };
+    return then === undefined ? null : { rate: (week.pct - was) / hours, hours };
   });
   const poolPace = weeks.reduce((sum, week) => sum + weekRate(week), 0);
   const lines = [
@@ -556,9 +559,9 @@ export function perRunRate(history: readonly Snapshot[]): number | null {
     if (next === undefined || hours < 0.25 || hours > 3) return [];
     return Object.entries(then.runs ?? {}).flatMap(([login, runs]) => {
       const [was, now] = [then.weeks[login], next.weeks[login]];
-      return runs === 0 || was === undefined || now === undefined || Math.abs(was.reset - now.reset) >= HOUR
+      return runs === 0 || was === undefined || now === undefined || !sameWindow(was, now)
         ? []
-        : [{ used: Math.max(0, now.pct - was.pct), runHours: runs * hours }];
+        : [{ used: now.pct - was.pct, runHours: runs * hours }];
     });
   });
   const runHours = spans.reduce((sum, span) => sum + span.runHours, 0);

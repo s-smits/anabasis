@@ -1,8 +1,8 @@
 /**
  * A light forecast of how much of each login's week every hour of the next `HORIZON` spends
  * (1 November 2026). The operator asked for an xgboost-like predictor that costs next to no CPU, to
- * say on the day whether use will rise. It is boosted regression trees of depth 2 on squared loss
- * with xgboost's histogram splits, fitted afresh on every `runs usage` from the last 7, 14 or 28
+ * say on the day whether use will rise. It is boosted regression trees of depth 2 of the rise an
+ * hour (`fit`), on squared loss with xgboost's histogram splits, fitted afresh on every `runs usage` from the last 7, 14 or 28
  * days of readings, whichever reads the held-out hours best (`WINDOWS`): one model over every login,
  * applied to each login's own state. A longer window holds more weeks, a shorter one only the
  * pattern of the present release and its runs.
@@ -88,8 +88,12 @@ const APART = HOUR / 2;
  *  a window minutes old does not extrapolate. */
 export const weekPace = (week: { pct: number; reset: number }, at: number) =>
   week.pct / Math.max(12, (at - (week.reset - 168 * HOUR)) / HOUR);
-const sameWindow = (one: { reset: number }, other: { reset: number }) =>
-  Math.abs(one.reset - other.reset) < HOUR;
+/** Whether reading `later` of a login's week is in the window of reading `earlier`: their resets
+ *  agree within an hour and its use has not fallen. A fall is a window opened afresh without a new
+ *  reset, as when a login's plan is upgraded (login 3 read 94% and then 0% under one reset on
+ *  4 November, the one fall in 284 readings), so a rise read across it would be counted as none. */
+export const sameWindow = (earlier: { pct: number; reset: number }, later: { pct: number; reset: number }) =>
+  Math.abs(earlier.reset - later.reset) < HOUR && later.pct >= earlier.pct;
 const mean = (values: readonly number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
 const byTime = (history: readonly Snapshot[]) =>
   history.filter(({ runs }) => runs !== undefined).toSorted((one, other) => one.at - other.at);
@@ -107,7 +111,7 @@ function riseBefore(sorted: readonly Snapshot[], index: number, login: string): 
   }
   const was = then?.weeks[login];
   if (now === undefined || then === undefined || was === undefined || !sameWindow(was, now)) return NONE;
-  return Math.max(0, now.pct - was.pct) / ((at - then.at) / HOUR);
+  return (now.pct - was.pct) / ((at - then.at) / HOUR);
 }
 
 /** The features of `login` at reading `index` of `sorted`, before the horizon is added. */
@@ -156,7 +160,7 @@ function rowsOf(sorted: readonly Snapshot[]): Row[] {
             pace: weekPace(was, then.at),
             left: 100 - was.pct,
             x,
-            y: Math.max(0, now.pct - was.pct),
+            y: now.pct - was.pct,
           },
         ];
       });
@@ -231,6 +235,11 @@ function grow(
 const valueOf = (tree: Tree, x: readonly number[]): number =>
   "value" in tree ? tree.value : valueOf((x[tree.feature] ?? 0) < tree.cut ? tree.low : tree.high, x);
 
+/** The model of a login's rise an hour over each row's horizon. A model of the rise itself split
+ *  the horizon too coarsely for the first hours: logged forecasts from 2 to 4 November read +1.8%
+ *  to +2.1% at one hour, where an hour mostly adds 0 or 1. On the record of 4 November, cut every
+ *  6 hours over the 72 before it, the rate's held-out error over every horizon was 2.21 against
+ *  2.58 for the rise's, lower at 10 of 11 cuts (0.46 against 1.57 at one hour). */
 function fit(rows: readonly Row[]): Model {
   const xs = rows.map(({ x }) => x);
   const cuts = (xs[0] ?? []).map((_, feature) => cutsOf(xs.map((x) => x[feature] ?? 0)));
@@ -240,11 +249,12 @@ function fit(rows: readonly Row[]): Model {
     cuts.map((row, feature) => row.filter((cut) => cut <= (x[feature] ?? 0)).length),
   );
   const all = rows.map((_, at) => at);
-  const base = mean(rows.map(({ y }) => y));
+  const rates = rows.map(({ y, hours }) => y / hours);
+  const base = mean(rates);
   const trees: Tree[] = [];
   let guesses = rows.map(() => base);
   for (let round = 0; round < ROUNDS; round += 1) {
-    const residuals = rows.map(({ y }, at) => y - (guesses[at] ?? base));
+    const residuals = rates.map((rate, at) => rate - (guesses[at] ?? base));
     const tree = grow(all, bins, residuals, cuts, DEPTH);
     trees.push(tree);
     guesses = guesses.map((guess, at) => guess + SHRINK * valueOf(tree, xs[at] ?? []));
@@ -252,8 +262,12 @@ function fit(rows: readonly Row[]): Model {
   return { base, trees };
 }
 
-const predict = (model: Model, x: readonly number[]) =>
-  Math.max(0, model.base + SHRINK * model.trees.reduce((sum, tree) => sum + valueOf(tree, x), 0));
+/** The rise `model` reads over `hours` from features `x`, never below none nor above `left`. */
+const predict = (model: Model, x: readonly number[], hours: number, left: number) =>
+  Math.min(
+    left,
+    hours * Math.max(0, model.base + SHRINK * model.trees.reduce((sum, tree) => sum + valueOf(tree, x), 0)),
+  );
 
 /** Fits on the rows of each of `WINDOWS` that end before the last `HELD` hours, and reads the mean
  *  absolute error on the rows of those hours of the fit with the lower one, of the week pace, and of
@@ -280,7 +294,7 @@ export function assess(
     const before = since(days).filter(({ at, hours }) => at + (hours + 0.5) * HOUR < cut);
     if (before.length === 0) return [];
     const early = fit(before);
-    return [{ days, error: errorOf((row) => predict(early, row.x)) }];
+    return [{ days, error: errorOf((row) => predict(early, row.x, row.hours, row.left)) }];
   });
   if (held.length === 0 || tried.length === 0) return null;
   const best = tried.reduce((one, other) => (other.error < one.error ? other : one));
@@ -302,8 +316,11 @@ export function ahead(model: Model, history: readonly Snapshot[]): Record<string
       const state = stateOf(sorted, sorted.length - 1, login);
       let most = 0;
       const rises = Array.from({ length: HORIZON }, (_, at) => {
-        most = Math.max(most, predict(model, withHorizon(state, last.at, at + 1)));
-        return Math.min(Math.max(0, 100 - pct), most);
+        most = Math.max(
+          most,
+          predict(model, withHorizon(state, last.at, at + 1), at + 1, Math.max(0, 100 - pct)),
+        );
+        return most;
       });
       return [login, rises];
     }),

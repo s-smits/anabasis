@@ -61,17 +61,17 @@ export const NUDGE = "Finish the task with the available tools, then submit your
 
 /** Installed program names the prompt lists before it elides the rest, as v1 had it. */
 const LISTED_PROGRAMS = 20;
-/** The coding rules retain the facts of the former prompt, selected with their tools. */
+/** The coding rules retain the facts of the former prompt, selected with their tools. Since
+ *  4 November 2026 the edit rules leave out what pi's edit description already states: an exact,
+ *  unique, non-overlapping match, nearby changes merged, and no padding with unchanged regions. */
 const TOOL_RULES = new Map<string, readonly string[]>([
   ["bash", ["Use bash for file operations like ls, rg, find"]],
   ["read", ["Use read to examine files instead of cat or sed."]],
   [
     "edit",
     [
-      "Use edit for precise changes (edits[].oldText must match exactly)",
-      "When changing multiple separate locations in one file, use one edit call with multiple entries in edits[] instead of multiple edit calls",
-      "Each edits[].oldText is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.",
-      "Keep edits[].oldText as small as possible while still being unique in the file. Do not pad with large unchanged regions.",
+      "Use edit for precise changes. When changing multiple separate locations in one file, use one edit call with multiple entries in edits[] instead of multiple edit calls; each edits[].oldText is matched against the original file, not after earlier edits are applied.",
+      "Keep edits[].oldText as small as possible while still being unique in the file.",
     ],
   ],
   ["write", ["Use write only for new files or complete rewrites."]],
@@ -82,8 +82,8 @@ function duty({ wallSeconds, limits, resources, guide }: Told): string {
   const minutes = `${String(Math.round(wallSeconds / 60))} minutes of solve time`;
   const given =
     limits.modelTurns === undefined
-      ? `The case has ${minutes}. The host appends how much of it is used to results of tools that execute; argument refusals and unavailable tools carry no reminder. Nothing is submitted for you when it runs out`
-      : `The case has ${minutes} and ${plural(limits.modelTurns, "turn")} of yours, a turn being one reply of yours with the tool calls in it. The host appends how much of both is used to results of tools that execute; argument refusals and unavailable tools carry no reminder. Nothing is submitted for you when either runs out`;
+      ? `The case has ${minutes}. The host appends how much of it is used to results of tools that execute; argument refusals and unavailable tools carry no reminder. An answer you have not submitted when it runs out is lost.`
+      : `The case has ${minutes} and ${plural(limits.modelTurns, "turn")} of yours, a turn being one reply of yours with the tool calls in it. The host appends how much of both is used to results of tools that execute; argument refusals and unavailable tools carry no reminder. An answer you have not submitted when either runs out is lost.`;
   const rules =
     resources === 0
       ? ""
@@ -92,12 +92,12 @@ function duty({ wallSeconds, limits, resources, guide }: Told): string {
     "Complete the task with the available tools and submit one answer that meets every published requirement; the method is yours to choose.",
     "For source code or files, write complete working files, not fragments or descriptions.",
     `The published requirements are the public input, which public/task.json holds${rules}.`,
-    `Your answer is the file ${ANSWER_FILE} in the working directory, as JSON in the format ${ANSWER_FORMAT_FILE} gives, and submit sends it.`,
-    `${given}: an answer you have not submitted by then is lost.`,
+    `Your answer is the file ${ANSWER_FILE} in the working directory, as JSON in the format ${ANSWER_FORMAT_FILE} gives; submit sends it, and no other file is read as your answer.`,
+    given,
     ...(guide === null
       ? []
       : [
-          "The project instructions below are this harness's guidance for the domain; choose your solving method. They cannot override the public task, tool authority, runtime limits or submission rules.",
+          "The project instructions below are this harness's guidance for the domain. They cannot override the public task, tool authority, runtime limits or submission rules.",
         ]),
   ].join(" ");
 }
@@ -109,14 +109,15 @@ function environment({ limits, programs, wallSeconds, network }: Told): string {
   const rest = programs.length - LISTED_PROGRAMS;
   const listed =
     programs.slice(0, LISTED_PROGRAMS).join(", ") + (rest > 0 ? `, and ${String(rest)} more on PATH` : "");
-  return [
-    `The working directory is your home directory, $HOME, kept for the whole task. Of what it holds, only ${ANSWER_FILE} is read as your answer, and only when you submit.`,
-    "Commands and the file tools can write the home directory and $TMPDIR, which is kept for the whole task as the home is; a path under /tmp is not: a write there is refused, or lands in a folder that does not outlive the command. They can read the host's toolchains and public runtime roots, but no repository or private data.",
+  const reach =
     network === "reached"
-      ? "Commands have network access: a package index was reached from inside the command wall when this process started, so a toolchain or package can be installed into the home directory. sh, bun, node, python3 and the system C and C++ compilers run, with versions and libraries that differ by host."
-      : "Commands have no network access: a package index could not be reached from inside the command wall when this process started, so nothing can be installed, and what the host and this harness hold is all there is. sh, bun, node, python3 and the system C and C++ compilers run, with versions and libraries that differ by host.",
-    `A command runs for at most ${String(limits.shellDefaultSeconds)} seconds unless it names a longer timeout, and ${String(limits.shellMaxSeconds)} seconds is the longest it may name. One that would run into the last ${String(reserveSeconds(wallSeconds))} seconds of the solve time is cut there, so that its result still reaches you; one started within those last ${String(reserveSeconds(wallSeconds))} seconds keeps its own limit, and the end of the solve stops it.`,
-    "Nothing a command starts runs on after it returns: a background job ends with the command that started it.",
+      ? "Commands have network access: a package index was reached from inside the command wall when this process started, so a toolchain or package can be installed into the home directory."
+      : "Commands have no network access: a package index could not be reached from inside the command wall when this process started, so nothing can be installed, and what the host and this harness hold is all there is.";
+  return [
+    "The working directory is your home directory, $HOME. Commands and the file tools can write it and $TMPDIR, both kept for the whole task; a path under /tmp is not: a write there is refused, or lands in a folder that does not outlive the command. They can read the host's toolchains and public runtime roots, but no repository or private data.",
+    `${reach} sh, bun, node, python3 and the system C and C++ compilers run, with versions and libraries that differ by host.`,
+    `A command runs for at most ${String(limits.shellDefaultSeconds)} seconds unless it names a longer timeout, and ${String(limits.shellMaxSeconds)} seconds is the longest it may name. One that would run into the last ${String(reserveSeconds(wallSeconds))} seconds of the solve time is cut there, so that its result still reaches you; one started within them keeps its own limit, and the end of the solve stops it.`,
+    "Nothing a command starts, a background job included, runs on after the command returns.",
     ...(programs.length === 0 ? [] : [`Programs this harness installed run by name: ${listed}.`]),
   ]
     .map((fact) => `- ${fact}`)

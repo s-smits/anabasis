@@ -209,24 +209,24 @@ export function probeTool(
   let original: Promise<Verdict> | null = null;
   return tool({
     name: "probe_check",
-    description: `Run the task's checks over the answer under review and a copy with at most three changes applied together. Choose changes the public rules decide, and read which checks moved. Each change replaces an existing field or its parent with \`value\`, or rewrites one text passage with \`find\` and \`replace\`. Coupled changes must all reach fields one refusing check reads together. Only a scalar root can be replaced. No check moving does not prove the fields are unread. Every path must exist, each change must change it, and the complete answer must change. A review runs at most ${String(PROBE_BUDGET)} probes; each result says how many are left. Cite the probe numbers when recording the ruling.`,
+    description: `Run the task's checks over the answer under review and a copy with at most three changes applied together, and say which checks moved. Each change replaces the field at \`path\` with \`value\`, or rewrites one text passage there with \`find\` and \`replace\`. Each must change its field and together they must change the answer; coupled changes must all reach fields one refusing check reads together. A review runs at most ${String(PROBE_BUDGET)} probes; each result says how many are left.`,
     parameters: Type.Object({
       changes: Type.Array(
         Type.Object({
           path: Type.String({
             description:
-              "An existing field or its parent; `$` only where the answer is a scalar. Array positions are bracketed; a key holding a dot or slash is quoted: `$.files['src/main.cpp']`.",
+              "An existing field or its parent; `$` only where the answer is a scalar, since only a scalar root can be replaced. Array positions are bracketed; a key holding a dot or slash is quoted: `$.files['src/main.cpp']`.",
           }),
           value: Type.Optional(
             Type.String({
               description:
-                'The replacement value as JSON text, e.g. `0.0001`, `"high"` or `null`. One field only. Omit it when you send `find` and `replace`.',
+                'The replacement value as JSON text, e.g. `0.0001`, `"high"` or `null`. One field only.',
             }),
           ),
           find: Type.Optional(
             Type.String({
               description:
-                "Exact text inside the string field at `path`, occurring there exactly once; include enough of its surroundings to make it unique. Sent with `replace`, in place of `value`.",
+                "Exact text inside the string field at `path`, occurring there exactly once; include enough of its surroundings to make it unique.",
             }),
           ),
           replace: Type.Optional(

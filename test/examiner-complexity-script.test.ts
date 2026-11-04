@@ -70,8 +70,11 @@ describe("exams", () => {
       session,
       task: { taskId: version, family, publicInput: input },
     });
-  const gated = (version: string, outcome: string, valid: number, solves: number, proved: boolean) =>
-    event(2, "task.gate", { version, gate: 1, outcome, reference: { valid, solves }, proved });
+  // An author's passing answer is the `task.feasible` beside the gate's reading.
+  const gated = (version: string, outcome: string, valid: number, solves: number, proved: boolean) => [
+    event(2, "task.gate", { version, gate: 1, outcome, reference: { valid, solves } }),
+    ...(proved ? [event(2, "task.feasible", { version, session: "x-1", answer: null })] : []),
+  ];
   const parts = (count: number) => ({
     title: "A board",
     devices: Array.from({ length: count }, (_, at) => ({ id: at })),
@@ -79,15 +82,15 @@ describe("exams", () => {
   const log = [
     event(0, "exam.started", { session: "x-1" }),
     draft("v1", "x-1", "leds", parts(3)),
-    gated("v1", "refused", 3, 3, true),
+    ...gated("v1", "refused", 3, 3, true),
     draft("v2", "x-1", "leds", parts(5)),
-    gated("v2", "passed", 3, 3, true),
+    ...gated("v2", "passed", 3, 3, true),
     draft("v3", "x-1", "pins", { cases: [1, 2] }),
-    gated("v3", "refused", 0, 3, false),
+    ...gated("v3", "refused", 0, 3, false),
     event(3, "harness.promoted", { harness: "abcdef0123456789" }),
     event(4, "exam.started", { session: "x-2" }),
     draft("v4", "x-2", "leds", parts(9)),
-    gated("v4", "passed", 2, 3, true),
+    ...gated("v4", "passed", 2, 3, true),
   ];
 
   it("groups a session's drafts by family and counts the gate's reading of each group", () => {
@@ -148,7 +151,7 @@ describe("exams", () => {
     const examples = [
       ...log,
       event(5, "task.proposed", { version: "v5", taskId: "ex-001", task: {} }),
-      gated("v5", "passed", 1, 3, false),
+      ...gated("v5", "passed", 1, 3, false),
     ];
     expect(draftRows(examples, "grouped")).toHaveLength(3);
     const row = {

@@ -79,10 +79,10 @@ factor it affects, or the separate purpose it serves. Recorded values live in `d
   reach the level (`incapable`). Bar: no step in ten A/A comparisons.
 - **3. Verdicts**: are the labels right? The Referee rules every rejection (never a pass, a cut
   solve or a crash) once the host's replay of the checks repeats it. `earned` must name the broken
-  rule and field, cited by a rejecting check, and `check-defect` must cite an answer probe; a ruling
-  without its evidence is refused. Bar, on at least 30 blind labels (`settle.ts`): it catches three
-  in four true check defects and voids at most one in ten earned rejections, with PABAK beside
-  kappa.
+  rule and field, cited by a rejecting check, with an answer probe that moved that check, and
+  `check-defect` must name a refusing check and cite a probe that moved it; a ruling without its evidence is refused. Bar, on at
+  least 30 blind labels (`settle.ts`): it catches three in four true check defects and voids at
+  most one in ten earned rejections, with PABAK beside kappa.
 - **4. Economy**: what did each gain cost? The closing report reads dollars and hours per promotion
   from the log alone (`tools/d2/close.ts`), at list price (`billOf`, `src/kernel/meter.ts`). Its
   one bar, an opening term that refuses nothing, is at most 3 promotion attempts per epoch after

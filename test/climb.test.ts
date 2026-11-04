@@ -214,8 +214,6 @@ describe("the climb", () => {
             family: "fixture",
             public_input: { base: strength + above, n: written * 100 + index },
             hidden: null,
-            grade: 3,
-            stops: "A base above the reference's strength.",
           }));
           return examine({
             ...request,

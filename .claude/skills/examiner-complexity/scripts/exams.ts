@@ -43,7 +43,8 @@ interface Gated {
    *  reference, as a refusal before the room solves does. */
   readonly valid: number | null;
   readonly solves: number | null;
-  /** Whether the author's own answer had passed `try_answer` on the draft's content. */
+  /** Whether an author's answer passed on the task (`task.feasible`). Until 5 November the gate
+   *  also wrote a `proved` key of its own, which this read and no other reader did. */
   readonly proved: boolean;
 }
 
@@ -100,6 +101,9 @@ const COLUMNS = [
 /** What each gate said, by the version it read. A version is its content's digest
  *  (`taskVersion`), so a draft re-put to the gate after a refusal reads under the same key. */
 function gatesByVersion(events: readonly LogEvent[]): Map<string, Gated> {
+  const feasible = new Set(
+    events.flatMap(({ kind, data }) => (kind === "task.feasible" ? [data.version] : [])),
+  );
   const gated = new Map<string, Gated>();
   for (const { kind, data } of events) {
     if (kind !== "task.gate" || !isString(data.version)) continue;
@@ -108,7 +112,7 @@ function gatesByVersion(events: readonly LogEvent[]): Map<string, Gated> {
       outcome: data.outcome === "passed" ? "held" : "refused",
       valid: isNumber(reference?.valid) ? reference.valid : null,
       solves: isNumber(reference?.solves) ? reference.solves : null,
-      proved: data.proved === true,
+      proved: feasible.has(data.version),
     });
   }
   return gated;

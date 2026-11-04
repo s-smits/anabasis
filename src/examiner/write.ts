@@ -20,8 +20,7 @@
  * An Examiner is a new process each session, so the host keeps what a session cannot: an instance
  * held or refused is not taken again, and the session's home is carried into the next
  * (`Wall.keep`, `shell.ts`). Until 4 November what the last session said at its `finish` opened the
- * next; it reached 13 of 80 sessions, and the author's grade and words on each draft (`claim`,
- * beside the task in `task.proposed`) take its place on the task's own line. An instance is
+ * next; it reached 13 of 80 sessions. An instance is
  * logged whole with its proposal, hidden values too, so a later solve needs the log alone; no tool
  * here returns a line of the log. An author's accepted answer is kept for the Referee
  * (`task.feasible`). read_example also serves the author's earlier drafts, so recovery needs no
@@ -30,19 +29,21 @@
  * totalling 1,148,964 characters. A checked instance can now be proposed by its content reference,
  * with the same identity and gate as a full instance, for the rest of this session.
  *
- * Each draft carries its author's grade on the ladder and one sentence on where a solver falls
- * short of it (4 November). It is logged beside the task and never inside it, so the task's version,
- * its content and everything a solver or a Builder reads of it are the same whatever was claimed.
+ * From 4 to 5 November each draft also had to carry its author's grade on the ladder and one sentence
+ * on where a solver falls short (`claim` in `task.proposed`, which `history.ts` no longer reads). No
+ * campaign ran with it, and it gave the record a second account of a task beside the reference's
+ * outcome on it: a required field that added strictness and no fact (overhaul of 5 November).
  *
  * Where the host gives a probe, `try_reference` puts an instance to fresh solves by the reference
  * harness at the author's asking, at most `tries` of them with a result, and tells of each its
- * validity, its turns, its measure and the kind of a fail, never its answer, trace or check. The gate
- * reads none of it. Since the gate stopped solving on 1 November, exams that declare no objective
+ * validity, its turns, its measure and the kind of a fail, never its answer, trace or check. Its
+ * reply is the one place a try is told: the record of a later session tells none, since a held task
+ * is compared afresh and its comparison supersedes the tries. The gate reads none of it. Since the gate stopped solving on 1 November, exams that declare no objective
  * have had nothing but a failure of the reference to separate harnesses, and their authors, who
  * could not see one coming, wrote tasks it answered every time: 7 of 242 tallied tasks of six such
  * campaigns were untied, against 58 of 62 under the room-solving gate (4 November; an association
  * across commits and exams, not a controlled result). The solves are
- * the campaign's, billed to it, and counted by no comparison (`probed`, `record.ts`). Until
+ * the campaign's, billed to it, and counted by no comparison (`countedSolves`, `solves.ts`). Until
  * 5 November they ran on the session's own deadline, so trying a hard task cost its author writing
  * time; the clock now stands still while they run, as a drafting session's does while its draft is
  * read.
@@ -55,18 +56,17 @@ import { acceptedAnswers, contentOf, proposalsOf, writtenTasks } from "../kernel
 import { poolOf } from "../kernel/reports.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import type { Ending } from "../kernel/solve.ts";
+import { solvesIn, verdictsOf } from "../kernel/solves.ts";
 import { packageGate as checkPackage, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
 import type { Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
 import { isNumber, isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
-import { boundText } from "../meta/bounded-text.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
 import { ending, text, tool } from "../tools/answer.ts";
-import { GRADES } from "./ladder.ts";
 import { type CheckRow, firstMessage, type SolveBudget, systemPrompt } from "./prompt.ts";
-import { heard, probed, triedAs } from "./record.ts";
+import { heard, measured } from "./record.ts";
 import type { Walls } from "./shell.ts";
 
 /** What a task-writing session is handed: who sits, as far as this mode reads it, and its campaign. */
@@ -133,12 +133,6 @@ interface Desk {
   readonly refused: string[];
 }
 
-/** A draft taken from a batch under its task id, with what its author said of it. */
-interface Drafted {
-  readonly instance: Task;
-  readonly claim: Claim;
-}
-
 /** The event a task admission writes of each draft (`admitDraft`). */
 const TASK_ADMISSION = "task.gate";
 /** An instance as each tool that takes one spells it: its family, its public input and what only the
@@ -149,19 +143,10 @@ const SPELLED = {
   hidden: Type.Unknown({ description: "Null when the task has none." }),
 };
 const NAMED = Type.String({ description: "The instance reference returned by try_answer in this session." });
-/** What its author says of a draft it puts, as the system prompt's "What you put" asks. */
-const CLAIM = {
-  grade: Type.Integer({
-    minimum: 0,
-    maximum: GRADES.length - 1,
-    description: "Your grade for it on the scale.",
-  }),
-  stops: Type.String({ minLength: 1, description: "One sentence on where a solver falls short on it." }),
-};
-/** The most of an author's sentence the log keeps. */
-const STOPS_BYTES = 160;
-const INSTANCE = Type.Object({ ...SPELLED, ...CLAIM });
-const REFERENCE = Type.Object({ reference: NAMED, ...CLAIM });
+/** A draft as `propose_tasks` and `try_reference` take it. */
+const GIVEN = Type.Union([Type.Object(SPELLED), Type.Object({ reference: NAMED })], {
+  description: "An instance in the shape of the existing tasks, or its checked reference.",
+});
 /** A fail of a solve `try_reference` ran, as it is told, by its kind: what ended it and nothing of
  *  its answer, its trace or the check that refused it. */
 const FAILED = new Map([
@@ -175,11 +160,6 @@ const FAILED = new Map([
 ]);
 /** The session clock's pause, which runs host work outside the session's own deadline (`sessionClock`). */
 type Within = <T>(action: () => Promise<T>) => Promise<T>;
-/** An author's claim on a draft, as the log keeps it beside the task. */
-interface Claim {
-  readonly grade: number;
-  readonly stops: string;
-}
 /** A planted author's answer would reach the solver as task content. Accepted author answers
  *  stay on the exam side as `task.feasible`, for the Referee, rather than inside the task. */
 const PLANTED =
@@ -191,9 +171,6 @@ const SUPPLIED = "The host has the tasks it needs. The session ends here.";
  *  opening six times for what one session could have written. The need, and no count. */
 const MORE =
   "Noted. The host would take more tasks from this session. A second finish with nothing proposed since ends it.";
-
-/** A measure by the objective as a tool tells it, to six significant digits. */
-const measured = (measure: number): string => String(Number(measure.toPrecision(6)));
 
 /** Whether `value` holds, as itself or anywhere inside it, a value whose hash is in `planted`. */
 function carries(value: JsonValue, planted: ReadonlySet<string>): boolean {
@@ -258,7 +235,7 @@ function refusalOf(contract: Contract, task: TaskPackage, planted: ReadonlySet<s
 
 /** One proposed instance and its reply. Once held, the author's last passing answer on its content
  *  is checked again under the task's own id and kept for the Referee where it still passes. */
-async function admitDraft(desk: Desk, { instance, claim }: Drafted): Promise<string> {
+async function admitDraft(desk: Desk, instance: Task): Promise<string> {
   const { request } = desk;
   const { log, id: session, verify } = request;
   const task = request.pack(instance);
@@ -269,12 +246,11 @@ async function admitDraft(desk: Desk, { instance, claim }: Drafted): Promise<str
     taskId,
     session,
     task: { taskId, family, publicInput, hidden },
-    claim: { grade: claim.grade, stops: boundText(claim.stops, STOPS_BYTES).text },
   });
   const reason = refusalOf(request.contract, task, desk.planted);
   const answer = desk.answered.get(contentOf(instance));
   const outcome = reason === null ? { outcome: "passed" } : { outcome: "refused", reason };
-  append(log, TASK_ADMISSION, { version, gate: 1, ...outcome, proved: answer !== undefined });
+  append(log, TASK_ADMISSION, { version, gate: 1, ...outcome });
   if (reason !== null) {
     append(log, "task.state", { version, state: "refused", session });
     desk.refused.push(version);
@@ -306,7 +282,7 @@ function spent(desk: Desk): boolean {
 function proposeTool(desk: Desk): SeatTool {
   const { id, limits } = desk.request;
   /** One instance of a batch: why it was not taken, or the instance under its task id. */
-  const taken = (instance: Omit<Task, "taskId">, claim: Claim, stop: AbortSignal): string | Drafted => {
+  const taken = (instance: Omit<Task, "taskId">, stop: AbortSignal): string | Task => {
     const content = contentOf(instance);
     const before = desk.seen.get(content);
     if (before === "now") return "An instance proposed before was not taken again.";
@@ -318,18 +294,13 @@ function proposeTool(desk: Desk): SeatTool {
     if (stop.aborted) return "An instance was not taken: the session has ended.";
     desk.seen.set(content, "now");
     desk.proposed += 1;
-    return { instance: { ...instance, taskId: `${id}-${String(desk.proposed).padStart(3, "0")}` }, claim };
+    return { ...instance, taskId: `${id}-${String(desk.proposed).padStart(3, "0")}` };
   };
   return tool({
     name: "propose_tasks",
     description: "Put task instances to the host's gate, as the system prompt's section on the gate says.",
     parameters: Type.Object({
-      tasks: Type.Array(
-        Type.Union([INSTANCE, REFERENCE], {
-          description: "An instance in the shape of the existing tasks, or its checked reference.",
-        }),
-        { minItems: 1 },
-      ),
+      tasks: Type.Array(GIVEN, { minItems: 1 }),
     }),
     executionMode: "sequential",
     execute: async (args, _api, context) => {
@@ -339,12 +310,11 @@ function proposeTool(desk: Desk): SeatTool {
       if (spent(desk)) throw new Error("This session can propose no further task. Call finish.");
       // Take the call's instances before the gate reads them, so a batch may exceed what is wanted.
       const instances = args.tasks.map((given) => {
-        const claim = { grade: given.grade, stops: given.stops };
-        if (!("reference" in given)) return taken(instanceOf("", given), claim, signal);
+        if (!("reference" in given)) return taken(instanceOf("", given), signal);
         const checked = desk.checked.get(given.reference);
         return checked === undefined
           ? `Unknown instance reference ${given.reference}. Known references: ${desk.checked.size === 0 ? "none" : [...desk.checked.keys()].join(", ")}.`
-          : taken(checked, claim, signal);
+          : taken(checked, signal);
       });
       // How many of its drafts the session has put: told the limit at the opening alone, esp32-fresh-opus-terra's
       // x-2 and x-3 met it unawares with a draft still unproposed (27 October).
@@ -480,7 +450,8 @@ function toldOf(ended: Ending, turns: number | null, measure: number | null): st
  * A solve that could not run is no try. The call is refused once the tries are spent or the
  * campaign's budget holds no reserve for its solves beside those in flight (`affords`), as a
  * comparison's admission reads it. An instance a task of the campaign holds runs under that task's
- * id, and any other under one its content names (`triedAs`).
+ * id, and any other under one its content names. Each solve's turns and measure are read back from
+ * the log under the id the probe returns.
  */
 function tryReferenceTool(desk: Desk, probe: NonNullable<Terms["probe"]>, within: Within): SeatTool {
   const { request } = desk;
@@ -489,9 +460,7 @@ function tryReferenceTool(desk: Desk, probe: NonNullable<Terms["probe"]>, within
     description:
       "Put an instance, or its checked reference, to fresh solves by the reference harness, as the system prompt's section on trying the reference says. A try enters no task in the exam.",
     parameters: Type.Object({
-      task: Type.Union([Type.Object(SPELLED), Type.Object({ reference: NAMED })], {
-        description: "An instance in the shape of the existing tasks, or its checked reference.",
-      }),
+      task: GIVEN,
       solves: Type.Integer({ minimum: 1, maximum: 2, description: "How many solves to run side by side." }),
     }),
     executionMode: "sequential",
@@ -504,7 +473,7 @@ function tryReferenceTool(desk: Desk, probe: NonNullable<Terms["probe"]>, within
       if (given === undefined) throw new Error("Unknown instance reference. try_answer returns one.");
       const instance = heldAs(request, read(request.log), given) ?? {
         ...given,
-        taskId: triedAs(contentOf(given)),
+        taskId: `try-${contentOf(given).slice(0, 12)}`,
       };
       const solves = Math.min(args.solves, left);
       if (!affords(request.log, solves)) {
@@ -513,10 +482,14 @@ function tryReferenceTool(desk: Desk, probe: NonNullable<Terms["probe"]>, within
       const ran = await within(async () =>
         Promise.all(Array.from({ length: solves }, async () => probe.solve(instance, desk.stop))),
       );
-      const shown = probed(read(request.log));
+      const events = read(request.log);
+      const verdicts = verdictsOf(events);
+      const ends = new Map(solvesIn(events).map(({ id, end }) => [id, end]));
       const lines = ran.map((one, nth) => {
-        const logged = one.solve === null ? undefined : shown.get(one.solve);
-        return `Solve ${String(nth + 1)}: ${toldOf(one.ending, logged?.turns ?? null, logged?.measure ?? null)}.`;
+        const turns = one.solve === null ? undefined : ends.get(one.solve)?.turns;
+        const checked = one.solve === null ? undefined : verdicts.get(one.solve)?.checker;
+        const measure = checked?.kind === "pass" ? (checked.objective ?? null) : null;
+        return `Solve ${String(nth + 1)}: ${toldOf(one.ending, isNumber(turns) ? turns : null, measure)}.`;
       });
       desk.tried += ran.filter((one) => one.ending.outcome !== "non-result").length;
       const used = `Solves of the reference harness used in this session: ${String(desk.tried)} of ${String(probe.tries)}; one that could not run uses none.`;

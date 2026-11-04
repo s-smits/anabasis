@@ -110,11 +110,6 @@ interface DraftedSource {
 
 /** The key a copied instance carries in its public input: which task it copies, and its number. */
 const COPY = "rehearsal_copy";
-/** What the scripted Examiner says of each draft it puts, as `propose_tasks` requires. */
-const SCRIPTED_CLAIM = {
-  grade: 3,
-  stops: "A scripted draft: where a solver falls short is not studied here.",
-};
 
 const OWN = new Set(["held", "starter", "supply", "no-comparison", "campaign"]);
 
@@ -410,9 +405,7 @@ export function scriptedExaminer(
           ? []
           : [["try_answer", { ...instance, answer }]];
       }),
-      ...(batch.length === 0
-        ? []
-        : [["propose_tasks", { tasks: batch.map((each) => ({ ...each, ...SCRIPTED_CLAIM })) }] as const]),
+      ...(batch.length === 0 ? [] : [["propose_tasks", { tasks: batch }] as const]),
       // Twice: a first finish while the host has not the tasks it needs is declined once.
       ...Array.from(
         { length: 2 },

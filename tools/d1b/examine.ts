@@ -10,8 +10,8 @@
  * `src/examiner/write.ts`). The session is shown every task the campaign holds, the pack's own
  * and the ones earlier sessions wrote, and the opening message groups them under how the reference
  * harness did on each in the last comparison that scored it, with who won it and on which measure,
- * whether a valid answer to it is on record and its author's grade and words while it is open, after
- * the last comparison the reference stood in (`src/examiner/record.ts`). The home the last session
+ * what the reference's valid answers measured, whether a valid answer to it is on record, and any
+ * check a ruling found at fault on an answer to it (`src/examiner/record.ts`). The home the last session
  * computed in is carried into this one, and its shell runs the engines the pack's checks run
  * (12 October).
  *

@@ -68,11 +68,6 @@ export interface Standing {
   readonly won: "reference" | "other" | null;
   /** The measure that carried a win there (`carriedBy`), null for a tie. */
   readonly by: keyof Measures | null;
-  /** The objective gap the reference harness's answers left there, against its own and its
-   *  author's (`objectiveGap`), and 0 under the floor (`ROOM`). */
-  readonly room: number | null;
-  /** Whether the reference's own solves alone make that gap, with no author's answer better. */
-  readonly own: boolean;
 }
 
 /** A task's last comparisons with the reference harness on a side, newest first, each as the
@@ -109,8 +104,6 @@ interface TalliedIn {
    *  author's (`objectiveGap`), and 0 under the floor (`ROOM`), where it leaves none; null where it
    *  stood on neither side. */
   readonly room: number | null;
-  /** Whether the reference's own solves alone make that gap (`Standing`). */
-  readonly own: boolean;
 }
 
 /**
@@ -426,9 +419,8 @@ function tallyReports(
       const cutOn = (harness: unknown): boolean =>
         isString(harness) && cut.has(cutIn(session, task, harness));
       const { wins, losses } = tally([pair]);
-      // An objective gap under the floor decides no pair and holds no draft, so its author is told none.
+      // An objective gap under the floor decides no pair, so it leaves no room (`roomOn`).
       const gap = side === null ? null : objectiveGap(pair, side, [of(task).best]);
-      const own = side !== null && (gap ?? 0) > 0 && objectiveGap(pair, side, []) === gap;
       order += 1;
       of(task).tallied.push({
         index,
@@ -441,7 +433,6 @@ function tallyReports(
         won: wins > 0 ? "fresh" : losses > 0 ? "old" : null,
         by: carriedBy(pointsOf(pair)),
         room: gap,
-        own,
       });
     }
     for (const task of Array.isArray(data.aside) ? data.aside.filter(isString) : []) {
@@ -548,9 +539,9 @@ function tallyReports(
  * a promotion of a third, is `earlier-reference`.
  *
  * **Standings** hold how each task's last comparison with the reference harness on a side went,
- * by task version (`Standing`): who won, on which measure, and the objective gap the reference's answers
- * left. It is read from the record the outcome is read from (`lastRead`), so the two agree by
- * construction. A task last compared between two other harnesses, or set aside there, has none.
+ * by task version (`Standing`): who won and on which measure. It is read from the record the
+ * outcome is read from (`lastRead`), so the two agree by construction. A task last compared
+ * between two other harnesses, or set aside there, has none.
  * Told apart is the comparison's own tally (`tally`, `compare.ts`), so under an objective two
  * valid answers can be told apart.
  *
@@ -687,10 +678,8 @@ function outcomeOf(record: TaskRecord): [string, Outcome][] {
 function standingOf(record: TaskRecord): [string, Standing][] {
   const last = lastRead(record);
   if (last === null || last === "aside" || last.reference === null) return [];
-  const { reference, won, by, room, own } = last;
-  return [
-    [record.version, { won: won === null ? null : won === reference ? "reference" : "other", by, room, own }],
-  ];
+  const { reference, won, by } = last;
+  return [[record.version, { won: won === null ? null : won === reference ? "reference" : "other", by }]];
 }
 
 /**

@@ -187,8 +187,8 @@ function changedAnswer(answer: JsonValue, change: ProbeRow["changes"][number]): 
   return changed;
 }
 
-/** Rebuild the exact counterfactual for verification and for the ruling's evidence test. */
-export function probeAnswer(answer: JsonValue, changes: ProbeRow["changes"]): JsonValue {
+/** Rebuild the exact counterfactual a probe verifies. */
+function probeAnswer(answer: JsonValue, changes: ProbeRow["changes"]): JsonValue {
   if (changes.length > 3) throw new Error("a probe changes at most 3 paths");
   const changed = changes.reduce(changedAnswer, answer);
   if (hashJsonValue(changed) === hashJsonValue(answer)) {

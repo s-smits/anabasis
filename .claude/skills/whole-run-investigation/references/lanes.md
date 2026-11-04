@@ -294,8 +294,8 @@ each check with refusals, decide from the public rule the check cites whether it
 published, could reject a valid answer: a tolerance tighter than the published rounding, a unit
 the check reads otherwise, a sentence that admits two readings with the check taking one. Then
 read the rulings against that: an earned ruling names a rule and a field, a check-defect ruling
-cites an answer probe in which both sides reached a verdict, and `EARNED WITHOUT A PROBE` in lane 7 says
-how many earned rulings looked at nothing but the packet. Where a person labelled a sample
+names a refusing check and cites a probe that moved it off its refusal (since 5 November; none where the check reads no answer field), and
+`EARNED WITHOUT A PROBE` in lane 7 says how many earned rulings looked at nothing but the packet. Where a person labelled a sample
 (`labels.json` beside a rejections campaign's log), set the rulings against the labels and say
 whether the bar in `AGENTS.md` section 1 was cleared; where none did, say the rulings are one reader's.
 Where public facts cannot decide, retain the logged ruling and ask whether lane 5 can settle it.

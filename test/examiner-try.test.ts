@@ -3,7 +3,6 @@
 // host refuses the call, and that the solves stay out of every comparison and practice fold while
 // the campaign's budget pays for them.
 import { afterAll, describe, expect, it } from "bun:test";
-import { triedAs } from "../src/examiner/record.ts";
 import { writing } from "../src/examiner/write.ts";
 import { budgetLeft } from "../src/campaign/opening.ts";
 import { contentOf } from "../src/kernel/history.ts";
@@ -105,8 +104,7 @@ describe("trying the reference at writing", () => {
     }
     // A held task's instance runs under that task's id, and one no task holds under the id its
     // content names.
-    const unheld = triedAs(contentOf(present(made.handed[2], "the third solve's task")));
-    expect(unheld).toStartWith("try-");
+    const unheld = `try-${contentOf(present(made.handed[2], "the third solve's task")).slice(0, 12)}`;
     expect(made.handed.map(({ taskId }) => taskId)).toEqual(["x-1-001", "x-1-001", unheld, unheld, unheld]);
     // The solves are the session's: no comparison or practice fold counts them, no task's draw
     // moves, and the budget pays for each.

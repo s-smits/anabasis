@@ -428,8 +428,6 @@ describe("a campaign run by its log", () => {
           family: "fixture",
           public_input: { base },
           hidden: null,
-          grade: 3,
-          stops: "A scripted draft.",
         }));
         const script = scripted([
           ["propose_tasks", { tasks }],

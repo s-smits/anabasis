@@ -1,7 +1,7 @@
 // The Examiner's one session, `examine`, in its two modes on the faux provider: what both modes
 // share (an id, a wall, a shell, an ending, a bill), what a drafting session that puts one whole
 // draft is told, what a writing session's gate and tools hold, and what a task's author hears of it,
-// its own claim on each draft included, carried to a later session from the log alone.
+// carried to a later session from the log alone.
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import {
   createAssistantMessageEventStream,
@@ -14,7 +14,7 @@ import { heard } from "../src/examiner/record.ts";
 import { examine } from "../src/examiner/session.ts";
 import { examinerDirs, inExaminerWall } from "../src/examiner/shell.ts";
 import { writing } from "../src/examiner/write.ts";
-import { proposalsOf, writtenTasks } from "../src/kernel/history.ts";
+import { writtenTasks } from "../src/kernel/history.ts";
 import { append, read } from "../src/kernel/log.ts";
 import { billedAll } from "../src/kernel/meter.ts";
 import { solvesIn } from "../src/kernel/solves.ts";
@@ -34,7 +34,6 @@ import { asRecord, isString, type JsonObject, type JsonValue } from "../src/meta
 import { dirname, join } from "../src/meta/path.ts";
 import {
   bash,
-  CLAIM,
   call,
   failed,
   finish,
@@ -442,17 +441,17 @@ describe("a session that writes tasks", () => {
       expect(mode.result().puts).toBe(0);
       expect(s.of(PROPOSED)).toHaveLength(0);
       await invoke(put, "propose", {
-        tasks: [byReference ? { reference: String(reference), ...CLAIM } : instance(7)],
+        tasks: [byReference ? { reference: String(reference) } : instance(7)],
       });
       expect(mode.result().held).toHaveLength(1);
       expect(s.of("task.feasible")).toMatchObject([{ answer: GOOD }]);
       results.push(s.of(PROPOSED));
       // A reference and its full content are one duplicate once held.
-      await invoke(put, "duplicate", { tasks: [instance(7), { reference: String(reference), ...CLAIM }] });
+      await invoke(put, "duplicate", { tasks: [instance(7), { reference: String(reference) }] });
       expect(mode.result().puts).toBe(1);
       const next = writing({ ...s.request, id: "x-2", verify }, undefined, "unseen");
       const expired = await invoke(toolOf(next), "expired", {
-        tasks: [{ reference: String(reference), ...CLAIM }],
+        tasks: [{ reference: String(reference) }],
       });
       expect(expired.output).toEqual([{ type: "text", text: containing("Known references: none") }]);
     }
@@ -509,8 +508,8 @@ describe("a session that writes tasks", () => {
     expect(s.of(EXAM_FINISHED)).toMatchObject([{ proposed: 0, held: [], refused: [] }]);
 
     // The budget every solve is held to, as a fact and no target; and the next session opens with
-    // each earlier draft's grade and words on its line, and nothing of what a session said at its
-    // finish, which reached 13 of 80 sessions after 1 November.
+    // each earlier draft on its line, with no account of it by its author, and nothing of what a
+    // session said at its finish, which reached 13 of 80 sessions after 1 November.
     const writer = seat("write", [propose(7), finish, finish]);
     await examine(writer.request);
     const next = seat("write", [finish, finish]);
@@ -525,10 +524,10 @@ describe("a session that writes tasks", () => {
       /held to 3 turns of the solver's own[^.]*, and 8 minutes, and a comparison solves each task 2 times under each harness\./u,
     );
     expect(next.sent[0]).toContain("it is no target of yours");
-    expect(next.sent[0]).toContain(
-      JSON.stringify(`x-1-001 (fixture), graded 3 by its author: "${CLAIM.stops}"`).slice(1, -1),
-    );
-    for (const unsaid of ["said at its finish", NOTE]) expect(next.sent[0]).not.toContain(unsaid);
+    expect(next.sent[0]).toContain("x-1-001 (fixture)");
+    for (const unsaid of ["said at its finish", NOTE, "graded", "by its author"]) {
+      expect(next.sent[0]).not.toContain(unsaid);
+    }
   });
 
   // On the six logs read on 14 October two of eleven Examiner sessions were cut at their wall while
@@ -607,8 +606,7 @@ describe("a session that writes tasks", () => {
     );
     const [unread] = heard(read(s.log), writtenTasks(read(s.log))).groups;
     expect(unread?.heading).toContain("Not yet compared");
-    expect(unread?.lines[0]).toStartWith("x-1-001 (fixture), graded 3 by its author");
-    expect(unread?.lines[0]).toEndWith("; a valid answer on record");
+    expect(unread?.lines[0]).toBe("x-1-001 (fixture); a valid answer on record");
   });
 
   it("keeps the objective's measure of its author's valid answer where the contract declares one, and none where it declares none", async () => {
@@ -658,8 +656,8 @@ describe("a session that writes tasks", () => {
       tried(2, { answer: "42.0", unit: "N" }),
       call(PROPOSE, {
         tasks: [
-          { family: "fixture", public_input: { base: 2 }, hidden: { seed: 1, witness: planted }, ...CLAIM },
-          { family: "fixture", public_input: { base: 3, given: [planted] }, hidden: { seed: 1 }, ...CLAIM },
+          { family: "fixture", public_input: { base: 2 }, hidden: { seed: 1, witness: planted } },
+          { family: "fixture", public_input: { base: 3, given: [planted] }, hidden: { seed: 1 } },
           instance(2),
         ],
       }),
@@ -708,12 +706,9 @@ describe("a session that writes tasks", () => {
       ["x-1-002", "refused", null],
     ]);
     expect(examined.held).toEqual([s.versionOf("x-1-001", 2)]);
-    // The gate's event holds no reference counts, and nothing was solved.
-    expect(s.of(TASK_ADMISSION)).toMatchObject([
-      { outcome: "passed", proved: false },
-      { outcome: "refused" },
-    ]);
-    expect(s.of(TASK_ADMISSION).filter((gate) => "reference" in gate)).toEqual([]);
+    // The gate's event holds no reference counts and no proof of its own, and nothing was solved.
+    expect(s.of(TASK_ADMISSION)).toMatchObject([{ outcome: "passed" }, { outcome: "refused" }]);
+    expect(s.of(TASK_ADMISSION).filter((gate) => "reference" in gate || "proved" in gate)).toEqual([]);
     expect(solvesIn(read(s.log))).toEqual([]);
     expect(s.of(EXAM_FINISHED)[0]).not.toHaveProperty("hostSeconds");
     // Its tools put a task to the gate and wait on nothing, and its prompt names no solve at the gate.
@@ -729,38 +724,6 @@ describe("a session that writes tasks", () => {
       expect(mode.system).not.toContain(unsaid);
     }
     expect(mode.started).not.toHaveProperty("tried");
-  });
-
-  it("takes no proposal without its author's grade and sentence, logs the claim beside the task and never in it, and takes the same content with another claim no more", async () => {
-    const { grade: _grade, ...unclaimed } = instance(7);
-    const s = seat("write", [
-      call(PROPOSE, { tasks: [unclaimed] }),
-      call(PROPOSE, { tasks: [{ ...instance(7), grade: 8 }] }),
-      call(PROPOSE, { tasks: [{ ...instance(7), stops: "" }] }),
-      propose(7),
-      call(PROPOSE, { tasks: [{ ...instance(7), grade: 6, stops: "Another sentence." }] }),
-      call(PROPOSE, { tasks: [{ ...instance(8), stops: `${"Long. ".repeat(60)}End.` }] }),
-      finish,
-      finish,
-    ]);
-    await examine(s.request);
-    // The schema refuses the first three calls before the gate reads them: nothing is proposed.
-    const proposals = proposalsOf(read(s.log));
-    expect(proposals.map(({ version }) => version)).toEqual([
-      s.versionOf("x-1-001", 7),
-      s.versionOf("x-1-002", 8),
-    ]);
-    expect(proposals[0]?.claim).toEqual(CLAIM);
-    expect(s.of(CALLED)[4]?.text).toContain("An instance proposed before was not taken again.");
-    // A sentence is kept to 160 bytes.
-    const long = proposals[1]?.claim?.stops ?? "";
-    expect(new TextEncoder().encode(long).byteLength).toBeLessThanOrEqual(160);
-    expect(long).toStartWith("Long. Long.");
-    // The task a solver reads, its version and the written tasks hold no claim.
-    for (const task of [...proposals.map(({ task: whole }) => whole), ...writtenTasks(read(s.log))]) {
-      expect(task).not.toHaveProperty("claim");
-      expect(JSON.stringify(task)).not.toContain(CLAIM.stops);
-    }
   });
 
   it("takes again no content an earlier log's gate read, a gate that refused it unmeasured among them", async () => {
@@ -784,16 +747,15 @@ describe("a session that writes tasks", () => {
     expect(next.opening).not.toContain("gate not measured");
   });
 
-  it("is told where no objective leaves room and what it puts with each draft, quotes no archive count, and finishes with a sentence for the log", () => {
+  it("is told where no objective leaves room, asked for no account of a draft, quotes no archive count, and finishes with a sentence for the log", () => {
     const mode = writing(seat("write", []).request, undefined, "unseen");
     for (const said of [
       "Where the domain declares no objective, two valid answers tie whatever they contain",
-      "## What you put",
       "says how often its own two solves differed",
     ]) {
       expect(mode.system).toContain(said);
     }
-    for (const unsaid of ["314", "1,373", "you hear nothing more of it"]) {
+    for (const unsaid of ["314", "1,373", "you hear nothing more of it", "## What you put"]) {
       expect(mode.system).not.toContain(unsaid);
     }
     expect(mode.finish).toContain("for the log");

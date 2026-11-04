@@ -340,7 +340,7 @@ proofs). A pass already recorded is not run again. `--jobs N` runs up to N stati
 the whole CI gate runs alone.
 
 **A passing proof is not yet a release.** `land` says each commit passes. A stack merges only once
-a fresh run launched at the top's head has reached the milestone the operator's landing word names.
+a fresh run launched at the top's head has reached two promotions with its code unchanged.
 Land that proved top by its number, never a newer top stacked above it.
 run-improvement-campaign, step 10, "A run proves the release", owns what that run must show.
 

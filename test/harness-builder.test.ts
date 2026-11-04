@@ -118,6 +118,7 @@ function draftedOf(tasks: typeof TASKS) {
       answer: { answer: String(publicInput.base * 6) },
     })),
     reject_controls: [{ task: 0, answer: { answer: "13" }, check: "check-product" }],
+    objective: { none: "A fixture: every task has one product, and no product is better than another." },
   };
   const examples = tasks.map(({ publicInput }, index) => ({
     taskId: `ex-${String(index + 1).padStart(3, "0")}`,
@@ -427,6 +428,8 @@ describe("a campaign run by its log", () => {
           family: "fixture",
           public_input: { base },
           hidden: null,
+          grade: 3,
+          stops: "A scripted draft.",
         }));
         const script = scripted([
           ["propose_tasks", { tasks }],

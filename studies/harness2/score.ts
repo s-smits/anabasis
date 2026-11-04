@@ -528,11 +528,13 @@ function table(out: string, tasks: readonly string[]): void {
         sum("judgeUsd"),
         sum("seconds"),
       ];
-      const whole = build === null || solve === null || judgeUsd === null ? null : build + solve + judgeUsd;
+      // A system costs its build and its solves; the judge prices the benchmark, not the system. On
+      // 4 November the starter's "total $60.62" was $10.79 of solving and $49.83 of judging.
+      const system = build === null || solve === null ? null : build + solve;
       const share =
         points === null || total === null || total === 0 ? "?" : ((100 * points) / total).toFixed(1);
       console.log(
-        `  ${arm.padEnd(width)} score ${String(points)}/${String(total)} (${share}%) build ${money(build)} solve ${money(solve)} judge ${money(judgeUsd)} total ${money(whole)} hours ${seconds === null ? "?" : (seconds / 3600).toFixed(2)}`,
+        `  ${arm.padEnd(width)} score ${String(points)}/${String(total)} (${share}%) system ${money(system)} (build ${money(build)}, solve ${money(solve)}) judge ${money(judgeUsd)} solve hours ${seconds === null ? "?" : (seconds / 3600).toFixed(2)}`,
       );
     }
   }

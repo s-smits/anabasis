@@ -461,9 +461,12 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
     expect(all).toContain("all 2");
     expect(all).toContain("  heldout    1 of 2 tasks scored");
     for (const [part, pattern] of [
-      [all, /^ {2}base +score 6\/10 \(60\.0%\) build 0\.00 solve 0\.50 judge 0\.04 total 0\.54 /u],
-      [all, /^ {2}k1 +score 10\/10 \(100\.0%\) build 5\.25 solve 0\.50 judge 0\.04 /u],
-      [fairLines, /^ {2}heldout +score 5\/5 \(100\.0%\) build 3\.19 /u],
+      [
+        all,
+        /^ {2}base +score 6\/10 \(60\.0%\) system 0\.50 \(build 0\.00, solve 0\.50\) judge 0\.04 solve hours /u,
+      ],
+      [all, /^ {2}k1 +score 10\/10 \(100\.0%\) system 5\.75 \(build 5\.25, solve 0\.50\) judge 0\.04 /u],
+      [fairLines, /^ {2}heldout +score 5\/5 \(100\.0%\) system [\d.]+ \(build 3\.19, /u],
     ] as const) {
       expect(part.filter((line) => pattern.test(line))).toHaveLength(1);
     }

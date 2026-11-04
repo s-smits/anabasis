@@ -75,8 +75,8 @@ are rewritten again.
 
 | What | Owner |
 | --- | --- |
-| The scale, the worked fields and the three places | `src/examiner/ladder.ts` (`GRADES`, `FIELDS`, `SOLVER`) |
-| How hard an exam can be, how a rule is stated | `src/examiner/draft.ts`, the drafting system prompt |
+| The scale, the worked fields and the three places | `src/examiner/ladder.ts` (`GRADES`, `FIELDS`, `SOLVER`; a writing session reads `LADDER`, a drafting one `REACH`, the scale and the solver alone) |
+| How hard an exam can be, how a rule is stated, the two ways a task is untied and the objective's decision | `src/examiner/draft.ts`, the drafting system prompt |
 | Writing above the reference's grade | `src/examiner/prompt.ts`, "How hard" |
 
 `test/examiner-ladder.test.ts` holds the scale to lane 34's words, keeps every examined domain and

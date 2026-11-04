@@ -1,7 +1,7 @@
 // The Examiner's one session, `examine`, in its two modes on the faux provider: what both modes
 // share (an id, a wall, a shell, an ending, a bill), what a drafting session that puts one whole
 // draft is told, what a writing session's gate and tools hold, and what a task's author hears of it,
-// including a gate an earlier log left unmeasured, carried to a later session from the log alone.
+// its own claim on each draft included, carried to a later session from the log alone.
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import {
   createAssistantMessageEventStream,
@@ -14,8 +14,7 @@ import { heard } from "../src/examiner/record.ts";
 import { examine } from "../src/examiner/session.ts";
 import { examinerDirs, inExaminerWall } from "../src/examiner/shell.ts";
 import { writing } from "../src/examiner/write.ts";
-import { conditionId } from "../src/kernel/condition.ts";
-import { writtenTasks } from "../src/kernel/history.ts";
+import { proposalsOf, writtenTasks } from "../src/kernel/history.ts";
 import { append, read } from "../src/kernel/log.ts";
 import { billedAll } from "../src/kernel/meter.ts";
 import { solvesIn } from "../src/kernel/solves.ts";
@@ -33,11 +32,10 @@ import {
 } from "../src/meta/filesystem.ts";
 import { asRecord, isString, type JsonObject, type JsonValue } from "../src/meta/json-shape.ts";
 import { dirname, join } from "../src/meta/path.ts";
-import { requireJsonValue } from "../src/meta/stable-json.ts";
 import {
   bash,
+  CLAIM,
   call,
-  condition,
   failed,
   finish,
   instance,
@@ -63,8 +61,7 @@ const TASK_ADMISSION = "task.gate";
 const PROPOSED = "task.proposed";
 const TASK_STATE = "task.state";
 const EXAM_FINISHED = "exam.finished";
-const STARTED = "solve.started";
-const FINISHED = "solve.finished";
+const PROPOSE = "propose_tasks";
 /** A solver-side secret no Examiner may be shown: the text of a measured solve's answer. */
 const SOLVER = "solver-canary-7f3a";
 const GOOD = { answer: "42", unit: "N" };
@@ -77,8 +74,8 @@ const TOOL_USE = { stopReason: "toolUse" } as const;
 /** A verifier that passes every answer whose `answer` is "42" and refuses any other. */
 const verify: Verifier = async (_task, answer) =>
   asRecord(answer)?.answer === "42" ? { kind: "pass" } : { kind: "fail", blocking: ["check-product"] };
-const tried = (base: number | null, answer: JsonValue = GOOD, hidden: JsonValue = { seed: 1 }) =>
-  call("try_answer", { ...instance(base), hidden, answer });
+const tried = (base: number, answer: JsonValue = GOOD, hidden: JsonValue = { seed: 1 }) =>
+  call("try_answer", { family: "fixture", public_input: { base }, hidden, answer });
 
 setDefaultTimeout(120_000);
 afterAll(sweep);
@@ -134,7 +131,7 @@ describe("a session of any mode", () => {
               ...s.request,
               reading: async () => {
                 record();
-                return { faults: [], notes: [] };
+                return [];
               },
             }
           : {
@@ -173,7 +170,7 @@ describe("a session of any mode", () => {
       const { limits } = turned.request;
       const faulted = {
         ...turned.request,
-        reading: async () => ({ faults: ["a fault"], notes: [] }),
+        reading: async () => ["a fault"],
         limits: { ...limits, turns: 1 },
       };
       expect(await examine(faulted)).toMatchObject({ ended: "turns", puts: 1 });
@@ -345,7 +342,7 @@ describe("the home a wall keeps for a campaign's writing sessions", () => {
     // Off, the next session opens on what the last one wrote and on no reference.
     await examine({ ...s.request, id: "x-2" }, { ...WALL, keep });
     expect(s.sent.at(-1)).toContain(
-      "You never see the solver: not its tools, its guide, its answers or its mistakes.",
+      "You never see the solver's tools or guide. You never see a solver's answers, traces or mistakes.",
     );
     expect(s.of(CALLED).filter(({ tool }) => tool === "bash")[1]?.text).toBe("half.txt");
     expect(readdirSync(keep)).toEqual(["half.txt"]);
@@ -363,8 +360,7 @@ describe("a session that drafts an exam", () => {
     let readings = 0;
     const reading = async () => {
       readings += 1;
-      const faults = readings === 1 ? ["the accept control of t-1 did not pass: fail check-product"] : [];
-      return { faults, notes: [] };
+      return readings === 1 ? ["the accept control of t-1 did not pass: fail check-product"] : [];
     };
     const examined = await examine({ ...s.request, reading });
     expect(examined).toEqual({ ended: "stands", puts: 2, held: [], refused: [] });
@@ -388,7 +384,7 @@ describe("a session that drafts an exam", () => {
     // session reads the fault and finishes rather than ending at its wall.
     const reading = async () => {
       await Bun.sleep(400);
-      return { faults: ["a fault"], notes: [] };
+      return ["a fault"];
     };
     const { limits } = s.request;
     const examined = await examine({ ...s.request, reading, limits: { ...limits, wallSeconds: 0.3 } });
@@ -423,7 +419,7 @@ describe("a session that writes tasks", () => {
       const reference =
         said?.type === "text" ? /Instance reference: (\w+)\./u.exec(said.text)?.[1] : undefined;
       expect(reference).toBeDefined();
-      const put = toolOf(mode, "propose_tasks");
+      const put = toolOf(mode, PROPOSE);
       const unknown = await invoke(put, "unknown", { tasks: [{ reference: "missing" }] });
       expect(unknown.output).toEqual([
         {
@@ -434,17 +430,17 @@ describe("a session that writes tasks", () => {
       expect(mode.result().puts).toBe(0);
       expect(s.of(PROPOSED)).toHaveLength(0);
       await invoke(put, "propose", {
-        tasks: [byReference ? { reference: String(reference) } : instance(7)],
+        tasks: [byReference ? { reference: String(reference), ...CLAIM } : instance(7)],
       });
       expect(mode.result().held).toHaveLength(1);
       expect(s.of("task.feasible")).toMatchObject([{ answer: GOOD }]);
       results.push(s.of(PROPOSED));
       // A reference and its full content are one duplicate once held.
-      await invoke(put, "duplicate", { tasks: [instance(7), { reference: String(reference) }] });
+      await invoke(put, "duplicate", { tasks: [instance(7), { reference: String(reference), ...CLAIM }] });
       expect(mode.result().puts).toBe(1);
       const next = writing({ ...s.request, id: "x-2", verify }, undefined, "unseen");
       const expired = await invoke(toolOf(next), "expired", {
-        tasks: [{ reference: String(reference) }],
+        tasks: [{ reference: String(reference), ...CLAIM }],
       });
       expect(expired.output).toEqual([{ type: "text", text: containing("Known references: none") }]);
     }
@@ -464,7 +460,7 @@ describe("a session that writes tasks", () => {
       "R1: The answer is the base times six.",
       "check-product (every family): The answer is six times the base.",
       // The pack's task is listed with its outcome, as every task of the campaign is.
-      "- e-1 (fixture): not yet compared; no answer on record",
+      "- e-1 (fixture); no valid answer on record",
       "This session has 10 minutes, 12 turns and 4 drafts to put to the gate.",
     ]) {
       expect(opening).toContain(said);
@@ -501,25 +497,26 @@ describe("a session that writes tasks", () => {
     expect(s.of(EXAM_FINISHED)).toMatchObject([{ proposed: 0, held: [], refused: [] }]);
 
     // The budget every solve is held to, as a fact and no target; and the next session opens with
-    // what the last one said at its finish, in its own words.
+    // each earlier draft's grade and words on its line, and nothing of what a session said at its
+    // finish, which reached 13 of 80 sessions after 1 November.
+    const writer = seat("write", [propose(7), finish, finish]);
+    await examine(writer.request);
     const next = seat("write", [finish, finish]);
     await examine({
       ...next.request,
       id: "x-2",
-      log: s.log,
+      log: writer.log,
+      tasks: [...next.request.tasks, ...writtenTasks(read(writer.log))],
       budget: { modelTurns: 3, minutes: 8, solves: 2 },
     });
     expect(next.sent[0]).toMatch(
       /held to 3 turns of the solver's own[^.]*, and 8 minutes, and a comparison solves each task 2 times under each harness\./u,
     );
     expect(next.sent[0]).toContain("it is no target of yours");
-    expect(next.sent[0]).toContain(String.raw`said at its finish, in its own words:\n${NOTE}`);
-    // A note written under a reference since replaced is not handed on: it is about the tasks
-    // that reference failed (16 October).
-    append(s.log, "harness.promoted", { harness: "h1" });
-    const after = seat("write", [finish, finish]);
-    await examine({ ...after.request, id: "x-3", log: s.log });
-    expect(after.sent[0]).not.toContain("said at its finish");
+    expect(next.sent[0]).toContain(
+      JSON.stringify(`x-1-001 (fixture), graded 3 by its author: "${CLAIM.stops}"`).slice(1, -1),
+    );
+    for (const unsaid of ["said at its finish", NOTE]) expect(next.sent[0]).not.toContain(unsaid);
   });
 
   // On the six logs read on 14 October two of eleven Examiner sessions were cut at their wall while
@@ -527,8 +524,8 @@ describe("a session that writes tasks", () => {
   it("ends when the host has its tasks, and declines each finish that follows a proposal while it has not", async () => {
     const both = fauxAssistantMessage(
       [
-        fauxToolCall("propose_tasks", { tasks: [instance(2), instance(3)] }),
-        fauxToolCall("propose_tasks", { tasks: [instance(11)] }),
+        fauxToolCall(PROPOSE, { tasks: [instance(2), instance(3)] }),
+        fauxToolCall(PROPOSE, { tasks: [instance(11)] }),
       ],
       TOOL_USE,
     );
@@ -567,7 +564,7 @@ describe("a session that writes tasks", () => {
       tried(8, { answer: "1", unit: "N" }),
       tried(9, GOOD, '{"seed": 1}'),
       tried(10),
-      call("propose_tasks", {
+      call(PROPOSE, {
         tasks: [...[7, 8, 9].map(instance), { ...instance(10), hidden: '{"seed": 1}' }],
       }),
       finish,
@@ -596,9 +593,10 @@ describe("a session that writes tasks", () => {
     expect(s.of("task.feasible")).toEqual(
       proved.map((version) => ({ version, session: "x-1", answer: GOOD })),
     );
-    expect(heard(read(s.log), writtenTasks(read(s.log))).lines[0]).toBe(
-      "x-1-001 (fixture): not yet compared; an answer on record",
-    );
+    const [unread] = heard(read(s.log), writtenTasks(read(s.log))).groups;
+    expect(unread?.heading).toContain("Not yet compared");
+    expect(unread?.lines[0]).toStartWith("x-1-001 (fixture), graded 3 by its author");
+    expect(unread?.lines[0]).toEndWith("; a valid answer on record");
   });
 
   it("keeps the objective's measure of its author's valid answer where the contract declares one, and none where it declares none", async () => {
@@ -646,10 +644,10 @@ describe("a session that writes tasks", () => {
     const s = seat("write", [
       tried(2),
       tried(2, { answer: "42.0", unit: "N" }),
-      call("propose_tasks", {
+      call(PROPOSE, {
         tasks: [
-          { family: "fixture", public_input: { base: 2 }, hidden: { seed: 1, witness: planted } },
-          { family: "fixture", public_input: { base: 3, given: [planted] }, hidden: { seed: 1 } },
+          { family: "fixture", public_input: { base: 2 }, hidden: { seed: 1, witness: planted }, ...CLAIM },
+          { family: "fixture", public_input: { base: 3, given: [planted] }, hidden: { seed: 1 }, ...CLAIM },
           instance(2),
         ],
       }),
@@ -708,8 +706,8 @@ describe("a session that writes tasks", () => {
     expect(s.of(EXAM_FINISHED)[0]).not.toHaveProperty("hostSeconds");
     // Its tools put a task to the gate and wait on nothing, and its prompt names no solve at the gate.
     const mode = writing({ ...s.request, id: "x-2", verify }, undefined, "unseen");
-    expect(mode.tools.map(({ name }) => name)).toEqual(["propose_tasks", "read_example", "try_answer"]);
-    expect(mode.system).toContain("No solver is put to it while you wait");
+    expect(mode.tools.map(({ name }) => name)).toEqual([PROPOSE, "read_example", "try_answer"]);
+    expect(mode.system).toContain("No solver is put to it there.");
     for (const unsaid of [
       "try_task",
       "solved by the reference harness",
@@ -721,77 +719,73 @@ describe("a session that writes tasks", () => {
     expect(mode.started).not.toHaveProperty("tried");
   });
 
-  for (const promoted of [false, true]) {
-    it(`hands an unmeasured gate of an earlier log to the next author ${promoted ? "across a promotion" : "under the same reference"}, and takes its draft again once`, async () => {
-      // Until 1 November a draft's room solves could end before they decided its room, cut by the
-      // session's end, a provider or an unruled review, and the gate refused it unmeasured. A log
-      // of then is read as it was written; nothing writes such a gate now.
-      const s = seat("write", [call("read_opening", {}), finish, finish]);
-      const task = { taskId: "x-1-001", family: "fixture", publicInput: { base: 7 }, hidden: { seed: 1 } };
-      const version = s.versionOf(task.taskId, 7);
-      const reason =
-        "the reference harness answered it validly in 2 of 3 solves, 1 of them ending in no reading or in a rejection the Referee did not rule earned, so it is not measured";
-      const ran = condition(version, "h-reference");
-      const solve = "handoff-1";
-      append(s.log, "exam.started", { session: "x-1" });
-      append(s.log, PROPOSED, { version, taskId: task.taskId, session: "x-1", task });
-      append(s.log, "condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
-      append(s.log, STARTED, { solve, condition: conditionId(ran), comparison: "x-1" });
-      append(s.log, "verdict", { solve, answer: { answer: SOLVER }, kind: "fail" });
-      append(s.log, "referee.finding", {
-        solve,
-        ruling: null,
-        reason: "review-private-canary",
-        probeRows: [{ answer: SOLVER }],
-      });
-      append(s.log, FINISHED, {
-        solve,
-        ending: { outcome: "non-result", kind: "provider", reason: "provider-private-canary" },
-        billed: 0,
-      });
-      append(s.log, TASK_ADMISSION, {
-        version,
-        gate: 1,
-        outcome: "refused",
-        reason,
-        reference: { valid: 2, solves: 2, ran: 3, billed: 0 },
-        proved: false,
-      });
-      append(s.log, TASK_STATE, { version, state: "refused", session: "x-1" });
-      append(s.log, EXAM_FINISHED, { session: "x-1", ended: "wall" });
-      if (promoted) append(s.log, "harness.promoted", { harness: "h-next", from: "h-reference", rests: [] });
-      const events = read(s.log);
-      const request = { ...s.request, id: "x-2", tasks: [] };
-      const next = writing(request, undefined, "unseen");
-      const record = heard(events, []);
-      expect(record.interrupted).toHaveLength(1);
-      expect(record.interrupted[0]).toContain("x-1-001 (fixture)");
-      expect(record.interrupted[0]).toContain("not measured");
-      expect(record.refused).toEqual([]);
-      if (promoted) {
-        expect(record.interrupted[0]).toContain("replaced reference");
-        expect(record.interrupted[0]).not.toMatch(/1 of|3 attempted|turn|gap|%/u);
-      } else {
-        expect(record.interrupted[0]).toContain(`2 of 2 measured solves valid; 3 attempted; ${reason}`);
-      }
-      expect(next.opening).toContain(present(record.interrupted[0]));
-      for (const secret of [SOLVER, "review-private-canary", "provider-private-canary"]) {
-        expect(next.opening).not.toContain(secret);
-      }
-      const recovered = await invoke(toolOf(next, "read_example"), "recover", { task: task.taskId });
-      expect(recovered.output).toEqual([{ type: "text", text: JSON.stringify(task, null, 2) }]);
-      await examine(request);
-      expect(s.of(CALLED).find(({ tool }) => tool === "read_opening")?.text).toBe(next.opening);
-      // Proposed again, it is read on its package as every draft is now, and once held it is taken
-      // no more.
-      const again = writing({ ...request, id: "x-3" }, undefined, "unseen");
-      await invoke(toolOf(again), "retry", { tasks: [instance(7)] });
-      expect(again.result().held).toEqual([s.versionOf("x-3-001", 7)]);
-      const later = writing({ ...request, id: "x-4" }, undefined, "unseen");
-      await invoke(toolOf(later), "duplicate", { tasks: [instance(7)] });
-      expect(later.result().puts).toBe(0);
+  it("takes no proposal without its author's grade and sentence, logs the claim beside the task and never in it, and takes the same content with another claim no more", async () => {
+    const { grade: _grade, ...unclaimed } = instance(7);
+    const s = seat("write", [
+      call(PROPOSE, { tasks: [unclaimed] }),
+      call(PROPOSE, { tasks: [{ ...instance(7), grade: 8 }] }),
+      call(PROPOSE, { tasks: [{ ...instance(7), stops: "" }] }),
+      propose(7),
+      call(PROPOSE, { tasks: [{ ...instance(7), grade: 6, stops: "Another sentence." }] }),
+      call(PROPOSE, { tasks: [{ ...instance(8), stops: `${"Long. ".repeat(60)}End.` }] }),
+      finish,
+      finish,
+    ]);
+    await examine(s.request);
+    // The schema refuses the first three calls before the gate reads them: nothing is proposed.
+    const proposals = proposalsOf(read(s.log));
+    expect(proposals.map(({ version }) => version)).toEqual([
+      s.versionOf("x-1-001", 7),
+      s.versionOf("x-1-002", 8),
+    ]);
+    expect(proposals[0]?.claim).toEqual(CLAIM);
+    expect(s.of(CALLED)[4]?.text).toContain("An instance proposed before was not taken again.");
+    // A sentence is kept to 160 bytes.
+    const long = proposals[1]?.claim?.stops ?? "";
+    expect(new TextEncoder().encode(long).byteLength).toBeLessThanOrEqual(160);
+    expect(long).toStartWith("Long. Long.");
+    // The task a solver reads, its version and the written tasks hold no claim.
+    for (const task of [...proposals.map(({ task: whole }) => whole), ...writtenTasks(read(s.log))]) {
+      expect(task).not.toHaveProperty("claim");
+      expect(JSON.stringify(task)).not.toContain(CLAIM.stops);
+    }
+  });
+
+  it("takes again no content an earlier log's gate read, a gate that refused it unmeasured among them", async () => {
+    // Until 1 November a gate could refuse a draft before its room solves decided anything; that
+    // draft was handed to the next author to propose again. No gate leaves one so now.
+    const s = seat("write", []);
+    const task = { taskId: "x-1-001", family: "fixture", publicInput: { base: 7 }, hidden: { seed: 1 } };
+    const version = s.versionOf(task.taskId, 7);
+    append(s.log, PROPOSED, { version, taskId: task.taskId, session: "x-1", task });
+    append(s.log, TASK_ADMISSION, {
+      version,
+      gate: 1,
+      outcome: "refused",
+      reason: "the reference harness answered it in 2 of 3 solves, so it is not measured",
+      reference: { valid: 2, solves: 2, ran: 3, billed: 0 },
     });
-  }
+    append(s.log, TASK_STATE, { version, state: "refused", session: "x-1" });
+    const next = writing({ ...s.request, id: "x-2", tasks: [] }, undefined, "unseen");
+    await invoke(toolOf(next), "again", { tasks: [instance(7)] });
+    expect(next.result().puts).toBe(0);
+    expect(next.opening).not.toContain("gate not measured");
+  });
+
+  it("is told where no objective leaves room and what it puts with each draft, quotes no archive count, and finishes with a sentence for the log", () => {
+    const mode = writing(seat("write", []).request, undefined, "unseen");
+    for (const said of [
+      "Where the domain declares no objective, two valid answers tie whatever they contain",
+      "## What you put",
+      "the record's first line says how often its own two solves differed",
+    ]) {
+      expect(mode.system).toContain(said);
+    }
+    for (const unsaid of ["314", "1,373", "you hear nothing more of it"]) {
+      expect(mode.system).not.toContain(unsaid);
+    }
+    expect(mode.finish).toContain("for the log");
+  });
 
   it("runs in its shell the engine a check names, from where it lies, and no other program of its tree", async () => {
     let pack = "";

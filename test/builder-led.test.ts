@@ -6,6 +6,7 @@
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { supplyOf } from "../src/campaign/admission.ts";
 import { crashedRun } from "../src/campaign/ground.ts";
+import { short } from "../src/campaign/move.ts";
 import { pendingWords } from "../src/campaign/word.ts";
 import { examine } from "../src/examiner/session.ts";
 import { LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
@@ -151,6 +152,8 @@ const proposing = (count: number, from = 0): readonly [string, JsonObject] => [
       family: "fixture",
       public_input: { base: 2, rehearsal_copy: { of: "t-1", n: n + from } },
       hidden: null,
+      grade: 3,
+      stops: "A scripted draft.",
     })),
   },
 ];
@@ -1098,6 +1101,47 @@ describe("a campaign tool where the table names more than the action", () => {
     // r3, 19 October: g-3 and g-6 kept the starter comparison's code and reason while measuring a harness
     // snapshot.
     expect(compares[2]?.why).toContain("the Builder asked for it, where the table named");
+  });
+
+  it("reads a changed harness/ at the Builder's compare once the epoch's starter comparison has tallied, though tasks were held since", async () => {
+    layOutPack(root, bundle, MANY, FIXTURE);
+    const name = `${STEM}-owed-once`;
+    let sessions = 0;
+    const seats: Seats = {
+      seated: builderScript(passing(), [
+        CHANGE_GUIDE,
+        ["compare", {}],
+        // The promoted harness, kept after the conversation opened: until 4 November kept/ held
+        // only what was kept before, and buffer-fresh-opus-forkedPR588-stijn-pro's Builder found
+        // it empty and practised six tasks under the reference instead.
+        ["bash", { command: 'ls "$HOME/kept"' }],
+        ["examine", {}],
+        CHANGE_AGAIN,
+        ["compare", {}],
+        // New tasks held after the starter comparison confirmed the promotion: until 4 November
+        // they turned this compare into a second starter comparison of the same pair, and
+        // buffer-fresh-opus-forkedPR588-stijn-pro's changed harness/ went 11.8 hours unread.
+        ["examine", {}],
+        ["compare", {}],
+        ["finish", { note: "The change was read." }],
+        ["finish", { note: "The change was read." }],
+      ]),
+      // Each session holds six instances the last did not.
+      examine: (request) => examine({ ...request, ...scripted([proposing(6, 6 * sessions++)]) }),
+    };
+    await harnessBuilder([...seeded(name), ...FLAGS, "--exam-tasks", "6", "--moves", "12"], seats);
+    const [first, starterComparison, second] = of(name, REPORTED);
+    expect(starterComparison).toMatchObject({ fresh: first?.old, old: first?.fresh });
+    const snapshots = of(name, "build.checkpoint");
+    expect(second).toMatchObject({ old: first?.fresh, fresh: snapshots.at(-1)?.harness });
+    expect(second?.fresh).not.toBe(first?.old);
+    const compares = of(name, MOVED).filter(({ move }) => move === "compare");
+    expect(compares.map(({ code }) => code)).toEqual(["asked", "unread", "asked"]);
+    expect(said(name, "compare")[2]).not.toContain("The table's comparison of the starter ran first");
+    const promoted = first?.fresh;
+    expect(
+      said(name, "bash").find((text) => isString(promoted) && text.includes(short(promoted))),
+    ).toBeDefined();
   });
 
   /** Everything the Builder read from its tools in a campaign whose two comparisons tied the

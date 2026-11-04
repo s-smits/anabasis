@@ -396,9 +396,10 @@ Importance: 0.6.
 Starts from `EXAM DRAFTED (lane 8)`.
 
 The question is whether the exam a campaign drafted from the operator's prompt is the exam the
-prompt asked for. The host's reading (`draftReading`, `tools/d2/exam.ts`; `unreadFields`,
-`src/kernel/acceptance.ts`) checks shape, sources, one check per rule and controls, and notes the
-fields an accept control moves no verdict by; it cannot tell whether a rule belongs to the field, whether its source says
+prompt asked for. The host's reading (`draftFaults`, `src/examiner/draft.ts`; `draftReading`,
+`tools/d2/exam.ts`) checks shape, sources, one check per rule, the objective's decision and
+controls, and no longer reads which fields of an answer no check decides (4 November), so that is
+this lane's to read; it cannot tell whether a rule belongs to the field, whether its source says
 what the rule says, or whether the objective measures what the prompt values (`AGENTS.md`,
 section 6). `EXAM DRAFTED` gives the number of `exam.drafted` events, and each drafting session's
 ending, whether its draft stands, and the measurement `draft.finished` recorded (complete,
@@ -488,9 +489,12 @@ the bill, and on validity alone, beside the report's `points`. `TIES BETWEEN VAL
 where more than half the tallied tasks tie and at least one answer on each side is valid: there
 validity separates nothing and the objective and the bill are all the reading has. Two valid
 measures tie within the objective gap floor, `ROOM`, 1% of the larger measure. `SAFEGUARD-9` names a
-promotion whose tested tasks on validity alone do not clear its level, with the same tasks read
-without the bill beside it: where that clears the level the objective carried the promotion, and
-where it does not, the bill did. A promotion of a GPT campaign at v0.7.1 read 6-0 as scored and
+promotion whose tested tasks on validity alone do not clear its level, with the same tasks read by
+the current score beside it, which since 26 October is validity and the objective together. So the
+objective was needed, but not always alone: count the tasks each measure won (`replay.txt`, "won by
+validity N, by the objective M") and test each count alone. buffer583's g-3 cleared at 6-0 on 2
+validity wins and 4 by the objective, and neither 2-0 nor 4-0 clears 0.02: it rested on both. Before
+26 October, a reading that did not clear by the score either rested on the bill. A promotion of a GPT campaign at v0.7.1 read 6-0 as scored and
 2-1 without the bill, and two readings of 8-0 at v0.7.3 were refused as steps because they did not
 stand without it. Say for each step whether it rests on answers the reference could not give or
 on better or cheaper answers to tasks both sides answered. In a drafted exam the objective is its
@@ -1227,7 +1231,7 @@ timestamp earlier than the line above it, a `solve.finished` whose solve never s
 (lane 32): two controllers on one log is the usual cause. Then recount one number from each reader
 a person reads against the folds: the view's comparisons and next move (`bun run runs view`), the
 closing report's promotions and spend (`tools/d2/close.ts`), the pulse's open runs and endings,
-run-improvement-campaign's `scripts/cycle.ts` promotions and hours, and the page where it was used. A reader that disagrees
+run-improvement-campaign's `scripts/wri2p2.ts` promotions and hours, and the page where it was used. A reader that disagrees
 with the fold it should call is a second reader of one fact (rule 12). Run `bun run runs replay`
 where the tree that reads differs from the tree that wrote, and say which event kinds this tree
 cannot read. Then read the copy under review against its log: a copy gathered from another host

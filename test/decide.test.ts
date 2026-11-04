@@ -397,7 +397,8 @@ describe("task supply", () => {
     expect(decide([...FIVE, built("b-1", "h1")], PLAN).why).toContain("h1");
     // The first comparison waits for the floor alone; the target of twelve binds after it.
     expect(move([...SIX, built("b-1", "h1")])).toMatchObject({ move: "compare" });
-    expect([shortOf(FIVE, PLAN), shortOf(SIX, PLAN)]).toEqual([1, 0]);
+    // One short of the floor, the session is still asked for a sweep (4 at 0.1).
+    expect([shortOf(FIVE, PLAN), shortOf(SIX, PLAN)]).toEqual([4, 0]);
     expect(shortOf([...SIX, ...compared("g-1", "h1", "no-step")], PLAN)).toBe(6);
     expect(move([...SIX, built("b-1", "h1"), ...HELD.slice(6).flatMap(heldOut)])).toMatchObject({
       move: "compare",
@@ -589,6 +590,11 @@ describe("unread harnesses and tasks", () => {
     const noRoom = compared("g-1", "h1", "no-step", { tally: [0, 0, 12], valid: { old: ALL, fresh: ALL } });
     expect(decide([...FIRST, ...noRoom, ...six.slice(0, 5)], PLAN)).not.toMatchObject({ code: "unread" });
     expect(decide([...FIRST, ...noRoom, ...six], PLAN)).toMatchObject({ move: "compare", code: "unread" });
+    // One task short of the target, the session is asked for the sweep the table waits for (4 at
+    // 0.1); where nothing is short the command's default ask holds a sweep.
+    const eleven = [READ, ...HELD.slice(0, 11).flatMap(heldOut), ...RELEASED, built("b-1", "h1")];
+    expect(shortOf([...eleven, ...noRoom], PLAN)).toBe(4);
+    expect(shortOf([...FIRST, ...noRoom], PLAN)).toBe(0);
 
     // After a promotion the starter is compared once the tasks written for the new reference could
     // clear the level alone; one is not enough, and the Examiner is asked for more.
@@ -623,6 +629,10 @@ describe("unread harnesses and tasks", () => {
         PLAN,
       ),
     ).not.toMatchObject({ fresh: "starter" });
+    // Nor with no harness waiting, as a led Builder's harness/ never is: once the epoch's starter
+    // comparison has tallied, a task held since does not owe the pair again.
+    const confirmedThenHeld = [...starterComparison("no-step", HALF, [2, 2, 8]), ...examined("x-2", ["v19"])];
+    expect(decide(confirmedThenHeld, PLAN)).not.toMatchObject({ fresh: "starter" });
     // A starter comparison that tallied no task leaves its debt: with tasks held out since and a
     // harness waiting, the starter is compared again before the harness is read.
     const untallied = [
@@ -724,7 +734,8 @@ describe("the build conditions", () => {
       // Neither closes for practice either, so both logs allow one more than the floor needs.
       expect(logs.map((events) => owed(events, 1000, 0.02))).toEqual([1 + extra, 1 + extra]);
       expect(released[0]).toEqual(released[1]);
-      expect(released[0]?.map(([version]) => version).slice(0, 1)).toEqual(["a"]);
+      // A alone left the reference room, and one task of one is more than half, so A stays held.
+      expect(released[0]?.map(([version]) => version)).not.toContain("a");
     }
   });
 

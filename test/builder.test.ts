@@ -58,6 +58,8 @@ const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
 /** A check's id and a Referee's reason: verifier-side text no Builder may be shown. */
 const CHECK = "check-canary-51c2";
 const REASON = "reason-canary-9d07";
+/** What every proposal's author claims of it in `setup`: exam-side, so no Builder reads it. */
+const SETUP_CLAIM = "claim-setup-3e8";
 const CONTRACT: Contract = {
   answerFormat: { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] },
   conventions: "SI units.",
@@ -112,8 +114,9 @@ async function setup(
   mkdirSync(home);
   mkdirSync(host);
   const record_ = (kind: EventKind, data: JsonObject) => append(log, kind, data);
+  // Each with its author's claim, which stays on the exam side.
   for (const version of ["v0", "v1", "v2", "v3"]) {
-    record_("task.proposed", { version });
+    record_("task.proposed", { version, claim: { grade: 3, stops: SETUP_CLAIM } });
     record_("task.gate", { version, gate: 1, outcome: "passed" });
   }
   record_("task.state", { version: "v1", state: "released" });
@@ -735,6 +738,33 @@ describe("a Builder session", () => {
     expect(plain.sent[2]).toContain("passed 2 of 2.");
   });
 
+  it("is told an author's better answer on a released task under an objective, and nothing of a held-out one's", async () => {
+    // A harness that answers alike in every solve still leaves room where its author's answer is
+    // better; until 4 November the Builder was told only its own measures and read that as none.
+    const objective = { ...CONTRACT, objective: { quantity: "cost", direction: "lower" as const } };
+    const steps = [edit, call("practice", { tasks: ["t-1"] }), finish];
+    const told = async (authored: readonly (readonly [string, number])[]) => {
+      const s = await setup(steps, [], false, CHECK, objective);
+      for (const [version, measure] of authored) {
+        append(s.request.log, "task.feasible", {
+          version,
+          session: "x-1",
+          answer: { answer: "1" },
+          objective: { quantity: "cost", direction: "lower", measure },
+        });
+      }
+      await session(s.request, s, s.walled);
+      // The practice result's text alone, since a context also carries the clock and durations.
+      return /"toolName":"practice","content":(.*?),"details"/.exec(s.sent[2] ?? "")?.[1] ?? "";
+    };
+    expect(await told([["v1", 12]])).toContain("An answer on record that no harness gave measures 12.");
+    // v3 is held out: its author's measure, whatever it is, changes nothing the Builder reads.
+    const none = await told([]);
+    expect(none).not.toContain("no harness gave");
+    expect(await told([["v3", 5]])).toBe(none);
+    expect(await told([["v3", 7]])).toBe(none);
+  });
+
   it("is not given the correctness model a v1 state carries, whose exam holds hidden values", async () => {
     const s = await setup([finish]);
     // A v1 state keeps it at its root and again under each bundle snapshot.
@@ -1043,25 +1073,34 @@ describe("a Builder session", () => {
 describe("what crosses to the Builder", () => {
   /** What a campaign keeps from its Builder: the check that refused an answer, the Referee's
    *  reason, the hidden value of a held-out task and of a practice task, which held-out task the
-   *  comparison's new harness won. */
+   *  comparison's new harness won, what the Examiner said of each task when it put it, and how the
+   *  reference did on a held-out task the Examiner tried it on (`try_reference`). */
   interface Kept {
     readonly check: string;
     readonly reason: string;
     readonly hidden: string;
     readonly won: "h1" | "h2";
+    readonly claim: string;
+    readonly tried: "pass" | "fail";
   }
   const ONE: Kept = {
     check: "check-one-7a1",
     reason: "reason-one-7a1",
     hidden: "hidden-one-7a1",
     won: "h1",
+    claim: "claim-one-7a1",
+    tried: "pass",
   };
   const OTHER: Kept = {
     check: "check-two-c4e",
     reason: "reason-two-c4e",
     hidden: "hidden-two-c4e",
     won: "h2",
+    claim: "claim-two-c4e",
+    tried: "fail",
   };
+  /** The solve the Examiner session x-1 asked of the reference harness. */
+  const TRIED = "x-1-tried";
   const FRESH = "f".repeat(64);
 
   /**
@@ -1102,7 +1141,13 @@ describe("what crosses to the Builder", () => {
         publicInput: { base: 3 },
         hidden: kept.hidden,
       };
-      append(log, "task.proposed", { version, taskId: task.taskId, session: "x-1", task });
+      append(log, "task.proposed", {
+        version,
+        taskId: task.taskId,
+        session: "x-1",
+        task,
+        claim: { grade: 3, stops: kept.claim },
+      });
       append(log, "task.gate", { version, gate: 1, outcome: "passed" });
       append(log, "task.feasible", { version, session: "x-1", answer: kept.hidden });
     }
@@ -1148,6 +1193,37 @@ describe("what crosses to the Builder", () => {
         });
       }
     }
+    // The Examiner session x-1 tried the reference on h1: a pass in one campaign and a rejection after
+    // more turns in the other, billed alike, with its answer and trace naming the hidden value.
+    append(log, "exam.started", { session: "x-1" });
+    append(log, "solve.started", {
+      solve: TRIED,
+      comparison: "x-1",
+      condition: recordCondition(log, s.condition("h1", s.digest)),
+      task: "x-h1",
+    });
+    append(log, "solve.call", {
+      solve: TRIED,
+      turn: 1,
+      tool: "bash",
+      args: { command: "run" },
+      isError: false,
+      text: `tried ${kept.hidden}`,
+    });
+    append(
+      log,
+      "verdict",
+      kept.tried === "pass"
+        ? { solve: TRIED, answer: { answer: kept.hidden }, kind: "pass" }
+        : { solve: TRIED, answer: { answer: kept.hidden }, kind: "fail", blocking: [kept.check] },
+    );
+    append(log, "solve.finished", {
+      solve: TRIED,
+      ending: kept.tried === "pass" ? { outcome: "pass" } : { outcome: "fail", kind: "rejected" },
+      turns: kept.tried === "pass" ? 4 : 9,
+      billed: 0.5,
+    });
+    append(log, "exam.finished", { session: "x-1", ended: "finished", note: null });
     append(log, "comparison.reported", {
       session: "g-1",
       old: s.digest,
@@ -1208,7 +1284,7 @@ describe("what crosses to the Builder", () => {
     );
   }
 
-  it("is byte-identical whatever a hidden value, a check, a ruling, or the task that was won is", async () => {
+  it("is byte-identical whatever a hidden value, a check, a ruling, the task that was won or the Examiner's try of the reference is", async () => {
     const [one, other] = [await read_(ONE), await read_(OTHER)];
     // The session read what a Builder may: its tasks, the fail, the trace, the opening again, the
     // continuation, and the comparison as a tally.
@@ -1219,7 +1295,17 @@ describe("what crosses to the Builder", () => {
     expect(one).toContain("You have not called finish");
     expect(one).toContain("practice/t-1.json");
     for (const kept of [ONE, OTHER]) {
-      for (const canary of [kept.check, kept.reason, kept.hidden, "x-h1", "x-h2", "g-1-h"]) {
+      for (const canary of [
+        kept.check,
+        kept.reason,
+        kept.hidden,
+        kept.claim,
+        SETUP_CLAIM,
+        "x-h1",
+        "x-h2",
+        "g-1-h",
+        TRIED,
+      ]) {
         expect(one).not.toContain(canary);
       }
     }

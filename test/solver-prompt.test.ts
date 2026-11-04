@@ -64,11 +64,20 @@ describe("the solver's system prompt", () => {
     // The wall: what commands may write, that the network was reached, and their time limits.
     expect(prompt).toContain("$TMPDIR");
     expect(prompt).toContain("Commands have network access");
-    expect(commandLimits(prompt)).toEqual([300, 900, 60, 60]);
+    expect(commandLimits(prompt)).toEqual([300, 900, 60]);
     for (const { name, description } of TOLD.tools) expect(prompt).toContain(`- ${name}: ${description}`);
-    expect(prompt).toContain("edits[].oldText must match exactly");
-    expect(prompt).toContain("matched against the original file");
-    expect(prompt).toContain("Do not emit overlapping or nested edits");
+    expect(prompt).toContain("matched against the original file, not after earlier edits are applied");
+    expect(prompt).toContain("as small as possible while still being unique");
+    // The edit rules leave to pi's edit description what it states: unique, non-overlapping
+    // matches, nearby changes merged, and no padding with unchanged regions.
+    const edit = TOLD.tools.find(({ name }) => name === "edit")?.description ?? "";
+    for (const fact of [
+      "unique, non-overlapping region",
+      "merge them into one edit",
+      "large unchanged regions",
+    ]) {
+      expect(edit).toContain(fact);
+    }
     expect(prompt).toContain("Use write only for new files or complete rewrites");
   });
 
@@ -103,13 +112,13 @@ describe("the solver's system prompt", () => {
       limits: { shellDefaultSeconds: 30, shellMaxSeconds: 60 },
       programs: ["pynite-python", "python3", "f2py"],
     });
-    expect(commandLimits(prompt)).toEqual([30, 60, 60, 60]);
+    expect(commandLimits(prompt)).toEqual([30, 60, 60]);
     for (const [wallSeconds, reserve] of [
       [300, 37],
       [480, 60],
       [7200, 60],
     ] as const) {
-      expect(commandLimits(systemPrompt({ ...TOLD, wallSeconds }))).toEqual([300, 900, reserve, reserve]);
+      expect(commandLimits(systemPrompt({ ...TOLD, wallSeconds }))).toEqual([300, 900, reserve]);
     }
     for (const program of ["pynite-python", "python3", "f2py"]) expect(prompt).toContain(program);
     const many = Array.from({ length: 23 }, (_, index) => `tool-${String(index + 1).padStart(2, "0")}`);

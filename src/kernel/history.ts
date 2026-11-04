@@ -13,14 +13,15 @@
  * Nothing here judges a history. An event the fold would refuse is handed over like any other; a
  * caller that needs the log to be sound asks the fold first (`taskSets`).
  */
-import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
+import { hashJsonValue } from "../meta/stable-json.ts";
 import type { LogEvent } from "./log.ts";
 import type { Task } from "./verify.ts";
 
 /** A `task.proposed` event. A pack's task is proposed by its id and its family, carried from
  *  another checker's campaign or not. A task an Examiner session wrote is logged whole, here and in
  *  a campaign it is carried into, since no pack holds it. */
-interface Proposal {
+export interface Proposal {
   readonly version: string;
   readonly taskId: string | null;
   /** The task's family, which a comparison tallies by (`compared`, `comparison.ts`); null where the
@@ -33,6 +34,16 @@ interface Proposal {
   readonly carried: string | null;
   /** The task whole, where the proposal holds it. */
   readonly task: Task | null;
+  /** What its author said of it beside the task (`write.ts`): its grade and where a solver falls
+   *  short; null for a proposal from before 4 November, a pack's and a carried one. */
+  readonly claim: { readonly grade: number; readonly stops: string } | null;
+}
+
+/** An instance by what a solver and the checks read of it, whatever id it carries: what a writing
+ *  session takes no second time and names a checked instance by (`write.ts`), and what joins a
+ *  reference's try of an instance to the task it became (`probed`, `src/examiner/record.ts`). */
+export function contentOf({ family, publicInput, hidden }: Omit<Task, "taskId">): string {
+  return hashJsonValue({ family, publicInput, hidden: hidden ?? null });
 }
 
 /** Every proposal of a log, in the order the tasks were proposed. */
@@ -41,6 +52,7 @@ export function proposalsOf(events: readonly LogEvent[]): Proposal[] {
     if (kind !== "task.proposed" || !isString(data.version)) return [];
     const task = asRecord(data.task);
     const family = task?.family ?? data.family;
+    const claim = asRecord(data.claim);
     return [
       {
         version: data.version,
@@ -57,6 +69,8 @@ export function proposalsOf(events: readonly LogEvent[]): Proposal[] {
                 hidden: task.hidden ?? null,
               }
             : null,
+        claim:
+          isNumber(claim?.grade) && isString(claim.stops) ? { grade: claim.grade, stops: claim.stops } : null,
       },
     ];
   });

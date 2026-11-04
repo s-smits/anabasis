@@ -30,8 +30,8 @@ evaluates the ten `ROWS` in order and returns the first applicable move with its
    changed harness can only tie again on tasks the reference closed.
 9. `unread`: something no comparison has read is compared: a harness whose sessions have run, and
    tasks held out since the last reading (`programs-of:` remains a harness name for an audit by
-   hand). Where no session has left a harness other than the reference, a **starter comparison**
-   reads those tasks before a Builder session is paid for. It draws as every comparison does, those
+   hand). After a promotion, until one has tallied a task in the epoch, a **starter comparison**
+   reads those tasks, whatever harness waits. It draws as every comparison does, those
    tasks first and then older ones, so that the promotion it confirms is read beyond the tasks
    written above the new reference's grade. A waiting harness is read again on new
    tasks only where its last reading tested nothing or left no room: one that had room and read

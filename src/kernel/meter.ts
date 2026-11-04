@@ -385,7 +385,8 @@ export function billedParts(events: readonly LogEvent[], id: string) {
  *  (`economyLines`, `tools/d2/close.ts`) and the investigation read the Examiner's share here: until
  *  28 October the closing report summed it again from the sessions' parts. */
 export function spendOf(events: readonly LogEvent[]): [string, number][] {
-  // A solve an Examiner session asked for to try a draft task (`try_task`, until 1 November) names the session where a
+  // A solve an Examiner session asked for, to try an instance on the reference harness (`try_reference`, and
+  // `try_task` until 1 November), names the session where a
   // comparison's names the comparison, and is the Examiner's, as `countedSolves` keeps it out of
   // every tally: about seven reference solves an admitted task at three a draft (the overhaul plan,
   // 4b), which until 12 October read as the solver's. A drafting session's solves of its examples

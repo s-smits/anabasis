@@ -4,7 +4,7 @@
  *
  *   bun tools/wri/wri.ts read --log .ana/d2/truss/log.jsonl
  *   bun tools/wri/wri.ts climb --log .ana/d2/truss/log.jsonl[,<log>,<log>]
- *   bun tools/wri/wri.ts start --log .ana/d2/truss/log.jsonl[,<log>,<log>] --out .ana/wri/20261008-truss
+ *   bun tools/wri/wri.ts start --log .ana/d2/truss/log.jsonl[,<log>,<log>] --out .ana/wri/20261008-truss [--snapshot]
  *   bun tools/wri/wri.ts lanes --out .ana/wri/20261008-truss [--lanes 1-4,7] [--agents 3]
  *   bun tools/wri/wri.ts collect --out .ana/wri/20261008-truss
  *   bun tools/wri/wri.ts synthesis --out .ana/wri/20261008-truss
@@ -20,7 +20,10 @@
  * - `start` writes that as `overview.md`, and the shared instructions with each campaign's row
  *   filled in and three sections left for the primary to write. `--log` names one campaign or several,
  *   which the investigation reads as equals: every lane reads every one, and opens where a trigger
- *   fired on any of them (`tools/wri/investigation.ts`).
+ *   fired on any of them (`tools/wri/investigation.ts`). It refuses a log a campaign may still
+ *   write; with `--snapshot` it reads a frozen copy of each such log instead, under
+ *   `<out>/snapshot/<name>/` (`snapshotCampaign`, `tools/runs/seed.ts`), and every later verb reads
+ *   that copy.
  * - `lanes` builds one prompt per lane, and `launch.json`, the manifest codex-gpt-swarm's launcher
  *   reads: one session a lane it built, or with `--agents N` the lanes packed by label into N
  *   sessions, a label never split and the sessions near one another in importance, and each
@@ -63,20 +66,22 @@
  */
 import { draftOf } from "#src/examiner/draft.ts";
 import { answerFormatFault } from "#src/kernel/contract.ts";
-import { read } from "#src/kernel/log.ts";
+import { LOG_FILE, read } from "#src/kernel/log.ts";
 import { openVerifier, spelled } from "#src/kernel/verify.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
-import { mainTree } from "#src/meta/git.ts";
+import { gitMaybe, gitText, mainTree } from "#src/meta/git.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { codeOf } from "../d2/campaign.ts";
+import { installAt } from "../runs/code.ts";
 import { receipts } from "../runs/receipt.ts";
 import { isCampaign, processes, readable } from "../runs/registry.ts";
 import { stillRunning } from "../runs/diagnosis.ts";
+import { snapshotCampaign } from "../runs/seed.ts";
 import { type Derived, derive, derivedLine, derivedOf, derivedText } from "./derive.ts";
 import { logAcross } from "../runs/snapshots.ts";
 import { stagedExamOf } from "../d2/exam.ts";
@@ -97,7 +102,7 @@ import {
   suggestedSessions,
   weightOf,
 } from "./investigation.ts";
-import { INVESTIGATION, investigationIndex } from "./index.ts";
+import { INVESTIGATION, investigationIndex, SHARED } from "./index.ts";
 import { overview, rendered } from "./read.ts";
 
 interface Investigation {
@@ -107,7 +112,6 @@ interface Investigation {
 }
 
 const REPO = resolve(import.meta.dir, "..", "..");
-const SHARED = "shared-instructions.md";
 const USAGE =
   "usage: bun tools/wri/wri.ts read | climb | start | lanes | collect | synthesis | grade | derive | index";
 
@@ -125,6 +129,7 @@ const { values, positionals } = parseArgs({
     all: { type: "boolean" },
     verbose: { type: "boolean" },
     force: { type: "boolean" },
+    snapshot: { type: "boolean" },
   },
 });
 
@@ -191,6 +196,29 @@ function hostLine(log: string): string {
       );
 }
 
+/**
+ * A tree at the commit the campaign's last launch ran, with its dependencies installed, beside the
+ * main checkout, where this checkout's code differs from the code the campaign last ran under. On
+ * 4 November buffer583's own tree held no dependencies, so two lanes ran the Examiner's view from
+ * this checkout's code instead, and the primary had checked the run's commit out by hand. Null
+ * where the code matches, no receipt names a commit, or this repository does not hold it.
+ */
+function sourceTree(log: string): string | null {
+  const ran = asRecord(read(log).findLast(({ kind }) => kind === "condition.recorded")?.data.condition)?.host;
+  const commit = receipts(log).at(-1)?.commit;
+  if (
+    commit === undefined ||
+    ran === hostOf(REPO) ||
+    gitMaybe(REPO, "cat-file", "-e", `${commit}^{commit}`) === null
+  ) {
+    return null;
+  }
+  const tree = join(dirname(mainTree(REPO)), `anabasis-wri-${commit.slice(0, 9)}`);
+  if (!existsSync(tree)) gitText(REPO, "worktree", "add", "-q", "--detach", tree, commit);
+  if (!existsSync(join(tree, "node_modules"))) installAt(tree, commit);
+  return tree;
+}
+
 function overviewText(log: string): string {
   return `${rendered(overview(read(log), receipts(log)))}\n\n${hostLine(log)}\n`;
 }
@@ -218,35 +246,61 @@ async function deriveStep(): Promise<number> {
   return done.some(({ failed }) => failed.length > 0) ? 1 : 0;
 }
 
-/**
- * Refuse an investigation of a campaign that may still write its log. The operator's rule of 3
- * November: the run is stopped before its investigation starts, so every lane reads one sheet and
- * no finding is about events that arrived after another lane read the log. A log the registry does
- * not list has no campaign command writing it.
- */
-function refuseRunning(logs: readonly string[]): void {
+/** The logs among `logs` that a campaign may still write: a log the registry does not list has no
+ *  campaign command writing it. */
+function liveOf(logs: readonly string[]): string[] {
   const known = readable(REPO);
   const running = processes();
-  const live = logs.filter((log) => {
+  return logs.filter((log) => {
     const run = known.find(({ path }) => path === log);
     return run !== undefined && stillRunning(run, running);
   });
+}
+
+/**
+ * Refuse an investigation of a campaign that may still write its log. The operator's rule of 3
+ * November: every lane reads one sheet, so no finding is about events that arrived after another
+ * lane read the log. `start --snapshot` reads a frozen copy of each live one instead (4 November).
+ */
+function refuseRunning(logs: readonly string[]): void {
+  const live = liveOf(logs);
   if (live.length === 0) return;
   const names = live.map((log) => nameOf(log)).join(", ");
   throw new Error(
-    `${names} may still write its log: stop it first (\`bun run runs stop <name> --yes\`, or \`pause\`), so every lane reads one log`,
+    `${names} may still write its log: pass --snapshot to read a frozen copy while it runs, or stop it first (\`bun run runs stop <name> --yes\`), so every lane reads one log`,
   );
+}
+
+/** Each log, a live one replaced by its frozen copy under `<out>/snapshot/<name>/` (`snapshotCampaign`). */
+function frozen(logs: readonly string[], out: string): string[] {
+  const live = new Set(liveOf(logs));
+  return logs.map((log) => {
+    if (!live.has(log)) return log;
+    const to = join(out, "snapshot", nameOf(log));
+    const { events } = snapshotCampaign(dirname(log), to);
+    console.log(`${nameOf(log)}: froze ${String(events)} events into ${to}`);
+    return join(to, LOG_FILE);
+  });
 }
 
 async function start(): Promise<number> {
   needed("log");
-  const [logs, out] = [resolvedLogs, resolve(needed("out"))];
+  const out = resolve(needed("out"));
   if (existsSync(join(out, SHARED))) throw new Error(`${out} already holds ${SHARED}`);
+  const logs = values.snapshot === true ? frozen(resolvedLogs, out) : resolvedLogs;
   refuseRunning(logs);
   if (new Set(logs.map((log) => nameOf(log))).size < logs.length) throw new Error("--log names a log twice");
   mkdirSync(join(out, "lanes"), { recursive: true });
   const { done, line } = await derived(logs);
   const texts = logs.map(overviewText);
+  const trees = logs.flatMap((log) => {
+    const tree = sourceTree(log);
+    return tree === null
+      ? []
+      : [
+          `- ${nameOf(log)}: the code its last launch ran is checked out at \`${tree}\`, its dependencies installed. Read source there, and run a reader there (\`cd ${tree} && bun tools/...\`) to see what it printed at that commit; the derived files below come from this checkout's code.`,
+        ];
+  });
   const campaigns = [
     "| campaign | log | events | checkout |",
     "| --- | --- | --- | --- |",
@@ -257,6 +311,7 @@ async function start(): Promise<number> {
       return logs.length === 1 ? host : `- ${nameOf(logs[index] ?? "")}: ${host}`;
     }),
     "",
+    ...(trees.length > 0 ? [...trees, ""] : []),
     `Every deterministic reader's output for each campaign, as the log stood at this start, is in its folder: ${done.map(({ dir }) => `\`${dir}/\``).join(", ")}, one \`<reader>.txt\` a reader (\`wri.ts derive\`). Read those files before running a reader yourself.`,
   ].join("\n");
   const template = readFileSync(join(REFERENCES, "shared-instructions.template.md"), "utf8");
@@ -362,7 +417,13 @@ function lanes(): number {
   });
   // A lane reads campaign logs, which hold hidden values, so its sessions search nothing: a query
   // leaves the machine (`AGENTS.md`, section 5). Every other Codex launch searches by default.
-  const launch = join(out, "launch.json");
+  // A lane that runs alone is built after the others have launched, so its manifest stands beside
+  // theirs: on 4 November building lane 19 alone wrote over buffer583's five grouped sessions.
+  const alone = built.length > 0 && built.every((lane) => lane.isolated);
+  const launch = join(
+    out,
+    alone ? `launch-${built.map((lane) => stem(lane.number)).join("-")}.json` : "launch.json",
+  );
   if (sessions.length > 0) {
     writeFileSync(
       launch,

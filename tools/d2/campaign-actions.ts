@@ -33,6 +33,7 @@ import { campaignOf } from "#src/campaign/handover.ts";
 import { type Decided, short } from "#src/campaign/move.ts";
 import type { Opening } from "#src/campaign/opening.ts";
 import { comparisonsTold } from "#src/builder/past.ts";
+import { seedKept } from "#src/builder/kept.ts";
 import { type BuildRequest, layPractice } from "#src/builder/session.ts";
 import { type Bench, endingWith, snapshot, waitTool } from "#src/builder/tools.ts";
 import { pendingWords } from "#src/campaign/word.ts";
@@ -143,6 +144,9 @@ async function refreshCampaign(context: CampaignContext, bench: Bench): Promise<
   context.campaign = campaign;
   refreshPractice(bench, campaign);
   bench.reference = (await keptAs(campaign, "--reference", PROMOTED)).dir;
+  // What was kept since the conversation opened: until 4 November kept/ held only what was kept
+  // before, and the Builder is told it holds every kept harness (`shellWalls`, `prompt.ts`).
+  seedKept(bench.home, bench.request.states, read(campaign.log), bench.parent);
 }
 
 /** The turn an action is made in and the move the table names for it. A total the operator left
@@ -311,6 +315,9 @@ const examineAction =
     const work = examineCommand(
       args,
       (request, wall) => sitting({ ...request, opened: resolve, held }, wall),
+      // The author's tries of the reference harness wait in the solve queue as a comparison's
+      // solves do; a scripted Examiner is given none.
+      seats.examine === undefined ? turn.held : null,
       // The host's halt, on its bounds or an ending, and the run's kill stop it; the
       // conversation's own end is neither.
       AbortSignal.any([bench.halt.signal, ...(bench.request.kill === undefined ? [] : [bench.request.kill])]),
@@ -334,7 +341,7 @@ const examineAction =
       });
     context.examining = { session, done, released: () => next.promise };
     return {
-      said: `Examiner session ${session} is writing ${tasks === undefined ? "tasks" : plural(Number(tasks), "task")} beside this conversation: edit, release practice and practise meanwhile. As it holds tasks the host releases the practice owed since the last reading. A comparison or a promotion waits for it to end, wait returns when it ends or the host releases practice, and campaign_status says how many of its tasks the gate has admitted.`,
+      said: `Examiner session ${session} is writing ${tasks === undefined ? "tasks" : plural(Number(tasks), "task")} beside this conversation: edit, release practice and practise meanwhile. As it holds tasks the host releases the practice owed since the last reading.`,
     };
   };
 

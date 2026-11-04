@@ -376,11 +376,15 @@ function tasks(ground: Ground): Move | null {
 /**
  * How many held-out tasks the campaign is short of: its admission floor, or after its first
  * comparison its target where that is larger, and what the next release still draws for practice,
- * less what it holds. The table's examine before a comparison and the session's ask (`examTasks`,
- * `campaign-terms.ts`) are this count. Until 19 October a due repeat was short of a sweep instead.
+ * less what it holds. The table's examine before a comparison reads this count (`shortBy`). The
+ * session's ask (`examTasks`, `campaign-terms.ts`) is never less than a sweep (`sweepOf`), the
+ * fewest new tasks a comparison waits for after a reading that left no room (`writtenSince`); 0
+ * stays 0, leaving the command's default of 12. Until 4 November it was not raised, and
+ * jobstat-fresh-opus-forkedPR595-stijn-linux's x-3 was asked for 4 where the table waited for 6.
  */
 export function shortOf(events: readonly LogEvent[], plan: Plan): number {
-  return shortBy(groundOf(events, plan));
+  const count = shortBy(groundOf(events, plan));
+  return count === 0 ? 0 : Math.max(count, sweepOf(plan.wanted.level));
 }
 
 function shortBy({ plan, supply, all }: Ground): number {
@@ -519,14 +523,16 @@ function unread(ground: Ground): Move | null {
 }
 
 /**
- * A comparison that draws the tasks held out since the last reading first, before anything is built. With no
- * harness waiting, a starter comparison says whether they leave the reference room before a
- * Builder session is paid for (on 10 October three campaigns built three times on tasks every
- * practice solve passed). After a promotion it is owed until one tallies a task in the epoch,
+ * A comparison that draws the tasks held out since the last reading first, before anything is built.
+ * After a promotion a starter comparison is owed until one tallies a task in the epoch,
  * whatever harness waits, since that reading confirms the promotion (`confirmed`, `climb.ts`, its
  * one reader): a session that changed harness/ beside the Examiner took its move, 5 of 5
  * promotions in the rehearsal of 2 November (sim-postplan) and the base alike. Until 3 November
- * any report of the pair stopped the debt, so one that tallied nothing left the epoch unconfirmed. A waiting harness whose last reading tested nothing, or left no room, is
+ * any report of the pair stopped the debt, so one that tallied nothing left the epoch unconfirmed.
+ * Once one has tallied it is not owed again: until 4 November it was, with no harness waiting,
+ * which a led Builder's harness/ never is (`latestBuilt`), so each task held since put the pair
+ * first again, and buffer-fresh-opus-forkedPR588-stijn-pro spent 96% of its epoch's solver dollars
+ * on it with its changed harness/ unread for 11.8 hours. A waiting harness whose last reading tested nothing, or left no room, is
  * read on them. One whose reading had room and read no step is not: that would be a second draw of
  * one pair (`AGENTS.md`, section 4). Until 2 November this row redrew it, 13 times in the archive,
  * and the one step (buffer-159-opus g-7) came the comparison after a 5-0 no-step of the same
@@ -536,7 +542,7 @@ function heldSince(ground: Ground): Move | null {
   const { events, read, reports, waiting, reference, starter } = ground;
   const since = heldAfter(events, reports.at(-1)?.reported ?? -1);
   const owed = reference !== null && starter !== null && reference !== starter && since > 0;
-  if (owed && (waiting === null || epochsOf(events).at(-1)?.starter_tally === null)) {
+  if (owed && epochsOf(events).at(-1)?.starter_tally === null) {
     return compare(
       `harness ${short(reference)} is the reference, and ${plural(since, "task")} ${since === 1 ? "was" : "were"} held out since the last comparison: the starter is compared with it, those tasks first, to read whether they leave it room and whether it stands above the starter`,
       "starter",

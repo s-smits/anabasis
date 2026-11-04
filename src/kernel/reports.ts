@@ -71,6 +71,8 @@ export interface Standing {
   /** The objective gap the reference harness's answers left there, against its own and its
    *  author's (`objectiveGap`), and 0 under the floor (`ROOM`). */
   readonly room: number | null;
+  /** Whether the reference's own solves alone make that gap, with no author's answer better. */
+  readonly own: boolean;
 }
 
 /** A task's last comparisons with the reference harness on a side, newest first, each as the
@@ -107,6 +109,8 @@ interface TalliedIn {
    *  author's (`objectiveGap`), and 0 under the floor (`ROOM`), where it leaves none; null where it
    *  stood on neither side. */
   readonly room: number | null;
+  /** Whether the reference's own solves alone make that gap (`Standing`). */
+  readonly own: boolean;
 }
 
 /**
@@ -424,6 +428,7 @@ function tallyReports(
       const { wins, losses } = tally([pair]);
       // An objective gap under the floor decides no pair and holds no draft, so its author is told none.
       const gap = side === null ? null : objectiveGap(pair, side, [of(task).best]);
+      const own = side !== null && (gap ?? 0) > 0 && objectiveGap(pair, side, []) === gap;
       order += 1;
       of(task).tallied.push({
         index,
@@ -436,6 +441,7 @@ function tallyReports(
         won: wins > 0 ? "fresh" : losses > 0 ? "old" : null,
         by: carriedBy(pointsOf(pair)),
         room: gap,
+        own,
       });
     }
     for (const task of Array.isArray(data.aside) ? data.aside.filter(isString) : []) {
@@ -681,9 +687,9 @@ function outcomeOf(record: TaskRecord): [string, Outcome][] {
 function standingOf(record: TaskRecord): [string, Standing][] {
   const last = lastRead(record);
   if (last === null || last === "aside" || last.reference === null) return [];
-  const { reference, won, by, room } = last;
+  const { reference, won, by, room, own } = last;
   return [
-    [record.version, { won: won === null ? null : won === reference ? "reference" : "other", by, room }],
+    [record.version, { won: won === null ? null : won === reference ? "reference" : "other", by, room, own }],
   ];
 }
 
@@ -691,8 +697,10 @@ function standingOf(record: TaskRecord): [string, Standing][] {
  * The `count` held-out tasks of `pool` a release takes, each with why, in the order they are
  * taken. A task no reference solve answered in two comparisons goes to the Builder before the draw:
  * it is what a session has to work on, where every released task passes. Then the tasks the reference
- * harness failed in the last comparison, half of them rounded up, so that the comparison keeps
- * tasks it can untie. The rest is the contract's draw over every task neither list holds, those the
+ * harness failed in the last comparison, half of them rounded down, so that the comparison keeps
+ * tasks it can untie: rounded up, one failed task of one was released, which on jobstat exams with no
+ * objective took 3 of the 7 tasks that untied in 180 (4 November), and released more than the half
+ * of the tasks with room that `AGENTS.md` allows. The rest is the contract's draw over every task neither list holds, those the
  * reference answered in every solve among them: such a task still teaches through the objective's
  * measure a practice pass returns. From 16 to 20 October the draw left them out, and so withheld
  * the tasks the objective left room on: after r3's third, fourth and fifth promotions 12, 18 and 22
@@ -741,7 +749,7 @@ export function releaseOrder(
     if (last === null || last === "aside" || last.reference === null) return undefined;
     return last[last.reference].some((valid) => !valid) || (last.room ?? 0) > 0 ? last.order : undefined;
   }).filter((version) => !unanswered.includes(version));
-  const first = among([...unanswered, ...failed.slice(0, Math.ceil(failed.length / 2))]);
+  const first = among([...unanswered, ...failed.slice(0, Math.floor(failed.length / 2))]);
   const rest = pool.filter((version) => !first.includes(version) && !failed.includes(version));
   const chosen = [
     ...first.slice(0, count),

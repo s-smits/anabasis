@@ -11,6 +11,7 @@ import { examine, type Session } from "../src/examiner/session.ts";
 import { append, read } from "../src/kernel/log.ts";
 import { examinerSessions, solvesIn } from "../src/kernel/solves.ts";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
+import { capturedJsonStringify, parseJsonAs } from "../src/meta/json-runtime.ts";
 import type { JsonObject, JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
@@ -19,7 +20,7 @@ import { draftCommand } from "../tools/d1b/draft.ts";
 import { campaignLog } from "../tools/d2/campaign.ts";
 import { draftReading, stageExam } from "../tools/d2/exam.ts";
 import { packControls, readPack, sweepResources } from "../tools/m0/stored-sweep.ts";
-import { draftArgs, drafted, finish, NOTE, SOUND, seat, sweep } from "./helpers/examiner-seat.ts";
+import { call, draftArgs, drafted, finish, NOTE, SOUND, seat, sweep } from "./helpers/examiner-seat.ts";
 import { scriptedModel } from "./helpers/fixture-pack.ts";
 
 const FORMAT = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] };
@@ -27,6 +28,14 @@ const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-draft-")));
 const STEM = `test-draft-${String(runtimeProcess.pid)}`;
 const SOLVER = "claude/claude-opus-5-5";
 const campaigns: string[] = [];
+const OBJECTIVE = { quantity: "mass in kg", direction: "lower" } as const;
+// The sound draft with no decision on the objective, and with a quantity in place of its reason.
+const { unmeasured: _reason, ...SILENT } = SOUND;
+const MEASURED: Draft = {
+  ...SILENT,
+  objective: OBJECTIVE,
+  evaluator: `${SOUND.evaluator}\nexport const objective = () => 1;`,
+};
 
 setDefaultTimeout(120_000);
 
@@ -37,27 +46,31 @@ afterAll(() => {
 });
 
 describe("the shape of a draft", () => {
-  it("requires an objective export and rejects imports or nondeterminism, while allowing input dates", () => {
-    const objective = { quantity: "mass in kg", direction: "lower" } as const;
+  it("rejects imports or nondeterminism in the check program, while allowing input dates", () => {
     const importing = `import "node:fs";\n${SOUND.evaluator}`;
     const random = `${SOUND.evaluator}\nconst random = Math.random();`;
-    for (const [draft, fact] of [
-      [{ ...SOUND, objective }, "objective"],
-      [{ ...SOUND, evaluator: importing }, "import"],
-      [{ ...SOUND, evaluator: random }, "random number or the clock"],
+    for (const [evaluator, fact] of [
+      [importing, "import"],
+      [random, "random number or the clock"],
     ] as const) {
-      const faults = draftFaults(draft);
+      const faults = draftFaults({ ...SOUND, evaluator });
       expect(faults).toHaveLength(1);
       expect(faults[0]).toContain(fact);
     }
-    const measured = `${SOUND.evaluator}\nexport const objective = () => 1;`;
     const dated = `${SOUND.evaluator}\nconst date = new Date(0).getTime();`;
-    for (const draft of [
-      SOUND,
-      { ...SOUND, objective, evaluator: measured },
-      { ...SOUND, evaluator: dated },
-    ]) {
+    for (const draft of [SOUND, MEASURED, { ...SOUND, evaluator: dated }]) {
       expect(draftFaults(draft)).toEqual([]);
+    }
+  });
+
+  it("holds a draft to one decision on the objective: a quantity with its direction, or why there is none", () => {
+    expect(draftFaults(SOUND)).toEqual([]);
+    expect(draftFaults(MEASURED)).toEqual([]);
+    // Neither form, and both, are the same one fault.
+    for (const draft of [SILENT, { ...MEASURED, unmeasured: "every answer is as good" }]) {
+      const faults = draftFaults(draft);
+      expect(faults).toHaveLength(1);
+      expect(faults[0]).toContain("objective");
     }
   });
 
@@ -105,7 +118,7 @@ describe("the shape of a draft", () => {
       ...s.request,
       reading: async (draft: Draft) => {
         reached.push(draft);
-        return { faults: [], notes: [] };
+        return [];
       },
     });
     expect(examined).toMatchObject({ ended: "stands", puts: 2 });
@@ -117,6 +130,48 @@ describe("the shape of a draft", () => {
     for (const fault of faults) expect(told).toContain(`- ${fault}`);
     expect(told).toMatch(/3.*drafts/u);
     expect(draftOf(read(s.log))).toEqual(SOUND);
+  });
+
+  it("spends no put on a draft whose objective, rule or family the schema refuses", async () => {
+    const args = draftArgs(SOUND);
+    const { objective: _objective, ...unsaid } = args;
+    const blank = (draft: Draft): Draft => ({
+      ...draft,
+      rules: draft.rules.map((rule) => ({ ...rule, source: "  " })),
+    });
+    for (const refused of [
+      unsaid,
+      draftArgs(blank(SOUND)),
+      draftArgs({ ...SOUND, tasks: SOUND.tasks.map((task) => ({ ...task, family: " " })) }),
+    ]) {
+      const s = seat("draft", [call("draft_exam", refused), drafted(SOUND), finish]);
+      expect(await examine(s.request)).toMatchObject({ ended: "stands", puts: 1 });
+      expect(s.of("draft.finished")).toMatchObject([{ stands: true, tries: 1 }]);
+    }
+  });
+
+  it("tells a quantity without its direction as no decision, and the draft does not stand", async () => {
+    for (const objective of [
+      { quantity: OBJECTIVE.quantity },
+      { quantity: OBJECTIVE.quantity, none: "nothing is left to prefer" },
+    ]) {
+      const half = { ...draftArgs(SILENT), objective };
+      const s = seat("draft", [call("draft_exam", half), drafted(SOUND), finish]);
+      expect(await examine(s.request)).toMatchObject({ ended: "stands", puts: 2 });
+      expect(s.of("draft.call")[0]?.text).toContain("objective");
+      expect(draftOf(read(s.log))).toEqual(SOUND);
+    }
+  });
+
+  it("reads a draft logged before the objective was required, with or without one", () => {
+    for (const old of [SILENT, { ...SILENT, objective: OBJECTIVE }]) {
+      const log = join(root, `old-${String(old.objective !== undefined)}.jsonl`);
+      append(log, "exam.drafted", {
+        session: "d-1",
+        draft: parseJsonAs<JsonObject>(capturedJsonStringify(old)),
+      });
+      expect(draftOf(read(log))).toEqual(old);
+    }
   });
 });
 
@@ -141,10 +196,22 @@ describe("a draft read without a model", () => {
     expect(() => readFileSync(join(staged.checks, "controls.json"), "utf8")).toThrow();
   });
 
+  it("stages the reason for no objective nowhere a solver, a Builder or a writing session reads", () => {
+    const model = (draft: Draft) =>
+      join(stageExam(join(root, "unmeasured"), draft).bundle, "correctness-model");
+    const files = ["brief.json", "tasks.json", "controls.json", "evaluator.ts"];
+    const [one, other] = [SOUND, { ...SOUND, unmeasured: "another reason" }].map((draft) =>
+      files.map((file) => readFileSync(join(model(draft), file), "utf8")),
+    );
+    expect(one).toEqual(other);
+    // A declared objective is staged, as before.
+    expect(readPack(stageExam(join(root, "unmeasured"), MEASURED).bundle).brief.objective).toEqual(OBJECTIVE);
+  });
+
   it("finds no fault in a sound draft, and tells the faults of one whose check passes everything", async () => {
-    expect(await draftReading(join(root, "read"), SOUND, 2)).toEqual({ faults: [], notes: [] });
+    expect(await draftReading(join(root, "read"), SOUND, 2)).toEqual([]);
     const lax = { ...SOUND, evaluator: `export const checks = { "check-product": () => true };\n` };
-    const { faults, notes } = await draftReading(join(root, "read"), lax, 2);
+    const faults = await draftReading(join(root, "read"), lax, 2);
     expect(faults).toHaveLength(5);
     for (const [index, facts] of [
       ["ex-001", "check-product", "reject control", "pass"],
@@ -153,9 +220,6 @@ describe("a draft read without a model", () => {
     ].entries()) {
       for (const fact of facts) expect(faults[index]).toContain(fact);
     }
-    // A field no check reads is a note the draft stands with.
-    expect(notes).toHaveLength(1);
-    expect(notes[0]).toMatch(/field answer.*no check's verdict and no objective/u);
   });
 
   it("gives each check a task's hidden values as the author wrote them", async () => {
@@ -164,44 +228,30 @@ describe("a draft read without a model", () => {
       evaluator: `export const checks = {\n  "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * req.hidden.factor),\n};\n`,
       tasks: SOUND.tasks.map((task) => ({ ...task, hidden: { factor: 6 } })),
     };
-    expect(await draftReading(join(root, "read"), hidden, 2)).toEqual({ faults: [], notes: [] });
+    expect(await draftReading(join(root, "read"), hidden, 2)).toEqual([]);
   });
 
-  it("notes a field of the answer that no check reads, and leaves one the format allows no change of", async () => {
-    for (const [format, count] of [
-      [{ type: "string" }, 1],
-      [{ const: "six times" }, 0],
-    ] as const) {
-      const noted = {
-        ...SOUND,
-        answerFormat: { ...FORMAT, properties: { ...FORMAT.properties, note: format } },
-        accept: [2, 3, 4].map((base, task) => ({
-          task,
-          answer: { answer: String(base * 6), note: "six times" },
-        })),
-      };
-      const { faults, notes } = await draftReading(join(root, "read"), noted, 2);
-      expect(faults).toEqual([]);
-      expect(notes).toHaveLength(count);
-      if (count === 1) expect(notes[0]).toContain("field note");
-    }
-  });
-
-  it("tells a check program that does not load as a fault, and the shape before anything runs", async () => {
+  it("tells a check program that does not load as a fault", async () => {
     const broken = {
       ...SOUND,
       evaluator: `export const checks = { "check-product": (req) => req.artifact.answer === ;\n`,
     };
     // Which control met it first is the pool's order.
-    const [fault, ...more] = (await draftReading(join(root, "read"), broken, 2)).faults;
+    const [fault, ...more] = await draftReading(join(root, "read"), broken, 2);
     expect(more).toEqual([]);
     for (const fact of ["ex-00", "check-product", "did not load", "Unexpected ;"]) {
       expect(fault).toContain(fact);
     }
-    const missing = (await draftReading(join(root, "read"), { ...SOUND, reject: [] }, 2)).faults;
-    expect(missing).toHaveLength(1);
-    expect(missing[0]).toContain("check-product");
-    expect(missing[0]).toContain("no reject control");
+  });
+
+  it("tells a declared objective the program does not export, and a check it does not define", async () => {
+    expect(await draftReading(join(root, "read"), MEASURED, 2)).toEqual([]);
+    const unexported = await draftReading(join(root, "read"), { ...MEASURED, evaluator: SOUND.evaluator }, 2);
+    expect(unexported.some((fault) => fault.includes("objective"))).toBe(true);
+    const renamed = SOUND.evaluator.replace("check-product", "check-other");
+    const undefinedCheck = await draftReading(join(root, "read"), { ...SOUND, evaluator: renamed }, 2);
+    expect(undefinedCheck.length).toBeGreaterThan(0);
+    expect(undefinedCheck.some((fault) => fault.includes("check-product"))).toBe(true);
   });
 });
 

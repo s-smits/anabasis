@@ -79,9 +79,12 @@ export const SOUND: Draft = {
   tasks: BASES.map((base) => ({ family: "fixture", publicInput: { base }, hidden: null })),
   accept: BASES.map((base, task) => ({ task, answer: { answer: String(base * 6) } })),
   reject: [{ task: 0, answer: { answer: "13" }, check: "check-product" }],
+  unmeasured: "A fixture: every task has one product, and no product is better than another.",
 };
 const LIMITS = { wallSeconds: 600, turns: 12, puts: 4 };
 const IDS = { draft: "d-1", write: "x-1" } as const;
+/** What an author says of each draft it puts: its grade and where a solver falls short. */
+export const CLAIM = { grade: 3, stops: "A solver that drops the unit gives no valid answer." };
 const scratches: string[] = [];
 
 export const call = (name: string, args: JsonObject) =>
@@ -90,11 +93,13 @@ export const finish = call("finish", { note: NOTE });
 /** A turn the provider failed, with what it said. */
 export const failed = (said: string) => fauxAssistantMessage("", { stopReason: "error", errorMessage: said });
 export const bash = (command: string) => call("bash", { command });
-/** An instance as a writing session's tools take it; a null base is one the gate refuses. */
+/** An instance as `propose_tasks` takes it, with its author's claim; a null base is one the gate
+ *  refuses. */
 export const instance = (base: number | null) => ({
   family: "fixture",
   public_input: base === null ? null : { base },
   hidden: { seed: 1 },
+  ...CLAIM,
 });
 export const propose = (...bases: (number | null)[]) => call("propose_tasks", { tasks: bases.map(instance) });
 /** A draft as `draft_exam` takes its arguments. */
@@ -113,7 +118,7 @@ export const draftArgs = (draft: Draft): JsonObject => ({
   })),
   accept_controls: draft.accept.map((control) => ({ ...control })),
   reject_controls: draft.reject.map((control) => ({ ...control })),
-  ...keyIfDefined("objective", draft.objective && { ...draft.objective }),
+  objective: { ...draft.objective, ...keyIfDefined("none", draft.unmeasured) },
 });
 /** A draft as `draft_exam` takes it. */
 export const drafted = (draft: Draft) => call("draft_exam", draftArgs(draft));
@@ -241,7 +246,7 @@ export function seat<M extends Mode>(mode: M, responses: readonly FauxResponseSt
       mode: "draft",
       prompt: "A fixture.",
       budget: { modelTurns: 20, minutes: 30, solves: 2 },
-      reading: async () => ({ faults: [], notes: [] }),
+      reading: async () => [],
     },
     write: {
       ...common,
@@ -253,6 +258,7 @@ export function seat<M extends Mode>(mode: M, responses: readonly FauxResponseSt
       pack,
       budget: null,
       verify: null,
+      probe: null,
     },
   } satisfies Requests;
   return {

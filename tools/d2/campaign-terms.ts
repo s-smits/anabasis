@@ -337,7 +337,7 @@ export function opened(
 
 /**
  * The held-out tasks an Examiner session is asked for where no flag names them: what the campaign
- * is short of (`shortOf`, `decide.ts`); undefined where it is short of nothing. Until 11 October it
+ * is short of, at least a sweep (`shortOf`, `decide.ts`); undefined where it is short of nothing. Until 11 October it
  * was the command's default, 12 (buffer was short 9), and from 12 to 13 October twice the target
  * before the first comparison, which two campaigns examined towards for 16 hours.
  */
@@ -455,7 +455,8 @@ export function sharedOf({ events, plan, opening, values, seats }: Turn) {
 /** How the campaign runs Examiner session `session`: its flags, for `draft.ts` where it drafts the
  *  exam and `examine.ts` where it writes tasks, and the count of tasks a writing session is asked
  *  for. Each session is given the campaign's setting before one is recorded, for the budget it
- *  is told; neither solves anything. */
+ *  is told and, in a writing session, for the solves it asks of the reference harness
+ *  (`try_reference`), which run under it and record it. */
 export function examinerRun(turn: Turn, session: string, kind: "draft" | "write") {
   const { opening, values, seats } = turn;
   const { examiner } = opening.seats;

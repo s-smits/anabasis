@@ -62,8 +62,8 @@ bun .claude/skills/design-and-seats/scripts/builder-view.ts <log.jsonl | campaig
   its files: `$(git diff-tree --no-commit-id --name-only -r <commit> | sed 's/^/--file=/')`.
 - `examiner-view.ts` finds a campaign by name on any host or takes a log path (`logAcross`,
   `logEvents`), calls `heard` (`src/examiner/record.ts`) on it and prints what an Examiner session
-  opening now would be told, in counts: its lines, the outcomes by kind (`poolOf`), the summary
-  sentence (`measuredLine`), the promotion line, and the refused and interrupted drafts. Over a
+  opening now would be told, in counts: its lines, the outcomes by kind (`poolOf`), the last
+  comparison's line (`lastLine`), the promotion line, and the refused drafts. Over a
   stored pack its task lines are fewer than a session's, since it lists only proposed tasks.
 - `builder-view.ts` prints the next session's history messages through `startTold`,
   `comparisonsTold` and `failsTold` (`src/builder/past.ts`) over `campaignOf`. It uses

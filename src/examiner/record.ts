@@ -1,276 +1,317 @@
 /**
- * What an Examiner is told of its campaign's past at a session's opening: a view of the log, with
- * no store of its own (`heard`).
+ * What a writing session is told of its campaign's past at its opening: a view of the log, with no
+ * store of its own (`heard`), in four parts.
  *
- * - One line per task, in task order. Tasks last compared between two other harnesses share a line
- *   where there is nothing more to report. Each line gives the current reference's result in the
- *   last comparison that scored the task (every, some or no solve valid, or disputed), the turns
- *   each valid answer took, the winner and deciding measure (`carriedBy`), any objective improvement
- *   on record over a reference answer (`room` of `poolOf`'s standings), and the admission counts
- *   and turns. It also gives comparison history where there are at least two readings, and whether
- *   a valid answer is on record where the other facts show none (`poolOf`). Winning alone does not
- *   explain the source of room (`7f0add79:docs/simplify.md`, F3). Until 2 November it also named
- *   the bill, which carried 25 wins in buffer-fresh-opus-v065-a's g-3 (26 October).
- * - One summary of the reference across the exam (`measuredLine`): tasks in its last comparison,
- *   grouped by every, some or no solve valid; and drafts admitted under it, grouped by source of
- *   room. Across 26 October's buffer runs it was valid in 93 to 100% of each comparison's solves while most
- *   drafts were held on the objective alone, and an author reading sixty lines saw neither.
- * - Drafts refused after evaluation, grouped by reason (`refusedLines`), and interrupted admissions,
- *   listed by draft (`interruptedLines`).
+ * - `last`: the last comparison the reference harness stood in, from its side: the tasks it scored,
+ *   how many each harness won, the reference's every, some and none, the tasks set aside, and how
+ *   often its own two solves differed in that comparison's A/A. On 2 November the archive's
+ *   objective domains showed the reference's own solves differing on the objective alone on 314 of
+ *   1,373 tasks, which the prompt then named as a count; the session's own comparison now says it.
+ * - `groups`: every task under the reference's outcome in the last comparison that scored it, one
+ *   block an outcome with a heading that says once what the block means. A line gives the task, its
+ *   author's grade and words while it is still open, and then the turns each valid answer took, who
+ *   won and on which measure (`carriedBy`), an answer on record better by the objective than one of
+ *   the reference's own (`room` of `poolOf`'s standings), its last comparisons with the reference,
+ *   and whether a valid answer is on record where none of the reference's was valid.
+ *   A line also says how the reference harness did on the task when its author tried it there before
+ *   or after it put it (`try_reference`, `write.ts`), counted over the current reference's tries alone
+ *   (`probed`): an author of a domain whose valid answers cannot be ordered could not see a failure
+ *   coming, and wrote tasks the reference answered every time (4 November).
+ * - `promoted`: that the reference was promoted, and how many tasks were held out before then.
+ * - `refused`: the drafts the gate refused under the current reference, by reason.
  *
- * Until 26 October the opening also held a table of the tasks by family where winners were hidden, a
- * count of the task admissions read on a replaced reference, and the turns by family in a block of their
- * own. At forkedPR377's x-6 the table took 2,636 of the opening's 21,705 bytes and no turn of seven
- * sessions cited it; the turns now stand on the line of the task they were taken on.
+ * Until 4 November the opening carried a legend for every clause, the outcome on every line, the
+ * gate's room solves, which no gate has run since 1 November, and the last session's note. At
+ * jobstat-fresh-opus-forkedPR595's openings the reference answered most tasks in every solve and no
+ * author's account of a draft stood beside what the reference then did on it; the claim (`write.ts`)
+ * does. An earlier log's gate readings are read by `tools/wri/gate-era.ts`.
  *
  * Reference measurements are told by epoch: on 16 October a session after a promotion read the
- * starter's admission counts as the new reference's. Admissions before the last promotion therefore
- * contribute no counts or turns. Nothing here names a harness, a check or a target, and no count carries a band or
- * a number to reach (the operator's decision of 11 October).
+ * starter's admission counts as the new reference's. Nothing here names a harness, a check or a
+ * target, and no count carries a band or a number to reach (the operator's decision of 11 October).
  */
 import { scoresIn } from "../kernel/compare.ts";
-import { proposalsOf } from "../kernel/history.ts";
+import { contentOf, type Proposal, proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import {
   type History,
   lastReports,
   type Outcome,
-  poolOf,
   pairsReported,
+  poolOf,
   referenceOf,
+  type Standing,
 } from "../kernel/reports.ts";
-import { conditionsOf } from "../kernel/condition.ts";
-import { examinerSessions, solvesIn, verdictsOf } from "../kernel/solves.ts";
 import { spreadOf } from "../kernel/size.ts";
+import { examinerSessions, passed, solvesIn, verdictsOf } from "../kernel/solves.ts";
 import { heldAtGate, taskStates } from "../kernel/task.ts";
 import type { Task } from "../kernel/verify.ts";
-import { asRecord, isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
 
-/** At most three room solves per draft, as a gate ran them under `try_task` until 1 November; no
- *  gate solves a draft now (`write.ts`), and an earlier log's gates are read by this count. */
-const TRIED = 3;
-
-/** One valid answer of the reference at a task admission. */
-interface RoomAnswer {
+/** One solve an Examiner session asked of the reference harness, as `probed` reads it. */
+interface Tried {
+  /** The id of the task it solved: the task's own, or the one its content names (`triedAs`). */
+  readonly task: string;
+  /** Where its start stands in the log. */
+  readonly started: number;
+  readonly valid: boolean;
   readonly turns: number | null;
-  readonly seconds: number | null;
+  /** The verifier's measure of its valid answer by the objective, where the contract declares one. */
   readonly measure: number | null;
 }
 
-/** How each outcome is said. */
-const SAID: Readonly<Record<Outcome, string>> = {
-  "reference-every": "valid in every solve",
-  "reference-some": "valid in some solves",
-  "reference-none": "valid in no solve",
-  "earlier-reference": "last compared between two other harnesses",
-  disputed: "set aside until a person settles a rejection of an answer to it",
-};
-/** Where a held draft's room came from, as `informative` read an earlier log's room solves: the
- *  kinds the measurement counts of a gate that solved its draft. */
-const HELD_ON = {
-  validity: "on validity, its solves valid in some and not all",
-  yours: "on an answer of yours, where none of its solves was valid",
-  objective: "on the objective alone, every one of its solves valid",
+/** Each block's heading, in the order the opening tells them. A task's line repeats none of it. */
+const BLOCKS = {
+  "reference-none": "The reference harness valid in no solve of the last comparison that scored the task",
+  "reference-some": "Valid in some solves of it",
+  "reference-every": "Valid in every solve of it",
+  new: "Not yet compared",
+  disputed: "Set aside until a person settles a rejection of an answer to it",
+  faulted: "Disputed: a check was at fault on an answer to it",
+  "earlier-reference": "Last compared between two other harnesses",
+  practice: "In use as practice, and so never scored",
 } as const;
 /** Which measure of a task's score carried a win (`carriedBy`). */
-const CARRIED = {
-  validity: "on validity",
-  objective: "on the objective",
-} as const;
+const CARRIED = { validity: "on validity", objective: "on the objective" } as const;
+/** Who won a task, as the reference's side reads it. */
+const WON = { reference: "the reference harness", other: "the harness it was compared with" } as const;
 
-/** The clauses some line carries, so the legend explains those and no other: at job-fresh-opus-v071's
- *  x-4 it explained a task admission and a history no line held (26 October). */
-interface Carried {
-  admission: boolean;
-  history: boolean;
+/** The block a task stands in: its state first, then the reference's outcome on it. */
+function blockOf(state: string | undefined, outcome: Outcome | undefined): keyof typeof BLOCKS {
+  if (state === "released") return "practice";
+  if (state === "disputed") return "faulted";
+  return outcome ?? "new";
 }
 
-/** What the lines say before them: once, what each clause some line carries means. */
-function legendOf(carried: Carried): string {
-  const clauses = [
-    carried.admission
-      ? `"Gate" is how many of the reference harness's solves at its gate were valid, of the solves it ran, at most ${String(TRIED)}, and their turns.`
-      : "",
-    carried.history
-      ? `"Last comparisons" are its valid solves in each of its last comparisons with the current reference harness, newest first, and how many of the newest closed the task in a row.`
-      : "",
-  ].filter((clause) => clause !== "");
+/** Every task among `tasks` under the reference's outcome on it, then the last comparison the
+ *  reference stood in, the promotion and the refusals. A task the log refused is no task of the
+ *  exam and has no line; one the log does not hold, as a pack's before `prepare.ts`, is not yet
+ *  compared. */
+export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "taskId" | "family">[]) {
+  const states = taskStates(events);
+  const pool = poolOf(events);
+  const frontier = new Set(pool.frontier);
+  const proposals = new Map(
+    proposalsOf(events).flatMap((proposal) => {
+      const id = proposal.task?.taskId ?? proposal.taskId;
+      return id === null ? [] : [[id, proposal] as const];
+    }),
+  );
+  const turns = referenceTurns(events);
+  const since = events.findLastIndex(({ kind }) => kind === "harness.promoted");
+  const tries = triesOf(events, since, [...proposals.values()]);
+  const lines = new Map<string, string[]>();
+  const listed: string[] = [];
+  for (const { taskId, family } of tasks) {
+    const proposal = proposals.get(taskId);
+    const version = proposal?.version ?? "";
+    const state = states.get(version);
+    if (state === "refused") continue;
+    const block = blockOf(state, pool.outcomes.get(version));
+    if (block !== "practice") listed.push(version);
+    const named = `${taskId} (${family})`;
+    const plain = block === "practice" || block === "earlier-reference" || block === "faulted";
+    const claim = !plain && frontier.has(version) ? claimOf(proposal) : "";
+    const clauses = plain ? [] : clausesOf(block, pool, version, turns.get(version) ?? []);
+    const heading = BLOCKS[block];
+    const line = [`${named}${claim}`, ...clauses, ...triedLine(tries.get(taskId))].join("; ");
+    lines.set(heading, [...(lines.get(heading) ?? []), line]);
+  }
+  const groups = Object.values(BLOCKS).flatMap((heading): { heading: string; lines: string[] }[] => {
+    const held = lines.get(heading) ?? [];
+    return held.length === 0 ? [] : [{ heading, lines: held }];
+  });
+  return {
+    last: lastLine(events),
+    groups,
+    promoted: promotedLine(events, since, listed),
+    refused: refusedLines(events, since),
+  };
+}
+
+/** What a task's line says after its name: the turns each of the reference's valid answers took,
+ *  whether a valid answer is on record where none of its solves was valid or none was read, who
+ *  won and on which measure, and its last comparisons with the reference. */
+function clausesOf(
+  block: keyof typeof BLOCKS,
+  pool: ReturnType<typeof poolOf>,
+  version: string,
+  took: readonly number[],
+): string[] {
+  const answered = block === "reference-every" || block === "reference-some";
   return [
-    `The tasks of the exam so far, a line each: the task, its family, and how the reference harness did on it in the last comparison that scored it, with the solver's own turns each of its valid answers took, and who won it there, and on which measure: the other harness, whichever the reference harness was compared with, the reference harness, or neither. Where nothing on the line shows a valid answer, it says whether one is on record.`,
-    ...clauses,
-    "These are measurements and no instruction. read_example returns any of them whole.",
+    ...(answered && took.length > 0 ? [`in ${took.toSorted((a, b) => a - b).join(", ")} turns`] : []),
+    ...(answered
+      ? []
+      : [pool.feasible.has(version) ? "a valid answer on record" : "no valid answer on record"]),
+    ...standingOf(pool.standings.get(version)),
+    ...historyOf(pool.histories.get(version)),
+  ];
+}
+
+/** The task id a try of the reference harness runs an instance under where the campaign holds no
+ *  task of its content yet (`try_reference`, `write.ts`): named by that content, so that the line of
+ *  the task the instance becomes finds the try (`triesOf`). */
+export const triedAs = (content: string): string => `try-${content.slice(0, 12)}`;
+
+/**
+ * Every solve an Examiner session asked for that ended with a result, by its id: whether it was
+ * valid, its turns and its measure. These are the reference harness's solves of
+ * `try_reference`, and until 1 November the gate's room solves. Their starts name the session, so
+ * no comparison, practice record or Builder reads them (`countedSolves`), while the campaign is
+ * billed for them (`spendOf`). A non-result, or a solve with no ending yet, is no try.
+ */
+export function probed(events: readonly LogEvent[]): Map<string, Tried> {
+  const sessions = examinerSessions(events);
+  const verdicts = verdictsOf(events);
+  return new Map(
+    solvesIn(events).flatMap(({ id, started, start, ending, end }) => {
+      const valid = passed({ ending });
+      if (!sessions.has(start.comparison) || valid === null || !isString(start.task)) return [];
+      const checked = verdicts.get(id)?.checker;
+      const tried: Tried = {
+        task: start.task,
+        started,
+        valid,
+        turns: isNumber(end?.turns) ? end.turns : null,
+        measure: checked?.kind === "pass" ? (checked.objective ?? null) : null,
+      };
+      return [[id, tried] as const];
+    }),
+  );
+}
+
+/** The tries of the reference harness since the last promotion, by the id of the task each line
+ *  names: a try of an instance before it was put is found by its content (`triedAs`). A try of the
+ *  harness a promotion replaced tells nothing of the reference now. */
+function triesOf(events: readonly LogEvent[], since: number, proposals: readonly Proposal[]) {
+  const became = new Map(
+    proposals.flatMap(({ task }) =>
+      task === null ? [] : [[triedAs(contentOf(task)), task.taskId] as const],
+    ),
+  );
+  const tries = new Map<string, Tried[]>();
+  for (const tried of probed(events).values()) {
+    if (tried.started < since) continue;
+    const task = became.get(tried.task) ?? tried.task;
+    tries.set(task, [...(tries.get(task) ?? []), tried]);
+  }
+  return tries;
+}
+
+/** How the reference harness did on a task when its author tried it there: how many of the tries
+ *  were valid, and in how many turns each valid one was. */
+function triedLine(tries: readonly Tried[] | undefined): string[] {
+  if (tries === undefined) return [];
+  const valid = tries.filter((tried) => tried.valid);
+  const took = valid.flatMap(({ turns }) => (turns === null ? [] : [turns])).toSorted((a, b) => a - b);
+  return [
+    `tried at writing: valid in ${String(valid.length)} of ${String(tries.length)}${took.length === 0 ? "" : `, in ${took.join(", ")} turns`}`,
+  ];
+}
+
+/** What an author said of its draft when it put it, or nothing where it said nothing, as a draft
+ *  from before 4 November did. */
+function claimOf(proposal: Proposal | undefined): string {
+  const claim = proposal?.claim;
+  return claim === null || claim === undefined
+    ? ""
+    : `, graded ${String(claim.grade)} by its author: "${claim.stops}"`;
+}
+
+/** Who won a task in the last comparison that scored it and on which measure, and an answer on
+ *  record better by the objective than one of the reference's own. Until 4 November the line did
+ *  not say whose: in a truss campaign of #588 all five such lines came from the
+ *  reference's own two solves, its spread rather than a better answer (WRI lane 14). */
+function standingOf(standing: Standing | undefined): string[] {
+  if (standing === undefined) return [];
+  const won =
+    standing.won === null
+      ? "tied there"
+      : `won there by ${WON[standing.won]}${standing.by === null ? "" : ` ${CARRIED[standing.by]}`}`;
+  // A share as a percentage of two significant digits.
+  const room = Number(((standing.room ?? 0) * 100).toPrecision(2));
+  const gap = standing.own
+    ? `its own solves ${String(room)}% apart by the objective, with no better answer on record`
+    : `an answer on record ${String(room)}% better than one of its own`;
+  return [won, ...(room > 0 ? [gap] : [])];
+}
+
+/** A task's last comparisons with the reference harness, newest first, where it stood in at least
+ *  two (`poolOf`, histories): each as every, some or none of the reference's solves valid, a limit
+ *  that cut a solve named apart, and how many of the newest closed the task in a row. Which of them
+ *  is too easy is the author's to judge. */
+function historyOf(history: History | undefined): string[] {
+  if (history === undefined || history.reads.length < 2) return [];
+  const reads = history.reads.map(({ valid, cut }) => `${valid}${cut ? " (a solve cut at a limit)" : ""}`);
+  const run = history.closedRun;
+  return [
+    `last ${String(reads.length)} comparisons, newest first: ${reads.join(", ")}`,
+    ...(run === 0 ? [] : [`the last ${run === 1 ? "" : `${String(run)} in a row `}closed it`]),
+  ];
+}
+
+/** The last comparison the reference harness stood in, from its side, or null before any: the
+ *  tasks scored, the wins each way (from the per-task winners the lines already tell), its every,
+ *  some and none, the tasks set aside, and how many of them its own two solves differed on. The
+ *  A/A pairs the old side's solves with each other, so it measures the reference only there. No
+ *  count of the other harness's valid solves is told. */
+function lastLine(events: readonly LogEvent[]): string | null {
+  const reference = referenceOf(events);
+  const report = lastReports(events).findLast(
+    ({ data }) => data.old === reference || data.fresh === reference,
+  );
+  if (report === undefined) return null;
+  const side = report.data.fresh === reference ? "fresh" : "old";
+  const spreads = pairsReported(events, report).map((pair) => spreadOf(pair[side]));
+  const count = (spread: string) => String(spreads.filter((each) => each === spread).length);
+  const scores = scoresIn(report.data.scored).map((score) => (side === "fresh" ? score : -score));
+  const won = (sign: number) => String(scores.filter((score) => Math.sign(score) === sign).length);
+  const aside = Array.isArray(report.data.aside) ? report.data.aside.length : 0;
+  const own = side === "old" ? scoresIn(report.data.noise) : [];
+  return [
+    `The last comparison the reference harness stood in, ${report.session}, scored ${plural(spreads.length, "task")}: the reference harness won ${won(1)}, the harness it was compared with won ${won(-1)}, and ${won(0)} tied.`,
+    `The reference harness was valid in every solve on ${count("every")} of them, in some on ${count("some")} and in none on ${count("none")}; ${String(aside)} more ${aside === 1 ? "was" : "were"} set aside.`,
+    ...(own.length === 0
+      ? []
+      : [
+          `Its own solves, set against each other there, differed on ${String(own.filter((score) => score !== 0).length)} of the ${String(own.length)}.`,
+        ]),
   ].join(" ");
 }
 
-/** Classify an admitted draft's room from the number of valid reference solves. */
-function heldOn(valid: number, solves: number): string {
-  if (valid === 0) return HELD_ON.yours;
-  return valid < solves ? HELD_ON.validity : HELD_ON.objective;
-}
-
-/** Whether a gate read its draft. Until 1 November one refused on fewer than the reference harness's
- *  `TRIED` readings, cut by a limit or never begun for want of the reserve, refused a draft it did not
- *  read, which may be proposed again (14 October). A gate that read all three, held its draft, or
- *  refused the package on its shape check, stands, as every gate written now does. */
-export function measuredGate(data: JsonObject): boolean {
-  const solves = asRecord(data.reference)?.solves;
-  return !(
-    data.outcome === "refused" &&
-    ((isNumber(solves) && solves < TRIED) ||
-      (isString(data.reason) && data.reason.endsWith("so it is not measured")))
-  );
-}
-
-/** A share as a percentage of two significant digits, without its sign. */
-function percent(share: number): string {
-  return `${String(Number((Math.abs(share) * 100).toPrecision(2)))}%`;
-}
-
-/** The turns of some valid answers, fewest first, as a clause, or nothing where there are none. */
-function inTurns(turns: readonly number[]): string {
-  return turns.length === 0 ? "" : `, in ${turns.toSorted((a, b) => a - b).join(", ")} turns`;
-}
-
-/** How far the author's answer stood from the reference harness's best valid answer by the
- *  objective at an earlier log's gate, where that gate measured both (`reference.gap`, `task.gate`),
- *  as a share of the larger magnitude (`gainOver`). */
-function yoursSaid(reference: unknown): string {
-  const gap = asRecord(reference)?.gap;
-  if (!isNumber(gap)) return "";
-  return `, yours ${gap === 0 ? "the same as its best" : `${percent(gap)} ${gap > 0 ? "better" : "worse"} than its best`}`;
-}
-
-/** One line a task among `tasks`, in their order (the module's head comment says what each holds),
- *  then those last compared between two other harnesses with nothing more to say, grouped, and the
- *  practice tasks in one line. A task the log refused is no task of the exam and has no line; one
- *  the log does not hold, as a pack's before `prepare.ts`, is not yet compared. */
-export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "taskId" | "family">[]) {
-  const states = taskStates(events);
-  const { outcomes, standings, feasible, histories } = poolOf(events);
-  const versions = new Map(
-    proposalsOf(events).flatMap(({ version, taskId, task }) => {
-      const id = task?.taskId ?? taskId;
-      return id === null ? [] : [[id, version] as const];
-    }),
-  );
-  const since = events.findLastIndex(({ kind }) => kind === "harness.promoted");
-  const last = lastAdmissions(events);
-  const admissions: ReadonlyMap<string, JsonObject> = new Map(
-    [...last].flatMap(([version, { data, at }]) => (at > since ? [[version, data] as const] : [])),
-  );
-  const compared = referenceTurns(events);
-  const roomAnswers = gateAnswers(events, since);
-  const practice: string[] = [];
-  // Count listed tasks admitted under the current reference separately from those admitted before it.
-  let under = 0;
-  let listed = 0;
-  const carried: Carried = { admission: false, history: false };
-  const elsewhere = new Map<string, string[]>();
-  const lines = tasks.flatMap(({ taskId, family }) => {
-    const version = versions.get(taskId) ?? "";
-    const state = states.get(version);
-    const named = `${taskId} (${family})`;
-    if (state === "refused") return [];
-    if (state === "released") {
-      practice.push(named);
-      return [];
-    }
-    listed += 1;
-    if (state === "disputed") return [`${named}: disputed: a check was at fault on an answer to it`];
-    const outcome = outcomes.get(version);
-    const answered = outcome === "reference-every" || outcome === "reference-some";
-    const said = outcome === undefined ? "not yet compared" : SAID[outcome];
-    if (heldAtGate(admissions.get(version)?.outcome)) under += 1;
-    const admission = admissionLine(
-      admissions.get(version),
-      (roomAnswers.get(version) ?? []).flatMap(({ turns }) => turns ?? []),
-    );
-    const known =
-      answered || admission.valid > 0
-        ? ""
-        : `; ${feasible.has(version) ? "an answer on record" : "no answer on record"}`;
-    const standing = standings.get(version);
-    const won =
-      standing === undefined
-        ? ""
-        : standing.won === null
-          ? "; tied there"
-          : `; won there by the ${standing.won} harness${standing.by === null ? "" : ` ${CARRIED[standing.by]}`}`;
-    const objectiveGap =
-      (standing?.room ?? 0) > 0
-        ? `; an answer on record ${percent(standing?.room ?? 0)} better than one of its own`
-        : "";
-    const history = historyLine(histories.get(version));
-    const rest = `${won}${objectiveGap}${admission.said}${history}`;
-    // A task last compared between two other harnesses, with nothing more to say of it, is one id in
-    // a line: at forkedPR377's x-7, 50 such lines repeated each session's.
-    if (outcome === "earlier-reference" && rest === "") {
-      elsewhere.set(known, [...(elsewhere.get(known) ?? []), named]);
-      return [];
-    }
-    carried.admission ||= admission.said !== "";
-    carried.history ||= history !== "";
-    return [`${named}: ${said}${answered ? inTurns(compared.get(version) ?? []) : ""}${known}${rest}`];
-  });
-  return {
-    legend: legendOf(carried),
-    lines: [
-      ...lines,
-      ...[...elsewhere].map(
-        ([known, named]) => `Last compared between two other harnesses${known}: ${named.join(", ")}.`,
-      ),
-      ...(practice.length === 0 ? [] : [`In use as practice, and so never scored: ${practice.join(", ")}.`]),
-    ],
-    promoted: promotedLine(events[since], listed - under, listed),
-    measured: measuredLine(events, admissions),
-    refused: refusedLines(events, admissions, roomAnswers),
-    interrupted: interruptedLines(events, last, since),
-  };
-}
-
-/** That the reference harness was promoted, on which comparison, and how many of the `listed` tasks
- *  were held out under the harness it replaced. At esp32-fresh-opus-terra's x-4 (27 October) the
- *  promoted harness answered all 22 listed tasks in 2 turns each, and the opening said nothing of the
- *  promotion: the session spent 362 minutes on ten drafts of one kind, each refused. */
-function promotedLine(promotion: LogEvent | undefined, before: number, listed: number): string | null {
+/** That the reference harness was promoted, on which comparison, and how many of the tasks
+ *  `listed`, by version, were held out before then, under the harness it replaced. At esp32-fresh-opus-terra's x-4 (27
+ *  October) the promoted harness answered all 22 listed tasks in 2 turns each, and the opening said
+ *  nothing of the promotion: the session spent 362 minutes on ten drafts of one kind, each refused. */
+function promotedLine(events: readonly LogEvent[], since: number, listed: readonly string[]): string | null {
+  const promotion = events[since];
   if (promotion === undefined) return null;
+  const under = new Set(
+    events
+      .slice(since)
+      .flatMap(({ kind, data }) => (kind === "task.gate" && heldAtGate(data.outcome) ? [data.version] : [])),
+  );
+  const before = listed.filter((version) => !under.has(version)).length;
   const rests = promotion.data.rests;
   const on = Array.isArray(rests) ? asRecord(rests[0])?.comparison : undefined;
-  return `The reference harness was promoted${isString(on) ? ` on the step of comparison ${on}` : ""}. ${String(before)} of the ${String(listed)} tasks listed were held out before then, under the harness it replaced; a line reads the harness that is the reference now wherever it stood in the comparison that last scored the task. Files in your home from sessions before then were written while the harness it replaced was the reference.`;
+  return `The reference harness was promoted${isString(on) ? ` on the step of comparison ${on}` : ""}. ${String(before)} of the ${String(listed.length)} tasks listed were held out before then, under the harness it replaced. Files in your home from sessions before then were written while the harness it replaced was the reference.`;
 }
 
-/** Each proposed version's last task admission, with where it stands in the log. */
-function lastAdmissions(
-  events: readonly LogEvent[],
-): Map<string, { readonly data: JsonObject; readonly at: number }> {
-  return new Map(
-    events.flatMap(({ kind, data }, at) =>
-      kind === "task.gate" && isString(data.version) ? [[data.version, { data, at }] as const] : [],
-    ),
-  );
-}
-
-/** Summarise a held task's admission: valid reference solves, their turns and any non-results.
- *  Omit the clause where no solve counts were recorded. Since 20 October admission stops once the
- *  completed solves leave room; earlier admissions ran all `TRIED` solves. */
-function admissionLine(admission: JsonObject | undefined, turns: readonly number[]) {
-  const reference = asRecord(admission?.reference);
-  const { valid, solves, ran = TRIED } = reference ?? {};
-  if (
-    admission === undefined ||
-    !heldAtGate(admission.outcome) ||
-    !isNumber(solves) ||
-    !isNumber(valid) ||
-    !isNumber(ran)
-  ) {
-    return { said: "", valid: 0 };
+/** The drafts the gate refused since the last promotion, grouped by its reason, an earlier log's
+ *  room solves' among them in their own words. Until 14 October later sessions saw none of these
+ *  drafts. */
+function refusedLines(events: readonly LogEvent[], since: number): string[] {
+  const drafts = new Map(proposalsOf(events).map(({ version, task }) => [version, task]));
+  const why = new Map<string, string[]>();
+  for (const { kind, data } of events.slice(since + 1)) {
+    const task = isString(data.version) ? drafts.get(data.version) : undefined;
+    if (kind !== "task.gate" || data.outcome !== "refused" || !isString(data.reason)) continue;
+    if (task === undefined || task === null) continue;
+    why.set(data.reason, [...(why.get(data.reason) ?? []), `${task.taskId} (${task.family})`]);
   }
-  const unread = solves < ran ? `, ${String(ran - solves)} giving no reading` : "";
-  return {
-    said: `; gate ${String(valid)} of ${String(ran)} valid${unread}${inTurns(turns)}${yoursSaid(reference)}`,
-    valid,
-  };
+  return [...why].map(([reason, named]) => `${reason}: ${named.join(", ")}`);
 }
 
 /** The turns of the reference harness's valid answers to each task in the last comparison that
@@ -295,163 +336,4 @@ function referenceTurns(events: readonly LogEvent[]): Map<string, number[]> {
     }
   }
   return turns;
-}
-
-/** A task's last comparisons with the reference harness, newest first, as one clause after its
- *  line, or nothing where it stood in fewer than two (`poolOf`, histories): each as every, some or
- *  none of the reference's solves valid, a limit that cut a solve named apart, and how many of the
- *  newest closed the task in a row. Which of them is too easy is the author's to judge. */
-function historyLine(history: History | undefined): string {
-  if (history === undefined || history.reads.length < 2) return "";
-  const reads = history.reads.map(({ valid, cut }) => `${valid}${cut ? " (a solve cut at a limit)" : ""}`);
-  const run =
-    history.closedRun === 0
-      ? ""
-      : `; the last ${history.closedRun === 1 ? "" : `${String(history.closedRun)} in a row `}closed it`;
-  return `; last ${String(reads.length)} comparisons: ${reads.join(", ")}${run}`;
-}
-
-/** Summarise the current reference's last comparison, whichever side it took: tasks with every,
- *  some or no solve valid, with set-aside tasks counted separately. Report task counts, never solve
- *  counts, which could reveal one task's result. Also summarise drafts admitted under this
- *  reference, by source of room where an earlier log's room solves measured it (`heldOn`), and
- *  measured refusals. Until 1 November a draft held on its package alone was left out of the count.
- *  Since 2 November it also says how many tasks the reference's own solves told apart in that
- *  comparison's A/A: in the archive's objective domains they differed on the objective alone on
- *  314 of 1,373 tasks, which the prompt had named no chance. Null where nothing is recorded. */
-function measuredLine(
-  events: readonly LogEvent[],
-  admissions: ReadonlyMap<string, JsonObject>,
-): string | null {
-  const reference = referenceOf(events);
-  const report = lastReports(events).findLast(
-    ({ data }) => data.old === reference || data.fresh === reference,
-  );
-  const side = report?.data.fresh === reference ? "fresh" : "old";
-  const reads = report === undefined ? [] : pairsReported(events, report).map((pair) => pair[side]);
-  const aside = Array.isArray(report?.data.aside) ? report.data.aside.length : 0;
-  const some = reads.filter((each) => spreadOf(each) === "some").length;
-  const none = reads.filter((each) => spreadOf(each) === "none").length;
-  // The A/A pairs the old side's solves with each other, so it measures the reference only there.
-  const own = side === "old" ? scoresIn(report?.data.noise) : [];
-  const apart = own.filter((score) => score !== 0).length;
-  const read = [...admissions.values()].filter((admission) => measuredGate(admission));
-  const held = read.filter(({ outcome }) => heldAtGate(outcome));
-  // The source of room of a draft an earlier log's room solves measured; a gate now reads the
-  // package alone, and its drafts are said to be held on it.
-  const solved = held.flatMap(({ reference: counted }) => {
-    const { valid, solves: of } = asRecord(counted) ?? {};
-    return isNumber(valid) && isNumber(of) ? [heldOn(valid, of)] : [];
-  });
-  const refused = read.filter(({ outcome }) => outcome === "refused").length;
-  const kinds = [
-    ...Object.values(HELD_ON).map((on) => `${String(solved.filter((each) => each === on).length)} ${on}`),
-    ...(solved.length < held.length ? [`${String(held.length - solved.length)} on its package alone`] : []),
-  ];
-  const said = [
-    ...(reads.length === 0
-      ? []
-      : [
-          `In the last comparison the reference harness stood in, it was valid in every solve on ${String(reads.length - some - none)} of ${plural(reads.length, "task")} tallied, in some on ${String(some)}, in none on ${String(none)}${aside === 0 ? "" : `; ${String(aside)} more ${aside === 1 ? "was" : "were"} set aside`}.`,
-        ]),
-    ...(own.length === 0
-      ? []
-      : [
-          `Set against each other there, its own solves differed on ${String(apart)} of ${plural(own.length, "task")}: this much differs between a harness and itself.`,
-        ]),
-    ...(held.length + refused === 0
-      ? []
-      : [
-          `Under the current reference harness the gate held out ${plural(held.length, "draft")}${solved.length === 0 ? "" : `: ${kinds.join("; ")}`}. It refused ${plural(refused, "draft")} after reading them.`,
-        ]),
-  ];
-  return said.length === 0 ? null : `${said.join(" ")} These are measurements and no target.`;
-}
-
-/** Drafts refused under the current reference after evaluation, grouped by reason. Report solve
- *  counts for refusals based on reference solves, and the admission reason for package refusals.
- *  Until 14 October later sessions saw none of these drafts, so they could not distinguish a draft
- *  with no valid answer in three reference solves from one never proposed. */
-function refusedLines(
-  events: readonly LogEvent[],
-  admissions: ReadonlyMap<string, JsonObject>,
-  answered: ReturnType<typeof gateAnswers>,
-): string[] {
-  const why = new Map<string, string[]>();
-  for (const { version, task } of proposalsOf(events)) {
-    const admission = admissions.get(version);
-    if (
-      task === null ||
-      admission?.outcome !== "refused" ||
-      !measuredGate(admission) ||
-      !isString(admission.reason)
-    ) {
-      continue;
-    }
-    const { valid, solves } = asRecord(admission.reference) ?? {};
-    const reason =
-      isNumber(valid) && isNumber(solves)
-        ? `the reference harness valid in ${String(valid)} of ${String(solves)} solves`
-        : admission.reason;
-    why.set(reason, [
-      ...(why.get(reason) ?? []),
-      `${task.taskId} (${task.family}${inTurns(answered.get(version)?.flatMap(({ turns }) => (turns === null ? [] : [turns])) ?? [])}${yoursSaid(admission.reference)})`,
-    ]);
-  }
-  return [...why].map(([reason, drafts]) => `${reason}: ${drafts.join(", ")}`);
-}
-
-/** Draft versions whose latest admission ended without a complete measurement, whether or not the
- *  author received the result. For an earlier reference, report only the draft and status. For the
- *  current reference, include admission counts and the reason, never a solver's answer or review. */
-function interruptedLines(
-  events: readonly LogEvent[],
-  admissions: ReadonlyMap<string, { readonly data: JsonObject; readonly at: number }>,
-  since: number,
-): string[] {
-  const tasks = new Map(proposalsOf(events).map(({ version, task }) => [version, task]));
-  return [...admissions].flatMap(([version, { data, at }]) => {
-    const task = tasks.get(version);
-    if (task === undefined || task === null || data.outcome !== "refused" || measuredGate(data)) return [];
-    const status = `${task.taskId} (${task.family}): gate not measured`;
-    if (at < since) return [`${status}; used a replaced reference`];
-    const { valid, solves, ran } = asRecord(data.reference) ?? {};
-    const measured =
-      isNumber(valid) && isNumber(solves)
-        ? `; ${String(valid)} of ${String(solves)} measured solves valid`
-        : "";
-    const attempted = isNumber(ran) ? `; ${String(ran)} attempted` : "";
-    return [`${status}${measured}${attempted}${isString(data.reason) ? `; ${data.reason}` : ""}`];
-  });
-}
-
-/** Each valid answer the reference harness gave at a task admission after event `from`, by draft version:
- *  the Examiner's solves under `try_task` until 1 November, which no comparison counts, with the solver's own turns
- *  each took and the objective the verifier measured of it, null where the log holds none. Read
- *  from a promotion on, they are the new reference's alone. The task admission reads the measures by the
- *  comparison's definition of room (`informative`); a later session is told the turns on the
- *  draft's line. Until 16 October an Examiner was told the turns of comparisons only, and after a
- *  promotion its drafts stood in none: main0_5_1's answered drafts took a median of 4 of the 16
- *  turns, recode-151's 3, and neither was told. */
-export function gateAnswers(events: readonly LogEvent[], from: number): Map<string, RoomAnswer[]> {
-  const sessions = examinerSessions(events);
-  const conditions = conditionsOf(events);
-  const verdicts = verdictsOf(events);
-  const answers = new Map<string, RoomAnswer[]>();
-  for (const { id, started, start, ending, end, condition } of solvesIn(events)) {
-    const version = conditions.get(condition)?.task;
-    if (started <= from || !sessions.has(start.comparison) || version === undefined) continue;
-    if (ending?.outcome !== "pass") continue;
-    const checker = verdicts.get(id)?.checker;
-    const measure = checker?.kind === "pass" ? (checker.objective ?? null) : null;
-    answers.set(version, [
-      ...(answers.get(version) ?? []),
-      {
-        turns: isNumber(end?.turns) ? end.turns : null,
-        seconds: isNumber(end?.seconds) ? end.seconds : null,
-        measure,
-      },
-    ]);
-  }
-  return answers;
 }

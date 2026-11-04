@@ -4,15 +4,15 @@
  *
  *   bun .claude/skills/design-and-seats/scripts/examiner-view.ts <log.jsonl | campaign name>
  *
- * Call heard, the production composer in src/examiner/record.ts, and report task-line counts,
- * reference outcomes from poolOf, the measuredLine summary, promotion notice, and refused and
- * interrupted draft counts. Print the two aggregate messages in full; omit task text, refusal
- * reasons and hidden values. This helps inspect a view before changing its delivery.
+ * Call heard, the production composer in src/examiner/record.ts, and report the lines under each
+ * block's heading, reference outcomes from poolOf, the last comparison's line, the promotion
+ * notice and the count of refusal groups. Print the two aggregate messages in full; omit task text,
+ * refusal reasons and hidden values. This helps inspect a view before changing its delivery.
  *
  * logAcross resolves names across configured hosts and refreshes their records. logEvents reads
  * through the last complete line, allowing live logs. The task list comes from proposalsOf;
  * stored-pack tasks are omitted, so such campaigns have fewer task lines here than in a real
- * opening. Their summary, promotion notice and draft counts are unaffected by that omission.
+ * opening. Their last comparison, promotion notice and refusals are unaffected by that omission.
  *
  * Written on 30 October alongside seat-view.ts.
  */
@@ -36,15 +36,15 @@ export function examinerCounts(events: readonly LogEvent[]): string[] {
   const view = heard(events, tasks);
   const outcomes = countBy([...poolOf(events).outcomes.values()], (outcome) => outcome);
   return [
-    `lines: ${String(view.lines.length)} (a task each, grouped tasks and practice), over ${String(tasks.length)} proposed tasks`,
+    `blocks: ${view.groups.map(({ heading, lines }) => `${String(lines.length)} under "${heading}"`).join("; ") || "none"}, over ${plural(tasks.length, "proposed task")}`,
     `outcomes in the last comparison that scored each task: ${
       Object.entries(outcomes)
         .map(([outcome, count]) => `${outcome} ${String(count)}`)
         .join(", ") || "none"
     }`,
-    `summary: ${view.measured ?? "none"}`,
+    `last: ${view.last ?? "none"}`,
     `promotion: ${view.promoted ?? "none"}`,
-    `refused drafts in ${plural(view.refused.length, "group")} by reason, ${plural(view.interrupted.length, "interrupted draft")}`,
+    `refused drafts in ${plural(view.refused.length, "group")} by reason`,
   ];
 }
 

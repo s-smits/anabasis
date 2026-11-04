@@ -339,6 +339,11 @@ and the whole CI gate, the full suite among it, on the top's head (`land.ts`, wh
 proofs). A pass already recorded is not run again. `--jobs N` runs up to N static passes at once;
 the whole CI gate runs alone.
 
+**A passing proof is not yet a release.** `land` says each commit passes. A stack merges only once
+a fresh run launched at the top's head has reached two promotions with its code unchanged.
+Land that proved top by its number, never a newer top stacked above it.
+run-improvement-campaign, step 10, "A run proves the release", owns what that run must show.
+
 A failure names the commit and the pull request it sits on. Fold the fix into that commit, replay
 the pull requests above it (section 8), push them together, and land again: the commits below the
 fix keep their passes. A step whose runner dropped its connection runs once more; after a second

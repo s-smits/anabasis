@@ -57,8 +57,10 @@ start a step until the check named for the one before holds.
    With `bun --env-file=.env.runs tools/wri/wri.ts ... --log <name>`, a campaign on another machine
    is fetched automatically into `data/runs/<host>/<name>/`. Explicit log paths select an offline
    snapshot. `runs fetch <name>` remains available to refresh a copy explicitly. Lanes read the
-   copy with this checkout's tree, so check out the commit the receipt
-   names where the host line says the code differs. `lanes` rereads the paths stored by `start`
+   copy with this checkout's tree. Where the code differs and the last receipt names a commit this
+   repository holds, `start` checks that commit out beside the main checkout as
+   `anabasis-wri-<commit>`, installs its dependencies and names the tree in the instructions, so a
+   lane runs a reader there as it ran. `lanes` rereads the paths stored by `start`
    and refreshes no remote copy. Start another investigation to take a new snapshot.
    *Check:* read the `host-code digest` line. Use the matching campaign tree it names, where one
    exists; otherwise say beside each source claim that it concerns another tree. The digest is
@@ -82,14 +84,22 @@ start a step until the check named for the one before holds.
    not a dollar estimate.
 4. **Launch.** `launch.json` is a [codex-gpt-swarm](../codex-gpt-swarm/SKILL.md) manifest:
    `gpt-sessions.ts --manifest <dir>/launch.json --output-dir <new dir> ...` on the model the
-   operator chose. A Claude session is handed its row's `task`, one line, and nothing else; start
-   them all in one message.
-   *Check:* read the model each transcript recorded before using its report.
+   operator chose. A Claude session runs as the `wri-lane` agent type (`.claude/agents/wri-lane.md`,
+   `subagent_type: "wri-lane"`), handed its row's `task`, one line, and nothing else; start them all
+   in one message. Its hook (`tools/wri/lane-guard.ts`) refuses a write outside the lane's report, a
+   spend, a change to a run or the tree and a read of an env file, so those hard rules hold in code.
+   Claude Code offers the type only where the session's own checkout holds the file. Where the Agent
+   tool lists no `wri-lane`, start the lanes from a session opened in a worktree at the stack's top,
+   never as `general-purpose`: on 4 November 72 lane sessions ran that way, unguarded, from a main
+   checkout the stack had moved past.
+   *Check:* read the model each transcript recorded before using its report, and that each lane ran
+   as `wri-lane` (its `subagent_type`).
 5. **Collect.** `wri.ts collect --out <dir>` holds every expected report to its shape and writes
    `<dir>/reports.md`. Read lane 4's report, then decide lane 5; read lanes 13, 15 and 18, then
    decide lane 19, as named below. Build lane 5 with
    `wri.ts lanes --out <dir> --lanes 5`, or lane 19 with `--lanes 19`, then launch the one lane it
-   says it built, alone, and collect again.
+   says it built, alone, from its own `launch-NN.json`, which leaves `launch.json` as it was, and
+   collect again.
    *Check:* `collect` exits 0. It exits 1 while a report is missing or invalid, or no report is
    expected. Review the evidence too: a valid shape does not establish a sound finding.
 6. **Synthesise.** `wri.ts synthesis --out <dir>` renders `<dir>/synthesis-prompt.md`; one session

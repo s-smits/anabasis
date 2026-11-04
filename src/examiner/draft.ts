@@ -4,8 +4,9 @@
  * A campaign opens either over a stored pack a v1 Builder wrote, which four flags name, or from a
  * prompt (`7f0add79:docs/plan.md`, row F53). Here the operator's prompt names a domain, and one session
  * drafts what a campaign needs before its first task is solved: the public rules, each with the
- * source that states it, the answer format, one check for each rule, a few example tasks, and
- * control answers, which are answers to those examples with a known label.
+ * source that states it, the answer format, one check for each rule, the objective or why there is
+ * none, a few example tasks, and control answers, which are answers to those examples with a known
+ * label.
  *
  * The session is `examine`'s in its drafting mode (`session.ts`), and this file is what that mode
  * is made of (`drafting`): what the Examiner is told, the tool it puts a whole draft by, and the two
@@ -14,10 +15,8 @@
  * caller's (`reading`, `tools/d2/exam.ts`): every control answer through the checks, twice, and the
  * smallest answer the format allows on every example. The Examiner is told the faults and puts the
  * draft again. A draft with no fault stands: it goes into the log whole, as `exam.drafted`, and the
- * session ends. The campaign reads its exam from that event (`draftOf`).
- *
- * Validation and acceptance stay together here because only drafting submits a whole exam
- * (28 October).
+ * session ends. The campaign reads its exam from that event (`draftOf`). Validation and acceptance
+ * stay together here because only drafting submits a whole exam (28 October).
  *
  * What the readings cannot say is whether a rule is the field's and its source real. The source
  * is on record beside the rule for a person to look up, and the host holds a draft only to
@@ -30,63 +29,54 @@
  * `--hitl` is that word for every check of its draft (`planOf`, `src/campaign/opening.ts`; the
  * operator, 16 October).
  *
- * The Examiner is told the prompt, its limits and what the host found in each draft. It is told
- * no count of tasks, since an author told a target writes towards it. Of the solver it is told one
- * measured fact, that it answers every time a task whose rules a lookup, a matching or a search
- * meets: on 16 October five fresh campaigns' task admissions refused 74 of 95 drafts, 67 of them as
- * answered in all three solves, and esp32-fresh-opus-zbook held out none in six sessions. Until
- * 31 October it was also told to choose rules that act together; both of that day's paired esp32
- * arms did, and the reference answered 34 of 35 of their first room solves validly, since a search
- * answers interacting rules as surely as separate ones.
+ * The prompt is built around the comparison's two ways of telling harnesses apart, validity and
+ * the objective (`ROOM`, `src/kernel/compare.ts`), since the draft fixes which a campaign can ever
+ * use. On 4 November every exam drafted since 1 November with an objective had untied most of its
+ * compared tasks (buffer 305 of 381, truss 20 of 21) and every one without had tied nearly all
+ * (esp32 0 of 62, jobstat 7 of 180, 0 promotions). The business-records exams, also work products,
+ * declared an objective in 18 of 21 puts and untied 49 of 50 tasks; the jobstat exams declared one
+ * in 0 of 17, each convention naming a data defect's repair and each task's input naming every
+ * step, and one program answered 43 of 43 solves (jobstat-fresh-opus-forkedPR600-turns6-stijn-pro,
+ * g-1). Until then the objective was one optional paragraph ending "a field with no such quantity
+ * declares none", and omitting it was silent. Now the session is asked what a practitioner
+ * prefers between two valid answers, and a draft gives a quantity with its direction or its
+ * author's reason for none (`unmeasured`, kept on the exam side), a decision the shape requires.
+ * The same day the prompt named conventions and a task's input beside rules as what can hand over
+ * the whole method, and said that a check may test an answer against what its task was built
+ * from, kept hidden, rather than recompute one answer.
  *
- * From 22 October to 1 November a draft with no fault was also solved before it stood, and the
- * Examiner was told, an example a line, how many solves were valid and their turns:
- * esp32-fresh-opus-stackedPR506 was told 3 of 3 valid on every example and put the same draft
- * again, in a reply that also said the same draft would stand and one put was left, so that case
- * shows no reading moving an Examiner either way. From 3 to 4 November (#585) the Starter Built
- * Harness solved each example and a draft it answered on every solve was refused: four jobstat
- * campaigns put 10 drafts, 60 of 60 example solves valid, three ended `exam` with nothing
- * compared, and the 6 drafts put again after a refusal grew 12% to 19% and left 36 of 36 solves
- * valid. On 4 November that reading became a note for some hours, but the note rode on the reply
- * that ends the session (`ending`, `src/tools/answer.ts`), which no model call reads, so it decided
- * nothing, while it cost $1.17 to $2.77 and up to half an hour a draft, and a session cut during
- * the solves lost a draft with no fault (truss, 3 November). So no solve runs at drafting: a draft
- * with no fault at either reading stands at once, and the A/A and the test read an easy exam's
- * comparisons. A reading told early, with puts to spare and no word that the same draft stands,
- * was never tried; that form is for paired drafting seats before it returns. The operator asked
- * for gates that trust a capable model, since a gate "too-strict" or wrongly tuned can bring down
- * a system that would otherwise do well.
+ * The Examiner is told the prompt, its limits and what the host found in each draft, and no count
+ * of tasks, since an author told a target writes towards it. It reads the reach scale and who the
+ * grades are for (`REACH`, `ladder.ts`), not the worked fields, which teach how hard a task is and
+ * belong to writing. On 16 October five fresh campaigns' task admissions refused 74 of 95 drafts,
+ * 67 as answered in all three solves, which is why it is told that a lookup, a matching or a search
+ * meets any rules that leave them. Until 31 October it was told to choose rules that act together;
+ * both of that day's paired esp32 arms did, and the reference answered 34 of 35 of their first room
+ * solves validly. Its fairness rule said whatever a check enforces is stated, with no word on how,
+ * and both arms then drafted rules restating the field's tables and formulas, whose examples passed
+ * 9 of 9 solves at 3 turns; a rule now states its property and names the public standard that
+ * defines it.
  *
- * On 4 November the Examiner was told that a solver reads the whole public input in its first
- * message (`firstTurn`, `src/solver/prompt.ts`), and that its home holds the same task. That day it
- * was also told, for a while, that the ten jobstat drafts held their whole plan in their inputs; an
- * outside review read that as a course, since 5 of their 30 examples named no governing source and
- * were answered all the same, so the count stays here. `SOLVER` (`ladder.ts`) gives the data form
- * of its second place, read from JobBench's statistics tasks (4 November), and names the
- * contract's own invariants as what the data is checked against, so that a check of a defect in
- * the data enforces a stated rule. Whether either moves the drafts is for paired drafting seats.
+ * It is told that the prompt's requirements stay in the exam at the strength the prompt states:
+ * truss-fresh-opus-v064 was asked for trusses "within strict mass limits" and drafted no check of
+ * mass, and the host's reading cannot see a requirement a draft leaves out (27 October). Where it
+ * has a shell (`shell.ts`) it is told what the shell is and what the wall test found of the
+ * network, and not what to use it for; nothing hidden exists at drafting, and the wall closes the
+ * repository, where the log lies.
  *
- * Where it has a shell (`shell.ts`) it is told what the shell is
- * and what the wall test found of the network, and not what to use it for. Nothing hidden
- * exists at drafting, and the wall closes the repository, where the log lies.
- *
- * It is told that the prompt's requirements stay in the exam at the strength the prompt states.
- * Until 27 October it was told only to take its rules from the field's standard and add no limit
- * the field does not hold: truss-fresh-opus-v064 was asked for trusses "within strict mass limits"
- * and drafted no check of mass, and the host's reading cannot see a requirement a draft leaves out
- * (lane 34 of the investigation of 27 October).
- *
- * It is shown the reach scale and its worked examples (`ladder.ts`, which keeps the record behind
- * them), and told that rules handing the solver the whole model, or met by matching a stated shape
- * or writing one exact text, cap every task at grade 2. Its fairness rule said until 31 October that
- * whatever a check enforces is stated, with no word on how, and both paired esp32 arms then drafted
- * rules restating the field's tables and formulas, whose examples passed 9 of 9 solves at 3 turns;
- * a rule now states its property and names the public standard that defines it.
+ * No solve runs at drafting. From 22 October to 1 November a draft with no fault was solved before
+ * it stood, and from 3 to 4 November (#585) one the Starter Built Harness answered on every solve
+ * was refused: four jobstat campaigns put 10 drafts, 60 of 60 example solves valid, three ended
+ * `exam` with nothing compared, at $1.17 to $2.77 and up to half an hour a draft. The operator asked
+ * for gates that trust a capable model. The reading's notes, facts a draft stood with, left with
+ * it: they rode on the reply that ends the session (`ending`, `src/tools/answer.ts`), and none of
+ * 250 `draft_exam` results on record carried them to a model.
  */
 import { type Static, Type } from "typebox";
 import { answerFormatFault, type Objective } from "../kernel/contract.ts";
-import { LADDER } from "./ladder.ts";
-import { budgetLine, type SolveBudget } from "./prompt.ts";
+import { ROOM } from "../kernel/compare.ts";
+import { REACH } from "./ladder.ts";
+import { budgetLine, type SolveBudget, TASK, UNHELD } from "./prompt.ts";
 import { append, type LogEvent } from "../kernel/log.ts";
 import { capturedJsonStringify, decodedJsonText, parseJsonAs } from "../meta/json-runtime.ts";
 import { asRecord, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
@@ -119,6 +109,10 @@ export interface Draft {
   /** The objective two valid answers are compared by, where the field has one: absent, two valid
    *  answers to one task are even. */
   readonly objective?: Objective;
+  /** Why the draft declares no objective, in its author's words, where it declares none. Kept on
+   *  the exam side: `stageExam` stages it nowhere, so no solver, Builder or writing session reads
+   *  it. Absent from drafts logged before 4 November, which `draftOf` reads as they are. */
+  readonly unmeasured?: string;
   /** The example tasks, which are the exam's first. */
   readonly tasks: readonly {
     readonly family: string;
@@ -131,13 +125,6 @@ export interface Draft {
   readonly reject: readonly { readonly task: number; readonly answer: JsonValue; readonly check: string }[];
 }
 
-/** The host's reading of a draft, a sentence each: faults, none where the draft stands, and notes
- *  the author is told beside them and the draft stands with. */
-export interface DraftReading {
-  readonly faults: readonly string[];
-  readonly notes: readonly string[];
-}
-
 interface DraftingTerms {
   readonly limits: { readonly wallSeconds: number; readonly turns: number; readonly puts: number };
   readonly id: string;
@@ -146,8 +133,9 @@ interface DraftingTerms {
   readonly prompt: string;
   /** The budget the exam's solves will be held to, as the campaign's setting names it. */
   readonly budget: SolveBudget;
-  /** What the host reads of a draft whose shape holds: its control answers through its checks. */
-  readonly reading: (draft: Draft) => Promise<DraftReading>;
+  /** What the host reads of a draft whose shape holds, a fault a sentence: its control answers
+   *  through its checks. */
+  readonly reading: (draft: Draft) => Promise<readonly string[]>;
 }
 
 /** The fewest example tasks a draft holds: the reading needs each check seen to pass and to
@@ -180,16 +168,17 @@ const DRAFT_PARAMETERS = Type.Object({
   scope: Type.String({
     minLength: 1,
     description:
-      "What a task of this domain may ask. It bounds every task written later, so a size it fixes for a task is the ceiling on how hard one can be made. Whatever the operator's prompt asks of an answer that no check here decides, such as a work product or a step of the work, is named here as not measured.",
+      "What a task of this domain may ask. It bounds every task written later, so a size it fixes for a task is the ceiling on how hard one can be made.",
   }),
   conventions: Type.String({
-    description: "What a practitioner takes as given: units, rounding, notation.",
+    description:
+      "What a practitioner takes as given: units, rounding, notation. A step of the work stated here is one no solver has to find.",
   }),
   rules: Type.Array(
     Type.Object({
       id: Type.String({ pattern: "^R[0-9]+$" }),
-      statement: Type.String({ minLength: 1 }),
-      source: Type.String({ minLength: 1, description: "Where the field states the rule." }),
+      statement: Type.String({ pattern: "\\S", description: "The property every valid answer has." }),
+      source: Type.String({ pattern: "\\S", description: "Where the field defines the property." }),
     }),
     { minItems: 1 },
   ),
@@ -208,28 +197,33 @@ const DRAFT_PARAMETERS = Type.Object({
     { minItems: 1 },
   ),
   evaluator: Type.String({ minLength: 1, description: "The check program's TypeScript source." }),
-  objective: Type.Optional(
-    Type.Object(
-      {
-        quantity: Type.String({
-          minLength: 1,
-          description: "The quantity the check program computes of a valid answer, with its unit.",
+  objective: Type.Object(
+    {
+      quantity: Type.Optional(
+        Type.String({
+          pattern: "\\S",
+          description:
+            "The quantity the check program's `objective` export computes of a valid answer, with its unit.",
         }),
-        direction: Type.Union([Type.Literal("lower"), Type.Literal("higher")], {
-          description: "Which way is better.",
+      ),
+      direction: Type.Optional(
+        Type.Union([Type.Literal("lower"), Type.Literal("higher")], { description: "Which way is better." }),
+      ),
+      none: Type.Optional(
+        Type.String({
+          pattern: "\\S",
+          description:
+            "Where the exam declares no objective: why every valid answer to a task is as good as any other to a practitioner.",
         }),
-      },
-      {
-        description:
-          "The objective, where the field has one: a quantity every valid answer has, which practitioners minimise or maximise. Leave it out where the field has none.",
-      },
-    ),
+      ),
+    },
+    { description: "A quantity with its direction, or why there is none, as the system prompt says." },
   ),
   tasks: Type.Array(
     Type.Object({
-      family: Type.String({ minLength: 1 }),
-      public_input: Type.Unknown({ description: "What the solver reads of the task." }),
-      hidden: Type.Unknown({ description: "What only the checks receive; null when a task has none." }),
+      family: Type.String({ pattern: "\\S" }),
+      public_input: Type.Unknown(),
+      hidden: Type.Unknown({ description: "Null when the task has none." }),
     }),
   ),
   accept_controls: Type.Array(Type.Object(CONTROL)),
@@ -238,18 +232,25 @@ const DRAFT_PARAMETERS = Type.Object({
   ),
 });
 
+/** How far apart two valid answers are on the objective before one is the better: the
+ *  comparison's own floor. */
+const FLOOR = `${String(ROOM * 100)}%`;
+
 /** The system prompt. */
 const SYSTEM = [
-  "You are the Examiner. An operator has named a technical domain in a prompt, and you draft the exam on which a solving model will be measured in that domain: its public rules, its answer format, one check for each rule, a few example tasks, and controls. You do this once, at the opening of a campaign. Later sessions write further tasks against what you draft here, and a draft that stands is not changed afterwards.",
-  "A task is a family, a public input, which with the public rules is all a solver reads, and hidden values, which only the checks receive. A solver answers a task with one JSON value that follows the answer format. A check is a program that reads one answer with its task and returns whether the answer keeps one rule, and an answer every check passes is valid. Two harnesses for the solver are then compared on tasks neither has seen, scoring validity first and, between valid answers, the objective where the domain declares one. A check must also be right on a task with no known valid answer: it verifies the property its rule states, and never compares an answer with one you worked out.",
-  "Take the rules from the field's own public standard, and give each its source: the standard, specification, reference manual or textbook that states it, named precisely enough to look up, and one that states the limit as your rule does: a nominal or typical value is no limit. A limit, state or duty the field does not hold measures your wording and no solver, so add none. A solver that follows every public rule must never be rejected for something it could not read: whatever a check enforces is stated in a rule, the scope or the conventions, with its units and tolerances, or is defined by a public standard a rule names, and nothing a solver needs is in the hidden values. Stating a rule means stating its property and naming what defines it, never restating the standard's tables and equations: the solver can look those up. A check holds its rule exactly: it allows no tolerance the rule does not state, so a check of a quantity a rule calls zero or absent refuses any trace of it. The solver measured on this exam is a capable model with a shell and time to compute: where the rules can be met by a lookup, a matching or a search over the cases they leave, it answers every task correctly every time, however tightly they bind the parts of one answer to each other, and the exam then measures nothing. It reads the whole public input in its first message, and its home holds the same task as public/task.json.",
-  `How hard the exam can be is set here, by its rules and scope, before any task is written. ${LADDER}\n\nDraft rules and a scope under which tasks can be written at every grade of this scale that this field reaches. Rules that hand the solver the whole model, every equation and number it needs, and a scope that leaves out the effects that make the field hard, turn every task into writing that model once and searching it: grade 2, however the tasks are written. So does a rule a solver meets by matching a shape the scope spells out, or by writing the one exact text a rule gives. State each rule as the property the field decides, such as a bound that holds, a state the field's own engine reaches or a value that is tested before use, name the standard that defines the engine rather than restating its working, keep in scope the effects that decide answers near the limits, and leave the way to reach it to the solver.`,
-  "The operator's prompt outranks your choice of rules. Every requirement it names, such as a limit, a quantity to meet or an analysis an answer has to pass, stays in the exam at the strength the prompt states, as a rule with its check, and a quantity it asks to minimise or maximise is the objective. Where no check can decide such a requirement from its argument alone, say so in the scope, and do not check a weaker property under its name.",
-  "Where the field has an objective, a quantity every valid answer has and practitioners minimise or maximise, such as a mass, a cost or a length, declare it: two valid answers to one task are then compared by it, and a task on which both tools find a valid answer still tells them apart. The check program then also exports `objective`, a function that takes the same `request` and returns that quantity of the answer as a finite number, computed from the answer and the public input alone; it is told nothing hidden. A field with no such quantity declares none.",
-  "Write one check for each rule, and no other. The check program is one TypeScript module that exports `checks`, an object with a function under each check id. A function takes one argument, `request`, and returns a boolean, or a promise of one: `request.publicTask` is `{ taskId, family, publicInput }`, `request.artifact` is the answer, and `request.hidden` is the task's hidden values. It runs offline in a closed cell and imports nothing, so it computes from its argument alone, and the same answer always gets the same verdict. It returns true where the answer keeps its rule and false where it breaks it. An answer that breaks another rule is that rule's check's to refuse. It returns false only where the answer breaks the rule: where its own computation cannot reach a verdict on an answer the format allows, such as a solver that does not converge, it throws, which drops the task as the check's defect instead of refusing the answer.",
+  "You are the Examiner. An operator has named a technical domain in a prompt, and you draft the exam on which a solving model will be measured in that domain: its public rules, scope and conventions, its answer format, its checks, its objective, example tasks and controls. You draft once, at the opening of a campaign. Later sessions write further tasks under what you draft here, and can change none of it.",
+  `${TASK} The solver reads the public rules, the scope and the conventions, and the public input whole in its first message; its home holds the same task as public/task.json. It answers with one JSON value that follows the answer format, and an answer every check passes is valid.`,
+  `Two harnesses for the solver are compared on tasks neither was built on, each task solved afresh under each harness. A task tells them apart in two ways only. On validity: some of its solves are valid and some are not, and a valid answer beats one that is not. On the objective, where the exam declares one: two answers are both valid and one is better by it than the other by at least ${FLOOR} of the larger measure. Any other task is a tie, and a tie leaves the test, so an exam on which every solve is valid and nothing chooses between valid answers tells no harness from another, however many tasks it holds.`,
+  `Who solves, and how hard a task can be for it:\n\n${REACH}`,
+  "Which of the two ways the exam's tasks can use is decided here, and nothing written later adds the other. Validity tells harnesses apart only on tasks in one of the three places above, so it needs rules and a scope that leave the solver a method to find. The objective tells them apart on any task with more than one valid answer, a careful solver's included. So ask of the domain what makes one valid answer better than another to a practitioner: what they pay for, save, minimise or maximise while meeting the requirements, such as a cost, a mass, a length, a count, a time, an error or a margin to a limit. Where the domain has such a quantity, declare it as the objective. Declare none only where every valid answer to a task is as good as any other to a practitioner, and say why under the objective's `none`; the exam then measures by validity alone.",
+  "The check program computes the objective in an `objective` export: a function that takes the same `request` as a check and returns the quantity of a valid answer as a finite number, from the answer and the public input alone, since it is told nothing hidden. It is your own computation, as each check is. An objective whose best value one stated computation reaches, such as closeness to a value you worked out, gives every capable solve that value, and two harnesses tie on it.",
+  `A rule states a property every valid answer has, which a check decides from its argument: a bound that holds, a quantity that is conserved, a state the field's own engine reaches, a test the answer passes. Give each rule its source: the standard, specification, reference manual or textbook that defines the property, named precisely enough to look up, and one that states the limit as your rule does; a nominal or typical value is no limit. ${UNHELD} Name the standard rather than restating its tables, equations or working, which the solver can look up, and leave the way to the property to the solver. A rule, a convention or a task's input that states the procedure, its steps or the numbers it needs hands the solver the whole method, and every task becomes running it once; so does a rule met by matching a shape the scope spells out or by writing one exact text. The conventions hold what a practitioner takes as given, such as units, rounding and notation. A solver that follows every public rule is never rejected for something it could not read: whatever a check enforces is stated in a rule, the scope or the conventions, with its units and tolerances, or is defined by a standard a rule names, and nothing a solver needs is in the hidden values.`,
+  "The scope bounds every task written later: a size it fixes is the ceiling on how hard a task can be made, and an effect it leaves out is one no task can turn on. Draft a scope under which tasks can be written at every grade this field reaches, with the effects that decide answers near its limits.",
+  "The operator's prompt outranks your choice of rules. Every requirement it names, such as a limit, a quantity to meet or an analysis an answer has to pass, stays in the exam at the strength the prompt states, as a rule with its check, and a quantity it asks to minimise or maximise is the objective. Where no check can decide such a requirement from its argument alone, such as a work product or a step of the work, name it in the scope as not measured, and do not check a weaker property under its name.",
+  "Write one check for each rule, and no other. The check program is one TypeScript module that exports `checks`, an object with a function under each check id. A function takes one argument, `request`, and returns a boolean, or a promise of one: `request.publicTask` is `{ taskId, family, publicInput }`, `request.artifact` is the answer, and `request.hidden` is the task's hidden values. It runs offline in a closed cell and imports nothing, so it computes from its argument alone, and the same answer always gets the same verdict. It returns true where the answer keeps its rule and false only where it breaks it: an answer that breaks another rule is that rule's check's to refuse, and where its own computation cannot reach a verdict on an answer the format allows, such as a solver that does not converge, it throws, which drops the task as the check's defect instead of refusing the answer. It holds its rule exactly, allowing no tolerance the rule does not state, so a check of a quantity a rule calls zero or absent refuses any trace of it. It verifies the property its rule states and must be right on a task nobody has answered: it may test the answer against what you built the task from, kept in the hidden values, such as a planted fault or the process that produced the input, and it never compares the answer with an answer you worked out. A check that recomputes the one value its rule allows leaves each task one valid answer.",
   `Give at least ${plural(EXAMPLES, "example task")}, different in what they ask and not only in their numbers. Either every task carries hidden values or none does. For each example give one accept control: an answer that keeps every rule. You choose the task, so you can start from an answer and derive the task from it. For each check give at least one reject control: an answer to an example that follows the answer format, breaks that check's rule, and names the check. The smallest answer the format allows, such as empty strings and empty lists, has to be rejected on every task: where it would pass, the format or the rules ask too little.`,
-  `draft_exam puts a whole draft to the host, which reads it without a model: its shape, then every control through the checks, twice, and the smallest answer on every example. It returns the faults it found, or that the draft stands. A draft that stands is the campaign's exam, and the session ends there. When a draft has faults, mend them and put the whole draft again. Call finish only if no exam can be drafted for the prompt, and say why.`,
-].join("\n");
+  "draft_exam puts a whole draft to the host, which reads it without a model: its shape, then every control through the checks, twice, and the smallest answer on every example. It returns the faults it found, or that the draft stands. A draft that stands is the campaign's exam and is not changed afterwards, and the session ends there.",
+].join("\n\n");
 
 // The answer-format keys that name an object's fields other than `properties` (`unnamed`).
 const NAMING = [
@@ -320,12 +321,10 @@ function controlFaults(draft: Draft): string[] {
     ...draft.tasks.flatMap((_, index) =>
       draft.accept.some(({ task }) => task === index)
         ? []
-        : [`example ${String(index)} has no accept control: an answer to it that keeps every rule`],
+        : [`example ${String(index)} has no accept control`],
     ),
     ...draft.checks.flatMap(({ id }) =>
-      draft.reject.some(({ check }) => check === id)
-        ? []
-        : [`check ${id} has no reject control: an answer that breaks its rule and names it`],
+      draft.reject.some(({ check }) => check === id) ? [] : [`check ${id} has no reject control`],
     ),
     ...draft.reject.flatMap(({ check }) =>
       draft.checks.some(({ id }) => id === check)
@@ -346,8 +345,7 @@ export function draftFaults(draft: Draft): string[] {
     ];
   }
   const ruleIds = draft.rules.map(({ id }) => id);
-  const checkIds = draft.checks.map(({ id }) => id);
-  const again = twice(ruleIds) ?? twice(checkIds);
+  const again = twice(ruleIds) ?? twice(draft.checks.map(({ id }) => id));
   const hidden = draft.tasks.filter((task) => task.hidden !== null).length;
   return [
     ...OUTSIDE.flatMap(([spelled, what]) =>
@@ -358,23 +356,18 @@ export function draftFaults(draft: Draft): string[] {
         : [],
     ),
     ...(again === undefined ? [] : [`${again} is named twice: an id names one rule or one check`]),
-    ...draft.rules.flatMap(({ id, statement, source }) => [
-      ...(statement.trim() === "" ? [`rule ${id} states nothing`] : []),
-      ...(source.trim() === ""
-        ? [`rule ${id} names no source: the standard, manual or text that states it`]
-        : []),
-      ...(draft.checks.filter((check) => check.rule === id).length === 1
-        ? []
-        : [
-            `rule ${id} has ${String(draft.checks.filter((check) => check.rule === id).length)} checks, and each rule has one`,
-          ]),
-    ]),
-    ...draft.checks.flatMap(({ id, rule }) => [
-      ...(ruleIds.includes(rule) ? [] : [`check ${id} enforces ${rule}, and the draft holds no such rule`]),
-      ...(draft.evaluator.includes(id)
-        ? []
-        : [`the check program names no ${id}: \`checks\` holds a function under each check's id`]),
-    ]),
+    ...draft.rules.flatMap(({ id }) => {
+      const checked = draft.checks.filter((check) => check.rule === id).length;
+      return checked === 1 ? [] : [`rule ${id} has ${String(checked)} checks, and each rule has one`];
+    }),
+    ...draft.checks.flatMap(({ id, rule }) =>
+      ruleIds.includes(rule) ? [] : [`check ${id} enforces ${rule}, and the draft holds no such rule`],
+    ),
+    ...((draft.objective === undefined) === (draft.unmeasured === undefined)
+      ? [
+          "the objective is a quantity with its direction, or why there is none: this draft gives both or neither",
+        ]
+      : []),
     ...(draft.tasks.length < EXAMPLES
       ? [
           `the draft holds ${plural(draft.tasks.length, "example task")}, and at least ${String(EXAMPLES)} are needed`,
@@ -382,16 +375,9 @@ export function draftFaults(draft: Draft): string[] {
       : []),
     ...(hidden === 0 || hidden === draft.tasks.length
       ? []
-      : ["some examples carry hidden values and some carry none: either every task has them or none does"]),
-    ...(draft.objective !== undefined && !/\bobjective\b/.test(draft.evaluator)
-      ? [
-          "the draft declares an objective and the check program exports no `objective`: a function of the request that returns the quantity as a number",
-        ]
-      : []),
-    ...draft.tasks.flatMap(({ family, publicInput }, index) =>
-      family.trim() === "" || publicInput === null
-        ? [`example ${String(index)} has no family or no public input`]
-        : [],
+      : ["some examples carry hidden values and some carry none"]),
+    ...draft.tasks.flatMap(({ publicInput }, index) =>
+      publicInput === null ? [`example ${String(index)} has no public input`] : [],
     ),
     ...controlFaults(draft),
   ];
@@ -399,6 +385,10 @@ export function draftFaults(draft: Draft): string[] {
 
 /** The draft as `draft_exam`'s arguments carry it, under the names `Draft` and `exam.drafted` use. */
 function draftedFrom(args: Static<typeof DRAFT_PARAMETERS>): Draft {
+  const { quantity, direction, none } = args.objective;
+  // A quantity without its direction, or a direction without its quantity, is no decision, whatever
+  // reason for none stands beside it, so the draft is held to give one (`draftFaults`).
+  const half = (quantity === undefined) !== (direction === undefined);
   return {
     domain: args.domain,
     scope: args.scope,
@@ -408,7 +398,11 @@ function draftedFrom(args: Static<typeof DRAFT_PARAMETERS>): Draft {
     answerFormat: args.answer_format as JsonValue,
     checks: args.checks,
     evaluator: args.evaluator,
-    ...keyIfDefined("objective", args.objective),
+    ...keyIfDefined(
+      "objective",
+      quantity !== undefined && direction !== undefined ? { quantity, direction } : undefined,
+    ),
+    ...keyIfDefined("unmeasured", half ? undefined : none),
     tasks: args.tasks.map(({ family, public_input, hidden }) => ({
       family,
       // SAFETY: as above.
@@ -440,8 +434,7 @@ export function draftOf(events: readonly LogEvent[]): Draft | null {
  *  it: its runs of every control answer through the checks are the verifier's time, and they wait
  *  on the host's load. On 3 November a truss session put its first draft at 44 of its 60 minutes,
  *  and the clock ended it during the host's work on that draft, so the draft got no reading and
- *  still counted as one of the campaign's tries. A draft that stands ends the session, so its
- *  reply carries no notes: no model call reads it (`ending`, `src/tools/answer.ts`). */
+ *  still counted as one of the campaign's tries. */
 export function drafting(terms: DraftingTerms, within: <T>(action: () => Promise<T>) => Promise<T>) {
   const { limits } = terms;
   const kind = "draft";
@@ -449,8 +442,7 @@ export function drafting(terms: DraftingTerms, within: <T>(action: () => Promise
   const none = `This session can put no further ${kind}. Call finish.`;
   const put = tool({
     name: "draft_exam",
-    description:
-      "Put a whole draft of the exam to the host's reading, which uses no model. It returns the faults it found, or that the draft stands. A draft that stands is the campaign's exam.",
+    description: "Put a whole draft of the exam to the host's reading, as the system prompt says.",
     parameters: DRAFT_PARAMETERS,
     executionMode: "sequential",
     execute: async (args) => {
@@ -459,15 +451,7 @@ export function drafting(terms: DraftingTerms, within: <T>(action: () => Promise
       const draft = draftedFrom(args);
       const seen = capturedJsonStringify(draft);
       const unformed = draftFaults(draft);
-      const { faults, notes } =
-        unformed.length > 0
-          ? { faults: unformed, notes: [] }
-          : await within(async () => await terms.reading(draft));
-      const noted =
-        notes.length === 0
-          ? []
-          : ["Notes, which leave the draft standing:", ...notes.map((note) => `- ${note}`)];
-      const left = limits.puts - desk.tries;
+      const faults = unformed.length > 0 ? unformed : await within(async () => await terms.reading(draft));
       if (faults.length === 0) {
         append(terms.log, "exam.drafted", {
           session: terms.id,
@@ -476,11 +460,11 @@ export function drafting(terms: DraftingTerms, within: <T>(action: () => Promise
         desk.stands = true;
         return ending(text("The draft stands: it is the campaign's exam. The session ends here."));
       }
+      const left = limits.puts - desk.tries;
       return text(
         [
           `The ${kind} does not stand. ${plural(faults.length, "fault")}:`,
           ...faults.map((fault) => `- ${fault}`),
-          ...noted,
           left > 0
             ? `Mend them and put the whole ${kind} again. This session can put ${plural(left, `more ${kind}`)}.`
             : none,
@@ -499,7 +483,8 @@ export function drafting(terms: DraftingTerms, within: <T>(action: () => Promise
     tools: [put],
     enters: `a ${kind} enters it through ${put.name} alone`,
     nudge: `Put a ${kind} with ${put.name}`,
-    finish: "End the session without an exam. Say in one or two sentences why none could be drafted.",
+    finish:
+      "End the session without an exam, only where none can be drafted for the prompt. Say in one or two sentences why.",
     declined: null,
     done: (): "stands" | null => (desk.stands ? "stands" : null),
     counted: () => ({ ...desk }),

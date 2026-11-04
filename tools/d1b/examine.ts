@@ -15,11 +15,14 @@
  * computed in is carried into this one, and its shell runs the engines the pack's checks run
  * (12 October).
  *
- * No solve runs here. From 12 October to 1 November the gate also put each draft to up to three
+ * The gate solves nothing. From 12 October to 1 November it also put each draft to up to three
  * room solves by the reference harness, through the launcher a comparison uses and with each
  * rejection ruled by the Referee, and held it only where they left the reference room; the gate
  * ablation of 31 October found the campaign without them promoting as soon and as far, an
- * indication from one campaign an arm. From 9 to 12 October a task was held out on its shape check
+ * indication from one campaign an arm. Since 4 November the author may put an instance to that
+ * launcher itself, at most `--proposals` solves with a result a session (`try_reference`,
+ * `probing`): no Referee rules their rejections, since they decide nothing, and no comparison counts
+ * them, since their start names the session. From 9 to 12 October a task was held out on its shape check
  * as now; until 9 October each instance was put to a stronger solver and to the measured one, and
  * the second live session spent $48.45 that way, $2.01 of it on the Examiner.
  *
@@ -52,9 +55,19 @@ import { readBrief } from "#src/kernel/verify.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
+import { solverLast } from "#src/kernel/solves.ts";
+import type { Task } from "#src/kernel/verify.ts";
+import { errorMessage } from "#src/meta/runtime-values.ts";
 import { campaignLog, keptAs, openCampaign, packNamed, PROMOTED, REPO, stayAwake } from "../d2/campaign.ts";
-import type { Campaign } from "../d2/round.ts";
-import { recordedSetting, SETTING_OPTIONS, settingAsked } from "../d2/setting.ts";
+import { type Campaign, type Seated, solved, solvingAs } from "../d2/round.ts";
+import {
+  type AskedSetting,
+  firstRecord,
+  keepSetting,
+  recordedSetting,
+  SETTING_OPTIONS,
+  settingAsked,
+} from "../d2/setting.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 
 /** An Examiner session's flags and their defaults. */
@@ -77,6 +90,27 @@ const EXAMINE_OPTIONS = {
   ...SETTING_OPTIONS,
   target: { type: "string" },
 } as const;
+
+/** The solve launcher a comparison of the campaign uses, called for an Examiner session: one fresh
+ *  solve of an instance by the reference harness in force, under the campaign's setting and deadline,
+ *  its start naming the session where a comparison's names the comparison (`solved`,
+ *  `tools/d2/round.ts`). The setting is held to the log's solves and recorded where none is, as a
+ *  comparison's is. A solve the kill stops before it starts is a killed non-result with no id. */
+async function probing(campaign: Campaign, seated: Seated, setting: AskedSetting, session: string) {
+  const unrecorded = firstRecord(setting, solvingAs(campaign, setting.named), solverLast(read(campaign.log)));
+  if (unrecorded !== undefined) throw new Error(unrecorded);
+  keepSetting(campaign.log, setting);
+  const reference = await keptAs(campaign, "--reference", PROMOTED);
+  const seats = seated(campaign, { builder: undefined, reference: reference.dir });
+  return async (task: Task, kill: AbortSignal) =>
+    seats.solve(campaign.pack(task), reference, kill, session).catch((error: unknown) => {
+      if (!kill.aborted || error !== kill.reason) throw error;
+      return {
+        solve: null,
+        ending: { outcome: "non-result", kind: "killed", reason: errorMessage(error) },
+      } as const;
+    });
+}
 
 /** The budget every solve is held to now: the recorded setting's turns and minutes, or before a
  *  setting is recorded the opening's full limit and the deadline the command names (`--solve-minutes`,
@@ -101,11 +135,14 @@ function budgetOf(
 }
 
 /** `bun tools/d1b/examine.ts`. `session` runs the Examiner's session: `examine`, unless a caller
- *  with no model stands in for it to read what the command would have asked of one. `kill` stops
- *  the session, and one stopped before it began opens nothing. */
+ *  with no model stands in for it to read what the command would have asked of one. `seated` solves
+ *  the instances it puts to the reference harness (`try_reference`), each held in the solve queue
+ *  when the campaign command passes its own; null gives the session no tries. `kill` stops the
+ *  session, and one stopped before it began opens nothing. */
 export async function examineCommand(
   args: readonly string[],
   session: Session<"write"> = examine,
+  seated: Seated | null = session === examine ? solved : null,
   kill?: AbortSignal,
 ): Promise<void> {
   const { values } = parseArgs({ args: [...args], options: EXAMINE_OPTIONS });
@@ -120,6 +157,8 @@ export async function examineCommand(
   const declared = readBrief(campaign.checks).truthChecks;
   const sofar = read(campaign.log);
   const before = taskStates(sofar);
+  const tries = Number(values.proposals);
+  const probe = seated === null ? null : { tries, solve: await probing(campaign, seated, setting, id) };
   stayAwake();
   const examined = await session(
     {
@@ -145,11 +184,12 @@ export async function examineCommand(
       limits: {
         wallSeconds: Number(values.minutes) * 60,
         turns: Number(values.turns),
-        puts: Number(values.proposals),
+        puts: tries,
       },
       wanted: Number(values.tasks),
       models: campaign.examiner,
       log: campaign.log,
+      probe,
       ...keyIfDefined("kill", kill),
     },
     {

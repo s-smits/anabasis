@@ -2,10 +2,10 @@
 // stood in, from its side, then every task under the reference's outcome on it, with its author's
 // claim where the task is still open, then the promotion and the drafts the gate refused.
 import { beforeAll, describe, expect, it } from "bun:test";
-import { heard } from "../src/examiner/record.ts";
+import { heard, triedAs } from "../src/examiner/record.ts";
 import { examine } from "../src/examiner/session.ts";
 import { conditionId, settingId } from "../src/kernel/condition.ts";
-import { proposalsOf, writtenTasks } from "../src/kernel/history.ts";
+import { contentOf, proposalsOf, writtenTasks } from "../src/kernel/history.ts";
 import { append, type EventKind, type LogEvent } from "../src/kernel/log.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
@@ -323,6 +323,42 @@ describe("after a promotion", () => {
     );
     expect(unpromoted.promoted).toBeNull();
     expect(unpromoted.refused[0]).toContain("before (fixture), bent (fixture)");
+  });
+});
+
+describe("a draft its author tried on the reference", () => {
+  it("is told with the current reference's tries on its line, under the content's id or the task's own, and none of a reference a promotion replaced", () => {
+    const log = logged();
+    const drafted = { taskId: "drafted", family: "fixture", publicInput: { base: 1 }, hidden: null };
+    const { taskId: _unnamed, ...content } = drafted;
+    const tried = (session: string, solve: string, task: string, ending: Ending, turns: number) => {
+      log.add("solve.started", { solve, task, comparison: session });
+      if (ending.outcome === "pass") log.add("verdict", { solve, kind: "pass", answer: { answer: SOLVER } });
+      log.add("solve.finished", { solve, ending, turns, billed: 1 });
+    };
+    log.add("exam.started", { session: "x-1" });
+    tried("x-1", "x-1-p1", triedAs(contentOf(content)), PASS, 9);
+    log.hold(["old"]);
+    log.add("harness.promoted", { harness: "h2", from: "h1", rests: [{ comparison: "g-9" }] });
+    log.add("exam.started", { session: "x-2" });
+    // Tried before it was put, then put and held; and a held task tried under its own id.
+    tried("x-2", "x-2-p1", triedAs(contentOf(content)), PASS, 4);
+    tried("x-2", "x-2-p2", triedAs(contentOf(content)), REJECTED, 12);
+    tried("x-2", "x-2-p3", "old", { outcome: "non-result", kind: "provider", reason: "overloaded" }, 0);
+    log.add(PROPOSED, { version: "v-drafted", taskId: "drafted", task: drafted });
+    log.add(TASK_ADMISSION, { version: "v-drafted", gate: 1, outcome: "passed" });
+    const tasks = [fixture("old"), drafted];
+    const lines = block(heard(log.events, tasks), "Not yet compared");
+    expect(lines.drafted).toEndWith("; tried at writing: valid in 1 of 2, in 4 turns");
+    // A solve that could not run is no try.
+    expect(lines.old).not.toContain("tried at writing");
+    // Without the promotion, the replaced reference's try is the current one's too.
+    const unpromoted = heard(
+      log.events.filter(({ kind }) => kind !== "harness.promoted"),
+      tasks,
+    );
+    expect(block(unpromoted, "Not yet compared").drafted).toEndWith("valid in 2 of 3, in 4, 9 turns");
+    expect(JSON.stringify(heard(log.events, tasks))).not.toContain(SOLVER);
   });
 });
 

@@ -13,6 +13,10 @@
  *   won and on which measure (`carriedBy`), an answer on record better by the objective than one of
  *   the reference's own (`room` of `poolOf`'s standings), its last comparisons with the reference,
  *   and whether a valid answer is on record where none of the reference's was valid.
+ *   A line also says how the reference harness did on the task when its author tried it there before
+ *   or after it put it (`try_reference`, `write.ts`), counted over the current reference's tries alone
+ *   (`probed`): an author of a domain whose valid answers cannot be ordered could not see a failure
+ *   coming, and wrote tasks the reference answered every time (4 November).
  * - `promoted`: that the reference was promoted, and how many tasks were held out before then.
  * - `refused`: the drafts the gate refused under the current reference, by reason.
  *
@@ -27,7 +31,7 @@
  * target, and no count carries a band or a number to reach (the operator's decision of 11 October).
  */
 import { scoresIn } from "../kernel/compare.ts";
-import { type Proposal, proposalsOf } from "../kernel/history.ts";
+import { contentOf, type Proposal, proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import {
   type History,
@@ -39,11 +43,23 @@ import {
   type Standing,
 } from "../kernel/reports.ts";
 import { spreadOf } from "../kernel/size.ts";
-import { solvesIn } from "../kernel/solves.ts";
+import { examinerSessions, passed, solvesIn, verdictsOf } from "../kernel/solves.ts";
 import { heldAtGate, taskStates } from "../kernel/task.ts";
 import type { Task } from "../kernel/verify.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
+
+/** One solve an Examiner session asked of the reference harness, as `probed` reads it. */
+interface Tried {
+  /** The id of the task it solved: the task's own, or the one its content names (`triedAs`). */
+  readonly task: string;
+  /** Where its start stands in the log. */
+  readonly started: number;
+  readonly valid: boolean;
+  readonly turns: number | null;
+  /** The verifier's measure of its valid answer by the objective, where the contract declares one. */
+  readonly measure: number | null;
+}
 
 /** Each block's heading, in the order the opening tells them. A task's line repeats none of it. */
 const BLOCKS = {
@@ -83,6 +99,8 @@ export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "t
     }),
   );
   const turns = referenceTurns(events);
+  const since = events.findLastIndex(({ kind }) => kind === "harness.promoted");
+  const tries = triesOf(events, since, [...proposals.values()]);
   const lines = new Map<string, string[]>();
   const listed: string[] = [];
   for (const { taskId, family } of tasks) {
@@ -97,13 +115,13 @@ export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "t
     const claim = !plain && frontier.has(version) ? claimOf(proposal) : "";
     const clauses = plain ? [] : clausesOf(block, pool, version, turns.get(version) ?? []);
     const heading = BLOCKS[block];
-    lines.set(heading, [...(lines.get(heading) ?? []), [`${named}${claim}`, ...clauses].join("; ")]);
+    const line = [`${named}${claim}`, ...clauses, ...triedLine(tries.get(taskId))].join("; ");
+    lines.set(heading, [...(lines.get(heading) ?? []), line]);
   }
   const groups = Object.values(BLOCKS).flatMap((heading): { heading: string; lines: string[] }[] => {
     const held = lines.get(heading) ?? [];
     return held.length === 0 ? [] : [{ heading, lines: held }];
   });
-  const since = events.findLastIndex(({ kind }) => kind === "harness.promoted");
   return {
     last: lastLine(events),
     groups,
@@ -129,6 +147,67 @@ function clausesOf(
       : [pool.feasible.has(version) ? "a valid answer on record" : "no valid answer on record"]),
     ...standingOf(pool.standings.get(version)),
     ...historyOf(pool.histories.get(version)),
+  ];
+}
+
+/** The task id a try of the reference harness runs an instance under where the campaign holds no
+ *  task of its content yet (`try_reference`, `write.ts`): named by that content, so that the line of
+ *  the task the instance becomes finds the try (`triesOf`). */
+export const triedAs = (content: string): string => `try-${content.slice(0, 12)}`;
+
+/**
+ * Every solve an Examiner session asked for that ended with a result, by its id: whether it was
+ * valid, its turns and its measure. These are the reference harness's solves of
+ * `try_reference`, and until 1 November the gate's room solves. Their starts name the session, so
+ * no comparison, practice record or Builder reads them (`countedSolves`), while the campaign is
+ * billed for them (`spendOf`). A non-result, or a solve with no ending yet, is no try.
+ */
+export function probed(events: readonly LogEvent[]): Map<string, Tried> {
+  const sessions = examinerSessions(events);
+  const verdicts = verdictsOf(events);
+  return new Map(
+    solvesIn(events).flatMap(({ id, started, start, ending, end }) => {
+      const valid = passed({ ending });
+      if (!sessions.has(start.comparison) || valid === null || !isString(start.task)) return [];
+      const checked = verdicts.get(id)?.checker;
+      const tried: Tried = {
+        task: start.task,
+        started,
+        valid,
+        turns: isNumber(end?.turns) ? end.turns : null,
+        measure: checked?.kind === "pass" ? (checked.objective ?? null) : null,
+      };
+      return [[id, tried] as const];
+    }),
+  );
+}
+
+/** The tries of the reference harness since the last promotion, by the id of the task each line
+ *  names: a try of an instance before it was put is found by its content (`triedAs`). A try of the
+ *  harness a promotion replaced tells nothing of the reference now. */
+function triesOf(events: readonly LogEvent[], since: number, proposals: readonly Proposal[]) {
+  const became = new Map(
+    proposals.flatMap(({ task }) =>
+      task === null ? [] : [[triedAs(contentOf(task)), task.taskId] as const],
+    ),
+  );
+  const tries = new Map<string, Tried[]>();
+  for (const tried of probed(events).values()) {
+    if (tried.started < since) continue;
+    const task = became.get(tried.task) ?? tried.task;
+    tries.set(task, [...(tries.get(task) ?? []), tried]);
+  }
+  return tries;
+}
+
+/** How the reference harness did on a task when its author tried it there: how many of the tries
+ *  were valid, and in how many turns each valid one was. */
+function triedLine(tries: readonly Tried[] | undefined): string[] {
+  if (tries === undefined) return [];
+  const valid = tries.filter((tried) => tried.valid);
+  const took = valid.flatMap(({ turns }) => (turns === null ? [] : [turns])).toSorted((a, b) => a - b);
+  return [
+    `tried at writing: valid in ${String(valid.length)} of ${String(tries.length)}${took.length === 0 ? "" : `, in ${took.join(", ")} turns`}`,
   ];
 }
 

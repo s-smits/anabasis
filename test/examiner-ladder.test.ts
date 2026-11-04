@@ -49,8 +49,8 @@ describe("the Examiner's ladder", () => {
   });
 
   it("is shown whole to a writing session, and as its scale and solver to a drafting one", () => {
-    expect(systemPrompt("in-home")).toContain(LADDER);
-    expect(systemPrompt("unseen")).toContain(LADDER);
+    expect(systemPrompt("in-home", "none")).toContain(LADDER);
+    expect(systemPrompt("unseen", "given")).toContain(LADDER);
     expect(DRAFTING).toContain(REACH);
     for (const { rungs } of FIELDS) for (const rung of rungs) expect(DRAFTING).not.toContain(rung);
   });

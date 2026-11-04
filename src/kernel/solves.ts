@@ -91,8 +91,9 @@ export function solvesIn(events: readonly LogEvent[]): Solve[] {
 }
 
 /** The Examiner sessions a log holds, writing tasks or drafting the exam: a solve whose start
- *  names one was made at its asking, to try a draft task (`try_task`) or a drafted exam's example,
- *  as an earlier log's gate and drafting session did until 1 November. */
+ *  names one was made at its asking, by a writing session to try an instance on the reference
+ *  harness (`try_reference`, since 4 November), or by an earlier log's gate (`try_task`) or drafting
+ *  session to try a draft task or a drafted exam's example, until 1 November. */
 export function examinerSessions(events: readonly LogEvent[]): Set<JsonValue | undefined> {
   return new Set(
     events.flatMap(({ kind, data }) =>

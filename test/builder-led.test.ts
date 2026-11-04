@@ -6,6 +6,7 @@
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { supplyOf } from "../src/campaign/admission.ts";
 import { crashedRun } from "../src/campaign/ground.ts";
+import { short } from "../src/campaign/move.ts";
 import { pendingWords } from "../src/campaign/word.ts";
 import { examine } from "../src/examiner/session.ts";
 import { LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
@@ -1108,6 +1109,10 @@ describe("a campaign tool where the table names more than the action", () => {
       seated: builderScript(passing(), [
         CHANGE_GUIDE,
         ["compare", {}],
+        // The promoted harness, kept after the conversation opened: until 4 November kept/ held
+        // only what was kept before, and buffer-fresh-opus-forkedPR588-stijn-pro's Builder found
+        // it empty and practised six tasks under the reference instead.
+        ["bash", { command: 'ls "$HOME/kept"' }],
         ["examine", {}],
         CHANGE_AGAIN,
         ["compare", {}],
@@ -1131,6 +1136,10 @@ describe("a campaign tool where the table names more than the action", () => {
     const compares = of(name, MOVED).filter(({ move }) => move === "compare");
     expect(compares.map(({ code }) => code)).toEqual(["asked", "unread", "asked"]);
     expect(said(name, "compare")[2]).not.toContain("The table's comparison of the starter ran first");
+    const promoted = first?.fresh;
+    expect(
+      said(name, "bash").find((text) => isString(promoted) && text.includes(short(promoted))),
+    ).toBeDefined();
   });
 
   /** Everything the Builder read from its tools in a campaign whose two comparisons tied the

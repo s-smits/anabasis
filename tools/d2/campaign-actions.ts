@@ -33,6 +33,7 @@ import { campaignOf } from "#src/campaign/handover.ts";
 import { type Decided, short } from "#src/campaign/move.ts";
 import type { Opening } from "#src/campaign/opening.ts";
 import { comparisonsTold } from "#src/builder/past.ts";
+import { seedKept } from "#src/builder/kept.ts";
 import { type BuildRequest, layPractice } from "#src/builder/session.ts";
 import { type Bench, endingWith, snapshot, waitTool } from "#src/builder/tools.ts";
 import { pendingWords } from "#src/campaign/word.ts";
@@ -143,6 +144,9 @@ async function refreshCampaign(context: CampaignContext, bench: Bench): Promise<
   context.campaign = campaign;
   refreshPractice(bench, campaign);
   bench.reference = (await keptAs(campaign, "--reference", PROMOTED)).dir;
+  // What was kept since the conversation opened: until 4 November kept/ held only what was kept
+  // before, and the Builder is told it holds every kept harness (`shellWalls`, `prompt.ts`).
+  seedKept(bench.home, bench.request.states, read(campaign.log), bench.parent);
 }
 
 /** The turn an action is made in and the move the table names for it. A total the operator left

@@ -1,5 +1,5 @@
 // The server's readings of a real log: control readings, log integrity and the wall between tiers.
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setSystemTime, test } from "bun:test";
 import { read } from "../../../src/kernel/log.ts";
 import {
   appendFileSync,
@@ -19,7 +19,7 @@ import { type AnswerOf, type Endpoint, type Query, type Tier, TOKEN_HEADER } fro
 import { handleApiRequest } from "../src/server/api.ts";
 import { campaignsFound } from "../src/server/logs.ts";
 import { steppedOf } from "../src/server/moves.ts";
-import { campaignReading, campaignRow } from "../src/server/reading.ts";
+import { campaignReading, campaignRow, factsIn } from "../src/server/reading.ts";
 import { type Fixture, MARKERS, writeFixtureCampaign, writeLedCampaign } from "./fixture-campaign.ts";
 
 /** A copy of the fixture's root, and its campaign's folder. */
@@ -133,7 +133,7 @@ describe("what a comparison came to", () => {
             : event;
         }),
       };
-      const row = campaignRow(found, log, { process: null, tier: "default" });
+      const row = campaignRow(found, factsIn(log), { process: null, tier: "default" });
       const reading = campaignReading(found, log, { row, tier: "default", issues: [] });
       expect([reading.counters.controls, reading.counters.controlSteps]).toEqual([3, steps]);
     }
@@ -314,6 +314,33 @@ describe("the rulings and the endings each tier may see", () => {
     expect(ended.answer.row.ending).toEqual({ ending: "environment" });
     expect(ended.text.includes(marker)).toBe(false);
     expect((await ask("campaign", { key }, "exam", root)).answer.row.ending?.why).toContain(marker);
+  });
+});
+
+describe("a list read again", () => {
+  test("rows a log's append on the next read, and drops a campaign the listing no longer finds", async () => {
+    const { root, dir } = copy();
+    const event = (at: string, kind: string, data: JsonObject) => `${JSON.stringify({ at, kind, data })}\n`;
+    const names = async () => (await ask("campaigns", {}, "default", root)).answer;
+    const before = await names();
+    expect(before.campaigns.find(({ name }) => name === fixture.name)?.ending).toBeNull();
+    appendFileSync(
+      join(dir, "log.jsonl"),
+      event("2026-09-30T00:00:00.000Z", "campaign.ended", {
+        ending: "operator",
+        why: "asked",
+        move: "examine",
+      }),
+    );
+    const ended = await names();
+    expect(ended.campaigns.find(({ name }) => name === fixture.name)?.ending?.ending).toBe("operator");
+    rmSync(join(root, ".ana", "d2", fixture.early), { recursive: true });
+    setSystemTime(new Date(Date.now() + 5_000));
+    try {
+      expect((await names()).campaigns.map(({ name }) => name)).toEqual([fixture.name, fixture.units]);
+    } finally {
+      setSystemTime();
+    }
   });
 });
 

@@ -78,7 +78,7 @@ describe("the next step of an investigation", () => {
       JSON.stringify({ sessions: [{ name: "lane_01", task: "Read it.", ownedPaths: [report] }] }),
     );
     expect(step()).toEqual([
-      "step: reports · 1 lane session(s) owe a report; hand each its line, all in one message",
+      "step: reports · 1 lane session(s) owe a report; hand each its line to a wri-lane agent, all in one message",
       "  lane_01: Read it.",
     ]);
     writeFileSync(report, "# Lane 1\n");

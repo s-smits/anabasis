@@ -160,7 +160,7 @@ export function nextOf(dir: string, launchedAt: (pull: number) => string[]): str
   const owed = owing(dir);
   if (owed.length > 0) {
     return [
-      `step: reports · ${String(owed.length)} lane session(s) owe a report; hand each its line, all in one message`,
+      `step: reports · ${String(owed.length)} lane session(s) owe a report; hand each its line to a wri-lane agent, all in one message`,
       ...owed.map(({ name, task }) => `  ${name}: ${task}`),
     ];
   }

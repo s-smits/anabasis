@@ -310,11 +310,11 @@ describe("the outcome an Examiner hears of a task", () => {
         failed: failedOf(log_, ["kept"]),
       };
     };
-    const won = { won: "other", by: "validity", room: null } as const;
+    const won = { won: "other", by: "validity", room: null, own: false } as const;
     expect(read(before)).toEqual({ outcome: "reference-none", standing: won, failed: ["kept"] });
     expect(read(after)).toEqual({
       outcome: "reference-every",
-      standing: { won: "reference", by: "validity", room: null },
+      standing: { won: "reference", by: "validity", room: null, own: false },
       failed: [],
     });
     expect(read(beside)).toEqual({ outcome: "earlier-reference", standing: null, failed: [] });
@@ -360,7 +360,7 @@ describe("who won each task, as an Examiner hears it", () => {
     );
     const { standings, outcomes } = poolOf(log);
     expect(sorted(standings.keys())).toEqual(sorted(outcomes.keys()).filter((task) => task !== "aside"));
-    expect(standings.get("every")).toEqual({ won: null, by: null, room: null });
+    expect(standings.get("every")).toEqual({ won: null, by: null, room: null, own: false });
   });
 
   it("names the objective where it told two valid answers apart, and the same answers without one a tie", () => {
@@ -395,6 +395,35 @@ describe("who won each task, as an Examiner hears it", () => {
         ["even", { won: null, by: null }],
       ]),
     );
+  });
+
+  it("says whether the room it tells of is the reference's own spread or an author's better answer", () => {
+    const tasks = ["spread", "authored", "both"];
+    const sides = tasks.flatMap((task) => [
+      ...solved("b-1", task, "h1", [P, P]),
+      ...solved("b-1", task, "h2", [P, P]),
+    ]);
+    const feasible = (version: string, measure: number) =>
+      event("task.feasible", { version, objective: { measure, direction: "lower" } });
+    const log = [
+      ...tasks.flatMap(heldOut),
+      feasible("authored", 2),
+      feasible("both", 2),
+      ...sides,
+      ...measuredAt(sides, [10, 5, 10, 10, 10, 10, 10, 10, 10, 5, 10, 10]),
+      reported("b-1", "no-step", "h2", {
+        ...terms,
+        versions: tasks,
+        objective: { direction: "lower", margin: 0.01 },
+      }),
+    ];
+    const told = (task: string) => {
+      const standing = poolOf(log).standings.get(task);
+      return { room: (standing?.room ?? 0) > 0, own: standing?.own };
+    };
+    expect(told("spread")).toEqual({ room: true, own: true });
+    expect(told("authored")).toEqual({ room: true, own: false });
+    expect(told("both")).toEqual({ room: true, own: false });
   });
 });
 

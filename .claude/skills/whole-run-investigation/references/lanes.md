@@ -488,9 +488,12 @@ the bill, and on validity alone, beside the report's `points`. `TIES BETWEEN VAL
 where more than half the tallied tasks tie and at least one answer on each side is valid: there
 validity separates nothing and the objective and the bill are all the reading has. Two valid
 measures tie within the objective gap floor, `ROOM`, 1% of the larger measure. `SAFEGUARD-9` names a
-promotion whose tested tasks on validity alone do not clear its level, with the same tasks read
-without the bill beside it: where that clears the level the objective carried the promotion, and
-where it does not, the bill did. A promotion of a GPT campaign at v0.7.1 read 6-0 as scored and
+promotion whose tested tasks on validity alone do not clear its level, with the same tasks read by
+the current score beside it, which since 26 October is validity and the objective together. So the
+objective was needed, but not always alone: count the tasks each measure won (`replay.txt`, "won by
+validity N, by the objective M") and test each count alone. buffer583's g-3 cleared at 6-0 on 2
+validity wins and 4 by the objective, and neither 2-0 nor 4-0 clears 0.02: it rested on both. Before
+26 October, a reading that did not clear by the score either rested on the bill. A promotion of a GPT campaign at v0.7.1 read 6-0 as scored and
 2-1 without the bill, and two readings of 8-0 at v0.7.3 were refused as steps because they did not
 stand without it. Say for each step whether it rests on answers the reference could not give or
 on better or cheaper answers to tasks both sides answered. In a drafted exam the objective is its

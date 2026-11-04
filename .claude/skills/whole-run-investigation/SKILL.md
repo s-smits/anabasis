@@ -57,8 +57,10 @@ start a step until the check named for the one before holds.
    With `bun --env-file=.env.runs tools/wri/wri.ts ... --log <name>`, a campaign on another machine
    is fetched automatically into `data/runs/<host>/<name>/`. Explicit log paths select an offline
    snapshot. `runs fetch <name>` remains available to refresh a copy explicitly. Lanes read the
-   copy with this checkout's tree, so check out the commit the receipt
-   names where the host line says the code differs. `lanes` rereads the paths stored by `start`
+   copy with this checkout's tree. Where the code differs and the last receipt names a commit this
+   repository holds, `start` checks that commit out beside the main checkout as
+   `anabasis-wri-<commit>`, installs its dependencies and names the tree in the instructions, so a
+   lane runs a reader there as it ran. `lanes` rereads the paths stored by `start`
    and refreshes no remote copy. Start another investigation to take a new snapshot.
    *Check:* read the `host-code digest` line. Use the matching campaign tree it names, where one
    exists; otherwise say beside each source claim that it concerns another tree. The digest is
@@ -89,7 +91,8 @@ start a step until the check named for the one before holds.
    `<dir>/reports.md`. Read lane 4's report, then decide lane 5; read lanes 13, 15 and 18, then
    decide lane 19, as named below. Build lane 5 with
    `wri.ts lanes --out <dir> --lanes 5`, or lane 19 with `--lanes 19`, then launch the one lane it
-   says it built, alone, and collect again.
+   says it built, alone, from its own `launch-NN.json`, which leaves `launch.json` as it was, and
+   collect again.
    *Check:* `collect` exits 0. It exits 1 while a report is missing or invalid, or no report is
    expected. Review the evidence too: a valid shape does not establish a sound finding.
 6. **Synthesise.** `wri.ts synthesis --out <dir>` renders `<dir>/synthesis-prompt.md`; one session

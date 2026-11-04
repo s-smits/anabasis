@@ -68,12 +68,13 @@ import { openVerifier, spelled } from "#src/kernel/verify.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
-import { mainTree } from "#src/meta/git.ts";
+import { gitMaybe, gitText, mainTree } from "#src/meta/git.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { codeOf } from "../d2/campaign.ts";
+import { installAt } from "../runs/code.ts";
 import { receipts } from "../runs/receipt.ts";
 import { isCampaign, processes, readable } from "../runs/registry.ts";
 import { stillRunning } from "../runs/diagnosis.ts";
@@ -191,6 +192,29 @@ function hostLine(log: string): string {
       );
 }
 
+/**
+ * A tree at the commit the campaign's last launch ran, with its dependencies installed, beside the
+ * main checkout, where this checkout's code differs from the code the campaign last ran under. On
+ * 4 November buffer583's own tree held no dependencies, so two lanes ran the Examiner's view from
+ * this checkout's code instead, and the primary had checked the run's commit out by hand. Null
+ * where the code matches, no receipt names a commit, or this repository does not hold it.
+ */
+function sourceTree(log: string): string | null {
+  const ran = asRecord(read(log).findLast(({ kind }) => kind === "condition.recorded")?.data.condition)?.host;
+  const commit = receipts(log).at(-1)?.commit;
+  if (
+    commit === undefined ||
+    ran === hostOf(REPO) ||
+    gitMaybe(REPO, "cat-file", "-e", `${commit}^{commit}`) === null
+  ) {
+    return null;
+  }
+  const tree = join(dirname(mainTree(REPO)), `anabasis-wri-${commit.slice(0, 9)}`);
+  if (!existsSync(tree)) gitText(REPO, "worktree", "add", "-q", "--detach", tree, commit);
+  if (!existsSync(join(tree, "node_modules"))) installAt(tree, commit);
+  return tree;
+}
+
 function overviewText(log: string): string {
   return `${rendered(overview(read(log), receipts(log)))}\n\n${hostLine(log)}\n`;
 }
@@ -247,6 +271,14 @@ async function start(): Promise<number> {
   mkdirSync(join(out, "lanes"), { recursive: true });
   const { done, line } = await derived(logs);
   const texts = logs.map(overviewText);
+  const trees = logs.flatMap((log) => {
+    const tree = sourceTree(log);
+    return tree === null
+      ? []
+      : [
+          `- ${nameOf(log)}: the code its last launch ran is checked out at \`${tree}\`, its dependencies installed. Read source there, and run a reader there (\`cd ${tree} && bun tools/...\`) to see what it printed at that commit; the derived files below come from this checkout's code.`,
+        ];
+  });
   const campaigns = [
     "| campaign | log | events | checkout |",
     "| --- | --- | --- | --- |",
@@ -257,6 +289,7 @@ async function start(): Promise<number> {
       return logs.length === 1 ? host : `- ${nameOf(logs[index] ?? "")}: ${host}`;
     }),
     "",
+    ...(trees.length > 0 ? [...trees, ""] : []),
     `Every deterministic reader's output for each campaign, as the log stood at this start, is in its folder: ${done.map(({ dir }) => `\`${dir}/\``).join(", ")}, one \`<reader>.txt\` a reader (\`wri.ts derive\`). Read those files before running a reader yourself.`,
   ].join("\n");
   const template = readFileSync(join(REFERENCES, "shared-instructions.template.md"), "utf8");
@@ -362,7 +395,13 @@ function lanes(): number {
   });
   // A lane reads campaign logs, which hold hidden values, so its sessions search nothing: a query
   // leaves the machine (`AGENTS.md`, section 5). Every other Codex launch searches by default.
-  const launch = join(out, "launch.json");
+  // A lane that runs alone is built after the others have launched, so its manifest stands beside
+  // theirs: on 4 November building lane 19 alone wrote over buffer583's five grouped sessions.
+  const alone = built.length > 0 && built.every((lane) => lane.isolated);
+  const launch = join(
+    out,
+    alone ? `launch-${built.map((lane) => stem(lane.number)).join("-")}.json` : "launch.json",
+  );
   if (sessions.length > 0) {
     writeFileSync(
       launch,

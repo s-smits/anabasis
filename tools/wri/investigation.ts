@@ -380,6 +380,9 @@ export function reportOf(
     // An isolated lane is a session of its own with one lane, so it has no other lane to weigh
     // against and may not leave its lane unread (release review, 3 November).
     ...(verdict === "omitted" && lane.isolated ? ["an isolated lane may not be omitted"] : []),
+    // A session writes its report early, as the hard rules ask; on 4 November buffer583's lane 32
+    // stood as "could not read, provisional" and `collect` read it as a final verdict.
+    ...(said.includes("provisional") ? ["the verdict is provisional: the session is still writing"] : []),
     // Recode's lane 15 on 10 October said no finding over two written findings, and was accepted.
     ...((verdict === "no finding" || verdict === "omitted") && findings > 0
       ? [`the verdict is ${verdict} and the report writes ${plural(findings, "finding")}`]

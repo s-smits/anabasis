@@ -16,7 +16,7 @@
  * mode receives a solver's trace or answer. Its shell is a walled home, closed to the repository.
  *
  * The session clock charges setup and every turn and tool call except a drafting session's wait for
- * the host's reading of a draft, whose starter solves are the host's time (`drafting`), and kill
+ * the host's reading of a draft, which is the verifier's time (`drafting`), and kill
  * and budget signals stay independent of it. Typed abort reasons latch the first parent source
  * before the agent loop aborts an invocation. Until 1 November the clock paused while the session
  * waited on its gate's room solves, a tool result told what that gate had said since, and `finish`
@@ -297,7 +297,7 @@ export async function examine(request: ExamRequest, wall?: Wall): Promise<Examin
     examining(
       request,
       (stop, within) =>
-        request.mode === "draft" ? drafting(request, stop, within) : writing(request, walls, reference, stop),
+        request.mode === "draft" ? drafting(request, within) : writing(request, walls, reference, stop),
       walls,
     );
   if (wall === undefined) return await seated();

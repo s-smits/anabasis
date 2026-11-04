@@ -9,7 +9,7 @@ import {
   fauxAssistantMessage,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
-import { type Draft, draftOf } from "../src/examiner/draft.ts";
+import { draftOf } from "../src/examiner/draft.ts";
 import { heard } from "../src/examiner/record.ts";
 import { examine } from "../src/examiner/session.ts";
 import { examinerDirs, inExaminerWall } from "../src/examiner/shell.ts";
@@ -382,19 +382,18 @@ describe("a session that drafts an exam", () => {
     expect(s.sent[0]).toContain("This session has 10 minutes, 12 turns and 4 drafts.");
   });
 
-  it("stands on a reading that outlasts its wall, since the host's solves are not its time", async () => {
+  it("keeps its turns after a reading that outlasts its wall, since the host's reading is not its time", async () => {
     const s = seat("draft", [PUT.draft, finish]);
-    // As the starter's solves do (`starterFaults`), the reading refuses to read once the session is cut.
-    const reading = async (_draft: Draft, stop: AbortSignal) => {
-      // A real clock: the solves take longer than the session's wall.
+    // A real clock: the reading takes longer than the session's wall, which pauses for it, so the
+    // session reads the fault and finishes rather than ending at its wall.
+    const reading = async () => {
       await Bun.sleep(400);
-      if (stop.aborted) throw new Error("the session was cut while the starter solved");
-      return { faults: [], notes: [] };
+      return { faults: ["a fault"], notes: [] };
     };
     const { limits } = s.request;
-    const examined = await examine({ ...s.request, reading, limits: { ...limits, wallSeconds: 0.2 } });
-    expect(examined).toMatchObject({ ended: "stands", puts: 1 });
-    expect(s.of("draft.finished")).toMatchObject([{ ended: "stands", stands: true, tries: 1 }]);
+    const examined = await examine({ ...s.request, reading, limits: { ...limits, wallSeconds: 0.3 } });
+    expect(examined).toMatchObject({ ended: "finished", puts: 1 });
+    expect(s.of("draft.finished")).toMatchObject([{ ended: "finished", stands: false, tries: 1 }]);
   });
 });
 

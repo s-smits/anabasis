@@ -921,8 +921,7 @@ describe("a campaign run by its log", () => {
     ).rejects.toThrow(`this campaign belongs to project ${PROJECT}, and keeps it`);
     expect(of(fresh, OPENED)).toHaveLength(1);
 
-    // The Examiner drafts, the host reads each draft without a model, the starter solves the
-    // second's examples in the solve queue and answers none, and the second stands. Its one check
+    // The Examiner drafts, the host reads each draft without a model, and the second stands. Its one check
     // is its author's own computation, so under `--hitl` the campaign waits for the operator's word.
     const waits = await harnessBuilder([...flags, "--prompt", prompt, "--hitl"], seats);
     expect(waits).toMatchObject({ move: "end", ending: "exam" });
@@ -950,7 +949,7 @@ describe("a campaign run by its log", () => {
     const next = await harnessBuilder(["--name", name, "--no-hitl", "--moves", "3"], seats);
     expect(of(name, OPENED)).toHaveLength(2);
     expect(of(name, OPENED).at(-1)).not.toHaveProperty("attended");
-    // The draft's first solves recorded the setting, with the scored tasks the campaign opened
+    // The first move that solves recorded the setting, with the scored tasks the campaign opened
     // with: t-2 (10 October) opened with --target 6 and its first session recorded the default 12.
     expect(of(name, "campaign.setting")).toMatchObject([{ minutes: 8, target: 8, solves: 3 }]);
     expect(of(name, "task.state").filter(({ state }) => state === "released")).toHaveLength(2);

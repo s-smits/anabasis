@@ -1,8 +1,7 @@
 // An exam drafted from a prompt: the shape the host holds a draft to before anything runs
 // (`draftFaults`, `src/examiner/draft.ts`), which a drafting session reads before the host's own
 // reading, that reading on a staged draft with the real verifier (`tools/d2/exam.ts`), and the
-// starter's solves of a draft with no fault, by a scripted solver in the real wall
-// (`starterFaults`, `tools/d1b/draft.ts`). The session a draft is put in is `examine`'s, held in
+// campaign's end once its drafts are spent. The session a draft is put in is `examine`'s, held in
 // `test/examiner.test.ts`.
 
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
@@ -12,14 +11,13 @@ import { examine, type Session } from "../src/examiner/session.ts";
 import { append, read } from "../src/kernel/log.ts";
 import { examinerSessions, solvesIn } from "../src/kernel/solves.ts";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
-import { asRecord, isString, type JsonObject, type JsonValue } from "../src/meta/json-shape.ts";
+import type { JsonObject, JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { draftCommand } from "../tools/d1b/draft.ts";
 import { campaignLog } from "../tools/d2/campaign.ts";
 import { draftReading, stageExam } from "../tools/d2/exam.ts";
-import type { Seated } from "../tools/d2/round.ts";
 import { packControls, readPack, sweepResources } from "../tools/m0/stored-sweep.ts";
 import { draftArgs, drafted, finish, NOTE, SOUND, seat, sweep } from "./helpers/examiner-seat.ts";
 import { scriptedModel } from "./helpers/fixture-pack.ts";
@@ -208,7 +206,7 @@ describe("a draft read without a model", () => {
 });
 
 describe("a draft put to the host", () => {
-  it("stands at its first put once it has no fault, with no solve of its examples where the caller seats no solver", async () => {
+  it("stands at its first put once it has no fault, with no solve of its examples", async () => {
     const s = seat("draft", [drafted(SOUND), finish]);
     expect(await examine(s.request)).toMatchObject({ ended: "stands", puts: 1 });
     expect(s.of("draft.call").map(({ text }) => text)).toEqual([
@@ -218,11 +216,9 @@ describe("a draft put to the host", () => {
     expect(solvesIn(read(s.log))).toEqual([]);
     expect(s.of("draft.finished")).toMatchObject([{ ended: "stands", stands: true, tries: 1 }]);
     expect(s.of("draft.finished")[0]).not.toHaveProperty("measurement");
-    // Its system prompt says what the host reads of a draft, and that the starter solves it.
+    // Its system prompt says what the host reads of a draft, and of no solve of it.
     expect(s.sent[0]).toContain("draft_exam puts a whole draft to the host");
-    expect(s.sent[0]).toContain(
-      "the starter harness, the one every campaign starts from, solves each example",
-    );
+    expect(s.sent[0]).not.toMatch(/starter harness|is then solved/u);
     // Its opening says the budget the exam's solves will be held to, as a writing session's does.
     expect(s.sent.join("\n")).toMatch(
       /held to 20 turns of the solver's own[^.]*, and 30 minutes, and a comparison solves each task 2 times under each harness\./u,
@@ -259,88 +255,14 @@ const putting =
       ]),
     });
 
-/** The starter's solver, scripted in the real wall: the `nth` solve of an example writes the answer
- *  `answer(base, nth)` and submits it. */
-const answering =
-  (answer: (base: number, nth: number) => number): Seated =>
-  (campaign) => {
-    const nths = new Map<string, number>();
-    return {
-      builder: null,
-      setting: campaign.setting({ ...campaign.test, ...scriptedModel([]) }),
-      solve: async (task, harness, kill, comparison) => {
-        const nth = nths.get(task.taskId) ?? 0;
-        nths.set(task.taskId, nth + 1);
-        const content = JSON.stringify({
-          answer: String(answer(Number(asRecord(task.publicInput)?.base), nth)),
-        });
-        const by = scriptedModel(
-          [
-            ["write", { path: "answer.json", content }],
-            ["submit", {}],
-          ],
-          campaign.limits.turns + 1,
-        );
-        return await campaign.solveOnce(task, harness, { ...campaign.test, ...by }, kill, comparison);
-      },
-    };
-  };
-
-/** What the drafting session was told of each draft it put. */
-const told = (log: string) =>
-  read(log).flatMap(({ kind, data }) => (kind === "draft.call" && isString(data.text) ? [data.text] : []));
-
-describe("a draft the starter solves", () => {
-  const sixfold = answering((base) => base * 6);
-
-  it("refuses a session's first draft the starter answered on every solve, and stands its next with that reading as a note", async () => {
-    const name = `${STEM}-answered`;
-    const flags = opened(name);
-    const log = campaignLog(name);
-    const first = await draftCommand([...flags, "--session", "d-1"], putting(SOUND), sixfold);
-    expect(first).toMatchObject({ puts: 1 });
-    expect(draftOf(read(log))).toBeNull();
-    const refusal = told(log)[0] ?? "";
-    expect(refusal).toContain("The draft does not stand. 1 fault:");
-    expect(refusal).toContain("answered every example validly on every solve");
-    for (const index of [0, 1, 2]) {
-      expect(refusal).toMatch(
-        new RegExp(`example ${String(index)}: 2 of 2 solves valid, taking \\d+, \\d+ model turns`, "u"),
-      );
-    }
-    // Facts only: the refusal names no course for the next draft.
-    expect(refusal).not.toMatch(/harder|should|try /u);
-    // Each solve is the drafting session's: never scored and on no task's record.
-    const solves = solvesIn(read(log));
-    expect(solves).toHaveLength(6);
-    expect(new Set(solves.map(({ start }) => start.comparison))).toEqual(new Set(["d-1"]));
-    expect(examinerSessions(read(log))).toEqual(new Set(["d-1"]));
-
-    expect(refusal).toContain("This reading refuses one draft a session");
-
-    // A second session refuses its first such draft too, and its next stands with the note.
-    const second = await draftCommand([...flags, "--session", "d-2"], putting(SOUND, SOUND), sixfold);
-    expect(second).toMatchObject({ ended: "stands", puts: 2 });
-    const events = read(log);
-    expect(draftOf(events)).toEqual(SOUND);
-    expect(events.filter(({ kind }) => kind === "campaign.setting")).toHaveLength(1);
-    const readings = told(log).filter((text) => text.startsWith("The draft "));
-    expect(readings.map((text) => text.split(".")[0])).toEqual([
-      "The draft does not stand",
-      "The draft does not stand",
-      "The draft stands: it is the campaign's exam",
-    ]);
-    expect(readings[2]).toContain("Notes, which leave the draft standing:");
-    expect(readings[2]).toContain("answered every example validly on every solve");
-  });
-
+describe("a campaign's drafts", () => {
   it("ends the campaign on its exam once three drafts in two sessions did not stand", async () => {
     const name = `${STEM}-spent`;
     const flags = opened(name);
     const log = campaignLog(name);
     const unformed: Draft = { ...SOUND, answerFormat: { type: "string" } };
-    await draftCommand([...flags, "--session", "d-1"], putting(unformed), null);
-    await draftCommand([...flags, "--session", "d-2"], putting(unformed, unformed), null);
+    await draftCommand([...flags, "--session", "d-1"], putting(unformed));
+    await draftCommand([...flags, "--session", "d-2"], putting(unformed, unformed));
     const events = read(log);
     expect(draftOf(events)).toBeNull();
     const plan = {
@@ -357,67 +279,5 @@ describe("a draft the starter solves", () => {
     };
     expect(decide(events, plan)).toMatchObject({ move: "end", ending: "exam" });
     expect(decide(events, plan).why).toContain("3 drafts in 2 sessions did not stand");
-  });
-
-  it("stands where a solve of an example is rejected, unruled, or where two valid answers differ by the objective", async () => {
-    const failing = `${STEM}-rejected`;
-    const once = answering((base, nth) => (nth === 0 ? base * 7 : base * 6));
-    expect(await draftCommand([...opened(failing), "--session", "d-1"], putting(SOUND), once)).toMatchObject({
-      ended: "stands",
-      puts: 1,
-    });
-    expect(draftOf(read(campaignLog(failing)))).toEqual(SOUND);
-    expect(read(campaignLog(failing)).some(({ kind }) => kind.startsWith("referee."))).toBe(false);
-
-    // Every answer a positive multiple of the base is valid, and the smaller is the better.
-    const multiple: Draft = {
-      ...SOUND,
-      rules: [
-        {
-          ...SOUND.rules[0],
-          id: "R1",
-          statement: "The answer is a positive multiple of the base.",
-          source: "A fixture.",
-        },
-      ],
-      checks: [
-        { id: "check-product", rule: "R1", assertion: "The answer is a positive multiple of the base." },
-      ],
-      objective: { quantity: "the answer as a number", direction: "lower" },
-      evaluator: [
-        "const of = (req) => Number(req.artifact.answer);",
-        "export const checks = {",
-        '  "check-product": (req) => Number.isInteger(of(req)) && of(req) > 0 && of(req) % req.publicTask.publicInput.base === 0,',
-        "};",
-        "export const objective = of;",
-        "",
-      ].join("\n"),
-    };
-    const gap = `${STEM}-gap`;
-    const doubled = answering((base, nth) => base * 6 * (nth + 1));
-    expect(
-      await draftCommand([...opened(gap), "--session", "d-1"], putting(multiple), doubled),
-    ).toMatchObject({
-      ended: "stands",
-      puts: 1,
-    });
-    // The same answer on every solve leaves no gap, and the draft does not stand.
-    const level = `${STEM}-level`;
-    expect(
-      await draftCommand([...opened(level), "--session", "d-1"], putting(multiple), sixfold),
-    ).toMatchObject({
-      puts: 1,
-    });
-    expect(told(campaignLog(level))[0]).toContain("and no valid answer bettered another by the objective");
-  });
-
-  it("stands unsolved where the caller seats no solver", async () => {
-    const name = `${STEM}-unseated`;
-    expect(await draftCommand([...opened(name), "--session", "d-1"], putting(SOUND), null)).toMatchObject({
-      ended: "stands",
-    });
-    const events = read(campaignLog(name));
-    expect(draftOf(events)).toEqual(SOUND);
-    expect(solvesIn(events)).toEqual([]);
   });
 });

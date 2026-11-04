@@ -68,6 +68,11 @@
  * "How hard" gives the calibration facts before the request. Where no objective is declared, two
  * valid answers always tie, which the scoring section now says: at jobstat-fresh-opus-forkedPR595
  * the comparisons tied on every task the reference answered in every solve.
+ *
+ * Where the host gives the session tries of the reference harness ("Trying the reference",
+ * `try_reference` in `write.ts`), the section says what a try shows and what it decides, which is
+ * nothing at the gate or in a comparison, and that one solve is weak evidence (`AGENTS.md`, rule 6).
+ * It names no count to reach and no course: when to try, and what to make of it, is the author's.
  */
 import { ROOM } from "../kernel/compare.ts";
 import { type Contract, objectiveLine } from "../kernel/contract.ts";
@@ -102,8 +107,8 @@ export const UNHELD =
 /** The system prompt of a session that holds tasks out by `propose_tasks`. Each fact is stated
  *  once, in the section that owns it; the tools' descriptions point here for the gate (plan item
  *  5.1, 14 October). `reference` says whether a copy of the reference harness lies in the home
- *  (19 October). */
-export function systemPrompt(reference: "in-home" | "unseen"): string {
+ *  (19 October), and `tries` whether the session may put instances to it (`try_reference`). */
+export function systemPrompt(reference: "in-home" | "unseen", tries: "given" | "none"): string {
   const floor = `${String(ROOM * 100)}%`;
   return [
     `You are the Examiner. You write tasks of one domain, on which a solving model is then measured. The domain's public rules, its answer format and its checks are fixed: you write no rule and no check. ${TASK}`,
@@ -116,6 +121,11 @@ export function systemPrompt(reference: "in-home" | "unseen"): string {
     `## What the exam needs\n\nTasks within the domain's scope that leave the reference harness room and still have a valid answer, demanding and fair as a practitioner of the domain would judge them. You are not told how many tasks are wanted.\n- A task with no valid answer measures nothing, since every harness fails it alike, and one nobody has answered may have none. A pass at try_answer shows that an instance has one; how you reach that answer, before the task or after it, is yours.\n- ${UNHELD}\n- Everything a task demands is in its public input and the public rules, so that a solver that follows every public rule never fails on one it could not read. Nothing a solver needs is in the hidden values.`,
     `## How hard\n\n${LADDER}\n\nA grade is what the field demands of a task, read from its public input and the rules it cites. A fault of one harness's programs is no grade: the starter, which holds no program of the domain, is compared on the tasks written after a promotion too. The turns a valid answer took are what its method cost: a task the reference answers in every solve within a few of the budget's turns is at grade 2 or below for this solver, whatever grade it was given. A grade at which the reference answers every solve measures nothing more, and another task built the same way leaves no more room. Room it leaves on such a task by failing a solve now and then, or by its own valid answers differing on the objective, is chance and not a better method: the record's first line says how often its own two solves differed in its last comparison. Write above the highest grade the reference answers in every solve.`,
     "## What you put\n\nEach draft you put carries your grade for it and one sentence on where a solver that follows the public rules falls short on it: of a valid answer, or of the best one by the objective. Neither reaches a solver, a Builder or a check. Each later session's record sets them beside what the reference harness then did on the task.",
+    ...(tries === "none"
+      ? []
+      : [
+          "## Trying the reference\n\ntry_reference puts an instance to fresh solves by the reference harness, each held to the budget, and says of each whether it was valid, in how many of the solver's turns and, where the domain declares an objective, its measure; of one that was not, whether the checks refused its answer, a limit ended it or it gave none. You see no answer, trace or check of it. Each solve is billed to the campaign, and its time is your session's. A comparison solves every task afresh and counts no solve of yours, and the gate holds or refuses a draft whatever its tries showed. One solve is weak evidence: a solve that failed may pass the next time.",
+        ]),
     "## The gate\n\npropose_tasks takes instances and puts each to the host's gate. The gate reads the shape of its package: its family, its inputs, and that the checks have what they need to run on it. No solver is put to it there. Of each it says held out, or refused with its reason. A task held out is in the exam from then on, and a comparison scores no other.",
     "## The session\n\nPropose in rounds: put drafts to the gate, read what it said, and propose more. When you have no more tasks worth proposing, call finish. The session also ends at its limits.",
   ].join("\n\n");
@@ -131,14 +141,20 @@ export function budgetLine({ modelTurns, minutes, solves }: SolveBudget): string
  *  public contract, its checks by id and assertion, and what `record.ts` tells of the campaign's
  *  past: the last comparison the reference stood in, the tasks under its outcome on each, the
  *  promotion and the drafts the gate refused. `told` is the limits the session is told it runs
- *  under; how many tasks are wanted is not among them. `campaign` is what it is told of its campaign
+ *  under, with the solves of the reference harness it may ask for; how many tasks are wanted is not
+ *  among them. `campaign` is what it is told of its campaign
  *  beside the contract, each null where there is none: the operator's brief and the budget every
  *  solve is held to. */
 export function firstMessage(
   contract: Contract,
   checks: readonly CheckRow[],
   tasks: ReturnType<typeof heard>,
-  told: { readonly wallSeconds: number; readonly turns: number; readonly puts: number },
+  told: {
+    readonly wallSeconds: number;
+    readonly turns: number;
+    readonly puts: number;
+    readonly tries: number;
+  },
   campaign: { readonly brief: string | null; readonly budget: SolveBudget | null },
 ): string {
   const { brief, budget } = campaign;
@@ -172,6 +188,6 @@ ${brief}`,
       : [
           `The drafts the gate refused, by its reason. None is a task of the exam:\n${listed(tasks.refused)}`,
         ]),
-    `This session has ${plural(Math.round(told.wallSeconds / 60), "minute")}, ${plural(told.turns, "turn")} and ${plural(told.puts, "draft")} to put to the gate.`,
+    `This session has ${plural(Math.round(told.wallSeconds / 60), "minute")}, ${plural(told.turns, "turn")} and ${plural(told.puts, "draft")} to put to the gate${told.tries === 0 ? "" : `, and ${plural(told.tries, "solve")} of the reference harness to ask for`}.`,
   ].join("\n\n");
 }

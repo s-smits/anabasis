@@ -1073,13 +1073,15 @@ describe("a Builder session", () => {
 describe("what crosses to the Builder", () => {
   /** What a campaign keeps from its Builder: the check that refused an answer, the Referee's
    *  reason, the hidden value of a held-out task and of a practice task, which held-out task the
-   *  comparison's new harness won, and what the Examiner said of each task when it put it. */
+   *  comparison's new harness won, what the Examiner said of each task when it put it, and how the
+   *  reference did on a held-out task the Examiner tried it on (`try_reference`). */
   interface Kept {
     readonly check: string;
     readonly reason: string;
     readonly hidden: string;
     readonly won: "h1" | "h2";
     readonly claim: string;
+    readonly tried: "pass" | "fail";
   }
   const ONE: Kept = {
     check: "check-one-7a1",
@@ -1087,6 +1089,7 @@ describe("what crosses to the Builder", () => {
     hidden: "hidden-one-7a1",
     won: "h1",
     claim: "claim-one-7a1",
+    tried: "pass",
   };
   const OTHER: Kept = {
     check: "check-two-c4e",
@@ -1094,7 +1097,10 @@ describe("what crosses to the Builder", () => {
     hidden: "hidden-two-c4e",
     won: "h2",
     claim: "claim-two-c4e",
+    tried: "fail",
   };
+  /** The solve the Examiner session x-1 asked of the reference harness. */
+  const TRIED = "x-1-tried";
   const FRESH = "f".repeat(64);
 
   /**
@@ -1187,6 +1193,37 @@ describe("what crosses to the Builder", () => {
         });
       }
     }
+    // The Examiner session x-1 tried the reference on h1: a pass in one campaign and a rejection after
+    // more turns in the other, billed alike, with its answer and trace naming the hidden value.
+    append(log, "exam.started", { session: "x-1" });
+    append(log, "solve.started", {
+      solve: TRIED,
+      comparison: "x-1",
+      condition: recordCondition(log, s.condition("h1", s.digest)),
+      task: "x-h1",
+    });
+    append(log, "solve.call", {
+      solve: TRIED,
+      turn: 1,
+      tool: "bash",
+      args: { command: "run" },
+      isError: false,
+      text: `tried ${kept.hidden}`,
+    });
+    append(
+      log,
+      "verdict",
+      kept.tried === "pass"
+        ? { solve: TRIED, answer: { answer: kept.hidden }, kind: "pass" }
+        : { solve: TRIED, answer: { answer: kept.hidden }, kind: "fail", blocking: [kept.check] },
+    );
+    append(log, "solve.finished", {
+      solve: TRIED,
+      ending: kept.tried === "pass" ? { outcome: "pass" } : { outcome: "fail", kind: "rejected" },
+      turns: kept.tried === "pass" ? 4 : 9,
+      billed: 0.5,
+    });
+    append(log, "exam.finished", { session: "x-1", ended: "finished", note: null });
     append(log, "comparison.reported", {
       session: "g-1",
       old: s.digest,
@@ -1247,7 +1284,7 @@ describe("what crosses to the Builder", () => {
     );
   }
 
-  it("is byte-identical whatever a hidden value, a check, a ruling, or the task that was won is", async () => {
+  it("is byte-identical whatever a hidden value, a check, a ruling, the task that was won or the Examiner's try of the reference is", async () => {
     const [one, other] = [await read_(ONE), await read_(OTHER)];
     // The session read what a Builder may: its tasks, the fail, the trace, the opening again, the
     // continuation, and the comparison as a tally.
@@ -1267,6 +1304,7 @@ describe("what crosses to the Builder", () => {
         "x-h1",
         "x-h2",
         "g-1-h",
+        TRIED,
       ]) {
         expect(one).not.toContain(canary);
       }

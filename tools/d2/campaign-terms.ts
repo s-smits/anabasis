@@ -455,7 +455,8 @@ export function sharedOf({ events, plan, opening, values, seats }: Turn) {
 /** How the campaign runs Examiner session `session`: its flags, for `draft.ts` where it drafts the
  *  exam and `examine.ts` where it writes tasks, and the count of tasks a writing session is asked
  *  for. Each session is given the campaign's setting before one is recorded, for the budget it
- *  is told; neither solves anything. */
+ *  is told and, in a writing session, for the solves it asks of the reference harness
+ *  (`try_reference`), which run under it and record it. */
 export function examinerRun(turn: Turn, session: string, kind: "draft" | "write") {
   const { opening, values, seats } = turn;
   const { examiner } = opening.seats;

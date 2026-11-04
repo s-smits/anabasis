@@ -14,6 +14,7 @@
  * caller that needs the log to be sound asks the fold first (`taskSets`).
  */
 import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
+import { hashJsonValue } from "../meta/stable-json.ts";
 import type { LogEvent } from "./log.ts";
 import type { Task } from "./verify.ts";
 
@@ -36,6 +37,13 @@ export interface Proposal {
   /** What its author said of it beside the task (`write.ts`): its grade and where a solver falls
    *  short; null for a proposal from before 4 November, a pack's and a carried one. */
   readonly claim: { readonly grade: number; readonly stops: string } | null;
+}
+
+/** An instance by what a solver and the checks read of it, whatever id it carries: what a writing
+ *  session takes no second time and names a checked instance by (`write.ts`), and what joins a
+ *  reference's try of an instance to the task it became (`probed`, `src/examiner/record.ts`). */
+export function contentOf({ family, publicInput, hidden }: Omit<Task, "taskId">): string {
+  return hashJsonValue({ family, publicInput, hidden: hidden ?? null });
 }
 
 /** Every proposal of a log, in the order the tasks were proposed. */

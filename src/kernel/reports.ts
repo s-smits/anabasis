@@ -691,8 +691,10 @@ function standingOf(record: TaskRecord): [string, Standing][] {
  * The `count` held-out tasks of `pool` a release takes, each with why, in the order they are
  * taken. A task no reference solve answered in two comparisons goes to the Builder before the draw:
  * it is what a session has to work on, where every released task passes. Then the tasks the reference
- * harness failed in the last comparison, half of them rounded up, so that the comparison keeps
- * tasks it can untie. The rest is the contract's draw over every task neither list holds, those the
+ * harness failed in the last comparison, half of them rounded down, so that the comparison keeps
+ * tasks it can untie: rounded up, one failed task of one was released, which on jobstat exams with no
+ * objective took 3 of the 7 tasks that untied in 180 (4 November), and released more than the half
+ * of the tasks with room that `AGENTS.md` allows. The rest is the contract's draw over every task neither list holds, those the
  * reference answered in every solve among them: such a task still teaches through the objective's
  * measure a practice pass returns. From 16 to 20 October the draw left them out, and so withheld
  * the tasks the objective left room on: after r3's third, fourth and fifth promotions 12, 18 and 22
@@ -741,7 +743,7 @@ export function releaseOrder(
     if (last === null || last === "aside" || last.reference === null) return undefined;
     return last[last.reference].some((valid) => !valid) || (last.room ?? 0) > 0 ? last.order : undefined;
   }).filter((version) => !unanswered.includes(version));
-  const first = among([...unanswered, ...failed.slice(0, Math.ceil(failed.length / 2))]);
+  const first = among([...unanswered, ...failed.slice(0, Math.floor(failed.length / 2))]);
   const rest = pool.filter((version) => !first.includes(version) && !failed.includes(version));
   const chosen = [
     ...first.slice(0, count),

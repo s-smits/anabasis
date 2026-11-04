@@ -17,7 +17,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { draftCommand } from "../tools/d1b/draft.ts";
-import { campaignLog } from "../tools/d2/campaign.ts";
+import { campaignLog, openCampaign, packNamed } from "../tools/d2/campaign.ts";
 import { draftReading, stageExam } from "../tools/d2/exam.ts";
 import { packControls, readPack, sweepResources } from "../tools/m0/stored-sweep.ts";
 import { call, draftArgs, drafted, finish, NOTE, SOUND, seat, sweep } from "./helpers/examiner-seat.ts";
@@ -209,9 +209,9 @@ describe("a draft read without a model", () => {
   });
 
   it("finds no fault in a sound draft, and tells the faults of one whose check passes everything", async () => {
-    expect(await draftReading(join(root, "read"), SOUND, 2)).toEqual([]);
+    expect((await draftReading(join(root, "read"), SOUND, 2)).faults).toEqual([]);
     const lax = { ...SOUND, evaluator: `export const checks = { "check-product": () => true };\n` };
-    const faults = await draftReading(join(root, "read"), lax, 2);
+    const faults = (await draftReading(join(root, "read"), lax, 2)).faults;
     expect(faults).toHaveLength(5);
     for (const [index, facts] of [
       ["ex-001", "check-product", "reject control", "pass"],
@@ -228,7 +228,7 @@ describe("a draft read without a model", () => {
       evaluator: `export const checks = {\n  "check-product": (req) => req.artifact.answer === String(req.publicTask.publicInput.base * req.hidden.factor),\n};\n`,
       tasks: SOUND.tasks.map((task) => ({ ...task, hidden: { factor: 6 } })),
     };
-    expect(await draftReading(join(root, "read"), hidden, 2)).toEqual([]);
+    expect((await draftReading(join(root, "read"), hidden, 2)).faults).toEqual([]);
   });
 
   it("tells a check program that does not load as a fault", async () => {
@@ -237,7 +237,7 @@ describe("a draft read without a model", () => {
       evaluator: `export const checks = { "check-product": (req) => req.artifact.answer === ;\n`,
     };
     // Which control met it first is the pool's order.
-    const [fault, ...more] = await draftReading(join(root, "read"), broken, 2);
+    const [fault, ...more] = (await draftReading(join(root, "read"), broken, 2)).faults;
     expect(more).toEqual([]);
     for (const fact of ["ex-00", "check-product", "did not load", "Unexpected ;"]) {
       expect(fault).toContain(fact);
@@ -245,11 +245,14 @@ describe("a draft read without a model", () => {
   });
 
   it("tells a declared objective the program does not export, and a check it does not define", async () => {
-    expect(await draftReading(join(root, "read"), MEASURED, 2)).toEqual([]);
-    const unexported = await draftReading(join(root, "read"), { ...MEASURED, evaluator: SOUND.evaluator }, 2);
+    expect((await draftReading(join(root, "read"), MEASURED, 2)).faults).toEqual([]);
+    const unexported = (
+      await draftReading(join(root, "read"), { ...MEASURED, evaluator: SOUND.evaluator }, 2)
+    ).faults;
     expect(unexported.some((fault) => fault.includes("objective"))).toBe(true);
     const renamed = SOUND.evaluator.replace("check-product", "check-other");
-    const undefinedCheck = await draftReading(join(root, "read"), { ...SOUND, evaluator: renamed }, 2);
+    const undefinedCheck = (await draftReading(join(root, "read"), { ...SOUND, evaluator: renamed }, 2))
+      .faults;
     expect(undefinedCheck.length).toBeGreaterThan(0);
     expect(undefinedCheck.some((fault) => fault.includes("check-product"))).toBe(true);
   });
@@ -285,11 +288,15 @@ describe("a draft put to the host", () => {
 });
 
 /** A campaign opened from a prompt, with no exam yet, under the repository as a campaign is. */
-function opened(name: string): string[] {
+function opened(name: string, attended = false): string[] {
   campaigns.push(name);
   const log = campaignLog(name);
   mkdirSync(dirname(log), { recursive: true });
-  append(log, "campaign.opened", { prompt: "A fixture.", solver: { model: SOLVER, effort: "high" } });
+  append(log, "campaign.opened", {
+    prompt: "A fixture.",
+    solver: { model: SOLVER, effort: "high" },
+    attended,
+  });
   return ["--name", name, "--examiner", SOLVER, "--solver", SOLVER];
 }
 
@@ -316,7 +323,6 @@ describe("a campaign's drafts", () => {
     const events = read(log);
     expect(draftOf(events)).toBeNull();
     const plan = {
-      sessions: 1,
       patience: 3,
       unprepared: false,
       practice: null,
@@ -329,5 +335,25 @@ describe("a campaign's drafts", () => {
     };
     expect(decide(events, plan)).toMatchObject({ move: "end", ending: "exam" });
     expect(decide(events, plan).why).toContain("3 drafts in 2 sessions did not stand");
+  });
+
+  it("keeps the reading a draft stood on as the checker's, frozen as the campaign opens it unless under --hitl", async () => {
+    for (const attended of [false, true]) {
+      const name = `${STEM}-kept-${String(attended)}`;
+      await draftCommand([...opened(name, attended), "--session", "d-1"], putting(SOUND));
+      const events = read(campaignLog(name));
+      const readings = events.filter(({ kind }) => kind === "checker.read");
+      expect(readings).toHaveLength(1);
+      expect(readings[0]?.data).toMatchObject({ admitted: attended ? [] : ["check-product"], stored: 0 });
+      expect(readings[0]?.data.faults).toEqual(
+        attended ? [expect.stringContaining("--admit check-product")] : [],
+      );
+      const frozen = events.filter(({ kind }) => kind === "contract.frozen");
+      expect(frozen).toHaveLength(attended ? 0 : 1);
+      // The checker frozen is the one the campaign opens under: another would refuse to open.
+      const { checker } = await openCampaign(packNamed({ name }));
+      expect(readings[0]?.data).toMatchObject({ ...checker });
+      if (!attended) expect(frozen[0]?.data).toMatchObject({ ...checker });
+    }
   });
 });

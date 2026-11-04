@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
-import { tracedRuns, trajectoryOf } from "../src/kernel/atif.ts";
+import { trajectoryOf } from "../studies/shared/atif.ts";
 import { append, read } from "../src/kernel/log.ts";
 import { mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -117,11 +117,7 @@ describe("a trace as an ATIF trajectory", () => {
     });
   });
 
-  it("finds each seat's trace once, and reads no other seat's into a trajectory", () => {
-    expect(tracedRuns(events)).toEqual([
-      { seat: "solve", id: "s-1" },
-      { seat: "build", id: "b-1" },
-    ]);
+  it("reads no other seat's trace into a trajectory", () => {
     expect(trajectoryOf(events, "build", "b-1", AGENT).steps).toHaveLength(1);
   });
 });

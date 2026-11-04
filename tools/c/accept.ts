@@ -42,6 +42,7 @@
 import {
   AUTHOR,
   authoredFaults,
+  type Checker,
   doNothingFaults,
   frozenChecker,
   readChecker,
@@ -68,6 +69,67 @@ const OPTIONS = {
   freeze: { type: "boolean", default: false },
   despite: { type: "string" },
 } as const;
+
+/** A checker's reading, as `readChecker` makes it. */
+export type Reading = Awaited<ReturnType<typeof readChecker>>;
+
+/**
+ * Keep a reading of `checker` in the campaign's log (`checker.read`), with the checks the operator
+ * admitted, every check its author decides among them where `authored`, and its faults with those
+ * not admitted. With `freeze`, the operator's word, the checker is frozen (`contract.frozen`) where
+ * the reading holds no fault, or over its faults for the reason `despite` gives. This command and a
+ * draft that stands (`tools/d1b/draft.ts`) keep their readings so, the one record of both.
+ */
+export function keepReading(
+  log: string,
+  checker: Checker,
+  reading: Reading,
+  word: {
+    readonly stored: number;
+    readonly admitted: ReadonlySet<string>;
+    readonly authored: boolean;
+    readonly freeze: boolean;
+    readonly despite: string;
+  },
+): { readonly faults: readonly string[]; readonly frozen: boolean } {
+  const { runs, checks, historical, idle, unformed, rejected } = reading;
+  // A campaign without `--hitl` gives the operator's word for every check its author decides
+  // (the operator, 16 October), the objective among them, whatever the reading finds.
+  const admitted = new Set([
+    ...word.admitted,
+    ...(word.authored ? checks.flatMap(({ id, instrument }) => (instrument === AUTHOR ? [id] : [])) : []),
+  ]);
+  const faults = [...reading.faults, ...authoredFaults(checks, admitted)];
+  append(log, "checker.read", {
+    ...checker,
+    controls: runs.length,
+    stored: word.stored,
+    rows: checks.map((row) => ({ ...row, missing: [...row.missing] })),
+    historicalRows: historical.map((row) => ({ ...row, missing: [...row.missing] })),
+    doNothing:
+      unformed === null
+        ? {
+            answer: idle,
+            tasks: rejected.length,
+            rejected: rejected.length - doNothingFaults(rejected).length,
+          }
+        : { unformed },
+    admitted: [...admitted],
+    faults: [...faults],
+  });
+  const frozen = word.freeze && (faults.length === 0 || word.despite !== "");
+  // `openCampaign` has refused a checker the log froze otherwise, so one frozen here is this one.
+  // Frozen over faults, the word carries its reason: a fault is reported and never decided on,
+  // and a pack whose controls have gone stale is no reason to leave its checker unpinned.
+  if (frozen && frozenChecker(read(log)) === null) {
+    append(log, "contract.frozen", {
+      ...checker,
+      ...keysIf(faults.length > 0, () => ({ despite: word.despite, faults: faults.length })),
+      ...keyIfDefined("admitted", admitted.size > 0 ? [...admitted] : undefined),
+    });
+  }
+  return { faults, frozen };
+}
 
 /** `bun tools/c/accept.ts`: the reading, and with `--freeze` the operator's word. It returns the
  *  command's exit code: 1 where the reading holds a fault or a freeze was refused. */
@@ -106,16 +168,7 @@ export async function acceptCommand(args: readonly string[]): Promise<number> {
     console.log("no control was run: a check whose tool is missing decides nothing");
     return 1;
   }
-  const {
-    runs,
-    checks,
-    historical,
-    faults: seen,
-    notes,
-    idle,
-    unformed,
-    rejected,
-  } = await readChecker({
+  const reading = await readChecker({
     verify: campaign.verify,
     brief,
     contract,
@@ -125,29 +178,15 @@ export async function acceptCommand(args: readonly string[]): Promise<number> {
     found: toolOnPath(bundle),
     width: Number(values.jobs),
   });
-  // A campaign without `--hitl` gives the operator's word for every check its author decides
-  // (the operator, 16 October), the objective among them, whatever the reading finds.
-  if (values["admit-authored"]) {
-    for (const { id } of checks.filter(({ instrument }) => instrument === AUTHOR)) admitted.add(id);
-  }
-  const faults = [...seen, ...authoredFaults(checks, admitted)];
-  append(log, "checker.read", {
-    ...checker,
-    controls: runs.length,
+  const despite = values.despite?.trim() ?? "";
+  const { faults, frozen } = keepReading(log, checker, reading, {
     stored: stored.length,
-    rows: checks.map((row) => ({ ...row, missing: [...row.missing] })),
-    historicalRows: historical.map((row) => ({ ...row, missing: [...row.missing] })),
-    doNothing:
-      unformed === null
-        ? {
-            answer: idle,
-            tasks: rejected.length,
-            rejected: rejected.length - doNothingFaults(rejected).length,
-          }
-        : { unformed },
-    admitted: [...admitted],
-    faults: [...faults],
+    admitted,
+    authored: values["admit-authored"],
+    freeze: values.freeze,
+    despite,
   });
+  const { runs, checks, historical, idle, unformed, rejected } = reading;
   console.log(`${String(runs.length)} controls twice, ${String(stored.length)} stored verdicts`);
   if (unformed === null) {
     console.log(
@@ -166,26 +205,15 @@ export async function acceptCommand(args: readonly string[]): Promise<number> {
     }
   }
   for (const fault of faults) console.log(`fault: ${fault}`);
-  for (const note of notes) console.log(`note: ${note}`);
+  for (const note of reading.notes) console.log(`note: ${note}`);
   console.log(faults.length === 0 ? "no fault" : `${String(faults.length)} faults`);
-  const despite = values.despite?.trim() ?? "";
-  if (values.freeze && faults.length > 0 && despite === "") {
+  if (values.freeze && !frozen) {
     console.log(
       "not frozen: the reading holds a fault. It is yours to freeze all the same: say why with --despite",
     );
     return 1;
   }
-  if (values.freeze) {
-    // `openCampaign` has refused a checker the log froze otherwise, so one frozen here is this one.
-    // Frozen over faults, the word carries its reason: a fault is reported and never decided on,
-    // and a pack whose controls have gone stale is no reason to leave its checker unpinned.
-    if (frozenChecker(read(log)) === null) {
-      append(log, "contract.frozen", {
-        ...checker,
-        ...keysIf(faults.length > 0, () => ({ despite, faults: faults.length })),
-        ...keyIfDefined("admitted", admitted.size > 0 ? [...admitted] : undefined),
-      });
-    }
+  if (frozen) {
     console.log(
       `frozen${faults.length > 0 ? ` despite ${plural(faults.length, "fault")}` : ""}: contract ${checker.contract}, check program ${checker.checks}`,
     );

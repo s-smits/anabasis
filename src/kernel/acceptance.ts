@@ -100,7 +100,7 @@ interface Acceptance {
 }
 
 /** A checker by what it is: its contract's hash, and the digest of its program's files. */
-interface Checker {
+export interface Checker {
   readonly contract: string;
   readonly checks: string;
 }

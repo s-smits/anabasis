@@ -165,8 +165,8 @@ function Readouts({ reading }: { reading: CampaignReading }) {
 
 /** What stands in the chart's place before a first comparison: the tasks there are to compare. */
 function NoComparison({ reading }: { reading: CampaignReading }) {
-  const { supply, terms } = reading;
-  const target = terms.target === undefined ? "" : ` A comparison scores ${terms.target}.`;
+  const { supply } = reading;
+  const target = reading.target === null ? "" : ` A comparison scores ${String(reading.target)}.`;
   const waiting = supply.awaiting === 0 ? "" : `, ${String(supply.awaiting)} waiting for a label`;
   return (
     <NoSignal title="No comparison yet">

@@ -23,7 +23,6 @@ import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
 import { short } from "./move.ts";
 import type { Called } from "./names.ts";
-import { openingOf } from "./opening.ts";
 
 /**
  * What an epoch's promotion attempts risk together: a false promotion among them, estimated (the
@@ -78,15 +77,15 @@ export interface Epoch {
 
 const PROMOTED = "harness.promoted";
 
-/** The bar a promotion's cost is read against (the plan's W), a term of the opening the operator
- *  may set (`TERMS`): the promotion attempts of an epoch after set-up, comparisons against its
+/** The bar a promotion's cost is read against (the plan's W): the promotion attempts of an epoch after set-up, comparisons against its
  *  reference, which are what the false-promotion estimate counts, so the bar does not move with the
  *  solver's price. A session the provider cut finished nothing and is no attempt. Dollars are
  *  reported beside it, and it decides no admission (12 October). The effect and transfer bars it stood
  *  beside until 13 October went: each read a set that changed with every reading. The ladder that
  *  took their place, a fixed set read after every promotion, went on 16 October: the first
- *  promotion's reference answered it whole. The climb is read as promotions. */
-const BARS = { cost: 3 } as const;
+ *  promotion's reference answered it whole. The climb is read as promotions. Until 5 November an
+ *  opening could name another (`--cost`), and none of 310 logs did. */
+export const BARS = { cost: 3 } as const;
 
 /** A step's worth against the bar (`worthOf`, `promotionsWorth`). */
 export interface Worth {
@@ -303,16 +302,6 @@ export function riskLines(events: readonly LogEvent[]): string[] {
   ];
 }
 
-/** The bars as the opening sets them, and the plan's where it names none (`BARS`). */
-export function barsOf(events: readonly LogEvent[]): Worth["bars"] {
-  const terms = openingOf(events)?.terms;
-  const bar = (name: keyof typeof BARS) => {
-    const set = Number(terms?.[name]);
-    return Number.isFinite(set) ? set : BARS[name];
-  };
-  return { cost: bar("cost") };
-}
-
 /** An epoch's cost against the cost bar (`Worth`), with `pending` attempts the log holds no
  *  report of yet. */
 function costOf(
@@ -332,18 +321,16 @@ function costOf(
  *  read again says what it said. Until 19 October a repeat was its first stage's attempt. */
 export function worthOf(events: readonly LogEvent[], id: string): Worth {
   const before = events.filter(({ kind, data }) => kind !== "comparison.reported" || data.session !== id);
-  const bars = barsOf(before);
-  return { bars, cost: costOf(before, epochsOf(before).at(-1), bars.cost, 1) };
+  return { bars: BARS, cost: costOf(before, epochsOf(before).at(-1), BARS.cost, 1) };
 }
 
 /** Each promoted harness's worth (the plan's W): the cost of the epoch it ended. */
 export function promotionsWorth(events: readonly LogEvent[]): ReadonlyMap<string, Worth> {
-  const bars = barsOf(events);
   return new Map(
     epochsOf(events).flatMap((epoch) =>
       epoch.promoted === null
         ? []
-        : [[epoch.promoted, { bars, cost: costOf(events, epoch, bars.cost) }] as const],
+        : [[epoch.promoted, { bars: BARS, cost: costOf(events, epoch, BARS.cost) }] as const],
     ),
   );
 }

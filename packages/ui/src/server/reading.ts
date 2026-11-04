@@ -24,7 +24,7 @@
  * report's own `p` is one-sided.
  */
 import { type Decided, decidedLine, type Ending } from "../../../../src/campaign/move.ts";
-import { barsOf } from "../../../../src/campaign/climb.ts";
+import { BARS } from "../../../../src/campaign/climb.ts";
 import { openSteps } from "../../../../src/campaign/handover.ts";
 import { reported } from "../../../../src/campaign/comparison.ts";
 import { namesOf } from "../../../../src/campaign/names.ts";
@@ -159,14 +159,20 @@ function nextShown(decided: Decided, tier: Tier): NextMove {
   return { ...shown, line: decidedLine(shown) };
 }
 
-/** Who solves: the setting's solver (`recordedSetting`), else the opening's; and why the setting
- *  could not be read, where it could not. */
+/** Who solves: the setting's solver (`recordedSetting`), else the opening's; the tasks a comparison
+ *  scores, which only the setting records; and why the setting could not be read, where it could not. */
 const solverIn = once((log) => {
   try {
-    return { solver: recordedSetting(log.events)?.solver ?? openingIn(log)?.solver ?? null, issue: null };
+    const setting = recordedSetting(log.events);
+    return {
+      solver: setting?.solver ?? openingIn(log)?.solver ?? null,
+      target: setting?.target ?? null,
+      issue: null,
+    };
   } catch (error) {
     return {
       solver: openingIn(log)?.solver ?? null,
+      target: null,
       issue: `the setting does not read: ${errorMessage(error)}`,
     };
   }
@@ -190,7 +196,7 @@ const coreIn = once((log) => {
     prompt: openingIn(log)?.prompt ?? null,
     terms: openingIn(log)?.terms ?? {},
     attended: openingIn(log)?.attended ?? false,
-    bars: barsOf(log.events),
+    bars: BARS,
     supply: campaign.supply,
     reference: campaign.reference,
     starter: starterIn(log),
@@ -248,6 +254,7 @@ export function campaignReading(
       reviewer: opening?.seats.reviewer ?? null,
       solver: solver.solver,
     },
+    target: solver.target,
     nextMove: decided === null ? null : nextShown(decided, tier),
   };
 }

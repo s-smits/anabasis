@@ -70,8 +70,9 @@ const ROWS: readonly {
   // Comparison admission would refuse the next comparison for want of tasks: they are written first, since a
   // changed harness can only tie again on tasks the reference closed.
   { code: "short", move: wanting },
-  // Something no comparison has read is compared before a Builder session is paid for.
-  { code: "unread", move: unread },
+  // Tasks held out since the last reading are read before a Builder session is paid for: the
+  // starter comparison a promotion owes, or a waiting harness whose last reading left no room.
+  { code: "unread", move: heldSince },
   // Nothing new to read, and room to gain: the Builder builds.
   {
     code: "build",
@@ -518,10 +519,6 @@ function wanting(ground: Ground): Move | null {
   );
 }
 
-function unread(ground: Ground): Move | null {
-  return heldSince(ground) ?? leftBySessions(ground);
-}
-
 /**
  * A comparison that draws the tasks held out since the last reading first, before anything is built.
  * After a promotion a starter comparison is owed until one tallies a task in the epoch,
@@ -557,32 +554,11 @@ function heldSince(ground: Ground): Move | null {
   return left === null ? null : compare(`comparison ${read.id} ${left}, ${later}`);
 }
 
-/** The whole Builder sessions since the last comparison began, and how many a comparison follows:
- *  one until set-up stands (epoch 0, the first promotion over the starter), since a session's
- *  worth is enough to read against the empty Starter, and the plan's after. */
-function sessionsRun({ events, plan, all, reference, starter }: Ground) {
-  const after = all.at(-1)?.at ?? -1;
-  const run = events.filter(
-    (event, at) => event.kind === "build.finished" && at > after && !cutShort(event),
-  ).length;
-  return { run, needed: reference === starter ? 1 : plan.sessions };
-}
-
-/** A comparison of a harness no comparison has read with the reference, once its sessions have run. */
-function leftBySessions(ground: Ground): Move | null {
-  const { all, waiting, read } = ground;
-  if (waiting === null || read !== null) return null;
-  // Under a setting no comparison has run in yet, the harness is read there at once.
-  if (all.length === 0) {
-    return compare(`harness ${short(waiting)} has not been compared under the campaign's setting`);
-  }
-  const { run, needed } = sessionsRun(ground);
-  return run < needed
-    ? null
-    : compare(`${plural(run, "Builder session")} since the last comparison left harness ${short(waiting)}`);
-}
-
-/** Why the Builder builds: what the pair's last reading left, or what is still to run. */
+/** Why the Builder builds: what the pair's last reading left, or what waits for a comparison. Until
+ *  5 November a harness no comparison had read was compared once the Builder sessions the opening
+ *  named had run (`--sessions`, 2): every build of the 108 paid campaigns opened from 28 October
+ *  was a Builder's own conversation, which asks for `compare` itself, and the count named the
+ *  move 3 times in all of them. */
 function buildsOn(ground: Ground): string {
   const { read, waiting, reference } = ground;
   if (read?.starterComparison === true) {
@@ -592,8 +568,7 @@ function buildsOn(ground: Ground): string {
     return `comparison ${read.id} read no step with room to gain: harness ${short(read.fresh)} did not help`;
   }
   if (waiting === null) return "no session has left a harness that is not the reference harness";
-  const { run, needed } = sessionsRun(ground);
-  return `${String(run)} of ${plural(needed, "Builder session")} before the next comparison have run`;
+  return `no comparison has read harness ${short(waiting)}: the Builder compares it when it chooses`;
 }
 
 /**

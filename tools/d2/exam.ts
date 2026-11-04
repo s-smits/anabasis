@@ -10,14 +10,16 @@
  * Every check of a staged exam declares its author's own computation as its evidence and names no
  * tool. Nothing installs an engine of the field for a drafted exam, so no check can run one, and
  * the acceptance reading names each check's instrument `author` and lists it as a fault until the
- * operator admits it by name (`tools/c/accept.ts`). A check reads the whole answer and the whole public input: the paths a
+ * operator admits it: by name (`tools/c/accept.ts --admit`), or all at once by a launch without
+ * `--hitl`, which the reading of a draft that stands records (`tools/d1b/draft.ts`). A check reads the whole answer and the whole public input: the paths a
  * v1 check declared kept a tool's operands inside what the check could read, and these checks
  * run no tool.
  */
 import { type Draft, draftOf } from "#src/examiner/draft.ts";
-import { readChecker } from "#src/kernel/acceptance.ts";
+import { type Checker, readChecker } from "#src/kernel/acceptance.ts";
+import { contractHash } from "#src/kernel/contract.ts";
 import { read } from "#src/kernel/log.ts";
-import { CHECK_PROGRAM_CONTRACT, openVerifier, readBrief } from "#src/kernel/verify.ts";
+import { CHECK_PROGRAM_CONTRACT, checkProgramVersion, openVerifier, readBrief } from "#src/kernel/verify.ts";
 import { EVALUATOR_FILE } from "#src/meta/bundle-layout.ts";
 import { existsSync, mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
@@ -25,6 +27,7 @@ import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
+import type { Reading } from "../c/accept.ts";
 import { checkProgram, contractOf, packControls, readPack, toolOnPath } from "../m0/stored-sweep.ts";
 
 /** A draft as a pack on disk. */
@@ -119,29 +122,37 @@ export function stageExam(dir: string, draft: Draft): Staged {
 
 /**
  * What the host reads of a draft whose shape holds, one sentence a fault: the acceptance reading
- * every checker is held to, less the faults that are the operator's to admit. A check program that
- * does not load or a wall that is not there stops a verifier, and here that is told as a fault
- * too: the draft's author is in the session and can mend the first. The session reads the draft's
- * shape before it calls this (`draftFaults`), and the reading's notes are left out: until
- * 4 November they rode on the reply that ends the session, and none of 250 results on record
- * carried them to a model.
+ * every checker is held to, less the faults that are the operator's to admit, with the checker
+ * read and the whole reading, which a draft that stands keeps as the campaign's (`draft.ts`). A
+ * check program that does not load or a wall that is not there stops a verifier, and here that is
+ * told as a fault too: the draft's author is in the session and can mend the first. The session
+ * reads the draft's shape before it calls this (`draftFaults`), and the reading's notes are left
+ * out: until 4 November they rode on the reply that ends the session, and none of 250 results on
+ * record carried them to a model.
  */
-export async function draftReading(dir: string, draft: Draft, width: number): Promise<readonly string[]> {
+export async function draftReading(
+  dir: string,
+  draft: Draft,
+  width: number,
+): Promise<{ readonly faults: readonly string[]; readonly read?: { checker: Checker; reading: Reading } }> {
   try {
     const { bundle, checks } = stageExam(dir, draft);
     const pack = readPack(bundle);
-    const { faults } = await readChecker({
+    const contract = contractOf(pack.brief, draft.answerFormat);
+    const reading = await readChecker({
       verify: openVerifier({ checks, tools: join(bundle, ".toolchain") }),
       brief: readBrief(checks),
-      contract: contractOf(pack.brief, draft.answerFormat),
+      contract,
       tasks: pack.tasks,
       controls: packControls(bundle),
       stored: [],
       found: toolOnPath(bundle),
       width,
     });
-    return faults;
+    // The checker as a campaign opens it (`openCampaign`), so that one frozen here is the one it runs.
+    const checker = { contract: contractHash(contract), checks: hashJsonValue(checkProgramVersion(checks)) };
+    return { faults: reading.faults, read: { checker, reading } };
   } catch (error) {
-    return [`the check program could not be put to its controls: ${errorMessage(error)}`];
+    return { faults: [`the check program could not be put to its controls: ${errorMessage(error)}`] };
   }
 }

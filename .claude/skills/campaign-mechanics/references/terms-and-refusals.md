@@ -6,10 +6,14 @@ of `AGENTS.md` section 6; the commands are in `campaign-command.md`.
 ### What the log records of a campaign's conditions
 
 **The opening** (`campaign.opened`) keeps what the campaign runs by, so its command can continue by
-name alone: the project, the total and the reserve, the full limit of a solve, the Builder sessions
-before the table advises a comparison (`--sessions`, 2), improvement and supply patience
+name alone: the project, the total and the reserve, improvement and supply patience
 (`--patience`, 6 each), who sits in each seat, and the terms of its moves as a command last named
-them (`TERMS`, `src/campaign/opening.ts`). An unspecified term uses its default. Later invocations
+them (`TERMS`, `src/campaign/opening.ts`): the level, a Builder conversation's minutes and turns,
+the practice tasks, the tasks an Examiner session is asked for and the cap of promotions. Until
+5 November it also kept a solve's model turns, three copies of the setting's facts, the Builder
+sessions before the table advised a comparison (`--sessions`), and six terms no log named
+(`--defects`, `--practice-solves`, `--exam-proposals`, `--exam-minutes`, `--exam-turns`,
+`--cost`); an older opening's are read past, and each move runs by its own default. An unspecified term uses its default. Later invocations
 inherit recorded terms unless an explicit override records a replacement. These terms are the
 operator's conditions.
 
@@ -18,8 +22,9 @@ The opening requires one. Later invocations inherit it and cannot substitute ano
 (`projectOf`, `tools/d2/campaign.ts`). It organises the operator's page without affecting
 campaign decisions or seat messages. Campaigns run only through commands 0–7 have no project.
 
-**The setting** (`campaign.setting`, `tools/d2/setting.ts`) is recorded once, by the first command
-that begins a comparison or a Builder session, and never changes. The first command records what it
+**The setting** (`campaign.setting`, `tools/d2/setting.ts`) is recorded once, as the campaign
+command's first run that is no dry run starts (`settingOf`, `tools/d2/harness-builder.ts`), or by
+the first hand command that begins a comparison or a session, and never changes. The first command records what it
 names and the defaults for the rest: who solves and under which limits (`--solver`,
 `--solver-effort`, `--solver-window`, `--solve-minutes`, `--solve-model-turns`), the held-out
 tasks a comparison draws (`--target`) and the solves a side (`--solves`). A command whose flag names
@@ -88,12 +93,15 @@ bun run runs fresh | launch | continue | keep | pause | copy | fetch | retire | 
 - an objective gap floor of 1% of the larger measure (`ROOM`), a constant: two valid answers closer
   than it tie, and a better answer on record by less leaves a task no room, in task admission, on
   the frontier and in `roomOf`;
-- a stop after more than 3 tasks with a check defect (`--defects`);
+- a stop after more than 3 tasks with a check defect (`--defects` of a hand comparison; the
+  campaign command names none);
 - a reserve of 3 dollars a solve (`--reserve`), above the most an Opus solve billed under the
   default limits (2.83); for longer solves or a small campaign, set it near what one solve of that
   solver bills (`solve.finished.billed` in an earlier log);
 - `--parent latest` and `--reference promoted` (the starter until a promotion);
-- a Builder session of 1,440 minutes of its own time, 300 session turns and 24 practice solves; a
+- a Builder session of 1,440 minutes of its own time, 300 session turns and 24 practice solves
+  (`--practice-solves` of a hand session); an Examiner session of 240 minutes, 200 turns and 36
+  proposals (`tools/d1b/examine.ts`); a
   Builder that leads its campaign has only as many as the remaining total holds a reserve for
   (`practiceLeft`, `src/builder/tools.ts`);
 - a solve of 20 model turns, 30 minutes and 24 prompts, whoever solves (`LIMITS`,

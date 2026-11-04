@@ -9,7 +9,7 @@
 import { shortOf } from "#src/campaign/decide.ts";
 import { cutShort, type Plan } from "#src/campaign/ground.ts";
 import type { Decided } from "#src/campaign/move.ts";
-import { type Opening, openingOf, planOf, SEATS, SESSIONS, type Seat, TERMS } from "#src/campaign/opening.ts";
+import { type Opening, openingOf, planOf, SEATS, type Seat, TERMS } from "#src/campaign/opening.ts";
 import type { Word } from "#src/campaign/word.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import type { Session } from "#src/examiner/session.ts";
@@ -26,7 +26,7 @@ import { projectOf } from "./campaign.ts";
 import type { Host } from "./host.ts";
 import { PRACTICE } from "./prepare.ts";
 import { type Campaign, COMPARISON_OPTIONS, capRead, SESSION_OPTIONS, type Seated, solved } from "./round.ts";
-import { recordedSetting, SETTING_OPTIONS } from "./setting.ts";
+import { SETTING_OPTIONS } from "./setting.ts";
 
 /** Who sits in a campaign's model seats: a session's and a comparison's, and an Examiner's. */
 export interface Seats {
@@ -66,7 +66,6 @@ const OPTIONS = {
   "prompt-file": { type: "string" },
   budget: { type: "string" },
   reserve: { type: "string" },
-  sessions: { type: "string" },
   patience: { type: "string" },
   builder: SESSION_OPTIONS.builder,
   "builder-effort": { type: "string" },
@@ -79,22 +78,16 @@ const OPTIONS = {
   "solver-window": SETTING_OPTIONS["solver-window"],
   "solve-minutes": SETTING_OPTIONS["solve-minutes"],
   "solve-model-turns": SETTING_OPTIONS["solve-model-turns"],
-  // With no default of their own: one no command has named is the comparison's to default, and
-  // one a command named is the opening's to keep (`TERMS`).
   target: COMPARISON_OPTIONS.target,
   solves: SETTING_OPTIONS.solves,
+  // With no default of their own: one no command has named is its move's to default, and one a
+  // command named is the opening's to keep (`TERMS`).
   level: { type: "string" },
-  defects: { type: "string" },
   minutes: { type: "string" },
   turns: { type: "string" },
-  "practice-solves": { type: "string" },
   practice: { type: "string" },
   admit: { type: "string" },
   "exam-tasks": { type: "string" },
-  "exam-proposals": { type: "string" },
-  "exam-minutes": { type: "string" },
-  "exam-turns": { type: "string" },
-  cost: { type: "string" },
   promotions: { type: "string" },
   moves: { type: "string" },
   handover: { type: "string" },
@@ -104,11 +97,11 @@ const OPTIONS = {
   "past-stop": COMPARISON_OPTIONS["past-stop"],
 } as const;
 /** What a campaign runs by where neither a flag nor its record says: the reserve of one solve in
- *  dollars, the Builder sessions before a comparison, and a seat's effort. The reserve was 10 until
+ *  dollars and a seat's effort. The reserve was 10 until
  *  3 November, when 44,573 Opus solves under the 20-turn, 30-minute limits had billed at most $2.83
  *  (p99 $0.64), and an $800 campaign's every comparison told its Builder that the cap would cut its
  *  96 solves short at 80. */
-const DEFAULTS = { reserve: COMPARISON_OPTIONS.reserve.default, sessions: SESSIONS, effort: "high" } as const;
+const DEFAULTS = { reserve: COMPARISON_OPTIONS.reserve.default, effort: "high" } as const;
 /**
  * Every flag of the campaign command with what it does: the one list of them, printed by
  * `--help` (`flagsHelp`). Typed by `OPTIONS`, so no flag is added without its line. A term the
@@ -126,7 +119,6 @@ const EXPLAINED: Readonly<Record<keyof typeof OPTIONS, string>> = {
   "prompt-file": "the operator's prompt, read from a file (see --prompt)",
   budget: "the campaign's total in dollars; each move's cap is what is left of it",
   reserve: `what one solve is held at, in dollars; the campaign ends when less is left (${DEFAULTS.reserve})`,
-  sessions: `Builder sessions the table counts before it advises a comparison (${String(SESSIONS)})`,
   patience: `improvement patience (moves without a gain) and supply patience (readings without room) (${String(PATIENCE)})`,
   builder: "the Builder's model",
   "builder-effort": "the Builder's effort",
@@ -142,17 +134,11 @@ const EXPLAINED: Readonly<Record<keyof typeof OPTIONS, string>> = {
   target: "frontier tasks a comparison scores (setting; 24)",
   solves: "solves a side of each scored task (setting; 2)",
   level: "the step test's level: one reading at or under it promotes (0.02)",
-  defects: "tasks with a check defect before a comparison stops (3)",
   minutes: "a Builder conversation's deadline in minutes of its own time (1440)",
   turns: "a Builder conversation's session turn limit (300)",
-  "practice-solves": "practice solves a Builder session may make (24)",
   practice: "practice tasks released after each reading or promotion, at most half of what is held",
   admit: "checks admitted by name, under --hitl",
   "exam-tasks": "tasks an Examiner session is asked for; unnamed, what the campaign is short of",
-  "exam-proposals": "instances an Examiner session may put to task admission (36)",
-  "exam-minutes": "an Examiner session's deadline in minutes (240)",
-  "exam-turns": "an Examiner session's turn limit (200)",
-  cost: "reported target for promotion attempts per epoch after set-up; limits nothing (3)",
   promotions: "the promotions after which the campaign ends on the operator's word; none to lift it (none)",
   moves: "the most campaign moves this run makes",
   handover: "a directory, outside the repository, to write what the campaign hands over at its end",
@@ -228,12 +214,6 @@ export function opened(
       "name --budget, the dollars this campaign may bill in all: each move is held to what is left of it, and the campaign ends where less is left than one solve is held at",
     );
   }
-  const turns = values["solve-model-turns"];
-  // An opening's null is a limit nobody named, and it stands. Read past it to the setting, a
-  // campaign run on by its name would write another opening once its first session recorded the
-  // default limit (19 October).
-  const unnamed = was === null ? (recordedSetting(events)?.modelTurns ?? null) : was.limit;
-  const limit = turns === undefined ? unnamed : Number(turns);
   /** A seat as this command names it, and as the record holds it where it names none. */
   const seat = (name: (typeof SEATS)[number]): Seat | null => {
     const [model, effort] = [values[name], values[`${name}-effort`]];
@@ -269,8 +249,6 @@ export function opened(
   const dollars = told ?? (was?.budget == null ? undefined : String(was.budget.dollars));
   const named: Omit<Opening, "project"> = {
     budget: dollars === undefined ? null : capRead(dollars, reserve),
-    limit,
-    sessions: values.sessions === undefined ? (was?.sessions ?? DEFAULTS.sessions) : Number(values.sessions),
     patience: values.patience === undefined ? (was?.patience ?? PATIENCE) : Number(values.patience),
     seats: { builder: seat("builder"), examiner: seat("examiner"), reviewer: seat("reviewer") },
     attended: values.hitl ?? was?.attended ?? false,
@@ -293,7 +271,6 @@ export function opened(
   if (seats === "paid" && named.seats.reviewer === null) {
     throw new Error("name --reviewer: a paid campaign needs a Referee to rule its rejections");
   }
-  counted(named.sessions, `--sessions ${String(values.sessions)}: the Builder sessions before a comparison`);
   counted(
     named.patience,
     `--patience ${String(values.patience)}: the moves without a gain the campaign bears in a row`,
@@ -306,8 +283,6 @@ export function opened(
   const record: JsonObject = {
     project,
     budget: named.budget === null ? null : { ...named.budget },
-    limit: named.limit,
-    sessions: named.sessions,
     patience: named.patience,
     seats: Object.fromEntries(
       SEATS.map((each) => [each, named.seats[each] === null ? null : { ...named.seats[each] }]),
@@ -352,8 +327,8 @@ export function examTasks({ events, plan }: Turn): string | undefined {
  * on a log from before 3 November sessions its host made. Any other move, the host's own among them, is
  * progress. A run of the command after an ending
  * starts the count afresh, as Codex audits a resumed goal afresh. A conversation the provider
- * crashed or a stop killed chose nothing and is left out, as the table leaves it out of the
- * sessions run (`sessionsRun`): until 15 October finished, crashed, finished counted three. So is
+ * crashed or a stop killed chose nothing and is left out: until 15 October finished, crashed,
+ * finished counted three. So is
  * a session of any seat that moved nothing (`cutShort`), and one the host refused before it began.
  * Since 16 October an Examiner session opens beside each conversation the table names one for, and
  * one that crashed, or was refused, every time kept two rehearsed campaigns going past 40 moves.
@@ -416,33 +391,13 @@ export function packOf({ root, sweep, cycle, bundle, name }: Values): string[] {
   ];
 }
 
-/** The flags a move that solves shares with every other: the setting, where the log records none
- *  yet, since the first command that begins names it and it is the log's from then on; the cap,
- *  which is what is left of the campaign's total; the reviewers; and the word past the stop rule. */
-export function sharedOf({ events, plan, opening, values, seats }: Turn) {
+/** The flags a move that solves shares with every other: the cap, which is what is left of the
+ *  campaign's total; the reviewers; and the word past the stop rule. The setting is the log's
+ *  record from the campaign's start (`startSetting`), so no move is given it as flags: until
+ *  5 November each was, where none was recorded yet. */
+export function sharedOf({ plan, opening, values, seats }: Turn) {
   const reviewer = seats.unreviewed === true ? null : opening.seats.reviewer;
   return {
-    // What no flag names, the opening names where it holds it: the solver of a campaign from a
-    // prompt and the full limit, so that a command run again with its name alone records the
-    // setting the campaign was opened with.
-    setting:
-      recordedSetting(events) === null
-        ? [
-            ...flag("solver", values.solver ?? opening.solver?.model),
-            ...flag("solver-effort", values["solver-effort"] ?? opening.solver?.effort),
-            ...flag("solver-window", values["solver-window"]),
-            ...flag("solve-minutes", values["solve-minutes"]),
-            ...flag(
-              "solve-model-turns",
-              values["solve-model-turns"] ?? (opening.limit === null ? undefined : String(opening.limit)),
-            ),
-            // The scored tasks are the setting's too, and a Builder session records it as readily
-            // as a comparison: t-2 (10 October) opened with --target 6, its first session recorded
-            // the default, and its comparisons then scored by the record.
-            ...flag("target", values.target),
-            ...flag("solves", values.solves),
-          ]
-        : [],
     cap:
       plan.left == null
         ? []
@@ -454,16 +409,14 @@ export function sharedOf({ events, plan, opening, values, seats }: Turn) {
 
 /** How the campaign runs Examiner session `session`: its flags, for `draft.ts` where it drafts the
  *  exam and `examine.ts` where it writes tasks, and the count of tasks a writing session is asked
- *  for. Each session is given the campaign's setting before one is recorded, for the budget it
- *  is told and, in a writing session, for the solves it asks of the reference harness
- *  (`try_reference`), which run under it and record it. */
+ *  for. Each session reads the campaign's setting from the log, where the campaign command
+ *  records it as it starts (`startSetting`, `harness-builder.ts`), and runs by its own defaults. */
 export function examinerRun(turn: Turn, session: string, kind: "draft" | "write") {
   const { opening, values, seats } = turn;
   const { examiner } = opening.seats;
   if (seats.seated === solved && examiner === null) {
     throw new Error("name --examiner: the campaign needs an Examiner session");
   }
-  const { setting } = sharedOf(turn);
   const seat = [
     "--session",
     session,
@@ -476,16 +429,8 @@ export function examinerRun(turn: Turn, session: string, kind: "draft" | "write"
   return {
     args:
       kind === "draft"
-        ? [...flag("name", values.name), ...seat, ...setting]
-        : [
-            ...packOf(values),
-            ...seat,
-            ...setting,
-            ...flag("tasks", tasks),
-            ...flag("proposals", values["exam-proposals"]),
-            ...flag("minutes", values["exam-minutes"]),
-            ...flag("turns", values["exam-turns"]),
-          ],
+        ? [...flag("name", values.name), ...seat]
+        : [...packOf(values), ...seat, ...flag("tasks", tasks)],
     tasks,
   };
 }
@@ -494,7 +439,7 @@ export function examinerRun(turn: Turn, session: string, kind: "draft" | "write"
  *  under its id and its own terms. */
 export function comparisonOf(decided: Extract<Decided, { move: "compare" }>, turn: Turn) {
   const { events, values } = turn;
-  const { setting, cap, reviewer, pastStop } = sharedOf(turn);
+  const { cap, reviewer, pastStop } = sharedOf(turn);
   const session = decided.id ?? nextId(events, "g");
   const terms =
     decided.id === undefined ? [...flag("level", values.level), ...cap] : termsOf(events, decided.id);
@@ -502,7 +447,6 @@ export function comparisonOf(decided: Extract<Decided, { move: "compare" }>, tur
     session,
     args: [
       ...packOf(values),
-      ...setting,
       "--id",
       session,
       "--new",
@@ -510,7 +454,6 @@ export function comparisonOf(decided: Extract<Decided, { move: "compare" }>, tur
       "--reference",
       decided.reference,
       ...terms,
-      ...flag("defects", values.defects),
       ...reviewer,
       ...pastStop,
     ],

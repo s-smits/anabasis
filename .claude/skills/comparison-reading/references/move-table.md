@@ -9,8 +9,9 @@ table in `AGENTS.md` section 7.
 evaluates the ten `ROWS` in order and returns the first applicable move with its rule code:
 
 1. `stop`: a stop the operator left ends the campaign.
-2. `exam`: the exam does not stand: it is drafted where the campaign opened from a prompt, read where
-   nobody has read its checker, and the campaign ends where a fault stands that nobody froze or
+2. `exam`: the exam does not stand: it is drafted where the campaign opened from a prompt (a draft
+   that stands keeps its own reading), read where nobody has read its checker or the operator admits
+   a check the last reading did not, and the campaign ends where a fault stands that nobody froze or
    admitted.
 3. `bound`: a bound is spent: the budget, the provider (`crashedRun`, section 6), the stop rule, or a
    comparison stopped on check defects or cut by its cap.
@@ -28,9 +29,10 @@ evaluates the ten `ROWS` in order and returns the first applicable move with its
 8. `short`: comparison admission would refuse for lack of tasks (`refusals`,
    `src/campaign/admission.ts`), or the pair's last comparison tallied none, so tasks come first: a
    changed harness can only tie again on tasks the reference closed.
-9. `unread`: something no comparison has read is compared: a harness whose sessions have run, and
-   tasks held out since the last reading (`programs-of:` remains a harness name for an audit by
-   hand). After a promotion, until one has tallied a task in the epoch, a **starter comparison**
+9. `unread`: tasks held out since the last reading are compared (`heldSince`; `programs-of:`
+   remains a harness name for an audit by hand). A harness no comparison has read waits for the
+   Builder's own `compare`: until 5 November it was compared once the opening's Builder sessions
+   (`--sessions`, 2) had run, 3 times in the 108 paid campaigns opened from 28 October. After a promotion, until one has tallied a task in the epoch, a **starter comparison**
    reads those tasks, whatever harness waits. It draws as every comparison does, those
    tasks first and then older ones, so that the promotion it confirms is read beyond the tasks
    written above the new reference's grade. A waiting harness is read again on new

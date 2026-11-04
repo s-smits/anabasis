@@ -48,8 +48,7 @@
  */
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import { examine, type Session } from "#src/examiner/session.ts";
-import { openingOf } from "#src/campaign/opening.ts";
-import { type LogEvent, read } from "#src/kernel/log.ts";
+import { read } from "#src/kernel/log.ts";
 import { taskSets, taskStates } from "#src/kernel/task.ts";
 import { readBrief } from "#src/kernel/verify.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
@@ -85,7 +84,7 @@ const EXAMINE_OPTIONS = {
   minutes: { type: "string", default: "240" },
   turns: { type: "string", default: "200" },
   /** The campaign's setting, as every command that solves takes it: the campaign it opens, and the
-   *  budget fact the Examiner is told where no setting is on record yet. `--tasks` is this command's
+   *  budget the Examiner is told where no setting is on record, as by hand. `--tasks` is this command's
    *  own, so the scored set is named by `--target` alone. */
   ...SETTING_OPTIONS,
   target: { type: "string" },
@@ -114,28 +113,6 @@ async function probing(campaign: Campaign, seated: Seated, setting: AskedSetting
         ending: { outcome: "non-result", kind: "killed", reason: errorMessage(error) },
       } as const;
     });
-  };
-}
-
-/** The budget every solve is held to now: the recorded setting's turns and minutes, or before a
- *  setting is recorded the opening's full limit and the deadline the command names (`--solve-minutes`,
- *  which the campaign command gives from the campaign's terms), and the campaign's default deadline
- *  where nothing names one. Until 11 October the minutes were the default deadline whatever the setting
- *  or the terms said: the buffer sessions of that day were told 120 minutes where every solve ran
- *  under 8. */
-function budgetOf(
-  events: readonly LogEvent[],
-  campaign: Pick<Campaign, "limits">,
-  values: { readonly "solve-minutes"?: string | undefined },
-) {
-  const recorded = recordedSetting(events);
-  return {
-    modelTurns: recorded?.modelTurns ?? openingOf(events)?.limit ?? null,
-    minutes:
-      recorded?.minutes ??
-      (values["solve-minutes"] === undefined
-        ? Math.round(campaign.limits.wallSeconds / 60)
-        : Number(values["solve-minutes"])),
   };
 }
 
@@ -170,7 +147,13 @@ export async function examineCommand(
       id,
       mode: "write",
       verify: campaign.verify,
-      budget: { ...budgetOf(sofar, campaign, values), solves: setting.solves },
+      // The budget every solve is held to, as the drafting session is told it (`draft.ts`). Until
+      // 5 November a log with no setting yet read the opening's limit here, which repeated it.
+      budget: {
+        modelTurns: setting.named.limits.modelTurns ?? null,
+        minutes: setting.named.limits.wallSeconds / 60,
+        solves: setting.solves,
+      },
       contract: campaign.contract,
       checks: declared.map((check, index) => ({
         id: check.id,

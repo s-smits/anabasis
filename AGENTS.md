@@ -314,9 +314,10 @@ queue for the host's load, at most half an hour (`--loaded` skips it, `campaign.
 The operator steers a live campaign with a word (`tools/d2/word.ts`: `--stop`, `--tasks`,
 `--budget`), which no seat reads.
 
-The log records the opening and fixed setting (`campaign.opened`, `campaign.setting`).
-The setting fixes the solver, its limits, `--target` and `--solves`; a conflicting value is
-refused because it defines a different campaign. Practice release uses only reference solves
+The log records the opening and fixed setting (`campaign.opened`, `campaign.setting`), the
+setting as the campaign's first run starts. The setting fixes the solver, its limits, `--target`
+and `--solves`, and is their one record; a conflicting value is refused because it defines a
+different campaign. Practice release uses only reference solves
 (`releaseOrder`, `src/kernel/reports.ts`), so the candidate's held-out wins cannot affect
 the released set (rule 3). At most half the tasks with room are released.
 

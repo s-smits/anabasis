@@ -42,9 +42,11 @@
  *
  * What it runs each move as:
  *
- *   draft the exam      tools/d1b/draft.ts, under `d-N`, for a campaign that opened from a prompt
- *   read the exam       tools/c/accept.ts, with `--freeze --admit-authored` unless `--hitl`, and
- *                       the checks a reading under `--hitl` left unadmitted (`planOf`, `opening.ts`)
+ *   draft the exam      tools/d1b/draft.ts, under `d-N`, for a campaign that opened from a prompt;
+ *                       a draft that stands keeps its reading, and is frozen unless `--hitl`
+ *   read the exam       tools/c/accept.ts, with `--freeze --admit-authored` unless `--hitl`, over
+ *                       a stored pack, and for the checks a reading under `--hitl` left
+ *                       unadmitted (`planOf`, `opening.ts`)
  *   set the tasks apart tools/d2/prepare.ts
  *   a conversation      tools/d2/session.ts with the campaign's tools, under `b-N`, where the
  *                       table names a Builder or an Examiner session (`converse`)
@@ -54,8 +56,7 @@
  *
  * **What it runs by** is recorded once, as `campaign.opened`: its project (`--project`, required at
  * the opening: `projectOf`, `campaign.ts`), the total budget in dollars and the
- * reserve one solve is held at (`--budget`, `--reserve`), the full limit of a solve in the model's
- * turns (`--solve-model-turns`), the Builder sessions before a comparison (`--sessions`), the
+ * reserve one solve is held at (`--budget`, `--reserve`), the
  * campaign's improvement patience and supply patience (`--patience`: moves without a gain, and
  * readings that left nothing to gain, it bears in a row before it ends, six by default while the system is
  * built, since every campaign of 9 and 10 October ended on the plan's three before its tasks were
@@ -63,7 +64,9 @@
  * (`TERMS`, `src/campaign/opening.ts`): a session's limits, a comparison's size, the practice tasks.
  * A later run that names nothing runs by the record, and one that names another records it again:
  * these are the operator's conditions, and a comparison logs its own terms at its start. The
- * setting is the log's own record (`campaign.setting`), and every command refuses another.
+ * setting (who solves, a solve's deadline and model turns, the scored tasks and the solves a side)
+ * is recorded once, as the first run that is no dry run starts (`campaign.setting`, `settingOf`),
+ * and every command refuses another.
  *
  * **The budget is one total** (`7f0add79:docs/plan.md`, row F49). Each move's cap is what is left of it:
  * the total less every billed dollar the log holds, and where less is left than one solve is held
@@ -110,7 +113,7 @@ import { backends } from "#src/agent/backends/models.ts";
 import { decide } from "#src/campaign/decide.ts";
 import { sessionEnded } from "#src/campaign/ground.ts";
 import { type Decided, decidedLine } from "#src/campaign/move.ts";
-import { type Opening, SEATS } from "#src/campaign/opening.ts";
+import { type Opening, openingOf, SEATS } from "#src/campaign/opening.ts";
 import { pendingWords } from "#src/campaign/word.ts";
 import { keepCutNotes, keepPractised } from "#src/builder/session.ts";
 import { draftOf } from "#src/examiner/draft.ts";
@@ -118,6 +121,7 @@ import { unadmitted } from "#src/kernel/acceptance.ts";
 import { comparisonFloor } from "#src/campaign/admission.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import { latestBuilt, promoted } from "#src/kernel/reports.ts";
+import { solverLast } from "#src/kernel/solves.ts";
 import { cutSessions } from "#src/kernel/trace.ts";
 import { sizeLines } from "#src/kernel/size.ts";
 import { existsSync, mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
@@ -161,7 +165,7 @@ import { prepareCommand } from "./prepare.ts";
 import { promoteCommand } from "./promote.ts";
 import { solved } from "./round.ts";
 import { sessionCommand } from "./session.ts";
-import { recordedSetting, settingAsked } from "./setting.ts";
+import { type AskedSetting, firstRecord, keepSetting, recordedSetting, settingAsked } from "./setting.ts";
 
 const ENDED = "campaign.ended";
 /** How a Builder's campaign conversation ended where the campaign goes on with another: at its
@@ -341,7 +345,7 @@ async function converse(
 ): Promise<Decided | null> {
   const { log, values, seats } = context;
   const turn = turnOf(context);
-  const { setting, cap, reviewer, pastStop } = sharedOf(turn);
+  const { cap, reviewer, pastStop } = sharedOf(turn);
   const session = nextId(turn.events, "b");
   const { builder } = turn.opening.seats;
   append(log, MOVED, {
@@ -354,13 +358,11 @@ async function converse(
     await sessionCommand(
       [
         ...packOf(values),
-        ...setting,
         "--session",
         session,
         ...(builder === null ? [] : ["--builder", builder.model, "--builder-effort", builder.effort]),
         ...flag("minutes", values.minutes),
         ...flag("turns", values.turns),
-        ...flag("practice-solves", values["practice-solves"]),
         ...cap,
         ...reviewer,
         ...pastStop,
@@ -442,17 +444,21 @@ async function lead(
 }
 
 /**
- * Refuses a flag that names another setting than the campaign's, with both, as every command
- * refuses it. Until 11 October the record's
- * model turns stood in for the flag (`7f0add79:docs/simplify.md`, A1), so another number ran at the record's.
+ * The setting the campaign runs under: the log's record, where a flag that names another is
+ * refused with both, as every command refuses it; or, where the log holds none, what the flags
+ * name, with the opening's solver for a campaign from a prompt, to be recorded as the command
+ * starts (`keepSetting`). Until 5 November the opening kept its own copy of the deadline, the
+ * scored tasks, the solves and the model turns, and each move was given them as flags until one
+ * recorded the setting: two records of one fact, of which the setting was read.
  */
-function settingHeld(log: string, given: Values): void {
-  const recorded = recordedSetting(read(log));
-  if (recorded === null) return;
-  settingAsked(
+function settingOf(log: string, given: Values): AskedSetting {
+  const events = existsSync(log) ? read(log) : [];
+  const recorded = recordedSetting(events);
+  const solver = recorded === null ? openingOf(events)?.solver : undefined;
+  const asked = settingAsked(
     {
-      solver: given.solver,
-      "solver-effort": given["solver-effort"],
+      solver: given.solver ?? solver?.model,
+      "solver-effort": given["solver-effort"] ?? solver?.effort,
       "solver-window": given["solver-window"],
       "solve-minutes": given["solve-minutes"],
       "solve-model-turns": given["solve-model-turns"],
@@ -461,6 +467,9 @@ function settingHeld(log: string, given: Values): void {
     },
     recorded,
   );
+  const unrecorded = firstRecord(asked, asked.named, solverLast(events));
+  if (unrecorded !== undefined) throw new Error(unrecorded);
+  return asked;
 }
 
 /**
@@ -528,7 +537,7 @@ export async function harnessBuilder(
   // Opening a campaign stages its check program, and refuses one the log froze otherwise. One that
   // opens from a prompt has no exam to open over until its first draft stands.
   let campaign = packed(given) ? await openCampaign(packNamed(given)) : null;
-  settingHeld(log, given);
+  const setting = settingOf(log, given);
   let opening = await served(opened(log, given, paid), paid, given.solver);
   if (paid === "paid" && !given["dry-run"]) keepReceipt(log, args);
   if (!given["dry-run"] && existsSync(log)) await endCut(log);
@@ -556,6 +565,7 @@ export async function harnessBuilder(
       if (paid === "paid" && plan.wanted.target < floor) {
         throw new Error(`${size[0] ?? ""}: name a --target of at least ${String(floor)}`);
       }
+      if (!values["dry-run"]) keepSetting(log, setting);
     }
     const decided = decide(events, plan);
     console.log(

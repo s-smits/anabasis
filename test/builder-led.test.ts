@@ -74,7 +74,7 @@ const IDLE: readonly Step[] = [FINISH_IDLE, FINISH_IDLE];
 // default, 0.02. This suite is of who makes the moves, so it names the level its five tasks are
 // admitted and read a step at, and a supply patience of three.
 const LEVEL = ["--level", "0.125", "--patience", "3"];
-const FLAGS = ["--practice", "2", "--sessions", "1", "--target", "5", ...LEVEL];
+const FLAGS = ["--practice", "2", "--target", "5", ...LEVEL];
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-hb-")));
 const bundle = join(root, "bundle");
 const names: string[] = [];
@@ -183,12 +183,13 @@ describe("a campaign run by its live Builder", () => {
       },
     };
     const terms = ["--patience", "2", "--level", "0.125", "--target", "5", "--practice", "2"];
-    const exam = ["--solve-minutes", "7", "--exam-tasks", "4", "--exam-turns", "17", "--exam-proposals", "9"];
+    const exam = ["--solve-minutes", "7", "--exam-tasks", "4"];
     const ending = await harnessBuilder([...seeded(name), ...terms, ...exam], seats);
     // The Builder's session holds out nothing, and the Builder asks for no other: the host asks for
     // none on its behalf (until 2 November it did, `unshown`), so idle conversations end the campaign.
     expect(ending).toMatchObject({ move: "end", ending: "finished", code: "finished" });
-    expect(asked).toEqual([{ tasks: 4, minutes: 7, turns: 17, proposals: 9 }]);
+    // The Examiner session runs by its own limits, and is told the setting's deadline.
+    expect(asked).toEqual([{ tasks: 4, minutes: 7, turns: 200, proposals: 36 }]);
     expect(of(name, MOVED).map(({ move, session }) => [move, session ?? null])).toEqual([
       ["accept", null],
       ["prepare", null],
@@ -388,7 +389,7 @@ describe("a campaign run by its live Builder", () => {
   describe("releases the epoch's practice as task admission holds out tasks", () => {
     // Seven tasks held, three released for a practice of four: the epoch is owed one, which the
     // admission floor of five at 0.125 leaves room for once the frontier holds six.
-    const flags = ["--practice", "4", "--sessions", "1", ...LEVEL];
+    const flags = ["--practice", "4", ...LEVEL];
     /** The releases on record between the Examiner session's start and its end. */
     const releasedWhileWriting = (name: string) => {
       const events = logOf(name);
@@ -607,11 +608,11 @@ describe("a campaign run by its live Builder", () => {
     const [first, second] = said(name, "finish");
     for (const fact of ["unmeasured", "x-1"]) expect(first).toContain(fact);
     expect(second).not.toContain("unmeasured");
-    // The host compares what the Builder left before another conversation opens. Until 15 October
-    // three conversations that finished so ended the campaign with no comparison made.
+    // The Builder compares when it chooses: from 5 November the host makes no comparison of what a
+    // conversation left, so three that finished so end the campaign with nothing compared.
     const [left] = of(name, FINISHED);
     expect(left).toMatchObject({ ended: "finished", changed: true });
-    expect(of(name, "comparison.started")[0]).toMatchObject({ fresh: left?.harness });
+    expect(of(name, "comparison.started")).toEqual([]);
   });
 
   it("stops the Examiner writing beside the conversation when the operator's stop halts it", async () => {
@@ -745,7 +746,7 @@ describe("a campaign run by its live Builder", () => {
     };
     // Each comparison reads five tasks, every one won, which 0.125 admits and calls a step. A
     // campaign opens at 0.125 where it bears one attempt without a gain, and no more.
-    const terms = ["--practice", "2", "--sessions", "1", "--target", "5", "--level", "0.125"];
+    const terms = ["--practice", "2", "--target", "5", "--level", "0.125"];
     const ending = await harnessBuilder(
       [...seeded(name), ...terms, "--patience", "1", "--exam-tasks", "6"],
       seats,
@@ -950,7 +951,7 @@ describe("a campaign run by its live Builder", () => {
       examine: unwritten,
     };
     // The comparison is the third move, and the packet needs nothing after it.
-    await harnessBuilder([...args, "--sessions", "1", "--target", "5", "--moves", "4"], seats);
+    await harnessBuilder([...args, "--target", "5", "--moves", "4"], seats);
     expect(await settleCommand([...pack, "--session", "g-1"])).toBe(0);
     // The reference failed every task, so rejections are drawn, and no drawn answer names either harness.
     const folder = join(REPO, ".ana", "d2", name, "settle-g-1");
@@ -1303,9 +1304,10 @@ describe("a campaign's endings", () => {
       examine: unwritten,
     };
     // Until 12 October the command returned the table's next move there and wrote no ending. g-1
-    // closes every task it read (15 October), so b-2 opens on the campaign's first Examiner
-    // session and b-3 on the next (16 October; until then three conversations came first): two
-    // sessions that hold out none spend a supply patience of two.
+    // closes every task it read (15 October), and b-2 makes it, so b-3 opens on the campaign's
+    // first Examiner session and b-4 on the next (16 October; until then three conversations came
+    // first): two sessions that hold out none spend a supply patience of two. Until 5 November the
+    // host made g-1 itself once b-1 ended, and b-2 opened on the first Examiner session.
     expect(
       await harnessBuilder([...seeded(name), ...FLAGS, "--turns", "3", "--patience", "2"], seats),
     ).toMatchObject({ move: "end", ending: "no-room" });
@@ -1313,6 +1315,7 @@ describe("a campaign's endings", () => {
       ["b-1", "turns"],
       ["b-2", "finished"],
       ["b-3", "finished"],
+      ["b-4", "finished"],
     ]);
     expect(of(name, REPORTED)).toMatchObject([{ fresh: of(name, FINISHED)[0]?.harness }]);
     expect(of(name, EXAMINED)).toMatchObject([{ held: [] }, { held: [] }]);

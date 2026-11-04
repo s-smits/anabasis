@@ -352,11 +352,13 @@ export interface CampaignReading extends Answer {
   };
   /** The terms of the campaign's moves as its opening keeps them (`Opening.terms`). */
   readonly terms: Terms;
+  /** The held-out tasks a comparison scores, as the setting records them; null before one is. */
+  readonly target: number | null;
   /** Whether the freeze and a promotion wait for the operator's word (`Opening.attended`,
    *  `--attended`). The table names such a move all the same, and the campaign command waits. */
   readonly attended: boolean;
-  /** The bar a promotion's cost is read against, as the opening sets it or by default
-   *  (`barsOf`, `src/campaign/climb.ts`): read and printed, refusing nothing. */
+  /** The bar a promotion's cost is read against (`BARS`, `src/campaign/climb.ts`): read and
+   *  printed, refusing nothing. */
   readonly bars: Worth["bars"];
   readonly supply: Supply;
   /** Digests: the harness last promoted, and the starter as the comparisons name it. Null where the

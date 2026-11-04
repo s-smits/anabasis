@@ -5,14 +5,12 @@ import { describe, expect, it } from "bun:test";
 import {
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   readlinkSync,
   realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runTextSyncOrThrow } from "../src/meta/subprocess.ts";
@@ -105,7 +103,6 @@ describe("the runs zip", () => {
         `checker tree/r1/states/${DIGEST}/correctness-model/controls.json`,
         "toolchain tree/r1/states/tree-abc/bin/solver",
         `toolchain tree/r1/states/${DIGEST}/.toolchain`,
-        "trajectories tree/r1/trajectories/build-r1-1.json",
       ];
       const verbose = [
         ...medium,
@@ -133,12 +130,6 @@ describe("the runs zip", () => {
       expect(readlinkSync(join(root, "opened", "medium", "tree", "r1", "states", DIGEST, ".toolchain"))).toBe(
         "../tree-abc",
       );
-      // The Builder's session as Harbor reads a run, named by the commit its launch ran at.
-      const trajectory = parseJsonAs<{ agent: { version: string }; steps: { message: string }[] }>(
-        readFileSync(join(root, "opened", "medium", "tree", "r1", "trajectories", "build-r1-1.json"), "utf8"),
-      );
-      expect(trajectory.agent.version).toBe(RAN_AT.slice(0, 9));
-      expect(trajectory.steps.map(({ message }) => message)).toEqual(["edited"]);
       expect(() =>
         zip([run], "light", { out: join(root, "too-small.zip"), maxBytes: 1, note: null }),
       ).toThrow(/0 KB/);

@@ -11,7 +11,7 @@ comment of each file is its manual and lists its flags.
 
 | Order | Command | What it puts in the log |
 | --- | --- | --- |
-| 0 | `bun tools/d1b/draft.ts --name <name> --session d-1 --examiner <model>` | For a campaign opened from a prompt: the Examiner's drafting session, and the whole draft that stood (`exam.drafted`), read by the host without a model; nothing solves it at drafting |
+| 0 | `bun tools/d1b/draft.ts --name <name> --session d-1 --examiner <model>` | For a campaign opened from a prompt: the Examiner's drafting session, and the whole draft that stood (`exam.drafted`), read by the host without a model, with the reading it stood on (`checker.read`, and `contract.frozen` unless `--hitl`); nothing solves it at drafting |
 | 1 | `bun tools/c/accept.ts ... [--admit <checks> \| --admit-authored] [--freeze [--despite "<why>"]]` | What the check program was seen to do (`checker.read`), and the operator's word that the contract and that version stand (`contract.frozen`) |
 | 2 | `bun tools/d2/prepare.ts ... [--practice N]` | The pack's tasks held out and the practice tasks released |
 | 3 | `bun tools/d1b/examine.ts ... --session x-1 --examiner <model>` | More held-out tasks, written by an Examiner session |
@@ -53,9 +53,12 @@ cancellation source, or not run. A killed solve records that source (`Cancellati
 `src/kernel/solve.ts`; an unlabelled external abort is `caller`); older events leave it unknown,
 and an abrupt process termination promises no ending. The reading cannot tell whether a rule belongs
 to the field. Every check of a drafted exam is its author's own computation, and the launch is the
-operator's word for each (rule 10): the exam is read with `--admit-authored` and frozen if nothing
-else is at fault. Under `--hitl` the campaign ends on its exam there, and goes on when run again
-with `--admit <checks>`.
+operator's word for each (rule 10): the reading the draft stood on is kept as the checker's
+(`checker.read`) with every such check admitted, and the exam is frozen if nothing else is at fault
+(`keepReading`, `tools/c/accept.ts`, called by row 0). Under `--hitl` the reading is kept with none
+admitted, the campaign ends on its exam there, and goes on when run again with `--admit <checks>`,
+which reads it again at row 1. Until 5 November every drafted exam was read a second time at row 1,
+and 71 of 71 such readings found no fault.
 
 **The budget covers the whole campaign.** Each move receives the total `--budget` minus recorded
 spending. The campaign ends when the remaining amount is below one solve's reserve (`--reserve`).

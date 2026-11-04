@@ -138,8 +138,6 @@ describe("the climb", () => {
         "check-product",
         "--practice",
         "2",
-        "--sessions",
-        "1",
         // The target the simulated climb stalled at on 10 October (climb-9): drawn by hash from
         // the tasks of every epoch at once, 8 over the 19 tasks the third epoch held took two or
         // three the reference fails and left the comparison one win short three times. The draw

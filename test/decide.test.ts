@@ -22,7 +22,6 @@ const HALF: Valid = [4, 4, 4];
 const ALL: Valid = [0, 0, 12];
 const NONE: Valid = [12, 0, 0];
 const PLAN: Plan = {
-  sessions: 1,
   patience: 3,
   unprepared: false,
   practice: null,
@@ -148,7 +147,7 @@ describe("a row of the table", () => {
     });
     expect(decide(stopped, PLAN).why).toContain("the host is needed");
     const ended = event("campaign.ended", { ending: "operator", answers: [FIRST.length, FIRST.length + 1] });
-    expect(move([...stopped, ended])).toMatchObject({ move: "compare" });
+    expect(move([...stopped, ended])).toMatchObject({ move: "build" });
     expect(pendingWords([...stopped, ended])).toEqual([]);
     expect(move([word({ word: "stop" })])).toMatchObject({ ending: "operator" });
   });
@@ -255,7 +254,7 @@ describe("the campaign bounds", () => {
       code: "bound",
     });
     expect(decide(FIRST, spent).why.match(/\d+(?:\.\d+)?/g)).toEqual(["4.50", "10"]);
-    expect(move(FIRST, { ...PLAN, left: { dollars: 10, reserve: 10 } })).toMatchObject({ move: "compare" });
+    expect(move(FIRST, { ...PLAN, left: { dollars: 10, reserve: 10 } })).toMatchObject({ move: "build" });
 
     const crashed = (kind: typeof EXAM_FINISHED | "build.finished", id: string, held: string[] = []) =>
       event(kind, {
@@ -378,11 +377,11 @@ describe("task supply", () => {
       "three batches tied",
     );
     expect(move([word({ word: "tasks" })])).toMatchObject({ move: "accept" });
-    expect(move([...FIRST, word({ word: "budget", dollars: 50 })])).toMatchObject({ move: "compare" });
+    expect(move([...FIRST, word({ word: "budget", dollars: 50 })])).toMatchObject({ move: "build" });
     expect(pendingWords([...FIRST, word({ word: "budget", dollars: 50 })])).toMatchObject([
       { at: FIRST.length, word: "budget", dollars: 50 },
     ]);
-    expect(move([...ONE, built("b-1", "h1")])).toMatchObject({ move: "compare" });
+    expect(move([...ONE, built("b-1", "h1")])).toMatchObject({ move: "build" });
     expect(move(SIX, { ...PLAN, practice: 3 })).toEqual({
       move: "examine",
     });
@@ -395,13 +394,14 @@ describe("task supply", () => {
     expect(decide(SIX, { ...PLAN, practice: 3 }).why.match(/\d+/g)).toEqual(["2"]);
     expect(decide(FIVE, PLAN).why.match(/\d+/g)).toEqual(["1"]);
     expect(decide([...FIVE, built("b-1", "h1")], PLAN).why).toContain("h1");
-    // The first comparison waits for the floor alone; the target of twelve binds after it.
-    expect(move([...SIX, built("b-1", "h1")])).toMatchObject({ move: "compare" });
+    // The first comparison waits for the floor alone, so nothing is short and the Builder may
+    // compare; the target of twelve binds after it.
+    expect(move([...SIX, built("b-1", "h1")])).toMatchObject({ move: "build" });
     // One short of the floor, the session is still asked for a sweep (4 at 0.1).
     expect([shortOf(FIVE, PLAN), shortOf(SIX, PLAN)]).toEqual([4, 0]);
     expect(shortOf([...SIX, ...compared("g-1", "h1", "no-step")], PLAN)).toBe(6);
     expect(move([...SIX, built("b-1", "h1"), ...HELD.slice(6).flatMap(heldOut)])).toMatchObject({
-      move: "compare",
+      move: "build",
     });
     expect(move([...SIX, built("b-1", "h1"), ...compared("g-1", "h1", "no-step")])).toMatchObject({
       move: "build",
@@ -537,7 +537,7 @@ describe("room for the reference", () => {
     });
     expect(move([...tied, built("b-2", "h2")], small)).toEqual({ move: "examine" });
     const more = ["v13", "v14", "v15", "v16", "v17"].flatMap(heldOut);
-    expect(move([...tied, built("b-2", "h2"), ...more], small)).toMatchObject({ move: "compare" });
+    expect(move([...tied, built("b-2", "h2"), ...more], small)).toMatchObject({ move: "build" });
     const aside = compared("g-1", "h1", "not-scored", { extra: { versions: [], aside: HELD } });
     expect(decide([...FIRST, ...aside], PLAN)).toMatchObject({
       move: "examine",
@@ -547,28 +547,17 @@ describe("room for the reference", () => {
 });
 
 describe("unread harnesses and tasks", () => {
-  it("unread: what no comparison has read is compared before anything is built", () => {
-    const three = { ...PLAN, sessions: 3 };
-    expect(decide(FIRST, PLAN)).toMatchObject({
-      move: "compare",
-      code: "unread",
-      fresh: "latest",
-      reference: "promoted",
-    });
-    const lost = [...FIRST, ...compared("g-1", "h1", "no-step")];
-    expect(move([...lost, built("b-2", "h2")], three)).toMatchObject({ move: "compare", fresh: "latest" });
-    const after = [...PROMOTED, ...examined("x-1")];
-    for (const [builds, expected, counts] of [
-      [[built("b-2", "h2")], { move: "build" }, ["1", "3"]],
-      [
-        [built("b-2", "h2"), built("b-3", "h3"), built("b-4", "h4")],
-        { move: "compare", fresh: "latest", reference: "promoted" },
-        ["3", "4"],
-      ],
-    ] as const) {
-      const chosen = decide([...after, ...builds], three);
-      expect(chosen).toMatchObject(expected);
-      expect(chosen.why.match(/\d+/g)).toEqual([...counts]);
+  it("unread: tasks held out since the last reading are read before anything is built", () => {
+    // A harness no comparison has read waits for the Builder's own compare: no count of sessions
+    // names one for it (`--sessions` went on 5 November).
+    for (const events of [
+      FIRST,
+      [...FIRST, ...compared("g-1", "h1", "no-step"), built("b-2", "h2")],
+      [...PROMOTED, ...examined("x-1"), built("b-2", "h2"), built("b-3", "h3"), built("b-4", "h4")],
+    ]) {
+      const chosen = decide(events, PLAN);
+      expect(chosen).toMatchObject({ move: "build" });
+      expect(chosen.why).toContain("no comparison has read harness");
     }
     const six = ["v13", "v14", "v15", "v16", "v17", "v18"].flatMap(heldOut);
     // A reading with room that read no step is not drawn again on new tasks: the Builder builds.
@@ -679,7 +668,7 @@ describe("the build conditions", () => {
       built("b-2", "h2"),
     ];
     const left = (dollars: number) => ({ ...PLAN, left: { dollars, reserve: 0.4 } });
-    expect(move(log, left(0.95))).toMatchObject({ move: "compare" });
+    expect(move(log, left(0.95))).toMatchObject({ move: "build" });
     expect(decide(log, left(0.3))).toMatchObject({ move: "end", ending: "budget" });
     const dear = [...FIRST, ...full("g-1"), ...examined("x-1", ["v13"], { billed: 6 }), ...full("g-2")];
     expect(move(dear, { ...PLAN, left: { dollars: 10, reserve: 0.5 } })).toMatchObject({ move: "examine" });
@@ -816,7 +805,6 @@ describe("the build conditions", () => {
         plan: PLAN,
         code: "short",
       },
-      { events: [...log, built("b-new", "h1")], plan: PLAN, code: "unread" },
     ];
     for (const { events, plan, code } of cases) {
       const withoutPractice = decide(events, plan);

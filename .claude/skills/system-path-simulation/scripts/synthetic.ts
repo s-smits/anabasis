@@ -75,7 +75,6 @@ const POOL = {
 
 /** The move the decision table names for a log, under a plan whose terms are the constants here. */
 const PLAN: Plan = {
-  sessions: 1,
   patience: 3,
   unprepared: false,
   practice: null,

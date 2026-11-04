@@ -32,7 +32,7 @@
  * the drafted exam's control answers and every answer the seed's source campaign passed (`draftedGraded`).
  *
  * The Builder's script edits the guide through its walled shell. In a campaign it follows public
- * action advice; in an isolated session it finishes after the edit.
+ * action advice, or compares its edit itself; in an isolated session it finishes after the edit.
  * A solve's script ends one of three ways. For `pass` it writes an answer on record that the checks
  * accepted into the answer file, through the harness's own `write` or its `bash`, and submits it.
  * For `fail` it does the same with one a check rejected. For `none` it submits with no answer
@@ -205,19 +205,28 @@ function scripted(calls: readonly (readonly [string, JsonObject] | FauxResponseF
   return { model: faux.getModel(), models: () => models };
 }
 
-/** One scripted Builder follows public campaign advice, or edits and finishes an isolated session. */
+/** One scripted Builder follows public campaign advice, or edits, compares what it edited and
+ *  finishes: since 5 November no count of sessions has the host compare a harness for it. */
 function scriptedBuilder() {
-  let changed = false;
+  let [changed, compared] = [false, false];
   const choose: FauxResponseFactory = (context) => {
     const last = JSON.stringify(context.messages.at(-1));
     const suggested = /Suggested action: ([a-z_]+)\./u.exec(last ?? "")?.[1];
-    let name = suggested ?? (changed ? "finish" : "build");
+    // An isolated session holds no `compare`, and finishes after its edit.
+    const comparing = context.messages.some(
+      (message) =>
+        message.role === "system" &&
+        message.toolsAdded?.some(({ name: tool }) => tool === "compare") === true,
+    );
+    let name = suggested ?? (compared || (changed && !comparing) ? "finish" : "build");
     if (last?.includes("no Examiner") || name === "end") name = "finish";
     if (name === "build") {
       name = changed ? "compare" : "bash";
       changed = true;
     }
-    if (name === "compare") changed = false;
+    if (name === "compare") [changed, compared] = [false, true];
+    // The next conversation edits again.
+    if (name === "finish") [changed, compared] = [false, false];
     const args =
       name === "bash"
         ? { command: `printf '\\nA rehearsal added this line.\\n' >> "$HOME/${GUIDE}"` }

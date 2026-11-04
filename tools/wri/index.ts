@@ -75,15 +75,16 @@ export interface Beyond {
   readonly now: number;
 }
 
-const SYNTHESIS = "synthesis.md";
+export const SYNTHESIS = "synthesis.md";
 /** What stands in for a synthesis in folders older than the template, best first. */
 const STAND_INS = [/^ab-synthesis\.md$/u, /^review.*\.md$/u];
 /** A cycle folder's or a ledger's files, by their lower-cased names. */
 const LEDGERS: ReadonlySet<string> = new Set(["cycle.md", "predictions.md"]);
-const VETTING = "vetting.md";
+export const VETTING = "vetting.md";
 const REPORTS = "reports.md";
-/** What `start` writes: the logs an investigation reads. */
+/** What `start` writes: the logs an investigation reads, and the instructions every lane carries. */
 export const INVESTIGATION = "investigation.json";
+export const SHARED = "shared-instructions.md";
 const INDEX = "INDEX.md";
 /** The quoted sentence's length, so a constraint is named and no hidden value is carried whole. */
 const QUOTE = 300;

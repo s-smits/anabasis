@@ -1230,7 +1230,7 @@ timestamp earlier than the line above it, a `solve.finished` whose solve never s
 (lane 32): two controllers on one log is the usual cause. Then recount one number from each reader
 a person reads against the folds: the view's comparisons and next move (`bun run runs view`), the
 closing report's promotions and spend (`tools/d2/close.ts`), the pulse's open runs and endings,
-run-improvement-campaign's `scripts/cycle.ts` promotions and hours, and the page where it was used. A reader that disagrees
+run-improvement-campaign's `scripts/wri2p2.ts` promotions and hours, and the page where it was used. A reader that disagrees
 with the fold it should call is a second reader of one fact (rule 12). Run `bun run runs replay`
 where the tree that reads differs from the tree that wrote, and say which event kinds this tree
 cannot read. Then read the copy under review against its log: a copy gathered from another host

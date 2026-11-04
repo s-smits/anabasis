@@ -223,8 +223,7 @@ async function make(decided: Made, turn: Turn, begin: (named: JsonObject) => voi
     }
     const session = nextId(events, "d");
     begin({ session });
-    // A draft's examples are solved by the starter as a comparison's tasks are, in the solve queue.
-    await draftCommand(examinerRun(turn, session, "draft").args, seats.draft, turn.held);
+    await draftCommand(examinerRun(turn, session, "draft").args, seats.draft);
     return;
   }
   const { session, args } = comparisonOf(decided, turn);

@@ -382,13 +382,13 @@ describe("a session that drafts an exam", () => {
     expect(s.sent[0]).toContain("This session has 10 minutes, 12 turns and 4 drafts.");
   });
 
-  it("stands on a reading that outlasts its wall, since the host's solves are not its time", async () => {
+  it("stands on a reading that outlasts its wall, since the host's reading is not its time", async () => {
     const s = seat("draft", [PUT.draft, finish]);
-    // As the starter's solves do (`starterFaults`), the reading refuses to read once the session is cut.
+    // As the host's reading may, the reading refuses to read once the session is cut.
     const reading = async (_draft: Draft, stop: AbortSignal) => {
-      // A real clock: the solves take longer than the session's wall.
+      // A real clock: the reading takes longer than the session's wall.
       await Bun.sleep(400);
-      if (stop.aborted) throw new Error("the session was cut while the starter solved");
+      if (stop.aborted) throw new Error("the session was cut while the host read");
       return { faults: [], notes: [] };
     };
     const { limits } = s.request;

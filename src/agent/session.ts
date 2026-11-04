@@ -424,7 +424,7 @@ function toolHooks(seat: Seat, sink: ReturnType<typeof traceSink> | undefined) {
  *  allowance, unless the owner has closed it. Until 28 October the Builder and the Examiner each
  *  kept a copy, and the Builder's neither nested nor named its cancellation; until 1 November the
  *  Examiner's paused while it awaited its gate's room solves, and a drafting session's pauses while
- *  the host solves a draft's examples. */
+ *  the host reads a draft. */
 export function sessionClock(began: number, seconds: number) {
   const deadline = new AbortController();
   let aside = 0;

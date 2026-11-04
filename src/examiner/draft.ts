@@ -39,36 +39,32 @@
  * arms did, and the reference answered 34 of 35 of their first room solves validly, since a search
  * answers interacting rules as surely as separate ones.
  *
- * A draft with no fault at either reading is solved before it stands: the caller's reading has the
- * Starter Built Harness solve each example under the campaign's setting, and refuses the draft
- * where no example leaves the starter room as a comparison reads a task (`starterFaults`,
- * `tools/d1b/draft.ts`). The author is told, an example a line, how many solves were valid and
- * their turns, and the fact that the starter answered every example; it is told no course. A
- * rejection counts as room whether or not a Referee would rule it earned, and so does an example
- * with no counted solve, since a draft is allowed where in doubt (`AGENTS.md`, section 2,
- * consequence 6); no Referee sits at drafting. The operator chose this on 3 November, after a
- * drafted exam left the starter nothing to gain two days in a row: esp32 on 2 November, and
- * jobstat-fresh-opus-forkedPR580 on 3 November, where the starter was valid on 18 of 18 solves and
- * the first comparison, g-1, tied 0-0-8. From 22 October to 1 November the same solves were a
- * report: the Examiner was told the budget and, an example a line, the valid solves and their
- * turns, and the same draft put again stood. esp32-fresh-opus-stackedPR506's drafting session of
- * 28 October was told 3 of 3 valid on every example, put the same draft again, and its task admission
- * then refused 70 of 73 drafts, 210 of 210 room solves valid. The measure went on 1 November with
- * the gate's room solves (`8f901e459`), and comes back as a refusal, which the same draft put again
- * meets again. A caller with no solver (a script in the seat, a test) reads no solve, and its draft
- * stands on the readings alone.
+ * From 22 October to 1 November a draft with no fault was also solved before it stood, and the
+ * Examiner was told, an example a line, how many solves were valid and their turns:
+ * esp32-fresh-opus-stackedPR506 was told 3 of 3 valid on every example and put the same draft
+ * again, in a reply that also said the same draft would stand and one put was left, so that case
+ * shows no reading moving an Examiner either way. From 3 to 4 November (#585) the Starter Built
+ * Harness solved each example and a draft it answered on every solve was refused: four jobstat
+ * campaigns put 10 drafts, 60 of 60 example solves valid, three ended `exam` with nothing
+ * compared, and the 6 drafts put again after a refusal grew 12% to 19% and left 36 of 36 solves
+ * valid. #594 made that reading a note, but the note rode on the reply that
+ * ends the session (`ending`, `src/tools/answer.ts`), which no model call reads, so it decided
+ * nothing, while it cost $1.17 to $2.77 and up to half an hour a draft, and a session cut during
+ * the solves lost a draft with no fault (truss, 3 November). So no solve runs at drafting: a draft
+ * with no fault at either reading stands at once, and the A/A and the test read an easy exam's
+ * comparisons. A reading told early, with puts to spare and no word that the same draft stands,
+ * was never tried; that form is for paired drafting seats before it returns. The operator asked
+ * for gates that trust a capable model, since a gate "too-strict" or wrongly tuned can bring down
+ * a system that would otherwise do well.
  *
- * Since 4 November the refusal holds one draft a session, and a later draft with no other fault
- * stands with the reading as a note (operator: a gate "too-strict" or wrongly tuned can bring down
- * a system that would otherwise do well). Under the refusal on every draft, four jobstat campaigns
- * put 10 drafts, 60 of 60 example solves valid, and three ended `exam` with nothing compared; an
- * easy exam costs a comparison's power and dollars, and the A/A and the test still read it.
- * The same day the Examiner was told that a solver reads the whole public input in its first
- * message (`firstTurn`, `src/solver/prompt.ts`), and that data-analysis examples naming the source
- * that governs each conflict and the method of each step were answered on every solve: 54 of 54
- * across nine jobstat drafts, 8 of whose 10 families were clinical tables with their plan's method
- * named, while the field's own workspaces hold defects their documentation does not announce
- * (JobBench's statistics tasks, read 4 November). `SOLVER` (`ladder.ts`) names that place.
+ * On 4 November the Examiner was told that a solver reads the whole public input in its first
+ * message (`firstTurn`, `src/solver/prompt.ts`), and that its home holds the same task. That day it
+ * was also told, for a while, that the ten jobstat drafts held their whole plan in their inputs; an
+ * outside review read that as a course, since 5 of their 30 examples named no governing source and
+ * were answered all the same, so the count stays here. `SOLVER` (`ladder.ts`) gives the data form
+ * of its second place, read from JobBench's statistics tasks (4 November), and names the
+ * contract's own invariants as what the data is checked against, so that a check of a defect in
+ * the data enforces a stated rule. Whether either moves the drafts is for paired drafting seats.
  *
  * Where it has a shell (`shell.ts`) it is told what the shell is
  * and what the wall test found of the network, and not what to use it for. Nothing hidden
@@ -248,13 +244,13 @@ const DRAFT_PARAMETERS = Type.Object({
 const SYSTEM = [
   "You are the Examiner. An operator has named a technical domain in a prompt, and you draft the exam on which a solving model will be measured in that domain: its public rules, its answer format, one check for each rule, a few example tasks, and controls. You do this once, at the opening of a campaign. Later sessions write further tasks against what you draft here, and a draft that stands is not changed afterwards.",
   "A task is a family, a public input, which with the public rules is all a solver reads, and hidden values, which only the checks receive. A solver answers a task with one JSON value that follows the answer format. A check is a program that reads one answer with its task and returns whether the answer keeps one rule, and an answer every check passes is valid. Two harnesses for the solver are then compared on tasks neither has seen, scoring validity first and, between valid answers, the objective where the domain declares one. A check must also be right on a task with no known valid answer: it verifies the property its rule states, and never compares an answer with one you worked out.",
-  "Take the rules from the field's own public standard, and give each its source: the standard, specification, reference manual or textbook that states it, named precisely enough to look up, and one that states the limit as your rule does: a nominal or typical value is no limit. A limit, state or duty the field does not hold measures your wording and no solver, so add none. A solver that follows every public rule must never be rejected for something it could not read: whatever a check enforces is stated in a rule, the scope or the conventions, with its units and tolerances, or is defined by a public standard a rule names, and nothing a solver needs is in the hidden values. Stating a rule means stating its property and naming what defines it, never restating the standard's tables and equations: the solver can look those up. A check holds its rule exactly: it allows no tolerance the rule does not state, so a check of a quantity a rule calls zero or absent refuses any trace of it. The solver measured on this exam is a capable model with a shell and time to compute: where the rules can be met by a lookup, a matching or a search over the cases they leave, it answers every task correctly every time, however tightly they bind the parts of one answer to each other, and the exam then measures nothing. It reads the whole public input in its first message, so a task whose files name the source that governs each conflict, and whose plan names each method, is a lookup too: the starter answered every solve of such data-analysis examples.",
+  "Take the rules from the field's own public standard, and give each its source: the standard, specification, reference manual or textbook that states it, named precisely enough to look up, and one that states the limit as your rule does: a nominal or typical value is no limit. A limit, state or duty the field does not hold measures your wording and no solver, so add none. A solver that follows every public rule must never be rejected for something it could not read: whatever a check enforces is stated in a rule, the scope or the conventions, with its units and tolerances, or is defined by a public standard a rule names, and nothing a solver needs is in the hidden values. Stating a rule means stating its property and naming what defines it, never restating the standard's tables and equations: the solver can look those up. A check holds its rule exactly: it allows no tolerance the rule does not state, so a check of a quantity a rule calls zero or absent refuses any trace of it. The solver measured on this exam is a capable model with a shell and time to compute: where the rules can be met by a lookup, a matching or a search over the cases they leave, it answers every task correctly every time, however tightly they bind the parts of one answer to each other, and the exam then measures nothing. It reads the whole public input in its first message, and its home holds the same task as public/task.json.",
   `How hard the exam can be is set here, by its rules and scope, before any task is written. ${LADDER}\n\nDraft rules and a scope under which tasks can be written at every grade of this scale that this field reaches. Rules that hand the solver the whole model, every equation and number it needs, and a scope that leaves out the effects that make the field hard, turn every task into writing that model once and searching it: grade 2, however the tasks are written. So does a rule a solver meets by matching a shape the scope spells out, or by writing the one exact text a rule gives. State each rule as the property the field decides, such as a bound that holds, a state the field's own engine reaches or a value that is tested before use, name the standard that defines the engine rather than restating its working, keep in scope the effects that decide answers near the limits, and leave the way to reach it to the solver.`,
   "The operator's prompt outranks your choice of rules. Every requirement it names, such as a limit, a quantity to meet or an analysis an answer has to pass, stays in the exam at the strength the prompt states, as a rule with its check, and a quantity it asks to minimise or maximise is the objective. Where no check can decide such a requirement from its argument alone, say so in the scope, and do not check a weaker property under its name.",
   "Where the field has an objective, a quantity every valid answer has and practitioners minimise or maximise, such as a mass, a cost or a length, declare it: two valid answers to one task are then compared by it, and a task on which both tools find a valid answer still tells them apart. The check program then also exports `objective`, a function that takes the same `request` and returns that quantity of the answer as a finite number, computed from the answer and the public input alone; it is told nothing hidden. A field with no such quantity declares none.",
   "Write one check for each rule, and no other. The check program is one TypeScript module that exports `checks`, an object with a function under each check id. A function takes one argument, `request`, and returns a boolean, or a promise of one: `request.publicTask` is `{ taskId, family, publicInput }`, `request.artifact` is the answer, and `request.hidden` is the task's hidden values. It runs offline in a closed cell and imports nothing, so it computes from its argument alone, and the same answer always gets the same verdict. It returns true where the answer keeps its rule and false where it breaks it. An answer that breaks another rule is that rule's check's to refuse. It returns false only where the answer breaks the rule: where its own computation cannot reach a verdict on an answer the format allows, such as a solver that does not converge, it throws, which drops the task as the check's defect instead of refusing the answer.",
   `Give at least ${plural(EXAMPLES, "example task")}, different in what they ask and not only in their numbers. Either every task carries hidden values or none does. For each example give one accept control: an answer that keeps every rule. You choose the task, so you can start from an answer and derive the task from it. For each check give at least one reject control: an answer to an example that follows the answer format, breaks that check's rule, and names the check. The smallest answer the format allows, such as empty strings and empty lists, has to be rejected on every task: where it would pass, the format or the rules ask too little.`,
-  `draft_exam puts a whole draft to the host, which reads it without a model: its shape, then every control through the checks, twice, and the smallest answer on every example. A draft with no fault there is then solved: the starter harness, the one every campaign starts from, solves each example afresh under the budget, as many times as a comparison solves a task, and a draft whose every example it answered validly on every solve, with no valid answer better than another by the objective, does not stand the first time in a session; a later draft with no other fault stands with that reading as a note. It returns the faults it found, or that the draft stands. A draft that stands is the campaign's exam, and the session ends there. When a draft has faults, mend them and put the whole draft again. Call finish only if no exam can be drafted for the prompt, and say why.`,
+  `draft_exam puts a whole draft to the host, which reads it without a model: its shape, then every control through the checks, twice, and the smallest answer on every example. It returns the faults it found, or that the draft stands. A draft that stands is the campaign's exam, and the session ends there. When a draft has faults, mend them and put the whole draft again. Call finish only if no exam can be drafted for the prompt, and say why.`,
 ].join("\n");
 
 // The answer-format keys that name an object's fields other than `properties` (`unnamed`).
@@ -458,7 +454,7 @@ export function drafting(
   const put = tool({
     name: "draft_exam",
     description:
-      "Put a whole draft of the exam to the host: its reading without a model, then the starter harness's solves of its examples. It returns the faults it found, or that the draft stands. A draft that stands is the campaign's exam.",
+      "Put a whole draft of the exam to the host's reading, which uses no model. It returns the faults it found, or that the draft stands. A draft that stands is the campaign's exam.",
     parameters: DRAFT_PARAMETERS,
     executionMode: "sequential",
     execute: async (args) => {

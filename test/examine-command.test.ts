@@ -6,7 +6,8 @@ import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import type { Session } from "../src/examiner/session.ts";
 import { examineCommand } from "../tools/d1b/examine.ts";
-import { REPO } from "../tools/d2/campaign.ts";
+import { read } from "../src/kernel/log.ts";
+import { REPO, campaignLog } from "../tools/d2/campaign.ts";
 import type { Seated } from "../tools/d2/round.ts";
 import { fixtureTasks, layOutPack } from "./helpers/fixture-pack.ts";
 import { present } from "./helpers/matchers.ts";
@@ -26,11 +27,13 @@ const PACK = [
   "--examiner",
   "claude/claude-opus-5-5",
 ];
+/** A scripted session that held nothing and refused nothing. */
+const finished = () => ({ ended: "finished", puts: 0, held: [], refused: [] }) as const;
 layOutPack(ROOT, BUNDLE, fixtureTasks(1), join(REPO, "test", "fixtures", "harness-min"));
 
 afterAll(() => {
   rmSync(ROOT, { recursive: true, force: true });
-  for (const name of ["home", "probe"]) {
+  for (const name of ["home", "probe", "unkept"]) {
     rmSync(join(REPO, ".ana", "d2", `${STEM}-${name}`), { recursive: true, force: true });
   }
 });
@@ -40,7 +43,7 @@ describe("the Examiner command", () => {
     let reference: string | undefined;
     await examineCommand([...PACK, "--name", `${STEM}-home`, "--session", "x-1"], async (_request, wall) => {
       reference = wall?.reference;
-      return { ended: "finished", puts: 0, held: [], refused: [] };
+      return finished();
     });
     expect(reference !== undefined && existsSync(join(reference, "agent"))).toBe(true);
   });
@@ -65,18 +68,46 @@ describe("the Examiner command", () => {
         expect(probe.tries).toBe(5);
         const task = { taskId: "try-1", family: "fixture", publicInput: {}, hidden: null };
         expect(await probe.solve(task, new AbortController().signal)).toMatchObject({ solve: "x-1-s1" });
-        return { ended: "finished", puts: 0, held: [], refused: [] };
+        return finished();
       },
       seated,
     );
     expect(asked).toEqual([{ harness: present(reference), comparison: "x-1", task: "try-1" }]);
   });
 
+  it("records the campaign's setting at a session's first try and not before, so a session that tries nothing leaves no setting", async () => {
+    const seated: Seated = () => ({
+      builder: null,
+      setting: "scripted",
+      solve: async () => ({ solve: "x-1-s1", ending: { outcome: "pass" } }),
+    });
+    const settings = () =>
+      read(campaignLog(`${STEM}-unkept`)).filter((event) => event.kind === "campaign.setting");
+    const task = { taskId: "try-1", family: "fixture", publicInput: {}, hidden: null };
+    await examineCommand(
+      [...PACK, "--name", `${STEM}-unkept`, "--session", "x-1"],
+      async () => finished(),
+      seated,
+    );
+    expect(settings()).toHaveLength(0);
+    await examineCommand(
+      [...PACK, "--name", `${STEM}-unkept`, "--session", "x-2"],
+      async (request) => {
+        const probe = present(request.probe, "the session's probe");
+        await probe.solve(task, new AbortController().signal);
+        await probe.solve(task, new AbortController().signal);
+        return finished();
+      },
+      seated,
+    );
+    expect(settings()).toHaveLength(1);
+  });
+
   it("gives a session no probe where no seats are given", async () => {
     const given: Parameters<Session<"write">>[0]["probe"][] = [];
     await examineCommand([...PACK, "--name", `${STEM}-home`, "--session", "x-2"], async (request) => {
       given.push(request.probe);
-      return { ended: "finished", puts: 0, held: [], refused: [] };
+      return finished();
     });
     expect(given).toEqual([null]);
   });

@@ -30,7 +30,7 @@
  * its deadline and model turn limit, or when the Examiner calls `finish`, which it may at any count: on
  * 10 October every session held out two to four tasks and finished of its own accord. `--tasks` is
  * the host's and is never told to the Examiner. The campaign command names it from what the
- * campaign is short of (`examTasks`, `tools/d2/campaign-terms.ts`); run by hand it defaults to 12,
+ * campaign is short of, at least a sweep (`examTasks`, `tools/d2/campaign-terms.ts`); run by hand it defaults to 12,
  * a scored set's size until 12 October (`SIZE.tasks` is 24 since). Asking for many at once is what v1 found dilutes them, a probe grown to
  * 25 tasks in 10 of 13 cases (`7f0add79:docs/plan.md`).
  *
@@ -99,17 +99,22 @@ const EXAMINE_OPTIONS = {
 async function probing(campaign: Campaign, seated: Seated, setting: AskedSetting, session: string) {
   const unrecorded = firstRecord(setting, solvingAs(campaign, setting.named), solverLast(read(campaign.log)));
   if (unrecorded !== undefined) throw new Error(unrecorded);
-  keepSetting(campaign.log, setting);
   const reference = await keptAs(campaign, "--reference", PROMOTED);
   const seats = seated(campaign, { builder: undefined, reference: reference.dir });
-  return async (task: Task, kill: AbortSignal) =>
-    seats.solve(campaign.pack(task), reference, kill, session).catch((error: unknown) => {
+  // Kept at the first try rather than here, past the session's own refusals (`examine`), so that a
+  // refused session leaves the record alone (`keepSetting`).
+  let unkept: AskedSetting | null = setting;
+  return async (task: Task, kill: AbortSignal) => {
+    if (unkept !== null) keepSetting(campaign.log, unkept);
+    unkept = null;
+    return seats.solve(campaign.pack(task), reference, kill, session).catch((error: unknown) => {
       if (!kill.aborted || error !== kill.reason) throw error;
       return {
         solve: null,
         ending: { outcome: "non-result", kind: "killed", reason: errorMessage(error) },
       } as const;
     });
+  };
 }
 
 /** The budget every solve is held to now: the recorded setting's turns and minutes, or before a

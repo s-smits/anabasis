@@ -88,7 +88,7 @@ const SEAT_TITLES = {
 } as const satisfies Record<Seat, string>;
 
 const SELECTOR = /^(?<what>[A-Za-z][\w.]*)(?::(?<id>[^{}]+))?(?:\{(?<items>[^{}]*)\})?$/u;
-const DEFAULT_MAX_CHARS = 6000;
+export const DEFAULT_MAX_CHARS = 6000;
 
 /** Read selector `text`, refusing a seat or an item list it cannot name. */
 export function parseSelector(text: string): Selector {
@@ -102,6 +102,9 @@ export function parseSelector(text: string): Selector {
     throw new CommandFailure(
       `${what}: name a seat (${Object.values(SEAT_TITLES).join(", ")}) or an event kind`,
     );
+  }
+  if (seat === null && groups?.id !== undefined) {
+    throw new CommandFailure(`${text}: an event kind takes no session; choose its items instead`);
   }
   return {
     seat,
@@ -135,30 +138,47 @@ export function pick(items: string, count: number): number[] {
   return [...out];
 }
 
-/** Every group of seat `seat`, of every session or solve whose id is or ends with `id` if given. */
+/** Every group of seat `seat`, of every session or solve whose id is or ends with `id` if given.
+ *  A log of before about 23 October writes a turn's calls before the turn, numbered one lower
+ *  (72 of 177 archived logs on 4 November): a session whose first trace is a call holds its calls
+ *  for the turn that follows them. */
 export function groupsOf(events: readonly LogEvent[], seat: Seat, id: string | null): Group[] {
   const own = tracesIn(events).filter(
-    (each) => each.seat === seat && (id === null || each.id === id || each.id.endsWith(id)),
+    (each): each is Turn | Call =>
+      each.part !== "compacted" &&
+      each.seat === seat &&
+      (id === null || each.id === id || each.id.endsWith(id)),
   );
+  const firstPart = new Map<string, string>();
+  for (const each of own) {
+    if (!firstPart.has(each.id)) firstPart.set(each.id, each.part);
+  }
   const groups: Group[] = [];
   const open = new Map<string, Group>();
+  const held = new Map<string, Call[]>();
   for (const each of own) {
-    if (each.part === "compacted") continue;
     const was = open.get(each.id);
+    if (each.part === "call" && firstPart.get(each.id) === "call") {
+      held.set(each.id, [...(held.get(each.id) ?? []), each]);
+      continue;
+    }
     if (each.part === "call" && was !== undefined && (each.turn === null || each.turn === was.turn)) {
       was.calls.push(each);
       continue;
     }
-    const group: Group = {
-      seat,
-      id: each.id,
-      turn: each.turn,
-      at: each.at,
-      said: each.part === "turn" ? each : null,
-      calls: each.part === "call" ? [each] : [],
-    };
+    const said = each.part === "turn" ? each : null;
+    const calls = each.part === "call" ? [each] : (held.get(each.id) ?? []);
+    held.delete(each.id);
+    const group: Group = { seat, id: each.id, turn: each.turn, at: each.at, said, calls };
     groups.push(group);
     open.set(each.id, group);
+  }
+  // Calls of an old-order session that no turn followed: the session ended inside them.
+  for (const [session, calls] of held) {
+    const first = calls[0];
+    if (first !== undefined) {
+      groups.push({ seat, id: session, turn: first.turn, at: first.at, said: null, calls });
+    }
   }
   return groups;
 }
@@ -172,6 +192,7 @@ export function fenced(text: string, lang = ""): string {
 
 /** `text` whole, or cut in its middle to about `shown.maxChars` with the cut said in place. */
 function clip(text: string, shown: Shown): string {
+  if (shown.maxChars < 1) throw new CommandFailure("--max-chars takes a count of at least 1");
   if (shown.whole || text.length <= shown.maxChars) return text;
   const head = Math.floor((shown.maxChars * 2) / 3);
   const tail = shown.maxChars - head;
@@ -200,7 +221,8 @@ function groupMarkdown(group: Group, label: string, shown: Shown): string {
   const cost = billed === null || billed === undefined ? "" : `, $${billed.toFixed(3)}`;
   const head = `#### ${SEAT_TITLES[group.seat]} ${group.id}${turn} (${label}, ${group.at}${cost})`;
   const words = group.said?.text.trim() ?? "";
-  const said = words === "" ? "_No words in this turn._" : clip(words, shown);
+  // Fenced, so that a cut inside the model's own code block or heading cannot run into the page.
+  const said = words === "" ? "_No words in this turn._" : fenced(clip(words, shown), "markdown");
   const stop =
     group.said?.error === null || group.said?.error === undefined ? [] : [`Error: ${group.said.error}`];
   return [
@@ -249,7 +271,11 @@ function eventsMarkdown(events: readonly LogEvent[], selector: Selector, shown: 
     );
     return ["| item | at | data begins |", "| --- | --- | --- |", ...rows].join("\n");
   }
-  return pick(selector.items, own.length)
+  const chosen = pick(selector.items, own.length);
+  if (chosen.length === 0) {
+    return `_The log holds ${plural(own.length, `\`${String(selector.kind)}\` event`)}; \`{${selector.items}}\` names none._`;
+  }
+  return chosen
     .map((at) => {
       const event = own[at];
       if (event === undefined) return "";

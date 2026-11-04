@@ -49,9 +49,10 @@ Every source part is read at `--commit` through `git show`, never from a working
 script refuses a commit no remote holds. On 3 November a whole-flow document appended the main
 checkout's `AGENTS.md`, behind the stack's top, and the Oracle's sharpest contradiction was one
 the top had already resolved. So name the stack's top, or the commit the runs in question ran,
-and cite every other commit by its own link. Each part carries its GitHub link with line anchors,
-and the document opens with a table of the parts and their size. A `pr` part gives the pull
-request's branch, head, body and files, and points the Oracle at its "Files changed" tab.
+and cite every other commit by its own link. Each `src` part links to its GitHub lines, a `diff`
+to its comparison and a `pr` to its "Files changed" tab, while a `log` or `file` part is inline
+only. A table of the parts and their size follows the head. A `pr` part gives the pull request's
+branch, head, body and files. A `file` path is read from the parts file's folder.
 
 **Take generously; do not trim to a size.** A document of 100,000 to 150,000 o200k tokens has
 served (3 November about 100,000, 4 November 142,579), and the script prints the size it made. It
@@ -71,14 +72,18 @@ bun --env-file=.env.runs .claude/skills/oracle-handover/scripts/slice.ts <run> '
 | `Builder` | the seat's sessions, or its turns where it has one, a row each: a table of contents |
 | `Builder{4-7}`, `{4,7}`, `{10-}`, `{~3}` | those turns, each with its words and every tool call and result it made |
 | `Builder:b-2{1-5}` | the turns of one session; a solve's id may be given by its end |
-| `<event kind>`, `<event kind>{1,~1}` | one row an event, or those events whole as JSON |
+| `comparison.reported`, `comparison.reported{1,~1}` | an event kind with its dot: one row an event, or those events as JSON |
 
-Seats are Builder (also HarnessBuilder), Examiner, Drafter, Referee and Solver. A result longer
-than 6,000 characters is cut in its middle with the cut said; `--whole` keeps it. A turn and its
-calls are one group, so `{4}` is the fourth time the seat spoke and everything it ran then.
+Seats are Builder (also HarnessBuilder), Examiner, Drafter, Referee, Solver and Repair, in any case
+and by their log names too (`build`, `exam`, `draft`, `solve`). A turn's words, a result and an
+event longer than `--max-chars` (6,000) are cut in the middle with the cut said; `--whole` keeps
+them. A turn and its calls are one group, so `{4}` is the fourth time the seat spoke and everything
+it ran then, in an old log that wrote calls before their turn as in a new one.
 
-The script turns home folders into `~/` and each machine name into `host-a`, `host-b`, and
-prints that key to you, not into the file. It refuses a file with a credential-shaped line.
+`document.ts`, not `slice.ts`, turns home folders into `~` and each machine name into `host-a`,
+`host-b`, and prints that key to you, not into the file; it refuses to run without the hosts of
+`.env.runs`, and refuses a file with a credential-shaped line. Slices printed on their own keep
+what the log holds.
 Keep a copy of the document in the local notes, as for a zip.
 
 ## Choose the runs

@@ -409,9 +409,48 @@ describe("an Oracle document's slices", () => {
     expect(text).toContain("cat HARNESS.md");
     expect(text).not.toContain("make");
     expect(slice(events, "Builder:b-1{9-}", shown)).toContain("names none");
+    expect(slice(events, "comparison.reported{9}", shown)).toContain("names none");
+    expect(() => parseSelector("comparison.reported:g-2{1}")).toThrow("takes no session");
     expect(slice(events, "referee.finding", shown)).toContain("holds no");
     expect(slice(events, "comparison.reported{~1}", shown)).toContain('"tasks": 24');
   });
+});
+
+it("groups an old log's calls, written before their turn and numbered one lower, with that turn", () => {
+  const at = "2026-10-22T00:00:00.000Z";
+  const old: LogEvent[] = [
+    {
+      at,
+      kind: "solve.call",
+      data: { solve: "s-1", turn: 0, tool: "bash", args: {}, isError: false, text: "a" },
+    },
+    {
+      at,
+      kind: "solve.call",
+      data: { solve: "s-1", turn: 0, tool: "read", args: {}, isError: false, text: "b" },
+    },
+    {
+      at,
+      kind: "solve.turn",
+      data: { solve: "s-1", turn: 1, stopReason: "toolUse", error: null, text: "first" },
+    },
+    {
+      at,
+      kind: "solve.call",
+      data: { solve: "s-1", turn: 1, tool: "bash", args: {}, isError: false, text: "c" },
+    },
+    {
+      at,
+      kind: "solve.turn",
+      data: { solve: "s-1", turn: 2, stopReason: "stop", error: null, text: "second" },
+    },
+  ];
+  expect(
+    groupsOf(old, "solve", null).map((group) => [group.turn, group.said?.text, group.calls.length]),
+  ).toEqual([
+    [1, "first", 2],
+    [2, "second", 1],
+  ]);
 });
 
 describe("an Oracle document's parts", () => {
@@ -435,6 +474,23 @@ describe("an Oracle document's parts", () => {
       [6, 6],
     ]);
     expect(sectionLines(markdown, ["10"])).toEqual([[5, 5]]);
+    const fenced = ["## 2.1 Early", "## 2. Two", "```sh", "# a comment", "```", "after", "## 3. Three", ""];
+    expect(sectionLines(fenced, ["2", "3"])).toEqual([
+      [2, 6],
+      [7, 7],
+    ]);
+    const overloaded = [
+      "/** module head */",
+      "",
+      "export function f(a: string): string;",
+      "export function f(a: unknown) {",
+      "  return a;",
+      "}",
+      "export default g;",
+      "function g() {}",
+    ].join("\n");
+    expect(declarationLines(overloaded, "f")).toEqual([3, 6]);
+    expect(declarationLines(overloaded, "g")).toEqual([8, 8]);
   });
 
   it("gives each machine one alias across its names and drops home folders", () => {
@@ -443,6 +499,11 @@ describe("an Oracle document's parts", () => {
       ["box-two", "two-ssh"],
     ]);
     expect(made.text).toBe("ran on host-b (ssh host-b) from ~/Developer/x and ~/y");
+    const bare = sanitised(
+      "cwd /Users/someone, BOX-ONE.local, /tmp/-Users-someone-Developer-x, src/home/a/b.ts",
+      [["box-one"]],
+    );
+    expect(bare.text).toBe("cwd ~, host-a.local, /tmp/-~-Developer-x, src/home/a/b.ts");
   });
 });
 

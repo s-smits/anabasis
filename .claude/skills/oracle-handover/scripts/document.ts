@@ -26,7 +26,7 @@ import { publishedAt } from "#tools/runs/code.ts";
 import { hostsOf, ownName } from "#tools/runs/host-config.ts";
 import { ghOrThrow } from "#tools/runtime/pulls.ts";
 import { scanText } from "#tools/secrets/rules.ts";
-import { fenced, sliceRun } from "./slice.ts";
+import { DEFAULT_MAX_CHARS, fenced, sliceRun } from "./slice.ts";
 
 interface Part {
   readonly title: string;
@@ -52,7 +52,8 @@ const PR_TEMPLATE = [
 ].join("\n");
 const tokensOf = (text: string) => Math.round(new TextEncoder().encode(text).length / 3.17);
 
-/** The 1-based lines of top-level declaration `name` in TypeScript `text`, its head comment included. */
+/** The 1-based lines of top-level declaration `name` in TypeScript `text`, from the head comment
+ *  of its first statement to the end of its last, so that overloads and merged interfaces come whole. */
 export function declarationLines(text: string, name: string): [number, number] {
   const file = ts.createSourceFile("part.ts", text, ts.ScriptTarget.ESNext, true);
   const named = (node: ts.Statement) =>
@@ -60,33 +61,55 @@ export function declarationLines(text: string, name: string): [number, number] {
       ? node.declarationList.declarations.some(
           (each) => ts.isIdentifier(each.name) && each.name.text === name,
         )
-      : node.forEachChild((child) => (ts.isIdentifier(child) && child.text === name) || undefined) === true;
-  const node = file.statements.find(named);
-  if (node === undefined) throw new CommandFailure(`no top-level declaration named ${name}`);
-  const from = ts.getLeadingCommentRanges(text, node.getFullStart())?.[0]?.pos ?? node.getStart(file);
+      : (ts.isFunctionDeclaration(node) ||
+          ts.isClassDeclaration(node) ||
+          ts.isInterfaceDeclaration(node) ||
+          ts.isTypeAliasDeclaration(node) ||
+          ts.isEnumDeclaration(node) ||
+          ts.isModuleDeclaration(node)) &&
+        node.name?.getText(file) === name;
+  const nodes = file.statements.filter(named);
+  const first = nodes[0];
+  const last = nodes.at(-1);
+  if (first === undefined || last === undefined) {
+    throw new CommandFailure(`no top-level declaration named ${name}`);
+  }
+  // The comments just above the statement are its own; a file's head comment sits above a blank line.
+  let from = first.getStart(file);
+  for (const comment of (ts.getLeadingCommentRanges(text, first.getFullStart()) ?? []).toReversed()) {
+    if (/\n\s*\n/u.test(text.slice(comment.end, from))) break;
+    from = comment.pos;
+  }
   const line = (at: number) => file.getLineAndCharacterOfPosition(at).line + 1;
-  return [line(from), line(node.getEnd())];
+  return [line(from), line(last.getEnd())];
 }
 
-/** The 1-based lines of each markdown section whose heading is `key` or begins `key.` or `key `. */
+/** The 1-based lines of each markdown section whose heading is `key` or begins `key ` or `key. `. */
 export function sectionLines(lines: readonly string[], keys: readonly string[]): [number, number][] {
-  const heading = (line: string) => /^(#+) (.*)$/u.exec(line);
+  // A `#` line inside a fenced block is code, not a heading.
+  let fence = false;
+  const headings = lines.map((line) => {
+    if (/^\s*(?:```|~~~)/u.test(line)) fence = !fence;
+    return fence ? null : /^(#+) (.*)$/u.exec(line);
+  });
+  const end = lines.at(-1) === "" ? lines.length - 1 : lines.length;
   return keys.map((key) => {
-    // A space after the heading's text lets `key ` match the whole heading as well as its first word.
-    const begins = (line: string) =>
-      [`${key} `, `${key}.`].some((each) => `${heading(line)?.[2] ?? ""} `.startsWith(each));
-    const at = lines.findIndex(begins);
-    if (at === -1) throw new CommandFailure(`no heading begins ${key}`);
-    const depth = heading(lines[at] ?? "")?.[1]?.length ?? 1;
-    const next = lines.findIndex(
-      (line, index) => index > at && (heading(line)?.[1]?.length ?? Infinity) <= depth,
+    // A space after the heading's text lets `key ` match the whole heading as well as its first words.
+    const at = headings.findIndex((heading) =>
+      [`${key} `, `${key}. `].some((each) => `${heading?.[2] ?? ""} `.startsWith(each)),
     );
-    return [at + 1, next === -1 ? lines.length : next];
+    if (at === -1) throw new CommandFailure(`no heading begins ${key}`);
+    const depth = headings[at]?.[1]?.length ?? 1;
+    const next = headings.findIndex(
+      (heading, index) => index > at && (heading?.[1]?.length ?? Infinity) <= depth,
+    );
+    return [at + 1, next === -1 ? end : next];
   });
 }
 
 function srcPart(at: At, spec: string): Part {
-  const [, path = spec, from, to, name] = /^([^:#]+)(?::(\d+)-(\d+)|#(.+))?$/u.exec(spec) ?? [];
+  const [, path = spec, from, to = from, name] = /^([^:#]+)(?::(\d+)(?:-(\d+))?|#(.+))?$/u.exec(spec) ?? [];
+  if (Number(from) > Number(to)) throw new CommandFailure(`${spec}: a range runs from its lower line`);
   const text = gitOutput(at.repo, "show", `${at.sha}:${path}`);
   const lang = LANGUAGE.get(extname(path)) ?? "";
   const blob = `${at.web}/blob/${at.sha}/${path}`;
@@ -104,12 +127,15 @@ function srcPart(at: At, spec: string): Part {
 
 /** Each verb of a parts line: what it makes of its arguments. */
 const PARTS = {
-  src: (at, [spec = ""]) => srcPart(at, spec),
-  diff: (at, [range = "", ...paths]) => ({
-    title: `diff ${range}`,
-    link: `${at.web}/compare/${range.replace("..", "...")}`,
-    body: fenced(gitOutput(at.repo, "diff", range, "--", ...paths), "diff"),
-  }),
+  src: (at, words) => srcPart(at, words.join(" ")),
+  diff: (at, [range = "", ...paths]) => {
+    if (!range.includes("..")) throw new CommandFailure(`diff ${range}: name two commits, <from>..<to>`);
+    return {
+      title: `diff ${range}`,
+      link: `${at.web}/compare/${range.includes("...") ? range : range.replace("..", "...")}`,
+      body: fenced(gitOutput(at.repo, "diff", range, "--", ...paths), "diff"),
+    };
+  },
   pr: (at, [number = ""]) => ({
     title: `PR #${number}`,
     link: `${at.web}/pull/${number}/files`,
@@ -128,7 +154,7 @@ const PARTS = {
     return {
       title: `${run}: ${selectors.join(" ")}`,
       link: "",
-      body: await sliceRun(run, selectors, { whole: words.includes("--whole"), maxChars: 6000 }),
+      body: await sliceRun(run, selectors, { whole: words.includes("--whole"), maxChars: DEFAULT_MAX_CHARS }),
     };
   },
   file: (at, [path = ""]) => ({
@@ -139,7 +165,8 @@ const PARTS = {
 } as const satisfies Record<string, (at: At, words: string[]) => Part | Promise<Part>>;
 const isVerb = (verb: string): verb is keyof typeof PARTS => Object.hasOwn(PARTS, verb);
 
-/** `text` with every home folder as `~/` and each machine's names, `machines[i]`, as one alias. */
+/** `text` with every home folder as `~`, also where a path is written with dashes (a session's
+ *  folder), and each machine's names, `machines[i]`, in any case, as one alias. */
 export function sanitised(text: string, machines: readonly (readonly string[])[]) {
   const aliases = new Map(
     machines.flatMap((names, index) =>
@@ -148,9 +175,11 @@ export function sanitised(text: string, machines: readonly (readonly string[])[]
         .map((name) => [name, `host-${String.fromCodePoint(97 + index)}`] as const),
     ),
   );
-  let out = text.replaceAll(/\/(?:Users|home)\/[^/\s"'`]+\//gu, "~/");
+  let out = text
+    .replaceAll(/(?<![\w.-])\/(?:Users|home)\/[^/\s"'`),;:]+/gu, "~")
+    .replaceAll(/-(?:Users|home)-[^-/\s]+-/gu, "-~-");
   for (const [name, alias] of [...aliases].toSorted(([a], [b]) => b.length - a.length)) {
-    out = out.replaceAll(name, alias);
+    out = out.replaceAll(new RegExp(name.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`), "giu"), alias);
   }
   return { text: out, aliases };
 }
@@ -170,7 +199,8 @@ async function documentOf(partsFile: string, repo: string, commit: string) {
     .split("\n")
     .map((each) => each.trim())) {
     if (line === "" || line.startsWith("#")) continue;
-    const [spec = "", why] = line.split(" :: ");
+    const cut = line.indexOf(" :: ");
+    const [spec, why] = cut === -1 ? [line, undefined] : [line.slice(0, cut), line.slice(cut + 4)];
     const [verb = "", ...words] = spec.split(/\s+/u);
     if (verb === "head") head.push(readFileSync(resolve(at.base, words.join(" ")), "utf8").trim());
     else if (isVerb(verb)) {
@@ -194,7 +224,13 @@ async function documentOf(partsFile: string, repo: string, commit: string) {
         `## Appendix ${String(index + 1)}. ${part.title}\n\n${part.link === "" ? "" : `On GitHub: ${part.link}\n\n`}${part.body}`,
     ),
   ].join("\n\n");
-  const machines = [[ownName()], ...hostsOf().map((host) => [host.name, host.ssh.replace(/^.*@/u, "")])];
+  const peers = hostsOf();
+  if (peers.length === 0) {
+    throw new CommandFailure(
+      "no ANA_HOSTS: run with --env-file=.env.runs, so that every host name is aliased",
+    );
+  }
+  const machines = [[ownName()], ...peers.map((host) => [host.name, host.ssh.replace(/^.*@/u, "")])];
   return { ...sanitised(`${text}\n`, machines), parts: parts.length };
 }
 

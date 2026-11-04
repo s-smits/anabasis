@@ -42,7 +42,10 @@
  * could not see one coming, wrote tasks it answered every time: 7 of 242 tallied tasks of six such
  * campaigns were untied, against 58 of 62 under the room-solving gate (4 November; an association
  * across commits and exams, not a controlled result). The solves are
- * the campaign's, billed to it, and counted by no comparison (`probed`, `record.ts`).
+ * the campaign's, billed to it, and counted by no comparison (`probed`, `record.ts`). Until
+ * 5 November they ran on the session's own deadline, so trying a hard task cost its author writing
+ * time; the clock now stands still while they run, as a drafting session's does while its draft is
+ * read.
  */
 import type { SeatTool } from "../agent/session.ts";
 import { Type } from "typebox";
@@ -170,6 +173,8 @@ const FAILED = new Map([
   ["broken-harness", "not valid: the harness could not be opened"],
   ["flagged", "not valid: it called the task malformed"],
 ]);
+/** The session clock's pause, which runs host work outside the session's own deadline (`sessionClock`). */
+type Within = <T>(action: () => Promise<T>) => Promise<T>;
 /** An author's claim on a draft, as the log keeps it beside the task. */
 interface Claim {
   readonly grade: number;
@@ -475,7 +480,7 @@ function toldOf(ended: Ending, turns: number | null, measure: number | null): st
  * comparison's admission reads it. An instance a task of the campaign holds runs under that task's
  * id, and any other under one its content names (`triedAs`).
  */
-function tryReferenceTool(desk: Desk, probe: NonNullable<Terms["probe"]>): SeatTool {
+function tryReferenceTool(desk: Desk, probe: NonNullable<Terms["probe"]>, within: Within): SeatTool {
   const { request } = desk;
   return tool({
     name: "try_reference",
@@ -503,8 +508,8 @@ function tryReferenceTool(desk: Desk, probe: NonNullable<Terms["probe"]>): SeatT
       if (!affords(request.log, solves)) {
         throw new Error("The campaign's budget holds no reserve for these solves.");
       }
-      const ran = await Promise.all(
-        Array.from({ length: solves }, async () => probe.solve(instance, desk.stop)),
+      const ran = await within(async () =>
+        Promise.all(Array.from({ length: solves }, async () => probe.solve(instance, desk.stop))),
       );
       const shown = probed(read(request.log));
       const lines = ran.map((one, nth) => {
@@ -545,6 +550,7 @@ export function writing(
   walls: Pick<Walls, "pinned"> | undefined,
   reference: "unseen" | "in-home",
   stop = new AbortController().signal,
+  within: Within = async (action) => action(),
 ) {
   const { limits, verify, wanted, probe } = request;
   const before = read(request.log);
@@ -590,7 +596,7 @@ export function writing(
       proposeTool(desk),
       exampleTool(() => [...writtenTasks(read(request.log)), ...request.tasks]),
       ...(verify === null ? [] : [tryTool(desk, verify)]),
-      ...(probe === null ? [] : [tryReferenceTool(desk, probe)]),
+      ...(probe === null ? [] : [tryReferenceTool(desk, probe, within)]),
     ],
     enters: "a task enters it through propose_tasks alone",
     nudge: "Propose further tasks",

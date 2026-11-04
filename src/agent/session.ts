@@ -423,8 +423,8 @@ function toolHooks(seat: Seat, sink: ReturnType<typeof traceSink> | undefined) {
  *  campaign action runs. Overlapping waits share one interval; the last to end arms the remaining
  *  allowance, unless the owner has closed it. Until 28 October the Builder and the Examiner each
  *  kept a copy, and the Builder's neither nested nor named its cancellation; until 1 November the
- *  Examiner's paused while it awaited its gate's room solves, and a drafting session's pauses while
- *  the host reads a draft. */
+ *  Examiner's paused while it awaited its gate's room solves; a drafting session's pauses while the
+ *  host reads a draft, and a writing session's while the reference harness tries an instance. */
 export function sessionClock(began: number, seconds: number) {
   const deadline = new AbortController();
   let aside = 0;

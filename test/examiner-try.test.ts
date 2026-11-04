@@ -130,6 +130,35 @@ describe("trying the reference at writing", () => {
     expect(await said(made, { task: spelled(7), solves: 1 })).toContain("Solve 1: valid in 4 turns");
   });
 
+  it("runs the reference's solves while the session's clock stands still, and a proposal outside it", async () => {
+    const made = seated(100, 2, []);
+    let paused = false;
+    const seen: boolean[] = [];
+    const within = async <T>(action: () => Promise<T>): Promise<T> => {
+      paused = true;
+      try {
+        return await action();
+      } finally {
+        paused = false;
+      }
+    };
+    const solve = async (task: Task) => {
+      seen.push(paused);
+      return await made.probe.solve(task);
+    };
+    const mode = writing(
+      { ...made.request, probe: { tries: 2, solve } },
+      undefined,
+      "unseen",
+      undefined,
+      within,
+    );
+    await invoke(toolOf(mode, TRY), "try", { solves: 2, task: spelled(7) });
+    await invoke(toolOf(mode), "put", { tasks: [instance(7)] });
+    expect(seen).toEqual([true, true]);
+    expect(paused).toBe(false);
+  });
+
   it("is given, described in the system prompt and counted in the limits only where the host gives a probe", () => {
     const made = seated(100, 4, []);
     expect(made.mode.tools.map(({ name }) => name)).toContain(TRY);

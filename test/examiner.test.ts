@@ -134,7 +134,7 @@ describe("a session of any mode", () => {
               ...s.request,
               reading: async () => {
                 record();
-                return { faults: [], notes: [] };
+                return [];
               },
             }
           : {
@@ -173,7 +173,7 @@ describe("a session of any mode", () => {
       const { limits } = turned.request;
       const faulted = {
         ...turned.request,
-        reading: async () => ({ faults: ["a fault"], notes: [] }),
+        reading: async () => ["a fault"],
         limits: { ...limits, turns: 1 },
       };
       expect(await examine(faulted)).toMatchObject({ ended: "turns", puts: 1 });
@@ -363,8 +363,7 @@ describe("a session that drafts an exam", () => {
     let readings = 0;
     const reading = async () => {
       readings += 1;
-      const faults = readings === 1 ? ["the accept control of t-1 did not pass: fail check-product"] : [];
-      return { faults, notes: [] };
+      return readings === 1 ? ["the accept control of t-1 did not pass: fail check-product"] : [];
     };
     const examined = await examine({ ...s.request, reading });
     expect(examined).toEqual({ ended: "stands", puts: 2, held: [], refused: [] });
@@ -388,7 +387,7 @@ describe("a session that drafts an exam", () => {
     // session reads the fault and finishes rather than ending at its wall.
     const reading = async () => {
       await Bun.sleep(400);
-      return { faults: ["a fault"], notes: [] };
+      return ["a fault"];
     };
     const { limits } = s.request;
     const examined = await examine({ ...s.request, reading, limits: { ...limits, wallSeconds: 0.3 } });

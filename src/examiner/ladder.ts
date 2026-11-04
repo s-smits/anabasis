@@ -49,6 +49,15 @@
  * relative to measured facts: a grade the reference answers on every solve measures nothing more.
  * That a task measures something only where a valid answer exists is said by each mode's prompt
  * beside the ladder, and no longer here as well (4 November).
+ *
+ * On 4 November two things moved. `SOLVER`'s second place gave a data form, read from JobBench's
+ * statistics tasks that morning; the jobstat draft that followed listed every break in its data
+ * with its repair, so the place is said in its general form again, "and nothing public says
+ * where", and a stated procedure joins what the solver meets at grade 2. And a drafting session
+ * reads the scale and the solver (`REACH`) instead of the whole ladder: the worked fields teach
+ * how hard a task is, which the writing session decides, and no drafting record shows them
+ * raising supply (buffer untied 82% of the tasks it drafted before the ladder and 80% after,
+ * truss 96% and 95%).
  */
 
 /** Reach, from 0 to 7: how hard a task is for a strong current model working in the field. */
@@ -104,11 +113,18 @@ export const FIELDS: readonly { readonly field: string; readonly rungs: readonly
 
 /** Who the grades are for, and the three places its ability stops. */
 export const SOLVER =
-  "The grades are for the solver this campaign seats, with a shell and the field's libraries. It forgets no case and skips no check: it scripts every case and checks its answer with an engine it writes from the stated rules. So a closed form, a search over a few continuous variables or a finite list of cases sits at grade 2 or below for it, however specialist the words. So does a task made hard only by margins, size or new numbers, such as a total held within a hair of its limit, every resource in use at once or one admissible value a part: exact arithmetic and enumeration meet each, and a tolerance punishes approximation only where the engine that decides has no exact form. Its ability stops in three places. The obvious local search from the obvious start lands in the wrong basin, and only the field's own structure finds the right one. The convenient model it would build differs, near the specification, from the engine that decides the answer; in data work that model takes a table or its codebook at face value, where the data as recorded break the invariants the contract states for its codes, units, keys or totals, and no convention names the break or its repair. Or the specification sits within a stated tolerance of a theoretical bound, so an approximate method falls short and a theorem rules out the class of answer a generalist searches. A task climbs a grade only by moving into one of these places.";
+  "The grades are for the solver this campaign seats, with a shell and the field's libraries. It forgets no case and skips no check: it scripts every case and checks its answer with an engine it writes from the stated rules. So a closed form, a stated procedure, a search over a few continuous variables or a finite list of cases sits at grade 2 or below for it, however specialist the words. So does a task made hard only by margins, size or new numbers, such as a total held within a hair of its limit, every resource in use at once or one admissible value a part: exact arithmetic and enumeration meet each, and a tolerance punishes approximation only where the engine that decides has no exact form. Its ability stops in three places. The obvious local search from the obvious start lands in the wrong basin, and only the field's own structure finds the right one. The convenient model it would build differs, near the specification, from the engine that decides the answer, and nothing public says where. Or the specification sits within a stated tolerance of a theoretical bound, so an approximate method falls short and a theorem rules out the class of answer a generalist searches. A task climbs a grade only by moving into one of these places.";
 
-/** The ladder as an Examiner reads it: the scale, then each field's tasks from easy to very hard. */
+/** The scale, as both modes read it. */
+const SCALE = `Reach is how hard a task is for a strong current model working in the field:\n${GRADES.map((grade) => `- ${grade}`).join("\n")}`;
+
+/** The scale and who it is for, as a drafting session reads it (`draft.ts`). */
+export const REACH = [SCALE, SOLVER].join("\n\n");
+
+/** The ladder as a writing session reads it: the scale, each field's tasks from easy to very hard,
+ *  and the solver. */
 export const LADDER = [
-  `Reach is how hard a task is for a strong current model working in the field:\n${GRADES.map((grade) => `- ${grade}`).join("\n")}`,
+  SCALE,
   "Three fields that no exam here covers, each from easy to very hard. They show what each grade demands, and none is a task to copy:",
   ...FIELDS.map(({ field, rungs }) => `${field}:\n${rungs.map((rung) => `- ${rung}`).join("\n")}`),
   SOLVER,

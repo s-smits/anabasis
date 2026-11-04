@@ -9,9 +9,7 @@ import {
   type Graded,
   type Read,
   readChecker,
-  runControls,
   unadmitted,
-  unreadFields,
 } from "../src/kernel/acceptance.ts";
 import type { Contract } from "../src/kernel/contract.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
@@ -231,80 +229,6 @@ describe("the objective's acceptance", () => {
       matching(/mast-1.*faulty objective.*NaN/u),
       matching(/objective.*not be measured.*NaN/u),
     ]);
-  });
-});
-
-describe("the answer's fields", () => {
-  const format = (x: JsonObject) => ({ type: "object", required: ["x"], properties: { x } });
-  const fields = async (schema: JsonObject, checks: Verifier, controls: Control[]) =>
-    unreadFields(checks, [roof], await runControls(checks, [roof], controls, 1), schema, 1);
-
-  it("credits an isolated reject control when both generic range probes pass", async () => {
-    const range: Verifier = async (_task, answer) => {
-      const x = asRecord(answer)?.x;
-      return isNumber(x) && Math.abs(x) <= 10 ? { kind: "pass" } : { kind: "fail", blocking: ["range"] };
-    };
-    expect(
-      await fields(format({ type: "number" }), range, [
-        { taskId: roof.taskId, answer: { x: 0 }, refusedBy: null },
-        { taskId: roof.taskId, answer: { x: 11 }, refusedBy: "range" },
-      ]),
-    ).toEqual([]);
-  });
-
-  it("does not credit a rejection caused by another field", async () => {
-    const schema = {
-      type: "object",
-      required: ["x", "mass"],
-      properties: { x: { type: "number" }, mass: { type: "number" } },
-    };
-    const faults = await fields(schema, verify, [
-      { taskId: roof.taskId, answer: { x: 0, mass: 5 }, refusedBy: null },
-      { taskId: roof.taskId, answer: { x: 11, mass: 50 }, refusedBy: "mass" },
-    ]);
-    expect(faults).toEqual([matching(/field x moved no check/u)]);
-  });
-
-  it("reports every unused field the format allows to change", async () => {
-    for (const [schema, x, field] of [
-      [{ type: "string", enum: ["A", "B"] }, "A", "x"],
-      [{ type: "number", minimum: 0, maximum: 0.5 }, 0, "x"],
-      [{ type: "array", items: { type: "string", enum: ["A", "B"] } }, ["A"], "x[]"],
-    ] satisfies [JsonObject, JsonObject["x"], string][]) {
-      const faults = await fields(format(schema), ignored, [
-        { taskId: roof.taskId, answer: { x }, refusedBy: null },
-      ]);
-      expect(faults).toHaveLength(1);
-      expect(faults[0]).toContain(`field ${field} moved no check`);
-    }
-  });
-
-  it("probes the other enumerated value before crediting its check", async () => {
-    const seen: JsonObject[] = [];
-    const checked: Verifier = async (_task, answer) => {
-      const record = asRecord(answer);
-      if (record !== null) seen.push(record);
-      return record?.x === "A" ? { kind: "pass" } : { kind: "fail", blocking: ["enum"] };
-    };
-    expect(
-      await fields(format({ type: "string", enum: ["A", "B"] }), checked, [
-        { taskId: roof.taskId, answer: { x: "A" }, refusedBy: null },
-      ]),
-    ).toEqual([]);
-    expect(seen).toContainEqual({ x: "B" });
-  });
-
-  it("leaves a field to the format when no alternative follows it", async () => {
-    for (const [schema, x] of [
-      [{ const: 0 }, 0],
-      [{ enum: [0] }, 0],
-      [{ type: "number", minimum: 0, maximum: 0 }, 0],
-      [{ type: "string", pattern: "^[AB]$" }, "A"],
-    ] satisfies [JsonObject, JsonObject["x"]][]) {
-      expect(
-        await fields(format(schema), ignored, [{ taskId: roof.taskId, answer: { x }, refusedBy: null }]),
-      ).toEqual([]);
-    }
   });
 });
 

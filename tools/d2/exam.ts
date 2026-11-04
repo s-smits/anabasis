@@ -14,8 +14,8 @@
  * v1 check declared kept a tool's operands inside what the check could read, and these checks
  * run no tool.
  */
-import { type Draft, type DraftReading, draftFaults, draftOf } from "#src/examiner/draft.ts";
-import { readChecker, unreadFields } from "#src/kernel/acceptance.ts";
+import { type Draft, draftOf } from "#src/examiner/draft.ts";
+import { readChecker } from "#src/kernel/acceptance.ts";
 import { read } from "#src/kernel/log.ts";
 import { CHECK_PROGRAM_CONTRACT, openVerifier, readBrief } from "#src/kernel/verify.ts";
 import { EVALUATOR_FILE } from "#src/meta/bundle-layout.ts";
@@ -118,24 +118,21 @@ export function stageExam(dir: string, draft: Draft): Staged {
 }
 
 /**
- * What the host reads of a draft without a model, one sentence a fault: its shape, then the
- * acceptance reading every checker is held to, less the faults that are the operator's to admit.
- * Its notes are facts the author may act on and the draft stands with: the reading's own, and each
- * field of the answer no check decides (`unreadFields`), which a stored pack is not read for.
- * A check program that does not load or a wall that is not there stops a verifier, and here that
- * is told as a fault too: the draft's author is in the session and can mend the first.
+ * What the host reads of a draft whose shape holds, one sentence a fault: the acceptance reading
+ * every checker is held to, less the faults that are the operator's to admit. A check program that
+ * does not load or a wall that is not there stops a verifier, and here that is told as a fault
+ * too: the draft's author is in the session and can mend the first. The session reads the draft's
+ * shape before it calls this (`draftFaults`), and the reading's notes are left out: until
+ * 4 November they rode on the reply that ends the session, and none of 250 results on record
+ * carried them to a model.
  */
-export async function draftReading(dir: string, draft: Draft, width: number): Promise<DraftReading> {
-  const unformed = draftFaults(draft);
-  if (unformed.length > 0) return { faults: unformed, notes: [] };
+export async function draftReading(dir: string, draft: Draft, width: number): Promise<readonly string[]> {
   try {
     const { bundle, checks } = stageExam(dir, draft);
-    const brief = readBrief(checks);
     const pack = readPack(bundle);
-    const verify = openVerifier({ checks, tools: join(bundle, ".toolchain") });
-    const { faults, notes, runs } = await readChecker({
-      verify,
-      brief,
+    const { faults } = await readChecker({
+      verify: openVerifier({ checks, tools: join(bundle, ".toolchain") }),
+      brief: readBrief(checks),
       contract: contractOf(pack.brief, draft.answerFormat),
       tasks: pack.tasks,
       controls: packControls(bundle),
@@ -143,12 +140,8 @@ export async function draftReading(dir: string, draft: Draft, width: number): Pr
       found: toolOnPath(bundle),
       width,
     });
-    const unread = await unreadFields(verify, pack.tasks, runs, draft.answerFormat, width);
-    return { faults, notes: [...notes, ...unread] };
+    return faults;
   } catch (error) {
-    return {
-      faults: [`the check program could not be put to its controls: ${errorMessage(error)}`],
-      notes: [],
-    };
+    return [`the check program could not be put to its controls: ${errorMessage(error)}`];
   }
 }

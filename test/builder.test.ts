@@ -1072,7 +1072,8 @@ describe("a Builder session", () => {
 // to read the same bytes.
 describe("what crosses to the Builder", () => {
   /** What a campaign keeps from its Builder: the check that refused an answer, the Referee's
-   *  reason, the hidden value of a held-out task and of a practice task, which held-out task the
+   *  reason, the hidden value of a held-out task and of a practice task (a practice solve's measure,
+   *  which may depend on it, crosses; the value does not), which held-out task the
    *  comparison's new harness won, what the Examiner said of each task when it put it, and how the
    *  reference did on a held-out task the Examiner tried it on (`try_reference`). */
   interface Kept {

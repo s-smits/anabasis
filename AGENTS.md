@@ -157,7 +157,8 @@ feedback shaping the exam on 20 October. Only the following information crosses 
   (the quantity and which way is better);
 - the public part of each released (practice) task;
 - for a practice solve: its ending's outcome and kind, the solver's trace and, under an objective,
-  the verifier's measure of a valid answer and of the task author's best answer on record;
+  the verifier's measure of a valid answer and of the task author's best answer on record, which
+  may depend on that task's hidden values;
 - for each comparison: the tally and the reading, naming no task;
 - host limits, the remaining budget, how many held-out and practice tasks the campaign holds, and
   the move table's fixed advice.
@@ -404,7 +405,8 @@ Cite a rule by its number.
 8. **A rejection counts only once it is ruled, and a hand label overrides a ruling.** In v1, 36 of
    47 rehearsal misses came from a faulty check or instrument.
 9. **No reference answers, no stronger solver, no agent built to find answers.** A check verifies a
-   property, which can be right on a task nobody has solved.
+   property, which can be right on a task nobody has solved. A value the task was generated from is
+   a fact of the task, not an answer an agent worked out.
 10. **No agent writes an instrument.** A check's facts come from the field's own pinned tool, and a
     check decided by its author's computation, a declared objective included, is a fault until the
     operator admits it (`--admit`, or `--admit-authored` at a launch).

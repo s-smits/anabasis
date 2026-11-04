@@ -9,9 +9,8 @@
  *
  * Room is defined once, in the scoring section, as a comparison reads it (`informative`,
  * `src/kernel/compare.ts`), with the objective's floor (`ROOM`); the opening refers to it. What
- * v1's prompt said of tasks is kept: no limit the field does not hold, nothing a solver needs in
- * the hidden values, and no growth by size or a moved limit alone (limits reset at a 3.4-hour
- * search's best passed 5 of 6).
+ * v1's prompt said of tasks is kept: no limit the field does not hold, and no growth by size or a
+ * moved limit alone (limits reset at a 3.4-hour search's best passed 5 of 6).
  *
  * A task needs a valid answer. Nothing solves a task before it is held (`AGENTS.md`, rule 9), so
  * the author alone stands between the exam and a task no answer satisfies: in the first campaign
@@ -96,9 +95,13 @@ export interface CheckRow {
   readonly families: "all" | readonly string[];
 }
 
-/** What a task is made of, as both modes are told it. */
+/** What a task is made of, as both modes are told it: the objective reads hidden values too (#616). */
 export const TASK =
-  "A task is a family, a public input, which is all a solver reads of it, and hidden values, which only the checks receive.";
+  "A task is a family, a public input, which is all a solver reads of it, and hidden values, which only the check program receives.";
+
+/** What validity rests on, and where what a task was built from goes, as both modes are told it. */
+export const FAIR =
+  "A check refuses only what a rule, the scope, the conventions or a standard a rule names states. What a task was built from, such as generating parameters, a latent process or planted faults, stays hidden. The Builder reads the objective's measure of each practice solve, so a value several tasks were built from can be learnt from practice instead of found in the task, and what a harness learns so is of the exam, not of the field.";
 
 /** The one limit on a rule or a task the field does not set, as both modes are told it. */
 export const UNHELD =
@@ -118,7 +121,7 @@ export function systemPrompt(reference: "in-home" | "unseen", tries: "given" | "
         : "You never see the solver's tools or guide."
     } You never see a solver's answers, traces or mistakes.`,
     `## How a task is scored\n\nIn a comparison each task is solved under the reference harness and under the new one as many times each as your opening states, each solve fresh and held to the budget. An answer that passes every check within the budget is valid. Each task is scored over every pairing of a solve of each harness: by validity first and most, a valid answer beating one that is not, and between two valid answers by how much better one is by the objective, where the domain declares one. What a solve billed decides nothing. The harness the score favours wins the task.\n\nA task leaves the reference harness room in one of three ways:\n- on validity: its solves are valid in some and not all. A solve fails where the model's method misses something the public rules require, or reaches no answer within the budget.\n- on an answer of yours: none of its solves is valid, while a valid answer is on record, such as yours that passed try_answer on the same instance.\n- on the objective, where the domain declares one: an answer on record, another of its own or yours among them, is better by the objective than one of its own by at least ${floor} of the larger measure, even where every one of its solves is valid.\n\nA task it answers every time, with no answer on record that much better than its own, leaves none. Where the domain declares no objective, two valid answers tie whatever they contain, so only the first two ways leave room.`,
-    `## What the exam needs\n\nTasks within the domain's scope that leave the reference harness room and still have a valid answer, demanding and fair as a practitioner of the domain would judge them. You are not told how many tasks are wanted.\n- A task with no valid answer measures nothing, since every harness fails it alike, and one nobody has answered may have none. A pass at try_answer shows that an instance has one; how you reach that answer, before the task or after it, is yours.\n- ${UNHELD}\n- Everything a task demands is in its public input and the public rules, so that a solver that follows every public rule never fails on one it could not read. Nothing a solver needs is in the hidden values.`,
+    `## What the exam needs\n\nTasks within the domain's scope that leave the reference harness room and still have a valid answer, demanding and fair as a practitioner of the domain would judge them. You are not told how many tasks are wanted.\n- A task with no valid answer measures nothing, since every harness fails it alike, and one nobody has answered may have none. A pass at try_answer shows that an instance has one; how you reach that answer, before the task or after it, is yours.\n- ${UNHELD}\n- ${FAIR}`,
     `## How hard\n\n${LADDER}\n\nA grade is what the field demands of a task, read from its public input and the rules it cites. A fault of one harness's programs is no grade: the starter, which holds no program of the domain, is compared on the tasks written after a promotion too. The turns a valid answer took are what its method cost: a task the reference answers in every solve within a few of the budget's turns is at grade 2 or below for this solver, whatever grade it was given. A grade at which the reference answers every solve measures nothing more, and another task built the same way leaves no more room. Room it leaves on such a task by failing a solve now and then, or by its own valid answers differing on the objective, is chance and not a better method: where its last comparison measured it, the record's first line says how often its own two solves differed there. Write above the highest grade the reference answers in every solve.`,
     "## What you put\n\nEach draft you put carries your grade for it and one sentence on where a solver that follows the public rules falls short on it: of a valid answer, or of the best one by the objective. Neither reaches a solver, a Builder or a check. Each later session's record sets them beside what the reference harness then did on the task, while the task still leaves it room.",
     ...(tries === "none"

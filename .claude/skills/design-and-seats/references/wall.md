@@ -11,9 +11,10 @@ measurement is worth something only because the build side never learns what the
 the wall between them is the system's main asset.
 
 The wall runs one way. The Builder is the learner, practice tasks its training set and held-out
-tasks its test set: it reads practice whole, and a step says the harness is better on tasks it never
-saw. A Builder that learned anything of a held-out task, even which one its harness won, could fit
-the test set, and a step would measure that fit. The Examiner can read feedback in the other
+tasks its test set: it reads practice whole, measures that read a practice task's hidden values
+included, and a step says the harness is better on tasks it never saw. A Builder that learned
+anything of a held-out task, even which one its harness won, could fit the test set, and a step
+would measure that fit. The Examiner can read feedback in the other
 direction: reference outcomes and each task's winning harness (section 3). This may shape tasks
 towards the newest harness. Admission limits that risk by requiring room on the reference; the
 operator accepted the risk on 20 October.

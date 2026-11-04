@@ -629,6 +629,10 @@ describe("unread harnesses and tasks", () => {
         PLAN,
       ),
     ).not.toMatchObject({ fresh: "starter" });
+    // Nor with no harness waiting, as a led Builder's harness/ never is: once the epoch's starter
+    // comparison has tallied, a task held since does not owe the pair again.
+    const confirmedThenHeld = [...starterComparison("no-step", HALF, [2, 2, 8]), ...examined("x-2", ["v19"])];
+    expect(decide(confirmedThenHeld, PLAN)).not.toMatchObject({ fresh: "starter" });
     // A starter comparison that tallied no task leaves its debt: with tasks held out since and a
     // harness waiting, the starter is compared again before the harness is read.
     const untallied = [

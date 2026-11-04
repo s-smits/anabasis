@@ -530,7 +530,11 @@ function unread(ground: Ground): Move | null {
  * whatever harness waits, since that reading confirms the promotion (`confirmed`, `climb.ts`, its
  * one reader): a session that changed harness/ beside the Examiner took its move, 5 of 5
  * promotions in the rehearsal of 2 November (sim-postplan) and the base alike. Until 3 November
- * any report of the pair stopped the debt, so one that tallied nothing left the epoch unconfirmed. A waiting harness whose last reading tested nothing, or left no room, is
+ * any report of the pair stopped the debt, so one that tallied nothing left the epoch unconfirmed.
+ * Once one has tallied it is not owed again: until 4 November it was, with no harness waiting,
+ * which a led Builder's harness/ never is (`latestBuilt`), so each task held since put the pair
+ * first again, and buffer-fresh-opus-forkedPR588-stijn-pro spent 96% of its epoch's solver dollars
+ * on it with its changed harness/ unread for 11.8 hours. A waiting harness whose last reading tested nothing, or left no room, is
  * read on them. One whose reading had room and read no step is not: that would be a second draw of
  * one pair (`AGENTS.md`, section 4). Until 2 November this row redrew it, 13 times in the archive,
  * and the one step (buffer-159-opus g-7) came the comparison after a 5-0 no-step of the same
@@ -540,7 +544,7 @@ function heldSince(ground: Ground): Move | null {
   const { events, read, reports, waiting, reference, starter } = ground;
   const since = heldAfter(events, reports.at(-1)?.reported ?? -1);
   const owed = reference !== null && starter !== null && reference !== starter && since > 0;
-  if (owed && (waiting === null || epochsOf(events).at(-1)?.starter_tally === null)) {
+  if (owed && epochsOf(events).at(-1)?.starter_tally === null) {
     return compare(
       `harness ${short(reference)} is the reference, and ${plural(since, "task")} ${since === 1 ? "was" : "were"} held out since the last comparison: the starter is compared with it, those tasks first, to read whether they leave it room and whether it stands above the starter`,
       "starter",

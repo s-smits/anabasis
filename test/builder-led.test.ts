@@ -1100,6 +1100,39 @@ describe("a campaign tool where the table names more than the action", () => {
     expect(compares[2]?.why).toContain("the Builder asked for it, where the table named");
   });
 
+  it("reads a changed harness/ at the Builder's compare once the epoch's starter comparison has tallied, though tasks were held since", async () => {
+    layOutPack(root, bundle, MANY, FIXTURE);
+    const name = `${STEM}-owed-once`;
+    let sessions = 0;
+    const seats: Seats = {
+      seated: builderScript(passing(), [
+        CHANGE_GUIDE,
+        ["compare", {}],
+        ["examine", {}],
+        CHANGE_AGAIN,
+        ["compare", {}],
+        // New tasks held after the starter comparison confirmed the promotion: until 4 November
+        // they turned this compare into a second starter comparison of the same pair, and
+        // buffer-fresh-opus-forkedPR588-stijn-pro's changed harness/ went 11.8 hours unread.
+        ["examine", {}],
+        ["compare", {}],
+        ["finish", { note: "The change was read." }],
+        ["finish", { note: "The change was read." }],
+      ]),
+      // Each session holds six instances the last did not.
+      examine: (request) => examine({ ...request, ...scripted([proposing(6, 6 * sessions++)]) }),
+    };
+    await harnessBuilder([...seeded(name), ...FLAGS, "--exam-tasks", "6", "--moves", "12"], seats);
+    const [first, starterComparison, second] = of(name, REPORTED);
+    expect(starterComparison).toMatchObject({ fresh: first?.old, old: first?.fresh });
+    const snapshots = of(name, "build.checkpoint");
+    expect(second).toMatchObject({ old: first?.fresh, fresh: snapshots.at(-1)?.harness });
+    expect(second?.fresh).not.toBe(first?.old);
+    const compares = of(name, MOVED).filter(({ move }) => move === "compare");
+    expect(compares.map(({ code }) => code)).toEqual(["asked", "unread", "asked"]);
+    expect(said(name, "compare")[2]).not.toContain("The table's comparison of the starter ran first");
+  });
+
   /** Everything the Builder read from its tools in a campaign whose two comparisons tied the
    *  tasks `ties` names, by comparison, as the nth tasks that comparison solved or by id, with the
    *  host's clock taken out. Three ties of five keep each reading below a step at the suite's level. */

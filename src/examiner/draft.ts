@@ -386,6 +386,9 @@ export function draftFaults(draft: Draft): string[] {
 /** The draft as `draft_exam`'s arguments carry it, under the names `Draft` and `exam.drafted` use. */
 function draftedFrom(args: Static<typeof DRAFT_PARAMETERS>): Draft {
   const { quantity, direction, none } = args.objective;
+  // A quantity without its direction, or a direction without its quantity, is no decision, whatever
+  // reason for none stands beside it, so the draft is held to give one (`draftFaults`).
+  const half = (quantity === undefined) !== (direction === undefined);
   return {
     domain: args.domain,
     scope: args.scope,
@@ -399,7 +402,7 @@ function draftedFrom(args: Static<typeof DRAFT_PARAMETERS>): Draft {
       "objective",
       quantity !== undefined && direction !== undefined ? { quantity, direction } : undefined,
     ),
-    ...keyIfDefined("unmeasured", none),
+    ...keyIfDefined("unmeasured", half ? undefined : none),
     tasks: args.tasks.map(({ family, public_input, hidden }) => ({
       family,
       // SAFETY: as above.

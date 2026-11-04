@@ -151,11 +151,16 @@ describe("the shape of a draft", () => {
   });
 
   it("tells a quantity without its direction as no decision, and the draft does not stand", async () => {
-    const half = { ...draftArgs(SILENT), objective: { quantity: OBJECTIVE.quantity } };
-    const s = seat("draft", [call("draft_exam", half), drafted(SOUND), finish]);
-    expect(await examine(s.request)).toMatchObject({ ended: "stands", puts: 2 });
-    expect(s.of("draft.call")[0]?.text).toContain("objective");
-    expect(draftOf(read(s.log))).toEqual(SOUND);
+    for (const objective of [
+      { quantity: OBJECTIVE.quantity },
+      { quantity: OBJECTIVE.quantity, none: "nothing is left to prefer" },
+    ]) {
+      const half = { ...draftArgs(SILENT), objective };
+      const s = seat("draft", [call("draft_exam", half), drafted(SOUND), finish]);
+      expect(await examine(s.request)).toMatchObject({ ended: "stands", puts: 2 });
+      expect(s.of("draft.call")[0]?.text).toContain("objective");
+      expect(draftOf(read(s.log))).toEqual(SOUND);
+    }
   });
 
   it("reads a draft logged before the objective was required, with or without one", () => {

@@ -397,7 +397,8 @@ describe("task supply", () => {
     expect(decide([...FIVE, built("b-1", "h1")], PLAN).why).toContain("h1");
     // The first comparison waits for the floor alone; the target of twelve binds after it.
     expect(move([...SIX, built("b-1", "h1")])).toMatchObject({ move: "compare" });
-    expect([shortOf(FIVE, PLAN), shortOf(SIX, PLAN)]).toEqual([1, 0]);
+    // One short of the floor, the session is still asked for a sweep (4 at 0.1).
+    expect([shortOf(FIVE, PLAN), shortOf(SIX, PLAN)]).toEqual([4, 0]);
     expect(shortOf([...SIX, ...compared("g-1", "h1", "no-step")], PLAN)).toBe(6);
     expect(move([...SIX, built("b-1", "h1"), ...HELD.slice(6).flatMap(heldOut)])).toMatchObject({
       move: "compare",
@@ -589,6 +590,11 @@ describe("unread harnesses and tasks", () => {
     const noRoom = compared("g-1", "h1", "no-step", { tally: [0, 0, 12], valid: { old: ALL, fresh: ALL } });
     expect(decide([...FIRST, ...noRoom, ...six.slice(0, 5)], PLAN)).not.toMatchObject({ code: "unread" });
     expect(decide([...FIRST, ...noRoom, ...six], PLAN)).toMatchObject({ move: "compare", code: "unread" });
+    // One task short of the target, the session is asked for the sweep the table waits for (4 at
+    // 0.1); where nothing is short the command's default ask holds a sweep.
+    const eleven = [READ, ...HELD.slice(0, 11).flatMap(heldOut), ...RELEASED, built("b-1", "h1")];
+    expect(shortOf([...eleven, ...noRoom], PLAN)).toBe(4);
+    expect(shortOf([...FIRST, ...noRoom], PLAN)).toBe(0);
 
     // After a promotion the starter is compared once the tasks written for the new reference could
     // clear the level alone; one is not enough, and the Examiner is asked for more.

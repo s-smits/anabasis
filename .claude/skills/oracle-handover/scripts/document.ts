@@ -20,7 +20,7 @@ import * as ts from "typescript5";
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { gitOutput, gitText } from "#src/meta/git.ts";
-import { dirname, extname, resolve } from "#src/meta/path.ts";
+import { basename, dirname, extname, resolve } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { publishedAt } from "#tools/runs/code.ts";
 import { hostsOf, ownName } from "#tools/runs/host-config.ts";
@@ -158,7 +158,7 @@ const PARTS = {
     };
   },
   file: (at, [path = ""]) => ({
-    title: path,
+    title: basename(path),
     link: "",
     body: readFileSync(resolve(at.base, path), "utf8").trim(),
   }),
@@ -166,7 +166,8 @@ const PARTS = {
 const isVerb = (verb: string): verb is keyof typeof PARTS => Object.hasOwn(PARTS, verb);
 
 /** `text` with every home folder as `~`, also where a path is written with dashes (a session's
- *  folder), and each machine's names, `machines[i]`, in any case, as one alias. */
+ *  folder), every login number dropped (machine rules: none in published text), and each
+ *  machine's names, `machines[i]`, in any case, as one alias. */
 export function sanitised(text: string, machines: readonly (readonly string[])[]) {
   const aliases = new Map(
     machines.flatMap((names, index) =>
@@ -177,7 +178,9 @@ export function sanitised(text: string, machines: readonly (readonly string[])[]
   );
   let out = text
     .replaceAll(/(?<![\w.-])\/(?:Users|home)\/[^/\s"'`),;:]+/gu, "~")
-    .replaceAll(/-(?:Users|home)-[^-/\s]+-/gu, "-~-");
+    .replaceAll(/-(?:Users|home)-[^-/\s]+-/gu, "-~-")
+    .replaceAll(/(\.claude-account|CLAUDE_CODE_OAUTH_TOKEN)\d+/gu, "$1")
+    .replaceAll(/\b(?:logins? \d+(?:(?:, ?| and | or )\d+)*|claude[1-9])\b/giu, "a login");
   for (const [name, alias] of [...aliases].toSorted(([a], [b]) => b.length - a.length)) {
     out = out.replaceAll(new RegExp(name.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`), "giu"), alias);
   }
@@ -201,7 +204,8 @@ async function documentOf(partsFile: string, repo: string, commit: string) {
     if (line === "" || line.startsWith("#")) continue;
     const cut = line.indexOf(" :: ");
     const [spec, why] = cut === -1 ? [line, undefined] : [line.slice(0, cut), line.slice(cut + 4)];
-    const [verb = "", ...words] = spec.split(/\s+/u);
+    // A parts line is not shell: a quoted word loses its quotes and nothing more.
+    const [verb = "", ...words] = spec.split(/\s+/u).map((word) => word.replace(/^(['"])(.*)\1$/u, "$2"));
     if (verb === "head") head.push(readFileSync(resolve(at.base, words.join(" ")), "utf8").trim());
     else if (isVerb(verb)) {
       const part = await PARTS[verb](at, words);
@@ -224,27 +228,38 @@ async function documentOf(partsFile: string, repo: string, commit: string) {
         `## Appendix ${String(index + 1)}. ${part.title}\n\n${part.link === "" ? "" : `On GitHub: ${part.link}\n\n`}${part.body}`,
     ),
   ].join("\n\n");
+  return { ...sanitised(`${text}\n`, machinesOf()), parts: parts.length };
+}
+
+/** This machine's name, then each peer's names, as `ANA_HOSTS` gives them: the aliases' order. */
+function machinesOf(): string[][] {
   const peers = hostsOf();
   if (peers.length === 0) {
     throw new CommandFailure(
       "no ANA_HOSTS: run with --env-file=.env.runs, so that every host name is aliased",
     );
   }
-  const machines = [[ownName()], ...peers.map((host) => [host.name, host.ssh.replace(/^.*@/u, "")])];
-  return { ...sanitised(`${text}\n`, machines), parts: parts.length };
+  return [[ownName()], ...peers.map((host) => [host.name, host.ssh.replace(/^.*@/u, "")])];
 }
 
 if (import.meta.main) {
   await runCommand(
     {
       name: "document",
-      usage: "document.ts <parts file> --commit <sha> --out <REVIEW.md>",
-      options: { commit: "text", out: "abs" },
-      positionals: 1,
+      usage: "document.ts <parts file> --commit <sha> --out <REVIEW.md> | --aliases",
+      options: { commit: "text", out: "abs", aliases: "flag" },
+      positionals: [0, 1],
     },
     async (args: CommandArgs) => {
+      // The aliases alone, so that a head can name the hosts as the document will.
+      if (args.flag("aliases")) {
+        for (const [name, alias] of sanitised("", machinesOf()).aliases) console.log(`${alias} is ${name}`);
+        return;
+      }
+      const [partsFile] = args.positionals;
+      if (partsFile === undefined) throw new CommandFailure("name a parts file, or pass --aliases");
       const made = await documentOf(
-        resolve(args.positionals[0] ?? ""),
+        resolve(partsFile),
         gitText(runtimeProcess.cwd(), "rev-parse", "--show-toplevel"),
         args.required("commit"),
       );

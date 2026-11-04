@@ -504,6 +504,13 @@ describe("an Oracle document's parts", () => {
       [["box-one"]],
     );
     expect(bare.text).toBe("cwd ~, host-a.local, /tmp/-~-Developer-x, src/home/a/b.ts");
+    const logins = sanitised(
+      "on login 3, logins 1 and 4, claude2, ~/.claude-account3/jobs, TOKEN CLAUDE_CODE_OAUTH_TOKEN1",
+      [],
+    );
+    expect(logins.text).toBe(
+      "on a login, a login, a login, ~/.claude-account/jobs, TOKEN CLAUDE_CODE_OAUTH_TOKEN",
+    );
   });
 });
 

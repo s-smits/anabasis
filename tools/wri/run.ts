@@ -24,7 +24,13 @@ import { fired, type Index, share, tally, text, type Trigger } from "./folds.ts"
  *  starter comparisons read only as `compare 1` here, and lane 28 found them in the reasons. */
 function moveTriggers(log: Index): Trigger[] {
   const moves = log.of("campaign.move");
-  const asked = moves.filter((data) => data.code === "asked");
+  // A led Builder's own comparison ends the build the table named: the table never sees a harness
+  // waiting before `compare` freezes one, so on 4 November 12 of 12 such comparisons over six buffer
+  // runs read as asked here, and the count could not tell an override from the usual path.
+  const asked = moves.filter(
+    (data) =>
+      data.code === "asked" && !(data.move === "compare" && text(data.why).endsWith("table named build")),
+  );
   const last = log.events.length - 1;
   const endings = log.events.flatMap(({ kind, data }, index) =>
     kind === "campaign.ended" && index < last ? [`${text(data.ending)} at event ${String(index)}`] : [],

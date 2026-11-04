@@ -13,7 +13,7 @@ import {
 } from "../src/meta/filesystem.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { join, resolve } from "../src/meta/path.ts";
+import { dirname, join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
 import { catalogueText, type Lane, lanesOf, ownersOf } from "../tools/wri/catalogue.ts";
 import { lanePrompt, reportIndex, reportOf } from "../tools/wri/investigation.ts";
@@ -145,6 +145,16 @@ describe("an investigation's lanes", () => {
     expect(index).toContain("lane 4: ok, omitted although its trigger fired");
     expect(index).toContain("lane 6: ok, omitted, 0 findings");
   });
+
+  it("holds a report its session marked provisional as unfinished, and passes the same verdict once final", () => {
+    const final = "# Lane 32: The run's launches\nVerdict: could not read, the receipts are gone.\n";
+    expect(reportOf(lane(32), final, owners, ["buffer-a"]).faults).toEqual([]);
+    const early = final.replace("the receipts are gone", "provisional: reading in progress");
+    expect(reportOf(lane(32), early, owners, ["buffer-a"])).toMatchObject({
+      state: "invalid",
+      faults: ["the verdict is provisional: the session is still writing"],
+    });
+  });
 });
 
 describe("the lanes verb", () => {
@@ -212,7 +222,11 @@ describe("the lanes verb", () => {
     expect(prompts()).toEqual(built);
     expect(manifest()).toEqual(first);
     lanesVerb("--lanes", "4-5");
-    expect(manifest().sessions).toEqual([
+    // A lane that runs alone gets a manifest of its own, beside the open lanes' one.
+    expect(manifest()).toEqual(first);
+    expect(
+      parseJsonAs<{ sessions: unknown[] }>(readFileSync(join(out, "launch-05.json"), "utf8")).sessions,
+    ).toEqual([
       {
         name: "lane_05",
         task: containing("05-prompt.md"),
@@ -220,6 +234,30 @@ describe("the lanes verb", () => {
       },
     ]);
     expect(prompts()["04-prompt.md"]).toBe(built["04-prompt.md"]);
+  });
+
+  it("checks out no tree for a launch whose commit this repository does not hold", () => {
+    const gone = join(dir, "gone", "log.jsonl");
+    mkdirSync(dirname(gone), { recursive: true });
+    writeFileSync(gone, readFileSync(log, "utf8"));
+    const receipt = {
+      at: new Date(0).toISOString(),
+      commit: "0".repeat(40),
+      dirty: false,
+      load: 1,
+      cores: 4,
+    };
+    writeFileSync(join(dirname(gone), "launch-run-1.json"), JSON.stringify(receipt));
+    execTextSync(
+      capturedExecPath,
+      ["tools/wri/wri.ts", "start", "--log", gone, "--out", join(dir, "gone-out")],
+      {
+        cwd: REPO,
+      },
+    );
+    const instructions = readFileSync(join(dir, "gone-out", "shared-instructions.md"), "utf8");
+    expect(instructions).toContain("| gone |");
+    expect(instructions).not.toContain("is checked out at");
   });
 
   it("packs the lanes it builds into as many sessions as asked, each label whole in one", () => {

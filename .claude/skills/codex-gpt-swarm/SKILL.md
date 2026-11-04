@@ -169,5 +169,5 @@ A retry leaves `launch.json` and every completed result as they were, appends th
 [whole-run-investigation](../whole-run-investigation/SKILL.md) step 3 writes the manifest,
 `<dir>/launch.json`: one `workspace-write` session a lane built, or with `--agents N` one a group
 of whole labels, owning the reports it writes, in the checkout the investigation reads. Launch it as it stands. A lane that runs alone (5 and 19) is
-built, and launched, on its own after the reports it waits on. Then `wri.ts collect` reads the
+built, and launched, on its own after the reports it waits on, from its own `<dir>/launch-NN.json`. Then `wri.ts collect` reads the
 reports as from any seat.

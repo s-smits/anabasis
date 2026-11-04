@@ -51,6 +51,19 @@ describe("the moves against the table (lane 28)", () => {
     expect(fired(moves.slice(1, 2), "MOVES ASKED")).toBeUndefined();
   });
 
+  it("leaves a led Builder's comparison at the end of the build the table named out of the count", () => {
+    const built = {
+      move: "compare",
+      code: "asked",
+      why: "the Builder asked for it, where the table named build",
+    };
+    expect(fired(logged(["campaign.move", built]), "MOVES ASKED")).toBeUndefined();
+    const over = { ...built, why: "the Builder asked for it, where the table named examine" };
+    expect(fired(logged(["campaign.move", built], ["campaign.move", over]), "MOVES ASKED")).toContain(
+      "1 of 2 moves",
+    );
+  });
+
   it("names an ending the log goes on after, and leaves the last event's ending alone", () => {
     const ended = logged(
       ["campaign.ended", { ending: "budget" }],

@@ -132,7 +132,7 @@ describe("the reference outcomes delivered at session opening", () => {
       ["none", ["no solve", VALID, "other harness", "validity"]],
       ["every", ["every solve", "3, 3 turns", "tied"]],
       ["unsolved", ["no solve", NONE, "tied"]],
-      ["aside", ["set aside", "not yet ruled", NONE]],
+      ["aside", ["set aside", "a person settles", NONE]],
       ["new", ["not yet compared", NONE]],
       ["faulted", ["disputed", "at fault"]],
     ] as const) {

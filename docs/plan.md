@@ -136,7 +136,7 @@ comparison and every task the reference answers only sometimes.
 | C8 | Restart from the reference | Planned | |
 | L2 | A second domain | Planned | M1's milestone in buffer read as confirmed, then the operator names the domain |
 | F34 | The size policy runs in no script, CI job or hook | Present in source | The operator's word on running it in the gate |
-| Builder-led | The single conversation's value | Proved without a model | A matched ablation with `--no-builder-led` |
+| Builder-led | The single conversation's value | Proved without a model | A matched ablation against a host that makes every move, which the campaign command no longer offers (removed 3 November) |
 | X1 | Whether a harness built without a benchmark's tasks or grades scores higher on it than pi's starter (WorkBuddy-Bench Code), then how it stands against Harness² (`studies/harness2/README.md`) | Present in source (`studies/harness2/run.ts`); WorkBuddy's dry run resolves its job, no container has run it | The operator's word on WorkBuddy-Bench's licence, then `run.ts check` of the starter in WorkBuddy's container and the domain fit, without a model; then the operator's word for the paid arms |
 | X2 | Whether buffer v065-a's later promotions carry over to fresh tasks selected against a third harness of its chain, or are patches against tasks chosen to beat the reference (`studies/transitivity/README.md`) | Exercised live: arms A and B ran at `87f0b07e`, P-A and P-B held, arm C not run ($46.32; `studies/runs/transitivity/`) | A second reading of f-1's pair on fresh solves, before the carry-over is claimed without qualification |
 

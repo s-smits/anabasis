@@ -14,7 +14,10 @@
  *
  * The list is polled every few seconds and a host may hold thirty logs of several megabytes, so a
  * log is read and folded again only where its size or its modification time moved since the last
- * read, and the events stay in memory for the detail endpoints (`Log`, `folds.ts`). A log is read
+ * read (`stampOf`). The list keeps each log's row facts alone (`campaigns.ts`), and only the `KEEP`
+ * logs a detail endpoint read last keep their events (`Log`, `folds.ts`): until 4 November every
+ * log the list had read kept its events, and a server up four days held 3.7 GB for the 176 logs of
+ * every worktree, retired campaigns' included. A log is read
  * whole by the kernel's reader, which refuses a line that is no event; a log whose last line is
  * torn is an append in flight, read without that line by the pulse's reader (`logEvents`), and the
  * answer says so. A log that cannot be read is an issue beside the list, never a row that vanished
@@ -93,6 +96,9 @@ interface Kept {
  *  few seconds, and a listing runs `git worktree list`, `ps` and `lsof`. */
 const LOOK_MS = 2_000;
 const NEWLINE = 0x0a;
+/** The logs whose events are kept, the ones a detail endpoint read last: the page polls the one
+ *  selected, and a few more cover a switch back. */
+const KEEP = 4;
 
 const kept = new Map<string, Kept>();
 let looked: Looked | null = null;
@@ -204,8 +210,20 @@ function torn(path: string, size: number): boolean {
   }
 }
 
-/** `found`'s log as it stands, read again only where its size or its time moved. */
-export function loaded(found: Found): Loaded {
+/** Where `found`'s log stands, its size and modification time, as one string; null where it
+ *  cannot be read. */
+export function stampOf(found: Found): string | null {
+  try {
+    const { size, mtimeMs } = statSync(found.path);
+    return `${String(size)}:${String(mtimeMs)}`;
+  } catch {
+    return null;
+  }
+}
+
+/** `found`'s log as it stands, read again only where its size or its time moved, and kept among
+ *  the `KEEP` read last where `keep` (a detail endpoint), never kept for the list alone. */
+export function loaded(found: Found, keep = true): Loaded {
   const source = sourceOf(found);
   let size: number;
   let mtimeMs: number;
@@ -215,7 +233,13 @@ export function loaded(found: Found): Loaded {
     return { log: null, issues: [{ level: "error", source, message: errorMessage(error) }] };
   }
   const was = kept.get(found.path);
-  if (was?.size === size && was.mtimeMs === mtimeMs) return was.loaded;
+  if (was?.size === size && was.mtimeMs === mtimeMs) {
+    if (keep) {
+      kept.delete(found.path);
+      kept.set(found.path, was);
+    }
+    return was.loaded;
+  }
   let fresh: Loaded;
   try {
     fresh = torn(found.path, size)
@@ -234,20 +258,10 @@ export function loaded(found: Found): Loaded {
   } catch (error) {
     fresh = { log: null, issues: [{ level: "error", source, message: errorMessage(error) }] };
   }
-  kept.set(found.path, { size, mtimeMs, loaded: fresh });
+  kept.delete(found.path);
+  if (keep) kept.set(found.path, { size, mtimeMs, loaded: fresh });
+  for (const path of [...kept.keys()].slice(0, Math.max(0, kept.size - KEEP))) kept.delete(path);
   return fresh;
-}
-
-/** Every log the server can read, read as `loaded` reads it, with a turn of the event loop after
- *  each log it read again. A cold list read 1.7 GB of 176 logs in 4.4 s on 30 October, and a
- *  handler holds the one thread it runs on, so the selected campaign, asked beside the list, waited
- *  for all of it; between two logs it is answered at once. */
-export async function readAll(reading: Pick<Reading, "repo" | "trees">): Promise<void> {
-  for (const each of campaignsFound(reading).found) {
-    const was = kept.get(each.path);
-    loaded(each);
-    if (kept.get(each.path) !== was) await Bun.sleep(0);
-  }
 }
 
 /** The campaign `key` names and its log, or a 404 where none does; a log that cannot be read is

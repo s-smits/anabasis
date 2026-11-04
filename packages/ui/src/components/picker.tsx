@@ -14,7 +14,10 @@ import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
  *
  * This is a listbox instead of a select: same keyboard contract (arrows move, Enter picks, Escape
  * closes, click outside closes), and the same one-way data flow, with the popup drawn in our own
- * styles. Groups carry an optional heading; a group with no heading renders its options flat.
+ * styles. Groups carry an optional heading; a group with no heading renders its options flat. The
+ * listbox holds only its groups and options, each group named by its heading, and the search box
+ * stands above it in the panel: until 3 November both sat inside the listbox, which may own options
+ * alone (axe, aria-required-children).
  *
  * Focus stays on the trigger while the list is open, as a combobox's does: a press inside the list
  * keeps it there, so focus leaving the picker is a press or a Tab outside it, and closes the list
@@ -280,14 +283,7 @@ function PickerInner({
           <ChevronDown />
         </button>
         {open ? (
-          <div
-            className="ana-picker-panel"
-            id={`${id}-listbox`}
-            role="listbox"
-            aria-multiselectable={chosen === undefined ? undefined : true}
-            aria-labelledby={`${id}-label`}
-            onMouseDown={keepFocus}
-          >
+          <div className="ana-picker-panel" onMouseDown={keepFocus}>
             {filtered ? (
               <div className="ana-picker-filter">
                 <Search
@@ -309,41 +305,57 @@ function PickerInner({
                 )}
               </div>
             ) : null}
-            {visible
-              .filter((group) => group.options.length > 0)
-              .map((group) => (
-                <div className="ana-picker-group" key={group.key}>
-                  {group.label === null ? null : <div className="ana-picker-group-label">{group.label}</div>}
-                  {group.options.map((option) => {
-                    const index = indexOf.get(option.value) ?? 0;
-                    return (
-                      <button
-                        type="button"
-                        role="option"
-                        id={`${id}-option-${index}`}
-                        ref={index === active ? scrollNearest : undefined}
-                        tabIndex={-1}
-                        aria-selected={ticked(option)}
-                        key={option.value}
-                        className={`ana-picker-option ${index === active ? "is-active" : ""} ${
-                          ticked(option) ? "is-current" : ""
-                        }`}
-                        onMouseEnter={() => setActive(index)}
-                        onClick={() => commit(index)}
-                      >
-                        <Check className="ana-picker-tick" />
-                        <span>
-                          {option.label}
-                          {option.detail === undefined ? null : <small> {option.detail}</small>}
-                          {option.note === undefined ? null : (
-                            <small className="ana-picker-note">{option.note}</small>
-                          )}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ))}
+            <div
+              id={`${id}-listbox`}
+              role="listbox"
+              aria-multiselectable={chosen === undefined ? undefined : true}
+              aria-labelledby={`${id}-label`}
+            >
+              {visible
+                .filter((group) => group.options.length > 0)
+                .map((group) => (
+                  <div
+                    className="ana-picker-group"
+                    key={group.key}
+                    role="group"
+                    aria-label={group.label ?? undefined}
+                  >
+                    {group.label === null ? null : (
+                      <div className="ana-picker-group-label" aria-hidden="true">
+                        {group.label}
+                      </div>
+                    )}
+                    {group.options.map((option) => {
+                      const index = indexOf.get(option.value) ?? 0;
+                      return (
+                        <button
+                          type="button"
+                          role="option"
+                          id={`${id}-option-${index}`}
+                          ref={index === active ? scrollNearest : undefined}
+                          tabIndex={-1}
+                          aria-selected={ticked(option)}
+                          key={option.value}
+                          className={`ana-picker-option ${index === active ? "is-active" : ""} ${
+                            ticked(option) ? "is-current" : ""
+                          }`}
+                          onMouseEnter={() => setActive(index)}
+                          onClick={() => commit(index)}
+                        >
+                          <Check className="ana-picker-tick" />
+                          <span>
+                            {option.label}
+                            {option.detail === undefined ? null : <small> {option.detail}</small>}
+                            {option.note === undefined ? null : (
+                              <small className="ana-picker-note">{option.note}</small>
+                            )}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
+            </div>
           </div>
         ) : null}
       </div>

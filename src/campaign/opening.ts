@@ -56,10 +56,6 @@ export interface Opening {
    *  command's flag alone, so that a reopen that does not name the flag still waits; `--no-hitl`
    *  gives it back. The record keeps the key it had as `--attended`, before 16 October. */
   readonly attended: boolean;
-  /** Whether the Builder makes the campaign's moves after set-up, in one live conversation with
-   *  the campaign's tools (`--builder-led`, `tools/d2/harness-builder.ts`), or the host makes
-   *  every move the table names. Kept as `attended` is; a record without it is the host's. */
-  readonly led: boolean;
   /** The operator's prompt, for a campaign that opened from one: its exam is drafted from it
    *  (`src/examiner/draft.ts`). Null for a campaign that opened over a stored pack. */
   readonly prompt: string | null;
@@ -73,7 +69,8 @@ export interface Opening {
 /** The flags of a campaign's moves that its opening keeps: a solve's deadline and the scored tasks,
  *  and the solves a side, which the first setting records; a comparison's level and stop on check
  *  defects; a Builder session's deadline, session turn limit and practice solves; the practice tasks; and an
- *  Examiner session's tasks, proposals, deadline and session turn limit. */
+ *  Examiner session's tasks, proposals, deadline and session turn limit; and the operator's cap of
+ *  promotions, `none` to lift it. */
 export const TERMS = [
   "solve-minutes",
   "target",
@@ -89,6 +86,7 @@ export const TERMS = [
   "exam-minutes",
   "exam-turns",
   "cost",
+  "promotions",
 ] as const;
 export type Terms = Readonly<Partial<Record<(typeof TERMS)[number], string>>>;
 
@@ -157,7 +155,6 @@ export function openingOf(events: readonly LogEvent[]): Opening | null {
     patience: patienceOf(events),
     seats: { builder: seat("builder"), examiner: seat("examiner"), reviewer: seat("reviewer") },
     attended: data.attended === true,
-    led: data.led === true,
     prompt: isString(data.prompt) ? data.prompt : null,
     solver: seated(asRecord(data.solver)),
     terms: Object.fromEntries(
@@ -191,6 +188,7 @@ export function planOf(
 ): Plan {
   const recorded = events.findLast(({ kind }) => kind === SETTING)?.data;
   const named = recorded?.target;
+  const cap = Number(opening?.terms.promotions);
   return {
     sessions: opening?.sessions ?? SESSIONS,
     patience: patienceOf(events),
@@ -209,5 +207,6 @@ export function planOf(
       ...new Set([...(beside.admits ?? []), ...(opening?.attended === true ? [] : unadmitted(events))]),
     ],
     practice: beside.practice ?? null,
+    promotions: Number.isInteger(cap) && cap > 0 ? cap : null,
   };
 }

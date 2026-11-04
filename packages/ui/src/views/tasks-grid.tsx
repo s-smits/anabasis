@@ -1,13 +1,12 @@
 import { Button, NoSignal } from "../components/primitives.tsx";
 import { matchesTerms } from "../components/tool-call.tsx";
-import type { LeftOut, Outcome, TaskCell, TaskGrid, TaskLeftOut, TaskRow } from "../models.ts";
+import type { LeftOut, Outcome, Share, TaskCell, TaskGrid, TaskLeftOut, TaskRow } from "../models.ts";
 import { shortHash } from "../models.ts";
 import { Choose } from "../components/picker.tsx";
 import { choiceCounts } from "../components/table.tsx";
 import { useKept } from "../route.ts";
 import { Filters, Search } from "./controls.tsx";
 import { OUTCOMES } from "./outcome.ts";
-import type { Share } from "../../../../src/campaign/climb.ts";
 
 /*
  * Every task version against every comparison: one row a task, one column a comparison in the order

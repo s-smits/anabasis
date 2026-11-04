@@ -139,11 +139,13 @@ describe("the Campaign picker", () => {
     await picker.focus();
     await page.page.keyboard.type("ear");
     const list = page.page.getByRole("listbox");
+    // The search box and its count of matches stand above the list, in the panel that holds both.
+    const panel = list.locator("..");
     // The search forgives typos, so a short query may keep more than one; the closest is first.
     await expect(list.getByRole("option").first()).toContainText("early");
     await page.page.keyboard.type("zzz");
     await expect(list.getByRole("option")).toHaveCount(0);
-    await expect(list).toContainText("nothing matches");
+    await expect(panel).toContainText("nothing matches");
     await page.page.keyboard.press("Escape");
     await expect(list.getByRole("option")).toHaveCount(3);
     await page.page.keyboard.type("unit");
@@ -152,7 +154,7 @@ describe("the Campaign picker", () => {
     await page.page.keyboard.press("Backspace");
     await expect(list.getByRole("option").first()).toContainText("unit");
     // The filter is a search box: select all replaces it, not the page.
-    const box = list.getByRole("searchbox");
+    const box = panel.getByRole("searchbox");
     await expect(box).toBeFocused();
     await page.page.keyboard.press("ControlOrMeta+A");
     await page.page.keyboard.type("ear");

@@ -3,8 +3,8 @@
  *
  *   bun --env-file=<file> run runs launch <name> [--login N] [--yes] -- <the campaign command's flags>
  *   bun --env-file=<file> run runs continue <name> [--at <commit>] [--login N] [--budget N]
- *     [--after next|promoted|compacted|reported|finished] [--yes] [-- <flags>]
- *   bun run runs pause <name> [--after next|promoted|compacted|reported|finished] [--yes]
+ *     [--after next|compacted|reported|finished] [--yes] [-- <flags>]
+ *   bun run runs pause <name> [--after next|compacted|reported|finished] [--yes]
  *
  * `launch` starts the campaign command (`tools/d2/harness-builder.ts`) under a name no worktree
  * holds a campaign of, in this worktree. `continue` runs a campaign again from its log in the
@@ -81,7 +81,6 @@ const AFTER = {
     "repair.call",
     "solve.call",
   ],
-  promoted: ["harness.promoted"],
   compacted: ["build.compacted"],
   reported: ["comparison.reported"],
   finished: ["build.finished"],
@@ -281,7 +280,7 @@ export async function continueRun(args: readonly string[]): Promise<void> {
   // `next` may stop the run inside a comparison, which `start` then refuses at another commit.
   if (values.after === "next" && target !== undefined && target !== standing(run.tree).commit) {
     throw new Error(
-      "--after next can stop the run inside a comparison, which --at another commit refuses: name reported, promoted or finished",
+      "--after next can stop the run inside a comparison, which --at another commit refuses: name reported or finished",
     );
   }
   if (values.after !== undefined) {
@@ -301,9 +300,7 @@ export async function pause(args: readonly string[]): Promise<void> {
   });
   const [name] = positionals;
   if (name === undefined) {
-    throw new Error(
-      "usage: bun run runs pause <name> [--after next|promoted|compacted|reported|finished] [--yes]",
-    );
+    throw new Error("usage: bun run runs pause <name> [--after next|compacted|reported|finished] [--yes]");
   }
   const run = runNamed(name);
   const after = values.after ?? "next";

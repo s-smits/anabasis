@@ -34,6 +34,7 @@ procedures; they are not commands to run inside a read-only investigation.
 | Did a model other than the one asked for answer any seat? | `bun tools/runs/degradations.ts <name>`: each seat's share, the comparisons it reached, a line a session; `data/runs/degradations/` keeps one file a degraded campaign, which the ten-minute gather writes |
 | Which sessions ran, from which parent, with which reading? | `bun tools/wri/wri.ts read --log <log>`, row F and the `CHAIN` line |
 | Did a promotion climb, beside the campaigns that ran the same pack, and did one campaign's `/tmp` reach another's solves? | `bun tools/wri/wri.ts climb --log <log>,<log>,<log>`: one row a campaign, then each solve that named what another campaign's session left |
+| What did every earlier investigation find, and which constraint keeps recurring in a domain? | `bun tools/wri/wri.ts index`: rewrites `.ana/wri/INDEX.md` whole, one row an investigation, each campaign group's binding constraints in time order, every cycle folder and prediction ledger (also in `notes/`) and every campaign that moved in the last 14 days with the investigations that name it; it quotes hidden values, so it stays under `.ana/` |
 | How do this run's hours and dollars a promotion stand against every run of its release, pack and setting? | `.claude/skills/promotion-tuner/scripts/table.ts --rows groups` (or `--name <part> --rows promotions`): across campaigns, without `climb`'s solves |
 
 ## The procedure
@@ -49,14 +50,16 @@ start a step until the check named for the one before holds.
    as equals. Every lane reads every campaign, opens where a trigger fired on any of them, and
    triages each finding against the others on its `Seen in:` line; lane 27 is also given their
    climbs side by side. The logs are read again when the lanes are built.
+   **Stop each run first.** `start` and `lanes` refuse a campaign that may still write its log (a
+   process here, a `runs keep` that would restart it, or a peer's copy its last fetch saw open), so
+   every lane reads one sheet: `bun run runs stop <name> --yes` or `pause` it, then start.
    `start` also derives each log quietly ("The readers, derived") and names its folder.
    With `bun --env-file=.env.runs tools/wri/wri.ts ... --log <name>`, a campaign on another machine
    is fetched automatically into `data/runs/<host>/<name>/`. Explicit log paths select an offline
    snapshot. `runs fetch <name>` remains available to refresh a copy explicitly. Lanes read the
    copy with this checkout's tree, so check out the commit the receipt
-   names where the host line says the code differs. `lanes` rereads the paths stored by `start`;
-   it does not refresh a live remote campaign behind the investigation's back. Start another
-   investigation to take a new snapshot.
+   names where the host line says the code differs. `lanes` rereads the paths stored by `start`
+   and refreshes no remote copy. Start another investigation to take a new snapshot.
    *Check:* read the `host-code digest` line. Use the matching campaign tree it names, where one
    exists; otherwise say beside each source claim that it concerns another tree. The digest is
    not a commit: the launch receipt supplies the commit separately. Settle rows A to F from the log.
@@ -240,7 +243,9 @@ and deleting a heading drops its section on purpose.
 
 A lane told what to find finds it. An earlier diagnosis goes under the prior state as a hypothesis,
 never under the orientation as a premise. Where the campaigns belong to a release cycle, the prior
-state lists every row of the cycle's `Predictions.md` as a hypothesis: its pull request, its
+state lists every row of the cycle's `Predictions.md` (one ledger a cycle, in
+`.ana/wri/<date>-cycle-<release>/`, run-improvement-campaign step 1; an investigation of several
+runs reads it there and keeps no copy) as a hypothesis: its pull request, its
 area labels ("Labels" in [the catalogue](references/lanes.md)), lanes, claim and falsifier,
 without the ledger's resolution. Step 3 opens every lane a row names with
 `--lanes`, triggered or not, since a row whose lanes never opened has no report to backtrack from.

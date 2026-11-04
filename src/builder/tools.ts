@@ -412,7 +412,7 @@ async function practise(bench: Bench, task: PracticeTask, kept: HarnessSnapshot,
 /**
  * The practice solves a session may still start. A Builder that leads its campaign has as many as
  * what is left of the campaign's total holds a reserve for, and no count of its own: r3's b-1 ran
- * out of its 24 at turn 161 with $560 left (deep dive, 20 October). A session the host runs keeps
+ * out of its 24 at turn 161 with $560 left (deep dive, 20 October). A session by hand keeps
  * its count, and no more than its own part of the log leaves its cap a reserve for (`billedParts`).
  * The Builder is told a count and never a sum.
  */
@@ -431,22 +431,35 @@ export function practiceLeft({ request, spent }: Bench, events: readonly LogEven
 const UNDER = { harness: "", reference: " under the reference harness" } as const;
 
 /** A task's practice record under each harness `roles` names, each digest once with every role
- *  it plays. Until 27 October it named harness/ and the parent whatever ran, so the 129 practice
- *  calls under the reference on record (of 852, 8 to 26 October) were told nothing of its record. */
+ *  it plays, and under an objective each valid answer's measure. Until 27 October it named
+ *  harness/ and the parent whatever ran, so the 129 practice calls under the reference on record
+ *  (of 852, 8 to 26 October) were told nothing of its record. Until 3 November it counted passes
+ *  alone: on the buffer runs from v0.9.1, 283 of 285 record clauses read "passed N of N", and the
+ *  measures that told the harnesses apart lay scattered over earlier results (lane 17). */
 function recordText(
   events: readonly LogEvent[],
   version: string,
   roles: readonly (readonly [string | null, string])[],
+  contract: Contract,
 ) {
   const named = new Map<string, string[]>();
   for (const [digest, role] of roles) {
     if (digest !== null) named.set(digest, [...(named.get(digest) ?? []), role]);
   }
+  const verdicts = verdictsOf(events);
   return [...named]
     .map(([digest, [role, ...also]], index) => {
       const kept = record(events, version, digest);
       const which = `${role ?? ""}${also.length > 0 ? `, which is also ${also.join(" and ")}` : ""}`;
-      return `${index === 0 ? "Record under" : "Under"} ${which}: ${index === 0 ? "passed " : ""}${String(kept.passed)} of ${String(kept.solves.length)}.`;
+      const measures = kept.solves.flatMap((solve) => {
+        const checker = verdicts.get(solve)?.checker;
+        return checker?.kind === "pass" && checker.objective !== undefined ? [String(checker.objective)] : [];
+      });
+      const measured =
+        contract.objective === undefined || measures.length === 0
+          ? ""
+          : `, ${contract.objective.quantity} ${measures.join(", ")}`;
+      return `${index === 0 ? "Record under" : "Under"} ${which}: ${index === 0 ? "passed " : ""}${String(kept.passed)} of ${String(kept.solves.length)}${measured}.`;
     })
     .join(" ");
 }
@@ -545,7 +558,7 @@ export function practiceTool(bench: Bench): SeatTool {
           : endingText(ending);
         return [
           `${task.task.taskId}${UNDER[under]}: ${shown}. Solve ${solve}.${usedText(events, solve)}${measuredText(events, solve, request.contract)}`,
-          recordText(events, task.version, roles),
+          recordText(events, task.version, roles, request.contract),
           ...lines,
         ].join("\n");
       });
@@ -650,8 +663,8 @@ export async function harnessNow(bench: Bench): Promise<string | Error> {
  * Public opening facts, supplied as a fixed message or rebuilt on each read. A session whose
  * conversation was compacted, or lost with its process, has the public rules, practice tasks,
  * failed practice solves and comparisons in no other place: the host builds them from the log,
- * and the Builder's own notes are its prose about them. A Builder-led session rebuilds them; a host-led
- * session keeps the original message. An Examiner's opening holds the record of every task and,
+ * and the Builder's own notes are its prose about them. A campaign's conversation rebuilds them; a session
+ * by hand keeps the original message. An Examiner's opening holds the record of every task and,
  * since 21 October, serves it again: 65 Examiner sessions on record compacted, and the summary
  * kept what the model chose of that record.
  */

@@ -284,9 +284,7 @@ describe("a campaign run by its live Builder", () => {
       flagsOf(["--root", root, "--name", "terms", "--project", PROJECT, "--budget", "100", ...more]);
     expect(() => opened(log, flags(), "paid")).toThrow("--reviewer");
     expect(read(log)).toEqual([]);
-    // A campaign that opens now is led by its Builder, on record.
-    expect(opened(log, flags(), "scripted")).toMatchObject({ seats: { reviewer: null }, led: true });
-    expect(read(log)[0]?.data).toMatchObject({ led: true });
+    expect(opened(log, flags(), "scripted")).toMatchObject({ seats: { reviewer: null } });
     expect(() => opened(log, flags(), "paid")).toThrow("--reviewer");
     expect(read(log)).toHaveLength(1);
     const model = "claude/claude-opus-5-5";
@@ -1015,6 +1013,27 @@ describe("a campaign tool where the table names more than the action", () => {
     expect(of(name, FINISHED)[0]).toMatchObject({ session: "b-1", ended: "finished" });
   });
 
+  it("ends the campaign on the operator's cap at its first promotion, and tells the Builder no count", async () => {
+    layOutPack(root, bundle, MANY, FIXTURE);
+    const name = `${STEM}-capped`;
+    const seats: Seats = {
+      seated: builderScript(passing(), [CHANGE_GUIDE, ["compare", {}], ["examine", {}], FINISH_IDLE]),
+      examine: writer,
+    };
+    const ending = await harnessBuilder([...seeded(name), ...FLAGS, "--promotions", "1"], seats);
+    expect(ending).toMatchObject({ move: "end", ending: "operator", code: "stop" });
+    expect(of(name, "harness.promoted")).toHaveLength(1);
+    expect(of(name, "comparison.started")).toHaveLength(1);
+    expect(of(name, "campaign.opened").at(-1)).toMatchObject({ terms: { promotions: "1" } });
+    const told = of(name, CALLED)
+      .flatMap(({ text }) => (isString(text) ? [text] : []))
+      .join("\n");
+    expect(told).not.toMatch(/\bcap\b|promotions?\b.*\b1\b/u);
+    await expect(harnessBuilder([...seeded(name), ...FLAGS, "--promotions", "0"], seats)).rejects.toThrow(
+      "--promotions 0",
+    );
+  });
+
   it("promotes the harness each step froze as it reports, whatever harness/ holds since, and runs the table's starter comparison before the Builder's comparison of a changed harness/", async () => {
     layOutPack(root, bundle, MANY, FIXTURE);
     const name = `${STEM}-asked`;
@@ -1142,6 +1161,11 @@ describe("a campaign tool where the table names more than the action", () => {
         // A comparison's minutes are the host's clock: on 14 October CI read one campaign's g-1 at
         // 0 minutes and the other's at 1, the same tally under a busier host.
         .replaceAll(/took \d+ minutes?/gu, "took 0 minutes")
+        // A scripted solve bills by the length of what it reads (`fixture-pack.ts`), so which task a
+        // side answered moves a comparison's sum across a cent's rounding: 0.89 and 0.90 on
+        // 3 November, once at #589's base and again at #590's. What a comparison billed crosses with
+        // the remaining budget (section 1's closed list), so the tally, not the bill, is held equal.
+        .replaceAll(/billed \d+\.\d\d dollars/gu, "billed 0.00 dollars")
     );
   };
 
@@ -1151,7 +1175,7 @@ describe("a campaign tool where the table names more than the action", () => {
     // 12 October the status counted the tasks waiting for a label and the exhausted ones, and two
     // such campaigns read differently (rule 3).
     const same = await read_(`${STEM}-won-one`, { "g-1": [0, 1, 2], "g-2": [0, 1, 2] });
-    const moved = await read_(`${STEM}-won-other`, { "g-1": [1, 2, 3], "g-2": [2, 3, 4] });
+    const moved = await read_(`${STEM}-won-two`, { "g-1": [1, 2, 3], "g-2": [2, 3, 4] });
     expect(moved).toBe(same);
     expect(same).toContain("2 won, 0 lost, 3 tied");
     expect(same).toContain("Comparison g-2 took 0 minutes and billed");

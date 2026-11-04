@@ -1,8 +1,8 @@
 /**
  * The campaign's moves as a live Builder makes them: the tools its conversation is given beside
- * its own, and the advice their results end with. This module is the whole of what a campaign
- * led by its Builder adds to one the host runs (`--builder-led`, `harness-builder.ts`); the flags
- * and terms both run by are `campaign-terms.ts`.
+ * its own, and the advice their results end with. This module is the whole of what the campaign
+ * command (`harness-builder.ts`) adds to a Builder session by hand (`session.ts`); the flags and
+ * terms a campaign runs by are `campaign-terms.ts`.
  *
  * The Builder keeps one conversation and one working copy while it asks a separate Examiner for
  * tasks (`examine`), has the host release practice tasks (`release_practice`), freezes its harness
@@ -174,7 +174,7 @@ function actionTool(context: CampaignContext, bench: Bench, move: ActionMove, ru
     name: move,
     description: {
       examine:
-        "Ask a separate Examiner to write tasks under the fixed exam. It returns at once and the Examiner writes beside you; the campaign's facts say what it has held out. A comparison is won on tasks the reference fails in some solve, or where the objective tells two valid answers apart.",
+        "Ask a separate Examiner to write tasks under the fixed exam. It returns at once and the Examiner writes beside you; the campaign's facts say how many of its tasks the gate has admitted. A comparison is won on tasks the reference fails in some solve, or where the objective tells two valid answers apart.",
       release_practice: "Release the host's draw of public practice tasks into this workspace.",
       compare:
         "Freeze harness/ and compare it with the current reference on fresh held-out solves. Where a comparison began and has not reported, it goes on under its original terms. Where the table names the starter comparison, this call runs that instead and harness/ is compared at the next one. A comparison that reads a step against the reference promotes the harness it froze.",
@@ -334,7 +334,7 @@ const examineAction =
       });
     context.examining = { session, done, released: () => next.promise };
     return {
-      said: `Examiner session ${session} is writing ${tasks === undefined ? "tasks" : plural(Number(tasks), "task")} beside this conversation: edit, release practice and practise meanwhile. As it holds tasks the host releases the practice owed since the last reading. A comparison or a promotion waits for it to end, wait returns when it ends or the host releases practice, and campaign_status says how many it has held out.`,
+      said: `Examiner session ${session} is writing ${tasks === undefined ? "tasks" : plural(Number(tasks), "task")} beside this conversation: edit, release practice and practise meanwhile. As it holds tasks the host releases the practice owed since the last reading. A comparison or a promotion waits for it to end, wait returns when it ends or the host releases practice, and campaign_status says how many of its tasks the gate has admitted.`,
     };
   };
 
@@ -590,13 +590,13 @@ function examinedLines(events: readonly LogEvent[], writing: string | undefined)
     const held = plural(started === -1 ? 0 : heldAfter(events, started), "task");
     return [
       begun === writing
-        ? `Examiner session ${begun} is writing beside this conversation, ${minutesFrom(events[started]?.at)}, and has held out ${held} so far; a comparison or a promotion waits for it.`
-        : `Examiner session ${begun} stopped with the run of the campaign that began it, and held out ${held}.`,
+        ? `Examiner session ${begun} is writing beside this conversation, ${minutesFrom(events[started]?.at)}, and has had ${held} admitted so far; a comparison or a promotion waits for it.`
+        : `Examiner session ${begun} stopped with the run of the campaign that began it, and had ${held} admitted.`,
     ];
   }
   const said = EXAMINED.get(isString(ended.ended) ? ended.ended : "") ?? "ended at its limits";
   return [
-    `Examiner session ${begun} ${said}, and held out ${plural(Array.isArray(ended.held) ? ended.held.length : 0, "task")}.`,
+    `Examiner session ${begun} ${said}, and had ${plural(Array.isArray(ended.held) ? ended.held.length : 0, "task")} admitted.`,
   ];
 }
 
@@ -713,8 +713,7 @@ function campaignStatus(context: CampaignContext, bench: Bench): string {
  * The campaign's tools and advice for one Builder conversation (`BuildRequest.campaign`). Where
  * `opens`, the host starts the Examiner session the table names as the conversation opens, as the
  * Builder's `examine` would: until 14 October a led campaign that opened short of tasks waited for
- * its Builder to ask, and until 16 October every later session did (`hostOwed`,
- * `tools/d2/harness-builder.ts`).
+ * its Builder to ask, and until 16 October every later session did.
  */
 export function campaignTools(
   context: CampaignContext,

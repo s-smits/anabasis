@@ -11,7 +11,7 @@ comment of each file is its manual and lists its flags.
 
 | Order | Command | What it puts in the log |
 | --- | --- | --- |
-| 0 | `bun tools/d1b/draft.ts --name <name> --session d-1 --examiner <model>` | For a campaign opened from a prompt: the Examiner's drafting session, and the whole draft that stood (`exam.drafted`), read by the host without a model |
+| 0 | `bun tools/d1b/draft.ts --name <name> --session d-1 --examiner <model>` | For a campaign opened from a prompt: the Examiner's drafting session, and the whole draft that stood (`exam.drafted`), read by the host without a model; nothing solves it at drafting |
 | 1 | `bun tools/c/accept.ts ... [--admit <checks> \| --admit-authored] [--freeze [--despite "<why>"]]` | What the check program was seen to do (`checker.read`), and the operator's word that the contract and that version stand (`contract.frozen`) |
 | 2 | `bun tools/d2/prepare.ts ... [--practice N]` | The pack's tasks held out and the practice tasks released |
 | 3 | `bun tools/d1b/examine.ts ... --session x-1 --examiner <model>` | More held-out tasks, written by an Examiner session |
@@ -74,7 +74,7 @@ The host does not forecast a move's final cost. A comparison cut short by its ca
   `finish` or at its limits).
 
 A Builder's `finish` ends one conversation, never the campaign. Between conversations the host makes
-whatever move the table names that needs no Builder, a comparison or a promotion (`hostOwed`,
+whatever move the table names that needs no Builder, a comparison or a promotion (`make`,
 `tools/d2/harness-builder.ts`), and an Examiner session the table names starts beside the next
 conversation (`campaignTools`, `tools/d2/campaign-actions.ts`). A reading with no room is advice to
 request other tasks, and supply patience over such readings ends the campaign, conversation or not

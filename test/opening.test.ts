@@ -50,6 +50,15 @@ describe("what a campaign runs by", () => {
       left: { dollars: 360, reserve: 10 },
       prompted: false,
       admits: [],
+      promotions: null,
     });
+  });
+
+  it("plans the operator's cap of promotions as its opening keeps it, and none where lifted or unnamed", () => {
+    const capped = (promotions: string) =>
+      event("campaign.opened", { ...opened.data, terms: { promotions } });
+    expect(planOf([capped("2")], ASKED).promotions).toBe(2);
+    expect(planOf([capped("none")], ASKED).promotions).toBeNull();
+    expect(planOf([opened], ASKED).promotions).toBeNull();
   });
 });

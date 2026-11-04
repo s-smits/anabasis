@@ -64,7 +64,7 @@ const SAID: Readonly<Record<Outcome, string>> = {
   "reference-some": "valid in some solves",
   "reference-none": "valid in no solve",
   "earlier-reference": "last compared between two other harnesses",
-  disputed: "set aside: a rejection of an answer to it is not yet ruled",
+  disputed: "set aside until a person settles a rejection of an answer to it",
 };
 /** Where a held draft's room came from, as `informative` read an earlier log's room solves: the
  *  kinds the measurement counts of a gate that solved its draft. */

@@ -7,16 +7,18 @@
  * holds that prompt. The Examiner drafts the public rules with a source for each, the answer
  * format, one check a rule, example tasks and control answers (`src/examiner/draft.ts`). Each draft it
  * puts is read without a model (`draftReading`, `tools/d2/exam.ts`): its shape, every control answer
- * through the checks twice, and the do-nothing answer on every example. A draft with no fault
- * stands and is the campaign's exam from then on (`exam.drafted`), and the session ends.
+ * through the checks twice, and the do-nothing answer on every example. A draft that stands is the
+ * campaign's exam from then on (`exam.drafted`), and the session ends.
  *
- * From 22 October to 1 November a draft with no fault was then measured before it stood: the
- * reference harness solved each example through the launcher the gate's room solves used, and the
- * Examiner was told how many solves were valid and their turns. The gate solves no draft now
- * (`src/examiner/write.ts`), and no solve runs here.
+ * From 22 October to 1 November, and again on 3 and 4 November (#585), a draft with no
+ * fault was then solved before it stood: the Starter Built Harness solved each example, and the
+ * Examiner was told, or refused, where it answered them all. No solve runs here now; why, with
+ * the record: `src/examiner/draft.ts`.
  *
  * The session stops at a draft that stands, at `--tries` drafts put to the reading, or at its
- * deadline and model turn limit. The Examiner has a shell in a walled home of its own (`examine`,
+ * deadline and model turn limit; a session that ends with no draft standing leaves the campaign to
+ * draft again, or to end on its exam once its drafts are spent (`drafting`, `src/campaign/decide.ts`).
+ * The Examiner has a shell in a walled home of its own (`examine`,
  * with a wall), under the disk cap of a campaign's solves, closed to this repository and its other
  * worktrees.
  *
@@ -81,7 +83,7 @@ export async function draftCommand(
       mode: "draft",
       prompt,
       budget: { modelTurns: modelTurns ?? null, minutes: wallSeconds / 60, solves: setting.solves },
-      reading: (draft) => draftReading(dirname(log), draft, Number(values.jobs)),
+      reading: async (draft) => await draftReading(dirname(log), draft, Number(values.jobs)),
       model: modelNamed(examiner),
       // SAFETY: an effort is one of pi's levels, and a backend refuses one it does not serve.
       effort: values["examiner-effort"] as ThinkingLevel,

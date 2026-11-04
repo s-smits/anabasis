@@ -105,7 +105,7 @@ function Readouts({ reading }: { reading: CampaignReading }) {
   // Beside the step's tally, what carried its wins.
   const beside = lastBar?.carried == null ? "" : `; won on ${carriedText(lastBar.carried.won)}`;
   const ended = row.ending;
-  const advised = reading.led && nextMove !== null && !HOSTS_OWN.has(nextMove.move);
+  const advised = nextMove !== null && !HOSTS_OWN.has(nextMove.move);
   const open =
     reading.open.length === 0 ? "" : `, on the log as it stands with ${reading.open.join(", ")} open`;
   return (
@@ -178,7 +178,7 @@ function NoComparison({ reading }: { reading: CampaignReading }) {
 /** The set-up as the view's first line says it, with the prompt the campaign opened from, who sits
  *  in each seat and the terms the opening keeps, one click away. */
 function SetUp({ reading }: { reading: CampaignReading }) {
-  const { prompt, supply, seats, terms, attended, led, bars } = reading;
+  const { prompt, supply, seats, terms, attended, bars } = reading;
   const checker =
     supply.faults === null
       ? "checker never read"
@@ -206,14 +206,6 @@ function SetUp({ reading }: { reading: CampaignReading }) {
             <dd className="ana-num">{value}</dd>
           </div>
         ))}
-        <div>
-          <dt>led by</dt>
-          <dd>
-            {led
-              ? "its Builder: one conversation makes the moves past the exam's set-up, with the table as advice"
-              : "the host: it makes each move the table names"}
-          </dd>
-        </div>
         {attended ? (
           <div>
             <dt>attended</dt>
@@ -229,8 +221,7 @@ function SetUp({ reading }: { reading: CampaignReading }) {
   );
 }
 
-/** The riskiest attempt's false-promotion rate by design, an estimate, and the A/A controls read
- *  beside it, as `climb.ts` words them for the view. */
+/** The A/A controls read beside the false-promotion estimate, as `climb.ts` words them for the view. */
 function rateSource(risk: NonNullable<CampaignReading["counters"]["risk"]>): string {
   const controls =
     risk.controls === 0
@@ -238,7 +229,7 @@ function rateSource(risk: NonNullable<CampaignReading["counters"]["risk"]>): str
       : `${String(risk.errors)} of ${plural(risk.controls, "A/A control")} with enough untied tasks to read a step read one`;
   const incapable =
     risk.incapable === 0 ? "" : `, and ${String(risk.incapable)} too small to read one at their level`;
-  return `${percent(risk.bound)} for the riskiest attempt by the rule's design; ${controls}${incapable}`;
+  return `${controls}${incapable}`;
 }
 
 function Counters({ reading }: { reading: CampaignReading }) {

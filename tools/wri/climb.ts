@@ -147,7 +147,7 @@ export function climbTable(campaigns: readonly Campaign[]): string {
  * table named a move, a Builder's wall during a host action, one move asked three times, Builder
  * conversations in a row without progress, and a session's limits moved. Over the 638 campaign
  * logs on the operator's host on 19 October they fired in 14 logs of campaigns opened from 9 to
- * 14 October and in none of the 12 opened since, which `hostOwed` and `idleOf` (1, 4), the Builder's
+ * 14 October and in none of the 12 opened since, which the host's moves between conversations and `idleOf` (1, 4), the Builder's
  * own-time wall (`Bench.within`, 2), `attemptsOf` (3) and the opening's terms (7) answer; they went
  * on 19 October. 5 went at birth, as `waitOut` waits out a named reset, and 6 is HOST LOADED.
  *

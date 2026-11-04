@@ -69,7 +69,9 @@ factor it affects, or the separate purpose it serves. Recorded values live in `d
   (a promotion is confirmed when the first starter comparison of its epoch that tallied a task
   reads the reference above the starter at its level: `confirmed`, `src/campaign/climb.ts`),
   so no prompt, tool or move names a count. A release cycle stops most runs at two promotions while
-  the system changes, so the milestone is read from a run the operator lets go on.
+  the system changes (`--promotions 2`, the campaign's cap, which ends it `operator` before the starter comparison
+  owed for the last promotion, so that one is never confirmed), so the milestone is read from a run
+  the operator lets go on.
 - **2. Honesty**: could a gain be chance or drift? An A/A comparison beside every comparison, the
   reference's first solve of each task against its second, measures it. One reading clears between
   equal harnesses at most as often as its level (`falseRate`: 1.1% at 0.02 on 24 untied tasks), and
@@ -134,6 +136,12 @@ reads the sign to watch (section 9).
 - **Simplicity against performance.** Section 2, consequence 7, takes four fifths of a result for a
   fifth of the code, never at the measurement's cost; a new guard is measured against what it
   replaces.
+- **A strict gate against a capable model.** A refusal before a comparison guesses what the
+  comparison would read, and a wrong guess ends the whole campaign `exam` with nothing compared.
+  An easy exam costs power and dollars, never honesty, since the A/A and the test still read every
+  comparison. So trust a seat with what a capable model handles itself: refuse only what would
+  make a reading dishonest or a spend certain to be wasted (rule 14), and give the rest to the
+  seat as a note it reads before it decides. Watch the endings no comparison read.
 
 ### Two sides and one wall
 
@@ -251,7 +259,7 @@ tests; `examiner-view <name>` counts what an Examiner opening would be told, and
 
 ## 4. The Harness Builder
 
-One Builder conversation leads the campaign (`tools/d2/harness-builder.ts`, `--builder-led`).
+One Builder conversation leads the campaign (`tools/d2/harness-builder.ts`).
 Its campaign tools are `examine`, `release_practice`, `compare`, `promote`,
 `campaign_status` and `wait`. Each uses the same admission checks as the operator's command.
 The move table advises the Builder, while code enforces endings and selects the promotable
@@ -267,7 +275,7 @@ Preserve the Builder conversation across campaign actions. Standing facts appear
 result because messages sent between tool-call turns do not reach the Builder.
 
 **In `campaign-mechanics`, section 4** (`builder-conversation.md`): Examiner sessions beside the
-conversation; which moves are recorded; the Builder's clock; `--no-builder-led`.
+conversation; which moves are recorded; the Builder's clock; sessions by hand.
 
 ## 5. The log
 
@@ -376,7 +384,8 @@ Cite a rule by its number.
    prompt or the contract code.
 3. **Nothing crosses the wall except the closed list of section 1.** Changing a hidden value, a
    check, or which held-out task a non-reference harness won must leave every message a Builder or a
-   solver reads byte-identical (`test/builder.test.ts`, `test/builder-led.test.ts`). That covers
+   solver reads byte-identical (`test/builder.test.ts`, `test/builder-led.test.ts`), apart from what
+   the solves billed, which the remaining budget carries. That covers
    prompts, tool descriptions, tool results, home files and the choice of practice tasks, and a pull
    request that touches such a message says how it checked this.
 4. **Terms are fixed before the first solve and never moved after a result.** Do not top up a set

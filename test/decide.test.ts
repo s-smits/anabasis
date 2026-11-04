@@ -31,6 +31,7 @@ const PLAN: Plan = {
   prompted: false,
   admits: [],
   left: null,
+  promotions: null,
 };
 const event = (kind: EventKind, data: JsonObject): LogEvent => ({ at, kind, data });
 const EXAM_FINISHED = "exam.finished" as const;
@@ -150,6 +151,15 @@ describe("a row of the table", () => {
     expect(move([...stopped, ended])).toMatchObject({ move: "compare" });
     expect(pendingWords([...stopped, ended])).toEqual([]);
     expect(move([word({ word: "stop" })])).toMatchObject({ ending: "operator" });
+  });
+
+  it("stop: the operator's cap ends the campaign once its log holds that many promotions, and no cap goes on", () => {
+    const capped = { ...PLAN, promotions: 1 };
+    expect(decide(PROMOTED, capped)).toMatchObject({ move: "end", ending: "operator", code: "stop" });
+    expect(decide(PROMOTED, capped).why).toContain("cap of 1 promotion");
+    expect(decide(PROMOTED, { ...PLAN, promotions: 2 }).code).not.toBe("stop");
+    expect(decide(PROMOTED, PLAN).code).not.toBe("stop");
+    expect(decide(FIRST, capped).code).not.toBe("stop");
   });
 
   it("reads a stop before the exam, the exam before the total, and the provider before a want of tasks", () => {
@@ -613,6 +623,15 @@ describe("unread harnesses and tasks", () => {
         PLAN,
       ),
     ).not.toMatchObject({ fresh: "starter" });
+    // A starter comparison that tallied no task leaves its debt: with tasks held out since and a
+    // harness waiting, the starter is compared again before the harness is read.
+    const untallied = [
+      ...written,
+      ...compared("g-3", "start", "check-defects", { old: "h1", extra: { scored: null } }),
+      ...examined("x-2", ["v19"]),
+      built("b-2", "h2"),
+    ];
+    expect(decide(untallied, PLAN)).toMatchObject({ move: "compare", fresh: "starter" });
     // Tasks written since and all released for practice leave the starter comparison nothing to draw.
     const releasedAll = [
       ...written,

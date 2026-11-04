@@ -5,31 +5,69 @@
  * process that writes the log (`writers`,
  * `tools/runs/registry.ts`). Newest first is by the time of a log's first event. A log that cannot be
  * read is an issue beside the rows, never a missing row without a word.
+ *
+ * The list keeps each log's facts (`factsIn`), never its events, at the log's size and time
+ * (`stampOf`), and forgets a log the listing no longer finds, a retired campaign's: until
+ * 4 November the list kept every log's events, 3.7 GB in a server up four days (`logs.ts`).
  */
 import type { CampaignList, CampaignRow, Issue, Query } from "../models.ts";
 import { errorMessage } from "../../../../src/meta/runtime-values.ts";
 import type { Reading } from "./context.ts";
-import { campaignsFound, loaded, sourceOf, writing } from "./logs.ts";
-import { campaignRow } from "./reading.ts";
+import { campaignsFound, type Found, loaded, sourceOf, stampOf, writing } from "./logs.ts";
+import { campaignRow, factsIn } from "./reading.ts";
+
+/** A log's facts as the list last read them, at its stamp, or null with why it could not. */
+interface Listed {
+  readonly stamp: string | null;
+  readonly facts: ReturnType<typeof factsIn> | null;
+  readonly issues: readonly Issue[];
+}
+
+const listed = new Map<string, Listed>();
+
+/** `found`'s facts, read again only where its stamp moved; whether they were. */
+function factsOf(found: Found): { readonly read: boolean; readonly listing: Listed } {
+  const stamp = stampOf(found);
+  const was = listed.get(found.path);
+  if (was !== undefined && stamp !== null && was.stamp === stamp) return { read: false, listing: was };
+  const { log, issues } = loaded(found, false);
+  let listing: Listed;
+  try {
+    listing = { stamp, facts: log === null ? null : factsIn(log), issues };
+  } catch (error) {
+    listing = {
+      stamp,
+      facts: null,
+      issues: [{ level: "error", source: sourceOf(found), message: errorMessage(error) }],
+    };
+  }
+  listed.set(found.path, listing);
+  return { read: true, listing };
+}
+
+/** Every log's facts, read as `factsOf` reads them, with a turn of the event loop after each log
+ *  it read again. A cold list read 1.7 GB of 176 logs in 4.4 s on 30 October, and a handler holds
+ *  the one thread it runs on, so the selected campaign, asked beside the list, waited for all of
+ *  it; between two logs it is answered at once. */
+export async function readAll(reading: Pick<Reading, "repo" | "trees">): Promise<void> {
+  for (const each of campaignsFound(reading).found) {
+    if (factsOf(each).read) await Bun.sleep(0);
+  }
+}
 
 export function campaignsAnswer(reading: Reading, _query: Query<"campaigns">): CampaignList {
-  const { found, issues: listed } = campaignsFound(reading);
-  const issues: Issue[] = [...listed];
+  const { found, issues: looked } = campaignsFound(reading);
+  const paths = new Set(found.map(({ path }) => path));
+  for (const path of listed.keys()) if (!paths.has(path)) listed.delete(path);
+  const issues: Issue[] = [...looked];
   let unlisted = false;
   const rows = found.flatMap((each): { readonly row: CampaignRow; readonly opened: string }[] => {
-    const { log, issues: read } = loaded(each);
+    const { facts, issues: read } = factsOf(each).listing;
     issues.push(...read);
-    if (log === null) return [];
+    if (facts === null) return [];
     const process = writing(each);
     unlisted ||= process === null;
-    try {
-      return [
-        { row: campaignRow(each, log, { process, tier: reading.tier }), opened: log.events[0]?.at ?? "" },
-      ];
-    } catch (error) {
-      issues.push({ level: "error", source: sourceOf(each), message: errorMessage(error) });
-      return [];
-    }
+    return [{ row: campaignRow(each, facts, { process, tier: reading.tier }), opened: facts.opened }];
   });
   if (unlisted) {
     issues.push({

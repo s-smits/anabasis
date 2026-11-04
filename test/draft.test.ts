@@ -1,29 +1,39 @@
 // An exam drafted from a prompt: the shape the host holds a draft to before anything runs
 // (`draftFaults`, `src/examiner/draft.ts`), which a drafting session reads before the host's own
-// reading, and that reading on a staged draft with the real verifier (`tools/d2/exam.ts`). The
-// session a draft is put in is `examine`'s, held in `test/examiner.test.ts`.
+// reading, that reading on a staged draft with the real verifier (`tools/d2/exam.ts`), and the
+// campaign's end once its drafts are spent. The session a draft is put in is `examine`'s, held in
+// `test/examiner.test.ts`.
 
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
+import { decide } from "../src/campaign/decide.ts";
 import { type Draft, draftFaults, draftOf } from "../src/examiner/draft.ts";
-import { examine } from "../src/examiner/session.ts";
+import { examine, type Session } from "../src/examiner/session.ts";
 import { append, read } from "../src/kernel/log.ts";
 import { examinerSessions, solvesIn } from "../src/kernel/solves.ts";
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "../src/meta/filesystem.ts";
 import type { JsonObject, JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { join } from "../src/meta/path.ts";
+import { dirname, join } from "../src/meta/path.ts";
+import { runtimeProcess } from "../src/meta/process.ts";
+import { draftCommand } from "../tools/d1b/draft.ts";
+import { campaignLog } from "../tools/d2/campaign.ts";
 import { draftReading, stageExam } from "../tools/d2/exam.ts";
 import { packControls, readPack, sweepResources } from "../tools/m0/stored-sweep.ts";
-import { drafted, finish, SOUND, seat, sweep } from "./helpers/examiner-seat.ts";
+import { draftArgs, drafted, finish, NOTE, SOUND, seat, sweep } from "./helpers/examiner-seat.ts";
+import { scriptedModel } from "./helpers/fixture-pack.ts";
 
 const FORMAT = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] };
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-draft-")));
+const STEM = `test-draft-${String(runtimeProcess.pid)}`;
+const SOLVER = "claude/claude-opus-5-5";
+const campaigns: string[] = [];
 
 setDefaultTimeout(120_000);
 
 afterAll(() => {
   sweep();
   rmSync(root, { recursive: true, force: true });
+  for (const name of campaigns) rmSync(dirname(campaignLog(name)), { recursive: true, force: true });
 });
 
 describe("the shape of a draft", () => {
@@ -196,7 +206,7 @@ describe("a draft read without a model", () => {
 });
 
 describe("a draft put to the host", () => {
-  it("stands at its first put once it has no fault, with no solve of its examples and no measure on record", async () => {
+  it("stands at its first put once it has no fault, with no solve of its examples", async () => {
     const s = seat("draft", [drafted(SOUND), finish]);
     expect(await examine(s.request)).toMatchObject({ ended: "stands", puts: 1 });
     expect(s.of("draft.call").map(({ text }) => text)).toEqual([
@@ -208,7 +218,7 @@ describe("a draft put to the host", () => {
     expect(s.of("draft.finished")[0]).not.toHaveProperty("measurement");
     // Its system prompt says what the host reads of a draft, and of no solve of it.
     expect(s.sent[0]).toContain("draft_exam puts a whole draft to the host");
-    expect(s.sent[0]).not.toContain("is then measured");
+    expect(s.sent[0]).not.toMatch(/starter harness|is then solved/u);
     // Its opening says the budget the exam's solves will be held to, as a writing session's does.
     expect(s.sent.join("\n")).toMatch(
       /held to 20 turns of the solver's own[^.]*, and 30 minutes, and a comparison solves each task 2 times under each harness\./u,
@@ -221,5 +231,53 @@ describe("a draft put to the host", () => {
     append(log, "exam.started", { session: "x-1" });
     append(log, "build.started", { session: "b-1" });
     expect(examinerSessions(read(log))).toEqual(new Set(["d-1", "x-1"]));
+  });
+});
+
+/** A campaign opened from a prompt, with no exam yet, under the repository as a campaign is. */
+function opened(name: string): string[] {
+  campaigns.push(name);
+  const log = campaignLog(name);
+  mkdirSync(dirname(log), { recursive: true });
+  append(log, "campaign.opened", { prompt: "A fixture.", solver: { model: SOLVER, effort: "high" } });
+  return ["--name", name, "--examiner", SOLVER, "--solver", SOLVER];
+}
+
+/** An Examiner that puts `drafts` in turn and then finishes. */
+const putting =
+  (...drafts: Draft[]): Session<"draft"> =>
+  (request) =>
+    examine({
+      ...request,
+      ...scriptedModel([
+        ...drafts.map((draft) => ["draft_exam", draftArgs(draft)] as const),
+        ["finish", { note: NOTE }],
+      ]),
+    });
+
+describe("a campaign's drafts", () => {
+  it("ends the campaign on its exam once three drafts in two sessions did not stand", async () => {
+    const name = `${STEM}-spent`;
+    const flags = opened(name);
+    const log = campaignLog(name);
+    const unformed: Draft = { ...SOUND, answerFormat: { type: "string" } };
+    await draftCommand([...flags, "--session", "d-1"], putting(unformed));
+    await draftCommand([...flags, "--session", "d-2"], putting(unformed, unformed));
+    const events = read(log);
+    expect(draftOf(events)).toBeNull();
+    const plan = {
+      sessions: 1,
+      patience: 3,
+      unprepared: false,
+      practice: null,
+      wanted: { target: 12, level: 0.02 },
+      pastStop: null,
+      prompted: true,
+      admits: [],
+      left: null,
+      promotions: null,
+    };
+    expect(decide(events, plan)).toMatchObject({ move: "end", ending: "exam" });
+    expect(decide(events, plan).why).toContain("3 drafts in 2 sessions did not stand");
   });
 });

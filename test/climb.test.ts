@@ -1,7 +1,7 @@
 // The climb, simulated: a campaign run by its log over the fixture pack with a script in each
 // model seat, where a task's difficulty is its base and a harness's strength is a number its guide
 // carries. A solve passes where the base is at most the strength, and gives no answer otherwise;
-// each Builder session, or each edit of a Builder that leads its campaign, raises the strength by two; each Examiner session asked for room reads the
+// each edit of the Builder that leads the campaign raises the strength by two; each Examiner session asked for room reads the
 // reference harness's strength from its kept state and writes tasks on either side of it, as an
 // Examiner that hears which tasks were answered would. What this proves is the host's part
 // of the climb and nothing of a model: that a scripted Builder promotes a harness, requests harder tasks
@@ -10,16 +10,13 @@
 //
 //   ANA_CLIMB=1 bun run test -- test/climb.test.ts
 //
-// That is a campaign led by its Builder, as one that opens now is. `ANA_CLIMB=host` runs the same
-// climb with the host making every move the table names (`--no-builder-led`).
-//
 // The operator's question of 10 October: does the system climb, epoch after epoch, where an
 // epoch ends with a promotion and the next one's tasks are harder?
 
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { type Epoch, epochLine, epochsOf, riskLines, worthOf } from "../src/campaign/climb.ts";
 import { examine } from "../src/examiner/session.ts";
-import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
+import { type Condition, settingId } from "../src/kernel/condition.ts";
 import { type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
 import { GUIDE_FILE } from "../src/meta/bundle-layout.ts";
 import {
@@ -35,7 +32,6 @@ import { asRecord, isNumber, isString, type JsonObject } from "../src/meta/json-
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { ANSWER_FILE } from "../src/tools/answer.ts";
 import type { Seats } from "../tools/d2/campaign-terms.ts";
 import { harnessBuilder } from "../tools/d2/harness-builder.ts";
@@ -48,8 +44,7 @@ const NAME = `test-climb-${String(runtimeProcess.pid)}`;
 const TASKS = fixtureTasks(7);
 /** The starter's strength: it answers a base of three and under. */
 const STARTER_STRENGTH = 3;
-/** What one Builder session adds, or one edit of a Builder that leads its campaign. */
-const HOSTED = runtimeProcess.env.ANA_CLIMB === "host";
+/** What one edit of the Builder adds. */
 const RAISE = 2;
 /** Tasks an Examiner asked for writes, by how far above the reference's strength each is: one
  *  past it, which the reference answers on some of its solves and not all, so that a task is
@@ -160,46 +155,29 @@ describe("the climb", () => {
       let written = 0;
       const seats: Seats = {
         seated: (campaign) => ({
-          // Led by its Builder, one scripted Builder keeps its conversation while it edits, compares
-          // and promotes, and the conversations after it make no campaign move.
-          // Run by the host, a Builder session raises the strength of the harness it starts from by two, and
-          // finishes. The seat is made for every command, a comparison's too, so the strength is
-          // read from the log: the sessions that began before this one.
-          builder: HOSTED
-            ? (() => {
-                const before = read(campaign.log).filter(({ kind }) => kind === "build.started").length;
-                const strength = STARTER_STRENGTH + (before + 1) * RAISE;
-                return scriptedModel([
-                  [
-                    "bash",
-                    {
-                      command: `printf '\\nstrength: ${String(strength)}\\n' >> "$HOME/harness/agent/${GUIDE_FILE}"`,
-                    },
-                  ],
-                  ["finish", { note: `Strength ${String(strength)}.` }],
-                ]);
-              })()
-            : read(campaign.log).some(({ kind }) => kind === "build.started")
-              ? scriptedModel([IDLE, IDLE])
-              : scriptedModel([
-                  ...Array.from({ length: 3 }, (_, epoch) => {
-                    const strength = STARTER_STRENGTH + (epoch + 1) * RAISE;
-                    return [
-                      ["examine", {}],
-                      ["release_practice", {}],
-                      [
-                        "bash",
-                        {
-                          command: `printf '\\nstrength: ${String(strength)}\\n' >> "$HOME/harness/agent/${GUIDE_FILE}"`,
-                        },
-                      ],
-                      ["compare", {}],
-                      ["compare", {}],
-                      ["promote", {}],
-                    ] satisfies readonly (readonly [string, JsonObject])[];
-                  }).flat(),
-                  ["finish", { note: "Three scripted improvements in one conversation." }],
-                ]),
+          // One scripted Builder keeps its conversation while it edits, compares and promotes, and
+          // the conversations after it make no campaign move.
+          builder: read(campaign.log).some(({ kind }) => kind === "build.started")
+            ? scriptedModel([IDLE, IDLE])
+            : scriptedModel([
+                ...Array.from({ length: 3 }, (_, epoch) => {
+                  const strength = STARTER_STRENGTH + (epoch + 1) * RAISE;
+                  return [
+                    ["examine", {}],
+                    ["release_practice", {}],
+                    [
+                      "bash",
+                      {
+                        command: `printf '\\nstrength: ${String(strength)}\\n' >> "$HOME/harness/agent/${GUIDE_FILE}"`,
+                      },
+                    ],
+                    ["compare", {}],
+                    ["compare", {}],
+                    ["promote", {}],
+                  ] satisfies readonly (readonly [string, JsonObject])[];
+                }).flat(),
+                ["finish", { note: "Three scripted improvements in one conversation." }],
+              ]),
           setting: campaign.setting({ ...campaign.test, ...scriptedModel([]) }),
           // A solve passes where the task's base is at most the harness's strength, and one past it
           // on every other solve: since 12 October a task the reference fails in every solve, or
@@ -249,10 +227,7 @@ describe("the climb", () => {
       // Three epochs take 21 moves with every task scored (climb-10, 10 October: four promotions
       // in 36 moves and still climbing). A campaign that ends on its moves has not stopped. Led by
       // its Builder, the three improvements are made by campaign tools inside one conversation.
-      const ending = await harnessBuilder(
-        [...flags, "--moves", "24", ...(HOSTED ? ["--no-builder-led"] : [])],
-        seats,
-      );
+      const ending = await harnessBuilder([...flags, "--moves", "24"], seats);
       const moves = of("campaign.move").map(({ move }) => (isString(move) ? move : "?"));
       const promotions = of("harness.promoted");
       const log = read(join(folder, "log.jsonl"));
@@ -287,10 +262,10 @@ describe("the climb", () => {
       // The highest base held out in an epoch: what the test knows of difficulty.
       const hardest = (epoch: Epoch) =>
         Math.max(0, ...epoch.tasks.map((version) => baseOf.get(version) ?? 0));
-      // Led by its Builder, the first conversation made every improvement, and none after it
+      // The first conversation made every improvement, and none after it
       // changed a harness. Until 14 October a finish ended the campaign there.
       const later = of("build.finished").slice(1);
-      if (!HOSTED) expect(later.map(({ changed }) => changed)).not.toContain(true);
+      expect(later.map(({ changed }) => changed)).not.toContain(true);
       // Two promotions at least, each on tasks harder than the last epoch's: the second epoch's
       // tasks reach higher bases, the starter answers fewer of them, and the promoted harness of
       // each epoch is stronger than the one before.
@@ -345,23 +320,21 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     const log = [started, stepped, attempt("g-2", "S", "h2"), rated];
     const [epoch] = epochsOf(log);
     // Each attempt at its own rate, the level where its report holds none.
-    expect(epoch?.falsePromotion).toMatchObject({ attempts: 3, errors: 0, controls: 0, bound: 0.1 });
+    expect(epoch?.falsePromotion).toMatchObject({ attempts: 3, errors: 0, controls: 0 });
     expect(epoch?.falsePromotion.union).toBeCloseTo(0.25, 12);
     if (epoch === undefined) throw new Error("an epoch");
-    // The line and the closing report's epoch carry the attempts, their summed estimate, the
-    // riskiest attempt's rate and that no control was read; the campaign's line sums the epochs'
-    // estimates, here the one epoch's, as an estimate and no bound (the plan's 7.6).
+    // The line and the closing report's epoch carry the attempts, their summed estimate and that
+    // no control was read; the campaign's line sums the epochs' estimates, here the one epoch's, as
+    // an estimate and no bound (the plan's 7.6).
     const [epochRisk, total] = riskLines(log);
     for (const line of [epochLine(epoch), epochRisk]) {
-      expect(line).toMatch(
-        /\b3 promotion attempts\b.*\b25%.*\b10% for the riskiest attempt\b.*\bno A\/A comparison\b/u,
-      );
+      expect(line).toMatch(/\b3 promotion attempts\b.*\b25%.*\bno A\/A comparison\b/u);
     }
     expect(total).toContain("25%");
     expect(total).toContain("no bound");
     // A rate under ten percent is printed to a tenth: 1.8% is not 2%.
     const small = { ...rated, data: { ...rated.data, frontier: { differences: [0], falseRate: 0.018 } } };
-    expect(riskLines([started, small])[0]).toContain("1.8% for the riskiest attempt");
+    expect(riskLines([started, small])[0]).toContain("estimated at 1.8%;");
   });
 
   it("counts the A/A controls that could read a step and those that read one, one-sided at the level, beside the design's rate, and lets them set none of it", () => {
@@ -384,7 +357,6 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
       errors: 0,
       controls: 1,
       incapable: 3,
-      bound: 0.1,
     });
     expect(first?.falsePromotion.union).toBeCloseTo(0.4, 12);
     expect(second?.falsePromotion).toMatchObject({
@@ -392,12 +364,11 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
       errors: 0,
       controls: 1,
       incapable: 3,
-      bound: 0.1,
       union: 0.1,
     });
     if (second === undefined) throw new Error("an epoch");
     expect(epochLine(second)).toContain(
-      "a false promotion among them estimated at 10%: 10% for the riskiest attempt by the rule's design; 0 of 1 A/A comparison with enough untied tasks to read a step read one, and 3 too small to read one at their level",
+      "a false promotion among them estimated at 10%; 0 of 1 A/A comparison with enough untied tasks to read a step read one, and 3 too small to read one at their level",
     );
     expect(riskLines(log)[2]).toStartWith(
       "Over the campaign, a false promotion in any epoch estimated at 50%:",
@@ -443,7 +414,7 @@ describe("the starter comparison in an epoch's row", () => {
   // reference's side, and not the starter's share of valid answers.
   const opened = event("comparison.started", { session: "g-1", old: "S", fresh: "h2", starter: "S" });
   const promoted = event("harness.promoted", { harness: "h2" });
-  const starterRead = (scored: JsonObject, aside: string[] = [], more: JsonObject = {}) =>
+  const starterRead = (scored: JsonObject, more: JsonObject = {}) =>
     event("comparison.reported", {
       session: "g-2",
       reading: "no-step",
@@ -451,7 +422,6 @@ describe("the starter comparison in an epoch's row", () => {
       fresh: "S",
       level: 0.02,
       scored,
-      aside,
       ...more,
     });
 
@@ -463,32 +433,9 @@ describe("the starter comparison in an epoch's row", () => {
     ];
     const [first, second] = epochsOf(log);
     expect(first?.starter_tally).toBeNull();
-    expect(second?.starter_tally).toEqual({ wins: 2, losses: 1, ties: 1, aside: 0, own: null });
+    expect(second?.starter_tally).toEqual({ wins: 2, losses: 1, ties: 1 });
     expect(epochLine(present(second))).toContain("against the starter 2 won, 1 lost, 1 tied, no step;");
     expect([first?.confirmed, second?.confirmed]).toEqual([null, false]);
-  });
-
-  it("splits the starter tally into the tasks the epoch admitted and the older ones, and leaves no split without task versions", () => {
-    const admitted = (version: string) => event("task.gate", { version, gate: 1, outcome: "passed" });
-    const scored = { differences: [-1, -1, 1, 1, 0] };
-    const versions = ["old-1", "old-2", "new-1", "new-2", "new-3"];
-    const log = [
-      opened,
-      admitted("old-1"),
-      admitted("old-2"),
-      promoted,
-      admitted("new-1"),
-      admitted("new-2"),
-      admitted("new-3"),
-    ];
-    const split = epochsOf([...log, starterRead(scored, [], { versions })])[1];
-    expect(split?.starter_tally?.own).toEqual({ wins: 0, losses: 2, ties: 1 });
-    expect(epochLine(present(split))).toContain(
-      "against the starter 2 won, 2 lost, 1 tied (this epoch's tasks 0 won, 2 lost, 1 tied; older 2 won, 0 lost, 0 tied), no step;",
-    );
-    const torn = epochsOf([...log, starterRead(scored, [], { versions: versions.slice(1) })])[1];
-    expect(torn?.starter_tally?.own).toBeNull();
-    expect(epochLine(present(torn))).toContain("against the starter 2 won, 2 lost, 1 tied, no step;");
   });
 
   it("confirms the promotion only where the reference clears the level against the starter without the bill", () => {
@@ -501,26 +448,14 @@ describe("the starter comparison in an epoch's row", () => {
     expect(epochLine(confirmed)).toContain("6 won, 0 lost, 0 tied, a step, so its promotion is confirmed");
   });
 
-  it("names the tasks a starter comparison set aside where it reads no step, and none once it reads one", () => {
-    const short = starterRead({ differences: Array(5).fill(-1), unbilled: Array(5).fill(-1) }, [
-      "t-1",
-      "t-2",
-    ]);
-    expect(epochLine(present(epochsOf([opened, promoted, short])[1]))).toContain(
-      "5 won, 0 lost, 0 tied, no step, 2 tasks set aside for a person's labels",
-    );
-    const clear = starterRead({ differences: Array(6).fill(-1), unbilled: Array(6).fill(-1) }, ["t-1"]);
-    expect(epochLine(present(epochsOf([opened, promoted, clear])[1]))).not.toContain("labels");
-  });
-
   it("confirms on the epoch's first starter comparison that tallied a task, so a later draw of the pair replaces no reading", () => {
     const short = starterRead({ differences: Array(5).fill(-1), unbilled: Array(5).fill(-1) });
     const six = { differences: Array(6).fill(-1), unbilled: Array(6).fill(-1) };
-    const again = starterRead(six, [], { session: "g-3", reading: "step" });
+    const again = starterRead(six, { session: "g-3", reading: "step" });
     const redrawn = epochsOf([opened, promoted, short, again])[1];
     expect([redrawn?.starter_tally?.wins, redrawn?.confirmed]).toEqual([5, false]);
     // One that tallied nothing tested nothing, so the comparison after it is the first reading.
-    const empty = starterRead({ differences: [], unbilled: [] }, [], { reading: "not-scored" });
+    const empty = starterRead({ differences: [], unbilled: [] }, { reading: "not-scored" });
     expect(epochsOf([opened, promoted, empty, again])[1]?.confirmed).toBe(true);
   });
 
@@ -603,39 +538,7 @@ describe("the bar a promotion is read against, beside an old ladder's readings",
       event("harness.promoted", { harness: "ha", from: "S" }),
       event("build.turn", { session: "b-1" }),
     ];
-    expect(epochsOf(led).map(({ sessions, turns }) => [sessions, turns])).toEqual([
-      [1, 2],
-      [1, 1],
-    ]);
+    expect(epochsOf(led).map(({ sessions }) => sessions)).toEqual([1, 1]);
     expect(epochsOf(log).map(({ sessions }) => sessions)).toEqual([1, 1, 0]);
-  });
-});
-
-describe("an epoch's reference share", () => {
-  it("reads the reference's comparison solves and leaves a practice solve of an admitted task out", () => {
-    // WRI lane 33, 1 November: six of the 24 solves in one run's "reference valid 24 of 24" were
-    // practice solves, and the line called the gate's admissions, released ones among them, held out.
-    const ran = condition("v-a", "S");
-    const id = conditionId(ran);
-    const solve = (name: string, asked: JsonObject, kind: "pass" | "fail") => [
-      event("solve.started", { solve: name, condition: id, ...asked }),
-      event("verdict", { solve: name, kind, answer: { answer: "x" } }),
-      event("solve.finished", {
-        solve: name,
-        ending: { outcome: kind, kind: kind === "pass" ? "pass" : "rejected" },
-      }),
-    ];
-    const log = [
-      event("comparison.started", { session: "g-1", old: "S", fresh: "h2", starter: "S" }),
-      ...heldOut("v-a"),
-      event("condition.recorded", { id, condition: requireJsonValue(ran) }),
-      ...solve("t-1", { comparison: "g-1" }, "pass"),
-      ...solve("t-2", {}, "fail"),
-    ];
-    const [epoch] = epochsOf(log);
-    expect(epoch?.reference_share).toEqual({ valid: 1, solves: 1 });
-    if (epoch === undefined) throw new Error("an epoch");
-    expect(epochLine(epoch)).toContain("1 tasks admitted;");
-    expect(epochLine(epoch)).toContain("reference valid 1 of 1 in their comparisons");
   });
 });

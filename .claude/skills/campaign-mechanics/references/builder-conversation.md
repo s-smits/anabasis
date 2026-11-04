@@ -37,14 +37,12 @@ campaign's total and `--moves` (`Bench.within`, `src/builder/tools.ts`), since a
 the deadline would read as a failed host. Usage is recorded before a tool can spend more. A
 conversation ended at its limits or by a restart is followed by a new one, on the notes and results.
 
-The conversation is a term of the campaign, kept by its opening: `--builder-led`, on for any
-campaign that opens now. Under `--no-builder-led`, or in a campaign on record without the term, the
-host makes every move the table names. The modes differ only in `converse`
-(`tools/d2/harness-builder.ts`), the tools and advice (`tools/d2/campaign-actions.ts`), the texts
-(`SAID`, `src/builder/prompt.ts`) and a session's span (`soFar`, `src/campaign/handover.ts`). The
-conversation is valued for its continuity: a simpler controller that drops it is a regression.
-`test/builder-led.test.ts` proves the mode without a model; whether it improves a campaign is
-unclaimed until an ablation reads it.
+Every campaign runs so, and a log whose opening kept `led` reads the same. A Builder session by
+hand (`tools/d2/session.ts`, `round.ts`) runs without the campaign tools; it differs from the
+conversation only in the tools and advice (`tools/d2/campaign-actions.ts`) and the texts (`SAID`,
+`src/builder/prompt.ts`). The conversation is valued for its continuity: a simpler controller that
+drops it is a regression. `test/builder-led.test.ts` proves it without a model; whether it
+improves a campaign is unclaimed.
 
 A Builder ends nearly every turn in a tool call, so a message sent between turns goes unseen, and
 the standing facts are repeated where it reads, so a compaction needs no signal (`usedLine`,

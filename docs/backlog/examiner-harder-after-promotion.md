@@ -1,6 +1,6 @@
 # Harder Examiner tasks after each promotion
 
-Status: planned. The starter comparison draws as every comparison and confirms on its first reading since 2 November; measuring the Examiner after a promotion waits for the live runs at this stack.
+Status: planned. The zigzag is in source: every new task is solved afresh by the older harness too, the reference in each comparison and the starter in the comparison owed after a promotion, which draws as every comparison and confirms on its first reading since 2 November. Measuring the Examiner after a promotion waits for the live runs at this stack.
 
 ## The question
 
@@ -24,13 +24,14 @@ instead of running out of informative tasks after one or two promotions.
 3. **Keep what protects the comparison.** Both harnesses solve the same tasks afresh, a step is
    read within one comparison, and one retained task joins each three frontier tasks. Harder tasks
    change supply, never how a comparison is read.
-4. **A blind share of each post-promotion Examiner session.** Before `reference-harness/` opens in
-   its home, the session writes a few tasks whose room comes from its own construction, not from
-   reading the reference's program. The starter comparison draws those first, and a candidate
-   comparison holds them as its regression check. This is a change to what a seat is given, so it
-   takes the operator's word (`AGENTS.md`, section 3), and it is tuned in paired live seats before
-   any campaign. Measure it by the split the epoch line now prints: the reference's tally against
-   the starter on the epoch's own tasks against older ones.
+4. **Keep the zigzag, and add no blind share.** Every new task is solved afresh by the older
+   harness too: the starter comparison owed after a promotion draws the tasks held out since first
+   (`decide.ts`, the `starter` move), and each candidate comparison solves the reference on the same
+   tasks as the candidate. A blind share of each post-promotion Examiner session was planned here
+   on 3 November and is withdrawn (operator, 3 November): it adds a second kind of task to the
+   Examiner and the draw, where the zigzag already reads the new tasks on both sides. The split the
+   epoch line printed (own-epoch tasks against older ones) went on 3 November with the other
+   readings that decided no move; whether the Examiner aims at the reference is item 1's reading.
 5. **No fixed mix of own-epoch and older tasks in the draw.** The older tasks carry the opposite
    bias, since they were kept for room against the starter, so a 50/50 mix sets one bias against the
    other at an arbitrary ratio, and an epoch with fewer than half the draw on either side cannot fill
@@ -226,4 +227,37 @@ instead of running out of informative tasks after one or two promotions.
 
   The review proposed three changes. The first, this split, is in source. The second, a fixed mix
   in the draw, is rejected for the reason in item 5. The third, blind tasks drafted before the
-  reference opens, is item 4.
+  reference opens, was item 4.
+- **3 November, about 05:40.** The operator asked whether the doubt was fixed, jobstat included:
+  "if we make the [tasks] too hard, then the win ratio will go down. So then we have like less
+  wins, so the we won't promote while the harness is actually better, but the queries are harder
+  [...] in the existing like harness B, we should rerun the queries that were set up for harness
+  C. Actually, that's the solution to rerun them, and then we have an honest [...] zigzag method
+  that actually works. Did we implement that already? We should definitely implement that and
+  remove the other more complicated algorithms if they are there."
+  - The rerun is in source, and was before this question. A comparison solves both harnesses
+    afresh on one draw (`AGENTS.md`, rule 5), so the reference answers the candidate's new tasks
+    in the same comparison, and a task both fail is a tie that leaves the sign-flip test: no reading
+    uses a win ratio. The starter comparison after a promotion draws the tasks held since first
+    (`89a6a1768`, 2 November), so the starter answers the new tasks too.
+  - Jobstat runs both. `jobstat-fresh-opus-forkedPR580-stijn-pro` is at 370f320f9, which holds
+    `89a6a1768` and no `sinceOnly`. It has no promotion yet, so its starter comparison has not run.
+    Its g-2 draws the tasks x-2 wrote first; at 05:45 the reference was valid in 44 of 46 solves
+    over both its comparisons, and its 3 earned rejections all fell on x-2's tasks.
+  - The more complicated path was the planned blind share (item 4), never in source; it is
+    withdrawn. Nothing in source served the doubt alone: confirmation and the epoch line's split
+    are readings that decide no move.
+- **3 November, later.** The operator: "Okay, so it's already working. That's really cool. Okay,
+  remove all complexity along the way ambitiously and stack PR for that then, because that's the
+  only thing we may have had, that there's complexity." Each reading around a promotion was mapped
+  as rule 13 asks. Five decided no move and were no pillar's measure, so they went from the epoch
+  line, the UI and lane 24: the reference's share of valid solves on the epoch's tasks (the
+  examiner-complexity script `ambition.ts` reads it), the epoch's Builder turns, the set-aside
+  count of the starter comparison (its own report and `runs view` print it), the split of the
+  starter tally into own-epoch and older tasks, and the riskiest attempt's rate (each comparison's
+  report states its rate). Confirmation, the false-promotion estimate and the cost bar stay, the
+  pillars' measures. The table now owes the starter comparison until one tallies a task in the
+  epoch, the reading `confirmed` takes, instead of until any reports; replayed over the 215 archived
+  logs, 0 of 2,700 decisions changed. The tasks held out before a promotion that the new reference
+  has stood in no comparison of stay retained: at 101 of 303 archived comparison starts they held
+  tasks out of the frontier, so removing them would change draws and admission.

@@ -95,12 +95,12 @@ const OPTIONS = {
   "exam-minutes": { type: "string" },
   "exam-turns": { type: "string" },
   cost: { type: "string" },
+  promotions: { type: "string" },
   moves: { type: "string" },
   handover: { type: "string" },
   loaded: { type: "boolean", default: false },
   "dry-run": { type: "boolean", default: false },
   hitl: { type: "boolean" },
-  "builder-led": { type: "boolean" },
   "past-stop": COMPARISON_OPTIONS["past-stop"],
 } as const;
 /** What a campaign runs by where neither a flag nor its record says: the reserve of one solve in
@@ -153,13 +153,12 @@ const EXPLAINED: Readonly<Record<keyof typeof OPTIONS, string>> = {
   "exam-minutes": "an Examiner session's deadline in minutes (240)",
   "exam-turns": "an Examiner session's turn limit (200)",
   cost: "reported target for promotion attempts per epoch after set-up; limits nothing (3)",
+  promotions: "the promotions after which the campaign ends on the operator's word; none to lift it (none)",
   moves: "the most campaign moves this run makes",
   handover: "a directory, outside the repository, to write what the campaign hands over at its end",
   loaded: "start solves without waiting for the host's load",
   "dry-run": "print the table's advice and make no move",
   hitl: "the operator in the loop: freezing, admitting and promoting wait for the operator's word; kept until --no-hitl",
-  "builder-led":
-    "one Builder conversation leads the campaign through its tools (on for a campaign that opens now)",
   "past-stop": "the operator's reason to go on past the stop rule, logged",
 };
 
@@ -275,9 +274,6 @@ export function opened(
     patience: values.patience === undefined ? (was?.patience ?? PATIENCE) : Number(values.patience),
     seats: { builder: seat("builder"), examiner: seat("examiner"), reviewer: seat("reviewer") },
     attended: values.hitl ?? was?.attended ?? false,
-    // A campaign that opens now is led by its Builder; one on record runs as its record says, and
-    // a record from before the term says the host makes every move.
-    led: values["builder-led"] ?? was?.led ?? was === null,
     prompt,
     solver: prompt === null ? null : solver,
     // Each term as this command names it, and as the record holds it where it names none. The
@@ -302,6 +298,10 @@ export function opened(
     named.patience,
     `--patience ${String(values.patience)}: the moves without a gain the campaign bears in a row`,
   );
+  const cap = named.terms.promotions;
+  if (cap !== undefined && cap !== "none") {
+    counted(Number(cap), `--promotions ${cap}: the promotions before the campaign ends`);
+  }
   const project = projectOf(log, values.project, was);
   const record: JsonObject = {
     project,
@@ -313,16 +313,15 @@ export function opened(
       SEATS.map((each) => [each, named.seats[each] === null ? null : { ...named.seats[each] }]),
     ),
     ...keyIfDefined("attended", named.attended || undefined),
-    ...keyIfDefined("led", named.led || undefined),
     // A campaign over a stored pack records neither, as before a campaign could open from a prompt.
     ...keyIfDefined("prompt", named.prompt ?? undefined),
     ...keyIfDefined("solver", named.solver === null ? undefined : { ...named.solver }),
     // A campaign whose commands named no term records none, as before the opening kept them.
     ...keyIfDefined("terms", Object.keys(named.terms).length === 0 ? undefined : { ...named.terms }),
   };
-  // The record as it was written, less the words it answered: a record is written again where
-  // what the campaign runs by is another, and where a word asked for it.
-  const { answers: _answered, ...kept } = events.findLast(({ kind }) => kind === OPENED)?.data ?? {};
+  // The record as it was written, less the words it answered and who led it (kept until 3 November):
+  // it is written again where what the campaign runs by is another, and where a word asked for it.
+  const { answers: _heard, led: _led, ...kept } = events.findLast(({ kind }) => kind === OPENED)?.data ?? {};
   if (!values["dry-run"] && (heard.length > 0 || !sameJsonValue(kept, record))) {
     // A campaign that opens from a prompt has no folder until now: one over a stored pack got
     // its own when the pack was opened. The first live campaign from a prompt stopped here
@@ -349,8 +348,8 @@ export function examTasks({ events, plan }: Turn): string | undefined {
 
 /**
  * The Builder sessions in a row, the latest included, that have made no campaign move since the
- * campaign last ended: the trailing run of its moves that are sessions (`build`), a conversation
- * of a led campaign or a session its host makes. Any other move, the host's own among them, is
+ * campaign last ended: the trailing run of its moves that are Builder conversations (`build`), and
+ * on a log from before 3 November sessions its host made. Any other move, the host's own among them, is
  * progress. A run of the command after an ending
  * starts the count afresh, as Codex audits a resumed goal afresh. A conversation the provider
  * crashed or a stop killed chose nothing and is left out, as the table leaves it out of the

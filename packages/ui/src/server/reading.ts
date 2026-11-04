@@ -92,9 +92,10 @@ function endingOf(log: Log): { readonly ending: Ending; readonly why: string } |
   return { ending, why: isString(last.data.why) ? last.data.why : "" };
 }
 
-/** What a campaign's row holds of its log alone, kept with the log: the list is polled every few
- *  seconds, and most logs have not moved since the last poll. */
-const factsIn = once((log) => {
+/** What a campaign's row holds of its log alone, kept with the log, and by the list in place of the
+ *  log (`campaigns.ts`): the list is polled every few seconds, and most logs have not moved since
+ *  the last poll. */
+export const factsIn = once((log) => {
   const { events } = log;
   const opening = openingIn(log);
   const last = reportsIn(log).at(-1);
@@ -113,17 +114,17 @@ const factsIn = once((log) => {
           },
     billed: billedAll(events),
     budget: opening?.budget?.dollars ?? null,
+    opened: events[0]?.at ?? "",
   };
 });
 
-/** A campaign's row in the list, in `tier`, with `process` as the processes on the host say:
- *  `open` while one writes its log. */
+/** A campaign's row in the list, from its log's facts (`factsIn`), in `tier`, with `process` as
+ *  the processes on the host say: `open` while one writes its log. */
 export function campaignRow(
   found: Found,
-  log: Log,
+  { project, ending, opened: _opened, ...facts }: ReturnType<typeof factsIn>,
   { process, tier }: { readonly process: Process | null; readonly tier: Tier },
 ): CampaignRow {
-  const { project, ending, ...facts } = factsIn(log);
   const status = ending === null ? "open" : "ended";
   const said = ending !== null && reasonSaid(ending.ending, tier);
   return {
@@ -171,15 +172,6 @@ const solverIn = once((log) => {
   }
 });
 
-/** What the promotion attempts under the current reference risk together (`falsePromotion`,
- *  `climb.ts`). Until 16 October the table held the next attempt past a quarter of it. */
-function riskIn(log: Log): Counters["risk"] {
-  const epoch = epochsIn(log).at(-1);
-  if (epoch === undefined) return null;
-  const { attempts, union, bound, controls, incapable, errors } = epoch.falsePromotion;
-  return { attempts, union, bound, controls, incapable, errors };
-}
-
 /** What is left of the campaign's total, and what the last comparison the cap did not cut billed. */
 function runwayIn(log: Log): Counters["runway"] {
   const left = budgetLeft(log.events);
@@ -198,7 +190,6 @@ const coreIn = once((log) => {
     prompt: openingIn(log)?.prompt ?? null,
     terms: openingIn(log)?.terms ?? {},
     attended: openingIn(log)?.attended ?? false,
-    led: openingIn(log)?.led ?? false,
     bars: barsOf(log.events),
     supply: campaign.supply,
     reference: campaign.reference,
@@ -218,7 +209,9 @@ const coreIn = once((log) => {
       controlSteps: bars.filter(
         ({ noise, level }) => noise !== null && readsStepEitherWay(noise.scores, level),
       ).length,
-      risk: riskIn(log),
+      // What the promotion attempts under the current reference risk together (`falsePromotion`,
+      // `climb.ts`). Until 16 October the table held the next attempt past a quarter of it.
+      risk: epochsIn(log).at(-1)?.falsePromotion ?? null,
       runway: runwayIn(log),
     },
   };

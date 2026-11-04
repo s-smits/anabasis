@@ -92,7 +92,7 @@ describe("the usage model", () => {
       }
       expect(read.error).toBeLessThan(Math.min(read.week, read.run));
       for (const curve of Object.values(ahead(read.model, kept))) {
-        for (const hours of [3, 12, 24]) {
+        for (const hours of [1, 3, 12, 24]) {
           expect(Math.abs((curve[hours - 1] ?? 0) - spent(now, hours))).toBeLessThan(0.8);
         }
       }

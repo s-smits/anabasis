@@ -57,7 +57,16 @@ the operator and ask, rather than land first.
    request is relabelled. Its group is `first` for code the runs are the first to run, `again` for
    code an earlier run ran under another condition, and `off-run` for tooling or text no seat
    reads, whose falsifier names what settles it instead (the next landing, a reader, the launch).
-   A pull request without a run-side reading still gets its row. The file has three tables:
+   A pull request without a run-side reading still gets its row.
+   **One folder a cycle**: `cycle.md` and `Predictions.md`, spelled so, live together in
+   `.ana/wri/<YYYY-MM-DD>-cycle-<release>/` of the central host's main checkout (`ANA_CENTRAL`),
+   dated by the fork and named by its release (`2026-10-27-cycle-v073`), beside the cycle's
+   investigations. One ledger covers every run of the cycle, and an investigation of several runs
+   reads it whole, so it is never copied into a run's or an investigation's folder: `wri.ts index`
+   lists each recent run with the ledgers and investigations that name it. It goes in neither
+   `notes/` nor `data/`: `data/runs/` and `data/derived/` belong to `runs fetch`, `retire` and
+   `derive`, which replace a campaign's folder whole, so a file put there is lost at the next
+   refresh. The file has three tables:
 
    ```text
    | id | PR | labels | lanes | group | claim, as a count | falsified by |
@@ -354,7 +363,8 @@ walk chooses what to do about it.
    retained tasks were a second test that could read `regressed`. No retained task tallied is
    `unmeasured`.
 8. **Next epoch:** refused drafts, idle conversations or few frontier tasks after promotion.
-   Read `heard`, `campaignStatus` and `hostOwed` in `tools/d2/harness-builder.ts`, then `ROWS`
+   Read `make` in `tools/d2/harness-builder.ts` and `campaignStatus` in
+   `tools/d2/campaign-actions.ts`, then `ROWS`
    in `src/campaign/decide.ts`: its `build` row first releases owed practice (`practice`).
 
 ## 1. Choose one change, aimed at the next promotion
@@ -508,7 +518,7 @@ First say what happened to the link:
 
 Choose one move. `decide` in `src/campaign/decide.ts` advises accept, prepare, examine, build,
 compare, promote or end. A led Builder chooses its tools; code keeps admissions and scoring, and
-`hostOwed` makes comparisons and promotions between conversations.
+`make` (`tools/d2/harness-builder.ts`) makes comparisons and promotions between conversations.
 
 The stop rule counts since the last promotion (`stopRule`, `src/campaign/admission.ts`). A changed
 harness/reference pair counts once when tallied with room or a step; a whole unchanged session

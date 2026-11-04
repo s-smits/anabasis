@@ -84,6 +84,7 @@ const PLAN: Plan = {
   prompted: false,
   admits: [],
   left: null,
+  promotions: null,
 };
 
 /** A log under construction. Each method appends the events the campaign's own writer would, in

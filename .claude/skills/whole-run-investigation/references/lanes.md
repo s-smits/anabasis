@@ -872,7 +872,7 @@ keeps the two lines, drops them, or rewrites them, and whether it still copies `
 or grows its own. After a promotion the starter comparison puts the starter against the reference: the tasks written for the
 promoted harness are read by the starter against it before a Builder session is paid for, which
 is where the plan reads whether the starter loses more each epoch. A promotion is confirmed when
-the last such comparison of its epoch reads the reference above the starter without the bill
+the first such comparison of its epoch that tallied a task reads the reference above the starter without the bill
 (`confirmed`, `src/campaign/climb.ts`), and the milestone counts confirmed promotions only. `PROMOTION
 UNCONFIRMED` names each promotion whose epoch holds no such reading, open or closed, and the
 tally where one read no step. For each, say which of three it is: the epoch is still open and
@@ -1031,7 +1031,7 @@ Starts from `MOVES ASKED (lane 28)`, `ENDED AND WENT ON (lane 28)` and `OPERATOR
 The question is whether the campaign command made the moves its table names, and whether each
 of its endings came for the reason it records. The table (`decide`, `src/campaign/decide.ts`)
 advises; inside a led campaign the Builder chooses, and the host makes what needs no Builder
-(`hostOwed`, `tools/d2/harness-builder.ts`). `MOVES ASKED` counts the `campaign.move` events with
+(`make`, `tools/d2/harness-builder.ts`). `MOVES ASKED` counts the `campaign.move` events with
 the code `asked`, by move and by what the table named, out of every move: the Builder asked for
 one move where the table named another. Read each beside the decision the table gave at that
 point (`bun run runs view` replays it as its last line) and say whether the move it took moved

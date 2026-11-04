@@ -30,8 +30,9 @@
  * and the live seats of `system-path-simulation`, by the login each seat names (`liveHere`),
  * on this machine and every host `ANA_HOSTS` lists (`liveEverywhere`), and asks no
  * provider, and `usage` puts each login's count on its head line, out of the most `ANA_LOGIN_RUNS`
- * lets that login carry (`capOf`). Until 22 October that count took `status` on every host and a
- * tally by hand before each launch, a continue or a move.
+ * or its subscription in `ANA_LOGIN_SUBS` lets that login carry (`capOf`), and sums the
+ * subscriptions' most under the logins. Until 22 October that count took `status` on every host
+ * and a tally by hand before each launch, a continue or a move.
  *
  * Each reading keeps that count beside each login's week, and the rises between readings over the
  * runs counted give the share of a week a run spends an hour (`perRunRate`). The most a login
@@ -61,7 +62,15 @@ import { recordedSetting } from "../d2/setting.ts";
 import { asked } from "./hosts.ts";
 import { hostsOf } from "./host-config.ts";
 import { CODEX, type Live, liveHere, liveOf } from "./live.ts";
-import { ahead, assess, type Assessment, HORIZON, type Snapshot, weekPace } from "./usage-model.ts";
+import {
+  ahead,
+  assess,
+  type Assessment,
+  HORIZON,
+  sameWindow,
+  type Snapshot,
+  weekPace,
+} from "./usage-model.ts";
 
 interface Window {
   readonly pct: number | null;
@@ -117,6 +126,14 @@ const NOTED = [
   ["seven_day_routines", "routines"],
 ] as const;
 
+/** The live runs each subscription carries, by provider (operator, 4 November): a Claude login two
+ *  on `max` and four on `ultra`, the Codex login two on `pro100` and four on `pro200`, which counts
+ *  a machine as its cap does. */
+const SUBS: Readonly<Record<"claude" | "codex", Readonly<Record<string, string>>>> = {
+  claude: { max: "2", ultra: "4" },
+  codex: { pro100: "2", pro200: "4" },
+};
+
 /** Every login `env` holds, by its number. */
 function loginsIn(env: Readonly<Record<string, string | undefined>>): string[] {
   return Object.keys(env)
@@ -151,12 +168,28 @@ export function billsLogin(events: readonly LogEvent[], flags: readonly string[]
   ].some((model) => isString(model) && model.startsWith("claude/"));
 }
 
-/** The most live runs `login` may carry, from `ANA_LOGIN_RUNS` such as `2,1:4`: a bare number for
- *  every numbered login, `N:most` for login N. `null` where it names neither. The Codex CLI's login
- *  takes only its own entry, `codex:N`, and one a machine without it (operator, 29 October). */
+/** The subscription `ANA_LOGIN_SUBS` names for `login`, such as `N:ultra` or `codex:pro200`, and
+ *  the runs it carries; null where it names none or one its provider does not offer. */
+function subOf(
+  env: Readonly<Record<string, string | undefined>>,
+  login: string,
+): { readonly sub: string; readonly runs: string } | null {
+  const offered = SUBS[login === CODEX ? "codex" : "claude"];
+  const entries = (env.ANA_LOGIN_SUBS ?? "").split(",").map((entry) => entry.trim().split(":"));
+  const sub = entries.find(([who]) => who === login)?.[1];
+  const runs = sub === undefined || !Object.hasOwn(offered, sub) ? undefined : offered[sub];
+  return sub === undefined || runs === undefined ? null : { sub, runs };
+}
+
+/** The most live runs `login` may carry: its own `N:most` in `ANA_LOGIN_RUNS` such as `2,1:4`, then
+ *  what its subscription carries (`subOf`), then the bare number there for every numbered login.
+ *  `null` where none names it. The Codex CLI's login takes no bare number, and one a machine
+ *  without an entry or a subscription (operator, 29 October). Until 4 November no subscription
+ *  was read, and each larger login took an `N:4` by hand. */
 export function capOf(env: Readonly<Record<string, string | undefined>>, login: string): string | null {
   const entries = (env.ANA_LOGIN_RUNS ?? "").split(",").map((entry) => entry.trim().split(":"));
-  const own = entries.find(([who, most]) => who === login && most !== undefined)?.[1];
+  const own =
+    entries.find(([who, most]) => who === login && most !== undefined)?.[1] ?? subOf(env, login)?.runs;
   if (login === CODEX) return own ?? "1";
   return own ?? entries.find(([most, rest]) => most !== "" && rest === undefined)?.[0] ?? null;
 }
@@ -208,7 +241,7 @@ export function startRefusal(
   if (counted.unasked.length > 0) return uncounted(counted.unasked);
   const others = counted.live.filter((run) => run.name !== name);
   return atCap(env, [payer], others).size > 0
-    ? `login ${payer} is at its live-run cap across the fleet (ANA_LOGIN_RUNS)`
+    ? `login ${payer} is at its live-run cap across the fleet (ANA_LOGIN_RUNS, ANA_LOGIN_SUBS)`
     : fullOn(env, payer, host, others);
 }
 
@@ -482,20 +515,15 @@ function poolLines(
 ): string[] {
   const perDay = (rate: number) => `~${String(Math.round(rate * 24))}%/day`;
   const weekRate = (week: Week) => weekPace(week, now);
-  // The oldest reading 2 to 24 hours back in the same window (resets agree within an hour).
+  // The oldest reading 2 to 24 hours back in the same window (`sameWindow`).
   const recents = weeks.map((week) => {
     const then = history.find(({ at, weeks: read }) => {
       const was = read[week.login];
-      return (
-        was !== undefined &&
-        now - at >= 2 * HOUR &&
-        now - at <= 24 * HOUR &&
-        Math.abs(was.reset - week.reset) < HOUR
-      );
+      return was !== undefined && now - at >= 2 * HOUR && now - at <= 24 * HOUR && sameWindow(was, week);
     });
     const hours = then === undefined ? 0 : (now - then.at) / HOUR;
     const was = then?.weeks[week.login]?.pct ?? 0;
-    return then === undefined ? null : { rate: Math.max(0, week.pct - was) / hours, hours };
+    return then === undefined ? null : { rate: (week.pct - was) / hours, hours };
   });
   const poolPace = weeks.reduce((sum, week) => sum + weekRate(week), 0);
   const lines = [
@@ -556,9 +584,9 @@ export function perRunRate(history: readonly Snapshot[]): number | null {
     if (next === undefined || hours < 0.25 || hours > 3) return [];
     return Object.entries(then.runs ?? {}).flatMap(([login, runs]) => {
       const [was, now] = [then.weeks[login], next.weeks[login]];
-      return runs === 0 || was === undefined || now === undefined || Math.abs(was.reset - now.reset) >= HOUR
+      return runs === 0 || was === undefined || now === undefined || !sameWindow(was, now)
         ? []
-        : [{ used: Math.max(0, now.pct - was.pct), runHours: runs * hours }];
+        : [{ used: now.pct - was.pct, runHours: runs * hours }];
     });
   });
   const runHours = spans.reduce((sum, span) => sum + span.runHours, 0);
@@ -624,13 +652,16 @@ export function activeLines(
     if (login === null && on.length === 0) return [];
     const head = login === null ? "no login" : login === CODEX ? CODEX : `login ${login}`;
     const cap = login === null ? null : capOf(env, login);
+    const sub = login === null ? null : subOf(env, login);
     const count =
       cap === null
         ? `${String(on.length)} live`
         : login === CODEX
           ? `${String(on.length)} live, at most ${cap} a machine`
           : `${String(on.length)}/${cap} live`;
-    return [`${head.padEnd(10)}${count}${on.length === 0 ? "" : `: ${on.join(", ")}`}`];
+    return [
+      `${head.padEnd(10)}${count}${sub === null ? "" : ` (${sub.sub})`}${on.length === 0 ? "" : `: ${on.join(", ")}`}`,
+    ];
   });
   return unasked.length === 0
     ? lines
@@ -700,12 +731,23 @@ export async function logins(args: readonly string[]): Promise<void> {
       counted === null
         ? ""
         : ` · ${carried(onEach(reading.login), capOf(runtimeProcess.env, reading.login), fit)}`;
-    const head = `login ${reading.login}${runsOn}${reading.plain ? `  (= plain ${TOKEN})` : ""}`;
+    const sub = subOf(runtimeProcess.env, reading.login);
+    const head = `login ${reading.login}${sub === null ? "" : ` · ${sub.sub}`}${runsOn}${reading.plain ? `  (= plain ${TOKEN})` : ""}`;
     console.log(
       "error" in reading
         ? `${head}\n  ${reading.error}`
         : `${head}\n  5h    ${shown(reading.fiveHour, 5 * 60, now)}\n  week  ${shown(reading.sevenDay, 7 * 1440, now)}${reading.notes.length > 0 ? `\n  ${reading.notes.join(" · ")}` : ""}`,
     );
+  }
+  const subs = held.flatMap((login) => subOf(runtimeProcess.env, login) ?? []);
+  if (counted !== null && !values.json && subs.length > 0) {
+    const kinds = Object.entries(SUBS.claude).flatMap(([sub, runs]) => {
+      const many = subs.filter((one) => one.sub === sub).length;
+      return many === 0 ? [] : [`${String(many)} ${sub} (${runs} runs each)`];
+    });
+    const most = held.reduce((sum, login) => sum + Number(capOf(runtimeProcess.env, login) ?? 0), 0);
+    const on = held.reduce((sum, login) => sum + onEach(login), 0);
+    console.log(`subs  ${kinds.join(", ")}: ${String(on)}/${String(most)} live runs across the logins`);
   }
   if (counted !== null && !values.json) {
     const codex = counted.live.filter((run) => run.login === CODEX);

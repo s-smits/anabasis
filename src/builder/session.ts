@@ -458,12 +458,12 @@ async function converse(
     tools,
     ...keyIfDefined("env", env),
     trace: { log, of: "build" },
-    // A led session's bounds are the campaign's, asked of the table (`halts`), and a session the
-    // host ran is held to its dollar cap, before a request and again after a compaction, which
+    // A campaign conversation's bounds are the campaign's, asked of the table (`halts`), and a
+    // session by hand is held to its dollar cap, before a request and again after a compaction, which
     // bills too. Until 19 October the cap held practice alone: a session the host ran opened on
     // what was left of a campaign's total and could bill turns past it until its finish, its
-    // session turn limit or its deadline, as two reviews of the host-led loop found (#202, closed). A led
-    // session's cap is what was left when it opened, and the operator's word can raise the
+    // session turn limit or its deadline, as two reviews of the host-led loop found (#202, closed). A campaign
+    // conversation's cap is what was left when it opened, and the operator's word can raise the
     // total after: the table's reading of the budget is the one that holds it, as `practiceLeft`
     // already has it.
     before: halted,

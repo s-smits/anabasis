@@ -381,6 +381,20 @@ describe("a session that drafts an exam", () => {
     expect(draftOf(read(s.log))).toEqual(SOUND);
     expect(s.sent[0]).toContain("This session has 10 minutes, 12 turns and 4 drafts.");
   });
+
+  it("keeps its turns after a reading that outlasts its wall, since the host's reading is not its time", async () => {
+    const s = seat("draft", [PUT.draft, finish]);
+    // A real clock: the reading takes longer than the session's wall, which pauses for it, so the
+    // session reads the fault and finishes rather than ending at its wall.
+    const reading = async () => {
+      await Bun.sleep(400);
+      return { faults: ["a fault"], notes: [] };
+    };
+    const { limits } = s.request;
+    const examined = await examine({ ...s.request, reading, limits: { ...limits, wallSeconds: 0.3 } });
+    expect(examined).toMatchObject({ ended: "finished", puts: 1 });
+    expect(s.of("draft.finished")).toMatchObject([{ ended: "finished", stands: false, tries: 1 }]);
+  });
 });
 
 /** What a task admission told of each draft: its id, held out or refused, and how many of the reference

@@ -15,7 +15,6 @@
  */
 import { nextBound } from "../../../../src/campaign/handover.ts";
 import { fixedIn, type Report, reported } from "../../../../src/campaign/comparison.ts";
-import type { Share } from "../../../../src/campaign/climb.ts";
 import {
   carriedBy,
   differenceOf,
@@ -27,7 +26,7 @@ import {
 } from "../../../../src/kernel/compare.ts";
 import { pairsReported } from "../../../../src/kernel/reports.ts";
 import { isNumber, isString } from "../../../../src/meta/json-shape.ts";
-import type { ComparisonBar, LeftOut, Move, Outcome } from "../models.ts";
+import type { ComparisonBar, LeftOut, Move, Outcome, Share } from "../models.ts";
 import { campaignIn, type Log, once, reportsIn } from "./folds.ts";
 import { rulingsOf } from "./withheld.ts";
 

@@ -6,10 +6,10 @@ model: opus
 color: cyan
 hooks:
   PreToolUse:
-    - matcher: "Read|Write|Edit|MultiEdit|NotebookEdit|Bash"
+    - matcher: "Read|Grep|Glob|Write|Edit|MultiEdit|NotebookEdit|Bash"
       hooks:
         - type: command
-          command: 'f="$CLAUDE_PROJECT_DIR/tools/wri/lane-guard.ts"; [ -f "$f" ] || { echo "wri-lane: this tree holds no tools/wri/lane-guard.ts, so the lane is refused every call" >&2; exit 2; }; bun "$f"'
+          command: 'f="$CLAUDE_PROJECT_DIR/tools/wri/lane-guard.ts"; [ -f "$f" ] || { echo "wri-lane: this tree holds no tools/wri/lane-guard.ts, so the lane is refused every call" >&2; exit 2; }; bun "$f" || exit 2'
           timeout: 10
 ---
 

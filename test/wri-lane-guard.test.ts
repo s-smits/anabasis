@@ -92,12 +92,39 @@ describe("the lane guard", () => {
     expect(refusalOf("Read", { file_path: "/Users/x/anabasis/.env.runs" })).toBe("an env file");
     expect(refusalOf("Read", { file_path: "/Users/x/anabasis/.env.runs.example" })).toBeNull();
     expect(bash("cat .env")).toBe("an env file");
+    expect(bash("grep TOKEN <.env")).toBe("an env file");
     expect(bash("cat .env.runs.example")).toBeNull();
+    expect(refusalOf("Grep", { path: "/Users/x/anabasis/.env" })).toBe("an env file");
+    expect(refusalOf("Glob", { glob: ".env.runs" })).toBe("an env file");
+    expect(refusalOf("Grep", { path: "/Users/x/anabasis/src" })).toBeNull();
+  });
+
+  it("reads the command a wrapper, a flag or a find runs, and the line after a here-string", () => {
+    for (const ok of ["timeout 30 grep -rn solve src", "sed -n 1,40p tools/d2/word.ts"]) {
+      expect(bash(ok)).toBeNull();
+    }
+    for (const [refused, why] of [
+      ["timeout 600 bun tools/d2/harness-builder.ts", "a campaign command"],
+      ["caffeinate -i bun tools/d2/round.ts", "a campaign command"],
+      ["bun --cwd /a tools/d2/harness-builder.ts", "a campaign command"],
+      ["find . -name x -exec bun tools/d2/word.ts --stop x ;", "a campaign command"],
+      ["bun run runs --host h stop x", "a run's life"],
+      ["bun run runs seed a b", "a run's life"],
+      ['grep x <<< "y"\nbun tools/d2/word.ts --stop x\ny', "a campaign command"],
+      ["export L=/a/.ana/d2/run/log.jsonl; echo x >> $L", "a write under a campaign"],
+      ["find /a/.ana/d2/run -delete", "a write under a campaign"],
+      [`echo x > ${WRI}/snapshot/run/log.jsonl`, "a write under a campaign"],
+    ] as const) {
+      expect(bash(refused)).toBe(why);
+    }
   });
 
   it("is the hook the agent type runs", () => {
     const agent = readFileSync(join(import.meta.dir, "..", ".claude", "agents", "wri-lane.md"), "utf8");
     expect(agent).toContain("tools/wri/lane-guard.ts");
+    // Grep and Glob read files too, and a guard that crashes refuses rather than passes.
+    expect(agent).toContain("Read|Grep|Glob|");
+    expect(agent).toContain('bun "$f" || exit 2');
     expect(existsSync(join(import.meta.dir, "..", "tools", "wri", "lane-guard.ts"))).toBe(true);
   });
 });

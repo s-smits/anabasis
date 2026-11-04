@@ -21,6 +21,8 @@ import { runtimeProcess } from "../../src/meta/process.ts";
 interface Input {
   readonly file_path?: unknown;
   readonly notebook_path?: unknown;
+  readonly path?: unknown;
+  readonly glob?: unknown;
   readonly command?: unknown;
 }
 
@@ -37,10 +39,19 @@ const JOB_SCRATCH = /\/\.claude[^/]*\/jobs\/[^/]+\/tmp\//u;
 const CAMPAIGN = new Set([
   "harness-builder.ts",
   "live-seat.ts",
+  "live-solve.ts",
   "word.ts",
   "promote.ts",
   "settle.ts",
   "accept.ts",
+  "round.ts",
+  "session.ts",
+  "examine.ts",
+  "draft.ts",
+  "import.ts",
+  "prepare.ts",
+  "checkpoint.ts",
+  "republish.ts",
 ]);
 
 /** The verbs of the run CLI that change a run's life, and the investigation's steps the primary owns. */
@@ -55,19 +66,36 @@ const LIFE = new Set([
   "retire",
   "copy",
   "rehearse",
+  "seed",
+  "fetch",
   "on",
 ]);
 const PRIMARY = new Set(["start", "lanes", "collect", "synthesis", "derive"]);
 
 /** Git verbs that change a tree, a branch or a remote; `stash` and `worktree` only past `list`. */
 const GIT =
-  /^(?:commit|push|checkout|switch|reset|rebase|merge|cherry-pick|revert|am|apply|add|rm|mv|restore|clean|stash|worktree)$/u;
+  /^(?:commit|push|pull|checkout|switch|reset|rebase|merge|cherry-pick|revert|am|apply|add|rm|mv|restore|clean|stash|worktree)$/u;
 
 /** A path under a campaign: its log, its kept harnesses, its exam, or an archived run. */
-const CAMPAIGN_PATH = /(?:^|\/)(?:\.ana\/d2|data\/runs)(?:\/|$)|\/states\/|\/exams\//u;
+const CAMPAIGN_PATH =
+  /(?:^|\/)(?:\.ana\/d2|data\/runs)(?:\/|$)|\/states\/|\/exams\/|\/\.ana\/wri\/[^/]+\/snapshot\//u;
 
 /** A word that names an env file, alone, as a path or as a flag's value. */
-const ENV_FILE = /(?:^|[/=])\.env(?:\.runs)?$/u;
+const ENV_FILE = /(?:^|[/=<])\.env(?:\.runs)?$/u;
+
+/** Words that run the command after them: a wrapper, with its flags and a count or a duration. */
+const WRAPPERS = new Set([
+  "nohup",
+  "time",
+  "env",
+  "exec",
+  "command",
+  "timeout",
+  "caffeinate",
+  "nice",
+  "xargs",
+  "sudo",
+]);
 
 /**
  * The simple commands a shell line runs, each as its words, with every heredoc's body dropped and
@@ -84,7 +112,8 @@ function commandsOf(line: string): string[][] {
       continue;
     }
     kept.push(row);
-    body = /<<-?\s*(['"]?)([A-Za-z_]\w*)\1/u.exec(row)?.[2] ?? null;
+    // `<<<` is a here-string, which ends on its own line.
+    body = /(?<!<)<<(?!<)-?\s*(['"]?)([A-Za-z_]\w*)\1/u.exec(row)?.[2] ?? null;
   }
   const text = kept.join("\n");
   const commands: string[][] = [[]];
@@ -124,7 +153,7 @@ function commandRefusal(words: readonly string[], cwd: string): string | null {
   const writes = words.flatMap((word, index) => (words[index - 1] === ">" ? [word] : []));
   const args = words.filter((word, index) => word !== ">" && words[index - 1] !== ">");
   const head = args.findIndex(
-    (word) => !/^\w+=/u.test(word) && !["nohup", "time", "env", "exec", "command"].includes(word),
+    (word) => !/^\w+=/u.test(word) && !WRAPPERS.has(basename(word)) && !/^-|^\d+[smhd]?$/u.test(word),
   );
   const [name = "", ...rest] = args.slice(head);
   const plain = rest.filter((word) => !word.startsWith("-"));
@@ -133,12 +162,21 @@ function commandRefusal(words: readonly string[], cwd: string): string | null {
     return refusalOfLine(rest.at(rest.indexOf("-c") + 1) ?? "");
   }
   if (tool === "claude" || tool === "codex") return "a paid session";
+  if (tool === "find" && rest.some((word) => word === "-exec" || word === "-execdir")) {
+    const at = rest.findIndex((word) => word === "-exec" || word === "-execdir");
+    const why = commandRefusal(rest.slice(at + 1), cwd);
+    if (why !== null) return why;
+  }
   if (tool === "bun") {
-    const [script = "", verb = ""] = plain[0] === "run" ? plain.slice(1) : plain;
-    if (CAMPAIGN.has(basename(script))) return "a campaign command";
-    if (script.includes("compare-systems") || basename(script) === "gpt-sessions.ts") return "a paid session";
-    if ((script === "runs" || script.endsWith("runs/cli.ts")) && LIFE.has(verb)) return "a run's life";
-    if (basename(script) === "wri.ts" && PRIMARY.has(verb)) return "the primary's step";
+    // A flag's value, as `--cwd <dir>`, may stand before the script, so every plain word is read.
+    if (plain.some((word) => CAMPAIGN.has(basename(word)))) return "a campaign command";
+    if (plain.some((word) => word.includes("compare-systems") || basename(word) === "gpt-sessions.ts")) {
+      return "a paid session";
+    }
+    const runs = plain.findIndex((word) => word === "runs" || word.endsWith("runs/cli.ts"));
+    if (runs !== -1 && plain.slice(runs + 1).some((word) => LIFE.has(word))) return "a run's life";
+    const wri = plain.findIndex((word) => basename(word) === "wri.ts");
+    if (wri !== -1 && PRIMARY.has(plain[wri + 1] ?? "")) return "the primary's step";
   }
   if (tool === "git") {
     const verb = rest.find(
@@ -152,7 +190,9 @@ function commandRefusal(words: readonly string[], cwd: string): string | null {
       return "a change to the tree";
     }
   }
-  if (tool === "tee") writes.push(...plain);
+  if (tool === "tee" || tool === "sponge") writes.push(...plain);
+  if (tool === "find" && rest.includes("-delete")) writes.push(...plain);
+  writes.push(...words.flatMap((word) => (word.startsWith("of=") ? [word.slice(3)] : [])));
   if (["cp", "mv", "ln", "rsync", "install"].includes(tool)) writes.push(...plain.slice(-1));
   if (["rm", "trash", "rmdir", "touch", "mkdir", "truncate"].includes(tool)) writes.push(...plain);
   if (tool === "sed" && rest.some((word) => word.startsWith("-i"))) {
@@ -183,7 +223,8 @@ function refusalOfLine(line: string): string | null {
     if (words.some((word) => ENV_FILE.test(word))) return "an env file";
     for (const word of words) {
       const [, key, value] = /^(\w+)=(.*)$/u.exec(word) ?? [];
-      if (key !== undefined && value !== undefined && words.length === 1) known.set(key, value);
+      const assigns = words.length === 1 || (words.length === 2 && words[0] === "export");
+      if (key !== undefined && value !== undefined && assigns) known.set(key, value);
     }
     if (words[0] === "cd") cwd = words[1]?.startsWith("/") === true ? words[1] : `${cwd}/${words[1] ?? ""}`;
     const why = commandRefusal(words, cwd);
@@ -195,8 +236,9 @@ function refusalOfLine(line: string): string | null {
 /** Why the call is refused, or null where it may run. */
 export function refusalOf(tool: string, input: Input): string | null {
   const path = [input.file_path, input.notebook_path].find(isString);
-  if (tool === "Read") {
-    return path !== undefined && /^\.env(?:\.runs)?$/u.test(basename(path)) ? "an env file" : null;
+  if (tool === "Read" || tool === "Grep" || tool === "Glob") {
+    const named = [path, input.path, input.glob].filter(isString);
+    return named.some((each) => /^\.env(?:\.runs)?$/u.test(basename(each))) ? "an env file" : null;
   }
   if (tool === "Write" || tool === "Edit" || tool === "MultiEdit" || tool === "NotebookEdit") {
     const at = path === undefined ? "" : resolve(path);

@@ -129,7 +129,7 @@ function investigations(root: string): { dir: string; names: string[] }[] {
 /** The lane sessions a manifest of `dir` launched whose reports are not all written. */
 function owing(dir: string): { name: string; task: string }[] {
   return readdirSync(dir)
-    .filter((file) => /^launch(-\d+)?\.json$/u.test(file))
+    .filter((file) => /^launch(-\d+)*\.json$/u.test(file))
     .flatMap(
       (file) =>
         parseJsonAs<{ sessions: { name: string; task: string; ownedPaths?: string[] }[] }>(
@@ -154,7 +154,7 @@ export function nextOf(dir: string, launchedAt: (pull: number) => string[]): str
   if (blank.length > 0) {
     return [`step: instruct · write ${blank.map((heading) => `"${heading}"`).join(", ")} in ${at(SHARED)}`];
   }
-  if (!readdirSync(dir).some((file) => /^launch(-\d+)?\.json$/u.test(file))) {
+  if (!readdirSync(dir).some((file) => /^launch(-\d+)*\.json$/u.test(file))) {
     return ["step: lanes", wri("lanes", " --agents 4")];
   }
   const owed = owing(dir);

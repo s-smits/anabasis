@@ -59,6 +59,7 @@ fi ;;
 elif [ -z "$ANA_FAKE_CI_AFTER" ] || [ -e "$ANA_FAKE_CI_AFTER" ]; then
   if [ -n "$ANA_FAKE_CI" ]; then printf '%s\n' "$ANA_FAKE_CI"; else printf 'completed\tsuccess\t1\thttps://ci/1\n'; fi
 fi ;;
+"run view"*"no runner took"*) [ -z "$ANA_FAKE_UNTAKEN" ] || printf '%s\n' "$ANA_FAKE_UNTAKEN" ;;
 "run view"*"--log-failed") [ -z "$ANA_FAKE_LOG_DOWN" ] || { echo "gh: Bad Gateway (HTTP 502)" >&2; exit 1; }
   printf 'darwin\tRun the suite\t(fail) a test that broke on the clean runner\n' ;;
 "run view"*) echo "darwin: Run the suite" ;;
@@ -626,9 +627,9 @@ describe("bun run land", () => {
         "commit it names, or run gh run rerun 9 if the runner was at fault, and land again. Nothing was merged.",
     );
     expect(statuses("ci.yml")).toEqual([`failure ${upper}`]);
-    expect(logLines(ghLog).some((line) => line.startsWith("workflow run") || line.includes("/merge"))).toBe(
-      false,
-    );
+    expect(
+      logLines(ghLog).some((line) => /^(workflow run|run rerun)/u.test(line) || line.includes("/merge")),
+    ).toBe(false);
     expect(statuses("ana/stack-gate")).toEqual([]);
 
     // A log GitHub refuses to give is said to be missing, never saved as an empty log.
@@ -686,6 +687,23 @@ describe("bun run land", () => {
     expect(gates.filter((gate) => gate.startsWith(upper))).toHaveLength(1);
     expect(gates.at(-1)).toBe(`${stacked} suite`);
     expect(statuses("mergeable").at(-1)).toBe(`success ${stacked}`);
+  });
+
+  it("reruns a failed ci.yml run's jobs where no runner took them, and merges once they pass", () => {
+    const result = runLand(["12", "--merge"], {
+      ANA_FAKE_CI_STATES: ciStates(
+        "completed\tfailure\t9\thttps://ci/9",
+        "in_progress\t\t9\thttps://ci/9",
+        "completed\tsuccess\t9\thttps://ci/9",
+      ),
+      ANA_FAKE_UNTAKEN: "no runner took darwin, darwin-ui",
+      ANA_CI_POLL_MS: "1",
+    });
+    expect(result.stdout).toContain(
+      `ci.yml run 9 failed on #12's head ${short(upper)} where no runner took darwin, darwin-ui; its failed jobs run again`,
+    );
+    expect(logLines(ghLog)).toContain("run rerun 9 --failed");
+    expect(statuses("ci.yml").at(-1)).toBe(`success ${upper}`);
   });
 
   it("refuses before gating when no run exists and ci.yml takes no dispatch", () => {

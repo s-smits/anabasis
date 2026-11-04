@@ -108,7 +108,8 @@ reads the sign to watch (section 9).
   four of the archive's A/A comparisons. Say which measure carried a step (`reading`,
   promotion-tuner).
 - **Promotion against confirmation.** A step reads the frontier; confirmation is one read of the
-  reference against the starter, at a step's level, on tasks the Examiner aimed at that reference.
+  reference against the starter, at a step's level, on the scored tasks of the epoch's first
+  starter comparison, which draws the tasks written since the promotion first.
   In the archive the reference leads the starter in eight of ten such reads and four clear the
   level, so a miss is mostly the read's power on few untied tasks, and six confirmed promotions
   take about fifteen. Confirmation decides no move. Losses on validity matter; losses on the

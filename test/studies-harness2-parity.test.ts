@@ -365,7 +365,7 @@ describe.skipIf(FORK === "")("the pilot's arms table, scored again from a copy o
         const build = key === "anabasis" ? "?" : money(field(want, "build"));
         const [score, max, solve] = [field(want, "score"), field(want, "max"), money(field(want, "solve"))];
         expect(line).toContain(`score ${JSON.stringify(score)}/${JSON.stringify(max)} `);
-        expect(line).toContain(` build ${build} solve ${solve} `);
+        expect(line).toContain(`(build ${build}, solve ${solve}) `);
       }
     }
   });

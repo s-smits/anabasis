@@ -28,6 +28,7 @@ import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { taskSets } from "#src/kernel/task.ts";
+import { receipts } from "./receipt.ts";
 import { CAMPAIGNS, SEED_FILE } from "./registry.ts";
 import { logAcross } from "./snapshots.ts";
 
@@ -121,6 +122,21 @@ export function seedCampaign(from: string, to: string, cut: Cut) {
     rmSync(to, { recursive: true, force: true });
     throw error;
   }
+}
+
+/**
+ * A frozen copy of a campaign that may still write, for an investigation to read while the run goes
+ * on: the seed's copy with its log cut at the last whole line, and the launch receipts a seed leaves
+ * out, from which the investigation reads the code each launch ran. The operator's word of
+ * 4 November: an iteration opens on a snapshot, since a run that will not promote is never stopped
+ * for its investigation. The copy lies outside `.ana/d2/`, so no registry lists it or continues it.
+ */
+export function snapshotCampaign(from: string, to: string) {
+  const made = seedCampaign(from, to, {});
+  for (const { session } of receipts(join(from, LOG_FILE))) {
+    cpSync(join(from, `launch-${session}.json`), join(to, `launch-${session}.json`));
+  }
+  return made;
 }
 
 /** `bun run runs seed`. */

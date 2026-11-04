@@ -29,7 +29,7 @@ import { answersOf, scriptedExaminer, scriptedSeats, sidesOf } from "../tools/ru
 import { seat, sweep } from "./helpers/examiner-seat.ts";
 import { SEED_FILE } from "../tools/runs/registry.ts";
 import { replayed } from "../tools/runs/replay.ts";
-import { seedCampaign } from "../tools/runs/seed.ts";
+import { seedCampaign, snapshotCampaign } from "../tools/runs/seed.ts";
 
 const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-rehearse-")));
@@ -95,6 +95,19 @@ describe("a seed", () => {
     });
     expect(existsSync(join(to, "launch-b-1.json"))).toBe(false);
     expect(readFileSync(join(from, "log.jsonl"), "utf8").endsWith('{"at":"2026')).toBe(true);
+  });
+
+  it("freezes a live campaign for an investigation: every whole event, the receipts, the source as it was", () => {
+    const before = readFileSync(join(from, "log.jsonl"), "utf8");
+    const to = join(root, "frozen");
+    expect(snapshotCampaign(from, to)).toMatchObject({ from, events: 5, of: 5, before: null });
+    // The torn tail is an append in flight, which no reader may take for an event.
+    expect(read(join(to, "log.jsonl"))).toHaveLength(5);
+    expect(readFileSync(join(to, "launch-b-1.json"), "utf8")).toBe("{}");
+    expect(readFileSync(join(to, "memory", "b-2", "MEMORY.md"), "utf8")).toBe("notes of b-2\n");
+    expect(readFileSync(join(from, "log.jsonl"), "utf8")).toBe(before);
+    // A second snapshot under the same name is refused rather than mixed with the first.
+    expect(() => snapshotCampaign(from, to)).toThrow("is there already");
   });
 
   it("cuts before a drafting session as before any other session", () => {

@@ -1,6 +1,6 @@
 ---
 name: run-improvement-campaign
-description: "Run the Anabasis improvement loop, the Super Loop, and the iterations and release cycle around it: fork fresh campaigns capped at two promotions, read each at its milestones and resolve predictions; as each reaches its cap, investigate it, plan and implement what it found as one pull request on the top, and fork fresh runs at that head; land the release once a proof run at the top promotes twice. Inside the cycle each pass scores the five points, finds the link that holds the next promotion, fixes its owner, proves the path and predicts. Use when the operator asks to keep campaigns going, fork runs, work towards a release, run a pass or an hourly audit, read a promotion, investigate a campaign that is not promoting, or choose the next run. Owns the experiment and its evidence; AGENTS.md section 3 owns the operator's decisions."
+description: "Run the Anabasis improvement loop, the Super Loop, and the iterations and release cycle around it: fork fresh campaigns, read each at its milestones and resolve predictions; as each reaches its trigger (two promotions, twelve hours, or a comparison that left no task untied), investigate it on a snapshot while it runs (`scripts/wri2p2.ts`), plan and implement what it found as one pull request on the top, and fork fresh runs at that head; land the release once a proof run at the top promotes twice. Inside the cycle each pass scores the five points, finds the link that holds the next promotion, fixes its owner, proves the path and predicts. Use when the operator asks to keep campaigns going, fork runs, work towards a release, run a pass or an hourly audit, read a promotion, investigate a campaign that is not promoting, or choose the next run. Owns the experiment and its evidence; AGENTS.md section 3 owns the operator's decisions."
 ---
 
 # Run improvement campaign (the Super Loop)
@@ -8,7 +8,7 @@ description: "Run the Anabasis improvement loop, the Super Loop, and the iterati
 Three loops, each inside the one before. The **release cycle** gathers the stack's pull requests
 and lands them as one release on the operator's word, once a proof run at the stack's top has
 promoted twice at one commit. Inside it, each **iteration** (WRI2P2, "The iteration" below) takes one fresh run that reached its
-cap of two promotions, investigates it, vets, plans and implements what it found as one pull
+trigger, investigates it, vets, plans and implements what it found as one pull
 request on the top of the stack, and forks fresh runs at that pull request's head, so the next
 iteration measures the fix. Inside that, each **pass** is **score → walk → choose → prove →
 predict → launch → watch → read → decide**: it asks what stands between a campaign and its next
@@ -39,33 +39,52 @@ iteration:  predict → fork at the top → run (2 promotions or 12 hours) → i
 release:    proof run at the top to 2 promotions, unchanged → three reviewers → consolidate → land and release on the operator's word → fork at the release
 ```
 
-### The iteration (WRI2P2): two promotions, one pull request
+### The iteration (WRI2P2): one run's trigger, one pull request
 
 WRI2P2, the Whole Run Improvement Implementation Plan StackedPR Protocol (the operator's name,
 4 November: two I's and two P's), is the whole sweep from one run's investigation to a stacked pull
 request and a new run. The operator's protocol of 4 November: "Repeat the protocol more and more
 once 2-promotions come in of launching and improving, stack PR per fullRun Improvement iteration
 (Plan + Implementation after WRI)", and the fresh runs after it are launched without asking ("you
-can autonomously launch new runs after" it). Every fresh run carries `--promotions 2`, which ends it `operator` at its second promotion
-(`AGENTS.md`, factor 1), and the steps below run once for each run that reaches it:
+can autonomously launch new runs after" it). One script reads where every run and every iteration
+stands and prints the one step next, with its command:
 
-1. **The run ends at its cap**, or reaches twelve hours, or ends on its own terms. The pulse and the
-   promotion watch name the ending. Resolve every row of `Predictions.md` whose event exists.
-2. **Investigate** it with whole-run-investigation (step 5 below), with the other ended runs
-   of the same code as equals where there are any. Do not wait for a run still going.
+```sh
+bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts [<part> ...]   # every run moved in two days, and its step
+bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts open <name>[,<name>]
+bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts next <dir>
+```
+
+It reads every host's runs from the copies the central host's ten-minute gather keeps, so it asks no
+host and needs no env file. It writes nothing but an investigation's files, through `wri.ts`; it
+stops, launches and merges nothing. The whole-run investigation stays a tool of its own
+(`wri.ts`), for a question that is no iteration.
+
+1. **The trigger**, whichever comes first (operator, 4 November): two promotions, twelve hours since
+   the opening, a comparison that left no task untied ("they likely won't promote so that's a bit
+   ironic that we need to wait"), or an ending after a comparison. A buffer run carries
+   `--promotions 2`, which ends it `operator` at its second promotion (`AGENTS.md`, factor 1); a
+   jobstat run carries no cap. Resolve every row of `Predictions.md` whose event exists.
+2. **Investigate** it with whole-run-investigation, opened by `wri2p2.ts open`, with the other
+   triggered runs of the same code and pack as equals where there are any. A live run is read on a
+   frozen copy (`wri.ts start --snapshot`) and goes on: stopping one is the operator's (`AGENTS.md`,
+   section 3), and a run that will not promote is not stopped for its investigation. Then
+   `wri2p2.ts next <dir>` at each step: the two blank sections, `lanes --agents 4`, one subagent a
+   lane session (it prints each one's line), the collection and the synthesis.
 3. **Vet, then plan** (steps 6 and 7): `vetting.md` and `plan.md` in the investigation's folder.
    The plan holds repairs and tunings: read [the levers](references/levers.md) against the binding
    link, and give each lever the run's evidence selects a row, tuned or kept with one checkable
    sentence. A row the operator must decide is asked now, and implementing goes on around it.
 4. **Implement the plan as one pull request** on the top of the stack (step 8), with each row's
-   hostile test, proved with `bun run land -- <top> --sanitize`. One iteration is one pull
-   request, so a later reading can name the fix it measures. A row whose label an open pull
-   request of your own already carries goes there instead, and the iteration's pull request names
-   it.
+   hostile test, proved with `bun run land -- <top> --sanitize`, and name it in `plan.md` on a line
+   of its own, `Pull request: #N`, which `next` reads. One iteration is one pull request, so a
+   later reading can name the fix it measures. A row whose label an open pull request of your own
+   already carries goes there instead, and the iteration's pull request names it.
 5. **Predict, then fork at that pull request's head** (steps 1 and 2, with the top in place of the
-   release). The slot the ended run held goes to a fresh run at once, on the host and login with the
-   most room under their caps. A slot free with no iteration to measure is filled at the current top
-   too: capacity left idle measures nothing.
+   release), `--as forkedPR<N>`, by which `next` finds the runs that measure it. The slot an ended
+   run held goes to a fresh run at once, on the host and login with the most room under their caps.
+   A slot free with no iteration to measure is filled at the current top too: capacity left idle
+   measures nothing.
 
 Iterations overlap. A second run can reach its cap while the first's pull request is being written;
 it starts its own iteration, and each pull request stacks on the one before. Nothing in an
@@ -131,7 +150,7 @@ the operator and ask, rather than land first.
    October two `fresh --host` launches sent at once from one checkout both exited 1, and each
    passed when run alone. Fresh performs the fleet login admission before each launch. Tag
    `run/<name>/1` at the commit and push the tag.
-3. **Read the runs** with `scripts/cycle.ts` (below) at every review and at every milestone,
+3. **Read the runs** with `scripts/wri2p2.ts` (above) at every review and at every milestone,
    and resolve each prediction the hour its event lands, in the ledger's Resolutions. A defect seen
    live is noted for the plan of step 7; the run
    is not stopped to fix it (`AGENTS.md`, section 10, item 6).
@@ -143,11 +162,9 @@ investigate, vet, plan, implement and consolidate, so the stack is proved by its
 for the operator's word to land. Where a step cannot finish inside the window, say what is left at
 its end, and carry on in the same order; the window gives no step a reason to skip the one before.
 
-4. **Stop** each run `scripts/cycle.ts` names at the step `stop`, those at or past the threshold,
-   with the `runs stop` it prints, which names each run's host (`runs on <host> stop`), since two
-   hosts may hold one name. The investigation starts once
-   `runs status` reads every run the cycle forked `closed`, except a run the operator named as kept
-   (`--keep`), such as an ablation; other runs and simulations do not count. A stop word
+4. **Stop** each run past the threshold on the operator's word, with `runs stop`, naming its host
+   (`runs on <host> stop`), since two hosts may hold one name; one the operator keeps, such as an
+   ablation, goes on and is read on a snapshot (`wri.ts start --snapshot`). A stop word
    (`tools/d2/word.ts --stop`) waits for the next move boundary, which inside a led campaign can be
    an Examiner session of an hour or more: on 21 October two words left at 23:44 had not acted 20
    minutes later. A stopped run's log stays where it is. Resolve every prediction whose event
@@ -224,7 +241,7 @@ its end, and carry on in the same order; the window gives no step a reason to sk
 **The threshold.** Each run ends at **two promotions**, by its own `--promotions 2` (operator,
 2 November), or is stopped **twelve hours after its opening**, whichever comes first (operator,
 28 October). A run the operator lets go on to the milestone of six drops the flag.
-`scripts/cycle.ts` names the step `stop` at the threshold passed as `--threshold`, and times a live run to now, so a run in a long
+`scripts/wri2p2.ts` names the step `open` at the threshold (`--promotions`, `--hours`), and times a live run to now, so a run in a long
 wait still reaches its hours. The running window ends when every run the cycle stops has ended. The
 #306 forks
 reached their first promotion at 11.9 and 14.4 hours after their opening and their third at 17.8
@@ -232,37 +249,14 @@ and 19.1 hours (`wri.ts start`, lane 27); no run has yet been timed to its sixth
 reading should read no step; the release says where one did. No seat is told the threshold and no
 campaign stops at it (`AGENTS.md`, factor 1): the cycle stops the runs.
 
-### The script: `scripts/cycle.ts`
+### The script: `scripts/wri2p2.ts`
 
-The cycle's state is read by one script, so a review or a timer is one line and nobody reads the
-runs by hand to decide the step:
-
-```sh
-bun --env-file=.env.runs .claude/skills/run-improvement-campaign/scripts/cycle.ts \
-  <run> ... [--keep <run>]... [--threshold 2]
-```
-
-Its default threshold, 6, is the milestone's; a cycle of runs capped at two promotions passes
-`--threshold 2`.
-
-It finds each named run on this machine or on a host `ANA_HOSTS` lists, and prints one row a run
-(host, live or closed with its ending, promotions, comparisons and hours since its opening) and then
-the step, with the commands that take it. Other hosts are asked through `askedScript`, in each
-host's configured tree: a host that fails, or does not answer within the runs CLI's deadline, leaves
-its runs `unread`.
-
-| Step | When | Prints |
-| --- | --- | --- |
-| `stop` | a run the cycle stops is live at or past the threshold | the `runs stop ... --yes` for those runs, through `runs on <host>` for a run on another host |
-| `run` | the remaining live runs have fewer promotions than the threshold | each such run and its count |
-| `investigate` | none is live | the `runs fetch --from <host>` of each run on another host, and the `wri.ts start` over all of them, a copy by its path |
-| `unread` (exit 1) | a run is found on no host that answered | the runs not found and the hosts that did not answer, or that no other host is configured (the script run without `--env-file=.env.runs`); no step is read past one that may be live |
-
-A run named with `--keep`, such as an ablation the operator keeps going, is shown and never waited
-for or stopped. The script reads and prints; it stops, fetches and launches nothing. The session or
-timer that runs it takes the step, under the cycle's word. A host answers by running the script in
-its own tree with `--here`, so a host's tree must hold the script; a tree that predates it answers
-no rows and is named as not answering.
+The cycle's state is read by one script, the iteration's ("The iteration" above), so a review or a
+timer is one line and nobody reads the runs by hand to decide the step. Its rows hold the host,
+live or closed with its ending, promotions, comparisons and hours since the opening, and then each
+run's step: `run`, `open` with the trigger, or the step its investigation has reached. Until
+4 November `cycle.ts` asked each host to run it in its own tree, so a host whose tree predated the
+script answered no rows, and it read `investigate` only once no run was live.
 
 The cycle's reviews start from the pulse's lines (section "Timers"); each runs the script and takes
 the step it names: at M1 after the fork, then at each run's comparisons and promotions, and once
@@ -610,13 +604,13 @@ Every firing of every timer takes the same five steps, in this order. The order 
 fixed; what the session reads, which reader or lane it opens, and what it concludes between the
 steps are its own judgment, held to the evidence and to recorded authority.
 
-1. **Read the state.** `cycle.md`, `Predictions.md` beside it, and `scripts/cycle.ts` over the
+1. **Read the state.** `cycle.md`, `Predictions.md` beside it, and `scripts/wri2p2.ts` over the
    cycle's runs. Where `Predictions.md` is missing, write it first (step 1 of the cycle).
 2. **Resolve the predictions.** Each row whose event has landed or whose deadline has passed is
    `held` or `falsified` in Resolutions, with the count from the log that settles it and the time.
    A written resolution stays; a recount that disagrees adds a row beside it. A falsified row opens
    a triage row.
-3. **Act.** Take the step `cycle.ts` names, within the cycle's order and the recorded authority
+3. **Act.** Take the step `wri2p2.ts` names, within the cycle's order and the recorded authority
    for launches and stops, and read any milestone that landed (section "Milestones"); investigate
    after the event, never before it. Keep one triage list, rewritten each
    pass: problem, link, event or count, how found, and status, ranked by the first failed link and
@@ -642,7 +636,7 @@ At step 4 of the cycle every row still open is marked `unreached`.
 | --- | --- | --- |
 | pulse (the watch and the cycle's driver) | every 290 seconds: one Monitor on `bun run runs pulse --every 290`, its actionable lines only | every run's milestone, ending and stall on every host; a line naming a milestone, an ending or a stall starts the protocol, with the first cycle step not done, ended runs closed out and `runs usage`; a run ended at its cap starts an iteration, and a freed slot gets a fresh run at the top |
 | milestone | one-shot at a predicted event, or at a prediction's deadline | the named milestone or row, and any investigation it owes |
-| cycle review | one-shot at each step of the release cycle: the stop at the latest opening plus twelve hours, and the end of the improvement window at the last stop plus twelve hours | the step `cycle.ts` names; at the window's end, what is proved and what is left |
+| cycle review | one-shot at each step of the release cycle: the stop at the latest opening plus twelve hours, and the end of the improvement window at the last stop plus twelve hours | the step `wri2p2.ts` names; at the window's end, what is proved and what is left |
 | handover | one-shot at the agreed handover time | five points, changes and decisions waiting, and which timers were useful by their ledger rows |
 
 The pulse is the one recurring watch (operator, 2 November): no hourly or longer watch beside it. A

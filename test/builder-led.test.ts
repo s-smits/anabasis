@@ -1142,6 +1142,11 @@ describe("a campaign tool where the table names more than the action", () => {
         // A comparison's minutes are the host's clock: on 14 October CI read one campaign's g-1 at
         // 0 minutes and the other's at 1, the same tally under a busier host.
         .replaceAll(/took \d+ minutes?/gu, "took 0 minutes")
+        // A scripted solve bills by the length of what it reads (`fixture-pack.ts`), so which task a
+        // side answered moves a comparison's sum across a cent's rounding: 0.89 and 0.90 on
+        // 3 November, once at #589's base and again at #590's. What a comparison billed crosses with
+        // the remaining budget (section 1's closed list), so the tally, not the bill, is held equal.
+        .replaceAll(/billed \d+\.\d\d dollars/gu, "billed 0.00 dollars")
     );
   };
 
@@ -1151,7 +1156,7 @@ describe("a campaign tool where the table names more than the action", () => {
     // 12 October the status counted the tasks waiting for a label and the exhausted ones, and two
     // such campaigns read differently (rule 3).
     const same = await read_(`${STEM}-won-one`, { "g-1": [0, 1, 2], "g-2": [0, 1, 2] });
-    const moved = await read_(`${STEM}-won-other`, { "g-1": [1, 2, 3], "g-2": [2, 3, 4] });
+    const moved = await read_(`${STEM}-won-two`, { "g-1": [1, 2, 3], "g-2": [2, 3, 4] });
     expect(moved).toBe(same);
     expect(same).toContain("2 won, 0 lost, 3 tied");
     expect(same).toContain("Comparison g-2 took 0 minutes and billed");

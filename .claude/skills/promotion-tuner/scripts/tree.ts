@@ -12,7 +12,8 @@
  * Default discovery uses the production registry and refreshed records on every configured host
  * (22 October 2026). Explicit --logs retains the offline <logs>/<worktree>/.ana/d2/ layout, with
  * the largest copy of each name there. Left out: a seed (`seed.json` beside its
- * log), a name that starts `sim-`, `rh-` or `test-`, and a rehearsal, whose seats are
+ * log) unless named, as an investigation's snapshot is (until 4 November its derived replay read
+ * none), a name that starts `sim-`, `rh-` or `test-`, and a rehearsal, whose seats are
  * `faux/script`.
  */
 import { type Measures, type Paired, UNMEASURED } from "#src/kernel/compare.ts";
@@ -151,14 +152,16 @@ function lastAt(path: string): string | null {
  *  (`data/runs`, a folder a host) or one host's folder of campaigns: the registry's `campaignsIn`
  *  reads each layout. Until 30 October this walked worktrees alone, so a replay of the archive read
  *  no campaign. */
-function everyLog(home: string): Found[] {
+function everyLog(home: string, names: readonly string[]): Found[] {
   const largest = new Map<string, { path: string; size: number }>();
   const found = [home, ...readdirSync(home).map((entry) => join(home, entry))].flatMap((dir) => [
     ...campaignsIn(dir, dir),
     ...campaignsIn(join(dir, CAMPAIGNS), dir),
   ]);
   for (const { name, path, seed } of found) {
-    if (seed === true || LEFT_OUT.some((prefix) => name.startsWith(prefix))) continue;
+    if ((seed === true && !names.includes(name)) || LEFT_OUT.some((prefix) => name.startsWith(prefix))) {
+      continue;
+    }
     const { size } = statSync(path);
     if (size > (largest.get(name)?.size ?? -1)) largest.set(name, { path, size });
   }
@@ -177,9 +180,11 @@ export async function campaignLogs(
   const all =
     home === null
       ? (await readableAcross(names)).filter(
-          (run) => run.seed !== true && !LEFT_OUT.some((prefix) => run.name.startsWith(prefix)),
+          (run) =>
+            (run.seed !== true || names.includes(run.name)) &&
+            !LEFT_OUT.some((prefix) => run.name.startsWith(prefix)),
         )
-      : everyLog(home);
+      : everyLog(home, names);
   return all.filter(({ name, path }) =>
     names.length > 0 ? names.includes(name) : (lastAt(path) ?? "") >= since,
   );

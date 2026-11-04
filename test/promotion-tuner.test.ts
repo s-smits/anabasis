@@ -187,6 +187,11 @@ it("finds the logs of a folder of worktrees, of an archive's host folder and of 
     expect(found.map(({ name }) => name)).toEqual(["camp", "other"]);
     expect(found[0]?.path).toBe(join(home, "m1", "camp", "log.jsonl"));
     expect((await campaignLogs(join(home, "m1"), ["other"], "")).map(({ name }) => name)).toEqual(["other"]);
+    // A seed is left out of the fleet, and read where it is named: an investigation's snapshot holds
+    // `seed.json`, and its derived replay asks for the campaign by name.
+    expect((await campaignLogs(join(home, "m1"), ["seeded"], "")).map(({ name }) => name)).toEqual([
+      "seeded",
+    ]);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

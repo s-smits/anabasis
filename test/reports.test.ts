@@ -530,7 +530,7 @@ describe("the release before the draw", () => {
   const taken = (events: readonly LogEvent[], count: number) =>
     releaseOrder(events, tasks, count, "seed").map(([version]) => version);
 
-  it("takes half of the tasks the reference failed, and the draw cannot release the other half", () => {
+  it("takes half of the tasks the reference failed, rounded down, and the draw cannot release the other half", () => {
     expect(failedOf(log, tasks)).toEqual(["f1", "f2", "f3", "f4"]);
     const fresh = [...log, ...heldOut("n1")];
     const order = releaseOrder(fresh, [...tasks, "n1"], 4, "seed");
@@ -545,7 +545,21 @@ describe("the release before the draw", () => {
       ...solved("b-1", "a1", "h2", [P, P]),
       reported("b-1", "no-step", "h2", { ...terms, versions: ["s1", "a1"] }),
     ];
-    expect(releaseOrder(once, ["s1", "a1"], 1, "seed").map(([version]) => version)).toEqual(["s1"]);
+    // One failed task of one is more than half, so it stays held and the draw takes the other.
+    expect(releaseOrder(once, ["s1", "a1"], 1, "seed").map(([version]) => version)).toEqual(["a1"]);
+    expect(releaseOrder(once, ["s1", "a1"], 2, "seed").map(([version]) => version)).toEqual(["a1"]);
+    const three = ["f1", "f2", "f3", "a1"];
+    const odd = [
+      ...three.flatMap(heldOut),
+      ...three.flatMap((task) => [
+        ...solved("b-1", task, "h1", task.startsWith("f") ? [P, F] : [P, P]),
+        ...solved("b-1", task, "h2", [P, P]),
+      ]),
+      reported("b-1", "no-step", "h2", { ...terms, versions: three }),
+    ];
+    expect(failedOf(odd, three)).toEqual(["f1", "f2", "f3"]);
+    const oddly = releaseOrder(odd, three, 4, "seed").map(([version]) => version);
+    expect([oddly.length, oddly.filter((version) => version.startsWith("f")).length]).toEqual([2, 1]);
   });
 
   it("releases the same tasks whichever held-out task the new harness bettered by the objective", () => {
@@ -599,7 +613,7 @@ describe("the release before the draw", () => {
     );
   });
 
-  it("puts first a task the reference answered in every solve where its own better answer leaves it room", () => {
+  it("holds a task the reference answered in every solve where its own better answer leaves it room, as a failed one", () => {
     const sides = ["a1", "a2"].flatMap((task) => [
       ...solved("b-1", task, "h1", [P, P]),
       ...solved("b-1", task, "h2", [P, P]),
@@ -614,8 +628,15 @@ describe("the release before the draw", () => {
         objective: { direction: "lower", margin: 0.01 },
       }),
     ];
-    for (const task of ["a1", "a2"]) {
-      expect(releaseOrder(roomIn(task), ["a1", "a2"], 1, "seed").map(([version]) => version)).toEqual([task]);
+    // The one task with room is more than half of one, so it stays held whichever it is, and the
+    // draw, which never takes a task with room, releases the other.
+    for (const [task, other] of [
+      ["a1", "a2"],
+      ["a2", "a1"],
+    ] as const) {
+      expect(releaseOrder(roomIn(task), ["a1", "a2"], 2, "seed").map(([version]) => version)).toEqual([
+        other,
+      ]);
     }
   });
 

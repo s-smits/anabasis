@@ -734,7 +734,8 @@ describe("the build conditions", () => {
       // Neither closes for practice either, so both logs allow one more than the floor needs.
       expect(logs.map((events) => owed(events, 1000, 0.02))).toEqual([1 + extra, 1 + extra]);
       expect(released[0]).toEqual(released[1]);
-      expect(released[0]?.map(([version]) => version).slice(0, 1)).toEqual(["a"]);
+      // A alone left the reference room, and one task of one is more than half, so A stays held.
+      expect(released[0]?.map(([version]) => version)).not.toContain("a");
     }
   });
 

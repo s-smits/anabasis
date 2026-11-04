@@ -39,7 +39,7 @@ Each release is one task fewer to compare. A release takes, in this order (`rele
 `src/kernel/reports.ts`):
 
 1. the tasks the reference answered in no solve of two comparisons it stood in;
-2. half, rounded up and counted with those already released, of the tasks that left the reference
+2. half, rounded down and counted with those already released, of the tasks that left the reference
    room in its last reading of each (a failed solve, or an answer of its own or its author's
    bettering one of its answers by the objective gap floor); the other half stays held;
 3. the rest by the contract's draw, those the reference always answers among them, since a

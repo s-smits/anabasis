@@ -46,7 +46,7 @@ for a prompt. Then the next fresh run at the pull request's head measures it, wi
 | B1 | What the Builder hears of a practice solve: the trace, the ending, the verifier's measure | `src/builder/tools.ts`, `src/builder/past.ts` | practice failures the next harness repeats; a Builder that never read a trace (`SHELL COMMANDS`) | iteration (wall test) |
 | B2 | The Builder's opening and the move table's fixed advice | `src/builder/prompt.ts`, `src/campaign/decide.ts` | moves the table did not name (`asked`); a compare of an unchanged harness; idle sessions | iteration |
 | B3 | What a Builder carries from earlier sessions and kept harnesses | `src/builder/memory.ts`, `src/builder/kept.ts` | a session undoing what the last one kept; `MEMORY.md` growing without use | iteration |
-| B4 | Practice release: how many, which first | `releaseOrder`, `src/kernel/reports.ts` | a Builder starved of failures while held-out tasks have room | *operator* if it moves the half; iteration within it |
+| B4 | Practice release: how many, which first | `releaseOrder`, `src/kernel/reports.ts` | a Builder starved of failures while held-out tasks have room | *operator* if it moves the half (rounded down from 4 November, the operator delegating the choice to the recorded philosophy); iteration within it |
 | B5 | The Builder session's turns and hours | `tools/d2/harness-builder.ts` | sessions ending at their limit mid-change; most of the clock in one session | *operator* (a limit) |
 
 ## The solve

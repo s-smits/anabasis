@@ -1,6 +1,6 @@
 ---
 name: oracle-handover
-description: "Hand a question about Anabasis to an outside Oracle model as one task document and one zip. The Oracle reads GitHub; the zip carries what it cannot fetch: campaign logs and kept harnesses through `bun run runs zip`, a reader's output, predictions with how each resolved, patches for commits never pushed. Use when the operator asks to prepare an Oracle question, a report request, a problem statement or a second opinion on a run, a reading or a design, or to send the latest runs to an outside model. Produces local files; uploading is the operator's."
+description: "Hand a question about Anabasis to an outside Oracle model: as one self-contained markdown document for a reader that takes no zip or reads one badly (`document.ts`, sources at a published commit with GitHub line links, PR summaries, log slices such as `Builder{4-7}`), or as a task document and a zip of campaign logs and kept harnesses (`bun run runs zip`, `bundle.ts`). `slice.ts` prints any seat's turns with their tool calls, or any event kind, from a run by name. Use when the operator asks to prepare an Oracle question, a report request, a problem statement or a second opinion on a run, a reading or a design, an Oracle md file of some size, or to send the latest runs to an outside model. Produces local files; uploading is the operator's."
 ---
 
 # Oracle handover
@@ -12,11 +12,83 @@ session checks against the log and the source before anything acts on it.
 
 The Oracle can read the public repositories at any published commit. It cannot read what a
 checkout holds locally: every campaign under the ignored `.ana/`, local notes, a commit never
-pushed. So a handover is two files. The task document is what the operator pastes as the
-message. The zip is what the operator attaches. The document cites code by commit and path, and
-the zip carries only what GitHub cannot serve.
+pushed. A handover takes one of two forms:
 
-## Choose the runs before zipping
+- **One document** (the usual form): a single markdown file the operator pastes whole, with the
+  task first and every part it needs inline. Use it when the reader takes no attachment or reads
+  a zip badly, or when the operator asks for "an Oracle md file" or a size in tokens. Build it
+  with `document.ts` (below).
+- **A document and a zip**: the task document is the message and the zip, attached, carries the
+  runs whole. Use it when the question needs whole logs or kept harnesses.
+
+In both, the document cites code by commit and path, so the Oracle can open anything on GitHub,
+and the main snippets are inline as well, so it need not.
+
+## One document
+
+Write the task as `head.md` (the next sections say how), then list its parts in a parts file and
+build:
+
+```sh
+bun --env-file=.env.runs .claude/skills/oracle-handover/scripts/document.ts <dir>/parts.txt --commit <published sha> --out <dir>/REVIEW.md
+```
+
+```text
+head head.md
+src AGENTS.md#1,2,8 :: The rules the question turns on.
+src src/kernel/compare.ts#informative :: How room is read.
+src src/campaign/decide.ts:255-300
+diff <from>..<to> src/examiner
+pr 594 :: The change in doubt.
+log buffer-fresh-opus-forkedPR590-<host> Builder{1-12} comparison.reported :: Its first round.
+log jobstat-fresh-opus-forkedPR595-<host> Drafter{~3} exam.drafted{1} --whole
+file notes/gate-record-report.md :: A subagent's count, checked against the log.
+```
+
+Every source part is read at `--commit` through `git show`, never from a working tree, and the
+script refuses a commit no remote holds. On 3 November a whole-flow document appended the main
+checkout's `AGENTS.md`, behind the stack's top, and the Oracle's sharpest contradiction was one
+the top had already resolved. So name the stack's top, or the commit the runs in question ran,
+and cite every other commit by its own link. Each `src` part links to its GitHub lines, a `diff`
+to its comparison and a `pr` to its "Files changed" tab, while a `log` or `file` part is inline
+only. A table of the parts and their size follows the head. A `pr` part gives the pull request's
+branch, head, body and files. A `file` path is read from the parts file's folder.
+
+**Take generously; do not trim to a size.** A document of 100,000 to 150,000 o200k tokens has
+served (3 November about 100,000, 4 November 142,579), and the script prints the size it made. It
+caps nothing: append everything relevant and say why each part is there. Put the sources the
+question turns on in whole or by declaration, and the rest as links.
+
+**Choose log slices from what you already know.** You do not need to read a log before slicing
+it. A guess at a wide range is fine: a range past the end stops at the end, and a selector that
+finds nothing prints one line saying so. `slice.ts` reads any run by name on any host:
+
+```sh
+bun --env-file=.env.runs .claude/skills/oracle-handover/scripts/slice.ts <run> 'HarnessBuilder{4-7}' 'Examiner:x-2{~5}' 'comparison.reported{~1}'
+```
+
+| selector | prints |
+| --- | --- |
+| `Builder` | the seat's sessions, or its turns where it has one, a row each: a table of contents |
+| `Builder{4-7}`, `{4,7}`, `{10-}`, `{~3}` | those turns, each with its words and every tool call and result it made |
+| `Builder:b-2{1-5}` | the turns of one session; a solve's id may be given by its end |
+| `comparison.reported`, `comparison.reported{1,~1}` | an event kind with its dot: one row an event, or those events as JSON |
+
+Seats are Builder (also HarnessBuilder), Examiner, Drafter, Referee, Solver and Repair, in any case
+and by their log names too (`build`, `exam`, `draft`, `solve`). A turn's words, a result and an
+event longer than `--max-chars` (6,000) are cut in the middle with the cut said; `--whole` keeps
+them. A turn and its calls are one group, so `{4}` is the fourth time the seat spoke and everything
+it ran then, in an old log that wrote calls before their turn as in a new one.
+
+`document.ts`, not `slice.ts`, turns home folders into `~`, drops login numbers ("a login") and
+turns each machine name into `host-a`, `host-b`, and prints that key to you, not into the file;
+`document.ts --aliases` prints the key alone, so that a head can name the hosts as the document
+will. It refuses to run without the hosts of `.env.runs`, and refuses a file with a
+credential-shaped line. Slices printed on their own keep what the log holds. A parts line is not
+shell: a quoted word loses its quotes, and a `file` part is titled by its file name.
+Keep a copy of the document in the local notes, as for a zip.
+
+## Choose the runs
 
 A zip of everything asks the Oracle to find the question. Choose the campaigns the question
 turns on, and say in the document why each is there.
@@ -46,7 +118,7 @@ When a run's commit is unpublished, find a published commit with the same source
 when none matches, the patches carry it. A launch "with uncommitted changes" ran source its
 commit does not fully state: say so.
 
-## Build the bundle
+## A document and a zip
 
 Work in `<scratchpad>/oracle-<yyyymmdd>-<topic>/`. Each folder is made by a command the
 repository owns.
@@ -117,8 +189,8 @@ In this order:
    finding an owner: a file of a kept harness (`states/<digest>/...`), a path in the repository
    at a cited commit, the task pack, or the environment (load, wall, provider).
 
-When the reader has no repository access, copy the exact source into the document instead:
-whole files where small or central, line ranges otherwise, each under its path and range.
+When the reader has no repository access, the one-document form already carries the source; say
+so in "What you can read" and leave the links as references.
 
 ## What may cross, and what may not come back
 
@@ -137,9 +209,10 @@ colleague's weight. It is not the operator's word: it authorises no launch, no s
 
 ## Deliver and retrieve
 
-End the reply with the bundle's folder, the zip's path with its size and file count, the path
-of `REVIEW.md`, and one paragraph for the operator: attach the zip, paste the document as the
-message, and which commits to open first. Say what the bundle does not hold yet.
+End the reply with the path of `REVIEW.md` and its size in tokens, the zip's path with its size
+and file count where there is one, and one paragraph for the operator: paste the document as the
+message, attach the zip if any, and which commits to open first. Say what the handover does not
+hold yet.
 
 When the answer comes back, keep it in the local notes. Check every claim that would change a
 decision as `AGENTS.md`, section 11, says before acting on it, and keep its disagreements and its

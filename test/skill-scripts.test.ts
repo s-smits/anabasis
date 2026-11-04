@@ -4,6 +4,8 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { gitText } from "#src/meta/git.ts";
 import { bundle } from "#skills/oracle-handover/scripts/bundle.ts";
+import { declarationLines, sanitised, sectionLines } from "#skills/oracle-handover/scripts/document.ts";
+import { groupsOf, parseSelector, pick, slice } from "#skills/oracle-handover/scripts/slice.ts";
 import { follow, type NativeStack, nativeTop } from "#skills/stack-pr/scripts/follow.ts";
 import { pairLines } from "#skills/compare-systems/scripts/systems.ts";
 import { censusOf, newsOf } from "#skills/system-path-simulation/scripts/live-seat.ts";
@@ -25,7 +27,7 @@ import { join } from "../src/meta/path.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "../src/meta/subprocess.ts";
 import { capturedJsonStringify, parseJsonAs } from "../src/meta/json-runtime.ts";
 import { LOG_FILE, read } from "../src/kernel/log.ts";
-import type { LogEvent } from "../src/kernel/log.ts";
+import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { capturedExecPath, capturedSpawn } from "../src/meta/process.ts";
 import { sources } from "../tools/runs/receipt.ts";
@@ -343,6 +345,172 @@ describe("an Oracle bundle", () => {
     const big = made("oracle-d", { "REVIEW.md": "# Review\n" });
     expect(() => bundle(big, 10)).toThrow("over its");
     expect(existsSync(`${big}.zip`)).toBe(false);
+  });
+});
+
+describe("an Oracle document's slices", () => {
+  const event = (kind: EventKind, data: JsonObject): LogEvent => ({
+    at: "2026-11-04T00:00:00.000Z",
+    kind,
+    data,
+  });
+  const turn = (session: string, number: number, text = "") =>
+    event("build.turn", { session, turn: number, stopReason: "toolUse", error: null, text, usage: null });
+  const call = (session: string, number: number, command: string) =>
+    event("build.call", {
+      session,
+      turn: number,
+      tool: "bash",
+      args: { command },
+      isError: false,
+      text: `ran ${command}`,
+    });
+  const events = [
+    turn("b-1", 1, "look first"),
+    call("b-1", 1, "ls"),
+    call("b-1", 1, "cat HARNESS.md"),
+    turn("b-1", 2),
+    call("b-1", 2, "make"),
+    event("comparison.reported", { session: "g-1", tasks: 24 }),
+    turn("b-2", 1),
+  ];
+  const shown = { whole: false, maxChars: 6000 };
+
+  it("names seats by any of their names and refuses what names nothing", () => {
+    expect(parseSelector("HarnessBuilder{4-7}")).toEqual({
+      seat: "build",
+      kind: null,
+      id: null,
+      items: "4-7",
+    });
+    expect(parseSelector("Examiner:x-2{~3}")).toMatchObject({ seat: "exam", id: "x-2", items: "~3" });
+    expect(parseSelector("comparison.reported")).toMatchObject({ seat: null, kind: "comparison.reported" });
+    expect(() => parseSelector("Wizard{1}")).toThrow("name a seat");
+    expect(() => pick("a-b", 3)).toThrow("an item is");
+  });
+
+  it("cuts a wide guess at the end instead of refusing it", () => {
+    expect(pick("4,7", 9)).toEqual([3, 6]);
+    expect(pick("2-100", 4)).toEqual([1, 2, 3]);
+    expect(pick("~2", 5)).toEqual([3, 4]);
+    expect(pick("10-", 4)).toEqual([]);
+  });
+
+  it("groups a turn with the calls it asked for, and starts a new group at the next turn", () => {
+    const groups = groupsOf(events, "build", null);
+    expect(groups.map((group) => [group.id, group.turn, group.calls.length])).toEqual([
+      ["b-1", 1, 2],
+      ["b-1", 2, 1],
+      ["b-2", 1, 0],
+    ]);
+    expect(groupsOf(events, "build", "b-2")).toHaveLength(1);
+    const text = slice(events, "Builder{1}", shown);
+    expect(text).toContain("look first");
+    expect(text).toContain("cat HARNESS.md");
+    expect(text).not.toContain("make");
+    expect(slice(events, "Builder:b-1{9-}", shown)).toContain("names none");
+    expect(slice(events, "comparison.reported{9}", shown)).toContain("names none");
+    expect(() => parseSelector("comparison.reported:g-2{1}")).toThrow("takes no session");
+    expect(slice(events, "referee.finding", shown)).toContain("holds no");
+    expect(slice(events, "comparison.reported{~1}", shown)).toContain('"tasks": 24');
+  });
+});
+
+it("groups an old log's calls, written before their turn and numbered one lower, with that turn", () => {
+  const at = "2026-10-22T00:00:00.000Z";
+  const old: LogEvent[] = [
+    {
+      at,
+      kind: "solve.call",
+      data: { solve: "s-1", turn: 0, tool: "bash", args: {}, isError: false, text: "a" },
+    },
+    {
+      at,
+      kind: "solve.call",
+      data: { solve: "s-1", turn: 0, tool: "read", args: {}, isError: false, text: "b" },
+    },
+    {
+      at,
+      kind: "solve.turn",
+      data: { solve: "s-1", turn: 1, stopReason: "toolUse", error: null, text: "first" },
+    },
+    {
+      at,
+      kind: "solve.call",
+      data: { solve: "s-1", turn: 1, tool: "bash", args: {}, isError: false, text: "c" },
+    },
+    {
+      at,
+      kind: "solve.turn",
+      data: { solve: "s-1", turn: 2, stopReason: "stop", error: null, text: "second" },
+    },
+  ];
+  expect(
+    groupsOf(old, "solve", null).map((group) => [group.turn, group.said?.text, group.calls.length]),
+  ).toEqual([
+    [1, "first", 2],
+    [2, "second", 1],
+  ]);
+});
+
+describe("an Oracle document's parts", () => {
+  it("takes a declaration with its head comment and a section up to its sibling", () => {
+    const source = [
+      "import x from 'y';",
+      "",
+      "// why",
+      "/** what */",
+      "export function informative() {",
+      "  return 1;",
+      "}",
+      "const after = 2;",
+    ].join("\n");
+    expect(declarationLines(source, "informative")).toEqual([3, 7]);
+    expect(declarationLines(source, "after")).toEqual([8, 8]);
+    expect(() => declarationLines(source, "missing")).toThrow("no top-level declaration");
+    const markdown = ["# Title", "## 1. One", "### 1.1 Inner", "text", "## 10. Ten", "## 2. Two"];
+    expect(sectionLines(markdown, ["1", "2"])).toEqual([
+      [2, 4],
+      [6, 6],
+    ]);
+    expect(sectionLines(markdown, ["10"])).toEqual([[5, 5]]);
+    const fenced = ["## 2.1 Early", "## 2. Two", "```sh", "# a comment", "```", "after", "## 3. Three", ""];
+    expect(sectionLines(fenced, ["2", "3"])).toEqual([
+      [2, 6],
+      [7, 7],
+    ]);
+    const overloaded = [
+      "/** module head */",
+      "",
+      "export function f(a: string): string;",
+      "export function f(a: unknown) {",
+      "  return a;",
+      "}",
+      "export default g;",
+      "function g() {}",
+    ].join("\n");
+    expect(declarationLines(overloaded, "f")).toEqual([3, 6]);
+    expect(declarationLines(overloaded, "g")).toEqual([8, 8]);
+  });
+
+  it("gives each machine one alias across its names and drops home folders", () => {
+    const made = sanitised("ran on box-two (ssh two-ssh) from /Users/someone/Developer/x and /home/other/y", [
+      ["box-one"],
+      ["box-two", "two-ssh"],
+    ]);
+    expect(made.text).toBe("ran on host-b (ssh host-b) from ~/Developer/x and ~/y");
+    const bare = sanitised(
+      "cwd /Users/someone, BOX-ONE.local, /tmp/-Users-someone-Developer-x, src/home/a/b.ts",
+      [["box-one"]],
+    );
+    expect(bare.text).toBe("cwd ~, host-a.local, /tmp/-~-Developer-x, src/home/a/b.ts");
+    const logins = sanitised(
+      "on login 3, logins 1 and 4, claude2, ~/.claude-account3/jobs, TOKEN CLAUDE_CODE_OAUTH_TOKEN1",
+      [],
+    );
+    expect(logins.text).toBe(
+      "on a login, a login, a login, ~/.claude-account/jobs, TOKEN CLAUDE_CODE_OAUTH_TOKEN",
+    );
   });
 });
 

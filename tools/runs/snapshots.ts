@@ -298,10 +298,11 @@ export async function readableAcross(names: readonly string[] = [], depth: Depth
 
 /**
  * The one resolver of a reader's `<log | campaign folder | name>`: a folder reads its log, an
- * explicit path stays explicit, and a campaign's name reaches every host. Until 30 October
+ * explicit path stays explicit, and a campaign's name reaches every host, copied whole or, for a
+ * reader of its log alone, as its record. Until 30 October
  * `reading.ts` and `live-seat.ts` each resolved a folder themselves and the other readers refused one.
  */
-export async function logAcross(named: string): Promise<string> {
+export async function logAcross(named: string, depth: Depth = "whole"): Promise<string> {
   if (existsSync(join(named, LOG_FILE))) return join(named, LOG_FILE);
-  return existsSync(named) ? named : (await readAcross(named, "whole")).path;
+  return existsSync(named) ? named : (await readAcross(named, depth)).path;
 }

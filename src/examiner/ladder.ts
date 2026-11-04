@@ -47,6 +47,8 @@
  * Grades are a measure and never a target: no count or share is named, and code decides nothing on
  * a grade (`AGENTS.md`, section 2, consequence 2). The over-time rule the writing prompt states is
  * relative to measured facts: a grade the reference answers on every solve measures nothing more.
+ * That a task measures something only where a valid answer exists is said by each mode's prompt
+ * beside the ladder, and no longer here as well (4 November).
  */
 
 /** Reach, from 0 to 7: how hard a task is for a strong current model working in the field. */
@@ -107,7 +109,7 @@ export const SOLVER =
 /** The ladder as an Examiner reads it: the scale, then each field's tasks from easy to very hard. */
 export const LADDER = [
   `Reach is how hard a task is for a strong current model working in the field:\n${GRADES.map((grade) => `- ${grade}`).join("\n")}`,
-  "Three fields that no exam here covers, each from easy to very hard. They show what each grade demands, none is a task to copy, and each measures something only where a valid answer exists:",
+  "Three fields that no exam here covers, each from easy to very hard. They show what each grade demands, and none is a task to copy:",
   ...FIELDS.map(({ field, rungs }) => `${field}:\n${rungs.map((rung) => `- ${rung}`).join("\n")}`),
   SOLVER,
   "Use these fields to calibrate your own. Before you write, work out what in this domain puts a task in each of those three places.",

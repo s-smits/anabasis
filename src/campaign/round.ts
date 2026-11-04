@@ -42,9 +42,7 @@
  * split into two halves mirrored in time, read as two harnesses are, with how often two of them
  * disagree (`flips`, `comparison.ts`).
  * The test's own solves hold it: at two solves a side, the first of each task against the second.
- * It should read no step, and decides nothing here. Until 12 October its later solves ran after
- * the test's own were done, so a drift read as a difference, and until 13 October `--noise` read
- * one at fewer by solving the reference twice as often.
+ * It should read no step, and decides nothing here.
  *
  * A comparison is read at the one budget its solves were told: a reading of the same solves at a
  * shorter budget would read a solver told the longer one.
@@ -255,10 +253,6 @@ const UNCOMPARED: ReadonlySet<string> = new Set(["session", "tasks", "retained"]
  * a draw by the hash alone took a task written after a comparison that left no room no earlier
  * than one it had scored, and one campaign's next comparison scored 4 of the 7 written for it.
  *
- * Until 19 October a repeat, the comparison that read a step again before it promoted, scored its
- * first stage's untied tasks again first and that stage's other tasks last; one reading promotes
- * since, and every comparison draws alike.
- *
  * The starter comparison after a promotion draws alike. From 30 October to 2 November it scored
  * the tasks held out since alone, which the Examiner writes above the new reference's grade, so
  * the promotion's confirmation (`confirmed`, `climb.ts`) read the reference only where it was
@@ -289,7 +283,9 @@ export function scoredSet(events: readonly LogEvent[], target: number, contract:
  * Each task's ordered solves still to run, with tasks drawn by their hash and the comparison
  * (`draw`). A worker owns a whole sequence, including retries, before taking another task.
  * Within it the harness that goes first is mirrored, slot by slot and from one task to the next:
- * the reference then the new harness, the new then the reference. `had` counts a task's completed
+ * the reference then the new harness, the new then the reference, so that no side runs later than
+ * the other: until 12 October the A/A's later solves ran after the test's, and a drift read as a
+ * difference. `had` counts a task's completed
  * solves under each harness, so continuation omits the counted prefix and runs what it lacks.
  */
 function unsolvedJobs(

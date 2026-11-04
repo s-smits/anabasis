@@ -1,97 +1,24 @@
 /**
  * The comparison: does the new harness beat the reference harness on tasks neither was built on?
  *
- * Both harnesses solve the same held-out tasks under the same compute budget, and each task
- * counts once. Every solve of the new harness is paired with every solve of the reference one, and
- * each task is scored by two weighted measures over its pairings (`pointsOf`, `WEIGHTS`): validity,
- * and between two valid answers the objective. A task with a positive score is won, a
- * negative one lost, and one at zero tied (`tally`). The weighted sum is rounded to whole points
- * by its magnitude, with half points away from zero and zero normalised, so exchanging sides
- * negates the score (`differenceOf`).
+ * Both harnesses solve the same held-out tasks afresh under one setting, and every solve of the
+ * new harness is paired with every solve of the reference on each task, which counts once. A task
+ * is scored by two weighted measures over its pairings (`pointsOf`, `WEIGHTS`): validity, and
+ * between two valid answers the objective, so no answer the checks refuse is ever the better one;
+ * the objective's value is the verifier's, never one the answer reports about itself.
+ * A positive score is a win, a negative one a loss and zero a tie (`tally`), in whole points so that
+ * exchanging sides negates it (`wholePoints`).
  *
- * The test is a paired sign-flip test on each task's score (`flipP`, since
- * 12 October): were the two harnesses interchangeable, each untied task would be as likely won as
- * lost by its margin, and p is the share of the signs that sum to at least the sum read. It is
- * exact, by one convolution over the integer sums, and needs no more than the sign test it
- * replaced did: tasks independent, the two sides alike under the null. Where every untied task is
- * won or lost by as many pairs it is the sign test, so the plan's smallest wins (4-0, 6-1, 7-2,
- * 9-3 at 0.10) and its table of power hold to the bit; at several solves a side it also reads how far
- * a task was won, so a 4-1 lost by one pair in sixteen clears 0.10 where the sign test read every
- * 4-1 at 0.1875. A tie says nothing and leaves the test. The same convolution at a share other
- * than one half is the power (`power`), and every reading says the least share of its untied tasks
- * it detects four times in five (`detectable`).
+ * The test is an exact one-sided paired sign-flip test over the untied tasks' scores (`flipP`),
+ * one test over the frontier and the retained tasks both fixed at the comparison's start, and a
+ * step is that test at or under the campaign's level (`readsStep`); the same convolution at another
+ * share is its power (`power`, `detectable`). The A/A comparison reads the reference against
+ * itself on halves of its own solves (`halves`) as two harnesses are read.
  *
- * The step is one test over the frontier, the scored tasks not exhausted, and the retained tasks,
- * both fixed at the comparison's start (`round.ts`, `begin`; `poolOf`, `reports.ts`). From 12 to
- * 20 October the retained tasks were a second test, read `regressed`; in 58 real readings it fired
- * once, on r3's g-12, the starter, which the one test reads `no-step` (p 0.147). Gains on new tasks
- * may now offset losses on old ones, and the report keeps the two sets' tallies apart. A retained
- * set with no task tallied is `unmeasured`, never no loss. Until 16 October a step whose untied
- * tasks all fell in one family read `narrow`; in 1,598 recorded readings it never fired.
- *
- * One comparison's reading, `step`, is that test at or under the level, 0.02 by default, on each
- * task's score, and a step against the reference promotes (`readsStep`; `decide.ts`). The bill is
- * no measure: from 21 October to 2 November it weighed a tenth of a task's score between two valid
- * answers, and from 26 October no step rested on it, so the tally a seat was told and the one the
- * step was read on parted (on 1 November a Builder was told 13-1-2 of a comparison read on 3-0-13).
- * On 2 November it left the score, which reads every step as before; the closing report owns the
- * cost (`close.ts`). A report written before then holds its scores without the bill as `unbilled`,
- * which its readers read in place of `differences`. From 25 to 31 October the step
- * also had to clear the level on the score as it stands: the operator chose the second test after
- * v065-a's aecc1c92 was promoted on 25-3 as scored where the same tasks read 0-10 without the bill, a
- * harness worse by the objective promoted on its cost. Of 47 comparisons read under both tests, none
- * cleared without the bill and failed as scored, so the scored test decided nothing the other did not,
- * and it went (decision D1 of the cycle after v0.9.0). Replayed by the promotion tuner on 31 October
- * over 214 readings since 15 October, dropping it added one step and took none: v070's g-4, 21-5-6
- * without the bill and 17-15-0 as scored, a harness better by the objective on 16 tasks and dearer. Replayed by the promotion tuner on 26 October
- * over the 84 readings of 40 campaigns since 21 October, the test without the bill took the step
- * from 7 of the 46 promotions the scored test reads, and added none. The level is the caller's and
- * recorded with the campaign's opening, so a campaign reads by its own rule whatever the tree's
- * default (`7f0add79:docs/plan.md`, Statistical power and cost). From 10 to 19 October the step was
- * read in two stages: a first reading at or under a trigger, 0.25, bought a repeat on fresh solves,
- * and the two read together had to clear the level. Of 24 readings in 56 campaigns that cleared the
- * level by themselves, 11 were read again and 11 of 11 won at least as many tasks as they lost; the
- * repeat took 1 to 2.5 hours of a promotion's 6 to 7, and a trigger term, a repeat's scored set, its
- * task supply and a rule of the campaign tools served it alone. One exact test at 0.02 promotes equal
- * harnesses 1.13% of the time on 24 untied tasks each won or lost by a pair (`power` at one half).
- *
- * How each ending of a solve enters a pair (`solve.ts` names the endings; the table is the plan's,
- * `7f0add79:docs/plan.md`, Phase 2):
- *
- * | The solve ended | Its part in a pair |
- * | --- | --- |
- * | pass: every check accepted the answer, within the limits | valid. It beats an answer that is not, and is even with another valid one |
- * | fail, `rejected`, and the rejection stands | not valid. It loses to a valid answer and is even with another that is not |
- * | fail, `wall-ended`, `turns-ended`, `context-ended`, `no-answer` | not valid. There is no answer to recompute, so no ruling is needed |
- * | fail, `broken-harness` | not valid: the harness is the thing compared, and one that cannot list its tools answers nothing |
- * | fail, `rejected`, ruled a check defect or unclear, or waiting for a person | the task is set aside and left out of the test for both harnesses (`src/campaign/round.ts`) |
- * | non-result of any kind | no measurement. It was solved again, and is in no pair; a task left short of its solves is in no tally |
- *
- * Validity is the measure that weighs most, and it is read alone where one answer of a pairing is
- * valid: the objective is read only between two valid answers, so no answer the checks refuse is
- * ever the better one. Where the check program declares an objective, a
- * quantity its evaluator computes from a valid answer (`verify.ts`, `OBJECTIVE`), its direction is a
- * term of the comparison, fixed at its start (`comparison.started`, `objective`). The value is the
- * host's: no value the answer reports about itself is read. The weights and floors are this tree's
- * constants: a comparison continued under other code is refused by its condition, so no comparison
- * is ever scored by a tree other than the one it began under.
- *
- * Every held-out task is compared (`task.ts`). The starter comparison uses the Starter Built Harness,
- * which is the first reference and the fixed lower one after a promotion, and the A/A comparison sets
- * the reference harness against itself on halves of its own solves (`pairsOf`, `halves`), read as two
- * harnesses are.
- *
- * The pairs are a view over the log (`pairsOf`). A solve counts for a side when its start names
- * the comparison, and its condition names the task, that side's harness, the test side and the
- * setting the comparison is made under (`condition.ts`). A comparison's solves are the ones it
- * started itself, so the two sides are solved afresh at every comparison: a condition names the
- * host's code, which changes between comparisons, and one frozen draw of the reference harness's
- * solves would bias every later comparison read against it (the review of 2026-10-09, findings 6
- * and 7). A side's solves are in the order they started, and where a side holds more than the
- * comparison asked for the first started are taken, since the order solves ended in would take the
- * quick ones; a task with fewer on a side is in no pair, and named (`short`).
- *
- * The step rule, tally and test live here; the campaign applies the reading.
+ * The weights and floors are this tree's constants, and a comparison continued under other code is
+ * refused by its condition, so none is scored by two sets of them. How each ending of a solve
+ * enters a pair is `.claude/skills/comparison-reading/references/draw-and-solves.md`, and the
+ * dated record behind each rule here is `references/tally-and-test.md`, "The record".
  */
 import { sha256 } from "../meta/digest.ts";
 import { asRecord, isNumber, type JsonObject } from "../meta/json-shape.ts";
@@ -167,62 +94,20 @@ interface Sides {
 const POWER = 0.8;
 /** What a report holds for a retained set no task was tallied in: no reading, never no loss. */
 export const UNMEASURED = "unmeasured" as const;
-/**
- * Two measures within this share of the larger are one measure: what floating-point arithmetic
- * leaves between two answers of the same value, and nothing a harness did. 22 of 4,852 pairings of
- * valid answers in the 11 campaigns of 14 to 19 October differed by less.
- *
- * Until 19 October a margin stood here, 0.01 of the larger magnitude by default and a term of each
- * comparison (`--margin`); from 12 to 18 October the last A/A set it from the reference's own
- * spread. It turned wins into ties and protected no reading. Replayed on the solves of those 18
- * campaigns, the A/A of 38 comparisons read no step at 0.01 or at 0, and at 0 the reference
- * against itself won 140 untied tasks and lost 139, where the new harness won 23 of 24 in r2's
- * comparison g-3, which read 4-0-20 at 0.01; the same solves promote 14 pairs where they promoted
- * 12. The sign-flip test already reads how often equal harnesses win a task by the objective, so a
- * difference the test does not trust is a tie of the test's own, and none is needed of the pair's.
- */
+/** Two measures within this share of the larger are one measure: what floating-point arithmetic
+ *  leaves between two answers of the same value, and nothing a harness did. */
 const SAME = 1e-9;
-/**
- * The least improvement by the objective worth counting, as a share of the larger magnitude: the
- * objective gap floor. One judgement in every place it is asked: two valid answers closer than it tie in a
- * pair (`told`),
- * and an answer on record better than one of a harness's own by less leaves that harness no room on
- * the task (`hasObjectiveGap`), which decides task admission, the frontier and `roomOf`.
- *
- * In buffer-fresh-opus-r6 every solve of both sides was valid on all 24 tasks of comparison g-2,
- * which read 23-0-1 and promoted on gains of 0.01% to 0.65%: at this floor the same solves read
- * 3-3-18, and its task admission held 10 of the 29 drafts it held at `SAME`. The sign-flip test says whether
- * a difference is believable, and the floor whether it is worth counting: six tasks with room won by
- * 0.01% read p = 0.016 and promoted. It declines smaller gains even where they are consistent. A
- * `--room` term set it per campaign for a day; no campaign named one, and on 21 October the operator
- * chose one fixed floor. Until 21 October each comparison recorded it at its start; this tree reads
- * every comparison at it.
- */
+/** The least improvement by the objective worth counting, as a share of the larger magnitude: the
+ *  objective gap floor. Two valid answers closer than it tie in a pair (`told`), and an answer on
+ *  record better than one of a harness's own by less leaves it no room on the task
+ *  (`hasObjectiveGap`), which decides task admission, the frontier and `roomOf`. The test says
+ *  whether a difference is believable, and the floor whether it is worth counting. */
 export const ROOM = 0.01;
 
-/**
- * How much each measure weighs in a task's score (`pointsOf`): whether an answer was valid, then
- * between two valid answers how much better it is by the objective.
- * Each measure is the mean over the task's pairings of a solve of each side, from -1 to 1, and a
- * pairing counts on one measure only, so a task's score runs from -0.6 to 0.6 and is read in
- * thousandths (`POINTS`), -600 to 600, by the one test.
- *
- * Until 21 October a task was read by validity, then the objective, then the bill, one rule to a
- * task, and the size of a gain counted nowhere: a harness that won 23 tasks by 0.01% read as
- * strongly as one that halved every bill. The operator then chose a score of weighted measures
- * (60, 30 and 10, in steps of five). Replayed on 74 recorded comparisons, it reads 52 steps where 47
- * were read, and none of the 26 A/A comparisons reads one; the five steps it drops rested on objective
- * gaps of a ten-thousandth, and the ones it adds mostly halved the bill on tasks that otherwise tied.
- * The test reads the signs of the task scores more than their size, so a harness a little better on
- * enough tasks still steps: the floor (`ROOM`) sets the least gain a pairing counts. The bill's
- * tenth went on 2 November (above), leaving these two as they were.
- * The weights are a constant of the tree, as the floors are, and this tree reads every comparison by
- * them, those begun before 21 October included: the report each wrote is its record.
- */
+/** How much each measure weighs in a task's score (`pointsOf`). Each measure is its mean over the
+ *  task's pairings, from -1 to 1, and a pairing counts on one measure only, so a task's score runs
+ *  from -600 to 600 thousandths (`POINTS`). */
 export const WEIGHTS: Measures = { validity: 0.6, objective: 0.3 };
-/** The objective's gain, as a share of the larger magnitude, at which a pairing takes the whole of
- *  the objective's weight: an answer a tenth better. */
-export const FULL = 0.1;
 /** A task's score in whole points: thousandths, since the test's convolution is over whole numbers. */
 const POINTS = 1000;
 /**
@@ -293,8 +178,7 @@ export function readsStep(scores: readonly number[], level: number): boolean {
 /** Whether a reading of one harness against itself reads a step either way at `level`, as a
  *  comparison would read a step whichever sample it took for the new harness. Its two sides are
  *  interchangeable by construction, so such a step says the comparison moved, not a harness. The
- *  whole-run reader and the UI count it so, and no move waits on it: until 20 October the table
- *  ended a campaign on its epoch's first. */
+ *  whole-run reader and the UI count it so, and no move waits on it. */
 export function readsStepEitherWay(scores: readonly number[], level: number): boolean {
   return (
     readsStep(scores, level) ||
@@ -368,22 +252,12 @@ export function measuresIn(value: unknown): Measures | undefined {
   return isNumber(validity) && isNumber(objective) ? { validity, objective } : undefined;
 }
 
-// Two other readings of a tally, the trinomial test and the chance that the new harness is the
-// better one, decide nothing and are not built: their formulas and what they read of the recorded
-// comparisons are in `7f0add79:docs/plan.md`, "Statistical power and cost" (row C3).
-
 /**
- * Whether a task tells something of the harness on `side` (the overhaul plan's one definition of
- * informative, section 4b, the one `try_task` admitted a draft by until 1 November, and whose objective half the
- * exhausted fold reads, `hasObjectiveGap`): valid on some of its solves and not all; valid on all
- * where a better answer is on record (`hasObjectiveGap`); or valid on none where the task is among
- * `feasible`, the versions a valid answer is on record for (`poolOf`, `reports.ts`): another
- * harness's, a reference room solve's, or its author's. A task it answers alike in every
- * solve, at the best answer on record, leaves it nothing to gain on, and so does one it fails in
- * every solve that nobody has answered. Until 15 October a task the reference failed in every
- * solve was never informative, so once a promoted harness passed every scored solve (buffer-149's
- * 68 of 68 in two comparisons, recode-151's 56 of 56, buffer-159-opus's 38 of 40) its room was
- * only the tasks it answered some of the time, and task admission held out only such drafts.
+ * Whether a task tells something of the harness on `side`: valid on some of its solves and not all;
+ * valid on all where a better answer is on record (`hasObjectiveGap`); or valid on none where the
+ * task is among `feasible`, the versions a valid answer is on record for (`poolOf`, `reports.ts`).
+ * A task it answers alike in every solve, at the best answer on record, leaves it nothing to gain
+ * on, and so does one it fails in every solve that nobody has answered.
  */
 export function informative(
   pair: Paired,
@@ -401,14 +275,8 @@ export function informative(
  * of the side's own valid answers: another of its own, the other side's, or `best`, its author's
  * (`task.feasible`). A harness that reaches it wins the pairs against that answer, so the task has
  * room. False where the pair carries no objective; a valid answer with no measure is compared with
- * nothing.
- *
- * The author's answer counts because it proves a better answer exists, which is the room a better
- * harness can take; it never reaches a solver. On 21 October it counted from solves alone for a few
- * hours: a live Examiner then had 7 of 7 drafts refused, three of them with an answer of its own 3%
- * to 20% cheaper than every reference solve's, because the reference repeated one recipe within the
- * floor. The floor is what keeps the author's precision out: in buffer-fresh-opus-r6 its answers
- * held drafts by a hundredth of a percent.
+ * nothing. The author's answer counts because it proves a better answer exists, which is the room
+ * a better harness can take; it never reaches a solver.
  */
 export function hasObjectiveGap(pair: Paired, side: "old" | "fresh", best: number | null): boolean {
   return (
@@ -439,20 +307,21 @@ export function objectiveGap(
  *  The floor plays no part: this is the fact a floor is held to. */
 function gainOver(rule: ObjectiveRule, one: number | null, other: number | null): number | null {
   if (one === null || other === null) return null;
-  // How far apart they are, as a share of the larger magnitude.
+  // How far apart they are, as a share of the larger magnitude, and at most one: two measures
+  // either side of zero would otherwise be up to two apart, past the objective's weight.
   const larger = Math.max(Math.abs(one), Math.abs(other));
-  const gap = larger === 0 ? 0 : Math.abs(one - other) / larger;
+  const gap = larger === 0 ? 0 : Math.min(1, Math.abs(one - other) / larger);
   if (gap <= SAME) return 0;
   return (rule.direction === "lower") === one < other ? gap : -gap;
 }
 
 /** How much better the new side's answer of pairing (`f`, `o`) is by the objective, between two
- *  valid answers: its gain as a share of `FULL`, at most one either way; 0 under the floor (`ROOM`)
- *  or where a measure is missing. */
+ *  valid answers: its gain as a share of the larger magnitude, which `gainOver` bounds at one
+ *  either way; 0 under the floor (`ROOM`) or where a measure is missing. */
 function told(pair: Paired, f: number, o: number): number {
   const rule = pair.objective;
   const gain = rule === undefined ? 0 : (gainOver(rule, rule.fresh[f] ?? null, rule.old[o] ?? null) ?? 0);
-  return Math.abs(gain) < ROOM ? 0 : Math.max(-1, Math.min(1, gain / FULL));
+  return Math.abs(gain) < ROOM ? 0 : gain;
 }
 
 /** One task's score by measure, the new side's against the reference's over every pairing of a solve
@@ -496,9 +365,7 @@ export function differenceOf(pair: Paired, kept: Kept = "scored"): number {
 /** The measure that carried a task's result from its points (`pointsOf`), null for a tie: validity
  *  where its points alone share the score's sign, and otherwise the objective. It reads points
  *  rather than a pair so that the promotion tuner, which scales them by other weights, credits a
- *  win by this rule too: until 29 October it credited the first measure with positive points. Until
- *  2 November it also named the bill (in buffer-fresh-opus-v065-a's g-3 the bill carried 25 of 25
- *  wins). */
+ *  win by this rule too. */
 export function carriedBy(points: Measures): keyof Measures | null {
   const score = scoresOf(points);
   const sign = Math.sign(score.scored);
@@ -561,12 +428,13 @@ export function draw(versions: readonly string[], count: number, seed: string): 
 
 /**
  * The pairs a comparison of two harnesses reads, for `versions`, from the log alone, each side cut
- * to the first `solves` it started. A solve counts for a side when its start names the comparison,
- * its condition names the task, that side's harness, the test side and the comparison's setting,
- * and it ended in a pass or a fail; a non-result was solved again. A task with fewer than `solves`
- * on a side is in no pair and named in `short`, as a resume may leave one. A disputed version is
- * left out on both sides and named in `disputed`, so a dispute can remove a task from the test and
- * cannot make a win. Any other version that is no held-out task is refused.
+ * to the first `solves` it started, since the order solves ended in would take the quick ones. A
+ * solve counts for a side when its start names the comparison, its condition names the task, that
+ * side's harness, the test side and the comparison's setting, and it ended in a pass or a fail; a
+ * non-result was solved again. A task with fewer than `solves` on a side is in no pair and named in
+ * `short`, as a resume may leave one. A disputed version is left out on both sides and named in
+ * `disputed`, so a dispute can remove a task from the test and cannot make a win. Any other version
+ * that is no held-out task is refused.
  */
 export function pairsOf(
   events: readonly LogEvent[],

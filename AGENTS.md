@@ -351,8 +351,8 @@ harnesses. `provider`, `sandbox-crash`, `killed`, `moved-files`, `check` and
 
 **The tally** (`pointsOf`, `WEIGHTS`, `src/kernel/compare.ts`) weighs two measures: validity
 0.6 and the objective 0.3. The objective counts only between two valid answers, so a refused
-answer is never the better one, and two answers closer than 1% by it tie on it. What a solve
-billed is reported and decides nothing.
+answer is never the better one; two answers closer than 1% by it tie on it, and past that a
+pairing gains its share of the larger measure. What a solve billed is reported and decides nothing.
 
 **The test** is an exact one-sided sign-flip test on the nonzero task scores; ties are excluded. A
 step is read on these scores at the level (0.02 by default, kept by each campaign's opening).

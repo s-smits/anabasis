@@ -89,12 +89,13 @@ it("credits a won task to the measure that carried it, the bill where a tree bef
     weights: { ...own.weights, bill: 0.1 },
     points: (pair) => ({ ...own.points(pair), bill: pair.task === "rescued" ? 100 : 0 }),
   };
-  // Valid in four solves of four against three, worse by 9% on the objective and billed half.
+  // Valid in four solves of four against three, four times the reference's measure by a lower-is-
+  // better objective, and billed half.
   const rescued: Paired = {
     task: "rescued",
     old: [false, true, true, true],
     fresh: [true, true, true, true],
-    objective: { direction: "lower", old: [null, 1000, 1000, 1000], fresh: [1090, 1090, 1090, 1090] },
+    objective: { direction: "lower", old: [null, 1000, 1000, 1000], fresh: [4000, 4000, 4000, 4000] },
     used: {
       old: Array.from({ length: 4 }, () => ({ billed: 2 })),
       fresh: Array.from({ length: 4 }, () => ({ billed: 1 })),

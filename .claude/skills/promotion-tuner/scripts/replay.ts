@@ -10,7 +10,7 @@
  * pairs again, and the tree's `pointsOf` scores each task by validity, the objective and the bill.
  * `--weights` weighs those measures otherwise without a candidate tree: each measure's points are
  * its mean over the pairings times its weight, so the tree's points are divided by its own weight
- * and multiplied by the one asked. The floors (`ROOM`, `FULL`, `CHEAPER`) shape the mean itself, so
+ * and multiplied by the one asked. The floor (`ROOM`) shapes the mean itself, so
  * a floor is changed in a candidate tree. One reading at or under the level over the frontier and
  * retained tasks together promotes only where the tree's own rule reads a step (`readsStep`, by
  * `stepOf`: without the bill from 31 October, both ways from 25 October), at the recorded level or

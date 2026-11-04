@@ -339,12 +339,13 @@ it("uses the promotion reader's settled wrong passes in safeguard nine", async (
       .solvesUnder(read(s.log), present(comparison.fixedIn(read(s.log), ID)))
       .flatMap(({ id, under }) => (under.harness === "old" ? [id] : [])),
   );
-  // Every answer is valid, and the new harness's are lighter: the step is the objective's alone.
+  // Every answer is valid, and the new harness's measure a fifth of the reference's: the step is the
+  // objective's alone, and outweighs the one wrong pass.
   const billed = read(s.log).map((event) =>
     event.kind === comparison.STARTED
       ? { ...event, data: { ...event.data, objective: { direction: "lower" } } }
       : event.kind === "verdict" && isString(event.data.solve)
-        ? { ...event, data: { ...event.data, objective: reference.has(event.data.solve) ? 10 : 8 } }
+        ? { ...event, data: { ...event.data, objective: reference.has(event.data.solve) ? 10 : 2 } }
         : event,
   );
   const fixed = present(comparison.fixedIn(billed, ID));

@@ -905,12 +905,12 @@ describe("a round", () => {
       (version, side) => (version === "s1" ? LATE : { ending: PASS, objective: mass(version, side) }),
       { objective },
     );
-    // A gain of a tenth or more takes the objective's whole weight in each of the four pairings.
-    const full = 1000 * WEIGHTS.objective;
+    // Each pairing gains its share of the larger measure: a fifth on s2 and a tenth on s3.
+    const gained = Math.round(1000 * WEIGHTS.objective * (0.2 + 0.1));
     expect(report).toMatchObject({
       scored: { wins: 2, losses: 0, ties: 2, p: 0.25, unsolved: 1 },
       objective,
-      points: { validity: 0, objective: 2 * full },
+      points: { validity: 0, objective: gained },
       reading: NO_STEP,
     });
     // The objective is a term of the comparison, fixed at its start.

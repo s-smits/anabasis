@@ -34,6 +34,23 @@ describe("each payer's cap", () => {
     expect(capOf({}, "2")).toBeNull();
   });
 
+  it("takes a login's most from its subscription, below its own entry and above the bare number", () => {
+    const env = { ANA_LOGIN_SUBS: "1:ultra,2:max,3:ultra,4:pro200,codex:pro200", ANA_LOGIN_RUNS: "1,3:3" };
+    expect(["1", "2", "3", "4", "5", "codex"].map((login) => capOf(env, login))).toEqual([
+      "4",
+      "2",
+      "3",
+      "1",
+      "1",
+      "4",
+    ]);
+    expect(capOf({ ANA_LOGIN_SUBS: "codex:ultra" }, "codex")).toBe("1");
+    expect(activeLines([], ["1"], [], env)).toEqual([
+      "login 1   0/4 live (ultra)",
+      "codex     0 live, at most 4 a machine (pro200)",
+    ]);
+  });
+
   it("names the Codex login the payer of a launch that seats an openai-codex model, and of no other", () => {
     expect(seatsCodex(["--solver", "openai-codex/gpt-6.1-sol", "--budget", "800"])).toBe(true);
     expect(seatsCodex(["--solver", "claude/claude-opus-5-5"])).toBe(false);

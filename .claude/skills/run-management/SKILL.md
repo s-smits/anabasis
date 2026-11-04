@@ -32,7 +32,7 @@ archived campaign; `copy <name> --to <worktree>` brings this machine's back to g
 | `move <name> --to <host> [--from <host>] [--login N] [--after <event>] [--hold] [--yes] [-- <flags>]` | pauses a campaign at a clean point, takes its folder whole to a new worktree on the other machine at the same commit, sets the source aside and continues it there on its kept flags | `move.ts` |
 | `stop <name> ... [--yes]` | ends the process that writes each log, and its keeper, and releases what its unfinished solves and sessions held | `stop.ts` |
 | `status [--all]` | one row a run: the live ones and those whose log moved in a day, with tree, commit, login, open comparison, comparisons reported, promotions and ending, and on a closed row the hours until it leaves; under the rows, the closed runs it leaves out and the archive's newest campaigns; then each host `ANA_HOSTS` lists, all asked at once and each printed as it answers, within 30 s after cold preparation | `pulse.ts` |
-| `usage [N ...] [--json]` | each login's five-hour and weekly use and, without `--json`, how many runs and simulation seats are live on it on every host (`1/2 active`, out of the most `ANA_LOGIN_RUNS` lets it carry, such as `2,N:4`); without numbers or `--json`, also the pool forecast | `logins.ts` |
+| `usage [N ...] [--json]` | each login's five-hour and weekly use and, without `--json`, how many runs and simulation seats are live on it on every host (`1/2 active`, out of the most `ANA_LOGIN_RUNS` or its subscription in `ANA_LOGIN_SUBS` lets it carry, such as `2,N:4` or `N:ultra`); without numbers or `--json`, also the pool forecast | `logins.ts` |
 | `active` | the runs and simulation seats live on each login by name, on this machine and every host, asking no provider | `logins.ts` |
 | `search <pattern> [--regex] [--ignore-case] [--host <name>]... [--here] [--in logs\|notes\|all] [--max <chars>]` | searches campaign folders, notes and docs on all hosts concurrently; private extra note roots come from `ANA_SEARCH_ROOTS` in `.env.runs`; reports each engine and spills complete matches to a temporary log when output is cut | `search.ts` |
 | `fetch [<name>] [--from <host>]` | a copy of a campaign another machine holds, to read here, into the archive as `data/runs/<host>/<name>/`; with no name, the records (log and receipts) of every campaign the other machines hold, which a timer on the central machine runs every ten minutes | `move.ts` |
@@ -292,9 +292,12 @@ week's pace and a recent pace from a reading 2 to 24 hours old (`poolLines`). A 
 for a move when neither its week nor its five hours is used up and neither window is refused, the
 week that resets soonest first, a nearly spent one included (`room`), which is what `keep` and
 `fresh` read. Each login's head line reads its live runs on every
-host out of the most it carries: the lower of its cap in `ANA_LOGIN_RUNS` and the runs its week
+host out of the most it carries: the lower of its cap and the runs its week
 left fits until its reset, each active 16 of 24 hours, at the rate a run spent between earlier
-readings (`fitOf`). More live runs than the week fits reads `oversubscribed`, as `2/1`.
+readings (`fitOf`). More live runs than the week fits reads `oversubscribed`, as `2/1`. The cap is
+the login's own `N:most` in `ANA_LOGIN_RUNS`, then its subscription in `ANA_LOGIN_SUBS` (two runs on
+`max` or the Codex login's `pro100`, four on `ultra` or `pro200`, printed on its line), then the bare number there (`capOf`); a `subs` line
+sums the subscriptions' most against the runs live on them.
 `status` hides stopped seeds and stopped runs whose logs have not changed for a day unless `--all`;
 a stopped row says how many hours it has left, and the lines under the rows count the hidden runs
 and name the archive's three newest campaigns, so an agent reading `status` alone knows they ran.

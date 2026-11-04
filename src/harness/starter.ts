@@ -201,7 +201,10 @@ export const createDomainHarness: DomainHarnessFactory = (task) => {
 /**
  * What a Builder reads of the harness's files, as `HARNESS.md` in its home.
  *
- * It gives each part of a harness one purpose. On 9 October one Builder shipped its checker three
+ * Each part of a harness has one purpose, which the Builder's system prompt states
+ * (`src/builder/prompt.ts`); this account gives each part's shape. Until 4 November it also held
+ * a table of the purposes, and said again what the prompt and the tools' descriptions say of
+ * choosing a route, of the answer and of `check_harness` and `preview_harness`. On 9 October one Builder shipped its checker three
  * times over: a command-line program, a tool that wrapped it, and a guide that described both;
  * another kept its optimiser as a snippet in the guide, which each solver pasted and ran. The
  * account states what each route costs a solve and leaves the choice to the Builder: a rule that a
@@ -212,31 +215,19 @@ export const createDomainHarness: DomainHarnessFactory = (task) => {
 export const HARNESS_ACCOUNT = `# The Built Harness
 
 A solver is pi's coding agent behind a command wall. A harness is what you add to it. The host
-reads four things under harness/ and nothing else there, and each has one purpose:
-
-| Part | Its one purpose |
-|---|---|
-| agent/tools-spec.json | Which of pi's coding tools the solver has. |
-| .toolchain/ | Programs, which the solver runs by name from its shell. |
-| agent/BUILT_AGENTS.md | Words: what each program and tool is for and how its result is read. |
-| agent/tools.ts | Tools of the harness's own, which the solver has beside pi's tools. |
-
-A computation reaches the solver as a program it runs from its shell, as a tool of the harness's
-own, or as both. Which, and how many, is yours to choose; the section on agent/tools.ts says what
-each costs a solve. Code in the guide for the solver to paste is neither: a trace then shows the
-pasted code and no name. check_harness opens the four parts as a solve would, and preview_harness
-shows what the solver then reads, its tools among it.
+reads four things under harness/ and nothing else there, and a section below gives the shape of
+each. Code in the guide for the solver to paste is neither a program nor a tool: a trace then
+shows the pasted code and no name. What a program and a tool each cost a solve ends the section
+on agent/tools.ts.
 
 ## What every solver has, whatever the harness
 
 - One working directory, its home, kept for the whole task. It holds the task as public/task.json,
   the domain's public rules as files under public/resources/, and the answer's format as
   public/answer-format.json.
-- pi's coding tools, as many as the harness selects: read, bash, edit, write.
 - The answer as a file: the solver writes answer.json in its working directory, and submit sends
   it. The host checks the file against the answer format and refuses one that does not follow it,
-  with the reason. An accepted submit ends the task and returns no verdict. Nothing of the
-  harness's takes the answer.
+  with the reason. An accepted submit ends the task and returns no verdict.
 - A system prompt in pi's own sections: the tool list and the tools' rules, the duty and the solve
   time, the working directory, and the wall's facts: what a command may write and reach, the size of
   the volume, the command time limits, and the programs you installed, by name.
@@ -253,9 +244,9 @@ ${capturedJsonStringify(EXAMPLE.spec, null, 2)}
 ## .toolchain/
 
 Programs for the solver. Every executable in .toolchain/bin, and in a bin, shims or sbin directory
-below it, runs by name in the solver's commands, with .toolchain/bin first on PATH. The solver's
-prompt lists the names. The tree is read-only to the solver. What you install for a program to use,
-an engine or a package, goes in the tree too.
+below it, runs by name in the solver's commands, with .toolchain/bin first on PATH. The tree is
+read-only to the solver. What you install for a program to use, an engine or a package, goes in
+the tree too.
 
 A program of your own keeps to one convention, so that a solver meets the same thing under every
 harness:
@@ -268,8 +259,7 @@ harness:
 - It exits 0 when it ran and what it tested holds, 1 when it ran and something does not hold, and
   2 when it could not run: a missing file, a bad argument. With --help it prints its usage and
   exits 0.
-- It finds its own files from its own path, since the harness runs from another place than your
-  home, and keeps nothing between runs outside the solver's working directory.
+- It keeps nothing between runs outside the solver's working directory.
 
 .toolchain/bin/${CHECKER}, made executable:
 
@@ -279,9 +269,9 @@ ${EXAMPLE.programs[CHECKER].trimEnd()}
 
 ## agent/BUILT_AGENTS.md
 
-The operating guide. The solver reads it whole in its system prompt, as its project's instructions,
-under one sentence saying that it cannot override the public task, tool authority, runtime limits
-or submission rules. Without the file the solver reads no guide.
+The operating guide, in words. The solver reads it whole in its system prompt, once per task, as
+its project's instructions, under one sentence saying that it cannot override the public task,
+tool authority, runtime limits or submission rules. Without the file the solver reads no guide.
 
 Every campaign's first harness, the Starter, carries the starter instructions as this file:
 
@@ -303,10 +293,10 @@ ${EXAMPLE.guide.trimEnd()}
 ## agent/tools.ts
 
 Tools of the harness's own stand beside pi's tools in the solver's list, each under its own name
-with the description and the parameter schema you declare. The solver reads them in every turn, as
-it reads the guide, and calls one as it calls read or bash. A harness may also leave bash out of
-its presets, and the solver then computes through these tools alone. A harness with one tool,
-shown without the shell; its tools-spec.json and tools.ts:
+with the description and the parameter schema you declare, and the solver calls one as it calls
+read or bash. A harness may also leave bash out of its presets, and the solver then computes
+through these tools alone. A harness with one tool, shown without the shell; its tools-spec.json
+and tools.ts:
 
 \`\`\`json
 ${capturedJsonStringify(WITHOUT_SHELL.spec, null, 2)}
@@ -339,7 +329,7 @@ description and schema are in the solver's context on every turn, and a call to 
 arguments the schema names; what comes back is its text. A program is its name in the prompt and
 the guide's line on it, and a call to it is the command the solver types; what comes back is the
 command's output, whole unless the command cuts it. A trace names a tool by its name and a program
-by its command, and practice reports what each solve read and wrote.
+by its command.
 `;
 
 /** Write the Starter Built Harness into `dir`, which is made if it is not there. */

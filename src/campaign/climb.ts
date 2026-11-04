@@ -166,8 +166,8 @@ export function epochsOf(events: readonly LogEvent[]): Epoch[] {
 
 /** The reference's tally without the bill in the first starter comparison within the epoch that
  *  tallied a task, and whether it reads a step for the reference: the starter is that comparison's
- *  new side, so the reference wins what the starter loses. The first, since with no harness
- *  waiting the table names the pair again where tasks are held out after it (`heldSince`,
+ *  new side, so the reference wins what the starter loses. The first, since until 4 November, with
+ *  no harness waiting, the table named the pair again where tasks were held out after it (`heldSince`,
  *  `decide.ts`), mostly after a reading that left no room: until 2 November the last one set
  *  `confirmed`, which let a later draw replace a reading that confirmed nothing. The table owes
  *  the pair until this reads a tally. A report before 26 October holds no unbilled scores and is

@@ -337,7 +337,7 @@ export function opened(
 
 /**
  * The held-out tasks an Examiner session is asked for where no flag names them: what the campaign
- * is short of (`shortOf`, `decide.ts`); undefined where it is short of nothing. Until 11 October it
+ * is short of, at least a sweep (`shortOf`, `decide.ts`); undefined where it is short of nothing. Until 11 October it
  * was the command's default, 12 (buffer was short 9), and from 12 to 13 October twice the target
  * before the first comparison, which two campaigns examined towards for 16 hours.
  */

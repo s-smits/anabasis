@@ -23,11 +23,12 @@ The **Examiner** reads the following view of the log (`src/examiner/record.ts`):
   (`histories`, `poolOf`), whether a valid answer exists, and any objective improvement by the
   reference's or author's answers over a reference answer.
 - Which harness won each task and on which measure (`carriedBy`), authorised on 20 October.
-- A summary of reference outcomes (`measuredLine`, `heldOn`).
-- The gate's results: refusals with their reasons, and, from an earlier log's room solves, the
-  objective gaps (`reference.gap` of `task.gate`) and interrupted drafts.
-- The previous session's `finish` note and home, with the reference harness.
-- Check results obtained through `try_answer`.
+- The last comparison the reference stood in, from its side, with how often its own two solves
+  differed in that comparison's A/A where it sat on the old side (`lastLine`).
+- Each open task's author's grade and sentence on where a solver falls short (`claimOf`), and how
+  the current reference did on the task's tries (`try_reference`, `triedLine`).
+- The promotion line, and the drafts the gate refused under the current reference, by reason.
+- Its home, with the reference harness, and check results obtained through `try_answer`.
 - Of each solve its `try_reference` asked of the reference harness: whether it was valid, its turns
   and measure, or whether the checks refused its answer, a limit ended it or it gave none, or that it
   could not run. A later session's line for the task adds `tried at writing: valid in N of M`, from

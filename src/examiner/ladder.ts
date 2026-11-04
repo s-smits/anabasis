@@ -47,8 +47,6 @@
  * Grades are a measure and never a target: no count or share is named, and code decides nothing on
  * a grade (`AGENTS.md`, section 2, consequence 2). The over-time rule the writing prompt states is
  * relative to measured facts: a grade the reference answers on every solve measures nothing more.
- * That a task measures something only where a valid answer exists is said by each mode's prompt
- * beside the ladder, and no longer here as well (4 November).
  *
  * On 4 November two things moved. `SOLVER`'s second place gave a data form, read from JobBench's
  * statistics tasks that morning; the jobstat draft that followed listed every break in its data

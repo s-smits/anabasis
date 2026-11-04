@@ -523,10 +523,8 @@ function unread(ground: Ground): Move | null {
 }
 
 /**
- * A comparison that draws the tasks held out since the last reading first, before anything is built. With no
- * harness waiting, a starter comparison says whether they leave the reference room before a
- * Builder session is paid for (on 10 October three campaigns built three times on tasks every
- * practice solve passed). After a promotion it is owed until one tallies a task in the epoch,
+ * A comparison that draws the tasks held out since the last reading first, before anything is built.
+ * After a promotion a starter comparison is owed until one tallies a task in the epoch,
  * whatever harness waits, since that reading confirms the promotion (`confirmed`, `climb.ts`, its
  * one reader): a session that changed harness/ beside the Examiner took its move, 5 of 5
  * promotions in the rehearsal of 2 November (sim-postplan) and the base alike. Until 3 November

@@ -71,7 +71,8 @@ export const checks = {
 };
 `;
 
-/** A check program with an objective computed from the answer and the public input alone. */
+/** A check program with an objective computed from the answer and the public input, or, in mode
+ *  `truth`, measured against the value the task was built from, kept hidden. */
 const MEASURED_EVALUATOR = `export const checks = {
   value: (req) => req.artifact.value > 0,
   sees: (req) => req.hidden.length === 0,
@@ -82,6 +83,7 @@ export const objective = (req) => {
   if (mode === "infinity") return Number.POSITIVE_INFINITY;
   if (mode === "string") return "light";
   if (mode === "throws") throw new Error("no scale");
+  if (mode === "truth") return Math.abs(req.artifact.value - req.hidden.truth);
   return req.artifact.value * req.publicTask.publicInput.density;
 };
 `;
@@ -352,6 +354,19 @@ describe.skipIf(!osIsolationSupport().ok)("the objective", () => {
     expect(await measured(task("plain", { density: 3 }), { value: 0 })).toEqual({
       kind: "fail",
       blocking: ["value"],
+    });
+  });
+
+  it("measures an answer against the hidden values the task was built from, while a check that reads none still sees none", async () => {
+    const built = { ...task("plain", { mode: "truth" }), hidden: { truth: 10 } };
+    expect(await measured(built, { value: 7 })).toEqual({ kind: "pass", objective: 3 });
+    expect(await measured({ ...built, hidden: { truth: 4 } }, { value: 7 })).toEqual({
+      kind: "pass",
+      objective: 3,
+    });
+    expect(await measured({ ...built, hidden: { truth: 7 } }, { value: 7 })).toEqual({
+      kind: "pass",
+      objective: 0,
     });
   });
 

@@ -149,9 +149,12 @@ interface Wall {
 }
 
 /** The objective, run as a check is, in a cell of its own: the evaluator's `objective` export,
- *  given the whole answer and the whole public task and no hidden value, with no tool. It is the
- *  author's own computation, so `accept.ts` lists it as a fault until the operator admits it by
- *  name (rule 10). */
+ *  given the whole answer, the whole public task and the task's hidden values, with no tool. It is
+ *  the author's own computation, so `accept.ts` lists it as a fault until the operator admits it by
+ *  name (rule 10). Until 4 November 2026 it was given no hidden value, so an objective could only
+ *  recompute from the public input what the solver could recompute too: jobstath2's g-1 tied 0-0-8
+ *  with 53 of 55 measures at 1.0. Measured against what the task was built from, such as the
+ *  parameters that generated its data, it has a best value no recomputation reaches. */
 export const OBJECTIVE: BriefTruthCheck = {
   id: "objective",
   citedDecisionIds: [],
@@ -159,7 +162,7 @@ export const OBJECTIVE: BriefTruthCheck = {
     families: "all",
     artifactPaths: ["$"],
     publicInputPaths: ["$"],
-    hidden: "none",
+    hidden: "whole",
     evidence: { kind: "authored" },
   },
 };

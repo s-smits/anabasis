@@ -110,15 +110,15 @@ export const SEATS = {
     tests: [
       {
         file: "test/examiner-record.test.ts",
-        name: "opens a session with the lines and then the measurement, naming no harness, no answer and no verdict of the author's work",
+        name: "opens a session with the last comparison, then the tasks, then the refusals, naming no harness, no answer and no verdict of the author's work",
       },
       {
         file: "test/examiner-record.test.ts",
-        name: "measures the reference across the exam in the last comparison it stood in, never one between two other harnesses",
+        name: "tells its tally from the reference's side, every, some and none of its solves valid, the tasks set aside and its own solves set against each other",
       },
       {
         file: "test/examiner-record.test.ts",
-        name: "after a promotion, tells nothing that the replaced reference's task admissions read",
+        name: "says the reference was promoted and how many tasks were held before then, and tells only the refusals since, by reason",
       },
       {
         file: "test/examiner.test.ts",

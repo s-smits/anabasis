@@ -66,7 +66,7 @@
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { EXAMINE } from "#src/campaign/admission.ts";
-import { gateAnswers, measuredGate } from "#src/examiner/record.ts";
+import { gateAnswers, measuredGate } from "#tools/wri/gate-era.ts";
 import type { writing as Writing } from "#src/examiner/write.ts";
 import type { examineCommand as ExamineCommand } from "#tools/d1b/examine.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";

@@ -437,7 +437,7 @@ export function objectiveGap(
 /** How much better `one` is than `other` by the objective, as a share of the larger magnitude:
  *  negative where it is worse, 0 where they are one measure (`SAME`), null where one is missing.
  *  The floor plays no part: this is the fact a floor is held to. */
-export function gainOver(rule: ObjectiveRule, one: number | null, other: number | null): number | null {
+function gainOver(rule: ObjectiveRule, one: number | null, other: number | null): number | null {
   if (one === null || other === null) return null;
   // How far apart they are, as a share of the larger magnitude.
   const larger = Math.max(Math.abs(one), Math.abs(other));

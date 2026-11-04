@@ -83,6 +83,8 @@ export const SOUND: Draft = {
 };
 const LIMITS = { wallSeconds: 600, turns: 12, puts: 4 };
 const IDS = { draft: "d-1", write: "x-1" } as const;
+/** What an author says of each draft it puts: its grade and where a solver falls short. */
+export const CLAIM = { grade: 3, stops: "A solver that drops the unit gives no valid answer." };
 const scratches: string[] = [];
 
 export const call = (name: string, args: JsonObject) =>
@@ -91,11 +93,13 @@ export const finish = call("finish", { note: NOTE });
 /** A turn the provider failed, with what it said. */
 export const failed = (said: string) => fauxAssistantMessage("", { stopReason: "error", errorMessage: said });
 export const bash = (command: string) => call("bash", { command });
-/** An instance as a writing session's tools take it; a null base is one the gate refuses. */
+/** An instance as `propose_tasks` takes it, with its author's claim; a null base is one the gate
+ *  refuses. */
 export const instance = (base: number | null) => ({
   family: "fixture",
   public_input: base === null ? null : { base },
   hidden: { seed: 1 },
+  ...CLAIM,
 });
 export const propose = (...bases: (number | null)[]) => call("propose_tasks", { tasks: bases.map(instance) });
 /** A draft as `draft_exam` takes its arguments. */

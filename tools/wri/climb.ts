@@ -14,7 +14,7 @@
 import { pairsReported } from "#src/kernel/reports.ts";
 import { epochsOf as epochsRead } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";
-import { gateAnswers } from "#src/examiner/record.ts";
+import { gateAnswers } from "./gate-era.ts";
 import { differenceOf, flipP, informative, type Kept, type Paired } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { asRecord, isNumber } from "#src/meta/json-shape.ts";

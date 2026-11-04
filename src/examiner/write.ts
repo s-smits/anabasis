@@ -18,8 +18,10 @@
  * comparison's to read.
  *
  * An Examiner is a new process each session, so the host keeps what a session cannot: an instance
- * held or refused is not taken again, the session's home is carried into the next
- * (`Wall.keep`, `shell.ts`), and what a session said at its `finish` opens the next. An instance is
+ * held or refused is not taken again, and the session's home is carried into the next
+ * (`Wall.keep`, `shell.ts`). Until 4 November what the last session said at its `finish` opened the
+ * next; it reached 13 of 80 sessions, and the author's grade and words on each draft (`claim`,
+ * beside the task in `task.proposed`) take its place on the task's own line. An instance is
  * logged whole with its proposal, hidden values too, so a later solve needs the log alone; no tool
  * here returns a line of the log. An author's accepted answer is kept for the Referee
  * (`task.feasible`). read_example also serves the author's earlier drafts, so recovery needs no
@@ -27,6 +29,10 @@
  * On 26 October, all 64 proposals in one campaign repeated input already sent to try_answer,
  * totalling 1,148,964 characters. A checked instance can now be proposed by its content reference,
  * with the same identity and gate as a full instance, for the rest of this session.
+ *
+ * Each draft carries its author's grade on the ladder and one sentence on where a solver falls
+ * short of it (4 November). It is logged beside the task and never inside it, so the task's version,
+ * its content and everything a solver or a Builder reads of it are the same whatever was claimed.
  */
 import type { SeatTool } from "../agent/session.ts";
 import { Type } from "typebox";
@@ -40,12 +46,14 @@ import type { Task, Verdict, Verifier } from "../kernel/verify.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
 import { isNumber, isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
+import { boundText } from "../meta/bounded-text.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
 import { ending, text, tool } from "../tools/answer.ts";
+import { GRADES } from "./ladder.ts";
 import { type CheckRow, firstMessage, type SolveBudget, systemPrompt } from "./prompt.ts";
+import { heard } from "./record.ts";
 import type { Walls } from "./shell.ts";
-import { heard, measuredGate as admissionSettled } from "./record.ts";
 
 /** What a task-writing session is handed: who sits, as far as this mode reads it, and its campaign. */
 interface Terms {
@@ -96,18 +104,42 @@ interface Desk {
   readonly refused: string[];
 }
 
+/** A draft taken from a batch under its task id, with what its author said of it. */
+interface Drafted {
+  readonly instance: Task;
+  readonly claim: Claim;
+}
+
 /** The event a task admission writes of each draft (`admitDraft`). */
 const TASK_ADMISSION = "task.gate";
 /** What only the checks read of an instance, as each tool that takes one describes it. */
 const HIDDEN = Type.Unknown({ description: "Null when the task has none." });
+/** What its author says of a draft it puts, as the system prompt's "What you put" asks. */
+const CLAIM = {
+  grade: Type.Integer({
+    minimum: 0,
+    maximum: GRADES.length - 1,
+    description: "Your grade for it on the scale.",
+  }),
+  stops: Type.String({ minLength: 1, description: "One sentence on where a solver falls short on it." }),
+};
+/** The most of an author's sentence the log keeps. */
+const STOPS_BYTES = 160;
 const INSTANCE = Type.Object({
   family: Type.String({ minLength: 1 }),
   public_input: Type.Unknown(),
   hidden: HIDDEN,
+  ...CLAIM,
 });
 const REFERENCE = Type.Object({
   reference: Type.String({ description: "The instance reference returned by try_answer in this session." }),
+  ...CLAIM,
 });
+/** An author's claim on a draft, as the log keeps it beside the task. */
+interface Claim {
+  readonly grade: number;
+  readonly stops: string;
+}
 /** A planted author's answer would reach the solver as task content. Accepted author answers
  *  stay on the exam side as `task.feasible`, for the Referee, rather than inside the task. */
 const PLANTED =
@@ -181,13 +213,19 @@ function refusalOf(contract: Contract, task: TaskPackage, planted: ReadonlySet<s
 
 /** One proposed instance and its reply. Once held, the author's last passing answer on its content
  *  is checked again under the task's own id and kept for the Referee where it still passes. */
-async function admitDraft(desk: Desk, instance: Task): Promise<string> {
+async function admitDraft(desk: Desk, { instance, claim }: Drafted): Promise<string> {
   const { request } = desk;
   const { log, id: session, verify } = request;
   const task = request.pack(instance);
   const version = taskVersion(task);
   const { taskId, family, publicInput, hidden } = instance;
-  append(log, "task.proposed", { version, taskId, session, task: { taskId, family, publicInput, hidden } });
+  append(log, "task.proposed", {
+    version,
+    taskId,
+    session,
+    task: { taskId, family, publicInput, hidden },
+    claim: { grade: claim.grade, stops: boundText(claim.stops, STOPS_BYTES).text },
+  });
   const reason = refusalOf(request.contract, task, desk.planted);
   const answer = desk.answered.get(contentOf(instance));
   const outcome = reason === null ? { outcome: "passed" } : { outcome: "refused", reason };
@@ -223,7 +261,7 @@ function spent(desk: Desk): boolean {
 function proposeTool(desk: Desk): SeatTool {
   const { id, limits } = desk.request;
   /** One instance of a batch: why it was not taken, or the instance under its task id. */
-  const taken = (instance: Omit<Task, "taskId">, stop: AbortSignal): string | Task => {
+  const taken = (instance: Omit<Task, "taskId">, claim: Claim, stop: AbortSignal): string | Drafted => {
     const content = contentOf(instance);
     const before = desk.seen.get(content);
     if (before === "now") return "An instance proposed before was not taken again.";
@@ -235,7 +273,7 @@ function proposeTool(desk: Desk): SeatTool {
     if (stop.aborted) return "An instance was not taken: the session has ended.";
     desk.seen.set(content, "now");
     desk.proposed += 1;
-    return { ...instance, taskId: `${id}-${String(desk.proposed).padStart(3, "0")}` };
+    return { instance: { ...instance, taskId: `${id}-${String(desk.proposed).padStart(3, "0")}` }, claim };
   };
   return tool({
     name: "propose_tasks",
@@ -256,11 +294,12 @@ function proposeTool(desk: Desk): SeatTool {
       if (spent(desk)) throw new Error("This session can propose no further task. Call finish.");
       // Take the call's instances before the gate reads them, so a batch may exceed what is wanted.
       const instances = args.tasks.map((given) => {
-        if (!("reference" in given)) return taken(instanceOf("", given), signal);
+        const claim = { grade: given.grade, stops: given.stops };
+        if (!("reference" in given)) return taken(instanceOf("", given), claim, signal);
         const checked = desk.checked.get(given.reference);
         return checked === undefined
           ? `Unknown instance reference ${given.reference}. Known references: ${desk.checked.size === 0 ? "none" : [...desk.checked.keys()].join(", ")}.`
-          : taken(checked, signal);
+          : taken(checked, claim, signal);
       });
       // How many of its drafts the session has put: told the limit at the opening alone, esp32-fresh-opus-terra's
       // x-2 and x-3 met it unawares with a draft still unproposed (27 October).
@@ -382,15 +421,13 @@ function tryTool(desk: Desk, verify: Verifier): SeatTool {
 }
 
 /**
- * The instances earlier sessions wrote that their gate read. One whose session was cut before its
- * gate wrote anything is no task of the campaign's, and may be proposed again, as may one an
- * earlier log's room solves refused unmeasured (`measuredGate`, `record.ts`).
+ * The instances earlier sessions wrote that a gate read. One whose session was cut before its gate
+ * wrote anything is no task of the campaign's, and may be proposed again. Until 4 November so could
+ * one an earlier log's room solves refused unmeasured; no gate since 1 November leaves one so.
  */
 function admittedDrafts(events: readonly LogEvent[]): Task[] {
   const admissions = new Set(
-    events.flatMap(({ kind, data }) =>
-      kind === TASK_ADMISSION && admissionSettled(data) ? [data.version] : [],
-    ),
+    events.flatMap(({ kind, data }) => (kind === TASK_ADMISSION ? [data.version] : [])),
   );
   return proposalsOf(events).flatMap(({ version, task }) =>
     task !== null && admissions.has(version) ? [task] : [],
@@ -424,18 +461,12 @@ export function writing(
     held: [],
     refused: [],
   };
-  // What the last Examiner session that finished under the reference harness said at its
-  // `finish`, where one did. A note written under a reference since replaced is about the tasks
-  // that one failed: main0_5_1's x-6 and buffer-159-opus's x-8 opened on one (16 October).
-  const epoch = before.slice(before.findLastIndex(({ kind }) => kind === "harness.promoted") + 1);
-  const note = epoch.findLast(({ kind, data }) => kind === "exam.finished" && isString(data.note))?.data.note;
   return {
     kind: "exam" as const,
     system: systemPrompt(reference),
     opening: firstMessage(request.contract, request.checks, heard(before, request.tasks), limits, {
       brief: openingOf(before)?.prompt ?? null,
       budget: request.budget,
-      lastNote: isString(note) && note.trim() !== "" ? note : null,
     }),
     started: {
       limits: { wallSeconds: limits.wallSeconds, turns: limits.turns, proposals: limits.puts, tasks: wanted },
@@ -451,8 +482,7 @@ export function writing(
     ],
     enters: "a task enters it through propose_tasks alone",
     nudge: "Propose further tasks",
-    finish:
-      "End the session. Say in one or two sentences what kinds of task you wrote, which kinds the gate held and refused, and what you would try next.",
+    finish: "End the session, with a sentence or two for the log on what you wrote.",
     // Until 30 October a session with no proposal left was still asked for more: 6 of 206
     // declined finishes came after the allowance was spent, 20 turns that could propose nothing.
     get declined() {

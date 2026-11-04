@@ -58,6 +58,8 @@ const FIXTURE = new URL("fixtures/harness-min", import.meta.url).pathname;
 /** A check's id and a Referee's reason: verifier-side text no Builder may be shown. */
 const CHECK = "check-canary-51c2";
 const REASON = "reason-canary-9d07";
+/** What every proposal's author claims of it in `setup`: exam-side, so no Builder reads it. */
+const SETUP_CLAIM = "claim-setup-3e8";
 const CONTRACT: Contract = {
   answerFormat: { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] },
   conventions: "SI units.",
@@ -112,8 +114,9 @@ async function setup(
   mkdirSync(home);
   mkdirSync(host);
   const record_ = (kind: EventKind, data: JsonObject) => append(log, kind, data);
+  // Each with its author's claim, which stays on the exam side.
   for (const version of ["v0", "v1", "v2", "v3"]) {
-    record_("task.proposed", { version });
+    record_("task.proposed", { version, claim: { grade: 3, stops: SETUP_CLAIM } });
     record_("task.gate", { version, gate: 1, outcome: "passed" });
   }
   record_("task.state", { version: "v1", state: "released" });
@@ -1070,24 +1073,27 @@ describe("a Builder session", () => {
 describe("what crosses to the Builder", () => {
   /** What a campaign keeps from its Builder: the check that refused an answer, the Referee's
    *  reason, the hidden value of a held-out task and of a practice task, which held-out task the
-   *  comparison's new harness won. */
+   *  comparison's new harness won, and what the Examiner said of each task when it put it. */
   interface Kept {
     readonly check: string;
     readonly reason: string;
     readonly hidden: string;
     readonly won: "h1" | "h2";
+    readonly claim: string;
   }
   const ONE: Kept = {
     check: "check-one-7a1",
     reason: "reason-one-7a1",
     hidden: "hidden-one-7a1",
     won: "h1",
+    claim: "claim-one-7a1",
   };
   const OTHER: Kept = {
     check: "check-two-c4e",
     reason: "reason-two-c4e",
     hidden: "hidden-two-c4e",
     won: "h2",
+    claim: "claim-two-c4e",
   };
   const FRESH = "f".repeat(64);
 
@@ -1129,7 +1135,13 @@ describe("what crosses to the Builder", () => {
         publicInput: { base: 3 },
         hidden: kept.hidden,
       };
-      append(log, "task.proposed", { version, taskId: task.taskId, session: "x-1", task });
+      append(log, "task.proposed", {
+        version,
+        taskId: task.taskId,
+        session: "x-1",
+        task,
+        claim: { grade: 3, stops: kept.claim },
+      });
       append(log, "task.gate", { version, gate: 1, outcome: "passed" });
       append(log, "task.feasible", { version, session: "x-1", answer: kept.hidden });
     }
@@ -1246,7 +1258,16 @@ describe("what crosses to the Builder", () => {
     expect(one).toContain("You have not called finish");
     expect(one).toContain("practice/t-1.json");
     for (const kept of [ONE, OTHER]) {
-      for (const canary of [kept.check, kept.reason, kept.hidden, "x-h1", "x-h2", "g-1-h"]) {
+      for (const canary of [
+        kept.check,
+        kept.reason,
+        kept.hidden,
+        kept.claim,
+        SETUP_CLAIM,
+        "x-h1",
+        "x-h2",
+        "g-1-h",
+      ]) {
         expect(one).not.toContain(canary);
       }
     }

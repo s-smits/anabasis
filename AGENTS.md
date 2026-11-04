@@ -157,7 +157,7 @@ feedback shaping the exam on 20 October. Only the following information crosses 
   (the quantity and which way is better);
 - the public part of each released (practice) task;
 - for a practice solve: its ending's outcome and kind, the solver's trace and, under an objective,
-  the verifier's measure of a valid answer;
+  the verifier's measure of a valid answer and of the task author's best answer on record;
 - for each comparison: the tally and the reading, naming no task;
 - host limits, the remaining budget, how many held-out and practice tasks the campaign holds, and
   the move table's fixed advice.

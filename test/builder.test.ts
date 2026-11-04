@@ -735,6 +735,33 @@ describe("a Builder session", () => {
     expect(plain.sent[2]).toContain("passed 2 of 2.");
   });
 
+  it("is told an author's better answer on a released task under an objective, and nothing of a held-out one's", async () => {
+    // A harness that answers alike in every solve still leaves room where its author's answer is
+    // better; until 4 November the Builder was told only its own measures and read that as none.
+    const objective = { ...CONTRACT, objective: { quantity: "cost", direction: "lower" as const } };
+    const steps = [edit, call("practice", { tasks: ["t-1"] }), finish];
+    const told = async (authored: readonly (readonly [string, number])[]) => {
+      const s = await setup(steps, [], false, CHECK, objective);
+      for (const [version, measure] of authored) {
+        append(s.request.log, "task.feasible", {
+          version,
+          session: "x-1",
+          answer: { answer: "1" },
+          objective: { quantity: "cost", direction: "lower", measure },
+        });
+      }
+      await session(s.request, s, s.walled);
+      // The practice result's text alone, since a context also carries the clock and durations.
+      return /"toolName":"practice","content":(.*?),"details"/.exec(s.sent[2] ?? "")?.[1] ?? "";
+    };
+    expect(await told([["v1", 12]])).toContain("An answer on record that no harness gave measures 12.");
+    // v3 is held out: its author's measure, whatever it is, changes nothing the Builder reads.
+    const none = await told([]);
+    expect(none).not.toContain("no harness gave");
+    expect(await told([["v3", 5]])).toBe(none);
+    expect(await told([["v3", 7]])).toBe(none);
+  });
+
   it("is not given the correctness model a v1 state carries, whose exam holds hidden values", async () => {
     const s = await setup([finish]);
     // A v1 state keeps it at its root and again under each bundle snapshot.

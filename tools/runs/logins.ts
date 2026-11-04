@@ -66,6 +66,7 @@ import {
   ahead,
   assess,
   type Assessment,
+  byTime,
   HORIZON,
   sameWindow,
   type Snapshot,
@@ -577,7 +578,7 @@ export function modelLines(
  *  earlier reading counted on it. A person's own session on a login is charged to its runs, so the
  *  rate errs high. Null below `LEAST_RUN_HOURS`. */
 export function perRunRate(history: readonly Snapshot[]): number | null {
-  const sorted = history.toSorted((one, other) => one.at - other.at);
+  const sorted = byTime(history);
   const spans = sorted.flatMap((then, at) => {
     const next = sorted[at + 1];
     const hours = next === undefined ? 0 : (next.at - then.at) / HOUR;
@@ -754,24 +755,22 @@ export async function logins(args: readonly string[]): Promise<void> {
     console.log(activeLines(codex, [CODEX], [], runtimeProcess.env).join("\n"));
   }
   if ((counted?.unasked.length ?? 0) > 0) console.log(uncounted(counted?.unasked ?? []));
-  if (weeks.length === 0) return;
+  if (values.json || positionals.length > 0 || weeks.length === 0) return;
   const snapshot: Snapshot = {
     at: now,
     weeks: Object.fromEntries(weeks.map(({ login, pct, reset }) => [login, { pct, reset }])),
-    ...keysIf(counted !== null, () => ({
+    ...keysIf(counted?.unasked.length === 0, () => ({
       runs: Object.fromEntries(weeks.map(({ login }) => [login, onEach(login)])),
     })),
   };
   const recorded = [...kept.filter(({ at }) => now - at < KEPT_MS), snapshot];
-  if (!values.json && positionals.length === 0) {
-    console.log(poolLines(weeks, kept, held.length - weeks.length, now).join("\n"));
-    console.log(
-      rate === null
-        ? `  a run       no measured rate yet (under ${String(LEAST_RUN_HOURS)} run-hours): each login's week pace over its live runs`
-        : `  a run       ~${rate.toFixed(2)}% of a login's week an hour, active ${String(Math.round(ACTIVE_SHARE * 24))} of 24h: the most each login carries for ${String(RUN_HOURS)}h`,
-    );
-    console.log(modelLines(weeks, recorded, assess(recorded, now, perRunRate), now).join("\n"));
-  }
+  console.log(poolLines(weeks, kept, held.length - weeks.length, now).join("\n"));
+  console.log(
+    rate === null
+      ? `  a run       no measured rate yet (under ${String(LEAST_RUN_HOURS)} run-hours): each login's week pace over its live runs`
+      : `  a run       ~${rate.toFixed(2)}% of a login's week an hour, active ${String(Math.round(ACTIVE_SHARE * 24))} of 24h: the most each login carries for ${String(RUN_HOURS)}h`,
+  );
+  console.log(modelLines(weeks, recorded, assess(recorded, now, perRunRate), now).join("\n"));
   mkdirSync(dirname(history), { recursive: true });
   const lines = recorded.map((one) => capturedJsonStringify(one));
   writeFileSync(history, `${lines.join("\n")}\n`);

@@ -469,7 +469,7 @@ export function practiceTool(bench: Bench): SeatTool {
   return tool({
     name: "practice",
     description:
-      "Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host's limits. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, the time, the model turns and the tokens it took, the task's record under the harness that ran it, under harness/ as last practised and under the harness you started from, the solve's id for read_trace and, for a rejection the Referee set aside, that it was set aside. It never says which check refused an answer. A harness that does not open spends no solve. With `under: \"reference\"` the tasks are solved under the reference harness instead, the one yours is compared with; it costs the same solves and shows what your change is measured against.",
+      "Solve practice tasks with the harness as it stands in harness/, by the solver it is measured with, under the host's limits: a practice solve takes as long as any solve. Each named task is solved once; name a task twice to solve it twice. For each solve it returns the ending, what the solve used of its limits and the tokens it read and wrote, the task's record under each harness the result names, the solve's id for read_trace and, for a rejection the Referee set aside, that it was set aside; never which check refused an answer. A harness that does not open spends no solve. `under: \"reference\"` costs the same solves and shows what your change is measured against.",
     parameters: Type.Object({
       tasks: Type.Array(Type.String(), {
         minItems: 1,
@@ -782,7 +782,7 @@ function previewTool(bench: Bench, wall: CommandWall): SeatTool {
   return tool({
     name: "preview_harness",
     description:
-      "Show what a solver would read under harness/ as it stands, for one practice task: its system prompt whole, with your guide where the solver finds it, and each of its tools by name and description. Spends no practice solve.",
+      "Show what a solver would read under harness/ as it stands, for one practice task: its system prompt whole, with your guide where the solver finds it and your programs' names, and each of its tools by name and description. Spends no practice solve.",
     parameters: Type.Object({}),
     executionMode: "sequential",
     execute: async () => {

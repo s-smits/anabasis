@@ -17,7 +17,7 @@
  * Each part of a harness is given one purpose, here as there: the presets select pi's tools, the
  * programs and the tools of the harness's own compute, and the guide is words about them. v1's
  * sentence, "useful computation belongs in the solver's tools", was written for a solver whose
- * only way to a computation was a tool. A v2 solver has a shell, so the prompt states what a tool
+ * only way to a computation was a tool. A v2 solver has a shell, so `HARNESS.md` states what a tool
  * and a program each cost a solve, `practice` reports each solve's tokens, and the Builder
  * chooses. Telling it to leave `tools.ts` empty while the solver had the shell was a second limit
  * in a prompt (`AGENTS.md`, section 2), under which no harness of ten campaigns declared a tool.
@@ -76,6 +76,14 @@
  * stated once, in `HARNESS.md` (`src/harness/starter.ts`). Two facts the Builder lacked were added:
  * one retained task, exhausted or held before the reference's promotion, is scored for every three
  * others (`scoredSet`, `src/campaign/round.ts`; `poolOf`, `src/kernel/reports.ts`), and a solve cut at its limit fails, which "turns decide nothing" hid.
+ *
+ * On 4 November the Builder's texts were consolidated so that each fact is stated once, where the
+ * Builder reads it (a draft for paired live seats before adoption). A tool's own behaviour is in its
+ * description, so this prompt no longer describes `check_harness`, `preview_harness`, `practice`,
+ * `read_trace`, `read_opening` or `finish`; the shape of each harness part (the custom tools'
+ * working directory and `HOME`, their imports, the guide's place in the solver's prompt) is in
+ * `HARNESS.md`. This prompt keeps a map of the four parts and the two facts no section there holds:
+ * `agent/config.yaml` is not read, and a harness whose scripts or links name the home is not frozen.
  */
 import { FULL, ROOM, WEIGHTS } from "../kernel/compare.ts";
 import { type Contract, objectiveLine } from "../kernel/contract.ts";
@@ -130,9 +138,10 @@ const GOAL =
 
 /** The texts a Builder reads that differ by who makes its campaign's moves. */
 export interface Said {
-  /** The system prompt's sentences on `read_opening` and on having a harness measured. */
+  /** The system prompt's sentences on the campaign its tools lead and what ends it, before the one
+   *  on the session's end; empty for a session by hand, whose campaign is the operator's. */
   readonly closing: string;
-  /** What becomes of `harness/` at the session's end, as a continuation says it. */
+  /** What becomes of `harness/` at the session's end, as the system prompt and a continuation say it. */
   readonly frozen: string;
   /** `read_opening`'s description. */
   readonly opening: string;
@@ -161,8 +170,7 @@ export interface Said {
  */
 export const SAID: Readonly<Record<"host" | "builder", Said>> = {
   host: {
-    closing:
-      "read_opening returns the opening message again, as it was sent, for when this conversation no longer holds it. When harness/ holds what you want measured, call finish.",
+    closing: "",
     frozen: "frozen and measured",
     opening:
       "Return this session's opening message again, as it was sent: the public rules and the answer format, the practice tasks with their record at the start, every failed practice solve and each comparison so far, and the session's limits. It changes nothing. Use it when the conversation no longer holds those facts.",
@@ -176,12 +184,12 @@ export const SAID: Readonly<Record<"host" | "builder", Said>> = {
   },
   builder: {
     closing:
-      "read_opening returns the public opening facts when this conversation no longer holds them. You lead the campaign with its tools, and each one's result ends with the campaign's facts and the move the host's table would make, which you may follow or not. A promotion ends nothing: the promoted harness becomes the reference, the next step is measured against it, and the climb goes on for as many steps as you find. The campaign ends at its budget, on its provider, or after as many moves in a row without a gain as its patience. finish ends this conversation and freezes harness/, measuring nothing; another conversation follows on your notes, and the campaign ends once three in a row have made no campaign move.",
+      "You lead the campaign with its tools, and each one's result ends with the campaign's facts and the move the host's table would make, which you may follow or not. A promotion ends nothing: the next step is measured against the new reference, and the climb goes on for as many steps as you find. The campaign ends at its budget, on its provider, after as many moves in a row without a gain as its patience, or once three conversations in a row have made no campaign move.",
     frozen: "frozen",
     opening:
-      "Read the current public rules, practice tasks, failed practice solves, comparison tallies and session limits. It changes nothing.",
+      "Read the current public rules, practice tasks, failed practice solves, comparison tallies and session limits, for when this conversation no longer holds them. It changes nothing.",
     finish:
-      "End this conversation and freeze harness/. Record what changed, what remains unmeasured and what you would try next. The next conversation starts from your notes. Call finish again to acknowledge a notice about the harness. If the notes exceed their limit, shorten them before calling finish again.",
+      "End this conversation and freeze harness/, measuring nothing. Record what changed, what remains unmeasured and what you would try next. Call finish again to acknowledge a notice about the harness. If the notes exceed their limit, shorten them before calling finish again.",
     broken: {
       unpractised: "no harness of this session is kept",
       practised: "the harness your last practice solve ran is kept in its place",
@@ -227,16 +235,18 @@ export const shellWalls = (network: NetworkReach): string =>
 
 export function systemPrompt(said: Said): string {
   return [
-    "You are the Builder. You improve a Built Harness: the programs, the tools and the guide with which a separate solving model answers each task of one domain. The harness may hold programs and tools of its own; the host's verifier owns correctness and the host owns acceptance and scores.",
-    `${GOAL} Only a change that helps on tasks like the practice tasks, not on those tasks themselves, will show there. Build for the domain: a line that names a practice task or copies its text or its answer moves nothing that is measured.`,
-    "The harness is harness/ in your home directory, and HARNESS.md beside it gives the purpose and the shape of each of its parts, with a worked example. The solver is pi's coding agent, and each part of the harness has one purpose. agent/tools-spec.json selects which of pi's coding tools the solver has: read, bash, edit, write. .toolchain holds the programs, which reach the solver, and your own shell, by name on PATH with .toolchain/bin first, and the solver runs them from its shell. agent/tools.ts holds tools of your own and exports createDomainHarness: the solver has them beside pi's tools, under the names, descriptions and parameter schemas you declare, each call running alone under its command wall in a temporary working directory, not the solver's home; files meant to persist must use the absolute path to the solver's home, available as HOME. They are built from the files under harness/ and the packages installed there, an import of any other file being refused. Whether a computation is a program, a tool or both is yours to choose, and HARNESS.md says what each costs a solve in the tokens it reads and writes. agent/BUILT_AGENTS.md is the operating guide, which the solver reads in its system prompt once per task. The starter's guide is the starter instructions, which HARNESS.md prints and which you may revise, replace or remove. The solver's answer is a file it writes, answer.json, which the host reads when the solver submits: nothing of yours takes the answer. The harness is run from another place than your home, so an installed launcher finds its files from its own path, as \"$(dirname \"$0\")\" does, and a link names its target relatively: a harness in which a script or a link names your home is not frozen. agent/config.yaml is not read: the host sets every limit a solve runs under.",
-    "The guide says what each program and tool is for, how they combine and how a result informs the next decision.",
-    "Answers are judged by checks that neither you nor the solver is shown; what they enforce is the public rules. A program or a tool may run the field's own compiler or simulator, search for candidates, test them against the public rules and report which meet them: every solve of either harness runs under the same limits, so a search costs the turns and the time it takes. The solver decides what it writes to answer.json and submits it. The one limit on the harness: nothing in it names a task, copies its text or holds its answer, since a harness is measured on tasks it never saw.",
-    `practice solves the practice tasks you name with the harness as it stands and reports each task's record. One solve is weak evidence: the same harness can fail a task and pass it the next time. Read the record, not the last result: a change shows in practice only on the tasks it moves. What you change after your last practice solve is measured untried. A harness wins or loses each task by its score over every pairing of its solves with the reference's, two measures weighed ${String(WEIGHTS.validity * 100)} and ${String(WEIGHTS.objective * 100)}: validity, a valid answer beating one that is not; and between two valid answers the objective, where the exam names one, an answer better by at least ${String(ROOM * 100)}% of the larger measure gaining, up to the whole weight at ${String(FULL * 100)}% better. Each comparison also scores one retained task, one the reference answered on every solve or one held out before it became the reference, for every three others, so a change that breaks an easy task can lose it. A comparison reads a step where its test clears the level on these scores. After a promotion the starting harness of the campaign is compared with the new reference, the tasks written since first; that comparison promotes and stops nothing, and reads whether the new tasks leave the reference room. Over the campaigns on record, promoted harnesses lost 44 of 86 such tasks to the starting harness and 20 of 111 older ones, every loss on the objective between two valid answers. An answer that is not valid is never better. What a solve billed and the turns it took are reported and weigh nothing in the score, but a solve that reaches its turn or time limit without submitting fails. A fail ruled a check defect does not count and is not yours to build around. The trace is the record of what the solve did, which read_trace opens call by call.`,
-    "You work in your home directory with read, bash, edit and write. The three file tools take a path relative to it, such as harness/agent/BUILT_AGENTS.md, and the shell is there for everything else: searching, listing, running and installing.",
-    "check_harness opens the harness as a solve would and lists what a solver gets from each part, and spends no solve; practice opens it the same way, and a harness that does not open spends no practice solve either. preview_harness shows what a solver would then read: its system prompt whole, with your guide and your programs' names in it, and its tools. A practice solve takes as long as a solve, and every reply of yours is one turn, with or without a tool call. " +
-      said.closing +
-      " The session also ends at its limits, and what harness/ holds then is what is frozen.",
+    "You are the Builder. You improve a Built Harness: the programs, the tools and the guide with which a separate solving model answers each task of one domain. The host's verifier owns correctness, and the host owns acceptance and scores.",
+    `${GOAL} The one limit on the harness is that nothing in it names a task, copies its text or holds its answer: such a line moves nothing that is measured, since only a change that helps on tasks like the practice tasks, not on those tasks themselves, shows there.`,
+    "The harness is harness/ in your home directory. The solver is pi's coding agent, and each of the harness's four parts has one purpose. agent/tools-spec.json selects which of pi's coding tools the solver has: read, bash, edit, write. .toolchain holds the programs, which run by name in the solver's shell and in yours. agent/tools.ts holds the harness's own tools, which the solver has beside pi's. agent/BUILT_AGENTS.md is the guide: it says what each program and tool is for, how they combine and how a result informs the next decision. HARNESS.md beside harness/ gives each part's shape, with a worked example, prints the starter instructions, and says what a program and a tool each cost a solve in the tokens it reads and writes; whether a computation is a program, a tool or both is yours to choose. agent/config.yaml is not read: the host sets every limit a solve runs under. The harness is run from another place than your home, so an installed launcher finds its files from its own path, as \"$(dirname \"$0\")\" does, and a link names its target relatively: a harness in which a script or a link names your home is not frozen.",
+    "Answers are judged by checks that neither you nor the solver is shown; what they enforce is the public rules. A program or a tool may run the field's own compiler or simulator, search for candidates, test them against the public rules and report which meet them: a search costs the turns and the time it takes, under the limits both harnesses share. The solver decides what it writes to answer.json, which the host reads when the solver submits: nothing of yours takes the answer.",
+    `One practice solve is weak evidence: the same harness can fail a task and pass it the next time. Read the record, not the last result: a change shows in practice only on the tasks it moves. What you change after your last practice solve is measured untried. A harness wins or loses each task by its score over every pairing of its solves with the reference's, two measures weighed ${String(WEIGHTS.validity * 100)} and ${String(WEIGHTS.objective * 100)}: validity, a valid answer beating one that is not; and between two valid answers the objective, where the exam names one, an answer better by at least ${String(ROOM * 100)}% of the larger measure gaining, up to the whole weight at ${String(FULL * 100)}% better. Each comparison also scores one retained task, one the reference answered on every solve or one held out before it became the reference, for every three others, so a change that breaks an easy task can lose it. A comparison reads a step where its test clears the level on these scores. After a promotion the starting harness of the campaign is compared with the new reference, the tasks written since first; that comparison promotes and stops nothing, and reads whether the new tasks leave the reference room. Over the campaigns on record, promoted harnesses lost 44 of 86 such tasks to the starting harness and 20 of 111 older ones, every loss on the objective between two valid answers. An answer that is not valid is never better. What a solve billed and the turns it took are reported and weigh nothing in the score, but a solve that reaches its turn or time limit without submitting fails. A fail ruled a check defect does not count and is not yours to build around.`,
+    "You work in your home directory with read, bash, edit and write. The three file tools take a path relative to it, such as harness/agent/BUILT_AGENTS.md, and the shell is there for everything else: searching, listing, running and installing. Every reply of yours is one turn, with or without a tool call.",
+    [
+      said.closing,
+      `The session ends when you call finish or at its limits, and what harness/ holds then is ${said.frozen}.`,
+    ]
+      .filter((sentence) => sentence !== "")
+      .join(" "),
   ].join("\n");
 }
 
@@ -285,7 +295,7 @@ export function continuation(
     `You have not called finish, and the session goes on: ending a turn does not end it. It ends when you call finish or at its limits, and what harness/ holds then is ${said.frozen}.`,
     `The goal, unchanged: ${GOAL}`,
     `This session so far: ${String(used.turns)} of ${plural(limits.turns, "turn")} and ${minutes(used.seconds)} of ${plural(Number(minutes(limits.wallSeconds)), "minute")} used, ${plural(used.practiceLeft, "practice solve")} left. ${tried(harness, practice)}`,
-    "read_opening returns the opening message again: the public rules, the practice tasks, the failed practice solves and the comparisons so far.",
+    "read_opening returns the opening message again.",
   ].join("\n\n");
 }
 

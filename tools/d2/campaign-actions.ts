@@ -334,7 +334,7 @@ const examineAction =
       });
     context.examining = { session, done, released: () => next.promise };
     return {
-      said: `Examiner session ${session} is writing ${tasks === undefined ? "tasks" : plural(Number(tasks), "task")} beside this conversation: edit, release practice and practise meanwhile. As it holds tasks the host releases the practice owed since the last reading. A comparison or a promotion waits for it to end, wait returns when it ends or the host releases practice, and campaign_status says how many of its tasks the gate has admitted.`,
+      said: `Examiner session ${session} is writing ${tasks === undefined ? "tasks" : plural(Number(tasks), "task")} beside this conversation: edit, release practice and practise meanwhile. As it holds tasks the host releases the practice owed since the last reading.`,
     };
   };
 

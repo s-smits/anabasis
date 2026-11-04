@@ -84,8 +84,10 @@ start a step until the check named for the one before holds.
    not a dollar estimate.
 4. **Launch.** `launch.json` is a [codex-gpt-swarm](../codex-gpt-swarm/SKILL.md) manifest:
    `gpt-sessions.ts --manifest <dir>/launch.json --output-dir <new dir> ...` on the model the
-   operator chose. A Claude session is handed its row's `task`, one line, and nothing else; start
-   them all in one message.
+   operator chose. A Claude session runs as the `wri-lane` agent type (`.claude/agents/wri-lane.md`,
+   `subagent_type: "wri-lane"`), handed its row's `task`, one line, and nothing else; start them all
+   in one message. Its hook (`tools/wri/lane-guard.ts`) refuses a write outside the lane's report, a
+   spend, a change to a run or the tree and a read of an env file, so those hard rules hold in code.
    *Check:* read the model each transcript recorded before using its report.
 5. **Collect.** `wri.ts collect --out <dir>` holds every expected report to its shape and writes
    `<dir>/reports.md`. Read lane 4's report, then decide lane 5; read lanes 13, 15 and 18, then

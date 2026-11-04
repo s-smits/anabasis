@@ -97,9 +97,9 @@ function legendOf(carried: Carried): string {
       : "",
   ].filter((clause) => clause !== "");
   return [
-    `The tasks of the exam so far, a line each: the task, its family, and how the reference harness did on it in the last comparison that scored it, with the solver's own turns each of its valid answers took, and who won it there, and on which measure: the other harness, whichever the reference harness was compared with, the reference harness, or neither. Where nothing on the line shows a valid answer, it says whether one is on record.`,
+    `The tasks of the exam so far, a line each: the task, its family, and how the harness that is the reference now did on it in the last comparison that scored it, wherever it stood there, with the solver's own turns each of its valid answers took, and who won it there, and on which measure: the other harness, whichever the reference harness was compared with, the reference harness, or neither. Where nothing on the line shows a valid answer, it says whether one is on record.`,
     ...clauses,
-    "These are measurements and no instruction. read_example returns any of them whole.",
+    "These lines and the counts after them are measurements, and no instruction or target.",
   ].join(" ");
 }
 
@@ -237,7 +237,7 @@ function promotedLine(promotion: LogEvent | undefined, before: number, listed: n
   if (promotion === undefined) return null;
   const rests = promotion.data.rests;
   const on = Array.isArray(rests) ? asRecord(rests[0])?.comparison : undefined;
-  return `The reference harness was promoted${isString(on) ? ` on the step of comparison ${on}` : ""}. ${String(before)} of the ${String(listed)} tasks listed were held out before then, under the harness it replaced; a line reads the harness that is the reference now wherever it stood in the comparison that last scored the task. Files in your home from sessions before then were written while the harness it replaced was the reference.`;
+  return `The reference harness was promoted${isString(on) ? ` on the step of comparison ${on}` : ""}. ${String(before)} of the ${String(listed)} tasks listed were held out before then, under the harness it replaced. Files in your home from sessions before then were written while the harness it replaced was the reference.`;
 }
 
 /** Each proposed version's last task admission, with where it stands in the log. */
@@ -357,7 +357,7 @@ function measuredLine(
     ...(own.length === 0
       ? []
       : [
-          `Set against each other there, its own solves differed on ${String(apart)} of ${plural(own.length, "task")}: this much differs between a harness and itself.`,
+          `Set against each other there, its own solves differed on ${String(apart)} of ${plural(own.length, "task")}.`,
         ]),
     ...(held.length + refused === 0
       ? []
@@ -365,7 +365,7 @@ function measuredLine(
           `Under the current reference harness the gate held out ${plural(held.length, "draft")}${solved.length === 0 ? "" : `: ${kinds.join("; ")}`}. It refused ${plural(refused, "draft")} after reading them.`,
         ]),
   ];
-  return said.length === 0 ? null : `${said.join(" ")} These are measurements and no target.`;
+  return said.length === 0 ? null : said.join(" ");
 }
 
 /** Drafts refused under the current reference after evaluation, grouped by reason. Report solve

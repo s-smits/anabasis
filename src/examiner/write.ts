@@ -99,10 +99,10 @@ interface Desk {
 /** The event a task admission writes of each draft (`admitDraft`). */
 const TASK_ADMISSION = "task.gate";
 /** What only the checks read of an instance, as each tool that takes one describes it. */
-const HIDDEN = Type.Unknown({ description: "What only the checks receive; null when a task has none." });
+const HIDDEN = Type.Unknown({ description: "Null when the task has none." });
 const INSTANCE = Type.Object({
   family: Type.String({ minLength: 1 }),
-  public_input: Type.Unknown({ description: "What the solver reads of the task." }),
+  public_input: Type.Unknown(),
   hidden: HIDDEN,
 });
 const REFERENCE = Type.Object({
@@ -162,7 +162,7 @@ function measureOf(contract: Contract, verdict: Verdict): JsonObject {
 /** A verdict as the Examiner reads it. */
 function tried(verdict: Verdict): string {
   if (verdict.kind === "pass") {
-    return "Every applicable check passed this answer: the instance has a valid answer.";
+    return "Every applicable check passed this answer.";
   }
   if (verdict.kind === "fail") {
     return `Refused by ${verdict.blocking.join(", ") || "no check: the answer was missing"}.`;
@@ -340,7 +340,7 @@ function tryTool(desk: Desk, verify: Verifier): SeatTool {
       "Run the checks on an instance with an answer of yours, and say which checks refuse it, or that none does. Return an instance reference for proposing this checked content without resending it. A try enters no task in the exam. Where the checks pass, the host keeps the answer on the exam side for the Referee, for a task held with that content before or after the try. A refused task stays refused. The gate's reading of the instance's package comes first, where it would refuse it.",
     parameters: Type.Object({
       family: Type.String({ minLength: 1 }),
-      public_input: Type.Unknown({ description: "What the solver would read of the task." }),
+      public_input: Type.Unknown(),
       hidden: HIDDEN,
       answer: Type.Unknown({ description: "An answer in the domain's answer format." }),
     }),

@@ -1,17 +1,19 @@
 ---
 name: run-improvement-campaign
-description: "Run the Anabasis improvement loop, the Super Loop, and the release cycle around it: fork fresh campaigns at the last release, read each at its milestones and resolve predictions, then stop them, investigate them, plan and implement the patches, land the release, and only then fork the next cycle. Inside the cycle each pass scores the five points, finds the link that holds the next promotion, fixes its owner, proves the path and predicts. Use when the operator asks to keep campaigns going, fork runs, work towards a release, run a pass or an hourly audit, read a promotion, investigate a campaign that is not promoting, or choose the next run. Owns the experiment and its evidence; AGENTS.md section 3 owns the operator's decisions."
+description: "Run the Anabasis improvement loop, the Super Loop, and the iterations and release cycle around it: fork fresh campaigns capped at two promotions, read each at its milestones and resolve predictions; as each reaches its cap, investigate it, plan and implement what it found as one pull request on the top, and fork fresh runs at that head; land the release once a proof run at the top promotes twice. Inside the cycle each pass scores the five points, finds the link that holds the next promotion, fixes its owner, proves the path and predicts. Use when the operator asks to keep campaigns going, fork runs, work towards a release, run a pass or an hourly audit, read a promotion, investigate a campaign that is not promoting, or choose the next run. Owns the experiment and its evidence; AGENTS.md section 3 owns the operator's decisions."
 ---
 
 # Run improvement campaign (the Super Loop)
 
-Two loops, one inside the other. The **release cycle** runs fresh campaigns at a release until each
-has six promotions or has run twelve hours, then stops them, investigates them, patches what the
-investigation and the predictions found within twelve hours more, and lands the patches as the next
-release on the operator's word, which the next cycle's campaigns run. Inside it, each **pass** is
-**score → walk → choose → prove → predict → launch → watch → read → decide**: it asks what stands
-between a campaign and its next promotion, fixes that link's owner, and leaves the fix to be
-measured by the next cycle's runs. One pass answers one question.
+Three loops, each inside the one before. The **release cycle** gathers the stack's pull requests
+and lands them as one release on the operator's word, once a proof run at the stack's top has
+promoted twice at one commit. Inside it, each **iteration** takes one fresh run that reached its
+cap of two promotions, investigates it, vets, plans and implements what it found as one pull
+request on the top of the stack, and forks fresh runs at that pull request's head, so the next
+iteration measures the fix. Inside that, each **pass** is **score → walk → choose → prove →
+predict → launch → watch → read → decide**: it asks what stands between a campaign and its next
+promotion, fixes that link's owner, and leaves the fix to be measured by later runs. One pass
+answers one question.
 
 **Only a fresh campaign counts.** Follow `AGENTS.md`, section 10, item 9: open from a prompt, start
 with the starter, and continue at the opening commit to a typed ending. Seeds, stored packs and
@@ -33,8 +35,36 @@ log line per step. Every step below reads that file first.
 **The order is fixed, and nothing moves a step ahead of the one before it:**
 
 ```text
-run (6 promotions or 12 hours a run) → stop → investigate → vet → plan → implement → consolidate → land and release → predict → fork → run
+iteration:  predict → fork at the top → run (2 promotions or 12 hours) → investigate → vet → plan → implement (one PR on the top) → prove → predict → fork at its head → ...
+release:    proof run at the top to 2 promotions, unchanged → three reviewers → consolidate → land and release on the operator's word → fork at the release
 ```
+
+### The iteration: two promotions, one pull request
+
+The operator's protocol of 4 November: "Repeat the protocol more and more once 2-promotions come in
+of launching and improving, stack PR per fullRun Improvement iteration (Plan + Implementation after
+WRI)". Every fresh run carries `--promotions 2`, which ends it `operator` at its second promotion
+(`AGENTS.md`, factor 1), and the steps below run once for each run that reaches it:
+
+1. **The run ends at its cap**, or reaches twelve hours, or ends on its own terms. The pulse and the
+   promotion watch name the ending. Resolve every row of `Predictions.md` whose event exists.
+2. **Investigate** it with whole-run-investigation (step 5 below), with the other ended runs
+   of the same code as equals where there are any. Do not wait for a run still going.
+3. **Vet, then plan** (steps 6 and 7): `vetting.md` and `plan.md` in the investigation's folder.
+   A row the operator must decide is asked now, and implementing goes on around it.
+4. **Implement the plan as one pull request** on the top of the stack (step 8), with each row's
+   hostile test, proved with `bun run land -- <top> --sanitize`. One iteration is one pull
+   request, so a later reading can name the fix it measures. A row whose label an open pull
+   request of your own already carries goes there instead, and the iteration's pull request names
+   it.
+5. **Predict, then fork at that pull request's head** (steps 1 and 2, with the top in place of the
+   release). The slot the ended run held goes to a fresh run at once, on the host and login with the
+   most room under their caps. A slot free with no iteration to measure is filled at the current top
+   too: capacity left idle measures nothing.
+
+Iterations overlap. A second run can reach its cap while the first's pull request is being written;
+it starts its own iteration, and each pull request stacks on the one before. Nothing in an
+iteration is merged: the release does that (steps 9 and 10).
 
 A run is evidence about the code it ran (`AGENTS.md`, section 9), so a run left going while its code
 is investigated measures code that is about to be replaced, and a release landed before the
@@ -44,7 +74,7 @@ the operator stopped five of the six 20 minutes later, and the investigation's o
 v0.6.5. A deadline does not reorder the steps: where the investigation cannot be read in time, tell
 the operator and ask, rather than land first.
 
-### The running window, until six promotions or twelve hours a run
+### The running window, until two promotions or twelve hours a run
 
 1. **Predict in `Predictions.md`**, a file of its own beside the cycle's `cycle.md`, written before
    step 2's `runs fresh ... --yes`: a fresh campaign makes its first solve minutes after it opens,
@@ -82,8 +112,8 @@ the operator and ask, rather than land first.
    their per-PR ledger was written 15 minutes after launch; the next cycle's ledger was written
    before its fork but without labels, lanes or groups, which the tables above now ask for.
 2. **Fork at the release**, once step 1 is on record. Take the commit the last release merged (`git
-   tag` of `main`), or the
-   top of the stack only on the operator's recorded word. A pull request above it that changes code a
+   tag` of `main`), or, inside an iteration, the head of the pull request it opened ("The
+   iteration" above; the operator's word of 4 November). A pull request above it that changes code a
    campaign runs need not hold up the fork; name it. Fork **one fresh campaign per runner host**,
    or the set the operator names, so each runs on a host no other campaign loads:
    `runs fresh <pack> --host <host> --at <commit> --login N --as <suffix> --yes`, after a dry run
@@ -186,9 +216,10 @@ its end, and carry on in the same order; the window gives no step a reason to sk
    The major moves only on the operator's word, for a break in the design.
 11. **Predict and fork** the next cycle at the release's merge commit: steps 1 and 2 again.
 
-**The threshold.** Stop each run at **six promotions** (operator, 25 October, matching the
-milestone) or **twelve hours after its opening**, whichever comes first (operator, 28 October).
-`scripts/cycle.ts` names the step `stop` at either, and times a live run to now, so a run in a long
+**The threshold.** Each run ends at **two promotions**, by its own `--promotions 2` (operator,
+2 November), or is stopped **twelve hours after its opening**, whichever comes first (operator,
+28 October). A run the operator lets go on to the milestone of six drops the flag.
+`scripts/cycle.ts` names the step `stop` at the threshold passed as `--threshold`, and times a live run to now, so a run in a long
 wait still reaches its hours. The running window ends when every run the cycle stops has ended. The
 #306 forks
 reached their first promotion at 11.9 and 14.4 hours after their opening and their third at 17.8
@@ -203,8 +234,11 @@ runs by hand to decide the step:
 
 ```sh
 bun --env-file=.env.runs .claude/skills/run-improvement-campaign/scripts/cycle.ts \
-  <run> ... [--keep <run>]... [--threshold 6]
+  <run> ... [--keep <run>]... [--threshold 2]
 ```
+
+Its default threshold, 6, is the milestone's; a cycle of runs capped at two promotions passes
+`--threshold 2`.
 
 It finds each named run on this machine or on a host `ANA_HOSTS` lists, and prints one row a run
 (host, live or closed with its ending, promotions, comparisons and hours since its opening) and then
@@ -601,7 +635,7 @@ At step 4 of the cycle every row still open is marked `unreached`.
 
 | Timer | When | Its step 3 |
 | --- | --- | --- |
-| pulse (the watch and the cycle's driver) | every 290 seconds: one Monitor on `bun run runs pulse --every 290`, its actionable lines only | every run's milestone, ending and stall on every host; a line naming a milestone, an ending or a stall starts the protocol, with the first cycle step not done, ended runs closed out and `runs usage` |
+| pulse (the watch and the cycle's driver) | every 290 seconds: one Monitor on `bun run runs pulse --every 290`, its actionable lines only | every run's milestone, ending and stall on every host; a line naming a milestone, an ending or a stall starts the protocol, with the first cycle step not done, ended runs closed out and `runs usage`; a run ended at its cap starts an iteration, and a freed slot gets a fresh run at the top |
 | milestone | one-shot at a predicted event, or at a prediction's deadline | the named milestone or row, and any investigation it owes |
 | cycle review | one-shot at each step of the release cycle: the stop at the latest opening plus twelve hours, and the end of the improvement window at the last stop plus twelve hours | the step `cycle.ts` names; at the window's end, what is proved and what is left |
 | handover | one-shot at the agreed handover time | five points, changes and decisions waiting, and which timers were useful by their ledger rows |

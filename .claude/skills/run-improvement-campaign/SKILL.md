@@ -7,7 +7,7 @@ description: "Run the Anabasis improvement loop, the Super Loop, and the iterati
 
 Three loops, each inside the one before. The **release cycle** gathers the stack's pull requests
 and lands them as one release on the operator's word, once a proof run at the stack's top has
-promoted twice at one commit. Inside it, each **iteration** takes one fresh run that reached its
+promoted twice at one commit. Inside it, each **iteration** (WRIIP, "The iteration" below) takes one fresh run that reached its
 cap of two promotions, investigates it, vets, plans and implements what it found as one pull
 request on the top of the stack, and forks fresh runs at that pull request's head, so the next
 iteration measures the fix. Inside that, each **pass** is **score → walk → choose → prove →
@@ -39,9 +39,10 @@ iteration:  predict → fork at the top → run (2 promotions or 12 hours) → i
 release:    proof run at the top to 2 promotions, unchanged → three reviewers → consolidate → land and release on the operator's word → fork at the release
 ```
 
-### The iteration: two promotions, one pull request
+### The iteration (WRIIP): two promotions, one pull request
 
-The operator's protocol of 4 November: "Repeat the protocol more and more once 2-promotions come in
+The Whole Run Investigation Improvement Protocol, WRIIP, is the whole sweep from one run's
+investigation to a stacked pull request and a new run. The operator's protocol of 4 November: "Repeat the protocol more and more once 2-promotions come in
 of launching and improving, stack PR per fullRun Improvement iteration (Plan + Implementation after
 WRI)". Every fresh run carries `--promotions 2`, which ends it `operator` at its second promotion
 (`AGENTS.md`, factor 1), and the steps below run once for each run that reaches it:

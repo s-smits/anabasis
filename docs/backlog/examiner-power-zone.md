@@ -157,11 +157,15 @@ In order: each rests on the one before, except item 7, which comes before item 3
      the candidate power and never gives it a step. But it aims each comparison at the old
      reference's weak spots, the pattern behind the starter losses on own-epoch tasks below.
 7. **Requests that write a demanded string with markup** (plausible, one exam). In a live round of
-   5 November on the jobstat exam, 19 rulings on one check (`check-manifest`) came from 5 tasks whose
-   request writes each demanded section heading as a Markdown heading line; the solver copied the
-   prefix, and the check compares the trimmed heading exactly, as the conventions say. Tasks that
-   quote the heading instead passed. 18 were ruled `check-defect` and 1 `earned` on the same
-   evidence. Every one was on a practice solve, so none reached a comparison's check-defect stop.
+   5 November on the jobstat exam and the seed it ran on, 18 of 19 rulings were on one check
+   (`check-manifest`), from 5 tasks whose request writes each demanded section heading as a
+   Markdown heading line; the solver copied the prefix, and the check compares the trimmed heading
+   exactly, as the conventions say. Tasks that quote the heading instead passed. 18 were ruled
+   `check-defect`. The nineteenth, on `x-4-001`, was ruled `earned` on another ground: a wrong
+   descriptive statistic under the analysis plan's pre-dose rule (R3). Ten came from the seed's
+   own campaign on 4 November, four of them on comparison g-1's solves of one task (`x-2-006`),
+   below the stop's more than 3 tasks; the round's nine were all on the Builder b-2's practice
+   solves.
    The owner is the writing prompt's wording on how a request states an exact string, domain-agnostic,
    and a blind label of one ruling (`settle.ts`) settles which side was right. The Referee guard
    #622 removed would have refused none of the 8 in that stretch: each probe reached a declared

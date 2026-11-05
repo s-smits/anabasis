@@ -352,14 +352,6 @@ export async function session(
     opened: null,
     told: new Set(),
     spent: 0,
-    // Each session's rulings are in its `build.finished`. Until 5 November every session started
-    // with none, and sim-round625's b-2 paid 4.53 dollars of solves and rulings to learn again that
-    // three tasks the seed's sessions had seen ruled check defects were so.
-    disputed: new Set(
-      before.flatMap(({ kind, data }) =>
-        kind === BUILD_FINISHED && Array.isArray(data.disputed) ? data.disputed.filter(isString) : [],
-      ),
-    ),
     faulty: new Set(),
     faults: [],
     lists: null,
@@ -381,7 +373,7 @@ function openingFor(bench: Bench): string {
     bench.tasks.map(({ version, task }) => ({
       taskId: task.taskId,
       family: task.family,
-      left: bench.disputed.has(version),
+      left: taskStates(recorded).get(version) === "disputed",
       ...record(recorded, version, bench.parent),
     })),
     // The count it opens with is the one `practice` holds it to (`practiceLeft`).
@@ -557,7 +549,6 @@ async function finishSession(bench: Bench, sat: Sat, clock: BuildClock, turns: n
     crash,
     ...sat.spent,
     practiceSolves: bench.spent,
-    disputed: [...bench.disputed],
     faultyChecks: [...bench.faulty],
     reviewFaults: bench.faults,
     seconds: (performance.now() - clock.began) / 1000,

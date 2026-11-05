@@ -45,7 +45,7 @@
  */
 import { Type } from "typebox";
 import type { SeatTool } from "../agent/session.ts";
-import { type LogEvent, read } from "../kernel/log.ts";
+import { append, type LogEvent, read } from "../kernel/log.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { limitsIn } from "../kernel/condition.ts";
 import type { Contract } from "../kernel/contract.ts";
@@ -116,8 +116,6 @@ export interface Bench {
   opened: HarnessSnapshot | null;
   /** Practice solves spent. */
   spent: number;
-  /** Task versions whose fail the Referee ruled a check defect, in this session or an earlier one. */
-  readonly disputed: Set<string>;
   /** Task versions whose own check could not run on a practice answer. */
   readonly faulty: Set<string>;
   /** Reviewer failures, kept for the host: their text may name a check, so the Builder is not shown it. */
@@ -399,8 +397,19 @@ async function practise(bench: Bench, task: PracticeTask, kept: HarnessSnapshot,
   if (ending.outcome === "fail" && ending.kind === "rejected" && request.referee !== undefined) {
     try {
       const finding = await request.referee(solve, task, kill);
+      // The log holds the dispute, as a comparison's does (`dispute`, `src/campaign/round.ts`), so
+      // every reader of the practice set sees it. Until 5 November only the session's memory did:
+      // the campaign still counted the task as practice, owed no other in its place, and the next
+      // session paid to learn it again.
       if (finding.ruling === "check-defect") {
-        bench.disputed.add(task.version);
+        if (taskStates(read(request.log)).get(task.version) === "released") {
+          append(request.log, "task.state", {
+            version: task.version,
+            state: "disputed",
+            session: request.id,
+            solve,
+          });
+        }
         lines.push("The task leaves practice.");
       }
     } catch (error) {
@@ -501,8 +510,7 @@ export function practiceTool(bench: Bench): SeatTool {
       const asked = read(request.log);
       const states = taskStates(asked);
       const closed = chosen.find(
-        ({ version }) =>
-          states.get(version) !== "released" || bench.disputed.has(version) || bench.faulty.has(version),
+        ({ version }) => states.get(version) !== "released" || bench.faulty.has(version),
       );
       if (closed !== undefined) throw new Error(`${closed.task.taskId} is no longer a practice task`);
       const left = practiceLeft(bench, asked);

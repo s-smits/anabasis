@@ -435,7 +435,6 @@ describe("a Builder session", () => {
       harness: built.harness,
       changed: true,
       practiceSolves: 2,
-      disputed: [],
       turns: 5,
     });
     expect(s.of(BUILD_CALL).map(({ tool: name }) => name)).toEqual([
@@ -553,28 +552,33 @@ describe("a Builder session", () => {
       expect(JSON.stringify(calls[3]?.text ?? null).includes("t-2 is no longer a practice task")).toBe(
         defect,
       );
-      expect(s.of(BUILD_FINISHED)[0]).toMatchObject({
-        practiceSolves: defect ? 1 : 2,
-        disputed: defect ? ["v2"] : [],
-        changed: false,
-      });
+      expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ practiceSolves: defect ? 1 : 2, changed: false });
+      // The log holds the dispute, so the campaign's practice set loses the task with the session's.
+      expect(s.of("task.state").filter(({ state }) => state === "disputed")).toEqual(
+        defect ? [{ version: "v2", state: "disputed", session: "b-1", solve: "s-3" }] : [],
+      );
       expect(built).toMatchObject({ changed: false, dir: null, harness: s.digest });
       expect(s.of("harness.version")).toEqual([]);
     }
   });
 
-  it("keeps a task an earlier session saw ruled a check defect out of practice, and says so in its opening", async () => {
-    for (const earlier of [["v2"], []]) {
+  it("starts no session on a task an earlier session's practice ruled a check defect", async () => {
+    // The dispute is in the log, so the campaign hands a later session only what is still released;
+    // one handed the task anyway is refused before it spends. Until 5 November the ruling lived in
+    // the session's memory and a later one paid to learn it again.
+    for (const left of [true, false]) {
       const s = await setup([call("practice", { tasks: ["t-2"] }), finish], [{ outcome: "pass" }]);
-      append(s.request.log, BUILD_FINISHED, { session: "b-0", ended: "finished", disputed: earlier });
-      await session(s.request, s, s.walled);
-      const left = earlier.length > 0;
-      expect(/- t-2 \(family [^)]*\): no longer a practice task/.test(s.sent[0] ?? "")).toBe(left);
-      expect(/- t-1 \(family [^)]*\): no longer a practice task/.test(s.sent[0] ?? "")).toBe(false);
-      expect(
-        JSON.stringify(s.of(BUILD_CALL)[0]?.text ?? null).includes("t-2 is no longer a practice task"),
-      ).toBe(left);
-      expect(s.of(BUILD_FINISHED).at(-1)).toMatchObject({ practiceSolves: left ? 0 : 1, disputed: earlier });
+      const disputed = { version: "v2", state: "disputed", session: "b-0", solve: "s-0" };
+      if (left) append(s.request.log, "task.state", disputed);
+      const started = session(s.request, s, s.walled);
+      if (left) {
+        expect(started).rejects.toThrow("t-2 is disputed, and a Builder practises on released tasks only");
+        await started.catch(() => undefined);
+        expect(s.of("build.started")).toEqual([]);
+      } else {
+        await started;
+        expect(s.of(BUILD_FINISHED).at(-1)).toMatchObject({ practiceSolves: 1 });
+      }
     }
   });
 
@@ -1075,7 +1079,6 @@ describe("a Builder session", () => {
     expect(s.of(BUILD_FINISHED)[0]).toMatchObject({
       practiceSolves: 1,
       faultyChecks: ["v2"],
-      disputed: [],
     });
   });
 });

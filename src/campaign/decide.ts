@@ -604,7 +604,8 @@ export function practiceDue(
   level: number,
 ): { readonly to: number; readonly said: string } | null {
   if (practice === null) return null;
-  const released = taskSets(events).released.length;
+  const sets = taskSets(events);
+  const released = sets.released.length;
   // A settlement reports its comparison again (`settleReading`); only a session's first report is a reading.
   const since = events.findLastIndex(
     ({ kind, data }, at) =>
@@ -612,8 +613,14 @@ export function practiceDue(
       (kind === "comparison.reported" &&
         !events.slice(0, at).some((one) => one.kind === kind && one.data.session === data.session)),
   );
+  // A release a check defect has since closed is practice no more, so another is owed in its place.
   const count = events.filter(
-    ({ kind, data }, at) => at > since && kind === "task.state" && data.state === "released",
+    ({ kind, data }, at) =>
+      at > since &&
+      kind === "task.state" &&
+      data.state === "released" &&
+      isString(data.version) &&
+      sets.states.get(data.version) === "released",
   ).length;
   const allowance =
     released === 0 && !events.some(({ kind }) => kind === PROMOTED)

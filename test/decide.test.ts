@@ -792,6 +792,10 @@ describe("the build conditions", () => {
     expect(owed(read, 3, 0.1)).toBe(3);
     expect(owed([...read, released("v1")], 3, 0.1)).toBe(2);
     expect(owed([...read, released("v1"), released("v2"), released("v3")], 3, 0.1)).toBe(0);
+    // A release that a practice solve's check defect has since closed is owed again: until
+    // 5 November the closed task still counted, and no other was released in its place.
+    const closed = event("task.state", { version: "v2", state: "disputed", session: "b-1", solve: "s-1" });
+    expect(owed([...read, released("v1"), released("v2"), released("v3"), closed], 3, 0.1)).toBe(1);
     // A settlement reports g-1 again (`settleReading`): the same reading, so nothing more is owed.
     const settled = [...read, released("v1"), released("v2"), released("v3")];
     const again = settled.findLast(({ kind }) => kind === "comparison.reported");

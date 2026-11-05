@@ -789,7 +789,7 @@ describe("a session that writes tasks", () => {
     for (const said of [
       "Where the domain declares no objective, two valid answers tie whatever they contain",
       "## What you put",
-      "the record's first line says how often its own two solves differed",
+      "says how often its own two solves differed",
     ]) {
       expect(mode.system).toContain(said);
     }

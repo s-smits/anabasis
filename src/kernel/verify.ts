@@ -186,7 +186,7 @@ const TOOL_CEILING_MS = 300_000;
 const CELLS = 4;
 
 /** One check's whole run, its tools included. */
-const CHECK_WALL_MS = 2 * TOOL_CEILING_MS;
+export const CHECK_WALL_MS = 2 * TOOL_CEILING_MS;
 
 /** A verdict in one line, a fail's checks in order, so that two verdicts can be set side by side. */
 export function spelled(verdict: Verdict): string {

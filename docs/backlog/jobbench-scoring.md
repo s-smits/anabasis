@@ -79,6 +79,17 @@ JobBench (`studies/harness2/README.md`, "Read every result against how uneven th
     renamed, so `installTree` does not copy them. `bin/python`, `python/bin/python` and
     `python/bin/python3` are among them. `bin/python3` does arrive, and it imported pandas, scipy,
     statsmodels, openpyxl and `statkit` in a live workspace.
+14. **Make what the export tells the solver true.** The note corrects three names, and the guide's
+    "20 turns and 30 minutes", its scoring section and its path layout stay, under no turn cap and
+    3600 s. This changes what the study's solver is told, so it takes the operator's word.
+15. **Measure the noise before any further arm.** Grade the existing deliverables of the 11 split
+    rubrics twice for the judge's own noise, then run a Starter A/A interleaved under one condition.
+    The 8 tasks may serve for noise, since no proposal came from noise. An arm whose changes came from
+    reading them runs on tasks nobody has read (`comparison-review`, "A proposal tested on its own
+    tasks").
+16. **Read the judge's view beside every score.** `eval/judge.py` cuts each file at 200,000
+    characters, counts embedded figures against that, and reads only `text` notebook outputs. Read it
+    apart and report it beside the official score (`comparison-review`, level 6).
 
 ## How it came to be
 
@@ -127,9 +138,10 @@ JobBench (`studies/harness2/README.md`, "Read every result against how uneven th
 
   The built harness led on 2 tasks of 8 and trailed on 6. A sign-flip over the 8 differences clears
   0.02 in neither direction (built above bare 0.95, bare above built 0.07), and one rollout a task
-  and arm is weak evidence (rule 6). The Starter's own digest scored 298 of 550 in the pilot, under
-  the pilot's scripts, and 342 now. That gap of 44 is wider than the 32 between the arms. Neither arm
-  has been shown better on JobBench. A step on jobstat's objective did not carry over at this size.
+  and arm is weak evidence (rule 6). The Starter's own digest scored 298 of 550 in the pilot and 342
+  now, but the pilot's arm ran under an interpreter with none of pandas, openpyxl and python-docx, so
+  that gap of 44 is a change of condition and no measure of noise. No clean A/A exists yet. Neither
+  arm has been shown better on JobBench. A step on jobstat's objective did not carry over at this size.
 
   Against Harness²: Harness² built its harness from this judge's scores on the task before (k=1 on
   the task itself for its other arm), while Anabasis never saw JobBench.
@@ -148,3 +160,17 @@ JobBench (`studies/harness2/README.md`, "Read every result against how uneven th
   `check-answer` in none. `profile-workspace`, the guide's first step, ran in 2 and failed both times
   on the missing `public/task.json` (item 12). The solver ran at high under `claude -p`, with $5 and
   3600 s an attempt, where the campaign's ran at medium under pi with 20 model turns and 30 minutes.
+
+  The operator then asked "maybe we did not copy everything and the system was brittle", and "launch
+  another opus review subagent, only give it hints". Two reads of one store agreed. The copy held:
+  8,353 of 8,360 kept toolchain files arrived unchanged, and the other 7 are item 13's links. The gap
+  sits in the score's form: 189 against 196 criteria of 241 became 310 against 342 points, on 11 split
+  rubrics of 68, and each of the 8 the built arm lost was one criterion short. The judge's cap (item
+  16) cost the built arm 8 points that the Starter won with the same statement placed earlier, and cost
+  every arm 32 more on one task. The built arm took fewer turns, 197 against 285, and neither read found
+  that gap tracking the score gap. Only three task1s ran side by side (net -6 of 254); the other five
+  ran about 31 hours apart (net -26 of 296). Asked "why not make the system more lenient", the answer
+  was that nothing refused anything in any of the 16 rollouts, so leniency is not the lever. The three
+  levers are making what the export says true (item 14), loosening the harness from its campaign, and
+  widening what the harness was selected on. Those reviews had no ledger and no seal, which is why
+  `comparison-review` exists.

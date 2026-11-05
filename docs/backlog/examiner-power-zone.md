@@ -169,7 +169,12 @@ In order: each rests on the one before, except item 7, which comes before item 3
 
      It makes the exam carry hidden values (the parameters) and declare an objective that reads
      them (#616), so a third review's ask for code that forces hidden values is met for jobstat
-     without refusing truss, whose objective rightly reads none.
+     without refusing truss, whose objective rightly reads none. The operator approved it on
+     5 November ("tune indeed"), and it is the operator's prompt file for jobstat from then, the
+     one before kept beside it. The case: the 4 November revision kept recomputation as the
+     objective ("the larger share of computed values ... that agree with a recomputation"), and
+     the campaign that ran it, jobstath2-fresh-opus-forkedPR608-stijn-pro, scored 243 of 265
+     solves at exactly 1 and tied 51 of 51 tasks over three comparisons, every one `no-step`.
    - A draw ordered by the reference's past outcomes instead of by hash (`scoredSet`,
      `src/campaign/round.ts`). It is honest between the sides, since both solve afresh; the
      reference's luck in the record that chose a task regresses on the fresh solves, which costs
@@ -293,8 +298,12 @@ In order: each rests on the one before, except item 7, which comes before item 3
       its task. Validity first is the design (`WEIGHTS`, `AGENTS.md` section 7): a deliverable that
       fails one time in four loses to one that never fails, and the weights are the step rule's;
     - a drafting rule that every task carries hidden values once an exam declares an objective.
-      Truss's objective, the mass, reads none and is right to; item 6's proposed sentence gives
-      jobstat its hidden values instead;
+      Truss's objective, the mass, reads none and is right to; item 6's sentence gives jobstat its
+      hidden values instead. Asked to take one of the two opposed asks in a better form, this one
+      was taken as a fact for the drafting seat (#621): a recomputation share is a measure the
+      standard method reaches, so careful solves tie on it, while one read against the parameters
+      the data were generated from leaves a better method room. The validity cliff has no case on
+      record, so it stays opposed;
     - carrying a harness's `agent/tools.ts` into the JobBench export
       (`studies/shared/claude-export.ts`): none of the 33 kept jobstat harnesses declares a tool
       (`tools-spec.json` lists none), and their programs already travel in `scripts/toolchain/`,
@@ -320,6 +329,15 @@ In order: each rests on the one before, except item 7, which comes before item 3
       have foreseen, so it is machinery with no case (rule 13);
     - plausible, not taken: an Examiner told in its opening that a hidden value of `none` is a
       task with no hidden part; no session on record misread it.
+
+15. **A fourth outside review of 5 November**, on #625 to #628:
+    - #626 kept the Examiner's home only when the conversation's wall closed, so a host killed
+      while it rested lost every ask's files. Confirmed and fixed on #626: each ask's rest keeps
+      the home, with a test that fails without it;
+    - the wait for a writing ask before a promotion (`context.examining?.done`,
+      `tools/d2/campaign-actions.ts`) is load-bearing: it stays;
+    - #628's worker count in `tools/runtime/gate.ts`: #628 is another session's, and the stack's
+      top still spreads the caller's environment first, so the claim is that session's to read.
 
 **Prediction for the first fresh campaign at this stack's top**, on record before its first solve:
 its first candidate comparison that reports finds at least six tasks informative for the reference

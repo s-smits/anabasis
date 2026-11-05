@@ -150,7 +150,26 @@ In order: each rests on the one before, except item 7, which comes before item 3
      (`src/examiner/draft.ts`, the rule on what conventions may state). Both outside reviews of
      5 November read jobstat as estimation against a hidden truth whose drafted inputs name every
      step. The prompt is the operator's; the same live seat found 3 of its 4 instances naming all or
-     nearly all of the method, each answered on every solve.
+     nearly all of the method, each answered on every solve. Four outside reviews of the stack now
+     name the prompt's validity sentence as the binding cause, and the log confirms what it says:
+     "A deliverable is valid when every requested file, sheet, column and section exists and its
+     computed values, counts and denominators agree with a recomputation from the supplied files
+     using standard Python statistics libraries (pandas, scipy, statsmodels)." The drafting
+     prompt's "the operator's prompt outranks your choice of rules" keeps that rule whatever
+     #620's text says, and the prompt names no objective. Proposed in its place, for the
+     operator's word, the rest of the prompt unchanged:
+
+     > Each task's workspace is generated from a statistical process whose parameters the task
+     > does not state, with the defects real data carries (missing values, recoding, duplicates,
+     > confounders) left for the analyst to find. A deliverable is valid when every requested file,
+     > sheet, column and section exists and its tables reconcile with each other: counts,
+     > denominators and totals agree across them. Of two valid deliverables the better is the one
+     > whose estimates and intervals lie closer to the parameters the data were generated from,
+     > scored by absolute error and interval score.
+
+     It makes the exam carry hidden values (the parameters) and declare an objective that reads
+     them (#616), so a third review's ask for code that forces hidden values is met for jobstat
+     without refusing truss, whose objective rightly reads none.
    - A draw ordered by the reference's past outcomes instead of by hash (`scoredSet`,
      `src/campaign/round.ts`). It is honest between the sides, since both solve afresh; the
      reference's luck in the record that chose a task regresses on the fresh solves, which costs
@@ -185,7 +204,10 @@ In order: each rests on the one before, except item 7, which comes before item 3
    as one pooled share. The frozen exam is not repaired and its comparison is not scored again on
    changed terms (rules 2 and 4).
    The owner is the writing prompt's wording on how a request states an exact string, written
-   domain-agnostically. Operator blind labels (`settle.ts`) of a few heading cases from the five
+   domain-agnostically. #621 now carries it (`80126f87c`) in the fairness text that the writing
+   and the drafting prompts share: a solver copies a demanded string as the public input spells
+   it, markup included, so where a check compares text exactly the input gives that text alone, set
+   apart as a quotation. It is present in source and unmeasured. Operator blind labels (`settle.ts`) of a few heading cases from the five
    requests, with `x-4-001` among them and counted apart, settle which side the shared reading
    favours; one label can settle that reading, but not the Referee's accuracy over 18 rulings,
    which still needs the verdicts factor's 30 blind labels. No operator label is on record yet.
@@ -202,6 +224,15 @@ In order: each rests on the one before, except item 7, which comes before item 3
    and whether a step there held on tasks from another generator. Only a count that shows one
    structure carrying most steps makes this a change, and then as a fact in the Examiner's
    record (how many of its held tasks share a generator), never a quota.
+   Counted on 5 November over 52 campaigns opened from 25 October (45 buffer, 1,659 held tasks; 7
+   jobstat, 274), with a structure key of family plus the public input's skeleton: one structure
+   holds half or more of a step's untied tasks in 4 of 54 `step` comparisons, and in each the draw,
+   which takes the newest epoch first, explains the share. The one such step whose harness was
+   read again (a starter comparison on 21 tasks, none of that structure) held; two rest wholly on
+   one structure and were never read again. No jobstat comparison read `step` (15 `no-step`).
+   Several sessions since 28 October held 8 to 26 tasks from one or two structures. So the bar is
+   not met: nothing changes, and the count is a fact the Examiner's record could carry only if a
+   later count shows steps carried by one structure. One subagent's count, spot-read here.
 9. **One Examiner conversation across asks makes item 8 likelier** (plausible, unmeasured). #626
    keeps the writing Examiner's whole context from ask to ask, so it holds its generators and can
    reuse them, where a fresh session derived them again. Coherence and economy pull one way,
@@ -216,9 +247,11 @@ In order: each rests on the one before, except item 7, which comes before item 3
     across 26 Builder conversations, 2 never cleared and 4 compared without the practice they were
     owed. #625 moves the guard into `practiceDue` and bounds it instead of removing it: a reading
     with nothing held out since the last release is owed one task, a promotion with nothing held
-    none, and the admission floor and the release's cap still bound it. That cap is half of all
-    held tasks (`tools/d2/prepare.ts`), where `AGENTS.md` section 6 says half the tasks with room;
-    which of the two is meant is open, and the other follows it.
+    none, and the admission floor and the release's cap still bound it. The cap is half of what is
+    held (`tools/d2/prepare.ts`), as the campaign-mechanics reference and the `--practice` help
+    say; `AGENTS.md` sections 1 and 6 said half the tasks with room, and #625 (`c40f92b73`) corrects
+    them to the three bounds the code holds: half of what is held, half of the tasks a reading left
+    room on (`releaseOrder`), and after the first release the comparison floor of frontier tasks.
     The risk to watch is the frontier: one task a reading drawn from tasks a comparison would score
     brings the frontier nearer the floor of eight, and an allowance does not guarantee an eligible
     task (`releaseOrder`). Read the frontier and the released count after each reading in the first
@@ -229,12 +262,64 @@ In order: each rests on the one before, except item 7, which comes before item 3
       tries spent 4.42 dollars refusing on the heading without the seat learning why;
     - whether a task with an earned practice fail stays in practice (`x-4-001` left it);
     - a dollar cap the host reads for a simulation: the round's 40 dollars was a note, not a limit.
-12. **Leads from the round, each resting on one reading** (plausible):
-    - a large tool result saved under the CLI's own configuration folder was unreadable from the
-      Examiner's wall (`src/agent/backends/claude.ts`), so one result was lost to the session;
-    - packages a solve installs from the network leave their versions out of the condition;
+12. **Leads from the round**:
+    - a large tool result is unreadable from the Examiner's wall (cause confirmed, fix plausible).
+      The CLI keeps a result of about 50,000 characters or more in its own configuration folder
+      and hands the model the path; that folder is the session's host scratch, outside the seat's
+      wall, so the seat's `read` gets EPERM on macOS and ENOENT on Linux. In `sim-exam625` this
+      hit three Examiner sessions (x-2, x-3, x-4) on `read_example` results of 50,146 to 50,941
+      characters, while one of 39,723 came back whole; each cost the seat a `bash` and a `read`
+      before it read the examples one at a time. The CLI reads a tool's
+      own limit from `anthropic/maxResultSizeChars` in the tool's `_meta`, which the vendored tool
+      server (`vendor/pi-claude-bridge/mcp-server.ts`) does not send. The fix is a sed there that
+      sends a limit above the largest result a seat tool returns, or a read grant on the session's
+      `tool-results` folder; either is proved by one live seat turn returning a large result,
+      which spends and so waits for the operator's word. Meanwhile `read_example` returns its task
+      unindented (#621, `cf7eb121d`): of 201 recorded jobstat tasks, 31 passed 50,000 characters
+      indented and 11 unindented;
+    - `TOOLS CALLED` counted a harness's `.toolchain/bin` programs as `bash` (confirmed, changed
+      on #629, `0ff38d540`): it now names the program each bash call ran first, so lane 16 sees
+      which programs a new harness's solves used;
     - the Examiner's reseeding of one generator followed the host's reply asking for more tasks
-      (item 8).
+      (item 8, counted there).
+13. **Opposed, with the reason** (5 November):
+    - naming the refusing check in a try's result. The operator chose "no check id"; naming it
+      would let the seat tune a check on the reference's luck with a few tries, and the round's
+      tries refused on the heading, whose cause item 7 fixes at the prompt;
+    - (withdrawn on 5 November, about 06:00) changing the jobstat domain prompt: its validity sentence
+      outranks the domain-agnostic text, so item 6 now carries a proposed sentence;
+    - restoring a cap on the objective's share or loosening validity's weight after #623, asked
+      by a third review so that a harness 35% better on the objective in 3 valid solves of 4 wins
+      its task. Validity first is the design (`WEIGHTS`, `AGENTS.md` section 7): a deliverable that
+      fails one time in four loses to one that never fails, and the weights are the step rule's;
+    - a drafting rule that every task carries hidden values once an exam declares an objective.
+      Truss's objective, the mass, reads none and is right to; item 6's proposed sentence gives
+      jobstat its hidden values instead;
+    - carrying a harness's `agent/tools.ts` into the JobBench export
+      (`studies/shared/claude-export.ts`): none of the 33 kept jobstat harnesses declares a tool
+      (`tools-spec.json` lists none), and their programs already travel in `scripts/toolchain/`,
+      so a per-tool wrapper is machinery with no case behind it (rule 13);
+    - putting the versions of packages a solve installs from the network into the condition. Both
+      sides of a comparison install from the same mirror within one comparison, so a version moves
+      only when a release lands mid-comparison, and the A/A beside it would show that drift; a
+      pinned mirror is worth it only once a reading's A/A steps.
+
+14. **Seat texts left to the operator, from the prompt audits of 5 November** (`AGENTS.md`,
+    section 3: changing what a solver is told). Each was checked against the code:
+    - `submit` (`src/tools/answer.ts`) says giving malformed "ends the task with no answer read";
+      append "It counts as a solve with no valid answer." (`src/kernel/solves.ts` counts a flag as
+      the flagging side's fail);
+    - `HARNESS.md` (`src/harness/starter.ts`) and `src/solver/prompt.ts` promise "the size of the
+      volume", which `environment()` never states; delete the phrase from both;
+    - `HARNESS.md` says a harness tool's text is "at most 64 KB"; `tool()` shows about 49 KB and
+      writes the rest to a file (`capped`, `src/tools/answer.ts`); say so;
+    - the solver's addendum and `submit` both say the answer is `answer.json` in the answer
+      format; keep it in `submit` and leave the addendum one sentence;
+    - plausible, not taken: the Builder's status naming how many solves the next comparison holds
+      at the reserve. No campaign on record ended `budget` on a comparison the Builder could not
+      have foreseen, so it is machinery with no case (rule 13);
+    - plausible, not taken: an Examiner told in its opening that a hidden value of `none` is a
+      task with no hidden part; no session on record misread it.
 
 **Prediction for the first fresh campaign at this stack's top**, on record before its first solve:
 its first candidate comparison that reports finds at least six tasks informative for the reference
@@ -340,8 +425,27 @@ one exception (3). Watch these with every change above:
   both include or actually oppose?" The answer named the choices that one count could turn either
   way; the three that bear on the zone are items 7 to 9 (the heading rulings and the guard, one
   generator re-seeded, and #626's one conversation), each with the count that decides it.
-- **5 November, morning.** An outside review of revision `bfc32c41b` asked for item 7 to keep the
+- **5 November, about 05:00.** An outside review of revision `bfc32c41b` asked for item 7 to keep the
   heading cases apart from the statistical one, the pooled 8 of 29 qualified and what one label
   shows limited, item 9 read as monitoring, and the blocked practice of item 10 bounded. The
   operator pasted it, then "launch more subagents if you need to". The heading replay and the
   archive count of item 10 were taken then, and #625 carried the bounded release.
+- **5 November, about 05:30.** The operator asked "did we fix the problems regarding jobstat trailing
+  components / counterintuitive mechanisms", then "Ambitiously fix and append what's left, but do
+  it in your way, or oppose purposefully". The heading fact went into the shared fairness text
+  (item 7), the release cap's description was corrected (item 10), `TOOLS CALLED` learned the
+  programs (item 12), the generator count was taken (item 8), the tool-results cause was found
+  (item 12), and four asks were opposed (item 13). The operator then asked for two subagents to
+  set every seat's prompt against what the system does and patch the missing hints.
+- **5 November, about 06:00.** Two prompt audits set every seat's text beside the code. On #625 a
+  practice check defect now closes its task in the log and is owed again, and the Builder is told
+  every ending, the retained draw, the fails without an answer and the wait after a promotion; on
+  #621 the Examiner is told how the Referee bears on the score, what a solver reads, the check's
+  wall time and where its record gives the A/A, and the Referee its limits. The operator pasted
+  three more outside reviews and said "The ORacle is also a name for a 2nd opinion actually,
+  assume you're as smart as the oracle and can make changes here". Of their asks, two were taken
+  (a grade at which the reference answers every solve now holds only with no better answer on
+  record, and the objective is said to tie where the standard method reaches the best measure),
+  one was found already true (a fresh fallback session opens with the whole record), the domain
+  prompt's opposition was withdrawn (item 6), and two were opposed (item 13). The seat texts that
+  are the operator's are item 14.

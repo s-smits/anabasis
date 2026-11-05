@@ -188,7 +188,6 @@ function actionTool(context: CampaignContext, bench: Bench, move: ActionMove, ru
         "Freeze harness/ and compare it with the current reference on fresh held-out solves, also while an Examiner session writes: tasks it holds out later join the next comparison. Where a comparison began and has not reported, it goes on under its original terms. Where the host owes the starter comparison that follows a promotion, this call runs that instead and harness/ is compared at the next one. A comparison that reads a step against the reference promotes the harness it froze. After a promotion, it first waits for the Examiner session writing for the new reference to end.",
     }[move],
     parameters: Type.Object({}),
-    executionMode: "sequential",
     execute: async (_args, _api, execution) => runAction(context, bench, move, run, execution.abortSignal),
   });
 }
@@ -727,7 +726,6 @@ export function campaignTools(
           name: "campaign_status",
           description: "Read the campaign's counts.",
           parameters: Type.Object({}),
-          executionMode: "sequential",
           execute: async () => text(campaignStatus(context, bench)),
         }),
       ],

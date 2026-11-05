@@ -248,7 +248,6 @@ function readProgramTool(checks: string) {
         Type.Number({ minimum: 0, description: "The first character to return; 0 by default." }),
       ),
     }),
-    executionMode: "sequential",
     execute: async (args) => {
       const files = checkProgramFiles(checks);
       if (args.path === undefined) return text(files.join("\n"));
@@ -327,7 +326,6 @@ function rulingTool(
     description:
       "Record whether this fail counts, with the probes it rests on. The system prompt states the evidence each ruling needs.",
     parameters: RULING_PARAMETERS,
-    executionMode: "sequential",
     execute: async (args) => {
       const why = refusal(refusing, answer, rows, args);
       if (why !== null) {

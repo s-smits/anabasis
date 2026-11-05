@@ -349,7 +349,6 @@ export async function harnessTools(harness: Harness, task: PublicTask, launch: L
           name: row.name,
           description: row.description,
           parameters: row.parameters,
-          executionMode: "sequential",
           execute: async (params, _api, context) => {
             const { result } = await call<{ result: Evidence }>(row.name, params, context.abortSignal);
             return {

@@ -310,7 +310,6 @@ function proposeTool(desk: Desk): SeatTool {
     parameters: Type.Object({
       tasks: Type.Array(GIVEN, { minItems: 1 }),
     }),
-    executionMode: "sequential",
     execute: async (args, _api, context) => {
       context.abortSignal?.throwIfAborted();
       const signal = desk.stop;
@@ -348,7 +347,6 @@ function exampleTool(tasks: () => readonly Task[]): SeatTool {
     parameters: Type.Object({
       task: Type.String({ description: "A task's or a draft's id." }),
     }),
-    executionMode: "sequential",
     execute: async (args) => {
       const examples = new Map(tasks().map((task) => [task.taskId, task]));
       const example = examples.get(args.task);
@@ -407,7 +405,6 @@ function tryTool(desk: Desk, verify: Verifier): SeatTool {
       ...SPELLED,
       answer: Type.Unknown({ description: "An answer in the domain's answer format." }),
     }),
-    executionMode: "sequential",
     execute: async (args, _api, context) => {
       const candidate = instanceOf("try", args);
       // SAFETY: a tool's arguments are JSON the provider parsed.
@@ -471,7 +468,6 @@ function tryReferenceTool(desk: Desk, first: NonNullable<Terms["probe"]>, within
       task: GIVEN,
       solves: Type.Integer({ minimum: 1, maximum: 2, description: "How many solves to run side by side." }),
     }),
-    executionMode: "sequential",
     execute: async (args, _api, context) => {
       context.abortSignal?.throwIfAborted();
       // The ask's own: its solves' starts name the ask (`probing`, `tools/d1b/examine.ts`).

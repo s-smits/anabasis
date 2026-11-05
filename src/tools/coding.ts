@@ -108,7 +108,6 @@ function bashTool(wall: CommandWall): SeatTool {
         }),
       ),
     }),
-    executionMode: "sequential",
     execute: async (args: BashToolInput, api, context) => {
       const { asked, seconds, nearEnd } = heldSeconds(args.timeout, wall);
       // runWalled applies the remaining solve time too; leave that reduction to its one owner.

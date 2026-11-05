@@ -236,7 +236,6 @@ export function probeTool(
         { minItems: 1, maxItems: 3 },
       ),
     }),
-    executionMode: "sequential",
     execute: async (args, _api, context) => {
       if (rows.length >= PROBE_BUDGET) {
         throw new Error(`a review runs at most ${String(PROBE_BUDGET)} probes`);

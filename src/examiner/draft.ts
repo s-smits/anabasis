@@ -450,7 +450,6 @@ export function drafting(terms: DraftingTerms, within: <T>(action: () => Promise
     name: "draft_exam",
     description: "Put a whole draft of the exam to the host's reading, as the system prompt says.",
     parameters: DRAFT_PARAMETERS,
-    executionMode: "sequential",
     execute: async (args) => {
       if (desk.tries >= limits.puts) throw new Error(none);
       desk.tries += 1;

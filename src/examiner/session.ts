@@ -173,7 +173,6 @@ function finishTool(mode: Mode, said: Said, rest: Rest): SeatTool {
     name: "finish",
     description: mode.finish,
     parameters: Type.Object({ note: Type.String({ minLength: 1 }) }),
-    executionMode: "sequential",
     execute: async (args) => {
       const counted = capturedJsonStringify(mode.counted());
       if (mode.declined !== null && said.declined !== counted && mode.done() === null) {

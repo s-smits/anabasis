@@ -37,8 +37,8 @@ interface Frames {
 
 /** The probe, as the page holds it. */
 interface FrameProbe {
-  start(watched: string, content: string): void;
-  stop(): Frames;
+  start: (watched: string, content: string) => void;
+  stop: () => Frames;
 }
 
 declare global {

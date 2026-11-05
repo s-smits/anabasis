@@ -97,7 +97,7 @@ const STARTER_SCRATCHPAD = `# Scratchpad
 Open questions and next steps for the next session. Remove a line when it is resolved.
 `;
 
-const FILES: ReadonlyArray<readonly [string, string, number]> = [
+const FILES: readonly (readonly [string, string, number])[] = [
   [MEMORY_FILE, STARTER_MEMORY, MEMORY_CAP_BYTES],
   [SCRATCHPAD_FILE, STARTER_SCRATCHPAD, SCRATCHPAD_CAP_BYTES],
 ];
@@ -151,7 +151,7 @@ const HELPER_NAMES_SHOWN = 5;
  *  question "has this been authored", because `authoredBody` decides that by comparing against
  *  these same strings: a second copy of the starter text would make an untouched file look
  *  written. */
-const STARTER_MEMORY_FILES: ReadonlyArray<readonly [string, string]> = FILES.map(
+const STARTER_MEMORY_FILES: readonly (readonly [string, string])[] = FILES.map(
   ([name, starter]) => [name, starter] as const,
 );
 

@@ -104,24 +104,24 @@ function trialOf(line: JsonObject): Trial {
     throw new Error(`trials.py printed a line without its task, trial and path: ${JSON.stringify(line)}`);
   }
   const result = jsonAt(join(path, "agent", RESULT_FILE));
-  const ending = isString(result?.["ending"]) ? result["ending"] : null;
+  const ending = isString(result?.ending) ? result.ending : null;
   const harbor = jsonAt(join(path, "result.json"));
   const trace = join(path, "agent", TRACE_FILE);
   const traced = existsSync(trace) ? tracesIn(read(trace)) : null;
   // Harbor records an agent or a verifier that threw; only the agent's own timeout is the side's
   // fail, as `wall-ended` is in a campaign. This holds for an agent that writes no result of ours.
-  const thrown = asRecord(harbor?.["exception_info"])?.["exception_type"];
+  const thrown = asRecord(harbor?.exception_info)?.exception_type;
   const lost = (ending !== null && NON_RESULT.has(ending)) || (isString(thrown) && thrown !== AGENT_TIMEOUT);
   return {
     task,
     trial,
     score: lost ? null : counted(score),
     ending,
-    billed: counted(result?.["billed"]),
-    turns: counted(result?.["turns"]),
+    billed: counted(result?.billed),
+    turns: counted(result?.turns),
     calls: traced === null ? null : traced.filter((each) => each.part === "call").length,
-    seconds: counted(result?.["seconds"]),
-    started: isString(harbor?.["started_at"]) ? harbor["started_at"] : null,
+    seconds: counted(result?.seconds),
+    started: isString(harbor?.started_at) ? harbor.started_at : null,
   };
 }
 

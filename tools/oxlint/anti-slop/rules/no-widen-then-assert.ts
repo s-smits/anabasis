@@ -32,11 +32,11 @@ const selfEvidentExpressions = new Set([
   "TemplateLiteral",
 ]);
 
-type WidenedBinding = {
+interface WidenedBinding {
   readonly widening: WideningTargetKind;
   readonly declaredAt: number;
   readonly boundary: ESTree.Node | null;
-};
+}
 
 /** The expression an assertion or parenthesis chain finally wraps. */
 function unwrapExpression(expression: ESTree.Expression): ESTree.Expression {

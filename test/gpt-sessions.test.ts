@@ -19,7 +19,13 @@ import { capturedExecPath } from "../src/meta/process.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
 
 /** One session row as a manifest carries it. `model` is there to be refused. */
-type Row = { name: string; task: string; sandbox?: string; ownedPaths?: string[]; model?: string };
+interface Row {
+  name: string;
+  task: string;
+  sandbox?: string;
+  ownedPaths?: string[];
+  model?: string;
+}
 
 interface Step {
   thread?: string;

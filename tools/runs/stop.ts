@@ -65,7 +65,7 @@ export function family(table: string, pid: number): number[] {
  * stayed and had to be released by hand (buffer x-1, 2026-10-10). A session that drafts
  * an exam has had one since 11 October.
  */
-export function leftOpen(run: Pick<Run, "path" | "seed">): Array<SolveDirs & { build?: string }> {
+export function leftOpen(run: Pick<Run, "path" | "seed">): (SolveDirs & { build?: string })[] {
   const events = logEvents(run.path).slice(run.seed === true ? seedCut(dirname(run.path)) : 0);
   return unfinished(events).flatMap(({ of, id }) => {
     if (!isString(id)) return [];

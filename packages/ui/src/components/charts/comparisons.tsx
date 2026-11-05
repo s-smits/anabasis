@@ -321,7 +321,7 @@ function SlotTooltip({
   names,
 }: {
   active?: boolean;
-  payload?: ReadonlyArray<{ payload?: Row }>;
+  payload?: readonly { payload?: Row }[];
   slots: ReadonlyMap<string, Slot>;
   names: Readonly<Record<string, string>>;
 }) {

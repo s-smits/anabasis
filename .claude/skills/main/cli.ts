@@ -52,11 +52,11 @@ interface ParsedCliArgs {
  */
 export type ExitWith = (message: string, code?: number) => never;
 
-type Collected = {
+interface Collected {
   single: Map<string, string>;
   repeated: Map<string, string[]>;
   flags: Set<string>;
-};
+}
 
 /**
  * How one declared option is read. `abs` refuses a relative path, `int` a non-integer, and `list`
@@ -79,12 +79,12 @@ export interface CommandArgs {
   readonly die: ExitWith;
   readonly positionals: readonly string[];
   /** The option's value, or null when it was not passed. An `abs` option comes back resolved. */
-  value(name: string): string | null;
+  value: (name: string) => string | null;
   /** The same value, refusing through `die` when it is absent or empty. */
-  required(name: string): string;
-  int(name: string): number | null;
-  flag(name: string): boolean;
-  list(name: string): readonly string[];
+  required: (name: string) => string;
+  int: (name: string) => number | null;
+  flag: (name: string) => boolean;
+  list: (name: string) => readonly string[];
 }
 export class CliArgumentError extends Error {}
 
@@ -224,11 +224,11 @@ export function requiredOption(
  * worked and the answer was no. Anything else a command throws exits 1 with the error's message.
  */
 export class CommandFailure extends Error {
-  constructor(
-    message: string,
-    readonly code = 1,
-  ) {
+  readonly code: number;
+
+  constructor(message: string, code = 1) {
     super(message);
+    this.code = code;
   }
 }
 

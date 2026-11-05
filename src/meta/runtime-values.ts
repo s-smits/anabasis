@@ -1,5 +1,5 @@
 import { isString } from "./json-shape.ts";
-import { runtimeProcess } from "./process.ts";
+import type { runtimeProcess } from "./process.ts";
 
 export type RuntimePlatform = typeof runtimeProcess.platform;
 
@@ -30,6 +30,7 @@ declare global {
      *  keyed by check id would silently drop exactly that id. The library types this `any`; an
      *  object with no prototype and no own properties is an empty record, which the declared type
      *  of the variable it initialises then widens. */
+    // oxlint-disable-next-line typescript/method-signature-style -- an overload merged into the library's `ObjectConstructor`, which a property would redeclare
     create(o: null): Record<never, never>;
   }
 }

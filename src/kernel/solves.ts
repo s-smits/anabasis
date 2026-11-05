@@ -46,7 +46,10 @@ export interface Ran extends Solve {
 }
 
 /** A solve that has ended. */
-type Ended = { readonly finished: number; readonly end: JsonObject };
+interface Ended {
+  readonly finished: number;
+  readonly end: JsonObject;
+}
 
 /** The verdict the log holds of a solve's answer. */
 export interface Judged {

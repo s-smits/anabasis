@@ -363,7 +363,7 @@ export const noSingleCallerHelperRule = defineRule({
 
     /** What one report would cost the two functions the inlined lines land in: the outermost one
      *  grows by `lines` and the innermost one by `branches`. */
-    type Cost = {
+    interface Cost {
       declaring: ESTree.Node;
       name: string;
       statements: number;
@@ -371,7 +371,7 @@ export const noSingleCallerHelperRule = defineRule({
       lines: number;
       branching: ESTree.Node | null;
       branches: number;
-    };
+    }
 
     function cost(declaring: ESTree.Node, name: string, callable: ESTree.Node): Cost | null {
       const declared = context.sourceCode

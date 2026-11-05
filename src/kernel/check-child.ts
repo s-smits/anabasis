@@ -59,7 +59,7 @@ interface ToolRun {
 }
 
 interface CheckRuntime {
-  readonly tools: { run(call: ToolCall): Promise<ToolRun> };
+  readonly tools: { run: (call: ToolCall) => Promise<ToolRun> };
 }
 
 /** The shell's own exit codes for a program it could not execute (126) or could not find (127). */

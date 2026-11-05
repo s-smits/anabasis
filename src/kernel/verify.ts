@@ -67,7 +67,7 @@ import type { Objective } from "./contract.ts";
 // here, cut to the fields those functions and the shape check read, in place of v1's brief, contract
 // and task-split modules, which did not come over.
 
-type CheckExecution = {
+interface CheckExecution {
   families: "all" | string[];
   artifactPaths: string[];
   publicInputPaths: string[];
@@ -78,14 +78,22 @@ type CheckExecution = {
   hidden: "none" | "required" | "whole";
   requiredToolIds?: [string, ...string[]];
   evidence: { kind: "authored" } | { kind: "external"; requiredToolIds: [string, ...string[]] };
-};
+}
 
-type BriefTruthCheck = { id: string; citedDecisionIds: string[]; execution: CheckExecution };
+interface BriefTruthCheck {
+  id: string;
+  citedDecisionIds: string[];
+  execution: CheckExecution;
+}
 
 /** The brief declares its checks and may declare an objective (`Objective`):
  *  the evaluator then exports `objective(request)`, a finite number of a valid answer, which the
  *  verifier measures after the checks pass (`OBJECTIVE`). An answer the checks refuse has none. */
-export type Brief = { correctnessContract: string; truthChecks: BriefTruthCheck[]; objective?: Objective };
+export interface Brief {
+  correctnessContract: string;
+  truthChecks: BriefTruthCheck[];
+  objective?: Objective;
+}
 
 interface PublicTask<PublicInput> {
   taskId: string;

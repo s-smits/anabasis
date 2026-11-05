@@ -386,7 +386,7 @@ export const declarationsBeforeTheFirstFunctionRule = defineRule({
     /** Where every call, `new`, `await` and assignment that is not a pure builder starts. */
     const effects: number[] = [];
     /** The spans a read inside of is a read the surrounding test may have narrowed. */
-    const guards: Array<{ start: number; end: number }> = [];
+    const guards: { start: number; end: number }[] = [];
     const guard = (test: ESTree.Node): number => guards.push({ start: test.start, end: test.end });
 
     return {

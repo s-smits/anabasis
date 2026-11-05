@@ -17,6 +17,7 @@
  */
 
 /** What the two `keyIf*` functions return: an optional key that is never present as `undefined`. */
+// oxlint-disable-next-line typescript/consistent-indexed-object-style -- `keyIfDefined` and `keyIfNotNull` typecheck against this mapped form and not against `Partial<Record<K, ...>>`
 type Key<K extends string, V> = { [P in K]?: Exclude<V, null | undefined> };
 
 /**

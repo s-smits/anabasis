@@ -29,7 +29,11 @@ const TOOL_TEXT_LIMITS = { name: 128, label: 256, description: 4000, evidence: 6
 export const DRAFT_TOOL = Symbol.for("anabasis/draft-tool/v1");
 
 /** A tool's result, as v1 typed it. */
-export type Evidence<D = unknown> = { text: string; details?: D; terminate?: boolean };
+export interface Evidence<D = unknown> {
+  text: string;
+  details?: D;
+  terminate?: boolean;
+}
 
 /** v1 passed its DraftStore here; v2 runs each call alone, so there is no store to pass. The
  *  handler is itself a proxy answering every trap with the refusal, so reading, writing, listing
@@ -67,7 +71,7 @@ interface DraftTool {
   parameters: TSchema;
   executionMode?: "sequential" | "parallel";
   /** Checks the arguments against the declared schema, runs the tool, and checks its result. */
-  call(params: unknown, signal: AbortSignal): Promise<Evidence>;
+  call: (params: unknown, signal: AbortSignal) => Promise<Evidence>;
 }
 
 /** v1's, with the task's own type inlined. */

@@ -31,7 +31,7 @@ function CarriedTooltip({
   payload,
 }: {
   active?: boolean;
-  payload?: ReadonlyArray<{ payload?: CarriedRow }>;
+  payload?: readonly { payload?: CarriedRow }[];
 }) {
   const row = payload?.[0]?.payload;
   const carried = row?.bar.carried ?? null;
@@ -106,7 +106,7 @@ function SpendTooltip({
   payload,
 }: {
   active?: boolean;
-  payload?: ReadonlyArray<{ payload?: SpendPoint }>;
+  payload?: readonly { payload?: SpendPoint }[];
 }) {
   const point = payload?.[0]?.payload;
   if (active !== true || point === undefined) return null;

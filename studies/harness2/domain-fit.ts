@@ -116,7 +116,7 @@ const TASK: Task = {
 };
 
 /** Each answer with the checks it should leave blocking; an empty list is a pass. */
-const ANSWERS: ReadonlyArray<{ name: string; patch: string; blocking: readonly string[] }> = [
+const ANSWERS: readonly { name: string; patch: string; blocking: readonly string[] }[] = [
   {
     name: "fix",
     patch:

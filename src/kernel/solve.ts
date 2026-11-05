@@ -87,8 +87,11 @@ export const SILENT_SECONDS = 10 * 60;
 
 /** The host's first cancellation source, carried through parent and invocation signals. */
 export class Cancellation extends Error {
-  constructor(readonly cancelledBy: CancellationOrigin) {
+  readonly cancelledBy: CancellationOrigin;
+
+  constructor(cancelledBy: CancellationOrigin) {
     super(`work cancelled by ${cancelledBy}`);
+    this.cancelledBy = cancelledBy;
   }
 }
 

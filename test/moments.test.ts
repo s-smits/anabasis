@@ -27,8 +27,8 @@ function hook(input: unknown): { status: number | null; said: string } {
     env: { ...Bun.env, ANA_TEST_TMPDIR: temp },
   });
   const parsed = run.stdout.trim() === "" ? null : capturedJsonParse(run.stdout);
-  const output = isRecord(parsed) ? parsed["hookSpecificOutput"] : null;
-  const context = isRecord(output) ? output["additionalContext"] : null;
+  const output = isRecord(parsed) ? parsed.hookSpecificOutput : null;
+  const context = isRecord(output) ? output.additionalContext : null;
   const said = isString(context) ? context : "";
   return { status: run.status, said };
 }

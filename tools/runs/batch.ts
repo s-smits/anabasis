@@ -2,7 +2,7 @@
 import { runtimeProcess } from "#src/meta/process.ts";
 import type { Host } from "./host-config.ts";
 import { CODEX, type Live } from "./live.ts";
-import { readLogins } from "./logins.ts";
+import type { readLogins } from "./logins.ts";
 import { freshFleet, freshHosts, freshLogin, loginPool, loginPresent, placeFresh } from "./placement.ts";
 import { publishedAt } from "./code.ts";
 

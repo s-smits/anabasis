@@ -335,13 +335,24 @@
     "promise/spec-only": "error",
     "promise/valid-params": "error",
     "typescript/adjacent-overload-signatures": "error",
+    "typescript/array-type": "error",
     "typescript/await-thenable": "error",
     "typescript/ban-ts-comment": "error",
     "typescript/ban-tslint-comment": "error",
     "typescript/class-literal-property-style": "error",
     "typescript/consistent-generic-constructors": "error",
+    "typescript/consistent-indexed-object-style": "error",
     "typescript/consistent-type-assertions": "error",
+    "typescript/consistent-type-definitions": "error",
     "typescript/consistent-type-exports": "error",
+    "typescript/consistent-type-imports": [
+      "error",
+      {
+        "disallowTypeAnnotations": false
+      }
+    ],
+    "typescript/dot-notation": "error",
+    "typescript/method-signature-style": "error",
     "typescript/no-array-delete": "error",
     "typescript/no-base-to-string": "error",
     "typescript/no-confusing-non-null-assertion": "error",
@@ -396,6 +407,7 @@
     "typescript/no-useless-empty-export": "error",
     "typescript/no-wrapper-object-types": "error",
     "typescript/only-throw-error": "error",
+    "typescript/parameter-properties": "error",
     "typescript/prefer-as-const": "error",
     "typescript/prefer-enum-initializers": "error",
     "typescript/prefer-find": "error",

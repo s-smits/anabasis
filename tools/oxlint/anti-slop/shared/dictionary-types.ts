@@ -34,15 +34,15 @@ const TRANSPARENT_WRAPPERS = new Set(["Readonly", "Partial", "Required", "NonNul
 
 type TypeAliasEnvironment = ReadonlyMap<string, ESTree.TSType>;
 
-type ResolvedType = {
+interface ResolvedType {
   readonly type: ESTree.TSType;
   readonly substitutions: TypeAliasEnvironment;
-};
+}
 
-type UnsafeDictionary = {
+interface UnsafeDictionary {
   readonly kind: "unsafe-dictionary";
   readonly unsafeValue: "any" | "empty-object" | "object" | "union" | "unknown";
-};
+}
 
 export type WideningTargetKind =
   | "anonymous object"
@@ -52,9 +52,9 @@ export type WideningTargetKind =
   | "open dictionary"
   | "unknown";
 
-export type WideningTarget = {
+export interface WideningTarget {
   readonly kind: WideningTargetKind;
-};
+}
 
 /** The kind three of the producers below return and `generic` reads back. Written once so the
  *  four uses cannot drift from each other or from the union member above. */
@@ -70,15 +70,15 @@ const keywordEscapes = new Map<string, "any" | "object" | "unknown">([
   ["TSUnknownKeyword", "unknown"],
 ]);
 
-export type TypeEnvironment = {
+export interface TypeEnvironment {
   readonly interfaces: ReadonlyMap<string, readonly ESTree.TSInterfaceDeclaration[]>;
   readonly typeAliases: LexicalTypeAliasEnvironment;
-};
+}
 
 // --- the walk ------------------------------------------------------------------
 
 /** Where the walk stands: the type in hand, and what has been followed to reach it. */
-type Step = {
+interface Step {
   readonly type: ESTree.TSType;
   readonly substitutions: TypeAliasEnvironment;
   readonly visited: ReadonlySet<string>;
@@ -86,7 +86,7 @@ type Step = {
   readonly aliasFollowed: boolean;
   /** ...and that alias declares type parameters, so the container is generic. */
   readonly aliasGeneric: boolean;
-};
+}
 
 type Resolution =
   | { readonly kind: "step"; readonly step: Step }

@@ -15,6 +15,7 @@ import type { PriceTable } from "./meter.ts";
  * What the host holds every solve to. A harness never sets one: a file or a prompt that asks for a
  * longer deadline, higher prompt limit, more concurrency or more disk changes nothing.
  */
+// oxlint-disable-next-line typescript/consistent-type-definitions -- a type alias stays assignable to `JsonObject`, and an interface has no implicit index signature
 export type Limits = {
   readonly wallSeconds: number;
   /** The prompt limit: the opening one and each nudge after a turn that ended without a

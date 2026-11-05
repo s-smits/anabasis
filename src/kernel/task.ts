@@ -62,8 +62,13 @@ export interface TaskPackage extends Task {
 }
 
 /** The shape check passes or refuses. */
-type Passed = { readonly outcome: "passed" };
-type Refused = { readonly outcome: "refused"; readonly reason: string };
+interface Passed {
+  readonly outcome: "passed";
+}
+interface Refused {
+  readonly outcome: "refused";
+  readonly reason: string;
+}
 
 /** A task version as the fold holds it: its state, and whether its package passed task admission. */
 interface Folded {

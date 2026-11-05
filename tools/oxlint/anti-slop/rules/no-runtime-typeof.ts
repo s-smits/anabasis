@@ -191,7 +191,7 @@ export const noRuntimeTypeofRule = defineRule({
   createOnce(context) {
     return {
       UnaryExpression(node) {
-        const allowInTypeGuards = asRecord(context.options?.[0])?.["allowInTypeGuards"] === true;
+        const allowInTypeGuards = asRecord(context.options?.[0])?.allowInTypeGuards === true;
         if (
           node.operator === "typeof" &&
           !isExistenceProbe(node) &&

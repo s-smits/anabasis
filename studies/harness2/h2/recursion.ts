@@ -52,8 +52,12 @@ export interface Bench {
   readonly baseHarness: string;
   readonly sections: Sections;
   /** One rollout of a harness (the base when null): its run directory and dollars, or a throw. */
-  execute(task: string, harnessDir: string | null, runId: string): Promise<{ runDir: string; usd: number }>;
-  improve(call: Call): Promise<Reply>;
+  execute: (
+    task: string,
+    harnessDir: string | null,
+    runId: string,
+  ) => Promise<{ runDir: string; usd: number }>;
+  improve: (call: Call) => Promise<Reply>;
 }
 
 export const NAMESPACE = "jb-cc-agg1";
@@ -102,11 +106,11 @@ interface Summary {
 
 /** A rollout that left no deliverable, with what it billed on the way. */
 export class DeadRollout extends Error {
-  constructor(
-    message: string,
-    readonly usd: number,
-  ) {
+  readonly usd: number;
+
+  constructor(message: string, usd: number) {
     super(message);
+    this.usd = usd;
     this.name = "RuntimeError";
   }
 }

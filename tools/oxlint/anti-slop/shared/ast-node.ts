@@ -17,7 +17,7 @@ export type KeyedNode = ESTree.Node & OpenRecord;
 
 /** Whether a child a walk reached by key is a node, so the walk can read it without asking again. */
 export function isNode(value: unknown): value is KeyedNode {
-  return isRecord(value) && isString(value["type"]);
+  return isRecord(value) && isString(value.type);
 }
 
 /**

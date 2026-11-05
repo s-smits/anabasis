@@ -135,7 +135,7 @@ interface CommandDirectories {
 export function toolTreeSearchDirs(toolTree: string): string[] {
   if (!existsSync(toolTree)) return [];
   const found: string[] = [join(toolTree, "bin")].filter(existsSync);
-  const queue: Array<{ dir: string; depth: number }> = [{ dir: toolTree, depth: 0 }];
+  const queue: { dir: string; depth: number }[] = [{ dir: toolTree, depth: 0 }];
   for (let visited = 0; queue.length > 0 && visited < TOOL_TREE_MAX_DIRS; visited += 1) {
     const { dir, depth } = /* SAFETY: the loop condition proves the queue is non-empty. */ queue.shift() as {
       dir: string;

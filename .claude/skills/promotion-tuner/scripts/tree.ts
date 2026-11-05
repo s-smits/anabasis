@@ -47,21 +47,26 @@ export interface Tree {
   readonly commit: string;
   /** The tree's weight of each measure (`WEIGHTS`). */
   readonly weights: Points;
-  read(path: string): LogEvent[];
-  lastReports(events: readonly LogEvent[]): Reported[];
-  pairsReported(events: readonly LogEvent[], report: Reported): Paired[];
-  pairsOf(events: readonly LogEvent[], versions: readonly string[], sides: Sides, solves: number): Paired[];
+  read: (path: string) => LogEvent[];
+  lastReports: (events: readonly LogEvent[]) => Reported[];
+  pairsReported: (events: readonly LogEvent[], report: Reported) => Paired[];
+  pairsOf: (
+    events: readonly LogEvent[],
+    versions: readonly string[],
+    sides: Sides,
+    solves: number,
+  ) => Paired[];
   /** A task's points by measure under the tree's weights (`pointsOf`). */
-  points(pair: Paired): Points;
-  flipP(differences: readonly number[]): number;
+  points: (pair: Paired) => Points;
+  flipP: (differences: readonly number[]) => number;
   /** Whether the tree's own step rule (`stepOf`) reads a step on these scores, with `unbilled`
    *  null where a set's scores without the bill cannot be read again. */
-  readsStep(differences: readonly number[], unbilled: readonly number[] | null, level: number): boolean;
+  readsStep: (differences: readonly number[], unbilled: readonly number[] | null, level: number) => boolean;
   /** Whether a reading of a harness against itself reads a step either way at `level`. */
-  readsStepEitherWay(differences: readonly number[], level: number, unbilled: readonly number[]): boolean;
+  readsStepEitherWay: (differences: readonly number[], level: number, unbilled: readonly number[]) => boolean;
   /** The points a report holds by measure, or undefined in a report from before the weights. */
-  measures(value: JsonValue | undefined): Measures | undefined;
-  billedBetween(events: readonly LogEvent[], from: number, to: number): number;
+  measures: (value: JsonValue | undefined) => Measures | undefined;
+  billedBetween: (events: readonly LogEvent[], from: number, to: number) => number;
 }
 
 export interface Found {

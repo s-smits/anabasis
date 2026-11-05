@@ -26,12 +26,14 @@ const PROBE_BUDGET = 8;
 const VALUE_MAX_CHARS = 4000;
 
 /** The one passage of a text field that `find` names, rewritten to `replace`. */
+// oxlint-disable-next-line typescript/consistent-type-definitions -- a type alias stays assignable to `JsonObject`, and an interface has no implicit index signature
 type ProbeEdit = {
   readonly find: string;
   readonly replace: string;
 };
 
 /** What one answer probe ran and what the checks said. */
+// oxlint-disable-next-line typescript/consistent-type-definitions -- a type alias stays assignable to `JsonObject`, and an interface has no implicit index signature
 export type ProbeRow = {
   /** 1-based, and what a ruling cites. */
   readonly id: number;

@@ -26,7 +26,7 @@ function isConstAssertion(node: TypeAssertion): boolean {
 
 // The rule parses its own options here: this is the boundary it asks others to have.
 function configuredSafetyMarkers(option: JsonValue | undefined): readonly string[] {
-  const configured = asRecord(option)?.["markers"];
+  const configured = asRecord(option)?.markers;
   if (!Array.isArray(configured)) return DEFAULT_SAFETY_MARKERS;
   const markers = configured.flatMap((marker) =>
     isString(marker) && marker.trim().length > 0 ? [marker.trim()] : [],

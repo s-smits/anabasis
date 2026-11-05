@@ -4,11 +4,7 @@
 
 /** An environment block. The names come from the host, so the key set cannot be written down here;
  *  the value type can, and that is what callers of these functions actually need to know. */
-export interface EnvValues {
-  [name: string]: string;
-}
+export type EnvValues = Record<string, string>;
 
 /** An environment block as the host hands it over, where a declared name may still hold nothing. */
-export interface OptionalEnvValues {
-  [name: string]: string | undefined;
-}
+export type OptionalEnvValues = Record<string, string | undefined>;

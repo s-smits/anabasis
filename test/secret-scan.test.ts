@@ -16,7 +16,7 @@ const GITHUB_PAT = ["ghp", "16C7e42F292c6912E7710c838347Ae178B4a"].join("_");
 // Short stand-in (u:p) — our rules and remote scanners treat it as non-credential.
 const SHORT_URL = join("post", "gres", "://", "u", ":", "p", "@", "example.test/db");
 
-const MUST_FIRE: ReadonlyArray<readonly [string, string]> = [
+const MUST_FIRE: readonly (readonly [string, string])[] = [
   // The three shapes that opened real incidents on this repository's first push.
   ["url-credentials", `DB: "${URL_CREDS}"`],
   ["json-web-token", `APP_JWT: "${JWT}"`],

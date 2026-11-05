@@ -174,11 +174,11 @@ function main(text: string): string {
   const hook = capturedJsonParse(text);
   if (!isRecord(hook)) return "";
   // Remember delivered routes by session id. Unsafe ids create no state, so guidance repeats.
-  const session = hook["session_id"];
+  const session = hook.session_id;
   const file =
     isString(session) && /^[\w-]{1,128}$/u.test(session) ? join(tmpdir(), "ana-moments", session) : null;
   const seen = new Set(file !== null && existsSync(file) ? readFileSync(file, "utf8").split("\n") : []);
-  const routes = momentsOf(hook["tool_input"], seen);
+  const routes = momentsOf(hook.tool_input, seen);
   if (routes.length === 0) return "";
   if (file !== null) {
     mkdirSync(join(tmpdir(), "ana-moments"), { recursive: true });

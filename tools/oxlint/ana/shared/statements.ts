@@ -1,6 +1,7 @@
 import type { ESTree } from "@oxlint/plugins";
 
 /** The visitor a statement-list rule returns, so `scan` sees each list once. */
+// oxlint-disable-next-line typescript/consistent-type-definitions -- a type alias stays assignable to the plugin's visitor, whose index signature an interface does not meet
 type StatementLists = {
   Program: (node: ESTree.Program) => void;
   BlockStatement: (node: ESTree.BlockStatement) => void;

@@ -93,7 +93,11 @@ const NAME_CEILING = 44;
 const PLAIN_NAME = /^[A-Z][A-Z0-9_]*$/u;
 
 /** One value's nodes and lines in source order, with the spelling a declaration would carry. */
-type Spelling = { nodes: ESTree.Node[]; lines: number[]; raw: string };
+interface Spelling {
+  nodes: ESTree.Node[];
+  lines: number[];
+  raw: string;
+}
 
 /**
  * The constant a repeated value would be named, or null when naming it would not be an improvement.

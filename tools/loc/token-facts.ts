@@ -16,7 +16,7 @@ interface TokenFacts {
   /** Closed brace-bodied function frames; expression-bodied arrows are not counted. */
   functionCount: number;
   /** Every closed frame with the line span measured by `worstFunction`. */
-  spans: Array<{ name: string; start: number; end: number }>;
+  spans: { name: string; start: number; end: number }[];
 }
 
 const LITERAL_KINDS = new Set<SyntaxKind>([
@@ -41,8 +41,8 @@ interface ScanState {
   braceDepth: number;
   parenDepth: number;
   pending: { startLine: number; parenDepth: number; name: string } | null;
-  open: Array<{ startLine: number; depth: number; name: string }>;
-  spans: Array<{ name: string; start: number; end: number }>;
+  open: { startLine: number; depth: number; name: string }[];
+  spans: { name: string; start: number; end: number }[];
 }
 
 function lineOf(lineStarts: number[], pos: number): number {

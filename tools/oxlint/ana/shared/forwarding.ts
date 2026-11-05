@@ -15,12 +15,12 @@ type Callable = ESTree.Function | ESTree.ArrowFunctionExpression;
 
 /** One call in the file: the name it calls, which arguments are bare identifiers, and every
  *  function it sits inside. */
-type CallSite = {
+interface CallSite {
   node: ESTree.CallExpression;
   callee: string;
   identifiers: ReadonlyMap<number, string>;
   within: readonly Callable[];
-};
+}
 
 function isCallable(node: ESTree.Node): node is Callable {
   return (
@@ -121,7 +121,7 @@ export function forwardingTracker() {
     reaches: (name: string, index: number, target: (name: string) => boolean): boolean =>
       reaches(name, index, target, new Set()),
     /** Every recorded call passing the identifier `name`, with the position it is passed at. */
-    passing(name: string): Array<{ node: ESTree.CallExpression; index: number }> {
+    passing(name: string): { node: ESTree.CallExpression; index: number }[] {
       return calls.flatMap((site) =>
         [...site.identifiers].flatMap(([index, argument]) =>
           argument === name ? [{ node: site.node, index }] : [],

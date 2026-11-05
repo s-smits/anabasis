@@ -125,12 +125,17 @@ Each runs as `bun tools/wri/wri.ts <verb>` from the checkout. The usage block at
 
 ### The readers, derived
 
-Eleven deterministic readers take one log and print what it holds (`READERS`,
-`tools/wri/derive.ts`): the rows and triggers, the kept versions blind (`chain`) and measured
-(`versions`), the scored tasks' public input (`tasks`), the readings, each promotion scored again
-with the measure that won each task (`replay`), the next draw, the ending, the conditions, and what
-a Builder and an Examiner opening would be told. `chain` and `tasks` carry no result, so a lane that
-grades before it reads an outcome (34) reads them first. `derive` runs
+Twenty-two deterministic readers take one log and print what it holds (`READERS`,
+`tools/wri/derive.ts`): the rows and triggers, the ending, the readings, the served models
+(`degradations`), the climb, the gap to the answer on record, the campaign's view and its table's
+next move, the iteration's trigger (`loop`), the commit (`source`), the logged readings (`logged`),
+its dollars a promotion (`cost`) and row of the release table (`table`), each promotion scored again
+with the measure that won each task (`replay`), the conditions, the scored tasks' public input
+(`tasks`), the next draw, what a Builder and an Examiner opening would be told, each Examiner
+session's admissions (`ambition`) and drafts (`exams`), and the kept versions measured (`versions`)
+and blind (`chain`). `chain` and `tasks` carry no result, so a lane that grades before it reads an
+outcome (34) reads them first. `bun run runs pulse` runs the same list for each look
+(run-management, "Watch"). `derive` runs
 them all over a log into the main worktree's `data/derived/<campaign>/`, one `<reader>.txt` each,
 and replaces the folder whole where the log or the commit reading it moved since; a folder whose
 log stands is kept. So the files always describe one moment of the log, the latest a pass saw.
@@ -139,8 +144,8 @@ There are two ways to use it:
 
 - **Quiet**, the default. It prints one line: how many campaigns it derived, how many it kept and
   which readers failed. `start` runs it for its logs and names the folders in the instructions, and
-  a job on the central host runs `derive --all` after each gather, so every run on every host has
-  its folder while it runs and after. Read the files rather than running the readers again.
+  `derive --all` does so for every log a host holds or has gathered. Read the files rather than
+  running the readers again.
 - **Verbose**, `--verbose`, for a session that wants to see everything at once: it prints every
   reader's file, under a heading naming the campaign and the reader, then the same line. It runs
   nothing a quiet pass would not; with an unmoved log it prints the folder as it stands.
@@ -148,6 +153,14 @@ There are two ways to use it:
 `--force` derives again although nothing moved, after a reader's code changed without a commit.
 The folders hold hidden values as the log does, so they stay on the exam side and out of every
 prompt a seat reads.
+
+Left out of the list, each for its reason: what reads no run (`comparison-reading/scripts/size.ts`,
+`examiner-complexity/scripts/rungs.ts`, `system-audit/scripts/recent.ts`); what needs more than a
+campaign (`examiner-complexity/scripts/grades.ts` a grader's file, `oracle-handover/scripts/slice.ts`
+a selector, `tools/c/repaired.ts` a bundle, `tools/runs/search.ts` a query, `wri.ts grade` an
+answer); and what writes (`wri.ts start`, `lanes`, `collect`, `synthesis`, `index` and `derive`,
+`wri2p2.ts open`, `tools/c/rejections.ts`, `tools/d2/close.ts`) or calls a model
+(`system-path-simulation/scripts/live-seat.ts` and `referee-seat.ts`, `compare-systems/scripts/systems.ts`).
 
 One investigation reads one question, over one campaign or several. Two campaigns of one pack, one
 under a checker and one under its repair, are read apart, and lane 3 of the later one joins them.

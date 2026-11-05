@@ -111,6 +111,7 @@ export const READERS: readonly Reader[] = [
   skillReader("examiner-view", "design-and-seats/scripts/examiner-view.ts"),
   skillReader("ambition", "examiner-complexity/scripts/ambition.ts"),
   skillReader("exams", "examiner-complexity/scripts/exams.ts"),
+  skillReader("zone", "examiner-complexity/scripts/zone.ts"),
   skillReader("versions", "harness-audit/scripts/harness-versions.ts"),
   skillReader("chain", "harness-audit/scripts/harness-versions.ts", "--blind"),
 ];

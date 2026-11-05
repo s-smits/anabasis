@@ -85,7 +85,7 @@ function billing(models: ReturnType<ReturnType<typeof seat>["request"]["models"]
   const metered = Object.create(models) as typeof models;
   metered.streamSimple = (...asked: Parameters<typeof models.streamSimple>) => {
     const streamed = createAssistantMessageEventStream();
-    void (async () => {
+    (async () => {
       for await (const event of models.streamSimple(...asked)) {
         if (event.type !== "done") {
           streamed.push(event);

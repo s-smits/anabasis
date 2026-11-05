@@ -218,11 +218,11 @@ function aliasSubstitutions(
   aliasResolving: ResolvingAliases,
 ): Substitutions | null {
   const parameters = alias.typeParameters?.params ?? [];
-  const arguments_ = reference.typeArguments?.params ?? [];
+  const typeArguments = reference.typeArguments?.params ?? [];
   // The alias's body sees its own parameters only: an outer binding of the same name must not leak in.
   const next = new Map<string, Substitution>();
   for (const [index, parameter] of parameters.entries()) {
-    const explicitArgument = arguments_[index];
+    const explicitArgument = typeArguments[index];
     const argument = explicitArgument ?? parameter.default;
     if (argument === null) return null;
     // Explicit arguments were written at the reference; defaults inside the alias.

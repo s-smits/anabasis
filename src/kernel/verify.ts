@@ -340,7 +340,7 @@ export function checkEvaluationRequest(
     check.execution.hidden === "required" &&
     (hidden.length !== 1 || !isRecord(hidden[0]) || !Object.hasOwn(hidden[0], "expectation"))
   ) {
-    throw new Error("check-hidden-operand-missing: " + check.id);
+    throw new Error(`check-hidden-operand-missing: ${check.id}`);
   }
   return capturedStructuredClone({
     ...checkPublicInputs(check, request),

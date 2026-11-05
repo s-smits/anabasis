@@ -102,9 +102,12 @@ function examplesOf(sites: readonly TreeSite[]): string[] {
 
 /** What the agent or person committing reads: the sites, where the rest is, and the two answers. */
 function message(first: TreeSite, touched: readonly TreeSite[], log: string): string {
-  const shown = touched.slice(0, PRINTED).map((site, index) => {
-    return `  ${index + 1}. ${site.kind} ${where(site)} [${site.id}]\n     ${boundText(site.detail, 110).shown}`;
-  });
+  const shown = touched
+    .slice(0, PRINTED)
+    .map(
+      (site, index) =>
+        `  ${index + 1}. ${site.kind} ${where(site)} [${site.id}]\n     ${boundText(site.detail, 110).shown}`,
+    );
   const more = touched.length > PRINTED ? [`  … and ${touched.length - PRINTED} more in the report.`] : [];
   return [
     `slop: ${touched.length} ${touched.length === 1 ? "site touches" : "sites touch"} lines this commit changes. Advisory: the commit is not stopped.`,

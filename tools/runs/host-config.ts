@@ -84,7 +84,7 @@ export function hostsOf(): readonly Host[] {
 
 export function configuredRuntime(host: Host) {
   const rooted = (path: string) =>
-    isAbsolute(path) || path.startsWith("~/") ? path : host.tree + "/" + path;
+    isAbsolute(path) || path.startsWith("~/") ? path : `${host.tree}/${path}`;
   return {
     bun: host.bun.includes("/") ? rooted(host.bun) : host.bun,
     // Bun implicitly loaded the configured checkout's .env before controllers moved elsewhere.

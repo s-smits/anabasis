@@ -71,7 +71,7 @@ export function HashValue({
           setState((current) => (current === "revealed" ? "idle" : "revealed"));
           return;
         }
-        void clipboard
+        clipboard
           .writeText(value)
           .then(copied, () => setState((current) => (current === "revealed" ? "idle" : "revealed")));
       }}

@@ -490,8 +490,7 @@ function forecast(weeks: readonly Week[], rate: number, now: number): string {
   }
   const lasting = (gap: (typeof gaps)[number]) => (gap.to ?? now + AHEAD) - gap.from;
   const said = (gap: (typeof gaps)[number]) =>
-    `${gap.from - now < STEP ? "now" : `in ${spanOf(Math.round((gap.from - now) / 60_000))} (${stamp(gap.from)})`} for ${spanOf(Math.round(lasting(gap) / 60_000))}` +
-    (gap.to === null ? "+" : gap.by === "" ? "" : `, till ${gap.by} resets`);
+    `${gap.from - now < STEP ? "now" : `in ${spanOf(Math.round((gap.from - now) / 60_000))} (${stamp(gap.from)})`} for ${spanOf(Math.round(lasting(gap) / 60_000))}${gap.to === null ? "+" : gap.by === "" ? "" : `, till ${gap.by} resets`}`;
   const [first] = gaps;
   if (first === undefined || first.from >= now + WEEK) {
     const week = `makes the next 7d, lowest ~${String(Math.round(lowest.left))}% of one login left (${stamp(lowest.at)})`;
@@ -527,8 +526,9 @@ function poolLines(
   });
   const poolPace = weeks.reduce((sum, week) => sum + weekRate(week), 0);
   const lines = [
-    `pool  ${perDay(poolPace)} of one login's week at the week's pace; ${String(weeks.length)} login${weeks.length > 1 ? "s" : ""} refill ~${String(Math.round((weeks.length * 100) / 7))}%/day` +
-      (unread > 0 ? ` (${String(unread)} unread, left out)` : ""),
+    `pool  ${perDay(poolPace)} of one login's week at the week's pace; ${String(weeks.length)} login${weeks.length > 1 ? "s" : ""} refill ~${String(Math.round((weeks.length * 100) / 7))}%/day${
+      unread > 0 ? ` (${String(unread)} unread, left out)` : ""
+    }`,
     `  week pace    ${forecast(weeks, poolPace, now)}`,
   ];
   if (recents.every((recent) => recent === null)) {

@@ -196,10 +196,10 @@ function aliasSubstitution(
   base: TypeAliasEnvironment,
 ): TypeAliasEnvironment | null {
   const parameters = alias.typeParameters?.params ?? [];
-  const arguments_ = type.typeArguments?.params ?? [];
+  const typeArguments = type.typeArguments?.params ?? [];
   const next = new Map(base);
   for (const [index, parameter] of parameters.entries()) {
-    const argument = arguments_[index] ?? parameter.default;
+    const argument = typeArguments[index] ?? parameter.default;
     if (argument === null) return null;
     next.set(parameter.name.name, resolvedSubstitutionArgument(argument, next));
   }

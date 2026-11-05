@@ -25,7 +25,7 @@ const LOG = [
   { at: "2026-10-08T12:31:00.000Z", kind: "campaign.ended", data: { ending: "stop" } },
 ];
 /** The commit the round's launch ran at, which is not the one its worktree stands at when zipped. */
-const RAN_AT = "c0ffee".repeat(6) + "cafe";
+const RAN_AT = `${"c0ffee".repeat(6)}cafe`;
 const RECEIPT = {
   at: "2026-10-08T11:59:00.000Z",
   pid: 1,

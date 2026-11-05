@@ -111,10 +111,9 @@ console.log(String(await freshLogin(undefined, [], read)));`;
 
   it("puts a GPT run on no machine that carries one, chosen or named, unless codex:N allows more", () => {
     const made = fixture();
-    const place =
-      'import { placeFresh } from "REPOSITORY/tools/runs/placement.ts"; console.log((await placeFresh("sample", undefined, undefined, "codex"))?.name ?? "here", (await placeFresh("sample", undefined, undefined, "' +
-      LOGIN +
-      '"))?.name ?? "here");';
+    const place = `import { placeFresh } from "REPOSITORY/tools/runs/placement.ts"; console.log((await placeFresh("sample", undefined, undefined, "codex"))?.name ?? "here", (await placeFresh("sample", undefined, undefined, "${
+      LOGIN
+    }"))?.name ?? "here");`;
     const gpt =
       'import { fresh } from "REPOSITORY/tools/runs/fresh.ts"; await fresh(["sample", "--host", "runner", "--model", "gpt"]);';
     const there = { FAKE_ACTIVE: JSON.stringify([{ name: "gpt-there", login: "codex", host: "x" }]) };

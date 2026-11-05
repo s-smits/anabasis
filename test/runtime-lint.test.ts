@@ -18,7 +18,7 @@ import { capturedJsonParse } from "${root}/src/meta/json-runtime.ts";
 export const json = capturedJsonParse("{}");
 export const raw = JSON.parse("1"); // REPORT no-unsafe-assignment
 Promise.resolve("lost"); // REPORT no-floating-promises
-void Promise.resolve("still lost"); // REPORT no-floating-promises
+void Promise.resolve("still lost"); // REPORT no-floating-promises no-void
 if (Promise.resolve(false)) console.log("wrong branch"); // REPORT no-misused-promises strict-boolean-expressions
 [1].forEach(async () => { await Promise.resolve(); }); // REPORT no-misused-promises
 export function label(flag?: boolean): string {
@@ -28,7 +28,7 @@ export function partial(value: "ok" | "failed"): void {
   switch (value) { case "ok": break; default: break; } // REPORT switch-exhaustiveness-check
 }
 await Promise.resolve("owned");
-void Promise.reject(new Error("handled")).catch(console.error);
+Promise.reject(new Error("handled")).catch(console.error);
 export function decided(flag: boolean): string {
   return flag ? "on" : "off";
 }

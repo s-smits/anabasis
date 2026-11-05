@@ -41,7 +41,7 @@ export function isOneOf(filename: string, owners: readonly string[]): boolean {
 
 /** Anywhere beneath a repository-relative directory, for a whole tree that owns something. */
 export function isUnder(filename: string, directory: string): boolean {
-  return repoRelative(filename).startsWith(directory.endsWith("/") ? directory : directory + "/");
+  return repoRelative(filename).startsWith(directory.endsWith("/") ? directory : `${directory}/`);
 }
 
 /** A component file. A component rendered once from one parent is not a helper with one caller. */

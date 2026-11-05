@@ -1280,7 +1280,7 @@ describe("a campaign tool where the table names more than the action", () => {
   /** Everything the Builder read from its tools in a campaign whose two comparisons tied the
    *  tasks `ties` names, by comparison, as the nth tasks that comparison solved or by id, with the
    *  host's clock taken out. Three ties of five keep each reading below a step at the suite's level. */
-  const read_ = async (
+  const everythingRead = async (
     name: string,
     ties: Readonly<Record<string, readonly (number | string)[]>>,
     flags: readonly string[] = FLAGS,
@@ -1351,8 +1351,8 @@ describe("a campaign tool where the table names more than the action", () => {
     // The two campaigns tie other tasks in each comparison, and the tallies are the same. Until
     // 12 October the status counted the tasks waiting for a label and the exhausted ones, and two
     // such campaigns read differently (rule 3).
-    const same = await read_(`${STEM}-won-one`, { "g-1": [0, 1, 2], "g-2": [0, 1, 2] });
-    const moved = await read_(`${STEM}-won-two`, { "g-1": [1, 2, 3], "g-2": [2, 3, 4] });
+    const same = await everythingRead(`${STEM}-won-one`, { "g-1": [0, 1, 2], "g-2": [0, 1, 2] });
+    const moved = await everythingRead(`${STEM}-won-two`, { "g-1": [1, 2, 3], "g-2": [2, 3, 4] });
     expect(moved).toBe(same);
     expect(same).toContain("2 won, 0 lost, 3 tied");
     expect(same).toContain("Comparison g-2 took 0 minutes and billed");
@@ -1372,8 +1372,12 @@ describe("a campaign tool where the table names more than the action", () => {
     // the second campaign g-2 wins t-2 in place of t-11. No task is held out between them, so g-1's
     // report releases one, the most a reading with nothing held out since the last release is owed.
     const tied = ["t-2", "t-4", "t-6", "t-8", "t-9", "t-10"];
-    const same = await read_(`${STEM}-short-one`, { "g-1": tied, "g-2": tied }, flags);
-    const moved = await read_(`${STEM}-short-two`, { "g-1": tied, "g-2": [...tied.slice(1), "t-11"] }, flags);
+    const same = await everythingRead(`${STEM}-short-one`, { "g-1": tied, "g-2": tied }, flags);
+    const moved = await everythingRead(
+      `${STEM}-short-two`,
+      { "g-1": tied, "g-2": [...tied.slice(1), "t-11"] },
+      flags,
+    );
     const awaiting = ["one", "two"].map((world) => supplyOf(logOf(`${STEM}-short-${world}`)).awaiting);
     // Until 31 October a candidate's pass took a task out of the wait: 6 and 5 waited, and the
     // first campaign's Builder was told to examine where the second's was told to build.

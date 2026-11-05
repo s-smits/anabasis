@@ -91,6 +91,7 @@
     "anti-slop/require-safety-comment-for-type-assertion": "error",
     "eslint/accessor-pairs": "error",
     "eslint/array-callback-return": "error",
+    "eslint/arrow-body-style": "error",
     "eslint/block-scoped-var": "error",
     "eslint/class-methods-use-this": [
       "error",
@@ -124,6 +125,7 @@
     "eslint/grouped-accessor-pairs": "error",
     "eslint/guard-for-in": "error",
     "eslint/logical-assignment-operators": "error",
+    "eslint/max-depth": "error",
     "eslint/max-nested-callbacks": "error",
     "eslint/max-params": ["error", 5],
     "eslint/new-cap": [
@@ -191,6 +193,7 @@
     "eslint/no-proto": "error",
     "eslint/no-prototype-builtins": "error",
     "eslint/no-redeclare": "error",
+    "eslint/no-regex-spaces": "error",
     "eslint/no-return-assign": "error",
     "eslint/no-script-url": "error",
     "eslint/no-self-assign": "error",
@@ -203,6 +206,7 @@
     "eslint/no-this-before-super": "error",
     "eslint/no-throw-literal": "error",
     "eslint/no-unassigned-vars": "error",
+    "eslint/no-underscore-dangle": "error",
     "eslint/no-unexpected-multiline": "error",
     "eslint/no-unmodified-loop-condition": "error",
     "eslint/no-unneeded-ternary": "error",
@@ -234,6 +238,7 @@
     "eslint/no-useless-rename": "error",
     "eslint/no-useless-return": "error",
     "eslint/no-var": "error",
+    "eslint/no-void": "error",
     "eslint/no-warning-comments": "error",
     "eslint/no-with": "error",
     "eslint/object-shorthand": "error",
@@ -245,6 +250,12 @@
         "allowNamedFunctions": true
       }
     ],
+    "eslint/prefer-const": [
+      "error",
+      {
+        "destructuring": "all"
+      }
+    ],
     "eslint/prefer-exponentiation-operator": "error",
     "eslint/prefer-numeric-literals": "error",
     "eslint/prefer-object-has-own": "error",
@@ -252,6 +263,7 @@
     "eslint/prefer-regex-literals": "error",
     "eslint/prefer-rest-params": "error",
     "eslint/prefer-spread": "error",
+    "eslint/prefer-template": "error",
     "eslint/preserve-caught-error": "error",
     "eslint/radix": "error",
     "eslint/require-yield": "error",

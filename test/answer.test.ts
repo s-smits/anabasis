@@ -21,7 +21,7 @@ import { ending, text, tool } from "../src/tools/answer.ts";
 import { present } from "./helpers/matchers.ts";
 
 const homes: string[] = [];
-const LONG = "first part\n" + `${"x".repeat(79)}\n`.repeat(1024) + "last part";
+const LONG = `first part\n${`${"x".repeat(79)}\n`.repeat(1024)}last part`;
 const IMAGE = { type: "image", data: "eA==", mimeType: "image/png" } as const;
 
 afterAll(() => {

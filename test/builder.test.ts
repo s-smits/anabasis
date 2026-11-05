@@ -113,14 +113,14 @@ async function setup(
   }
   mkdirSync(home);
   mkdirSync(host);
-  const record_ = (kind: EventKind, data: JsonObject) => append(log, kind, data);
+  const add = (kind: EventKind, data: JsonObject) => append(log, kind, data);
   // Each with its author's claim, which stays on the exam side.
   for (const version of ["v0", "v1", "v2", "v3"]) {
-    record_("task.proposed", { version, claim: { grade: 3, stops: SETUP_CLAIM } });
-    record_("task.gate", { version, gate: 1, outcome: "passed" });
+    add("task.proposed", { version, claim: { grade: 3, stops: SETUP_CLAIM } });
+    add("task.gate", { version, gate: 1, outcome: "passed" });
   }
-  record_("task.state", { version: "v1", state: "released" });
-  record_("task.state", { version: "v2", state: "released" });
+  add("task.state", { version: "v1", state: "released" });
+  add("task.state", { version: "v2", state: "released" });
   const digest = (await openHarness(parent)).digest;
   const condition = (task: string, harness: string): Condition => ({
     contract: "c1",
@@ -144,12 +144,12 @@ async function setup(
   const solved = (version: string, harness: string, ending: Ending) => {
     solves += 1;
     const solve = `s-${String(solves)}`;
-    record_("solve.started", {
+    add("solve.started", {
       solve,
       condition: recordCondition(log, condition(version, harness)),
       task: "t",
     });
-    record_("solve.call", {
+    add("solve.call", {
       solve,
       turn: 1,
       tool: "bash",
@@ -157,19 +157,19 @@ async function setup(
       isError: false,
       text: `margin of ${solve}`,
     });
-    record_("solve.turn", { solve, turn: 1, stopReason: "stop", text: "Submitted." });
+    add("solve.turn", { solve, turn: 1, stopReason: "stop", text: "Submitted." });
     if (ending.outcome === "non-result" || (ending.outcome === "fail" && ending.kind === "rejected")) {
-      record_("verdict", { solve, answer: { answer: "41" }, kind: "fail", blocking: [check] });
+      add("verdict", { solve, answer: { answer: "41" }, kind: "fail", blocking: [check] });
     }
     if (ending.outcome === "pass" && contract.objective !== undefined) {
-      record_("verdict", { solve, answer: { answer: "42" }, kind: "pass", objective: solves * 10 });
+      add("verdict", { solve, answer: { answer: "42" }, kind: "pass", objective: solves * 10 });
     }
-    record_("solve.finished", { solve, ending });
+    add("solve.finished", { solve, ending });
     return solve;
   };
   // Solves on record before the session: v1 failed once, and v3 is a held-out task's.
   solved("v1", digest, { outcome: "fail", kind: "rejected" });
-  record_("referee.finding", { solve: "s-1", ruling: "earned" });
+  add("referee.finding", { solve: "s-1", ruling: "earned" });
   const exam = solved("v3", digest, { outcome: "fail", kind: "rejected" });
   const sent: string[] = [];
   const faux = fauxProvider({
@@ -1130,7 +1130,7 @@ describe("what crosses to the Builder", () => {
    * the exam's. `leak` puts the check that refused into a practice solve's trace, which a Builder
    * pages: a held-out detail in a Builder's message.
    */
-  async function read_(kept: Kept, leak: "sealed" | "leaking" = "sealed"): Promise<string> {
+  async function everythingRead(kept: Kept, leak: "sealed" | "leaking" = "sealed"): Promise<string> {
     const stop = fauxAssistantMessage("I think that is enough.");
     const s = await setup(
       [
@@ -1304,7 +1304,7 @@ describe("what crosses to the Builder", () => {
   }
 
   it("is byte-identical whatever a hidden value, a check, a ruling, the task that was won or the Examiner's try of the reference is", async () => {
-    const [one, other] = [await read_(ONE), await read_(OTHER)];
+    const [one, other] = [await everythingRead(ONE), await everythingRead(OTHER)];
     // The session read what a Builder may: its tasks, the fail, the trace, the opening again, the
     // continuation, and the comparison as a tally.
     expect(one).toContain("Solve s-3.");
@@ -1335,7 +1335,7 @@ describe("what crosses to the Builder", () => {
   // shown no check, so this cannot happen by its seat; it stands in for any path that would put a
   // held-out detail into a message, and the comparison above then fails.
   it("is not, once a held-out detail reaches one message", async () => {
-    const [one, other] = [await read_(ONE, "leaking"), await read_(OTHER, "leaking")];
+    const [one, other] = [await everythingRead(ONE, "leaking"), await everythingRead(OTHER, "leaking")];
     expect(one === other).toBe(false);
     expect(one).toContain(ONE.check);
   }, 60_000);

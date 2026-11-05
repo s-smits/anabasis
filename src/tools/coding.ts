@@ -125,8 +125,9 @@ function bashTool(wall: CommandWall): SeatTool {
         // Durable renders timeout errors from env.exec; command output cannot forge this exception.
         if (!cause.message.startsWith("Command timed out after ")) throw error;
         throw new Error(
-          `Command timed out after ${String(seconds)} seconds` +
-            (nearEnd ? NEAR_END : timeoutClause(asked, seconds, wall.limits)),
+          `Command timed out after ${String(seconds)} seconds${
+            nearEnd ? NEAR_END : timeoutClause(asked, seconds, wall.limits)
+          }`,
           { cause: error },
         );
       }

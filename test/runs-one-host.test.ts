@@ -57,10 +57,20 @@ const framed = (text: string) => /^\s+at |^Bun v/mu.test(text);
 
 describe("a clone with no hosts", () => {
   test("every verb a first day reaches stays here and tries no ssh", () => {
-    for (const verb of [[], ["status"], ["hosts"], ["active"], ["catalogue"], ["fetch"]]) {
+    for (const verb of [
+      [],
+      ["status"],
+      ["hosts"],
+      ["active"],
+      ["catalogue"],
+      ["fetch"],
+      ["sync"],
+      ["sync", "--check"],
+    ]) {
       const result = runs(verb);
       expect([verb, result.code, result.err]).toEqual([verb, 0, ""]);
     }
+    expect(runs(["sync", "--yes"]).out).toContain("nothing to do");
     expect(sshAttempts()).toBe(false);
   });
 

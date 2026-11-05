@@ -24,8 +24,33 @@ export interface Host {
   readonly checks?: number;
   /** The packs this machine is kept for: it takes no other, and no other machine takes them. */
   readonly packs?: readonly string[];
+  /** The `uv` there, absolute or ~/path, where a login shell's PATH does not find it. */
+  readonly uv?: string;
+  /** This host's own values of what `sync` carries, over the shared ones; an empty one writes none. */
+  readonly settings?: Readonly<Record<string, string>>;
   /** A controller already prepared by code.ts, never accepted from configuration. */
   readonly prepared?: true;
+}
+
+/** The live campaigns a machine carries where nothing says how many it may. */
+const CAPACITY = 2;
+
+/** What `host` may carry, or `value` (`ANA_RUN_CAP`, this machine's) where it is this machine. */
+export const capacityOn = (host: Host | undefined, value?: string): number => {
+  if (host !== undefined) return host.capacity ?? CAPACITY;
+  const capacity = Number(value ?? CAPACITY);
+  if (!Number.isSafeInteger(capacity) || capacity < 1) {
+    throw new Error("ANA_RUN_CAP takes a positive integer");
+  }
+  return capacity;
+};
+
+/** An entry's `settings`: undefined where it names none, and null where they are not all strings. */
+function stringsOf(value: unknown): Readonly<Record<string, string>> | null | undefined {
+  if (value === undefined) return undefined;
+  const entries = Object.entries(asRecord(value) ?? { "": null });
+  const strings = entries.flatMap(([key, one]) => (isString(one) ? [[key, one] as const] : []));
+  return strings.length === entries.length ? Object.fromEntries(strings) : null;
 }
 
 /** What `ANA_HOSTS` says. Set and empty, as a copied `.env.runs.example` leaves it, is unset: no host,
@@ -84,6 +109,9 @@ export function hostsOf(): readonly Host[] {
     ) {
       throw new Error(`${host.name}: packs takes a list of pack names`);
     }
+    if (host.uv !== undefined && !isString(host.uv)) throw new Error(`${host.name}: uv takes a path`);
+    const settings = stringsOf(host.settings);
+    if (settings === null) throw new Error(`${host.name}: settings takes an object of strings`);
     return {
       name: host.name,
       ssh: host.ssh,
@@ -93,6 +121,8 @@ export function hostsOf(): readonly Host[] {
       ...keyIfDefined("capacity", count("capacity")),
       ...keyIfDefined("checks", count("checks")),
       ...keyIfDefined("packs", packs),
+      ...keyIfDefined("uv", host.uv),
+      ...keyIfDefined("settings", settings),
     };
   });
 }
@@ -102,8 +132,11 @@ export function configuredRuntime(host: Host) {
     isAbsolute(path) || path.startsWith("~/") ? path : `${host.tree}/${path}`;
   return {
     bun: host.bun.includes("/") ? rooted(host.bun) : host.bun,
-    // Bun implicitly loaded the configured checkout's .env before controllers moved elsewhere.
-    envFiles: [...new Set([".env", ...(host.envFiles ?? [".env.runs"])].map(rooted))],
+    // Bun implicitly loaded the configured checkout's .env before controllers moved elsewhere. The
+    // tree's `.env.runs` comes last whatever the entry names: until 5 November an entry that named its
+    // credentials file left it unread, so a verb or keeper on that host saw no `ANA_LOGINS`, and every
+    // login there was allowed. A file that is not there is no error to Bun.
+    envFiles: [...new Set([".env", ...(host.envFiles ?? []), ".env.runs"].map(rooted))],
   };
 }
 /** This machine's own name, its short hostname: what `fresh` ends a run's name with when it runs

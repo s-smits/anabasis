@@ -159,7 +159,7 @@ export function userTempRules() {
  * names; Apple's 3.9 no longer receives security fixes, and its pip 21.2.4 cannot install much of
  * what a solver asks it for. Homebrew and zerobrew keep each Python's bare `python` in its `libexec`.
  */
-export function toolchainPathDirs(): string[] {
+export function toolchainPathDirs(home: string | undefined = Bun.env.HOME): string[] {
   // Both /opt entries are readable under the open read default, so neither needs a read rule of its
   // own. This host may have its only system Node under zerobrew, so the derived toolchain owner has
   // to retain that executable directory rather than assume /usr/bin holds one.
@@ -178,7 +178,23 @@ export function toolchainPathDirs(): string[] {
   const scan = { onlyFiles: false, absolute: true, followSymlinks: true };
   const glob = (cwd: string) => [...new Bun.Glob("opt/python*/libexec/bin").scanSync({ ...scan, cwd })];
   const brewed = user.map(dirname).filter(existsSync).flatMap(glob).toSorted(compareCodeUnits);
-  return [...new Set([...user, ...brewed.toReversed(), ...installed, ...system])].filter(existsSync);
+  const pinned = home === undefined || home === "" ? [] : [pinnedPythonDir(home)];
+  return [...new Set([...pinned, ...user, ...brewed.toReversed(), ...installed, ...system])].filter(
+    existsSync,
+  );
+}
+
+/**
+ * The folder of the Python `bun run runs sync` keeps on a host, ahead of every other on the wall's
+ * path where it exists and absent from it otherwise, so a machine that never pinned one finds what
+ * it always found. On 5 November the hosts' `python3` was moved by hand to one version through three
+ * package managers, and the links that made it the bare `python3` on two of them could go with any
+ * upgrade, with 12, 2 and 72 packages beside it. It sits under `~/.local`, which the wall already
+ * lets a seat read (`darwinToolchainInstallRoots`). `~/.local/bin` itself was not put first, since it
+ * holds the check runner's `bun` and whatever else a host's user put there.
+ */
+export function pinnedPythonDir(home: string): string {
+  return join(home, ".local", "share", "ana-python", "bin");
 }
 
 /**

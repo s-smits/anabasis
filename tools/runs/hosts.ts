@@ -29,7 +29,7 @@
 import { join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { runCaptured } from "#src/meta/subprocess.ts";
-import { type Host, hostsOf, hostNamed, configuredRuntime } from "./host-config.ts";
+import { capacityOn, type Host, hostsOf, hostNamed, configuredRuntime } from "./host-config.ts";
 import { quoted, shellPath, sshScript, treeBun } from "./host-command.ts";
 import { readControllers } from "./code.ts";
 import { CLI, HERE, runs } from "./registry.ts";
@@ -63,7 +63,7 @@ function scriptCommand(host: Host, script: string, args: readonly string[]): str
   const keep = runtimeProcess.env.ANA_KEEP === "off" ? "ANA_KEEP=off " : "";
   return sshScript(
     host,
-    `cd ${shellPath(host.tree)}\n${keep}ANA_HOP=1 ANA_RUN_CAP=${quoted(String(host.capacity ?? 2))} ${treeBun(runtime.bun)}${env} ${quoted(script)} ${args.map(quoted).join(" ")}`,
+    `cd ${shellPath(host.tree)}\n${keep}ANA_HOP=1 ANA_RUN_CAP=${quoted(String(capacityOn(host)))} ${treeBun(runtime.bun)}${env} ${quoted(script)} ${args.map(quoted).join(" ")}`,
   );
 }
 

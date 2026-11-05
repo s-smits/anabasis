@@ -13,7 +13,8 @@ import { capturedJsonStringify } from "../src/meta/json-runtime.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { hostPython, ranWith, type Receipt, source, sources, writeReceipt } from "../tools/runs/receipt.ts";
+import { hostPython } from "../tools/runs/host-facts.ts";
+import { ranWith, type Receipt, source, sources, writeReceipt } from "../tools/runs/receipt.ts";
 
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-runs-receipt-")));
 const repo = join(root, "repo");

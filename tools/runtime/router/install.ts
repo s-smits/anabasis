@@ -34,6 +34,7 @@ import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { gitMaybe } from "#src/meta/git.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
+import { payload, RECEIPT, RUN_SCRIPT } from "./payload.ts";
 
 interface Backup {
   readonly from: string;
@@ -45,9 +46,6 @@ interface Places {
   readonly dir: string;
 }
 
-/** The scripts copied as they are; `run.sh` is the one run by its path. */
-const SCRIPTS = ["lib.sh", "run.sh", "host.sh"] as const;
-const RECEIPT = "INSTALLED";
 const TREE = join(import.meta.dir, "..", "..", "..");
 
 const say = (line: string): void => console.log(`router: ${line}`);
@@ -71,20 +69,6 @@ function backupsOf(dir: string): Backup[] | null {
       ? [{ from: backup.from, to: backup.to }]
       : [];
   });
-}
-
-/** Every file of the runner's folder, by name, as this tree makes it. */
-async function payload(): Promise<Map<string, string>> {
-  const files = new Map<string, string>(
-    SCRIPTS.map((name) => [name, readFileSync(join(import.meta.dir, name), "utf8")]),
-  );
-  const built = await Bun.build({ entrypoints: [join(import.meta.dir, "hosts.ts")], target: "bun" });
-  const [bundle] = built.outputs;
-  if (!built.success || bundle === undefined) {
-    throw new Error(`hosts.ts did not bundle: ${built.logs.map(String).join("\n")}`);
-  }
-  files.set("hosts.js", await bundle.text());
-  return files;
 }
 
 /** Whether a login shell finds the router as `bun`, and what the router runs in this tree. */
@@ -139,7 +123,7 @@ async function install(places: Places): Promise<void> {
   mkdirSync(staging, { recursive: true });
   // Each file is new, so its mode is the one it is created with; `run.sh` is run by its path.
   for (const [name, text] of files) {
-    writeFileSync(join(staging, name), text, { mode: name === "run.sh" ? 0o755 : 0o644 });
+    writeFileSync(join(staging, name), text, { mode: name === RUN_SCRIPT ? 0o755 : 0o644 });
   }
   const receipt = { commit: `${commit}${dirty}`, tree: TREE, installed: stamp, backups };
   writeFileSync(join(staging, RECEIPT), `${capturedJsonStringify(receipt, null, 2)}\n`);

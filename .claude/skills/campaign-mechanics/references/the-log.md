@@ -17,7 +17,7 @@ truth.
   platform (`tools/d2/campaign.ts`). Two solves are comparable only when their conditions differ in
   the one thing compared. It names no program on the host's own path. A solve's `python3` is one, and
   it differed between hosts on 5 November in version and libraries, so each launch's receipt keeps
-  what it found (`hostPython`, `tools/runs/receipt.ts`) and `bun run runs source` prints it. Putting
+  what it found (`hostPython`, `tools/runs/host-facts.ts`) and `bun run runs source` prints it. Putting
   it in the condition would set every earlier solve aside when a run moves host, and is the
   operator's to decide.
 - Every seat's trace is in the log (`solve.turn`, `solve.call`, and each session's turns and calls),

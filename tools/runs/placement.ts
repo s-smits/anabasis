@@ -21,7 +21,7 @@
  */
 import { runtimeProcess } from "#src/meta/process.ts";
 import { asked } from "./hosts.ts";
-import { type Host, hostNamed, hostsOf } from "./host-config.ts";
+import { capacityOn, type Host, hostNamed, hostsOf } from "./host-config.ts";
 import type { Live } from "./live.ts";
 import {
   allowedLogins,
@@ -61,15 +61,6 @@ export function loginPool(wanted: string | undefined): string[] {
   return chosen;
 }
 
-/** A capacity is a positive integer, with the same default on every unconfigured machine. */
-const capacityOf = (value: string | undefined): number => {
-  const capacity = Number(value ?? "2");
-  if (!Number.isSafeInteger(capacity) || capacity < 1) {
-    throw new Error("ANA_RUN_CAP takes a positive integer");
-  }
-  return capacity;
-};
-
 /** A host with capacity where the login runs least, then a familiar one, then the least occupied;
  *  configured order breaks a tie. */
 export function leastOccupied(rows: readonly Occupancy[]): Host | undefined {
@@ -98,12 +89,12 @@ export async function freshHosts(): Promise<FreshHost[]> {
   return [
     {
       host: undefined,
-      capacity: capacityOf(runtimeProcess.env.ANA_RUN_CAP),
+      capacity: capacityOn(undefined, runtimeProcess.env.ANA_RUN_CAP),
       projects: localCatalogue().map((run) => run.project),
     },
     ...answers.map(({ host, lines }) => ({
       host,
-      capacity: host.capacity ?? 2,
+      capacity: capacityOn(host),
       projects: remoteRuns(lines, host).map((run) => run.project),
     })),
   ];

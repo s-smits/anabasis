@@ -342,7 +342,7 @@ change, as 12.2 allows.
 ## 12.9 The whole-tree scans
 
 `bun run simplify` prints shapes that span files (`tools/oxlint/tree-findings.ts`, with the identity,
-copied-block and stale-reference scans beside it). They report and
+copied-block, stale-reference and fact scans beside it). They report and
 never block; `bun run commit:check` prints the ones on your changed lines. Treat each row as a
 question, repair the true ones, and answer a false one in the ledger as `tree/<kind>`.
 
@@ -353,6 +353,7 @@ question, repair the true ones, and answer a false one in the ledger as `tree/<k
 | `single-reader-export` | Move the one export into its one reader |
 | `copied-block` | One owner for the block |
 | `identity-without-owner` | One constant for the name |
+| `fact-without-owner` | One function for the fact, in the module that owns the value's type |
 | `superseded-schema-tag`, `compatibility-path` | Drop the old reader |
 | `rule-without-fixture` | Add the fixture |
 | `stale-reference` | Point a path at where the thing lives now, or cite it as `<sha>:path` in a record of its time; document only a setting some code reads |

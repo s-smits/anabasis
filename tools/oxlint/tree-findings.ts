@@ -26,6 +26,7 @@ import {
   READER_ROOTS,
 } from "../loc/source-policy.ts";
 import { copiedBlocks } from "./tree-copied-block.ts";
+import { factsWithoutOwner } from "./tree-fact.ts";
 import { identitiesWithoutOwner } from "./tree-identity.ts";
 import { overwrittenKeys } from "./tree-overwritten-key.ts";
 import { envExamples, staleReferences } from "./tree-stale-reference.ts";
@@ -45,6 +46,7 @@ type TreeFindingKind =
   | "unread-field"
   | "rule-without-fixture"
   | "identity-without-owner"
+  | "fact-without-owner"
   | "superseded-schema-tag"
   | "compatibility-path"
   | "orphan-module"
@@ -101,6 +103,8 @@ export const TREE_FINDING_ARGUMENTS: Readonly<Record<TreeFindingKind, string>> =
     "A lint rule a plugin registers that no file under test/ names. A rule that has stopped reporting and a clean tree read the same, so each rule keeps a fixture. Vendored plugins are read too, because their rules fail this repository's strict lint.",
   "identity-without-owner":
     'One name this repository owns (a bundle path, an evidence file, a schema tag) spelled as a literal in two or more files with no constant naming it. A typo in one copy reaches a reader as a missing file. Import the owner the detail names, or give the name one. Literals the compiler already checks (a type, a `satisfies` table, an `as const` list a type is read from), prose inside another string or a template, import specifiers and short words are skipped; `join(dir, "a", "b.ts")` reads as `a/b.ts`.',
+  "fact-without-owner":
+    "One fact about a value, a field tested against a literal and read with another field of the same value (`checker.kind === \"pass\"` with `checker.objective`), written out as an expression in three or more production files. Give it one function in the module that owns the value's type and call it at every place; where the detail names a function that already returns it, call that one (rule 12). Local names, `?.`, `!`, `as`, either equality and a comparison with `undefined` or `null` read alike. A value's own `id` and a comparison with a value of the code's own are no part of a fact, and tests, vendored and generated files are not read.",
   "superseded-schema-tag":
     "A `name/vN` tag spelled in a file while another file spells a later version of it. One version is written, so the reader of the older one is a compatibility path: drop it.",
   "compatibility-path":
@@ -171,6 +175,14 @@ export const TREE_FINDING_EXAMPLES: Readonly<
         '// tools/runs/view.ts, and the same literal in tools/runs/zip.ts\nconst verdicts = join(folder, "verdicts.jsonl");',
       after:
         '// both import the owner\nimport { VERDICTS_FILE } from "../../src/kernel/log.ts";\nconst verdicts = join(folder, VERDICTS_FILE);',
+    },
+  ],
+  "fact-without-owner": [
+    {
+      before:
+        '// the same test and read in compare.ts, tools.ts and gate-era.ts\nconst measure = checker?.kind === "pass" ? (checker.objective ?? null) : null;',
+      after:
+        '// solves.ts owns it, and each place calls measureOf(verdict)\nexport function measureOf(verdict: Judged | undefined): number | null {\n  return verdict?.checker?.kind === "pass" ? (verdict.checker.objective ?? null) : null;\n}',
     },
   ],
   "superseded-schema-tag": [
@@ -619,6 +631,7 @@ export function treeSites(): TreeSite[] {
     ...unreadFields(tree),
     ...rulesWithoutFixture(tree),
     ...identitiesWithoutOwner(owned),
+    ...factsWithoutOwner(owned),
     ...supersededSchemaTags(code),
     ...compatibilityPaths(code),
     ...unreadModules(code, prose),

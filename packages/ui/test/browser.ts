@@ -257,8 +257,8 @@ export async function withClock(page: Page): Promise<void> {
 /** What the page shows two frames from now: "settled", or why not. */
 export function drawn(page: Page): Promise<string> {
   return page.evaluate(async () => {
-    await new Promise((done) => {
-      requestAnimationFrame(() => requestAnimationFrame(done));
+    await new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
     });
     const main = document.querySelector("main");
     if (main === null) return "no main";

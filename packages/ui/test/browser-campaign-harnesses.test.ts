@@ -114,8 +114,8 @@ async function watchFrames(
   await settled();
   await page.evaluate(
     () =>
-      new Promise((done) => {
-        requestAnimationFrame(() => requestAnimationFrame(() => done(null)));
+      new Promise((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve(null)));
       }),
   );
   const frames = await page.evaluate(() => window.anaFrames?.stop());

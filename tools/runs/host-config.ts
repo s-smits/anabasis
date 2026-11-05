@@ -6,6 +6,7 @@ import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { hostname } from "#src/meta/os.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { isAbsolute } from "#src/meta/path.ts";
+
 export interface Host {
   readonly name: string;
   readonly ssh: string;

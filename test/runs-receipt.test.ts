@@ -51,7 +51,7 @@ async function selected(...args: string[]) {
 
 describe("run provenance selectors", () => {
   const cwd = process.cwd();
-  const peers = process.env.ANA_HOSTS;
+  const peers = Bun.env.ANA_HOSTS;
   beforeAll(() => {
     mkdirSync(join(repo, "src"), { recursive: true });
     gitText(repo, "init", "-q");
@@ -79,12 +79,12 @@ describe("run provenance selectors", () => {
     campaign("unrecorded", []);
     campaign("unknown", ["f".repeat(40)]);
     process.chdir(repo);
-    process.env.ANA_HOSTS = "[]";
+    Bun.env.ANA_HOSTS = "[]";
   });
   afterAll(() => {
     process.chdir(cwd);
-    if (peers === undefined) delete process.env.ANA_HOSTS;
-    else process.env.ANA_HOSTS = peers;
+    if (peers === undefined) delete Bun.env.ANA_HOSTS;
+    else Bun.env.ANA_HOSTS = peers;
   });
 
   it("requires every launch to carry every selector for named runs as for collections", async () => {

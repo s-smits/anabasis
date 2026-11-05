@@ -60,7 +60,7 @@ export function complete(value: "ok" | "failed"): void {
           timeout: 30_000,
           // The same escape from the `node` shim that `bun run lint` takes; without it this test
           // passes or fails on whether the shell that started it happens to carry a Node binary.
-          env: { ...process.env, OXLINT_TSGOLINT_PATH: tsgolintPath() },
+          env: { ...Bun.env, OXLINT_TSGOLINT_PATH: tsgolintPath() },
         },
       );
       expect(result.error).toBeNull();

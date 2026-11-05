@@ -22,8 +22,8 @@ test("one frame reads this machine and a reachable host, and names an unreachabl
     { name: "lost", ssh: "gone", tree: "/unused", bun: "bun" },
   ];
   const env = {
-    ...process.env,
-    PATH: `${bin}:${process.env.PATH ?? ""}`,
+    ...Bun.env,
+    PATH: `${bin}:${Bun.env.PATH ?? ""}`,
     SHELL: "/bin/sh",
     ANA_HOSTS: JSON.stringify(hosts),
   };
@@ -43,7 +43,7 @@ test("one frame reads this machine and a reachable host, and names an unreachabl
 
 test("a malformed interval is refused with the usage line", () => {
   const result = runSync([capturedExecPath, resolve("tools/runs/cli.ts"), "loadwatch", "soon"], {
-    env: { ...process.env, ANA_HOSTS: "[]" },
+    env: { ...Bun.env, ANA_HOSTS: "[]" },
   });
   expect(result.exitCode).not.toBe(0);
   expect(result.stderr.toString()).toContain("usage: runs loadwatch");

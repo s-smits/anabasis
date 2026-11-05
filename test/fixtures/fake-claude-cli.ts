@@ -13,7 +13,7 @@ interface Sent {
   request_id?: string;
 }
 
-const home = process.env.HOME ?? "";
+const home = Bun.env.HOME ?? "";
 if (home === "") throw new Error("the fake Claude Code CLI needs HOME");
 const launch = join(home, "launch.jsonl");
 
@@ -34,7 +34,7 @@ function answer(line: string): void {
   }
 }
 
-record({ argv: process.argv.slice(2), env: process.env, cwd: process.cwd() });
+record({ argv: process.argv.slice(2), env: Bun.env, cwd: process.cwd() });
 let pending = "";
 process.stdin.on("data", (chunk: Buffer) => {
   pending += chunk.toString("utf8");

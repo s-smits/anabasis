@@ -7,7 +7,7 @@ import { selectionOf, Shell } from "./shell.tsx";
  * inspector read their own details through the hooks of `live.ts`.
  */
 
-export default function App() {
+export function App() {
   const navigation = useRoute();
   const campaigns = useCampaigns();
   const { campaign: key } = selectionOf(campaigns.data, navigation.route);

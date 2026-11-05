@@ -177,8 +177,8 @@ describe("a session of any mode", () => {
 
       // The faux provider cannot be cut short, so a late reply ends the session at its deadline, and no crash.
       const slow: FauxResponseStep = () =>
-        new Promise((settle) => {
-          setTimeout(() => settle(finish), 600);
+        new Promise((resolve) => {
+          setTimeout(() => resolve(finish), 600);
         });
       const walled = seat(mode, [slow, finish]);
       expect(await examine({ ...walled.request, limits: { ...limits, wallSeconds: 0.2 } })).toMatchObject({

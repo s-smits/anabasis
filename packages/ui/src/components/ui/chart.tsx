@@ -2,6 +2,7 @@
 // expressed in the shared stylesheet used by the Bun app.
 import { useId, type ComponentProps } from "react";
 import { ResponsiveContainer } from "recharts";
+
 export { Tooltip as ChartTooltip } from "recharts";
 
 export function ChartContainer({

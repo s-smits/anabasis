@@ -161,7 +161,7 @@ describe("search transport and discovery", () => {
     runTextSyncOrThrow(["git", "init", "-q", root]);
     const script = resolve("tools/runs/search.ts");
     const extra = fixture("private/transcript.txt", "private needle\n");
-    const env = { ...process.env, ANA_HOSTS: "[]", ANA_SEARCH_ROOTS: JSON.stringify([dirname(extra)]) };
+    const env = { ...Bun.env, ANA_HOSTS: "[]", ANA_SEARCH_ROOTS: JSON.stringify([dirname(extra)]) };
     const run = (scope: string) => {
       const result = runSync([capturedExecPath, script, "needle", "--in", scope], { cwd: root, env });
       expect(result.exitCode).toBe(0);

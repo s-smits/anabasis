@@ -341,8 +341,8 @@ change, as 12.2 allows.
 
 ## 12.9 The whole-tree scans
 
-`bun run simplify` prints shapes that span files (`tools/oxlint/tree-findings.ts`, with the identity
-and copied-block scans beside it). They report and
+`bun run simplify` prints shapes that span files (`tools/oxlint/tree-findings.ts`, with the identity,
+copied-block and stale-reference scans beside it). They report and
 never block; `bun run commit:check` prints the ones on your changed lines. Treat each row as a
 question, repair the true ones, and answer a false one in the ledger as `tree/<kind>`.
 
@@ -355,6 +355,7 @@ question, repair the true ones, and answer a false one in the ledger as `tree/<k
 | `identity-without-owner` | One constant for the name |
 | `superseded-schema-tag`, `compatibility-path` | Drop the old reader |
 | `rule-without-fixture` | Add the fixture |
+| `stale-reference` | Point a path at where the thing lives now, or cite it as `<sha>:path` in a record of its time; document only a setting some code reads |
 | `filesystem-import-budget` | None. It is a register: a file keeps its count of `filesystem.ts` imports, and a change adds at most one |
 
 ## 12.10 The size policy

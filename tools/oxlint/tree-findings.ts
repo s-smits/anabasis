@@ -28,6 +28,7 @@ import {
 import { copiedBlocks } from "./tree-copied-block.ts";
 import { identitiesWithoutOwner } from "./tree-identity.ts";
 import { overwrittenKeys } from "./tree-overwritten-key.ts";
+import { envExamples, staleReferences } from "./tree-stale-reference.ts";
 import {
   NOT_SLOP_LEDGER,
   type Place,
@@ -50,6 +51,7 @@ type TreeFindingKind =
   | "test-only-module"
   | "unread-forward"
   | "overwritten-key"
+  | "stale-reference"
   | "filesystem-import-budget";
 
 export interface TreeFinding {
@@ -111,6 +113,8 @@ export const TREE_FINDING_ARGUMENTS: Readonly<Record<TreeFindingKind, string>> =
     'A re-export (`export { a } from "./owner.ts"`, or `export { a }` of an imported name) that no file imports from the forwarding module. Every caller reads the owner, so the forward is a second door kept in step for nobody. Delete it. A package `index` and a `node:` forward are skipped.',
   "overwritten-key":
     "A key a caller passes in the object it hands a function that spreads that parameter and then sets the same key itself, so the caller's value is never read. Delete the caller's key, or where the caller meant something the function ignores, make the function honour it. A key set before the spread, inside a conditional spread or read from the parameter anywhere in the function stays the caller's, and a parameter the function passes on whole is not read.",
+  "stale-reference":
+    "A backticked repository path in Markdown or a TypeScript comment that names no file or directory, or an `ANA_*` setting documented in a `.env*.example`, AGENTS.md or a SKILL.md that no code or script file spells. A reader who follows it finds nothing. Point a live description at where the thing lives now, or delete the sentence; in a record of what held at a time, cite the file at the last commit that held it, as `<sha>:path`. Not read: vendored trees and the documents of v1's record (docs/transfer.md, docs/v1.md, studies/). Not counted: a commit-qualified path, a placeholder or glob, a one-letter example name, a path Git ignores, and one that exists from a directory above the document.",
   "filesystem-import-budget":
     "How many names a file imports from src/meta/filesystem.ts, above six. A register: the count stands, and a change adds at most one.",
 };
@@ -197,6 +201,18 @@ export const TREE_FINDING_EXAMPLES: Readonly<
         "// src/solve/degeneracy.ts: two tests import it, and no solve path does\nexport function degenerate(schema: Schema): boolean {\n  return schema.fields.length === 0;\n}",
       after:
         '// deleted with its tests, or imported where a solve reads it\nimport { degenerate } from "./degeneracy.ts";\nif (degenerate(schema)) throw new Error("the schema names no field");',
+    },
+  ],
+  "stale-reference": [
+    {
+      before: "// Measured on `src/run/admission.ts`, which v2 did not copy.\nexport const FLOOR = 8;",
+      after: "// Measured on `5bc9988:src/run/admission.ts`, which v2 did not copy.\nexport const FLOOR = 8;",
+    },
+    {
+      // `\u0041` spells the A of each setting, so this file does not count as reading it.
+      before: "// .env.runs.example documents a setting no code file spells:\n// # \u0041NA_CENTRAL=here",
+      after:
+        '// the example documents what code reads, and the line is deleted\nexport const SETTINGS = ["\u0041NA_HOSTS"];',
     },
   ],
   "unread-forward": [
@@ -587,7 +603,7 @@ function sitePlaces(finding: TreeFinding, files: ReadonlyMap<string, string>): P
  *  ledger check read this to find an id and to judge a row stale. */
 export function treeSites(): TreeSite[] {
   const files = corpus(READER_ROOTS, READ_AS_SOURCE);
-  const prose = corpus(PROSE_ROOTS, PROSE_SUFFIXES);
+  const prose = new Map([...corpus(PROSE_ROOTS, PROSE_SUFFIXES), ...envExamples()]);
   for (const path of ROOT_FILES) if (existsSync(path)) prose.set(path, readFileSync(path, "utf8"));
   const owned = new Map(
     [...corpus(OWNED_ROOTS, [".ts", ".tsx", ".mts"])].filter(
@@ -596,7 +612,7 @@ export function treeSites(): TreeSite[] {
   );
   const code = new Map([...files].map(([path, text]) => [path, codeOf(path, text)]));
   const tree: Tree = { owned, files, code };
-  const all = new Map([...owned, ...files]);
+  const all = new Map([...owned, ...files, ...prose]);
   return [
     ...exportsReadOnce(tree),
     ...copiedBlocks(owned),
@@ -608,6 +624,7 @@ export function treeSites(): TreeSite[] {
     ...unreadModules(code, prose),
     ...unreadForwards(tree),
     ...overwrittenKeys(owned),
+    ...staleReferences(new Map([...files, ...prose])),
     ...filesystemBudget(tree),
   ]
     .filter(

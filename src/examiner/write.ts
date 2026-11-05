@@ -376,7 +376,9 @@ function exampleTool(tasks: () => readonly Task[]): SeatTool {
         throw new Error(`${args.task} is not one of the tasks: ${[...examples.keys()].join(", ")}`);
       }
       const { taskId, family, publicInput, hidden } = example;
-      return text(capturedJsonStringify({ taskId, family, publicInput, hidden }, null, 2));
+      // Unindented: the CLI keeps a result of 50,000 characters or more outside the seat's wall,
+      // and of 201 recorded jobstat tasks 31 passed that indented and 11 unindented (5 November).
+      return text(capturedJsonStringify({ taskId, family, publicInput, hidden }));
     },
   });
 }

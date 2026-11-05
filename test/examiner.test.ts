@@ -494,7 +494,7 @@ describe("a session that writes tasks", () => {
     // How many tasks are wanted is not the Examiner's to know: no prompt and no tool text says 24.
     expect(opening.replaceAll(/"timestamp":\d+/g, "")).not.toContain("24");
     // A task is read whole, hidden values too, and a turn with no call is nudged.
-    expect(s.sent[1]).toContain(String.raw`\"seed\": 5`);
+    expect(s.sent[1]).toContain(String.raw`\"seed\":5`);
     expect(s.sent[2]).toContain("You have not called finish. Propose further tasks, or call finish.");
     expect(s.of("exam.started")).toMatchObject([
       {
@@ -697,7 +697,7 @@ describe("a session that writes tasks", () => {
     const example = await invoke(toolOf(mode, "read_example"), "own", {
       task: draft.taskId,
     });
-    expect(example.output).toEqual([{ type: "text", text: JSON.stringify(draft, null, 2) }]);
+    expect(example.output).toEqual([{ type: "text", text: JSON.stringify(draft) }]);
   });
 
   it("holds a task out on its package's shape alone, starts no solve of it, and is told of no room solve", async () => {

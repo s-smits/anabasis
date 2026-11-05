@@ -151,7 +151,7 @@ export const heldSinceRelease = (events: readonly LogEvent[]): number =>
 /** The tasks held out after the log's index `after` that are held out still. Until 2 November a
  *  task released since counted, and a rehearsal named a starter comparison on six tasks that were
  *  all released after a promotion, whose draw then held none. */
-export function heldAfter(events: readonly LogEvent[], after: number): number {
+function heldAfter(events: readonly LogEvent[], after: number): number {
   const held = new Set(taskSets(events).held);
   return events.filter(
     ({ kind, data }, index) =>

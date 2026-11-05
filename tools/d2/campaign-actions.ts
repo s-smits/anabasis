@@ -31,7 +31,7 @@
 import { Type } from "typebox";
 import type { SeatTool } from "#src/agent/session.ts";
 import { Refused, stopRule } from "#src/campaign/admission.ts";
-import { CRASHES, decide, heldAfter, heldSinceRelease, practiceDue } from "#src/campaign/decide.ts";
+import { CRASHES, decide, heldSinceRelease, practiceDue } from "#src/campaign/decide.ts";
 import { comparisonsOf, crashedRun } from "#src/campaign/ground.ts";
 import { campaignOf } from "#src/campaign/handover.ts";
 import { type Decided, short } from "#src/campaign/move.ts";
@@ -47,7 +47,7 @@ import { latestBuilt, patienceOf, promoted as lastPromoted } from "#src/kernel/r
 import { billedParts } from "#src/kernel/meter.ts";
 import { sizeLines } from "#src/kernel/size.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
-import { taskSets } from "#src/kernel/task.ts";
+import { heldAtGate, taskSets } from "#src/kernel/task.ts";
 import { isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined, keysIf } from "#src/meta/optional-key.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
@@ -562,7 +562,13 @@ function examinedLines(events: readonly LogEvent[], writing: string | undefined)
   const ended = events.findLast(({ kind, data }) => kind === "exam.finished" && data.session === begun)?.data;
   if (begun === writing || ended === undefined) {
     const started = events.findIndex(({ kind, data }) => kind === "exam.started" && data.session === begun);
-    const held = plural(started === -1 ? 0 : heldAfter(events, started), "task");
+    // Every task its gate held, as `exam.finished.held` counts them once it ends. Until 5 November
+    // this counted those held out still, and sim-round625's b-2 was told x-4 had 0 admitted after the
+    // host had released its first.
+    const admitted = events.filter(
+      ({ kind, data }, index) => index > started && kind === "task.gate" && heldAtGate(data.outcome),
+    );
+    const held = plural(started === -1 ? 0 : admitted.length, "task");
     return [
       begun === writing
         ? `Examiner session ${begun} is writing beside this conversation, ${minutesFrom(events[started]?.at)}, and has had ${held} admitted so far.`

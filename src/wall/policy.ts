@@ -179,7 +179,8 @@ export function toolchainPathDirs(): string[] {
   const scan = { onlyFiles: false, absolute: true, followSymlinks: true };
   const glob = (cwd: string) => [...new Bun.Glob("opt/python*/libexec/bin").scanSync({ ...scan, cwd })];
   const brewed = user.map(dirname).filter(existsSync).flatMap(glob).toSorted(compareCodeUnits);
-  const pinned = Bun.env.HOME === undefined ? [] : [pinnedPythonDir(Bun.env.HOME)];
+  const home = Bun.env.HOME;
+  const pinned = home === undefined || home === "" ? [] : [pinnedPythonDir(home)];
   return [...new Set([...pinned, ...user, ...brewed.toReversed(), ...installed, ...system])].filter(
     existsSync,
   );

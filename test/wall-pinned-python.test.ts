@@ -47,15 +47,21 @@ function inSeat(home: string, commands: readonly string[]): string[] {
 
 describe("the pinned Python", () => {
   /** The wall's path in a process whose home is `home`. */
-  function wallPath(home: string): string[] {
+  function wallPath(home: string, cwd = REPO): string[] {
     const script = `import { toolchainPathDirs } from "${join(REPO, "src/wall/policy.ts")}";
 console.log(JSON.stringify(toolchainPathDirs()));`;
     const { stdout } = runSync([capturedExecPath, "-e", script], {
-      cwd: REPO,
+      cwd,
       env: { ...runtimeProcess.env, HOME: home },
     });
     return parseJsonAs<string[]>(decodeOutput(stdout));
   }
+
+  test("an empty home puts nothing from the working directory on the wall's path", () => {
+    const cwd = temp("ana-pinned-cwd");
+    mkdirSync(join(cwd, pinnedPythonDir("")), { recursive: true });
+    expect(wallPath("", cwd).filter((dir) => dir.includes("ana-python"))).toEqual([]);
+  });
 
   test("the wall's path has the pinned folder first where it exists, and is as it was where it does not", () => {
     const home = temp("ana-pinned-home");

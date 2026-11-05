@@ -135,7 +135,7 @@ import { waitOut } from "#src/solver/run.ts";
 import { acceptCommand } from "../c/accept.ts";
 import { modelNamed, sweepOptions } from "../m0/stored-sweep.ts";
 import { draftCommand } from "../d1b/draft.ts";
-import { nextRun, writeReceipt } from "../runs/receipt.ts";
+import { hostPython, nextRun, writeReceipt } from "../runs/receipt.ts";
 import { standing } from "../runs/registry.ts";
 import { campaignLog, openCampaign, packNamed, REPO, treeFault } from "./campaign.ts";
 import { awaitsOperator, type CampaignContext, campaignTools, releaseOwed } from "./campaign-actions.ts";
@@ -287,6 +287,7 @@ function keepReceipt(log: string, args: readonly string[]): void {
     cores: HOST.cores,
     bun: runtimeProcess.versions.bun,
     ...keyIfDefined("login", runtimeProcess.env.ANA_LOGIN),
+    python: hostPython(),
   });
 }
 

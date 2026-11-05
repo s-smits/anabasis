@@ -290,9 +290,10 @@ the Builder's; which moves are recorded; the Builder's clock; sessions by hand.
 
 A campaign's record is one append-only file, `.ana/d2/<name>/log.jsonl` (`src/kernel/log.ts`), and
 every state and report is a fold over it. An append is synced before it returns, and a read refuses
-a torn or unknown line. A **condition** (`src/kernel/condition.ts`) names everything that could
-change a solve; two solves compare only where their conditions differ in the one thing compared.
-Four habits keep the log the only truth:
+a torn or unknown line. A **condition** (`src/kernel/condition.ts`) names everything the host fixes
+for a solve; two solves compare only where their conditions differ in the one thing compared. It
+names no program the host's own path offers, such as its Python, which differs between hosts; a
+launch's receipt records that. Four habits keep the log the only truth:
 
 1. **Add no second store.** A fact needed later is an event.
 2. **Add no second reader of one fact.** Find the fold and call it.

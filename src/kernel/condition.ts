@@ -1,6 +1,7 @@
 /**
- * A condition: everything that could change a solve's result, as one content-addressed record. Two
- * solves are comparable only when their conditions differ in the one thing being compared.
+ * A condition: everything the host fixes for a solve, as one content-addressed record. Two solves
+ * are comparable only when their conditions differ in the one thing being compared. The programs a
+ * host's own path offers are outside it (`hostPython`, `tools/runs/receipt.ts`).
  *
  * The host sets every field; the Builder sets none. The model, its effort and every limit are the
  * host's, and nothing a harness declares about them is read.

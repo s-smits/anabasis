@@ -537,8 +537,23 @@ export function writing(
     rest = async () => null,
   }: Lent = {},
 ) {
-  const { limits, verify, probe } = request;
+  const { verify, probe } = request;
   const before = read(request.log);
+  /** What a conversation opening on `events` for `asked` is told. */
+  const openedOn = (asked: Terms, events: readonly LogEvent[]) =>
+    firstMessage(
+      asked.contract,
+      asked.checks,
+      heard(events, asked.tasks),
+      { ...asked.limits, tries: asked.probe?.tries ?? 0 },
+      {
+        brief: openingOf(events)?.prompt ?? null,
+        budget: asked.budget,
+      },
+    );
+  // What `read_opening` serves: the opening itself, then for each later ask the whole record as that
+  // ask began, since a compaction drops its wake, which holds only what came since the last ask.
+  let told = openedOn(request, before);
   const desk: Desk = {
     request,
     stop,
@@ -555,16 +570,9 @@ export function writing(
   return {
     kind: "exam" as const,
     system: systemPrompt(reference, probe === null ? "none" : "given"),
-    opening: firstMessage(
-      request.contract,
-      request.checks,
-      heard(before, request.tasks),
-      { ...limits, tries: probe?.tries ?? 0 },
-      {
-        brief: openingOf(before)?.prompt ?? null,
-        budget: request.budget,
-      },
-    ),
+    get opening() {
+      return told;
+    },
     // The ask's own, read as each ask starts.
     get started() {
       const asked = desk.request;
@@ -602,7 +610,9 @@ export function writing(
     // Each ask counts its own drafts and tries; what the conversation saw and answered stays.
     ask: (next: Terms, since: number) => {
       Object.assign(desk, { request: next, proposed: 0, tried: 0, held: [], refused: [] });
-      return wakeMessage(heard(read(next.log), next.tasks, since), {
+      const events = read(next.log);
+      told = openedOn(next, events);
+      return wakeMessage(heard(events, next.tasks, since), {
         ...next.limits,
         tries: next.probe?.tries ?? 0,
       });

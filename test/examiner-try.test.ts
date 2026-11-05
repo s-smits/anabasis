@@ -131,9 +131,11 @@ describe("trying the reference at writing", () => {
   it("runs the reference's solves while the session's clock stands still, and a proposal outside it", async () => {
     const made = seated(100, 2, []);
     let paused = false;
+    let stood = 0;
     const seen: boolean[] = [];
     const within = async <T>(action: () => Promise<T>): Promise<T> => {
       paused = true;
+      stood += 1;
       try {
         return await action();
       } finally {
@@ -146,8 +148,11 @@ describe("trying the reference at writing", () => {
     };
     const mode = writing({ ...made.request, probe: { tries: 2, solve } }, undefined, "unseen", { within });
     await invoke(toolOf(mode, TRY), "try", { solves: 2, task: spelled(7) });
+    const tried = stood;
     await invoke(toolOf(mode), "put", { tasks: [instance(7)] });
     expect(seen).toEqual([true, true]);
+    expect(tried).toBeGreaterThan(0);
+    expect(stood).toBe(tried);
     expect(paused).toBe(false);
   });
 

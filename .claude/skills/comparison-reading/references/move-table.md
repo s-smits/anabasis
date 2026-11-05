@@ -16,8 +16,9 @@ evaluates the nine `ROWS` in order and returns the first applicable move with it
 3. `bound`: a bound is spent: the budget, the provider (`crashedRun`, section 6), the stop rule, or a
    comparison stopped on check defects or cut by its cap.
 4. `tasks`: the tasks are not set up: a pack's are taken in, practice released, and tasks written
-   where there are none, where the operator asked, or before the first comparison up to the
-   admission floor plus the practice still to be drawn.
+   where there are none, where the operator asked (once a step that waits is promoted, so they are
+   written against the new reference), or before the first comparison up to the admission floor plus
+   the practice still to be drawn.
 5. `unfinished`: a comparison that began and has not reported continues.
 6. `step`: a step against the reference names the harness to promote, the newest where several wait
    (`unpromoted` says why another is not).

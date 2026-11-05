@@ -141,6 +141,15 @@ export const BUILD_END = "build.finished";
 export const EXAM_START = "exam.started";
 export const EXAM_END = "exam.finished";
 export const REPORTED = "comparison.reported";
+/** Words that open a shell segment and run nothing themselves. */
+const SHELL_WORDS = new Set(["if", "then", "elif", "else", "fi", "while", "until", "do", "done", "esac"]);
+/** Words whose segment names no program: `cd` runs no harness's program, and a `for` or `case` head none. */
+const NO_PROGRAM = new Set(["cd", "for", "case", "select"]);
+/** A heredoc's body, kept to the rest of its first line, and never a here-string; and text in quotes. Both are data. */
+const HEREDOC = /(?<!<)<<-?\s*(['"]?)(\w+)\1([^\n]*)(?:\n(?:[^\n]*\n)*?[ \t]*\2[ \t]*(?=\n|$)|[\s\S]*$)/g;
+const QUOTED = /'[^']*'|"(?:[^"\\]|\\.)*"/g;
+/** What ends a shell segment: a line, a list or a pipe, a subshell or a substitution. */
+const SEGMENT = /\n|&&|\|\||\|&|(?<![<>&])&(?![>&])|[|;()`]/;
 
 /** Every trigger this reader can print, and the lane it starts. `lanes.md` names each one in the
  *  `Starts from` paragraph of that lane, and `test/wri-catalogue.test.ts` holds the two together. */
@@ -257,15 +266,22 @@ export function tallyOf(tested: JsonValue | undefined) {
 export const items = (value: JsonValue | undefined): readonly JsonValue[] =>
   Array.isArray(value) ? value : [];
 export const strings = (value: JsonValue | undefined): string[] => items(value).filter(isString);
-/** The program one shell line runs first: the first word of its first line's segments that is no
- *  assignment and no `cd`, since nearly every line of a solve opens with one, or none. */
-const commandWords = (line: string): string[] => {
-  const words = (line.split("\n")[0] ?? "").split(/&&|;/).map((segment) => segment.trim().split(/\s+/));
-  const word = words
-    .flatMap((each) => each.filter((part) => !/^\w+=/.test(part)).slice(0, 1))
-    .find((each) => each !== "cd");
-  return word === undefined || word === "" ? [] : [word.replace(/^.*\//, "")];
-};
+/**
+ * Every program one shell command names: each segment's first word that is no assignment and no shell
+ * word, its path dropped. Until 5 November this read the first program of the first line alone, so
+ * "through bash: none" could be said of a solve whose command ran a harness's programs on its later
+ * lines or past a pipe (landing review of 5 November).
+ */
+const commandWords = (command: string): string[] =>
+  command
+    .replaceAll(HEREDOC, "$3")
+    .replaceAll(QUOTED, "''")
+    .split(SEGMENT)
+    .flatMap((segment) => {
+      const parts = segment.trim().split(/\s+/);
+      const word = parts.find((part) => !/^\w+=/.test(part) && !SHELL_WORDS.has(part)) ?? "";
+      return /^[\w./+-]+$/.test(word) && !NO_PROGRAM.has(word) ? [word.replace(/^.*\//, "")] : [];
+    });
 
 /** Whether a solve measured its harness: a non-result is in no pair, and a rerun replaced it. A
  *  solver's flag is its side's own fail, as the comparison counts it. */

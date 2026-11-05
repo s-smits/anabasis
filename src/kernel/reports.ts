@@ -591,8 +591,9 @@ export function poolOf(events: readonly LogEvent[]) {
         : [],
     ),
   );
+  const exhausted = spent.filter((task) => !out.has(task));
   const unstood = held.filter((task) => before.has(task) && !out.has(task) && !stood.has(task));
-  const retained = [...new Set([...spent, ...unstood])];
+  const retained = [...new Set([...exhausted, ...unstood])];
   const scorable = held.filter((task) => !out.has(task));
   // Practice's allowance also leaves out a task with no independent valid answer that the reference
   // answered in none of two comparisons: unlike `awaiting`, only the reference's own cut solves pass
@@ -618,8 +619,11 @@ export function poolOf(events: readonly LogEvent[]) {
     practiceFrontier: held.filter(
       (task) => !(before.has(task) && !stood.has(task)) && !practiceOut.has(task),
     ),
+    // What a practice release draws from: a rejection the reference's own solve left in doubt reads
+    // the reference alone, so which task another harness won moves nothing here (rule 3).
+    practicePool: held.filter((task) => !doubted.includes(task)),
     awaiting,
-    exhausted: spent,
+    exhausted,
     retained,
     feasible: new Set(
       records.flatMap(({ version, knownValidAnswer }) => (knownValidAnswer ? [version] : [])),

@@ -9,7 +9,7 @@ import { crashedRun } from "../src/campaign/ground.ts";
 import { short } from "../src/campaign/move.ts";
 import { pendingWords } from "../src/campaign/word.ts";
 import { examine } from "../src/examiner/session.ts";
-import { LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
+import { append, LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
 import { taskSets } from "../src/kernel/task.ts";
 import {
   mkdirSync,
@@ -24,6 +24,8 @@ import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
+import { type CampaignContext, releaseOwed } from "../tools/d2/campaign-actions.ts";
+import { openCampaign, packNamed } from "../tools/d2/campaign.ts";
 import { flagsOf, opened, type Seats } from "../tools/d2/campaign-terms.ts";
 import { harnessBuilder } from "../tools/d2/harness-builder.ts";
 import { HOST } from "../tools/d2/host.ts";
@@ -43,6 +45,7 @@ const MOVED = "campaign.move";
 const CALLED = "build.call";
 const FINISHED = "build.finished";
 const REPORTED = "comparison.reported";
+const COMPARED = "comparison.started";
 const EXAMINED = "exam.finished";
 const EXAM_STARTED = "exam.started";
 const TASKS = fixtureTasks(7);
@@ -165,6 +168,45 @@ const writer: NonNullable<Seats["examine"]> = (request) =>
  *  in a row without a move have the host ask for tasks (15 October), and none come. */
 const unwritten: NonNullable<Seats["examine"]> = (request) =>
   examine({ ...request, ...scripted([FINISH_IDLE, FINISH_IDLE]) });
+
+describe("the host's practice release", () => {
+  /** A campaign set up by its first two moves, with two tasks more of practice owed. */
+  const owing = async (name: string): Promise<CampaignContext> => {
+    const flags = [...seeded(name), ...FLAGS];
+    const seats: Seats = { seated: winning(GRADED_MANY) };
+    await harnessBuilder([...flags, "--moves", "2"], seats);
+    const log = join(REPO, ".ana", "d2", name, LOG_FILE);
+    const values = flagsOf([...flags, "--practice", "4"]);
+    return {
+      log,
+      values,
+      opening: opened(log, values, "scripted"),
+      seats,
+      held: seats.seated,
+      campaign: await openCampaign(packNamed(values)),
+      paid: "scripted",
+      maxMoves: 12,
+      used: 0,
+      failed: null,
+    };
+  };
+  const released = ({ log }: CampaignContext) => taskSets(read(log)).released.length;
+
+  it("takes no task where a comparison starts while it opens the campaign, since that comparison has drawn", async () => {
+    layOutPack(root, bundle, MANY, FIXTURE);
+    const raced = await owing(`${STEM}-release-raced`);
+    const releasing = releaseOwed(raced, "the race under test");
+    // The guard has passed and the release waits on the campaign's opening.
+    append(raced.log, COMPARED, { session: "g-1", old: "start", fresh: "h1" });
+    expect(await releasing).toBe(false);
+    expect(released(raced)).toBe(2);
+    expect(raced.used).toBe(0);
+
+    const alone = await owing(`${STEM}-release-alone`);
+    expect(await releaseOwed(alone, "no comparison started")).toBe(true);
+    expect(released(alone)).toBe(4);
+  });
+});
 
 describe("a campaign run by its live Builder", () => {
   it("lets the Builder ask the Examiner, and keeps the handover filtered", async () => {
@@ -298,7 +340,7 @@ describe("a campaign run by its live Builder", () => {
     await harnessBuilder([...seeded(name), ...FLAGS, "--exam-tasks", "6", "--moves", "10"], seats);
     // The first comparison read the changed harness with room and no step. Until 2 November the
     // table drew the same harness again on the tasks written since; now the Builder changes it.
-    expect(of(name, "comparison.started")).toHaveLength(1);
+    expect(of(name, COMPARED)).toHaveLength(1);
     expect(said(name, "compare")[1]).toContain("nothing in it has changed since");
   });
 
@@ -319,7 +361,7 @@ describe("a campaign run by its live Builder", () => {
     const [untouched, , again] = said(name, "compare");
     expect(untouched).toContain("harness/ is the reference harness: there is nothing to compare");
     expect(again).toContain("nothing in it has changed since: there is nothing new to compare");
-    expect(of(name, "comparison.started")).toHaveLength(1);
+    expect(of(name, COMPARED)).toHaveLength(1);
     expect(of(name, "build.checkpoint")).toHaveLength(1);
     expect(of(name, MOVED).map(({ move }) => move)).toEqual([
       "accept",
@@ -600,7 +642,7 @@ describe("a campaign run by its live Builder", () => {
       const at = positions(name);
       const events = read(log);
       const starterComparison = events.findIndex(
-        ({ kind, data }) => kind === "comparison.started" && data.session === "g-2",
+        ({ kind, data }) => kind === COMPARED && data.session === "g-2",
       );
       expect(of(name, EXAMINED)[0]?.held).toHaveLength(12);
       expect(
@@ -660,7 +702,7 @@ describe("a campaign run by its live Builder", () => {
     // conversation left, so three that finished so end the campaign with nothing compared.
     const [left] = of(name, FINISHED);
     expect(left).toMatchObject({ ended: "finished", changed: true });
-    expect(of(name, "comparison.started")).toEqual([]);
+    expect(of(name, COMPARED)).toEqual([]);
   });
 
   it("stops the Examiner writing beside the conversation when the operator's stop halts it", async () => {
@@ -884,7 +926,7 @@ describe("a campaign run by its live Builder", () => {
     // 13 October the tool then ended the campaign on its budget, with nearly all of it left.
     const args = [...seeded(name), "--target", "5", "--practice", "2", "--budget", "20", "--reserve", "0.01"];
     expect(await harnessBuilder(args, seats)).toMatchObject({ ending: "environment" });
-    const [start] = of(name, "comparison.started");
+    const [start] = of(name, COMPARED);
     if (start === undefined) throw new Error("the comparison did not record its original terms");
     expect(of(name, REPORTED)).toEqual([]);
     expect(of(name, CALLED).find(({ tool }) => tool === "compare")?.text).not.toContain(
@@ -897,7 +939,7 @@ describe("a campaign run by its live Builder", () => {
     // Short of tasks after it, the Builder builds and asks for them (row `short` removed 5 November).
     expect(await harnessBuilder([...args, "--moves", "1"], seats)).toMatchObject({ move: "build" });
     expect(of(name, "build.started")).toHaveLength(conversations);
-    expect(of(name, "comparison.started")).toEqual([start]);
+    expect(of(name, COMPARED)).toEqual([start]);
     expect(of(name, REPORTED)).toMatchObject([
       { session: start?.session, old: start?.old, fresh: start?.fresh },
     ]);
@@ -1009,7 +1051,7 @@ describe("a campaign run by its live Builder", () => {
     const labels = readFileSync(join(folder, "labels.json"), "utf8");
     const drawn = Object.keys(parseJsonAs<{ rejections: JsonObject }>(labels).rejections);
     expect(drawn.length).toBeGreaterThan(0);
-    const [started] = of(name, "comparison.started");
+    const [started] = of(name, COMPARED);
     const sides = [started?.old, started?.fresh].filter(isString);
     expect(sides).toHaveLength(2);
     for (const solve of drawn) {
@@ -1078,7 +1120,7 @@ describe("a campaign tool where the table names more than the action", () => {
     const ending = await harnessBuilder([...seeded(name), ...FLAGS, "--promotions", "1"], seats);
     expect(ending).toMatchObject({ move: "end", ending: "operator", code: "stop" });
     expect(of(name, "harness.promoted")).toHaveLength(1);
-    expect(of(name, "comparison.started")).toHaveLength(1);
+    expect(of(name, COMPARED)).toHaveLength(1);
     expect(of(name, "campaign.opened").at(-1)).toMatchObject({ terms: { promotions: "1" } });
     const told = of(name, CALLED)
       .flatMap(({ text }) => (isString(text) ? [text] : []))
@@ -1127,6 +1169,52 @@ describe("a campaign tool where the table names more than the action", () => {
     const after = events.slice(events.findIndex(({ kind }) => kind === REPORTED));
     expect(after.filter(({ kind, data }) => kind === MOVED && data.code === "practice")).toEqual([]);
     expect(of(name, "campaign.ended")).toMatchObject([{ ending: "operator" }]);
+  });
+
+  it("promotes a waiting step before it answers a word for other tasks, so they are written against the new reference", async () => {
+    layOutPack(root, bundle, MANY, FIXTURE);
+    const name = `${STEM}-word-waiting`;
+    const seats: Seats = {
+      seated: builderScript(passing(), [
+        ["examine", {}],
+        CHANGE_GUIDE,
+        ["compare", {}],
+        ["examine", {}],
+        FINISH_IDLE,
+        FINISH_IDLE,
+      ]),
+      // The word is left as the step reports, while the promotion waits for this session to end.
+      examine: (request) =>
+        examine({
+          ...request,
+          ...scripted([
+            {
+              wait: async () => {
+                const reported = () => logOf(name).some(({ kind }) => kind === REPORTED);
+                for (let tries = 0; tries < 600 && !reported(); tries += 1) {
+                  await Bun.sleep(50);
+                }
+                wordCommand(["--name", name, "--tasks", "harder ones"]);
+                return proposing(6);
+              },
+            },
+            FINISH_IDLE,
+            FINISH_IDLE,
+          ]),
+        }),
+    };
+    await harnessBuilder([...seeded(name), ...FLAGS, "--exam-tasks", "6", "--moves", "12"], seats);
+    const events = logOf(name);
+    const word = events.findIndex(({ kind }) => kind === "campaign.word");
+    const promoted = events.findIndex(({ kind }) => kind === "harness.promoted");
+    const answered = events.findIndex(
+      ({ kind, data }) => kind === MOVED && data.move === "examine" && Array.isArray(data.answers),
+    );
+    expect(word).toBeGreaterThan(-1);
+    expect(promoted).toBeGreaterThan(word);
+    expect(answered).toBeGreaterThan(promoted);
+    expect(events[answered]?.data.answers).toEqual([word]);
+    expect(pendingWords(events)).toEqual([]);
   });
 
   it("promotes the harness each step froze as it reports, whatever harness/ holds since, and runs the table's starter comparison before the Builder's comparison of a changed harness/", async () => {
@@ -1229,7 +1317,7 @@ describe("a campaign tool where the table names more than the action", () => {
     const events = logOf(name);
     const promotedAt = events.findIndex(({ kind }) => kind === "harness.promoted");
     const written = events.findIndex(({ kind }, at) => at > promotedAt && kind === "exam.finished");
-    const started = events.findIndex(({ kind }, at) => at > promotedAt && kind === "comparison.started");
+    const started = events.findIndex(({ kind }, at) => at > promotedAt && kind === COMPARED);
     expect(written).toBeGreaterThan(promotedAt);
     expect(started).toBeGreaterThan(written);
   });

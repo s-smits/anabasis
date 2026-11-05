@@ -204,6 +204,7 @@ describe("the tasks a writing session hears", () => {
     for (const absent of ["h1", "h2", SOLVER, "too easy", "| family |", "gate 1 of", "said at its finish"]) {
       expect(opening).not.toContain(absent);
     }
+    expect(opening).toContain("it names no base: bent (fixture)");
   });
 });
 
@@ -319,10 +320,33 @@ describe("a check ruled at fault on a task", () => {
     // The ruling's reason stays unread.
     expect(JSON.stringify(told)).not.toContain(SOLVER);
   });
+
+  it("reads a person's label over the ruling, so a check labelled faithful is no longer named", () => {
+    const log = logged();
+    log.hold(["cleared", "blamed", "kept"]);
+    const finding = (task: string, ruling: string, check: string) =>
+      log.add("referee.finding", { solve: `s-${task}`, task, ruling, check });
+    finding("cleared", "check-defect", "check-cleared");
+    finding("blamed", "unclear", "check-blamed");
+    finding("kept", "check-defect", "check-kept");
+    const fault = "ruled at fault on an answer to it: ";
+    const named = () => {
+      const lines = block(heard(log.events, ["cleared", "blamed", "kept"].map(fixture)), "Not yet compared");
+      return ["cleared", "blamed", "kept"].map((task) => lines[task]?.includes(fault) === true);
+    };
+    expect(named()).toEqual([true, false, true]);
+    // A settled report rewrites its comparison's last, and the label stands over the ruling.
+    log.reported("g-1", ["h1", "h2"], []);
+    log.add("comparison.reported", {
+      ...log.events.findLast(({ kind }) => kind === "comparison.reported")?.data,
+      settled: { labels: { "s-cleared": "earned", "s-blamed": "check-defect" } },
+    });
+    expect(named()).toEqual([false, true, true]);
+  });
 });
 
 describe("after a promotion", () => {
-  it("says the reference was promoted and how many tasks were held before then, and no refusal", () => {
+  it("says the reference was promoted and how many tasks were held before then, and at an opening alone the drafts the gate has refused since", () => {
     const log = logged();
     log.hold(["old"]);
     log.refuse("before", "it names no base");
@@ -334,7 +358,10 @@ describe("after a promotion", () => {
     const told = heard(log.events, ["old", "new"].map(fixture));
     expect(told.promoted).toContain("g-9");
     expect(told.promoted).toContain("1 of the 2 tasks");
-    expect(JSON.stringify(told)).not.toContain("it names no base");
+    expect(told.refused).toEqual([
+      "it names no base: bent (fixture), twisted (fixture)",
+      "its hidden values are missing: short (fixture)",
+    ]);
     const unpromoted = heard(
       log.events.filter(({ kind }) => kind !== "harness.promoted"),
       ["old", "new"].map(fixture),
@@ -342,8 +369,11 @@ describe("after a promotion", () => {
     expect(unpromoted.promoted).toBeNull();
     // At a wake the promotion is told where it came after the conversation last wrote.
     const at = log.events.findIndex(({ kind }) => kind === "harness.promoted");
-    expect(heard(log.events, ["old", "new"].map(fixture), at).promoted).toContain("g-9");
+    const woken = heard(log.events, ["old", "new"].map(fixture), at);
+    expect(woken.promoted).toContain("g-9");
     expect(heard(log.events, ["old", "new"].map(fixture), at + 1).promoted).toBeNull();
+    // A conversation still open heard each refusal from the gate.
+    expect(woken.refused).toEqual([]);
   });
 });
 
@@ -383,6 +413,11 @@ describe("a wake", () => {
     expect(lines).toEqual(heard(log.events, [fixture("run")]).groups.flatMap((group) => group.lines));
     expect(lines[0]).toEndWith("; ruled at fault on an answer to it: check-unit");
     // Nothing reported since: no reading, no task.
-    expect(heard(log.events, tasks, log.events.length)).toEqual({ last: null, groups: [], promoted: null });
+    expect(heard(log.events, tasks, log.events.length)).toEqual({
+      last: null,
+      groups: [],
+      promoted: null,
+      refused: [],
+    });
   });
 });

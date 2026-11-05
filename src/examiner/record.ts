@@ -1,6 +1,6 @@
 /**
  * What a writing session is told of its campaign's past at its opening, and at a wake what came
- * since (`after`): a view of the log, with no store of its own (`heard`), in three parts.
+ * since (`after`): a view of the log, with no store of its own (`heard`), in four parts.
  *
  * - `last`: the last comparison the reference harness stood in, from its side: the tasks it scored,
  *   how many each harness won, the reference's every, some and none, the tasks set aside, and how
@@ -13,10 +13,12 @@
  *   who won and on which measure (`carriedBy`), whether a valid answer is on record where none of the
  *   reference's was valid, and the checks a ruling found at fault on an answer to it (`faultedOf`).
  * - `promoted`: that the reference was promoted, and how many tasks were held out before then.
+ * - `refused`: at an opening alone, the drafts the gate refused since that promotion, by its reason.
  *
  * Until 5 November each session was a new conversation, and its opening also told each task's last
- * three comparisons and the drafts the gate refused; a conversation now hears each reading at the
- * wake after it, and each refusal from the gate.
+ * three comparisons; a conversation now hears each reading at the wake after it. A live conversation
+ * hears each refusal from the gate, so a wake repeats none, but one that crashed or met a limit opens
+ * afresh from the log (`AGENTS.md`, section 4) and has that record of them alone.
  *
  * Until 4 November the opening carried a legend for every clause, the outcome on every line, the
  * gate's room solves, which no gate has run since 1 November, and the last session's note. An
@@ -134,7 +136,21 @@ export function heard(
     last: lastLine(events, after ?? 0),
     groups,
     promoted: since < (after ?? 0) ? null : promotedLine(events, since, listed),
+    refused: after === undefined ? refusedLines(events, since) : [],
   };
+}
+
+/** The drafts the gate refused after event `since`, under its reason, each by its id and family. */
+function refusedLines(events: readonly LogEvent[], since: number): string[] {
+  const drafts = new Map(proposalsOf(events).map(({ version, task }) => [version, task]));
+  const why = new Map<string, string[]>();
+  for (const { kind, data } of events.slice(since + 1)) {
+    const task = isString(data.version) ? drafts.get(data.version) : undefined;
+    if (kind !== "task.gate" || data.outcome !== "refused" || !isString(data.reason)) continue;
+    if (task === undefined || task === null) continue;
+    why.set(data.reason, [...(why.get(data.reason) ?? []), `${task.taskId} (${task.family})`]);
+  }
+  return [...why].map(([reason, named]) => `${reason}: ${named.join(", ")}`);
 }
 
 /** The task versions comparisons reported on after event `after`. */
@@ -168,17 +184,22 @@ function clausesOf(
   ];
 }
 
-/** The checks a ruling found at fault on an answer to each task, by its id: a solve's last
- *  `referee.finding`, the Referee's or the host's, where it is `check-defect`. Its reason is not told. */
+/** The checks a ruling found at fault on an answer to each task, by its id: what stands of a solve's
+ *  rejection, a person's label over its last `referee.finding`, the Referee's or the host's (rule 8),
+ *  where that is `check-defect`. `rulingsOf` gives a solve's ruling alone, and the task and the check
+ *  are the finding's, so the finding is read here. Its reason is not told. */
 function faultedOf(events: readonly LogEvent[]): Map<string, Set<string>> {
   const last = new Map(
     events.flatMap(({ kind, data }) =>
       kind === "referee.finding" && isString(data.solve) ? [[data.solve, data]] : [],
     ),
   );
+  const labels = new Map(
+    lastReports(events).flatMap(({ data }) => Object.entries(asRecord(asRecord(data.settled)?.labels) ?? {})),
+  );
   const faulted = new Map<string, Set<string>>();
-  for (const { ruling, task, check } of last.values()) {
-    if (ruling !== "check-defect" || !isString(task) || !isString(check)) continue;
+  for (const [solve, { ruling, task, check }] of last) {
+    if ((labels.get(solve) ?? ruling) !== "check-defect" || !isString(task) || !isString(check)) continue;
     faulted.set(task, new Set([...(faulted.get(task) ?? []), check]));
   }
   return faulted;

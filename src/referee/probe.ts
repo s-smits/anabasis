@@ -24,9 +24,10 @@ import { text, tool } from "../tools/answer.ts";
 const PROBE_BUDGET = 8;
 /** Bound each replacement value and each half of a text edit, including within a coupled probe, or
  *  the field's own length as JSON where that is longer: one field still changes, whatever its size.
- *  Until 5 November the bound was 4000 alone, and all six unclear rulings of one truss campaign
- *  (truss-fresh-opus-forkedPR588 r2) said it kept them from replacing a members list of 8000 to
- *  12000 characters, which left three tasks out of its comparisons (Referee audit, 5 November). */
+ *  The field is read in the refused answer and in the accepted one the prompt offers, so that value
+ *  always fits. Until 5 November the bound was 4000 alone, and all six unclear rulings of one truss
+ *  campaign (truss-fresh-opus-forkedPR588 r2) said it kept them from replacing a members list of 8000
+ *  to 12000 characters, which left three tasks out of its comparisons (Referee audit, 5 November). */
 const VALUE_MAX_CHARS = 4000;
 
 /** The one passage of a text field that `find` names, rewritten to `replace`. */
@@ -160,16 +161,23 @@ function budgetLine(used: number): string {
  * is not one: both forms or neither, a value that is not JSON, a path the answer does not hold, a
  * passage that is not there exactly once, or a change that changes nothing.
  */
-function changedAnswer(answer: JsonValue, change: ProbeRow["changes"][number]): JsonValue {
+function changedAnswer(
+  answer: JsonValue,
+  change: ProbeRow["changes"][number],
+  accepted: JsonValue | undefined,
+): JsonValue {
   const { edit } = change;
   if ((change.value === null) === (edit === null)) {
     throw new Error("send either `value`, or `find` with `replace`");
   }
-  const field = resolveJsonPath(answer, change.path);
-  const most = Math.max(VALUE_MAX_CHARS, field.found ? (capturedJsonStringify(field.value)?.length ?? 0) : 0);
+  const lengths = [answer, accepted].map((whole) => {
+    const field = whole === undefined ? null : resolveJsonPath(whole, change.path);
+    return field?.found === true ? (capturedJsonStringify(field.value)?.length ?? 0) : 0;
+  });
+  const most = Math.max(VALUE_MAX_CHARS, ...lengths);
   if ([change.value, edit?.find, edit?.replace].some((part) => (part?.length ?? 0) > most)) {
     throw new Error(
-      `a value and each half of an edit are at most ${String(VALUE_MAX_CHARS)} characters, or the length of the field they change as JSON where that is longer: one field or one passage changes`,
+      `a value and each half of an edit are at most ${String(VALUE_MAX_CHARS)} characters, or the length of the field they change as JSON, in this answer or the accepted one, where that is longer: one field or one passage changes`,
     );
   }
   let value: JsonValue;
@@ -194,9 +202,13 @@ function changedAnswer(answer: JsonValue, change: ProbeRow["changes"][number]): 
 }
 
 /** Rebuild the exact counterfactual a probe verifies. */
-function probeAnswer(answer: JsonValue, changes: ProbeRow["changes"]): JsonValue {
+function probeAnswer(
+  answer: JsonValue,
+  changes: ProbeRow["changes"],
+  accepted: JsonValue | undefined,
+): JsonValue {
   if (changes.length > 3) throw new Error("a probe changes at most 3 paths");
-  const changed = changes.reduce(changedAnswer, answer);
+  const changed = changes.reduce((at, change) => changedAnswer(at, change, accepted), answer);
   if (hashJsonValue(changed) === hashJsonValue(answer)) {
     throw new Error("the changes leave the answer unchanged");
   }
@@ -210,8 +222,14 @@ export function probeTool(
   task: Task,
   answer: JsonValue,
   rows: ProbeRow[],
-  readTogether: readonly (readonly string[])[] = [],
+  around: {
+    /** The fields each refusing check reads together, which a coupled probe keeps to. */
+    readonly readTogether?: readonly (readonly string[])[];
+    /** The accepted answer the Referee's first message offers, whose values a probe may carry. */
+    readonly accepted?: JsonValue | undefined;
+  } = {},
 ): SeatTool {
+  const { readTogether = [], accepted } = around;
   let original: Promise<Verdict> | null = null;
   return tool({
     name: "probe_check",
@@ -251,7 +269,7 @@ export function probeTool(
         value: value ?? null,
         edit: find === undefined || replace === undefined ? null : { find, replace },
       }));
-      const changed = probeAnswer(answer, changes);
+      const changed = probeAnswer(answer, changes, accepted);
       if (
         changes.length > 1 &&
         !readTogether.some((fields) => changes.every(({ path }) => reaches(path, fields)))

@@ -527,6 +527,54 @@ describe("the tasks a comparison doubted", () => {
     reported("g-1", "no-step", "h2", { ...terms, versions: ["easy"], aside: ["bad"], ...more }),
   ];
   const scorable = (log: readonly LogEvent[]) => poolOf(log).scorable;
+  /** The tasks a practice release takes, as `tools/d2/prepare.ts` asks for them. */
+  const drawn = (log: readonly LogEvent[], count: number) =>
+    releaseOrder(log, poolOf(log).practicePool, count, "seed");
+
+  it("leave practice's allowance and what a release draws, on the reference's own rejection alone", () => {
+    const log = asideIn(rejectedAs("g-1", "h1", "check-defect"), rejectedAs("g-1", "h2", "earned"));
+    expect(poolOf(log)).toMatchObject({ practiceFrontier: ["easy"], practicePool: ["easy"] });
+    expect(drawn(log, 2).map(([version]) => version)).toEqual(["easy"]);
+    // The candidate's ruling alone moves neither (rule 3).
+    const ruled = (ruling: string) =>
+      asideIn(rejectedAs("g-1", "h1", "earned"), rejectedAs("g-1", "h2", ruling));
+    expect(poolOf(ruled("check-defect")).practicePool).toEqual(["bad", "easy"]);
+    expect(drawn(ruled("check-defect"), 2)).toEqual(drawn(ruled("earned"), 2));
+  });
+
+  it("release the same tasks whichever held-out task the new harness won beside a doubted one", () => {
+    const won = (task: string) => [
+      ...["bad", "a1", "a2"].flatMap(heldOut),
+      ...rejectedAs("g-1", "h1", "unclear"),
+      ...rejectedAs("g-1", "h2", "earned"),
+      ...["a1", "a2"].flatMap((each) => [
+        ...solved("g-1", each, "h1", [F, F]),
+        ...solved("g-1", each, "h2", each === task ? [P, P] : [F, F]),
+      ]),
+      reported("g-1", "no-step", "h2", { ...terms, versions: ["a1", "a2"], aside: ["bad"] }),
+    ];
+    expect(drawn(won("a1"), 2)).toEqual(drawn(won("a2"), 2));
+    expect(drawn(won("a1"), 3).map(([version]) => version)).not.toContain("bad");
+  });
+
+  it("leave the exhausted and the retained tasks, which only the draw left out until 5 November", () => {
+    const closed = [
+      ...start,
+      ...["g-1", "g-2"].flatMap((session) => [
+        ...solved(session, "bad", "h1", [P, P]),
+        ...solved(session, "bad", "h2", [P, P]),
+        reported(session, "no-step", "h2", { ...terms, versions: ["bad"] }),
+      ]),
+    ];
+    expect(poolOf(closed)).toMatchObject({ exhausted: ["bad"], retained: ["bad"] });
+    const doubted = [
+      ...closed,
+      ...rejectedAs("g-3", "h1", "check-defect"),
+      ...rejectedAs("g-3", "h2", "earned"),
+      reported("g-3", "no-step", "h2", { ...terms, versions: [], aside: ["bad"] }),
+    ];
+    expect(poolOf(doubted)).toMatchObject({ exhausted: [], retained: [], scorable: ["easy"] });
+  });
 
   it("leave the draw where the reference's own rejection stands unearned, and stay in it where only the candidate's does", () => {
     for (const ruling of ["check-defect", "unclear", null]) {

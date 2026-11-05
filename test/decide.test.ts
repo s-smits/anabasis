@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { decide, practiceDue, shortOf, unpromoted } from "../src/campaign/decide.ts";
+import { decide, practiceDue, shortOf, supplyRun, unpromoted } from "../src/campaign/decide.ts";
 import type { Plan } from "../src/campaign/ground.ts";
 import { pendingWords } from "../src/campaign/word.ts";
 import { tally as tallyPairs } from "../src/kernel/compare.ts";
@@ -377,6 +377,14 @@ describe("task supply", () => {
       "three batches tied",
     );
     expect(move([word({ word: "tasks" })])).toMatchObject({ move: "accept" });
+    // A step that waits is promoted first, and the word is then answered against the new reference.
+    const stepping = [...FIRST, ...compared("g-1", "h1", "step"), word({ word: "tasks" })];
+    expect(decide(stepping, PLAN)).toMatchObject({ move: "promote", code: "step", harness: "h1" });
+    expect(decide([...stepping, promotion("h1", { from: "start" })], PLAN)).toMatchObject({
+      move: "examine",
+      code: "tasks",
+      answers: [stepping.length - 1],
+    });
     expect(move([...FIRST, word({ word: "budget", dollars: 50 })])).toMatchObject({ move: "build" });
     expect(pendingWords([...FIRST, word({ word: "budget", dollars: 50 })])).toMatchObject([
       { at: FIRST.length, word: "budget", dollars: 50 },
@@ -892,6 +900,15 @@ describe("the one count", () => {
     expect(move(tied, { ...PLAN, patience: 1 })).toMatchObject({ move: "examine" });
     expect(move([...promotedAll, ...idle(2)])).toMatchObject({ move: "examine" });
     expect(move([...promotedAll, ...idle(3)])).toMatchObject({ move: "end", ending: "no-room" });
+  });
+
+  it("keeps the gain of a session that held tasks while a comparison ran, since that comparison drew at its start", () => {
+    const next = full("g-2");
+    const tied = [...FIRST, ...full("g-1")];
+    const during = [...tied, ...next.slice(0, 1), ...examined("x-1", ["v13"]), ...next.slice(1)];
+    expect(supplyRun(during, PLAN)).toBe(0);
+    // Held before that start, the same tasks were open to its draw, and the session is passed over.
+    expect(supplyRun([...tied, ...examined("x-1", ["v13"]), ...next], PLAN)).toBe(1);
   });
 
   it("passes over a session whose tasks a comparison read, and starts again at room or at tasks nobody has read", () => {

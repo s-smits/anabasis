@@ -380,17 +380,17 @@ export async function releaseOwed(context: CampaignContext, cause: string, bench
   // ending's is none: until 5 November an Examiner's held task released the old one's after a step.
   const { turn, decided } = actionTurn(context);
   if (decided.move === "promote" || decided.move === "end") return false;
-  if (comparisonsOf(turn.events).some(({ reported }) => reported === null)) return false;
+  const comparing = (events: readonly LogEvent[]) =>
+    comparisonsOf(events).some(({ reported }) => reported === null);
+  if (comparing(turn.events)) return false;
   const before = taskSets(turn.events).released.length;
   const due = practiceDue(turn.events, turn.plan.practice, turn.plan.wanted.level);
   if (due === null) return false;
   // The campaign's terms, so what it prints of a comparison's size is the campaign's.
-  const result = await prepareCommand([
-    ...packOf(context.values),
-    "--practice",
-    String(due.to),
-    ...flag("level", context.values.level),
-  ]);
+  const result = await prepareCommand(
+    [...packOf(context.values), "--practice", String(due.to), ...flag("level", context.values.level)],
+    comparing,
+  );
   if (result !== 0) throw new Error("the practice release was refused");
   if (bench !== undefined) await refreshCampaign(context, bench);
   if (taskSets(read(context.log)).released.length === before) return false;

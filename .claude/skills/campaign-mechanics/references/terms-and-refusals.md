@@ -42,7 +42,8 @@ ends, and as a conversation opens where tasks were held out since the last relea
 never while a comparison is unreported (`releaseOwed`,
 `tools/d2/campaign-actions.ts`). Once practice exists, a release never leaves fewer
 frontier tasks, read on the reference's own solves, than a comparison needs (`comparisonFloor`).
-Each release is one task fewer to compare. A release takes, in this order (`releaseOrder`,
+Each release is one task fewer to compare. A task the reference's own rejection left in doubt is in
+no release (`practicePool`, `poolOf`). Of the rest a release takes, in this order (`releaseOrder`,
 `src/kernel/reports.ts`):
 
 1. the tasks the reference answered in no solve of two comparisons it stood in;

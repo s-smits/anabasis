@@ -572,8 +572,9 @@ describe("a Builder session", () => {
       if (left) append(s.request.log, "task.state", disputed);
       const started = session(s.request, s, s.walled);
       if (left) {
-        expect(started).rejects.toThrow("t-2 is disputed, and a Builder practises on released tasks only");
-        await started.catch(() => undefined);
+        await expect(started).rejects.toThrow(
+          "t-2 is disputed, and a Builder practises on released tasks only",
+        );
         expect(s.of("build.started")).toEqual([]);
       } else {
         await started;

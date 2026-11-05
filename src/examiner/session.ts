@@ -143,7 +143,7 @@ interface Said {
 
 /** What `read_opening` says it serves. */
 const REREAD =
-  "The session's opening message again, as it was sent: the record of the campaign's tasks and drafts it began with. Read it after your context was compacted.";
+  "The session's opening message as it read when the host last asked: the record of the campaign's tasks and the limits of that ask. Read it after your context was compacted.";
 
 /** The first of these that holds names a session's ending; none, and it `stopped`. */
 const ENDINGS = ["stands", "finished", "supplied", "killed", "wall", "crashed", "turns"] as const;
@@ -294,7 +294,9 @@ async function examining(
     };
     const shell = await examinerShell(walls?.shell, mode.enters);
     const tools = [
-      ...[...mode.tools, ...shell, openingTool(mode.opening, REREAD)].map((each) => endingWith(each, used)),
+      ...[...mode.tools, ...shell, openingTool(() => mode.opening, REREAD)].map((each) =>
+        endingWith(each, used),
+      ),
       finishTool(mode, said, rest),
     ];
     let running = 0;

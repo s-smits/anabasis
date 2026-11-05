@@ -396,7 +396,7 @@ export async function referee(reader: Reader, fail: RefereeCase): Promise<Refere
         fail.task,
         verdict.answer,
         rows,
-        [...refusing.values()].map(({ fields }) => fields),
+        { readTogether: [...refusing.values()].map(({ fields }) => fields), accepted },
       ),
       rulingTool(refusing, verdict.answer, rows, found, (asked, why) =>
         append(fail.log, "referee.refused", {

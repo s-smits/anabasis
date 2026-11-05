@@ -569,6 +569,8 @@ export async function harnessBuilder(
       }
       if (!values["dry-run"]) keepSetting(log, setting);
     }
+    // Where the log stands as the move begins: the setting a first run just kept is no part of it.
+    const from = existsSync(log) ? read(log).length : 0;
     const decided = decide(events, plan);
     console.log(
       `\n${made < most && !values["dry-run"] ? `move ${String(made + 1)}` : "next"} · ${decidedLine(decided)}`,
@@ -604,20 +606,20 @@ export async function harnessBuilder(
       await make(decided, turn, begin);
       // Inside the `try`, so a move that changed nothing ends the campaign as any other move that
       // threw does: until 20 October the process exited here with no ending on record.
-      if (read(log).length <= events.length + 1) {
+      if (read(log).length <= from + 1) {
         throw new Error(`the move changed nothing in ${log}: made again it would change nothing again`);
       }
     } catch (error) {
       // A move the provider's limit ended, or whose session crashed, is waited out and the campaign
       // goes on: it counts against `--moves` as the move it was, since it is on record as one, and
       // the table's crash rule ends the campaign where sessions crash in a row.
-      if (await goesOn(log, events.length, error, seats.host)) {
+      if (await goesOn(log, from, error, seats.host)) {
         made += 1;
         continue;
       }
       // Any other move that began and threw is the environment's ending, and the campaign goes on
       // from its log when it is run again. One refused before it began leaves the log alone.
-      if (read(log).length > events.length) {
+      if (read(log).length > from) {
         append(log, ENDED, { ending: "environment", why: errorMessage(error), move: decided.move });
       }
       throw error;

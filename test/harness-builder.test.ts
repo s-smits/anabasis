@@ -249,6 +249,18 @@ describe("a campaign run by its log", () => {
     expect(of(name, "campaign.ended")).toMatchObject([{ ending: "environment", move: "prepare" }]);
   });
 
+  it("leaves no ending where a first run's move is refused before it begins, though the run kept its setting", async () => {
+    const name = `${STEM}-refused-first`;
+    seeded(name);
+    const opening = ["--name", name, "--project", PROJECT, "--solver", "claude/claude-opus-5-5"];
+    await expect(
+      harnessBuilder([...opening, "--prompt", "Multiply a base by six."], { seated: answering() }),
+    ).rejects.toThrow("a rehearsal seats no Examiner");
+    expect(of(name, "campaign.setting")).toHaveLength(1);
+    expect(of(name, "campaign.move")).toEqual([]);
+    expect(of(name, "campaign.ended")).toEqual([]);
+  });
+
   it("refuses a paid campaign whose target is too small to read a step, before any move", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-small`;
@@ -845,9 +857,10 @@ describe("a campaign run by its log", () => {
     });
     wordCommand(["--name", name, "--budget", "50"]);
     wordCommand(["--name", name, "--tasks", "the step was too easy"]);
+    // The waiting step goes first, so the tasks asked for are written against the new reference.
     expect(await harnessBuilder([...flags, "--moves", "0"], seats)).toMatchObject({
-      move: "examine",
-      why: "the operator asked for other tasks: the step was too easy",
+      move: "promote",
+      code: "step",
     });
     expect(of(name, OPENED).at(-1)).toMatchObject({ budget: { dollars: 50 } });
     // Two totals left before one boundary: the newest stands there and at the next, and the record

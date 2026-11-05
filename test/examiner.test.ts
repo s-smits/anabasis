@@ -879,6 +879,56 @@ describe("one Examiner conversation across the host's asks", () => {
     for (const unsaid of ["17", "harder", "wanted"]) expect(told).not.toContain(unsaid);
   });
 
+  it("serves at `read_opening` what the current ask was told: its record and its limits, whose wake a compaction would drop", async () => {
+    const reread = call("read_opening", {});
+    const s = seat("write", [reread, propose(2), reread, finish, finish]);
+    const asks: Ask["request"][] = [
+      { ...s.request, id: "x-2", wanted: 1, limits: { ...s.request.limits, turns: 7 } },
+    ];
+    await examine({
+      ...s.request,
+      wanted: 1,
+      rest: async () => {
+        append(s.log, "harness.promoted", { harness: "h2", from: "h1", rests: [{ comparison: "c-1" }] });
+        const request = asks.shift();
+        return request === undefined ? null : { request };
+      },
+    });
+    const served = s.of(CALLED).flatMap(({ tool, text }) => (tool === "read_opening" ? [text] : []));
+    expect(served).toHaveLength(2);
+    const [first, second] = served.map((text) => (isString(text) ? text : ""));
+    const promotion = "The reference harness was promoted on the step of comparison c-1";
+    expect(first).toContain("12 turns");
+    expect(first).not.toContain(promotion);
+    expect(second).toContain("Public rules of the domain");
+    expect(second).toContain("7 turns");
+    expect(second).not.toContain("12 turns");
+    expect(second).toContain(promotion);
+  });
+
+  it("tells a conversation opening afresh the drafts the gate refused, where a wake tells none", async () => {
+    const s = seat("write", [propose(null), propose(2), finish, finish]);
+    const asks: Ask["request"][] = [{ ...s.request, id: "x-2", wanted: 1 }];
+    await examine({
+      ...s.request,
+      wanted: 1,
+      rest: async () => {
+        const request = asks.shift();
+        return request === undefined ? null : { request };
+      },
+    });
+    const refusal = "The drafts the gate refused";
+    expect(s.of(TASK_ADMISSION).map(({ outcome }) => outcome)).toContain("refused");
+    expect(s.sent[0]).not.toContain(refusal);
+    const wake = s.of(CALLED).find(({ text }) => isString(text) && text.includes("The host asks for more"));
+    expect(wake).toBeDefined();
+    expect(JSON.stringify(wake)).not.toContain(refusal);
+    const next = seat("write", [finish, finish]);
+    await examine({ ...next.request, log: s.log, id: "x-3" });
+    expect(next.sent[0]).toContain(refusal);
+    expect(next.sent[0]).toContain("x-1-001 (fixture)");
+  });
+
   it("ends where it crashed, and the next session opens afresh from the log", async () => {
     const s = seat("write", [propose(2), failed("You've hit your session limit")]);
     const examined = await examine({

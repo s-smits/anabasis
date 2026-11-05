@@ -263,10 +263,13 @@ export function scoredSet(events: readonly LogEvent[], target: number, contract:
   const pool = poolOf(events);
   const began = events.findLastIndex(({ kind }) => kind === STARTED);
   const since = new Set(tasksByEpoch(events.slice(began + 1)).flat());
-  const kept = pool.retained.filter((task) => pool.scorable.includes(task));
   const held = new Set(pool.frontier);
   const count = Math.min(target, held.size);
-  const picked = draw(kept, Math.min(kept.length, Math.ceil(count / 3)), `${contract}:retained`);
+  const picked = draw(
+    pool.retained,
+    Math.min(pool.retained.length, Math.ceil(count / 3)),
+    `${contract}:retained`,
+  );
   // The newest epoch first, and of each the tasks held out since the last comparison began first.
   const tiers = tasksByEpoch(events)
     .toReversed()

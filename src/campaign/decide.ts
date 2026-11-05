@@ -174,15 +174,16 @@ function writtenSince(ground: Ground, reading: Reading): boolean {
  * harness, as every one from before a promotion: the step a harness was promoted
  * on is no answer to a want of room, though the tasks change on what they read (`noRoom`). So
  * does a session whose tasks no comparison has read yet, however few it wrote: on 9 October a
- * campaign ended on three sessions that had written four tasks between them. A session whose
- * tasks a comparison has read is passed over, and so is one the provider failed or a stopped run
- * cut (`crashedRun`; `endCut`, `tools/d2/harness-builder.ts`).
+ * campaign ended on three sessions that had written four tasks between them. A session that ended
+ * before the latest reported comparison started, whose tasks that comparison could draw, is passed
+ * over, and so is one the provider failed or a stopped run cut (`crashedRun`; `endCut`,
+ * `tools/d2/harness-builder.ts`).
  *
  * It is the one count that ends a campaign for want of tasks or of room (`spent`). Until
  * 12 October three counted, and esp32-141-m3b examined and read no room five times over.
  */
 function roomless({ events, reports, reference }: Ground) {
-  const read = Math.max(-1, ...reports.map(({ reported }) => reported));
+  const read = Math.max(-1, ...reports.map(({ at }) => at));
   const compared = reports.map(({ id, old, report, reported }) => ({
     at: reported,
     id,
@@ -367,9 +368,11 @@ function tasks(ground: Ground): Move | null {
   if (supply.released === 0 && supply.held >= 2 && plan.practice !== 0) {
     return { move: "prepare", why: "no task is released for practice: the contract's draw releases some" };
   }
-  // Other tasks on the operator's word, once the campaign has an exam to write them against.
+  // Other tasks on the operator's word, once the campaign has an exam to write them against, and
+  // against the new reference where a step waits: until 5 November the word outranked the step, so
+  // the host's promotion read `examine`, passed, and the Examiner wrote for the old reference.
   const asked = pendingWords(events).find(({ word }) => word === "tasks");
-  if (asked !== undefined) {
+  if (asked !== undefined && stepped(ground) === null) {
     return {
       move: "examine",
       why: `the operator asked for other tasks${asked.why === "" ? "" : `: ${asked.why}`}`,

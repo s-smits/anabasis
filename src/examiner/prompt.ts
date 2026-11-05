@@ -153,8 +153,8 @@ const grouped = (groups: ReturnType<typeof heard>["groups"]) =>
 
 /** The opening message: the operator's brief where the campaign opened from one, the domain's
  *  public contract, its checks by id and assertion, and what `record.ts` tells of the campaign's
- *  past: the last comparison the reference stood in, the tasks under its outcome on each and the
- *  promotion. `told` is the limits the session is told it runs
+ *  past: the last comparison the reference stood in, the tasks under its outcome on each, the
+ *  promotion and the drafts the gate refused since. `told` is the limits the session is told it runs
  *  under, with the solves of the reference harness it may ask for; how many tasks are wanted is not
  *  among them. `campaign` is what it is told of its campaign
  *  beside the contract, each null where there is none: the operator's brief and the budget every
@@ -196,6 +196,17 @@ ${brief}`,
       ? "The exam holds no task yet."
       : `The tasks of the exam so far, under how the harness that is the reference now did on each in the last comparison that scored it, wherever it stood there. These are measurements, and no instruction or target.\n\n${grouped(tasks.groups)}`,
     ...(tasks.promoted === null ? [] : [tasks.promoted]),
+    ...(tasks.refused.length === 0
+      ? []
+      : [
+          grouped([
+            {
+              heading:
+                "The drafts the gate refused under this reference, by its reason. None is a task of the exam",
+              lines: tasks.refused,
+            },
+          ]),
+        ]),
     limitsLine(told, "This session has"),
   ].join("\n\n");
 }

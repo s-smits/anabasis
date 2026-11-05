@@ -137,7 +137,7 @@ describe("the probe", () => {
 
   it("the probe caps coupled changes at three paths read together by one refusing check", async () => {
     const rows: ProbeRow[] = [];
-    const tool = probeTool(verify, TASK, ANSWER, rows, [[SPAN], ["$.members[0].area"]]);
+    const tool = probeTool(verify, TASK, ANSWER, rows, { readTogether: [[SPAN], ["$.members[0].area"]] });
     await expect(
       invoke(tool, {
         changes: ["9", "8", "7", "6"].map((value) => ({ path: SPAN, value })),
@@ -208,6 +208,28 @@ describe("the probe", () => {
     await expect(
       invoke(tool, { changes: [{ path: "$.note", find: "xx", replace: "y".repeat(9000) }] }),
     ).rejects.toThrow(/4000/u);
+    expect(rows).toHaveLength(1);
+  });
+
+  it("the probe takes the accepted answer's value of a field, however much longer than the refused one's", async () => {
+    const rows: ProbeRow[] = [];
+    const members = Array.from({ length: 900 }, () => ({ area: 4 }));
+    const short = { span: 12, members: [{ area: 3 }] };
+    const offered = JSON.stringify(members);
+    expect(offered.length).toBeGreaterThan(4000);
+    await expect(
+      invoke(probeTool(verify, TASK, short, rows), { changes: [{ path: "$.members", value: offered }] }),
+    ).rejects.toThrow(/4000/u);
+    const tool = probeTool(verify, TASK, short, rows, { accepted: { span: 12, members } });
+    await invoke(tool, { changes: [{ path: "$.members", value: offered }] });
+    expect(rows).toHaveLength(1);
+    // The accepted answer widens only the field it holds: a value past it, or at another path, stays out.
+    for (const change of [
+      { path: "$.members", value: JSON.stringify([...members, ...members]) },
+      { path: "$.span", value: offered },
+    ]) {
+      await expect(invoke(tool, { changes: [change] })).rejects.toThrow(/4000/u);
+    }
     expect(rows).toHaveLength(1);
   });
 });

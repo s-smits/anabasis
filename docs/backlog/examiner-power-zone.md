@@ -99,7 +99,7 @@ one reading. They are listed by how much of jobstat's ceiling each can explain.
 
 ## Intended changes
 
-In order: each rests on the one before.
+In order: each rests on the one before, except item 7, which comes before item 3.
 
 1. **Read the zone on every run, from a script of record.** Promote the one-off reader of
    5 November into `examiner-complexity/scripts/` (beside `ambition.ts`): per comparison, the
@@ -151,6 +151,11 @@ In order: each rests on the one before.
      5 November read jobstat as estimation against a hidden truth whose drafted inputs name every
      step. The prompt is the operator's; the same live seat found 3 of its 4 instances naming all or
      nearly all of the method, each answered on every solve.
+   - A draw ordered by the reference's past outcomes instead of by hash (`scoredSet`,
+     `src/campaign/round.ts`). It is honest between the sides, since both solve afresh; the
+     reference's luck in the record that chose a task regresses on the fresh solves, which costs
+     the candidate power and never gives it a step. But it aims each comparison at the old
+     reference's weak spots, the pattern behind the starter losses on own-epoch tasks below.
 7. **Requests that write a demanded string with markup** (plausible, one exam). In a live round of
    5 November on the jobstat exam, 19 rulings on one check (`check-manifest`) came from 5 tasks whose
    request writes each demanded section heading as a Markdown heading line; the solver copied the
@@ -160,12 +165,28 @@ In order: each rests on the one before.
    The owner is the writing prompt's wording on how a request states an exact string, domain-agnostic,
    and a blind label of one ruling (`settle.ts`) settles which side was right. The Referee guard
    #622 removed would have refused none of the 8 in that stretch: each probe reached a declared
-   field and supplied no accepted answer.
-   - A draw ordered by the reference's past outcomes instead of by hash (`scoredSet`,
-     `src/campaign/round.ts`). It is honest between the sides, since both solve afresh; the
-     reference's luck in the record that chose a task regresses on the fresh solves, which costs
-     the candidate power and never gives it a step. But it aims each comparison at the old
-     reference's weak spots, the pattern behind the starter losses on own-epoch tasks below.
+   field and supplied no accepted answer. Over the whole round from its first try, 21 of the 22
+   rejections on record refused on `check-manifest` alone and the 22nd included it: 11 of the
+   tries, 9 of the practice solves and 2 of the session g-2's. So the reference's 8 valid solves
+   of 29 on that exam read as room, and are most likely the heading wording. **Settle this before
+   item 3**, since a writing seat measured over such an exam counts the wording as difficulty. If
+   the label says `earned`, the Referee ruled 18 real fails aside, and a sharper guard than the
+   one #622 removed is worth a paired Referee seat.
+8. **One generator re-seeded across an exam** (plausible). An Examiner that writes every held task
+   from one generator with new seeds gives a comparison one template many times, so a harness with
+   a program cut to that template wins each task, and the step measures the template rather than
+   the field. By the exam's own definition that is still generalising, and telling the Examiner to
+   vary structure edges towards a target (`AGENTS.md`, section 2, consequence 2), so nothing goes
+   into a prompt first. Count, without money, the distinct generator structures among the held
+   tasks of the recent jobstat and buffer runs (the packages under each `task.proposed`),
+   and whether a step there held on tasks from another generator. Only a count that shows one
+   structure carrying most steps makes this a change, and then as a fact in the Examiner's
+   record (how many of its held tasks share a generator), never a quota.
+9. **One Examiner conversation across asks makes item 8 likelier** (plausible, unmeasured). #626
+   keeps the writing Examiner's whole context from ask to ask, so it holds its generators and can
+   reuse them, where a fresh session derived them again. Coherence and economy pull one way,
+   variety the other. Read it in the first live run with #626: the count of item 8 by ask, and the
+   reference's valid share by ask, against the runs before it.
 
 Kept from before, since they still hold: both harnesses solve the same tasks afresh, a step is read
 within one comparison, one retained task joins each three frontier tasks, the starter comparison
@@ -254,7 +275,13 @@ one exception (3). Watch these with every change above:
   the one that refused ended campaigns `exam` (culprit 3). Admission reading tries became the
   operator's decision, one-way if taken. The `try_reference` measure moved to fresh solves the seat
   did not choose with, and the noise watch moved from the A/A untied share to what the fails were.
-- **5 November, about 02:15.** Two live simulations at the stack's top read the record above. A
+- **5 November, by 03:30.** Two live simulations at the stack's top read the record above. A
   writing seat with `try_reference` proposed nothing (item 3). A whole round found the heading
   rulings of item 7. `live-seat.ts prompt` printed the writing prompt without the tries, so a seat's
   prompt is read from its first turn until that is fixed.
+- **5 November, about 04:00.** The stack was proved up to #629 (every commit passed). The
+  operator pasted an outside analysis of five proposals and asked "did we fix most or oppose
+  purposefully?", then "What are the brittle choices here, as in what could you make a point off to
+  both include or actually oppose?" The answer named the choices that one count could turn either
+  way; the three that bear on the zone are items 7 to 9 (the heading rulings and the guard, one
+  generator re-seeded, and #626's one conversation), each with the count that decides it.

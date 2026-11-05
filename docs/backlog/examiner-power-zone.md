@@ -121,7 +121,10 @@ In order: each rests on the one before.
    of two tries 19% of the time), and those tasks tie again on a fresh draw. Beside it, the check
    defects among the fresh fails and the dollars per held task. The bar is more tasks off the
    ceiling at no more check defects. Tune the try's prompt text against that count, as facts ("the
-   reference answered this in 2 of 2 tries"), never a share to reach. The prior is low (culprit 3).
+   reference answered this in 2 of 2 tries"), never a share to reach. The prior is low (culprit 3),
+   and one live writing seat on the jobstat exam of 5 November lowered it: it tried 3 instances,
+   the reference answered all 6 solves, and the seat dropped each instance and proposed none in 51
+   minutes and 15 dollars. Its 86 turns billed 84% of that, and the tries 16%. One sample.
 4. **Tell the Examiner its ties as a fact after each comparison.** Its record already gives each
    task's reference outcomes (#622). Add, if paired seats show it moves supply, how many of its
    tasks the last comparison tied on validity, and why a tie teaches the comparison nothing. Never a
@@ -143,6 +146,21 @@ In order: each rests on the one before.
      over every log, counting the comparisons it would have withheld and the campaigns it would
      have ended.
    - 4 solves a side where the reference passes under a third, and the turn and time limits.
+   - **The jobstat domain prompt, and the drafting clause that lets an exam name the method**
+     (`src/examiner/draft.ts`, the rule on what conventions may state). Both outside reviews of
+     5 November read jobstat as estimation against a hidden truth whose drafted inputs name every
+     step. The prompt is the operator's; the same live seat found 3 of its 4 instances naming all or
+     nearly all of the method, each answered on every solve.
+7. **Requests that write a demanded string with markup** (plausible, one exam). In a live round of
+   5 November on the jobstat exam, 19 rulings on one check (`check-manifest`) came from 5 tasks whose
+   request writes each demanded section heading as a Markdown heading line; the solver copied the
+   prefix, and the check compares the trimmed heading exactly, as the conventions say. Tasks that
+   quote the heading instead passed. 18 were ruled `check-defect` and 1 `earned` on the same
+   evidence. Every one was on a practice solve, so none reached a comparison's check-defect stop.
+   The owner is the writing prompt's wording on how a request states an exact string, domain-agnostic,
+   and a blind label of one ruling (`settle.ts`) settles which side was right. The Referee guard
+   #622 removed would have refused none of the 8 in that stretch: each probe reached a declared
+   field and supplied no accepted answer.
    - A draw ordered by the reference's past outcomes instead of by hash (`scoredSet`,
      `src/campaign/round.ts`). It is honest between the sides, since both solve afresh; the
      reference's luck in the record that chose a task regresses on the fresh solves, which costs
@@ -236,3 +254,7 @@ one exception (3). Watch these with every change above:
   the one that refused ended campaigns `exam` (culprit 3). Admission reading tries became the
   operator's decision, one-way if taken. The `try_reference` measure moved to fresh solves the seat
   did not choose with, and the noise watch moved from the A/A untied share to what the fails were.
+- **5 November, about 02:15.** Two live simulations at the stack's top read the record above. A
+  writing seat with `try_reference` proposed nothing (item 3). A whole round found the heading
+  rulings of item 7. `live-seat.ts prompt` printed the writing prompt without the tries, so a seat's
+  prompt is read from its first turn until that is fixed.

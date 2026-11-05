@@ -46,7 +46,7 @@ import {
   NO_PROJECT,
   type Tier,
 } from "../models.ts";
-import { campaignIn, epochsIn, type Log, once, openingIn, reportsIn, stopIn } from "./folds.ts";
+import { campaignIn, doubtedIn, epochsIn, type Log, once, openingIn, reportsIn, stopIn } from "./folds.ts";
 import { harnessesIn, promotionsIn, spendIn } from "./lineage.ts";
 import { type Found, type Process, sourceOf } from "./logs.ts";
 import { barsIn, movesIn, starterIn, steppedOf } from "./moves.ts";
@@ -197,7 +197,7 @@ const coreIn = once((log) => {
     terms: openingIn(log)?.terms ?? {},
     attended: openingIn(log)?.attended ?? false,
     bars: BARS,
-    supply: campaign.supply,
+    supply: { ...campaign.supply, doubted: doubtedIn(log).size },
     reference: campaign.reference,
     starter: starterIn(log),
     names: Object.fromEntries(namesOf(log.events)),

@@ -497,7 +497,7 @@ function tallyReports(
  * that labels the reference's rejections earned returns it, and so does a person who keeps it
  * (`task.state`) after that comparison. Only the reference's own rejections count, as for the
  * exhausted tasks: a candidate's rejection that stands unearned moves nothing the Builder is told
- * (rule 3).
+ * (rule 3). The list (`doubted`) is read by the log page alone.
  *
  * **Exhausted** are the tasks the reference harness has been read easy on (`easyAt`), and they
  * leave the frontier for the retained set (`scoredSet`). The readings are the comparisons it stood
@@ -623,6 +623,7 @@ export function poolOf(events: readonly LogEvent[]) {
     // the reference alone, so which task another harness won moves nothing here (rule 3).
     practicePool: held.filter((task) => !doubted.includes(task)),
     awaiting,
+    doubted,
     exhausted,
     retained,
     feasible: new Set(

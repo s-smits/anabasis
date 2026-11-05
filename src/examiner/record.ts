@@ -49,7 +49,7 @@ import {
 import { spreadOf } from "../kernel/size.ts";
 import { solvesIn, verdictsOf } from "../kernel/solves.ts";
 import { heldAtGate, taskStates } from "../kernel/task.ts";
-import type { Task } from "../kernel/verify.ts";
+import { objectiveOf, type Task } from "../kernel/verify.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
 
@@ -258,10 +258,7 @@ function referenceAnswers(events: readonly LogEvent[]): Map<string, Answered> {
     for (const pair of pairsReported(events, report)) {
       const solves = side === null ? [] : (pair.solves?.[side] ?? []);
       const valid = solves.filter((_, nth) => side !== null && pair[side][nth] === true);
-      const measures = valid.flatMap((solve) => {
-        const checked = verdicts.get(solve)?.checker;
-        return checked?.kind === "pass" && checked.objective !== undefined ? [checked.objective] : [];
-      });
+      const measures = valid.flatMap((solve) => objectiveOf(verdicts.get(solve)?.checker) ?? []);
       answered.set(pair.task, { turns: valid.flatMap((solve) => took.get(solve) ?? []), measures });
     }
   }

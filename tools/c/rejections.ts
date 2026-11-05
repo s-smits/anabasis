@@ -31,8 +31,8 @@
  */
 import { contractHash } from "#src/kernel/contract.ts";
 import { append, read } from "#src/kernel/log.ts";
-import { refusedBy, verdictsOf } from "#src/kernel/solves.ts";
-import { decided, spelled, type Task } from "#src/kernel/verify.ts";
+import { verdictsOf } from "#src/kernel/solves.ts";
+import { blockingOf, decided, spelled, type Task } from "#src/kernel/verify.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { dirname, join } from "#src/meta/path.ts";
@@ -175,7 +175,7 @@ async function main(): Promise<void> {
         // The whole public contract: a label read on the rules alone misses a convention or the format.
         contract,
         answer: verdict?.answer ?? null,
-        refusedBy: refusedBy(verdict),
+        refusedBy: blockingOf(verdict?.checker),
       };
       writeFileSync(join(dir, "label", `${solve}.json`), `${capturedJsonStringify(packet, null, 2)}\n`);
     }

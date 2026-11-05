@@ -82,6 +82,7 @@ import { append, type LogEvent, read } from "../kernel/log.ts";
 import { priceKey } from "../kernel/meter.ts";
 import {
   applicableTruthChecks,
+  blockingOf,
   checkProgramFiles,
   readBrief,
   type Task,
@@ -204,9 +205,7 @@ function hostRuling(verdict: LoggedVerdict, replay: Verdict | null): RefereeFind
   if (replay.kind === "faulty" || replay.kind === "non-result") {
     return ruled(null, null, `the replay reached no verdict: ${replay.reason}`);
   }
-  const [moved] = [
-    ...new Set(verdict.blocking).symmetricDifference(new Set(replay.kind === "fail" ? replay.blocking : [])),
-  ].sort();
+  const [moved] = [...new Set(verdict.blocking).symmetricDifference(new Set(blockingOf(replay)))].sort();
   return moved === undefined
     ? null
     : ruled(

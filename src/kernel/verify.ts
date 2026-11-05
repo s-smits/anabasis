@@ -188,6 +188,19 @@ const CELLS = 4;
 /** One check's whole run, its tools included. */
 export const CHECK_WALL_MS = 2 * TOOL_CEILING_MS;
 
+/** What the checker measured of a valid answer; null for any verdict but a pass with a measure.
+ *  A comparison's objective, a Builder's practice record, an Examiner's room and the acceptance's
+ *  count of measured answers read it here (rule 12). */
+export function objectiveOf(verdict: Verdict | null | undefined): number | null {
+  return verdict?.kind === "pass" ? (verdict.objective ?? null) : null;
+}
+
+/** The checks that refused an answer; none for any verdict but a fail. An answer some check
+ *  refused is what a reviewer reads, a repair is held to and the Referee's replay is set against. */
+export function blockingOf(verdict: Verdict | null | undefined): readonly string[] {
+  return verdict?.kind === "fail" ? verdict.blocking : [];
+}
+
 /** A verdict in one line, a fail's checks in order, so that two verdicts can be set side by side. */
 export function spelled(verdict: Verdict): string {
   if (verdict.kind === "fail") return `fail ${[...verdict.blocking].sort().join(",")}`;

@@ -11,7 +11,7 @@
  */
 import { Type } from "typebox";
 import type { SeatTool } from "../agent/session.ts";
-import type { Task, Verdict, Verifier } from "../kernel/verify.ts";
+import { blockingOf, type Task, type Verdict, type Verifier } from "../kernel/verify.ts";
 import { jsonPathTokens, resolveJsonPath } from "../meta/json-evidence.ts";
 import { capturedJsonParse, capturedStructuredClone } from "../meta/json-runtime.ts";
 import { isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
@@ -52,8 +52,6 @@ export function conclusive(row: ProbeRow): boolean {
   const decides = (verdict: Verdict) => verdict.kind === "pass" || verdict.kind === "fail";
   return decides(row.original) && decides(row.changed);
 }
-
-const blockingOf = (verdict: Verdict) => (verdict.kind === "fail" ? verdict.blocking : []);
 
 /** A check receives declared paths alone. A change reaches one when it names the field, a child
  *  or its parent; malformed paths authorise nothing. */

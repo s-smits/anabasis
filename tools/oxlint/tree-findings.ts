@@ -182,7 +182,7 @@ export const TREE_FINDING_EXAMPLES: Readonly<
       before:
         '// the same test and read in compare.ts, tools.ts and gate-era.ts\nconst measure = checker?.kind === "pass" ? (checker.objective ?? null) : null;',
       after:
-        '// solves.ts owns it, and each place calls measureOf(verdict)\nexport function measureOf(verdict: Judged | undefined): number | null {\n  return verdict?.checker?.kind === "pass" ? (verdict.checker.objective ?? null) : null;\n}',
+        '// verify.ts, which declares Verdict, owns it, and each place calls it\nexport function objectiveOf(verdict: Verdict | null | undefined): number | null {\n  return verdict?.kind === "pass" ? (verdict.objective ?? null) : null;\n}',
     },
   ],
   "superseded-schema-tag": [

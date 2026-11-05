@@ -92,6 +92,12 @@ export class Cancellation extends Error {
   }
 }
 
+/** Whether a non-result was the task's own check, which could not run on the answer: the task's
+ *  fault rather than the solve's, so a round disputes the task and a solve is not run again. */
+export function checkCouldNotRun(ending: Ending): boolean {
+  return ending.outcome === "non-result" && ending.kind === "check";
+}
+
 /**
  * Whether the model's window ended a solve's last turn: a reply cut at its length, or a context
  * that outgrew the model, which the provider reports as an error. The one reading of it: `judge`

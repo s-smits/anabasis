@@ -180,11 +180,17 @@ export function passed({ ending }: Pick<Solve, "ending">): boolean | null {
   return ending?.outcome === "fail" || ending?.outcome === "flagged" ? false : null;
 }
 
+/** Whether an ending is an answer a check refused: the one ending the Referee rules, since only it
+ *  has a check's refusal to recompute, and the one that sets its task aside until that ruling is
+ *  earned (rule 8). A typed `Ending` and an ending as the log holds it are read alike. */
+export function rejected(ending: JsonObject | null | undefined): boolean {
+  return ending?.outcome === "fail" && ending.kind === "rejected";
+}
+
 /** A rejection is established only when its latest ruling is earned; other endings need no ruling. */
 export function rejectionAside(events: readonly LogEvent[], solve: Pick<Solve, "id" | "ending">): boolean {
   return (
-    solve.ending?.outcome === "fail" &&
-    solve.ending.kind === "rejected" &&
+    rejected(solve.ending) &&
     events.findLast(({ kind, data }) => kind === "referee.finding" && data.solve === solve.id)?.data
       .ruling !== "earned"
   );
@@ -206,18 +212,6 @@ export function verdictsOf(events: readonly LogEvent[]): Map<string, Judged> {
       return [[data.solve, judged] as const];
     }),
   );
-}
-
-/** The checks that refused an answer; none for any verdict but a checker's fail. An answer some
- *  check refused is what a reviewer reads and a repair is held to. */
-export function refusedBy(verdict: Judged | undefined): readonly string[] {
-  return verdict?.checker?.kind === "fail" ? verdict.checker.blocking : [];
-}
-
-/** What the checker measured of a valid answer; null for any verdict but a pass with a measure.
- *  A comparison's objective, a Builder's practice record and an Examiner's room read it here. */
-export function measureOf(verdict: Judged | undefined): number | null {
-  return verdict?.checker?.kind === "pass" ? (verdict.checker.objective ?? null) : null;
 }
 
 /** The checker's own verdict a `verdict` event holds, with its measure where one was taken, or

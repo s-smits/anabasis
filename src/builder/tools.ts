@@ -46,20 +46,21 @@
 import { Type } from "typebox";
 import type { SeatTool } from "../agent/session.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
-import type { Ending } from "../kernel/solve.ts";
+import { checkCouldNotRun, type Ending } from "../kernel/solve.ts";
 import { limitsIn } from "../kernel/condition.ts";
 import type { Contract } from "../kernel/contract.ts";
 import { callList, callText, closingOf, traceOf } from "../kernel/trace.ts";
 import { billedParts } from "../kernel/meter.ts";
 import {
   ended,
-  measureOf,
   passed,
   practiceRan,
+  rejected,
   rejectionAside,
   solvesIn,
   verdictsOf,
 } from "../kernel/solves.ts";
+import { objectiveOf } from "../kernel/verify.ts";
 import { poolOf } from "../kernel/reports.ts";
 import { taskStates } from "../kernel/task.ts";
 import {
@@ -168,7 +169,7 @@ function endingText(ending: Ending): string {
 /** What the verifier measured of a valid practice answer, where the contract states an objective:
  *  the quantity and its value, which the Builder reads of its own practice and of nothing else. */
 function measuredText(events: readonly LogEvent[], solve: string, contract: Contract): string {
-  const measure = measureOf(verdictsOf(events).get(solve));
+  const measure = objectiveOf(verdictsOf(events).get(solve)?.checker);
   return contract.objective !== undefined && measure !== null
     ? ` Measured ${contract.objective.quantity}: ${String(measure)} (${contract.objective.direction} is better).`
     : "";
@@ -386,14 +387,14 @@ async function practise(bench: Bench, task: PracticeTask, kept: HarnessSnapshot,
   const { request } = bench;
   const { solve, ending } = await request.practise(task, kept.dir, kept.harness.digest, kill);
   const lines: string[] = [];
-  if (ending.outcome === "non-result" && ending.kind === "check") {
+  if (checkCouldNotRun(ending)) {
     bench.faulty.add(task.version);
     lines.push("The task's own check could not run on this answer: the task leaves this session's practice.");
   }
   // Only a rejected answer has anything to recompute: a solve its limits ended, or one that gave no
   // answer, is not valid with no ruling (`src/campaign/round.ts`). Until 15 October each went to the
   // Referee and was logged earned, unread: seven of them in three campaigns.
-  if (ending.outcome === "fail" && ending.kind === "rejected" && request.referee !== undefined) {
+  if (rejected(ending) && request.referee !== undefined) {
     try {
       const finding = await request.referee(solve, task, kill);
       // The log holds the dispute, as a comparison's does (`dispute`, `src/campaign/round.ts`), so
@@ -464,7 +465,7 @@ function recordText(
     .map(([digest, [role, ...also]], index) => {
       const kept = record(events, version, digest);
       const which = `${role ?? ""}${also.length > 0 ? `, which is also ${also.join(" and ")}` : ""}`;
-      const measures = kept.solves.flatMap((solve) => measureOf(verdicts.get(solve)) ?? []);
+      const measures = kept.solves.flatMap((solve) => objectiveOf(verdicts.get(solve)?.checker) ?? []);
       const measured =
         contract.objective === undefined || measures.length === 0
           ? ""

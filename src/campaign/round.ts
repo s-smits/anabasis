@@ -107,8 +107,8 @@ import { draw, type ObjectiveRule } from "../kernel/compare.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { type Cap, capHolds, poolOf } from "../kernel/reports.ts";
 import { billedFor } from "../kernel/meter.ts";
-import type { Ending } from "../kernel/solve.ts";
-import { ranUnder, solvesIn } from "../kernel/solves.ts";
+import { checkCouldNotRun, type Ending } from "../kernel/solve.ts";
+import { ranUnder, rejected, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
 import { asRecord, isString, type JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -491,13 +491,13 @@ function floor(request: CheckpointRequest, fixed: Fixed) {
     const { solve, ending } = solved;
     quiet.note(task, unanswered(log, id, solved), ending);
     // A second such solve of the task disputes nothing: the log holds the task disputed (`dispute`).
-    if (ending.outcome === "non-result" && ending.kind === "check") {
+    if (checkCouldNotRun(ending)) {
       defects.add(task);
       dispute(log, id, task, { solve, reason: "its own check could not run on an answer" });
     }
     // Only a rejected answer has anything to recompute: a solve its limits ended, or one that gave
     // no answer, is not valid with no ruling (`src/kernel/compare.ts`).
-    if (ending.outcome === "fail" && ending.kind === "rejected") await rule(solve, task);
+    if (rejected(ending)) await rule(solve, task);
     return ending;
   };
   /** Run whole task sequences concurrently, holding each through every wait and retry.

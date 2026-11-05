@@ -41,6 +41,7 @@ import {
   type Brief,
   decided,
   OBJECTIVE,
+  objectiveOf,
   requiredToolsOf,
   spelled,
   type Task,
@@ -271,8 +272,7 @@ function acceptance(
             id: OBJECTIVE.id,
             instrument: AUTHOR,
             missing: [],
-            passed: graded.filter(({ verdict }) => verdict.kind === "pass" && verdict.objective !== undefined)
-              .length,
+            passed: graded.filter(({ verdict }) => objectiveOf(verdict) !== null).length,
             refused: 0,
             named: 0,
             caught: 0,

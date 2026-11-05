@@ -56,7 +56,7 @@ import { append, type LogEvent, read } from "../kernel/log.ts";
 import type { Ending } from "../kernel/solve.ts";
 import { solvesIn, verdictsOf } from "../kernel/solves.ts";
 import { packageGate as checkPackage, type TaskPackage, taskSets, taskVersion } from "../kernel/task.ts";
-import type { Task, Verdict, Verifier } from "../kernel/verify.ts";
+import { objectiveOf, type Task, type Verdict, type Verifier } from "../kernel/verify.ts";
 import { capturedJsonStringify, decodedJsonText } from "../meta/json-runtime.ts";
 import { isNumber, isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
@@ -217,9 +217,10 @@ function heldAs(request: Terms, events: readonly LogEvent[], candidate: Task): T
  *  which `bettered` reads as the author's best. Empty where the contract declares none. */
 function measureOf(contract: Contract, verdict: Verdict): JsonObject {
   const declared = contract.objective;
-  if (declared === undefined || verdict.kind !== "pass" || verdict.objective === undefined) return {};
+  const measure = objectiveOf(verdict);
+  if (declared === undefined || measure === null) return {};
   const { quantity, direction } = declared;
-  return { objective: { quantity, direction, measure: verdict.objective } };
+  return { objective: { quantity, direction, measure } };
 }
 
 /** A verdict as the Examiner reads it. */
@@ -494,8 +495,7 @@ function tryReferenceTool(desk: Desk, first: NonNullable<Terms["probe"]>, within
       const ends = new Map(solvesIn(events).map(({ id, end }) => [id, end]));
       const lines = ran.map((one, nth) => {
         const turns = one.solve === null ? undefined : ends.get(one.solve)?.turns;
-        const checked = one.solve === null ? undefined : verdicts.get(one.solve)?.checker;
-        const measure = checked?.kind === "pass" ? (checked.objective ?? null) : null;
+        const measure = objectiveOf(one.solve === null ? undefined : verdicts.get(one.solve)?.checker);
         return `Solve ${String(nth + 1)}: ${toldOf(one.ending, isNumber(turns) ? turns : null, measure)}.`;
       });
       desk.tried += ran.filter((one) => one.ending.outcome !== "non-result").length;

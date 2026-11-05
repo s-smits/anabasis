@@ -38,7 +38,7 @@ import { conditionsOf, settingId } from "../kernel/condition.ts";
 import { failWrongPasses, proposalsOf, wrongPasses } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { poolOf } from "../kernel/reports.ts";
-import { passed, ranUnder, solvesIn } from "../kernel/solves.ts";
+import { passed, ranUnder, rejected, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { median } from "../meta/tally.ts";
@@ -348,7 +348,7 @@ export function rejections(events: readonly LogEvent[], fixed: Fixed, labels: Re
     ),
   );
   return solvesUnder(events, fixed).flatMap(({ id, ending, under }) =>
-    ending?.outcome === "fail" && ending.kind === "rejected"
+    rejected(ending)
       ? [{ solve: id, task: under.task, ruling: labels.get(id) ?? ruled.get(id) ?? null }]
       : [],
   );

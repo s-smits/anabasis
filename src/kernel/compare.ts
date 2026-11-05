@@ -26,8 +26,9 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { conditionsOf, settingId } from "./condition.ts";
 import type { LogEvent } from "./log.ts";
-import { ended, measureOf, passed, ranUnder, verdictsOf } from "./solves.ts";
+import { ended, passed, ranUnder, verdictsOf } from "./solves.ts";
 import { taskSets } from "./task.ts";
+import { objectiveOf } from "./verify.ts";
 
 /** What one counted solve cost, as its `solve.finished` holds it: billed dollars, null where the
  *  log has none. */
@@ -493,7 +494,7 @@ export function pairsOf(
       old: before.slice(0, solves).map(of),
       fresh: after.slice(0, solves).map(of),
     });
-    const measured = side(({ id }) => measureOf(verdicts?.get(id)));
+    const measured = side(({ id }) => objectiveOf(verdicts?.get(id)?.checker));
     return [
       {
         task,

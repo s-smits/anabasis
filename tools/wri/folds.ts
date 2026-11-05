@@ -26,9 +26,9 @@ import { flipP, unsolved as noneAnswered } from "#src/kernel/compare.ts";
 import { lastReports, poolOf, pairsReported, referenceOf } from "#src/kernel/reports.ts";
 import { type Traced, traced, tracesIn } from "#src/kernel/trace.ts";
 import { spendOf } from "#src/kernel/meter.ts";
-import { type Judged, refusedBy, solvesIn, verdictsOf } from "#src/kernel/solves.ts";
+import { type Judged, solvesIn, verdictsOf } from "#src/kernel/solves.ts";
 import { heldAtGate, taskSets } from "#src/kernel/task.ts";
-import { OBJECTIVE } from "#src/kernel/verify.ts";
+import { blockingOf, OBJECTIVE } from "#src/kernel/verify.ts";
 import type { Handover } from "#src/campaign/handover.ts";
 import { short } from "#src/campaign/move.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
@@ -451,7 +451,7 @@ export function admittedCost(log: Index, steps: readonly Handover[]): string[] {
 
 /** The answers some check refused: a format fault reached no check and is none. */
 function refusals(log: Index): Solve[] {
-  return log.solves.filter((solve) => refusedBy(log.verdicts.get(solve.id)).length > 0);
+  return log.solves.filter((solve) => blockingOf(log.verdicts.get(solve.id)?.checker).length > 0);
 }
 
 /** A Builder session's practice solves: the test-side solves of released tasks made in its own window
@@ -492,7 +492,7 @@ export function instrumentTriggers(log: Index): Trigger[] {
   const ruled = countBy(refused, rulingOf);
   const defects = refused.filter((solve) => rulingOf(solve) === DEFECT);
   const defectChecks = countBy(defects, (solve) => text(log.rulings.get(solve.id)?.check));
-  const blocking = refused.flatMap((solve) => refusedBy(log.verdicts.get(solve.id)));
+  const blocking = refused.flatMap((solve) => blockingOf(log.verdicts.get(solve.id)?.checker));
   const byCheck = countBy(blocking, (check) => check);
   // One check refusing most answers, and no other refusing as many: t-10's one refusal on 10
   // October was blocked by all four checks, and the first of four equal counts read as a fault

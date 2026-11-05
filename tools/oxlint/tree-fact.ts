@@ -6,8 +6,9 @@
  * Recorded case: "what the checker measured of a valid answer", `checker?.kind === "pass" ?
  * checker.objective ?? null : null` and its variants, stood in src/kernel/compare.ts,
  * src/builder/tools.ts (twice) and tools/wri/gate-era.ts until commit 073acaa7c (5 November 2026)
- * gave it one owner, `measureOf` in src/kernel/solves.ts. `tree/copied-block` missed it: each copy
- * was one expression, not consecutive statements, and the spellings differed.
+ * gave it one owner, `measureOf` in src/kernel/solves.ts (now `objectiveOf` in
+ * src/kernel/verify.ts, beside the type). `tree/copied-block` missed it: each copy was one
+ * expression, not consecutive statements, and the spellings differed.
  *
  * A unit is an outermost condition or derivation: a `?:`, `&&`, `||` or `??` expression whose
  * parent is not one, and nothing inside a nested function. Within it each member chain is read off

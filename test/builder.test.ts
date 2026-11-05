@@ -563,6 +563,21 @@ describe("a Builder session", () => {
     }
   });
 
+  it("keeps a task an earlier session saw ruled a check defect out of practice, and says so in its opening", async () => {
+    for (const earlier of [["v2"], []]) {
+      const s = await setup([call("practice", { tasks: ["t-2"] }), finish], [{ outcome: "pass" }]);
+      append(s.request.log, BUILD_FINISHED, { session: "b-0", ended: "finished", disputed: earlier });
+      await session(s.request, s, s.walled);
+      const left = earlier.length > 0;
+      expect(/- t-2 \(family [^)]*\): no longer a practice task/.test(s.sent[0] ?? "")).toBe(left);
+      expect(/- t-1 \(family [^)]*\): no longer a practice task/.test(s.sent[0] ?? "")).toBe(false);
+      expect(
+        JSON.stringify(s.of(BUILD_CALL)[0]?.text ?? null).includes("t-2 is no longer a practice task"),
+      ).toBe(left);
+      expect(s.of(BUILD_FINISHED).at(-1)).toMatchObject({ practiceSolves: left ? 0 : 1, disputed: earlier });
+    }
+  });
+
   // One practice solve, and the session's own turns billed $30 beside it, past a cap of $25. A led
   // session's dollars are the campaign's bounds, which the operator can raise: it goes on.
   it.each([

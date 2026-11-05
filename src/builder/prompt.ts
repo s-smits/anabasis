@@ -103,6 +103,8 @@ interface Listed {
   /** Its counted solves under the harness the session starts from, from the log. */
   readonly solves: readonly string[];
   readonly passed: number;
+  /** Whether it left practice on a check defect the Referee ruled on a practice answer to it. */
+  readonly left: boolean;
 }
 
 /** What a session is told of the sessions before it (`memory.ts`). */
@@ -307,10 +309,12 @@ export function continuation(
  *  and the session's limits. A task's public part is a file in the home, since a pack's inputs run
  *  long. */
 export function firstMessage(contract: Contract, tasks: readonly Listed[], told: Told, past: Past): string {
-  const listed = tasks.map(({ taskId, family, solves, passed }) =>
-    solves.length === 0
-      ? `- ${taskId} (family ${family}): not yet solved under the harness you start from.`
-      : `- ${taskId} (family ${family}): passed ${String(passed)} of ${String(solves.length)} under the harness you start from. Solves: ${solves.join(", ")}.`,
+  const listed = tasks.map(({ taskId, family, solves, passed, left }) =>
+    left
+      ? `- ${taskId} (family ${family}): no longer a practice task, since the Referee ruled a check defect on a practice answer to it; read_trace still opens its solves.`
+      : solves.length === 0
+        ? `- ${taskId} (family ${family}): not yet solved under the harness you start from.`
+        : `- ${taskId} (family ${family}): passed ${String(passed)} of ${String(solves.length)} under the harness you start from. Solves: ${solves.join(", ")}.`,
   );
   return [
     // First, and not last: it is the Builder's own prose and may predate what stands below it.

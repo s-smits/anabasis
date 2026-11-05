@@ -116,7 +116,7 @@ export interface Bench {
   opened: HarnessSnapshot | null;
   /** Practice solves spent. */
   spent: number;
-  /** Task versions whose fail the Referee ruled a check defect in this session. */
+  /** Task versions whose fail the Referee ruled a check defect, in this session or an earlier one. */
   readonly disputed: Set<string>;
   /** Task versions whose own check could not run on a practice answer. */
   readonly faulty: Set<string>;
@@ -401,7 +401,7 @@ async function practise(bench: Bench, task: PracticeTask, kept: HarnessSnapshot,
       const finding = await request.referee(solve, task, kill);
       if (finding.ruling === "check-defect") {
         bench.disputed.add(task.version);
-        lines.push("The task leaves this session's practice.");
+        lines.push("The task leaves practice.");
       }
     } catch (error) {
       bench.faults.push(`${solve}: ${errorMessage(error)}`);

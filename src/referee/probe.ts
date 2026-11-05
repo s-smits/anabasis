@@ -4,8 +4,8 @@
  * Coupled changes are one answer probe, with both complete answers checked once: the review of 20 October
  * found three unclear rulings that could not clear a check by changing one failing part alone
  * (buffer-fresh-opus:2829,4268; recode-pr169-sonnet:291). Parent replacement alone is insufficient
- * when coupled source fields together exceed the value cap. The eight-probe budget and 4000-character
- * cap per value or passage remain; a side without a verdict still supplies no evidence. The same
+ * when coupled source fields together exceed the value cap. The eight-probe budget and the cap per
+ * value or passage remain; a side without a verdict still supplies no evidence. The same
  * review found that whole-answer swaps could manufacture defect evidence: object and array roots
  * stay fixed, and a coupled answer probe has at most three paths that one refusing check reads together.
  */
@@ -13,7 +13,7 @@ import { Type } from "typebox";
 import type { SeatTool } from "../agent/session.ts";
 import { blockingOf, type Task, type Verdict, type Verifier } from "../kernel/verify.ts";
 import { jsonPathTokens, resolveJsonPath } from "../meta/json-evidence.ts";
-import { capturedJsonParse, capturedStructuredClone } from "../meta/json-runtime.ts";
+import { capturedJsonParse, capturedJsonStringify, capturedStructuredClone } from "../meta/json-runtime.ts";
 import { isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
@@ -22,7 +22,11 @@ import { text, tool } from "../tools/answer.ts";
 /** review-probe.ts:57: each answer probe runs every applicable check, so eight keep a review from becoming
  *  a second exam. */
 const PROBE_BUDGET = 8;
-/** Bound each replacement value and each half of a text edit, including within a coupled probe. */
+/** Bound each replacement value and each half of a text edit, including within a coupled probe, or
+ *  the field's own length as JSON where that is longer: one field still changes, whatever its size.
+ *  Until 5 November the bound was 4000 alone, and all six unclear rulings of one truss campaign
+ *  (truss-fresh-opus-forkedPR588 r2) said it kept them from replacing a members list of 8000 to
+ *  12000 characters, which left three tasks out of its comparisons (Referee audit, 5 November). */
 const VALUE_MAX_CHARS = 4000;
 
 /** The one passage of a text field that `find` names, rewritten to `replace`. */
@@ -161,9 +165,11 @@ function changedAnswer(answer: JsonValue, change: ProbeRow["changes"][number]): 
   if ((change.value === null) === (edit === null)) {
     throw new Error("send either `value`, or `find` with `replace`");
   }
-  if ([change.value, edit?.find, edit?.replace].some((part) => (part?.length ?? 0) > VALUE_MAX_CHARS)) {
+  const field = resolveJsonPath(answer, change.path);
+  const most = Math.max(VALUE_MAX_CHARS, field.found ? (capturedJsonStringify(field.value)?.length ?? 0) : 0);
+  if ([change.value, edit?.find, edit?.replace].some((part) => (part?.length ?? 0) > most)) {
     throw new Error(
-      `a value and each half of an edit are at most ${String(VALUE_MAX_CHARS)} characters: one field or one passage changes`,
+      `a value and each half of an edit are at most ${String(VALUE_MAX_CHARS)} characters, or the length of the field they change as JSON where that is longer: one field or one passage changes`,
     );
   }
   let value: JsonValue;

@@ -193,6 +193,23 @@ describe("the probe", () => {
     expect(JSON.stringify(last.output)).toMatch(/probe 8 of 8.*none left/u);
     await expect(probe(SPAN, "1")).rejects.toThrow("at most 8 probes");
   });
+
+  it("the probe replaces a field as long as the one it changes, and no short field with a long value", async () => {
+    const rows: ProbeRow[] = [];
+    const members = (area: number) => Array.from({ length: 900 }, () => ({ area }));
+    const long = { span: 12, members: members(3), note: "x".repeat(200) };
+    expect(JSON.stringify(long.members).length).toBeGreaterThan(9000);
+    const tool = probeTool(verify, TASK, long, rows);
+    await invoke(tool, { changes: [{ path: "$.members", value: JSON.stringify(members(4)) }] });
+    expect(rows).toHaveLength(1);
+    await expect(
+      invoke(tool, { changes: [{ path: "$.note", value: JSON.stringify("y".repeat(9000)) }] }),
+    ).rejects.toThrow(/4000/u);
+    await expect(
+      invoke(tool, { changes: [{ path: "$.note", find: "xx", replace: "y".repeat(9000) }] }),
+    ).rejects.toThrow(/4000/u);
+    expect(rows).toHaveLength(1);
+  });
 });
 
 const fail = (s: ReturnType<typeof setup>) => ({

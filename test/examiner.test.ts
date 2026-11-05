@@ -363,6 +363,26 @@ describe("the home a wall keeps for a campaign's writing sessions", () => {
     expect(drafted.of("draft.call")[0]?.text).toBe("half.txt");
     expect(readdirSync(keep).toSorted()).toEqual(["generate.py", "half.txt"]);
   });
+
+  it("keeps an ask's home at its rest, before the conversation it rests in ends", async () => {
+    const s = seat("write", [bash("echo first > first.txt"), propose(2), finish]);
+    const keep = join(dirname(s.log), "examiner-home");
+    mkdirSync(keep);
+    const atRest: string[][] = [];
+    await examine(
+      {
+        ...s.request,
+        wanted: 1,
+        // A host killed here, while the conversation rests, keeps what the ask wrote.
+        rest: async () => {
+          atRest.push(readdirSync(keep));
+          return null;
+        },
+      },
+      { ...WALL, keep },
+    );
+    expect(atRest).toEqual([["first.txt"]]);
+  });
 });
 
 describe("a session that drafts an exam", () => {

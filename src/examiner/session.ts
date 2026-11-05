@@ -255,6 +255,9 @@ async function examining(
         unfinished(read(log)).find(({ of, id }) => of === mode.kind && id === current.id)?.dollars ?? 0;
       billed += dollars;
       const result = closeAsk(ended, { crash: null, turns: turns.length - from, billed: dollars });
+      // An ask's home is kept at its rest, as a session's was at its end before one conversation
+      // held every ask: the conversation's wall closes only when the conversation does.
+      walls?.keep();
       const since = read(log).length;
       const closed = AbortSignal.any([spent.signal, caller.signal]);
       const next = await Promise.race([

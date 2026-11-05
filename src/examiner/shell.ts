@@ -70,6 +70,9 @@ export interface Walls {
   readonly shell: CommandWall;
   readonly pinned: readonly Engine[];
   readonly began: number;
+  /** Makes the campaign's copy of the home whole now, at an ask's rest, so a host killed while the
+   *  conversation rests loses no ask's files. */
+  readonly keep: () => void;
 }
 
 /** Where the reference harness lies in a task-writing session's home. */
@@ -145,7 +148,14 @@ export async function inExaminerWall<T>(
     // 26 October every link was followed by the host, so one a Builder left in a harness that was
     // promoted laid what it named in the Examiner's home, whatever the walls closed.
     if (reference !== undefined) layReference(reference, home);
-    const result = await run({ shell, pinned, began });
+    const kept = () => {
+      if (keep === undefined) return;
+      rmSync(keep, { recursive: true, force: true });
+      cpSync(home, keep, carry);
+      // The copy is the session's own, so a session with the term off never opens on one.
+      rmSync(join(keep, REFERENCE_HOME), { recursive: true, force: true });
+    };
+    const result = await run({ shell, pinned, began, keep: kept });
     // The campaign's copy of a session's home, made whole when the session ends and replacing the
     // one before: it is the exam side's, under the campaign's folder beside the log, which every
     // wall closes. Each link is carried as it stands, as the Builder's carry does: until 28 October
@@ -160,12 +170,7 @@ export async function inExaminerWall<T>(
     const ended = read(log).findLast(
       ({ kind }) => kind === "exam.finished" || kind === "draft.finished",
     )?.data;
-    if (keep !== undefined && !(ended?.ended === "crashed" && Number(ended.running) > 0)) {
-      rmSync(keep, { recursive: true, force: true });
-      cpSync(home, keep, carry);
-      // The copy is the session's own, so a session with the term off never opens on one.
-      rmSync(join(keep, REFERENCE_HOME), { recursive: true, force: true });
-    }
+    if (!(ended?.ended === "crashed" && Number(ended.running) > 0)) kept();
     return result;
   } finally {
     await release();

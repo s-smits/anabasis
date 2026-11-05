@@ -3,11 +3,11 @@
  * and, read over every login, when the pool runs out: what a move to another login asks before it
  * chooses one (`room`, `keep.ts`).
  *
- *   bun --env-file=<file> run runs usage [N ...] [--json]
+ *   bun --env-file=<file> run runs usage [N ...] [--json] [--open] [--closed]
  *
  * A login is `CLAUDE_CODE_OAUTH_TOKEN<N>` in this process's environment, which Bun's own
  * `--env-file` loads: the verb opens no file of credentials, and prints no token. With no number it
- * reads every login the environment holds.
+ * reads every login the environment holds. `--open` and `--closed` are `login-state.ts`'s.
  *
  * Two routes, the first taken from steipete/CodexBar@afeb28146cec
  * (Sources/CodexBarCore/Providers/Claude/ClaudeOAuth/ClaudeOAuthUsageFetcher.swift): GET
@@ -44,17 +44,15 @@
  * (`perRunHour`).
  *
  * `ANA_LOGINS` in the environment, such as `2,3,4`, names the logins a run may take (`allowedLogins`),
- * every login the environment holds where it is unset. Until 15 October this was a script of the
- * operator's, which read the checkout's `.env` itself, and a shell loop applied the capacity rule.
+ * every login the environment holds where it is unset.
  */
 import { openingOf, SEATS } from "#src/campaign/opening.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
-import { mainTree } from "#src/meta/git.ts";
-import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
+import { mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
+import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { keysIf } from "#src/meta/optional-key.ts";
-import { dirname, join } from "#src/meta/path.ts";
+import { dirname } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { runSync, zeroExitText } from "#src/meta/subprocess.ts";
@@ -63,6 +61,16 @@ import { recordedSetting } from "../d2/setting.ts";
 import { asked } from "./hosts.ts";
 import { hostsOf } from "./host-config.ts";
 import { CODEX, type Live, liveHere, liveOf } from "./live.ts";
+import {
+  closedResets,
+  historyFile,
+  keptReadings,
+  listedBy,
+  notClosed,
+  resetOf,
+  stateWords,
+  windowOpen,
+} from "./login-state.ts";
 import {
   ahead,
   assess,
@@ -74,7 +82,7 @@ import {
   weekPace,
 } from "./usage-model.ts";
 
-interface Window {
+export interface Window {
   readonly pct: number | null;
   readonly resetsAt: string | null;
   readonly status?: string;
@@ -408,10 +416,9 @@ export async function readLogins(
   );
 }
 
-const resetOf = (iso: string | null): number | null => {
-  const at = iso === null ? Number.NaN : new Date(iso).getTime();
-  return Number.isNaN(at) ? null : at;
-};
+/** `readLogins`, less each login the last `usage` found closed until its reset (`login-state.ts`). */
+export const readNotClosed: typeof readLogins = (wanted, env) =>
+  readLogins(notClosed(wanted, keptReadings(historyFile()), Date.now()), env);
 
 /** The logins of `readings` a run may move to, the week that resets soonest first: in `allowed`,
  *  not in `spent`, neither window used up or refused. A nearly spent week is taken first where it
@@ -422,15 +429,13 @@ export function room(
   allowed: readonly string[],
   spent: ReadonlySet<string>,
 ): string[] {
-  const open = (window: Window) =>
-    (window.status ?? "allowed").startsWith("allowed") && (window.pct ?? 0) < 100;
   return readings
     .flatMap((reading) =>
       "error" in reading ||
       !allowed.includes(reading.login) ||
       spent.has(reading.login) ||
-      !open(reading.sevenDay) ||
-      !open(reading.fiveHour)
+      !windowOpen(reading.sevenDay) ||
+      !windowOpen(reading.fiveHour)
         ? []
         : [{ login: reading.login, reset: resetOf(reading.sevenDay.resetsAt) ?? Number.POSITIVE_INFINITY }],
     )
@@ -744,12 +749,14 @@ export async function active(args: readonly string[]): Promise<void> {
   console.log(activeLines(live, allowedLogins(runtimeProcess.env), unasked, runtimeProcess.env).join("\n"));
 }
 
+const FLAG = { type: "boolean", default: false } as const;
+
 /** `bun run runs usage`. */
 export async function logins(args: readonly string[]): Promise<void> {
   const { values, positionals } = parseArgs({
     args: [...args],
     allowPositionals: true,
-    options: { json: { type: "boolean", default: false } },
+    options: { json: FLAG, open: FLAG, closed: FLAG },
   });
   // A machine with one Claude login holds the plain credential: until 5 November `usage` refused it.
   const numbered = loginsIn(runtimeProcess.env);
@@ -771,18 +778,14 @@ export async function logins(args: readonly string[]): Promise<void> {
       ? []
       : [{ login: reading.login, pct: reading.sevenDay.pct, reset }];
   });
-  const history = join(mainTree(runtimeProcess.cwd()), ".ana", "logins-history.jsonl");
-  const kept = existsSync(history)
-    ? readFileSync(history, "utf8")
-        .split("\n")
-        .filter((line) => line !== "")
-        .map((line) => parseJsonAs<Snapshot>(line))
-    : [];
+  const history = historyFile();
+  const kept = keptReadings(history);
   const rate = perRunRate(kept.filter(({ at }) => now - at < RATE_MS));
   // A run on the plain login names no login.
   const onEach = (login: string) => counted?.live.filter((run) => (run.login ?? PLAIN) === login).length ?? 0;
-  if (values.json) console.log(capturedJsonStringify(readings, null, 2));
-  for (const reading of values.json ? [] : readings) {
+  const listed = listedBy(readings, values);
+  if (values.json) console.log(capturedJsonStringify(listed, null, 2));
+  for (const reading of values.json ? [] : listed) {
     const week = weeks.find(({ login }) => login === reading.login);
     const fit =
       week === undefined ? null : fitOf(week, perRunHour(week, onEach(reading.login), rate, now), now);
@@ -792,7 +795,8 @@ export async function logins(args: readonly string[]): Promise<void> {
         : ` · ${carried(onEach(reading.login), capOf(runtimeProcess.env, reading.login), fit)}`;
     const sub = subOf(runtimeProcess.env, reading.login);
     const own = reading.login === PLAIN ? `plain ${TOKEN}` : `login ${reading.login}`;
-    const head = `${own}${sub === null ? "" : ` · ${sub.sub}`}${runsOn}${reading.plain && reading.login !== PLAIN ? `  (= plain ${TOKEN})` : ""}`;
+    const state = stateWords(reading, allowedLogins(runtimeProcess.env), clock);
+    const head = `${own}${sub === null ? "" : ` · ${sub.sub}`}${state}${runsOn}${reading.plain && reading.login !== PLAIN ? `  (= plain ${TOKEN})` : ""}`;
     console.log(
       "error" in reading
         ? `${head}\n  ${reading.error}`
@@ -818,6 +822,7 @@ export async function logins(args: readonly string[]): Promise<void> {
   const snapshot: Snapshot = {
     at: now,
     weeks: Object.fromEntries(weeks.map(({ login, pct, reset }) => [login, { pct, reset }])),
+    closed: closedResets(readings),
     ...keysIf(counted?.unasked.length === 0, () => ({
       runs: Object.fromEntries(weeks.map(({ login }) => [login, onEach(login)])),
     })),

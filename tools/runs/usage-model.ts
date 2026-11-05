@@ -35,6 +35,8 @@ export interface Snapshot {
   readonly weeks: Record<string, { pct: number; reset: number }>;
   /** Each login's live runs when the reading was taken; readings before 22 October hold none. */
   readonly runs?: Record<string, number>;
+  /** Each closed login's reset (`login-state.ts`); readings before 5 November 2026 hold none. */
+  readonly closed?: Record<string, number>;
 }
 
 interface Row {

@@ -63,7 +63,7 @@ import { keysIf } from "../../src/meta/optional-key.ts";
 import { availableParallelism, tmpdir } from "../../src/meta/os.ts";
 import { basename, dirname, isAbsolute, join, relative } from "../../src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "../../src/meta/process.ts";
-import { runSync, runTextSyncOrThrow } from "../../src/meta/subprocess.ts";
+import { runSync, runTextSyncOrThrow, zeroExitText } from "../../src/meta/subprocess.ts";
 
 type Pass = "static" | "whole";
 
@@ -209,9 +209,7 @@ export function diffFromParentSays(
 /** A commit's first parent, or the empty tree for a root commit. */
 export function parentOf(root: string, commit: string): string {
   const parent = runSync(["git", "rev-parse", "-q", "--verify", `${commit}^1`], { cwd: root });
-  return parent.exitCode === 0
-    ? new TextDecoder().decode(parent.stdout).trim()
-    : git(root, ["hash-object", "-t", "tree", "/dev/null"]);
+  return zeroExitText(parent) ?? git(root, ["hash-object", "-t", "tree", "/dev/null"]);
 }
 
 /** The record's key for a pass, by content: the commit's tree, which holds the lockfile, and for a
@@ -319,13 +317,10 @@ export function nearbyTests(
 
 /** The UI's step of a pass, by the rule in `UI_PACKAGE`'s comment; its exit code. */
 async function uiStep(root: string, pass: Pass): Promise<number> {
-  const merged = runSync(["git", "merge-base", "HEAD", "origin/main"], { cwd: root });
   const base =
     pass === "static"
       ? parentOf(root, "HEAD")
-      : merged.exitCode === 0
-        ? new TextDecoder().decode(merged.stdout).trim()
-        : null;
+      : zeroExitText(runSync(["git", "merge-base", "HEAD", "origin/main"], { cwd: root }));
   const changed = base === null ? null : changedSince(root, base);
   if (
     changed === null ||

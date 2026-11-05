@@ -48,7 +48,7 @@ import { isSafePathSegment } from "../meta/path-segment.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { canonicalJson, hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
-import type { SeatTool } from "../agent/session.ts";
+import { type SeatTool, textsOf } from "../agent/session.ts";
 import { shellQuote } from "../wall/isolation.ts";
 import type { WallExec } from "./coding.ts";
 
@@ -157,7 +157,7 @@ export function tool<Parameters extends TSchema>(definition: ToolRegistration<Pa
       const result = await definition.execute(args, api, context);
       const output = result.output ?? [{ type: "text" as const, text: api.retainedOutput().text }];
       // pi bounds all text items together, keeping non-text items in place.
-      const value = output.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
+      const value = textsOf(output).join("");
       if (Buffer.byteLength(value) <= RESULT.bytes && value.split("\n").length <= RESULT.lines) {
         return result;
       }

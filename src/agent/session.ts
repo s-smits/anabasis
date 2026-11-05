@@ -474,9 +474,12 @@ export function sessionClock(began: number, seconds: number) {
   };
 }
 
+/** The text items of a message's or a tool result's content, in order; an image carries none. A
+ *  trace, a seat tool's bounded result and a campaign action's opening read them here. */
+export function textsOf(content: readonly { readonly type: string; readonly text?: string }[]): string[] {
+  return content.flatMap((part) => (part.type === "text" ? [part.text ?? ""] : []));
+}
+
 function traceText(content: readonly { type: string; text?: string }[]): string {
-  return boundText(
-    content.flatMap((block) => (block.type === "text" ? [block.text ?? ""] : [])).join("\n"),
-    TRACE_TEXT_BYTES,
-  ).text;
+  return boundText(textsOf(content).join("\n"), TRACE_TEXT_BYTES).text;
 }

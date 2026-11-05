@@ -245,6 +245,12 @@ export function decodeOutput(bytes: Uint8Array): string {
   return new TextDecoder().decode(bytes);
 }
 
+/** A command's stdout as trimmed text where it exited zero, and null for any other ending: the
+ *  answer to a question whose answer may be no (`runSync`), such as `git config --get`. */
+export function zeroExitText(result: RunSyncResult): string | null {
+  return result.exitCode === 0 ? decodeOutput(result.stdout).trim() : null;
+}
+
 /** Run a command and return its stdout as UTF-8 text, throwing on any failure. */
 export function runTextSyncOrThrow(cmd: readonly string[], options: RunSyncOptions = {}): string {
   return decodeOutput(runSyncOrThrow(cmd, options));

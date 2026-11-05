@@ -56,7 +56,7 @@ import { keysIf } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
+import { runSync, zeroExitText } from "#src/meta/subprocess.ts";
 import { looseFlagsOf } from "../d2/campaign-terms.ts";
 import { recordedSetting } from "../d2/setting.ts";
 import { asked } from "./hosts.ts";
@@ -360,8 +360,7 @@ export async function readLogins(
   wanted: readonly string[],
   env: Readonly<Record<string, string | undefined>>,
 ): Promise<Reading[]> {
-  const said = runSync(["claude", "--version"]);
-  const version = said.exitCode === 0 ? decodeOutput(said.stdout).trim().split(/\s+/)[0] : undefined;
+  const version = zeroExitText(runSync(["claude", "--version"]))?.split(/\s+/)[0];
   // CodexBar's fallbackClaudeCodeVersion where no CLI answers.
   const agent = `claude-code/${version === undefined || version === "" ? "2.1.0" : version}`;
   return Promise.all(

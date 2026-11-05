@@ -29,7 +29,7 @@
  * campaign waits out (`waitOut`, `src/solver/run.ts`): the Builder is then told to call the tool again.
  */
 import { Type } from "typebox";
-import type { SeatTool } from "#src/agent/session.ts";
+import { type SeatTool, textsOf } from "#src/agent/session.ts";
 import { Refused, stopRule } from "#src/campaign/admission.ts";
 import { CRASHES, decide, practiceDue } from "#src/campaign/decide.ts";
 import { comparisonsOf, crashedRun } from "#src/campaign/ground.ts";
@@ -704,9 +704,9 @@ export function campaignTools(
     return {
       start: async () =>
         opens
-          ? ((await runAction(context, bench, "examine", examineRun, undefined)).output ?? [])
-              .flatMap((part) => (part.type === "text" ? [part.text] : []))
-              .join("\n")
+          ? textsOf((await runAction(context, bench, "examine", examineRun, undefined)).output ?? []).join(
+              "\n",
+            )
           : "",
       tools: [
         ...[examining, promoting(compareTool(context, bench))].map((made) =>

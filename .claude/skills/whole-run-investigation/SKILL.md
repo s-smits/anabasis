@@ -121,7 +121,7 @@ Each runs as `bun tools/wri/wri.ts <verb>` from the checkout. The usage block at
 | 5 | `collect --out <dir>` | `reports.md` |
 | 6 | `synthesis --out <dir>` | `synthesis-prompt.md` |
 | lanes 1, 5 | `grade --log <log> [--bundle <pack>] --task <taskId> --answer <file>` | nothing: one verdict line. `--bundle` names a stored pack; a campaign that drafted its exam names none |
-| any | `derive (--log <log>[,<log>...] \| --all) [--verbose] [--force]` | `data/derived/<campaign>/`: one file a reader, and `manifest.json` |
+| any | `derive (--log <log>[,<log>...] \| --all) [--verbose] [--force] [--no-embed]` | `data/derived/<campaign>/`: one file a reader, and `manifest.json` |
 
 ### The readers, derived
 
@@ -153,6 +153,8 @@ There are two ways to use it:
   nothing a quiet pass would not; with an unmoved log it prints the folder as it stands.
 
 `--force` derives again although nothing moved, after a reader's code changed without a commit.
+`--no-embed` leaves out the readers that load the local embedding model, and a later derive without
+it writes the whole folder.
 The folders hold hidden values as the log does, so they stay on the exam side and out of every
 prompt a seat reads.
 

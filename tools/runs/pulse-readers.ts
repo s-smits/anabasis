@@ -283,7 +283,8 @@ export async function startPass(
     waitMs = WAIT_MS,
     gapMs = GAP_MS,
     roomNow = room,
-  }: { tree: string; waitMs?: number; gapMs?: number; roomNow?: () => boolean },
+    noEmbed = false,
+  }: { tree: string; waitMs?: number; gapMs?: number; roomNow?: () => boolean; noEmbed?: boolean },
 ): Promise<void> {
   const deadline = performance.now() + waitMs;
   mkdirSync(store, { recursive: true });
@@ -302,6 +303,7 @@ export async function startPass(
         store,
         "--budget",
         String(PASS_MS),
+        ...(noEmbed ? ["--no-embed"] : []),
         ...logs,
       ],
       {

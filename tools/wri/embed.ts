@@ -8,7 +8,7 @@
  *
  * Progress survives a kill. A cut reader keeps its last result and says nothing (`readInto`,
  * `tools/wri/pass.ts`), so the vectors go down after every batch, and the next read embeds the rest. A
- * reader that calls this marks itself `resumes`, or a cut never comes round again (`runQueue`).
+ * reader that calls this marks itself `embeds`, or a cut never comes round again (`runQueue`).
  * The vectors are made from text that may hold hidden values, so they lie in the reader store under
  * `.ana/`, closed to every seat by name, instead of v1's `~/.cache`. The public model's files stay in
  * the shared cache, outside every worktree, so a fresh checkout downloads nothing. One log has one file

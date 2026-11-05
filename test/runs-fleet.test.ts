@@ -488,6 +488,23 @@ describe("snapshot depth", () => {
 });
 
 describe("the fleet pulse", () => {
+  it("asks a peer for --no-embed only where the look was given it", () => {
+    const remoteOf = (...flags: readonly string[]) => {
+      const made = fixture();
+      const state = join(made.root, "state.json");
+      const asked = JSON.stringify(["--once", "--no-readers", ...flags, "--state", state]);
+      made.run(`import { watch } from "REPOSITORY/tools/runs/pulse.ts"; await watch(${asked});`);
+      return (
+        made
+          .recorded()
+          .findLast((call) => call.tool === "ssh")
+          ?.args.at(-1) ?? ""
+      );
+    };
+    expect(remoteOf("--no-embed")).toContain("--no-embed");
+    expect(remoteOf()).not.toContain("--no-embed");
+  });
+
   it("polls each host once and keeps a local state path out of remote commands", () => {
     const made = fixture();
     const state = join(made.root, "state.json");

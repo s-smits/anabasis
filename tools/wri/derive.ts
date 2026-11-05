@@ -48,8 +48,9 @@ export interface Reader {
   /** The script and its arguments, from the repository's root, for a log's absolute path and the
    *  repository's. */
   readonly args: (log: string, repo: string) => readonly string[];
-  /** Whether a cut leaves progress its next read goes on from, so a pass gives it any time left. */
-  readonly resumes?: boolean;
+  /** Whether it reads through the local embedding model. Its vectors outlast a cut, so a pass gives it
+   *  any time left, and `--no-embed` leaves it out. */
+  readonly embeds?: boolean;
 }
 
 export interface Derived {
@@ -79,9 +80,9 @@ const namedReader = (
 });
 
 /** The readers that take one campaign and print what it holds, calling no paid model and writing
- *  nothing of the campaign's, the likeliest news first. `posture` alone runs a local model and keeps
- *  its vectors in the reader store, and comes after all but the two that open every kept harness, as
- *  its first read is the longest and its news the least likely. A script that needs more than a campaign
+ *  nothing of the campaign's, the likeliest news first. Those marked `embeds` run a local model and
+ *  keep their vectors in the reader store, and come after all but the two that open every kept harness,
+ *  as a first read is the longest and their news the least likely. A script that needs more than a campaign
  *  to say anything, reads no run or writes elsewhere is left out, and `whole-run-investigation` names
  *  each. */
 export const READERS: readonly Reader[] = [
@@ -120,12 +121,16 @@ export const READERS: readonly Reader[] = [
   { name: "answers", args: (log) => ["tools/wri/answers.ts", log] },
   { name: "waits", args: (log) => ["tools/wri/waits.ts", log] },
   { name: "routes", args: (log) => ["tools/wri/routes.ts", log] },
-  { name: "posture", resumes: true, args: (log) => ["tools/wri/posture.ts", log] },
-  { name: "restated", resumes: true, args: (log) => ["tools/wri/restated.ts", log] },
-  { name: "nearness", resumes: true, args: (log) => ["tools/wri/nearness.ts", log] },
+  { name: "posture", embeds: true, args: (log) => ["tools/wri/posture.ts", log] },
+  { name: "restated", embeds: true, args: (log) => ["tools/wri/restated.ts", log] },
+  { name: "nearness", embeds: true, args: (log) => ["tools/wri/nearness.ts", log] },
   skillReader("versions", "harness-audit/scripts/harness-versions.ts"),
   skillReader("chain", "harness-audit/scripts/harness-versions.ts", "--blind"),
 ];
+
+/** The list a pass or `derive` runs: `--no-embed` takes out the readers that load the model. */
+export const readersOf = (noEmbed: boolean): readonly Reader[] =>
+  noEmbed ? READERS.filter(({ embeds }) => embeds !== true) : READERS;
 
 /** What `reader` says of `log`, with its ending and stderr added where it failed. `cut` is a reader
  *  its time limit ended, so what it would have said is unknown. */
@@ -172,13 +177,15 @@ export async function derive(
 ): Promise<Derived> {
   const name = basename(dirname(log));
   const dir = join(root, name);
-  // What the folder is derived from: the log by its path, size and time, and the commit reading it.
+  // What the folder is derived from: the log by its path, size and time, the commit reading it, and
+  // which readers, so a folder written under `--no-embed` does not stand in for a whole one.
   const { size, lastModified } = Bun.file(log);
   const stamp = JSON.stringify([
     log,
     size,
     lastModified,
     gitMaybe(repo, "rev-parse", "HEAD")?.trim() ?? null,
+    readers.map((reader) => reader.name),
   ]);
   const before = kept(dir);
   if (!force && before?.stamp === stamp) return { name, dir, ran: false, failed: before.failed };

@@ -51,6 +51,13 @@ describe("deriving a campaign's readers", () => {
     expect(readdirSync(root)).toEqual(["camp"]);
   });
 
+  it("does not keep a folder written by fewer readers in place of a whole one", async () => {
+    const whole = { root, repo: REPO, readers: [SIZE, BROKEN] };
+    expect((await derive(log, { root, repo: REPO, readers: [SIZE] })).ran).toBe(true);
+    expect((await derive(log, whole)).ran).toBe(true);
+    expect((await derive(log, whole)).ran).toBe(false);
+  });
+
   it("names a reader that failed, with its ending, and still writes the others", async () => {
     const done = await derive(log, { root, repo: REPO, readers: [BROKEN, SIZE] });
     expect(done.failed).toEqual(["broken"]);

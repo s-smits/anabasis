@@ -9,7 +9,7 @@ import { keyIfNotNull } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { newsIn } from "../tools/runs/pulse-readers.ts";
-import { READERS } from "../tools/wri/derive.ts";
+import { READERS, readersOf } from "../tools/wri/derive.ts";
 import { dot, type Embed, groupsOf } from "../tools/wri/embed.ts";
 import { nearnessOf } from "../tools/wri/nearness.ts";
 import { restatedOf } from "../tools/wri/restated.ts";
@@ -332,7 +332,17 @@ describe("as readers of a pass", () => {
 
   it("resume after a cut, so a pass comes round to them again", () => {
     for (const name of ["restated", "nearness"]) {
-      expect(READERS.find((reader) => reader.name === name)?.resumes).toBe(true);
+      expect(READERS.find((reader) => reader.name === name)?.embeds).toBe(true);
     }
+  });
+
+  it("are left out by --no-embed, and no other reader is", () => {
+    const named = (noEmbed: boolean) => readersOf(noEmbed).map(({ name }) => name);
+    expect(named(false)).toEqual(READERS.map(({ name }) => name));
+    expect(READERS.map(({ name }) => name).filter((name) => !named(true).includes(name))).toEqual([
+      "posture",
+      "restated",
+      "nearness",
+    ]);
   });
 });

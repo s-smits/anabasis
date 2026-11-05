@@ -150,9 +150,9 @@ describe("what a cut leaves", () => {
     const log = logOf(60);
     const store = join(root, "store");
     const count = join(root, "count");
-    const reader = (name: string, resumes: boolean): Reader => ({
+    const reader = (name: string, embeds: boolean): Reader => ({
       name,
-      resumes,
+      embeds,
       args: (at) => [
         "test/helpers/posture-slow.ts",
         at,
@@ -247,7 +247,7 @@ describe("when it cannot read", () => {
 
   it("exits 0 as a reader on a log with no prose, through the list a pass runs", async () => {
     const posture = READERS.find(({ name }) => name === "posture");
-    expect(posture?.resumes).toBe(true);
+    expect(posture?.embeds).toBe(true);
     const log = join(scratch(), "log.jsonl");
     writeFileSync(log, event("build.started", { session: "b-1", parent: "" }));
     const child = Bun.spawnSync([process.execPath, ...(posture?.args(log, REPO) ?? [])], { cwd: REPO });

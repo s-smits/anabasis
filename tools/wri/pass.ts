@@ -4,13 +4,13 @@
  * no event and decides nothing: each reader's output goes to the host's store, for every observer of
  * the host to read.
  *
- *   bun tools/wri/pass.ts --store <dir> --budget <ms> <log> [<log> ...]
+ *   bun tools/wri/pass.ts --store <dir> --budget <ms> [--no-embed] <log> [<log> ...]
  *
  * It runs one reader at a time: the rows of each log first, up to half its budget, and then whichever
  * result is oldest, so logs that take more than one pass come round and none starves. A reader whose
  * last run would not fit what is left waits for a later pass, one the limit cuts keeps its last
  * result, and the pass stops where the load leaves no room. A reader that goes on from what a cut left
- * (`resumes`) takes any time that is left: a cut records the time it had, about the whole budget, which
+ * (`embeds`) takes any time that is left: a cut records the time it had, about the whole budget, which
  * would never fit again, and a first read's time says nothing of the reads after it. A second pass that
  * finds the lock held leaves at once, which is what settles several looks that started one at one moment.
  */
@@ -27,7 +27,7 @@ import {
   room,
   takeLock,
 } from "#tools/runs/pulse-readers.ts";
-import { READERS, type Reader, readerOutput } from "./derive.ts";
+import { READERS, type Reader, readerOutput, readersOf } from "./derive.ts";
 
 /** The reader whose triggers the look says itself. */
 const HEAD = "rows";
@@ -73,7 +73,7 @@ export async function runQueue(
     const spent = ways.now() - started;
     if (spent >= ways.budgetMs) return "budget";
     const left = ways.budgetMs - spent;
-    const fits = due.reader.resumes === true || due.ms <= left;
+    const fits = due.reader.embeds === true || due.ms <= left;
     if (!fits || (due.reader.name === HEAD && spent >= ways.budgetMs / 2)) {
       ended = "budget";
       continue;
@@ -134,11 +134,18 @@ async function main(): Promise<void> {
   const { values, positionals: logs } = parseArgs({
     args: runtimeProcess.argv.slice(2),
     allowPositionals: true,
-    options: { store: { type: "string" }, budget: { type: "string" } },
+    options: {
+      store: { type: "string" },
+      budget: { type: "string" },
+      "no-embed": { type: "boolean", default: false },
+    },
   });
   const store = values.store ?? "";
   if (store === "" || values.budget === undefined) throw new Error("name --store and --budget");
-  await passOver(store, logs, { budgetMs: Number(values.budget) });
+  await passOver(store, logs, {
+    budgetMs: Number(values.budget),
+    readers: readersOf(values["no-embed"]),
+  });
 }
 
 if (import.meta.main) await main();

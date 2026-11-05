@@ -394,6 +394,39 @@ appendFileSync(${JSON.stringify(marks)}, "ended\\n");`,
     await until(() => started().includes("ended"));
   });
 
+  it("hands --no-embed to the pass, and only where a look was given it", async () => {
+    const argsOfPass = async (given: { readonly noEmbed?: boolean }) => {
+      // A pass runs in its tree, so the stub's relative file lands there.
+      const { tree, store, log, started } = stubTree(`await Bun.write("ARGS", JSON.stringify(Bun.argv));`);
+      await startPass(store, [log], { tree, waitMs: 5000, roomNow: () => true, ...given });
+      await until(() => started().includes("ended"));
+      return readFileSync(join(tree, "ARGS"), "utf8");
+    };
+    expect(await argsOfPass({ noEmbed: true })).toContain("--no-embed");
+    expect(await argsOfPass({})).not.toContain("--no-embed");
+  });
+
+  it("claims nothing of an embedding reader once a pass under --no-embed dropped it", () => {
+    const { store, log } = stubTree("");
+    mkdirSync(store, { recursive: true });
+    keepNames(store, ["rows", "posture"]);
+    keepResult(store, log, "rows", result(20), "");
+    const asked = {
+      store,
+      log,
+      size: 20,
+      lastSize: 10,
+      before: {},
+      milestoneAt: undefined,
+      files: join(store, "files"),
+      spare: 12,
+      saidElsewhere: () => false,
+    };
+    expect(readersSaid(asked).said.join("\n")).toContain("posture");
+    keepNames(store, ["rows"]);
+    expect(readersSaid(asked).said.join("\n")).not.toContain("posture");
+  });
+
   it("starts no pass within the rest between passes, nor one nothing is due of", async () => {
     const rest = stubTree("");
     mkdirSync(rest.store, { recursive: true });

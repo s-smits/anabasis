@@ -505,6 +505,65 @@ describe("the tasks awaiting task review", () => {
   });
 });
 
+describe("the tasks a comparison doubted", () => {
+  const terms = { old: "h1", solves: 2, setting: SETTING };
+  const start = [...heldOut("bad"), ...heldOut("easy")];
+  /** One rejected solve of `task` under `harness` in `session`, its finding ruled `ruling`. */
+  const rejectedAs = (session: string, harness: string, ruling: string | null) =>
+    solved(session, "bad", harness, [F]).map((each) =>
+      each.kind === "referee.finding" ? event("referee.finding", { ...each.data, ruling }) : each,
+    );
+  const solveOf = (log: readonly LogEvent[]) => {
+    const id = log.find(({ kind }) => kind === "solve.started")?.data.solve;
+    return isString(id) ? id : "";
+  };
+  /** g-1 sets `bad` aside on two rejections, the reference's and the candidate's, and scores `easy`. */
+  const asideIn = (reference: readonly LogEvent[], candidate: readonly LogEvent[], more: JsonObject = {}) => [
+    ...start,
+    ...reference,
+    ...candidate,
+    ...solved("g-1", "easy", "h1", [P, P]),
+    ...solved("g-1", "easy", "h2", [P, P]),
+    reported("g-1", "no-step", "h2", { ...terms, versions: ["easy"], aside: ["bad"], ...more }),
+  ];
+  const scorable = (log: readonly LogEvent[]) => poolOf(log).scorable;
+
+  it("leave the draw where the reference's own rejection stands unearned, and stay in it where only the candidate's does", () => {
+    for (const ruling of ["check-defect", "unclear", null]) {
+      const log = asideIn(rejectedAs("g-1", "h1", ruling), rejectedAs("g-1", "h2", "earned"));
+      expect(poolOf(log)).toMatchObject({ scorable: ["easy"], frontier: ["easy"] });
+    }
+    // The candidate's rejection is a held-out outcome the Builder may not learn of by task (rule 3).
+    const candidate = asideIn(rejectedAs("g-1", "h1", "earned"), rejectedAs("g-1", "h2", "check-defect"));
+    expect(scorable(candidate)).toEqual(["bad", "easy"]);
+  });
+
+  it("return once a person labels the reference's rejection earned, keeps the task, or a later comparison scores it", () => {
+    const reference = rejectedAs("g-1", "h1", "check-defect");
+    const candidate = rejectedAs("g-1", "h2", "unclear");
+    const doubted = asideIn(reference, candidate);
+    expect(scorable(doubted)).toEqual(["easy"]);
+    // The settled report keeps the task aside on the candidate's unclear label, and the reference's
+    // rejection stands earned.
+    const labels = { [solveOf(reference)]: "earned", [solveOf(candidate)]: "unclear" };
+    const settled = reported("g-1", "no-step", "h2", {
+      ...terms,
+      versions: ["easy"],
+      aside: ["bad"],
+      settled: { labels },
+    });
+    expect(scorable([...doubted, settled])).toEqual(["bad", "easy"]);
+    const kept = event("task.state", { version: "bad", state: "held" });
+    expect(scorable([...doubted, kept])).toEqual(["bad", "easy"]);
+    const scored = [
+      ...solved("g-2", "bad", "h1", [P, P]),
+      ...solved("g-2", "bad", "h3", [P, P]),
+      reported("g-2", "no-step", "h3", { ...terms, versions: ["bad"] }),
+    ];
+    expect(scorable([...doubted, ...scored])).toEqual(["bad", "easy"]);
+  });
+});
+
 describe("the release before the draw", () => {
   const terms = { old: "h1", fresh: "h2", solves: 2, setting: SETTING };
   const tasks = ["f1", "f2", "f3", "f4", "a1", "a2"];

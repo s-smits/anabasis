@@ -66,7 +66,9 @@ const GRID: readonly (readonly [
   ["word-12", "held · retained", { "b-3": "won 0/2 · 1/2", "r-3": "won 0/2 · 1/2" }],
   ["word-r1", "refused", {}],
   ["word-13", "held", { "c-1": "lost 4/4 · 0/4", "b-3": "aside 1/2 · 2/2" }],
-  ["word-14", "held · retained", { "c-1": "aside 3/4 · 3/4" }],
+  // c-1 set it aside on the starter's unclear rejection, and the starter is the reference again at
+  // the end, so the task waits out of the draw (`poolOf`, doubted).
+  ["word-14", "held", { "c-1": "aside 3/4 · 3/4" }],
   ["word-15", "held", { "c-1": "won 3/4 · 4/4", "r-3": "tiedEvery 2/2 · 2/2" }],
   ["word-16", "held · retained", { "b-2": "tiedSome 1/2 · 1/2", "r-3": "tiedNone 0/2 · 0/2" }],
   ["word-17", "held", { "g-9": "won 0/2 · 1/2" }],

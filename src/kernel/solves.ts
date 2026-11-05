@@ -190,6 +190,19 @@ export function rejected(ending: JsonObject | null | undefined): boolean {
   return ending?.outcome === "fail" && ending.kind === "rejected";
 }
 
+/** What the Referee's last finding of each solve it read ruled, by the solve: null where that reader
+ *  gave no ruling, killed or failed before it ruled, which leaves the rejection unruled until it is
+ *  put to the Referee again (`unruledOf`, `src/campaign/round.ts`). */
+export function rulingsOf(events: readonly LogEvent[]): Map<string, string | null> {
+  return new Map(
+    events.flatMap(({ kind, data }) =>
+      kind === "referee.finding" && isString(data.solve)
+        ? [[data.solve, isString(data.ruling) ? data.ruling : null] as const]
+        : [],
+    ),
+  );
+}
+
 /** A rejection is established only when its latest ruling is earned; other endings need no ruling. */
 export function rejectionAside(events: readonly LogEvent[], solve: Pick<Solve, "id" | "ending">): boolean {
   return (

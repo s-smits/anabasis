@@ -38,7 +38,7 @@ import {
 import { failWrongPasses, wrongPasses, wrongPassesIn } from "./history.ts";
 import type { LogEvent } from "./log.ts";
 import { providerFailed, windowEnded } from "./solve.ts";
-import { passed, ranUnder } from "./solves.ts";
+import { passed, ranUnder, rejected, rulingsOf } from "./solves.ts";
 import { RUNS, spreadOf } from "./size.ts";
 import { taskSets } from "./task.ts";
 import { tracesIn } from "./trace.ts";
@@ -123,6 +123,9 @@ interface TaskRecord {
    *  and every task set aside, as `TalliedIn.order` counts them, where it was first set aside. */
   asideAt: number;
   asideOrder: number;
+  /** The last report that set it aside on a rejection of the reference harness's own that stands
+   *  unearned there, by a person's label where its settling holds one, or -1 (`poolOf`, doubted). */
+  doubtedAt: number;
 }
 
 /** A dollar cap: the billed dollars a comparison, or a Builder session by itself, may hold
@@ -320,6 +323,7 @@ function taskRecords(events: readonly LogEvent[]) {
       tallied: [],
       asideAt: -1,
       asideOrder: Number.POSITIVE_INFINITY,
+      doubtedAt: -1,
     };
     records.set(version, made);
     return made;
@@ -367,6 +371,8 @@ function taskRecords(events: readonly LogEvent[]) {
     ...events.flatMap(({ kind, data }) => (kind === PROMOTED ? [data.harness, data.from] : [])),
   ]);
   const wrong = wrongPassesIn(events);
+  /** Each comparison's rejected solves, by task and harness, as `cutIn` names them. */
+  const rejectedIn = new Map<string, string[]>();
   for (const solve of ranUnder(events)) {
     const { task, limits, harness } = solve.under;
     const { comparison } = solve.start;
@@ -380,8 +386,12 @@ function taskRecords(events: readonly LogEvent[]) {
       if (references.has(harness)) of(task).independentValidAnswer = true;
     }
     if (isString(comparison) && AT_A_LIMIT.has(kind) && !budgeted) cut.add(cutIn(comparison, task, harness));
+    if (isString(comparison) && rejected(solve.ending)) {
+      const key = cutIn(comparison, task, harness);
+      rejectedIn.set(key, [...(rejectedIn.get(key) ?? []), solve.id]);
+    }
   }
-  tallyReports(events, of, cut);
+  tallyReports(events, of, { cut, rejectedIn });
   return { records: [...records.values()], held: heldOut };
 }
 
@@ -396,9 +406,10 @@ function cutIn(comparison: string, task: string, harness: string): string {
 function tallyReports(
   events: readonly LogEvent[],
   of: (version: string) => TaskRecord,
-  cut: ReadonlySet<string>,
+  { cut, rejectedIn }: { cut: ReadonlySet<string>; rejectedIn: ReadonlyMap<string, readonly string[]> },
 ): void {
   const reference = referenceOf(events);
+  const rulings = rulingsOf(events);
   let order = 0;
   for (const report of lastReports(events, true)) {
     const { index, session, data } = report;
@@ -424,11 +435,19 @@ function tallyReports(
         room: gap,
       });
     }
+    const labels = asRecord(asRecord(data.settled)?.labels);
+    const standing = (solve: string) => {
+      const label = labels?.[solve];
+      return isString(label) ? label : rulings.get(solve);
+    };
     for (const task of Array.isArray(data.aside) ? data.aside.filter(isString) : []) {
       order += 1;
       const record = of(task);
       record.asideAt = index;
       record.asideOrder = Math.min(record.asideOrder, order);
+      const harness = side === null ? undefined : data[side];
+      const own = isString(harness) ? (rejectedIn.get(cutIn(session, task, harness)) ?? []) : [];
+      if (own.some((solve) => standing(solve) !== "earned")) record.doubtedAt = index;
     }
   }
 }
@@ -468,6 +487,17 @@ function tallyReports(
  * A label that keeps a task is a `task.state` event that holds it once more, and the two
  * comparisons are then counted from that label on; a label that calls it infeasible refuses it,
  * and a refused task is no held-out task.
+ *
+ * **Doubted** tasks leave the scored set and the practice allowance in the same way: the last
+ * comparison that read the task set it aside, and a rejection there of the reference harness's own
+ * stands unearned, ruled a check defect or unclear or not ruled, with no person's label of it
+ * earned in that comparison's settling. Drawn again, such a task was set aside again and its solves
+ * and rulings paid for nothing: esp32 PR569's g-1 and g-2 ruled one task's check defective four
+ * times each, and four campaigns redrew a task set aside (Referee audit, 5 November). A settling
+ * that labels the reference's rejections earned returns it, and so does a person who keeps it
+ * (`task.state`) after that comparison. Only the reference's own rejections count, as for the
+ * exhausted tasks: a candidate's rejection that stands unearned moves nothing the Builder is told
+ * (rule 3).
  *
  * **Exhausted** are the tasks the reference harness has been read easy on (`easyAt`), and they
  * leave the frontier for the retained set (`scoredSet`). The readings are the comparisons it stood
@@ -547,7 +577,10 @@ export function poolOf(events: readonly LogEvent[]) {
       roomOn,
     ),
   );
-  const out = new Set(awaiting);
+  const doubted = placed(heldRecords, ({ doubtedAt, keptAt, tallied }) =>
+    doubtedAt > keptAt && doubtedAt > (tallied.at(-1)?.index ?? -1) ? doubtedAt : undefined,
+  );
+  const out = new Set([...awaiting, ...doubted]);
   const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED);
   const before = new Set(taskSets(events.slice(0, Math.max(0, promotedAt))).held);
   const reference = referenceOf(events);
@@ -566,6 +599,7 @@ export function poolOf(events: readonly LogEvent[]) {
   // a comparison over, so the allowance reads nothing of the other harness (rule 3).
   const practiceOut = new Set([
     ...spent,
+    ...doubted,
     ...placed(heldRecords, ({ independentValidAnswer, keptAt, tallied }) =>
       independentValidAnswer
         ? undefined

@@ -226,13 +226,13 @@ bun --env-file=<file> .claude/skills/system-path-simulation/scripts/live-seat.ts
   -- <the production command and its flags, with the operator's model and effort>
 ```
 
-| the seat | the seed's cut | the command |
-| --- | --- | --- |
-| An Examiner session | where the session should start | `tools/d1b/examine.ts --session x-<n> --examiner <model> --examiner-effort <e> ...` |
-| A round's solves, without its Builder | right after a recorded `build.finished` | the round again with that session's `--session` |
-| A whole round or campaign stretch | before a round's `build.started`, or at rest | the round or `harness-builder.ts`, with every seat's model and effort |
-| One Referee ruling | right before the recorded ruling | `scripts/referee-seat.ts --solve <id> --reviewer <model>` as `start`'s command |
-| One solve | none: it reads the stored sweep | `bun tools/m0/live-solve.ts <pack flags> --task <id> --live` |
+| the seat | the seed's cut | the command | what is paid |
+| --- | --- | --- | --- |
+| An Examiner session | where the session should start | `tools/d1b/examine.ts --session x-<n> --examiner <model> --examiner-effort <e> ...` | the Examiner's turns, its tries and their Referee rulings where seated |
+| A round's solves, without its Builder | right after a recorded `build.finished` (`--events`) | the round again with that session's `--session` | the comparison's solves, under its `--cap` |
+| A whole round or campaign stretch | before a round's `build.started`, or at rest | the round or `harness-builder.ts`, with every seat's model and effort | each seat's sessions and every solve |
+| One Referee ruling | right before the recorded ruling (`--events`) | `scripts/referee-seat.ts --solve <id> --reviewer <model>` as `start`'s command | one ruling: its replay, probes and model turns |
+| One solve | none: it reads the stored sweep | `bun tools/m0/live-solve.ts <pack flags> --task <id> --live` | one solve |
 
 Three rules are this option's own:
 

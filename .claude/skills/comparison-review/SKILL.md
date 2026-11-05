@@ -70,7 +70,7 @@ the central host, beside the cycle's files. No step starts until the check befor
    *Check:* its digest (`shasum -a 256`) is taken and written down with the time. That digest is the
    seal's salt, and one salt is all a review gets, so an unwelcome split cannot be drawn again.
 
-2. **Seal half the tasks.** Run the script (`scripts/levels.ts --salt <salt>`). It orders the tasks
+2. **Seal half the tasks.** Run the script (`bun studies/harness2/levels.ts --salt <salt>`). It orders the tasks
    by a hash of the salt and prints the first half; the rest stay withheld until step 7. Where the
    seal leaves fewer than a sweep (six at level 0.02), the sealed half can falsify a story and can
    read no step, and the ledger says so. A task already read closely before the freeze confirms
@@ -211,4 +211,5 @@ a model. The rest stands at "present in source" until a review keeps a ledger fr
 | [references/forking-paths.md](references/forking-paths.md) | each way a review deceives itself, and what stops it |
 | [references/backtrack.md](references/backtrack.md) | the shape card, the chain to an owner, the eight questions, the dispositions and the worked cards |
 | [references/report.md](references/report.md) | the ledger's form, the blind brief, the backtrack brief and the report's form |
-| `scripts/levels.ts` | a rubric-graded benchmark's result at each level for two arms, with the sealed half withheld and no rubric text |
+| `studies/harness2/compare.ts` | a JobBench comparison on terms fixed first, a further judging of existing deliverables, and what moved |
+| `studies/harness2/levels.ts` | a rubric-graded benchmark's result at each level for two arms, with the sealed half withheld and no rubric text |

@@ -90,6 +90,17 @@ JobBench (`studies/harness2/README.md`, "Read every result against how uneven th
 16. **Read the judge's view beside every score.** `eval/judge.py` cuts each file at 200,000
     characters, counts embedded figures against that, and reads only `text` notebook outputs. Read it
     apart and report it beside the official score (`comparison-review`, level 6).
+17. **Benchmark 20 tasks, 31% of the 65, in the professions closest to the prompt.** The three
+    professions the prompt names hold 8 tasks. The other 12 come from the highest ranked professions
+    of two tasks or more, whole, with two sides an arm (`studies/harness2/compare.ts plan --tasks ...
+    --burned "" --repeats 2`): `supply_chain_managers` (2), `sociology_teachers_postsecondary` (3),
+    `computer_and_information_research_scientists` (2), `computer_user_support_specialists` (2) and
+    `management_analysts` (3). One read-only subagent ranked the 32 other professions on their public
+    instructions and workspace file names, before any rollout and with no score. Its order is loose:
+    44 of 57 fits are 3 to 5 of 7, and ties inside a band follow only a tie-break. The higher ranked
+    professions of one task are passed over, since a stream's first task has no held-out score. The
+    test is parity, whose margin goes in the prediction. A further benchmark, from professions the
+    prompt does not reach, reads transfer out of the domain, and `plan` draws that by default.
 
 ## How it came to be
 
@@ -174,3 +185,12 @@ JobBench (`studies/harness2/README.md`, "Read every result against how uneven th
   levers are making what the export says true (item 14), loosening the harness from its campaign, and
   widening what the harness was selected on. Those reviews had no ledger and no seal, which is why
   `comparison-review` exists.
+
+  The operator then asked for "helper scripts right to properly run the comparisons from harness2",
+  and for the size: "expand to 20 out of its 50+ or how much, like we need to benchmark at least 30%
+  round off to good number". 30% of 65 is 19.5, so 20. Asked how Harness² does it, the record reads
+  that it adapts on each task, with an invariant and a domain editor composed by an aggregator, and
+  carries lessons in one library a profession. The operator: "Okay so Anabasis will most likely be
+  worse than Harness2 if we run the full benchmark, which is fine, we should run the 20 queries in the
+  domain groups that the prompt is most adhered to i think for now, if we can reach parity that'd
+  already be sick" (item 17).

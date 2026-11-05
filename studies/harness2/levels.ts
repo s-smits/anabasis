@@ -4,8 +4,7 @@
  * withheld. It starts no solve and calls no model, and it prints ids, weights and counts, never a
  * rubric's text or a grader's reasons, so its output may go into a ledger or a pull request.
  *
- *   bun .claude/skills/comparison-review/scripts/levels.ts --dataset <dir> --a <arm> --b <arm>
- *     [--salt <text> [--unseal]]
+ *   bun studies/harness2/levels.ts --dataset <dir> --a <arm> --b <arm> [--salt <text> [--unseal]]
  *
  * It reads JobBench's layout: `<dataset>/<group>/<task>/eval_result/eval_<arm>__<group>__<task>/`,
  * one `*judge.json` in it.
@@ -21,23 +20,21 @@
  * version of the review's ledger, fixed before any task is read (comparison-review, step 2). The tests
  * are the comparison's own (`testOf`), each read both ways.
  */
-import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { testOf } from "#src/kernel/compare.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, type JsonObject } from "#src/meta/json-shape.ts";
-import { join } from "#src/meta/path.ts";
+import { join, resolve } from "#src/meta/path.ts";
+import { parseArgs } from "#src/meta/process.ts";
 
-const USAGE = `usage:
-  bun .claude/skills/comparison-review/scripts/levels.ts --dataset <dir> --a <arm> --b <arm>
-    [--salt <text> [--unseal]]
-
---dataset  the benchmark's dataset folder
---a, --b   the two arms, as the labels of their eval_result folders
---salt     seal half the tasks by this text, the digest of the ledger's first version
---unseal   print the sealed half as a block of its own; once, against rows already written`;
-const OPTIONS = { dataset: "abs", a: "text", b: "text", salt: "text", unseal: "flag" } as const;
+const OPTIONS = {
+  dataset: { type: "string" },
+  a: { type: "string" },
+  b: { type: "string" },
+  salt: { type: "string" },
+  unseal: { type: "boolean" },
+} as const;
 const SUFFIX = "judge.json";
 /** `flipP` reads whole units, so a task's difference goes in hundredths of a point. */
 const UNITS = 100;
@@ -49,7 +46,7 @@ interface Rubric {
   readonly passed: number;
   readonly criteria: number;
 }
-interface Graded {
+export interface Graded {
   readonly points: number;
   readonly most: number;
   readonly rubrics: readonly Rubric[];
@@ -126,7 +123,7 @@ export function sealOf(tasks: readonly string[], salt: string) {
   return { open: ordered.slice(0, half).toSorted(), sealed: ordered.slice(half).toSorted() };
 }
 
-const passedAll = (graded: Graded) => graded.rubrics.reduce((sum, rubric) => sum + rubric.passed, 0);
+export const passedAll = (graded: Graded) => graded.rubrics.reduce((sum, rubric) => sum + rubric.passed, 0);
 const criteriaAll = (graded: Graded) => graded.rubrics.reduce((sum, rubric) => sum + rubric.criteria, 0);
 /** Rubrics that scored nothing while one criterion short of all. */
 const oneShort = (graded: Graded) =>
@@ -136,7 +133,11 @@ const partial = (graded: Graded) =>
   graded.rubrics.filter((rubric) => rubric.score !== 0 && rubric.score !== rubric.weight).length;
 
 /** One measure's differences read both ways, by the comparison's own test. */
-function bothWays(name: string, label: { a: string; b: string }, differences: readonly number[]): string {
+export function bothWays(
+  name: string,
+  label: { a: string; b: string },
+  differences: readonly number[],
+): string {
   const forA = testOf(differences.map((difference) => Math.round(difference * UNITS)));
   const forB = testOf(differences.map((difference) => Math.round(-difference * UNITS)));
   return `${name} by task: ${label.a} above on ${String(forA.wins)}, ${label.b} above on ${String(forA.losses)}, tied on ${String(forA.ties)}; p ${label.a} above ${forA.p.toFixed(4)}, p ${label.b} above ${forB.p.toFixed(4)}`;
@@ -220,13 +221,18 @@ export function levelLines({ label, a, b, salt, unseal }: Asked): string[] {
 }
 
 if (import.meta.main) {
-  await runCommand({ name: "levels", usage: USAGE, options: OPTIONS }, (args: CommandArgs) => {
-    const dataset = args.required("dataset");
-    const label = { a: args.required("a"), b: args.required("b") };
-    const salt = args.value("salt");
-    if (salt === null && args.flag("unseal")) args.die("--unseal reads beside --salt");
-    const a = armOf(dataset, label.a);
-    const b = armOf(dataset, label.b);
-    console.log(levelLines({ label, a, b, salt, unseal: args.flag("unseal") }).join("\n"));
+  const { values } = parseArgs({ args: Bun.argv.slice(2), options: OPTIONS, strict: true });
+  const { dataset, a, b, salt = null, unseal = false } = values;
+  if (dataset === undefined || a === undefined || b === undefined) {
+    throw new Error("usage: levels.ts --dataset <dir> --a <arm> --b <arm> [--salt <text> [--unseal]]");
+  }
+  if (salt === null && unseal) throw new Error("--unseal reads beside --salt");
+  const lines = levelLines({
+    label: { a, b },
+    a: armOf(resolve(dataset), a),
+    b: armOf(resolve(dataset), b),
+    salt,
+    unseal,
   });
+  console.log(lines.join("\n"));
 }

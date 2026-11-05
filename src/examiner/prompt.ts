@@ -137,7 +137,7 @@ export function systemPrompt(reference: "in-home" | "unseen", tries: "given" | "
 /** The budget as a fact for an Examiner, writing tasks or drafting the exam they are written
  *  under. */
 export function budgetLine({ modelTurns, minutes, solves }: SolveBudget): string {
-  return `Every solve of a task is held to ${modelTurns === null ? "no fixed number of the solver's own turns" : `${plural(modelTurns, "turn")} of the solver's own`}, a turn being one reply with the tool calls in it, and ${plural(minutes, "minute")}, and a comparison solves each task ${plural(solves, "time")} under each harness. This is the budget, and it may change as the campaign goes on; it is no target of yours.`;
+  return `Every solve of a task is held to ${modelTurns === null ? "no fixed number of the solver's own turns" : `${plural(modelTurns, "turn")} of the solver's own`}, a turn being one reply with the tool calls in it, and ${plural(minutes, "minute")}, and a comparison solves each task ${plural(solves, "time")} under each harness. This is the budget, fixed by the campaign's setting for every solve of it; it is no target of yours.`;
 }
 
 /** The opening message: the operator's brief where the campaign opened from one, the domain's

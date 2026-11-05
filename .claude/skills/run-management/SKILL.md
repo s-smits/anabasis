@@ -446,8 +446,9 @@ log moved, and says what this observer has not seen:
 - **What it cost.** One pass a host (`tools/wri/pass.ts`) does the reading at the lowest priority, one
   reader at a time, for at most 30 s once in 4 minutes however many sessions look, and each reader
   starts only where the one-minute load leaves a core under the line where a solve waits. A look waits
-  for it at most 20 s. Under load the readers are shed, and said to be. `posture` alone loads a local
-  model, on one thread, and only for words it has not embedded: its vectors are kept after every batch,
+  for it at most 20 s. Under load the readers are shed, and said to be. `posture`, `restated` and
+  `nearness` alone load a local model, on one thread, and only for words not yet embedded: their vectors
+  are kept after every batch,
   so a read the 30 s cuts goes on from there at the next pass.
 - **What a cut says.** `⚠ not read since the last look: <readers>; <why>` names each reader that read
   nothing past this observer's last look, on a log that moved since, whatever stopped it. It comes
@@ -458,7 +459,7 @@ log moved, and says what this observer has not seen:
   look exits 1.
 - **Where it lies.** Results lie in the main worktree's `.ana/pulse/readers/`, and each observer's copy
   of a reader with news in `<state>.d/<run>/`. Both hold hidden values as the log does, and no seat can
-  read them (`test/runs-pulse-readers.test.ts`, and `test/wri-posture.test.ts` for `posture`'s vectors,
+  read them (`test/runs-pulse-readers.test.ts`, and `test/wri-posture.test.ts` for the readers' vectors,
   which lie in the same folders). A result may come from another session's commit.
 
 ## Stop

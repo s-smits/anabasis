@@ -125,7 +125,7 @@ Each runs as `bun tools/wri/wri.ts <verb>` from the checkout. The usage block at
 
 ### The readers, derived
 
-Twenty-seven deterministic readers take one log and print what it holds (`READERS`,
+Twenty-nine deterministic readers take one log and print what it holds (`READERS`,
 `tools/wri/derive.ts`): the rows and triggers, the ending, the readings, the served models
 (`degradations`), the climb, the gap to the answer on record, the campaign's view and its table's
 next move, the iteration's trigger (`loop`), the commit (`source`), the logged readings (`logged`),
@@ -164,7 +164,14 @@ answer); and what writes (`wri.ts start`, `lanes`, `collect`, `synthesis`, `inde
 `wri2p2.ts open`, `tools/c/rejections.ts`, `tools/d2/close.ts`) or calls a paid model
 (`system-path-simulation/scripts/live-seat.ts` and `referee-seat.ts`, `compare-systems/scripts/systems.ts`).
 
-`posture` is the one reader that runs a model, a local one, and keeps something: it labels each unit
+`restated` and `nearness` run the same local model on two other texts. `restated` groups the Referee's
+reasons at cosine 0.93 and names the groups of three or more, and any one ruled two ways, with the
+checks and rulings, so one complaint read 41 times is read once. `nearness` says how close each Examiner
+session's tasks read to earlier ones, and how many groups a comparison's scored tasks fall in. Within a
+log near tasks tied and split as far ones did, so read it for how alike an exam's words are and not as
+a dependence between tasks. Neither prints a reason or a task's text.
+
+`posture` labels with a model too, and it was the first to keep something: it labels each unit
 of a log's prose, the words a turn holds, with the nearest of a fixed set of anchors, and appends
 each batch's vectors to the reader store under `.ana/pulse/`, so a cut read goes on from where it was
 (`tools/wri/embed.ts` owns the model and the store, for any reader that wants vectors). It prints counts by seat, session and ending, never a passage. Its labels are leads and decide

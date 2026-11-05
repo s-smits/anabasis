@@ -32,8 +32,9 @@ import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime
 import { isString } from "#src/meta/json-shape.ts";
 import { homedir } from "#src/meta/os.ts";
 import { dirname, join } from "#src/meta/path.ts";
+import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { folderOf } from "#tools/runs/pulse-readers.ts";
+import { folderOf, storeOf } from "#tools/runs/pulse-readers.ts";
 
 /** Texts in, one vector out for each: tests inject one, a read loads the pinned model. */
 export type Embed = (texts: readonly string[]) => Promise<readonly Float32Array[]>;
@@ -126,12 +127,45 @@ export async function vectorsOf(log: string, wanted: readonly string[], { store,
   return { ...found, vectorOf: (words: string) => vectors.get(keyOf(words)) ?? new Float32Array() };
 }
 
+/** `vectorsOf` for a reader's lines: `stopped` is the one line it then prints, and `unkept` the line to
+ *  print beside its reading, each naming the reader. */
+export async function vectorLines(name: string, log: string, wanted: readonly string[], ways: EmbedWays) {
+  const { vectorOf, embedded, missing, stopped, unkept } = await vectorsOf(log, wanted, ways);
+  return {
+    vectorOf,
+    embedded,
+    stopped:
+      stopped === null
+        ? null
+        : `${name}: no reading, the local model did not finish, ${String(embedded)} of ${String(missing)} texts embedded: ${stopped}`,
+    unkept:
+      unkept === null ? [] : [`${name}: the vector store cannot be written, so nothing is kept: ${unkept}`],
+  };
+}
+
 /** Cosine of two normalised vectors. */
 export const dot = (one: Float32Array, other: Float32Array) => {
   let sum = 0;
   for (let at = 0; at < one.length; at += 1) sum += (one[at] ?? 0) * (other[at] ?? 0);
   return sum;
 };
+
+/** Which group each vector falls in, by its index: two at `least` or above share one, and so does
+ *  whatever links them, so a group's size reads as a chain of near texts and no text's own closeness. */
+export function groupsOf(vectors: readonly Float32Array[], least: number): number[] {
+  const parent = vectors.map((_, at) => at);
+  const root = (at: number): number => {
+    let found = at;
+    while ((parent[found] ?? found) !== found) found = parent[found] ?? found;
+    return found;
+  };
+  for (const [at, vector] of vectors.entries()) {
+    for (const [other, near] of vectors.slice(at + 1).entries()) {
+      if (dot(vector, near) >= least) parent[root(at + 1 + other)] = root(at);
+    }
+  }
+  return vectors.map((_, at) => root(at));
+}
 
 /** The pinned model on one thread, from its folder where that holds all of it, else fetched there. */
 export async function localModel(): Promise<Embed> {
@@ -156,4 +190,20 @@ export async function localModel(): Promise<Embed> {
     const width = dims[1] ?? 0;
     return texts.map((_, at) => Float32Array.from(data.slice(at * width, (at + 1) * width)));
   };
+}
+
+/** A reader's command line: `bun tools/wri/<name>.ts <log> [--store <dir>]`. */
+export async function runVectorReader(
+  name: string,
+  readOf: (log: string, ways: EmbedWays) => Promise<readonly string[]>,
+): Promise<void> {
+  const { values, positionals } = parseArgs({
+    args: runtimeProcess.argv.slice(2),
+    allowPositionals: true,
+    options: { store: { type: "string" } },
+  });
+  const [log] = positionals;
+  if (log === undefined) throw new Error(`name a log: bun tools/wri/${name}.ts <log> [--store <dir>]`);
+  const store = values.store ?? storeOf(runtimeProcess.cwd());
+  console.log((await readOf(log, { store, load: localModel })).join("\n"));
 }

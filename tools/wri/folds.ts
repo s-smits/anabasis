@@ -68,6 +68,9 @@ export interface Solve {
   readonly cancelledBy: string | null;
   readonly seconds: number;
   readonly calls: string[];
+  /** The program each of its `bash` calls ran first, past `cd` and assignments: a harness's
+   *  `.toolchain/bin` programs are reached on the shell's path, so they show only here. */
+  readonly programs: string[];
   errors: number;
   /** A limit its ending does not name, or null: "last turn" where the turns its end records are
    *  every turn its start allowed. Read from the end, since a call's turn counted from 0 in logs up
@@ -254,6 +257,16 @@ export function tallyOf(tested: JsonValue | undefined) {
 export const items = (value: JsonValue | undefined): readonly JsonValue[] =>
   Array.isArray(value) ? value : [];
 export const strings = (value: JsonValue | undefined): string[] => items(value).filter(isString);
+/** The program one shell line runs first: the first word of its first line's segments that is no
+ *  assignment and no `cd`, since nearly every line of a solve opens with one, or none. */
+const commandWords = (line: string): string[] => {
+  const words = (line.split("\n")[0] ?? "").split(/&&|;/).map((segment) => segment.trim().split(/\s+/));
+  const word = words
+    .flatMap((each) => each.filter((part) => !/^\w+=/.test(part)).slice(0, 1))
+    .find((each) => each !== "cd");
+  return word === undefined || word === "" ? [] : [word.replace(/^.*\//, "")];
+};
+
 /** Whether a solve measured its harness: a non-result is in no pair, and a rerun replaced it. A
  *  solver's flag is its side's own fail, as the comparison counts it. */
 export const measured = (solve: Solve): boolean => ["pass", "fail", "flagged"].includes(solve.outcome ?? "");
@@ -308,6 +321,7 @@ function solvesOf(
           cancelledBy: isString(ending?.cancelledBy) ? ending.cancelledBy : null,
           seconds: count(end?.seconds),
           calls: [],
+          programs: [],
           errors: 0,
           limit: modelTurns !== null && count(end?.turns) === modelTurns ? "last turn" : null,
           model: condition?.model ?? "",
@@ -320,6 +334,7 @@ function solvesOf(
     const solve = call.seat === "solve" ? solves.get(call.id) : undefined;
     if (solve === undefined || call.part !== "call") continue;
     solve.calls.push(call.tool);
+    if (call.tool === "bash") solve.programs.push(...commandWords(text(asRecord(call.args)?.command)));
     solve.errors += call.isError ? 1 : 0;
   }
   return [...solves.values()];

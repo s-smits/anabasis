@@ -112,6 +112,9 @@ export const READERS: readonly Reader[] = [
   skillReader("ambition", "examiner-complexity/scripts/ambition.ts"),
   skillReader("exams", "examiner-complexity/scripts/exams.ts"),
   skillReader("zone", "examiner-complexity/scripts/zone.ts"),
+  { name: "answers", args: (log) => ["tools/wri/answers.ts", log] },
+  { name: "waits", args: (log) => ["tools/wri/waits.ts", log] },
+  { name: "routes", args: (log) => ["tools/wri/routes.ts", log] },
   skillReader("versions", "harness-audit/scripts/harness-versions.ts"),
   skillReader("chain", "harness-audit/scripts/harness-versions.ts", "--blind"),
 ];

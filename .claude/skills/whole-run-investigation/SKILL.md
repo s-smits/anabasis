@@ -125,7 +125,7 @@ Each runs as `bun tools/wri/wri.ts <verb>` from the checkout. The usage block at
 
 ### The readers, derived
 
-Twenty-three deterministic readers take one log and print what it holds (`READERS`,
+Twenty-six deterministic readers take one log and print what it holds (`READERS`,
 `tools/wri/derive.ts`): the rows and triggers, the ending, the readings, the served models
 (`degradations`), the climb, the gap to the answer on record, the campaign's view and its table's
 next move, the iteration's trigger (`loop`), the commit (`source`), the logged readings (`logged`),
@@ -133,7 +133,9 @@ its dollars a promotion (`cost`) and row of the release table (`table`), each pr
 with the measure that won each task (`replay`), the conditions, the scored tasks' public input
 (`tasks`), the next draw, what a Builder and an Examiner opening would be told, each Examiner
 session's admissions (`ambition`) and drafts (`exams`), where each comparison sits in the reference's
-power zone (`zone`), and the kept versions measured (`versions`) and blind (`chain`). `chain` and `tasks` carry no result, so a lane that grades before it reads an
+power zone (`zone`), whether a side repeats its own answers (`answers`), how much of a solve's or a
+session's time went inside its calls (`waits`), how a side's passes got there (`routes`), and the kept
+versions measured (`versions`) and blind (`chain`). `chain` and `tasks` carry no result, so a lane that grades before it reads an
 outcome (34) reads them first. `bun run runs pulse` runs the same list for each look
 (run-management, "Watch"). `derive` runs
 them all over a log into the main worktree's `data/derived/<campaign>/`, one `<reader>.txt` each,

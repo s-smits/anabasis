@@ -125,7 +125,8 @@ reads the sign to watch (section 9).
   writes new tasks before the next comparison; one that aims higher takes longer and admits fewer.
   Read hours to the next comparison beside the tasks it admitted.
 - **Practice against held-out supply.** A released task teaches the Builder and is never scored;
-  at most half the tasks with room are released. Watch the frontier near the floor of eight.
+  a release takes at most half of what is held, and every release after the first leaves at least
+  the floor of eight frontier tasks. Watch the frontier near that floor.
 - **Builder freedom against fitting practice.** The one limit is that a harness names no task
   (section 2), so it can grow programs shaped to practice tasks. Practice gains that held-out
   comparisons do not repeat are the sign.
@@ -319,7 +320,9 @@ setting as the campaign's first run starts. The setting fixes the solver, its li
 and `--solves`, and is their one record; a conflicting value is refused because it defines a
 different campaign. Practice release uses only reference solves
 (`releaseOrder`, `src/kernel/reports.ts`), so the candidate's held-out wins cannot affect
-the released set (rule 3). At most half the tasks with room are released.
+the released set (rule 3). A release takes at most half of what is held, and of the tasks a
+reading left room on, at most half; every release after the first leaves at least the comparison
+floor of frontier tasks (`practiceDue`, `src/campaign/decide.ts`).
 
 **What refuses a move**: comparison admission (`src/campaign/admission.ts`), session admission, and
 the stop rule, which only `--past-stop "<why>"` passes. A command writes nothing before its last

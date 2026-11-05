@@ -106,7 +106,7 @@ describe("pre-push", () => {
     const result = push([update(docs, base)]);
     expect(result.status).toBe(0);
     expect(result.stderr).toContain(
-      "documentation only: git diff --check and the secret scan passed on 1 commit.",
+      "documentation only: git diff --check, the formatter and the secret scan passed on 1 commit.",
     );
     expect(gatesRun(log)).toEqual([]);
   });
@@ -129,6 +129,21 @@ describe("pre-push", () => {
       expect(gatesRun(log)).toEqual([]);
     },
   );
+
+  it("refuses a file biome would rewrite at the pushed head, whatever the working tree holds", () => {
+    const head = git(
+      "commit-tree",
+      withFile(docs, "loose.ts", "export const loose = {a:1}\n"),
+      "-p",
+      docs,
+      "-m",
+      "loose",
+    );
+    const result = push([update(head, docs)]);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(`biome would rewrite ${short(head)}:loose.ts`);
+    expect(gatesRun(log)).toEqual([]);
+  });
 
   it("refuses a push that adds a credential-shaped literal, documentation included, before any step runs", () => {
     const key = ["AKIA", "5J3KLMNOPQRSTUVW"].join("");
@@ -215,9 +230,30 @@ describe("pre-push", () => {
     const oldDocs = git("commit-tree", withFile(docs, "gone.txt"), "-p", oldTrunk, "-m", "docs");
     const oldSource = git("commit-tree", withFile(source, "gone.txt"), "-p", oldDocs, "-m", "source");
     const oldSecond = git("commit-tree", withFile(second, "gone.txt"), "-p", oldSource, "-m", "second");
-    const edited = git("commit-tree", withFile(source, "extra.ts"), "-p", docs, "-m", "source");
-    const replayed = git("commit-tree", withFile(second, "extra.ts"), "-p", edited, "-m", "second");
-    const beside = git("commit-tree", withFile(source, "beside.ts"), "-p", source, "-m", "beside");
+    const edited = git(
+      "commit-tree",
+      withFile(source, "extra.ts", "export const extra = 1;\n"),
+      "-p",
+      docs,
+      "-m",
+      "source",
+    );
+    const replayed = git(
+      "commit-tree",
+      withFile(second, "extra.ts", "export const extra = 1;\n"),
+      "-p",
+      edited,
+      "-m",
+      "second",
+    );
+    const beside = git(
+      "commit-tree",
+      withFile(source, "beside.ts", "export const beside = 1;\n"),
+      "-p",
+      source,
+      "-m",
+      "beside",
+    );
     const result = push(
       [update(edited, oldSource, "parent"), update(replayed, oldSecond), update(beside, absent, "beside")],
       verify,

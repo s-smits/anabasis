@@ -1,6 +1,6 @@
 /**
  * What `.githooks/pre-push` checks before anything leaves this clone: `git diff --check` on each commit
- * a push adds and the secret scan on what it adds, and, where the push asks with
+ * a push adds, the formatter on the files it changes (`unformatted`) and the secret scan on what it adds, and, where the push asks with
  * `ANA_PUSH_VERIFY=1 git push`, every step of the CI gate with the suite replaced by the tests one
  * import away from what each pushed head changed (`--static`). It reads Git's ref lines on stdin. A
  * pushed commit is unproved until `bun run land -- <top> --sanitize` or `--merge` has run its own
@@ -63,6 +63,9 @@ const ABSENT = /^0+$/u;
  *  as one its lease refused, marks nothing. */
 const MARK_WAIT_MS = 120_000;
 
+/** What `format:check` reads: every file biome formats. */
+const FORMATTED = /\.(?:[cm]?[jt]sx?|jsonc?|css)$/u;
+
 const say = (line: string): void => console.error(`pre-push: ${line}`);
 
 /** The commits among `line` that fail `git diff --check`, each shown as Git shows it. */
@@ -85,6 +88,31 @@ function secretsIn(root: string, line: readonly string[], tips: readonly string[
   });
   for (const shown of found) console.error(shown);
   return found.length > 0;
+}
+
+/** The files each tip changes that biome would rewrite, each as `<tip>:<path>`. The pre-commit hook
+ *  checks staged files, but a rebase, a cherry-pick or `--no-verify` records a commit without it,
+ *  and on 5 November a stack head reached `bun run land` with an unformatted file. Biome reads each
+ *  file's bytes at the tip from stdin, so the working tree may hold anything; an excluded path such
+ *  as `vendor/` comes back unchanged. */
+function unformatted(root: string, line: readonly string[], tips: readonly string[]): string[] {
+  const biome = join(import.meta.dir, "../../node_modules/@biomejs/biome/bin/biome");
+  return tips.flatMap((tip) => {
+    const first = line.find((commit) => gitSays(root, ["merge-base", "--is-ancestor", commit, tip]));
+    if (first === undefined) return [];
+    const changed = lines(
+      git(root, ["diff", "--name-only", "--diff-filter=ACMR", parentOf(root, first), tip]),
+    );
+    return changed.flatMap((path) => {
+      if (!FORMATTED.test(path)) return [];
+      const input = runSync(["git", "show", `${tip}:${path}`], { cwd: root }).stdout;
+      const output = runSync([capturedExecPath, biome, "format", `--stdin-file-path=${path}`], {
+        cwd: root,
+        input,
+      });
+      return decodeOutput(input) === decodeOutput(output.stdout) ? [] : [`${short(tip)}:${path}`];
+    });
+  });
 }
 
 /** Marks `mergeable` pending on each pushed head, and on the head of each open pull request stacked
@@ -214,22 +242,29 @@ async function checked(
     say("the secret scan found a credential-shaped literal in what this push adds. Nothing was pushed.");
     return false;
   }
+  const misformatted = unformatted(root, line, tips);
+  if (misformatted.length > 0) {
+    say(
+      `biome would rewrite ${misformatted.join(", ")}; run bun run format -- <paths> and amend. Nothing was pushed.`,
+    );
+    return false;
+  }
   const source = line.filter((commit) => changesSource(root, commit));
   if (source.length === 0) {
     say(
-      `documentation only: git diff --check and the secret scan passed on ${plural(line.length, "commit")}.`,
+      `documentation only: git diff --check, the formatter and the secret scan passed on ${plural(line.length, "commit")}.`,
     );
     return true;
   }
   // git's own `--verify` only says that the hook runs, so a push cannot carry the choice as a flag.
   if (runtimeProcess.env.ANA_PUSH_VERIFY !== "1") {
     say(
-      `git diff --check and the secret scan passed on ${plural(line.length, "commit")}; ANA_PUSH_VERIFY=1 adds the static steps and nearby tests, and bun run land -- <top> --sanitize proves the stack.`,
+      `git diff --check, the formatter and the secret scan passed on ${plural(line.length, "commit")}; ANA_PUSH_VERIFY=1 adds the static steps and nearby tests, and bun run land -- <top> --sanitize proves the stack.`,
     );
     return true;
   }
   say(
-    `git diff --check and the secret scan passed on ${plural(line.length, "commit")}; the suite waits for bun run land -- <top> --sanitize.`,
+    `git diff --check, the formatter and the secret scan passed on ${plural(line.length, "commit")}; the suite waits for bun run land -- <top> --sanitize.`,
   );
   const failed = await proveCommits(
     root,

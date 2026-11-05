@@ -17,7 +17,7 @@ first line, and the round trip through the linter mostly disappears.
   relative path. Elsewhere an import that climbs three or more directories uses the aliases of
   `package.json` (`#src/…`, `#tools/…`, `#skills/…`), and one or two levels stay relative.
 - Biome formats: two spaces, width 110, double quotes. Do not align or wrap by hand; run
-  `bun run format`.
+  `bun run format`, or `bun run format -- <paths>` for only those files.
 - `bun run typecheck` (`bun check`) covers the paths in `tsconfig.json`: `src`, `tools`,
   `vendor`, `test`, `studies` and `.claude`. Skill scripts receive typechecking, lint and their
   owning tests, including `test/skill-scripts.test.ts` and `test/meta-cli.test.ts`.

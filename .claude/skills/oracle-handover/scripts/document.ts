@@ -20,12 +20,12 @@
  */
 import * as ts from "typescript5";
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
-import { readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
-import { gitOutput, gitText } from "#src/meta/git.ts";
-import { basename, dirname, extname, resolve } from "#src/meta/path.ts";
+import { existsSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
+import { gitOutput, gitText, mainTree } from "#src/meta/git.ts";
+import { basename, dirname, extname, join, resolve } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { publishedAt } from "#tools/runs/code.ts";
-import { hostsOf, ownName, unloadedHosts } from "#tools/runs/host-config.ts";
+import { hostsOf, ownName } from "#tools/runs/host-config.ts";
 import { ghOrThrow } from "#tools/runtime/pulls.ts";
 import { scanText } from "#tools/secrets/rules.ts";
 import { DEFAULT_MAX_CHARS, fenced, sliceRun } from "./slice.ts";
@@ -235,10 +235,11 @@ async function documentOf(partsFile: string, repo: string, commit: string) {
 
 /** This machine's name, then each peer's names, as `ANA_HOSTS` gives them: the aliases' order. */
 function machinesOf(): string[][] {
-  const unread = unloadedHosts(runtimeProcess.cwd());
-  if (unread !== null) {
+  const file = join(mainTree(runtimeProcess.cwd()), ".env.runs");
+  const unloaded = runtimeProcess.env.ANA_HOSTS === undefined && existsSync(file);
+  if (unloaded && /^ANA_HOSTS=/mu.test(readFileSync(file, "utf8"))) {
     throw new CommandFailure(
-      `${unread}: run with --env-file=<that file>, so that every host name is aliased`,
+      `${file} names ANA_HOSTS, and this command did not load it: run with --env-file=<that file>, so that every host name is aliased`,
     );
   }
   return [[ownName()], ...hostsOf().map((host) => [host.name, host.ssh.replace(/^.*@/u, "")])];

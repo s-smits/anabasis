@@ -138,7 +138,6 @@ describe("search transport and discovery", () => {
        await search(["needle"], { local: async () => ({ matches: [] }) });`,
         {
           ANA_HOSTS: JSON.stringify([made.host, peer]),
-          ANA_SEARCH_ROOTS: "[]",
           FAKE_EXECUTE: "1",
           FAKE_RUN_CLI: "1",
           FAKE_FLEET: JSON.stringify({ "fake-offline": { offline: true } }),
@@ -157,11 +156,10 @@ describe("search transport and discovery", () => {
     }
   });
 
-  test("discovers campaign folders, the archive and private note roots from a fixture repository", () => {
+  test("discovers campaign folders and the archive from a fixture repository", () => {
     runTextSyncOrThrow(["git", "init", "-q", root]);
     const script = resolve("tools/runs/search.ts");
-    const extra = fixture("private/transcript.txt", "private needle\n");
-    const env = { ...Bun.env, ANA_HOSTS: "[]", ANA_SEARCH_ROOTS: JSON.stringify([dirname(extra)]) };
+    const env = { ...Bun.env, ANA_HOSTS: "[]" };
     const run = (scope: string) => {
       const result = runSync([capturedExecPath, script, "needle", "--in", scope], { cwd: root, env });
       expect(result.exitCode).toBe(0);
@@ -172,7 +170,7 @@ describe("search transport and discovery", () => {
     expect(logs).toContain("needle in a log");
     expect(logs).not.toContain("needle in notes");
     const notes = run("notes");
-    expect(notes).toContain("private needle");
+    expect(notes).toContain("needle in notes");
     expect(notes).not.toContain("needle in a log");
     expect(run("all")).not.toContain("PRIVATE_SENTINEL");
     fixture("notes/dash.txt", "-literal\n");

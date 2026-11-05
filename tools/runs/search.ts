@@ -1,8 +1,7 @@
 /**
  * Find an old analysis without fetching campaigns or asking machines one by one.
- * `runs search <pattern> [--regex] [--ignore-case] [--host <name>]... [--here]
- * [--in logs|notes|all] [--max <chars>]` searches campaign folders and the main tree's
- * notes and docs. ANA_SEARCH_ROOTS adds private note roots. Each peer runs this script
+ * `runs search <pattern> [--regex] [--ignore-case] [--here] [--in logs|notes|all] [--max <chars>]`
+ * searches campaign folders and the main tree's notes and docs. Each peer runs this script
  * in its configured tree through the runs transport, within its 30-second deadline.
  * Whole matches spill locally when either the line window or the output cap cuts text.
  * Every host searches with rg (`--regex` takes rg's syntax); one installed in ~/.local/bin is found
@@ -10,8 +9,7 @@
  */
 import { existsSync, lstatSync, mkdtempSync, realpathSync } from "#src/meta/filesystem.ts";
 import { mainTree } from "#src/meta/git.ts";
-import { capturedJsonParse, parseJsonAs } from "#src/meta/json-runtime.ts";
-import { isString } from "#src/meta/json-shape.ts";
+import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { homedir, tmpdir } from "#src/meta/os.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -19,7 +17,7 @@ import { runCaptured } from "#src/meta/subprocess.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { type Host, hostsOf } from "./host-config.ts";
 import { askedScript } from "./hosts.ts";
-import { everyRun, HERE, isCampaign } from "./registry.ts";
+import { everyRun, isCampaign } from "./registry.ts";
 
 interface Match {
   readonly path: string;
@@ -75,7 +73,6 @@ const EXCLUSION_GLOBS = EXCLUDED.map((pattern) => new Bun.Glob(pattern));
 const OPTIONS = {
   regex: { type: "boolean", default: false },
   "ignore-case": { type: "boolean", default: false },
-  host: { type: "string", multiple: true },
   here: { type: "boolean", default: false },
   in: { type: "string", default: "all" },
   max: { type: "string", default: "20000" },
@@ -93,17 +90,13 @@ function checked(query: Query): void {
 function rootsOf(scope: string): string[] {
   const repo = runtimeProcess.cwd();
   const main = mainTree(repo);
-  const extra = capturedJsonParse(runtimeProcess.env.ANA_SEARCH_ROOTS ?? "[]");
-  if (!Array.isArray(extra) || !extra.every(isString)) {
-    throw new Error("ANA_SEARCH_ROOTS takes a JSON list of paths");
-  }
   const logs =
     scope === "notes"
       ? []
       : everyRun(repo)
           .filter(isCampaign)
           .map((run) => dirname(run.path));
-  const notes = scope === "logs" ? [] : [join(main, "notes"), join(main, "docs"), ...extra];
+  const notes = scope === "logs" ? [] : [join(main, "notes"), join(main, "docs")];
   return [
     ...new Set(
       [...logs, ...notes].map((path) =>
@@ -224,32 +217,20 @@ export async function search(args: readonly string[], dependencies: Dependencies
   const max = Number(values.max);
   if (pattern === undefined || extra !== undefined || !["logs", "notes", "all"].includes(scope)) {
     throw new Error(
-      "usage: runs search <pattern> [--regex] [--ignore-case] [--host <name>]... [--here] [--in logs|notes|all] [--max <chars>]",
+      "usage: runs search <pattern> [--regex] [--ignore-case] [--here] [--in logs|notes|all] [--max <chars>]",
     );
   }
   if (!Number.isSafeInteger(max) || max < 1) throw new Error("--max takes a positive integer");
-  if (values.here && (values.host?.length ?? 0) > 0) throw new Error("--here cannot be combined with --host");
   const query = { pattern, regex: values.regex, ignoreCase: values["ignore-case"] };
   checked(query);
-  const known = dependencies.hosts ?? hostsOf();
-  const targets = values.here
-    ? []
-    : known.filter((host) => values.host === undefined || values.host.includes(host.name));
-  for (const name of values.host ?? []) {
-    if (name !== HERE && !known.some((host) => host.name === name)) {
-      throw new Error(`unknown search host: ${name}`);
-    }
-  }
+  const targets = values.here ? [] : (dependencies.hosts ?? hostsOf());
   const local = dependencies.local ?? ((asked: Query, within: string) => searchLocal(asked, rootsOf(within)));
-  const here =
-    values.host === undefined || values.host.includes(HERE)
-      ? Promise.resolve()
-          .then(() => local(query, scope))
-          .then(
-            (result) => ({ host: "here", result }),
-            (error: unknown) => ({ host: "here", error: errorMessage(error) }),
-          )
-      : Promise.resolve(null);
+  const here = Promise.resolve()
+    .then(() => local(query, scope))
+    .then(
+      (result) => ({ host: "here", result }),
+      (error: unknown) => ({ host: "here", error: errorMessage(error) }),
+    );
   const remoteArgs = [
     "--in",
     scope,
@@ -275,11 +256,11 @@ export async function search(args: readonly string[], dependencies: Dependencies
     }),
   );
   const [own, peers] = await Promise.all([here, away]);
-  const results = [...(own === null ? [] : [own]), ...peers];
+  const results = [own, ...peers];
   await display(results, max, dependencies.print ?? console.log);
   // A peer that does not answer is named and leaves the answer standing. This machine's own search
   // failing, or nobody answering, is no search at all: until 5 November a machine with no `rg` exited 0.
-  if ((own !== null && "error" in own) || !results.some((one) => "result" in one)) {
+  if ("error" in own || !results.some((one) => "result" in one)) {
     runtimeProcess.exitCode = 1;
   }
 }

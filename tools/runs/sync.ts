@@ -1,78 +1,49 @@
 /**
- * One machine's `.env.runs` holds the settings; this carries them to every host `ANA_HOSTS` lists.
+ * What every machine `ANA_HOSTS` lists should hold, read at once and brought in step from this one.
  *
- *   bun run runs sync [--yes | --check] [--force] [--host <name>]...
+ *   bun run runs sync [--yes | --check] [--force]
  *
- * With no flag it prints what differs on each machine and changes nothing. `--yes` applies that, and
- * `--check` prints the same and exits 1 on any difference, or a host that did not answer, for a timer
- * to read. `--force` passes the two refusals that protect something still running. `--host` narrows it
- * to the machines it names, `here` among them. With no host and no pinned Python there is nothing to
- * do: it says so and exits 0 with no ssh, no bundle and no file, so a machine that never set any of
- * this runs as the one host it is.
+ * With no flag it prints what differs and changes nothing. `--yes` applies that and reads every machine
+ * again; `--check` exits 1 on a difference or a silent host, for a timer. With no host, no `ANA_PYTHON`
+ * and no `ANA_TOOLS` there is nothing to do: it says so and exits 0 with no ssh and no file.
  *
- * Until 5 November each machine kept its own. The central file named no `ANA_RUN_CAP` though a cap of
- * 3 was meant, its entries named no `checks` though both peers took checks, and neither peer's tree
- * held a `.env.runs`, so a verb or keeper there saw no `ANA_LOGINS` or `ANA_LOGIN_RUNS`, and every
- * login was allowed and uncapped. A second registry of hosts was removed on 25 October because nothing
- * kept it in step (`tools/runtime/router/hosts.ts`), so this extends `ANA_HOSTS`, the one list:
+ * Settings need no step: every remote verb carries them (`carriedTo`, `hosts.ts`), so a dry run only
+ * says what travels and no peer holds a copy to drift. Three things do live on a machine:
+ * - **Tools.** `ANA_TOOLS` is one table of each tool's version (`.env.runs.example`). A row with no
+ *   `install` leaves drift to report. Its `run` makes the tool do its job, and failing reads as drift
+ *   at any version: on 5 November a guard copied to another host named the
+ *   first host's home and exited 2 on every command, though its version read right. A host's `exclude`
+ *   lists tools it keeps outside the table, reported and never changed. Until then each tool was by
+ *   hand on each machine: git at three versions, and a guard installed on one of three.
+ * - **Python.** `ANA_PYTHON` pins a version under `pinnedPythonDir` through `uv`, which refuses in its
+ *   own words a version it lacks. Nothing is uninstalled, and a package nobody named stays and is said.
+ * - **Runner.** An installed runner is stale where git says its source moved since the receipt's commit.
  *
- * - **Settings.** A host's `<tree>/.env.runs` is generated from this machine's values of `CARRIED`,
- *   its `capacity` as `ANA_RUN_CAP`, and its entry's `settings` over those, an empty one writing none.
- *   It says it is generated, and a file that does not is refused by name. The write is a temporary
- *   file and a rename. A process reads its environment as it starts, so nothing running changes.
- *   `checks`, `packs` and `capacity` are read from `ANA_HOSTS` here and need no copy, and `ANA_HOSTS`
- *   itself stays here: a peer that held it would gather every listed host's records at its 05:00
- *   `retire`, and it names no entry for this machine.
- * - **Python.** `ANA_PYTHON` pins one version on every machine, in one folder, whatever package
- *   manager the host has: `uv` installs it under `~/.local/share/ana-python`, with
- *   `ANA_PYTHON_PACKAGES` in it where that is set, and a rename makes it the wall's first `python3`
- *   (`pinnedPythonDir`). Nothing is uninstalled, and a package nobody asked for is reported and
- *   stays. `hostPython` reads the result, so it is verified by what a solve finds. A move under a
- *   live campaign, or where the live count cannot be read, is refused unless `--force`, since a solve
- *   started after it would find another Python than the solves before it.
- * - **Runner.** An installed runner that differs from this tree's is reinstalled. Here that is refused
- *   unless `--force` while hosts are listed and none sets `checks`: the runner from 28 October sends
- *   a host checks only where its entry says so, so the install would move every check onto this
- *   machine without a word. A peer with no runner needs none (`run.sh` ships what a host runs).
+ * A change a seat would find (a Python, and a table row unless it says `"seats":false`) is refused on
+ * a host with a live or uncountable campaign unless `--force`: changing what a solver is given is the
+ * operator's (AGENTS.md section 3). One probe runs here and over ssh, reading in the wall's order of
+ * folders, since a login shell's PATH can miss what a machine holds or find another copy: on 5 November
+ * one host's wall found node 26.10.0 and its login shell 24.22.1. A row no seat finds falls back on the
+ * login shell's PATH as well.
  *
- * A credential never travels: `checked` refuses a key outside `CARRIED`, a key that looks like one and
- * a value that looks like one, naming the key and never the value. No `--env-file` of a host is opened
- * on any machine. Carrying a login stays the operator's. `uv.toml` in a home is reported where it
- * differs and not carried, since neither this nor a seat's `uv` reads it: a seat's home is its own.
+ * What it gives up: a verb a peer's own job starts sees no shared setting (`retire` reads none), and
+ * a hand edit of an installed runner file reads as in step.
  */
-import { readFileSync } from "#src/meta/filesystem.ts";
-import { parseJsonAs } from "#src/meta/json-runtime.ts";
-import { dirname, join } from "#src/meta/path.ts";
+import { gitMaybe } from "#src/meta/git.ts";
+import { capturedJsonParse } from "#src/meta/json-runtime.ts";
+import { asRecord, isBoolean, isString } from "#src/meta/json-shape.ts";
+import { join } from "#src/meta/path.ts";
 import { capturedExecPath, parseArgs, runtimeProcess } from "#src/meta/process.ts";
-import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
-import { pinnedPythonDir } from "#src/wall/policy.ts";
-import { bundled, payload } from "../runtime/router/payload.ts";
+import { decodeOutput, runCaptured, runSync } from "#src/meta/subprocess.ts";
+import { pinnedPythonDir, TOOLCHAIN_HOME_ROOTS } from "#src/wall/policy.ts";
 import { scanText } from "../secrets/rules.ts";
-import { quoted, shellPath, sshScript, treeBun } from "./host-command.ts";
-import {
-  capacityOn,
-  configuredRuntime,
-  type Host,
-  hostNamed,
-  hostsOf,
-  ownName,
-  unloadedHosts,
-} from "./host-config.ts";
-import {
-  CARRIED,
-  GENERATED,
-  type HostFacts,
-  hostFacts,
-  ROUTER,
-  runnerDigest,
-  SETTINGS_FILE,
-} from "./host-facts.ts";
-import { scriptOn } from "./hosts.ts";
+import { quoted, sshScript } from "./host-command.ts";
+import { type Host, hostsOf, ownName } from "./host-config.ts";
+import { carriedTo, scriptOn } from "./hosts.ts";
 import { liveEverywhere } from "./logins.ts";
+import { type HostPython, PYTHON_PROBE, pythonIn } from "./receipt.ts";
 import { HERE } from "./registry.ts";
 
-/** The runner files a tree makes, by digest. */
-type Runner = Readonly<Record<string, string>>;
 /** A machine to keep in step; `host` is undefined for this one. */
 interface Machine {
   readonly name: string;
@@ -82,331 +53,332 @@ interface Pin {
   readonly version: string;
   readonly packages: readonly string[];
 }
-/** One thing that differs on one machine. */
-interface Finding {
-  readonly part: "settings" | "python" | "runner";
-  readonly lines: readonly string[];
-  /** Why `--yes` leaves it, or null. */
-  readonly refused: string | null;
-  /** The change: a non-zero exit is a failure, and the second read says what it left. */
-  readonly apply: () => Promise<number>;
-}
-interface Plan {
-  readonly machine: Machine;
-  readonly facts: HostFacts | null;
-  readonly findings: readonly Finding[];
-  readonly notes: readonly string[];
+interface Tool {
+  readonly name: string;
+  readonly version: string;
+  readonly read: string;
+  readonly install: string | undefined;
+  readonly seats: boolean;
 }
 interface Options {
   readonly pin: Pin | null;
+  readonly tools: readonly Tool[];
   readonly force: boolean;
   readonly hosts: readonly Host[];
 }
+/** What one machine answered. */
+interface Facts {
+  readonly pythonPath: string;
+  readonly python: HostPython | null;
+  readonly uv: string;
+  /** The commit its runner's receipt names, or null where it holds no runner. */
+  readonly runner: string | null;
+  /** What each `Tool`'s read printed, in order; empty where it holds none. */
+  readonly tools: readonly string[];
+}
+/** One thing that differs on one machine. */
+interface Finding {
+  readonly line: string;
+  /** Whether a solve would find this change, so that a live campaign holds it back. */
+  readonly seats: boolean;
+  /** Why `--yes` leaves it, which no flag passes, or null. */
+  readonly blocked: string | null;
+  readonly apply: () => Promise<number> | number;
+}
+type Held = Finding & { readonly under: string | null; readonly refused: string | null };
+interface Plan {
+  readonly machine: Machine;
+  readonly facts: Facts | null;
+  readonly findings: readonly Held[];
+  readonly notes: readonly string[];
+}
 
-/** What sync carries to a host from this machine's environment; `ANA_RUN_CAP` is each host's own. */
-const SHARED = CARRIED.filter((key) => key !== "ANA_RUN_CAP");
-const CREDENTIAL = /TOKEN|KEY|SECRET|PASS|OAUTH|AUTH|CREDENTIAL|COOKIE|SESSION|PRIVATE/iu;
-/** A read runs `uv` and a Python there; a pin downloads one. */
-const READ_MS = 120_000;
-const PIN_MS = 900_000;
-const ROUTER_SCRIPT = "tools/runtime/router/install.ts";
-const INSTALL = join(import.meta.dir, "..", "runtime", "router", "install.ts");
+const MARK = "ana-sync-facts";
+const USERS = ["/usr/local", "/opt/homebrew", "/opt/zerobrew"];
+const BREWED = USERS.map((user) => `${user}/opt/python*/libexec/bin`).join(" ");
+const DEVELOPER = "$(xcode-select -p 2>/dev/null || :)";
+/** `toolchainPathDirs` as a shell word for any machine, each folder that is not there left to the
+ *  shell; `test/runs-sync.test.ts` holds it to the real one. */
+export const WALL_PATH = `"${pinnedPythonDir("$HOME")}:${USERS.map((user) => `${user}/bin`).join(":")}:$(sh -c 'ls -d ${BREWED}' 2>/dev/null | LC_ALL=C sort -r | tr '\\n' ':')${[
+  ...TOOLCHAIN_HOME_ROOTS.flatMap((root) => [`$HOME/${root}/bin`, `$HOME/${root}/shims`]),
+  "/usr/local/shims",
+  `${DEVELOPER}/usr/bin`,
+  `${DEVELOPER}/Toolchains/XcodeDefault.xctoolchain/usr/bin`,
+  "/usr/bin:/bin:/usr/sbin:/sbin",
+].join(":")}"`;
+/** A host's own programs first, then the wall's and its login shell's: where `uv` and an install look,
+ *  and a row no seat finds. */
+const TOOL_PATH = `"$HOME/.local/bin:$HOME/.bun/bin:${WALL_PATH.slice(1, -1)}:$PATH"`;
+const PYTHON_ROOT = join(pinnedPythonDir("$HOME"), "..");
+const READ_MS = 60_000;
+const APPLY_MS = 900_000;
+const INSTALL = "tools/runtime/router/install.ts";
+const TREE = join(import.meta.dir, "..", "..");
+/** What the installed runner is made of, `hosts.js` bundling the last three among them. */
+const RUNNER_SOURCE = [
+  "tools/runtime/router",
+  "tools/runs/host-config.ts",
+  "tools/runs/host-command.ts",
+  "src/meta/ssh.ts",
+];
 /** How many package names a line shows before it counts the rest. */
 const SHOWN = 6;
 
-/** Refuses a setting that may not travel, naming its key and never its value. */
-function checked(where: string, key: string, value: string): void {
-  if (CREDENTIAL.test(key)) throw new Error(`${where}: ${key} looks like a credential; sync carries none`);
-  if (!CARRIED.includes(key)) throw new Error(`${where}: sync carries ${CARRIED.join(", ")}, and not ${key}`);
-  if (scanText(key, value).length > 0) {
-    throw new Error(`${where}: the value of ${key} looks like a credential; sync carries none`);
+/** `ANA_TOOLS`, refused whole before anything is asked, and never quoted back. */
+function toolsOf(text: string): Tool[] {
+  if (text.trim() === "") return [];
+  if (scanText("ANA_TOOLS", text).length > 0) throw new Error("ANA_TOOLS holds what looks like a credential");
+  let parsed: unknown;
+  try {
+    parsed = capturedJsonParse(text);
+  } catch (error) {
+    throw new Error("ANA_TOOLS is not JSON", { cause: error });
   }
-  if (/['\\\r\n]/u.test(value)) {
-    throw new Error(
-      `${where}: the value of ${key} holds a quote, a backslash or a line break, which ${SETTINGS_FILE} takes none of`,
-    );
-  }
-}
-
-/** What `host`'s `.env.runs` should hold, by key: shared, then its capacity, then its own values. */
-function settingsFor(host: Host): Readonly<Record<string, string>> {
-  const shared = SHARED.flatMap((key) => {
-    const value = runtimeProcess.env[key];
-    return value === undefined || value === "" ? [] : [[key, value] as const];
-  });
-  const capacity = host.capacity === undefined ? [] : [["ANA_RUN_CAP", String(host.capacity)] as const];
-  const merged = Object.fromEntries([...shared, ...capacity, ...Object.entries(host.settings ?? {})]);
-  for (const [key, value] of Object.entries(merged)) checked(host.name, key, value);
-  return Object.fromEntries(Object.entries(merged).filter(([, value]) => value !== ""));
-}
-
-const generatedHeader = () =>
-  `${GENERATED} from the ${SETTINGS_FILE} of ${ownName()} and this host's ANA_HOSTS entry. Change it there; an edit here goes at the next sync.`;
-
-/** The temporary file and the rename, refusing again there a file sync did not generate. */
-const writeScript = (host: Host, text: string) =>
-  `set -e
-cd ${shellPath(host.tree)}
-f=${quoted(SETTINGS_FILE)}
-if [ -e "$f" ] && ! head -n 1 "$f" | grep -qF ${quoted(GENERATED)}; then
-  echo "$f was not generated by sync; it stays" >&2
-  exit 3
-fi
-t="$f.sync.$$"
-trap 'rm -f "$t"' EXIT
-printf '%s' ${quoted(text)} > "$t"
-mv -f "$t" "$f"`;
-
-function settingsFinding(host: Host, facts: HostFacts): Finding | null {
-  const wanted = settingsFor(host);
-  const file = facts.settings;
-  const path = `${host.tree}/${SETTINGS_FILE}`;
-  // Quoted whole, so a `#` ends no value, with each `$` escaped, since Bun expands one even in quotes.
-  const held = Object.entries(wanted).map(
-    ([key, value]) => `${key}='${value.replaceAll("$", String.raw`\$`)}'`,
-  );
-  const text = `${[generatedHeader(), ...held].join("\n")}\n`;
-  const apply = async () => runOn({ name: host.name, host }, writeScript(host, text), READ_MS);
-  if (file !== null && !file.generated) {
+  const table = Array.isArray(parsed) ? null : asRecord(parsed);
+  if (table === null) throw new Error("ANA_TOOLS takes an object of tools");
+  return Object.entries(table).map(([name, value]) => {
+    if (!/^[A-Za-z0-9._-]+$/u.test(name)) throw new Error(`ANA_TOOLS: ${name} is not a tool's name`);
+    const { version, read, run, install, seats } = asRecord(value) ?? {};
+    const absentOrText = (one: unknown) => one === undefined || isString(one);
+    const fair = [read, run, install].every(absentOrText) && (seats === undefined || isBoolean(seats));
+    if (!isString(version) || !fair) {
+      throw new Error(`ANA_TOOLS: ${name} takes a version, and may take read, run, install and seats`);
+    }
+    const shown = isString(read) ? read : `${name} --version`;
     return {
-      part: "settings",
-      lines: [`${path} was not generated by sync, and holds ${file.others.join(", ") || "no setting"}`],
-      refused: "take its settings out of it first: sync overwrites only a file it generated",
-      apply,
+      name,
+      version,
+      read: isString(run) ? `(${run}) >/dev/null 2>&1 || { echo does-not-run; exit 0; }\n${shown}` : shown,
+      install: isString(install) ? install : undefined,
+      seats: seats !== false,
     };
-  }
-  const had = file?.values ?? {};
-  const changes = [...new Set([...Object.keys(had), ...Object.keys(wanted)])]
-    .toSorted()
-    .filter((key) => had[key] !== wanted[key])
-    .map((key) => `${key}: ${had[key] ?? "(unset)"} -> ${wanted[key] ?? "(removed)"}`);
-  const gone = (file?.others ?? []).map((key) => `${key}: not one sync carries -> (removed)`);
-  const source =
-    file !== null && file.header !== generatedHeader() ? ["its header names another source"] : [];
-  if (changes.length + gone.length + source.length === 0 && file !== null) return null;
+  });
+}
+
+/** One command's output as one line, under `path`, and an empty line where it says nothing. */
+const lineOf = (command: string, path: string) =>
+  `(PATH="${path}"; export PATH; ${command}) 2>/dev/null </dev/null | tr '\\n' ' '; echo`;
+
+const probeOf = (tools: readonly Tool[]) =>
+  [
+    `wall=${WALL_PATH}`,
+    `tool=${TOOL_PATH}`,
+    `echo ${MARK}`,
+    lineOf("command -v python3", "$wall"),
+    lineOf(`python3 -I -c ${quoted(PYTHON_PROBE)}`, "$wall"),
+    lineOf("uv --version", "$tool"),
+    lineOf('cat "$HOME/.local/share/ana-runner/INSTALLED"', "$tool"),
+    ...tools.map(({ read, seats }) => lineOf(`sh -c ${quoted(read)}`, seats ? "$wall" : "$tool")),
+  ].join("\n");
+
+/** The facts in a probe's stdout, or null where it holds none: a login shell's chatter comes first. */
+function factsIn(stdout: string, tools: readonly Tool[]): Facts | null {
+  const lines = stdout.split("\n");
+  const at = lines.lastIndexOf(MARK);
+  if (at === -1) return null;
+  const [pythonPath, python, uv, receipt, ...read] = lines.slice(at + 1).map((line) => line.trim());
+  if (receipt === undefined || read.length < tools.length) return null;
   return {
-    part: "settings",
-    lines: [`${file === null ? "would create" : "would rewrite"} ${path}`, ...changes, ...gone, ...source],
-    refused: null,
-    apply,
+    pythonPath: pythonPath ?? "",
+    python: pythonIn(python ?? ""),
+    uv: uv ?? "",
+    runner: receipt === "" ? null : (/"commit":\s*"([^"]*)"/u.exec(receipt)?.[1] ?? "an unknown commit"),
+    tools: read,
   };
 }
 
-/** What a pin asks that `facts` lack: a version, and each package named. `pip` comes with any set. */
-function pythonLacks(facts: HostFacts, pin: Pin): string | null {
-  const { version, packages } = pin;
-  if (facts.python?.version !== version) {
+async function factsOf(machine: Machine, tools: readonly Tool[]): Promise<Facts | null> {
+  const probe = probeOf(tools);
+  const command = machine.host === undefined ? ["/bin/sh", "-c", probe] : sshScript(machine.host, probe);
+  const { exitCode, stdout } = await runCaptured(command, { timeout: READ_MS });
+  return exitCode === 0 ? factsIn(stdout, tools) : null;
+}
+
+/** The exit of `script` on `machine`, its output said here. */
+function runOn(machine: Machine, script: string): number {
+  const { host } = machine;
+  const command = host === undefined ? ["/bin/sh", "-c", script] : sshScript(host, script);
+  const { exitCode, stdout, stderr } = runSync(command, { timeout: APPLY_MS });
+  const said = `${decodeOutput(stdout)}${decodeOutput(stderr)}`.trimEnd();
+  if (said !== "") console.log(said.replaceAll(/^/gmu, "    "));
+  return exitCode ?? 1;
+}
+
+/** Each version a tool's line names: `v24.22.1` is 24.22.1, and 12.0.0 holds no 2.0.0. */
+const versionsIn = (line: string): readonly string[] => line.match(/\d(?:[\w.+-]*\w)?/gu) ?? [];
+
+const heldLine = (name: string, line: string) =>
+  line === "" ? `${name} absent` : `${name} ${versionsIn(line)[0] ?? line.slice(0, 40)}`;
+
+function toolFindings(machine: Machine, facts: Facts, tools: readonly Tool[]): Finding[] {
+  return tools.flatMap((tool, index) => {
+    const line = facts.tools[index] ?? "";
+    if (machine.host?.exclude?.includes(tool.name) === true || versionsIn(line).includes(tool.version)) {
+      return [];
+    }
+    const { install, seats } = tool;
+    return [
+      {
+        line: `${heldLine(tool.name, line)}, wants ${tool.version}`,
+        seats,
+        blocked: install === undefined ? "the table gives no install" : null,
+        apply: () => runOn(machine, `PATH=${TOOL_PATH}; export PATH\n${install ?? "exit 1"}`),
+      },
+    ];
+  });
+}
+
+/** What a pin asks that `python` lacks, or null: a version, then pip and each package named. */
+function pythonLacks(python: HostPython | null, { version, packages }: Pin): string | null {
+  if (python?.version !== version) {
     return `wants ${packages.length === 0 ? version : `${version} with pip, ${packages.join(", ")}`}`;
   }
   // As Python's packaging compares names: `typing_extensions` is `typing-extensions`.
   const normal = (one: string) => one.toLowerCase().replaceAll(/[-_.]+/gu, "-");
-  const held = new Set(facts.python.packages.map(normal));
-  const names = new Set([...held].map((one) => one.split("==")[0]));
-  const wanted = packages.length === 0 ? [] : [...packages, "pip"];
-  const lacking = wanted.filter((one) =>
-    one.includes("==") ? !held.has(normal(one)) : !names.has(normal(one)),
+  const have = new Set(python.packages.map(normal));
+  const names = new Set([...have].map((one) => one.split("==")[0]));
+  const lacking = ["pip", ...packages].filter((one) =>
+    one.includes("==") ? !have.has(normal(one)) : !names.has(normal(one)),
   );
   return lacking.length === 0 ? null : `lacks ${lacking.join(", ")}`;
 }
 
-const found = ({ python, pythonPath }: HostFacts) =>
-  python === null
-    ? `finds no python3 that answers${pythonPath === null ? "" : ` at ${pythonPath}`}`
-    : `finds ${python.version} at ${pythonPath ?? "?"} with ${String(python.packages.length)} packages`;
-
-/** The installed folder's shell script: never uninstalls, and swaps the link in one rename. */
-function pinScript(pin: Pin, uv: string): string {
-  const packages = pin.packages.map(quoted).join(" ");
+/** Never uninstalls, and swaps the link in one rename; `uv` says itself which versions it lacks. */
+function pinScript({ version, packages }: Pin): string {
+  const uv = "uv --no-config";
   return [
     "set -e",
-    `uv=${shellPath(uv)}`,
-    `root="${dirname(pinnedPythonDir("$HOME"))}"`,
+    `PATH=${TOOL_PATH}; export PATH`,
+    `root="${PYTHON_ROOT}"`,
     'mkdir -p "$root"',
     'export UV_PYTHON_INSTALL_DIR="$root/versions"',
-    `"$uv" --no-config python install --no-bin ${quoted(pin.version)}`,
-    `py="$("$uv" --no-config python find --managed-python ${quoted(pin.version)})"`,
-    ...(packages === ""
+    `${uv} python install --no-bin ${quoted(version)}`,
+    `py="$(${uv} python find --managed-python ${quoted(version)})"`,
+    ...(packages.length === 0
       ? []
-      : [`"$uv" --no-config pip install --python "$py" --system --break-system-packages ${packages}`]),
+      : [
+          `${uv} pip install --python "$py" --system --break-system-packages ${packages.map(quoted).join(" ")}`,
+        ]),
     'new="$root/bin.new.$$"',
     'ln -sfn "versions/$(basename "$(dirname "$(dirname "$py")")")/bin" "$new"',
     `"$py" -I -c 'import os,sys; os.replace(sys.argv[1], sys.argv[2])' "$new" "$root/bin"`,
   ].join("\n");
 }
 
-/** Why a pin stays out of `machine`: the first two no flag passes, and `held` is what a flag did not. */
-function pythonRefusal(machine: Machine, facts: HostFacts, pin: Pin, held: string | null): string | null {
-  const { uv, offered } = facts;
-  if (uv === null) {
-    return `no uv here: ${machine.host === undefined ? "set ANA_UV" : "set `uv` in its ANA_HOSTS entry"}`;
-  }
-  if (offered === false) return `uv ${uv.version} offers no Python ${pin.version}`;
-  if (held === null) return null;
-  return `${held}; a solve started after this would find another Python than the solves before it, and --force passes this`;
-}
+const pythonFound = ({ python, pythonPath }: Facts) =>
+  python === null
+    ? `finds no python3 that answers${pythonPath === "" ? "" : ` at ${pythonPath}`}`
+    : `finds ${python.version} at ${pythonPath} with ${String(python.packages.length)} packages`;
 
-function pythonFinding(
-  machine: Machine,
-  facts: HostFacts,
-  options: Options,
-  live: Awaited<ReturnType<typeof liveEverywhere>> | null,
-): Finding | null {
-  const { pin, force } = options;
-  if (pin === null) return null;
-  const lacks = pythonLacks(facts, pin);
-  if (lacks === null) return null;
-  const uv = facts.uv;
-  const running = live?.live.filter((run) => run.host === machine.name) ?? [];
-  const uncounted = live === null || live.unasked.includes(machine.name);
-  const count = `${String(running.length)} live: ${running.map(({ name }) => name).join(", ")}`;
-  const counted = running.length > 0 ? count : null;
-  const whyLive = uncounted ? "its live campaigns could not be counted" : counted;
-  const refused = pythonRefusal(machine, facts, pin, force ? null : whyLive);
+function pythonFinding(machine: Machine, facts: Facts, pin: Pin | null): Finding | null {
+  const lacks = pin === null ? null : pythonLacks(facts.python, pin);
+  if (pin === null || lacks === null) return null;
   return {
-    part: "python",
-    lines: [
-      `${found(facts)}; ${lacks}`,
-      ...(uv === null
-        ? []
-        : [`through uv ${uv.version} at ${uv.path}, into ${dirname(pinnedPythonDir("~"))}`]),
-      ...(whyLive !== null && force ? [`--force, under ${whyLive}`] : []),
-    ],
-    refused,
-    apply: async () => runOn(machine, pinScript(pin, uv?.path ?? "uv"), PIN_MS),
+    line: `python ${pythonFound(facts)}; ${lacks}`,
+    seats: true,
+    blocked: facts.uv === "" ? "no uv on this machine" : null,
+    apply: () => runOn(machine, pinScript(pin)),
   };
 }
 
-function runnerFinding(machine: Machine, facts: HostFacts, want: Runner, options: Options): Finding | null {
-  const { hosts, force } = options;
-  const installed = facts.runner;
-  if (installed === null) return null;
-  const stale = Object.keys(want).filter((name) => installed.files[name] !== want[name]);
-  if (stale.length === 0) return null;
-  const silent =
-    machine.host === undefined && hosts.length > 0 && !hosts.some((host) => host.checks !== undefined);
+/** Whether the runner a receipt's `commit` installed differs from `tree`'s; a commit git cannot
+ *  read, a dirty one among them, does. */
+export function runnerLags(tree: string, commit: string): boolean {
+  const same = ["diff", "--quiet", "--end-of-options", commit, "HEAD", "--", ...RUNNER_SOURCE];
+  return gitMaybe(tree, ...same) === null;
+}
+
+function runnerFinding(machine: Machine, facts: Facts, { hosts, force }: Options): Finding | null {
+  const { host } = machine;
+  if (hosts.length === 0 || facts.runner === null || !runnerLags(TREE, facts.runner)) return null;
+  const everyCheckHere = host === undefined && !hosts.some(({ checks }) => checks !== undefined);
   return {
-    part: "runner",
-    lines: [
-      `differs from this tree in ${stale.join(", ")}, installed from ${installed.commit ?? "an unknown commit"}`,
-    ],
-    refused:
-      silent && !force
+    line: `runner installed from ${facts.runner}, whose source this tree's has moved past`,
+    seats: false,
+    blocked:
+      everyCheckHere && !force
         ? "no host in ANA_HOSTS sets `checks`, so this install would run every check on this machine: set them first, or --force"
         : null,
-    apply: async () => {
-      if (machine.host !== undefined) return await scriptOn(machine.host, ROUTER_SCRIPT, []);
-      const { exitCode, stdout, stderr } = runSync([capturedExecPath, INSTALL], { timeout: READ_MS });
-      console.log(decodeOutput(stdout).trimEnd());
-      if (exitCode !== 0) console.error(decodeOutput(stderr).trimEnd());
-      return exitCode ?? 1;
+    apply: () => {
+      if (host !== undefined) return scriptOn(host, INSTALL, []);
+      return runOn(machine, `${quoted(capturedExecPath)} ${quoted(join(TREE, INSTALL))}`);
     },
   };
 }
 
-/** The runner files this tree makes, by digest. */
-async function runnerWanted(): Promise<Runner> {
-  const files = await payload();
-  files.set(ROUTER, readFileSync(join(dirname(INSTALL), ROUTER), "utf8"));
-  return Object.fromEntries([...files].map(([name, text]) => [name, runnerDigest(name, text)]));
-}
-
-/** The facts of `machine`, or null where it did not answer, which is said on stderr. */
-function readFacts(machine: Machine, bundle: string, pin: Pin | null): HostFacts | null {
-  const { host } = machine;
-  if (host === undefined) return hostFacts(runtimeProcess.env.ANA_UV ?? "uv", pin?.version);
-  const words = ["--uv", host.uv ?? "uv", ...(pin === null ? [] : ["--python", pin.version])];
-  const script = `cd ${shellPath(host.tree)}\n${treeBun(configuredRuntime(host).bun)} --no-env-file run - ${words.map(quoted).join(" ")}`;
-  const { exitCode, stdout, stderr } = runSync(sshScript(host, script), { input: bundle, timeout: READ_MS });
-  try {
-    if (exitCode === 0) return parseJsonAs<HostFacts>(decodeOutput(stdout));
-  } catch {
-    // Anything else on its stdout is no answer, as a failed command is.
-  }
-  console.error(
-    `${host.name} did not answer sync (exit ${String(exitCode)}): ${decodeOutput(stderr).trim().split("\n").at(-1) ?? ""}`,
-  );
-  return null;
-}
-
-/** The exit of `script` on `machine`, its output said here. */
-function runOn(machine: Machine, script: string, timeout: number): number {
-  const { host } = machine;
-  const command = host === undefined ? ["/bin/sh", "-c", script] : sshScript(host, script);
-  const { exitCode, stdout, stderr } = runSync(command, { timeout });
-  const said = `${decodeOutput(stdout)}${decodeOutput(stderr)}`.trimEnd();
-  if (said !== "") console.log(said.replaceAll(/^/gmu, "    "));
-  return exitCode ?? 1;
-}
-
-/** What differs without being anything to apply: what this machine or a host's entry leaves out. */
-function notesFor(
-  machine: Machine,
-  facts: HostFacts,
-  everyone: readonly (HostFacts | null)[],
-  pin: Pin | null,
-): string[] {
-  const { host } = machine;
-  const held = facts.python?.packages ?? [];
-  const common = everyone.flatMap((one) => (one === null ? [] : [new Set(one.python?.packages)]));
-  const own = held.filter((one) => !common.every((set) => set.has(one)));
+/** What differs without being anything to apply. */
+function notesOf({ host }: Machine, facts: Facts, everyone: readonly Facts[], options: Options): string[] {
+  const common = everyone.map(({ python }) => new Set(python?.packages));
+  const own = (facts.python?.packages ?? []).filter((one) => !common.every((set) => set.has(one)));
   const more = own.length > SHOWN ? ` and ${String(own.length - SHOWN)} more` : "";
-  const configs = new Set(everyone.flatMap((one) => (one === null ? [] : [one.uvConfig.join(", ")])));
+  const sent = host === undefined ? [] : Object.entries(carriedTo(host));
   return [
-    ...(pin === null ? [found(facts)] : []),
+    ...(sent.length === 0 ? [] : [`carries ${sent.map(([key, value]) => `${key}=${value}`).join(" ")}`]),
+    ...(options.pin === null ? [`python ${pythonFound(facts)}`] : []),
+    ...(options.pin === null || facts.uv === "" ? [] : [facts.uv]),
     ...(own.length === 0
       ? []
       : [`packages not on every machine, which stay: ${own.slice(0, SHOWN).join(", ")}${more}`]),
-    ...(facts.uv === null ? [] : [`uv ${facts.uv.version} at ${facts.uv.path}`]),
-    ...(configs.size > 1
-      ? [`uv.toml reads ${facts.uvConfig.join(", ") || "nothing"}; no seat and no sync reads it`]
-      : []),
-    ...(host === undefined && runtimeProcess.env.ANA_RUN_CAP === undefined
-      ? [`this machine's ANA_RUN_CAP is unset, so it carries ${String(capacityOn(undefined))}`]
-      : []),
-    ...(host !== undefined && host.capacity === undefined
-      ? [`no \`capacity\` in its entry, so it carries ${String(capacityOn(host))}`]
-      : []),
-    ...(host !== undefined && host.checks === undefined
-      ? ["no `checks` in its entry, so the runner sends it none"]
-      : []),
+    ...options.tools.flatMap(({ name, version }, index) =>
+      host?.exclude?.includes(name) === true
+        ? [`excluded ${heldLine(name, facts.tools[index] ?? "")}, where the table says ${version}`]
+        : [],
+    ),
   ];
 }
 
+/** `finding` under what `live` says of `machine`: only a change a seat would find waits for a run. */
+function held(
+  finding: Finding,
+  machine: Machine,
+  live: Awaited<ReturnType<typeof liveEverywhere>> | null,
+  force: boolean,
+): Held {
+  const running = live?.live.filter((run) => run.host === machine.name) ?? [];
+  const named = `${String(running.length)} live: ${running.map(({ name }) => name).join(", ")}`;
+  const uncounted = live === null || live.unasked.includes(machine.name);
+  const holding = uncounted ? "its live campaigns could not be counted" : named;
+  const why = finding.seats && (uncounted || running.length > 0) ? holding : null;
+  const waits = `${why ?? ""}; a solve started after this would find another program than the solves before it, and --force passes this`;
+  return {
+    ...finding,
+    under: force ? why : null,
+    refused: finding.blocked ?? (why === null || force ? null : waits),
+  };
+}
+
 async function planned(machines: readonly Machine[], options: Options): Promise<Plan[]> {
-  const { pin, hosts } = options;
-  const peers = machines.some(({ host }) => host !== undefined);
-  const bundle = peers ? await bundled(join(import.meta.dir, "host-facts.ts")) : "";
-  const read = machines.map((machine) => ({ machine, facts: readFacts(machine, bundle, pin) }));
-  const everyone = read.map(({ facts }) => facts);
-  const moves = pin !== null && everyone.some((facts) => facts !== null && pythonLacks(facts, pin) !== null);
-  const live = moves ? await liveEverywhere("configured") : null;
-  const want = hosts.length > 0 ? await runnerWanted() : null;
-  return read.map(({ machine, facts }) => {
-    if (facts === null) return { machine, facts, findings: [], notes: [] };
-    const settings = machine.host === undefined ? null : settingsFinding(machine.host, facts);
-    const python = pythonFinding(machine, facts, options, live);
-    const runner = want === null ? null : runnerFinding(machine, facts, want, options);
+  const read = await Promise.all(machines.map(async (machine) => await factsOf(machine, options.tools)));
+  const everyone = read.filter((facts) => facts !== null);
+  const found = machines.map((machine, index) => {
+    const facts = read[index];
+    if (facts === null || facts === undefined) return [];
+    const python = pythonFinding(machine, facts, options.pin);
+    const runner = runnerFinding(machine, facts, options);
+    return [...toolFindings(machine, facts, options.tools), python, runner].filter((one) => one !== null);
+  });
+  const live = found.flat().some(({ seats }) => seats) ? await liveEverywhere("configured") : null;
+  return machines.map((machine, index) => {
+    const facts = read[index] ?? null;
     return {
       machine,
       facts,
-      findings: [settings, python, runner].filter((one) => one !== null),
-      notes: notesFor(machine, facts, everyone, pin),
+      findings: (found[index] ?? []).map((one) => held(one, machine, live, options.force)),
+      notes: facts === null ? [] : notesOf(machine, facts, everyone, options),
     };
   });
 }
 
-function printPlan({ machine, facts, findings, notes }: Plan): void {
-  const { name, host } = machine;
+function printPlan({ machine: { name, host }, facts, findings, notes }: Plan): void {
   console.log(host === undefined ? `${name} (${ownName()})` : `${name} (${host.ssh}, ${host.tree})`);
   if (facts === null) console.log("  no answer");
-  for (const { part, lines, refused } of findings) {
-    const [first, ...rest] = lines;
-    console.log(`  ${part.padEnd(8)}  ${first ?? ""}`);
-    for (const line of rest) console.log(`            ${line}`);
-    if (refused !== null) console.log(`            refused: ${refused}`);
+  else if (findings.length === 0) console.log("  in step");
+  for (const { line, under, refused } of findings) {
+    console.log(`  ${line}`);
+    if (under !== null) console.log(`    --force, under ${under}`);
+    if (refused !== null) console.log(`    refused: ${refused}`);
   }
-  if (facts !== null && findings.length === 0) console.log("  in step");
-  for (const note of notes) console.log(`  note      ${note}`);
+  for (const note of notes) console.log(`  note: ${note}`);
 }
 
 const pinOf = (env: Readonly<Record<string, string | undefined>>): Pin | null => {
@@ -430,59 +402,51 @@ export async function sync(args: readonly string[]): Promise<void> {
       yes: { type: "boolean", default: false },
       check: { type: "boolean", default: false },
       force: { type: "boolean", default: false },
-      host: { type: "string", multiple: true },
     },
   });
   if (values.yes && values.check) throw new Error("--check changes nothing, and --yes applies");
   const hosts = hostsOf();
-  const unread = hosts.length === 0 ? unloadedHosts(runtimeProcess.cwd()) : null;
-  if (unread !== null) throw new Error(unread);
-  // A verb another host sent here reaches no further, and leaves this machine's Python to its own sync.
-  const pin = runtimeProcess.env.ANA_HOP === "1" ? null : pinOf(runtimeProcess.env);
-  if (hosts.length === 0 && pin === null) {
+  // A verb another host sent here reaches no further, and leaves this machine to its own sync.
+  const sent = runtimeProcess.env.ANA_HOP === "1";
+  const pin = sent ? null : pinOf(runtimeProcess.env);
+  const tools = sent ? [] : toolsOf(runtimeProcess.env.ANA_TOOLS ?? "");
+  if (hosts.length === 0 && pin === null && tools.length === 0) {
     console.log(
-      "nothing to do: ANA_HOSTS lists no host and ANA_PYTHON pins no Python, so this machine is one host",
+      "nothing to do: in this environment ANA_HOSTS lists no host, ANA_PYTHON pins no Python and ANA_TOOLS names no tool, so this machine is one host",
     );
     return;
   }
-  const everyMachine: Machine[] = [
-    { name: HERE, host: undefined },
-    ...hosts.map((host) => ({ name: host.name, host })),
-  ];
-  for (const name of values.host ?? []) if (name !== HERE) hostNamed(name);
-  const machines = everyMachine.filter(({ name }) => values.host === undefined || values.host.includes(name));
-  const options = { pin, force: values.force, hosts };
+  for (const host of hosts) carriedTo(host);
+  const machines = [{ name: HERE, host: undefined }, ...hosts.map((host) => ({ name: host.name, host }))];
+  const options = { pin, tools, force: values.force, hosts };
   const plans = await planned(machines, options);
   for (const plan of plans) printPlan(plan);
-  const open = plans.flatMap(({ findings }) => findings).length;
-  const silent = plans.filter(({ facts }) => facts === null).length;
+  const counts = (of: readonly Plan[]) => ({
+    open: of.flatMap(({ findings }) => findings).length,
+    silent: of.filter(({ facts }) => facts === null).length,
+  });
+  const { open, silent } = counts(plans);
   if (values.yes) {
-    await applied(plans);
-    const after = await planned(machines, options);
-    const left = after.flatMap(({ findings }) => findings).length;
-    const lost = after.filter(({ facts }) => facts === null).length;
-    console.log(
-      left + lost === 0 ? "every machine is in step" : `${String(left + lost)} left after applying:`,
+    const owed = plans.flatMap(({ machine, findings }) =>
+      findings.filter(({ refused }) => refused === null).map((one) => ({ ...one, name: machine.name })),
     );
-    if (left + lost > 0) {
-      for (const plan of after) printPlan(plan);
-      runtimeProcess.exitCode = 1;
+    for (const { name, line, apply } of owed) {
+      const code = await apply();
+      if (code !== 0) console.log(`${name}: failed with exit ${String(code)}: ${line}`);
     }
+    const after = await planned(machines, options);
+    const left = counts(after);
+    if (left.open + left.silent === 0) {
+      console.log("every machine is in step");
+      return;
+    }
+    console.log(`${String(left.open + left.silent)} left after applying:`);
+    for (const plan of after) printPlan(plan);
+    runtimeProcess.exitCode = 1;
     return;
   }
-  const saying = `${String(open)} to change, ${String(silent)} did not answer`;
-  console.log(values.check ? saying : `${saying}; nothing changed, and --yes applies`);
   if (values.check && open + silent > 0) runtimeProcess.exitCode = 1;
-}
-
-/** Each finding that nothing refused, in order: settings, then Python, then the runner. */
-async function applied(plans: readonly Plan[]): Promise<void> {
-  for (const { machine, findings } of plans) {
-    for (const { part, refused, apply } of findings) {
-      if (refused !== null) continue;
-      console.log(`applying ${part} on ${machine.name}`);
-      const code = await apply();
-      if (code !== 0) console.error(`${part} on ${machine.name} failed (exit ${String(code)})`);
-    }
-  }
+  console.log(
+    `${String(open)} to change, ${String(silent)} did not answer; nothing changed, and --yes applies`,
+  );
 }

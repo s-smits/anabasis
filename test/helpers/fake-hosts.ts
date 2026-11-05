@@ -31,7 +31,7 @@ if (peer.freshExit && script.includes("ANA_HOP") && script.includes("fresh")) pr
 if (peer.active !== undefined && peer.execute && script.includes("'active'")) { console.log(peer.active); process.exit(0); }
 if (process.env.FAKE_EXECUTE === "1" || peer.execute || (process.env.FAKE_PREPARE_EXECUTE === "1" && !script.includes("ANA_HOP"))) {
   const env = {...process.env, ...(peer.env ?? {})};
-  const child = Bun.spawn(["sh", "-c", script], {env, stdin:"inherit", stdout:"inherit", stderr:"inherit"});
+  const child = Bun.spawn(["sh", "-c", script], {env, stdout:"inherit", stderr:"inherit"});
   process.exit(await child.exited);
 }
 if (script.includes("--health")) console.log(JSON.stringify(peer.health ?? JSON.parse(process.env.FAKE_HEALTH ?? "null")));
@@ -74,11 +74,6 @@ if (args.includes("install")) {
 }
 else if (args.includes("-e")) {
   const child = Bun.spawn([process.execPath, ...args], {env:process.env,stdin:"ignore",stdout:"inherit",stderr:"inherit"});
-  process.exit(await child.exited);
-}
-else if (args.includes("-")) {
-  // The facts sync pipes to a peer's Bun, run as a peer runs them, with no environment file.
-  const child = Bun.spawn([process.execPath, ...args], {env:process.env,stdin:"inherit",stdout:"inherit",stderr:"inherit"});
   process.exit(await child.exited);
 }
 else if (process.env.ANA_HOP !== "1") process.exit(5);

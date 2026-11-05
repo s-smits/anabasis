@@ -46,6 +46,28 @@ function inSeat(home: string, commands: readonly string[]): string[] {
 }
 
 describe("the pinned Python", () => {
+  /** The wall's path in a process whose home is `home`. */
+  function wallPath(home: string): string[] {
+    const script = `import { toolchainPathDirs } from "${join(REPO, "src/wall/policy.ts")}";
+console.log(JSON.stringify(toolchainPathDirs()));`;
+    const { stdout } = runSync([capturedExecPath, "-e", script], {
+      cwd: REPO,
+      env: { ...runtimeProcess.env, HOME: home },
+    });
+    return parseJsonAs<string[]>(decodeOutput(stdout));
+  }
+
+  test("the wall's path has the pinned folder first where it exists, and is as it was where it does not", () => {
+    const home = temp("ana-pinned-home");
+    const without = wallPath(home);
+    expect(without).not.toContain(pinnedPythonDir(home));
+    mkdirSync(join(dirname(pinnedPythonDir(home)), "versions", "x", "bin"), { recursive: true });
+    symlinkSync("versions/x/bin", pinnedPythonDir(home));
+    const withPin = wallPath(home);
+    expect(withPin[0]).toBe(pinnedPythonDir(home));
+    expect(withPin.slice(1)).toEqual(without);
+  });
+
   test("a seat runs it first from a home it otherwise cannot read", () => {
     const home = temp("ana-pinned-home");
     const pin = pinnedPythonDir(home);

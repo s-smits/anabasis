@@ -14,7 +14,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "../src/meta/subprocess.ts";
-import { allowedLogins, loginRows, plainOnly } from "../tools/runs/logins.ts";
+import { allowedLogins, plainOnly } from "../tools/runs/logins.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
 const REPO = join(import.meta.dir, "..");
@@ -102,7 +102,6 @@ describe("a clone with no hosts", () => {
       const result = runs(verb);
       expect([verb, result.code, framed(result.err)]).toEqual([verb, 0, false]);
     }
-    expect(runs(["search", "nothing", "--host", "here"]).err).not.toContain("unknown search host");
     expect(sshAttempts()).toBe(false);
   });
 
@@ -118,11 +117,8 @@ describe("a clone with no hosts", () => {
     const copied = { CLAUDE_CODE_OAUTH_TOKEN: "", CLAUDE_CODE_OAUTH_TOKEN2: "" };
     expect(allowedLogins(copied)).toEqual([]);
     expect(plainOnly(copied)).toBe(false);
-    expect(loginRows(copied)).toEqual([]);
     const plain = { ...copied, CLAUDE_CODE_OAUTH_TOKEN: "held" };
     expect(plainOnly(plain)).toBe(true);
-    expect(loginRows(plain)).toEqual([""]);
-    expect(loginRows({ ...plain, CLAUDE_CODE_OAUTH_TOKEN2: "held" })).toEqual(["2"]);
   });
 
   test("fresh with no credential names the key to set and how to give it", () => {
@@ -214,6 +210,6 @@ try { publishedAt(${JSON.stringify(clone)}, "HEAD"); } catch (error) { console.l
       ],
       { cwd: clone, env: scrubbed },
     );
-    expect(decodeOutput(result.stdout)).toContain("no remote origin");
+    expect(decodeOutput(result.stdout)).toContain("origin");
   });
 });

@@ -22,7 +22,7 @@ import { fresh } from "./fresh.ts";
 import { holds, on, routed, verbOn } from "./hosts.ts";
 import { hostsHealth } from "./health.ts";
 import { keep } from "./keep.ts";
-import { KEEPING } from "./registry.ts";
+import { HERE, KEEPING } from "./registry.ts";
 import { loadwatch } from "./loadwatch.ts";
 import { active, logins } from "./logins.ts";
 import { continueRun, launch, pause } from "./manage.ts";
@@ -152,7 +152,7 @@ const GROUPS = {
     sync: {
       run: sync,
       file: "sync.ts",
-      says: "carry this machine's settings, Python and check runner to every host, or say what differs",
+      says: "bring every host to this machine's Python, table of tools and check runner, or say what differs",
     },
     holds: {
       run: holds,
@@ -237,7 +237,11 @@ const refusal = (error: unknown): error is Error => {
   return error.constructor === Error || (isString(code) && code.startsWith("ERR_PARSE_ARGS"));
 };
 
-const [verb, ...given] = Bun.argv.slice(2);
+// `on here <verb>` is that verb here, reaching no further host, as one sent to a peer does.
+const argv = Bun.argv.slice(2);
+const onHere = argv[0] === "on" && argv[1] === HERE;
+if (onHere) runtimeProcess.env.ANA_HOP = "1";
+const [verb, ...given] = onHere ? argv.slice(2) : argv;
 const chosen = Object.entries(VERBS).find(([name]) => name === verb)?.[1];
 const dashes = given.includes("--") ? given.indexOf("--") : given.length;
 const own = given.slice(0, dashes);

@@ -75,7 +75,7 @@ bun --env-file=../anabasis/.env tools/d2/harness-builder.ts \
 Builder, Examiner, Referee (`--reviewer`) and solver can each use Claude (Claude Code or the API), Codex or OpenRouter, with their own model and effort.
 For Claude, `CLAUDE_CODE_OAUTH_TOKEN` (the process environment, or a file named with `bun --env-file=<file>`; Bun loads no env file by itself here) serves all four seats at once.
 `.env.example` lists every credential a seat reads; copy it to `.env`, which git ignores. A paid seat refuses a repository's main worktree, so `--dry-run` says so there and a run starts in a worktree of its own.
-With nothing else set, Anabasis runs on this one machine and reaches for no other. `.env.runs.example` holds what your own machines add for `bun run runs`: the logins a run may take, the other hosts whose runs `runs status` shows, and the settings `bun run runs sync` carries to them.
+With nothing else set, Anabasis runs on this one machine and reaches for no other. `.env.runs.example` holds what your own machines add for `bun run runs`: the logins a run may take, the other hosts whose runs `runs status` shows, and the Python and table of tools `bun run runs sync` keeps on them.
 `bun run runs search` also needs [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`).
 
 ## Take the Harness along

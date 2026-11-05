@@ -1,13 +1,11 @@
 /** Machine identities and capacities come only from ANA_HOSTS (22 October 2026). */
-import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
-import { gitMaybe } from "#src/meta/git.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { hostname } from "#src/meta/os.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
-import { dirname, isAbsolute, join } from "#src/meta/path.ts";
+import { isAbsolute } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 
 export interface Host {
@@ -24,33 +22,29 @@ export interface Host {
   readonly checks?: number;
   /** The packs this machine is kept for: it takes no other, and no other machine takes them. */
   readonly packs?: readonly string[];
-  /** The `uv` there, absolute or ~/path, where a login shell's PATH does not find it. */
-  readonly uv?: string;
-  /** This host's own values of what `sync` carries, over the shared ones; an empty one writes none. */
+  /** This host's own values of what a verb carries, over the shared ones; an empty one sends none. */
   readonly settings?: Readonly<Record<string, string>>;
+  /** The `ANA_TOOLS` rows this machine keeps outside the table: reported, and never changed. */
+  readonly exclude?: readonly string[];
   /** A controller already prepared by code.ts, never accepted from configuration. */
   readonly prepared?: true;
 }
 
-/** The live campaigns a machine carries where nothing says how many it may. */
-const CAPACITY = 2;
+/** What every remote verb carries from this machine's environment, and all an entry's `settings` may
+ *  name: `ANA_HOSTS` stays here, since a peer holding it would gather every host's records. */
+export const CARRIED: readonly string[] = ["ANA_KEEP", "ANA_LOGINS", "ANA_LOGIN_RUNS", "ANA_LOGIN_SUBS"];
 
-/** What `host` may carry, or `value` (`ANA_RUN_CAP`, this machine's) where it is this machine. */
-export const capacityOn = (host: Host | undefined, value?: string): number => {
-  if (host !== undefined) return host.capacity ?? CAPACITY;
-  const capacity = Number(value ?? CAPACITY);
-  if (!Number.isSafeInteger(capacity) || capacity < 1) {
-    throw new Error("ANA_RUN_CAP takes a positive integer");
-  }
-  return capacity;
-};
-
-/** An entry's `settings`: undefined where it names none, and null where they are not all strings. */
-function stringsOf(value: unknown): Readonly<Record<string, string>> | null | undefined {
+/** An entry's `settings`: an object of strings, and only of what is carried. */
+function settingsOf(name: string, value: unknown): Readonly<Record<string, string>> | undefined {
   if (value === undefined) return undefined;
   const entries = Object.entries(asRecord(value) ?? { "": null });
-  const strings = entries.flatMap(([key, one]) => (isString(one) ? [[key, one] as const] : []));
-  return strings.length === entries.length ? Object.fromEntries(strings) : null;
+  for (const [key, one] of entries) {
+    if (!isString(one)) throw new Error(`${name}: settings takes an object of strings`);
+    if (!CARRIED.includes(key)) {
+      throw new Error(`${name}: settings takes ${CARRIED.join(", ")}, and not ${key}`);
+    }
+  }
+  return Object.fromEntries(entries.flatMap(([key, one]) => (isString(one) ? [[key, one] as const] : [])));
 }
 
 /** What `ANA_HOSTS` says. Set and empty, as a copied `.env.runs.example` leaves it, is unset: no host,
@@ -109,9 +103,10 @@ export function hostsOf(): readonly Host[] {
     ) {
       throw new Error(`${host.name}: packs takes a list of pack names`);
     }
-    if (host.uv !== undefined && !isString(host.uv)) throw new Error(`${host.name}: uv takes a path`);
-    const settings = stringsOf(host.settings);
-    if (settings === null) throw new Error(`${host.name}: settings takes an object of strings`);
+    const { exclude } = host;
+    if (exclude !== undefined && (!Array.isArray(exclude) || !exclude.every(isString))) {
+      throw new Error(`${host.name}: exclude takes a list of tool names`);
+    }
     return {
       name: host.name,
       ssh: host.ssh,
@@ -121,8 +116,8 @@ export function hostsOf(): readonly Host[] {
       ...keyIfDefined("capacity", count("capacity")),
       ...keyIfDefined("checks", count("checks")),
       ...keyIfDefined("packs", packs),
-      ...keyIfDefined("uv", host.uv),
-      ...keyIfDefined("settings", settings),
+      ...keyIfDefined("settings", settingsOf(host.name, host.settings)),
+      ...keyIfDefined("exclude", exclude),
     };
   });
 }
@@ -132,29 +127,13 @@ export function configuredRuntime(host: Host) {
     isAbsolute(path) || path.startsWith("~/") ? path : `${host.tree}/${path}`;
   return {
     bun: host.bun.includes("/") ? rooted(host.bun) : host.bun,
-    // Bun implicitly loaded the configured checkout's .env before controllers moved elsewhere. The
-    // tree's `.env.runs` comes last whatever the entry names: until 5 November an entry that named its
-    // credentials file left it unread, so a verb or keeper on that host saw no `ANA_LOGINS`, and every
-    // login there was allowed. A file that is not there is no error to Bun.
-    envFiles: [...new Set([".env", ...(host.envFiles ?? []), ".env.runs"].map(rooted))],
+    // Bun implicitly loaded the configured checkout's .env before controllers moved elsewhere.
+    envFiles: [...new Set([".env", ...(host.envFiles ?? [".env.runs"])].map(rooted))],
   };
 }
 /** This machine's own name, its short hostname: what `fresh` ends a run's name with when it runs
  *  here, and what `move` reads as `here`. */
 export const ownName = (): string => hostname().replace(/\..*$/u, "");
-
-/** What says hosts exist that this process did not load: the main worktree's `.env.runs` names
- *  `ANA_HOSTS`, and the environment holds none. A verb that means to reach every host says so
- *  instead of reading one host. Null on a machine with no hosts. Only the key is looked for. */
-export function unloadedHosts(repo: string): string | null {
-  if (runtimeProcess.env.ANA_HOSTS !== undefined || runtimeProcess.env.ANA_HOP === "1") return null;
-  const main = gitMaybe(repo, "rev-parse", "--path-format=absolute", "--git-common-dir");
-  if (main === null) return null;
-  const file = join(dirname(main), ".env.runs");
-  return existsSync(file) && /^ANA_HOSTS=/mu.test(readFileSync(file, "utf8"))
-    ? `${file} names ANA_HOSTS, and this command did not load it`
-    : null;
-}
 
 export function hostNamed(name: string | undefined): Host {
   const known = hostsOf();

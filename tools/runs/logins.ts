@@ -156,13 +156,6 @@ function loginsIn(env: Readonly<Record<string, string | undefined>>): string[] {
     .toSorted((one, other) => Number(one) - Number(other));
 }
 
-/** The logins `usage` reads: every numbered one, or else the plain one, the credential a machine with
- *  one Claude login holds. Until 5 November `usage` refused that machine. */
-export function loginRows(env: Readonly<Record<string, string | undefined>>): string[] {
-  const held = loginsIn(env);
-  return held.length === 0 && plainOnly(env) ? [PLAIN] : held;
-}
-
 /** The key to set where none of `allowed` holds one, or null where one does. Until 5 November this
  *  read as no login having room, which names a limit where the credential is what is missing. */
 export function noLogin(
@@ -758,7 +751,9 @@ export async function logins(args: readonly string[]): Promise<void> {
     allowPositionals: true,
     options: { json: { type: "boolean", default: false } },
   });
-  const held = loginRows(runtimeProcess.env);
+  // A machine with one Claude login holds the plain credential: until 5 November `usage` refused it.
+  const numbered = loginsIn(runtimeProcess.env);
+  const held = numbered.length === 0 && plainOnly(runtimeProcess.env) ? [PLAIN] : numbered;
   if (held.length === 0) {
     throw new Error(
       `neither ${TOKEN} nor ${TOKEN}<N> is set: run the verb under bun --env-file=<the file that holds them>`,

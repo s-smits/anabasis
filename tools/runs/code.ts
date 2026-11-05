@@ -6,7 +6,7 @@
  * Cold controllers fetch, check publication and install frozen dependencies. Launch preparation
  * checks its exact commit again. Ordinary requests reuse a successful install while checking its clean source.
  */
-import { gitMaybe, gitText } from "#src/meta/git.ts";
+import { gitText } from "#src/meta/git.ts";
 import { isAbsolute, join } from "#src/meta/path.ts";
 import { capturedExecPath } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
@@ -86,9 +86,6 @@ function readCommit(): string {
  *  remote ref names. A campaign's commit may be held by its pushed run tag alone: on 23 October a
  *  move was refused for one whose branch had been rewritten. */
 export function publishedAt(tree: string, revision: string): string {
-  if (gitMaybe(tree, "remote", "get-url", "origin") === null) {
-    throw new Error(`${tree} has no remote origin, and a run starts from a published commit`);
-  }
   gitText(tree, "fetch", "-q", "origin");
   const commit = gitText(tree, "rev-parse", "--verify", `${revision}^{commit}`);
   const named = () =>

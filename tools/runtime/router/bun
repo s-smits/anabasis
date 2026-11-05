@@ -3,7 +3,7 @@
 # the tree pins (package.json "packageManager"), and sends Anabasis's check tasks to run.sh, which
 # runs them on a host `ANA_HOSTS` lists (RUN_REMOTE). A Bun called by its full path bypasses both, so
 # call plain `bun`. `bun tools/runtime/router/install.ts` installs a change, renaming new copies over
-# the installed paths, and `--uninstall` puts back what the first install replaced.
+# the installed paths.
 #
 # A tree is Anabasis's when it holds tools/runtime/gate.ts, the script of `bun run gate`. Until
 # 25 October the test was a common Git folder of ~/Developer/anabasis, which the Linux host does

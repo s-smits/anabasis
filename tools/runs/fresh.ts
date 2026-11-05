@@ -5,7 +5,7 @@
  * and refuses what it refuses.
  *
  *   bun run runs fresh <pack> [<pack> ...] [--logins <allowed-list>] [--model opus|sonnet|gpt|<provider>/<id>] [--effort hhmm] [--login N] [--budget 800]
- *     [--at <commit>] [--as <suffix>] [--host <host>] [--no-keep] [--yes] [-- <more of the campaign command's flags>]
+ *     [--at <commit>] [--as <suffix>] [--host <host>] [--yes] [-- <more of the campaign command's flags>]
  *
  * The prompt is the operator's, `<pack>-prompt.txt` in the folder `ANA_PROMPTS` names, by default
  * `anabasis-prompts` beside the checkout, and the verb opens nothing else of it. The name is
@@ -21,7 +21,7 @@
  * alone, and on 23 October refused a named host that held its cap of two live runs. A run placed
  * here ends with this machine's own name (`ownName`), so from 28 October every name says where it
  * runs; until then only a peer's did, and the operator asked that the machines be named alike.
- * `launch` leaves the run its keeper on the machine it runs on, unless `--no-keep` (`keepsItself`).
+ * `launch` leaves the run its keeper on the machine it runs on, unless `ANA_KEEP=off` (`keepsItself`).
  *
  * Until 16 October each fresh launch was typed by hand: a worktree, a prompt file, eight seat
  * flags and a name, and one launch that left out `--login` ended on its environment.
@@ -62,7 +62,6 @@ interface FreshStart {
   readonly more: readonly string[];
   readonly login: string | undefined;
   readonly commit: string;
-  readonly noKeep: boolean;
   readonly yes: boolean;
 }
 
@@ -129,14 +128,13 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
       as: { type: "string" },
       host: { type: "string" },
       placed: { type: "boolean", default: false },
-      "no-keep": { type: "boolean", default: false },
       yes: { type: "boolean", default: false },
     },
   });
   const [pack] = positionals;
   if (pack === undefined) {
     throw new Error(
-      "usage: bun run runs fresh <pack> [<pack> ...] [--logins <allowed-list>] [--model opus|sonnet|gpt|<provider>/<id>] [--effort hhmm] [--login N] [--budget 800] [--at <commit>] [--as <suffix>] [--host <host>] [--no-keep] [--yes] [-- <more of the campaign command's flags>]",
+      "usage: bun run runs fresh <pack> [<pack> ...] [--logins <allowed-list>] [--model opus|sonnet|gpt|<provider>/<id>] [--effort hhmm] [--login N] [--budget 800] [--at <commit>] [--as <suffix>] [--host <host>] [--yes] [-- <more of the campaign command's flags>]",
     );
   }
   if (
@@ -150,7 +148,6 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
   const seated = seats(model.id, values.effort ?? model.effort);
   const billed = billsLogin([], [...seated, ...more]);
   const codex = !billed && seatsCodex([...seated, ...more]);
-  const noKeep = values["no-keep"] ? ["--no-keep"] : [];
   if (positionals.length > 1) {
     if (values.host !== undefined) throw new Error("a batch chooses its hosts automatically");
     return await batchFresh(
@@ -163,7 +160,6 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
           values.budget,
           ...(values.as === undefined ? [] : ["--as", values.as]),
           ...(values.effort === undefined ? [] : ["--effort", values.effort]),
-          ...noKeep,
         ],
         more,
         at: values.at,
@@ -208,7 +204,6 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
       "--placed",
       ...(values.effort === undefined ? [] : ["--effort", values.effort]),
       ...(login === undefined ? [] : ["--login", login]),
-      ...noKeep,
       "--yes",
       "--",
       ...more,
@@ -224,7 +219,6 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
     more,
     login,
     commit,
-    noKeep: values["no-keep"],
     yes: values.yes,
   });
 }
@@ -271,7 +265,6 @@ async function startFresh(pack: string, options: FreshStart): Promise<void> {
   await launch([
     name,
     ...(options.login === undefined ? [] : ["--login", options.login]),
-    ...(options.noKeep ? ["--no-keep"] : []),
     "--yes",
     "--",
     ...flags,

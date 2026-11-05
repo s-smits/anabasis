@@ -676,6 +676,14 @@ describe.skipIf(realRsync === null)("the queue", () => {
 });
 
 describe("this machine", () => {
+  it("names a missing Bun instead of blaming ANA_HOSTS", () => {
+    const empty = folder("no-bun");
+    const { status, stderr } = run(["test"], { HOME: empty });
+    expect(status).toBe(2);
+    expect(stderr).toContain(`no Bun at ${join(empty, ".bun/bin/bun")}`);
+    expect(stderr).not.toContain("ANA_HOSTS");
+  });
+
   it("runs RUN_REMOTE=0 here on the pinned Bun, reaps an orphaned test worker and spares an orphan that names the checkout", async () => {
     const token = source;
     const orphan = (argv0: string): number =>

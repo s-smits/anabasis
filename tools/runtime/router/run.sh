@@ -121,6 +121,10 @@ list_hosts() {
   (cd "$runner_dir" && "$(pinned_bun "$root")" ${env_file[@]+"${env_file[@]}"} hosts.js)
 }
 if [[ "${RUN_REMOTE:-}" != 0 ]]; then
+  if [[ ! -x "$(pinned_bun "$root")" ]]; then
+    printf "runner: no Bun at %s: install the one this tree pins\n" "$(pinned_bun "$root")" >&2
+    exit 2
+  fi
   if ! listed="$(list_hosts)"; then
     printf "runner: ANA_HOSTS could not be read; RUN_REMOTE=0 runs the task here\n" >&2
     exit 2

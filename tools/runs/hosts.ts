@@ -26,12 +26,13 @@
  * published ancestor for ordinary verbs and skill scripts; all configured paths remain literal shell words.
  * Live records belong to live.ts, shared by usage and placement (22 October 2026).
  */
-import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
+import { join } from "#src/meta/path.ts";
+import { capturedExecPath, capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { runCaptured } from "#src/meta/subprocess.ts";
 import { type Host, hostsOf, hostNamed, configuredRuntime } from "./host-config.ts";
 import { quoted, shellPath, sshScript, treeBun } from "./host-command.ts";
 import { readControllers } from "./code.ts";
-import { CLI, runs } from "./registry.ts";
+import { CLI, HERE, runs } from "./registry.ts";
 
 /** How long `hosts` waits for one host's rows, and a verb for each host's `holds`. */
 const HOST_MS = 30_000;
@@ -82,6 +83,20 @@ export async function scriptOn(host: Host, script: string, args: readonly string
 /** `bun run runs on`. */
 export async function on(args: readonly string[]): Promise<void> {
   const [name, ...verb] = args;
+  if (name === HERE) {
+    // `here` names this machine on every verb; a verb sent here reaches no further host, as one sent
+    // to a peer does.
+    runtimeProcess.exitCode = await capturedSpawn(
+      [capturedExecPath, join(import.meta.dir, "cli.ts"), ...verb],
+      {
+        stdin: "inherit",
+        stdout: "inherit",
+        stderr: "inherit",
+        env: { ...runtimeProcess.env, ANA_HOP: "1" },
+      },
+    ).exited;
+    return;
+  }
   runtimeProcess.exitCode = await verbOn(hostNamed(name), verb);
 }
 

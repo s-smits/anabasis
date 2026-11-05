@@ -494,7 +494,7 @@ async function served(opening: Opening, paid: "paid" | "scripted", named?: strin
   for (const [role, model] of roles) {
     if (model !== undefined && (await models.getAuth(modelNamed(model))) === undefined) {
       throw new Error(
-        `the ${role}'s ${model}: its provider holds no credential in this environment, so every call would end a provider non-result; set its key in the env file the command reads`,
+        `the ${role}'s ${model}: its provider holds no credential in this environment, so every call would end a provider non-result; set its key in the process environment, or in a file named with bun --env-file=<file>, since Bun loads none by itself here`,
       );
     }
   }
@@ -521,15 +521,17 @@ export async function harnessBuilder(
   args: readonly string[],
   seats: Seats = { seated: solved },
 ): Promise<Decided> {
-  // Runtime drift, and a tree checked out again under paid seats (a dry run seats none), are
-  // refused before any opening, receipt or recovery can write to the campaign.
+  // Runtime drift, and a tree checked out again under paid seats, are refused before any opening,
+  // receipt or recovery can write to the campaign. A dry run seats none, so it goes on and says so:
+  // until 5 November one passed in a main clone, whose real run was then refused.
   const manifest = join(REPO, "package.json");
   const fault = pinFault(capturedJsonParse(readFileSync(manifest, "utf8")), Bun.version);
   if (fault !== null) throw new Error(`${manifest}: ${fault}`);
   const given = flagsOf(args);
   const paid = seats.seated === solved ? "paid" : "scripted";
-  const moved = paid === "paid" && !given["dry-run"] ? treeFault(REPO) : null;
-  if (moved !== null) throw new Error(moved);
+  const moved = paid === "paid" ? treeFault(REPO) : null;
+  if (moved !== null && given["dry-run"]) console.error(`a real run here is refused: ${moved}`);
+  else if (moved !== null) throw new Error(moved);
   const { name } = given;
   if (name === undefined) throw new Error("name --name, the campaign");
   const most = given.moves === undefined ? Number.POSITIVE_INFINITY : Number(given.moves);

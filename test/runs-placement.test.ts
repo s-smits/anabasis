@@ -51,7 +51,11 @@ console.log(await freshLogin(undefined, [], read));
 console.log(await freshLogin(undefined, [{name:"busy",login:logins[1]!,host:"elsewhere"}], read));
 try { await freshLogin(undefined, [], async () => readings.map((reading) => ({...reading,sevenDay:{pct:100,resetsAt:null}}))); } catch (error) { console.log(String(error)); }
 `;
-    const result = made.run(code, { ANA_LOGINS: `${LOGIN},${OTHER}`, ANA_LOGIN_RUNS: "1" });
+    const result = made.run(code, {
+      ANA_LOGINS: `${LOGIN},${OTHER}`,
+      ANA_LOGIN_RUNS: "1",
+      [`CLAUDE_CODE_OAUTH_TOKEN${LOGIN}`]: "held",
+    });
     expect(result.code).toBe(0);
     expect(result.out.split("\n").slice(0, 2)).toEqual([OTHER, LOGIN]);
     expect(result.out).toContain("no allowed login has room");
@@ -65,7 +69,8 @@ console.log(String(await freshLogin(undefined, [], read)));`;
     expect(made.run(code, { CLAUDE_CODE_OAUTH_TOKEN: "plain" }).out.trim()).toBe("undefined");
     const numbered = { CLAUDE_CODE_OAUTH_TOKEN: "plain", [`CLAUDE_CODE_OAUTH_TOKEN${LOGIN}`]: "numbered" };
     expect(made.run(code, numbered).out.trim()).toBe(LOGIN);
-    expect(made.run(code).err).toContain("no allowed login has room");
+    // With no login at all it says which credential is missing, and no login is at a cap.
+    expect(made.run(code).err).toContain("error: no login here: set CLAUDE_CODE_OAUTH_TOKEN in");
   });
 
   it("asks only for a remote login's presence and refuses a missing key before launch preparation", () => {

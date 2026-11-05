@@ -8,7 +8,7 @@
  *
  *   bun studies/harness2/score.ts score --arm <arm> --name <name> --out <dir> --jb <checkout>
  *     --api-base <url> [--harness <kept>] [--tasks <profession/taskN,...>] [--judge-log <shim.jsonl>]
- *     [--dry-run] --yes
+ *     [--solve-only] [--rubrics <file>] [--dry-run] --yes
  *   bun studies/harness2/score.ts table --out <dir> [--tasks <profession/taskN,...>]
  *
  * An arm is `base` (Harness²'s base harness, the pilot's Base), `starter` or a campaign's name
@@ -21,6 +21,8 @@
  * judgement's dollars are the shim log's rows inside its window. One record a task lands in
  * `<out>/judged/<name>/`, and `table` prints the pilot's arms table from them: every arm over all
  * the tasks (the pilot's eight unless named) and over those that are not a profession's first.
+ * `compare.ts` runs a whole comparison through `score`: `--solve-only` leaves a block's judging for
+ * afterwards, and `again:<side>` with `--rubrics` judges a deliverable it copied once more.
  *
  * What is the same for every arm: the task and its prompt, Opus 5.5 at high with $5 and 3600 s an
  * attempt and a second attempt only when none is delivered, one harness frozen for the whole arm,
@@ -77,7 +79,7 @@ const FAILED = [
   "failed to get judge response",
   "judge raised an exception:",
 ];
-const PILOT_TASKS = [
+export const PILOT_TASKS = [
   "biostatisticians/task1",
   "biostatisticians/task2",
   "statisticians/task1",
@@ -107,7 +109,7 @@ interface Arm {
 }
 
 /** The options of `score`, as `parseArgs` reads them. */
-interface Values {
+export interface Values {
   readonly arm?: string;
   readonly name?: string;
   readonly harness?: string;
@@ -116,14 +118,17 @@ interface Values {
   readonly jb?: string;
   readonly "api-base"?: string;
   readonly "judge-log"?: string;
+  readonly rubrics?: string;
+  readonly "solve-only"?: boolean;
   readonly "dry-run"?: boolean;
   readonly yes?: boolean;
 }
 
-const keyOf = (task: string): string => task.replace("/", "__");
+export const keyOf = (task: string): string => task.replace("/", "__");
 /** The tasks with a task before them in their profession, the held-out arm's (`heldout.sh`). */
-const fair = (tasks: readonly string[]): string[] => tasks.filter((task) => !task.endsWith("/task1"));
-const tasksOf = (named: string | undefined, otherwise: readonly string[]): string[] =>
+export const hasOneBefore = (task: string): boolean => !task.endsWith("/task1");
+const fair = (tasks: readonly string[]): string[] => tasks.filter(hasOneBefore);
+export const tasksOf = (named: string | undefined, otherwise: readonly string[]): string[] =>
   named === undefined
     ? [...otherwise]
     : named
@@ -226,6 +231,16 @@ async function armOf(values: Values, out: string, baseHarness: string): Promise<
         stage === "base1" ? { of: "base", usd: 0 } : sweepBuild(out, task, STAGES.slice(0, 3)),
     };
   }
+  // `compare.ts rejudge` copies a rollout's deliverable under this name, so the judge reads it again.
+  if (arm.startsWith("again:")) {
+    return {
+      name,
+      harness: arm,
+      tree: () => null,
+      label: (task) => `${name}__${keyOf(task)}`,
+      build: () => null,
+    };
+  }
   if (arm === "heldout") {
     return rolled(
       "heldout",
@@ -310,6 +325,7 @@ async function judge(
   place: { store: string; task: string; label: string },
   apiBase: string,
   shimLog: string | undefined,
+  rubrics = join(jb, "dataset", "main", place.task, "RUBRICS.json"),
 ): Promise<{ details: JsonObject; usd: number | null } | string> {
   const output = join(place.store, place.task, "model_output", place.label);
   const details = join(place.store, place.task, "eval_result", `eval_${place.label}`, DETAILS);
@@ -325,7 +341,7 @@ async function judge(
         "--output-dir",
         output,
         "--rubrics-file",
-        join(jb, "dataset", "main", place.task, "RUBRICS.json"),
+        rubrics,
         "--details-file",
         details,
         "--judge-model",
@@ -377,11 +393,13 @@ const OPTIONS = {
   jb: { type: "string" },
   "api-base": { type: "string" },
   "judge-log": { type: "string" },
+  rubrics: { type: "string" },
+  "solve-only": { type: "boolean" },
   "dry-run": { type: "boolean" },
   yes: { type: "boolean" },
 } as const;
 
-async function score(values: Values): Promise<void> {
+export async function score(values: Values): Promise<void> {
   if (values.out === undefined || values["api-base"] === undefined || values.jb === undefined) {
     throw new Error("score needs --arm, --name, --out, --jb and --api-base");
   }
@@ -427,7 +445,7 @@ async function score(values: Values): Promise<void> {
   const scoreOne = async (task: string): Promise<void> => {
     const label = arm.label(task);
     const place = { store, task, label };
-    const got = await judge(jb, place, values["api-base"] ?? "", values["judge-log"]);
+    const got = await judge(jb, place, values["api-base"] ?? "", values["judge-log"], values.rubrics);
     if (isString(got)) {
       console.log(`${task}: not judged (${got})`);
       runtimeProcess.exitCode = 1;
@@ -478,6 +496,8 @@ async function score(values: Values): Promise<void> {
         runtimeProcess.exitCode = 1;
         continue;
       }
+      // `compare.ts run` solves a block's sides side by side and judges them in turn afterwards.
+      if (values["solve-only"] === true) continue;
       const due = task;
       judging = judging.then(async () => await scoreOne(due));
     }

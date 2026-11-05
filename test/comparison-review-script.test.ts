@@ -3,7 +3,7 @@
  * both ways, and a sealed half that stays out of sight and out of every pool until it is unsealed.
  */
 import { afterAll, describe, expect, it } from "bun:test";
-import { armOf, levelLines, sealOf } from "#skills/comparison-review/scripts/levels.ts";
+import { armOf, levelLines, sealOf } from "../studies/harness2/levels.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { capturedJsonStringify } from "../src/meta/json-runtime.ts";
 import { tmpdir } from "../src/meta/os.ts";

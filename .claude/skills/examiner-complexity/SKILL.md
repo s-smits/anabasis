@@ -116,6 +116,18 @@ A paid seat names `--reviewer` and `--reviewer-effort` as its source campaign di
 
 ## 5. Read a fresh pair to its first comparison
 
+Where a campaign's comparisons sit in the test's power zone is one reading per comparison:
+
+```sh
+bun .claude/skills/examiner-complexity/scripts/zone.ts <log or campaign name>...
+```
+
+prints a table of the reference's tasks with no, some and every solve valid, the tasks untied on
+validity and on the objective alone, and the A/A's untied share beside them. Read the two shares
+together: at a 100% valid share the candidate's untied tasks are all on the objective, where a
+harness's own two solves differ too, so a share near the A/A's shows noise and no room. It decides
+nothing, and no seat reads it.
+
 Seats read one session after a cut. Whether an exam change raises supply, and holds across a
 promotion, only a fresh campaign at its commit shows (`AGENTS.md`, section 10, item 9). Launch the
 control and the arm together, one domain, one login, the same host class, on the operator's word

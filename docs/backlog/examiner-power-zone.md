@@ -467,3 +467,13 @@ one exception (3). Watch these with every change above:
   one was found already true (a fresh fallback session opens with the whole record), the domain
   prompt's opposition was withdrawn (item 6), and two were opposed (item 13). The seat texts that
   are the operator's are item 14.
+- **5 November, 11:23 UTC.** The campaign launched at `ca526ad1f` (#631) read the first step on a
+  tuned jobstat prompt: its second comparison scored 13 won, 2 lost, 6 tied, p 0.0004, carried by
+  the objective, and promoted. The A/A beside it read 4 won, 9 lost, 8 tied, a step the other way
+  where none can be. A later comparison of the Starter against the promoted harness scored 6 won,
+  12 lost, 3 tied. The Referee commits of #631 did not bear on the step: that log holds no
+  `referee.call` and no rejection in 396 verdicts. The campaign at `11a330c60`, without those
+  commits, holds 4 `referee.call` and one finding, ruled earned, and scored 11 won, 11 lost at its
+  second comparison. The two differ in prompt text, host, exam draw and Builder draw at once, with
+  one campaign each, so this does not say which change helped. Both are paused on a login limit
+  with no ending.

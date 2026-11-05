@@ -39,7 +39,7 @@ archived campaign; `copy <name> --to <worktree>` brings this machine's back to g
 | `fetch [<name>] [--from <host>]` | a copy of a campaign another machine holds, to read here, into the archive as `data/runs/<host>/<name>/`; with no name, the records (log and receipts) of every campaign the other machines hold, which a timer on the central machine runs every ten minutes | `move.ts` |
 | `retire [--days 1] [--yes]` | moves each campaign no process writes or keeps, idle for `--days`, into the archive whole (a seed, `seed.json` beside its log, is deleted instead, the archive's too), and deletes each worktree nothing has used for a week (two for one with uncommitted work) and each local branch no worktree holds that nothing has used for a week, tagging a commit nothing else holds; then refreshes each other host's records here. A daily job on every host runs it with `--yes`; nothing else in an archive is deleted | `retire.ts` |
 | `on <host> <verb ...>`, `hosts [--all]` | any verb on another host over ssh; `status` on each other host alone. A verb that names a run goes to its host by itself | `hosts.ts` |
-| `pulse [<part of a name> ...] [--once] [--every 290] [--state <file>]` | what each run gained since the last look; state defaults to `.ana/runs-pulse.json` | `pulse.ts` |
+| `pulse [<part of a name> ...] [--once] [--every 290] [--state <file>] [--no-readers]` | what each run gained since the last look, and what every reader of its log says that this observer has not seen; state defaults to `.ana/runs-pulse.json` | `pulse.ts` |
 | `view <name>` | one campaign as its log reads, and the move the table names next | `view.ts` |
 | `source <name> [--holds <c>]...` | each run's commit, its tree, where the commit is published, whether it holds a fix | `receipt.ts` |
 | `zip`, `replay`, `seed`, `rehearse` | handover, readers over every log, a seed, a rehearsal | zip-run, system-path-simulation |
@@ -427,8 +427,30 @@ launch's `.err` when a process disappears. The view prints the campaign as its l
 reads, and its last line is the move the table names for this log (`decide`), which the Builder
 may decline. `view` uses this checkout's reader on a fresh copy where needed. `pulse --here`
 limits a poll to this machine. Each observer has its own remote cursors under the main worktree,
-so they survive controller changes; a local `--state` path is never sent to a peer. A failed peer
-prints a warning and gives exit 1. Neither starts a run.
+so they survive controller changes; a local `--state` path is never sent to a peer. Neither starts
+a run.
+
+Each look also runs every deterministic reader (`READERS`, `tools/wri/derive.ts`) over each run whose
+log moved, and says what this observer has not seen:
+
+- **What it says.** `◆ <reader>: <line>` for a line it has not said, at most 3 a reader, 12 a run and
+  30 a look, and `◆ the readers' full text: <folder>` for the rest. A line that moved only in a number
+  waits for the first result past a milestone. A reader's first result is remembered and not said, as
+  a trigger's is on a first look. `--no-readers` leaves all of this out.
+- **What it cost.** One pass a host (`tools/wri/pass.ts`) does the reading at the lowest priority, one
+  reader at a time, for at most 30 s once in 4 minutes however many sessions look, and each reader
+  starts only where the one-minute load leaves a core under the line where a solve waits. A look waits
+  for it at most 20 s. Under load the readers are shed, and said to be.
+- **What a cut says.** `⚠ not read since the last look: <readers>; <why>` names each reader that read
+  nothing past this observer's last look, on a log that moved since, whatever stopped it. It comes
+  again until the reader catches up, and what the reader then says comes as ordinary news. A pass
+  outlives a look the hook's limit killed, and a killed look moves no cursor, so its events come
+  again. A peer holds its cursor until its caller returns the token it printed, so a look that never
+  read a peer's answer hears it again; a peer with no answer within 33 s prints `⚠ no answer` and the
+  look exits 1.
+- **Where it lies.** Results lie in the main worktree's `.ana/pulse/readers/`, and each observer's copy
+  of a reader with news in `<state>.d/<run>/`. Both hold hidden values as the log does, and no seat can
+  read them (`test/runs-pulse-readers.test.ts`). A result may come from another session's commit.
 
 ## Stop
 

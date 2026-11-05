@@ -7,6 +7,13 @@
  * than the rest; a folder whose log, and the commit that reads it, have not moved is left as it is.
  * A reader's code changed without a commit is not seen, so `--force` derives again.
  *
+ * `READERS` is the one list of them, and `pass.ts` runs the same list a reader at a time for the
+ * pulse (operator, 5 November: "ALL the scripts"). Its order is what a pass reads first: the rows
+ * and triggers, then what a reader of a run asks soonest, and last `versions` and `chain`, which open
+ * every kept harness beside a log and took 11 and 8 s on a log of 6,905 events against 1.5 s on one
+ * of 51,590 (measured 5 November). A reader runs with no credential in its environment and with
+ * `ANA_HOP=1`, under which it reaches no other host.
+ *
  * The folders sit under the main worktree's `data/derived/`, which git ignores: the readers print
  * hidden values as the log holds them, so they stay on the exam side with the archive. A reader that
  * fails leaves its ending and stderr in its file and is named; the others still run.
@@ -22,12 +29,15 @@ import {
 import { gitMaybe, mainTree } from "#src/meta/git.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";
 import { pooled } from "#src/meta/pool.ts";
 import { capturedExecPath, runtimeProcess } from "#src/meta/process.ts";
 import { runCaptured } from "#src/meta/subprocess.ts";
+import { CLI } from "#tools/runs/registry.ts";
 
 const SKILLS = ".claude/skills";
+const TUNER = `${SKILLS}/promotion-tuner/scripts`;
 const MANIFEST = "manifest.json";
 /** Readers at once: the job that runs them shares its host with live campaigns. */
 const WIDTH = 4;
@@ -55,20 +65,37 @@ const skillReader = (name: string, script: string, ...flags: string[]): Reader =
   args: (log) => [`${SKILLS}/${script}`, log, ...flags],
 });
 
-/** The readers that take one log and print what it holds, calling no model and writing nothing.
- *  `replay.ts` reads one campaign by its folder and name; `table.ts` reads the fleet, and `runs view`
- *  refreshes remote copies, so both are left out. */
+/** A reader that names its campaign instead of its log, found as the registry finds it. */
+const namedReader = (
+  name: string,
+  script: string,
+  before: readonly string[],
+  after: readonly string[] = [],
+) => ({
+  name,
+  args: (log: string) => [script, ...before, basename(dirname(log)), ...after],
+});
+
+/** The readers that take one campaign and print what it holds, calling no model and writing nothing,
+ *  the likeliest news first. A script that needs more than a campaign to say anything, reads no run or
+ *  writes is left out, and `whole-run-investigation` names each. */
 export const READERS: readonly Reader[] = [
   { name: "rows", args: (log) => ["tools/wri/wri.ts", "read", "--log", log] },
-  skillReader("chain", "harness-audit/scripts/harness-versions.ts", "--blind"),
-  { name: "tasks", args: (log) => ["tools/wri/tasks.ts", log] },
-  { name: "degradations", args: (log) => ["tools/runs/degradations.ts", log] },
-  skillReader("versions", "harness-audit/scripts/harness-versions.ts"),
+  skillReader("ending", "campaign-mechanics/scripts/ending.ts"),
   skillReader("readings", "comparison-reading/scripts/reading.ts"),
+  { name: "degradations", args: (log) => ["tools/runs/degradations.ts", log] },
+  { name: "climb", args: (log) => ["tools/wri/wri.ts", "climb", "--log", log] },
+  skillReader("gap", "comparison-reading/scripts/gap.ts"),
+  namedReader("view", CLI, ["view"]),
+  namedReader("loop", `${SKILLS}/run-improvement-campaign/scripts/wri2p2.ts`, []),
+  namedReader("source", CLI, ["source"]),
+  namedReader("logged", CLI, ["replay"]),
+  namedReader("cost", `${TUNER}/cost.ts`, ["--name"], ["--format", "tsv"]),
+  namedReader("table", `${TUNER}/table.ts`, ["--name"], ["--rows", "runs", "--format", "tsv"]),
   {
     name: "replay",
     args: (log, repo) => [
-      `${SKILLS}/promotion-tuner/scripts/replay.ts`,
+      `${TUNER}/replay.ts`,
       "--tree",
       repo,
       "--logs",
@@ -77,12 +104,36 @@ export const READERS: readonly Reader[] = [
       basename(dirname(log)),
     ],
   },
-  skillReader("draw", "comparison-reading/scripts/draw.ts"),
-  skillReader("ending", "campaign-mechanics/scripts/ending.ts"),
   skillReader("conditions", "campaign-mechanics/scripts/conditions.ts"),
+  { name: "tasks", args: (log) => ["tools/wri/tasks.ts", log] },
+  skillReader("draw", "comparison-reading/scripts/draw.ts"),
   skillReader("builder-view", "design-and-seats/scripts/builder-view.ts"),
   skillReader("examiner-view", "design-and-seats/scripts/examiner-view.ts"),
+  skillReader("ambition", "examiner-complexity/scripts/ambition.ts"),
+  skillReader("exams", "examiner-complexity/scripts/exams.ts"),
+  skillReader("versions", "harness-audit/scripts/harness-versions.ts"),
+  skillReader("chain", "harness-audit/scripts/harness-versions.ts", "--blind"),
 ];
+
+/** What `reader` says of `log`, with its ending and stderr added where it failed. `cut` is a reader
+ *  its time limit ended, so what it would have said is unknown. */
+export async function readerOutput(
+  reader: Reader,
+  log: string,
+  repo: string,
+  timeout: number,
+): Promise<{ text: string; ok: boolean; cut: boolean }> {
+  const { PATH, HOME } = runtimeProcess.env;
+  const ran = await runCaptured([capturedExecPath, ...reader.args(log, repo)], {
+    cwd: repo,
+    timeout,
+    env: { ...keyIfDefined("PATH", PATH), ...keyIfDefined("HOME", HOME), ANA_HOP: "1" },
+  });
+  const ok = ran.exitCode === 0;
+  const ending = ok ? "" : `\n-- ${reader.name} ended ${ran.signal ?? `with exit ${String(ran.exitCode)}`}\n`;
+  const stderr = ran.stderr.trim() === "" ? "" : `\n-- stderr\n${ran.stderr}`;
+  return { text: `${ran.stdout}${ending}${stderr}`, ok, cut: ran.signal !== null };
+}
 
 /** Where the folders go, under the main worktree of the repository `repo` lies in. */
 export const derivedOf = (repo: string) => join(mainTree(repo), "data", "derived");
@@ -123,16 +174,8 @@ export async function derive(
   rmSync(work, { recursive: true, force: true });
   mkdirSync(work, { recursive: true });
   const endings = await pooled(readers, WIDTH, async (reader) => {
-    const ran = await runCaptured([capturedExecPath, ...reader.args(log, repo)], {
-      cwd: repo,
-      timeout: READER_MS,
-    });
-    const ok = ran.exitCode === 0;
-    const ending = ok
-      ? ""
-      : `\n-- ${reader.name} ended ${ran.signal ?? `with exit ${String(ran.exitCode)}`}\n`;
-    const stderr = ran.stderr.trim() === "" ? "" : `\n-- stderr\n${ran.stderr}`;
-    writeFileSync(join(work, `${reader.name}.txt`), `${ran.stdout}${ending}${stderr}`);
+    const { text, ok } = await readerOutput(reader, log, repo, READER_MS);
+    writeFileSync(join(work, `${reader.name}.txt`), text);
     return ok ? [] : [reader.name];
   });
   const failed = endings.flat();

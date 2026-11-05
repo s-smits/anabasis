@@ -249,7 +249,13 @@ describe("the runs pulse", () => {
       event(5, "comparison.reported", { reading: "step" }),
       event(6, "harness.promoted", { harness: "0a1b2c3d4e5f", from: "starter", rests: "g1" }),
     ];
-    const look = pulse(round, promoted, "open", lookedAt(built.length), START + 7 * 60_000);
+    const look = pulse(
+      round,
+      promoted,
+      "open",
+      { ...lookedAt(built.length), triggers: {} },
+      START + 7 * 60_000,
+    );
     expect(look.said).toHaveLength(3);
     expect(look.said[0]).toMatch(/^◆.*step/);
     expect(look.said[1]).toMatch(/^◆.*0a1b2c3d/);

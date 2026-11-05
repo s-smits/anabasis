@@ -58,13 +58,13 @@ const MOVE_OPS = ["file-write-unlink", "file-write-create"] as const;
  * roots must emit the same bytes.
  */
 export function moveBlockingRules(protectedRoots: readonly string[]): string[] {
-  const roots = [...new Set(protectedRoots)].sort();
+  const roots = [...new Set(protectedRoots)].toSorted();
   if (roots.length === 0) return [];
   // Every directory a rename could relocate a protected root through. `/` is dropped: it is not
   // renameable and naming it would deny the root inode itself.
   const ancestors = [...new Set(roots.flatMap((root) => ancestorDirectories(root)))]
     .filter((path) => path !== "/")
-    .sort();
+    .toSorted();
   return MOVE_OPS.flatMap((op) => [
     `(deny ${op}`,
     ...roots.map((path) => `  (subpath ${capturedJsonStringify(path)})`),

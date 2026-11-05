@@ -255,7 +255,7 @@ describe("proveCommits", () => {
   });
 
   // The wrapper prints its host-wall lines in colour, so the recorded shape begins with an escape.
-  const red = "\u001b[0m\u001b[31m";
+  const red = "\u001B[0m\u001B[31m";
   const pulses = [
     [
       "a host-wall rerun",

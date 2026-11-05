@@ -286,7 +286,7 @@ function records(value: JsonValue | undefined): JsonObject[] {
 }
 
 export function tally(counts: Readonly<Record<string, number>>): string {
-  const named = Object.entries(counts).sort(([left], [right]) => left.localeCompare(right));
+  const named = Object.entries(counts).toSorted(([left], [right]) => left.localeCompare(right));
   return named.map(([name, number]) => `${name} ${String(number)}`).join(", ") || "none";
 }
 
@@ -497,7 +497,7 @@ export function instrumentTriggers(log: Index): Trigger[] {
   // One check refusing most answers, and no other refusing as many: t-10's one refusal on 10
   // October was blocked by all four checks, and the first of four equal counts read as a fault
   // of one check's.
-  const [top, next] = Object.entries(byCheck).sort(([, a], [, b]) => b - a);
+  const [top, next] = Object.entries(byCheck).toSorted(([, a], [, b]) => b - a);
   const lopsided =
     top !== undefined &&
     new Set(blocking).size > 1 &&

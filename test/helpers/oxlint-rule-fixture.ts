@@ -114,7 +114,7 @@ export async function reportedLines(
 ): Promise<number[]> {
   return (await runRule(plugin, rule, fixtureText, at, staging))
     .map((row) => Number(row.split(":")[0]))
-    .sort((a, b) => a - b);
+    .toSorted((a, b) => a - b);
 }
 
 /**

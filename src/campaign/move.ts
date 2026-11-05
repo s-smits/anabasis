@@ -56,22 +56,30 @@ export function decidedLine(decided: Decided): string {
   const named = (harness: string) => (harness.length > 16 ? short(harness) : `the ${harness} harness`);
   const what = (): string => {
     switch (decided.move) {
-      case "draft":
+      case "draft": {
         return "an Examiner session, to draft the exam";
-      case "accept":
+      }
+      case "accept": {
         return "read the exam";
-      case "prepare":
+      }
+      case "prepare": {
         return "set the tasks apart";
-      case "examine":
+      }
+      case "examine": {
         return "an Examiner session";
-      case "build":
+      }
+      case "build": {
         return "a Builder session";
-      case "compare":
+      }
+      case "compare": {
         return `a comparison of ${named(decided.fresh)} with ${named(decided.reference)}`;
-      case "promote":
+      }
+      case "promote": {
         return `promote harness ${short(decided.harness)}`;
-      case "end":
+      }
+      case "end": {
         return `the campaign ends (${decided.ending})`;
+      }
     }
   };
   return `${what()}: ${decided.why}`;

@@ -160,7 +160,7 @@ export async function foreignPrograms(tree: string): Promise<void> {
   }
   if (foreign.length > 0) {
     throw new Error(
-      `the harness's ${TOOL_TREE_DIR} holds programs a Linux x86-64 container cannot run: ${foreign.sort().join(", ")}`,
+      `the harness's ${TOOL_TREE_DIR} holds programs a Linux x86-64 container cannot run: ${foreign.toSorted().join(", ")}`,
     );
   }
 }

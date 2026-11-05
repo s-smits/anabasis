@@ -373,11 +373,11 @@ function sharedTmpTrigger(log: Index): Trigger[] {
   }
   const crossing = [...namers]
     .filter(([, by]) => by.size > 1)
-    .sort(([, left], [, right]) => right.size - left.size)
+    .toSorted(([, left], [, right]) => right.size - left.size)
     .slice(0, MOST_PATHS)
     .map(([path, by]) => `${path} by ${String(by.size)}`);
   const programs = [...namers].flatMap(([path, by]) =>
-    path.includes("/bin/") ? [`${path} by ${[...by].sort().join(" ")}`] : [],
+    path.includes("/bin/") ? [`${path} by ${[...by].toSorted().join(" ")}`] : [],
   );
   const sessions = (seat: Seat) => tally(countBy(of(seat), ({ id }) => id || "unknown"));
   const lines = [

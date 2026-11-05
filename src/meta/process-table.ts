@@ -63,7 +63,7 @@ function openLibproc() {
 /** The bytes of `buffer` up to its first NUL, as text, or null where that is empty. */
 function cString(buffer: Uint8Array): string | null {
   const end = buffer.indexOf(0);
-  const text = TEXT.decode(end < 0 ? buffer : buffer.subarray(0, end));
+  const text = TEXT.decode(end === -1 ? buffer : buffer.subarray(0, end));
   return text === "" ? null : text;
 }
 

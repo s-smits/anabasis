@@ -196,7 +196,7 @@ export const TREE_FINDING_EXAMPLES: Readonly<
     {
       // `\u006c` spells the l of legacy, so the scan does not report this file for its own example.
       before:
-        "const \u006cegacyRows = rows.filter((row) => row.version === 1);\nexport const read = [...\u006cegacyRows.map(upgrade), ...rows];",
+        "const \u006CegacyRows = rows.filter((row) => row.version === 1);\nexport const read = [...\u006CegacyRows.map(upgrade), ...rows];",
       after: "// one version is written, so one is read\nexport const read = rows.map(parseRow);",
     },
   ],

@@ -88,7 +88,7 @@ function Head({ reading }: { reading: CampaignReading }) {
  *  printed the table's reason, the open sessions and the Builder's lead as one run-on line. */
 function reasonOf(line: string) {
   const cut = line.indexOf("; ");
-  if (cut < 0) return line;
+  if (cut === -1) return line;
   return <Disclosure title={line.slice(0, cut)}>{line.slice(cut + 2)}</Disclosure>;
 }
 

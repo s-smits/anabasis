@@ -59,8 +59,8 @@ describe("prices", () => {
     const bill = billOf(freezePrices([opus]), {
       // 98,500 cache writes, of which 90,000 live an hour and 8,500 five minutes.
       "claude/claude-opus-5-5": {
-        input: 1_500,
-        output: 5_000,
+        input: 1500,
+        output: 5000,
         cacheRead: 900_000,
         cacheWrite: 98_500,
         cacheWrite1h: 90_000,
@@ -107,7 +107,7 @@ describe("prices", () => {
 describe("ledgers", () => {
   it("adds a backend's usages by the key they are filed under, with the dollars it reported", () => {
     const ledger = ledgerOf([
-      ["codex/a", usage({ input: 100, output: 20, cacheRead: 1_000, cacheWrite: 50 }, 0.25)],
+      ["codex/a", usage({ input: 100, output: 20, cacheRead: 1000, cacheWrite: 50 }, 0.25)],
       ["codex/a", usage({ input: 300, output: 40, cacheWrite: 10, cacheWrite1h: 10 }, 0.5)],
       ["codex/b", usage({ input: 7, output: 1 }, 0.01)],
     ]);
@@ -116,7 +116,7 @@ describe("ledgers", () => {
       "codex/a": {
         input: 400,
         output: 60,
-        cacheRead: 1_000,
+        cacheRead: 1000,
         cacheWrite: 60,
         cacheWrite1h: 10,
         dollars: 0.75,
@@ -159,7 +159,7 @@ describe("a backend's ledger", () => {
     const spend = claudeSpend("claude", {
       total_cost_usd: 1.5,
       modelUsage: {
-        "claude-opus-5": { ...used(1_000, 1), cacheCreationEphemeral1hInputTokens: 40 },
+        "claude-opus-5": { ...used(1000, 1), cacheCreationEphemeral1hInputTokens: 40 },
         // A dated name Claude Code reports beside the plain one: one model, one key.
         "claude-opus-5-20261001": { ...used(500, 0.25), canonicalModel: "claude-opus-5" },
         "claude-haiku-5-5": used(20, 0.25),
@@ -169,7 +169,7 @@ describe("a backend's ledger", () => {
       ledger: {
         // 1,000 + 500 input, 10 + 10 output, 100 + 100 read, 40 + 40 written (40 for an hour), $1 + $0.25.
         "claude/claude-opus-5": {
-          input: 1_500,
+          input: 1500,
           output: 20,
           cacheRead: 200,
           cacheWrite: 80,
@@ -212,7 +212,7 @@ describe("a session's ledger", () => {
     ...none,
     input,
     output: 50,
-    cacheRead: 5_000,
+    cacheRead: 5000,
     dollars,
   });
   const turns = { "claude/claude-opus-5-5": spend(100, 0.1) };
@@ -227,13 +227,13 @@ describe("a session's ledger", () => {
     // pi-durable files every turn under the model asked for; the turns were served by another, and
     // a retried attempt of 1,000 input tokens is in pi's ledger alone.
     const ledger = sessionLedger(
-      { "openai-codex/gpt-6-luna": spend(1_100, 0.12) },
+      { "openai-codex/gpt-6-luna": spend(1100, 0.12) },
       { "openai-codex/gpt-6-luna": spend(100, 0.1) },
       { "openai-codex/gpt-6.1-sol": spend(100, 0.1) },
     );
-    expect(Object.keys(ledger).sort()).toEqual(["openai-codex/gpt-6-luna", "openai-codex/gpt-6.1-sol"]);
+    expect(Object.keys(ledger).toSorted()).toEqual(["openai-codex/gpt-6-luna", "openai-codex/gpt-6.1-sol"]);
     expect(ledger["openai-codex/gpt-6.1-sol"]).toEqual(spend(100, 0.1));
-    expect(ledger["openai-codex/gpt-6-luna"]).toEqual({ ...none, input: 1_000, dollars: nearly(0.02, 10) });
+    expect(ledger["openai-codex/gpt-6-luna"]).toEqual({ ...none, input: 1000, dollars: nearly(0.02, 10) });
   });
 
   it("is the turns' own where the backend reported none, a zeroed one, or less than the turns hold", () => {
@@ -271,14 +271,14 @@ describe("a seat's meter", () => {
 
   it("bills a seat Claude Code served on its result, a compaction included, with the total it reported", () => {
     const meter = catalogued();
-    const turns = [turn("claude-opus-5", { input: 100_000, output: 1_000 }, 0.21)];
+    const turns = [turn("claude-opus-5", { input: 100_000, output: 1000 }, 0.21)];
     // The result holds the turn and a compaction's 400,000 input tokens on claude-opus-5.
     const backend = claudeSpend("claude", {
       total_cost_usd: 1.23,
       modelUsage: {
         "claude-opus-5": {
           inputTokens: 500_000,
-          outputTokens: 1_000,
+          outputTokens: 1000,
           cacheReadInputTokens: 0,
           cacheCreationInputTokens: 0,
           webSearchRequests: 0,
@@ -291,7 +291,7 @@ describe("a seat's meter", () => {
     // 500,000 x $2 + 1,000 x $10 per million = $1.01 at the served model's list price.
     expect(meter.spent(turns, backend)).toEqual({
       turns: 1,
-      tokens: { ...none, input: 500_000, output: 1_000 },
+      tokens: { ...none, input: 500_000, output: 1000 },
       billed: nearly(1.01, 10),
       reportedCost: 1.23,
     });

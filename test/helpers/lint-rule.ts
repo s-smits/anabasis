@@ -56,7 +56,7 @@ export async function lintRules(plugin: string, cases: readonly RuleCase[]): Pro
     const actual = lines
       .filter((line) => line.startsWith(`${file}:`) && line.endsWith(`(${rule})]`))
       .map((line) => Number(line.slice(file.length + 1).split(":")[0]))
-      .sort((a, b) => a - b);
+      .toSorted((a, b) => a - b);
     expect(actual, `${plugin}/${rule} at ${path}`).toStrictEqual(expected);
   }
   return stdout;

@@ -32,7 +32,7 @@ function encodeSorted(value: unknown, undefinedValues: "omit" | "keep"): string 
       /* SAFETY: reached only when `isObject(value)`. */ value as Record<string, JsonValue>,
     )
       .filter(([, child]) => undefinedValues === "keep" || child !== undefined)
-      .sort(([a], [b]) => compareCodeUnits(a, b));
+      .toSorted(([a], [b]) => compareCodeUnits(a, b));
     return `{${entries.map(([key, child]) => `${stringify(key)}:${encodeSorted(child, undefinedValues)}`).join(",")}}`;
   }
   return stringify(value) ?? (undefinedValues === "keep" ? "undefined" : "null");

@@ -22,7 +22,7 @@ import { movesIn } from "./moves.ts";
 import { rulingWithheld } from "./withheld.ts";
 
 /** How much of a call's result an answer carries; the raw event is the exam tier's. */
-const RESULT_CHARS = 8_000;
+const RESULT_CHARS = 8000;
 const FAIL_KINDS = ["rejected", "wall-ended", "turns-ended", "context-ended", "no-answer"] as const;
 const NON_RESULTS = ["provider", "sandbox-crash", "killed", "moved-files", "check", "verifier"] as const;
 /** The non-results whose reason names a check or what the verifier saw of an answer. */

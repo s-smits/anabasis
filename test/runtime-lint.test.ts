@@ -79,7 +79,7 @@ export function complete(value: "ok" | "failed"): void {
           /fixture\.ts:(\d+):\d+:.*\[(?:Error|Warning)\/(?:typescript|eslint)\(([^)]+)\)\]/g,
         ),
       ].map(([, line, rule]) => `${line}:${rule}`);
-      expect(actual.sort()).toEqual(expected.sort());
+      expect(actual.toSorted()).toEqual(expected.toSorted());
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -410,7 +410,7 @@ describe("a campaign", () => {
     // A tool tree kept beside the states (`tree-*`) is no harness, so a refusal lists only digests.
     mkdirSync(join(campaign.states, "tree-x"));
     await expect(keptAs(campaign, "--harness", "C")).rejects.toThrow(
-      `whole: ${[digest, least.digest].sort().join(", ")}.`,
+      `whole: ${[digest, least.digest].toSorted().join(", ")}.`,
     );
     await expect(keptAs(campaign, "--parent", "tree-x")).rejects.toThrow("is no harness this campaign keeps");
     // A kept state that has changed is no longer the harness its name says, and is refused before

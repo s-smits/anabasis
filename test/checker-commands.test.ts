@@ -268,7 +268,7 @@ suite("acceptance and freezing over a stored pack", () => {
       const solves = read(join(REPO, ".ana", "d2", STALE, LOG)).flatMap(({ kind, data }) =>
         kind === "verdict" && isString(data.solve) ? [data.solve] : [],
       );
-      expect(solves.sort((a, b) => a.localeCompare(b))).toEqual(["s-c01-t-1", "s-c02-t-1", "s-c02-t-2"]);
+      expect(solves.toSorted((a, b) => a.localeCompare(b))).toEqual(["s-c01-t-1", "s-c02-t-1", "s-c02-t-2"]);
     } finally {
       controls("13");
     }
@@ -353,7 +353,7 @@ suite("preparation and rehearsal over a stored pack", () => {
     expect([released.held.length, released.released.length]).toEqual([1, 1]);
     // The proof is recorded once however often preparation runs (`task.feasible`).
     const events = read(join(prepared, LOG));
-    expect([...new Set(events.map(({ kind }) => kind))].sort()).toEqual([
+    expect([...new Set(events.map(({ kind }) => kind))].toSorted()).toEqual([
       "task.feasible",
       "task.gate",
       "task.proposed",

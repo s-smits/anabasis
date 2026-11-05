@@ -73,7 +73,7 @@ interface Asked {
   readonly since: string | null;
 }
 
-const POLL_MS = 5_000;
+const POLL_MS = 5000;
 const TIMEOUT_MS = 30_000;
 const REFUSALS: readonly Refusal[] = ["token", "host", "exam-side"];
 const NOTHING_READ = {
@@ -157,12 +157,12 @@ class Reads<Answer> {
           const before = this.#data;
           this.#data = before !== null && keptParts(before, parsed) ? before : parsed;
           show({ data: this.#data, key: path, loading: false, error: null, refused: null });
-        } catch (caught) {
+        } catch (error) {
           if (!active) return;
-          const refused = caught instanceof AnswerFailure ? caught.refused : null;
+          const refused = error instanceof AnswerFailure ? error.refused : null;
           // `errorMessage` lives beside the process surface in `src/meta`, which a page cannot bundle.
-          const error = caught instanceof Error ? caught.message : String(caught);
-          show({ ...this.#state, loading: false, error, refused });
+          const message = error instanceof Error ? error.message : String(error);
+          show({ ...this.#state, loading: false, error: message, refused });
         }
       };
       const stop = polled ? poll(read, POLL_MS) : null;

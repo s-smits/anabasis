@@ -308,8 +308,9 @@ describe("the harness inspector", () => {
     for (const action of ["button", "Escape"]) {
       await files.click();
       await expect(inspector(page).locator(".ana-record")).toBeVisible();
-      if (action === "button") await inspector(page).getByRole("button", { name: "Close" }).click();
-      else await page.keyboard.press("Escape");
+      await (action === "button"
+        ? inspector(page).getByRole("button", { name: "Close" }).click()
+        : page.keyboard.press("Escape"));
       await expect(inspector(page)).toHaveCount(0);
       expect(routeParameters(page).file).toBeUndefined();
       await expect(files).toBeFocused();

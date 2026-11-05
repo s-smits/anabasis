@@ -115,7 +115,7 @@ describe("an arm's harness, taken from a campaign", () => {
     const flat = await campaign("flat", (log) => {
       append(log, "campaign.ended", { ending: "stop", why: "patience" });
     });
-    const before = readdirSync(flat.states).sort();
+    const before = readdirSync(flat.states).toSorted();
     const into = join(root, "arm-flat");
     const origin = await placeHarness(into, { campaign: flat.log });
     expect((await openHarness(into)).digest).toBe(flat.starter);
@@ -126,7 +126,7 @@ describe("an arm's harness, taken from a campaign", () => {
         harness: `programs-of:${flat.child}`,
       }),
     ).rejects.toThrow(/does not write/u);
-    expect(readdirSync(flat.states).sort()).toStrictEqual(before);
+    expect(readdirSync(flat.states).toSorted()).toStrictEqual(before);
   });
 
   it("refuses a kept state that no longer opens as the digest it is kept under", async () => {

@@ -276,9 +276,9 @@ function readingsOf(score: Score, events: readonly LogEvent[], totals: Totals): 
     totals.readings += 1;
     totals.weighted += weighted ? 1 : 0;
     if (weighted && score.own) {
-      totals.moved += differences.join() === sets.flatMap((set) => set.stored).join() ? 0 : 1;
+      totals.moved += differences.join(",") === sets.flatMap((set) => set.stored).join(",") ? 0 : 1;
       totals.aaMoved +=
-        aa !== null && aa.differences.join() !== numbers(asRecord(noise)?.differences).join() ? 1 : 0;
+        aa !== null && aa.differences.join(",") !== numbers(asRecord(noise)?.differences).join(",") ? 1 : 0;
     }
     totals.toStep += step && reading !== "step" ? 1 : 0;
     totals.fromStep += !step && reading === "step" ? 1 : 0;

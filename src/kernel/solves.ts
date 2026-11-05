@@ -168,7 +168,7 @@ export function ended<Each extends Solve>(solves: readonly Each[]): (Each & Ende
       const { finished, end } = solve;
       return finished === null || end === null ? [] : [{ ...solve, finished, end }];
     })
-    .sort((a, b) => a.finished - b.finished);
+    .toSorted((a, b) => a.finished - b.finished);
 }
 
 /** Whether a solve passed: true for a pass, false for a fail of any kind and for a solver's flag

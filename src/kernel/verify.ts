@@ -203,7 +203,7 @@ export function blockingOf(verdict: Verdict | null | undefined): readonly string
 
 /** A verdict in one line, a fail's checks in order, so that two verdicts can be set side by side. */
 export function spelled(verdict: Verdict): string {
-  if (verdict.kind === "fail") return `fail ${[...verdict.blocking].sort().join(",")}`;
+  if (verdict.kind === "fail") return `fail ${[...verdict.blocking].toSorted().join(",")}`;
   if (verdict.kind === "faulty") return `faulty ${verdict.check}: ${verdict.reason}`;
   if (verdict.kind === "pass") {
     return verdict.objective === undefined ? "pass" : `pass ${String(verdict.objective)}`;
@@ -365,7 +365,7 @@ export function checkProgramFiles(checks: string): string[] {
         if (entry.isFile()) return [path];
         throw new Error(`the check program's ${path} is neither a file nor a directory`);
       });
-  return walk("").sort(compareCodeUnits);
+  return walk("").toSorted(compareCodeUnits);
 }
 
 /** A check program's version: the sha256 of each of its files, by its path under the directory.

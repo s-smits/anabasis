@@ -554,7 +554,7 @@ export async function keptAs(campaign: Keeping, flag: string, asked: string): Pr
   const kept = existsSync(campaign.states)
     ? readdirSync(campaign.states)
         .filter((each) => DIGEST.test(each))
-        .sort()
+        .toSorted()
     : [];
   if (!kept.includes(digest)) {
     const begun = kept.filter((each) => digest !== "" && each.startsWith(digest));

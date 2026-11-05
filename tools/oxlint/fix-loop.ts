@@ -87,8 +87,8 @@ const SNAP_LINES = 6;
 
 const ARGUMENTS = runtimeProcess.argv.slice(2);
 const SEPARATOR = ARGUMENTS.indexOf("--");
-const OWN = SEPARATOR < 0 ? ARGUMENTS : ARGUMENTS.slice(0, SEPARATOR);
-const EXTRA = SEPARATOR < 0 ? [] : ARGUMENTS.slice(SEPARATOR + 1);
+const OWN = SEPARATOR === -1 ? ARGUMENTS : ARGUMENTS.slice(0, SEPARATOR);
+const EXTRA = SEPARATOR === -1 ? [] : ARGUMENTS.slice(SEPARATOR + 1);
 // tsgolint shells out to `node`, so a subprocess without the caller's PATH reports nothing at all
 // and the whole oracle goes quietly silent. Inherit the environment and only flatten the colour.
 const ENV = { ...runtimeProcess.env, FORCE_COLOR: "0", NO_COLOR: "1", CLICOLOR_FORCE: "" };
@@ -277,7 +277,7 @@ function main(): number {
   }
   const raw = readFileSync(REPORT, UTF8);
   const parsed = parseJsonAs<{ diagnostics: readonly { filename: string }[] }>(raw.slice(raw.indexOf("{")));
-  const census = [...new Set(parsed.diagnostics.map((one) => one.filename))].sort();
+  const census = [...new Set(parsed.diagnostics.map((one) => one.filename))].toSorted();
   const held = new Set<string>();
   const constrained = new Set<string>();
   const skipped = new Set<string>();
@@ -301,15 +301,15 @@ function main(): number {
     const diff = decodeOutput(captured.stdout);
     if (diff.trim() !== "") runSync(["git", "apply", "-R", "-"], { cwd: TREE, env: ENV, input: diff });
     const before = new Map(census.map((path) => [path, linesOf(path)]));
-    writeFileSync(HOLD_FILE, `${[...held].sort().join("\n")}\n`);
+    writeFileSync(HOLD_FILE, `${[...held].toSorted().join("\n")}\n`);
     const applied = mustRun([
       BUN,
       FIXER,
       REPORT,
       TREE,
       `--hold=${HOLD_FILE}`,
-      ...[...constrained].sort().map((one) => `--constrained=${one}`),
-      ...[...skipped].sort().map((one) => `--skip=${one}`),
+      ...[...constrained].toSorted().map((one) => `--constrained=${one}`),
+      ...[...skipped].toSorted().map((one) => `--skip=${one}`),
       ...EXTRA,
     ]);
     console.log(`--- round ${String(round)}`);
@@ -338,10 +338,10 @@ function main(): number {
       `    ${String(rows.length)} findings, ${String(fresh.size)} new holds, ` +
         `${String(grown.size)} constrained, ${String(stubborn.size)} skipped`,
     );
-    for (const one of [...grown].sort()) {
+    for (const one of [...grown].toSorted()) {
       console.log(`    source-policy ${one} may not grow; constraining it`);
     }
-    for (const one of [...stubborn].sort()) {
+    for (const one of [...stubborn].toSorted()) {
       console.log(`    source-policy ${one} is over even so; skipping it`);
     }
     for (const one of grown) constrained.add(one);

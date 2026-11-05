@@ -361,7 +361,7 @@ describe("a tally as its step is read", () => {
     losses: 2,
     ties: 9,
     p: 0.09,
-    unbilled: [0.4, 0.3, 0.2, -0.1, ...Array<number>(14).fill(0)],
+    unbilled: [0.4, 0.3, 0.2, -0.1, ...Array.from({ length: 14 }, () => 0)],
   };
 
   it("counts the untied tasks without the bill where the report holds those scores", () => {

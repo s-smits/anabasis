@@ -305,7 +305,7 @@ function gatherScratch(root: string, path: string, found: ScratchEntry): void {
   if (found.bytes > SCRATCH_CARRY_LIMIT_BYTES) return;
   const stat = lstatSync(join(root, path));
   if (stat.isDirectory()) {
-    for (const child of readdirSync(join(root, path)).sort(compareCodeUnits)) {
+    for (const child of readdirSync(join(root, path)).toSorted(compareCodeUnits)) {
       gatherScratch(root, join(path, child), found);
     }
   } else if (stat.isFile()) {

@@ -205,7 +205,7 @@ function hostRuling(verdict: LoggedVerdict, replay: Verdict | null): RefereeFind
   if (replay.kind === "faulty" || replay.kind === "non-result") {
     return ruled(null, null, `the replay reached no verdict: ${replay.reason}`);
   }
-  const [moved] = [...new Set(verdict.blocking).symmetricDifference(new Set(blockingOf(replay)))].sort();
+  const [moved] = [...new Set(verdict.blocking).symmetricDifference(new Set(blockingOf(replay)))].toSorted();
   return moved === undefined
     ? null
     : ruled(
@@ -338,7 +338,7 @@ function rulingTool(
         rule: earned ? (args.rule ?? null) : null,
         field: earned ? (args.field ?? null) : null,
         reason: boundText(args.reason, REASON_DISPLAY_BYTES).shown,
-        probes: [...new Set(args.probes)].sort((a, b) => a - b),
+        probes: [...new Set(args.probes)].toSorted((a, b) => a - b),
       });
       return ending(text("Recorded."));
     },

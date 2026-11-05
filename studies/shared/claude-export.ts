@@ -47,7 +47,7 @@ export async function exportForClaudeCode(
   mkdirSync(part, { recursive: true });
   const origin = await placeHarness(join(part, HARNESS_DIR), source);
   const harness = await openHarness(join(part, HARNESS_DIR));
-  const unavailable = [...harness.kinds.keys()].sort();
+  const unavailable = [...harness.kinds.keys()].toSorted();
   const searched =
     harness.toolTree === null
       ? []

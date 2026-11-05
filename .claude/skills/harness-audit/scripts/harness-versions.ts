@@ -251,7 +251,7 @@ export async function versionsOf(keeping: Keeping): Promise<Version[]> {
   const states = existsSync(keeping.states)
     ? readdirSync(keeping.states)
         .filter((each) => DIGEST.test(each))
-        .sort()
+        .toSorted()
     : [];
   const named = namesOf(events).keys();
   const digests = [...new Set([...(states.includes(starter) ? [starter] : []), ...named, ...states])];

@@ -28,14 +28,14 @@ function tally(runs: readonly Run[]): string[] {
     const events = [...new Set(own.map((run) => run.event))].map(
       (event) => `${event} ${String(own.filter((run) => run.event === event).length)}`,
     );
-    const first = own.map((run) => run.createdAt).sort()[0] ?? "";
+    const first = own.map((run) => run.createdAt).toSorted()[0] ?? "";
     return {
       count: own.length,
       line: `${String(own.length)} ${name} (${events.join(", ")}; first ${first})`,
     };
   });
   return [
-    ...rows.sort((a, b) => b.count - a.count).map((row) => row.line),
+    ...rows.toSorted((a, b) => b.count - a.count).map((row) => row.line),
     `${String(runs.length)} runs in all`,
   ];
 }

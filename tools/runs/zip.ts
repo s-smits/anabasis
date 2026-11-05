@@ -140,7 +140,7 @@ function unfit(root: string, path: string): string | null {
 
 /** Every file a zip may hold of `names` in `root`, or of all of it, by its path from there, and
  *  what stays where it is. */
-export function fit(root: string, names: readonly string[] = readdirSync(root).sort()) {
+export function fit(root: string, names: readonly string[] = readdirSync(root).toSorted()) {
   const held: Held[] = [];
   const left: Left[] = [];
   const visit = (path: string): void => {
@@ -149,7 +149,7 @@ export function fit(root: string, names: readonly string[] = readdirSync(root).s
     if (why !== null) {
       left.push({ path, why });
     } else if (lstatSync(full).isDirectory()) {
-      for (const name of readdirSync(full).sort()) visit(join(path, name));
+      for (const name of readdirSync(full).toSorted()) visit(join(path, name));
     } else {
       // A link is grouped with what it names, as a folder: a `.toolchain` with its `tree-*`.
       const named = lstatSync(full).isSymbolicLink() ? `${linkedIn(root, full) ?? path}/` : path;

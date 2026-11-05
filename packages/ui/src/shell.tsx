@@ -17,7 +17,7 @@ import { useWaited } from "./waited.ts";
 /*
  * The page around the panes: the sidebar with its campaign picker and the four panes, the line that
  * says which tier the server answers in and which worktree the campaign is in, the selected pane,
- * and the inspector on the right. It holds no data of its own: `App.tsx` reads the campaign list
+ * and the inspector on the right. It holds no data of its own: `app.tsx` reads the campaign list
  * and the campaign and hands their answers here, so the whole shell renders from plain values; a
  * pane's own name stands in its header, not here.
  *

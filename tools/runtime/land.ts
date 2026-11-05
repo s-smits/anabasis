@@ -455,7 +455,7 @@ function stackOf(root: string, landing: Landing): number | null {
   const [stack = "", listed = ""] = read.out.split(" ");
   const members = listed.split(",");
   const upTo = members.slice(0, members.indexOf(String(top.number)) + 1);
-  if (upTo.join() !== landing.pulls.map((pull) => String(pull.number)).join()) {
+  if (upTo.join(",") !== landing.pulls.map((pull) => String(pull.number)).join(",")) {
     throw new Refusal(
       `GitHub's stack ${stack} holds #${members.join(", #")}, and the chain of bases up to #${String(top.number)} ` +
         `holds ${numbers(landing.pulls)}. Make them agree, and land again.`,
@@ -545,7 +545,8 @@ function checkCurrent(root: string, target: number, landing: Landing): void {
   const again = readLanding(root, target);
   checkChain(root, again);
   if (
-    again.pulls.map((pull) => pull.headRefOid).join() !== landing.pulls.map((pull) => pull.headRefOid).join()
+    again.pulls.map((pull) => pull.headRefOid).join(",") !==
+    landing.pulls.map((pull) => pull.headRefOid).join(",")
   ) {
     throw new Moved("a pull request's head moved while its commits were gated.");
   }

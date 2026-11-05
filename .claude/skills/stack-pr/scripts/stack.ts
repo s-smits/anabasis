@@ -28,7 +28,7 @@ export function chains(pulls: readonly Pull[]) {
   const longest = (free: readonly Pull[], bases: readonly string[], seen: ReadonlySet<string>): Pull[] => {
     const children = free
       .filter((pull) => bases.includes(pull.baseRefName) && !seen.has(pull.headRefName))
-      .sort((a, b) => a.number - b.number);
+      .toSorted((a, b) => a.number - b.number);
     let found: Pull[] = [];
     for (const child of children) {
       const rest = [child, ...longest(free, [child.headRefName], new Set([...seen, child.headRefName]))];

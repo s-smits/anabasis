@@ -77,7 +77,7 @@ function walkFiles(root: string): string[] {
     return [];
   }
   const files: string[] = [];
-  for (const name of entries.sort()) {
+  for (const name of entries.toSorted()) {
     // Installed dependencies and build output are nobody's authored source. The three original
     // roots hold neither; `packages` and `.claude`, which the export search reads, hold both.
     // Nor is a dot-directory: every one of the three dozen scratch roots a test opens inside the
@@ -127,7 +127,7 @@ export function unusedExports(
   }
   return [...home]
     .flatMap(([name, path]) => (path === null ? [] : [{ check: "unused-export" as const, path, name }]))
-    .sort((left, right) =>
+    .toSorted((left, right) =>
       left.path === right.path ? left.name.localeCompare(right.name) : left.path.localeCompare(right.path),
     )
     .map((row) => ({

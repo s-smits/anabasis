@@ -334,7 +334,7 @@ export const noArgumentAlreadyCarriedRule = defineRule({
           const root = carried.text.slice(0, carried.text.indexOf("."));
           const suffix = carried.text.slice(root.length);
           const whole = seed.args.findIndex((held) => held?.bare === true && held.text === root);
-          if (whole < 0 || !derivable(list, part, whole, suffix)) continue;
+          if (whole === -1 || !derivable(list, part, whole, suffix)) continue;
           settled.add(part);
           for (const call of list) reportOne(call, { name, list, part, whole, root, suffix });
         }

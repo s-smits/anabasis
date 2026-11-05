@@ -422,7 +422,7 @@ export function draw(versions: readonly string[], count: number, seed: string): 
   }
   return pool
     .map((version) => ({ version, rank: sha256(`${seed}:${version}`) }))
-    .sort((a, b) => compareCodeUnits(a.rank, b.rank))
+    .toSorted((a, b) => compareCodeUnits(a.rank, b.rank))
     .slice(0, count)
     .map(({ version }) => version);
 }
@@ -463,7 +463,7 @@ export function pairsOf(
         settings.get(solve.condition) === setting &&
         passed(solve) !== null,
     )
-    .sort((a, b) => a.started - b.started);
+    .toSorted((a, b) => a.started - b.started);
   const disputed = versions.filter((task) => states.get(task) === "disputed");
   const short: string[] = [];
   const pairs = versions.flatMap((task): Paired[] => {

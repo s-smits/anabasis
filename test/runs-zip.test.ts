@@ -118,12 +118,14 @@ describe("the runs zip", () => {
       ] as const) {
         const out = join(root, `${level}.zip`);
         const made = zip([run], level, { out, maxBytes: null, note: null });
-        expect(made.files.map((file) => `${file.group} ${file.path}`).sort()).toEqual(expected.toSorted());
+        expect(made.files.map((file) => `${file.group} ${file.path}`).toSorted()).toEqual(
+          expected.toSorted(),
+        );
         const names = runTextSyncOrThrow(["unzip", "-Z1", out]).trim().split("\n");
-        expect(names.filter((name) => !name.endsWith("/")).sort()).toEqual(
+        expect(names.filter((name) => !name.endsWith("/")).toSorted()).toEqual(
           [...made.files.map((file) => file.path), "README.md", "GUIDE.md", "MANIFEST.json"]
             .map((path) => `${level}/${path}`)
-            .sort(),
+            .toSorted(),
         );
       }
       runTextSyncOrThrow(["unzip", "-q", join(root, "medium.zip"), "-d", join(root, "opened")]);

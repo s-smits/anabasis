@@ -392,7 +392,7 @@ function collect(diagnostics: readonly Diagnostic[]): void {
 function importEdit(file: Held, path: string, predicate: Predicate): Edit | undefined {
   const names = imported.get(path);
   if (names === undefined || names.size === 0) return undefined;
-  const wanted = [...names].sort();
+  const wanted = [...names].toSorted();
   const target = relative(dirname(path), predicate.module);
   const specifier = target.startsWith(".") ? target : `./${target}`;
   let last: ts.Node | undefined;

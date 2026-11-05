@@ -116,7 +116,7 @@ it("credits a won task to the measure that carried it, the bill where a tree bef
 
 it("keeps stored scores, which a tree that scores no bill reads as they stand", async () => {
   const tree = await loadTree(ROOT);
-  const differences = Array<number>(6).fill(600);
+  const differences = Array.from({ length: 6 }, () => 600);
   for (const of of [undefined, CHEAP.map(({ task }) => task)]) {
     for (const unbilled of [undefined, differences]) {
       const frontier = { differences, ...keyIfDefined("of", of), ...keyIfDefined("unbilled", unbilled) };

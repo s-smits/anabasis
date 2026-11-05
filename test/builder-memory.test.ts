@@ -211,7 +211,7 @@ describe("what v2's wall and its sessions add to the handover", () => {
     // The second session leaves the notes it was handed as they are: they are kept on under its
     // own id, so the last folder holds all that crossed.
     const third = nextPass(PASS_TWO);
-    expect(readdirSync(root).sort()).toEqual([first.key, second.key]);
+    expect(readdirSync(root).toSorted()).toEqual([first.key, second.key]);
     expect(read(third, MEMORY_FILE)).toContain(`carried forward from ${second.key},`);
     expect(read(third, MEMORY_FILE)).toContain("units are kN");
     // A session whose notes are the starters keeps no folder, and is passed over by the next.

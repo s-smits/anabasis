@@ -94,7 +94,7 @@ interface Kept {
 
 /** The campaigns found and the processes that write logs, kept this long: the list is polled every
  *  few seconds, and a listing runs `git worktree list`, `ps` and `lsof`. */
-const LOOK_MS = 2_000;
+const LOOK_MS = 2000;
 const NEWLINE = 0x0a;
 /** The logs whose events are kept, the ones a detail endpoint read last: the page polls the one
  *  selected, and a few more cover a switch back. */

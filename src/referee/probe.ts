@@ -72,7 +72,7 @@ export function reaches(path: string, declared: readonly string[]): boolean {
 function movedChecks(original: Verdict, changed: Verdict): string[] {
   const before = new Set(blockingOf(original));
   const after = new Set(blockingOf(changed));
-  return [...before.symmetricDifference(after)].sort();
+  return [...before.symmetricDifference(after)].toSorted();
 }
 
 /** A copy with an existing field or parent replaced; `$` replaces a scalar answer alone. */

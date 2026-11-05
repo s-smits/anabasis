@@ -143,6 +143,41 @@ the central host, beside the cycle's files. No step starts until the check befor
     wants later in `docs/backlog/<subject>.md`. Correct on the spot anything earlier said that the
     review refuted, in plain words.
 
+## Across whole campaigns
+
+The operator may ask why one campaign read better than another, when the two ran at different
+commits, on different exams, on different hosts. The seal does not apply: the two hold different
+tasks, so there is no set to halve, and each reading is already seen. Say so in the ledger, keep the
+ledger, and owe these instead:
+
+1. **The cells.** A table of every factor that moved (the Builder's code, the Examiner's code, the
+   Referee's, the host) against the campaigns, with the cells nobody ran named as such. One campaign
+   a cell describes that cell, and credits no factor.
+2. **What each commit holds, by subject.** Hashes move in a restack, so ask with `bun run runs source
+   --has <text>`. A change neither campaign holds is no rival, and a change only one holds still
+   needs the next item.
+3. **Whether each change fired.** Its owner, the event it writes, and its count in each log, with a
+   hostile log proving the count can see it. A change that fired on tasks the reading did not turn
+   on gets a flip bound: how many tasks would have to change for the reading to.
+4. **Replays, labelled.** A replay under another tree's rules is an estimate of what that rule reads
+   on these solves (`promotion-tuner`). Fresh solves would have differed.
+5. **Each rival with the count that would refute it**, the host's programs among them, which no
+   condition names (`bun run runs source` prints a launch's Python). A rival with no such count is
+   said to be open.
+6. **Where the gap sits.** `comparison-reading/scripts/gap.ts` says how far each side stood from the
+   best on record, so a large gap is placed on the reference or on the candidate.
+7. **An unselected benchmark.** A promoting reading is selected and may run high. Set a figure
+   against a reading that was not chosen for its result, such as the first starter comparison after
+   the promotion, on the tasks the two share.
+8. **A fresh read before any credit.** Each harness on the other campaign's tasks, on one host, is
+   the test that moves one factor at a time (`compare-systems`). It is paid and the operator's word.
+   Freeze the settling rule first, with every pattern that cannot settle: a harness written to
+   another answer format may lose on the format alone.
+
+A named reader may refresh the copies under `data/runs/<host>/<name>` (`syncRuns`), staged and locked,
+leaving every original as it was. With no `ANA_HOSTS` loaded, which is every run without an env file,
+it asks no other host and reads the copies as they stand, which keeps a frozen review's input still.
+
 ## Hard rules
 
 - **Nothing here reaches a seat.** No report, card, count or paraphrase goes to a Builder, an

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { tmpdir } from "../src/meta/os.ts";
+import { join } from "../src/meta/path.ts";
 import { countNonBlank } from "../tools/loc/nonblank-loc.ts";
 import {
+  corpus,
   NEW_FILE_CEILING,
   NEW_FUNCTION_CEILING,
   sourceTextFindings,
@@ -22,6 +26,20 @@ describe("source policy", () => {
       "}",
     ].join("\n");
     expect(checks(longFunction)).toContain("function-size");
+  });
+
+  it("reads a root's own files and skips a nested checkout under it", () => {
+    const root = mkdtempSync(join(tmpdir(), "ana-corpus-"));
+    try {
+      mkdirSync(join(root, "skills"), { recursive: true });
+      mkdirSync(join(root, "worktrees", "agent-a", "src"), { recursive: true });
+      writeFileSync(join(root, "skills", "own.ts"), "export const own = 1;\n");
+      writeFileSync(join(root, "worktrees", "agent-a", ".git"), "gitdir: elsewhere\n");
+      writeFileSync(join(root, "worktrees", "agent-a", "src", "copy.ts"), "export const own = 1;\n");
+      expect([...corpus([root], [".ts"]).keys()]).toEqual([join(root, "skills", "own.ts")]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("names an export no other file spells, and yields where the name cannot be attributed", () => {

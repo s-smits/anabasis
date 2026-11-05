@@ -81,7 +81,7 @@ const STAND_INS = [/^ab-synthesis\.md$/u, /^review.*\.md$/u];
 /** A cycle folder's or a ledger's files, by their lower-cased names. */
 const LEDGERS: ReadonlySet<string> = new Set(["cycle.md", "predictions.md"]);
 export const VETTING = "vetting.md";
-const REPORTS = "reports.md";
+export const REPORTS = "reports.md";
 /** What `start` writes: the logs an investigation reads, and the instructions every lane carries. */
 export const INVESTIGATION = "investigation.json";
 export const SHARED = "shared-instructions.md";

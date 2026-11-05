@@ -67,8 +67,8 @@ left. A campaign that ended before six on its budget, its environment or as `fin
 differently. Its false-promotion risk is reported over every comparison that could have promoted,
 since the opening's estimate covers one window of improvement patience at most.
 
-**2. Honesty: could the measured gains be chance or drift?** A test at level 0.10 is designed to
-crown a winner between equal harnesses about one time in ten, a claim until it is measured on the
+**2. Honesty: could the measured gains be chance or drift?** A test at the default level of 0.02 is designed
+to crown a winner between equal harnesses about one time in fifty, a claim until it is measured on the
 real solver, whose same harness fails a task once and passes it the next time. The measurement is
 the A/A comparison beside every comparison (section 7, "Beside the test"), where a step is a false
 positive by construction. Bar: no step in the ten A/A comparisons after the six on record, which
@@ -97,9 +97,9 @@ gain useful. Evaluate the climb achieved under the operator's cap, rather than m
 unspent. The closing report derives dollars and hours per promotion from the log
 (`tools/d2/close.ts`, "Work and spend"). It bills each session's backend ledger at
 frozen list prices (`billOf`, `src/kernel/meter.ts`), as the cap bills each turn, and shows available backend totals
-alongside it (`costLine`, `src/kernel/meter.ts`). The operator may record a target of at most
-three promotion attempts per epoch after setup (`worthOf`, `src/campaign/climb.ts`). This is
-a reporting target and refuses no action.
+alongside it (`costLine`, `src/kernel/meter.ts`). The report reads a fixed target of at most
+three promotion attempts per epoch after set-up (`BARS`, `worthOf` and `barLines`,
+`src/campaign/climb.ts`). This is a reporting target and refuses no action.
 
 Left out on purpose: the wall, a correctness property the suite tests; practice results, a learner's
 score on its own training set (rule 1); and cost apart from its climb. The order reflects their

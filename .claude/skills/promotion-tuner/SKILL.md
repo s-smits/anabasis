@@ -153,7 +153,8 @@ epochs' hours and dollars.
   what the weights changed on those readings. It is a finding about the score, never a defect.
 
 An A/A is the reference against itself on mirrored halves of its solves (`pairsOf` with
-`halves: "mirrored"`), available at four or more solves a side, an even count. The tree's
+`halves: "mirrored"`), available at any even number of solves a side, so at two it reads the first solve against the
+second (`src/campaign/comparison.ts`). The tree's
 `readsStepEitherWay` reads a step where the scores clear the comparison's level in either direction,
 as the whole-run reader and the UI do: from 31 October on the unbilled scores alone, and in a tree
 before that where the scored and unbilled tests clear together. An A/A step is false by construction.

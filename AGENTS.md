@@ -76,17 +76,19 @@ factor it affects, or the separate purpose it serves. Recorded values live in `d
   reference's first solve of each task against its second, measures it. One reading clears between
   equal harnesses at most as often as its level (`falseRate`: 1.1% at 0.02 on 24 untied tasks), and
   the climb sums the attempts' rates as an estimate, not a bound, leaving out an A/A too small to
-  reach the level (`incapable`). Bar: no step in ten A/A comparisons.
+  reach the level (`incapable`). Bar: no step in the ten A/A comparisons after the six promotions
+  (`barLines`, `src/campaign/climb.ts`, printed by the closing report and `runs view`).
 - **3. Verdicts**: are the labels right? The Referee rules every rejection (never a pass, a cut
   solve or a crash) once the host's replay of the checks repeats it. `earned` must name the broken
   rule and field, cited by a rejecting check, with an answer probe that moved that check, and
   `check-defect` must name a refusing check and cite a probe that moved it; a ruling without its evidence is refused. Bar, on at
-  least 30 blind labels (`settle.ts`): it catches three in four true check defects and voids at
-  most one in ten earned rejections, with PABAK beside kappa.
+  least 30 blind labels (`clears`, `src/referee/agreement.ts`; `settle.ts` reports each campaign's
+  agreement): it catches three in four true check defects and voids at most one in ten earned
+  rejections, with PABAK beside kappa.
 - **4. Economy**: what did each gain cost? The closing report reads dollars and hours per promotion
   from the log alone (`tools/d2/close.ts`), at list price (`billOf`, `src/kernel/meter.ts`). Its
-  one bar, an opening term that refuses nothing, is at most 3 promotion attempts per epoch after
-  set-up (`worthOf`, `src/campaign/climb.ts`).
+  one bar, a reported constant that refuses nothing, is at most 3 promotion attempts per epoch after
+  set-up (`BARS`, `worthOf` and `barLines`, `src/campaign/climb.ts`).
 
 ### Trade-offs to keep in view
 
@@ -110,13 +112,15 @@ reads the sign to watch (section 9).
 - **Promotion against confirmation.** A step reads the frontier; confirmation is one read of the
   reference against the starter, at a step's level, on the scored tasks of the epoch's first
   starter comparison, which draws the tasks written since the promotion first.
-  In the archive the reference leads the starter in eight of ten such reads and four clear the
-  level, so a miss is mostly the read's power on few untied tasks, and six confirmed promotions
-  take about fifteen. Confirmation decides no move. Losses on validity matter; losses on the
+  In the archive the reference leads the starter in eleven of thirteen such reads and seven clear
+  the level (5 November), so a miss is mostly the read's power on few untied tasks, and six
+  confirmed promotions take about eleven. Confirmation decides no move. Losses on validity matter; losses on the
   objective are mostly noise. The host owes one starter comparison
   after every promotion and runs it at the Builder's next `compare` (`heldSince`,
-  `src/campaign/decide.ts`), at about one comparison a promotion. The host, not the Builder,
-  chooses when, so a Builder can never put off a test of its own reference.
+  `src/campaign/decide.ts`), at about one comparison a promotion. Once the table owes it the host,
+  not the Builder, chooses when. Before that, with too few tasks held out since the promotion, a
+  Builder's own comparison can read first, and its step leaves that promotion unconfirmed for good
+  (`test/milestone-walk.test.ts`).
 - **Cost against value.** A dearer promotion may buy more and a cheaper one may be thin. The bill
   decides no step; economy is read apart, as dollars per promotion and per confirmed promotion on
   one meter (`promotion-tuner/scripts/cost.ts`), and as a cheap built system against a dear bare one

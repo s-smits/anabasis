@@ -14,7 +14,7 @@
 // epoch ends with a promotion and the next one's tasks are harder?
 
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
-import { type Epoch, epochLine, epochsOf, riskLines, worthOf } from "../src/campaign/climb.ts";
+import { barLines, type Epoch, epochLine, epochsOf, riskLines, worthOf } from "../src/campaign/climb.ts";
 import { examine } from "../src/examiner/session.ts";
 import { type Condition, settingId } from "../src/kernel/condition.ts";
 import { type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
@@ -39,6 +39,7 @@ import { fixtureTasks, layOutPack, scriptedModel } from "./helpers/fixture-pack.
 import { present } from "./helpers/matchers.ts";
 
 const REPO = resolve(import.meta.dir, "..");
+const REPORTED = "comparison.reported" as const;
 const FIXTURE = join(REPO, "test", "fixtures", "harness-min");
 const NAME = `test-climb-${String(runtimeProcess.pid)}`;
 const TASKS = fixtureTasks(7);
@@ -251,7 +252,7 @@ describe("the climb", () => {
             `${said(data.session)}: ${said(data.old)} vs ${said(data.fresh)} on bases ${scored.join(",")}`,
           );
         }
-        if (kind === "comparison.reported") {
+        if (kind === REPORTED) {
           console.log(
             `  ${said(data.session)} ${said(data.reading)} ${JSON.stringify(data.scored)} valid ${JSON.stringify(data.valid)}`,
           );
@@ -288,7 +289,7 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
   /** A candidate's comparison against `old` that tallied one task, with the reference read
    *  against itself beside it where `noise` holds its differences. */
   const attempt = (session: string, old: string, fresh: string, noise?: number[]) =>
-    event("comparison.reported", {
+    event(REPORTED, {
       session,
       reading: "no-step",
       old,
@@ -307,11 +308,11 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
   it("sums the attempts' rates by the rule's design, every reading against the reference one, unsuccessful ones included", () => {
     // Since 19 October each reading is an attempt: `h2`'s two readings are two, and `h3`'s report
     // carries the test's own rate. Until then a step and the repeat it bought were one.
-    const rated = event("comparison.reported", {
+    const rated = event(REPORTED, {
       ...attempt("g-3", "S", "h3").data,
       frontier: { differences: [0], falseRate: 0.05 },
     });
-    const stepped = event("comparison.reported", {
+    const stepped = event(REPORTED, {
       ...attempt("g-1", "S", "h2").data,
       frontier: { differences: [1, 1] },
     });
@@ -391,7 +392,7 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
 
   it("reads an A/A on its scores without the bill, so a bill-only sweep is too small to read a step", () => {
     const aa = (session: string, unbilled: readonly number[]) =>
-      event("comparison.reported", {
+      event(REPORTED, {
         ...attempt(session, "S", "h2").data,
         noise: { differences: [1, 1, 1, 1], unbilled: [...unbilled] },
       });
@@ -413,7 +414,7 @@ describe("the starter comparison in an epoch's row", () => {
   const opened = event("comparison.started", { session: "g-1", old: "S", fresh: "h2", starter: "S" });
   const promoted = event("harness.promoted", { harness: "h2" });
   const starterRead = (scored: JsonObject, more: JsonObject = {}) =>
-    event("comparison.reported", {
+    event(REPORTED, {
       session: "g-2",
       reading: "no-step",
       old: "h2",
@@ -481,7 +482,7 @@ describe("the starter comparison in an epoch's row", () => {
 describe("the bar a promotion is read against, beside an old ladder's readings", () => {
   /** A candidate's comparison against `old` that read a frontier. */
   const stepRead = (session: string, old: string, fresh: string) =>
-    event("comparison.reported", {
+    event(REPORTED, {
       session,
       reading: "step",
       old,
@@ -497,7 +498,7 @@ describe("the bar a promotion is read against, beside an old ladder's readings",
   /** An old ladder read on `reference` (retired 16 October): tasks by the starter's valid solves
    *  and by the reference's. */
   const ladderRead = (session: string, reference: string, starter: number[], valid: number[]) =>
-    event("comparison.reported", {
+    event(REPORTED, {
       session,
       old: reference,
       fresh: "S",
@@ -531,7 +532,7 @@ describe("the bar a promotion is read against, beside an old ladder's readings",
     // A reading after the step is an attempt of its own: until 19 October a repeat was none.
     expect(worthOf(log.slice(0, step + 1), "g-5").cost).toMatchObject({ attempts: 2 });
     const tied = { ...stepRead("g-5", "ha", "hb").data, reading: "no-step", frontier: { differences: [0] } };
-    const again = [...log.slice(0, step + 1), event("comparison.reported", tied)];
+    const again = [...log.slice(0, step + 1), event(REPORTED, tied)];
     expect(worthOf(again, "g-6").cost).toMatchObject({ attempts: 3 });
   });
 
@@ -550,5 +551,113 @@ describe("the bar a promotion is read against, beside an old ladder's readings",
     ];
     expect(epochsOf(led).map(({ sessions }) => sessions)).toEqual([1, 1]);
     expect(epochsOf(log).map(({ sessions }) => sessions)).toEqual([1, 1, 0]);
+  });
+});
+
+describe("a campaign against its bars", () => {
+  const LEVEL = 0.02;
+  const opened = event("comparison.started", { session: "g-0", old: "S", fresh: "h1", starter: "S" });
+  /** A report of `fresh` against `old` at 0.02, with an A/A beside it where `noise` is given. */
+  const reported = (session: string, old: string, fresh: string, noise?: readonly number[]) =>
+    event(REPORTED, {
+      session,
+      reading: "no-step",
+      old,
+      fresh,
+      level: LEVEL,
+      frontier: { differences: [0] },
+      noise: noise === undefined ? null : { differences: [...noise] },
+    });
+  /** The reference's read against the starter, won by `wins` tasks. */
+  const againstStarter = (session: string, old: string, wins: number) =>
+    event(REPORTED, {
+      ...reported(session, old, "S").data,
+      frontier: null,
+      scored: { differences: Array.from({ length: wins }, () => -1) },
+    });
+  const promotedTo = (harness: string, from: string) => event("harness.promoted", { harness, from });
+  /** Six promotions in a row, each attempted once, with no starter comparison. */
+  const six = Array.from({ length: 6 }, (_, at) => {
+    const [from, harness] = [at === 0 ? "S" : `h${String(at)}`, `h${String(at + 1)}`];
+    return [reported(`g-${harness}`, from, harness), promotedTo(harness, from)];
+  }).flat();
+  const honesty = (events: readonly LogEvent[]) => barLines([opened, ...events])[1];
+  const allWon = [1, 1, 1, 1, 1, 1];
+
+  it("counts promotions confirmed, read short of a step, and never read against the starter", () => {
+    const [climb] = barLines([
+      opened,
+      reported("g-1", "S", "h1"),
+      promotedTo("h1", "S"),
+      // Confirmed on six tasks won at 0.02, and a later draw of the pair changes nothing.
+      againstStarter("g-2", "h1", 6),
+      reported("g-3", "h1", "h2"),
+      promotedTo("h2", "h1"),
+      // Five of five is short of the level, so this one is read and unconfirmed.
+      againstStarter("g-4", "h2", 5),
+      againstStarter("g-5", "h2", 6),
+      promotedTo("h3", "h2"),
+    ]);
+    expect(climb).toBe(
+      "- Climb: 3 promotions, 1 confirmed against a milestone of 6; 1 read against the starter without a step, 1 not read against it.",
+    );
+    expect(barLines([opened])[0]).toContain("0 promotions, 0 confirmed");
+  });
+
+  it("reads the A/A comparisons reported after the sixth promotion alone, and keeps those too small and each direction apart", () => {
+    // Five promotions are short of the milestone, whatever the A/A comparisons read.
+    const five = six.slice(0, -2);
+    expect(honesty([...five, reported("g-a", "h5", "h6", allWon)])).toContain("no promotion 6 yet");
+    // The A/A beside the very comparison that promoted the sixth stands before it, and is no reading of it.
+    const atTheStep = six.map((each) =>
+      each.data.session === "g-h6" ? reported("g-h6", "h5", "h6", allWon) : each,
+    );
+    expect(honesty(atTheStep)).toContain("after promotion 6, 0 A/A comparisons");
+    // One too small, one able that reads none, one for the second solves, one for the first.
+    const after = [
+      reported("g-a", "h6", "h7", [1, 1]),
+      reported("g-b", "h6", "h8", [1, -1, 1, -1, 1, -1]),
+      reported("g-c", "h6", "h9", allWon),
+      reported(
+        "g-d",
+        "h6",
+        "h10",
+        allWon.map((one) => -one),
+      ),
+    ];
+    expect(honesty([...six, ...after])).toBe(
+      "- Honesty: after promotion 6, 4 A/A comparisons against the bar's 10, 3 with enough untied tasks to read a step: 1 read one, 2 read one either way.",
+    );
+    // A settlement reports a comparison again: it stands where it first reported, before the promotion.
+    const settled = [
+      ...five,
+      reported("g-s", "h5", "h6"),
+      promotedTo("h6", "h5"),
+      reported("g-s", "h5", "h6", allWon),
+    ];
+    expect(honesty(settled)).toContain("after promotion 6, 0 A/A comparisons");
+  });
+
+  it("holds every epoch after set-up to the cost bar, an open one too, and set-up's to none", () => {
+    const attempts = (old: string, count: number) =>
+      Array.from({ length: count }, (_, at) =>
+        reported(`${old}-${String(at)}`, old, `${old}-c${String(at)}`),
+      );
+    const economy = (events: readonly LogEvent[]) => barLines([opened, ...events])[2];
+    const log = [
+      ...attempts("S", 5),
+      promotedTo("h1", "S"),
+      ...attempts("h1", 3),
+      promotedTo("h2", "h1"),
+      ...attempts("h2", 4),
+      promotedTo("h3", "h2"),
+      ...attempts("h3", 5),
+    ];
+    expect(economy(log)).toBe(
+      "- Economy: 3 epochs after set-up against a bar of 3 promotion attempts each, 2 over it: epoch 3 at 4; epoch 4 at 5, open. Reported only.",
+    );
+    expect(economy(attempts("S", 9))).toContain(
+      "0 epochs after set-up against a bar of 3 promotion attempts each, 0 over it.",
+    );
   });
 });

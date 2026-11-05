@@ -102,7 +102,7 @@ import {
   suggestedSessions,
   weightOf,
 } from "./investigation.ts";
-import { INVESTIGATION, investigationIndex, SHARED } from "./index.ts";
+import { INVESTIGATION, investigationIndex, REPORTS, SHARED } from "./index.ts";
 import { overview, rendered } from "./read.ts";
 
 interface Investigation {
@@ -477,7 +477,7 @@ function collect(): number {
   const investigation = opened();
   const reports = collected(investigation);
   const index = reportIndex(reports, (lane) => reportPath(investigation.out, lane), investigation.campaigns);
-  writeFileSync(join(investigation.out, "reports.md"), `# Reports\n\n${index}\n`);
+  writeFileSync(join(investigation.out, REPORTS), `# Reports\n\n${index}\n`);
   console.log(index);
   const open = reports.filter(({ state }) => state !== "ok").length;
   const omitted = reports.filter(({ verdict }) => verdict === "omitted").length;

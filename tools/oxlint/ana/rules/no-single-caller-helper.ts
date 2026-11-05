@@ -78,24 +78,25 @@ const CHAIN_PEERS = 3;
  *
  * And a caller with no room keeps it. Two limits measure the function the inlined lines would
  * land in: 115 nonblank lines, which `tools/loc/source-policy.ts` holds, and cyclomatic
- * complexity 22, which v1's `tools/loc/complexity-policy.ts` refused and which no v2 gate holds;
- * v2 never copied that file. A caller already at either has no spelling that also absorbs a
+ * complexity 22, which v1's `5bc9988:tools/loc/complexity-policy.ts` refused and which no v2 gate
+ * holds; v2 never copied that file. A caller already at either has no spelling that also absorbs a
  * helper without growing past it. The complexity limit stays as this rule's own: on 20 October,
  * without it, the rule reported two helpers in `tools/wri/folds.ts`, `records` and `refusals`,
  * each a named computation whose caller already measures 22 or more. It happened six times in one pass over
- * `src/backends`, `src/correctness-bundle`, `src/author` and `src/solve` before the rule was taught to check,
+ * `e7636e472:src/backends`, `5bc9988:src/correctness-bundle`, `94b305a54:src/author` and
+ * `e7636e472:src/solve` before the rule was taught to check,
  * every time after the push gate had already run; the arithmetic is cheap and the reader of the
  * report should not have to do it.
  *
  * That room is spent rather than only measured, because a caller can have room for either of two
- * helpers and not for both. `settle` in `src/builder/verifier-workshop.ts` measured 19 and called
- * two one-statement helpers, one of them a null guard worth two branches; each report fitted on
+ * helpers and not for both. `settle` in `5bc9988:src/builder/verifier-workshop.ts` measured 19 and
+ * called two one-statement helpers, one of them a null guard worth two branches; each report fitted on
  * its own and following both took the function to 22 against a ceiling of 21. Each report now
  * charges the caller for what it would land there, so the second helper reads as a caller with no
  * room, which is what it is.
  *
  * And a call that is one term among peers in an `&&` or `||` chain keeps its name, because the same
- * argument applies a second time. `tools/outcome/builder-execution-current.ts` holds twenty
+ * argument applies a second time. `5bc9988:tools/outcome/builder-execution-current.ts` holds twenty
  * predicates of one shape — `validBackend`, `currentInvocation`, `findingDelta`,
  * `currentFailedCalls` — each read once, each an operand of a long `&&`. They are a vocabulary the
  * chains are written in, not helpers hiding two lines, and substituting one body into a thirty-term
@@ -109,20 +110,21 @@ const CHAIN_PEERS = 3;
  * had exactly one caller since it was written.
  *
  * And a body that opens a `using` resource keeps its name, whatever its size, because `using`
- * disposes at the end of the block that declares it. `admissionPayload` in `src/run/admission.ts`
- * opens the controller ledger, reads one string and returns, closing it there; the same three
- * lines in `readAdmission` would hold the ledger open for the rest of that function. That is not
- * the same program, and no reader of the report would be told so.
+ * disposes at the end of the block that declares it. `admissionPayload` in
+ * `5bc9988:src/run/admission.ts` opens the controller ledger, reads one string and returns,
+ * closing it there; the same three lines in `readAdmission` would hold the ledger open for the
+ * rest of that function. That is not the same program, and no reader of the report would be told
+ * so.
  *
  * And two bodies keep their name because there is no legal spelling of them at a call site, which
  * is a stronger reason than size. A body that catches: JavaScript has no try expression, so
- * `symlinkText` in `src/verify/exact-read-attestation.ts` — a decoded link or a thrown refusal —
- * becomes a `let`, a try and a catch inside a loop that already holds two of each. And a body that
- * leaves before its last statement, because a `return` belongs to the function that declares it:
+ * `symlinkText` in `0732a6118:src/verify/exact-read-attestation.ts` — a decoded link or a thrown
+ * refusal — becomes a `let`, a try and a catch inside a loop that already holds two of each. And
+ * a body that leaves before its last statement, because a `return` belongs to the function that declares it:
  * the same line at a call site returns from the caller, so the inline is a restructuring into a
  * local and one assignment per escape rather than a relocation of the lines. `leafCategory` in
- * `src/correctness-bundle/draft-summary.ts` is three `if (…) return a;` lines and a final `return`, and none
- * of its spellings inside `boundedDraftSummary` is the same program moved.
+ * `5bc9988:src/correctness-bundle/draft-summary.ts` is three `if (…) return a;` lines and a final
+ * `return`, and none of its spellings inside `boundedDraftSummary` is the same program moved.
  *
  * That second one was measured as the chain it happened to be, and reading it back a day later
  * showed the chain was the shape and not the reason. `const t = value.trim(); if (t === "")
@@ -212,8 +214,8 @@ export const noSingleCallerHelperRule = defineRule({
       if (value.body.type !== "BlockStatement") return 1;
       // A `using` declaration disposes at the end of the block holding it, so the same lines in
       // the caller keep the resource open for everything the caller does after the call.
-      // `admissionPayload` in `src/run/admission.ts` opens the controller ledger and closes it at
-      // its return; inlined, it would hold the ledger for the rest of `readAdmission`.
+      // `admissionPayload` in `5bc9988:src/run/admission.ts` opens the controller ledger and closes
+      // it at its return; inlined, it would hold the ledger for the rest of `readAdmission`.
       if (
         value.body.body.some(
           (statement) => statement.type === "VariableDeclaration" && statement.kind.endsWith("using"),
@@ -222,8 +224,8 @@ export const noSingleCallerHelperRule = defineRule({
         return null;
       }
       // JavaScript has no try expression, so a body that catches is the one shape the call site
-      // cannot spell: `symlinkText` in `src/verify/exact-read-attestation.ts` returns a decoded
-      // link or throws a refusal, and the same lines in its caller are a `let`, a try and a catch
+      // cannot spell: `symlinkText` in `0732a6118:src/verify/exact-read-attestation.ts` returns a
+      // decoded link or throws a refusal, and the same lines in its caller are a `let`, a try and a catch
       // inside a loop that already holds two of each.
       if (value.body.body.some((statement) => statement.type === "TryStatement")) return null;
       if (site !== "tail" && escaping.has(value)) return null;
@@ -239,7 +241,8 @@ export const noSingleCallerHelperRule = defineRule({
      *  land exactly as written and nothing follows them; `cost` reads that and passes it in.
      *
      *  Written first as the narrower thing in front of us, a body of `if (…) return a;` lines
-     *  and a final `return z`, which is what `leafCategory` in `src/correctness-bundle/draft-summary.ts` is,
+     *  and a final `return z`, which is what `leafCategory` in
+     *  `5bc9988:src/correctness-bundle/draft-summary.ts` is,
      *  and justified by two of this repository's own rules refusing every expression form of
      *  one: `ana/no-tangled-ternary` on a nested ternary and `ana/no-arms-differing-in-one-term`
      *  on one assignment per arm. Both were true and neither was the reason. `const t =
@@ -360,7 +363,7 @@ export const noSingleCallerHelperRule = defineRule({
 
     /** What one report would cost the two functions the inlined lines land in: the outermost one
      *  grows by `lines` and the innermost one by `branches`. */
-    type Cost = {
+    interface Cost {
       declaring: ESTree.Node;
       name: string;
       statements: number;
@@ -368,7 +371,7 @@ export const noSingleCallerHelperRule = defineRule({
       lines: number;
       branching: ESTree.Node | null;
       branches: number;
-    };
+    }
 
     function cost(declaring: ESTree.Node, name: string, callable: ESTree.Node): Cost | null {
       const declared = context.sourceCode
@@ -455,7 +458,7 @@ export const noSingleCallerHelperRule = defineRule({
       MemberExpression: countOptional,
       CallExpression: countOptional,
       // A default value is a branch to `eslint(complexity)`, the counter v1's
-      // `tools/loc/complexity-policy.ts` read and this rule's limit is measured in. In v1,
+      // `5bc9988:tools/loc/complexity-policy.ts` read and this rule's limit is measured in. In v1,
       // `settle` measured 21 there and 19 here without its two default parameters, and those two
       // were the difference between a helper this rule could ask for and one the gate refused.
       AssignmentPattern: countBranch,

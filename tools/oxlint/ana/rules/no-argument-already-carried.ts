@@ -3,6 +3,7 @@ import type { RuleExample } from "../../rule-examples.ts";
 import { holdsProse } from "../shared/masked.ts";
 import { narrowedIn } from "../shared/narrowed.ts";
 import { calls, writes } from "../shared/predicate-effect.ts";
+import { isNamedMember } from "../shared/statements.ts";
 
 /**
  * A call that passes a value and then passes a part of that same value beside it. The callee
@@ -333,7 +334,7 @@ export const noArgumentAlreadyCarriedRule = defineRule({
           const root = carried.text.slice(0, carried.text.indexOf("."));
           const suffix = carried.text.slice(root.length);
           const whole = seed.args.findIndex((held) => held?.bare === true && held.text === root);
-          if (whole < 0 || !derivable(list, part, whole, suffix)) continue;
+          if (whole === -1 || !derivable(list, part, whole, suffix)) continue;
           settled.add(part);
           for (const call of list) reportOne(call, { name, list, part, whole, root, suffix });
         }
@@ -365,7 +366,7 @@ export const noArgumentAlreadyCarriedRule = defineRule({
         if (parent.type === "CallExpression" && parent.callee === node) return;
         if (parent.type === "FunctionDeclaration" && parent.id === node) return;
         if (parent.type === "VariableDeclarator" && parent.id === node) return;
-        if (parent.type === "MemberExpression" && parent.property === node && !parent.computed) return;
+        if (isNamedMember(parent) && parent.property === node) return;
         if (parent.type === "Property" && parent.key === node && parent.value !== node) return;
         escaped.add(node.name);
       },
@@ -380,7 +381,7 @@ export const noArgumentAlreadyCarriedRule = defineRule({
         }
         const args = node.arguments.map((argument) => {
           if (argument.type === "Identifier") return { text: argument.name, bare: true };
-          if (argument.type !== "MemberExpression" || argument.computed) return null;
+          if (!isNamedMember(argument)) return null;
           return { text: context.sourceCode.getText(argument), bare: false };
         });
         const list = madeCalls.get(node.callee.name) ?? [];

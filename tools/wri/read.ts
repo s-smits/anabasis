@@ -345,6 +345,11 @@ function harnessTriggers(log: Index): Trigger[] {
                   fresh.flatMap((solve) => solve.calls),
                   (tool) => tool,
                 ),
+              )}; through bash: ${tally(
+                countBy(
+                  fresh.flatMap((solve) => solve.programs),
+                  (program) => program,
+                ),
               )}`,
             ),
           ]

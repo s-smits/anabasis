@@ -34,12 +34,12 @@ export interface RunView {
 
 /** What the benchmark supplies to an evidence tree: JobBench's adapter methods. */
 export interface Evidence {
-  taskPrompt(task: string): string;
-  taskFiles(task: string): string | null;
-  trajectory(runDir: string): string;
-  files(runDir: string): ReadonlyMap<string, string>;
-  images(runDir: string): readonly string[];
-  text(runDir: string): string;
+  taskPrompt: (task: string) => string;
+  taskFiles: (task: string) => string | null;
+  trajectory: (runDir: string) => string;
+  files: (runDir: string) => ReadonlyMap<string, string>;
+  images: (runDir: string) => readonly string[];
+  text: (runDir: string) => string;
 }
 
 /** A pool candidate: its label, its harness directory and its rollout. */

@@ -188,7 +188,7 @@ export async function loadwatch(args: readonly string[]): Promise<void> {
     return;
   }
   for (const each of watched) {
-    void (async () => {
+    (async () => {
       for (;;) {
         await stream(each, intervalMs, "closed");
         await Bun.sleep(RETRY_MS);

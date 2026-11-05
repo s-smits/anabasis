@@ -1,5 +1,6 @@
-import { defineRule, type ESTree } from "@oxlint/plugins";
+import { defineRule } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
+import { identifierName, isNamedMember } from "../shared/statements.ts";
 
 /**
  * A fold written with its reducer inline and a block body is a loop with the accumulator hidden
@@ -35,13 +36,6 @@ import type { RuleExample } from "../../rule-examples.ts";
  * the case a rule silent over an operation nobody performs cannot make.
  */
 
-/** Whether the call is `<something>.reduce(...)`, with or without an explicit type argument. */
-function reduceCall(node: ESTree.CallExpression): boolean {
-  const { callee } = node;
-  if (callee.type !== "MemberExpression" || callee.computed) return false;
-  return callee.property.type === "Identifier" && callee.property.name === "reduce";
-}
-
 export const noInlineBlockReducerRule = defineRule({
   meta: {
     type: "suggestion",
@@ -69,7 +63,9 @@ export const noInlineBlockReducerRule = defineRule({
   createOnce(context) {
     return {
       CallExpression(node) {
-        if (!reduceCall(node)) return;
+        // `<something>.reduce(...)`, with or without an explicit type argument.
+        const { callee } = node;
+        if (!isNamedMember(callee) || identifierName(callee.property) !== "reduce") return;
         const [reducer] = node.arguments;
         if (reducer === undefined) return;
         if (reducer.type !== "ArrowFunctionExpression" && reducer.type !== "FunctionExpression") return;

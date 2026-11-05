@@ -17,7 +17,7 @@ first line, and the round trip through the linter mostly disappears.
   relative path. Elsewhere an import that climbs three or more directories uses the aliases of
   `package.json` (`#src/…`, `#tools/…`, `#skills/…`), and one or two levels stay relative.
 - Biome formats: two spaces, width 110, double quotes. Do not align or wrap by hand; run
-  `bun run format`.
+  `bun run format`, or `bun run format -- <paths>` for only those files.
 - `bun run typecheck` (`bun check`) covers the paths in `tsconfig.json`: `src`, `tools`,
   `vendor`, `test`, `studies` and `.claude`. Skill scripts receive typechecking, lint and their
   owning tests, including `test/skill-scripts.test.ts` and `test/meta-cli.test.ts`.
@@ -47,6 +47,13 @@ with no rule turned off for it; a whole-tree run without them leaves it out and 
   rule or scan brings its pairs, and `test/rule-examples.test.ts` lints every one.
 - **Never turn a rule off**: no new `"off"` in `.oxlintrc.json`, for the tree, a glob or a file,
   and no `oxlint-disable` comment for a plugin rule (`ana/no-inline-slop-answer` refuses it).
+- **Every core rule in scope is decided.** Each rule Oxlint offers in the correctness, suspicious,
+  perf, pedantic, style and restriction categories of the `eslint`, `import`, `node`, `oxc`,
+  `promise`, `typescript` and `unicorn` plugins is configured at the top level of `.oxlintrc.json`,
+  or is a row of `tools/oxlint/rules-off.tsv`: `off` with the one sentence that keeps it off, or
+  `staged` with the count still to fix. `test/oxlint-ledger.test.ts` fails on a rule that is
+  neither, on a row for a rule that is on, and on an `"off"` for some files without its row. A
+  commit that turns a rule on removes its row.
 - **When a finding is wrong about a site**, the answer depends on the rule
   (`tools/oxlint/not-slop-ledger.ts`):
 
@@ -285,9 +292,6 @@ const manifest = parsed as Manifest;
   result is used), `prefer-set-has`, `explicit-length-check`.
 - `import/no-cycle`: move the shared piece down into a module both sides import.
 
-`typescript/no-unnecessary-type-parameters` is off on purpose: `parseJsonAs<T>` and its kin carry
-a contract the caller declares.
-
 ## 12.7 Rule pairs that pull against each other
 
 Each pair has one spelling that satisfies both.
@@ -326,13 +330,13 @@ Each runtime surface has one owner. Import from it; add a missing member beside 
 Three `ana` rules name owners in their messages. Since 10 October every one they name is in this
 tree. Two more were removed: `no-hand-read-controller-evidence` named a v1 run's `opening.json` and
 `terminal.json`, and a v2 run is its log, opened through `tools/runs/`; `no-hand-spelled-tree-root`
-named `src/meta/campaign-root.ts` for v1's `campaigns/` and `domains/` trees, and v2 keeps a
+named `6c88e73dd:src/meta/campaign-root.ts` for v1's `campaigns/` and `domains/` trees, and v2 keeps a
 campaign under `.ana/d2/<name>` (15 October):
 
 | Rule | It names | Here |
 | --- | --- | --- |
 | `no-hand-read-argv` | `.claude/skills/main/cli.ts` | Present. A skill script declares a `runCommand` spec, or passes its arguments to `parseOrDie` or `parseCommandOrDie`. The commands under `tools/` are outside the rule and parse with `parseArgs` from `#src/meta/process.ts` |
-| `no-hand-spelled-git` | `src/meta/git.ts` (`gitOutput`, `gitText`, `gitMaybe`), from skills, `src`, `tools/runs` and `tools/d2` | Present. Until 15 October the owner was `.claude/skills/main/git.ts`, which production cannot import, and `tools/runs` and `tools/d2` spelled git at five sites. The landing and gate commands of `tools/runtime`, and tests, are outside the rule: they read exit codes and feed input |
+| `no-hand-spelled-git` | `src/meta/git.ts` (`gitOutput`, `gitText`, `gitMaybe`), from skills, `src`, `tools/runs` and `tools/d2` | Present. Until 15 October the owner was `e3dfa9eb8:.claude/skills/main/git.ts`, which production cannot import, and `tools/runs` and `tools/d2` spelled git at five sites. The landing and gate commands of `tools/runtime`, and tests, are outside the rule: they read exit codes and feed input |
 | `no-lifetime-outside-owner` | `stageCommandIsolation` (`src/wall/isolation.ts`), `killProcessGroup` and `terminateAndReapProcessGroupId` (`src/meta/subprocess.ts`) | Present. The owner and its reader are the two files the rule exempts |
 
 If a rule reports on your code and names an owner that is absent, do not obey a remedy that
@@ -341,8 +345,8 @@ change, as 12.2 allows.
 
 ## 12.9 The whole-tree scans
 
-`bun run simplify` prints shapes that span files (`tools/oxlint/tree-findings.ts`, with the identity
-and copied-block scans beside it). They report and
+`bun run simplify` prints shapes that span files (`tools/oxlint/tree-findings.ts`, with the identity,
+copied-block, stale-reference and fact scans beside it). They report and
 never block; `bun run commit:check` prints the ones on your changed lines. Treat each row as a
 question, repair the true ones, and answer a false one in the ledger as `tree/<kind>`.
 
@@ -353,8 +357,10 @@ question, repair the true ones, and answer a false one in the ledger as `tree/<k
 | `single-reader-export` | Move the one export into its one reader |
 | `copied-block` | One owner for the block |
 | `identity-without-owner` | One constant for the name |
+| `fact-without-owner` | One function for the fact, in the module that owns the value's type |
 | `superseded-schema-tag`, `compatibility-path` | Drop the old reader |
 | `rule-without-fixture` | Add the fixture |
+| `stale-reference` | Point a path at where the thing lives now, or cite it as `<sha>:path` in a record of its time; document only a setting some code reads |
 | `filesystem-import-budget` | None. It is a register: a file keeps its count of `filesystem.ts` imports, and a change adds at most one |
 
 ## 12.10 The size policy
@@ -371,9 +377,8 @@ entry to `source-policy.json` to pass. There is no complexity gate in v2.
 
 ## 12.11 Per-path overrides
 
-`.oxlintrc.json` changes the rules on three paths. `test/**` turns off `no-unsafe-*`,
-`no-non-null-assertion`, `no-explicit-any` and `await-thenable`. `.claude/**/*.ts` turns off the
-first three. `tools/oxlint/anti-slop/**` turns off `ana/no-inline-slop-answer` and lets a
+`.oxlintrc.json` changes the rules on two paths. `test/**` turns off `await-thenable`, for the
+reason its row in `tools/oxlint/rules-off.tsv` gives, and `tools/oxlint/anti-slop/**` lets a
 `default` arm make a `switch` exhaustive. Two blocks that named trees v2 does not have,
 `**/src/backends/oauth/**` and `packages/ui/**`, went on 10 October. These lists only shrink:
 never add a file to one, and never widen a glob to take in the file you are editing.

@@ -102,7 +102,7 @@ export function nodeRuntimeReadRoots(): string[] {
     const prefix = dirname(dirname(exe));
     if (prefix !== "" && !underSystemRoot(prefix) && existsSync(prefix)) roots.add(prefix);
   }
-  return [...roots].sort();
+  return [...roots].toSorted();
 }
 
 /** Bubblewrap's own stderr messages for a refused unprivileged user namespace. They are matched
@@ -260,7 +260,7 @@ function bwrapIsolationArgs(options: { network: boolean }): string[] {
 export function bwrapEnvironmentArgs(environment: OptionalEnvValues): string[] {
   const entries = Object.entries(environment)
     .filter((entry): entry is [string, string] => entry[1] !== undefined)
-    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
+    .toSorted(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
   const args: string[] = [];
   for (const [name, value] of entries) {
     if (name === "" || name.includes("=") || name.includes("\0") || value.includes("\0")) {

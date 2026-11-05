@@ -69,6 +69,6 @@ A seat runs for minutes to hours. Use them:
 
 ## 6. Report each change
 
-Give each change its own result (the six parts of `SKILL.md`, "The result"), then one line on
+Give each change its own result (the parts of `SKILL.md`, "The result"), then one line on
 whether the stack should land as it is, and what was fixed in it while the seats ran. Trash the
 forks and seeds once nothing reads them (rule 10).

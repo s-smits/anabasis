@@ -6,6 +6,7 @@ import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { hostname } from "#src/meta/os.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { isAbsolute } from "#src/meta/path.ts";
+
 export interface Host {
   readonly name: string;
   readonly ssh: string;
@@ -84,7 +85,7 @@ export function hostsOf(): readonly Host[] {
 
 export function configuredRuntime(host: Host) {
   const rooted = (path: string) =>
-    isAbsolute(path) || path.startsWith("~/") ? path : host.tree + "/" + path;
+    isAbsolute(path) || path.startsWith("~/") ? path : `${host.tree}/${path}`;
   return {
     bun: host.bun.includes("/") ? rooted(host.bun) : host.bun,
     // Bun implicitly loaded the configured checkout's .env before controllers moved elsewhere.
@@ -94,15 +95,6 @@ export function configuredRuntime(host: Host) {
 /** This machine's own name, its short hostname: what `fresh` ends a run's name with when it runs
  *  here, and what `move` reads as `here`. */
 export const ownName = (): string => hostname().split(".")[0] ?? "here";
-
-/** The machine whose archive gathers every host's records and holds the cycle's files: `here` on
- *  that machine and its `ANA_HOSTS` name on the others; unset, each machine reads for itself
- *  (27 October: the v0.7.4 cycle's folder was first kept on a runner, and moved). */
-export function centralOf(): string | null {
-  const name = runtimeProcess.env.ANA_CENTRAL ?? "";
-  if (name === "") return null;
-  return name === "here" ? name : hostNamed(name).name;
-}
 
 export function hostNamed(name: string | undefined): Host {
   const known = hostsOf();

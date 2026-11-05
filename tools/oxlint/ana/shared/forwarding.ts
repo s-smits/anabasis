@@ -1,4 +1,5 @@
 import type { ESTree } from "@oxlint/plugins";
+import { identifierName } from "./statements.ts";
 
 /**
  * Whether a value handed to a function the file declares ends up at a named destination.
@@ -14,12 +15,12 @@ type Callable = ESTree.Function | ESTree.ArrowFunctionExpression;
 
 /** One call in the file: the name it calls, which arguments are bare identifiers, and every
  *  function it sits inside. */
-type CallSite = {
+interface CallSite {
   node: ESTree.CallExpression;
   callee: string;
   identifiers: ReadonlyMap<number, string>;
   within: readonly Callable[];
-};
+}
 
 function isCallable(node: ESTree.Node): node is Callable {
   return (
@@ -55,14 +56,14 @@ export function argumentOf(value: ESTree.Node): { call: ESTree.CallExpression; i
   }
   const call = at.parent;
   if (call?.type !== "CallExpression") return null;
-  const arguments_: readonly ESTree.Node[] = call.arguments;
-  const index = arguments_.indexOf(at);
+  const passed: readonly ESTree.Node[] = call.arguments;
+  const index = passed.indexOf(at);
   return index === -1 ? null : { call, index };
 }
 
 function parameterName(parameter: ESTree.Node | undefined): string | null {
   if (parameter?.type === "AssignmentPattern") return parameterName(parameter.left);
-  return parameter?.type === "Identifier" ? parameter.name : null;
+  return identifierName(parameter);
 }
 
 /** Feed it every function declaration, declarator and call; ask it after the file has been read. */
@@ -120,7 +121,7 @@ export function forwardingTracker() {
     reaches: (name: string, index: number, target: (name: string) => boolean): boolean =>
       reaches(name, index, target, new Set()),
     /** Every recorded call passing the identifier `name`, with the position it is passed at. */
-    passing(name: string): Array<{ node: ESTree.CallExpression; index: number }> {
+    passing(name: string): { node: ESTree.CallExpression; index: number }[] {
       return calls.flatMap((site) =>
         [...site.identifiers].flatMap(([index, argument]) =>
           argument === name ? [{ node: site.node, index }] : [],

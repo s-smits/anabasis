@@ -1,5 +1,6 @@
-import { defineRule, type ESTree } from "@oxlint/plugins";
+import { defineRule } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
+import { identifierName, methodCall } from "../shared/statements.ts";
 
 /**
  * `xs.map(toRow).filter(Boolean)` walks the array twice and then lies about the type. The
@@ -44,23 +45,12 @@ export const preferFlatmapOverMapFilterRule = defineRule({
     },
   },
   createOnce(context) {
-    /** Whether a call is `<something>.<name>(<one argument>)`. */
-    function methodCall(node: ESTree.Node, name: string): node is ESTree.CallExpression {
-      if (node.type !== "CallExpression" || node.arguments.length !== 1) return false;
-      const { callee } = node;
-      if (callee.type !== "MemberExpression" || callee.computed) return false;
-      return callee.property.type === "Identifier" && callee.property.name === name;
-    }
-
     return {
       CallExpression(node) {
-        if (!methodCall(node, "filter")) return;
-        const [predicate] = node.arguments;
-        if (predicate?.type !== "Identifier" || predicate.name !== "Boolean") return;
-
+        const filter = methodCall(node, "filter");
+        if (filter === null || identifierName(filter.argument) !== "Boolean") return;
         const { callee } = node;
-        if (callee.type !== "MemberExpression") return;
-        if (!methodCall(callee.object, "map")) return;
+        if (callee.type !== "MemberExpression" || methodCall(filter.receiver, "map") === null) return;
         context.report({ node: callee.property, messageId: "twoWalks" });
       },
     };

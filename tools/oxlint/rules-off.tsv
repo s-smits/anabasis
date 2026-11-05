@@ -1,0 +1,104 @@
+rule	files	sites	status	reason
+eslint/capitalized-comments	*	1654	off	Most of its sites open with an identifier, a path or a quoted value, whose case is not the comment's to change.
+eslint/complexity	*	47	off	tools/loc/source-policy.ts owns a function's size and the reduce-complexity skill measures branches on a diff; a branch count of 20 decides nothing either reads.
+eslint/default-case	*	1	off	A `default` in a switch over a union stops `typescript/switch-exhaustiveness-check` from reporting a missing case, and its one site in src/campaign/move.ts is exhaustive.
+eslint/id-denylist	*	0	off	It checks nothing without a list of names, and the tree has none to forbid.
+eslint/id-length	*	759	off	Its sites are `a` and `b` in comparators, `x` in coordinates and `at` for indices, where a longer name says less.
+eslint/id-match	*	0	off	It checks nothing without a pattern, and the tree has none to enforce.
+eslint/init-declarations	*	115	off	Its sites declare a `let` that every branch below assigns, where an initial value would be a dead store and the typecheck already refuses a read before assignment.
+eslint/max-classes-per-file	*	4	off	Its four files hold an error or helper class beside the class that uses it, and tools/loc/source-policy.ts owns file size.
+eslint/max-lines	*	146	off	tools/loc/source-policy.ts owns file size at 800 nonblank lines (AGENTS.md section 12), and this rule's 300 counts blanks and comments.
+eslint/max-lines-per-function	*	513	off	tools/loc/source-policy.ts owns function size at 115 lines (AGENTS.md section 12), and this rule's 50 would split functions that limit allows.
+eslint/max-statements	*	1011	off	tools/loc/source-policy.ts owns function size; ten statements a function would split most into helpers with one caller, which `ana/no-single-caller-helper` refuses.
+eslint/no-await-in-loop	*	304	off	Its sites await in order on purpose: appends to one log, one solve after another under the host's load, and polls that wait between reads.
+eslint/no-bitwise	*	39	off	Its sites are hashes, file modes and sizes such as `1 << 17`, where a bitwise operator is the operation.
+eslint/no-console	*	418	off	Commands, scripts and tests report on stdout and stderr by design, and the tree has no logger to route through.
+eslint/no-continue	*	265	off	Its sites are `continue` guards at the top of a loop, the loop's form of the early return the tree prefers.
+eslint/no-div-regex	*	5	off	Under the `u` flag each of its five sites carries, `\=` is a syntax error, so its fix is `[=]`, a one-character class that reads worse than the `=` it replaces.
+eslint/no-duplicate-imports	*	27	off	Its sites import a module's types on an `import type` line beside its values, the separate form `typescript/consistent-type-imports` writes.
+eslint/no-empty-function	*	6	off	Its six sites are no-op stand-ins a test passes or reassigns later (`let release = () => {}`, a silenced `console.error`), where the empty body is the meaning.
+eslint/no-eq-null	*	33	off	`== null` tests null and undefined together on purpose, as `eslint/eqeqeq` allows with `null: ignore`.
+eslint/no-implied-eval	*	0	off	`typescript/no-implied-eval`, which is on, checks the same calls with types.
+eslint/no-inline-comments	*	15	off	Its sites are notes at the end of table rows and fixture lines, among them the `// REPORT` markers the rule tests read, which a line above would part from their row.
+eslint/no-lonely-if	*	0	off	`unicorn/no-lonely-if`, which is on, reports the same shape.
+eslint/no-loop-func	*	8	off	Seven of its eight sites read a reassigned `let` on purpose when the closure runs (fixtures assigned in `beforeAll`, a restarted child, loop state read synchronously), and the eighth was harmless.
+eslint/no-magic-numbers	*	10347	off	Its sites are fixture values, indices and limits used once, and a constant for each would add a name read once.
+eslint/no-negated-condition	*	0	off	`unicorn/no-negated-condition`, which is on, reports the same shape.
+eslint/no-nested-ternary	*	83	off	A nested conditional is the tree's form for a value chosen among three, laid out one branch a line by Biome.
+eslint/no-plusplus	*	31	off	Its sites are loop counters and tallies, where `+= 1` says nothing more.
+eslint/no-restricted-globals	*	0	off	It checks nothing without a list, and the routes through src/meta are `ana/require-meta-runtime-import`'s.
+eslint/no-restricted-imports	*	0	off	It checks nothing without a list, and the routes through src/meta are `ana/require-meta-runtime-import`'s.
+eslint/no-restricted-properties	*	0	off	It checks nothing without a list, and the tree has none to forbid.
+eslint/no-template-curly-in-string	*	14	off	Its sites hold a literal `${...}` on purpose: fixture sources in the plugin rules' examples, shell text and messages that quote a template.
+eslint/no-ternary	*	3787	off	A conditional expression is the tree's form for a value chosen between two.
+eslint/no-undefined	*	1748	off	`undefined` is the value of an absent optional property under `exactOptionalPropertyTypes`, so the tree has to name it.
+eslint/no-use-before-define	*	296	off	Its sites call a module's helper declared below its caller, which runs only once the module has loaded; the tree puts a module's entry first (34 sites remain with functions false).
+eslint/prefer-destructuring	*	100	off	Its sites take one property or one index, where `const { x } = o` reads no better than `const x = o.x`.
+eslint/prefer-named-capture-group	*	254	staged	Staged: an unnamed group used only to group becomes `(?:...)` and one read by index gets a name, which wants each pattern read.
+eslint/prefer-promise-reject-errors	*	0	off	`typescript/prefer-promise-reject-errors`, which is on, checks the same calls with types.
+eslint/require-await	*	145	off	Its sites are `async` functions an interface requires to return a promise (tool handlers, scripted seats), where dropping `async` would turn a rejection into a synchronous throw.
+eslint/require-unicode-regexp	*	261	staged	Staged: the `u` flag changes which escapes a pattern may use, so each of its sites wants reading before the flag goes on.
+eslint/sort-imports	*	484	staged	Staged at 484 sites with ignoreDeclarationSort (2160 without), the names inside each import's braces out of order: one mechanical pass of its own.
+eslint/sort-keys	*	5340	off	Object keys follow the order a reader or a log line needs, an event's kind before its data, which alphabetical order would scramble.
+import/consistent-type-specifier-style	*	485	staged	Staged at 485 sites for prefer-inline (836 for prefer-top-level): both forms are in use, and one form is a mechanical pass of its own.
+import/exports-last	*	1056	off	Each declaration is exported where it is defined, with the module's entry first, which a block of exports at the end would part from its code.
+import/group-exports	*	1593	off	Each declaration is exported where it is defined, which one grouped export statement would part from its code.
+import/max-dependencies	*	125	off	A file's import count is no measure the tree holds; `tree/filesystem-import-budget` budgets the one import list that is.
+import/no-anonymous-default-export	*	0	off	`import/no-default-export`, which is on, already reports every default export.
+import/no-named-export	*	1781	off	It opposes `import/no-default-export`, which is on.
+import/no-namespace	*	7	off	Its sites import the TypeScript compiler API as `ts` and two modules a test reaches through their namespace, which is the form both uses need.
+import/no-nodejs-modules	*	15	off	src/meta imports Node's modules once for the tree (`ana/require-meta-runtime-import`), and its sites are those imports and tests.
+import/no-relative-parent-imports	*	1958	off	A relative parent import is the tree's form outside `.claude/`, and `anti-slop/prefer-subpath-import` owns where an alias is required instead.
+import/prefer-default-export	*	117	off	It opposes `import/no-default-export`, which is on.
+import/unambiguous	*	2	off	Its two sites are ambient declaration files (`declare module`), which are scripts by design.
+node/callback-return	*	7	off	Its sites call local functions named `next`, a step labeller and an id counter, for their effect or value; none is a Node callback.
+node/no-sync	*	2610	off	Commands and the log call the file system synchronously on purpose: an append is synced before it returns (AGENTS.md section 5).
+node/no-top-level-await	*	84	off	Commands and scripts are ES modules Bun runs, where top-level await is the entry point's form.
+oxc/no-async-await	*	1299	off	It forbids `async` functions, the tree's form for asynchronous code.
+oxc/no-map-spread	*	72	off	Its sites copy a record with a change inside `map`, which keeps the input unchanged, on paths that read a log once.
+oxc/no-optional-chaining	*	1822	off	It forbids `?.`, which the tree uses where the types make a value optional.
+oxc/no-rest-spread-properties	*	1383	off	It forbids object spread, the tree's form for a copy with a change.
+promise/always-return	*	5	off	Its sites are `.then` handlers that end a chain whose value nobody reads.
+promise/avoid-new	*	18	off	Its sites wrap timers, `requestAnimationFrame`, streams and events, which have no promise form.
+promise/catch-or-return	*	4	off	Its sites end in a rejection handler (`.then(a, b)`, or `.catch(...)` then `.finally(...)`), which handles the rejection, and `typescript/no-floating-promises` checks the same with types.
+promise/prefer-await-to-callbacks	*	7	off	Its sites are event and stream listeners, which have no promise form.
+promise/prefer-await-to-then	*	42	off	Its sites chain inside synchronous callers and handlers, where `.then` keeps the caller synchronous.
+promise/prefer-catch	*	3	off	`.then(a, b)` does not pass a throw in `a` to `b` and `.then(a).catch(b)` does, so its fix changes behaviour at each of its three sites.
+typescript/await-thenable	test/**	118	off	bun-types declares `expect(...).rejects` and `.resolves` without a `then`, though a test awaits both, so every awaited matcher would be reported.
+typescript/ban-types	*	0	off	`typescript/no-empty-object-type`, `no-unsafe-function-type` and `no-wrapper-object-types`, which are on, replace it.
+typescript/consistent-return	*	2	off	Its two sites return a call typed `never` or end an exhaustive `switch`, which the typecheck reads as complete and the rule does not.
+typescript/explicit-function-return-type	*	1494	off	Return types are inferred inside a module; `typescript/explicit-module-boundary-types`, staged, is the rule for exported functions.
+typescript/explicit-member-accessibility	*	65	off	Classes hide members with `#private`, and a `public` keyword on the rest says nothing.
+typescript/explicit-module-boundary-types	*	212	staged	Staged: each exported function without a declared return type wants its type read and written, a pass of its own.
+typescript/no-confusing-void-expression	*	321	off	Its sites return a void call from a void arrow (`() => set(x)`), the tree's short form for a handler.
+typescript/no-dynamic-delete	*	2	off	Its two sites delete an environment variable or a record entry by a name known only at run time, which is the operation.
+typescript/no-empty-interface	*	0	off	`typescript/no-empty-object-type`, which is on, replaces it.
+typescript/no-invalid-void-type	*	35	off	Its sites are `Promise.withResolvers<void>()` and like calls, where `void` is the resolved type.
+typescript/no-restricted-types	*	0	off	It checks nothing without a list, and the tree has none to forbid.
+typescript/no-unsafe-type-assertion	*	91	off	Each assertion it reports carries the SAFETY comment `anti-slop/require-safety-comment-for-type-assertion` requires, the one owner of assertions (rule 12).
+typescript/no-var-requires	*	0	off	`typescript/no-require-imports`, which is on, replaces it.
+typescript/non-nullable-type-assertion-style	*	2	off	It asks for `x!`, which `typescript/no-non-null-assertion`, on, refuses.
+typescript/prefer-readonly-parameter-types	*	5111	off	It asks for deep `readonly` on every parameter, library types included, which those types cannot meet.
+typescript/prefer-ts-expect-error	*	0	off	`typescript/ban-ts-comment`, which is on, replaces it.
+typescript/promise-function-async	*	134	off	Its sites return a promise from a plain function on purpose, so that a throw before the promise stays synchronous.
+typescript/require-await	*	119	off	Its sites are `async` functions an interface requires to return a promise, where dropping `async` would turn a rejection into a synchronous throw.
+typescript/strict-void-return	*	20	off	Its sites pass a function that returns a value where a `void` callback is expected (`onData: (data) => chunks.push(data)`), which TypeScript allows on purpose.
+unicorn/consistent-function-scoping	*	177	staged	Staged: each closure that captures nothing moves to module scope, which wants a name and a place read for each.
+unicorn/custom-error-definition	*	17	off	It asks each error class to take a message alone and name itself after its class, where the tree's errors carry typed fields such as `Cancellation.cancelledBy`, and some set the `name` a log reads.
+unicorn/max-nested-calls	*	225	off	Its sites nest path and JSON helpers such as `asRecord(capturedJsonParse(readFileSync(...)))`, where a name for each step would be read once, in the next line.
+unicorn/no-array-callback-reference	*	207	off	Its sites pass a named function whose parameters are known (`map(String)`, `filter(isString)`), where a wrapping arrow adds nothing.
+unicorn/no-array-reduce	*	14	off	Its sites fold a sum or a record in one expression, which a loop would spread over a mutable variable.
+unicorn/no-await-expression-member	*	144	off	Its sites read one property of an awaited value (`(await read()).text`), where the temporary its fix adds is read once, in the next line.
+unicorn/no-instanceof-array	*	0	off	`unicorn/no-instanceof-builtins`, which is on, reports `instanceof Array` too.
+unicorn/no-nested-ternary	*	83	off	A nested conditional is the tree's form for a value chosen among three, laid out one branch a line by Biome.
+unicorn/no-null	*	2129	off	`null` is the tree's JSON value for absent, written to logs and read back, which `undefined` cannot carry.
+unicorn/no-object-as-default-parameter	*	6	off	Its sites are helpers whose default record a caller replaces whole, where destructured defaults would change what a partial argument means.
+unicorn/no-useless-undefined	*	47	off	Its sites pass `undefined` to skip a positional parameter or return it from a function typed to allow it, and `.catch(() => undefined)` would become an empty function `eslint/no-empty-function` would flag.
+unicorn/number-literal-case	*	34	off	It asks for upper-case hexadecimal digits, and Biome lower-cases them on every write.
+unicorn/prefer-dom-node-dataset	*	2	off	Its two sites, in packages/ui/test/explore.ts, hold an `Element`, which has no `dataset`.
+unicorn/prefer-dom-node-text-content	*	14	off	Its sites read `innerText`, the rendered text a person sees, which is what the UI tests assert and `textContent` is not.
+unicorn/prefer-global-this	*	42	off	Its sites, all in packages/ui, name the page's `window` and `document`, and Playwright runs the tests' page functions in the page, where `window` is what is meant.
+unicorn/prefer-number-coercion	*	5	off	`Number.parseInt` and `Number.parseFloat` read a leading number (`"12px"` gives 12) where `Number` gives NaN, so its fix changes behaviour at each site.
+unicorn/prefer-spread	*	17	off	Ten of its seventeen sites split or copy a string, and the spread it offers there is what `typescript/no-misused-spread`, on, refuses.
+unicorn/prefer-string-starts-ends-with	*	0	off	`typescript/prefer-string-starts-ends-with`, which is on, checks the same calls with types.
+unicorn/prefer-top-level-await	*	1	off	Its one site, in packages/ui/serve.ts, ends the server when its input closes, and a top-level await there would hold the module's evaluation until then.

@@ -4,8 +4,8 @@
  * its own session, so no extra model turn is spent rewriting them, and they are no part of the
  * harness that is frozen and measured.
  *
- * Copied from v1, `src/author/builder-memory.ts` (s-smits/anabasis at 3f93d06, MIT), with its
- * tests (`test/author-builder-memory.test.ts`): the two files and their starters, the byte limits
+ * Copied from v1, `3f93d06:src/author/builder-memory.ts` (s-smits/anabasis, MIT), with its
+ * tests (`3f93d06:test/author-builder-memory.test.ts`): the two files and their starters, the byte limits
  * and the cut that keeps both ends and marks what went, the one copy of a repeated section, the
  * notes block a fresh session opens on, the notice for a file over its limit, and the carry, with
  * the `scratch/` helpers under their two limits and no link followed. The plan keeps v1's notes as
@@ -97,7 +97,7 @@ const STARTER_SCRATCHPAD = `# Scratchpad
 Open questions and next steps for the next session. Remove a line when it is resolved.
 `;
 
-const FILES: ReadonlyArray<readonly [string, string, number]> = [
+const FILES: readonly (readonly [string, string, number])[] = [
   [MEMORY_FILE, STARTER_MEMORY, MEMORY_CAP_BYTES],
   [SCRATCHPAD_FILE, STARTER_SCRATCHPAD, SCRATCHPAD_CAP_BYTES],
 ];
@@ -151,7 +151,7 @@ const HELPER_NAMES_SHOWN = 5;
  *  question "has this been authored", because `authoredBody` decides that by comparing against
  *  these same strings: a second copy of the starter text would make an untouched file look
  *  written. */
-const STARTER_MEMORY_FILES: ReadonlyArray<readonly [string, string]> = FILES.map(
+const STARTER_MEMORY_FILES: readonly (readonly [string, string])[] = FILES.map(
   ([name, starter]) => [name, starter] as const,
 );
 
@@ -305,7 +305,7 @@ function gatherScratch(root: string, path: string, found: ScratchEntry): void {
   if (found.bytes > SCRATCH_CARRY_LIMIT_BYTES) return;
   const stat = lstatSync(join(root, path));
   if (stat.isDirectory()) {
-    for (const child of readdirSync(join(root, path)).sort(compareCodeUnits)) {
+    for (const child of readdirSync(join(root, path)).toSorted(compareCodeUnits)) {
       gatherScratch(root, join(path, child), found);
     }
   } else if (stat.isFile()) {

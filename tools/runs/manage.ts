@@ -91,7 +91,7 @@ const NUMBERED = new RegExp(`^${TOKEN}\\d+$`);
 const DROPPED = ["--name", "--budget"];
 const LOOK_MS = 30_000;
 /** How often a pause at the next step looks, since a step follows another within seconds. */
-const STEP_MS = 1_000;
+const STEP_MS = 1000;
 
 /** The flags a campaign runs again on: `flags` less its name and total, and `budget` where named. */
 export function rerun(flags: readonly string[], budget: string | undefined): string[] {

@@ -52,6 +52,6 @@ describe("the recent campaigns", () => {
   it("reads the last event from the tail, and from the whole log where that event outgrows the tail", () => {
     const long = line("2026-10-30T13:00:00.000Z", "solve.finished", { trace: "x".repeat(1 << 17) });
     expect(lastAt(logOf("long", opened + turns(2) + long))).toBe("2026-10-30T13:00:00.000Z");
-    expect(lastAt(logOf("big", "x".repeat(1 << 17) + "\n" + turns(2)))).toBe("2026-10-30T11:00:01.000Z");
+    expect(lastAt(logOf("big", `${"x".repeat(1 << 17)}\n${turns(2)}`))).toBe("2026-10-30T11:00:01.000Z");
   });
 });

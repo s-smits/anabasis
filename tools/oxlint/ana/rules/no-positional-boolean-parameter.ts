@@ -44,7 +44,7 @@ function guardsCallOf(read: ESTree.Node, name: string): boolean {
  * bare, as a no-argument call of it, or as a property of that name on some value:
  * `missTail(difficulty, "above", everyBattery)`, `completedOutcome(…, submitted(), …)` and
  * `scoredFields(outcome, solvedCase.acceptedSubmit)` each state at the call site exactly what the
- * declaration states, and the reader needs no jump; three of the five reports in `src/run` were
+ * declaration states, and the reader needs no jump; three of the five reports in `5bc9988:src/run` were
  * that shape, threaded through one file. The exemption needs the call sites in view, so it applies to a module-local function
  * only: an exported one has callers this rule never sees, and one of them will pass `true`.
  *

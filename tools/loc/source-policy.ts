@@ -5,7 +5,7 @@
 // come inside the authored limits and the entry exempts nothing. Git owns provenance and history,
 // so nothing here records who wrote a file or what state it is in.
 
-import { readFileSync, readdirSync, statSync } from "../../src/meta/filesystem.ts";
+import { existsSync, readFileSync, readdirSync, statSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
 import { countNonBlank } from "./nonblank-loc.ts";
@@ -77,7 +77,7 @@ function walkFiles(root: string): string[] {
     return [];
   }
   const files: string[] = [];
-  for (const name of entries.sort()) {
+  for (const name of entries.toSorted()) {
     // Installed dependencies and build output are nobody's authored source. The three original
     // roots hold neither; `packages` and `.claude`, which the export search reads, hold both.
     // Nor is a dot-directory: every one of the three dozen scratch roots a test opens inside the
@@ -88,8 +88,11 @@ function walkFiles(root: string): string[] {
     // the walk descends into, so `.claude` still opens.
     if (name === "node_modules" || name === "dist" || name.startsWith(".")) continue;
     const path = join(root, name);
-    if (statSync(path).isDirectory()) files.push(...walkFiles(path));
-    else files.push(path);
+    // A directory holding its own `.git` is another checkout, never this one's source: on
+    // 5 November 2026 three agent worktrees under `.claude/worktrees/` lifted the main checkout's
+    // census from 2 findings to 2,429, every one a copy of a file already read.
+    if (!statSync(path).isDirectory()) files.push(path);
+    else if (!existsSync(join(path, ".git"))) files.push(...walkFiles(path));
   }
   return files;
 }
@@ -124,7 +127,7 @@ export function unusedExports(
   }
   return [...home]
     .flatMap(([name, path]) => (path === null ? [] : [{ check: "unused-export" as const, path, name }]))
-    .sort((left, right) =>
+    .toSorted((left, right) =>
       left.path === right.path ? left.name.localeCompare(right.name) : left.path.localeCompare(right.path),
     )
     .map((row) => ({

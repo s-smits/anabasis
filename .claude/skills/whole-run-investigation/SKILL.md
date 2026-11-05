@@ -40,7 +40,7 @@ procedures; they are not commands to run inside a read-only investigation.
 ## The procedure
 
 Six steps. Keep the investigation's files in one directory, `<dir>`, under the ignored
-`.ana/wri/<date>-<campaign>/` of the central host (`ANA_CENTRAL`), beside the cycle's files. Do not
+`.ana/wri/<date>-<campaign>/` of the central host, beside the cycle's files. Do not
 start a step until the check named for the one before holds.
 
 1. **Start.** `wri.ts start --log <log>[,<log>...] --out <dir>` folds each log into the six rows and

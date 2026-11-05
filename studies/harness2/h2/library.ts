@@ -62,11 +62,10 @@ function field(path: string, name: string): string {
 /** `Library`: one (run, profession) library, read before each task and added to after it. */
 export class Library {
   readonly dir: string;
+  readonly domain: string;
 
-  constructor(
-    root: string,
-    readonly domain: string,
-  ) {
+  constructor(root: string, domain: string) {
+    this.domain = domain;
     // `domain_dir`: one directory name for a profession, separators and their spaces collapsed.
     this.dir = join(root, pyStrip(domain.replaceAll(/\s*[/\\]\s*/gu, "__")) || "unknown");
   }

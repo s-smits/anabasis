@@ -22,7 +22,7 @@ comparisons again under other weights or a candidate tree is `promotion-tuner` '
 | `references/draw-and-solves.md` | 7, "How a comparison is read": terms first; the scored draw (frontier, exhausted, retained); fresh solves; how a solve ends | What is fixed before the first solve, which tasks are scored, and how each ending counts in a pair |
 | `references/tally-and-test.md` | 7: the tally; the objective; the test and the step; the reading; beside the test (the A/A comparison) | How a task is scored, what the test reads, and what each reading word means |
 | `references/limits-and-room.md` | 7: rejections; the budget; the dollar cap; room for improvement; improvement patience; awaiting task review; promotion | What bounds a comparison, what room it left, and when a campaign stops or promotes |
-| `references/move-table.md` | 7: what follows a reading (the ten rows of `decide`); supply patience | Which move comes next, and when supply runs out |
+| `references/move-table.md` | 7: what follows a reading (the nine rows of `decide`); supply patience | Which move comes next, and when supply runs out |
 | `references/rules.md` | 8, "Rules": rules 1 to 15 with their reasons and edges | Why each rule holds, and where its edge is |
 
 ## If you are about to
@@ -30,7 +30,7 @@ comparisons again under other weights or a candidate tree is `promotion-tuner` '
 | About to, or asking | Read or run |
 | --- | --- |
 | Change what `comparison.started` fixes, the draw (`poolOf`, `scoredSet`), the mirror or the endings of a solve | `references/draw-and-solves.md` |
-| Change `pointsOf`, `WEIGHTS`, `ROOM`, `FULL`, `CHEAPER`, `flipP`, `stepOf`, `readsStep` or the A/A | `references/tally-and-test.md`, then `promotion-tuner` to replay the record |
+| Change `pointsOf`, `WEIGHTS`, `ROOM`, `flipP`, `stepOf`, `readsStep` or the A/A | `references/tally-and-test.md`, then `promotion-tuner` to replay the record |
 | Ask how many tasks a step needs, which tallies clear the level, the false rate or the detectable share | `scripts/size.ts` |
 | Ask whether a given set of task scores reads a step without the bill, and what they read with it | `scripts/size.ts --scores ... --unbilled ...` |
 | Ask what the next comparison would score, why it scored fewer tasks than its target, or why admission refuses `held-short` | `scripts/draw.ts <log or name>`, then `references/draw-and-solves.md` |

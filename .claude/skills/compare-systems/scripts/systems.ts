@@ -111,7 +111,7 @@ function solvedIn(log: string): Map<string, Solved> {
   const events = existsSync(log) ? read(log) : [];
   const verdicts = verdictsOf(events);
   const out = new Map<string, Solved>();
-  for (const solve of ended(ranUnder(events)).sort((a, b) => a.started - b.started)) {
+  for (const solve of ended(ranUnder(events)).toSorted((a, b) => a.started - b.started)) {
     const valid = passed(solve);
     if (valid === null) continue;
     const task = out.get(solve.under.task) ?? {

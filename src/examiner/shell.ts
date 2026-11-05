@@ -55,9 +55,9 @@ export interface Wall extends Walled {
    *  program names are installed in the shell (`pinnedEngines`, `src/kernel/verify.ts`). A drafting
    *  session is given none, whatever is named here: nothing is drafted yet that names one. */
   readonly engines?: VerifierTree | undefined;
-  /** Where the campaign keeps a task-writing session's home between sessions: the folder the last
-   *  session's home was copied to whole, and the next one's is seeded from. Absent, nothing is
-   *  carried, as a test may want. */
+  /** Where the campaign keeps an Examiner session's home between sessions, a drafting one's too:
+   *  the folder the last session's home was copied to whole, and the next one's is seeded from.
+   *  Absent, nothing is carried, as a test may want. */
   readonly keep?: string | undefined;
   /** The reference harness's kept directory, laid in a task-writing session's home as
    *  `reference-harness/`, and never kept. */
@@ -70,6 +70,9 @@ export interface Walls {
   readonly shell: CommandWall;
   readonly pinned: readonly Engine[];
   readonly began: number;
+  /** Makes the campaign's copy of the home whole now, at an ask's rest, so a host killed while the
+   *  conversation rests loses no ask's files. */
+  readonly keep: () => void;
 }
 
 /** Where the reference harness lies in a task-writing session's home. */
@@ -90,10 +93,16 @@ export async function examinerShell(shell: CommandWall | undefined, enters: stri
   if (shell === undefined) return [];
   const network = await networkReach(shell);
   const engines = installedPrograms(shell.toolTree);
-  const walls = ` The command runs in your home directory, which is yours for the session. It can write there and $TMPDIR, which is kept for the whole session; a path under /tmp is not: a write there is refused, or lands in a folder that does not outlive the command. It can read the host's own toolchains and public runtime roots, but no repository or private data. ${network === "reached" ? "It has network access: a package index was reached from inside the wall when this process started." : "It has no network access: a package index could not be reached from inside the wall when this process started, so nothing can be installed."}${engines.length === 0 ? "" : ` The engines the exam's checks run are installed, and run by name: ${engines.join(", ")}. They compute; try_answer alone runs the checks on an answer.`} A command has a default time limit and may name a longer timeout. Nothing a command starts runs on after it returns. Nothing in your home enters the exam: ${enters}.`;
+  const walls = ` The command runs in your home directory, which holds what earlier Examiner sessions of this campaign left there and is kept for the next. It can write there and $TMPDIR, which is kept for the whole session; a path under /tmp is not: a write there is refused, or lands in a folder that does not outlive the command. It can read the host's own toolchains and public runtime roots, but no repository or private data. ${network === "reached" ? "It has network access: a package index was reached from inside the wall when this process started." : "It has no network access: a package index could not be reached from inside the wall when this process started, so nothing can be installed."}${engines.length === 0 ? "" : ` The engines the exam's checks run are installed, and run by name: ${engines.join(", ")}. They compute; try_answer alone runs the checks on an answer.`} Nothing a command starts runs on after it returns. Nothing in your home enters the exam: ${enters}.`;
   return codingTools(shell, ["bash", "read", "write"]).map((each) =>
     each.name === "bash" ? { ...each, description: `${each.description}${walls}` } : each,
   );
+}
+
+/** The reference harness laid in an Examiner's home, in place of any copy there. */
+export function layReference(reference: string, home: string): void {
+  rmSync(join(home, REFERENCE_HOME), { recursive: true, force: true });
+  copyHarness(reference, join(home, REFERENCE_HOME));
 }
 
 /** `run` with an Examiner's shell under the solver's command wall, and the engines installed in
@@ -138,8 +147,15 @@ export async function inExaminerWall<T>(
     // they are laid as files, as in a Builder's `kept/`; every other link stays a link. Until
     // 26 October every link was followed by the host, so one a Builder left in a harness that was
     // promoted laid what it named in the Examiner's home, whatever the walls closed.
-    if (reference !== undefined) copyHarness(reference, join(home, REFERENCE_HOME));
-    const result = await run({ shell, pinned, began });
+    if (reference !== undefined) layReference(reference, home);
+    const kept = () => {
+      if (keep === undefined) return;
+      rmSync(keep, { recursive: true, force: true });
+      cpSync(home, keep, carry);
+      // The copy is the session's own, so a session with the term off never opens on one.
+      rmSync(join(keep, REFERENCE_HOME), { recursive: true, force: true });
+    };
+    const result = await run({ shell, pinned, began, keep: kept });
     // The campaign's copy of a session's home, made whole when the session ends and replacing the
     // one before: it is the exam side's, under the campaign's folder beside the log, which every
     // wall closes. Each link is carried as it stands, as the Builder's carry does: until 28 October
@@ -148,16 +164,13 @@ export async function inExaminerWall<T>(
     // home is as no command left it, as its last event says. Until 12 October every crashed
     // session's home replaced the kept one, and on buffer the next session opened in the working
     // files of one whose turn the provider failed; from then until 14 October none did, and a
-    // crashed Examiner's work was lost to the provider.
+    // crashed Examiner's work was lost to the provider. A drafting session ends in `draft.finished`,
+    // which this read missed until 5 November, so a draft that crashed mid-command was carried on.
+    // The conversation's last ask, whose id is its own (`examining`, `session.ts`).
     const ended = read(log).findLast(
-      ({ kind, data }) => kind === "exam.finished" && data.session === id,
+      ({ kind }) => kind === "exam.finished" || kind === "draft.finished",
     )?.data;
-    if (keep !== undefined && !(ended?.ended === "crashed" && Number(ended.running) > 0)) {
-      rmSync(keep, { recursive: true, force: true });
-      cpSync(home, keep, carry);
-      // The copy is the session's own, so a session with the term off never opens on one.
-      rmSync(join(keep, REFERENCE_HOME), { recursive: true, force: true });
-    }
+    if (!(ended?.ended === "crashed" && Number(ended.running) > 0)) kept();
     return result;
   } finally {
     await release();

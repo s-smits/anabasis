@@ -75,7 +75,6 @@ const POOL = {
 
 /** The move the decision table names for a log, under a plan whose terms are the constants here. */
 const PLAN: Plan = {
-  sessions: 1,
   patience: 3,
   unprepared: false,
   practice: null,
@@ -265,7 +264,7 @@ const pool: Scenario = ({ readers: { reports }, log, table }) => {
   const released = new Map(reports.releaseOrder(built.events, Object.keys(POOL), 3, "seed"));
   const has = (list: Iterable<string>, task: string) => ([...list].includes(task) ? "yes" : "-");
   table(
-    ["task", "frontier", "easy", "awaiting", "practice", "released first", "history"],
+    ["task", "frontier", "easy", "awaiting", "practice", "released first"],
     Object.keys(POOL).map((task) => [
       task,
       has(read.frontier, task),
@@ -273,10 +272,6 @@ const pool: Scenario = ({ readers: { reports }, log, table }) => {
       has(read.awaiting, task),
       has(read.practiceFrontier, task),
       released.get(task)?.split(",")[0]?.replace(/^: /u, "") ?? "-",
-      read.histories
-        .get(task)
-        ?.reads.map(({ valid, cut }) => (cut ? `${valid} (cut)` : valid))
-        .join(", ") ?? "-",
     ]),
   );
 };

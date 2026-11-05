@@ -21,28 +21,28 @@ const processKill = runtimeProcess.kill.bind(runtimeProcess);
  */
 export const CAPTURE_MAX_BYTES = 64 * 1024 * 1024;
 
-type RunSyncOptions = {
+interface RunSyncOptions {
   input?: string | Uint8Array;
   cwd?: string;
   env?: Record<string, string | undefined>;
   timeout?: number;
   maxBuffer?: number;
-};
+}
 
 /**
  * `exitCode` is null when a signal, a timeout or a failed spawn ended the command, and `cappedAt`
  * carries the `maxBuffer` a capture reached, whichever ending the child itself got.
  */
-type RunSyncResult = {
+interface RunSyncResult {
   cappedAt: number | null;
   exitCode: number | null;
   signal: string | null;
   stdout: Uint8Array;
   stderr: Uint8Array;
-};
+}
 
 /** The exact shape `runSync` hands to `Bun.spawnSync`, mutable so optional keys stay absent. */
-type SpawnSyncOptions = {
+interface SpawnSyncOptions {
   cmd: string[];
   stdin: Uint8Array;
   stdout: "pipe";
@@ -51,7 +51,7 @@ type SpawnSyncOptions = {
   env?: Record<string, string | undefined>;
   timeout?: number;
   maxBuffer?: number;
-};
+}
 
 /**
  * Signal one exact controller-owned process identity: its group first, since reaching the
@@ -243,6 +243,12 @@ function endingOf({ exitCode, signal }: { exitCode: number | null; signal: strin
 /** Decode captured command bytes as UTF-8 text. */
 export function decodeOutput(bytes: Uint8Array): string {
   return new TextDecoder().decode(bytes);
+}
+
+/** A command's stdout as trimmed text where it exited zero, and null for any other ending: the
+ *  answer to a question whose answer may be no (`runSync`), such as `git config --get`. */
+export function zeroExitText(result: RunSyncResult): string | null {
+  return result.exitCode === 0 ? decodeOutput(result.stdout).trim() : null;
 }
 
 /** Run a command and return its stdout as UTF-8 text, throwing on any failure. */

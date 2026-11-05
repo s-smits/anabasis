@@ -147,10 +147,9 @@ describe("the Examiner's view in counts", () => {
     return events;
   }
 
-  it("counts the tasks under each heading and the refusals by reason, without exposing hidden values or refusal reasons", () => {
+  it("counts the tasks under each heading, without exposing hidden values or refusal reasons", () => {
     const lines = examinerCounts(admitted());
     expect(lines.find((line) => line.startsWith("blocks: "))).toContain('3 under "Not yet compared');
-    expect(lines).toContain("refused drafts in 1 group by reason");
     expect(lines).toContain("promotion: none");
     for (const canary of [HIDDEN, REASON]) expect(lines.join("\n")).not.toContain(canary);
   });
@@ -167,10 +166,8 @@ describe("the Examiner's view in counts", () => {
     ] satisfies LogEvent[];
     const lines = examinerCounts(promoted);
     expect(lines.find((line) => line.startsWith("promotion: "))).toContain("g-9");
-    // No comparison is on record, so there is no last one to tell, and refusals before the promotion
-    // were the replaced reference's.
+    // No comparison is on record, so there is no last one to tell.
     expect(lines).toContain("last: none");
-    expect(lines).toContain("refused drafts in 0 groups by reason");
   });
 });
 

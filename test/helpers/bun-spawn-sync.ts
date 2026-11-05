@@ -18,7 +18,7 @@ export function spawnTextSync(command: string, args: readonly string[], options:
   let result: Bun.SyncSubprocess<"pipe", "pipe">;
   try {
     // Bun 1.4.2 gives an env-less spawn a snapshot of the original process environment, so a child
-    // would not see the deletions `test/env-baseline.ts` makes. Hand it the baseline explicitly.
+    // would not see a key a test deleted from `Bun.env`. Hand it the current environment explicitly.
     result = Bun.spawnSync({
       cmd: [command, ...args],
       stdin: input,

@@ -85,7 +85,7 @@ interface ToolRow {
 const KINDS: ReadonlySet<string> = new Set(["reader", "advisor", "artifact-writer"]);
 /** The names a solver's tools already hold, whatever the harness: pi's coding tools and `submit`. */
 const HOST_TOOLS: readonly string[] = [...CODING_TOOLS, "submit"];
-const SHIM = Bun.fileURLToPath(new URL("./shim.ts", import.meta.url));
+const SHIM = Bun.fileURLToPath(new URL("shim.ts", import.meta.url));
 /** The host's own source and installed packages, which the shim imports from. */
 const HOST_ROOTS = [dirname(dirname(SHIM)), join(dirname(dirname(dirname(SHIM))), "node_modules")];
 const MARKER = "@@ana-harness-result@@";
@@ -136,7 +136,7 @@ const BUNDLED_PATH = /^\/\/ .+\.(?:[cm]?[jt]sx?|json)$/gm;
 function located(module: string, dir: string, toolTree: string | null): string {
   const source =
     toolTree === null ? module : module.replaceAll(realpathSync(toolTree), join(resolve(dir), TOOL_TREE_DIR));
-  const places = [...new Set([realpathSync(dir), resolve(dir)])].sort((a, b) => b.length - a.length);
+  const places = [...new Set([realpathSync(dir), resolve(dir)])].toSorted((a, b) => b.length - a.length);
   return places
     .reduce((bundled, place) => bundled.replaceAll(place, "<harness>"), source)
     .replace(BUNDLED_PATH, "");
@@ -201,7 +201,7 @@ export async function openHarness(dir: string, bundled?: string): Promise<Harnes
  */
 export function pathsUnder(dir: string): string[] {
   const glob = new Bun.Glob("**");
-  return [...glob.scanSync({ cwd: dir, dot: true, onlyFiles: false, followSymlinks: false })].sort();
+  return [...glob.scanSync({ cwd: dir, dot: true, onlyFiles: false, followSymlinks: false })].toSorted();
 }
 
 /** Each entry under `dir` by path, mode and content: a file by its sha256, a link by its target. */
@@ -334,8 +334,8 @@ export async function harnessTools(harness: Harness, task: PublicTask, launch: L
   const call = <T>(name: string | null, params: unknown, signal?: AbortSignal) =>
     callHarness<T>({ harness, launch, input: { task: view, name, params }, signal });
   const { tools: rows } = await call<{ tools: ToolRow[] }>(null, null);
-  const actual = rows.map(({ name }) => name).sort();
-  const expected = [...harness.kinds.keys()].sort();
+  const actual = rows.map(({ name }) => name).toSorted();
+  const expected = [...harness.kinds.keys()].toSorted();
   if (capturedJsonStringify(actual) !== capturedJsonStringify(expected)) {
     throw new Error(
       `domain tool mismatch: generated [${actual.join(", ")}], recorded [${expected.join(", ")}]`,
@@ -349,7 +349,6 @@ export async function harnessTools(harness: Harness, task: PublicTask, launch: L
           name: row.name,
           description: row.description,
           parameters: row.parameters,
-          executionMode: "sequential",
           execute: async (params, _api, context) => {
             const { result } = await call<{ result: Evidence }>(row.name, params, context.abortSignal);
             return {
@@ -387,7 +386,7 @@ async function callHarness<T>(run: {
   });
   const output = Buffer.concat(chunks).toString("utf8");
   const at = output.lastIndexOf(`\n${MARKER}`);
-  const line = at < 0 ? null : (output.slice(at + MARKER.length + 1).split("\n")[0] ?? "");
+  const line = at === -1 ? null : (output.slice(at + MARKER.length + 1).split("\n")[0] ?? "");
   const reply = line === null ? null : parseJsonAs<T & { error?: JsonValue }>(line);
   if (reply !== null && isString(reply.error)) throw new Error(reply.error);
   if (reply === null || exitCode !== 0) {

@@ -34,7 +34,7 @@ const HOST_SCRATCH_ROOT = join(tmpdir(), "ana-host");
 
 /** The two roots of the host's own above, in both path forms, for a wall to close whole. */
 export function hostRoots(): string[] {
-  return [BUILT_COMMAND_SCRATCH_ROOT, HOST_SCRATCH_ROOT].flatMap(canonicalForms).sort(compareCodeUnits);
+  return [BUILT_COMMAND_SCRATCH_ROOT, HOST_SCRATCH_ROOT].flatMap(canonicalForms).toSorted(compareCodeUnits);
 }
 
 /** A fresh folder of the host's under `HOST_SCRATCH_ROOT`, named from `prefix`. */
@@ -60,7 +60,7 @@ export function canonicalForms(path: string): string[] {
 /** Every path form of `paths`, each once and sorted: the root list a rule set and the policy
  *  identity recording it are both written from. */
 export function canonicalRoots(paths: readonly string[]): string[] {
-  return [...new Set(paths.flatMap(canonicalForms))].sort();
+  return [...new Set(paths.flatMap(canonicalForms))].toSorted();
 }
 
 /**
@@ -90,7 +90,7 @@ export function darwinToolchainInstallRoots(home: string | undefined = Bun.env.H
           "Library/Arduino15",
           "go",
         ].map((relative) => join(home, relative));
-  return [...shared, ...perUser].filter(existsSync).sort(compareCodeUnits);
+  return [...shared, ...perUser].filter(existsSync).toSorted(compareCodeUnits);
 }
 
 /** The one line a Darwin system command answers with, asked once per process: undefined on another
@@ -177,7 +177,7 @@ export function toolchainPathDirs(): string[] {
   // /opt itself may not be listable, so each Python's `libexec` is looked for from its own prefix.
   const scan = { onlyFiles: false, absolute: true, followSymlinks: true };
   const glob = (cwd: string) => [...new Bun.Glob("opt/python*/libexec/bin").scanSync({ ...scan, cwd })];
-  const brewed = user.map(dirname).filter(existsSync).flatMap(glob).sort(compareCodeUnits);
+  const brewed = user.map(dirname).filter(existsSync).flatMap(glob).toSorted(compareCodeUnits);
   return [...new Set([...user, ...brewed.toReversed(), ...installed, ...system])].filter(existsSync);
 }
 
@@ -238,7 +238,7 @@ export function ancestorDirectories(path: string): string[] {
 export function traversalMetadataRules(paths: string[]): string[] {
   const ancestors = [...new Set(paths.flatMap(ancestorDirectories))]
     .filter((path) => path !== "/")
-    .sort(compareCodeUnits);
+    .toSorted(compareCodeUnits);
   return ancestors.map((path) => `(allow file-read-metadata (literal ${capturedJsonStringify(path)}))`);
 }
 

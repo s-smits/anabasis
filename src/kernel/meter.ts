@@ -407,5 +407,5 @@ export function spendOf(events: readonly LogEvent[]): [string, number][] {
   for (const { of, id, dollars } of unfinished(events)) add(whoseRole(of, id), dollars);
   return [...new Set(ROLES.values())]
     .flatMap((role): [string, number][] => (billed.has(role) ? [[role, billed.get(role) ?? 0]] : []))
-    .sort(([, a], [, b]) => b - a);
+    .toSorted(([, a], [, b]) => b - a);
 }

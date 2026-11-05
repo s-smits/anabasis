@@ -68,7 +68,7 @@ async function main(): Promise<number> {
     console.log(`${String(rows.length)} logged verdicts, ${String(moved.length)} moved`);
     if (moved.length > 0) console.log("solve\ttask\twas\tnow");
     for (const { solve, task, was, now } of moved) console.log(`${solve}\t${task}\t${was}\t${now}`);
-    const tasks = [...new Set(moved.map(({ task }) => task))].sort((left, right) =>
+    const tasks = [...new Set(moved.map(({ task }) => task))].toSorted((left, right) =>
       left.localeCompare(right),
     );
     if (tasks.length > 0) console.log(`tasks with a moved verdict: ${tasks.join(", ")}`);

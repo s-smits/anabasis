@@ -6,27 +6,27 @@ import { lexicalTypeParameterNames } from "./lexical-type-parameters.ts";
 type VisitorKeys = Readonly<Record<string, readonly string[]>>;
 type TypeScope = ESTree.Node;
 
-type TypeBinding = {
+interface TypeBinding {
   readonly alias: ESTree.TSTypeAliasDeclaration | null;
   readonly name: string;
   readonly scope: TypeScope;
-};
+}
 
 type ResolvingAliases = ReadonlySet<ESTree.TSTypeAliasDeclaration>;
 
-type Substitution = {
+interface Substitution {
   readonly resolvingAliases: ResolvingAliases;
   readonly substitutions: Substitutions;
   readonly type: ESTree.TSType;
-};
+}
 
 type Substitutions = ReadonlyMap<string, Substitution>;
 
-export type TypeAliasEnvironment = {
+export interface TypeAliasEnvironment {
   readonly aliases: readonly ESTree.TSTypeAliasDeclaration[];
   readonly bindingsByName: ReadonlyMap<string, readonly TypeBinding[]>;
   readonly visitorKeys: VisitorKeys;
-};
+}
 
 type ResolvedTypeMatcher = (type: ESTree.TSType, matches: (child: ESTree.TSType) => boolean) => boolean;
 
@@ -218,11 +218,11 @@ function aliasSubstitutions(
   aliasResolving: ResolvingAliases,
 ): Substitutions | null {
   const parameters = alias.typeParameters?.params ?? [];
-  const arguments_ = reference.typeArguments?.params ?? [];
+  const typeArguments = reference.typeArguments?.params ?? [];
   // The alias's body sees its own parameters only: an outer binding of the same name must not leak in.
   const next = new Map<string, Substitution>();
   for (const [index, parameter] of parameters.entries()) {
-    const explicitArgument = arguments_[index];
+    const explicitArgument = typeArguments[index];
     const argument = explicitArgument ?? parameter.default;
     if (argument === null) return null;
     // Explicit arguments were written at the reference; defaults inside the alias.

@@ -4,16 +4,16 @@
  * Coupled changes are one answer probe, with both complete answers checked once: the review of 20 October
  * found three unclear rulings that could not clear a check by changing one failing part alone
  * (buffer-fresh-opus:2829,4268; recode-pr169-sonnet:291). Parent replacement alone is insufficient
- * when coupled source fields together exceed the value cap. The eight-probe budget and 4000-character
- * cap per value or passage remain; a side without a verdict still supplies no evidence. The same
+ * when coupled source fields together exceed the value cap. The eight-probe budget and the cap per
+ * value or passage remain; a side without a verdict still supplies no evidence. The same
  * review found that whole-answer swaps could manufacture defect evidence: object and array roots
  * stay fixed, and a coupled answer probe has at most three paths that one refusing check reads together.
  */
 import { Type } from "typebox";
 import type { SeatTool } from "../agent/session.ts";
-import type { Task, Verdict, Verifier } from "../kernel/verify.ts";
+import { blockingOf, type Task, type Verdict, type Verifier } from "../kernel/verify.ts";
 import { jsonPathTokens, resolveJsonPath } from "../meta/json-evidence.ts";
-import { capturedJsonParse, capturedStructuredClone } from "../meta/json-runtime.ts";
+import { capturedJsonParse, capturedJsonStringify, capturedStructuredClone } from "../meta/json-runtime.ts";
 import { isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
@@ -22,16 +22,23 @@ import { text, tool } from "../tools/answer.ts";
 /** review-probe.ts:57: each answer probe runs every applicable check, so eight keep a review from becoming
  *  a second exam. */
 const PROBE_BUDGET = 8;
-/** Bound each replacement value and each half of a text edit, including within a coupled probe. */
+/** Bound each replacement value and each half of a text edit, including within a coupled probe, or
+ *  the field's own length as JSON where that is longer: one field still changes, whatever its size.
+ *  The field is read in the refused answer and in the accepted one the prompt offers, so that value
+ *  always fits. Until 5 November the bound was 4000 alone, and all six unclear rulings of one truss
+ *  campaign (truss-fresh-opus-forkedPR588 r2) said it kept them from replacing a members list of 8000
+ *  to 12000 characters, which left three tasks out of its comparisons (Referee audit, 5 November). */
 const VALUE_MAX_CHARS = 4000;
 
 /** The one passage of a text field that `find` names, rewritten to `replace`. */
+// oxlint-disable-next-line typescript/consistent-type-definitions -- a type alias stays assignable to `JsonObject`, and an interface has no implicit index signature
 type ProbeEdit = {
   readonly find: string;
   readonly replace: string;
 };
 
 /** What one answer probe ran and what the checks said. */
+// oxlint-disable-next-line typescript/consistent-type-definitions -- a type alias stays assignable to `JsonObject`, and an interface has no implicit index signature
 export type ProbeRow = {
   /** 1-based, and what a ruling cites. */
   readonly id: number;
@@ -53,8 +60,6 @@ export function conclusive(row: ProbeRow): boolean {
   return decides(row.original) && decides(row.changed);
 }
 
-const blockingOf = (verdict: Verdict) => (verdict.kind === "fail" ? verdict.blocking : []);
-
 /** A check receives declared paths alone. A change reaches one when it names the field, a child
  *  or its parent; malformed paths authorise nothing. */
 export function reaches(path: string, declared: readonly string[]): boolean {
@@ -74,7 +79,7 @@ export function reaches(path: string, declared: readonly string[]): boolean {
 function movedChecks(original: Verdict, changed: Verdict): string[] {
   const before = new Set(blockingOf(original));
   const after = new Set(blockingOf(changed));
-  return [...before.symmetricDifference(after)].sort();
+  return [...before.symmetricDifference(after)].toSorted();
 }
 
 /** A copy with an existing field or parent replaced; `$` replaces a scalar answer alone. */
@@ -156,14 +161,23 @@ function budgetLine(used: number): string {
  * is not one: both forms or neither, a value that is not JSON, a path the answer does not hold, a
  * passage that is not there exactly once, or a change that changes nothing.
  */
-function changedAnswer(answer: JsonValue, change: ProbeRow["changes"][number]): JsonValue {
+function changedAnswer(
+  answer: JsonValue,
+  change: ProbeRow["changes"][number],
+  accepted: JsonValue | undefined,
+): JsonValue {
   const { edit } = change;
   if ((change.value === null) === (edit === null)) {
     throw new Error("send either `value`, or `find` with `replace`");
   }
-  if ([change.value, edit?.find, edit?.replace].some((part) => (part?.length ?? 0) > VALUE_MAX_CHARS)) {
+  const lengths = [answer, accepted].map((whole) => {
+    const field = whole === undefined ? null : resolveJsonPath(whole, change.path);
+    return field?.found === true ? (capturedJsonStringify(field.value)?.length ?? 0) : 0;
+  });
+  const most = Math.max(VALUE_MAX_CHARS, ...lengths);
+  if ([change.value, edit?.find, edit?.replace].some((part) => (part?.length ?? 0) > most)) {
     throw new Error(
-      `a value and each half of an edit are at most ${String(VALUE_MAX_CHARS)} characters: one field or one passage changes`,
+      `a value and each half of an edit are at most ${String(VALUE_MAX_CHARS)} characters, or the length of the field they change as JSON, in this answer or the accepted one, where that is longer: one field or one passage changes`,
     );
   }
   let value: JsonValue;
@@ -187,10 +201,14 @@ function changedAnswer(answer: JsonValue, change: ProbeRow["changes"][number]): 
   return changed;
 }
 
-/** Rebuild the exact counterfactual for verification and for the ruling's evidence test. */
-export function probeAnswer(answer: JsonValue, changes: ProbeRow["changes"]): JsonValue {
+/** Rebuild the exact counterfactual a probe verifies. */
+function probeAnswer(
+  answer: JsonValue,
+  changes: ProbeRow["changes"],
+  accepted: JsonValue | undefined,
+): JsonValue {
   if (changes.length > 3) throw new Error("a probe changes at most 3 paths");
-  const changed = changes.reduce(changedAnswer, answer);
+  const changed = changes.reduce((at, change) => changedAnswer(at, change, accepted), answer);
   if (hashJsonValue(changed) === hashJsonValue(answer)) {
     throw new Error("the changes leave the answer unchanged");
   }
@@ -204,8 +222,14 @@ export function probeTool(
   task: Task,
   answer: JsonValue,
   rows: ProbeRow[],
-  readTogether: readonly (readonly string[])[] = [],
+  around: {
+    /** The fields each refusing check reads together, which a coupled probe keeps to. */
+    readonly readTogether?: readonly (readonly string[])[];
+    /** The accepted answer the Referee's first message offers, whose values a probe may carry. */
+    readonly accepted?: JsonValue | undefined;
+  } = {},
 ): SeatTool {
+  const { readTogether = [], accepted } = around;
   let original: Promise<Verdict> | null = null;
   return tool({
     name: "probe_check",
@@ -236,7 +260,6 @@ export function probeTool(
         { minItems: 1, maxItems: 3 },
       ),
     }),
-    executionMode: "sequential",
     execute: async (args, _api, context) => {
       if (rows.length >= PROBE_BUDGET) {
         throw new Error(`a review runs at most ${String(PROBE_BUDGET)} probes`);
@@ -246,7 +269,7 @@ export function probeTool(
         value: value ?? null,
         edit: find === undefined || replace === undefined ? null : { find, replace },
       }));
-      const changed = probeAnswer(answer, changes);
+      const changed = probeAnswer(answer, changes, accepted);
       if (
         changes.length > 1 &&
         !readTogether.some((fields) => changes.every(({ path }) => reaches(path, fields)))

@@ -113,14 +113,14 @@ async function setup(
   }
   mkdirSync(home);
   mkdirSync(host);
-  const record_ = (kind: EventKind, data: JsonObject) => append(log, kind, data);
+  const add = (kind: EventKind, data: JsonObject) => append(log, kind, data);
   // Each with its author's claim, which stays on the exam side.
   for (const version of ["v0", "v1", "v2", "v3"]) {
-    record_("task.proposed", { version, claim: { grade: 3, stops: SETUP_CLAIM } });
-    record_("task.gate", { version, gate: 1, outcome: "passed" });
+    add("task.proposed", { version, claim: { grade: 3, stops: SETUP_CLAIM } });
+    add("task.gate", { version, gate: 1, outcome: "passed" });
   }
-  record_("task.state", { version: "v1", state: "released" });
-  record_("task.state", { version: "v2", state: "released" });
+  add("task.state", { version: "v1", state: "released" });
+  add("task.state", { version: "v2", state: "released" });
   const digest = (await openHarness(parent)).digest;
   const condition = (task: string, harness: string): Condition => ({
     contract: "c1",
@@ -144,12 +144,12 @@ async function setup(
   const solved = (version: string, harness: string, ending: Ending) => {
     solves += 1;
     const solve = `s-${String(solves)}`;
-    record_("solve.started", {
+    add("solve.started", {
       solve,
       condition: recordCondition(log, condition(version, harness)),
       task: "t",
     });
-    record_("solve.call", {
+    add("solve.call", {
       solve,
       turn: 1,
       tool: "bash",
@@ -157,19 +157,19 @@ async function setup(
       isError: false,
       text: `margin of ${solve}`,
     });
-    record_("solve.turn", { solve, turn: 1, stopReason: "stop", text: "Submitted." });
+    add("solve.turn", { solve, turn: 1, stopReason: "stop", text: "Submitted." });
     if (ending.outcome === "non-result" || (ending.outcome === "fail" && ending.kind === "rejected")) {
-      record_("verdict", { solve, answer: { answer: "41" }, kind: "fail", blocking: [check] });
+      add("verdict", { solve, answer: { answer: "41" }, kind: "fail", blocking: [check] });
     }
     if (ending.outcome === "pass" && contract.objective !== undefined) {
-      record_("verdict", { solve, answer: { answer: "42" }, kind: "pass", objective: solves * 10 });
+      add("verdict", { solve, answer: { answer: "42" }, kind: "pass", objective: solves * 10 });
     }
-    record_("solve.finished", { solve, ending });
+    add("solve.finished", { solve, ending });
     return solve;
   };
   // Solves on record before the session: v1 failed once, and v3 is a held-out task's.
   solved("v1", digest, { outcome: "fail", kind: "rejected" });
-  record_("referee.finding", { solve: "s-1", ruling: "earned" });
+  add("referee.finding", { solve: "s-1", ruling: "earned" });
   const exam = solved("v3", digest, { outcome: "fail", kind: "rejected" });
   const sent: string[] = [];
   const faux = fauxProvider({
@@ -334,7 +334,7 @@ describe("the Builder running its campaign", () => {
     expect(s.ran).toHaveLength(1);
     expect(s.sent[2]).toContain("Examiner returned; practice was refreshed.");
     expect(s.sent[2]).toContain(GUIDE.trim());
-    // The advice ends a campaign tool's result only where that tool appends it (`campaignTools`).
+    // No campaign advice ends a result: until 5 November a campaign tool's ended with the table's move.
     expect(s.sent[2]).not.toContain("Advice: compare");
     expect(s.sent[3]).toContain(late.task.taskId);
     expect(s.sent.join("\n")).not.toContain(CHECK);
@@ -435,7 +435,6 @@ describe("a Builder session", () => {
       harness: built.harness,
       changed: true,
       practiceSolves: 2,
-      disputed: [],
       turns: 5,
     });
     expect(s.of(BUILD_CALL).map(({ tool: name }) => name)).toEqual([
@@ -553,13 +552,34 @@ describe("a Builder session", () => {
       expect(JSON.stringify(calls[3]?.text ?? null).includes("t-2 is no longer a practice task")).toBe(
         defect,
       );
-      expect(s.of(BUILD_FINISHED)[0]).toMatchObject({
-        practiceSolves: defect ? 1 : 2,
-        disputed: defect ? ["v2"] : [],
-        changed: false,
-      });
+      expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ practiceSolves: defect ? 1 : 2, changed: false });
+      // The log holds the dispute, so the campaign's practice set loses the task with the session's.
+      expect(s.of("task.state").filter(({ state }) => state === "disputed")).toEqual(
+        defect ? [{ version: "v2", state: "disputed", session: "b-1", solve: "s-3" }] : [],
+      );
       expect(built).toMatchObject({ changed: false, dir: null, harness: s.digest });
       expect(s.of("harness.version")).toEqual([]);
+    }
+  });
+
+  it("starts no session on a task an earlier session's practice ruled a check defect", async () => {
+    // The dispute is in the log, so the campaign hands a later session only what is still released;
+    // one handed the task anyway is refused before it spends. Until 5 November the ruling lived in
+    // the session's memory and a later one paid to learn it again.
+    for (const left of [true, false]) {
+      const s = await setup([call("practice", { tasks: ["t-2"] }), finish], [{ outcome: "pass" }]);
+      const disputed = { version: "v2", state: "disputed", session: "b-0", solve: "s-0" };
+      if (left) append(s.request.log, "task.state", disputed);
+      const started = session(s.request, s, s.walled);
+      if (left) {
+        await expect(started).rejects.toThrow(
+          "t-2 is disputed, and a Builder practises on released tasks only",
+        );
+        expect(s.of("build.started")).toEqual([]);
+      } else {
+        await started;
+        expect(s.of(BUILD_FINISHED).at(-1)).toMatchObject({ practiceSolves: 1 });
+      }
     }
   });
 
@@ -1060,7 +1080,6 @@ describe("a Builder session", () => {
     expect(s.of(BUILD_FINISHED)[0]).toMatchObject({
       practiceSolves: 1,
       faultyChecks: ["v2"],
-      disputed: [],
     });
   });
 });
@@ -1072,7 +1091,8 @@ describe("a Builder session", () => {
 // to read the same bytes.
 describe("what crosses to the Builder", () => {
   /** What a campaign keeps from its Builder: the check that refused an answer, the Referee's
-   *  reason, the hidden value of a held-out task and of a practice task, which held-out task the
+   *  reason, the hidden value of a held-out task and of a practice task (a practice solve's measure,
+   *  which may depend on it, crosses; the value does not), which held-out task the
    *  comparison's new harness won, what the Examiner said of each task when it put it, and how the
    *  reference did on a held-out task the Examiner tried it on (`try_reference`). */
   interface Kept {
@@ -1111,7 +1131,7 @@ describe("what crosses to the Builder", () => {
    * the exam's. `leak` puts the check that refused into a practice solve's trace, which a Builder
    * pages: a held-out detail in a Builder's message.
    */
-  async function read_(kept: Kept, leak: "sealed" | "leaking" = "sealed"): Promise<string> {
+  async function everythingRead(kept: Kept, leak: "sealed" | "leaking" = "sealed"): Promise<string> {
     const stop = fauxAssistantMessage("I think that is enough.");
     const s = await setup(
       [
@@ -1285,7 +1305,7 @@ describe("what crosses to the Builder", () => {
   }
 
   it("is byte-identical whatever a hidden value, a check, a ruling, the task that was won or the Examiner's try of the reference is", async () => {
-    const [one, other] = [await read_(ONE), await read_(OTHER)];
+    const [one, other] = [await everythingRead(ONE), await everythingRead(OTHER)];
     // The session read what a Builder may: its tasks, the fail, the trace, the opening again, the
     // continuation, and the comparison as a tally.
     expect(one).toContain("Solve s-3.");
@@ -1316,7 +1336,7 @@ describe("what crosses to the Builder", () => {
   // shown no check, so this cannot happen by its seat; it stands in for any path that would put a
   // held-out detail into a message, and the comparison above then fails.
   it("is not, once a held-out detail reaches one message", async () => {
-    const [one, other] = [await read_(ONE, "leaking"), await read_(OTHER, "leaking")];
+    const [one, other] = [await everythingRead(ONE, "leaking"), await everythingRead(OTHER, "leaking")];
     expect(one === other).toBe(false);
     expect(one).toContain(ONE.check);
   }, 60_000);

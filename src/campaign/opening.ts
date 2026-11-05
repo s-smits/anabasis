@@ -4,10 +4,15 @@
  * that opening and the log (`Plan`, `ground.ts`).
  *
  * The opening is the operator's conditions for the whole campaign, recorded once and again where
- * a command names another: the total budget, the full limit of a solve, the Builder sessions
- * before a comparison, who sits in each seat, whether the operator's word is waited for, and, for
- * a campaign that opens from a prompt, the prompt and who solves. None of them moves a comparison's
- * reading. The setting is the log's own record (`campaign.setting`).
+ * a command names another: the total budget, who sits in each seat, whether the operator's word is
+ * waited for, and, for a campaign that opens from a prompt, the prompt and who solves. None of them
+ * moves a comparison's reading. The setting is the log's own record (`campaign.setting`), and the
+ * one record of a solve's limits, the scored tasks and the solves a side: the campaign command
+ * records it as it starts (`tools/d2/harness-builder.ts`). Until 5 November the opening kept copies of them,
+ * a solve's model turns (`limit`) and three terms, so that a campaign continued by its name before
+ * its first comparison or session kept what it was opened with: on 9 October one opened with a
+ * solve's deadline of 8 minutes recorded 120 when continued by its name alone. In the 108 paid
+ * campaigns opened from 28 October the terms were named in none and `limit` in one.
  *
  * It names the project the campaign belongs to (`--project`), as a v1 run named the project whose
  * tree it joined. Until 12 October a v2 campaign was its name and its worktree, and the operator's
@@ -16,12 +21,14 @@
  * none.
  *
  * It also keeps the terms of the campaign's moves as a command last named them (`TERMS`): the
- * limits of a Builder session and of an Examiner session, the size of a comparison, the practice
- * tasks, and a solve's deadline until a setting is recorded. Without them a command that names nothing
- * runs each move by its default: on 9 October a campaign opened with a solve's deadline of 8 minutes,
- * 6 scored tasks and Builder sessions of 25 minutes and 6 practice solves, and, continued by its
- * name alone, recorded a setting of 120 minutes and 12 tasks and gave each session 240 minutes and
- * 24 practice solves, and nothing said so.
+ * limits of a Builder conversation, the comparison's level, the practice tasks, the tasks an
+ * Examiner session is asked for, and the operator's cap of promotions. Without them a command that
+ * names nothing runs each move by its default: on 9 October a campaign opened with Builder sessions
+ * of 25 minutes, continued by its name alone, gave each session 240 minutes, and nothing said so.
+ * An older opening's other terms (`defects`, `practice-solves`, the Examiner's `exam-proposals`,
+ * `exam-minutes` and `exam-turns`, and `cost`) are read past: none of 310 logs named one, and each
+ * is its move's default now. So are its Builder sessions before a comparison (`sessions`), which
+ * went with the table's row that counted them.
  */
 import { type LogEvent, read } from "../kernel/log.ts";
 import { type Cap, patienceOf } from "../kernel/reports.ts";
@@ -44,9 +51,6 @@ export interface Opening {
   /** The dollars the campaign may bill in all, and the reserve one solve is held at; null for a
    *  rehearsal's, whose seats are paid nothing. */
   readonly budget: Cap | null;
-  /** The model turn limit of a solve, and the Builder sessions before a comparison. */
-  readonly limit: number | null;
-  readonly sessions: number;
   /** The improvement patience and supply patience: moves without a gain and readings that left
    *  nothing to gain (`roomless`) before the campaign ends (`--patience`; `PATIENCE`). */
   readonly patience: number;
@@ -66,37 +70,14 @@ export interface Opening {
   readonly terms: Terms;
 }
 
-/** The flags of a campaign's moves that its opening keeps: a solve's deadline and the scored tasks,
- *  and the solves a side, which the first setting records; a comparison's level and stop on check
- *  defects; a Builder session's deadline, session turn limit and practice solves; the practice tasks; and an
- *  Examiner session's tasks, proposals, deadline and session turn limit; and the operator's cap of
- *  promotions, `none` to lift it. */
-export const TERMS = [
-  "solve-minutes",
-  "target",
-  "solves",
-  "level",
-  "defects",
-  "minutes",
-  "turns",
-  "practice-solves",
-  "practice",
-  "exam-tasks",
-  "exam-proposals",
-  "exam-minutes",
-  "exam-turns",
-  "cost",
-  "promotions",
-] as const;
+/** The flags of a campaign's moves that its opening keeps: a comparison's level; a Builder
+ *  conversation's deadline and session turn limit; the practice tasks; an Examiner session's tasks;
+ *  and the operator's cap of promotions, `none` to lift it. */
+export const TERMS = ["level", "minutes", "turns", "practice", "exam-tasks", "promotions"] as const;
 export type Terms = Readonly<Partial<Record<(typeof TERMS)[number], string>>>;
 
 /** The seats a campaign names a model for. The solver's is the setting's (`tools/d2/setting.ts`). */
 export const SEATS = ["builder", "examiner", "reviewer"] as const;
-/** The Builder sessions before a comparison once set-up stands (epoch 0, `sessionsRun` in
- *  `decide.ts`), where nothing names them: several sessions precede one standalone comparison
- *  (L5), since one session's change is rarely detectable. Before set-up each session's
- *  harness is compared, and until 12 October three were the default after the first comparison. */
-export const SESSIONS = 2;
 const SETTING = "campaign.setting";
 
 /** The paid solves of each campaign in flight in this process, by its log: a Builder's practice
@@ -150,8 +131,6 @@ export function openingOf(events: readonly LogEvent[]): Opening | null {
       isNumber(budget?.dollars) && isNumber(budget.reserve)
         ? { dollars: budget.dollars, reserve: budget.reserve }
         : null,
-    limit: isNumber(data.limit) ? data.limit : null,
-    sessions: isNumber(data.sessions) ? data.sessions : SESSIONS,
     patience: patienceOf(events),
     seats: { builder: seat("builder"), examiner: seat("examiner"), reviewer: seat("reviewer") },
     attended: data.attended === true,
@@ -190,7 +169,6 @@ export function planOf(
   const named = recorded?.target;
   const cap = Number(opening?.terms.promotions);
   return {
-    sessions: opening?.sessions ?? SESSIONS,
     patience: patienceOf(events),
     unprepared: beside.unprepared,
     wanted: {

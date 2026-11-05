@@ -37,8 +37,8 @@ interface Frames {
 
 /** The probe, as the page holds it. */
 interface FrameProbe {
-  start(watched: string, content: string): void;
-  stop(): Frames;
+  start: (watched: string, content: string) => void;
+  stop: () => Frames;
 }
 
 declare global {
@@ -114,8 +114,8 @@ async function watchFrames(
   await settled();
   await page.evaluate(
     () =>
-      new Promise((done) => {
-        requestAnimationFrame(() => requestAnimationFrame(() => done(null)));
+      new Promise((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve(null)));
       }),
   );
   const frames = await page.evaluate(() => window.anaFrames?.stop());
@@ -308,8 +308,9 @@ describe("the harness inspector", () => {
     for (const action of ["button", "Escape"]) {
       await files.click();
       await expect(inspector(page).locator(".ana-record")).toBeVisible();
-      if (action === "button") await inspector(page).getByRole("button", { name: "Close" }).click();
-      else await page.keyboard.press("Escape");
+      await (action === "button"
+        ? inspector(page).getByRole("button", { name: "Close" }).click()
+        : page.keyboard.press("Escape"));
       await expect(inspector(page)).toHaveCount(0);
       expect(routeParameters(page).file).toBeUndefined();
       await expect(files).toBeFocused();

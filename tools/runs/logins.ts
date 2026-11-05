@@ -56,7 +56,7 @@ import { keysIf } from "#src/meta/optional-key.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
+import { runSync, zeroExitText } from "#src/meta/subprocess.ts";
 import { looseFlagsOf } from "../d2/campaign-terms.ts";
 import { recordedSetting } from "../d2/setting.ts";
 import { asked } from "./hosts.ts";
@@ -66,6 +66,7 @@ import {
   ahead,
   assess,
   type Assessment,
+  byTime,
   HORIZON,
   sameWindow,
   type Snapshot,
@@ -359,8 +360,7 @@ export async function readLogins(
   wanted: readonly string[],
   env: Readonly<Record<string, string | undefined>>,
 ): Promise<Reading[]> {
-  const said = runSync(["claude", "--version"]);
-  const version = said.exitCode === 0 ? decodeOutput(said.stdout).trim().split(/\s+/)[0] : undefined;
+  const version = zeroExitText(runSync(["claude", "--version"]))?.split(/\s+/)[0];
   // CodexBar's fallbackClaudeCodeVersion where no CLI answers.
   const agent = `claude-code/${version === undefined || version === "" ? "2.1.0" : version}`;
   return Promise.all(
@@ -490,8 +490,7 @@ function forecast(weeks: readonly Week[], rate: number, now: number): string {
   }
   const lasting = (gap: (typeof gaps)[number]) => (gap.to ?? now + AHEAD) - gap.from;
   const said = (gap: (typeof gaps)[number]) =>
-    `${gap.from - now < STEP ? "now" : `in ${spanOf(Math.round((gap.from - now) / 60_000))} (${stamp(gap.from)})`} for ${spanOf(Math.round(lasting(gap) / 60_000))}` +
-    (gap.to === null ? "+" : gap.by === "" ? "" : `, till ${gap.by} resets`);
+    `${gap.from - now < STEP ? "now" : `in ${spanOf(Math.round((gap.from - now) / 60_000))} (${stamp(gap.from)})`} for ${spanOf(Math.round(lasting(gap) / 60_000))}${gap.to === null ? "+" : gap.by === "" ? "" : `, till ${gap.by} resets`}`;
   const [first] = gaps;
   if (first === undefined || first.from >= now + WEEK) {
     const week = `makes the next 7d, lowest ~${String(Math.round(lowest.left))}% of one login left (${stamp(lowest.at)})`;
@@ -527,8 +526,9 @@ function poolLines(
   });
   const poolPace = weeks.reduce((sum, week) => sum + weekRate(week), 0);
   const lines = [
-    `pool  ${perDay(poolPace)} of one login's week at the week's pace; ${String(weeks.length)} login${weeks.length > 1 ? "s" : ""} refill ~${String(Math.round((weeks.length * 100) / 7))}%/day` +
-      (unread > 0 ? ` (${String(unread)} unread, left out)` : ""),
+    `pool  ${perDay(poolPace)} of one login's week at the week's pace; ${String(weeks.length)} login${weeks.length > 1 ? "s" : ""} refill ~${String(Math.round((weeks.length * 100) / 7))}%/day${
+      unread > 0 ? ` (${String(unread)} unread, left out)` : ""
+    }`,
     `  week pace    ${forecast(weeks, poolPace, now)}`,
   ];
   if (recents.every((recent) => recent === null)) {
@@ -577,7 +577,7 @@ export function modelLines(
  *  earlier reading counted on it. A person's own session on a login is charged to its runs, so the
  *  rate errs high. Null below `LEAST_RUN_HOURS`. */
 export function perRunRate(history: readonly Snapshot[]): number | null {
-  const sorted = history.toSorted((one, other) => one.at - other.at);
+  const sorted = byTime(history);
   const spans = sorted.flatMap((then, at) => {
     const next = sorted[at + 1];
     const hours = next === undefined ? 0 : (next.at - then.at) / HOUR;
@@ -754,24 +754,22 @@ export async function logins(args: readonly string[]): Promise<void> {
     console.log(activeLines(codex, [CODEX], [], runtimeProcess.env).join("\n"));
   }
   if ((counted?.unasked.length ?? 0) > 0) console.log(uncounted(counted?.unasked ?? []));
-  if (weeks.length === 0) return;
+  if (values.json || positionals.length > 0 || weeks.length === 0) return;
   const snapshot: Snapshot = {
     at: now,
     weeks: Object.fromEntries(weeks.map(({ login, pct, reset }) => [login, { pct, reset }])),
-    ...keysIf(counted !== null, () => ({
+    ...keysIf(counted?.unasked.length === 0, () => ({
       runs: Object.fromEntries(weeks.map(({ login }) => [login, onEach(login)])),
     })),
   };
   const recorded = [...kept.filter(({ at }) => now - at < KEPT_MS), snapshot];
-  if (!values.json && positionals.length === 0) {
-    console.log(poolLines(weeks, kept, held.length - weeks.length, now).join("\n"));
-    console.log(
-      rate === null
-        ? `  a run       no measured rate yet (under ${String(LEAST_RUN_HOURS)} run-hours): each login's week pace over its live runs`
-        : `  a run       ~${rate.toFixed(2)}% of a login's week an hour, active ${String(Math.round(ACTIVE_SHARE * 24))} of 24h: the most each login carries for ${String(RUN_HOURS)}h`,
-    );
-    console.log(modelLines(weeks, recorded, assess(recorded, now, perRunRate), now).join("\n"));
-  }
+  console.log(poolLines(weeks, kept, held.length - weeks.length, now).join("\n"));
+  console.log(
+    rate === null
+      ? `  a run       no measured rate yet (under ${String(LEAST_RUN_HOURS)} run-hours): each login's week pace over its live runs`
+      : `  a run       ~${rate.toFixed(2)}% of a login's week an hour, active ${String(Math.round(ACTIVE_SHARE * 24))} of 24h: the most each login carries for ${String(RUN_HOURS)}h`,
+  );
+  console.log(modelLines(weeks, recorded, assess(recorded, now, perRunRate), now).join("\n"));
   mkdirSync(dirname(history), { recursive: true });
   const lines = recorded.map((one) => capturedJsonStringify(one));
   writeFileSync(history, `${lines.join("\n")}\n`);

@@ -67,7 +67,7 @@ import type { Objective } from "./contract.ts";
 // here, cut to the fields those functions and the shape check read, in place of v1's brief, contract
 // and task-split modules, which did not come over.
 
-type CheckExecution = {
+interface CheckExecution {
   families: "all" | string[];
   artifactPaths: string[];
   publicInputPaths: string[];
@@ -78,14 +78,22 @@ type CheckExecution = {
   hidden: "none" | "required" | "whole";
   requiredToolIds?: [string, ...string[]];
   evidence: { kind: "authored" } | { kind: "external"; requiredToolIds: [string, ...string[]] };
-};
+}
 
-type BriefTruthCheck = { id: string; citedDecisionIds: string[]; execution: CheckExecution };
+interface BriefTruthCheck {
+  id: string;
+  citedDecisionIds: string[];
+  execution: CheckExecution;
+}
 
 /** The brief declares its checks and may declare an objective (`Objective`):
  *  the evaluator then exports `objective(request)`, a finite number of a valid answer, which the
  *  verifier measures after the checks pass (`OBJECTIVE`). An answer the checks refuse has none. */
-export type Brief = { correctnessContract: string; truthChecks: BriefTruthCheck[]; objective?: Objective };
+export interface Brief {
+  correctnessContract: string;
+  truthChecks: BriefTruthCheck[];
+  objective?: Objective;
+}
 
 interface PublicTask<PublicInput> {
   taskId: string;
@@ -149,9 +157,12 @@ interface Wall {
 }
 
 /** The objective, run as a check is, in a cell of its own: the evaluator's `objective` export,
- *  given the whole answer and the whole public task and no hidden value, with no tool. It is the
- *  author's own computation, so `accept.ts` lists it as a fault until the operator admits it by
- *  name (rule 10). */
+ *  given the whole answer, the whole public task and the task's hidden values, with no tool. It is
+ *  the author's own computation, so `accept.ts` lists it as a fault until the operator admits it by
+ *  name (rule 10). Until 4 November 2026 it was given no hidden value, so an objective could only
+ *  recompute from the public input what the solver could recompute too: jobstath2's g-1 tied 0-0-8
+ *  with 53 of 55 measures at 1.0. Measured against what the task was built from, such as the
+ *  parameters that generated its data, it has a best value no recomputation reaches. */
 export const OBJECTIVE: BriefTruthCheck = {
   id: "objective",
   citedDecisionIds: [],
@@ -159,7 +170,7 @@ export const OBJECTIVE: BriefTruthCheck = {
     families: "all",
     artifactPaths: ["$"],
     publicInputPaths: ["$"],
-    hidden: "none",
+    hidden: "whole",
     evidence: { kind: "authored" },
   },
 };
@@ -183,11 +194,24 @@ const TOOL_CEILING_MS = 300_000;
 const CELLS = 4;
 
 /** One check's whole run, its tools included. */
-const CHECK_WALL_MS = 2 * TOOL_CEILING_MS;
+export const CHECK_WALL_MS = 2 * TOOL_CEILING_MS;
+
+/** What the checker measured of a valid answer; null for any verdict but a pass with a measure.
+ *  A comparison's objective, a Builder's practice record, an Examiner's room and the acceptance's
+ *  count of measured answers read it here (rule 12). */
+export function objectiveOf(verdict: Verdict | null | undefined): number | null {
+  return verdict?.kind === "pass" ? (verdict.objective ?? null) : null;
+}
+
+/** The checks that refused an answer; none for any verdict but a fail. An answer some check
+ *  refused is what a reviewer reads, a repair is held to and the Referee's replay is set against. */
+export function blockingOf(verdict: Verdict | null | undefined): readonly string[] {
+  return verdict?.kind === "fail" ? verdict.blocking : [];
+}
 
 /** A verdict in one line, a fail's checks in order, so that two verdicts can be set side by side. */
 export function spelled(verdict: Verdict): string {
-  if (verdict.kind === "fail") return `fail ${[...verdict.blocking].sort().join(",")}`;
+  if (verdict.kind === "fail") return `fail ${[...verdict.blocking].toSorted().join(",")}`;
   if (verdict.kind === "faulty") return `faulty ${verdict.check}: ${verdict.reason}`;
   if (verdict.kind === "pass") {
     return verdict.objective === undefined ? "pass" : `pass ${String(verdict.objective)}`;
@@ -324,7 +348,7 @@ export function checkEvaluationRequest(
     check.execution.hidden === "required" &&
     (hidden.length !== 1 || !isRecord(hidden[0]) || !Object.hasOwn(hidden[0], "expectation"))
   ) {
-    throw new Error("check-hidden-operand-missing: " + check.id);
+    throw new Error(`check-hidden-operand-missing: ${check.id}`);
   }
   return capturedStructuredClone({
     ...checkPublicInputs(check, request),
@@ -349,7 +373,7 @@ export function checkProgramFiles(checks: string): string[] {
         if (entry.isFile()) return [path];
         throw new Error(`the check program's ${path} is neither a file nor a directory`);
       });
-  return walk("").sort(compareCodeUnits);
+  return walk("").toSorted(compareCodeUnits);
 }
 
 /** A check program's version: the sha256 of each of its files, by its path under the directory.

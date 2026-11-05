@@ -38,7 +38,7 @@ import {
 import { failWrongPasses, wrongPasses, wrongPassesIn } from "./history.ts";
 import type { LogEvent } from "./log.ts";
 import { providerFailed, windowEnded } from "./solve.ts";
-import { passed, ranUnder } from "./solves.ts";
+import { passed, ranUnder, rejected, rulingsOf } from "./solves.ts";
 import { RUNS, spreadOf } from "./size.ts";
 import { taskSets } from "./task.ts";
 import { tracesIn } from "./trace.ts";
@@ -68,22 +68,6 @@ export interface Standing {
   readonly won: "reference" | "other" | null;
   /** The measure that carried a win there (`carriedBy`), null for a tie. */
   readonly by: keyof Measures | null;
-  /** The objective gap the reference harness's answers left there, against its own and its
-   *  author's (`objectiveGap`), and 0 under the floor (`ROOM`). */
-  readonly room: number | null;
-  /** Whether the reference's own solves alone make that gap, with no author's answer better. */
-  readonly own: boolean;
-}
-
-/** A task's last comparisons with the reference harness on a side, newest first, each as the
- *  outcome reads the reference's side, with whether a limit cut one of its own solves there; and
- *  how many of the newest closed the task in a row as its author may hear it (`poolOf`, histories):
- *  every solve valid and no answer of the reference's own or its author's better by the floor
- *  (`room`). The other harness's measures stay out, so the count reads the same whatever that
- *  harness measured; the frontier's `easyAt` reads them. */
-export interface History {
-  readonly reads: readonly { readonly valid: "every" | "some" | "none"; readonly cut: boolean }[];
-  readonly closedRun: number;
 }
 
 /** One comparison's reading of a task, as the comparison's last report tallied it. */
@@ -109,8 +93,6 @@ interface TalliedIn {
    *  author's (`objectiveGap`), and 0 under the floor (`ROOM`), where it leaves none; null where it
    *  stood on neither side. */
   readonly room: number | null;
-  /** Whether the reference's own solves alone make that gap (`Standing`). */
-  readonly own: boolean;
 }
 
 /**
@@ -141,6 +123,9 @@ interface TaskRecord {
    *  and every task set aside, as `TalliedIn.order` counts them, where it was first set aside. */
   asideAt: number;
   asideOrder: number;
+  /** The last report that set it aside on a rejection of the reference harness's own that stands
+   *  unearned there, by a person's label where its settling holds one, or -1 (`poolOf`, doubted). */
+  doubtedAt: number;
 }
 
 /** A dollar cap: the billed dollars a comparison, or a Builder session by itself, may hold
@@ -338,6 +323,7 @@ function taskRecords(events: readonly LogEvent[]) {
       tallied: [],
       asideAt: -1,
       asideOrder: Number.POSITIVE_INFINITY,
+      doubtedAt: -1,
     };
     records.set(version, made);
     return made;
@@ -385,6 +371,8 @@ function taskRecords(events: readonly LogEvent[]) {
     ...events.flatMap(({ kind, data }) => (kind === PROMOTED ? [data.harness, data.from] : [])),
   ]);
   const wrong = wrongPassesIn(events);
+  /** Each comparison's rejected solves, by task and harness, as `cutIn` names them. */
+  const rejectedIn = new Map<string, string[]>();
   for (const solve of ranUnder(events)) {
     const { task, limits, harness } = solve.under;
     const { comparison } = solve.start;
@@ -398,8 +386,12 @@ function taskRecords(events: readonly LogEvent[]) {
       if (references.has(harness)) of(task).independentValidAnswer = true;
     }
     if (isString(comparison) && AT_A_LIMIT.has(kind) && !budgeted) cut.add(cutIn(comparison, task, harness));
+    if (isString(comparison) && rejected(solve.ending)) {
+      const key = cutIn(comparison, task, harness);
+      rejectedIn.set(key, [...(rejectedIn.get(key) ?? []), solve.id]);
+    }
   }
-  tallyReports(events, of, cut);
+  tallyReports(events, of, { cut, rejectedIn });
   return { records: [...records.values()], held: heldOut };
 }
 
@@ -414,9 +406,10 @@ function cutIn(comparison: string, task: string, harness: string): string {
 function tallyReports(
   events: readonly LogEvent[],
   of: (version: string) => TaskRecord,
-  cut: ReadonlySet<string>,
+  { cut, rejectedIn }: { cut: ReadonlySet<string>; rejectedIn: ReadonlyMap<string, readonly string[]> },
 ): void {
   const reference = referenceOf(events);
+  const rulings = rulingsOf(events);
   let order = 0;
   for (const report of lastReports(events, true)) {
     const { index, session, data } = report;
@@ -426,9 +419,8 @@ function tallyReports(
       const cutOn = (harness: unknown): boolean =>
         isString(harness) && cut.has(cutIn(session, task, harness));
       const { wins, losses } = tally([pair]);
-      // An objective gap under the floor decides no pair and holds no draft, so its author is told none.
+      // An objective gap under the floor decides no pair, so it leaves no room (`roomOn`).
       const gap = side === null ? null : objectiveGap(pair, side, [of(task).best]);
-      const own = side !== null && (gap ?? 0) > 0 && objectiveGap(pair, side, []) === gap;
       order += 1;
       of(task).tallied.push({
         index,
@@ -441,14 +433,21 @@ function tallyReports(
         won: wins > 0 ? "fresh" : losses > 0 ? "old" : null,
         by: carriedBy(pointsOf(pair)),
         room: gap,
-        own,
       });
     }
+    const labels = asRecord(asRecord(data.settled)?.labels);
+    const standing = (solve: string) => {
+      const label = labels?.[solve];
+      return isString(label) ? label : rulings.get(solve);
+    };
     for (const task of Array.isArray(data.aside) ? data.aside.filter(isString) : []) {
       order += 1;
       const record = of(task);
       record.asideAt = index;
       record.asideOrder = Math.min(record.asideOrder, order);
+      const harness = side === null ? undefined : data[side];
+      const own = isString(harness) ? (rejectedIn.get(cutIn(session, task, harness)) ?? []) : [];
+      if (own.some((solve) => standing(solve) !== "earned")) record.doubtedAt = index;
     }
   }
 }
@@ -488,6 +487,17 @@ function tallyReports(
  * A label that keeps a task is a `task.state` event that holds it once more, and the two
  * comparisons are then counted from that label on; a label that calls it infeasible refuses it,
  * and a refused task is no held-out task.
+ *
+ * **Doubted** tasks leave the scored set and the practice allowance in the same way: the last
+ * comparison that read the task set it aside, and a rejection there of the reference harness's own
+ * stands unearned, ruled a check defect or unclear or not ruled, with no person's label of it
+ * earned in that comparison's settling. Drawn again, such a task was set aside again and its solves
+ * and rulings paid for nothing: esp32 PR569's g-1 and g-2 ruled one task's check defective four
+ * times each, and four campaigns redrew a task set aside (Referee audit, 5 November). A settling
+ * that labels the reference's rejections earned returns it, and so does a person who keeps it
+ * (`task.state`) after that comparison. Only the reference's own rejections count, as for the
+ * exhausted tasks: a candidate's rejection that stands unearned moves nothing the Builder is told
+ * (rule 3).
  *
  * **Exhausted** are the tasks the reference harness has been read easy on (`easyAt`), and they
  * leave the frontier for the retained set (`scoredSet`). The readings are the comparisons it stood
@@ -548,19 +558,11 @@ function tallyReports(
  * a promotion of a third, is `earlier-reference`.
  *
  * **Standings** hold how each task's last comparison with the reference harness on a side went,
- * by task version (`Standing`): who won, on which measure, and the objective gap the reference's answers
- * left. It is read from the record the outcome is read from (`lastRead`), so the two agree by
- * construction. A task last compared between two other harnesses, or set aside there, has none.
+ * by task version (`Standing`): who won and on which measure. It is read from the record the
+ * outcome is read from (`lastRead`), so the two agree by construction. A task last compared
+ * between two other harnesses, or set aside there, has none.
  * Told apart is the comparison's own tally (`tally`, `compare.ts`), so under an objective two
  * valid answers can be told apart.
- *
- * **Histories** hold, for each task the reference stood in two comparisons or more of, the same
- * reading of the reference's side for each of its last `RUNS.history` such comparisons, newest first,
- * with whether a limit cut one of the reference's own solves there, and how many of the newest closed
- * it in a row (`History`): told the last alone, an author could not tell a task the reference
- * answered once from one it answers every time. Rule 6's sentence stands beside them. The words are the outcome's own, every, some or none, and
- * no count of valid solves (AGENTS.md, section 3); a solve a limit cut is named apart, as rule 7
- * keeps it apart from a wrong answer.
  */
 export function poolOf(events: readonly LogEvent[]) {
   const { records, held } = taskRecords(events);
@@ -575,7 +577,10 @@ export function poolOf(events: readonly LogEvent[]) {
       roomOn,
     ),
   );
-  const out = new Set(awaiting);
+  const doubted = placed(heldRecords, ({ doubtedAt, keptAt, tallied }) =>
+    doubtedAt > keptAt && doubtedAt > (tallied.at(-1)?.index ?? -1) ? doubtedAt : undefined,
+  );
+  const out = new Set([...awaiting, ...doubted]);
   const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED);
   const before = new Set(taskSets(events.slice(0, Math.max(0, promotedAt))).held);
   const reference = referenceOf(events);
@@ -586,14 +591,16 @@ export function poolOf(events: readonly LogEvent[]) {
         : [],
     ),
   );
+  const exhausted = spent.filter((task) => !out.has(task));
   const unstood = held.filter((task) => before.has(task) && !out.has(task) && !stood.has(task));
-  const retained = [...new Set([...spent, ...unstood])];
+  const retained = [...new Set([...exhausted, ...unstood])];
   const scorable = held.filter((task) => !out.has(task));
   // Practice's allowance also leaves out a task with no independent valid answer that the reference
   // answered in none of two comparisons: unlike `awaiting`, only the reference's own cut solves pass
   // a comparison over, so the allowance reads nothing of the other harness (rule 3).
   const practiceOut = new Set([
     ...spent,
+    ...doubted,
     ...placed(heldRecords, ({ independentValidAnswer, keptAt, tallied }) =>
       independentValidAnswer
         ? undefined
@@ -612,8 +619,11 @@ export function poolOf(events: readonly LogEvent[]) {
     practiceFrontier: held.filter(
       (task) => !(before.has(task) && !stood.has(task)) && !practiceOut.has(task),
     ),
+    // What a practice release draws from: a rejection the reference's own solve left in doubt reads
+    // the reference alone, so which task another harness won moves nothing here (rule 3).
+    practicePool: held.filter((task) => !doubted.includes(task)),
     awaiting,
-    exhausted: spent,
+    exhausted,
     retained,
     feasible: new Set(
       records.flatMap(({ version, knownValidAnswer }) => (knownValidAnswer ? [version] : [])),
@@ -621,7 +631,6 @@ export function poolOf(events: readonly LogEvent[]) {
     bests: new Map(records.flatMap(({ version, best }) => (best === null ? [] : [[version, best] as const]))),
     outcomes: new Map(records.toSorted((one, other) => first(one) - first(other)).flatMap(outcomeOf)),
     standings: new Map(records.flatMap(standingOf)),
-    histories: new Map(records.flatMap(historyOf)),
   };
 }
 
@@ -660,18 +669,6 @@ function sideOf(tallied: TalliedIn): "every" | "some" | "none" | null {
 
 const roomOn = ({ room }: TalliedIn) => (room ?? 0) > 0;
 
-/** A task's last comparisons with the reference harness on a side, newest first (`poolOf`,
- *  histories), or nothing where it stood in fewer than two: one is the outcome already. */
-function historyOf(record: TaskRecord): [string, History][] {
-  const stood = record.tallied.filter(({ reference }) => reference !== null).toReversed();
-  if (stood.length < 2) return [];
-  const reads = stood.slice(0, RUNS.history).flatMap((tallied) => {
-    const valid = sideOf(tallied);
-    return valid === null ? [] : [{ valid, cut: tallied.referenceCut }];
-  });
-  return [[record.version, { reads, closedRun: closedRun(stood.toReversed(), ownOf, roomOn) }]];
-}
-
 /** What a task's author hears of it (`poolOf`, outcomes), or nothing where no report read it. */
 function outcomeOf(record: TaskRecord): [string, Outcome][] {
   const { version } = record;
@@ -687,10 +684,8 @@ function outcomeOf(record: TaskRecord): [string, Outcome][] {
 function standingOf(record: TaskRecord): [string, Standing][] {
   const last = lastRead(record);
   if (last === null || last === "aside" || last.reference === null) return [];
-  const { reference, won, by, room, own } = last;
-  return [
-    [record.version, { won: won === null ? null : won === reference ? "reference" : "other", by, room, own }],
-  ];
+  const { reference, won, by } = last;
+  return [[record.version, { won: won === null ? null : won === reference ? "reference" : "other", by }]];
 }
 
 /**

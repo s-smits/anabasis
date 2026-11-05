@@ -16,8 +16,6 @@ import { refusals, supplyOf, type Wanted } from "./admission.ts";
 
 /** What a campaign was set to run by: what move 7 reads beside the log. */
 export interface Plan {
-  /** Builder sessions before a comparison, after set-up stands, which each session's follows. */
-  readonly sessions: number;
   /** The improvement patience (`stopRule`) and supply patience (`roomless`, `decide.ts`):
    *  moves without a gain and readings that left nothing to gain before it ends (`PATIENCE`). */
   readonly patience: number;

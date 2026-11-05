@@ -33,6 +33,8 @@ import { CAMPAIGNS, SEED_FILE } from "./registry.ts";
 import { logAcross } from "./snapshots.ts";
 
 const SESSION_STARTS = new Set<unknown>(["build.started", "exam.started", "draft.started"]);
+/** The endings that replace the Examiner's home, as its shell reads them (`src/examiner/shell.ts`). */
+const HOME_ENDS = new Set<unknown>(["exam.finished", "draft.finished"]);
 
 /** Where a seed's log is cut: before a session, after a count of events, or nowhere. */
 export interface Cut {
@@ -102,7 +104,7 @@ export function seedCampaign(from: string, to: string, cut: Cut) {
     // October no seed copied it, and both arms of one simulation opened their Examiner on no home.
     const examinerHome =
       existsSync(join(from, "examiner-home")) &&
-      !lines.slice(kept).some((line) => asRecord(capturedJsonParse(line))?.kind === "exam.finished");
+      !lines.slice(kept).some((line) => HOME_ENDS.has(asRecord(capturedJsonParse(line))?.kind));
     if (examinerHome) {
       cpSync(join(from, "examiner-home"), join(to, "examiner-home"), {
         recursive: true,

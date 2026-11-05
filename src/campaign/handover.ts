@@ -249,6 +249,12 @@ function compared(events: readonly LogEvent[], id: string): Compared {
   const began = events.findIndex(({ kind, data }) => kind === STARTED && data.session === id);
   const setting = events.findLast(({ kind }, index) => kind === "campaign.setting" && index < began)?.data;
   const told = setting === undefined ? asRecord(solves[0]?.start.limits)?.modelTurns : setting.modelTurns;
+  const scored =
+    report?.scored == null
+      ? null
+      : "unbilled" in report.scored
+        ? testOf(scoresIn(report.scored))
+        : report.scored;
   const ruled = new Map(
     events.flatMap(({ kind, data }) =>
       kind === "referee.finding" && isString(data.solve) && own.has(data.solve)
@@ -267,12 +273,7 @@ function compared(events: readonly LogEvent[], id: string): Compared {
     cap: isNumber(asRecord(start.cap)?.dollars) ? count(asRecord(start.cap)?.dollars) : null,
     modelTurns: isNumber(told) ? told : null,
     reading: report?.reading ?? null,
-    tally:
-      report?.scored == null
-        ? null
-        : (({ wins, losses, ties }) => ({ wins, losses, ties }))(
-            "unbilled" in report.scored ? testOf(scoresIn(report.scored)) : report.scored,
-          ),
+    tally: scored === null ? null : { wins: scored.wins, losses: scored.losses, ties: scored.ties },
     valid: report?.valid == null ? null : { old: report.valid.old, fresh: report.valid.fresh },
     points: report?.points ?? null,
     aside: report?.aside.length ?? 0,

@@ -117,6 +117,8 @@ describe("how many runs a login's week carries", () => {
       [[reading(0, 10, 2), reading(1, 12, 2), reset], null],
       // A fall under one reset is a window opened afresh, as a plan's upgrade does, not an hour of none.
       [[reading(0, 90, 2), reading(1, 92, 2), reading(2, 0, 2), reading(3, 2, 2), reading(4, 4, 2)], 1],
+      // An uncounted reading between counted ones does not split and drop the span across it.
+      [[reading(0, 10, 2), reading(1, 12, 2), reading(1.1, 12), reading(2, 14, 2), reading(3, 16, 2)], 1],
     ] as const) {
       expect(perRunRate(history)).toBe(expected);
     }

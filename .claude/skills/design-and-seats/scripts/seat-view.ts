@@ -118,7 +118,7 @@ export const SEATS = {
       },
       {
         file: "test/examiner-record.test.ts",
-        name: "says the reference was promoted and how many tasks were held before then, and tells only the refusals since, by reason",
+        name: "says the reference was promoted and how many tasks were held before then, and at an opening alone the drafts the gate has refused since",
       },
       {
         file: "test/examiner.test.ts",

@@ -88,7 +88,7 @@ function Head({ reading }: { reading: CampaignReading }) {
  *  printed the table's reason, the open sessions and the Builder's lead as one run-on line. */
 function reasonOf(line: string) {
   const cut = line.indexOf("; ");
-  if (cut < 0) return line;
+  if (cut === -1) return line;
   return <Disclosure title={line.slice(0, cut)}>{line.slice(cut + 2)}</Disclosure>;
 }
 
@@ -165,8 +165,8 @@ function Readouts({ reading }: { reading: CampaignReading }) {
 
 /** What stands in the chart's place before a first comparison: the tasks there are to compare. */
 function NoComparison({ reading }: { reading: CampaignReading }) {
-  const { supply, terms } = reading;
-  const target = terms.target === undefined ? "" : ` A comparison scores ${terms.target}.`;
+  const { supply } = reading;
+  const target = reading.target === null ? "" : ` A comparison scores ${String(reading.target)}.`;
   const waiting = supply.awaiting === 0 ? "" : `, ${String(supply.awaiting)} waiting for a label`;
   return (
     <NoSignal title="No comparison yet">

@@ -2,7 +2,7 @@ import { defineRule, type ESTree, type Fix, type Fixer } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
 import { annotatedKind } from "../shared/annotated-kind.ts";
 import { holdsProse } from "../shared/masked.ts";
-import { asSubject, onlyStatement, statementBelow } from "../shared/statements.ts";
+import { asSubject, identifierName, onlyStatement, statementBelow } from "../shared/statements.ts";
 
 /**
  * Rung 4 of the simplify skill's ladder: the platform already owns this. A `for … of` whose
@@ -90,7 +90,7 @@ function agrees(method: string, next: ESTree.Statement): boolean {
     return argument?.type === "Literal" && argument.value === wanted;
   }
   if (argument === undefined || argument === null) return true;
-  return argument.type === "Identifier" && argument.name === "undefined";
+  return identifierName(argument) === "undefined";
 }
 
 export const preferFindOverLoopRule = defineRule({

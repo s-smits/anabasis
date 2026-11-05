@@ -52,7 +52,7 @@ function canRun(path: string): boolean {
 function programsAt(toolTree: string | null): { name: string; at: string }[] {
   const found = new Map<string, string>();
   for (const dir of toolTree === null ? [] : toolTreeSearchDirs(toolTree)) {
-    for (const name of readdirSync(dir).sort(compareCodeUnits)) {
+    for (const name of readdirSync(dir).toSorted(compareCodeUnits)) {
       if (!found.has(name) && canRun(join(dir, name))) found.set(name, join(dir, name));
     }
   }
@@ -103,7 +103,7 @@ export function programsOf(toolTree: string | null): Program[] {
     const beside =
       statSync(lib, { throwIfNoEntry: false })?.isDirectory() === true
         ? readdirSync(lib)
-            .sort(compareCodeUnits)
+            .toSorted(compareCodeUnits)
             .find((file) => file.replaceAll("_", "-").startsWith(`${name}.`))
         : undefined;
     const account = accountAt(at, tree) ?? (beside === undefined ? null : accountAt(join(lib, beside), tree));

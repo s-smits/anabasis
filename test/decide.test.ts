@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { decide, practiceDue, shortOf, unpromoted } from "../src/campaign/decide.ts";
+import { decide, practiceDue, shortOf, supplyRun, unpromoted } from "../src/campaign/decide.ts";
 import type { Plan } from "../src/campaign/ground.ts";
 import { pendingWords } from "../src/campaign/word.ts";
 import { tally as tallyPairs } from "../src/kernel/compare.ts";
@@ -22,7 +22,6 @@ const HALF: Valid = [4, 4, 4];
 const ALL: Valid = [0, 0, 12];
 const NONE: Valid = [12, 0, 0];
 const PLAN: Plan = {
-  sessions: 1,
   patience: 3,
   unprepared: false,
   practice: null,
@@ -148,7 +147,7 @@ describe("a row of the table", () => {
     });
     expect(decide(stopped, PLAN).why).toContain("the host is needed");
     const ended = event("campaign.ended", { ending: "operator", answers: [FIRST.length, FIRST.length + 1] });
-    expect(move([...stopped, ended])).toMatchObject({ move: "compare" });
+    expect(move([...stopped, ended])).toMatchObject({ move: "build" });
     expect(pendingWords([...stopped, ended])).toEqual([]);
     expect(move([word({ word: "stop" })])).toMatchObject({ ending: "operator" });
   });
@@ -255,7 +254,7 @@ describe("the campaign bounds", () => {
       code: "bound",
     });
     expect(decide(FIRST, spent).why.match(/\d+(?:\.\d+)?/g)).toEqual(["4.50", "10"]);
-    expect(move(FIRST, { ...PLAN, left: { dollars: 10, reserve: 10 } })).toMatchObject({ move: "compare" });
+    expect(move(FIRST, { ...PLAN, left: { dollars: 10, reserve: 10 } })).toMatchObject({ move: "build" });
 
     const crashed = (kind: typeof EXAM_FINISHED | "build.finished", id: string, held: string[] = []) =>
       event(kind, {
@@ -378,11 +377,19 @@ describe("task supply", () => {
       "three batches tied",
     );
     expect(move([word({ word: "tasks" })])).toMatchObject({ move: "accept" });
-    expect(move([...FIRST, word({ word: "budget", dollars: 50 })])).toMatchObject({ move: "compare" });
+    // A step that waits is promoted first, and the word is then answered against the new reference.
+    const stepping = [...FIRST, ...compared("g-1", "h1", "step"), word({ word: "tasks" })];
+    expect(decide(stepping, PLAN)).toMatchObject({ move: "promote", code: "step", harness: "h1" });
+    expect(decide([...stepping, promotion("h1", { from: "start" })], PLAN)).toMatchObject({
+      move: "examine",
+      code: "tasks",
+      answers: [stepping.length - 1],
+    });
+    expect(move([...FIRST, word({ word: "budget", dollars: 50 })])).toMatchObject({ move: "build" });
     expect(pendingWords([...FIRST, word({ word: "budget", dollars: 50 })])).toMatchObject([
       { at: FIRST.length, word: "budget", dollars: 50 },
     ]);
-    expect(move([...ONE, built("b-1", "h1")])).toMatchObject({ move: "compare" });
+    expect(move([...ONE, built("b-1", "h1")])).toMatchObject({ move: "build" });
     expect(move(SIX, { ...PLAN, practice: 3 })).toEqual({
       move: "examine",
     });
@@ -395,13 +402,14 @@ describe("task supply", () => {
     expect(decide(SIX, { ...PLAN, practice: 3 }).why.match(/\d+/g)).toEqual(["2"]);
     expect(decide(FIVE, PLAN).why.match(/\d+/g)).toEqual(["1"]);
     expect(decide([...FIVE, built("b-1", "h1")], PLAN).why).toContain("h1");
-    // The first comparison waits for the floor alone; the target of twelve binds after it.
-    expect(move([...SIX, built("b-1", "h1")])).toMatchObject({ move: "compare" });
+    // The first comparison waits for the floor alone, so nothing is short and the Builder may
+    // compare; the target of twelve binds after it.
+    expect(move([...SIX, built("b-1", "h1")])).toMatchObject({ move: "build" });
     // One short of the floor, the session is still asked for a sweep (4 at 0.1).
     expect([shortOf(FIVE, PLAN), shortOf(SIX, PLAN)]).toEqual([4, 0]);
     expect(shortOf([...SIX, ...compared("g-1", "h1", "no-step")], PLAN)).toBe(6);
     expect(move([...SIX, built("b-1", "h1"), ...HELD.slice(6).flatMap(heldOut)])).toMatchObject({
-      move: "compare",
+      move: "build",
     });
     expect(move([...SIX, built("b-1", "h1"), ...compared("g-1", "h1", "no-step")])).toMatchObject({
       move: "build",
@@ -519,7 +527,7 @@ describe("room for the reference", () => {
     expect(namedReading.why).toContain("b-3");
   });
 
-  it("short: tasks are written where comparison admission would refuse the next comparison for want of them", () => {
+  it("build: where comparison admission wants tasks the Builder builds and asks for them, and the run ends at supply patience", () => {
     const small = { ...PLAN, wanted: { ...PLAN.wanted, target: 6 } };
     const tied = [
       READ,
@@ -531,44 +539,35 @@ describe("room for the reference", () => {
         solved: { v1: "PF PP", v2: "PP PP", v3: "PP PP", v4: "PP PP" },
       }),
     ];
-    expect(decide(tied, small)).toMatchObject({
-      move: "examine",
-      code: "short",
-    });
-    expect(move([...tied, built("b-2", "h2")], small)).toEqual({ move: "examine" });
+    const wanting = decide(tied, small);
+    expect(wanting).toMatchObject({ move: "build", code: "build" });
+    expect(wanting.why).toContain("for want of tasks");
+    // A harness no comparison has read waits for the tasks: the table names no compare admission refuses.
+    expect(move([...tied, built("b-2", "h2")], small)).toEqual({ move: "build" });
     const more = ["v13", "v14", "v15", "v16", "v17"].flatMap(heldOut);
-    expect(move([...tied, built("b-2", "h2"), ...more], small)).toMatchObject({ move: "compare" });
-    const aside = compared("g-1", "h1", "not-scored", { extra: { versions: [], aside: HELD } });
-    expect(decide([...FIRST, ...aside], PLAN)).toMatchObject({
-      move: "examine",
-      code: "short",
+    expect(move([...tied, built("b-2", "h2"), ...more], small)).toMatchObject({ move: "build" });
+    expect(decide([...tied, ...idle(3)], small)).toMatchObject({
+      move: "end",
+      code: "build",
+      ending: "exam",
     });
+    const aside = compared("g-1", "h1", "not-scored", { extra: { versions: [], aside: HELD } });
+    expect(decide([...FIRST, ...aside], PLAN)).toMatchObject({ move: "build", code: "build" });
   });
 });
 
 describe("unread harnesses and tasks", () => {
-  it("unread: what no comparison has read is compared before anything is built", () => {
-    const three = { ...PLAN, sessions: 3 };
-    expect(decide(FIRST, PLAN)).toMatchObject({
-      move: "compare",
-      code: "unread",
-      fresh: "latest",
-      reference: "promoted",
-    });
-    const lost = [...FIRST, ...compared("g-1", "h1", "no-step")];
-    expect(move([...lost, built("b-2", "h2")], three)).toMatchObject({ move: "compare", fresh: "latest" });
-    const after = [...PROMOTED, ...examined("x-1")];
-    for (const [builds, expected, counts] of [
-      [[built("b-2", "h2")], { move: "build" }, ["1", "3"]],
-      [
-        [built("b-2", "h2"), built("b-3", "h3"), built("b-4", "h4")],
-        { move: "compare", fresh: "latest", reference: "promoted" },
-        ["3", "4"],
-      ],
-    ] as const) {
-      const chosen = decide([...after, ...builds], three);
-      expect(chosen).toMatchObject(expected);
-      expect(chosen.why.match(/\d+/g)).toEqual([...counts]);
+  it("unread: tasks held out since the last reading are read before anything is built", () => {
+    // A harness no comparison has read waits for the Builder's own compare: no count of sessions
+    // names one for it (`--sessions` went on 5 November).
+    for (const events of [
+      FIRST,
+      [...FIRST, ...compared("g-1", "h1", "no-step"), built("b-2", "h2")],
+      [...PROMOTED, ...examined("x-1"), built("b-2", "h2"), built("b-3", "h3"), built("b-4", "h4")],
+    ]) {
+      const chosen = decide(events, PLAN);
+      expect(chosen).toMatchObject({ move: "build" });
+      expect(chosen.why).toContain("no comparison has read harness");
     }
     const six = ["v13", "v14", "v15", "v16", "v17", "v18"].flatMap(heldOut);
     // A reading with room that read no step is not drawn again on new tasks: the Builder builds.
@@ -608,6 +607,37 @@ describe("unread harnesses and tasks", () => {
     });
     expect(decide(written, PLAN).why).toContain("h1");
     expect(decide(written, PLAN).why.match(/\b6\b/g)).toHaveLength(1);
+    // Tasks a session held between the step's report and the promotion were aimed at the reference
+    // before it, so they owe no starter comparison.
+    const aimedBefore = [
+      ...promotedAll.slice(0, -1),
+      ...examined("x-1", ["v13", "v14", "v15", "v16", "v17", "v18"]),
+      promotion("h1"),
+    ];
+    expect(decide(aimedBefore, PLAN)).not.toMatchObject({ fresh: "starter" });
+    // Nor are they written for the new reference, which is asked for tasks of its own.
+    expect(move(aimedBefore)).toMatchObject({ move: "examine" });
+    // A Builder's comparison beside the new reference's first session, which held six as it ran,
+    // leaves the starter comparison owed on them.
+    const beside = compared("g-3", "h2", "no-step", { old: "h1", valid: { old: HALF, fresh: HALF } });
+    const besideFirst = [
+      ...promotedAll,
+      built("b-2", "h2"),
+      ...beside.slice(0, -1),
+      ...examined("x-1", ["v13", "v14", "v15", "v16", "v17", "v18"]),
+      ...beside.slice(-1),
+    ];
+    expect(decide(besideFirst, PLAN)).toMatchObject({ move: "compare", fresh: "starter" });
+    // So does one that left the reference no room: the six it did not draw are read before more are asked.
+    const closed = compared("g-3", "h2", "no-step", { old: "h1", ...FULL });
+    const closedBeside = [
+      ...promotedAll,
+      built("b-2", "h2"),
+      ...closed.slice(0, -1),
+      ...examined("x-1", ["v13", "v14", "v15", "v16", "v17", "v18"]),
+      ...closed.slice(-1),
+    ];
+    expect(decide(closedBeside, PLAN)).toMatchObject({ move: "compare", fresh: "starter" });
     const starterComparison = (reading: string, old: Valid, tally: [number, number, number]) => [
       ...written,
       ...compared("g-3", "start", reading, { old: "h1", tally, valid: { old, fresh: HALF } }),
@@ -679,7 +709,7 @@ describe("the build conditions", () => {
       built("b-2", "h2"),
     ];
     const left = (dollars: number) => ({ ...PLAN, left: { dollars, reserve: 0.4 } });
-    expect(move(log, left(0.95))).toMatchObject({ move: "compare" });
+    expect(move(log, left(0.95))).toMatchObject({ move: "build" });
     expect(decide(log, left(0.3))).toMatchObject({ move: "end", ending: "budget" });
     const dear = [...FIRST, ...full("g-1"), ...examined("x-1", ["v13"], { billed: 6 }), ...full("g-2")];
     expect(move(dear, { ...PLAN, left: { dollars: 10, reserve: 0.5 } })).toMatchObject({ move: "examine" });
@@ -762,39 +792,49 @@ describe("the build conditions", () => {
   // tasks held after its second promotion while its Builder passed all 103 practice solves.
   it("owes the practice named again after each reading, and not before one", () => {
     const released = (version: string) => event("task.state", { version, state: "released" });
-    const read = [...FIRST, ...compared("g-1", "h1", "no-step")];
+    // A task held out since the last release, so each reading is owed the whole practice named.
+    const read = [...FIRST, ...heldOut("w1"), ...compared("g-1", "h1", "no-step")];
     expect(owed(FIRST, 1, 0.1)).toBe(0);
     expect(practiceDue(FIRST, 1, 0.1)).toBeNull();
     expect(owed(read, 1, 0.1)).toBe(1);
     expect(owed(read, 3, 0.1)).toBe(3);
     expect(owed([...read, released("v1")], 3, 0.1)).toBe(2);
     expect(owed([...read, released("v1"), released("v2"), released("v3")], 3, 0.1)).toBe(0);
+    // A release that a practice solve's check defect has since closed is owed again: until
+    // 5 November the closed task still counted, and no other was released in its place.
+    const closed = event("task.state", { version: "v2", state: "disputed", session: "b-1", solve: "s-1" });
+    expect(owed([...read, released("v1"), released("v2"), released("v3"), closed], 3, 0.1)).toBe(1);
     // A settlement reports g-1 again (`settleReading`): the same reading, so nothing more is owed.
     const settled = [...read, released("v1"), released("v2"), released("v3")];
     const again = settled.findLast(({ kind }) => kind === "comparison.reported");
     expect(owed([...settled, ...(again === undefined ? [] : [again])], 3, 0.1)).toBe(0);
-    expect(owed([...settled, ...compared("g-2", "h1", "no-step")], 3, 0.1)).toBe(3);
+    // With nothing held out since the last release, the next reading is owed one task, and once it
+    // is released, none more; a promotion with nothing held is owed none.
+    const next = [...settled, ...compared("g-2", "h1", "no-step")];
+    expect(owed(next, 3, 0.1)).toBe(1);
+    expect(owed([...next, released("v4")], 3, 0.1)).toBe(0);
+    // Tasks held out after that release bring back the rest of the reading's practice, two of the
+    // three, where the frontier less the floor leaves room for them.
+    const recovered = [...next, released("v4"), ...heldOut("w2"), ...heldOut("w3")];
+    expect(poolOf(recovered).practiceFrontier.length - 6).toBeGreaterThanOrEqual(2);
+    expect(owed(recovered, 3, 0.1)).toBe(2);
+    expect(owed([...settled, event("harness.promoted", { harness: "h1" })], 3, 0.1)).toBe(0);
     // The allowance still bounds what is owed: the frontier less the admission floor.
     expect(owed(read, 1000, 0.1)).toBe(poolOf(read).practiceFrontier.length - 6);
     // A campaign that names no practice is owed none.
     expect(practiceDue(read, null, 0.1)).toBeNull();
   });
 
-  it("releases practice before an unchanged session's next build, and builds where none is owed", () => {
+  it("leaves owed practice to the host, so no row reads it", () => {
     const log = [
       ...SET_UP,
       ...heldOut("v13"),
       event("build.started", { session: "b-idle" }),
       built("b-idle", "start", { changed: false }),
     ];
-    expect(decide(log, { ...PLAN, practice: 2 })).toEqual({
-      move: "prepare",
-      code: "practice",
-      practice: 2,
-      why: "1 of the 2 practice tasks the campaign names are released, and tasks were held out since the last release: the contract's draw releases more before the Builder builds",
-    });
-    // The Builder that had nothing to work on asks the Examiner itself: the table builds.
-    expect(decide(log, PLAN)).toMatchObject({ move: "build", code: "build" });
+    // The host releases the practice owed as the conversation opens (`releaseOwed`): the table builds.
+    expect(decide(log, { ...PLAN, practice: 2 })).toMatchObject({ move: "build", code: "build" });
+    expect(practiceDue(log, 2, 0.1)?.to).toBe(2);
     const cases = [
       { events: [...log, event("campaign.word", { word: "stop" })], plan: PLAN, code: "stop" },
       { events: log.slice(1), plan: PLAN, code: "exam" },
@@ -807,16 +847,6 @@ describe("the build conditions", () => {
       },
       { events: [...log, ...compared("g-step", "h1", "step")], plan: PLAN, code: "step" },
       { events: [...log, ...full("g-full")], plan: PLAN, code: "no-room" },
-      {
-        events: [
-          ...log,
-          built("b-active", "h1"),
-          ...compared("g-empty", "h1", "not-scored", { extra: { versions: [] } }),
-        ],
-        plan: PLAN,
-        code: "short",
-      },
-      { events: [...log, built("b-new", "h1")], plan: PLAN, code: "unread" },
     ];
     for (const { events, plan, code } of cases) {
       const withoutPractice = decide(events, plan);
@@ -870,6 +900,15 @@ describe("the one count", () => {
     expect(move(tied, { ...PLAN, patience: 1 })).toMatchObject({ move: "examine" });
     expect(move([...promotedAll, ...idle(2)])).toMatchObject({ move: "examine" });
     expect(move([...promotedAll, ...idle(3)])).toMatchObject({ move: "end", ending: "no-room" });
+  });
+
+  it("keeps the gain of a session that held tasks while a comparison ran, since that comparison drew at its start", () => {
+    const next = full("g-2");
+    const tied = [...FIRST, ...full("g-1")];
+    const during = [...tied, ...next.slice(0, 1), ...examined("x-1", ["v13"]), ...next.slice(1)];
+    expect(supplyRun(during, PLAN)).toBe(0);
+    // Held before that start, the same tasks were open to its draw, and the session is passed over.
+    expect(supplyRun([...tied, ...examined("x-1", ["v13"]), ...next], PLAN)).toBe(1);
   });
 
   it("passes over a session whose tasks a comparison read, and starts again at room or at tasks nobody has read", () => {

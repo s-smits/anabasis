@@ -162,7 +162,7 @@ export function climbTable(campaigns: readonly Campaign[]): string {
  * objective is its author's own computation, which nothing outside it has checked. It reads the
  * frontier without the bill beside, since until 22 October it named every such promotion "by the
  * objective alone": the M1 fork of #306 promoted on 11-0 where the bill decided 10 tasks. That
- * reading is by this tree's score, whose objective counts a gain by its size (`FULL`), so it can
+ * reading is by this tree's score, whose objective counts a gain by its size (`told`), so it can
  * differ from the ordered rule a comparison begun before 21 October was read by: an outside review
  * of 22 October built eight tasks won by 1.1% and one lost by 20%, 8-1 at p 0.0195 by that rule and
  * p 0.502 by this score. The line says so. Since 26 October a step clears the level without the

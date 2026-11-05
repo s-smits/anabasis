@@ -52,8 +52,12 @@ export interface Bench {
   readonly baseHarness: string;
   readonly sections: Sections;
   /** One rollout of a harness (the base when null): its run directory and dollars, or a throw. */
-  execute(task: string, harnessDir: string | null, runId: string): Promise<{ runDir: string; usd: number }>;
-  improve(call: Call): Promise<Reply>;
+  execute: (
+    task: string,
+    harnessDir: string | null,
+    runId: string,
+  ) => Promise<{ runDir: string; usd: number }>;
+  improve: (call: Call) => Promise<Reply>;
 }
 
 export const NAMESPACE = "jb-cc-agg1";
@@ -102,11 +106,11 @@ interface Summary {
 
 /** A rollout that left no deliverable, with what it billed on the way. */
 export class DeadRollout extends Error {
-  constructor(
-    message: string,
-    readonly usd: number,
-  ) {
+  readonly usd: number;
+
+  constructor(message: string, usd: number) {
     super(message);
+    this.usd = usd;
     this.name = "RuntimeError";
   }
 }
@@ -241,11 +245,11 @@ async function runStage(
         label: `${stage.label}.a${attempt}`,
         harvest: "context/harness",
       });
-    } catch (failure) {
-      if (!(failure instanceof ProposerError)) throw failure;
-      attempts += failure.attempts || STAGE_ATTEMPTS;
-      usd += failure.costUsd;
-      return { ...base, error: pySlice(failure.message, 0, 400), usd, attempts, executionFailed: true };
+    } catch (cause) {
+      if (!(cause instanceof ProposerError)) throw cause;
+      attempts += cause.attempts || STAGE_ATTEMPTS;
+      usd += cause.costUsd;
+      return { ...base, error: pySlice(cause.message, 0, 400), usd, attempts, executionFailed: true };
     }
     usd += reply.costUsd;
     attempts += Math.max(1, reply.attempts);
@@ -485,9 +489,9 @@ async function reflect(
     });
     selection.usd += reply.costUsd;
     selection.experience = lessonOf(reply.text, root);
-  } catch (failure) {
-    if (!(failure instanceof ProposerError)) throw failure;
-    selection.usd += failure.costUsd;
+  } catch (error) {
+    if (!(error instanceof ProposerError)) throw error;
+    selection.usd += error.costUsd;
     return;
   }
   persist(task, selection, workDir, run.final.runDir);

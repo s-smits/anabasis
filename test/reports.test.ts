@@ -18,6 +18,7 @@ import { asRecord, isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { tallied } from "./helpers/tally.ts";
+
 const BUILD_STARTED = "build.started";
 
 const [P, F] = [true, false];
@@ -103,15 +104,8 @@ const pairsIn = (log: readonly LogEvent[]) => lastReports(log).map((report) => p
 const winners = (log: readonly LogEvent[]) =>
   new Map([...poolOf(log).standings].map(([task, { won, by }]) => [task, { won, by }]));
 const failedOf = (log: readonly LogEvent[], tasks: readonly string[]) => {
-  const { outcomes, standings } = poolOf(log);
-  return tasks.filter((task) => {
-    const outcome = outcomes.get(task);
-    return (
-      outcome === "reference-none" ||
-      outcome === "reference-some" ||
-      (outcome === "reference-every" && (standings.get(task)?.room ?? 0) > 0)
-    );
-  });
+  const { outcomes } = poolOf(log);
+  return tasks.filter((task) => ["reference-none", "reference-some"].includes(outcomes.get(task) ?? ""));
 };
 
 describe("the reference harness of a campaign", () => {
@@ -310,11 +304,11 @@ describe("the outcome an Examiner hears of a task", () => {
         failed: failedOf(log_, ["kept"]),
       };
     };
-    const won = { won: "other", by: "validity", room: null, own: false } as const;
+    const won = { won: "other", by: "validity" } as const;
     expect(read(before)).toEqual({ outcome: "reference-none", standing: won, failed: ["kept"] });
     expect(read(after)).toEqual({
       outcome: "reference-every",
-      standing: { won: "reference", by: "validity", room: null, own: false },
+      standing: { won: "reference", by: "validity" },
       failed: [],
     });
     expect(read(beside)).toEqual({ outcome: "earlier-reference", standing: null, failed: [] });
@@ -360,7 +354,7 @@ describe("who won each task, as an Examiner hears it", () => {
     );
     const { standings, outcomes } = poolOf(log);
     expect(sorted(standings.keys())).toEqual(sorted(outcomes.keys()).filter((task) => task !== "aside"));
-    expect(standings.get("every")).toEqual({ won: null, by: null, room: null, own: false });
+    expect(standings.get("every")).toEqual({ won: null, by: null });
   });
 
   it("names the objective where it told two valid answers apart, and the same answers without one a tie", () => {
@@ -395,35 +389,6 @@ describe("who won each task, as an Examiner hears it", () => {
         ["even", { won: null, by: null }],
       ]),
     );
-  });
-
-  it("says whether the room it tells of is the reference's own spread or an author's better answer", () => {
-    const tasks = ["spread", "authored", "both"];
-    const sides = tasks.flatMap((task) => [
-      ...solved("b-1", task, "h1", [P, P]),
-      ...solved("b-1", task, "h2", [P, P]),
-    ]);
-    const feasible = (version: string, measure: number) =>
-      event("task.feasible", { version, objective: { measure, direction: "lower" } });
-    const log = [
-      ...tasks.flatMap(heldOut),
-      feasible("authored", 2),
-      feasible("both", 2),
-      ...sides,
-      ...measuredAt(sides, [10, 5, 10, 10, 10, 10, 10, 10, 10, 5, 10, 10]),
-      reported("b-1", "no-step", "h2", {
-        ...terms,
-        versions: tasks,
-        objective: { direction: "lower", margin: 0.01 },
-      }),
-    ];
-    const told = (task: string) => {
-      const standing = poolOf(log).standings.get(task);
-      return { room: (standing?.room ?? 0) > 0, own: standing?.own };
-    };
-    expect(told("spread")).toEqual({ room: true, own: true });
-    expect(told("authored")).toEqual({ room: true, own: false });
-    expect(told("both")).toEqual({ room: true, own: false });
   });
 });
 
@@ -502,10 +467,6 @@ describe("the tasks awaiting task review", () => {
     expect(awaiting([...spent, event("task.feasible", { version: "hard", session: "x-1" })])).toEqual([]);
     expect(awaiting([...spent, ...solved(undefined, "hard", "h1", [P])])).toEqual([]);
     expect(awaiting([...spent, ...solved(undefined, "hard", "h9", [P])])).toEqual(["hard"]);
-    expect(poolOf(spent).histories.get("hard")?.reads).toEqual([
-      { valid: "none", cut: false },
-      { valid: "none", cut: false },
-    ]);
     const lastTurned = (log: readonly LogEvent[], turn: JsonObject) =>
       log.flatMap((each) =>
         each.kind === "solve.finished" && asRecord(each.data.ending)?.kind === "turns-ended"
@@ -520,7 +481,6 @@ describe("the tasks awaiting task review", () => {
       const old = lastTurned(spent, turn);
       const pool = poolOf(old);
       expect(pool).toMatchObject({ awaiting: [], scorable: ["hard", "easy"] });
-      expect(pool.histories.get("hard")?.reads.map(({ cut }) => cut)).toEqual([true, true]);
     }
     expect(awaiting(lastTurned(spent, { stopReason: "toolUse", error: null }))).toEqual(["hard"]);
   });
@@ -542,6 +502,113 @@ describe("the tasks awaiting task review", () => {
         reported("b-3", "no-step", "h4", { ...terms, fresh: "h4", versions: ["hard", "easy"] }),
       ]),
     ).toEqual([]);
+  });
+});
+
+describe("the tasks a comparison doubted", () => {
+  const terms = { old: "h1", solves: 2, setting: SETTING };
+  const start = [...heldOut("bad"), ...heldOut("easy")];
+  /** One rejected solve of `task` under `harness` in `session`, its finding ruled `ruling`. */
+  const rejectedAs = (session: string, harness: string, ruling: string | null) =>
+    solved(session, "bad", harness, [F]).map((each) =>
+      each.kind === "referee.finding" ? event("referee.finding", { ...each.data, ruling }) : each,
+    );
+  const solveOf = (log: readonly LogEvent[]) => {
+    const id = log.find(({ kind }) => kind === "solve.started")?.data.solve;
+    return isString(id) ? id : "";
+  };
+  /** g-1 sets `bad` aside on two rejections, the reference's and the candidate's, and scores `easy`. */
+  const asideIn = (reference: readonly LogEvent[], candidate: readonly LogEvent[], more: JsonObject = {}) => [
+    ...start,
+    ...reference,
+    ...candidate,
+    ...solved("g-1", "easy", "h1", [P, P]),
+    ...solved("g-1", "easy", "h2", [P, P]),
+    reported("g-1", "no-step", "h2", { ...terms, versions: ["easy"], aside: ["bad"], ...more }),
+  ];
+  const scorable = (log: readonly LogEvent[]) => poolOf(log).scorable;
+  /** The tasks a practice release takes, as `tools/d2/prepare.ts` asks for them. */
+  const drawn = (log: readonly LogEvent[], count: number) =>
+    releaseOrder(log, poolOf(log).practicePool, count, "seed");
+
+  it("leave practice's allowance and what a release draws, on the reference's own rejection alone", () => {
+    const log = asideIn(rejectedAs("g-1", "h1", "check-defect"), rejectedAs("g-1", "h2", "earned"));
+    expect(poolOf(log)).toMatchObject({ practiceFrontier: ["easy"], practicePool: ["easy"] });
+    expect(drawn(log, 2).map(([version]) => version)).toEqual(["easy"]);
+    // The candidate's ruling alone moves neither (rule 3).
+    const ruled = (ruling: string) =>
+      asideIn(rejectedAs("g-1", "h1", "earned"), rejectedAs("g-1", "h2", ruling));
+    expect(poolOf(ruled("check-defect")).practicePool).toEqual(["bad", "easy"]);
+    expect(drawn(ruled("check-defect"), 2)).toEqual(drawn(ruled("earned"), 2));
+  });
+
+  it("release the same tasks whichever held-out task the new harness won beside a doubted one", () => {
+    const won = (task: string) => [
+      ...["bad", "a1", "a2"].flatMap(heldOut),
+      ...rejectedAs("g-1", "h1", "unclear"),
+      ...rejectedAs("g-1", "h2", "earned"),
+      ...["a1", "a2"].flatMap((each) => [
+        ...solved("g-1", each, "h1", [F, F]),
+        ...solved("g-1", each, "h2", each === task ? [P, P] : [F, F]),
+      ]),
+      reported("g-1", "no-step", "h2", { ...terms, versions: ["a1", "a2"], aside: ["bad"] }),
+    ];
+    expect(drawn(won("a1"), 2)).toEqual(drawn(won("a2"), 2));
+    expect(drawn(won("a1"), 3).map(([version]) => version)).not.toContain("bad");
+  });
+
+  it("leave the exhausted and the retained tasks, which only the draw left out until 5 November", () => {
+    const closed = [
+      ...start,
+      ...["g-1", "g-2"].flatMap((session) => [
+        ...solved(session, "bad", "h1", [P, P]),
+        ...solved(session, "bad", "h2", [P, P]),
+        reported(session, "no-step", "h2", { ...terms, versions: ["bad"] }),
+      ]),
+    ];
+    expect(poolOf(closed)).toMatchObject({ exhausted: ["bad"], retained: ["bad"] });
+    const doubted = [
+      ...closed,
+      ...rejectedAs("g-3", "h1", "check-defect"),
+      ...rejectedAs("g-3", "h2", "earned"),
+      reported("g-3", "no-step", "h2", { ...terms, versions: [], aside: ["bad"] }),
+    ];
+    expect(poolOf(doubted)).toMatchObject({ exhausted: [], retained: [], scorable: ["easy"] });
+  });
+
+  it("leave the draw where the reference's own rejection stands unearned, and stay in it where only the candidate's does", () => {
+    for (const ruling of ["check-defect", "unclear", null]) {
+      const log = asideIn(rejectedAs("g-1", "h1", ruling), rejectedAs("g-1", "h2", "earned"));
+      expect(poolOf(log)).toMatchObject({ scorable: ["easy"], frontier: ["easy"] });
+    }
+    // The candidate's rejection is a held-out outcome the Builder may not learn of by task (rule 3).
+    const candidate = asideIn(rejectedAs("g-1", "h1", "earned"), rejectedAs("g-1", "h2", "check-defect"));
+    expect(scorable(candidate)).toEqual(["bad", "easy"]);
+  });
+
+  it("return once a person labels the reference's rejection earned, keeps the task, or a later comparison scores it", () => {
+    const reference = rejectedAs("g-1", "h1", "check-defect");
+    const candidate = rejectedAs("g-1", "h2", "unclear");
+    const doubted = asideIn(reference, candidate);
+    expect(scorable(doubted)).toEqual(["easy"]);
+    // The settled report keeps the task aside on the candidate's unclear label, and the reference's
+    // rejection stands earned.
+    const labels = { [solveOf(reference)]: "earned", [solveOf(candidate)]: "unclear" };
+    const settled = reported("g-1", "no-step", "h2", {
+      ...terms,
+      versions: ["easy"],
+      aside: ["bad"],
+      settled: { labels },
+    });
+    expect(scorable([...doubted, settled])).toEqual(["bad", "easy"]);
+    const kept = event("task.state", { version: "bad", state: "held" });
+    expect(scorable([...doubted, kept])).toEqual(["bad", "easy"]);
+    const scored = [
+      ...solved("g-2", "bad", "h1", [P, P]),
+      ...solved("g-2", "bad", "h3", [P, P]),
+      reported("g-2", "no-step", "h3", { ...terms, versions: ["bad"] }),
+    ];
+    expect(scorable([...doubted, ...scored])).toEqual(["bad", "easy"]);
   });
 });
 

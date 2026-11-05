@@ -13,10 +13,54 @@
  */
 import { describe, expect, it } from "bun:test";
 import oxlintrc from "../.oxlintrc.json" with { type: "json" };
-import { existsSync } from "../src/meta/filesystem.ts";
+import { parseJsonAs } from "../src/meta/json-runtime.ts";
+import type { JsonValue } from "../src/meta/json-shape.ts";
+import { existsSync, readFileSync } from "../src/meta/filesystem.ts";
 import { resolve } from "../src/meta/path.ts";
+import { capturedExecPath } from "../src/meta/process.ts";
+import { OXLINT_BINARY } from "../tools/runtime/lint.ts";
+import { spawnTextSync } from "./helpers/bun-spawn-sync.ts";
 
 const repoRoot = resolve(import.meta.dirname, "..");
+const topRules: Readonly<Record<string, JsonValue>> = oxlintrc.rules;
+
+/**
+ * The rules whose every member is decided, as of the whole-tree count of 5 November 2026: each
+ * one Oxlint offers in these categories and plugins is configured at the top level of
+ * `.oxlintrc.json`, or is a row of `tools/oxlint/rules-off.tsv` with the one sentence that keeps
+ * it off. Nursery rules are outside, and so are the repository's own plugins, which are all on.
+ */
+const CATEGORIES = new Set(["correctness", "suspicious", "perf", "pedantic", "style", "restriction"]);
+const PLUGINS = new Set(["eslint", "import", "node", "oxc", "promise", "typescript", "unicorn"]);
+
+/** One rule as `oxlint --rules -f json` lists it. */
+interface OfferedRule {
+  readonly scope: string;
+  readonly value: string;
+  readonly category: string;
+}
+
+/** One row of the ledger: a rule, the files it is off for (`*` for every file), and why. */
+interface Row {
+  readonly rule: string;
+  readonly files: string;
+  readonly sites: string;
+  readonly status: string;
+  readonly reason: string;
+}
+
+const rows: Row[] = readFileSync(resolve(repoRoot, "tools/oxlint/rules-off.tsv"), "utf8")
+  .trimEnd()
+  .split("\n")
+  .slice(1)
+  .map((line) => {
+    const [rule = "", files = "", sites = "", status = "", reason = ""] = line.split("\t");
+    return { rule, files, sites, status, reason };
+  });
+
+function isOff(severity: unknown): boolean {
+  return severity === "off" || (Array.isArray(severity) && severity[0] === "off");
+}
 
 describe("the .oxlintrc.json debt ledger", () => {
   it("names a file that exists for every entry that is not a glob", () => {
@@ -35,5 +79,43 @@ describe("the .oxlintrc.json debt ledger", () => {
       .filter((override) => override.files.every((entry) => !entry.includes("*")))
       .flatMap((override) => Object.entries(override.rules).filter(([, severity]) => severity !== "off"));
     expect(enabling).toEqual([]);
+  });
+});
+
+describe("the ledger of rules left off", () => {
+  it("turns no rule off at the top level, and turns one off for some files only beside its row", () => {
+    expect(Object.keys(topRules).filter((rule) => isOff(topRules[rule]))).toEqual([]);
+    const unrecorded = oxlintrc.overrides.flatMap((override) =>
+      Object.entries(override.rules)
+        .filter(([, severity]) => isOff(severity))
+        .map(([rule]) => `${rule} ${override.files.join(",")}`)
+        .filter((entry) => !rows.some((row) => `${row.rule} ${row.files}` === entry)),
+    );
+    expect(unrecorded).toEqual([]);
+  });
+
+  it("decides every rule Oxlint offers in scope: configured, or a row with its sentence", () => {
+    const listed = spawnTextSync(capturedExecPath, [OXLINT_BINARY, "--rules", "-f", "json"], {
+      cwd: repoRoot,
+      timeout: 30_000,
+    });
+    expect(listed.status).toBe(0);
+    const offered = parseJsonAs<OfferedRule[]>(listed.stdout)
+      .filter(({ scope, category }) => PLUGINS.has(scope) && CATEGORIES.has(category))
+      .map(({ scope, value }) => `${scope}/${value}`);
+    const everywhere = new Set(rows.filter((row) => row.files === "*").map((row) => row.rule));
+    expect(offered.filter((rule) => topRules[rule] === undefined && !everywhere.has(rule))).toEqual([]);
+    // A row for a rule that is now on, or that Oxlint no longer offers, records a decision nobody holds.
+    expect([...everywhere].filter((rule) => topRules[rule] !== undefined || !offered.includes(rule))).toEqual(
+      [],
+    );
+  });
+
+  it("gives every row a count, a status and one sentence", () => {
+    const malformed = rows.filter(
+      (row) =>
+        !/^\d+$/u.test(row.sites) || !["off", "staged"].includes(row.status) || !/^\S.*\.$/u.test(row.reason),
+    );
+    expect(malformed).toEqual([]);
   });
 });

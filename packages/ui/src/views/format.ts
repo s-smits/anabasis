@@ -32,8 +32,8 @@ export function money(value: number | null): string {
 }
 
 export function bytes(value: number): string {
-  if (value < 1_000) return `${value} B`;
-  if (value < 1_000_000) return `${(value / 1_000).toFixed(1)} kB`;
+  if (value < 1000) return `${value} B`;
+  if (value < 1_000_000) return `${(value / 1000).toFixed(1)} kB`;
   return `${(value / 1_000_000).toFixed(1)} MB`;
 }
 

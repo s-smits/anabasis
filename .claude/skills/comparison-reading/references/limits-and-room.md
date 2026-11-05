@@ -8,7 +8,7 @@ the corresponding parts of `AGENTS.md` section 7.
 A rejected answer is not valid only once the Referee rules it `earned`, on an answer probe that
 moved a refusing check off its refusal (`src/referee/referee.ts`). `check-defect`, `unclear` or no
 ruling sets the task aside for both harnesses until labels settle it (`settle.ts`); a label
-overrides a ruling. Past `--defects` tasks with a check defect or a check that could not run, the
+overrides a ruling. Past 3 tasks (`--defects` of a hand comparison) with a check defect or a check that could not run, the
 comparison stops: the check program needs its owner before more is spent.
 
 ## The budget

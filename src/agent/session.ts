@@ -88,8 +88,9 @@ export interface Seat {
   /** Where every file operation and command of the seat's tools runs, behind its wall
    *  (`walledEnv`, `src/tools/env.ts`); none for a seat whose tools reach no disk. */
   readonly env?: ExecutionEnv;
-  /** Where the seat's turns, calls and compactions are logged, under its kind. */
-  readonly trace?: { readonly log: string; readonly of: Traced };
+  /** Where the seat's turns, calls and compactions are logged, under its kind, and under `as` at
+   *  each write where the seat's work is named apart from its conversation: an Examiner's ask. */
+  readonly trace?: { readonly log: string; readonly of: Traced; readonly as?: () => string };
   /** Before every model request and every compaction: holds them to the seat's own bounds. A throw
    *  ends the session with what it threw. */
   readonly before?: () => void | Promise<void>;
@@ -131,18 +132,20 @@ type Traced = Exclude<SeatKind, "repair">;
 const TRACE_TEXT_BYTES = 64 * 1024;
 
 /** The trace writer used by durable hooks and by trace-reader fixtures. */
-export function traceSink(log: string, of: Traced, id: string, turn: () => number) {
-  const named = { [whose(of)]: id };
-  const calls = new Map<string, number>();
+export function traceSink(log: string, of: Traced, id: string | (() => string), turn: () => number) {
+  const named = () => ({ [whose(of)]: isString(id) ? id : id() });
+  // A call is traced under the session it started in: an Examiner's `finish` rests its ask inside
+  // the call and wakes in the next, whose id the trace would otherwise give it (5 November).
+  const calls = new Map<string, { at: number; whose: ReturnType<typeof named> }>();
   return {
     beforeTool: (call: ToolHookCall) => {
-      calls.set(call.id, performance.now());
+      calls.set(call.id, { at: performance.now(), whose: named() });
     },
     afterTool: (call: ToolHookCall, result: ToolExecutionResult) => {
-      const at = calls.get(call.id);
+      const started = calls.get(call.id);
       calls.delete(call.id);
       append(log, traceKind(of, "call"), {
-        ...named,
+        ...(started?.whose ?? named()),
         toolCallId: call.id,
         turn: turn(),
         tool: call.name,
@@ -152,7 +155,7 @@ export function traceSink(log: string, of: Traced, id: string, turn: () => numbe
           ...(result.output ?? []),
           ...(result.diagnostics ?? []).map(({ message }) => ({ type: "text", text: message })),
         ]),
-        ms: at === undefined ? null : performance.now() - at,
+        ms: started === undefined ? null : performance.now() - started.at,
       });
     },
     turn: (message: AssistantMessage, retried: readonly string[] = []) => {
@@ -161,14 +164,14 @@ export function traceSink(log: string, of: Traced, id: string, turn: () => numbe
         if (type !== CLAUDE_COMPACTED) continue;
         // SAFETY: the backend's own diagnostic, numbers and null.
         append(log, traceKind(of, "compacted"), {
-          ...named,
+          ...named(),
           ...(details as JsonObject),
           usages: [],
           error: null,
         });
       }
       append(log, traceKind(of, "turn"), {
-        ...named,
+        ...named(),
         turn: turn(),
         stopReason,
         error: error ?? null,
@@ -195,7 +198,7 @@ export async function sit(seat: Seat): Promise<Sat> {
   const compactions = compactionTrace(({ spent, ...event }) => {
     if (seat.trace === undefined) return;
     append(seat.trace.log, traceKind(seat.trace.of, "compacted"), {
-      [whose(seat.trace.of)]: seat.id,
+      [whose(seat.trace.of)]: seat.trace.as?.() ?? seat.id,
       ...event,
       usages: meter.rows(spent),
     });
@@ -287,7 +290,7 @@ function sessionHooks(seat: Seat, halt: () => void, meter: ReturnType<typeof sea
   const sink =
     seat.trace === undefined
       ? undefined
-      : traceSink(seat.trace.log, seat.trace.of, seat.id, () => seat.turns.length);
+      : traceSink(seat.trace.log, seat.trace.of, seat.trace.as ?? seat.id, () => seat.turns.length);
   const tools = toolHooks(seat, sink);
   const retry = retryPolicy(seat.model.provider);
   const retried: string[] = [];
@@ -423,8 +426,8 @@ function toolHooks(seat: Seat, sink: ReturnType<typeof traceSink> | undefined) {
  *  campaign action runs. Overlapping waits share one interval; the last to end arms the remaining
  *  allowance, unless the owner has closed it. Until 28 October the Builder and the Examiner each
  *  kept a copy, and the Builder's neither nested nor named its cancellation; until 1 November the
- *  Examiner's paused while it awaited its gate's room solves, and a drafting session's pauses while
- *  the host reads a draft. */
+ *  Examiner's paused while it awaited its gate's room solves; a drafting session's pauses while the
+ *  host reads a draft, and a writing session's while the reference harness tries an instance. */
 export function sessionClock(began: number, seconds: number) {
   const deadline = new AbortController();
   let aside = 0;
@@ -471,9 +474,12 @@ export function sessionClock(began: number, seconds: number) {
   };
 }
 
+/** The text items of a message's or a tool result's content, in order; an image carries none. A
+ *  trace, a seat tool's bounded result and a campaign action's opening read them here. */
+export function textsOf(content: readonly { readonly type: string; readonly text?: string }[]): string[] {
+  return content.flatMap((part) => (part.type === "text" ? [part.text ?? ""] : []));
+}
+
 function traceText(content: readonly { type: string; text?: string }[]): string {
-  return boundText(
-    content.flatMap((block) => (block.type === "text" ? [block.text ?? ""] : [])).join("\n"),
-    TRACE_TEXT_BYTES,
-  ).text;
+  return boundText(textsOf(content).join("\n"), TRACE_TEXT_BYTES).text;
 }

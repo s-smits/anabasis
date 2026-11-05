@@ -55,10 +55,10 @@ interface Asked {
 export const SIZE = { tasks: 24, solves: 2 } as const;
 /** How many comparisons of a task each rule over its readings reads (`poolOf`, `reports.ts`), one
  *  place to tune them beside the solves: `easy` in a row, newest first, valid in every solve with no
- *  room by the objective, call it easy; `unsolved` with no valid answer send it to a person; its
- *  author hears the newest `history`. Each reading is a side's every, some or none (`spreadOf`), so
- *  the rules read the same at any count of solves (operator, 29 October). */
-export const RUNS = { easy: 2, unsolved: 2, history: 3 } as const;
+ *  room by the objective, call it easy; `unsolved` with no valid answer send it to a person. Each
+ *  reading is a side's every, some or none (`spreadOf`), so the rules read the same at any count of
+ *  solves (operator, 29 October). */
+export const RUNS = { easy: 2, unsolved: 2 } as const;
 
 /** How many of the smallest clearing results a line names. */
 const NAMED = 3;

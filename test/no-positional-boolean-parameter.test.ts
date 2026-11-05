@@ -4,9 +4,10 @@
  * A module-local function whose every visible call passes the parameter's own name keeps its
  * boolean, whether the name arrives bare, as a no-argument call of it, or as a property of that
  * name: `missTail(difficulty, "above", everyBattery)`, `completedOutcome(…, submitted(), …)` and
- * `scoredFields(outcome, solvedCase.acceptedSubmit)` already read as the declaration does. Three of the five reports in `src/run` were that one variable threaded
- * through one file. An exported declaration never takes the exemption, because its callers are
- * in files this rule does not see.
+ * `scoredFields(outcome, solvedCase.acceptedSubmit)` already read as the declaration does. Three
+ * of the five reports in `5bc9988:src/run` were that one variable threaded through one file. An
+ * exported declaration never takes the exemption, because its callers are in files this rule does
+ * not see.
  *
  * `close(handle, true)` names neither the parameter nor the state, and the two call sites that
  * pass it the wrong way round read exactly like the two that pass it right. An options object

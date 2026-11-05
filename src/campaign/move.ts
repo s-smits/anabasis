@@ -21,8 +21,7 @@ export type Decided =
   (
     | { readonly move: "draft"; readonly why: string }
     | { readonly move: "accept"; readonly why: string }
-    /** `practice` names the count practice is brought to where it is more than the campaign's. */
-    | { readonly move: "prepare"; readonly why: string; readonly practice?: number }
+    | { readonly move: "prepare"; readonly why: string }
     /** An Examiner session, which is always asked for tasks the reference harness fails (row F52).
      *  `answers` names the operator's word it follows, where it follows one (`pendingWords`). */
     | { readonly move: "examine"; readonly why: string; readonly answers?: readonly number[] }
@@ -45,8 +44,8 @@ export type Decided =
         readonly answers?: readonly number[];
       }
   ) & {
-    /** The row of the table that chose it, or the build condition that named practice or tasks
-     *  (`ROWS`, `decide.ts`), which `campaign.move` carries beside its reason. */
+    /** The row of the table that chose it (`ROWS`, `decide.ts`), which `campaign.move` carries
+     *  beside its reason. */
     readonly code: string;
   };
 
@@ -57,22 +56,30 @@ export function decidedLine(decided: Decided): string {
   const named = (harness: string) => (harness.length > 16 ? short(harness) : `the ${harness} harness`);
   const what = (): string => {
     switch (decided.move) {
-      case "draft":
+      case "draft": {
         return "an Examiner session, to draft the exam";
-      case "accept":
+      }
+      case "accept": {
         return "read the exam";
-      case "prepare":
+      }
+      case "prepare": {
         return "set the tasks apart";
-      case "examine":
+      }
+      case "examine": {
         return "an Examiner session";
-      case "build":
+      }
+      case "build": {
         return "a Builder session";
-      case "compare":
+      }
+      case "compare": {
         return `a comparison of ${named(decided.fresh)} with ${named(decided.reference)}`;
-      case "promote":
+      }
+      case "promote": {
         return `promote harness ${short(decided.harness)}`;
-      case "end":
+      }
+      case "end": {
         return `the campaign ends (${decided.ending})`;
+      }
     }
   };
   return `${what()}: ${decided.why}`;

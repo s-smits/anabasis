@@ -25,7 +25,7 @@
  * - the trace as `solve.turn`, `solve.call` and `solve.compacted` events in a log of its own,
  *   written by `sit` (`src/agent/session.ts`) and read by `src/kernel/trace.ts`, and the spend
  *   as `sit` sums a campaign's solve, so a change to the log's format has one owner to change;
- *   the same trace as Harbor's ATIF trajectory (`trajectoryOf`, `src/kernel/atif.ts`), where the
+ *   the same trace as Harbor's ATIF trajectory (`trajectoryOf`, `atif.ts`), where the
  *   benchmark's tools look for an agent's run, and the ending of a solve that left no answer as a
  *   campaign's solve is read (`unanswered`, `src/kernel/solve.ts`).
  *
@@ -52,7 +52,6 @@ import {
 } from "@earendil-works/pi-durable/tools";
 import { Type } from "typebox";
 import { openrouter } from "#src/agent/backends/models.ts";
-import { trajectoryOf } from "#src/kernel/atif.ts";
 import { read } from "#src/kernel/log.ts";
 import { unanswered } from "#src/kernel/solve.ts";
 import { GUIDE_FILE } from "#src/meta/bundle-layout.ts";
@@ -72,6 +71,7 @@ import { installedPrograms } from "#src/harness/programs.ts";
 import { NUDGE } from "#src/solver/prompt.ts";
 import { raiseWall, timed, type Wall } from "#src/solver/run.ts";
 import { type SeatTool, sit } from "#src/agent/session.ts";
+import { trajectoryOf } from "./atif.ts";
 import { shellQuote, toolTreeSearchDirs } from "#src/wall/isolation.ts";
 import { LIMITS } from "#tools/d2/campaign.ts";
 

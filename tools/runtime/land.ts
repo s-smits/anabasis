@@ -102,9 +102,19 @@
  */
 import { parseArgs, runtimeProcess } from "../../src/meta/process.ts";
 import { decodeOutput, runSync } from "../../src/meta/subprocess.ts";
-import { plural } from "../../src/meta/text.ts";
+import { plural, textOr } from "../../src/meta/text.ts";
 import { doubledLines } from "./doubled.ts";
-import { gh, ghOrThrow, MERGEABLE_CONTEXT, openPulls, type Pull } from "./pulls.ts";
+import {
+  api,
+  form,
+  gh,
+  ghOrThrow,
+  MERGEABLE_CONTEXT,
+  openPulls,
+  postStatus,
+  type Pull,
+  type Status,
+} from "./pulls.ts";
 import {
   addedLine,
   changesSource,
@@ -121,6 +131,8 @@ interface Landing {
   readonly trunkSha: string;
   /** The open pull requests the landing merges, bottom to top; the last is the one named. */
   readonly pulls: readonly Pull[];
+  /** The pull request named, which the landing merges with everything beneath it. */
+  readonly top: Pull;
   /** The bottom of each other open chain on the trunk, with another pull request above it. */
   readonly beside: readonly Pull[];
   /** Every open pull request, as the landing read them. */
@@ -135,14 +147,6 @@ interface Mode {
   readonly jobs: number;
   /** The release `--merge --tag` cuts at the merge. */
   readonly tag: string | null;
-}
-
-/** A commit status as GitHub's statuses API takes it; `link` is the target its Details opens. */
-interface Status {
-  readonly context: string;
-  readonly state: string;
-  readonly description: string;
-  readonly link?: string | undefined;
 }
 
 const COMMIT_CONTEXT = "ana/commit";
@@ -197,8 +201,6 @@ class Moved extends Refusal {}
 
 const say = (line: string): void => console.log(`land: ${line}`);
 const numbers = (pulls: readonly Pull[]): string => pulls.map((pull) => `#${String(pull.number)}`).join(", ");
-// `{owner}/{repo}` is gh's own placeholder for the repository the working directory's remote names.
-const api = (path: string): string => `repos/{owner}/{repo}/${path}`;
 
 const trunkOf = (root: string): string =>
   ghOrThrow(root, ["repo", "view", "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"]);
@@ -264,7 +266,7 @@ function readLanding(root: string, target: number): Landing {
       !pulls.includes(pull) &&
       open.some((above) => above.baseRefName === pull.headRefName),
   );
-  return { trunk, trunkSha, pulls, beside, open };
+  return { trunk, trunkSha, pulls, top: named, beside, open };
 }
 
 /** The importance labels a pull request carries; a landing asks for exactly one. */
@@ -307,23 +309,6 @@ function checkChain(root: string, landing: Landing): void {
   }
   const repeating = doubledLines(root, landing.open, (pull) => landing.pulls.includes(pull));
   if (repeating.length > 0) throw new Refusal(`${repeating.join(" ")} Land again.`);
-}
-
-function postStatus(root: string, sha: string, { context, state, description, link }: Status): boolean {
-  return gh(root, [
-    "api",
-    "-X",
-    "POST",
-    api(`statuses/${sha}`),
-    "-f",
-    `state=${state}`,
-    "-f",
-    `context=${context}`,
-    "-f",
-    `description=${description}`,
-    "--silent",
-    ...(link === undefined ? [] : ["-f", `target_url=${link}`]),
-  ]).ok;
 }
 
 /** `postStatus`, passing over what GitHub shows already on `shas`, read in one GraphQL call: on 30
@@ -372,7 +357,7 @@ function startCi(root: string, top: Pull): void {
     throw new Refusal(`GitHub did not list ${CI_WORKFLOW}'s runs on ${head}. Land again.`);
   }
   if (ci !== null) {
-    const [status, conclusion, id = "", url, at] = ci;
+    const [status = "", conclusion, id = "", url, at] = ci;
     const untaken =
       conclusion === "failure" ? gh(root, ["run", "view", id, "--json", "jobs", "--jq", CI_UNTAKEN]).out : "";
     if (untaken !== "") {
@@ -383,7 +368,7 @@ function startCi(root: string, top: Pull): void {
       return;
     }
     say(
-      `${CI_WORKFLOW} run ${id} of ${at ?? "an earlier landing"} is already on ${head}, ${conclusion === undefined || conclusion === "" ? status : conclusion}; its verdict stands: ${url ?? ""}`,
+      `${CI_WORKFLOW} run ${id} of ${at ?? "an earlier landing"} is already on ${head}, ${textOr(conclusion, status)}; its verdict stands: ${url ?? ""}`,
     );
     return;
   }
@@ -423,7 +408,7 @@ async function awaitCi(root: string, top: Pull): Promise<void> {
   }
   show(
     status === "completed" ? "failure" : "pending",
-    `ci.yml run ${id} ${conclusion === undefined || conclusion === "" ? "has not finished" : conclusion}`,
+    `ci.yml run ${id} ${textOr(conclusion, "has not finished")}`,
   );
   if (status !== "completed") {
     throw new Refusal(
@@ -450,8 +435,7 @@ async function awaitCi(root: string, top: Pull): Promise<void> {
  *  landing's pull requests, bottom to top; a landing of several outside a stack, or one GitHub did
  *  not say, is refused, since the top's merge would merge it alone into its base. */
 function stackOf(root: string, landing: Landing): number | null {
-  // SAFETY: a landing holds at least the pull request it was named by.
-  const top = landing.pulls.at(-1) as Pull;
+  const { top } = landing;
   const read = gh(root, [
     "api",
     api(`stacks?pull_request=${String(top.number)}`),
@@ -471,7 +455,7 @@ function stackOf(root: string, landing: Landing): number | null {
   const [stack = "", listed = ""] = read.out.split(" ");
   const members = listed.split(",");
   const upTo = members.slice(0, members.indexOf(String(top.number)) + 1);
-  if (upTo.join() !== landing.pulls.map((pull) => String(pull.number)).join()) {
+  if (upTo.join(",") !== landing.pulls.map((pull) => String(pull.number)).join(",")) {
     throw new Refusal(
       `GitHub's stack ${stack} holds #${members.join(", #")}, and the chain of bases up to #${String(top.number)} ` +
         `holds ${numbers(landing.pulls)}. Make them agree, and land again.`,
@@ -489,25 +473,12 @@ async function mergeStack(
   landing: Landing,
   stack: number | null,
 ): Promise<{ readonly ended: "merged" | "refused" | "unsure"; readonly sha: string }> {
-  // SAFETY: a landing holds at least the pull request it was named by.
-  const top = landing.pulls.at(-1) as Pull;
+  const { top } = landing;
   const path = api(`pulls/${String(top.number)}/merge-async`);
   const fields = String.raw`[.status, .details.uuid // "", .details.sha // "", .details.message // ""] | join("\t")`;
   const name = stack === null ? `#${String(top.number)}` : `stack ${String(stack)}`;
-  const asked = gh(root, [
-    "api",
-    "-X",
-    "PUT",
-    path,
-    "-f",
-    "merge_method=merge",
-    "-f",
-    "merge_action=direct_merge",
-    "-f",
-    `sha=${top.headRefOid}`,
-    "--jq",
-    fields,
-  ]);
+  const merging = form({ merge_method: "merge", merge_action: "direct_merge", sha: top.headRefOid });
+  const asked = gh(root, ["api", "-X", "PUT", path, ...merging, "--jq", fields]);
   if (!asked.ok) {
     console.error(`land: GitHub did not merge ${name}: ${asked.err}`);
     return { ended: "refused", sha: "" };
@@ -574,28 +545,27 @@ function checkCurrent(root: string, target: number, landing: Landing): void {
   const again = readLanding(root, target);
   checkChain(root, again);
   if (
-    again.pulls.map((pull) => pull.headRefOid).join() !== landing.pulls.map((pull) => pull.headRefOid).join()
+    again.pulls.map((pull) => pull.headRefOid).join(",") !==
+    landing.pulls.map((pull) => pull.headRefOid).join(",")
   ) {
     throw new Moved("a pull request's head moved while its commits were gated.");
   }
 }
 
 /** Posts the required status on every head, then merges the top with the stack beneath it, and
- *  gives the merge commit. A merge that does not go through takes the status back from every head. */
+ *  gives the merge commit. A merge that does not go through takes the status back from every head;
+ *  one that does moves each pull request on the top's branch onto the trunk. */
 async function merge(root: string, target: number, landing: Landing): Promise<string | null> {
   checkCurrent(root, target, landing);
   const heads = landing.pulls.map((pull) => pull.headRefOid);
   const stack = stackOf(root, landing);
+  const gated = (sha: string, state: string, description: string): boolean =>
+    postStatus(root, sha, { context: STACK_CONTEXT, state, description });
   const revoke = (): void => {
-    const waiting = { context: STACK_CONTEXT, state: "pending", description: "Waiting for bun run land" };
-    for (const sha of heads) postStatus(root, sha, waiting);
+    for (const sha of heads) gated(sha, "pending", "Waiting for bun run land");
   };
   const proved = "every commit passed on its own; the top passed the whole gate here and ci.yml on GitHub";
-  if (
-    !heads.every((sha) =>
-      postStatus(root, sha, { context: STACK_CONTEXT, state: "success", description: proved }),
-    )
-  ) {
+  if (!heads.every((sha) => gated(sha, "success", proved))) {
     revoke();
     throw new Error(`the ${STACK_CONTEXT} status could not be posted on every head`);
   }
@@ -606,7 +576,23 @@ async function merge(root: string, target: number, landing: Landing): Promise<st
       `land: nothing merged; ${numbers(landing.pulls)} ${landing.pulls.length === 1 ? "is" : "are"} open.`,
     );
   }
-  return ended === "merged" ? sha : null;
+  if (ended !== "merged") return null;
+  // A pull request left on the top's branch would sit on a merged branch that no landing reads as
+  // a bottom (#560 in the landing of v0.9.1, 1 November), so its base moves to the trunk; a failed read
+  // is said, since the merge has gone through.
+  let above: readonly Pull[] = [];
+  try {
+    above = openPulls(root).filter((pull) => pull.baseRefName === landing.top.headRefName);
+  } catch (error) {
+    say(`could not list the open pull requests (${String(error)}); move any on the top's branch.`);
+  }
+  for (const { number } of above) {
+    const ok = gh(root, ["pr", "edit", String(number), "--base", landing.trunk]).ok;
+    say(
+      `#${String(number)} ${ok ? "is based on" : "could not be moved; run gh pr edit --base"} ${landing.trunk}.`,
+    );
+  }
+  return sha;
 }
 
 /** Cuts the release at the merge the landing made, with the notes GitHub writes from the pull
@@ -660,17 +646,16 @@ async function landTo(root: string, target: number, mode: Mode): Promise<number 
   const landing = readLanding(root, target);
   checkLabels(landing);
   checkChain(root, landing);
-  // SAFETY: readLanding's chain ends with the named pull request.
-  const top = landing.pulls.at(-1) as Pull;
-  const [chain] = landing.beside;
-  if (mode.merge && !mode.alone && chain !== undefined) {
-    throw new Refusal(
-      `#${String(chain.number)} (${chain.headRefName}) starts another chain on ${landing.trunk}, which this merge ` +
-        `would leave short of ${landing.trunk}'s new head, so that every pull request on it has to be replayed. ` +
-        `Put ${numbers(landing.pulls)} on that chain's top, land that chain first, or name --alone to merge it anyway.`,
-    );
-  }
+  const { top } = landing;
   if (mode.merge) {
+    const [chain] = landing.beside;
+    if (!mode.alone && chain !== undefined) {
+      throw new Refusal(
+        `#${String(chain.number)} (${chain.headRefName}) starts another chain on ${landing.trunk}, which this merge ` +
+          `would leave short of ${landing.trunk}'s new head, so that every pull request on it has to be replayed. ` +
+          `Put ${numbers(landing.pulls)} on that chain's top, land that chain first, or name --alone to merge it anyway.`,
+      );
+    }
     stackOf(root, landing);
     startCi(root, top);
   }
@@ -687,6 +672,8 @@ async function landTo(root: string, target: number, mode: Mode): Promise<number 
   );
   const reach = mode.merge || mode.sanitize;
   const post = statusPoster(root, reach ? proofs.map(({ commit }) => commit) : []);
+  const mergeable = (pull: Pull, state: string, description: string): void =>
+    post(pull.headRefOid, { context: MERGEABLE_CONTEXT, state, description });
   // A pull request turns green as soon as every commit from the bottom to its head has passed,
   // so the stack shows its proof climbing while the commits above are still being gated.
   const at = new Map(proofs.map((proof, index) => [proof.commit, index]));
@@ -704,11 +691,7 @@ async function landTo(root: string, target: number, mode: Mode): Promise<number 
       if ((at.get(pull.headRefOid) ?? upTo) >= upTo) return;
       if (!settled) checkListed(root, target, landing);
       settled = true;
-      post(pull.headRefOid, {
-        context: MERGEABLE_CONTEXT,
-        state: "success",
-        description: "every commit up to this head passed bun run land",
-      });
+      mergeable(pull, "success", "every commit up to this head passed bun run land");
       if (pull.isDraft && !gh(root, ["pr", "ready", String(pull.number)]).ok) {
         say(
           `#${String(pull.number)} passed, and stays a draft: gh pr ready ${String(pull.number)} was refused.`,
@@ -732,28 +715,19 @@ async function landTo(root: string, target: number, mode: Mode): Promise<number 
       // A head that holds a commit proved again reads pending until it passes, not an earlier red.
       const from = state === "pending" ? Math.max(green, holding(root, landing, commit)) : pending;
       for (const pull of landing.pulls.slice(from, pending)) {
-        post(pull.headRefOid, {
-          context: MERGEABLE_CONTEXT,
-          state: "pending",
-          description: "bun run land is proving it",
-        });
+        mergeable(pull, "pending", "bun run land is proving it");
       }
       pending = Math.min(pending, from);
       if (state === "success") passed.add(commit);
       greenUpTo();
     },
   });
-  if (failed === null && mode.auto && moved(root, top)) return "moved";
   if (failed !== null) {
+    const said = failed.verdict
+      ? `fails ${failed.step} on its own`
+      : `got no verdict on ${failed.step}: land again`;
     for (const pull of reach ? landing.pulls.slice(holding(root, landing, failed.commit)) : []) {
-      const description = failed.verdict
-        ? `${short(failed.commit)} fails ${failed.step} on its own`
-        : `${short(failed.commit)} got no verdict on ${failed.step}: land again`;
-      post(pull.headRefOid, {
-        context: MERGEABLE_CONTEXT,
-        state: failed.verdict ? "failure" : "error",
-        description,
-      });
+      mergeable(pull, failed.verdict ? "failure" : "error", `${short(failed.commit)} ${said}`);
     }
     if (failed.verdict) recipe(root, landing, failed.commit);
     console.error(
@@ -761,6 +735,7 @@ async function landTo(root: string, target: number, mode: Mode): Promise<number 
     );
     return 1;
   }
+  if (mode.auto && moved(root, top)) return "moved";
   if (!mode.merge) {
     const shown = reach ? `each shows ${COMMIT_CONTEXT} on GitHub` : "--sanitize shows it on GitHub";
     say(`every commit passed; ${shown}. bun run land -- ${String(target)} --merge also merges.`);
@@ -769,23 +744,7 @@ async function landTo(root: string, target: number, mode: Mode): Promise<number 
   await awaitCi(root, top);
   if (mode.auto && moved(root, top)) return "moved";
   const sha = await merge(root, target, landing);
-  if (sha === null) return 1;
-  // A pull request left on the top's branch would sit on a merged branch that no landing reads as
-  // a bottom (#560 in the landing of v0.9.1, 1 November), so its base moves to the trunk; a failed read
-  // is said, since the merge has gone through.
-  let above: readonly Pull[] = [];
-  try {
-    above = openPulls(root).filter((pull) => pull.baseRefName === top.headRefName);
-  } catch (error) {
-    say(`could not list the open pull requests (${String(error)}); move any on the top's branch.`);
-  }
-  for (const { number } of above) {
-    const ok = gh(root, ["pr", "edit", String(number), "--base", landing.trunk]).ok;
-    say(
-      `#${String(number)} ${ok ? "is based on" : "could not be moved; run gh pr edit --base"} ${landing.trunk}.`,
-    );
-  }
-  return release(root, mode, sha);
+  return sha === null ? 1 : release(root, mode, sha);
 }
 
 async function main(argv: readonly string[]): Promise<number> {

@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import App from "./App.tsx";
+import { App } from "./app.tsx";
 /*
  * Bundle the four fonts the design uses.
  *
@@ -32,7 +32,7 @@ import "./panes.css";
 const SCROLLED = "ana.scroll";
 try {
   const [search, y] = (window.sessionStorage.getItem(SCROLLED) ?? "").split("\n");
-  const until = performance.now() + 2_000;
+  const until = performance.now() + 2000;
   const back = () => {
     if (
       document.scrollingElement !== null &&
@@ -49,7 +49,7 @@ try {
   // Closed storage keeps no position, and the page opens at its top.
 }
 
-const root = document.getElementById("root");
+const root = document.querySelector("#root");
 if (root === null) throw new Error("observatory root element is missing");
 createRoot(root).render(
   <StrictMode>

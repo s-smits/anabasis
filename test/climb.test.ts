@@ -138,8 +138,6 @@ describe("the climb", () => {
         "check-product",
         "--practice",
         "2",
-        "--sessions",
-        "1",
         // The target the simulated climb stalled at on 10 October (climb-9): drawn by hash from
         // the tasks of every epoch at once, 8 over the 19 tasks the third epoch held took two or
         // three the reference fails and left the comparison one win short three times. The draw
@@ -155,7 +153,7 @@ describe("the climb", () => {
       let written = 0;
       const seats: Seats = {
         seated: (campaign) => ({
-          // One scripted Builder keeps its conversation while it edits, compares and promotes, and
+          // One scripted Builder keeps its conversation while it edits and compares, and
           // the conversations after it make no campaign move.
           builder: read(campaign.log).some(({ kind }) => kind === "build.started")
             ? scriptedModel([IDLE, IDLE])
@@ -163,8 +161,9 @@ describe("the climb", () => {
                 ...Array.from({ length: 3 }, (_, epoch) => {
                   const strength = STARTER_STRENGTH + (epoch + 1) * RAISE;
                   return [
+                    // The comparisons read the tasks the session writes, so the Builder waits for it.
                     ["examine", {}],
-                    ["release_practice", {}],
+                    ["wait", {}],
                     [
                       "bash",
                       {
@@ -173,7 +172,6 @@ describe("the climb", () => {
                     ],
                     ["compare", {}],
                     ["compare", {}],
-                    ["promote", {}],
                   ] satisfies readonly (readonly [string, JsonObject])[];
                 }).flat(),
                 ["finish", { note: "Three scripted improvements in one conversation." }],
@@ -214,8 +212,6 @@ describe("the climb", () => {
             family: "fixture",
             public_input: { base: strength + above, n: written * 100 + index },
             hidden: null,
-            grade: 3,
-            stops: "A base above the reference's strength.",
           }));
           return examine({
             ...request,
@@ -281,7 +277,7 @@ describe("the climb", () => {
       const strengths = promotions.map(({ harness }) =>
         strengthOf(join(folder, "states", isString(harness) ? harness : "")),
       );
-      expect(strengths).toEqual([...strengths].sort((one, other) => one - other));
+      expect(strengths).toEqual([...strengths].toSorted((one, other) => one - other));
       expect(strengths[1] ?? 0).toBeGreaterThan(strengths[0] ?? 0);
       expect(ending.move === "end" ? ending.ending : "moves").not.toBe("stop");
     },
@@ -442,8 +438,14 @@ describe("the starter comparison in an epoch's row", () => {
 
   it("confirms the promotion only where the reference clears the level against the starter without the bill", () => {
     // Six tasks won on the bill alone are no step without it; six won on validity are one at 0.02.
-    const onBill = starterRead({ differences: Array(6).fill(-0.1), unbilled: Array(6).fill(0) });
-    const onValidity = starterRead({ differences: Array(6).fill(-1), unbilled: Array(6).fill(-1) });
+    const onBill = starterRead({
+      differences: Array.from({ length: 6 }, () => -0.1),
+      unbilled: Array.from({ length: 6 }, () => 0),
+    });
+    const onValidity = starterRead({
+      differences: Array.from({ length: 6 }, () => -1),
+      unbilled: Array.from({ length: 6 }, () => -1),
+    });
     expect(epochsOf([opened, promoted, onBill])[1]?.confirmed).toBe(false);
     const confirmed = present(epochsOf([opened, promoted, onValidity])[1]);
     expect(confirmed.confirmed).toBe(true);
@@ -451,8 +453,14 @@ describe("the starter comparison in an epoch's row", () => {
   });
 
   it("confirms on the epoch's first starter comparison that tallied a task, so a later draw of the pair replaces no reading", () => {
-    const short = starterRead({ differences: Array(5).fill(-1), unbilled: Array(5).fill(-1) });
-    const six = { differences: Array(6).fill(-1), unbilled: Array(6).fill(-1) };
+    const short = starterRead({
+      differences: Array.from({ length: 5 }, () => -1),
+      unbilled: Array.from({ length: 5 }, () => -1),
+    });
+    const six = {
+      differences: Array.from({ length: 6 }, () => -1),
+      unbilled: Array.from({ length: 6 }, () => -1),
+    };
     const again = starterRead(six, { session: "g-3", reading: "step" });
     const redrawn = epochsOf([opened, promoted, short, again])[1];
     expect([redrawn?.starter_tally?.wins, redrawn?.confirmed]).toEqual([5, false]);

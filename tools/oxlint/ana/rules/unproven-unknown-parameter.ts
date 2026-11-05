@@ -52,26 +52,30 @@ const PROVING_CALLS = new Set(["trustedJson", "errorMessage", "errorCode"]);
 const FUNCTION_TYPES = new Set(["ArrowFunctionExpression", "FunctionDeclaration", "FunctionExpression"]);
 
 /** What one function body says about the names in it. */
-type BodyEvidence = {
+interface BodyEvidence {
   /** Names a guard in this body narrowed outright. */
   proved: Set<string>;
   /** `const to = f(from)`: proving `to` proves `from`. */
-  aliases: Array<{ from: string; to: string }>;
+  aliases: { from: string; to: string }[];
   /** `f(x)` at argument `index`: proving `f`'s parameter there proves `x`. */
-  calls: Array<{ argument: string; callee: string; index: number }>;
-};
+  calls: { argument: string; callee: string; index: number }[];
+}
 
 /** An `unknown` parameter, keeping the position it holds in the real parameter list: a call edge
  *  arrives by argument position, and a filtered list would answer for the wrong parameter. */
-type UnknownParameter = { index: number; name: string | null; annotation: ESTree.TSTypeAnnotation };
+interface UnknownParameter {
+  index: number;
+  name: string | null;
+  annotation: ESTree.TSTypeAnnotation;
+}
 
 /** One function with a body, plus the name its callers use. */
-type Analysed = {
+interface Analysed {
   callableAs: string | null;
   parameters: UnknownParameter[];
   predicateOn: string | null;
   evidence: BodyEvidence;
-};
+}
 
 /** Whether a node's property holds a string. The rule reads `name`, `value` and `operator` this
  *  way, and this is the only place that has to ask what a value is. */
@@ -109,16 +113,16 @@ function parameterName(parameter: Parameter): string | null {
   if (parameter.type === "TSParameterProperty") return parameterName(parameter.parameter);
   if (parameter.type === "AssignmentPattern") return parameterName(parameter.left);
   if (parameter.type === "RestElement") return parameterName(parameter.argument);
-  return parameter.type === "Identifier" ? parameter.name : null;
+  return identifierName(parameter);
 }
 
 /** The called function's name, whether `isString(x)` or `Array.isArray(x)`. */
 function calleeName(node: AnyNode): string | null {
-  const callee = node["callee"];
+  const callee = node.callee;
   if (!isNode(callee)) return null;
   if (callee.type === "Identifier") return stringProperty(callee, "name");
-  if (callee.type !== "MemberExpression" || callee["computed"]) return null;
-  const property = callee["property"];
+  if (callee.type !== "MemberExpression" || callee.computed) return null;
+  const property = callee.property;
   return isNode(property) ? stringProperty(property, "name") : null;
 }
 
@@ -128,20 +132,20 @@ function identifierName(value: unknown): string | null {
 
 function isNullish(value: unknown): boolean {
   if (!isNode(value)) return false;
-  if (value.type === "Literal") return value["value"] === null;
-  return value.type === "Identifier" && value["name"] === "undefined";
+  if (value.type === "Literal") return value.value === null;
+  return identifierName(value) === "undefined";
 }
 
 /** `instanceof`, `in` and a comparison against null or undefined each prove one operand. */
 function readBinary(node: AnyNode, evidence: BodyEvidence): void {
-  const operator = node["operator"];
-  const left = identifierName(node["left"]);
-  const right = identifierName(node["right"]);
+  const operator = node.operator;
+  const left = identifierName(node.left);
+  const right = identifierName(node.right);
   if (operator === "instanceof" && left !== null) evidence.proved.add(left);
   if (operator === "in" && right !== null) evidence.proved.add(right);
   const comparison = operator === "===" || operator === "!==" || operator === "==" || operator === "!=";
-  if (comparison && left !== null && isNullish(node["right"])) evidence.proved.add(left);
-  if (comparison && right !== null && isNullish(node["left"])) evidence.proved.add(right);
+  if (comparison && left !== null && isNullish(node.right)) evidence.proved.add(left);
+  if (comparison && right !== null && isNullish(node.left)) evidence.proved.add(right);
 }
 
 /** A proving callee proves every identifier argument; any other call records a call edge. */
@@ -149,7 +153,7 @@ function readCall(node: AnyNode, evidence: BodyEvidence): void {
   const callee = calleeName(node);
   if (callee === null) return;
   const proves = PROVING_NAME.test(callee) || PROVING_CALLS.has(callee);
-  const args = Array.isArray(node["arguments"]) ? node["arguments"] : [];
+  const args = Array.isArray(node.arguments) ? node.arguments : [];
   for (const [index, argument] of args.entries()) {
     const name = identifierName(argument);
     if (name === null) continue;
@@ -161,8 +165,8 @@ function readCall(node: AnyNode, evidence: BodyEvidence): void {
 function readBody(body: AnyNode): BodyEvidence {
   const evidence: BodyEvidence = { proved: new Set(), aliases: [], calls: [] };
   walkOwnBody(body, (node) => {
-    if (node.type === "UnaryExpression" && node["operator"] === "typeof") {
-      const name = identifierName(node["argument"]);
+    if (node.type === "UnaryExpression" && node.operator === "typeof") {
+      const name = identifierName(node.argument);
       if (name !== null) evidence.proved.add(name);
       return;
     }
@@ -175,8 +179,8 @@ function readBody(body: AnyNode): BodyEvidence {
       return;
     }
     if (node.type === "VariableDeclarator") {
-      const to = identifierName(node["id"]);
-      const init = node["init"];
+      const to = identifierName(node.id);
+      const init = node.init;
       if (to === null || !isNode(init)) return;
       walkOwnBody(init, (inner) => {
         const from = identifierName(inner);
@@ -188,11 +192,11 @@ function readBody(body: AnyNode): BodyEvidence {
 }
 
 function typePredicateName(node: AnyNode): string | null {
-  const returnType = node["returnType"];
+  const returnType = node.returnType;
   if (!isNode(returnType)) return null;
-  const annotation = returnType["typeAnnotation"];
+  const annotation = returnType.typeAnnotation;
   if (!isNode(annotation) || annotation.type !== "TSTypePredicate") return null;
-  return identifierName(annotation["parameterName"]);
+  return identifierName(annotation.parameterName);
 }
 
 export const unprovenUnknownParameterRule = defineRule({
@@ -247,12 +251,10 @@ export const unprovenUnknownParameterRule = defineRule({
 
     const collect = (node: AnyNode, callableAs: string | null) => {
       const parameters = unknownParameters(
-        /* SAFETY: every node type routed here carries an ESTree parameter list. */ node[
-          "params"
-        ] as Parameter[],
+        /* SAFETY: every node type routed here carries an ESTree parameter list. */ node.params as Parameter[],
       );
       if (parameters.length === 0) return;
-      const body = node["body"];
+      const body = node.body;
       if (!isNode(body)) {
         pushBodiless(node, parameters);
         return;

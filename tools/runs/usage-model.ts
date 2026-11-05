@@ -71,7 +71,7 @@ export interface Assessment {
 const HOUR = 3_600_000;
 export const HORIZON = 24;
 /** The days a fit may read, each tried, the one with the lower held-out error kept. */
-export const WINDOWS = [7, 14, 28] as const;
+const WINDOWS = [7, 14, 28] as const;
 const HELD = 48;
 const ROUNDS = 60;
 const SHRINK = 0.1;
@@ -95,7 +95,8 @@ export const weekPace = (week: { pct: number; reset: number }, at: number) =>
 export const sameWindow = (earlier: { pct: number; reset: number }, later: { pct: number; reset: number }) =>
   Math.abs(earlier.reset - later.reset) < HOUR && later.pct >= earlier.pct;
 const mean = (values: readonly number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
-const byTime = (history: readonly Snapshot[]) =>
+/** The readings of `history` that counted live runs, in time order. */
+export const byTime = (history: readonly Snapshot[]) =>
   history.filter(({ runs }) => runs !== undefined).toSorted((one, other) => one.at - other.at);
 
 /** The rise an hour of `login` up to reading `index` of `sorted`, from the nearest reading `BEFORE`

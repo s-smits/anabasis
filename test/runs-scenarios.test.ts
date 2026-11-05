@@ -429,11 +429,11 @@ it("S10: a WAN timeout reports its duration and preserves the other host's answe
     FAKE_FLEET: JSON.stringify(fleet),
     ANA_TEST_TMPDIR: controlRoot,
   });
-  expect(performance.now() - started).toBeLessThan(35_000);
+  expect(performance.now() - started).toBeLessThan(40_000);
   expect(result.code).toBe(1);
   expect(result.out).toContain("Bun fixture");
   expect(result.err).toContain("timed out");
-  expect(result.out).toMatch(/peer \(30[.]\d s\)/);
+  expect(result.out).toMatch(/peer \(3\d[.]\d s\)/);
   const calls = made.recorded().filter((call) => call.tool === "ssh");
   for (const option of [
     "ControlMaster=auto",

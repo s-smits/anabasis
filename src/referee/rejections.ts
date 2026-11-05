@@ -20,7 +20,8 @@
 import type { Regraded } from "../kernel/acceptance.ts";
 import { draw } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import { refusedBy, verdictsOf } from "../kernel/solves.ts";
+import { verdictsOf } from "../kernel/solves.ts";
+import { blockingOf } from "../kernel/verify.ts";
 import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
 import { RULINGS } from "./agreement.ts";
@@ -56,7 +57,7 @@ interface RepairReading {
  *  contract's format reached no check, and is not a rejection of the checker's. */
 function refused(events: readonly LogEvent[]): string[] {
   return [...verdictsOf(events).values()].flatMap((verdict) =>
-    refusedBy(verdict).length > 0 ? [verdict.solve] : [],
+    blockingOf(verdict.checker).length > 0 ? [verdict.solve] : [],
   );
 }
 

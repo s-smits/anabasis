@@ -255,7 +255,7 @@ describe("one reading", () => {
       objective: { ...lower, old: [10, 10], fresh: [8, 8] },
     }));
     const both = scored(better);
-    expect(both.differences).toEqual(units(6, 0, 300));
+    expect(both.differences).toEqual(units(6, 0, 60));
     expect(stepOf({ frontier: both, retained: "unmeasured" }, STRICT)).toBe("step");
     expect(better.map((pair) => differenceOf(pair, "validity"))).toEqual(units(0, 0, 0, 6));
     // A retained loss counts against the step: 6-1 at p 1/16.
@@ -305,7 +305,7 @@ describe("a task's pairings", () => {
     const cases: { pair: Paired; expected: number }[] = [
       { pair: { ...even, old: [F] }, expected: 600 },
       { pair: { ...even, used: { old: [{ billed: 0.2 }], fresh: [{ billed: 0.1 }] } }, expected: 0 },
-      { pair: { ...even, objective: { ...lowerRule, old: [1200], fresh: [1187] } }, expected: 33 },
+      { pair: { ...even, objective: { ...lowerRule, old: [1200], fresh: [1187] } }, expected: 3 },
       { pair: even, expected: 0 },
       {
         pair: {
@@ -313,7 +313,7 @@ describe("a task's pairings", () => {
           objective: { ...lowerRule, old: [1200], fresh: [1187] },
           used: { old: [{ billed: 0.4 }], fresh: [{ billed: 0.5 }] },
         },
-        expected: 33,
+        expected: 3,
       },
     ];
     for (const { pair, expected } of cases) {
@@ -351,24 +351,24 @@ describe("a task's measures", () => {
   it("reads objective direction, the objective gap floor and missing measures only between valid answers", () => {
     const even = { task: "t", old: [P, P], fresh: [P, P] };
     for (const [direction, old, fresh, expected] of [
-      ["lower", [10, 11], [8, 9], 300],
-      ["higher", [10, 11], [8, 9], -300],
-      ["lower", [10.05, 10], [10, 8], 150],
+      ["lower", [10, 11], [8, 9], 57],
+      ["higher", [10, 11], [8, 9], -57],
+      ["lower", [10.05, 10], [10, 8], 30],
       ["lower", [10.05, 10], [10, null], 0],
     ] as const) {
       expect(differenceOf({ ...even, objective: { direction, old, fresh } })).toBe(expected);
     }
-    expect(
-      pointsOf({
-        ...even,
-        old: [P, F],
-        fresh: [F, P],
-        objective: { ...lowerRule, old: [1, 1], fresh: [1, 100] },
-      }),
-    ).toEqual({ validity: 0, objective: -75 });
+    const crossed = pointsOf({
+      ...even,
+      old: [P, F],
+      fresh: [F, P],
+      objective: { ...lowerRule, old: [1, 1], fresh: [1, 100] },
+    });
+    expect(crossed.validity).toBe(0);
+    expect(crossed.objective).toBeCloseTo(-74.25, 10);
   });
 
-  it("weighs validity and the objective from their floors to saturation, and the bill not at all", () => {
+  it("weighs validity and the objective from their floors by their share, and the bill not at all", () => {
     const billed = (...each: number[]) => each.map((one) => ({ billed: one }));
     const even = { task: "c", old: [P, P], fresh: [P, P] };
     const cheap = { ...even, used: { old: billed(0.4, 0.4), fresh: billed(0.1, 0.1) } };
@@ -379,16 +379,19 @@ describe("a task's measures", () => {
       objective: { ...lowerRule, old: [old, old], fresh: [fresh, fresh] },
     });
     for (const [old, fresh, expected] of [
-      [100, 95, 150],
-      [100, 50, 300],
+      [100, 95, 15],
+      [100, 50, 150],
       [100, 99.5, 0],
-      [95, 100, -150],
+      [95, 100, -15],
+      // Measures either side of zero are a whole weight apart, never more.
+      [10, -10, 300],
+      [-10, 10, -300],
     ] as const) {
       expect(differenceOf(measured(old, fresh))).toBe(expected);
     }
     expect(
       pointsOf({ ...measured(10, 8), used: { old: billed(0.1, 0.1), fresh: billed(0.2, 0.2) } }),
-    ).toEqual({ validity: 0, objective: 300 });
+    ).toEqual({ validity: 0, objective: 60 });
     const failed = { ...cheap, fresh: [F, F] };
     expect(pointsOf(failed)).toEqual({ validity: -600, objective: 0 });
     expect(differenceOf({ ...failed, old: [F, F] })).toBe(0);
@@ -401,8 +404,8 @@ describe("a task's measures", () => {
     };
     const measuredPoints = pointsOf(lapsed);
     expect(measuredPoints.validity).toBe(-150);
-    expect(measuredPoints.objective).toBeCloseTo(225, 10);
-    expect(differenceOf(lapsed)).toBe(75);
+    expect(measuredPoints.objective).toBeCloseTo(45, 10);
+    expect(differenceOf(lapsed)).toBe(-105);
   });
 });
 

@@ -56,12 +56,13 @@ declare global {
      *  the signature TypeScript's own compiler and typescript-eslint give their `isArray`, written
      *  as the built-in rather than as a second function so nothing has to be taught to prefer it:
      *  a `JsonValue` narrows to `readonly JsonValue[]` and anything else to `readonly unknown[]`. */
+    // oxlint-disable-next-line typescript/method-signature-style -- an overload merged into the library's `ArrayConstructor`, which a property would redeclare
     isArray(arg: unknown): arg is readonly unknown[];
   }
 }
 
 /** A JSON object: the shape `isRecord` proves. */
-export type JsonObject = { [key: string]: JsonValue };
+export type JsonObject = Record<string, JsonValue>;
 
 /**
  * An object read by key, each value unknown until the reader checks the one it needs.

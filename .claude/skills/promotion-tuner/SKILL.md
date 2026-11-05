@@ -23,7 +23,7 @@ as this skill reads a replay.
 | --- | --- | --- |
 | The weights of validity and the objective (and the bill, in a tree before 2 November) | `WEIGHTS`, `src/kernel/compare.ts`; the operator's, in steps of five | `--weights v,o,b`, in hundredths, `b` 0 for a tree that weighs no bill |
 | The level | the campaign's opening; the operator's | `--level` |
-| The objective gap floor and the objective's full gain | `ROOM`, `FULL` | a candidate tree |
+| The objective gap floor | `ROOM` | a candidate tree |
 | How a measure is read over the pairings, and the test | `pointsOf`, `flipP`, `stepOf` | a candidate tree |
 
 The weights and the level are the operator's conditions, so a sweep of them is evidence brought to

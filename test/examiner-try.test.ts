@@ -3,7 +3,6 @@
 // host refuses the call, and that the solves stay out of every comparison and practice fold while
 // the campaign's budget pays for them.
 import { afterAll, describe, expect, it } from "bun:test";
-import { triedAs } from "../src/examiner/record.ts";
 import { writing } from "../src/examiner/write.ts";
 import { budgetLeft } from "../src/campaign/opening.ts";
 import { contentOf } from "../src/kernel/history.ts";
@@ -105,8 +104,7 @@ describe("trying the reference at writing", () => {
     }
     // A held task's instance runs under that task's id, and one no task holds under the id its
     // content names.
-    const unheld = triedAs(contentOf(present(made.handed[2], "the third solve's task")));
-    expect(unheld).toStartWith("try-");
+    const unheld = `try-${contentOf(present(made.handed[2], "the third solve's task")).slice(0, 12)}`;
     expect(made.handed.map(({ taskId }) => taskId)).toEqual(["x-1-001", "x-1-001", unheld, unheld, unheld]);
     // The solves are the session's: no comparison or practice fold counts them, no task's draw
     // moves, and the budget pays for each.
@@ -128,6 +126,34 @@ describe("trying the reference at writing", () => {
     );
     expect(made.handed).toEqual([]);
     expect(await said(made, { task: spelled(7), solves: 1 })).toContain("Solve 1: valid in 4 turns");
+  });
+
+  it("runs the reference's solves while the session's clock stands still, and a proposal outside it", async () => {
+    const made = seated(100, 2, []);
+    let paused = false;
+    let stood = 0;
+    const seen: boolean[] = [];
+    const within = async <T>(action: () => Promise<T>): Promise<T> => {
+      paused = true;
+      stood += 1;
+      try {
+        return await action();
+      } finally {
+        paused = false;
+      }
+    };
+    const solve = async (task: Task) => {
+      seen.push(paused);
+      return await made.probe.solve(task);
+    };
+    const mode = writing({ ...made.request, probe: { tries: 2, solve } }, undefined, "unseen", { within });
+    await invoke(toolOf(mode, TRY), "try", { solves: 2, task: spelled(7) });
+    const tried = stood;
+    await invoke(toolOf(mode), "put", { tasks: [instance(7)] });
+    expect(seen).toEqual([true, true]);
+    expect(tried).toBeGreaterThan(0);
+    expect(stood).toBe(tried);
+    expect(paused).toBe(false);
   });
 
   it("is given, described in the system prompt and counted in the limits only where the host gives a probe", () => {

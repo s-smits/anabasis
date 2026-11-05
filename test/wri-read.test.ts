@@ -486,6 +486,31 @@ describe("the reader of a round compared with another harness than its session s
     expect(called(open)).toBe(called(events));
   });
 
+  it("names every program a new harness's solves ran through bash, past cd, assignments, quotes and heredocs", () => {
+    // A harness's `.toolchain/bin` programs are reached on the shell's path, so until 5 November
+    // this line counted them as `bash` alone and could not say whether a solve used them.
+    const ran = events.flatMap((event): LogEvent[] => {
+      if (event.kind !== "solve.call") return [event];
+      const shell = (command: string): LogEvent => ({
+        ...event,
+        data: { ...event.data, tool: "bash", args: { command } },
+      });
+      return [
+        shell("cd /w && X=1 /h/.toolchain/bin/open-workspace d <<E\na | b; c\nE"),
+        shell("cat a | grep b"),
+        shell('cd /w\nX=$(/h/bin/fit "a | b") && echo "c; d" 2>&1\nfor f in x y; do /h/bin/run "$f"; done'),
+        event,
+      ];
+    });
+    const detail = overview(ran).triggers.find(({ name }) => name === "TOOLS CALLED")?.detail;
+    expect(detail).toContain(
+      "bash 12, submit 4; through bash: cat 4, echo 4, fit 4, grep 4, open-workspace 4, run 4",
+    );
+    expect(overview(events).triggers.find(({ name }) => name === "TOOLS CALLED")?.detail).toContain(
+      "through bash: none",
+    );
+  });
+
   it("names a reading the set-aside moves only where the tests without the bill disagree", () => {
     // Billed, the counted test clears (six wins) and the scored one does not; without the bill
     // both read the same six wins, or the counted test loses them.

@@ -46,7 +46,10 @@ export interface Ran extends Solve {
 }
 
 /** A solve that has ended. */
-type Ended = { readonly finished: number; readonly end: JsonObject };
+interface Ended {
+  readonly finished: number;
+  readonly end: JsonObject;
+}
 
 /** The verdict the log holds of a solve's answer. */
 export interface Judged {
@@ -168,7 +171,7 @@ export function ended<Each extends Solve>(solves: readonly Each[]): (Each & Ende
       const { finished, end } = solve;
       return finished === null || end === null ? [] : [{ ...solve, finished, end }];
     })
-    .sort((a, b) => a.finished - b.finished);
+    .toSorted((a, b) => a.finished - b.finished);
 }
 
 /** Whether a solve passed: true for a pass, false for a fail of any kind and for a solver's flag
@@ -180,14 +183,30 @@ export function passed({ ending }: Pick<Solve, "ending">): boolean | null {
   return ending?.outcome === "fail" || ending?.outcome === "flagged" ? false : null;
 }
 
-/** A rejection is established only when its latest ruling is earned; other endings need no ruling. */
-export function rejectionAside(events: readonly LogEvent[], solve: Pick<Solve, "id" | "ending">): boolean {
-  return (
-    solve.ending?.outcome === "fail" &&
-    solve.ending.kind === "rejected" &&
-    events.findLast(({ kind, data }) => kind === "referee.finding" && data.solve === solve.id)?.data
-      .ruling !== "earned"
+/** Whether an ending is an answer a check refused: the one ending the Referee rules, since only it
+ *  has a check's refusal to recompute, and the one that sets its task aside until that ruling is
+ *  earned (rule 8). A typed `Ending` and an ending as the log holds it are read alike. */
+export function rejected(ending: JsonObject | null | undefined): boolean {
+  return ending?.outcome === "fail" && ending.kind === "rejected";
+}
+
+/** What the Referee's last finding of each solve it read ruled, by the solve: null where that reader
+ *  gave no ruling, killed or failed before it ruled, which leaves the rejection unruled until it is
+ *  put to the Referee again (`unruledOf`, `src/campaign/round.ts`). */
+export function rulingsOf(events: readonly LogEvent[]): Map<string, string | null> {
+  return new Map(
+    events.flatMap(({ kind, data }) =>
+      kind === "referee.finding" && isString(data.solve)
+        ? [[data.solve, isString(data.ruling) ? data.ruling : null] as const]
+        : [],
+    ),
   );
+}
+
+/** A rejection is established only when its last finding (`rulingsOf`) ruled it earned; other
+ *  endings need no ruling. A comparison's `rejections` reads the same finding. */
+export function rejectionAside(events: readonly LogEvent[], solve: Pick<Solve, "id" | "ending">): boolean {
+  return rejected(solve.ending) && rulingsOf(events).get(solve.id) !== "earned";
 }
 
 /** The last verdict a log holds for each solve, by the solve. */
@@ -206,12 +225,6 @@ export function verdictsOf(events: readonly LogEvent[]): Map<string, Judged> {
       return [[data.solve, judged] as const];
     }),
   );
-}
-
-/** The checks that refused an answer; none for any verdict but a checker's fail. An answer some
- *  check refused is what a reviewer reads and a repair is held to. */
-export function refusedBy(verdict: Judged | undefined): readonly string[] {
-  return verdict?.checker?.kind === "fail" ? verdict.checker.blocking : [];
 }
 
 /** The checker's own verdict a `verdict` event holds, with its measure where one was taken, or

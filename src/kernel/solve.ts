@@ -87,9 +87,18 @@ export const SILENT_SECONDS = 10 * 60;
 
 /** The host's first cancellation source, carried through parent and invocation signals. */
 export class Cancellation extends Error {
-  constructor(readonly cancelledBy: CancellationOrigin) {
+  readonly cancelledBy: CancellationOrigin;
+
+  constructor(cancelledBy: CancellationOrigin) {
     super(`work cancelled by ${cancelledBy}`);
+    this.cancelledBy = cancelledBy;
   }
+}
+
+/** Whether a non-result was the task's own check, which could not run on the answer: the task's
+ *  fault rather than the solve's, so a round disputes the task and a solve is not run again. */
+export function checkCouldNotRun(ending: Ending): boolean {
+  return ending.outcome === "non-result" && ending.kind === "check";
 }
 
 /**

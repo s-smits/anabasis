@@ -135,7 +135,7 @@ interface CommandDirectories {
 export function toolTreeSearchDirs(toolTree: string): string[] {
   if (!existsSync(toolTree)) return [];
   const found: string[] = [join(toolTree, "bin")].filter(existsSync);
-  const queue: Array<{ dir: string; depth: number }> = [{ dir: toolTree, depth: 0 }];
+  const queue: { dir: string; depth: number }[] = [{ dir: toolTree, depth: 0 }];
   for (let visited = 0; queue.length > 0 && visited < TOOL_TREE_MAX_DIRS; visited += 1) {
     const { dir, depth } = /* SAFETY: the loop condition proves the queue is non-empty. */ queue.shift() as {
       dir: string;
@@ -147,7 +147,7 @@ export function toolTreeSearchDirs(toolTree: string): string[] {
       const children = readdirSync(dir, { withFileTypes: true })
         .filter((entry) => entry.isDirectory() && !entry.isSymbolicLink() && entry.name !== "node_modules")
         .map((entry) => join(dir, entry.name));
-      for (const child of children.sort(compareCodeUnits)) queue.push({ dir: child, depth: depth + 1 });
+      for (const child of children.toSorted(compareCodeUnits)) queue.push({ dir: child, depth: depth + 1 });
     } catch {
       // An unreadable directory holds no program this search can name.
     }
@@ -239,8 +239,8 @@ function commandReadAllows(
   const inside = (dir: string) => readDenies.some((root) => dir !== root && covers(root, dir));
   const manifests = own.flatMap((path) => ancestorDirectories(path).filter(inside));
   return {
-    roots: [...new Set([...covered, ...own])].sort(),
-    manifests: [...new Set(manifests)].sort().map((dir) => join(dir, "package.json")),
+    roots: [...new Set([...covered, ...own])].toSorted(),
+    manifests: [...new Set(manifests)].toSorted().map((dir) => join(dir, "package.json")),
   };
 }
 
@@ -250,11 +250,11 @@ function darwinCommandProfile(
   keptRoots: string[],
   dirs: Pick<CommandDirectories, "root" | "toolTree">,
 ) {
-  const writeDenies = [...new Set(["/", ...base.deniedWriteRoots])].sort();
+  const writeDenies = [...new Set(["/", ...base.deniedWriteRoots])].toSorted();
   // The seats' parent and the host's own scratch beside it. Reads are open by default, so both are
   // denied here and this seat's root is re-allowed after them.
   const closed = hostRoots();
-  const readDenies = [...new Set([...base.deniedReadRoots, ...closed])].sort();
+  const readDenies = [...new Set([...base.deniedReadRoots, ...closed])].toSorted();
   const { roots: readAllows, manifests } = commandReadAllows(base, readDenies, dirs);
   // The host's shared temporary folders. `mktemp` and Python follow `TMPDIR`, which is the seat's
   // own folder, and what a command spells as `/tmp/...` outright landed in a folder every seat of
@@ -355,7 +355,7 @@ export function commandIsolationPolicy(
    * build script spelling `/tmp` a private directory rather than the read-only root bind, where a
    * `mkdir` answers "Read-only file system".
    */
-  const readDenies = [...new Set([...base.deniedReadRoots, tmpdir(), "/tmp", "/var/tmp"])].sort();
+  const readDenies = [...new Set([...base.deniedReadRoots, tmpdir(), "/tmp", "/var/tmp"])].toSorted();
   return {
     ...shared,
     profile: null,

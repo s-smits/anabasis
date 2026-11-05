@@ -4,7 +4,7 @@
  * (`practiceRan`); its verdict (`verdictsOf`) and its ruling in the exam tier only, and the ruling
  * in neither while it is withheld (`rulingWithheld`, `withheld.ts`).
  */
-import { refusedBy } from "../../../../src/kernel/solves.ts";
+import { blockingOf } from "../../../../src/kernel/verify.ts";
 import { taskSets } from "../../../../src/kernel/task.ts";
 import { isNumber, isString } from "../../../../src/meta/json-shape.ts";
 import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
@@ -35,7 +35,7 @@ export function solveAnswer(reading: Reading, query: Query<"solve">): SolveDetai
           kind: judged.kind,
           answer: judged.answer ?? null,
           fault: judged.fault,
-          refusedBy: [...refusedBy(judged)],
+          refusedBy: [...blockingOf(judged.checker)],
         };
   return {
     tier,

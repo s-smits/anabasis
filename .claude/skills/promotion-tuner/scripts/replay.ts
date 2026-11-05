@@ -10,7 +10,7 @@
  * pairs again, and the tree's `pointsOf` scores each task by validity, the objective and the bill.
  * `--weights` weighs those measures otherwise without a candidate tree: each measure's points are
  * its mean over the pairings times its weight, so the tree's points are divided by its own weight
- * and multiplied by the one asked. The floors (`ROOM`, `FULL`, `CHEAPER`) shape the mean itself, so
+ * and multiplied by the one asked. The floor (`ROOM`) shapes the mean itself, so
  * a floor is changed in a candidate tree. One reading at or under the level over the frontier and
  * retained tasks together promotes only where the tree's own rule reads a step (`readsStep`, by
  * `stepOf`: without the bill from 31 October, both ways from 25 October), at the recorded level or
@@ -276,9 +276,9 @@ function readingsOf(score: Score, events: readonly LogEvent[], totals: Totals): 
     totals.readings += 1;
     totals.weighted += weighted ? 1 : 0;
     if (weighted && score.own) {
-      totals.moved += differences.join() === sets.flatMap((set) => set.stored).join() ? 0 : 1;
+      totals.moved += differences.join(",") === sets.flatMap((set) => set.stored).join(",") ? 0 : 1;
       totals.aaMoved +=
-        aa !== null && aa.differences.join() !== numbers(asRecord(noise)?.differences).join() ? 1 : 0;
+        aa !== null && aa.differences.join(",") !== numbers(asRecord(noise)?.differences).join(",") ? 1 : 0;
     }
     totals.toStep += step && reading !== "step" ? 1 : 0;
     totals.fromStep += !step && reading === "step" ? 1 : 0;

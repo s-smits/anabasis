@@ -108,7 +108,7 @@ export const PATIENCE_FLOOR_MS = 390;
  *  the host at a load of 30 on 12 cores, 13 browser cases failed a pre-push gate at 5 s each. */
 export const expect = web.configure({ timeout: ACTION_MS });
 /** How long the page waits after a read answers before it reads again (`POLL_MS`, `live.ts`). */
-const POLL_MS = 5_000;
+const POLL_MS = 5000;
 /** A desktop window, the width the operator reads the page at. */
 export const DESKTOP = { width: 1440, height: 1000 } as const;
 /** A phone held upright. */
@@ -141,7 +141,7 @@ export async function serveDirectory(root: string, tier: Tier = "default"): Prom
     detached: true,
   });
   const stop = async () => {
-    await interruptAndReapProcessGroup(child, 2_000);
+    await interruptAndReapProcessGroup(child, 2000);
   };
   try {
     const [origin, token] = await startLine(child.stdout);
@@ -257,8 +257,8 @@ export async function withClock(page: Page): Promise<void> {
 /** What the page shows two frames from now: "settled", or why not. */
 export function drawn(page: Page): Promise<string> {
   return page.evaluate(async () => {
-    await new Promise((done) => {
-      requestAnimationFrame(() => requestAnimationFrame(done));
+    await new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
     });
     const main = document.querySelector("main");
     if (main === null) return "no main";

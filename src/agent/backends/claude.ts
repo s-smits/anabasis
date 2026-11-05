@@ -505,7 +505,10 @@ function deliver(session: Session, result: McpResult): void {
   const id = result.toolCallId;
   if (id === undefined) throw new Error("a tool result carries no toolCallId to pair it with its call");
   const resolve = session.parked.get(id);
-  if (!resolve) return void session.early.set(id, result);
+  if (!resolve) {
+    session.early.set(id, result);
+    return;
+  }
   session.parked.delete(id);
   resolve(result);
 }
@@ -672,9 +675,9 @@ function close(key: string, session: Session): void {
   session.prompt.end();
   const end = () => session.abort.abort();
   const interrupted = session.query.interrupt();
-  if (session.reading) void interrupted.then(end, end);
+  if (session.reading) interrupted.then(end, end);
   else {
-    void interrupted.catch(end);
+    interrupted.catch(end);
     const before = reads.get(key) ?? Promise.resolve(null);
     reads.set(
       key,

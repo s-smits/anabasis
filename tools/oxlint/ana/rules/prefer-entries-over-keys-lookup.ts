@@ -28,7 +28,7 @@ import { methodCall } from "../shared/statements.ts";
  * because both halves are short and both names are in the loop header, and a false match needs a
  * second `o[k]` that means something else, which is the same rewrite anyway.
  *
- * The `delete` half was the rule's only census site (2026-09-20): `test/env-baseline.ts` walks
+ * The `delete` half was the rule's only census site (2026-09-20): `5bc9988:test/env-baseline.ts` walks
  * `Bun.env`'s keys and deletes the ones that would alter isolation. It never reads a value, so
  * `entries` would fetch every value in the environment to throw them all away.
  *

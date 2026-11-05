@@ -50,4 +50,5 @@ const antiSlopPlugin = eslintCompatPlugin({
   },
 });
 
+// oxlint-disable-next-line import/no-default-export -- Oxlint loads a JS plugin from its module's default export (`jsPlugins` in .oxlintrc.json)
 export default antiSlopPlugin;

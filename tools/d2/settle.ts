@@ -73,7 +73,8 @@ import { draw } from "#src/kernel/compare.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { stopRule } from "#src/campaign/admission.ts";
-import { refusedBy, verdictsOf } from "#src/kernel/solves.ts";
+import { verdictsOf } from "#src/kernel/solves.ts";
+import { blockingOf } from "#src/kernel/verify.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
@@ -129,7 +130,7 @@ function drawPacket(campaign: Campaign, events: readonly LogEvent[], session: st
       contract: campaign.contract,
       answer: verdict?.answer ?? null,
       // None where the answer passed.
-      refusedBy: refusedBy(verdict),
+      refusedBy: blockingOf(verdict?.checker),
     };
     writeFileSync(join(dir, `${solve}.json`), `${capturedJsonStringify(packet, null, 2)}\n`);
   }

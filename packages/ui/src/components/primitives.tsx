@@ -5,7 +5,7 @@ import { shortHash } from "../models.ts";
 import { hasText } from "../../../../src/meta/text.ts";
 
 /** How long a copied hash says so before it shows the hash again. */
-const COPIED_MS = 1_400;
+const COPIED_MS = 1400;
 
 export function Badge({
   tone = "neutral",
@@ -71,7 +71,7 @@ export function HashValue({
           setState((current) => (current === "revealed" ? "idle" : "revealed"));
           return;
         }
-        void clipboard
+        clipboard
           .writeText(value)
           .then(copied, () => setState((current) => (current === "revealed" ? "idle" : "revealed")));
       }}

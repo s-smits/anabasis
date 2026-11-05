@@ -1,4 +1,4 @@
-// The policy part of v1's `src/verify/solve-sandbox.ts`. v2 runs the loop in the host process and
+// The policy part of v1's `e7636e472:src/verify/solve-sandbox.ts`. v2 runs the loop in the host process and
 // every command under the command wall, whose wall test uses the launch in use (`walledBase`,
 // `src/tools/command.ts`).
 /** Host-owned OS isolation for a seat's commands: the base every command wall is built on

@@ -28,7 +28,7 @@ import { terminateAndReapProcessGroupId } from "../../src/meta/subprocess.ts";
  */
 /** Marks the child that serves, in its environment. */
 const SERVING = "ANA_UI_SERVING";
-const MOVED_MS = 2_000;
+const MOVED_MS = 2000;
 
 /** The commit the tree stands on, or "" where Git cannot say. */
 async function headOf(): Promise<string> {

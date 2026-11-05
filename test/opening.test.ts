@@ -19,15 +19,12 @@ describe("what a campaign runs by", () => {
   const billed = (dollars: number) => event("solve.finished", { solve: "s-1", billed: dollars });
   const ASKED = { unprepared: false, level: 0.1 };
 
-  it("is its opening: the limit, the sessions, and what is left of its total", () => {
+  it("is its opening and what is left of its total, read past an older opening's limit and sessions", () => {
     expect(openingOf([])).toBeNull();
-    expect(openingOf([opened])).toMatchObject({
-      limit: 40,
-      sessions: 2,
-      seats: { examiner: null },
-      prompt: null,
-      solver: null,
-    });
+    const opening = openingOf([opened]);
+    expect(opening).toMatchObject({ seats: { examiner: null }, prompt: null, solver: null });
+    expect(opening).not.toHaveProperty("limit");
+    expect(opening).not.toHaveProperty("sessions");
     // A campaign that opened from a prompt holds it, with who solves, and its plan says so.
     const asked = {
       ...opened.data,
@@ -41,7 +38,6 @@ describe("what a campaign runs by", () => {
       admits: ["check-a"],
     });
     expect(planOf([opened, billed(31.5), billed(8.5)], ASKED)).toEqual({
-      sessions: 2,
       patience: 6,
       unprepared: false,
       practice: null,

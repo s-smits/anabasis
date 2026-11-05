@@ -89,8 +89,8 @@ it("reads two comparisons from one stream, each with its whole draw, and scores 
   expect(new TextDecoder().decode(result.stderr)).toBe("");
   expect(result.exitCode).toBe(0);
   expect(differenceOf(pair)).toBe(0);
-  expect(output.match(/frontier without the bill  0-0-1/g)).toHaveLength(2);
-  expect(output.match(/frontier with the bill     1-0-0/g)).toHaveLength(2);
+  expect(output.match(/frontier without the bill {2}0-0-1/g)).toHaveLength(2);
+  expect(output.match(/frontier with the bill {5}1-0-0/g)).toHaveLength(2);
 });
 
 it("reads settled wrong passes as failures and matches the settled report's tally", () => {

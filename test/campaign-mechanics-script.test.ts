@@ -41,7 +41,7 @@ function logOf() {
 const opened = () => logOf().add("campaign.opened", OPENED).add("checker.read", { faults: [] });
 
 describe("ending.ts", () => {
-  it("groups moves by campaign ending and counts Builder departures separately", () => {
+  it("groups moves by campaign ending and counts each move by its code", () => {
     const log = opened()
       .move("build", "led", "b-1")
       .built("b-1", "finished")
@@ -54,10 +54,9 @@ describe("ending.ts", () => {
     expect(endings[0]?.ending).toBe("finished");
     expect(endings[0]?.moves).toStrictEqual({
       total: 2,
-      asked: 1,
       counts: { "build·led": 1, "compare·asked": 1 },
     });
-    expect(since.moves).toStrictEqual({ total: 1, asked: 0, counts: { "build·led": 1 } });
+    expect(since.moves).toStrictEqual({ total: 1, counts: { "build·led": 1 } });
   });
 
   it("ends on three consecutive crashes and resets the count when a session holds a task", () => {

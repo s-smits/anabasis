@@ -101,6 +101,8 @@ import {
   walledTools,
 } from "./tools.ts";
 
+const BUILD_FINISHED = "build.finished";
+
 /** The event a session starts with, which names its parent and what it practises on. */
 const BUILD_STARTED = "build.started";
 
@@ -350,7 +352,6 @@ export async function session(
     opened: null,
     told: new Set(),
     spent: 0,
-    disputed: new Set(),
     faulty: new Set(),
     faults: [],
     lists: null,
@@ -372,6 +373,7 @@ function openingFor(bench: Bench): string {
     bench.tasks.map(({ version, task }) => ({
       taskId: task.taskId,
       family: task.family,
+      left: taskStates(recorded).get(version) === "disputed",
       ...record(recorded, version, bench.parent),
     })),
     // The count it opens with is the one `practice` holds it to (`practiceLeft`).
@@ -538,7 +540,7 @@ async function finishSession(bench: Bench, sat: Sat, clock: BuildClock, turns: n
   if (ended === "crashed" || ended === "killed") await keepPractised(log, request.id, request.states);
   // Kept before the session is recorded as ended, so a session on record as ended has its notes.
   keepMemory(bench.home, request.memory, request.id);
-  append(log, "build.finished", {
+  append(log, BUILD_FINISHED, {
     session: request.id,
     ended,
     harness: frozen?.harness.digest ?? null,
@@ -547,7 +549,6 @@ async function finishSession(bench: Bench, sat: Sat, clock: BuildClock, turns: n
     crash,
     ...sat.spent,
     practiceSolves: bench.spent,
-    disputed: [...bench.disputed],
     faultyChecks: [...bench.faulty],
     reviewFaults: bench.faults,
     seconds: (performance.now() - clock.began) / 1000,
@@ -571,7 +572,7 @@ async function finishSession(bench: Bench, sat: Sat, clock: BuildClock, turns: n
 export function spent(events: readonly LogEvent[], id: string): string | null {
   const mine = events.filter(({ data }) => data.session === id);
   if (!mine.some(({ kind }) => kind === BUILD_STARTED)) return null;
-  const ended = mine.findLast(({ kind }) => kind === "build.finished")?.data.ended;
+  const ended = mine.findLast(({ kind }) => kind === BUILD_FINISHED)?.data.ended;
   if (ended === undefined) {
     return `session ${id} started and never finished; a round does not run a second session under one id`;
   }
@@ -587,7 +588,7 @@ export function spent(events: readonly LogEvent[], id: string): string | null {
 async function left(events: readonly LogEvent[], request: BuildRequest, parent: string) {
   const mine = events.filter(({ data }) => data.session === request.id);
   const started = mine.find(({ kind }) => kind === BUILD_STARTED)?.data;
-  const finished = mine.findLast(({ kind }) => kind === "build.finished")?.data;
+  const finished = mine.findLast(({ kind }) => kind === BUILD_FINISHED)?.data;
   if (started === undefined) return undefined;
   if (started.parent !== parent) {
     throw new Error(`session ${request.id} started from another harness than ${request.parent}`);

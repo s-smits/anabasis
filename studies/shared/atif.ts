@@ -3,7 +3,9 @@
  * pydantic models define it (harbor-framework/harbor, `src/harbor/models/trajectories/`, at
  * 6c9d3d66). Benchmarks that run on Harbor read an agent's run in this shape, Harbor's viewer
  * shows it, and Harness²'s agents write it, so a trace in it can be read beside theirs by their
- * tools instead of by a reader of this log.
+ * tools instead of by a reader of this log. The study's solve in a benchmark's container writes it
+ * (`pi-solve.ts`); until 5 November it lived in `src/kernel` and the runs zip wrote one a trace too,
+ * which no handover on record read, so it is the study's alone.
  *
  * It is a view of `src/kernel/trace.ts` and reads nothing else. One step is one model turn: the
  * text it said, the calls it made, each call's result as an observation linked by the call's id,
@@ -21,9 +23,9 @@
  * given one from its place in the log. What ATIF has no field for, a turn's stop reason and error,
  * a call's duration and whether it failed, goes in `extra` under Harbor's own snake case.
  */
-import { asRecord, isNumber, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
-import type { LogEvent } from "./log.ts";
-import { type Call, type Seat, type Turn, tracesIn } from "./trace.ts";
+import type { LogEvent } from "#src/kernel/log.ts";
+import { type Call, type Seat, type Turn, tracesIn } from "#src/kernel/trace.ts";
+import { asRecord, isNumber, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 
 const ATIF_VERSION = "ATIF-v1.8";
 
@@ -157,11 +159,4 @@ export function trajectoryOf(events: readonly LogEvent[], seat: Seat, id: string
     },
     extra: { seat },
   };
-}
-
-/** Every seat's solve or session that `events` holds a trace of, in the order each first appears. */
-export function tracedRuns(events: readonly LogEvent[]): { readonly seat: Seat; readonly id: string }[] {
-  // A key set again keeps the place it was first set at.
-  const seen = new Map(tracesIn(events).map(({ seat, id }) => [`${seat}\u0000${id}`, { seat, id }]));
-  return [...seen.values()];
 }

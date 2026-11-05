@@ -1,5 +1,6 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
+import { identifierName, isNamedMember } from "../shared/statements.ts";
 
 /** Oxlint's `Function` covers the three declaration forms alone, so an arrow needs its own arm. */
 type AnyFunction = ESTree.Function | ESTree.ArrowFunctionExpression;
@@ -99,8 +100,7 @@ export const noPassThroughWrapperRule = defineRule({
     function calleeRoot(node: ESTree.Node): string | null {
       if (node.type === "Identifier") return node.name;
       if (node.type === "ThisExpression") return "this";
-      if (node.type !== "MemberExpression" || node.computed) return null;
-      return calleeRoot(node.object);
+      return isNamedMember(node) ? calleeRoot(node.object) : null;
     }
 
     /** Whether a call's arguments are exactly these parameter names, in order. */
@@ -160,7 +160,7 @@ export const noPassThroughWrapperRule = defineRule({
       ArrowFunctionExpression: (node) => {
         const declarator = node.parent;
         if (declarator.type !== "VariableDeclarator") return;
-        check(node, declarator.id.type === "Identifier" ? declarator.id.name : null);
+        check(node, identifierName(declarator.id));
       },
       "Program:exit": () => {
         for (const row of found) {

@@ -136,6 +136,14 @@ describe("a seed", () => {
       expect(seedCampaign(homed, join(root, name), cut).examinerHome).toBe(false);
       expect(existsSync(join(root, name, "examiner-home"))).toBe(false);
     }
+    // A drafting session replaces the home as it ends, as a writing session does.
+    const drafted = campaignAt("homed-drafted", [
+      line("draft.started", { session: "d-1" }),
+      line("draft.finished", { session: "d-1" }),
+    ]);
+    mkdirSync(join(drafted, "examiner-home"), { recursive: true });
+    expect(seedCampaign(drafted, join(root, "drafted-cut"), { before: "d-1" }).examinerHome).toBe(false);
+    expect(existsSync(join(root, "drafted-cut", "examiner-home"))).toBe(false);
   });
 
   it("refuses a name that is taken and a folder with no log, and leaves nothing of a copy that does not read", () => {

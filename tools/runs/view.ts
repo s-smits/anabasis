@@ -167,10 +167,10 @@ export function decidedOn(events: readonly LogEvent[], values: Asked = {}): Deci
 export function planOn(events: readonly LogEvent[], values: Asked = {}): Plan {
   const opening = openingOf(events);
   // Each term as this view is asked it, then as the opening keeps it, then the tree's default: the
-  // scored tasks are the record's where it names them (`planOf`).
-  const term = (flag: "level" | "target" | "practice", fallback?: string) =>
+  // scored tasks are the setting's where it names them, then the flag's (`planOf`).
+  const term = (flag: "level" | "practice", fallback: string) =>
     values[flag] ?? opening?.terms[flag] ?? fallback;
-  const target = term("target");
+  const { target } = values;
   return planOf(
     events,
     {

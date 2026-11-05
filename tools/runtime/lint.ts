@@ -31,7 +31,7 @@
 import { existsSync } from "../../src/meta/filesystem.ts";
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
-import { runSync } from "../../src/meta/subprocess.ts";
+import { runSync, zeroExitText } from "../../src/meta/subprocess.ts";
 import {
   type Ledger,
   ledgerOnDisk,
@@ -213,16 +213,16 @@ export function examplesFor(diagnostics: readonly Diagnostic[]): string[] {
 
 /** True when the clone at `cwd` sets `ana.lintStrict`, git's own boolean spellings included. */
 export function strictByConfig(cwd: string): boolean {
-  const run = runSync(["git", "config", "--type=bool", "--get", "ana.lintStrict"], { cwd });
-  return run.exitCode === 0 && new TextDecoder().decode(run.stdout).trim() === "true";
+  return (
+    zeroExitText(runSync(["git", "config", "--type=bool", "--get", "ana.lintStrict"], { cwd })) === "true"
+  );
 }
 
 /** Where this worktree keeps the last run's sites, or null outside a git checkout. */
 export function sitesCachePath(): string | null {
-  const run = runSync(["git", "rev-parse", "--path-format=absolute", "--git-path", SITES_CACHE], {
-    cwd: ROOT,
-  });
-  return run.exitCode === 0 ? new TextDecoder().decode(run.stdout).trim() : null;
+  return zeroExitText(
+    runSync(["git", "rev-parse", "--path-format=absolute", "--git-path", SITES_CACHE], { cwd: ROOT }),
+  );
 }
 
 /**

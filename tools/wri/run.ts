@@ -1,6 +1,6 @@
 /**
  * The triggers of the lanes that read how a run was conducted rather than what it measured: the
- * moves the campaign command made against its table (lane 28), the Builder's conversation across
+ * endings a campaign went on from and the operator's words (lane 28), the Builder's conversation across
  * its compactions (lane 31), the exam a campaign drafted from its prompt (lane 8), the launches
  * that ran it (lane 32), and whether its log reads in order (lane 33). Lane 7's count of the
  * Referee's refused evidence sits here too, since `read.ts` stands near the size policy's ceiling.
@@ -18,19 +18,11 @@ import { plural } from "#src/meta/text.ts";
 import type { Receipt } from "../runs/receipt.ts";
 import { fired, type Index, share, tally, text, type Trigger } from "./folds.ts";
 
-/** Lane 28: moves the Builder made where the table named another, by what the table named as the
- *  move's reason says it (`campaign-actions.ts`), endings the campaign went on from, and the
- *  operator's words with how many an event acted on. On 1 November the ablation's displaced
- *  starter comparisons read only as `compare 1` here, and lane 28 found them in the reasons. */
+/** Lane 28: endings the campaign went on from, and the operator's words with how many an event
+ *  acted on. Until 5 November it also counted the moves a Builder made where the table named
+ *  another (`MOVES ASKED`): the Builder is no longer told the table's move, so the count read
+ *  bookkeeping: 13 of 16 jobstat comparisons, 9 where the table named a build (overhaul report 11). */
 function moveTriggers(log: Index): Trigger[] {
-  const moves = log.of("campaign.move");
-  // A led Builder's own comparison ends the build the table named: the table never sees a harness
-  // waiting before `compare` freezes one, so on 4 November 12 of 12 such comparisons over six buffer
-  // runs read as asked here, and the count could not tell an override from the usual path.
-  const asked = moves.filter(
-    (data) =>
-      data.code === "asked" && !(data.move === "compare" && text(data.why).endsWith("table named build")),
-  );
   const last = log.events.length - 1;
   const endings = log.events.flatMap(({ kind, data }, index) =>
     kind === "campaign.ended" && index < last ? [`${text(data.ending)} at event ${String(index)}`] : [],
@@ -40,14 +32,6 @@ function moveTriggers(log: Index): Trigger[] {
     kind === "campaign.word" ? [{ data, index }] : [],
   );
   return [
-    ...(asked.length > 0
-      ? [
-          fired(
-            "MOVES ASKED",
-            `${share(asked.length, moves.length)} moves the Builder asked for where the table named another: ${tally(countBy(asked, (data) => `${text(data.move)} for ${text(data.why).split("where the table named ")[1] ?? "a move unnamed"}`))}`,
-          ),
-        ]
-      : []),
     ...(endings.length > 0 ? [fired("ENDED AND WENT ON", endings.join("; "))] : []),
     ...(words.length > 0
       ? [

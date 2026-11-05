@@ -1,4 +1,4 @@
-// The triggers of lanes 7, 8, 28, 31, 32 and 33 read how a run was conducted: the moves against the table,
+// The triggers of lanes 7, 8, 28, 31, 32 and 33 read how a run was conducted: the endings and the operator's words,
 // the Builder's compactions, the drafted exam, the launches and the log's order. Each case sets a
 // log that should fire beside the nearest one that should not.
 import { describe, expect, it } from "bun:test";
@@ -34,34 +34,14 @@ const timed = (rows: readonly (readonly [number, EventKind, JsonObject])[]): Log
   rows.map(([minute, kind, data]) => event(kind, data, minute));
 const hoursOf = (events: readonly LogEvent[]) =>
   overview(events).rows[0]?.lines.find((line) => line.startsWith("hours:")) ?? "";
-describe("the moves against the table (lane 28)", () => {
-  it("counts the moves the Builder asked for where the table named another, and only those", () => {
-    // The reason `comparedOf` writes: the ablation's displaced starter comparisons of 1 November.
-    const starter = "the Builder asked for it, where the table named a comparison of the starter harness";
+describe("the endings and words (lane 28)", () => {
+  it("counts no move a Builder made, the old `asked` code included", () => {
+    const why = "the Builder asked for it, where the table named a comparison of the starter harness";
     const moves = logged(
-      ["campaign.move", { move: "compare", code: "asked", why: starter }],
-      ["campaign.move", { move: "examine", code: "no-room", why: "" }],
-      ["campaign.move", { move: "compare", code: "asked", why: starter }],
-      ["campaign.move", { move: "compare", code: "asked", why: "" }],
+      ["campaign.move", { move: "compare", code: "asked", why }],
+      ["campaign.move", { move: "compare", code: "led", why: "" }],
     );
-    const detail = fired(moves, "MOVES ASKED");
-    expect(detail).toContain("3 of 4 moves");
-    expect(detail).toContain("compare for a comparison of the starter harness 2");
-    expect(detail).toContain("compare for a move unnamed 1");
-    expect(fired(moves.slice(1, 2), "MOVES ASKED")).toBeUndefined();
-  });
-
-  it("leaves a led Builder's comparison at the end of the build the table named out of the count", () => {
-    const built = {
-      move: "compare",
-      code: "asked",
-      why: "the Builder asked for it, where the table named build",
-    };
-    expect(fired(logged(["campaign.move", built]), "MOVES ASKED")).toBeUndefined();
-    const over = { ...built, why: "the Builder asked for it, where the table named examine" };
-    expect(fired(logged(["campaign.move", built], ["campaign.move", over]), "MOVES ASKED")).toContain(
-      "1 of 2 moves",
-    );
+    expect(fired(moves, "MOVES ASKED")).toBeUndefined();
   });
 
   it("names an ending the log goes on after, and leaves the last event's ending alone", () => {

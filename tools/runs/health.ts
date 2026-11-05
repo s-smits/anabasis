@@ -8,7 +8,7 @@ import { availableParallelism, loadavg } from "#src/meta/os.ts";
 import { basename, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
+import { runSync, zeroExitText } from "#src/meta/subprocess.ts";
 import { controllersOf } from "./code.ts";
 import { asked, hosts } from "./hosts.ts";
 import { liveHere, seatsIn } from "./live.ts";
@@ -47,8 +47,7 @@ type Health = Static<typeof HEALTH>;
 /** Probe optional OS facts without treating an absent macOS tool as a failed host. */
 function probe(command: readonly string[]): string | null {
   try {
-    const result = runSync([...command], { timeout: 20_000 });
-    return result.exitCode === 0 ? decodeOutput(result.stdout).trim() : null;
+    return zeroExitText(runSync([...command], { timeout: 20_000 }));
   } catch {
     return null;
   }

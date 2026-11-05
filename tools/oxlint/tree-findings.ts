@@ -26,7 +26,10 @@ import {
   READER_ROOTS,
 } from "../loc/source-policy.ts";
 import { copiedBlocks } from "./tree-copied-block.ts";
+import { factsWithoutOwner } from "./tree-fact.ts";
 import { identitiesWithoutOwner } from "./tree-identity.ts";
+import { overwrittenKeys } from "./tree-overwritten-key.ts";
+import { envExamples, staleReferences } from "./tree-stale-reference.ts";
 import {
   NOT_SLOP_LEDGER,
   type Place,
@@ -43,11 +46,14 @@ type TreeFindingKind =
   | "unread-field"
   | "rule-without-fixture"
   | "identity-without-owner"
+  | "fact-without-owner"
   | "superseded-schema-tag"
   | "compatibility-path"
   | "orphan-module"
   | "test-only-module"
   | "unread-forward"
+  | "overwritten-key"
+  | "stale-reference"
   | "filesystem-import-budget";
 
 export interface TreeFinding {
@@ -97,6 +103,8 @@ export const TREE_FINDING_ARGUMENTS: Readonly<Record<TreeFindingKind, string>> =
     "A lint rule a plugin registers that no file under test/ names. A rule that has stopped reporting and a clean tree read the same, so each rule keeps a fixture. Vendored plugins are read too, because their rules fail this repository's strict lint.",
   "identity-without-owner":
     'One name this repository owns (a bundle path, an evidence file, a schema tag) spelled as a literal in two or more files with no constant naming it. A typo in one copy reaches a reader as a missing file. Import the owner the detail names, or give the name one. Literals the compiler already checks (a type, a `satisfies` table, an `as const` list a type is read from), prose inside another string or a template, import specifiers and short words are skipped; `join(dir, "a", "b.ts")` reads as `a/b.ts`.',
+  "fact-without-owner":
+    "One fact about a value, a field tested against a literal and read with another field of the same value (`checker.kind === \"pass\"` with `checker.objective`), written out as an expression in three or more production files. Give it one function in the module that owns the value's type and call it at every place; where the detail names a function that already returns it, call that one (rule 12). Local names, `?.`, `!`, `as`, either equality and a comparison with `undefined` or `null` read alike. A value's own `id` and a comparison with a value of the code's own are no part of a fact, and tests, vendored and generated files are not read.",
   "superseded-schema-tag":
     "A `name/vN` tag spelled in a file while another file spells a later version of it. One version is written, so the reader of the older one is a compatibility path: drop it.",
   "compatibility-path":
@@ -107,6 +115,10 @@ export const TREE_FINDING_ARGUMENTS: Readonly<Record<TreeFindingKind, string>> =
     "A module only tests import or name. The product never reaches it, so its tests prove a path nobody takes. Delete it with its tests, or import it where the product needs it.",
   "unread-forward":
     'A re-export (`export { a } from "./owner.ts"`, or `export { a }` of an imported name) that no file imports from the forwarding module. Every caller reads the owner, so the forward is a second door kept in step for nobody. Delete it. A package `index` and a `node:` forward are skipped.',
+  "overwritten-key":
+    "A key a caller passes in the object it hands a function that spreads that parameter and then sets the same key itself, so the caller's value is never read. Delete the caller's key, or where the caller meant something the function ignores, make the function honour it. A key set before the spread, inside a conditional spread or read from the parameter anywhere in the function stays the caller's, and a parameter the function passes on whole is not read.",
+  "stale-reference":
+    "A backticked repository path in Markdown or a TypeScript comment that names no file or directory, or an `ANA_*` setting documented in a `.env*.example`, AGENTS.md or a SKILL.md that no code or script file spells. A reader who follows it finds nothing. Point a live description at where the thing lives now, or delete the sentence; in a record of what held at a time, cite the file at the last commit that held it, as `<sha>:path`. Not read: vendored trees and the documents of v1's record (docs/transfer.md, docs/v1.md, studies/). Not counted: a commit-qualified path, a placeholder or glob, a one-letter example name, a path Git ignores, and one that exists from a directory above the document.",
   "filesystem-import-budget":
     "How many names a file imports from src/meta/filesystem.ts, above six. A register: the count stands, and a change adds at most one.",
 };
@@ -165,6 +177,14 @@ export const TREE_FINDING_EXAMPLES: Readonly<
         '// both import the owner\nimport { VERDICTS_FILE } from "../../src/kernel/log.ts";\nconst verdicts = join(folder, VERDICTS_FILE);',
     },
   ],
+  "fact-without-owner": [
+    {
+      before:
+        '// the same test and read in compare.ts, tools.ts and gate-era.ts\nconst measure = checker?.kind === "pass" ? (checker.objective ?? null) : null;',
+      after:
+        '// verify.ts, which declares Verdict, owns it, and each place calls it\nexport function objectiveOf(verdict: Verdict | null | undefined): number | null {\n  return verdict?.kind === "pass" ? (verdict.objective ?? null) : null;\n}',
+    },
+  ],
   "superseded-schema-tag": [
     {
       before:
@@ -176,7 +196,7 @@ export const TREE_FINDING_EXAMPLES: Readonly<
     {
       // `\u006c` spells the l of legacy, so the scan does not report this file for its own example.
       before:
-        "const \u006cegacyRows = rows.filter((row) => row.version === 1);\nexport const read = [...\u006cegacyRows.map(upgrade), ...rows];",
+        "const \u006CegacyRows = rows.filter((row) => row.version === 1);\nexport const read = [...\u006CegacyRows.map(upgrade), ...rows];",
       after: "// one version is written, so one is read\nexport const read = rows.map(parseRow);",
     },
   ],
@@ -195,11 +215,31 @@ export const TREE_FINDING_EXAMPLES: Readonly<
         '// deleted with its tests, or imported where a solve reads it\nimport { degenerate } from "./degeneracy.ts";\nif (degenerate(schema)) throw new Error("the schema names no field");',
     },
   ],
+  "stale-reference": [
+    {
+      before: "// Measured on `src/run/admission.ts`, which v2 did not copy.\nexport const FLOOR = 8;",
+      after: "// Measured on `5bc9988:src/run/admission.ts`, which v2 did not copy.\nexport const FLOOR = 8;",
+    },
+    {
+      // `\u0041` spells the A of each setting, so this file does not count as reading it.
+      before: "// .env.runs.example documents a setting no code file spells:\n// # \u0041NA_CENTRAL=here",
+      after:
+        '// the example documents what code reads, and the line is deleted\nexport const SETTINGS = ["\u0041NA_HOSTS"];',
+    },
+  ],
   "unread-forward": [
     {
       before:
         '// reports.ts forwards a name every caller imports from room.ts itself\nexport { roomOf } from "./room.ts";',
       after: '// the forward is deleted; callers keep their own import\nimport { roomOf } from "./room.ts";',
+    },
+  ],
+  "overwritten-key": [
+    {
+      before:
+        '// answer.ts: tool() returns defineTool({ ...definition, executionMode: "sequential" })\nexport const listTool = tool({ name: "list", executionMode: "sequential", execute });',
+      after:
+        '// tool() owns the mode, so the caller leaves it out\nexport const listTool = tool({ name: "list", execute });',
     },
   ],
 };
@@ -575,7 +615,7 @@ function sitePlaces(finding: TreeFinding, files: ReadonlyMap<string, string>): P
  *  ledger check read this to find an id and to judge a row stale. */
 export function treeSites(): TreeSite[] {
   const files = corpus(READER_ROOTS, READ_AS_SOURCE);
-  const prose = corpus(PROSE_ROOTS, PROSE_SUFFIXES);
+  const prose = new Map([...corpus(PROSE_ROOTS, PROSE_SUFFIXES), ...envExamples()]);
   for (const path of ROOT_FILES) if (existsSync(path)) prose.set(path, readFileSync(path, "utf8"));
   const owned = new Map(
     [...corpus(OWNED_ROOTS, [".ts", ".tsx", ".mts"])].filter(
@@ -584,17 +624,20 @@ export function treeSites(): TreeSite[] {
   );
   const code = new Map([...files].map(([path, text]) => [path, codeOf(path, text)]));
   const tree: Tree = { owned, files, code };
-  const all = new Map([...owned, ...files]);
+  const all = new Map([...owned, ...files, ...prose]);
   return [
     ...exportsReadOnce(tree),
     ...copiedBlocks(owned),
     ...unreadFields(tree),
     ...rulesWithoutFixture(tree),
     ...identitiesWithoutOwner(owned),
+    ...factsWithoutOwner(owned),
     ...supersededSchemaTags(code),
     ...compatibilityPaths(code),
     ...unreadModules(code, prose),
     ...unreadForwards(tree),
+    ...overwrittenKeys(owned),
+    ...staleReferences(new Map([...files, ...prose])),
     ...filesystemBudget(tree),
   ]
     .filter(

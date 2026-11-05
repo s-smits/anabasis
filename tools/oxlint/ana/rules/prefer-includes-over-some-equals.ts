@@ -2,6 +2,7 @@ import { defineRule, type ESTree } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
 import { annotatedKind } from "../shared/annotated-kind.ts";
 import { holdsProse } from "../shared/masked.ts";
+import { identifierName, isNamedMember } from "../shared/statements.ts";
 
 /**
  * `segments.some((segment) => segment === "")` is `segments.includes("")` with a closure around
@@ -44,7 +45,7 @@ function iterated(receiver: ESTree.Node, iterators: ReadonlySet<string>): boolea
   if (receiver.type === "MemberExpression") return iterated(receiver.object, iterators);
   if (receiver.type !== "CallExpression" || receiver.callee.type !== "MemberExpression") return false;
   const { object, property } = receiver.callee;
-  const name = property.type === "Identifier" ? property.name : "";
+  const name = identifierName(property) ?? "";
   const makes =
     (ITERATOR_CALLS.has(name) && receiver.arguments.length === 0) ||
     (name === "from" && object.type === "Identifier" && object.name === "Iterator");
@@ -118,8 +119,7 @@ export const preferIncludesOverSomeEqualsRule = defineRule({
 
       CallExpression(node) {
         const { callee } = node;
-        if (callee.type !== "MemberExpression" || callee.computed) return;
-        if (callee.property.type !== "Identifier" || callee.property.name !== "some") return;
+        if (!isNamedMember(callee) || identifierName(callee.property) !== "some") return;
         if (iterated(callee.object, iterators)) return;
         const [predicate] = node.arguments;
         const found = comparison(node);

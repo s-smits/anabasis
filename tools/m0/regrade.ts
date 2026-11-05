@@ -92,7 +92,7 @@ async function main(): Promise<number> {
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
-  for (const line of mismatches.sort()) console.log(line);
+  for (const line of mismatches.toSorted()) console.log(line);
   const seconds = ((performance.now() - started) / 1000).toFixed(0);
   console.log(`${matched} of ${total} verdicts match v1's, in ${seconds} s`);
   return mismatches.length === 0 ? 0 : 1;

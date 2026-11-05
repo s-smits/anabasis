@@ -30,7 +30,7 @@ import type { Limits } from "../kernel/condition.ts";
 import { answerFormatFault, type Contract } from "../kernel/contract.ts";
 import { append } from "../kernel/log.ts";
 import { NOTHING_SPENT, priceKey } from "../kernel/meter.ts";
-import { Cancellation, type Ending, unanswered } from "../kernel/solve.ts";
+import { Cancellation, checkCouldNotRun, type Ending, unanswered } from "../kernel/solve.ts";
 import type { Task, Verifier } from "../kernel/verify.ts";
 import { lstatSync, rmSync } from "../meta/filesystem.ts";
 import type { JsonValue } from "../meta/json-shape.ts";
@@ -185,7 +185,7 @@ export async function waitOut(
 export async function solve(request: SolveRequest, wait?: (ms: number) => Promise<void>): Promise<Ending> {
   for (let attempt = 1, reruns = 0; ; attempt++) {
     const ending = await attemptSolve(request, `${request.id}-${String(attempt)}`);
-    const solveSide = ending.outcome === "non-result" && ending.kind !== "check";
+    const solveSide = ending.outcome === "non-result" && !checkCouldNotRun(ending);
     if (!solveSide) return ending;
     if (
       ending.kind === "provider" &&

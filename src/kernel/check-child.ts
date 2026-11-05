@@ -59,7 +59,7 @@ interface ToolRun {
 }
 
 interface CheckRuntime {
-  readonly tools: { run(call: ToolCall): Promise<ToolRun> };
+  readonly tools: { run: (call: ToolCall) => Promise<ToolRun> };
 }
 
 /** The shell's own exit codes for a program it could not execute (126) or could not find (127). */
@@ -134,7 +134,7 @@ async function runTool(input: CheckChildInput, call: ToolCall, lapses: string[])
   return { nonResult: null, exitCode, stdout, stderr };
 }
 
-/** v1's reading (`src/verify/host.ts`, 74b10d9) of a run whose program never started: a failing exit
+/** v1's reading (`74b10d9:src/verify/host.ts`) of a run whose program never started: a failing exit
  *  with nothing on stdout, and either a shell's 126 or 127 with its launch-failure line last on stderr
  *  or CPython's start-up failure, which a program that ran and raised never prints. */
 function programNeverRan(exitCode: number, stdout: string, stderr: string): boolean {

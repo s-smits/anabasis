@@ -31,7 +31,7 @@ import { ownedElsewhere } from "../shared/literal-owner.ts";
  * class where a named constant is the repair rather than a second copy. It is wrong about
  * underscores, and knowingly: `materialization_result`, `apply_files_result` and
  * `turn_permit_request` are declared members of the worker protocol union in
- * `src/solve/generated-tool-worker-protocol.ts`, so the rule reports a repeat the compiler already
+ * `5bc9988:src/solve/generated-tool-worker-protocol.ts`, so the rule reports a repeat the compiler already
  * owns. Widening the tag to admit `_` would also admit the wire identifiers the same file crosses a
  * process boundary with, which is the one class this rule exists to catch — `non_result` against
  * `non-result` is the recorded instance. The mismatch is left in the narrower direction on purpose. It admits a leading digit, which it did not until 2026-09-20: `"2-digit"` is a
@@ -65,7 +65,7 @@ import { ownedElsewhere } from "../shared/literal-owner.ts";
  *
  * A suite naming one fixture in twenty cases is doing its job, which is why this rule skipped
  * test files entirely until 2026-09-20. Skipping them also skipped the case the floor exists for:
- * `test/run-triage.test.ts` spells one campaign directory 23 times, and when the fixture moved,
+ * `5bc9988:test/run-triage.test.ts` spells one campaign directory 23 times, and when the fixture moved,
  * 23 lines had to move with it. Measured over the whole test corpus at a floor of 12, the rule
  * finds the files where the repetition is a fixture nobody named and nothing else.
  *
@@ -93,7 +93,11 @@ const NAME_CEILING = 44;
 const PLAIN_NAME = /^[A-Z][A-Z0-9_]*$/u;
 
 /** One value's nodes and lines in source order, with the spelling a declaration would carry. */
-type Spelling = { nodes: ESTree.Node[]; lines: number[]; raw: string };
+interface Spelling {
+  nodes: ESTree.Node[];
+  lines: number[];
+  raw: string;
+}
 
 /**
  * The constant a repeated value would be named, or null when naming it would not be an improvement.

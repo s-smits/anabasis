@@ -93,7 +93,7 @@ const MOST_FILES = 400;
 /** The most one file's diff may take, and the most one answer's diffs may take together: the
  *  library gives up past its `timeout` (`createTwoFilesPatch`). */
 const FILE_DIFF_MS = 500;
-const DIFF_MS = 2_000;
+const DIFF_MS = 2000;
 const SEGMENT = /^[A-Za-z0-9._-]+$/u;
 /** The extensions read as text: a program under `.toolchain/bin` most often has none. */
 const TEXT = new Set([".md", ".txt", ".log", ".yaml", ".yml", ".js", ".mjs", ".cjs", ".py", ".sh", ""]);

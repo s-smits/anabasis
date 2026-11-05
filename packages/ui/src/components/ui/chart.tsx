@@ -1,9 +1,10 @@
 // shadcn ChartContainer, with its utility styles
 // expressed in the shared stylesheet used by the Bun app.
 import { useId, type ComponentProps } from "react";
-import { ResponsiveContainer, Tooltip } from "recharts";
+import { ResponsiveContainer } from "recharts";
 
-export const ChartTooltip = Tooltip;
+export { Tooltip as ChartTooltip } from "recharts";
+
 export function ChartContainer({
   children,
 }: {

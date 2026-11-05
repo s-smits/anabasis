@@ -335,7 +335,7 @@ describe("a list read again", () => {
     const ended = await names();
     expect(ended.campaigns.find(({ name }) => name === fixture.name)?.ending?.ending).toBe("operator");
     rmSync(join(root, ".ana", "d2", fixture.early), { recursive: true });
-    setSystemTime(new Date(Date.now() + 5_000));
+    setSystemTime(new Date(Date.now() + 5000));
     try {
       expect((await names()).campaigns.map(({ name }) => name)).toEqual([fixture.name, fixture.units]);
     } finally {

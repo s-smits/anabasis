@@ -137,7 +137,7 @@ describe("the probe", () => {
 
   it("the probe caps coupled changes at three paths read together by one refusing check", async () => {
     const rows: ProbeRow[] = [];
-    const tool = probeTool(verify, TASK, ANSWER, rows, [[SPAN], ["$.members[0].area"]]);
+    const tool = probeTool(verify, TASK, ANSWER, rows, { readTogether: [[SPAN], ["$.members[0].area"]] });
     await expect(
       invoke(tool, {
         changes: ["9", "8", "7", "6"].map((value) => ({ path: SPAN, value })),
@@ -192,6 +192,45 @@ describe("the probe", () => {
     const last = await probe(SPAN, "99");
     expect(JSON.stringify(last.output)).toMatch(/probe 8 of 8.*none left/u);
     await expect(probe(SPAN, "1")).rejects.toThrow("at most 8 probes");
+  });
+
+  it("the probe replaces a field as long as the one it changes, and no short field with a long value", async () => {
+    const rows: ProbeRow[] = [];
+    const members = (area: number) => Array.from({ length: 900 }, () => ({ area }));
+    const long = { span: 12, members: members(3), note: "x".repeat(200) };
+    expect(JSON.stringify(long.members).length).toBeGreaterThan(9000);
+    const tool = probeTool(verify, TASK, long, rows);
+    await invoke(tool, { changes: [{ path: "$.members", value: JSON.stringify(members(4)) }] });
+    expect(rows).toHaveLength(1);
+    await expect(
+      invoke(tool, { changes: [{ path: "$.note", value: JSON.stringify("y".repeat(9000)) }] }),
+    ).rejects.toThrow(/4000/u);
+    await expect(
+      invoke(tool, { changes: [{ path: "$.note", find: "xx", replace: "y".repeat(9000) }] }),
+    ).rejects.toThrow(/4000/u);
+    expect(rows).toHaveLength(1);
+  });
+
+  it("the probe takes the accepted answer's value of a field, however much longer than the refused one's", async () => {
+    const rows: ProbeRow[] = [];
+    const members = Array.from({ length: 900 }, () => ({ area: 4 }));
+    const short = { span: 12, members: [{ area: 3 }] };
+    const offered = JSON.stringify(members);
+    expect(offered.length).toBeGreaterThan(4000);
+    await expect(
+      invoke(probeTool(verify, TASK, short, rows), { changes: [{ path: "$.members", value: offered }] }),
+    ).rejects.toThrow(/4000/u);
+    const tool = probeTool(verify, TASK, short, rows, { accepted: { span: 12, members } });
+    await invoke(tool, { changes: [{ path: "$.members", value: offered }] });
+    expect(rows).toHaveLength(1);
+    // The accepted answer widens only the field it holds: a value past it, or at another path, stays out.
+    for (const change of [
+      { path: "$.members", value: JSON.stringify([...members, ...members]) },
+      { path: "$.span", value: offered },
+    ]) {
+      await expect(invoke(tool, { changes: [change] })).rejects.toThrow(/4000/u);
+    }
+    expect(rows).toHaveLength(1);
   });
 });
 
@@ -259,45 +298,30 @@ describe("coupled and check-defect evidence", () => {
     expect(answer.left).toEndWith("bad");
   });
 
-  it("the Referee rules a defect on a check with no answer fields only after a conclusive probe", async () => {
-    const defect = (probes: number[]) =>
-      ruling({
-        ruling: "check-defect",
-        check: "span",
-        reason: "It refuses independently of the answer.",
-        probes,
-      });
+  it("the Referee rules a defect on a check with no answer fields without a probe", async () => {
     const s = setup(
       [
-        defect([]),
-        fauxAssistantMessage(fauxToolCall(PROBE, { changes: [{ path: SPAN, value: "11" }] }), toolUse),
-        defect([1]),
-        fauxAssistantMessage(fauxToolCall(PROBE, { changes: [{ path: SPAN, value: "10" }] }), toolUse),
-        defect([2]),
+        ruling({
+          ruling: "check-defect",
+          check: "span",
+          reason: "It refuses independently of the answer.",
+          probes: [],
+        }),
       ],
       [],
     );
-    let calls = 0;
-    const finding = await referee(s.reader, {
-      ...fail(s),
-      verify: async () =>
-        ++calls === 2
-          ? { kind: "faulty", check: "span", reason: "No verdict." }
-          : { kind: "fail", blocking: ["span"] },
+    expect(await referee(s.reader, fail(s))).toMatchObject({
+      ruling: "check-defect",
+      check: "span",
+      probes: [],
     });
-    expect(finding).toMatchObject({ ruling: "check-defect", check: "span", probes: [2] });
-    expect(read(s.log).filter(({ kind }) => kind === "referee.refused")).toHaveLength(2);
-    expect(read(s.log).at(-1)?.data.probeRows).toMatchObject([
-      { id: 1, changed: { kind: "faulty" } },
-      { id: 2, moved: [] },
-    ]);
+    expect(read(s.log).filter(({ kind }) => kind === "referee.refused")).toHaveLength(0);
   });
 });
 
-describe("deciding check-defect probes", () => {
-  it("the Referee rules a check-defect only on a probe that decided both sides", async () => {
+describe("check-defect rulings", () => {
+  it("the Referee rules a check-defect that names a refusing check, on the probes it cites", async () => {
     const s = setup([
-      ruling({ ruling: "check-defect", check: "span", reason: "R1 allows 12.", probes: [] }),
       fauxAssistantMessage(fauxToolCall("read_check_program", { path: "evaluator.ts" }), toolUse),
       fauxAssistantMessage(fauxToolCall(PROBE, { changes: [{ path: SPAN, value: "10" }] }), toolUse),
       ruling({
@@ -316,41 +340,47 @@ describe("deciding check-defect probes", () => {
       reason: "R1 allows 12; the check stops at 10.",
       probes: [1],
     });
-    expect(
-      read(s.log)
-        .filter(({ kind }) => kind === "referee.refused")
-        .map(({ data }) => data.asked),
-    ).toMatchObject([{ ruling: "check-defect", probes: [] }]);
-    expect(s.sent[2]).toContain("// span <= 10");
+    expect(read(s.log).filter(({ kind }) => kind === "referee.refused")).toHaveLength(0);
+    expect(s.sent[1]).toContain("// span <= 10");
     expect(s.sent[0]).toContain(CANARY);
     for (const fact of ["span", "R1", "A span is at most 12 m.", SPAN]) expect(s.sent[0]).toContain(fact);
     const logged = read(s.log).findLast((event) => event.kind === FINDING)?.data;
-    expect(logged).toMatchObject({ solve: "s-1", task: "t-1", ruling: "check-defect", turns: 4 });
+    expect(logged).toMatchObject({ solve: "s-1", task: "t-1", ruling: "check-defect", turns: 3 });
     expect(logged?.probeRows).toEqual([objectWith({ id: 1, moved: ["span"] })]);
     expect(logged?.replay).toEqual({ kind: "fail", blocking: ["span"] });
   });
 
-  it("the Referee refuses a ruling on a probe whose changed side reached no verdict, and a check-defect on a check that did not refuse", async () => {
+  it("the Referee refuses an earned ruling on a probe whose changed side reached no verdict, a check-defect on a check that did not refuse, and one on probes that did not move its check", async () => {
     const threw = async (task: Task, answer: JsonValue | undefined): Promise<Verdict> =>
       asRecord(answer)?.span === 11 ? { kind: "non-result", reason: "span: threw" } : verify(task, answer);
     const s = setup([
       fauxAssistantMessage(fauxToolCall(PROBE, { changes: [{ path: SPAN, value: "11" }] }), toolUse),
-      ruling({ ruling: "check-defect", check: "span", reason: "The check moved.", probes: [1] }),
+      fauxAssistantMessage(fauxToolCall(PROBE, { changes: [{ path: SPAN, value: "13" }] }), toolUse),
+      fauxAssistantMessage(fauxToolCall(PROBE, { changes: [{ path: SPAN, value: "10" }] }), toolUse),
       ruling({ ruling: "earned", rule: "R1", field: SPAN, reason: "12 m is over 10.", probes: [1] }),
-      ruling({ ruling: "check-defect", check: "depth", reason: "The depth check is wrong.", probes: [1] }),
-      ruling({ ruling: "unclear", reason: "The probe decided nothing.", probes: [1] }),
+      ruling({ ruling: "check-defect", check: "depth", reason: "The depth check is wrong.", probes: [3] }),
+      ruling({ ruling: "check-defect", check: "span", reason: "R1 allows 12.", probes: [1, 2] }),
+      ruling({ ruling: "check-defect", check: "span", reason: "R1 allows 12.", probes: [3] }),
     ]);
-    expect((await referee(s.reader, { ...fail(s), verify: threw })).ruling).toBe("unclear");
+    expect(await referee(s.reader, { ...fail(s), verify: threw })).toMatchObject({
+      ruling: "check-defect",
+      check: "span",
+      probes: [3],
+    });
     const refused = read(s.log).filter(({ kind }) => kind === "referee.refused");
     expect(refused.map(({ data }) => data.asked)).toMatchObject([
-      { ruling: "check-defect", check: "span", probes: [1] },
       { ruling: "earned", rule: "R1", field: SPAN, probes: [1] },
-      { ruling: "check-defect", check: "depth", probes: [1] },
+      { ruling: "check-defect", check: "depth", probes: [3] },
+      { ruling: "check-defect", check: "span", probes: [1, 2] },
     ]);
-    const reasons = [/two sides.*verdict/u, /earned.*\$\.span.*R1.*refusal/u, /refusing checks.*span/u];
+    const reasons = [
+      /earned.*\$\.span.*R1.*refusal/u,
+      /refusing checks.*span/u,
+      /probe that moved span off its refusal/u,
+    ];
     for (const [index, { data }] of refused.entries()) {
       expect(data.why).toMatch(reasons[index] ?? /missing refusal/u);
-      expect(s.sent[index + 2]).toContain(JSON.stringify(data.why).slice(1, -1));
+      expect(s.sent[index + 4]).toContain(JSON.stringify(data.why).slice(1, -1));
     }
   });
 });
@@ -487,31 +517,22 @@ describe("accepted answers and reading limits", () => {
     expect(s.sent[1]).not.toContain(String.raw`{\"span\":1,\"members\":[]}`);
   });
 
-  it("the Referee refuses a whole-answer swap and an accepted projection as defect evidence, but admits a disputed-field probe", async () => {
+  it("the Referee's probe refuses a whole-answer swap, and a check-defect stands on a probe that moved its check", async () => {
     const accepted = { span: 9, members: [] };
-    const defect = (probes: number[]) =>
-      ruling({ ruling: "check-defect", check: "span", reason: "The public rule permits this span.", probes });
+    const defect = { ruling: "check-defect", check: "span", reason: "The public rule permits this span." };
     const s = setup([
       fauxAssistantMessage(
         fauxToolCall(PROBE, { changes: [{ path: "$", value: JSON.stringify(accepted) }] }),
         toolUse,
       ),
-      defect([1]),
-      fauxAssistantMessage(fauxToolCall(PROBE, { changes: [{ path: SPAN, value: "9" }] }), toolUse),
-      defect([1]),
+      ruling({ ...defect, probes: [] }),
       fauxAssistantMessage(fauxToolCall(PROBE, { changes: [{ path: SPAN, value: "10" }] }), toolUse),
-      defect([2]),
+      ruling({ ...defect, probes: [1] }),
     ]);
     s.record("task.feasible", { version: "v-1", answer: accepted });
-    s.record("verdict", { solve: "s-0", task: TASK.taskId, kind: "pass", answer: { span: 8, members: [] } });
-    expect(await referee(s.reader, fail(s))).toMatchObject({ ruling: "check-defect", probes: [2] });
-    const refused = read(s.log).filter(({ kind }) => kind === "referee.refused");
-    expect(refused).toHaveLength(2);
-    expect(refused[1]?.data.why).toContain("accepted answer");
-    expect(read(s.log).at(-1)?.data.probeRows).toMatchObject([
-      { id: 1, changes: [{ path: SPAN, value: "9" }] },
-      { id: 2, changes: [{ path: SPAN, value: "10" }] },
-    ]);
+    expect(await referee(s.reader, fail(s))).toMatchObject({ ruling: "check-defect", probes: [1] });
+    expect(read(s.log).filter(({ kind }) => kind === "referee.refused")).toHaveLength(1);
+    expect(read(s.log).at(-1)?.data.probeRows).toEqual([objectWith({ id: 1, moved: ["span"] })]);
   });
 
   it("the Referee ends a reading at its wall, and says so in the finding", async () => {

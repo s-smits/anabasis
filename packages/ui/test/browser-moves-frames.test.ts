@@ -97,8 +97,8 @@ async function watchFrames(page: Page, selector = EVIDENCE): Promise<() => Promi
   return async () => {
     await page.evaluate(
       () =>
-        new Promise<void>((done) => {
-          requestAnimationFrame(() => requestAnimationFrame(() => done()));
+        new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
         }),
     );
     const text = await page.evaluate(() => document.documentElement.dataset.anaFrames ?? "");

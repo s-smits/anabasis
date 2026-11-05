@@ -12,6 +12,7 @@ import {
   type TypeAliasEnvironment,
 } from "../shared/type-alias-resolution.ts";
 import type { RuleExample } from "../../rule-examples.ts";
+
 type ParameterOwner =
   | ESTree.ArrowFunctionExpression
   | ESTree.Function

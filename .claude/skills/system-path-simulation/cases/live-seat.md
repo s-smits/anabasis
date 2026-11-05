@@ -11,13 +11,8 @@ and in the rules below.
 
 ## Seat one thing
 
-| the seat | the seed | the command | what is paid |
-| --- | --- | --- | --- |
-| An Examiner session | cut where the session should start | `bun --env-file=<file> tools/d1b/examine.ts <examine flags> --name sim-<what> --session x-<n>` | the Examiner's turns, admission solves and their Referee rulings where seated |
-| A round's solves, without its Builder | cut by `--events` right after a recorded `build.finished` | the round again, with that session's `--session` | the comparison's solves, under its `--cap` |
-| A whole round | cut before the round's `build.started` | the round, with a `--session` the seed has not seen | a Builder session and every solve |
-| One Referee ruling | cut by `--events` right before the recorded ruling | `scripts/referee-seat.ts --solve <id> --reviewer <model>`, as `start`'s command | one ruling: its replay, probes and model turns |
-| One solve | none: it reads the stored sweep | `bun tools/m0/live-solve.ts <pack flags> --task <id> --live` | one solve |
+The seats, their cuts, commands and what each pays for are the table in section 3 of
+[SKILL.md](../SKILL.md#3-seat-a-model).
 
 The second row rests on a round keeping no state of its own: run again under a session whose
 Builder finished, it compares from the log and does not build again. The kept harness is

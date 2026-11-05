@@ -1,6 +1,7 @@
 import type { ESTree } from "@oxlint/plugins";
 
 /** The visitor a statement-list rule returns, so `scan` sees each list once. */
+// oxlint-disable-next-line typescript/consistent-type-definitions -- a type alias stays assignable to the plugin's visitor, whose index signature an interface does not meet
 type StatementLists = {
   Program: (node: ESTree.Program) => void;
   BlockStatement: (node: ESTree.BlockStatement) => void;
@@ -27,7 +28,10 @@ const ATOMIC = new Set([
  * the copies were never anything but copies: `onlyStatement` three times byte for byte, the
  * visitor twice. A line-based copy scan reached them on 2026-09-20 once it stopped requiring six
  * identical lines; the syntax-based scan reached the enclosing body, the single `const`, the
- * one-argument method call and the function argument in two rules each on 2026-09-22.
+ * one-argument method call and the function argument in two rules each on 2026-09-22. The four
+ * node facts below them (a member by its written name, an identifier's name, a `const` and a call
+ * of one argument) stood in three to eleven files each until `tree/fact-without-owner` read them
+ * on 2026-11-05.
  */
 
 /**
@@ -66,15 +70,41 @@ export function blockBody(statement: ESTree.Node): readonly ESTree.Statement[] |
   return block?.type === "Program" || block?.type === "BlockStatement" ? block.body : null;
 }
 
+/** `a.b` or `a.#b`: a member read by its written name, which a computed `a[b]` is not. */
+export function isNamedMember(
+  node: ESTree.Node,
+): node is ESTree.StaticMemberExpression | ESTree.PrivateFieldExpression {
+  return node.type === "MemberExpression" && !node.computed;
+}
+
+/** The name an identifier spells, or null for any other node and for none. */
+export function identifierName(node: ESTree.Node | null | undefined): string | null {
+  return node?.type === "Identifier" ? node.name : null;
+}
+
+/** Whether a node is a `const` declaration. */
+export function isConstDeclaration(
+  node: ESTree.Node,
+): node is ESTree.VariableDeclaration & { kind: "const" } {
+  return node.type === "VariableDeclaration" && node.kind === "const";
+}
+
+/** Whether a node is a call given exactly one argument. */
+export function isOneArgumentCall(
+  node: ESTree.Node,
+): node is ESTree.CallExpression & { arguments: [ESTree.Argument] } {
+  return node.type === "CallExpression" && node.arguments.length === 1;
+}
+
 /** The name and declarator of a `const` statement declaring one plain name, or null otherwise. */
 export function singleConst(
   statement: ESTree.Statement,
 ): { name: string; declared: ESTree.VariableDeclarator } | null {
-  if (statement.type !== "VariableDeclaration" || statement.kind !== "const") return null;
+  if (!isConstDeclaration(statement)) return null;
   const [declared] = statement.declarations;
   if (statement.declarations.length !== 1 || declared === undefined) return null;
-  if (declared.id.type !== "Identifier") return null;
-  return { name: declared.id.name, declared };
+  const name = identifierName(declared.id);
+  return name === null ? null : { name, declared };
 }
 
 /**
@@ -85,12 +115,10 @@ export function methodCall(
   node: ESTree.Node,
   method: string,
 ): { receiver: ESTree.Expression; argument: ESTree.Argument } | null {
-  if (node.type !== "CallExpression" || node.arguments.length !== 1) return null;
+  if (!isOneArgumentCall(node)) return null;
   const { callee } = node;
-  if (callee.type !== "MemberExpression" || callee.computed) return null;
-  if (callee.property.type !== "Identifier" || callee.property.name !== method) return null;
-  const [argument] = node.arguments;
-  return argument === undefined ? null : { receiver: callee.object, argument };
+  if (!isNamedMember(callee) || identifierName(callee.property) !== method) return null;
+  return { receiver: callee.object, argument: node.arguments[0] };
 }
 
 /**

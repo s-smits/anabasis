@@ -43,7 +43,7 @@ if [ -n "$staged" ]; then
   # without the flag biome refuses the empty set as if the files were unformatted.
   # shellcheck disable=SC2086
   bun node_modules/@biomejs/biome/bin/biome format --no-errors-on-unmatched $staged || {
-    echo "commit-check: staged files are not formatted; run bun run format and stage the result." >&2
+    echo "commit-check: staged files are not formatted; run bun run format -- <paths> and stage the result." >&2
     exit 1
   }
   ANA_LINT_PATHS="$staged" bun tools/runtime/lint.ts || {

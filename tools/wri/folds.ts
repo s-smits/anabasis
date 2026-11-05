@@ -26,9 +26,9 @@ import { flipP, unsolved as noneAnswered } from "#src/kernel/compare.ts";
 import { lastReports, poolOf, pairsReported, referenceOf } from "#src/kernel/reports.ts";
 import { type Traced, traced, tracesIn } from "#src/kernel/trace.ts";
 import { spendOf } from "#src/kernel/meter.ts";
-import { type Judged, refusedBy, solvesIn, verdictsOf } from "#src/kernel/solves.ts";
+import { type Judged, solvesIn, verdictsOf } from "#src/kernel/solves.ts";
 import { heldAtGate, taskSets } from "#src/kernel/task.ts";
-import { OBJECTIVE } from "#src/kernel/verify.ts";
+import { blockingOf, OBJECTIVE } from "#src/kernel/verify.ts";
 import type { Handover } from "#src/campaign/handover.ts";
 import { short } from "#src/campaign/move.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
@@ -68,6 +68,9 @@ export interface Solve {
   readonly cancelledBy: string | null;
   readonly seconds: number;
   readonly calls: string[];
+  /** The program each of its `bash` calls ran first, past `cd` and assignments: a harness's
+   *  `.toolchain/bin` programs are reached on the shell's path, so they show only here. */
+  readonly programs: string[];
   errors: number;
   /** A limit its ending does not name, or null: "last turn" where the turns its end records are
    *  every turn its start allowed. Read from the end, since a call's turn counted from 0 in logs up
@@ -138,6 +141,15 @@ export const BUILD_END = "build.finished";
 export const EXAM_START = "exam.started";
 export const EXAM_END = "exam.finished";
 export const REPORTED = "comparison.reported";
+/** Words that open a shell segment and run nothing themselves. */
+const SHELL_WORDS = new Set(["if", "then", "elif", "else", "fi", "while", "until", "do", "done", "esac"]);
+/** Words whose segment names no program: `cd` runs no harness's program, and a `for` or `case` head none. */
+const NO_PROGRAM = new Set(["cd", "for", "case", "select"]);
+/** A heredoc's body, kept to the rest of its first line, and never a here-string; and text in quotes. Both are data. */
+const HEREDOC = /(?<!<)<<-?\s*(['"]?)(\w+)\1([^\n]*)(?:\n(?:[^\n]*\n)*?[ \t]*\2[ \t]*(?=\n|$)|[\s\S]*$)/g;
+const QUOTED = /'[^']*'|"(?:[^"\\]|\\.)*"/g;
+/** What ends a shell segment: a line, a list or a pipe, a subshell or a substitution. */
+const SEGMENT = /\n|&&|\|\||\|&|(?<![<>&])&(?![>&])|[|;()`]/;
 
 /** Every trigger this reader can print, and the lane it starts. `lanes.md` names each one in the
  *  `Starts from` paragraph of that lane, and `test/wri-catalogue.test.ts` holds the two together. */
@@ -220,7 +232,6 @@ export const TRIGGERS = {
   "STARTER BARE": 27,
   "AFTER THE PROMOTION": 27,
   "SHARED TEMPORARY FOLDER": 27,
-  "MOVES ASKED": 28,
   "ENDED AND WENT ON": 28,
   "OPERATOR WORDS": 28,
   "BUILDER COMPACTED": 31,
@@ -255,6 +266,23 @@ export function tallyOf(tested: JsonValue | undefined) {
 export const items = (value: JsonValue | undefined): readonly JsonValue[] =>
   Array.isArray(value) ? value : [];
 export const strings = (value: JsonValue | undefined): string[] => items(value).filter(isString);
+/**
+ * Every program one shell command names: each segment's first word that is no assignment and no shell
+ * word, its path dropped. Until 5 November this read the first program of the first line alone, so
+ * "through bash: none" could be said of a solve whose command ran a harness's programs on its later
+ * lines or past a pipe (landing review of 5 November).
+ */
+const commandWords = (command: string): string[] =>
+  command
+    .replaceAll(HEREDOC, "$3")
+    .replaceAll(QUOTED, "''")
+    .split(SEGMENT)
+    .flatMap((segment) => {
+      const parts = segment.trim().split(/\s+/);
+      const word = parts.find((part) => !/^\w+=/.test(part) && !SHELL_WORDS.has(part)) ?? "";
+      return /^[\w./+-]+$/.test(word) && !NO_PROGRAM.has(word) ? [word.replace(/^.*\//, "")] : [];
+    });
+
 /** Whether a solve measured its harness: a non-result is in no pair, and a rerun replaced it. A
  *  solver's flag is its side's own fail, as the comparison counts it. */
 export const measured = (solve: Solve): boolean => ["pass", "fail", "flagged"].includes(solve.outcome ?? "");
@@ -274,7 +302,7 @@ function records(value: JsonValue | undefined): JsonObject[] {
 }
 
 export function tally(counts: Readonly<Record<string, number>>): string {
-  const named = Object.entries(counts).sort(([left], [right]) => left.localeCompare(right));
+  const named = Object.entries(counts).toSorted(([left], [right]) => left.localeCompare(right));
   return named.map(([name, number]) => `${name} ${String(number)}`).join(", ") || "none";
 }
 
@@ -309,6 +337,7 @@ function solvesOf(
           cancelledBy: isString(ending?.cancelledBy) ? ending.cancelledBy : null,
           seconds: count(end?.seconds),
           calls: [],
+          programs: [],
           errors: 0,
           limit: modelTurns !== null && count(end?.turns) === modelTurns ? "last turn" : null,
           model: condition?.model ?? "",
@@ -321,6 +350,7 @@ function solvesOf(
     const solve = call.seat === "solve" ? solves.get(call.id) : undefined;
     if (solve === undefined || call.part !== "call") continue;
     solve.calls.push(call.tool);
+    if (call.tool === "bash") solve.programs.push(...commandWords(text(asRecord(call.args)?.command)));
     solve.errors += call.isError ? 1 : 0;
   }
   return [...solves.values()];
@@ -437,7 +467,7 @@ export function admittedCost(log: Index, steps: readonly Handover[]): string[] {
 
 /** The answers some check refused: a format fault reached no check and is none. */
 function refusals(log: Index): Solve[] {
-  return log.solves.filter((solve) => refusedBy(log.verdicts.get(solve.id)).length > 0);
+  return log.solves.filter((solve) => blockingOf(log.verdicts.get(solve.id)?.checker).length > 0);
 }
 
 /** A Builder session's practice solves: the test-side solves of released tasks made in its own window
@@ -478,12 +508,12 @@ export function instrumentTriggers(log: Index): Trigger[] {
   const ruled = countBy(refused, rulingOf);
   const defects = refused.filter((solve) => rulingOf(solve) === DEFECT);
   const defectChecks = countBy(defects, (solve) => text(log.rulings.get(solve.id)?.check));
-  const blocking = refused.flatMap((solve) => refusedBy(log.verdicts.get(solve.id)));
+  const blocking = refused.flatMap((solve) => blockingOf(log.verdicts.get(solve.id)?.checker));
   const byCheck = countBy(blocking, (check) => check);
   // One check refusing most answers, and no other refusing as many: t-10's one refusal on 10
   // October was blocked by all four checks, and the first of four equal counts read as a fault
   // of one check's.
-  const [top, next] = Object.entries(byCheck).sort(([, a], [, b]) => b - a);
+  const [top, next] = Object.entries(byCheck).toSorted(([, a], [, b]) => b - a);
   const lopsided =
     top !== undefined &&
     new Set(blocking).size > 1 &&

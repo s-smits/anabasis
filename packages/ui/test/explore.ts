@@ -37,7 +37,7 @@ const CONTROLS = [
 const KEYS = ["Escape", "Tab", "Shift+Tab", "Enter", "ArrowLeft", "ArrowRight"] as const;
 
 /** How long a pointer is given to reach a control, and a resized page to settle its width. */
-const REACH_MS = 1_000;
+const REACH_MS = 1000;
 
 /** What a search field is given: nothing, a word the fixture holds, and one it does not. */
 const TYPED = ["", "word", "zz-none", "b-1"] as const;

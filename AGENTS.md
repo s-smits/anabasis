@@ -79,10 +79,10 @@ factor it affects, or the separate purpose it serves. Recorded values live in `d
   reach the level (`incapable`). Bar: no step in ten A/A comparisons.
 - **3. Verdicts**: are the labels right? The Referee rules every rejection (never a pass, a cut
   solve or a crash) once the host's replay of the checks repeats it. `earned` must name the broken
-  rule and field, cited by a rejecting check, and `check-defect` must cite an answer probe; a ruling
-  without its evidence is refused. Bar, on at least 30 blind labels (`settle.ts`): it catches three
-  in four true check defects and voids at most one in ten earned rejections, with PABAK beside
-  kappa.
+  rule and field, cited by a rejecting check, with an answer probe that moved that check, and
+  `check-defect` must name a refusing check and cite a probe that moved it; a ruling without its evidence is refused. Bar, on at
+  least 30 blind labels (`settle.ts`): it catches three in four true check defects and voids at
+  most one in ten earned rejections, with PABAK beside kappa.
 - **4. Economy**: what did each gain cost? The closing report reads dollars and hours per promotion
   from the log alone (`tools/d2/close.ts`), at list price (`billOf`, `src/kernel/meter.ts`). Its
   one bar, an opening term that refuses nothing, is at most 3 promotion attempts per epoch after
@@ -125,7 +125,8 @@ reads the sign to watch (section 9).
   writes new tasks before the next comparison; one that aims higher takes longer and admits fewer.
   Read hours to the next comparison beside the tasks it admitted.
 - **Practice against held-out supply.** A released task teaches the Builder and is never scored;
-  at most half the tasks with room are released. Watch the frontier near the floor of eight.
+  a release takes at most half of what is held, and every release after the first leaves at least
+  the floor of eight frontier tasks. Watch the frontier near that floor.
 - **Builder freedom against fitting practice.** The one limit is that a harness names no task
   (section 2), so it can grow programs shaped to practice tasks. Practice gains that held-out
   comparisons do not repeat are the sign.
@@ -157,7 +158,8 @@ feedback shaping the exam on 20 October. Only the following information crosses 
   (the quantity and which way is better);
 - the public part of each released (practice) task;
 - for a practice solve: its ending's outcome and kind, the solver's trace and, under an objective,
-  the verifier's measure of a valid answer and of the task author's best answer on record;
+  the verifier's measure of a valid answer and of the task author's best answer on record, which
+  may depend on that task's hidden values;
 - for each comparison: the tally and the reading, naming no task;
 - host limits, the remaining budget, how many held-out and practice tasks the campaign holds, and
   the move table's fixed advice.
@@ -262,11 +264,13 @@ tests; `examiner-view <name>` counts what an Examiner opening would be told, and
 
 ## 4. The Harness Builder
 
-One Builder conversation leads the campaign (`tools/d2/harness-builder.ts`).
-Its campaign tools are `examine`, `release_practice`, `compare`, `promote`,
-`campaign_status` and `wait`. Each uses the same admission checks as the operator's command.
-The move table advises the Builder, while code enforces endings and selects the promotable
-harness. Three invariants protect the evaluation:
+One Builder conversation leads the campaign (`tools/d2/harness-builder.ts`), and one Examiner
+conversation beside it takes each `examine` in turn: where an ask's work is done it rests, and the
+next ask wakes it with the readings since. One that crashed or met a limit opens afresh from the log.
+Its campaign tools are `examine`, `compare`, `campaign_status` and `wait`. Each uses the same
+admission checks as the operator's command. The Builder chooses its own moves; code enforces
+endings, releases owed practice and promotes the harness a step names. Three invariants protect
+the evaluation:
 
 - a comparison reads the harness it froze, and a step promotes that one, whatever `harness/` holds
   by then;
@@ -277,8 +281,8 @@ harness. Three invariants protect the evaluation:
 Preserve the Builder conversation across campaign actions. Standing facts appear in every tool
 result because messages sent between tool-call turns do not reach the Builder.
 
-**In `campaign-mechanics`, section 4** (`builder-conversation.md`): Examiner sessions beside the
-conversation; which moves are recorded; the Builder's clock; sessions by hand.
+**In `campaign-mechanics`, section 4** (`builder-conversation.md`): the Examiner conversation beside
+the Builder's; which moves are recorded; the Builder's clock; sessions by hand.
 
 ## 5. The log
 
@@ -313,11 +317,14 @@ queue for the host's load, at most half an hour (`--loaded` skips it, `campaign.
 The operator steers a live campaign with a word (`tools/d2/word.ts`: `--stop`, `--tasks`,
 `--budget`), which no seat reads.
 
-The log records the opening and fixed setting (`campaign.opened`, `campaign.setting`).
-The setting fixes the solver, its limits, `--target` and `--solves`; a conflicting value is
-refused because it defines a different campaign. Practice release uses only reference solves
+The log records the opening and fixed setting (`campaign.opened`, `campaign.setting`), the
+setting as the campaign's first run starts. The setting fixes the solver, its limits, `--target`
+and `--solves`, and is their one record; a conflicting value is refused because it defines a
+different campaign. Practice release uses only reference solves
 (`releaseOrder`, `src/kernel/reports.ts`), so the candidate's held-out wins cannot affect
-the released set (rule 3). At most half the tasks with room are released.
+the released set (rule 3). A release takes at most half of what is held, and of the tasks a
+reading left room on, at most half; every release after the first leaves at least the comparison
+floor of frontier tasks (`practiceDue`, `src/campaign/decide.ts`).
 
 **What refuses a move**: comparison admission (`src/campaign/admission.ts`), session admission, and
 the stop rule, which only `--past-stop "<why>"` passes. A command writes nothing before its last
@@ -350,8 +357,8 @@ harnesses. `provider`, `sandbox-crash`, `killed`, `moved-files`, `check` and
 
 **The tally** (`pointsOf`, `WEIGHTS`, `src/kernel/compare.ts`) weighs two measures: validity
 0.6 and the objective 0.3. The objective counts only between two valid answers, so a refused
-answer is never the better one, and two answers closer than 1% by it tie on it. What a solve
-billed is reported and decides nothing.
+answer is never the better one; two answers closer than 1% by it tie on it, and past that a
+pairing gains its share of the larger measure. What a solve billed is reported and decides nothing.
 
 **The test** is an exact one-sided sign-flip test on the nonzero task scores; ties are excluded. A
 step is read on these scores at the level (0.02 by default, kept by each campaign's opening).
@@ -363,12 +370,14 @@ With equal margins it clears at 6 to 0, 8 to 1, 10 to 2 or 12 to 3 at 0.02.
 **The budget** is the setting's model turns and deadline, the same on both sides: a better harness
 shows as answers reached within it that the reference does not reach.
 
-**The next move** comes from `decide` (`src/campaign/decide.ts`), which checks ten rows in
-order: `stop`, `exam`, `bound`, `tasks`, `unfinished`, `step`, `no-room`,
-`short`, `unread` and `build`. The `build` row first releases owed practice
-(`practice`). Improvement patience stops the campaign after six eligible moves without a gain
-since the last promotion (`stopRule`, `src/campaign/admission.ts`). Continuing then requires
-`--past-stop`.
+**The next move** comes from `decide` (`src/campaign/decide.ts`), which checks nine rows in
+order: `stop`, `exam`, `bound`, `tasks`, `unfinished`, `step`, `no-room`, `unread` and
+`build`. Where admission wants tasks, `build` asks for them and ends the campaign `exam` at supply
+patience. The host releases owed practice (`practiceDue`) as tasks are held out, as an Examiner
+session ends, as a conversation opens on tasks held since the last release, and after a reading
+that promoted nothing, which is owed one task where nothing was held out since the last release.
+Improvement patience stops the campaign after six eligible moves without a gain since the last
+promotion (`stopRule`, `src/campaign/admission.ts`). Continuing then requires `--past-stop`.
 
 **In `comparison-reading`, section 7** (`draw-and-solves.md`, `tally-and-test.md`,
 `limits-and-room.md`, `move-table.md`): the mirror; the tally's floors; the A/A; the cap; room;
@@ -404,7 +413,8 @@ Cite a rule by its number.
 8. **A rejection counts only once it is ruled, and a hand label overrides a ruling.** In v1, 36 of
    47 rehearsal misses came from a faulty check or instrument.
 9. **No reference answers, no stronger solver, no agent built to find answers.** A check verifies a
-   property, which can be right on a task nobody has solved.
+   property, which can be right on a task nobody has solved. A value the task was generated from is
+   a fact of the task, not an answer an agent worked out.
 10. **No agent writes an instrument.** A check's facts come from the field's own pinned tool, and a
     check decided by its author's computation, a declared objective included, is a fault until the
     operator admits it (`--admit`, or `--admit-authored` at a launch).

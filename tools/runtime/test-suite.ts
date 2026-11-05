@@ -420,7 +420,7 @@ function startWall(child: Bun.Subprocess, state: WallState): ReturnType<typeof s
     if (state.walled || performance.now() - state.lastOutputAt < wall * 1000) return;
     state.walled = true;
     clearInterval(ticker);
-    void (async () => {
+    (async () => {
       console.error(
         `idle-wall: no output for ${String(wall)} s at a load average of ${busy.toFixed(1)} on ${String(availableParallelism())} cores; interrupting the test run.`,
       );

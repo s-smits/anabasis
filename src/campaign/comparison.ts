@@ -38,7 +38,7 @@ import { conditionsOf, settingId } from "../kernel/condition.ts";
 import { failWrongPasses, proposalsOf, wrongPasses } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { poolOf } from "../kernel/reports.ts";
-import { passed, ranUnder, solvesIn } from "../kernel/solves.ts";
+import { passed, ranUnder, rejected, rulingsOf, solvesIn } from "../kernel/solves.ts";
 import { taskSets, taskStates } from "../kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { median } from "../meta/tally.ts";
@@ -340,15 +340,9 @@ export function solvesUnder(events: readonly LogEvent[], fixed: Fixed) {
  * otherwise, and null where nobody has ruled.
  */
 export function rejections(events: readonly LogEvent[], fixed: Fixed, labels: ReadonlyMap<string, Ruling>) {
-  const ruled = new Map(
-    events.flatMap(({ kind, data }) =>
-      kind === "referee.finding" && isString(data.solve) && isString(data.ruling)
-        ? [[data.solve, data.ruling] as const]
-        : [],
-    ),
-  );
+  const ruled = rulingsOf(events);
   return solvesUnder(events, fixed).flatMap(({ id, ending, under }) =>
-    ending?.outcome === "fail" && ending.kind === "rejected"
+    rejected(ending)
       ? [{ solve: id, task: under.task, ruling: labels.get(id) ?? ruled.get(id) ?? null }]
       : [],
   );

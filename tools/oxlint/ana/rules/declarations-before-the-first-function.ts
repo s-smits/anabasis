@@ -1,12 +1,13 @@
 import { defineRule, type ESTree, type Scope, type SourceCode } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
+import { identifierName, isConstDeclaration, isNamedMember } from "../shared/statements.ts";
 
 /**
  * Every type, interface and module constant at the front of the file, then the code.
  *
  * What the tree does instead is alternate: a function, the interface it returns, another function,
- * the union that interface joins. `src/solve/built-starter.ts` had 23 declarations after its first
- * function and `src/builder/command-guard.ts` 18. A reader looking for the shape of
+ * the union that interface joins. `5bc9988:src/solve/built-starter.ts` had 23 declarations after its first
+ * function and `5bc9988:src/builder/command-guard.ts` 18. A reader looking for the shape of
  * `GeneratedToolStart` has to read the whole file to learn whether it is there at all, and a reader
  * looking for the constant a default came from has the same problem.
  *
@@ -35,7 +36,7 @@ import type { RuleExample } from "../../rule-examples.ts";
  * `if (runner === undefined) throw …`, `const bun: string = runner` compiles only below the guard,
  * so a read of a name some test above it narrows is barred exactly like an unsafe one. And a
  * const wedged into a run of module `let`s is part of a block of state, not a constant a reader
- * goes looking for at the front; `src/backends/pi-built-child.ts` had three of them among six
+ * goes looking for at the front; `5bc9988:src/backends/pi-built-child.ts` had three of them among six
  * `let`s, and hoisting those three alone left the block worse than it was found.
  *
  * The fixer is the reason the rule is worth having: this is a reordering pass, not a set of
@@ -132,14 +133,13 @@ function declaresOnly(statement: ESTree.Node): boolean {
 function isPureCall(node: ESTree.CallExpression): boolean {
   const callee = node.callee;
   if (callee.type === "Identifier") return PURE_CALLEES.has(callee.name);
-  if (callee.type !== "MemberExpression" || callee.computed) return false;
-  if (callee.object.type !== "Identifier" || callee.property.type !== "Identifier") return false;
-  return PURE_METHODS.get(callee.object.name)?.has(callee.property.name) === true;
+  if (!isNamedMember(callee) || callee.object.type !== "Identifier") return false;
+  return PURE_METHODS.get(callee.object.name)?.has(identifierName(callee.property) ?? "") === true;
 }
 
 /** A `` String.raw`…` ``, which is a string literal with a different escape rule. */
 function isPureTag(tag: ESTree.Node): boolean {
-  if (tag.type !== "MemberExpression" || tag.computed) return false;
+  if (!isNamedMember(tag)) return false;
   if (tag.object.type !== "Identifier" || tag.object.name !== "String") return false;
   return tag.property.type === "Identifier" && tag.property.name === "raw";
 }
@@ -147,10 +147,10 @@ function isPureTag(tag: ESTree.Node): boolean {
 /** The plain names a declaration binds. A destructured one binds none of them, conservatively. */
 function boundNames(inner: ESTree.Node): string[] {
   if (inner.type === "VariableDeclaration") {
-    return inner.declarations.flatMap((one) => (one.id.type === "Identifier" ? [one.id.name] : []));
+    return inner.declarations.flatMap((one) => identifierName(one.id) ?? []);
   }
-  const id = "id" in inner ? inner.id : null;
-  return id?.type === "Identifier" ? [id.name] : [];
+  const name = identifierName("id" in inner ? inner.id : null);
+  return name === null ? [] : [name];
 }
 
 /**
@@ -171,8 +171,7 @@ function readableFromTheFront(body: readonly ESTree.Node[], firstCode: number): 
       continue;
     }
     if (index >= firstCode) continue;
-    const fixed =
-      FIXED_KINDS.has(inner.type) || (inner.type === "VariableDeclaration" && inner.kind === "const");
+    const fixed = FIXED_KINDS.has(inner.type) || isConstDeclaration(inner);
     if (fixed) for (const name of boundNames(inner)) names.add(name);
   }
   return names;
@@ -254,7 +253,7 @@ function barredReadPositions(
 /**
  * Whether this declaration stands directly beside module mutable state, which it is part of.
  *
- * `src/backends/pi-built-child.ts` keeps six `let`s and four collections in one block under its
+ * `5bc9988:src/backends/pi-built-child.ts` keeps six `let`s and four collections in one block under its
  * bootstrap call, and the rule never moves a `let`. Hoisting the collections out of the middle of
  * that block leaves it worse than it was found, so a `const` whose neighbour is a module `let` or
  * `var` stays where it is. A blank line between them says the author meant two blocks, and a
@@ -269,7 +268,7 @@ function besideMutableState(text: string, body: readonly ESTree.Node[], index: n
     const gap = step === -1 ? text.slice(next.end, here.start) : text.slice(here.end, next.start);
     if (/\n[^\S\n]*\n/u.test(gap)) return false;
     const inner = declaredBy(next);
-    return inner.type === "VariableDeclaration" && inner.kind !== "const";
+    return inner.type === "VariableDeclaration" && !isConstDeclaration(inner);
   });
 }
 
@@ -345,11 +344,14 @@ function belowTheHashbang(text: string): number {
 function named(inner: ESTree.Node): { node: ESTree.Node; name: string } {
   if (inner.type === "VariableDeclaration") {
     const [first] = inner.declarations;
-    const id = first?.id;
-    return id?.type === "Identifier" ? { node: id, name: id.name } : { node: inner, name: "the constant" };
+    const name = identifierName(first?.id);
+    return first !== undefined && name !== null
+      ? { node: first.id, name }
+      : { node: inner, name: "the constant" };
   }
   const id = "id" in inner ? inner.id : null;
-  return id?.type === "Identifier" ? { node: id, name: id.name } : { node: inner, name: "the declaration" };
+  const name = identifierName(id);
+  return id !== null && name !== null ? { node: id, name } : { node: inner, name: "the declaration" };
 }
 
 export const declarationsBeforeTheFirstFunctionRule = defineRule({
@@ -384,7 +386,7 @@ export const declarationsBeforeTheFirstFunctionRule = defineRule({
     /** Where every call, `new`, `await` and assignment that is not a pure builder starts. */
     const effects: number[] = [];
     /** The spans a read inside of is a read the surrounding test may have narrowed. */
-    const guards: Array<{ start: number; end: number }> = [];
+    const guards: { start: number; end: number }[] = [];
     const guard = (test: ESTree.Node): number => guards.push({ start: test.start, end: test.end });
 
     return {
@@ -397,7 +399,7 @@ export const declarationsBeforeTheFirstFunctionRule = defineRule({
       },
       NewExpression: (node) => {
         // A `new Set([…])` or `new URL(…)` carries no effect; every other construction does.
-        const pure = node.callee.type === "Identifier" && PURE_CONSTRUCTORS.has(node.callee.name);
+        const pure = PURE_CONSTRUCTORS.has(identifierName(node.callee) ?? "");
         if (!pure) effects.push(node.start);
       },
       TaggedTemplateExpression: (node) => {

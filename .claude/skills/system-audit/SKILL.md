@@ -65,8 +65,8 @@ blocks no row goes below them all. Vetting and the report keep that order.
   (`.ana/wri/2026-10-29-fundamental-sol-audit-2/vetting.md`).
 
 - **11 October.** One prompt asked whether the factors were the right set, measurable from the
-  log, stated once and true to the source. It was kept in `docs/prompts.md` until 30 October
-  (`git log -- docs/prompts.md`), and is the factors lens below.
+  log, stated once and true to the source. It was kept in `a650fe98b:docs/prompts.md` until
+  30 October, and is the factors lens below.
 
 What both rounds lacked: every session was asked only for proved flaws, capped at two or three. So
 each reported the nearest bounded bug, and nothing asked whether a mechanism should exist at all.

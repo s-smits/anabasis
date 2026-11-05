@@ -17,7 +17,7 @@ import { billOf, freezePrices, type PriceTable } from "#src/kernel/meter.ts";
 import type { Ending } from "#src/kernel/solve.ts";
 import type { TaskPackage } from "#src/kernel/task.ts";
 import { applicableTruthChecks, readBrief, type Task, type Verdict } from "#src/kernel/verify.ts";
-import { CONTROLS_FILE } from "#src/meta/bundle-layout.ts";
+import { BRIEF_FILE, CONTROLS_FILE, TASKS_FILE } from "#src/meta/bundle-layout.ts";
 import { cpSync, existsSync, readFileSync, renameSync, rmSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, parseJsonAs } from "#src/meta/json-runtime.ts";
 import type { JsonObject, JsonValue } from "#src/meta/json-shape.ts";
@@ -304,9 +304,8 @@ export function pricedRows(rows: readonly Row[]) {
 
 /** A v1 check program's pack: its brief, its tasks and their hidden values, and its controls. */
 export function readPack(bundle: string) {
-  const read = <T>(file: string) =>
-    parseJsonAs<T>(readFileSync(join(bundle, "correctness-model", file), "utf8"));
-  return { brief: read<PackBrief>("brief.json"), tasks: read<Task[]>("tasks.json") };
+  const read = (file: string): string => readFileSync(join(bundle, file), "utf8");
+  return { brief: parseJsonAs<PackBrief>(read(BRIEF_FILE)), tasks: parseJsonAs<Task[]>(read(TASKS_FILE)) };
 }
 
 /** Whether the bundle's tool tree holds a tool on the path a check is given, by its id. */
@@ -348,8 +347,8 @@ export function packageOf(checks: string, task: Task): TaskPackage {
 }
 
 /**
- * The public resources the sweep's solver read, sed from harness-builder-v4 at 7af7315,
- * `src/truth/public-resources.ts:118-144` with the row projections of lines 66-111: each row is
+ * The public resources the sweep's solver read, sed from harness-builder-v4,
+ * `7af7315:src/truth/public-resources.ts:118-144` with the row projections of lines 66-111: each row is
  * rebuilt from its declared fields alone, in their order, and a field the row lacks is left out.
  */
 export function sweepResources(brief: PackBrief): PublicResource[] {

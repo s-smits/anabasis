@@ -11,7 +11,7 @@
  * Each task of the pack that the log does not hold is proposed and put to the shape check
  * of its package (`src/kernel/task.ts`). A task that passes is a held-out task. No solve and no
  * stored answer has a say: until 2026-10-09 a pack's task entered a log through four admission checks, on a
- * stored cycle's answer and v1's control answers for it (`tools/m1/admit-sweep.ts`, removed).
+ * stored cycle's answer and v1's control answers for it (`fdafb372a:tools/m1/admit-sweep.ts`, removed).
  *
  * A stored answer does say whether a task has a known valid answer. Each held-out task the
  * stored sweep accepted an answer to is rechecked under today's checks, until one passes, and a
@@ -23,7 +23,8 @@
  * the number of released tasks the campaign is brought to. What is missing is released from the
  * held-out tasks by the contract's draw, and no solve chooses which. One release takes at most
  * half of what is held, so that a comparison is left tasks to score: on 2026-10-08 an anchor drawn
- * over nearly the whole pack left eight rounds no task to score. Each release is said by its task.
+ * over nearly the whole pack left eight rounds no task to score. A task the reference's own rejection
+ * left in doubt is neither drawn nor counted (`practicePool`). Each release is said by its task.
  * A task that a comparison scored before its release keeps that comparison's solves on the exam
  * side: a Builder is shown its practice solves only (`practiceRan`, `src/kernel/solves.ts`).
  * A run that labels a task (below) releases none: a release cannot be taken back, and a person
@@ -44,7 +45,7 @@
  * Not run here: see `campaign.ts`.
  */
 import { contractHash } from "#src/kernel/contract.ts";
-import { append, read } from "#src/kernel/log.ts";
+import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import { poolOf, releaseOrder } from "#src/kernel/reports.ts";
 import { SIZE, sizeLines } from "#src/kernel/size.ts";
 import { packageGate, taskSets, taskStates, taskVersion } from "#src/kernel/task.ts";
@@ -72,8 +73,16 @@ const OPTIONS = {
   note: { type: "string" },
 } as const;
 
-/** `bun tools/d2/prepare.ts`. */
-export async function prepareCommand(args: readonly string[]): Promise<number> {
+/**
+ * `bun tools/d2/prepare.ts`. `heldBack`, the host's own release (`releaseOwed`), is read on the events
+ * the release takes its tasks from, with no wait between that read and its appends: until 5 November
+ * it was read before this awaited the campaign's opening, so a comparison that started meanwhile could
+ * lose a task it had just drawn, after its terms were fixed (rule 4).
+ */
+export async function prepareCommand(
+  args: readonly string[],
+  heldBack: (events: readonly LogEvent[]) => boolean = () => false,
+): Promise<number> {
   const { values } = parseArgs({ args: [...args], options: OPTIONS });
   const { root, sweep } = values;
   const campaign = await openCampaign(packNamed(values));
@@ -134,16 +143,12 @@ export async function prepareCommand(args: readonly string[]): Promise<number> {
   if (!Number.isInteger(practice) || practice < 0) {
     throw new Error(`--practice ${values.practice}: the practice tasks are a whole number`);
   }
-  const before = taskSets(read(log));
-  const pool = before.held;
-  const missing = labels.length > 0 ? 0 : Math.max(0, practice - before.released.length);
+  const now = read(log);
+  const before = taskSets(now);
+  const pool = poolOf(now).practicePool;
+  const missing = labels.length > 0 || heldBack(now) ? 0 : Math.max(0, practice - before.released.length);
   const released = Math.min(missing, Math.floor(pool.length / 2));
-  for (const [version, why] of releaseOrder(
-    read(log),
-    pool,
-    released,
-    `${contractHash(contract)}:practice`,
-  )) {
+  for (const [version, why] of releaseOrder(now, pool, released, `${contractHash(contract)}:practice`)) {
     append(log, "task.state", { version, state: "released" });
     console.log(`${packages.get(version)?.taskId ?? version}${why} released for practice, and never scored`);
   }

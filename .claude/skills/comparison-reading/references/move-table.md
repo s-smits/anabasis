@@ -6,17 +6,19 @@ table in `AGENTS.md` section 7.
 ## What follows a reading
 
 `decide` (`src/campaign/decide.ts`) selects the next move, printed on the view's final line. It
-evaluates the ten `ROWS` in order and returns the first applicable move with its rule code:
+evaluates the nine `ROWS` in order and returns the first applicable move with its rule code:
 
 1. `stop`: a stop the operator left ends the campaign.
-2. `exam`: the exam does not stand: it is drafted where the campaign opened from a prompt, read where
-   nobody has read its checker, and the campaign ends where a fault stands that nobody froze or
+2. `exam`: the exam does not stand: it is drafted where the campaign opened from a prompt (a draft
+   that stands keeps its own reading), read where nobody has read its checker or the operator admits
+   a check the last reading did not, and the campaign ends where a fault stands that nobody froze or
    admitted.
 3. `bound`: a bound is spent: the budget, the provider (`crashedRun`, section 6), the stop rule, or a
    comparison stopped on check defects or cut by its cap.
 4. `tasks`: the tasks are not set up: a pack's are taken in, practice released, and tasks written
-   where there are none, where the operator asked, or before the first comparison up to the
-   admission floor plus the practice still to be drawn.
+   where there are none, where the operator asked (once a step that waits is promoted, so they are
+   written against the new reference), or before the first comparison up to the admission floor plus
+   the practice still to be drawn.
 5. `unfinished`: a comparison that began and has not reported continues.
 6. `step`: a step against the reference names the harness to promote, the newest where several wait
    (`unpromoted` says why another is not).
@@ -25,19 +27,29 @@ evaluates the ten `ROWS` in order and returns the first applicable move with its
    no shorter budget to fall back to. After a promotion, whose comparison reads room by construction,
    the row names one Examiner session for the new reference, which the host starts beside the
    conversation.
-8. `short`: comparison admission would refuse for lack of tasks (`refusals`,
-   `src/campaign/admission.ts`), or the pair's last comparison tallied none, so tasks come first: a
-   changed harness can only tie again on tasks the reference closed.
-9. `unread`: something no comparison has read is compared: a harness whose sessions have run, and
-   tasks held out since the last reading (`programs-of:` remains a harness name for an audit by
-   hand). After a promotion, until one has tallied a task in the epoch, a **starter comparison**
+8. `unread`: where admission would take the comparison, tasks held out since the last reading are
+   compared (`heldSince`; `programs-of:` remains a harness name for an audit by hand). A harness no
+   comparison has read waits for the Builder's own `compare`: until 5 November it was compared once
+   the opening's Builder sessions (`--sessions`, 2) had run, 3 times in the 108 paid campaigns
+   opened from 28 October. After a promotion, until one has tallied a task in the epoch, a **starter comparison**
    reads those tasks, whatever harness waits. It draws as every comparison does, those
    tasks first and then older ones, so that the promotion it confirms is read beyond the tasks
    written above the new reference's grade. A waiting harness is read again on new
    tasks only where its last reading tested nothing or left no room: one that had room and read
    no step is the Builder's to change, never a second draw of the pair.
-10. `build`: otherwise the Builder builds. The row first releases owed practice (code `practice`).
-    A Builder with nothing to work on asks the Examiner itself.
+9. `build`: otherwise the Builder builds. Where comparison admission would refuse the next
+   comparison for want of tasks (`refusals`, `src/campaign/admission.ts`), or the last comparison
+   tallied none, the reason says the Builder asks for tasks, and at supply patience the row ends the
+   campaign `exam`. Until 5 November a row `short` named an Examiner session there, which the
+   refusal already tells a Builder that compares (`held-short`). A Builder with nothing to work on asks the Examiner
+   itself.
+
+The table names no release. The host releases the practice owed (`practiceDue`, `releaseOwed` in
+`tools/d2/campaign-actions.ts`) as an Examiner session beside a conversation holds a task or ends,
+and as a Builder conversation opens where tasks were held out since the last release or promotion
+(`converse`, `tools/d2/harness-builder.ts`), never while a comparison is unreported. Until
+5 November the `build` row named the release (`practice`) and the Builder had a `release_practice`
+tool.
 
 ## Supply patience
 

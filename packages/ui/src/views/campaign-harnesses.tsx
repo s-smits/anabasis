@@ -57,9 +57,9 @@ function selectedIndex(cards: readonly HarnessCard[], harness: string | null): n
   const named = cards.findIndex(
     (card) => (harness === STARTER && card.starter) || (card.digest !== null && card.digest === harness),
   );
-  if (named >= 0) return named;
+  if (named !== -1) return named;
   const latest = cards.findIndex((card) => card.latest);
-  return latest >= 0 ? latest : cards.length - 1;
+  return latest === -1 ? cards.length - 1 : latest;
 }
 
 /** The kept files of the selected harness, each opening the inspector, and what the server

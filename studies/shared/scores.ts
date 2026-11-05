@@ -104,24 +104,24 @@ function trialOf(line: JsonObject): Trial {
     throw new Error(`trials.py printed a line without its task, trial and path: ${JSON.stringify(line)}`);
   }
   const result = jsonAt(join(path, "agent", RESULT_FILE));
-  const ending = isString(result?.["ending"]) ? result["ending"] : null;
+  const ending = isString(result?.ending) ? result.ending : null;
   const harbor = jsonAt(join(path, "result.json"));
   const trace = join(path, "agent", TRACE_FILE);
   const traced = existsSync(trace) ? tracesIn(read(trace)) : null;
   // Harbor records an agent or a verifier that threw; only the agent's own timeout is the side's
   // fail, as `wall-ended` is in a campaign. This holds for an agent that writes no result of ours.
-  const thrown = asRecord(harbor?.["exception_info"])?.["exception_type"];
+  const thrown = asRecord(harbor?.exception_info)?.exception_type;
   const lost = (ending !== null && NON_RESULT.has(ending)) || (isString(thrown) && thrown !== AGENT_TIMEOUT);
   return {
     task,
     trial,
     score: lost ? null : counted(score),
     ending,
-    billed: counted(result?.["billed"]),
-    turns: counted(result?.["turns"]),
+    billed: counted(result?.billed),
+    turns: counted(result?.turns),
     calls: traced === null ? null : traced.filter((each) => each.part === "call").length,
-    seconds: counted(result?.["seconds"]),
-    started: isString(harbor?.["started_at"]) ? harbor["started_at"] : null,
+    seconds: counted(result?.seconds),
+    started: isString(harbor?.started_at) ? harbor.started_at : null,
   };
 }
 
@@ -137,7 +137,7 @@ export function trialsOf(printed: string): Trial[] {
       if (parsed === null) throw new Error(`trials.py printed a line that is no object: ${line}`);
       return trialOf(parsed);
     })
-    .toSorted((one, other) => (one.started ?? "\uffff").localeCompare(other.started ?? "\uffff"));
+    .toSorted((one, other) => (one.started ?? "\uFFFF").localeCompare(other.started ?? "\uFFFF"));
 }
 
 /** Each task's scores, in the order its trials started, of the trials the reader scored. */
@@ -192,7 +192,7 @@ export function readArms(
 ): Reading {
   const scoredA = scoresByTask(a);
   const scoredB = scoresByTask(b);
-  const all = [...new Set([...scoredA.keys(), ...scoredB.keys()])].sort();
+  const all = [...new Set([...scoredA.keys(), ...scoredB.keys()])].toSorted();
   const full = (by: Map<string, number[]>, task: string) => (by.get(task)?.length ?? 0) >= streams;
   const tasks = all.filter((task) => full(scoredA, task) && full(scoredB, task));
   const cut = (by: Map<string, number[]>, task: string) => (by.get(task) ?? []).slice(0, streams);
@@ -203,7 +203,7 @@ export function readArms(
   const draw = seeded(seed);
   const resampled = Array.from({ length: 10_000 }, () =>
     mean(tasks.map(() => gaps[Math.floor(draw() * gaps.length)] ?? 0)),
-  ).sort((one, other) => one - other);
+  ).toSorted((one, other) => one - other);
   const at = (share: number) => (resampled[Math.floor(share * (resampled.length - 1))] ?? 0) * 100;
   const none = tasks.length === 0;
   return {

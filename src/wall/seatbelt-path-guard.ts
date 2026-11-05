@@ -9,8 +9,8 @@
  *    bytes to a path no rule mentions. `moveBlockingRules` denies those renames.
  *
  * The rename rules are copied, with the two departures named below, from `generateMoveBlockingRules`
- * in anthropic-experimental/sandbox-runtime, `src/sandbox/macos-sandbox-utils.ts`, Apache-2.0,
- * pinned at 295f0e1af832131efe40db22f2c65a57f461d849 (@anthropic-ai/sandbox-runtime 0.0.67).
+ * in anthropic-experimental/sandbox-runtime, `295f0e1af:src/sandbox/macos-sandbox-utils.ts`,
+ * Apache-2.0, pinned at 295f0e1af832131efe40db22f2c65a57f461d849 (@anthropic-ai/sandbox-runtime 0.0.67).
  *
  * Why the rules exist. `(deny file-read* (subpath P))` names P as a string, so a confined process
  * that can rename an ancestor of P relocates the protected bytes to a path no rule mentions and
@@ -58,13 +58,13 @@ const MOVE_OPS = ["file-write-unlink", "file-write-create"] as const;
  * roots must emit the same bytes.
  */
 export function moveBlockingRules(protectedRoots: readonly string[]): string[] {
-  const roots = [...new Set(protectedRoots)].sort();
+  const roots = [...new Set(protectedRoots)].toSorted();
   if (roots.length === 0) return [];
   // Every directory a rename could relocate a protected root through. `/` is dropped: it is not
   // renameable and naming it would deny the root inode itself.
   const ancestors = [...new Set(roots.flatMap((root) => ancestorDirectories(root)))]
     .filter((path) => path !== "/")
-    .sort();
+    .toSorted();
   return MOVE_OPS.flatMap((op) => [
     `(deny ${op}`,
     ...roots.map((path) => `  (subpath ${capturedJsonStringify(path)})`),

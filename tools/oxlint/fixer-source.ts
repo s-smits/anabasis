@@ -164,7 +164,7 @@ export function revertJournal(journal: string, root: string, wanted: ReadonlySet
     const found = readFileSync(join(root, path), UTF8);
     let text = found;
     let ahead = 0;
-    for (const edit of [...own].sort((a, b) => a.start - b.start)) {
+    for (const edit of [...own].toSorted((a, b) => a.start - b.start)) {
       const at = edit.start + ahead;
       const selected = wanted.size === 0 || wanted.has(`${edit.path}:${String(edit.line)}`);
       if (!selected || text.slice(at, at + edit.text.length) !== edit.text) {
@@ -227,7 +227,7 @@ export function applyEdits(files: ReadonlyMap<string, Held>, root: string, edits
     if (file === undefined) continue;
     let text = file.text;
     let guard = Number.POSITIVE_INFINITY;
-    for (const edit of [...own].sort((a, b) => b.start - a.start)) {
+    for (const edit of [...own].toSorted((a, b) => b.start - a.start)) {
       if (edit.end > guard) continue;
       text = text.slice(0, edit.start) + edit.text + text.slice(edit.end);
       guard = edit.start;
@@ -240,7 +240,7 @@ export function applyEdits(files: ReadonlyMap<string, Held>, root: string, edits
 
 /** One tally, most first. */
 function printTally(rows: ReadonlyMap<string, number>, verb: string): void {
-  for (const [key, count] of [...rows].sort((a, b) => b[1] - a[1])) {
+  for (const [key, count] of [...rows].toSorted((a, b) => b[1] - a[1])) {
     console.log(`  ${verb} ${String(count)} ${key}`);
   }
 }
@@ -266,7 +266,7 @@ export function reportRun(run: FixRun): void {
     const key = one.message.replaceAll(/`[^`]*`/gu, "X");
     remaining.set(key, (remaining.get(key) ?? 0) + 1);
   }
-  for (const [wording, count] of [...remaining].sort((a, b) => b[1] - a[1])) {
+  for (const [wording, count] of [...remaining].toSorted((a, b) => b[1] - a[1])) {
     console.log(`    ${String(count)} ${wording}`);
   }
   const worklist = run.manual.map((one) => {

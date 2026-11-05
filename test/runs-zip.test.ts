@@ -5,14 +5,12 @@ import { describe, expect, it } from "bun:test";
 import {
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   readlinkSync,
   realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runTextSyncOrThrow } from "../src/meta/subprocess.ts";
@@ -27,7 +25,7 @@ const LOG = [
   { at: "2026-10-08T12:31:00.000Z", kind: "campaign.ended", data: { ending: "stop" } },
 ];
 /** The commit the round's launch ran at, which is not the one its worktree stands at when zipped. */
-const RAN_AT = "c0ffee".repeat(6) + "cafe";
+const RAN_AT = `${"c0ffee".repeat(6)}cafe`;
 const RECEIPT = {
   at: "2026-10-08T11:59:00.000Z",
   pid: 1,
@@ -105,7 +103,6 @@ describe("the runs zip", () => {
         `checker tree/r1/states/${DIGEST}/correctness-model/controls.json`,
         "toolchain tree/r1/states/tree-abc/bin/solver",
         `toolchain tree/r1/states/${DIGEST}/.toolchain`,
-        "trajectories tree/r1/trajectories/build-r1-1.json",
       ];
       const verbose = [
         ...medium,
@@ -121,24 +118,20 @@ describe("the runs zip", () => {
       ] as const) {
         const out = join(root, `${level}.zip`);
         const made = zip([run], level, { out, maxBytes: null, note: null });
-        expect(made.files.map((file) => `${file.group} ${file.path}`).sort()).toEqual(expected.toSorted());
+        expect(made.files.map((file) => `${file.group} ${file.path}`).toSorted()).toEqual(
+          expected.toSorted(),
+        );
         const names = runTextSyncOrThrow(["unzip", "-Z1", out]).trim().split("\n");
-        expect(names.filter((name) => !name.endsWith("/")).sort()).toEqual(
+        expect(names.filter((name) => !name.endsWith("/")).toSorted()).toEqual(
           [...made.files.map((file) => file.path), "README.md", "GUIDE.md", "MANIFEST.json"]
             .map((path) => `${level}/${path}`)
-            .sort(),
+            .toSorted(),
         );
       }
       runTextSyncOrThrow(["unzip", "-q", join(root, "medium.zip"), "-d", join(root, "opened")]);
       expect(readlinkSync(join(root, "opened", "medium", "tree", "r1", "states", DIGEST, ".toolchain"))).toBe(
         "../tree-abc",
       );
-      // The Builder's session as Harbor reads a run, named by the commit its launch ran at.
-      const trajectory = parseJsonAs<{ agent: { version: string }; steps: { message: string }[] }>(
-        readFileSync(join(root, "opened", "medium", "tree", "r1", "trajectories", "build-r1-1.json"), "utf8"),
-      );
-      expect(trajectory.agent.version).toBe(RAN_AT.slice(0, 9));
-      expect(trajectory.steps.map(({ message }) => message)).toEqual(["edited"]);
       expect(() =>
         zip([run], "light", { out: join(root, "too-small.zip"), maxBytes: 1, note: null }),
       ).toThrow(/0 KB/);

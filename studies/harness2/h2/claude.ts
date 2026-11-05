@@ -423,12 +423,13 @@ export async function rollout(place: RolloutPlace, treeDir: string, claude: Clau
 
 /** A session that gave no usable reply after its transport attempts (`ProposerError`). */
 export class ProposerError extends Error {
-  constructor(
-    message: string,
-    readonly attempts: number,
-    readonly costUsd: number,
-  ) {
+  readonly attempts: number;
+  readonly costUsd: number;
+
+  constructor(message: string, attempts: number, costUsd: number) {
     super(message);
+    this.attempts = attempts;
+    this.costUsd = costUsd;
     this.name = "ProposerError";
   }
 }

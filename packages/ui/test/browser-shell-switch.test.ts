@@ -137,7 +137,7 @@ describe("a switch of project or campaign", () => {
     const { page } = opened;
     await page.route(`**/api/campaign?key=${encodeURIComponent(keys.units)}`, async (route) => {
       // The network a slow server would be: the read answers, 1.5 s late.
-      await Bun.sleep(1_500);
+      await Bun.sleep(1500);
       await route.continue();
     });
     // Read in the page at each change of its document, since a loaded host can take longer than the
@@ -196,7 +196,7 @@ describe("a switch of project or campaign", () => {
     await page.clock.install();
     await page.reload();
     await expect(page.getByRole("heading", { level: 1, name: "fixture" })).toBeVisible();
-    await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1_000);
+    await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1000);
     let release = () => {};
     const held = new Promise<void>((resolve) => {
       release = resolve;

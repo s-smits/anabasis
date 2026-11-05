@@ -21,7 +21,7 @@ import { ending, text, tool } from "../src/tools/answer.ts";
 import { present } from "./helpers/matchers.ts";
 
 const homes: string[] = [];
-const LONG = "first part\n" + `${"x".repeat(79)}\n`.repeat(1024) + "last part";
+const LONG = `first part\n${`${"x".repeat(79)}\n`.repeat(1024)}last part`;
 const IMAGE = { type: "image", data: "eA==", mimeType: "image/png" } as const;
 
 afterAll(() => {
@@ -145,7 +145,7 @@ describe("a seat tool's automatic result cap", () => {
       }
     })({ cwd: seatHome() });
     for (const env of [refusing, undefined]) {
-      for (const value of ["é🙂".repeat(20_000), "line\n".repeat(3_000), " ".repeat(80 * 1024)]) {
+      for (const value of ["é🙂".repeat(20_000), "line\n".repeat(3000), " ".repeat(80 * 1024)]) {
         const large = tool({
           name: "refused_folder",
           description: "A seat whose temporary folder refuses a file.",

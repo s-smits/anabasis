@@ -214,6 +214,12 @@ export function refusedBy(verdict: Judged | undefined): readonly string[] {
   return verdict?.checker?.kind === "fail" ? verdict.checker.blocking : [];
 }
 
+/** What the checker measured of a valid answer; null for any verdict but a pass with a measure.
+ *  A comparison's objective, a Builder's practice record and an Examiner's room read it here. */
+export function measureOf(verdict: Judged | undefined): number | null {
+  return verdict?.checker?.kind === "pass" ? (verdict.checker.objective ?? null) : null;
+}
+
 /** The checker's own verdict a `verdict` event holds, with its measure where one was taken, or
  *  null where no check gave one. The acceptance's regrading reads the same event through this
  *  (rule 12), so that no copy of it drops the measure. */

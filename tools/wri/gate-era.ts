@@ -8,7 +8,7 @@
  */
 import { conditionsOf } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { examinerSessions, solvesIn, verdictsOf } from "#src/kernel/solves.ts";
+import { examinerSessions, measureOf, solvesIn, verdictsOf } from "#src/kernel/solves.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 
 /** At most three room solves per draft, as a gate ran them under `try_task` until 1 November. */
@@ -49,14 +49,12 @@ export function gateAnswers(events: readonly LogEvent[], from: number): Map<stri
     const version = conditions.get(condition)?.task;
     if (started <= from || !sessions.has(start.comparison) || version === undefined) continue;
     if (ending?.outcome !== "pass") continue;
-    const checker = verdicts.get(id)?.checker;
-    const measure = checker?.kind === "pass" ? (checker.objective ?? null) : null;
     answers.set(version, [
       ...(answers.get(version) ?? []),
       {
         turns: isNumber(end?.turns) ? end.turns : null,
         seconds: isNumber(end?.seconds) ? end.seconds : null,
-        measure,
+        measure: measureOf(verdicts.get(id)),
       },
     ]);
   }

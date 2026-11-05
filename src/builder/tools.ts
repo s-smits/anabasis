@@ -51,7 +51,15 @@ import { limitsIn } from "../kernel/condition.ts";
 import type { Contract } from "../kernel/contract.ts";
 import { callList, callText, closingOf, traceOf } from "../kernel/trace.ts";
 import { billedParts } from "../kernel/meter.ts";
-import { ended, passed, practiceRan, rejectionAside, solvesIn, verdictsOf } from "../kernel/solves.ts";
+import {
+  ended,
+  measureOf,
+  passed,
+  practiceRan,
+  rejectionAside,
+  solvesIn,
+  verdictsOf,
+} from "../kernel/solves.ts";
 import { poolOf } from "../kernel/reports.ts";
 import { taskStates } from "../kernel/task.ts";
 import {
@@ -160,9 +168,9 @@ function endingText(ending: Ending): string {
 /** What the verifier measured of a valid practice answer, where the contract states an objective:
  *  the quantity and its value, which the Builder reads of its own practice and of nothing else. */
 function measuredText(events: readonly LogEvent[], solve: string, contract: Contract): string {
-  const checker = verdictsOf(events).get(solve)?.checker;
-  return contract.objective !== undefined && checker?.kind === "pass" && checker.objective !== undefined
-    ? ` Measured ${contract.objective.quantity}: ${String(checker.objective)} (${contract.objective.direction} is better).`
+  const measure = measureOf(verdictsOf(events).get(solve));
+  return contract.objective !== undefined && measure !== null
+    ? ` Measured ${contract.objective.quantity}: ${String(measure)} (${contract.objective.direction} is better).`
     : "";
 }
 
@@ -185,13 +193,6 @@ export function hasPractice(
   harness: string,
 ): boolean {
   return bench.tasks.some(({ version }) => record(events, version, harness).solves.length > 0);
-}
-
-/** A comparison has run this exact digest, as either of its harnesses. */
-function compared(events: readonly LogEvent[], harness: string): boolean {
-  return events.some(
-    ({ kind, data }) => kind === COMPARISON_STARTED && (data.old === harness || data.fresh === harness),
-  );
 }
 
 /** The parent's tool tree, where it really is; null when the parent has none. Every caller copies
@@ -259,7 +260,7 @@ function keptTree(bench: Bench): string | null {
   }
   const stamp = toolTreeStamp(real);
   if (bench.tree?.stamp === stamp) return bench.tree.dir;
-  if (bench.tree !== undefined && bench.tree !== null) dropUnlinked(bench.request.states, bench.tree.dir);
+  if (bench.tree !== null) dropUnlinked(bench.request.states, bench.tree.dir);
   const dir = realpathSync(mkdtempSync(join(bench.request.states, "tree-")));
   try {
     cpSync(real, dir, { recursive: true, verbatimSymlinks: true });
@@ -371,9 +372,7 @@ function usedText(events: readonly LogEvent[], solve: string): string {
   const given = limits.modelTurns === undefined ? "" : ` of ${String(limits.modelTurns)}`;
   const tokens = asRecord(end.tokens);
   const count = (value: JsonValue | undefined) => (isNumber(value) ? value : 0);
-  const readTokens = ["input", "cacheRead", "cacheWrite"]
-    .map((key) => count(tokens?.[key]))
-    .reduce((sum, n) => sum + n, 0);
+  const readTokens = count(tokens?.input) + count(tokens?.cacheRead) + count(tokens?.cacheWrite);
   const counted =
     tokens === null
       ? ""
@@ -465,10 +464,7 @@ function recordText(
     .map(([digest, [role, ...also]], index) => {
       const kept = record(events, version, digest);
       const which = `${role ?? ""}${also.length > 0 ? `, which is also ${also.join(" and ")}` : ""}`;
-      const measures = kept.solves.flatMap((solve) => {
-        const checker = verdicts.get(solve)?.checker;
-        return checker?.kind === "pass" && checker.objective !== undefined ? [String(checker.objective)] : [];
-      });
+      const measures = kept.solves.flatMap((solve) => measureOf(verdicts.get(solve)) ?? []);
       const measured =
         contract.objective === undefined || measures.length === 0
           ? ""
@@ -497,7 +493,6 @@ export function practiceTool(bench: Bench): SeatTool {
         }),
       ),
     }),
-    executionMode: "sequential",
     execute: async (args, _api, context) => {
       const offered = new Map(bench.tasks.map((task) => [task.task.taskId, task]));
       const unknown = args.tasks.find((id) => !offered.has(id));
@@ -599,7 +594,6 @@ export function traceTool(bench: Bench): SeatTool {
       solve: Type.String({ description: "A solve's id." }),
       call: Type.Optional(Type.Number({ minimum: 1, description: "A call's number, from the list." })),
     }),
-    executionMode: "sequential",
     execute: async (args) => {
       const versions = new Set(bench.tasks.map(({ version }) => version));
       const events = read(bench.request.log);
@@ -609,16 +603,14 @@ export function traceTool(bench: Bench): SeatTool {
       }
       const { turns, calls } = traceOf(events, "solve", args.solve);
       if (args.call !== undefined) return text(callText(calls, args.call));
-      const { ending } = ran;
       const answer = verdictsOf(events).get(args.solve)?.answer;
-      const closing = closingOf(turns);
       return text(
         [
-          `ending: ${rejectionAside(events, ran) ? "rejection set aside" : isString(ending?.outcome) ? `${ending.outcome}${isString(ending.kind) ? ` (${ending.kind})` : ""}` : "not recorded"}`,
+          `ending: ${rejectionAside(events, ran) ? "rejection set aside" : isString(ran.ending?.outcome) ? `${ran.ending.outcome}${isString(ran.ending.kind) ? ` (${ran.ending.kind})` : ""}` : "not recorded"}`,
           answer === undefined
             ? "no answer was submitted"
             : `submitted answer: ${capturedJsonStringify(answer)}`,
-          `closing text: ${closing ?? "(none recorded)"}`,
+          `closing text: ${closingOf(turns) ?? "(none recorded)"}`,
           callList(calls),
         ].join("\n"),
       );
@@ -656,13 +648,17 @@ async function finishNotice(bench: Bench, unmeasured?: Unmeasured): Promise<stri
   }
   const events = read(request.log);
   const left = practiceLeft(bench, events);
+  // Practised under this exact digest, or run by a comparison as either of its harnesses.
   const tried =
-    bench.opened === null || now === bench.parent || hasPractice(bench, events, now) || compared(events, now);
+    bench.opened === null ||
+    now === bench.parent ||
+    hasPractice(bench, events, now) ||
+    events.some(({ kind, data }) => kind === COMPARISON_STARTED && (data.old === now || data.fresh === now));
   const untried = !tried && left > 0 && !told.has("untried");
   const unread = told.has("unread") ? null : ((await unmeasured?.(now)) ?? null);
-  if (untried) told.add("untried");
   if (unread !== null) told.add("unread");
   if (untried) {
+    told.add("untried");
     return `harness/ has changed since your last practice solve, so no solve has run it as it stands. ${plural(left, "practice solve")} ${left === 1 ? "is" : "are"} left. Practise it, ${again} ${bench.said.untried}.${unread === null ? "" : ` ${unread}`}`;
   }
   return unread === null ? null : `${unread} Call finish again to end the conversation as it is.`;
@@ -687,7 +683,6 @@ export function openingTool(opening: string | (() => string), description: strin
     name: "read_opening",
     description,
     parameters: Type.Object({}),
-    executionMode: "sequential",
     execute: async () => text(isFunction(opening) ? opening() : opening),
   });
 }
@@ -705,7 +700,6 @@ export function waitTool(description: string, next: () => Promise<string>): Seat
     name: "wait",
     description,
     parameters: Type.Object({}),
-    executionMode: "sequential",
     execute: async () => text(await next()),
   });
 }
@@ -738,7 +732,6 @@ export function finishTool(bench: Bench, unmeasured?: Unmeasured): SeatTool {
     name: "finish",
     description: bench.said.finish,
     parameters: Type.Object({ note: Type.String({ minLength: 1, maxLength: 700 }) }),
-    executionMode: "sequential",
     execute: async (args) => {
       // `finish` ends the session at this turn, so a finish notice on the next turn would reach nobody:
       // the call itself carries it, as v1's submit did (`src/gate/submit-tool.ts` at 3f93d06).
@@ -779,7 +772,6 @@ function checkTool(bench: Bench): SeatTool {
     description:
       "Open harness/ as a solve would, for one practice task. Reports pi's tools it selects, its programs by name, the guide's length and its own tools, or the error a solve would stop on. Spends no practice solve.",
     parameters: Type.Object({}),
-    executionMode: "sequential",
     execute: async () =>
       await frozen(bench, ({ harness, listed }) => text(opens(harness, listed ?? [...harness.kinds.keys()]))),
   });
@@ -798,7 +790,6 @@ function previewTool(bench: Bench, wall: CommandWall): SeatTool {
     description:
       "Show what a solver would read under harness/ as it stands, for one practice task: its system prompt whole, with your guide where the solver finds it and your programs' names, and each of its tools by name and description. Spends no practice solve.",
     parameters: Type.Object({}),
-    executionMode: "sequential",
     execute: async () => {
       const [sample] = bench.tasks;
       if (sample === undefined) return text("This session has no practice task to preview a solve of.");

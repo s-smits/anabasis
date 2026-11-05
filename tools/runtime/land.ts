@@ -44,7 +44,9 @@
  * also wants `ci.yml` passed on the top's head, since only it proves the Linux isolation on a clean
  * runner. No pull request push starts that run (since 19 October, `ci.yml`); when none exists and
  * `ci.yml` takes `workflow_dispatch`, `--merge` dispatches one before gating, so it runs meanwhile,
- * and waits for it after. No pull request merges before that run has passed. A failed run is not dispatched again, since nothing about its head changed. Then, on heads
+ * and waits for it after. No pull request merges before that run has passed. A failed run is not dispatched again, since nothing about its head changed, unless no runner
+ * ever took the jobs that did not pass: on 5 November GitHub cancelled both macOS jobs of run
+ * 41910589537 untaken, so `land` reruns those jobs once and waits for them. Then, on heads
  * read again, it posts `ana/stack-gate` on every head and merges through GitHub, so each pull request
  * ends Merged; a local merge pushed to main left 98 pull requests open on 21 September 2026. The
  * merge is GitHub's asynchronous merge of the top, pinned to the top's gated head, which merges
@@ -153,6 +155,8 @@ const CI_POLL_MS = Number(runtimeProcess.env.ANA_CI_POLL_MS) || 20_000;
 const CI_WAIT_MS = 75 * 60_000;
 /** Each failed job of a `ci.yml` run, with its failed steps, one line each. */
 const CI_FAILED = String.raw`.jobs[] | select(.conclusion == "failure") | "\(.name): \([.steps[] | select(.conclusion == "failure") | .name] | join(", "))"`;
+/** The jobs of a failed run that never started, named when every job that did not pass is one. */
+const CI_UNTAKEN = String.raw`[.jobs[] | select(.conclusion != "success")] | select(length > 0 and all(.steps | length == 0)) | "no runner took " + (map(.name) | join(", "))`;
 /** How many of a failed run's last log lines a refusal prints; the whole log is kept beside the gate's. */
 const CI_TAIL = 40;
 /** How many times a landing reads its chain again after a head moved, before it refuses. */
@@ -368,9 +372,18 @@ function startCi(root: string, top: Pull): void {
     throw new Refusal(`GitHub did not list ${CI_WORKFLOW}'s runs on ${head}. Land again.`);
   }
   if (ci !== null) {
-    const [status, conclusion, id, url, at] = ci;
+    const [status, conclusion, id = "", url, at] = ci;
+    const untaken =
+      conclusion === "failure" ? gh(root, ["run", "view", id, "--json", "jobs", "--jq", CI_UNTAKEN]).out : "";
+    if (untaken !== "") {
+      ghOrThrow(root, ["run", "rerun", id, "--failed"]);
+      say(
+        `${CI_WORKFLOW} run ${id} failed on ${head} where ${untaken}; its failed jobs run again: ${url ?? ""}`,
+      );
+      return;
+    }
     say(
-      `${CI_WORKFLOW} run ${id ?? ""} of ${at ?? "an earlier landing"} is already on ${head}, ${conclusion === undefined || conclusion === "" ? status : conclusion}; its verdict stands: ${url ?? ""}`,
+      `${CI_WORKFLOW} run ${id} of ${at ?? "an earlier landing"} is already on ${head}, ${conclusion === undefined || conclusion === "" ? status : conclusion}; its verdict stands: ${url ?? ""}`,
     );
     return;
   }

@@ -3,6 +3,7 @@ import type { RuleExample } from "../../rule-examples.ts";
 
 import { isOneOf, isUnder } from "../shared/file-role.ts";
 import { importTracker } from "../shared/import-fix.ts";
+import { isOneArgumentCall } from "../shared/statements.ts";
 
 /**
  * `cause instanceof Error ? cause.message : String(cause)` was written 88 times in this tree, and
@@ -71,7 +72,7 @@ export const noHandRolledErrorRenderRule = defineRule({
 
     /** `String(x)`, or `errorMessage(x)` inside a `new Error(…)`, over the same subject. */
     function rendersSubject(node: ESTree.Expression, subject: string): boolean {
-      if (node.type !== "CallExpression" || node.arguments.length !== 1) return false;
+      if (!isOneArgumentCall(node)) return false;
       if (node.callee.type !== "Identifier") return false;
       if (node.callee.name !== "String" && node.callee.name !== "errorMessage") return false;
       return context.sourceCode.getText(node.arguments[0]) === subject;

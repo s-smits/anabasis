@@ -109,7 +109,7 @@ function parameterName(parameter: Parameter): string | null {
   if (parameter.type === "TSParameterProperty") return parameterName(parameter.parameter);
   if (parameter.type === "AssignmentPattern") return parameterName(parameter.left);
   if (parameter.type === "RestElement") return parameterName(parameter.argument);
-  return parameter.type === "Identifier" ? parameter.name : null;
+  return identifierName(parameter);
 }
 
 /** The called function's name, whether `isString(x)` or `Array.isArray(x)`. */

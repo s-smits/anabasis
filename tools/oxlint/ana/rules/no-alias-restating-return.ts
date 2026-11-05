@@ -1,5 +1,6 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
+import { identifierName } from "../shared/statements.ts";
 
 /**
  * Rung 3 of the simplify skill's ladder, at the type level: the function already owns this
@@ -102,7 +103,7 @@ export const noAliasRestatingReturnRule = defineRule({
       if (owner.returnType !== annotation) return null;
       const declarator = owner.parent;
       if (declarator.type !== "VariableDeclarator") return null;
-      return declarator.id.type === "Identifier" ? declarator.id.name : null;
+      return identifierName(declarator.id);
     }
 
     return {

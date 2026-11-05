@@ -1,6 +1,6 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
-import { everyStatementList, singleConst } from "../shared/statements.ts";
+import { everyStatementList, identifierName, singleConst } from "../shared/statements.ts";
 
 /** How many threaded steps make a chain worth a reader's attention. The dial the shape was queued with. */
 const MINIMUM_LINKS = 3;
@@ -99,7 +99,7 @@ export const noSingleUseConstChainRule = defineRule({
 
     /** The name a declarator binds, which `step` has already proved is a plain identifier. */
     function bound(declarator: ESTree.VariableDeclarator): string {
-      return declarator.id.type === "Identifier" ? declarator.id.name : "";
+      return identifierName(declarator.id) ?? "";
     }
 
     /** A name matched where it is read: not after a dot, not before a colon, `...name` included. */

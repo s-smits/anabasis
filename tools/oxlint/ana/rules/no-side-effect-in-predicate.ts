@@ -1,7 +1,7 @@
 import { defineRule } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
 import { mutatingCall } from "../shared/predicate-effect.ts";
-import { inlineFunctionArgument } from "../shared/statements.ts";
+import { identifierName, inlineFunctionArgument, isNamedMember } from "../shared/statements.ts";
 
 /**
  * A predicate that mutates is not a predicate. The shape the simplify skill kept finding is a
@@ -59,8 +59,7 @@ export const noSideEffectInPredicateRule = defineRule({
     return {
       CallExpression(node) {
         const { callee } = node;
-        if (callee.type !== "MemberExpression" || callee.computed) return;
-        if (callee.property.type !== "Identifier" || !PREDICATE_METHODS.has(callee.property.name)) return;
+        if (!isNamedMember(callee) || !PREDICATE_METHODS.has(identifierName(callee.property) ?? "")) return;
         const predicate = inlineFunctionArgument(node);
         if (predicate === null) return;
         const found = mutatingCall(context.sourceCode.getText(predicate.body));

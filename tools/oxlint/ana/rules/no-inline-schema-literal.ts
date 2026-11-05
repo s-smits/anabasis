@@ -1,6 +1,7 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
 import { isTestFile } from "../shared/file-role.ts";
+import { isConstDeclaration, isNamedMember } from "../shared/statements.ts";
 
 /**
  * A table of constants built inside a function body is rebuilt on every call, and it sits where
@@ -189,7 +190,7 @@ export const noInlineSchemaLiteralRule = defineRule({
       VariableDeclarator(node) {
         const { id, init, parent } = node;
         if (init === null) return;
-        if (parent.type !== "VariableDeclaration" || parent.kind !== "const") return;
+        if (!isConstDeclaration(parent)) return;
         if (id.type !== "Identifier" || !insideFunction(node)) return;
         const table = unwrapAssertion(init);
         if (entryCount(table) < ENTRY_FLOOR || !flatConstantTable(table)) return;
@@ -201,7 +202,7 @@ export const noInlineSchemaLiteralRule = defineRule({
         // The declaration itself, and a property name that happens to match, say nothing.
         if (parent.type === "VariableDeclarator" && parent.id === node) return;
         if (parent.type === "Property" && parent.key === node && parent.value !== node) return;
-        if (parent.type === "MemberExpression" && parent.property === node && !parent.computed) return;
+        if (isNamedMember(parent) && parent.property === node) return;
         // A property read is the one use that keeps the value inside this declaration.
         if (parent.type === "MemberExpression" && parent.object === node && !writesThrough(parent)) return;
         escaped.add(node.name);

@@ -2,7 +2,7 @@ import { defineRule, type ESTree } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
 import { holdsProse } from "../shared/masked.ts";
 import { calls, writes } from "../shared/predicate-effect.ts";
-import { asSubject, methodCall } from "../shared/statements.ts";
+import { asSubject, identifierName, isNamedMember, methodCall } from "../shared/statements.ts";
 
 /**
  * `rows.filter(isFailed).length > 0` builds an array to answer a question about the first
@@ -57,8 +57,7 @@ export const preferSomeOverFilterLengthRule = defineRule({
     function filteredLength(
       node: ESTree.Node,
     ): { readonly subject: string; readonly predicate: ESTree.Node } | null {
-      if (node.type !== "MemberExpression" || node.computed) return null;
-      if (node.property.type !== "Identifier" || node.property.name !== "length") return null;
+      if (!isNamedMember(node) || identifierName(node.property) !== "length") return null;
       const call = methodCall(node.object, "filter");
       if (call === null) return null;
       const { receiver, argument } = call;

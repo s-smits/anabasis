@@ -3,6 +3,7 @@ import type { RuleExample } from "../../rule-examples.ts";
 
 import { isOneOf, isTestFile, isUnder } from "../shared/file-role.ts";
 import { argumentOf, calleeName, forwardingTracker } from "../shared/forwarding.ts";
+import { identifierName, isNamedMember } from "../shared/statements.ts";
 
 const OWNER = ".claude/skills/main/cli.ts";
 
@@ -39,8 +40,8 @@ function isExecutable(argv: ESTree.MemberExpression): boolean {
 /** The `argv.slice(…)` call this read is the object of, or null for any other read. */
 function sliceCall(argv: ESTree.MemberExpression): ESTree.CallExpression | null {
   const member = argv.parent;
-  if (member.type !== "MemberExpression" || member.object !== argv || member.computed) return null;
-  if (member.property.type !== "Identifier" || member.property.name !== "slice") return null;
+  if (!isNamedMember(member) || member.object !== argv) return null;
+  if (identifierName(member.property) !== "slice") return null;
   const call = member.parent;
   return call.type === "CallExpression" && call.callee === member ? call : null;
 }
@@ -132,7 +133,7 @@ export const noHandReadArgvRule = defineRule({
         for (const argv of reads) {
           if (handedToLibrary(argv)) continue;
           const indexed =
-            argv.parent.type === "MemberExpression" && argv.parent.computed ? argv.parent : argv;
+            argv.parent.type === "MemberExpression" && !isNamedMember(argv.parent) ? argv.parent : argv;
           const whole = sliceCall(argv) ?? indexed;
           context.report({
             node: argv,

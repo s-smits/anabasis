@@ -1,4 +1,5 @@
 import type { ESTree } from "@oxlint/plugins";
+import { identifierName } from "./statements.ts";
 
 /**
  * Whether a value handed to a function the file declares ends up at a named destination.
@@ -62,7 +63,7 @@ export function argumentOf(value: ESTree.Node): { call: ESTree.CallExpression; i
 
 function parameterName(parameter: ESTree.Node | undefined): string | null {
   if (parameter?.type === "AssignmentPattern") return parameterName(parameter.left);
-  return parameter?.type === "Identifier" ? parameter.name : null;
+  return identifierName(parameter);
 }
 
 /** Feed it every function declaration, declarator and call; ask it after the file has been read. */

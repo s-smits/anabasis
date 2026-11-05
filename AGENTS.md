@@ -264,7 +264,9 @@ tests; `examiner-view <name>` counts what an Examiner opening would be told, and
 
 ## 4. The Harness Builder
 
-One Builder conversation leads the campaign (`tools/d2/harness-builder.ts`).
+One Builder conversation leads the campaign (`tools/d2/harness-builder.ts`), and one Examiner
+conversation beside it takes each `examine` in turn: where an ask's work is done it rests, and the
+next ask wakes it with the readings since. One that crashed or met a limit opens afresh from the log.
 Its campaign tools are `examine`, `compare`, `campaign_status` and `wait`. Each uses the same
 admission checks as the operator's command. The Builder chooses its own moves; code enforces
 endings, releases owed practice and promotes the harness a step names. Three invariants protect
@@ -279,8 +281,8 @@ the evaluation:
 Preserve the Builder conversation across campaign actions. Standing facts appear in every tool
 result because messages sent between tool-call turns do not reach the Builder.
 
-**In `campaign-mechanics`, section 4** (`builder-conversation.md`): Examiner sessions beside the
-conversation; which moves are recorded; the Builder's clock; sessions by hand.
+**In `campaign-mechanics`, section 4** (`builder-conversation.md`): the Examiner conversation beside
+the Builder's; which moves are recorded; the Builder's clock; sessions by hand.
 
 ## 5. The log
 

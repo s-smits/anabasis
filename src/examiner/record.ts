@@ -1,6 +1,6 @@
 /**
- * What a writing session is told of its campaign's past at its opening: a view of the log, with no
- * store of its own (`heard`), in four parts.
+ * What a writing session is told of its campaign's past at its opening, and at a wake what came
+ * since (`after`): a view of the log, with no store of its own (`heard`), in three parts.
  *
  * - `last`: the last comparison the reference harness stood in, from its side: the tasks it scored,
  *   how many each harness won, the reference's every, some and none, the tasks set aside, and how
@@ -10,11 +10,13 @@
  * - `groups`: every task under the reference's outcome in the last comparison that scored it, one
  *   block an outcome with a heading that says once what the block means. A line gives the task, then
  *   the turns each of the reference's valid answers took and, under an objective, what each measured,
- *   who won and on which measure (`carriedBy`), its last comparisons with the reference, whether a
- *   valid answer is on record where none of the reference's was valid, and the checks a ruling found
- *   at fault on an answer to it (`faultedOf`).
+ *   who won and on which measure (`carriedBy`), whether a valid answer is on record where none of the
+ *   reference's was valid, and the checks a ruling found at fault on an answer to it (`faultedOf`).
  * - `promoted`: that the reference was promoted, and how many tasks were held out before then.
- * - `refused`: the drafts the gate refused under the current reference, by reason.
+ *
+ * Until 5 November each session was a new conversation, and its opening also told each task's last
+ * three comparisons and the drafts the gate refused; a conversation now hears each reading at the
+ * wake after it, and each refusal from the gate.
  *
  * Until 4 November the opening carried a legend for every clause, the outcome on every line, the
  * gate's room solves, which no gate has run since 1 November, and the last session's note. An
@@ -37,7 +39,6 @@ import { scoresIn } from "../kernel/compare.ts";
 import { proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import {
-  type History,
   lastReports,
   type Outcome,
   pairsReported,
@@ -86,10 +87,14 @@ function blockOf(state: string | undefined, outcome: Outcome | undefined): keyof
 export const measured = (measure: number): string => String(Number(measure.toPrecision(6)));
 
 /** Every task among `tasks` under the reference's outcome on it, then the last comparison the
- *  reference stood in, the promotion and the refusals. A task the log refused is no task of the
- *  exam and has no line; one the log does not hold, as a pack's before `prepare.ts`, is not yet
- *  compared. */
-export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "taskId" | "family">[]) {
+ *  reference stood in and the promotion; with `after`, only what came after that event. A task the
+ *  log refused is no task of the exam and has no line; one the log does not hold, as a pack's before
+ *  `prepare.ts`, is not yet compared. */
+export function heard(
+  events: readonly LogEvent[],
+  tasks: readonly Pick<Task, "taskId" | "family">[],
+  after?: number,
+) {
   const states = taskStates(events);
   const pool = poolOf(events);
   const proposals = new Map(
@@ -101,13 +106,14 @@ export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "t
   const answered = referenceAnswers(events);
   const faulted = faultedOf(events);
   const since = events.findLastIndex(({ kind }) => kind === "harness.promoted");
+  const compared = after === undefined ? null : reportedAfter(events, after);
   const lines = new Map<string, string[]>();
   const listed: string[] = [];
   for (const { taskId, family } of tasks) {
     const proposal = proposals.get(taskId);
     const version = proposal?.version ?? "";
     const state = states.get(version);
-    if (state === "refused") continue;
+    if (state === "refused" || compared?.has(version) === false) continue;
     const block = blockOf(state, pool.outcomes.get(version));
     if (block !== "practice") listed.push(version);
     const named = `${taskId} (${family})`;
@@ -125,16 +131,25 @@ export function heard(events: readonly LogEvent[], tasks: readonly Pick<Task, "t
     return held.length === 0 ? [] : [{ heading, lines: held }];
   });
   return {
-    last: lastLine(events),
+    last: lastLine(events, after ?? 0),
     groups,
-    promoted: promotedLine(events, since, listed),
-    refused: refusedLines(events, since),
+    promoted: since < (after ?? 0) ? null : promotedLine(events, since, listed),
   };
 }
 
+/** The task versions comparisons reported on after event `after`. */
+const reportedAfter = (events: readonly LogEvent[], after: number) =>
+  new Set(
+    events
+      .slice(after)
+      .flatMap(({ kind, data }) =>
+        kind === "comparison.reported" && Array.isArray(data.versions) ? data.versions.filter(isString) : [],
+      ),
+  );
+
 /** What a task's line says after its name: the turns each of the reference's valid answers took and
  *  what each measured, whether a valid answer is on record where none of its solves was valid or
- *  none was read, who won and on which measure, and its last comparisons with the reference. */
+ *  none was read, and who won and on which measure. */
 function clausesOf(
   block: keyof typeof BLOCKS,
   pool: ReturnType<typeof poolOf>,
@@ -150,7 +165,6 @@ function clausesOf(
       ? []
       : [pool.feasible.has(version) ? "a valid answer on record" : "no valid answer on record"]),
     ...standingOf(pool.standings.get(version)),
-    ...historyOf(pool.histories.get(version)),
   ];
 }
 
@@ -182,31 +196,17 @@ function standingOf(standing: Standing | undefined): string[] {
   ];
 }
 
-/** A task's last comparisons with the reference harness, newest first, where it stood in at least
- *  two (`poolOf`, histories): each as every, some or none of the reference's solves valid, a limit
- *  that cut a solve named apart, and how many of the newest closed the task in a row. Which of them
- *  is too easy is the author's to judge. */
-function historyOf(history: History | undefined): string[] {
-  if (history === undefined || history.reads.length < 2) return [];
-  const reads = history.reads.map(({ valid, cut }) => `${valid}${cut ? " (a solve cut at a limit)" : ""}`);
-  const run = history.closedRun;
-  return [
-    `last ${String(reads.length)} comparisons, newest first: ${reads.join(", ")}`,
-    ...(run === 0 ? [] : [`the last ${run === 1 ? "" : `${String(run)} in a row `}closed it`]),
-  ];
-}
-
 /** The last comparison the reference harness stood in, from its side, or null before any: the
  *  tasks scored, the wins each way (from the per-task winners the lines already tell), its every,
  *  some and none, the tasks set aside, and how many of them its own two solves differed on. The
  *  A/A pairs the old side's solves with each other, so it measures the reference only there. No
  *  count of the other harness's valid solves is told. */
-function lastLine(events: readonly LogEvent[]): string | null {
+function lastLine(events: readonly LogEvent[], after: number): string | null {
   const reference = referenceOf(events);
   const report = lastReports(events).findLast(
     ({ data }) => data.old === reference || data.fresh === reference,
   );
-  if (report === undefined) return null;
+  if (report === undefined || report.index < after) return null;
   const side = report.data.fresh === reference ? "fresh" : "old";
   const spreads = pairsReported(events, report).map((pair) => spreadOf(pair[side]));
   const count = (spread: string) => String(spreads.filter((each) => each === spread).length);
@@ -241,21 +241,6 @@ function promotedLine(events: readonly LogEvent[], since: number, listed: readon
   const rests = promotion.data.rests;
   const on = Array.isArray(rests) ? asRecord(rests[0])?.comparison : undefined;
   return `The reference harness was promoted${isString(on) ? ` on the step of comparison ${on}` : ""}. ${String(before)} of the ${String(listed.length)} tasks listed were held out before then, under the harness it replaced. Files in your home from sessions before then were written while the harness it replaced was the reference.`;
-}
-
-/** The drafts the gate refused since the last promotion, grouped by its reason, an earlier log's
- *  room solves' among them in their own words. Until 14 October later sessions saw none of these
- *  drafts. */
-function refusedLines(events: readonly LogEvent[], since: number): string[] {
-  const drafts = new Map(proposalsOf(events).map(({ version, task }) => [version, task]));
-  const why = new Map<string, string[]>();
-  for (const { kind, data } of events.slice(since + 1)) {
-    const task = isString(data.version) ? drafts.get(data.version) : undefined;
-    if (kind !== "task.gate" || data.outcome !== "refused" || !isString(data.reason)) continue;
-    if (task === undefined || task === null) continue;
-    why.set(data.reason, [...(why.get(data.reason) ?? []), `${task.taskId} (${task.family})`]);
-  }
-  return [...why].map(([reason, named]) => `${reason}: ${named.join(", ")}`);
 }
 
 /** The reference harness's valid answers to each task in the last comparison that tallied it

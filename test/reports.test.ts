@@ -466,10 +466,6 @@ describe("the tasks awaiting task review", () => {
     expect(awaiting([...spent, event("task.feasible", { version: "hard", session: "x-1" })])).toEqual([]);
     expect(awaiting([...spent, ...solved(undefined, "hard", "h1", [P])])).toEqual([]);
     expect(awaiting([...spent, ...solved(undefined, "hard", "h9", [P])])).toEqual(["hard"]);
-    expect(poolOf(spent).histories.get("hard")?.reads).toEqual([
-      { valid: "none", cut: false },
-      { valid: "none", cut: false },
-    ]);
     const lastTurned = (log: readonly LogEvent[], turn: JsonObject) =>
       log.flatMap((each) =>
         each.kind === "solve.finished" && asRecord(each.data.ending)?.kind === "turns-ended"
@@ -484,7 +480,6 @@ describe("the tasks awaiting task review", () => {
       const old = lastTurned(spent, turn);
       const pool = poolOf(old);
       expect(pool).toMatchObject({ awaiting: [], scorable: ["hard", "easy"] });
-      expect(pool.histories.get("hard")?.reads.map(({ cut }) => cut)).toEqual([true, true]);
     }
     expect(awaiting(lastTurned(spent, { stopReason: "toolUse", error: null }))).toEqual(["hard"]);
   });

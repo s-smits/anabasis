@@ -44,6 +44,7 @@ const CALLED = "build.call";
 const FINISHED = "build.finished";
 const REPORTED = "comparison.reported";
 const EXAMINED = "exam.finished";
+const EXAM_STARTED = "exam.started";
 const TASKS = fixtureTasks(7);
 const GRADED = [
   ...gradedOf(TASKS),
@@ -200,10 +201,10 @@ describe("a campaign run by its live Builder", () => {
       ["build", "b-3"],
       ["build", "b-4"],
     ]);
-    expect(of(name, "exam.started")).toMatchObject([{ limits: { tasks: 4 } }]);
+    expect(of(name, EXAM_STARTED)).toMatchObject([{ limits: { tasks: 4 } }]);
     const events = logOf(name);
     const turn = events.findIndex(({ kind }) => kind === "build.turn");
-    const examiner = events.findIndex(({ kind }) => kind === "exam.started");
+    const examiner = events.findIndex(({ kind }) => kind === EXAM_STARTED);
     expect(turn).toBeGreaterThan(-1);
     expect(turn).toBeLessThan(examiner);
     expect(events[turn]?.data.usage).toBeDefined();
@@ -222,6 +223,61 @@ describe("a campaign run by its live Builder", () => {
     expect(ended).toBeGreaterThan(-1);
     expect(waited).toBeGreaterThan(ended);
     expect(events[waited]?.data.text).toContain("Campaign facts:");
+  });
+
+  it("wakes one Examiner conversation at each examine, and opens another from the log once it crashed", async () => {
+    layOutPack(root, bundle, TASKS, FIXTURE);
+    const name = `${STEM}-conversing`;
+    const sessions: { id: string; tasks: string[] }[] = [];
+    const asked: Step[] = [
+      ["examine", {}],
+      ["wait", {}],
+    ];
+    const seats: Seats = {
+      seated: builderScript(winning(), [
+        ...asked,
+        ...asked,
+        ...asked,
+        ...asked,
+        ["finish", { note: "Four asks of the Examiner." }],
+      ]),
+      // The first conversation holds two asks' calls, and its third ask finds its script spent: a
+      // turn the provider fails. The next ask opens another conversation, on the log.
+      examine: (request, wall) => {
+        sessions.push({ id: request.id, tasks: request.tasks.map(({ taskId }) => taskId) });
+        const calls = sessions.length === 1 ? [proposing(8), proposing(8, 8)] : [proposing(8, 16)];
+        return examine({ ...request, ...scripted(calls), rest: request.rest }, wall);
+      },
+    };
+    await harnessBuilder([...seeded(name), ...FLAGS, "--exam-tasks", "2"], seats);
+    expect(sessions.map(({ id }) => id)).toEqual(["x-1", "x-4"]);
+    expect(
+      of(name, EXAM_STARTED).map(({ session, conversation }) => [session, conversation ?? null]),
+    ).toEqual([
+      ["x-1", null],
+      ["x-2", "x-1"],
+      ["x-3", "x-1"],
+      ["x-4", null],
+    ]);
+    expect(of(name, EXAMINED).map(({ session, ended }) => [session, ended])).toEqual([
+      ["x-1", "supplied"],
+      ["x-2", "supplied"],
+      ["x-3", "crashed"],
+      ["x-4", "supplied"],
+    ]);
+    // Each ask's tasks are under its own id, and the reopened conversation is told them from the log.
+    const proposed = of(name, "task.proposed").map(({ taskId }) =>
+      isString(taskId) ? taskId.slice(0, 3) : "",
+    );
+    expect(new Set(proposed.filter((id) => id.startsWith("x-")))).toEqual(new Set(["x-1", "x-2", "x-4"]));
+    expect(sessions[1]?.tasks).toContain("x-1-001");
+    expect(sessions[1]?.tasks).toContain("x-2-001");
+    // The wake is told as the result of the call that ended the ask before it, inside one
+    // conversation; the call is on record under the ask that made it, not the one it woke.
+    const woken = of(name, "exam.call").filter(
+      ({ text }) => isString(text) && text.includes("The host asks for more tasks"),
+    );
+    expect(woken.map(({ session }) => session)).toEqual(["x-1", "x-2"]);
   });
 
   it("makes no second draw of a pair whose reading had room, even on tasks written since", async () => {
@@ -369,14 +425,14 @@ describe("a campaign run by its live Builder", () => {
     const at = positions(name);
     // Practice goes on beside the session: until 19 October a release waited for it, and each of
     // three replicates' Builders waited 1.6 to 2.6 hours with no practice task.
-    expect(at("exam.started")).toBeLessThan(at(`${CALLED}:practice`));
+    expect(at(EXAM_STARTED)).toBeLessThan(at(`${CALLED}:practice`));
     expect(at(`${CALLED}:practice`)).toBeLessThan(at(EXAMINED));
     expect(at(EXAMINED)).toBeLessThan(at(FINISHED));
     expect(of(name, EXAMINED)).not.toMatchObject([{ ended: "killed" }]);
     const [first, second] = said(name, "examine");
     expect(first).toContain("Examiner session x-1 is writing");
     expect(second).toContain("Examiner session x-1 is still writing.");
-    expect(of(name, "exam.started", true)).toHaveLength(1);
+    expect(of(name, EXAM_STARTED, true)).toHaveLength(1);
   });
 
   describe("releases the epoch's practice as task admission holds out tasks", () => {
@@ -386,7 +442,7 @@ describe("a campaign run by its live Builder", () => {
     /** The releases on record between the Examiner session's start and its end. */
     const releasedWhileWriting = (name: string) => {
       const events = logOf(name);
-      const started = events.findIndex(({ kind }) => kind === "exam.started");
+      const started = events.findIndex(({ kind }) => kind === EXAM_STARTED);
       const ended = events.findIndex(({ kind }) => kind === EXAMINED);
       return events
         .slice(started, ended)
@@ -668,7 +724,7 @@ describe("a campaign run by its live Builder", () => {
     };
     const args = [...seeded(name), "--target", "5", "--practice", "2", ...LEVEL];
     expect(await harnessBuilder(args, seats)).toMatchObject({ ending: "finished" });
-    expect(of(name, "exam.started", true)).toHaveLength(2);
+    expect(of(name, EXAM_STARTED, true)).toHaveLength(2);
     expect(of(name, MOVED, true).filter(({ move }) => move === "examine")).toHaveLength(2);
     expect(of(name, MOVED).some(({ move }) => move === "compare")).toBe(false);
     // The word is the operator's and reaches no seat: the Builder reads what the campaign waits for.
@@ -889,7 +945,7 @@ describe("a campaign run by its live Builder", () => {
     expect(call?.text).not.toContain("t-1");
     // The move is on record as it began, as a host's is; nothing of a session follows it.
     expect(of(name, MOVED).find(({ move }) => move === "examine")).toMatchObject({ session: "x-1" });
-    expect(of(name, "exam.started")).toEqual([]);
+    expect(of(name, EXAM_STARTED)).toEqual([]);
     expect(call?.text).toContain("choose another action");
   });
 
@@ -928,7 +984,7 @@ describe("a campaign run by its live Builder", () => {
     expect(of(name, "campaign.waited")).toMatchObject([{ for: "provider" }]);
     expect(said(name, "examine")[0]).toContain("call examine again");
     expect(said(name, "examine")[0]).not.toContain("usage limit");
-    expect(of(name, "exam.started", true)).toHaveLength(2);
+    expect(of(name, EXAM_STARTED, true)).toHaveLength(2);
   });
 
   it("writes blind labels for rejected comparison answers", async () => {

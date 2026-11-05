@@ -70,17 +70,6 @@ export interface Standing {
   readonly by: keyof Measures | null;
 }
 
-/** A task's last comparisons with the reference harness on a side, newest first, each as the
- *  outcome reads the reference's side, with whether a limit cut one of its own solves there; and
- *  how many of the newest closed the task in a row as its author may hear it (`poolOf`, histories):
- *  every solve valid and no answer of the reference's own or its author's better by the floor
- *  (`room`). The other harness's measures stay out, so the count reads the same whatever that
- *  harness measured; the frontier's `easyAt` reads them. */
-export interface History {
-  readonly reads: readonly { readonly valid: "every" | "some" | "none"; readonly cut: boolean }[];
-  readonly closedRun: number;
-}
-
 /** One comparison's reading of a task, as the comparison's last report tallied it. */
 interface TalliedIn {
   /** The index of the report in the log. */
@@ -544,14 +533,6 @@ function tallyReports(
  * between two other harnesses, or set aside there, has none.
  * Told apart is the comparison's own tally (`tally`, `compare.ts`), so under an objective two
  * valid answers can be told apart.
- *
- * **Histories** hold, for each task the reference stood in two comparisons or more of, the same
- * reading of the reference's side for each of its last `RUNS.history` such comparisons, newest first,
- * with whether a limit cut one of the reference's own solves there, and how many of the newest closed
- * it in a row (`History`): told the last alone, an author could not tell a task the reference
- * answered once from one it answers every time. Rule 6's sentence stands beside them. The words are the outcome's own, every, some or none, and
- * no count of valid solves (AGENTS.md, section 3); a solve a limit cut is named apart, as rule 7
- * keeps it apart from a wrong answer.
  */
 export function poolOf(events: readonly LogEvent[]) {
   const { records, held } = taskRecords(events);
@@ -612,7 +593,6 @@ export function poolOf(events: readonly LogEvent[]) {
     bests: new Map(records.flatMap(({ version, best }) => (best === null ? [] : [[version, best] as const]))),
     outcomes: new Map(records.toSorted((one, other) => first(one) - first(other)).flatMap(outcomeOf)),
     standings: new Map(records.flatMap(standingOf)),
-    histories: new Map(records.flatMap(historyOf)),
   };
 }
 
@@ -650,18 +630,6 @@ function sideOf(tallied: TalliedIn): "every" | "some" | "none" | null {
 }
 
 const roomOn = ({ room }: TalliedIn) => (room ?? 0) > 0;
-
-/** A task's last comparisons with the reference harness on a side, newest first (`poolOf`,
- *  histories), or nothing where it stood in fewer than two: one is the outcome already. */
-function historyOf(record: TaskRecord): [string, History][] {
-  const stood = record.tallied.filter(({ reference }) => reference !== null).toReversed();
-  if (stood.length < 2) return [];
-  const reads = stood.slice(0, RUNS.history).flatMap((tallied) => {
-    const valid = sideOf(tallied);
-    return valid === null ? [] : [{ valid, cut: tallied.referenceCut }];
-  });
-  return [[record.version, { reads, closedRun: closedRun(stood.toReversed(), ownOf, roomOn) }]];
-}
 
 /** What a task's author hears of it (`poolOf`, outcomes), or nothing where no report read it. */
 function outcomeOf(record: TaskRecord): [string, Outcome][] {

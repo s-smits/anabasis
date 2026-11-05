@@ -120,5 +120,6 @@ An Examiner session can finish under three conditions:
 
 `finish` waits for pending admissions, so the session may hold out more tasks than requested. An
 early `finish` is declined with an explanation of the need, without a target count: otherwise the
-Examiner tends to propose one small batch and stop. Its home and final note carry into the next
-session.
+Examiner tends to propose one small batch and stop. The first two endings rest the conversation
+for the next ask instead of closing it (`builder-conversation.md`); after any other, its home
+carries into the next session, which opens from the log.

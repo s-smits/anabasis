@@ -144,13 +144,7 @@ describe("trying the reference at writing", () => {
       seen.push(paused);
       return await made.probe.solve(task);
     };
-    const mode = writing(
-      { ...made.request, probe: { tries: 2, solve } },
-      undefined,
-      "unseen",
-      undefined,
-      within,
-    );
+    const mode = writing({ ...made.request, probe: { tries: 2, solve } }, undefined, "unseen", { within });
     await invoke(toolOf(mode, TRY), "try", { solves: 2, task: spelled(7) });
     await invoke(toolOf(mode), "put", { tasks: [instance(7)] });
     expect(seen).toEqual([true, true]);

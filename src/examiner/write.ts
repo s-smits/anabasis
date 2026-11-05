@@ -17,14 +17,12 @@
  * had the reference valid on every solve. Whether a task leaves the reference room is a
  * comparison's to read.
  *
- * An Examiner is a new process each session, so the host keeps what a session cannot: an instance
- * held or refused is not taken again, and the session's home is carried into the next
- * (`Wall.keep`, `shell.ts`). Until 4 November what the last session said at its `finish` opened the
- * next; it reached 13 of 80 sessions. An instance is
- * logged whole with its proposal, hidden values too, so a later solve needs the log alone; no tool
- * here returns a line of the log. An author's accepted answer is kept for the Referee
- * (`task.feasible`). read_example also serves the author's earlier drafts, so recovery needs no
- * carried shell file. Only admitted tasks count towards supply.
+ * Since 5 November one conversation takes the host's asks in turn (`ask`; `examining`,
+ * `session.ts`); one opened afresh after a crash is told the past from the log (`record.ts`), its
+ * home is carried (`Wall.keep`, `shell.ts`), and an instance held or refused is not taken again.
+ * An instance is logged whole with its proposal, hidden values too, so a later solve needs the log
+ * alone. An author's accepted answer is kept for the Referee (`task.feasible`). Only admitted
+ * tasks count towards supply.
  * On 26 October, all 64 proposals in one campaign repeated input already sent to try_answer,
  * totalling 1,148,964 characters. A checked instance can now be proposed by its content reference,
  * with the same identity and gate as a full instance, for the rest of this session.
@@ -65,7 +63,7 @@ import { errorMessage } from "../meta/runtime-values.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
 import { ending, text, tool } from "../tools/answer.ts";
-import { type CheckRow, firstMessage, type SolveBudget, systemPrompt } from "./prompt.ts";
+import { type CheckRow, firstMessage, type SolveBudget, systemPrompt, wakeMessage } from "./prompt.ts";
 import { heard, measured } from "./record.ts";
 import type { Walls } from "./shell.ts";
 
@@ -113,7 +111,8 @@ interface Probed {
 
 /** What a task-writing session's tools share. */
 interface Desk {
-  readonly request: Terms;
+  /** The ask in force (`ask`). */
+  request: Terms;
   /** The session's signal, which its deadline, its end and a killed run abort. */
   readonly stop: AbortSignal;
   proposed: number;
@@ -129,8 +128,18 @@ interface Desk {
   /** Every answer that passed, by hash: a task that carries one whole is refused, since a planted
    *  answer is for `try_answer` and for no task (`carries`; `AGENTS.md`, rule 9). */
   readonly planted: Set<string>;
-  readonly held: string[];
-  readonly refused: string[];
+  held: string[];
+  refused: string[];
+  /** Where the host has its tasks: the next ask's message, or null to end (`examining`). */
+  readonly rest: (ended: "supplied") => Promise<string | null>;
+}
+
+/** What the seat lends a writing session (`examining`, `session.ts`): its signal, its clock's pause
+ *  and where an ask rests. A session given none runs on no clock and ends at its first ask. */
+interface Lent {
+  readonly stop?: AbortSignal;
+  readonly within?: Within;
+  readonly rest?: Desk["rest"];
 }
 
 /** The event a task admission writes of each draft (`admitDraft`). */
@@ -280,7 +289,6 @@ function spent(desk: Desk): boolean {
 
 /** The tool that puts tasks to the gate. */
 function proposeTool(desk: Desk): SeatTool {
-  const { id, limits } = desk.request;
   /** One instance of a batch: why it was not taken, or the instance under its task id. */
   const taken = (instance: Omit<Task, "taskId">, stop: AbortSignal): string | Task => {
     const content = contentOf(instance);
@@ -294,7 +302,7 @@ function proposeTool(desk: Desk): SeatTool {
     if (stop.aborted) return "An instance was not taken: the session has ended.";
     desk.seen.set(content, "now");
     desk.proposed += 1;
-    return { ...instance, taskId: `${id}-${String(desk.proposed).padStart(3, "0")}` };
+    return { ...instance, taskId: `${desk.request.id}-${String(desk.proposed).padStart(3, "0")}` };
   };
   return tool({
     name: "propose_tasks",
@@ -318,12 +326,14 @@ function proposeTool(desk: Desk): SeatTool {
       });
       // How many of its drafts the session has put: told the limit at the opening alone, esp32-fresh-opus-terra's
       // x-2 and x-3 met it unawares with a draft still unproposed (27 October).
-      const used = `${String(desk.proposed)} of ${plural(limits.puts, "draft")} put to the gate in this session.`;
+      const used = `${String(desk.proposed)} of ${plural(desk.request.limits.puts, "draft")} put to the gate in this session.`;
       const lines = await Promise.all(
         instances.map(async (instance) => (isString(instance) ? instance : admitDraft(desk, instance))),
       );
-      const result = text(`${lines.join("\n")}\n${used}${supplied(desk) ? `\n\n${SUPPLIED}` : ""}`);
-      return supplied(desk) ? ending(result) : result;
+      const said = `${lines.join("\n")}\n${used}`;
+      if (!supplied(desk)) return text(said);
+      const woken = await desk.rest("supplied");
+      return woken === null ? ending(text(`${said}\n\n${SUPPLIED}`)) : text(`${said}\n\n${woken}`);
     },
   });
 }
@@ -365,8 +375,7 @@ function exampleTool(tasks: () => readonly Task[]): SeatTool {
  *  passed though the format refused it would mark its instance as having a known valid answer on an answer no solver
  *  could submit (`poolOf`). */
 function tryTool(desk: Desk, verify: Verifier): SeatTool {
-  const { request } = desk;
-  const { log, contract } = request;
+  const { log, contract } = desk.request;
   /** Puts on record that a held task has a valid answer, where the log does not say so yet or the
    *  answer carries a measure of the objective, which each such pass keeps (`measureOf`). */
   const recordValidAnswer = (
@@ -387,7 +396,7 @@ function tryTool(desk: Desk, verify: Verifier): SeatTool {
         acceptedAnswers(events, version).length === 0 ||
         "objective" in measure)
     ) {
-      append(log, "task.feasible", { version, session: request.id, answer, ...measure });
+      append(log, "task.feasible", { version, session: desk.request.id, answer, ...measure });
     }
   };
   return tool({
@@ -405,8 +414,8 @@ function tryTool(desk: Desk, verify: Verifier): SeatTool {
       const answer = args.answer as JsonValue;
       const events = read(log);
       const content = contentOf(candidate);
-      const instance = heldAs(request, events, candidate) ?? candidate;
-      const packaged = checkPackage(contract, request.pack(instance));
+      const instance = heldAs(desk.request, events, candidate) ?? candidate;
+      const packaged = checkPackage(contract, desk.request.pack(instance));
       const admission =
         packaged.outcome === "passed" ? "" : `The gate would refuse this instance: ${packaged.reason}\n`;
       if (context.abortSignal?.aborted === true) throw new Error("The session has ended.");
@@ -421,7 +430,7 @@ function tryTool(desk: Desk, verify: Verifier): SeatTool {
       if (verdict.kind === "pass") {
         desk.answered.set(content, answer);
         desk.planted.add(hashJsonValue(answer));
-        recordValidAnswer(events, taskVersion(request.pack(instance)), verdict, answer);
+        recordValidAnswer(events, taskVersion(desk.request.pack(instance)), verdict, answer);
       }
       // The verifier's measure, kept with a held task's answer for the comparisons (`measureOf`).
       const { objective } = measureOf(contract, verdict);
@@ -453,8 +462,7 @@ function toldOf(ended: Ending, turns: number | null, measure: number | null): st
  * id, and any other under one its content names. Each solve's turns and measure are read back from
  * the log under the id the probe returns.
  */
-function tryReferenceTool(desk: Desk, probe: NonNullable<Terms["probe"]>, within: Within): SeatTool {
-  const { request } = desk;
+function tryReferenceTool(desk: Desk, first: NonNullable<Terms["probe"]>, within: Within): SeatTool {
   return tool({
     name: "try_reference",
     description:
@@ -466,6 +474,9 @@ function tryReferenceTool(desk: Desk, probe: NonNullable<Terms["probe"]>, within
     executionMode: "sequential",
     execute: async (args, _api, context) => {
       context.abortSignal?.throwIfAborted();
+      // The ask's own: its solves' starts name the ask (`probing`, `tools/d1b/examine.ts`).
+      const { request } = desk;
+      const probe = request.probe ?? first;
       const left = probe.tries - desk.tried;
       if (left <= 0) throw new Error("This session has no try of the reference harness left.");
       const given =
@@ -524,14 +535,18 @@ export function writing(
   // The engines installed in its shell.
   walls: Pick<Walls, "pinned"> | undefined,
   reference: "unseen" | "in-home",
-  stop = new AbortController().signal,
-  within: Within = async (action) => action(),
+  {
+    stop = new AbortController().signal,
+    within = async (action) => action(),
+    rest = async () => null,
+  }: Lent = {},
 ) {
-  const { limits, verify, wanted, probe } = request;
+  const { limits, verify, probe } = request;
   const before = read(request.log);
   const desk: Desk = {
     request,
     stop,
+    rest,
     proposed: 0,
     tried: 0,
     seen: new Map(admittedDrafts(before).map((task) => [contentOf(task), "earlier"] as const)),
@@ -554,22 +569,26 @@ export function writing(
         budget: request.budget,
       },
     ),
-    started: {
-      limits: {
-        wallSeconds: limits.wallSeconds,
-        turns: limits.turns,
-        proposals: limits.puts,
-        tasks: wanted,
-        tries: probe?.tries ?? 0,
-      },
-      checks: request.checks.map(({ id }) => id),
-      examples: request.tasks.map(({ taskId }) => taskId),
-      engines: (walls?.pinned ?? []).map(({ name, sha256 }) => ({ name, sha256 })),
-      referenceHome: reference === "in-home",
+    // The ask's own, read as each ask starts.
+    get started() {
+      const asked = desk.request;
+      return {
+        limits: {
+          wallSeconds: asked.limits.wallSeconds,
+          turns: asked.limits.turns,
+          proposals: asked.limits.puts,
+          tasks: asked.wanted,
+          tries: asked.probe?.tries ?? 0,
+        },
+        checks: asked.checks.map(({ id }) => id),
+        examples: asked.tasks.map(({ taskId }) => taskId),
+        engines: (walls?.pinned ?? []).map(({ name, sha256 }) => ({ name, sha256 })),
+        referenceHome: reference === "in-home",
+      };
     },
     tools: [
       proposeTool(desk),
-      exampleTool(() => [...writtenTasks(read(request.log)), ...request.tasks]),
+      exampleTool(() => [...writtenTasks(read(desk.request.log)), ...desk.request.tasks]),
       ...(verify === null ? [] : [tryTool(desk, verify)]),
       ...(probe === null ? [] : [tryReferenceTool(desk, probe, within)]),
     ],
@@ -584,5 +603,13 @@ export function writing(
     done: (): "supplied" | null => (supplied(desk) ? "supplied" : null),
     counted: () => ({ proposed: desk.proposed, held: desk.held, refused: desk.refused }),
     result: () => ({ puts: desk.proposed, held: desk.held, refused: desk.refused }),
+    // Each ask counts its own drafts and tries; what the conversation saw and answered stays.
+    ask: (next: Terms, since: number) => {
+      Object.assign(desk, { request: next, proposed: 0, tried: 0, held: [], refused: [] });
+      return wakeMessage(heard(read(next.log), next.tasks, since), {
+        ...next.limits,
+        tries: next.probe?.tries ?? 0,
+      });
+    },
   };
 }

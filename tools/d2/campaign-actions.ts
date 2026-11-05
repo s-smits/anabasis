@@ -41,7 +41,7 @@ import { seedKept } from "#src/builder/kept.ts";
 import { type BuildRequest, layPractice } from "#src/builder/session.ts";
 import { type Bench, endingWith, snapshot, waitTool } from "#src/builder/tools.ts";
 import { pendingWords } from "#src/campaign/word.ts";
-import { examine } from "#src/examiner/session.ts";
+import { conversing, examine } from "#src/examiner/session.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import { latestBuilt, patienceOf, promoted as lastPromoted } from "#src/kernel/reports.ts";
 import { billedParts } from "#src/kernel/meter.ts";
@@ -116,6 +116,8 @@ export interface CampaignContext {
     readonly done: Promise<void>;
     readonly released: () => Promise<void>;
   } | null;
+  /** The Examiner conversation each `examine` asks in turn (`conversing`). */
+  examiner?: ReturnType<typeof conversing>;
 }
 
 /** The code a move carries where the Builder chose it, and the table names another. */
@@ -302,7 +304,8 @@ const examineAction =
     });
     // The action returns once the session is on record: a throw before that is the action's.
     const { promise: onRecord, resolve } = Promise.withResolvers<void>();
-    const sitting = seats.examine ?? examine;
+    context.examiner ??= conversing(seats.examine ?? examine);
+    const sitting = context.examiner.session;
     // As the gate holds out each task the host releases what is owed since the last reading, one release at a time,
     // and each release settles `next`, on which `wait` returns. A throw is the environment's ending.
     let releasing = Promise.resolve();
@@ -734,6 +737,7 @@ export function campaignTools(
       },
       closing: async () => {
         await context.examining?.done;
+        await context.examiner?.close();
       },
       unmeasured: async (digest) => {
         const reference = (await keptAs(context.campaign, "--reference", PROMOTED)).digest;

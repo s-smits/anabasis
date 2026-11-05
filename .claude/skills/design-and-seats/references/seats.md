@@ -19,14 +19,17 @@ keeps from it.
 The **Examiner** reads the following view of the log (`src/examiner/record.ts`):
 
 - The contract, operator brief, solve budget and examples.
-- Per-task reference outcomes from recent scored comparisons (`histories`, `poolOf`), the turns
-  of each of the reference's valid answers in the last one and, under an objective, what each
-  measured (`referenceAnswers`), and whether a valid answer exists.
+- Per-task reference outcomes from the last scored comparison (`poolOf`), the turns of each of the
+  reference's valid answers in it and, under an objective, what each measured (`referenceAnswers`),
+  and whether a valid answer exists.
 - Which harness won each task and on which measure (`carriedBy`), authorised on 20 October.
 - The last comparison the reference stood in, from its side, with how often its own two solves
   differed in that comparison's A/A where it sat on the old side (`lastLine`).
 - The checks a `check-defect` ruling found at fault on an answer to a task (`faultedOf`), by id.
-- The promotion line, and the drafts the gate refused under the current reference, by reason.
+- The promotion line.
+- At each later ask of its conversation, only what reported since it last wrote: the last
+  comparison's line, the tasks compared since under the reference's outcome, a promotion among them,
+  and its limits from here (`heard` with `after`, `wakeMessage`).
 - Its home, with the reference harness, and check results obtained through `try_answer`.
 - Of each solve its `try_reference` asked of the reference harness: whether it was valid, its turns
   and measure, or whether the checks refused its answer, a limit ended it or it gave none, or that it

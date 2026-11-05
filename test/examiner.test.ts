@@ -11,7 +11,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { draftOf } from "../src/examiner/draft.ts";
 import { heard } from "../src/examiner/record.ts";
-import { examine } from "../src/examiner/session.ts";
+import { type Ask, examine } from "../src/examiner/session.ts";
 import { examinerDirs, inExaminerWall } from "../src/examiner/shell.ts";
 import { writing } from "../src/examiner/write.ts";
 import { writtenTasks } from "../src/kernel/history.ts";
@@ -810,5 +810,70 @@ describe("a session that writes tasks", () => {
     ]);
     expect(s.sent[0]).toContain("run by name: fixeng.");
     expect(s.sent[0]).not.toContain("solver-x");
+  });
+});
+
+describe("one Examiner conversation across the host's asks", () => {
+  it("wakes the same conversation at the next ask, told only the readings since, and ends at the host's close", async () => {
+    const s = seat("write", [propose(2), propose(3), finish, finish]);
+    const asks: Ask["request"][] = [{ ...s.request, id: "x-2", wanted: 17 }];
+    const rested: string[] = [];
+    const examined = await examine({
+      ...s.request,
+      wanted: 1,
+      rest: async (ask) => {
+        rested.push(ask.ended);
+        // A promotion while the conversation rests is a reading the wake tells.
+        append(s.log, "harness.promoted", { harness: "h2", from: "h1", rests: [{ comparison: "c-1" }] });
+        const request = asks.shift();
+        return request === undefined ? null : { request };
+      },
+    });
+    expect(rested).toEqual(["supplied", "finished"]);
+    expect(examined).toMatchObject({ ended: "finished", puts: 1 });
+    expect(s.of("exam.started").map(({ session, conversation }) => [session, conversation ?? null])).toEqual([
+      ["x-1", null],
+      ["x-2", "x-1"],
+    ]);
+    expect(s.of("exam.started")[1]).toMatchObject({ limits: { tasks: 17 } });
+    expect(s.of("exam.finished").map(({ session, ended, turns }) => [session, ended, turns])).toEqual([
+      ["x-1", "supplied", 1],
+      ["x-2", "finished", 3],
+    ]);
+    // Each ask's turns and tasks are under its own id.
+    expect(s.of("exam.turn").map(({ session }) => session)).toEqual(["x-1", "x-2", "x-2", "x-2"]);
+    // A call that rests its ask and wakes in the next stays its own ask's.
+    expect(s.of(CALLED).map(({ session }) => session)).toEqual(["x-1", "x-2", "x-2", "x-2"]);
+    expect(s.of("task.proposed").map(({ taskId }) => taskId)).toEqual(["x-1-001", "x-2-001"]);
+    // The second request is the same conversation: its context holds the opening and the wake.
+    const [opening = "", woken = ""] = s.sent;
+    const called = s.of(CALLED)[0]?.text;
+    const told = isString(called) ? called : "";
+    expect(told).toContain("The host asks for more tasks");
+    expect(woken).toContain(JSON.stringify(told.split("\n\n").at(-1)).slice(1, -1));
+    expect(opening).toContain("Public rules of the domain");
+    expect(woken).toContain("Public rules of the domain");
+    // Only readings: the promotion and that no comparison reported; no count wanted, no target.
+    expect(told).toContain("The reference harness was promoted on the step of comparison c-1");
+    expect(told).toContain("No comparison has reported since you last wrote.");
+    for (const unsaid of ["17", "harder", "wanted"]) expect(told).not.toContain(unsaid);
+  });
+
+  it("ends where it crashed, and the next session opens afresh from the log", async () => {
+    const s = seat("write", [propose(2), failed("You've hit your session limit")]);
+    const examined = await examine({
+      ...s.request,
+      wanted: 1,
+      rest: async () => ({ request: { ...s.request, id: "x-2", wanted: 1 } }),
+    });
+    expect(examined).toMatchObject({ ended: "crashed" });
+    expect(s.of("exam.finished").map(({ session, ended }) => [session, ended])).toEqual([
+      ["x-1", "supplied"],
+      ["x-2", "crashed"],
+    ]);
+    const next = seat("write", [finish, finish]);
+    const tasks = [...writtenTasks(read(s.log)), ...s.request.tasks];
+    await examine({ ...next.request, log: s.log, id: "x-3", tasks });
+    expect(next.sent[0]).toContain("x-1-001 (fixture)");
   });
 });

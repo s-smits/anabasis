@@ -42,7 +42,8 @@ export const gradedOf = (tasks: readonly FixtureTask[]) =>
 
 /** A model that makes `calls` in order, a turn each, and then says it holds no further call as
  *  often as `asked`: a faux provider asked past its responses waits, and a solve whose submit the
- *  harness blocked is asked again until its turns end. */
+ *  harness blocked is asked again until its turns end. It takes no `rest`: a script holds no call
+ *  for a later ask, so an Examiner seated on one ends where its work is done (`conversing`). */
 export function scriptedModel(calls: readonly Step[], asked = 0) {
   const faux = fauxProvider({
     models: [
@@ -62,7 +63,7 @@ export function scriptedModel(calls: readonly Step[], asked = 0) {
   ]);
   const models = createModels();
   models.setProvider(faux.provider);
-  return { model: faux.getModel(), models: () => models };
+  return { model: faux.getModel(), models: () => models, rest: undefined };
 }
 
 /** A stored sweep and its pack as v1 left one: seven tasks whose answer is the base times six, one

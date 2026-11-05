@@ -96,6 +96,12 @@ export async function examinerShell(shell: CommandWall | undefined, enters: stri
   );
 }
 
+/** The reference harness laid in an Examiner's home, in place of any copy there. */
+export function layReference(reference: string, home: string): void {
+  rmSync(join(home, REFERENCE_HOME), { recursive: true, force: true });
+  copyHarness(reference, join(home, REFERENCE_HOME));
+}
+
 /** `run` with an Examiner's shell under the solver's command wall, and the engines installed in
  *  it: claim its root, install the engines the wall names, seed the home, run, keep the home, tear
  *  down.
@@ -138,7 +144,7 @@ export async function inExaminerWall<T>(
     // they are laid as files, as in a Builder's `kept/`; every other link stays a link. Until
     // 26 October every link was followed by the host, so one a Builder left in a harness that was
     // promoted laid what it named in the Examiner's home, whatever the walls closed.
-    if (reference !== undefined) copyHarness(reference, join(home, REFERENCE_HOME));
+    if (reference !== undefined) layReference(reference, home);
     const result = await run({ shell, pinned, began });
     // The campaign's copy of a session's home, made whole when the session ends and replacing the
     // one before: it is the exam side's, under the campaign's folder beside the log, which every
@@ -150,8 +156,9 @@ export async function inExaminerWall<T>(
     // files of one whose turn the provider failed; from then until 14 October none did, and a
     // crashed Examiner's work was lost to the provider. A drafting session ends in `draft.finished`,
     // which this read missed until 5 November, so a draft that crashed mid-command was carried on.
+    // The conversation's last ask, whose id is its own (`examining`, `session.ts`).
     const ended = read(log).findLast(
-      ({ kind, data }) => (kind === "exam.finished" || kind === "draft.finished") && data.session === id,
+      ({ kind }) => kind === "exam.finished" || kind === "draft.finished",
     )?.data;
     if (keep !== undefined && !(ended?.ended === "crashed" && Number(ended.running) > 0)) {
       rmSync(keep, { recursive: true, force: true });

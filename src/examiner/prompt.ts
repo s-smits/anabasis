@@ -96,6 +96,9 @@ export interface CheckRow {
   readonly families: "all" | readonly string[];
 }
 
+/** An ask's limits, as an opening and a wake tell them. */
+type Told = Parameters<typeof firstMessage>[3];
+
 /** What a task is made of, as both modes are told it: the objective reads hidden values too (#616). */
 export const TASK =
   "A task is a family, a public input and hidden values. A solver reads the family's name and the public input; only the check program receives hidden values.";
@@ -130,7 +133,7 @@ export function systemPrompt(reference: "in-home" | "unseen", tries: "given" | "
           "## Trying the reference\n\ntry_reference puts an instance to fresh solves by the reference harness, each held to the budget, and says of each whether it was valid, in how many of the solver's turns and, where the domain declares an objective, its measure; of one that was not, whether the checks refused its answer, a limit ended it, it gave none or it called the task malformed. You see no answer, trace or check of it. Each solve is billed to the campaign, and your session's clock stands still while it runs. A comparison solves every task afresh and counts no solve of yours, and the gate holds or refuses a draft whatever its tries showed. One solve is weak evidence: a solve that failed may pass the next time.",
         ]),
     "## The gate\n\npropose_tasks takes instances and puts each to the host's gate. The gate reads the shape of its package: its family, its inputs, and that the checks have what they need to run on it. No solver is put to it there. Of each it says held out, or refused with its reason. A task held out is in the exam from then on, and a comparison scores no other.",
-    "## The session\n\nPropose in rounds: put drafts to the gate, read what it said, and propose more. When you have no more tasks worth proposing, call finish. The session also ends at its limits.",
+    "## The session\n\nPropose in rounds: put drafts to the gate, read what it said, and propose more. When you have no more tasks worth proposing, call finish. The session also ends at its limits. Where it ends at your finish or with the tasks the host needs, the host may ask for more later in this same conversation, and tells you then what the comparisons read since.",
   ].join("\n\n");
 }
 
@@ -140,10 +143,18 @@ export function budgetLine({ modelTurns, minutes, solves }: SolveBudget): string
   return `Every solve of a task is held to ${modelTurns === null ? "no fixed number of the solver's own turns" : `${plural(modelTurns, "turn")} of the solver's own`}, a turn being one reply with the tool calls in it, and ${plural(minutes, "minute")}, and a comparison solves each task ${plural(solves, "time")} under each harness. This is the budget, fixed by the campaign's setting for every solve of it; it is no target of yours.`;
 }
 
+const limitsLine = (told: Told, lead: string) =>
+  `${lead} ${plural(Math.round(told.wallSeconds / 60), "minute")}, ${plural(told.turns, "turn")} and ${plural(told.puts, "draft")} to put to the gate${told.tries === 0 ? "" : `, and ${plural(told.tries, "solve")} of the reference harness to ask for`}.`;
+
+const grouped = (groups: ReturnType<typeof heard>["groups"]) =>
+  groups
+    .map(({ heading, lines }) => `${heading}:\n${lines.map((line) => `- ${line}`).join("\n")}`)
+    .join("\n\n");
+
 /** The opening message: the operator's brief where the campaign opened from one, the domain's
  *  public contract, its checks by id and assertion, and what `record.ts` tells of the campaign's
- *  past: the last comparison the reference stood in, the tasks under its outcome on each, the
- *  promotion and the drafts the gate refused. `told` is the limits the session is told it runs
+ *  past: the last comparison the reference stood in, the tasks under its outcome on each and the
+ *  promotion. `told` is the limits the session is told it runs
  *  under, with the solves of the reference harness it may ask for; how many tasks are wanted is not
  *  among them. `campaign` is what it is told of its campaign
  *  beside the contract, each null where there is none: the operator's brief and the budget every
@@ -162,7 +173,6 @@ export function firstMessage(
 ): string {
   const { brief, budget } = campaign;
   const families = (row: CheckRow) => (row.families === "all" ? "every family" : row.families.join(", "));
-  const listed = (lines: readonly string[]) => lines.map((line) => `- ${line}`).join("\n");
   return [
     // The brief first, where the campaign opened from one: every session rereads the domain as the
     // operator put it, and not only the exam drafted from it. The rules govern.
@@ -184,13 +194,25 @@ ${brief}`,
     ...(tasks.last === null ? [] : [tasks.last]),
     tasks.groups.length === 0
       ? "The exam holds no task yet."
-      : `The tasks of the exam so far, under how the harness that is the reference now did on each in the last comparison that scored it, wherever it stood there. These are measurements, and no instruction or target.\n\n${tasks.groups.map(({ heading, lines }) => `${heading}:\n${listed(lines)}`).join("\n\n")}`,
+      : `The tasks of the exam so far, under how the harness that is the reference now did on each in the last comparison that scored it, wherever it stood there. These are measurements, and no instruction or target.\n\n${grouped(tasks.groups)}`,
     ...(tasks.promoted === null ? [] : [tasks.promoted]),
-    ...(tasks.refused.length === 0
+    limitsLine(told, "This session has"),
+  ].join("\n\n");
+}
+
+/** What a resting conversation is told as the host asks again (`ask`, `write.ts`): the readings
+ *  since it last wrote, a promotion among them, and its limits from here. No count of tasks and no
+ *  target: what to write is the author's (`AGENTS.md`, section 2, consequence 2). */
+export function wakeMessage(tasks: ReturnType<typeof heard>, told: Told): string {
+  return [
+    "The host asks for more tasks under the same exam.",
+    tasks.last ?? "No comparison has reported since you last wrote.",
+    ...(tasks.groups.length === 0
       ? []
       : [
-          `The drafts the gate refused, by its reason. None is a task of the exam:\n${listed(tasks.refused)}`,
+          `The tasks compared since you last wrote, under how the harness that is the reference now did on each there. These are measurements, and no instruction or target.\n\n${grouped(tasks.groups)}`,
         ]),
-    `This session has ${plural(Math.round(told.wallSeconds / 60), "minute")}, ${plural(told.turns, "turn")} and ${plural(told.puts, "draft")} to put to the gate${told.tries === 0 ? "" : `, and ${plural(told.tries, "solve")} of the reference harness to ask for`}.`,
+    ...(tasks.promoted === null ? [] : [tasks.promoted]),
+    limitsLine(told, "From here the session has"),
   ].join("\n\n");
 }

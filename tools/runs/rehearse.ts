@@ -435,7 +435,8 @@ export function scriptedExaminer(
           ] as const,
       ),
     ];
-    return examine({ ...request, ...scripted(calls, 0) });
+    // Each session's script is its own, and holds no call for a later ask (`conversing`).
+    return examine({ ...request, ...scripted(calls, 0), rest: undefined });
   };
 }
 

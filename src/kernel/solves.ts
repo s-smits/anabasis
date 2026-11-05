@@ -203,13 +203,10 @@ export function rulingsOf(events: readonly LogEvent[]): Map<string, string | nul
   );
 }
 
-/** A rejection is established only when its latest ruling is earned; other endings need no ruling. */
+/** A rejection is established only when its last finding (`rulingsOf`) ruled it earned; other
+ *  endings need no ruling. A comparison's `rejections` reads the same finding. */
 export function rejectionAside(events: readonly LogEvent[], solve: Pick<Solve, "id" | "ending">): boolean {
-  return (
-    rejected(solve.ending) &&
-    events.findLast(({ kind, data }) => kind === "referee.finding" && data.solve === solve.id)?.data
-      .ruling !== "earned"
-  );
+  return rejected(solve.ending) && rulingsOf(events).get(solve.id) !== "earned";
 }
 
 /** The last verdict a log holds for each solve, by the solve. */

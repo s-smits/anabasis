@@ -385,7 +385,8 @@ promotion (`stopRule`, `src/campaign/admission.ts`). Continuing then requires `-
 **In `comparison-reading`, section 7** (`draw-and-solves.md`, `tally-and-test.md`,
 `limits-and-room.md`, `move-table.md`): the mirror; the tally's floors; the A/A; the cap; room;
 promotion; each row of `decide`. `size` says what a size can show, `reading <name>` sets a
-log's readings side by side, and `draw <name>` what the next comparison would score.
+log's readings side by side, `gap <name>` how far each side stood from the best on record, and
+`draw <name>` what the next comparison would score.
 
 ## 8. Rules
 

@@ -1,9 +1,9 @@
 /**
  * Start a campaign, go on with one, and pause one at a clean point.
  *
- *   bun --env-file=<file> run runs launch <name> [--login N] [--yes] -- <the campaign command's flags>
+ *   bun --env-file=<file> run runs launch <name> [--login N] [--no-keep] [--yes] -- <the campaign command's flags>
  *   bun --env-file=<file> run runs continue <name> [--at <commit>] [--login N] [--budget N]
- *     [--after next|compacted|reported|finished] [--yes] [-- <flags>]
+ *     [--after next|compacted|reported|finished] [--no-keep] [--yes] [-- <flags>]
  *   bun run runs pause <name> [--after next|compacted|reported|finished] [--yes]
  *
  * `launch` starts the campaign command (`tools/d2/harness-builder.ts`) under a name no worktree
@@ -17,6 +17,13 @@
  * records, and stops the run there with whatever is open: on 29 October a login had to be freed
  * from a campaign in the middle of an Examiner session, which the clean-point words would only have
  * stopped once the session ended. Flags after `--` stand for the kept ones. A campaign's folder moves by `runs copy` and `runs move` (`move.ts`).
+ *
+ * A run `launch` or `continue` starts on a numbered login gets a keeper (`keep.ts`) where another login
+ * is allowed, so that it goes on elsewhere at a limit with nobody there (operator, 5 November: "bring
+ * over to other account that still has room if 5hr limit or full limit is reached"). `--no-keep` leaves
+ * that run without one and `ANA_KEEP=off` every run the environment starts (`keepsItself`). Until then
+ * a keeper took a person's `runs keep` a run, and on 5 November two campaigns on a login whose week ran
+ * out sat idle in their wait, two days from its reset, with no keeper to move them.
  *
  * Without `--yes` a verb says what it would do and does nothing. With it, a start refuses a run a
  * process writes, a worktree with a change no commit names and a commit no remote branch holds;
@@ -51,12 +58,13 @@ import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src
 import { decodeOutput, processGroupExists, runSync } from "#src/meta/subprocess.ts";
 import { lastLaunch, nextRun } from "./receipt.ts";
 import { payerOf } from "./live.ts";
-import { roomToStart } from "./logins.ts";
+import { allowedLogins, roomToStart } from "./logins.ts";
 import {
   BUILDER,
   campaignOf,
   everyRun,
   isCampaign,
+  KEEPING,
   logEvents,
   keepers,
   openComparisons,
@@ -68,6 +76,9 @@ import {
 } from "./registry.ts";
 import { stop } from "./stop.ts";
 import { installAt, publishedAt } from "./code.ts";
+
+/** The hours left in a provider wait below which a keeper leaves its run to the login's own reset. */
+export const WAIT_HOURS = "0.25";
 
 /** The events a pause waits for one more of, by the word that names it: `next` is the smallest step
  *  a run completes, a finished solve or a recorded tool call of any seat. */
@@ -163,13 +174,14 @@ async function pauseAt(run: Run, after: string): Promise<void> {
 }
 
 /** Start the campaign command for `run` on `flags` in its worktree, as `login` where named and at
- *  `at` where named, once every refusal of the head comment is passed and its dry run passed. */
+ *  `at` where named, once every refusal of the head comment is passed and its dry run passed, and
+ *  say whether it is running three seconds on. */
 export async function start(
   run: Run,
   flags: readonly string[],
   login: string | undefined,
   at: string | undefined,
-) {
+): Promise<boolean> {
   const env = loginEnv(runtimeProcess.env, login);
   if (writers(run, processes()).length > 0) {
     throw new Error(`${run.name} is already being written in ${run.tree}`);
@@ -212,6 +224,58 @@ export async function start(
     `${run.name} in ${run.tree} at ${target.slice(0, 9)}: pid ${String(child.pid)}, ${alive ? "running" : "gone"}; ${out}.err`,
   );
   if (!alive) runtimeProcess.exitCode = 1;
+  return alive;
+}
+
+/** Leave a keeper of `run` on `logins` running by itself, its output in `keep.out` beside the log. */
+export function leaveKeeper(run: Run, logins: readonly string[], waitHours: string): void {
+  const out = join(dirname(run.path), "keep.out");
+  const child = capturedSpawn(
+    [
+      capturedExecPath,
+      join(import.meta.dir, "cli.ts"),
+      "keep",
+      run.name,
+      "--logins",
+      logins.join(","),
+      "--wait-hours",
+      waitHours,
+      KEEPING,
+    ],
+    {
+      cwd: run.tree,
+      // A keeper outlives the verb, and counts every machine's runs even where another host sent it.
+      env: { ...runtimeProcess.env, ANA_HOP: undefined },
+      detached: true,
+      stdin: "ignore",
+      stdout: openSync(out, "a"),
+      stderr: openSync(out, "a"),
+    },
+  );
+  child.unref();
+  console.log(`${run.name}: kept by pid ${String(child.pid)}; ${out}`);
+}
+
+/** Whether a run started on `login` gets a keeper by itself: it pays by a numbered login, another is
+ *  allowed to go on with, and `ANA_KEEP=off` did not say otherwise. A run with no numbered login has
+ *  nowhere to move, and goes on as it was started. */
+export function keepsItself(
+  env: Readonly<Record<string, string | undefined>>,
+  login: string | undefined,
+): boolean {
+  return env.ANA_KEEP !== "off" && login !== undefined && allowedLogins(env).some((other) => other !== login);
+}
+
+/** `start`, then a keeper where the run is running and `keepsItself`, unless it has one. */
+async function startKept(
+  run: Run,
+  flags: readonly string[],
+  { login, at, noKeep }: { login: string | undefined; at: string | undefined; noKeep: boolean },
+): Promise<void> {
+  const running = await start(run, flags, login, at);
+  if (running && !noKeep && keepsItself(runtimeProcess.env, login) && keepers(run.name).length === 0) {
+    leaveKeeper(run, allowedLogins(runtimeProcess.env), WAIT_HOURS);
+  }
 }
 
 /** The last run of the campaign command `run` kept a receipt of. */
@@ -230,12 +294,16 @@ export async function launch(args: readonly string[]): Promise<void> {
   const { values, positionals } = parseArgs({
     args: [...args],
     allowPositionals: true,
-    options: { login: { type: "string" }, yes: { type: "boolean", default: false } },
+    options: {
+      login: { type: "string" },
+      "no-keep": { type: "boolean", default: false },
+      yes: { type: "boolean", default: false },
+    },
   });
   const [name, ...flags] = positionals;
   if (name === undefined || flags.some((flag) => flag === "--name" || flag.startsWith("--name="))) {
     throw new Error(
-      "usage: bun run runs launch <name> [--login N] [--yes] -- <the campaign command's flags but --name>",
+      "usage: bun run runs launch <name> [--login N] [--no-keep] [--yes] -- <the campaign command's flags but --name>",
     );
   }
   // By case too: on macOS's file system a name that differs only by case is the same folder.
@@ -245,7 +313,7 @@ export async function launch(args: readonly string[]): Promise<void> {
   }
   const run = campaignOf(runtimeProcess.cwd(), name);
   if (!values.yes) return said(run, `would start ${BUILDER} ${flags.join(" ")}`);
-  await start(run, flags, values.login, undefined);
+  await startKept(run, flags, { login: values.login, at: undefined, noKeep: values["no-keep"] });
 }
 
 /** `bun run runs continue`. */
@@ -258,13 +326,14 @@ export async function continueRun(args: readonly string[]): Promise<void> {
       login: { type: "string" },
       budget: { type: "string" },
       after: { type: "string" },
+      "no-keep": { type: "boolean", default: false },
       yes: { type: "boolean", default: false },
     },
   });
   const [name, ...given] = positionals;
   if (name === undefined) {
     throw new Error(
-      "usage: bun run runs continue <name> [--at <commit>] [--login N] [--budget N] [--after <event>] [--yes] [-- <flags>]",
+      "usage: bun run runs continue <name> [--at <commit>] [--login N] [--budget N] [--after <event>] [--no-keep] [--yes] [-- <flags>]",
     );
   }
   const run = runNamed(name);
@@ -288,7 +357,7 @@ export async function continueRun(args: readonly string[]): Promise<void> {
     await roomToStart(payerOf(values.login, flags), "here", run.name);
     await pauseAt(run, values.after);
   }
-  await start(run, flags, values.login, target);
+  await startKept(run, flags, { login: values.login, at: target, noKeep: values["no-keep"] });
 }
 
 /** `bun run runs pause`. */

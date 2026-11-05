@@ -23,11 +23,11 @@ archived campaign; `copy <name> --to <worktree>` brings this machine's back to g
 
 | verb | what it does | file |
 | --- | --- | --- |
-| `fresh <pack> [<pack> ...] [--logins <allowed-list>] [--model opus\|sonnet\|gpt\|<provider>/<id>] [--effort hhmm] [--login N] [--budget 800] [--as <suffix>] [--at <c>] [--host <host>] [--yes] [-- <flags>]` | names a campaign from a blank project, makes its worktree at a published commit and launches it there | `fresh.ts` |
-| `launch <name> [--login N] [--yes] -- <flags>` | starts the campaign command under a new name, in this worktree | `manage.ts` |
-| `continue <name> [--at <c>] [--login N] [--budget N] [--after <event>] [--yes] [-- <flags>]` | runs a campaign again from its log, on its kept flags or their replacement after `--` | `manage.ts` |
+| `fresh <pack> [<pack> ...] [--logins <allowed-list>] [--model opus\|sonnet\|gpt\|<provider>/<id>] [--effort hhmm] [--login N] [--budget 800] [--as <suffix>] [--at <c>] [--host <host>] [--no-keep] [--yes] [-- <flags>]` | names a campaign from a blank project, makes its worktree at a published commit and launches it there | `fresh.ts` |
+| `launch <name> [--login N] [--no-keep] [--yes] -- <flags>` | starts the campaign command under a new name, in this worktree | `manage.ts` |
+| `continue <name> [--at <c>] [--login N] [--budget N] [--after <event>] [--no-keep] [--yes] [-- <flags>]` | runs a campaign again from its log, on its kept flags or their replacement after `--` | `manage.ts` |
 | `pause <name> [--after <event>] [--yes]` | stops a campaign at its next finished solve or tool call, or, with a clean-point event, once its log gains one more of it and nothing but its Builder's conversation is open | `manage.ts` |
-| `keep <name> [--logins <list>] [--wait-hours 1] [--yes]` | keeps a campaign going: moves it off a long provider wait, and continues it after a death or an `environment` ending | `keep.ts` |
+| `keep <name> [--logins <list>] [--wait-hours 0.25] [--yes]` | keeps a campaign going: moves it off a provider wait on either limit, and continues it after a death or an `environment` ending. A run on a numbered login gets one by itself; this verb attaches one to a run that has none | `keep.ts` |
 | `copy <name> --to <worktree> [--yes]` | copies a stopped campaign whole to another worktree, from a worktree or the archive, and sets the source aside | `move.ts` |
 | `move <name> --to <host> [--from <host>] [--login N] [--after <event>] [--hold] [--yes] [-- <flags>]` | pauses a campaign at a clean point, takes its folder whole to a new worktree on the other machine at the same commit, sets the source aside and continues it there on its kept flags | `move.ts` |
 | `stop <name> ... [--yes]` | ends the process that writes each log, and its keeper, and releases what its unfinished solves and sessions held | `stop.ts` |
@@ -218,20 +218,38 @@ campaign is at its operator gate.
 ## Keep a campaign going
 
 ```sh
-bun --env-file=<file> --env-file=<hosts file> run runs keep <name> [--logins <list>] [--wait-hours 1] --yes
+bun --env-file=<file> --env-file=<hosts file> run runs keep <name> [--logins <list>] [--wait-hours 0.25] --yes
 ```
+
+`launch`, `continue`, `fresh` and the continue at the end of a `move` each leave the run a keeper by
+themselves, on the machine it runs on, where it pays by a numbered login and another login is allowed
+(`keepsItself`, `tools/runs/manage.ts`). A keeper may then spend on another allowed login with nobody
+asked. `--no-keep` leaves one run without one. `ANA_KEEP=off` in `.env.runs` leaves every run started
+from that machine without one, on a peer too, and ends no keeper already running. A run started before
+this, or with `--no-keep`, takes one by the verb above. A run with no numbered login, GPT's or a plain
+login's, gets none: it has nowhere to move.
 
 A keeper takes its logins from `--logins`, then `ANA_LOGINS`, then the numbered logins in the
 environment (`allowedLogins`). It looks at the run once a minute and takes one of four turns
-(`turnOf`). While the process lives and its log ends on a provider wait with more than
-`--wait-hours` left until the reset, it stops the run and
-continues it on the login with capacity whose week resets soonest. Where the process is gone and the
+(`turnOf`). While the process lives and its log ends on a provider wait, on the week's limit or the
+five hours', with more than `--wait-hours` left until the reset, it stops the run and
+continues it on the login with capacity whose week resets soonest, of those read to last their five
+hours with this run added. Less than that is left to the login's own reset, since a move cuts the
+Builder's conversation.
+
+That forecast is `fiveHourWith` (`tools/runs/logins.ts`, whose comment says how it reads a login). A
+login at 100% or over is not taken, and neither is one it cannot read: a move spends on another login,
+so it needs a reading to say it may. With nothing to take the keeper says why once, stops nothing, and
+reads the logins again every ten minutes.
+
+Where the process is gone and the
 log holds no ending, or the ending `environment`, it continues on the same login where that
 login is recorded, its wait has expired and it is below its cap of live runs across the fleet
 (`atCap`), otherwise on one with capacity. Any other
-ending is the campaign's own, and the keeper leaves. A run with no `claude/` seat bills no login
-and goes on without one, so no login's count holds it. A login it moved off is not taken again until
-the wait named for it is over; with no login left it says so once and waits. Three continues in a
+ending is the campaign's own, and the keeper leaves. A run with no `claude/` seat bills no login: it
+goes on without one after a death, so no login's count holds it, and sits out a provider wait, since a
+restart would meet the same limit. A login it moved off is not taken again until
+the wait named for it is over. Three continues in a
 row without an answered model turn from any seat end the keeper: something it cannot mend ends the run each time.
 
 Each restart uses `start` from `manage.ts`, at the current worktree's commit and with the same
@@ -291,7 +309,7 @@ keeping eight days. With no numbers or `--json`, it forecasts when the pool runs
 week's pace and a recent pace from a reading 2 to 24 hours old (`poolLines`). A login has room
 for a move when neither its week nor its five hours is used up and neither window is refused, the
 week that resets soonest first, a nearly spent one included (`room`), which is what `keep` and
-`fresh` read. Each login's head line reads its live runs on every
+`fresh` read; `keep` also asks `fiveHourWith`, and `fresh`, which a person words, does not. Each login's head line reads its live runs on every
 host out of the most it carries: the lower of its cap and the runs its week
 left fits until its reset, each active 16 of 24 hours, at the rate a run spent between earlier
 readings (`fitOf`). More live runs than the week fits reads `oversubscribed`, as `2/1`. The cap is

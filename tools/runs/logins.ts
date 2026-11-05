@@ -24,7 +24,8 @@
  * worktree's `.ana/logins-history.jsonl` (28 days): a login still in the window of a reading 2 to 24
  * hours old gives its rise since, any other its week's pace; and the model's, hour by hour over the next
  * day, once it beats the week pace and the per-run rate on hours held out (`usage-model.ts`, 1 November). The
- * 5-hour windows are left out: they cap how fast one login spends, not what a week holds.
+ * 5-hour windows are left out: they cap how fast one login spends, not what a week holds. A keeper
+ * asks of one login's five hours by themselves, with the run it would move there added (`fiveHourWith`).
  *
  * `bun run runs active` names the runs a process writes, by the login each run's last launch named,
  * and the live seats of `system-path-simulation`, by the login each seat names (`liveHere`),
@@ -120,6 +121,13 @@ const ACTIVE_SHARE = 16 / 24;
 const RUN_HOURS = 12;
 /** Fewer run-hours than this on record measure no rate a run spends (`perRunRate`). */
 const LEAST_RUN_HOURS = 6;
+const FIVE_HOURS = 5 * 60;
+/** The % of a login's five-hour window a run is taken to spend an hour where the login carries no run
+ *  to read it from (`fiveHourWith`). This is the upper end of what was printed: over 126 readings of a
+ *  window at least an hour old up to 5 November, its pace over its live runs read a median of 6.0 and
+ *  a ninetieth percentile of 15.5, with medians from 1.9 to 12.8 by login, so one number serves only
+ *  where a login's own pace says nothing. An empty window reads 75% at its reset. */
+const RUN_FIVE_HOUR = 15;
 const NOTED = [
   ["seven_day_opus", "opus"],
   ["seven_day_sonnet", "sonnet"],
@@ -430,6 +438,35 @@ const stamp = (at: number): string =>
     })
     .replace(" at ", " ");
 
+/** What `window` of `length` minutes holds at its reset at the pace it was used so far, or null where
+ *  either is unread. */
+function atReset(window: Window, length: number, now: number): number | null {
+  const reset = resetOf(window.resetsAt);
+  if (reset === null || window.pct === null) return null;
+  const used = length - (reset - now) / 60_000;
+  return used <= 0 ? window.pct : (window.pct * length) / used;
+}
+
+/**
+ * What the five-hour window of `reading` holds at its reset once one more run goes on there beside
+ * the `on` it carries, or null where it cannot be said: no reading, no share, or a share with no
+ * reset to read it against. Each run on the login is taken to spend what the window's pace so far
+ * shares out to it, so a login's own runs are what prices the one added. An idle login has no such
+ * pace, and what its window holds came from runs that have left, so it reads the window's share and
+ * `RUN_FIVE_HOUR` to its reset. A person's own session on a login is charged to its runs, as in
+ * `perRunRate`, and a window minutes old reads high until the next look. The week's forecast cannot
+ * answer this: the readings kept hold no five-hour share, and a run's rate is in % of a week.
+ */
+export function fiveHourWith(reading: Reading, on: number, now: number): number | null {
+  if ("error" in reading) return null;
+  const { fiveHour } = reading;
+  const { pct } = fiveHour;
+  const reset = resetOf(fiveHour.resetsAt);
+  if (pct === null || (pct > 0 && reset === null)) return null;
+  if (on > 0) return pct + (((atReset(fiveHour, FIVE_HOURS, now) ?? pct) - pct) * (on + 1)) / on;
+  return pct + RUN_FIVE_HOUR * (reset === null ? FIVE_HOURS / 60 : Math.max(0, (reset - now) / HOUR));
+}
+
 /** When `window` of `length` minutes runs out at the pace it was used so far: it opened `length`
  *  minutes before its reset, so 40% in the first 2 of 7 days runs out 3 days on. */
 function pace(window: Window, length: number, now: number): string {
@@ -441,7 +478,7 @@ function pace(window: Window, length: number, now: number): string {
   if (window.pct <= 0 || used <= 0) return "lasts";
   const mins = Math.round(((100 - window.pct) * used) / window.pct);
   return mins >= left
-    ? `lasts, ~${String(Math.round((window.pct * length) / used))}% at reset`
+    ? `lasts, ~${String(Math.round(atReset(window, length, now) ?? window.pct))}% at reset`
     : `ends in ${spanOf(mins)} (${clock(now + mins * 60_000)})`;
 }
 

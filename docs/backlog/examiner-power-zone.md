@@ -160,22 +160,38 @@ In order: each rests on the one before, except item 7, which comes before item 3
    5 November on the jobstat exam and the seed it ran on, 18 of 19 rulings were on one check
    (`check-manifest`), from 5 tasks whose request writes each demanded section heading as a
    Markdown heading line; the solver copied the prefix, and the check compares the trimmed heading
-   exactly, as the conventions say. Tasks that quote the heading instead passed. 18 were ruled
-   `check-defect`. The nineteenth, on `x-4-001`, was ruled `earned` on another ground: a wrong
-   descriptive statistic under the analysis plan's pre-dose rule (R3). Ten came from the seed's
+   exactly, as the conventions say. Tasks that quote the heading instead passed. All 18 were ruled
+   `check-defect`, and each is a heading-only case: its probes pass once the headings change. The
+   nineteenth, on `x-4-001`, is a different case and was ruled `earned` on another ground: a wrong
+   descriptive statistic under the analysis plan's pre-dose rule (R3), whose cited probe moves
+   `check-descriptive-statistics` while other checks still refuse. So the record holds no two
+   rulings that read the same heading-only evidence two ways. Ten rulings came from the seed's
    own campaign on 4 November, four of them on comparison g-1's solves of one task (`x-2-006`),
    below the stop's more than 3 tasks; the round's nine were all on the Builder b-2's practice
    solves.
-   The owner is the writing prompt's wording on how a request states an exact string, domain-agnostic,
-   and a blind label of one ruling (`settle.ts`) settles which side was right. The Referee guard
-   #622 removed would have refused none of the 8 in that stretch: each probe reached a declared
-   field and supplied no accepted answer. Over the whole round from its first try, 21 of the 22
-   rejections on record refused on `check-manifest` alone and the 22nd included it: 11 of the
-   tries, 9 of the practice solves and 2 of the session g-2's. So the reference's 8 valid solves
-   of 29 on that exam read as room, and are most likely the heading wording. **Settle this before
-   item 3**, since a writing seat measured over such an exam counts the wording as difficulty. If
-   the label says `earned`, the Referee ruled 18 real fails aside, and a sharper guard than the
-   one #622 removed is worth a paired Referee seat.
+   A replay without a model settled what caused the recorded refusals: with only the heading's `#`
+   prefix stripped, 31 of the 32 rejected answers on record pass the verifier (the seed's 10 of 10,
+   the round's 21 of 22), and every answer re-grades unchanged to its logged verdict. The one left
+   is the `x-4-001` solve ruled `earned`, still refused by `check-descriptive-statistics` and
+   `check-regression-estimates`. The Referee guard #622 removed would have refused none of the 8
+   heading rulings of the round: each probe reached a declared field and supplied no accepted
+   answer.
+   The reference's 8 valid solves of 29 on that exam are a pooled figure, not a comparison's
+   reading: 17 practice solves and 12 Examiner tries, one of them flagged, on instances chosen in
+   different ways, and g-2 read nothing. Without the heading, 27 of 28 recorded solves would have
+   been valid. That supports the heading as the diagnosis; what the exam's difficulty would be
+   under clear wording stays unknown until a fresh set of tasks the Examiner writes with plain
+   requests gets 2 or more fresh reference solves each, read per task as 0/2, 1/2 and 2/2, never
+   as one pooled share. The frozen exam is not repaired and its comparison is not scored again on
+   changed terms (rules 2 and 4).
+   The owner is the writing prompt's wording on how a request states an exact string, written
+   domain-agnostically. Operator blind labels (`settle.ts`) of a few heading cases from the five
+   requests, with `x-4-001` among them and counted apart, settle which side the shared reading
+   favours; one label can settle that reading, but not the Referee's accuracy over 18 rulings,
+   which still needs the verdicts factor's 30 blind labels. No operator label is on record yet.
+   **Settle this before item 3**, since a writing seat measured over such an exam counts the
+   wording as difficulty. If the labels say `earned` for the heading cases, the Referee ruled 18
+   real fails aside, and a sharper guard than the one #622 removed is worth a paired Referee seat.
 8. **One generator re-seeded across an exam** (plausible). An Examiner that writes every held task
    from one generator with new seeds gives a comparison one template many times, so a harness with
    a program cut to that template wins each task, and the step measures the template rather than
@@ -189,8 +205,43 @@ In order: each rests on the one before, except item 7, which comes before item 3
 9. **One Examiner conversation across asks makes item 8 likelier** (plausible, unmeasured). #626
    keeps the writing Examiner's whole context from ask to ask, so it holds its generators and can
    reuse them, where a fresh session derived them again. Coherence and economy pull one way,
-   variety the other. Read it in the first live run with #626: the count of item 8 by ask, and the
-   reference's valid share by ask, against the runs before it.
+   variety the other. Monitor it in the first live run with #626: the count of item 8 by ask, the
+   reference's outcomes, the held tasks and the dollars by ask. Set beside the runs before it, that
+   describes an association, not the effect of continuity, and one ordinary run that shows no change
+   cannot refute it. Only if keeping #626 turns on cause does it take matched seats over several
+   asks that differ only in the conversation, with the same home on both arms.
+10. **Practice blocked after a reading** (confirmed in the record, changed in #625). The guard that
+    released nothing where nothing was held out since the last release stopped the Builder's
+    practice: replayed over the archive, 16 of 247 campaigns reached that state after a reading,
+    across 26 Builder conversations, 2 never cleared and 4 compared without the practice they were
+    owed. #625 moves the guard into `practiceDue` and bounds it instead of removing it: a reading
+    with nothing held out since the last release is owed one task, a promotion with nothing held
+    none, and the admission floor and the release's cap still bound it. That cap is half of all
+    held tasks (`tools/d2/prepare.ts`), where `AGENTS.md` section 6 says half the tasks with room;
+    which of the two is meant is open, and the other follows it.
+    The risk to watch is the frontier: one task a reading drawn from tasks a comparison would score
+    brings the frontier nearer the floor of eight, and an allowance does not guarantee an eligible
+    task (`releaseOrder`). Read the frontier and the released count after each reading in the first
+    run that carries it.
+11. **Left to the operator, from the round of 5 November** (`AGENTS.md`, section 3):
+    - whether a try's result names the refusing check, or says the rejection is unruled. A try
+      names no check by the operator's design ("no check id", the writing levers' row 13); the round's
+      tries spent 4.42 dollars refusing on the heading without the seat learning why;
+    - whether a task with an earned practice fail stays in practice (`x-4-001` left it);
+    - a dollar cap the host reads for a simulation: the round's 40 dollars was a note, not a limit.
+12. **Leads from the round, each resting on one reading** (plausible):
+    - a large tool result saved under the CLI's own configuration folder was unreadable from the
+      Examiner's wall (`src/agent/backends/claude.ts`), so one result was lost to the session;
+    - packages a solve installs from the network leave their versions out of the condition;
+    - the Examiner's reseeding of one generator followed the host's reply asking for more tasks
+      (item 8).
+
+**Prediction for the first fresh campaign at this stack's top**, on record before its first solve:
+its first candidate comparison that reports finds at least six tasks informative for the reference
+under `informative` (`src/kernel/compare.ts`), after the usual set-asides. It is read as that count
+over the tallied tasks, with the reference's per-task distribution and the points by measure beside
+it. It tests usable supply, not promotion: six informative tasks need not give six wins or a step.
+If no candidate comparison reports, it is unmeasured and the typed ending is what to explain.
 
 Kept from before, since they still hold: both harnesses solve the same tasks afresh, a step is read
 within one comparison, one retained task joins each three frontier tasks, the starter comparison
@@ -289,3 +340,8 @@ one exception (3). Watch these with every change above:
   both include or actually oppose?" The answer named the choices that one count could turn either
   way; the three that bear on the zone are items 7 to 9 (the heading rulings and the guard, one
   generator re-seeded, and #626's one conversation), each with the count that decides it.
+- **5 November, morning.** An outside review of revision `bfc32c41b` asked for item 7 to keep the
+  heading cases apart from the statistical one, the pooled 8 of 29 qualified and what one label
+  shows limited, item 9 read as monitoring, and the blocked practice of item 10 bounded. The
+  operator pasted it, then "launch more subagents if you need to". The heading replay and the
+  archive count of item 10 were taken then, and #625 carried the bounded release.

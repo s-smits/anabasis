@@ -23,7 +23,16 @@ import { runtimeProcess } from "#src/meta/process.ts";
 import { asked } from "./hosts.ts";
 import { type Host, hostNamed, hostsOf } from "./host-config.ts";
 import type { Live } from "./live.ts";
-import { allowedLogins, atCap, fullOn, liveEverywhere, plainOnly, readLogins, room } from "./logins.ts";
+import {
+  allowedLogins,
+  atCap,
+  fullOn,
+  liveEverywhere,
+  noLogin,
+  plainOnly,
+  readLogins,
+  room,
+} from "./logins.ts";
 import { localCatalogue, remoteRuns } from "./snapshots.ts";
 
 interface Occupancy {
@@ -151,7 +160,9 @@ export async function freshLogin(
   }
   const candidates = allowed.filter((login) => !full.has(login));
   const chosen = room(await read(candidates, env), allowed, full)[0];
-  if (chosen === undefined) throw new Error("no allowed login has room for a fresh campaign");
+  if (chosen === undefined) {
+    throw new Error(noLogin(env, allowed) ?? "no allowed login has room for a fresh campaign");
+  }
   return chosen;
 }
 

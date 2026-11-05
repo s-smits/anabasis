@@ -43,13 +43,13 @@ import { gitText, mainTree } from "#src/meta/git.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
-import { ownName } from "./host-config.ts";
+import { hostNamed, ownName } from "./host-config.ts";
 import { verbOn } from "./hosts.ts";
 import { preparedHost, publishedAt } from "./code.ts";
 import { freshFleet, freshHost, freshLogin, loginPool, loginPresent } from "./placement.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 import { launch } from "./manage.ts";
-import { everyRun, harnessesOf } from "./registry.ts";
+import { everyRun, HERE, harnessesOf } from "./registry.ts";
 import { batchFresh } from "./batch.ts";
 import { CODEX, seatsCodex } from "./live.ts";
 import { billsLogin, readLogins } from "./logins.ts";
@@ -177,6 +177,7 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
       read,
     );
   }
+  if (values.host !== undefined && values.host !== HERE) hostNamed(values.host);
   const fleet = await freshFleet();
   const login =
     values.login !== undefined || billed

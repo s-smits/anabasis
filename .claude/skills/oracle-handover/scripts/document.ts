@@ -12,7 +12,9 @@
  * Source comes from a published commit (`publishedAt`), never the working tree: on 3 November a
  * document appended the main checkout's `AGENTS.md`, behind the stack's top, and the Oracle
  * reported a contradiction the top had resolved. Home folders become `~/` and each machine
- * `ANA_HOSTS` names `host-a`, `host-b` (said here, not in the file); a credential refuses it.
+ * `ANA_HOSTS` names `host-a`, `host-b` (said here, not in the file); a credential refuses it, and so
+ * does a `.env.runs` that names hosts this command did not load. With no hosts this machine's own
+ * name is the one to alias.
  * Its size is printed, never capped (operator, 4 November: "do not optimize for it"), in o200k
  * tokens at 3.17 bytes each, from the 4 November document (452 KB, 142,579 tokens).
  */
@@ -23,7 +25,7 @@ import { gitOutput, gitText } from "#src/meta/git.ts";
 import { basename, dirname, extname, resolve } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { publishedAt } from "#tools/runs/code.ts";
-import { hostsOf, ownName } from "#tools/runs/host-config.ts";
+import { hostsOf, ownName, unloadedHosts } from "#tools/runs/host-config.ts";
 import { ghOrThrow } from "#tools/runtime/pulls.ts";
 import { scanText } from "#tools/secrets/rules.ts";
 import { DEFAULT_MAX_CHARS, fenced, sliceRun } from "./slice.ts";
@@ -233,13 +235,13 @@ async function documentOf(partsFile: string, repo: string, commit: string) {
 
 /** This machine's name, then each peer's names, as `ANA_HOSTS` gives them: the aliases' order. */
 function machinesOf(): string[][] {
-  const peers = hostsOf();
-  if (peers.length === 0) {
+  const unread = unloadedHosts(runtimeProcess.cwd());
+  if (unread !== null) {
     throw new CommandFailure(
-      "no ANA_HOSTS: run with --env-file=.env.runs, so that every host name is aliased",
+      `${unread}: run with --env-file=<that file>, so that every host name is aliased`,
     );
   }
-  return [[ownName()], ...peers.map((host) => [host.name, host.ssh.replace(/^.*@/u, "")])];
+  return [[ownName()], ...hostsOf().map((host) => [host.name, host.ssh.replace(/^.*@/u, "")])];
 }
 
 if (import.meta.main) {

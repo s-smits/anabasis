@@ -1,11 +1,14 @@
 /** Machine identities and capacities come only from ANA_HOSTS (22 October 2026). */
+import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
+import { gitMaybe } from "#src/meta/git.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
-import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { hostname } from "#src/meta/os.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
-import { isAbsolute } from "#src/meta/path.ts";
+import { dirname, isAbsolute, join } from "#src/meta/path.ts";
+import { errorMessage } from "#src/meta/runtime-values.ts";
 
 export interface Host {
   readonly name: string;
@@ -25,13 +28,24 @@ export interface Host {
   readonly prepared?: true;
 }
 
+/** What `ANA_HOSTS` says. Set and empty, as a copied `.env.runs.example` leaves it, is unset: no host,
+ *  and this machine alone. */
+function listedHosts(text: string): JsonValue {
+  if (text.trim() === "") return [];
+  try {
+    return capturedJsonParse(text);
+  } catch (error) {
+    throw new Error(`ANA_HOSTS is not JSON: ${errorMessage(error)}`, { cause: error });
+  }
+}
+
 export function hostsOf(): readonly Host[] {
   // A verb another host sent here reaches no further host (`ANA_HOP`, set by `scriptCommand` in
   // hosts.ts), so two machines that list each other do not ask each other in a loop. Until
   // 28 October the sender emptied `ANA_HOSTS` instead, and a keeper started that way inherited the
   // empty list and counted no other machine's runs against a login's cap.
   if (runtimeProcess.env.ANA_HOP === "1") return [];
-  const value = capturedJsonParse(runtimeProcess.env.ANA_HOSTS ?? "[]");
+  const value = listedHosts(runtimeProcess.env.ANA_HOSTS ?? "");
   if (!Array.isArray(value)) throw new Error("ANA_HOSTS takes a JSON list");
   const names = new Set<string>();
   return value.map((entry) => {
@@ -94,14 +108,27 @@ export function configuredRuntime(host: Host) {
 }
 /** This machine's own name, its short hostname: what `fresh` ends a run's name with when it runs
  *  here, and what `move` reads as `here`. */
-export const ownName = (): string => hostname().split(".")[0] ?? "here";
+export const ownName = (): string => hostname().replace(/\..*$/u, "");
+
+/** What says hosts exist that this process did not load: the main worktree's `.env.runs` names
+ *  `ANA_HOSTS`, and the environment holds none. A verb that means to reach every host says so
+ *  instead of reading one host. Null on a machine with no hosts. Only the key is looked for. */
+export function unloadedHosts(repo: string): string | null {
+  if (runtimeProcess.env.ANA_HOSTS !== undefined || runtimeProcess.env.ANA_HOP === "1") return null;
+  const main = gitMaybe(repo, "rev-parse", "--path-format=absolute", "--git-common-dir");
+  if (main === null) return null;
+  const file = join(dirname(main), ".env.runs");
+  return existsSync(file) && /^ANA_HOSTS=/mu.test(readFileSync(file, "utf8"))
+    ? `${file} names ANA_HOSTS, and this command did not load it`
+    : null;
+}
 
 export function hostNamed(name: string | undefined): Host {
   const known = hostsOf();
   const host = known.find((one) => one.name === name);
   if (host === undefined) {
     throw new Error(
-      `no host ${String(name)}: ANA_HOSTS names ${known.map((one) => one.name).join(", ") || "none here"}`,
+      `no host ${name ?? "named"}: ANA_HOSTS names ${known.map((one) => one.name).join(", ") || "none here"}`,
     );
   }
   return host;

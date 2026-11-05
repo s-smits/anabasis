@@ -19,7 +19,7 @@ import { runCaptured } from "#src/meta/subprocess.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { type Host, hostsOf } from "./host-config.ts";
 import { askedScript } from "./hosts.ts";
-import { everyRun, isCampaign } from "./registry.ts";
+import { everyRun, HERE, isCampaign } from "./registry.ts";
 
 interface Match {
   readonly path: string;
@@ -236,11 +236,13 @@ export async function search(args: readonly string[], dependencies: Dependencies
     ? []
     : known.filter((host) => values.host === undefined || values.host.includes(host.name));
   for (const name of values.host ?? []) {
-    if (!known.some((host) => host.name === name)) throw new Error(`unknown search host: ${name}`);
+    if (name !== HERE && !known.some((host) => host.name === name)) {
+      throw new Error(`unknown search host: ${name}`);
+    }
   }
   const local = dependencies.local ?? ((asked: Query, within: string) => searchLocal(asked, rootsOf(within)));
   const here =
-    values.host === undefined
+    values.host === undefined || values.host.includes(HERE)
       ? Promise.resolve()
           .then(() => local(query, scope))
           .then(
@@ -273,7 +275,13 @@ export async function search(args: readonly string[], dependencies: Dependencies
     }),
   );
   const [own, peers] = await Promise.all([here, away]);
-  await display([...(own === null ? [] : [own]), ...peers], max, dependencies.print ?? console.log);
+  const results = [...(own === null ? [] : [own]), ...peers];
+  await display(results, max, dependencies.print ?? console.log);
+  // A peer that does not answer is named and leaves the answer standing. This machine's own search
+  // failing, or nobody answering, is no search at all: until 5 November a machine with no `rg` exited 0.
+  if ((own !== null && "error" in own) || !results.some((one) => "result" in one)) {
+    runtimeProcess.exitCode = 1;
+  }
 }
 
 // The transport runs this entrypoint once in the host's own tree, with no recursive fan-out.

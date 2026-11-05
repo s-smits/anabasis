@@ -47,6 +47,13 @@ with no rule turned off for it; a whole-tree run without them leaves it out and 
   rule or scan brings its pairs, and `test/rule-examples.test.ts` lints every one.
 - **Never turn a rule off**: no new `"off"` in `.oxlintrc.json`, for the tree, a glob or a file,
   and no `oxlint-disable` comment for a plugin rule (`ana/no-inline-slop-answer` refuses it).
+- **Every core rule in scope is decided.** Each rule Oxlint offers in the correctness, suspicious,
+  perf, pedantic, style and restriction categories of the `eslint`, `import`, `node`, `oxc`,
+  `promise`, `typescript` and `unicorn` plugins is configured at the top level of `.oxlintrc.json`,
+  or is a row of `tools/oxlint/rules-off.tsv`: `off` with the one sentence that keeps it off, or
+  `staged` with the count still to fix. `test/oxlint-ledger.test.ts` fails on a rule that is
+  neither, on a row for a rule that is on, and on an `"off"` for some files without its row. A
+  commit that turns a rule on removes its row.
 - **When a finding is wrong about a site**, the answer depends on the rule
   (`tools/oxlint/not-slop-ledger.ts`):
 
@@ -285,9 +292,6 @@ const manifest = parsed as Manifest;
   result is used), `prefer-set-has`, `explicit-length-check`.
 - `import/no-cycle`: move the shared piece down into a module both sides import.
 
-`typescript/no-unnecessary-type-parameters` is off on purpose: `parseJsonAs<T>` and its kin carry
-a contract the caller declares.
-
 ## 12.7 Rule pairs that pull against each other
 
 Each pair has one spelling that satisfies both.
@@ -373,9 +377,8 @@ entry to `source-policy.json` to pass. There is no complexity gate in v2.
 
 ## 12.11 Per-path overrides
 
-`.oxlintrc.json` changes the rules on three paths. `test/**` turns off `no-unsafe-*`,
-`no-non-null-assertion`, `no-explicit-any` and `await-thenable`. `.claude/**/*.ts` turns off the
-first three. `tools/oxlint/anti-slop/**` turns off `ana/no-inline-slop-answer` and lets a
+`.oxlintrc.json` changes the rules on two paths. `test/**` turns off `await-thenable`, for the
+reason its row in `tools/oxlint/rules-off.tsv` gives, and `tools/oxlint/anti-slop/**` lets a
 `default` arm make a `switch` exhaustive. Two blocks that named trees v2 does not have,
 `**/src/backends/oauth/**` and `packages/ui/**`, went on 10 October. These lists only shrink:
 never add a file to one, and never widen a glob to take in the file you are editing.

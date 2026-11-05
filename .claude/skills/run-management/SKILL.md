@@ -39,7 +39,7 @@ archived campaign; `copy <name> --to <worktree>` brings this machine's back to g
 | `fetch [<name>] [--from <host>]` | a copy of a campaign another machine holds, to read here, into the archive as `data/runs/<host>/<name>/`; with no name, the records (log and receipts) of every campaign the other machines hold, which a timer on the central machine runs every ten minutes | `move.ts` |
 | `retire [--days 1] [--yes]` | moves each campaign no process writes or keeps, idle for `--days`, into the archive whole (a seed, `seed.json` beside its log, is deleted instead, the archive's too), and deletes each worktree nothing has used for a week (two for one with uncommitted work) and each local branch no worktree holds that nothing has used for a week, tagging a commit nothing else holds; then refreshes each other host's records here. A daily job on every host runs it with `--yes`; nothing else in an archive is deleted | `retire.ts` |
 | `on <host> <verb ...>`, `hosts [--all]` | any verb on another host over ssh; `status` on each other host alone. A verb that names a run goes to its host by itself | `hosts.ts` |
-| `pulse [<part of a name> ...] [--once] [--every 290] [--state <file>] [--no-readers]` | what each run gained since the last look, and what every reader of its log says that this observer has not seen; state defaults to `.ana/runs-pulse.json` | `pulse.ts` |
+| `pulse [<part of a name> ...] [--every 290] [--state <file>] [--no-readers]` | what each run gained since the last look, and what every reader of its log says that this observer has not seen; state defaults to `.ana/runs-pulse.json` | `pulse.ts` |
 | `view <name>` | one campaign as its log reads, and the move the table names next | `view.ts` |
 | `source <name> [--holds <c>]...` | each run's commit, its tree, where the commit is published, whether it holds a fix | `receipt.ts` |
 | `zip`, `replay`, `seed`, `rehearse` | handover, readers over every log, a seed, a rehearsal | zip-run, system-path-simulation |
@@ -419,7 +419,7 @@ read, before its first solve.
 ## Watch
 
 ```sh
-bun run runs pulse [<part of a name> ...] [--once]
+bun run runs pulse [<part of a name> ...]
 bun run runs view <name> [--level N] [--target N] [--practice N] [--past-stop "<why>"]
 ```
 

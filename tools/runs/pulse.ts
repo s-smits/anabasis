@@ -4,8 +4,13 @@
  * the last look: `◆` a milestone, `⚠` something to look at, `·` the rest. Each log is the run's
  * whole record, so the pulse keeps only how far it read and what it last said, in `--state`.
  *
- *   bun run runs pulse [<part of a name> ...] [--once] [--every 290] [--state .ana/runs-pulse.json]
+ *   bun run runs pulse [<part of a name> ...] [--every 290] [--state .ana/runs-pulse.json]
  *   bun run runs status [--all]
+ *
+ * One look and out, unless `--every <seconds>` asks it to keep looking. Until 5 November a bare pulse
+ * watched for ever, so a session reading one run through a pipe waited 80 minutes for an end that never
+ * came. `--once` still parses and changes nothing: the anti-stall hook and a peer's ask send it, and
+ * either can meet a tree from before this, where leaving it out would watch for ever.
  *
  * With no names a look covers the open runs and those open at the last look, so a run's ending is
  * said once; an observer's first look of a run also covers one stopped in the last day without an
@@ -669,7 +674,7 @@ export async function watch(args: readonly string[]): Promise<void> {
     allowPositionals: true,
     options: {
       once: { type: "boolean", default: false },
-      every: { type: "string", default: "290" },
+      every: { type: "string" },
       state: { type: "string", default: join(".ana", "runs-pulse.json") },
       here: { type: "boolean", default: false },
       ack: { type: "string" },
@@ -724,8 +729,8 @@ export async function watch(args: readonly string[]): Promise<void> {
     const { acks, unanswered } = await saidOfPeers(away, started, memory.acks ?? {});
     if (away.length > 0) remember(state, { ...here.memory, acks });
     // A host still preparing holds this process for up to five minutes, and the hook's limit is 40 s.
-    if (values.once && unanswered) runtimeProcess.exit(1);
-    if (values.once) break;
+    if (values.every === undefined && unanswered) runtimeProcess.exit(1);
+    if (values.every === undefined) break;
     await Bun.sleep(Number(values.every) * 1000);
   }
 }

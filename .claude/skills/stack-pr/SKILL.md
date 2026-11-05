@@ -73,7 +73,7 @@ Pin by commit because the branch can move between the fetch and the checkout. Ru
 
 Never branch in, or switch, a worktree a run was launched from. A campaign's folder lives under
 that tree's `.ana/`, its receipt names that tree's commit, and a comparison continued from its
-log executes whatever source is there then. `bun run runs pulse --once` says which trees hold
+log executes whatever source is there then. `bun run runs pulse` says which trees hold
 an open run.
 
 ## 4. Hop without losing work

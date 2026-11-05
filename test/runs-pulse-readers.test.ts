@@ -486,6 +486,31 @@ describe("a look that was cut", () => {
     expect(look("--state", state, "the-run").out).not.toContain("reported no-step");
   });
 
+  it("takes one look and ends, and keeps looking only where --every asks", async () => {
+    const { made, state } = host();
+    const start = (...args: string[]) =>
+      capturedSpawn(
+        [capturedExecPath, join(import.meta.dir, "..", CLI), "pulse", "--state", state, ...args],
+        {
+          cwd: made.main,
+          env: { ...made.env, ANA_HOSTS: "[]" },
+          detached: true,
+          stdin: "ignore",
+          stdout: "ignore",
+          stderr: "ignore",
+        },
+      );
+    const bare = start("the-run");
+    const ended = await Promise.race([bare.exited, Bun.sleep(20_000).then(() => "still looking")]);
+    if (ended === "still looking") process.kill(-bare.pid, "SIGTERM");
+    expect(ended).toBe(0);
+    const watching = start("--every", "0.1", "the-run");
+    const early = await Promise.race([watching.exited, Bun.sleep(3000).then(() => "still looking")]);
+    process.kill(-watching.pid, "SIGTERM");
+    await watching.exited;
+    expect(early).toBe("still looking");
+  });
+
   it("keeps a peer's look from counting as read until its caller returns the token", () => {
     const { event, log, made, look } = host();
     const state = join(made.main, ".ana", "pulse", "observer.json");

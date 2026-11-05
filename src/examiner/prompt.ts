@@ -101,7 +101,7 @@ export const TASK =
 
 /** What validity rests on, and where what a task was built from goes, as both modes are told it. */
 export const FAIR =
-  "A check refuses only what a rule, the scope, the conventions or a standard a rule names states. What a task was built from, such as generating parameters, a latent process or planted faults, stays hidden. The Builder reads the objective's measure of each practice solve, so a value several tasks were built from can be learnt from practice instead of found in the task, and what a harness learns so is of the exam, not of the field.";
+  "A check refuses only what a rule, the scope, the conventions or a standard a rule names states. A solver copies a string it is asked for as the public input spells it, markup included, so where a check compares text exactly, the input and the conventions give that text alone, set apart as a quotation rather than written as a heading, list item or other markup; a refusal of the markup measures the wording. What a task was built from, such as generating parameters, a latent process or planted faults, stays hidden. The Builder reads the objective's measure of each practice solve, so a value several tasks were built from can be learnt from practice instead of found in the task, and what a harness learns so is of the exam, not of the field.";
 
 /** The one limit on a rule or a task the field does not set, as both modes are told it. */
 export const UNHELD =

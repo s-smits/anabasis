@@ -258,18 +258,18 @@ function stopped({ stop }: Supply, pastStop: string | undefined) {
 export function refusals(supply: Supply, wanted: Sized) {
   const { scored, least } = sized(supply, wanted);
   const [size = ""] = sizeLines(scored, wanted);
-  const more = `Run an Examiner session (${EXAMINE}) for more held-out tasks`;
+  const more = `An Examiner session writes more held-out tasks (examine, or ${EXAMINE} by hand)`;
   const stop = stopped(supply, wanted.pastStop);
   const rows = [
     [
       "no-held",
       supply.held === 0,
-      "the log holds no held-out task to score: run tools/d2/prepare.ts, which takes the pack's tasks in",
+      "the log holds no held-out task to score: an Examiner session writes them (examine), or tools/d2/prepare.ts takes a pack's tasks in",
     ],
     [
       "held-short",
       supply.held > 0 && scored < least,
-      `${size}. A paid comparison needs at least ${String(least)} frontier tasks, leaving room for one set-aside task and one tie. ${more}${wanted.target < least ? `, and ask for a --target of ${String(least)} or more` : ""}`,
+      `${size}. A paid comparison needs at least ${String(least)} frontier tasks, leaving room for one set-aside task and one tie. ${more}${wanted.target < least ? `. The --target of ${String(wanted.target)} is below ${String(least)}` : ""}`,
     ],
     [
       "unread",

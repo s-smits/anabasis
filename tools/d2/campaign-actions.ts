@@ -183,7 +183,7 @@ function actionTool(context: CampaignContext, bench: Bench, move: ActionMove, ru
       examine:
         "Ask a separate Examiner to write tasks under the fixed exam. It returns at once and the Examiner writes beside you; the campaign's facts say how many of its tasks the gate has admitted. A comparison is won on tasks the reference fails in some solve, or where the objective tells two valid answers apart.",
       compare:
-        "Freeze harness/ and compare it with the current reference on fresh held-out solves, also while an Examiner session writes: tasks it holds out later join the next comparison. Where a comparison began and has not reported, it goes on under its original terms. Where the host owes the starter comparison that follows a promotion, this call runs that instead and harness/ is compared at the next one. A comparison that reads a step against the reference promotes the harness it froze.",
+        "Freeze harness/ and compare it with the current reference on fresh held-out solves, also while an Examiner session writes: tasks it holds out later join the next comparison. Where a comparison began and has not reported, it goes on under its original terms. Where the host owes the starter comparison that follows a promotion, this call runs that instead and harness/ is compared at the next one. A comparison that reads a step against the reference promotes the harness it froze. After a promotion, it first waits for the Examiner session writing for the new reference to end.",
     }[move],
     parameters: Type.Object({}),
     executionMode: "sequential",

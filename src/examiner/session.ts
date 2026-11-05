@@ -303,7 +303,6 @@ export async function examine(request: ExamRequest, wall?: Wall): Promise<Examin
       walls,
     );
   if (wall === undefined) return await seated();
-  const walled =
-    request.mode === "draft" ? { ...wall, engines: undefined, keep: undefined, reference: undefined } : wall;
+  const walled = request.mode === "draft" ? { ...wall, engines: undefined, reference: undefined } : wall;
   return await inExaminerWall(request, walled, seated);
 }

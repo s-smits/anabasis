@@ -302,6 +302,18 @@ describe("the home a wall keeps for a campaign's writing sessions", () => {
     expect(readdirSync(keep)).toEqual(["kept.txt"]);
   });
 
+  it("keeps nothing of a drafting session's home where it crashed with a command running", async () => {
+    const s = seat("draft", []);
+    const keep = join(dirname(s.log), "examiner-home");
+    mkdirSync(keep);
+    writeFileSync(join(keep, "kept.txt"), "kept\n");
+    await inExaminerWall(s.request, { ...WALL, keep }, async ({ shell }) => {
+      writeFileSync(join(shell.dirs.home, "half.txt"), "half\n");
+      append(s.log, "draft.finished", { session: s.request.id, ended: "crashed", running: 1 });
+    });
+    expect(readdirSync(keep)).toEqual(["kept.txt"]);
+  });
+
   it("carries a relative link as it stands, into the home and out of it", async () => {
     // A venv's `python` names `python3.14` beside it; read through the session's root, which is
     // removed when the session ends, it dangles in the next session's home.
@@ -322,7 +334,7 @@ describe("the home a wall keeps for a campaign's writing sessions", () => {
     ]);
   });
 
-  it("carries a writing session's home into the next, whole, and lays no harness in a drafting session's", async () => {
+  it("carries a session's home into the next, whole, a drafting session's too, and lays no harness in a drafting session's", async () => {
     const s = seat("write", [
       bash("rm kept.txt; echo half > half.txt"),
       finish,
@@ -347,10 +359,10 @@ describe("the home a wall keeps for a campaign's writing sessions", () => {
     expect(s.of(CALLED).filter(({ tool }) => tool === "bash")[1]?.text).toBe("half.txt");
     expect(readdirSync(keep)).toEqual(["half.txt"]);
 
-    const drafted = seat("draft", [bash("ls"), PUT.draft, finish]);
-    await examine(drafted.request, { ...WALL, keep, reference: keep });
-    expect(drafted.of("draft.call")[0]?.text).toBe("");
-    expect(readdirSync(keep)).toEqual(["half.txt"]);
+    const drafted = seat("draft", [bash("ls; echo gen > generate.py"), PUT.draft, finish]);
+    await examine(drafted.request, { ...WALL, keep, reference });
+    expect(drafted.of("draft.call")[0]?.text).toBe("half.txt");
+    expect(readdirSync(keep).toSorted()).toEqual(["generate.py", "half.txt"]);
   });
 });
 

@@ -55,9 +55,9 @@ export interface Wall extends Walled {
    *  program names are installed in the shell (`pinnedEngines`, `src/kernel/verify.ts`). A drafting
    *  session is given none, whatever is named here: nothing is drafted yet that names one. */
   readonly engines?: VerifierTree | undefined;
-  /** Where the campaign keeps a task-writing session's home between sessions: the folder the last
-   *  session's home was copied to whole, and the next one's is seeded from. Absent, nothing is
-   *  carried, as a test may want. */
+  /** Where the campaign keeps an Examiner session's home between sessions, a drafting one's too:
+   *  the folder the last session's home was copied to whole, and the next one's is seeded from.
+   *  Absent, nothing is carried, as a test may want. */
   readonly keep?: string | undefined;
   /** The reference harness's kept directory, laid in a task-writing session's home as
    *  `reference-harness/`, and never kept. */
@@ -148,9 +148,10 @@ export async function inExaminerWall<T>(
     // home is as no command left it, as its last event says. Until 12 October every crashed
     // session's home replaced the kept one, and on buffer the next session opened in the working
     // files of one whose turn the provider failed; from then until 14 October none did, and a
-    // crashed Examiner's work was lost to the provider.
+    // crashed Examiner's work was lost to the provider. A drafting session ends in `draft.finished`,
+    // which this read missed until 5 November, so a draft that crashed mid-command was carried on.
     const ended = read(log).findLast(
-      ({ kind, data }) => kind === "exam.finished" && data.session === id,
+      ({ kind, data }) => (kind === "exam.finished" || kind === "draft.finished") && data.session === id,
     )?.data;
     if (keep !== undefined && !(ended?.ended === "crashed" && Number(ended.running) > 0)) {
       rmSync(keep, { recursive: true, force: true });

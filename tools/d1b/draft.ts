@@ -33,7 +33,7 @@ import { openingOf } from "#src/campaign/opening.ts";
 import { type Examined, examine, type Session } from "#src/examiner/session.ts";
 import { read } from "#src/kernel/log.ts";
 import { isString } from "#src/meta/json-shape.ts";
-import { dirname } from "#src/meta/path.ts";
+import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { campaignLog, examinerSession, REPO, stayAwake, worktreesOf } from "../d2/campaign.ts";
 import { draftReading } from "../d2/exam.ts";
@@ -95,7 +95,9 @@ export async function draftCommand(
       models: examinerSession,
       log,
     },
-    { repoRoot: REPO, otherTrees: worktreesOf(REPO) },
+    // The home is kept beside the log, as a writing session's is, so the first writing session opens
+    // on the generators and environment the draft was built with (5 November, overhaul report 16).
+    { repoRoot: REPO, otherTrees: worktreesOf(REPO), keep: join(dirname(log), "examiner-home") },
   );
   console.log(JSON.stringify(drafted, null, 2));
   return drafted;

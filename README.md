@@ -115,6 +115,9 @@ The two lint plugins, `anti-slop` (copied from dmmulroy/anti-slop) and the repos
 simplify catchers, are optional: their findings are counted on every run and fail only
 `bun run lint -- --strict`, which the gate runs, or a run with `ANA_LINT_STRICT=1` in the environment.
 
+Anabasis neither needs nor reads [dcg](https://github.com/Dicklesworthstone/destructive_command_guard). If you
+run it, `.dcg.toml` holds three general allowances to copy into your own config, and says what they give up.
+
 ## Licence
 
 MIT; see [LICENSE](LICENSE). Code copied or ported from other projects keeps its notices in

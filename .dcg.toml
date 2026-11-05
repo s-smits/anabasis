@@ -1,0 +1,24 @@
+# General allowances for working in Anabasis under dcg (destructive command guard).
+#
+# dcg is optional: nothing in this repository runs or reads it, and without dcg this file does nothing.
+# With dcg it still does nothing by itself, because dcg ignores a repository's policy until its user
+# chooses it, so a clone cannot loosen anyone's guard. To take these allowances, copy the section below
+# into your own `~/.config/dcg/config.toml`. They then hold on the whole machine, since dcg did not apply
+# them from a per-project section when tried. `DCG_CONFIG=<this file>` also works, but it replaces your own
+# config, packs included.
+#
+# Why these three: this repository's work is scripts written through heredocs and output sent to paths
+# held in variables, which dcg cannot read statically, so it stops them for a person to approve. A replay
+# of one machine's record on 5 November 2026 (dcg 0.16.0, 184 distinct denied commands): these three
+# cleared 120, and all 27 denials of a destructive rule stayed denied. So did 15 of 15 hostile probes,
+# among them `rm -rf` and `git reset --hard` inside a heredoc and a credential path held in a variable.
+#
+# What they give up: dcg no longer stops a redirect to a computed path, or a heredoc holding a substitution
+# it cannot verify. It still reads the literal text of every command. Rare false positives stay: a command dcg
+# cannot finish analysing carries no rule, so nothing here clears it, and `general.unverified_decision`
+# would open every such command, so it stays yours to set.
+
+[policy.rules]
+"core.filesystem:redirect-truncate-dynamic-path" = "warn"
+"heredoc.posix:substitution-unverified" = "warn"
+"heredoc.posix:process-substitution" = "warn"

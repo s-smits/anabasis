@@ -366,6 +366,15 @@ queue, leaves the statuses in place and asks for the trunk to be read before ano
 release notes below then replace; a tag origin already holds is refused before the proof. Test
 `land` against a fake `gh` only (`test/land.test.ts`); never against this repository.
 
+**Landing part of a stack.** A landing's members must be its native stack's, so divide the stack at
+the last pull request to land: `bun run split -- <pull request> --yes` makes two stacks and moves no
+branch, so every pass stands. Without `--yes` it prints what the copy after the merge would do. Land
+the lower one, then run `bun run split -- <pull request> --yes` again. That copies every commit above
+the merge onto it with only its parents changed, so each keeps its tree and its pass, pushes in one
+atomic step under leases and without the hook, moves the bases to the trunk and links the upper stack
+there. `land --sanitize` on its top then shows the passes on the new heads. `test/split.test.ts` runs
+against a fake `gh`; never try `split` on this repository without the operator's word.
+
 ### Release notes, when the operator asks for the next version
 
 This step is optional: a landing takes `--tag vX.Y.Z` only when the operator asks to merge the next

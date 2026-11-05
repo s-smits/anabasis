@@ -48,6 +48,8 @@ export interface Reader {
   /** The script and its arguments, from the repository's root, for a log's absolute path and the
    *  repository's. */
   readonly args: (log: string, repo: string) => readonly string[];
+  /** Whether a cut leaves progress its next read goes on from, so a pass gives it any time left. */
+  readonly resumes?: boolean;
 }
 
 export interface Derived {
@@ -76,9 +78,12 @@ const namedReader = (
   args: (log: string) => [script, ...before, basename(dirname(log)), ...after],
 });
 
-/** The readers that take one campaign and print what it holds, calling no model and writing nothing,
- *  the likeliest news first. A script that needs more than a campaign to say anything, reads no run or
- *  writes is left out, and `whole-run-investigation` names each. */
+/** The readers that take one campaign and print what it holds, calling no paid model and writing
+ *  nothing of the campaign's, the likeliest news first. `posture` alone runs a local model and keeps
+ *  its vectors in the reader store, and comes after all but the two that open every kept harness, as
+ *  its first read is the longest and its news the least likely. A script that needs more than a campaign
+ *  to say anything, reads no run or writes elsewhere is left out, and `whole-run-investigation` names
+ *  each. */
 export const READERS: readonly Reader[] = [
   { name: "rows", args: (log) => ["tools/wri/wri.ts", "read", "--log", log] },
   skillReader("ending", "campaign-mechanics/scripts/ending.ts"),
@@ -115,6 +120,7 @@ export const READERS: readonly Reader[] = [
   { name: "answers", args: (log) => ["tools/wri/answers.ts", log] },
   { name: "waits", args: (log) => ["tools/wri/waits.ts", log] },
   { name: "routes", args: (log) => ["tools/wri/routes.ts", log] },
+  { name: "posture", resumes: true, args: (log) => ["tools/wri/posture.ts", log] },
   skillReader("versions", "harness-audit/scripts/harness-versions.ts"),
   skillReader("chain", "harness-audit/scripts/harness-versions.ts", "--blind"),
 ];

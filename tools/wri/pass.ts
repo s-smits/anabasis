@@ -1,16 +1,18 @@
 /**
  * One pass of the deterministic readers over the logs a look names, for `tools/runs/pulse-readers.ts`,
- * which starts it by this command, since production imports no helper. It calls no model, writes no
- * event and decides nothing: each reader's output goes to the host's store, for every observer of the
- * host to read.
+ * which starts it by this command, since production imports no helper. It calls no paid model, writes
+ * no event and decides nothing: each reader's output goes to the host's store, for every observer of
+ * the host to read.
  *
  *   bun tools/wri/pass.ts --store <dir> --budget <ms> <log> [<log> ...]
  *
  * It runs one reader at a time: the rows of each log first, up to half its budget, and then whichever
  * result is oldest, so logs that take more than one pass come round and none starves. A reader whose
  * last run would not fit what is left waits for a later pass, one the limit cuts keeps its last
- * result, and the pass stops where the load leaves no room. A second pass that finds the lock held
- * leaves at once, which is what settles several looks that started one at one moment.
+ * result, and the pass stops where the load leaves no room. A reader that goes on from what a cut left
+ * (`resumes`) takes any time that is left: a cut records the time it had, about the whole budget, which
+ * would never fit again, and a first read's time says nothing of the reads after it. A second pass that
+ * finds the lock held leaves at once, which is what settles several looks that started one at one moment.
  */
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { statSync } from "#src/meta/filesystem.ts";
@@ -71,7 +73,8 @@ export async function runQueue(
     const spent = ways.now() - started;
     if (spent >= ways.budgetMs) return "budget";
     const left = ways.budgetMs - spent;
-    if (due.ms > left || (due.reader.name === HEAD && spent >= ways.budgetMs / 2)) {
+    const fits = due.reader.resumes === true || due.ms <= left;
+    if (!fits || (due.reader.name === HEAD && spent >= ways.budgetMs / 2)) {
       ended = "budget";
       continue;
     }
@@ -97,16 +100,24 @@ async function readInto(store: string, repo: string, { log, reader }: Due, timeo
 export async function passOver(
   store: string,
   logs: readonly string[],
-  { budgetMs, roomNow = room }: { readonly budgetMs: number; readonly roomNow?: () => boolean },
+  {
+    budgetMs,
+    roomNow = room,
+    readers = READERS,
+  }: {
+    readonly budgetMs: number;
+    readonly roomNow?: () => boolean;
+    readonly readers?: readonly Reader[];
+  },
 ): Promise<void> {
   if (!takeLock(store)) return;
   const repo = resolve(import.meta.dir, "..", "..");
   try {
     keepNames(
       store,
-      READERS.map(({ name }) => name),
+      readers.map(({ name }) => name),
     );
-    const ended = await runQueue(queueOf(store, logs, READERS), {
+    const ended = await runQueue(queueOf(store, logs, readers), {
       budgetMs,
       room: roomNow,
       now: () => performance.now(),

@@ -125,7 +125,7 @@ Each runs as `bun tools/wri/wri.ts <verb>` from the checkout. The usage block at
 
 ### The readers, derived
 
-Twenty-six deterministic readers take one log and print what it holds (`READERS`,
+Twenty-seven deterministic readers take one log and print what it holds (`READERS`,
 `tools/wri/derive.ts`): the rows and triggers, the ending, the readings, the served models
 (`degradations`), the climb, the gap to the answer on record, the campaign's view and its table's
 next move, the iteration's trigger (`loop`), the commit (`source`), the logged readings (`logged`),
@@ -161,8 +161,17 @@ Left out of the list, each for its reason: what reads no run (`comparison-readin
 campaign (`examiner-complexity/scripts/grades.ts` a grader's file, `oracle-handover/scripts/slice.ts`
 a selector, `tools/c/repaired.ts` a bundle, `tools/runs/search.ts` a query, `wri.ts grade` an
 answer); and what writes (`wri.ts start`, `lanes`, `collect`, `synthesis`, `index` and `derive`,
-`wri2p2.ts open`, `tools/c/rejections.ts`, `tools/d2/close.ts`) or calls a model
+`wri2p2.ts open`, `tools/c/rejections.ts`, `tools/d2/close.ts`) or calls a paid model
 (`system-path-simulation/scripts/live-seat.ts` and `referee-seat.ts`, `compare-systems/scripts/systems.ts`).
+
+`posture` is the one reader that runs a model, a local one, and keeps something: it labels each unit
+of a log's prose, the words a turn holds, with the nearest of a fixed set of anchors, and appends
+each batch's vectors to the reader store under `.ana/pulse/`, so a cut read goes on from where it was
+(`tools/wri/embed.ts` owns the model and the store, for any reader that wants vectors). It prints counts by seat, session and ending, never a passage. Its labels are leads and decide
+nothing. On five logs read on 5 November its own floor called every one thin, more than half of the
+units falling under the margin, and its line for a session adrift never fired, so read it as what a
+log's prose was about and not as whether the work advanced. A model that speaks only in tool calls
+leaves a row of noughts.
 
 One investigation reads one question, over one campaign or several. Two campaigns of one pack, one
 under a checker and one under its repair, are read apart, and lane 3 of the later one joins them.

@@ -44,8 +44,7 @@ import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { compareCodeUnits, hashJsonValue } from "#src/meta/stable-json.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
-import { toolchainPathDirs } from "#src/wall/policy.ts";
+import type { HostPython } from "./host-facts.ts";
 import { isCampaign } from "./registry.ts";
 import { readAcross, readableAcross } from "./snapshots.ts";
 
@@ -74,13 +73,6 @@ export interface Receipt {
   readonly python?: HostPython | null;
 }
 
-/** The first `python3` on the wall's path, with the packages it holds whoever runs it. */
-export interface HostPython {
-  readonly version: string;
-  /** Each as `name==version`, sorted. */
-  readonly packages: readonly string[];
-}
-
 const RECEIPT = /^launch-(.+)\.json$/;
 /** The refs `source` names of one commit before it counts the rest. */
 const SHOWN = 3;
@@ -88,30 +80,7 @@ const SHOWN = 3;
 /** Where `--has` looks: the code a run executes, and none of the documents that name a mechanism
  *  before it is built. */
 const CODE = ["src", "tools", "packages"];
-/** Prints a Python's version and packages. Run with `-I`: a solve's home is its own, so the user's
- *  site packages and `PYTHONPATH` of the shell that launched a run are none of what a solve finds. */
-const PYTHON_PROBE = `import importlib.metadata as m, json, sys
-print(json.dumps([sys.version.split()[0], [d.metadata["Name"] + "==" + d.version for d in m.distributions()]]))`;
-const PYTHON_SECONDS = 10;
 const runOf = (session: string) => Number(/^run-(\d+)$/.exec(session)?.[1] ?? 0);
-
-/** What the first `python3` among `dirs` is and holds, or null where none is there or it does not
- *  answer. A launch goes on either way: this is a fact for reading, and it decides nothing. */
-export function hostPython(dirs: readonly string[] = toolchainPathDirs()): HostPython | null {
-  const path = dirs.map((dir) => join(dir, "python3")).find((file) => existsSync(file));
-  if (path === undefined) return null;
-  const { exitCode, stdout } = runSync([path, "-I", "-c", PYTHON_PROBE], {
-    timeout: PYTHON_SECONDS * 1000,
-  });
-  if (exitCode !== 0) return null;
-  try {
-    const [version, packages] = parseJsonAs<[string, string[]]>(decodeOutput(stdout));
-    return { version, packages: packages.toSorted(compareCodeUnits) };
-  } catch {
-    // A program named python3 that prints something else is no Python this can read.
-    return null;
-  }
-}
 
 /** The line `source` says of a launch's Python: its packages by count and short digest, enough to
  *  tell two launches apart, since the receipt holds the list. */

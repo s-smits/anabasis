@@ -39,6 +39,7 @@ import { zipRuns } from "./zip.ts";
 import { catalogue } from "./snapshots.ts";
 import { continueOn } from "./continuation.ts";
 import { search } from "./search.ts";
+import { sync } from "./sync.ts";
 
 interface Verb {
   readonly run: (args: readonly string[]) => Promise<void> | void;
@@ -148,6 +149,11 @@ const GROUPS = {
       says: "each other host's runs, or with `--health` each machine's load, disk and busiest processes",
     },
     on: { run: on, file: "hosts.ts", says: "run any verb on another host" },
+    sync: {
+      run: sync,
+      file: "sync.ts",
+      says: "carry this machine's settings, Python and check runner to every host, or say what differs",
+    },
     holds: {
       run: holds,
       file: "hosts.ts",

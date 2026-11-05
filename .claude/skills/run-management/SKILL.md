@@ -34,6 +34,7 @@ archived campaign; `copy <name> --to <worktree>` brings this machine's back to g
 | `status [--all]` | one row a run: the live ones and those whose log moved in a day, with tree, commit, login, open comparison, comparisons reported, promotions and ending, and on a closed row the hours until it leaves; under the rows, the closed runs it leaves out and the archive's newest campaigns; then each host `ANA_HOSTS` lists, all asked at once and each printed as it answers, within 30 s after cold preparation | `pulse.ts` |
 | `usage [N ...] [--json]` | each login's five-hour and weekly use and, without `--json`, how many runs and simulation seats are live on it on every host (`1/2 active`, out of the most `ANA_LOGIN_RUNS` or its subscription in `ANA_LOGIN_SUBS` lets it carry, such as `2,N:4` or `N:ultra`); without numbers or `--json`, also the pool forecast | `logins.ts` |
 | `active` | the runs and simulation seats live on each login by name, on this machine and every host, asking no provider | `logins.ts` |
+| `sync [--yes \| --check] [--force] [--host <name>]...` | what differs from this machine's settings on each host, changing nothing unless `--yes`; `--check` exits 1 on any difference; nothing to do with no hosts | `sync.ts` |
 | `search <pattern> [--regex] [--ignore-case] [--host <name>]... [--here] [--in logs\|notes\|all] [--max <chars>]` | searches campaign folders, notes and docs on all hosts concurrently; private extra note roots come from `ANA_SEARCH_ROOTS` in `.env.runs`; reports each engine and spills complete matches to a temporary log when output is cut | `search.ts` |
 | `fetch [<name>] [--from <host>]` | a copy of a campaign another machine holds, to read here, into the archive as `data/runs/<host>/<name>/`; with no name, the records (log and receipts) of every campaign the other machines hold, which a timer on the central machine runs every ten minutes | `move.ts` |
 | `retire [--days 1] [--yes]` | moves each campaign no process writes or keeps, idle for `--days`, into the archive whole (a seed, `seed.json` beside its log, is deleted instead, the archive's too), and deletes each worktree nothing has used for a week (two for one with uncommitted work) and each local branch no worktree holds that nothing has used for a week, tagging a commit nothing else holds; then refreshes each other host's records here. A daily job on every host runs it with `--yes`; nothing else in an archive is deleted | `retire.ts` |
@@ -337,8 +338,9 @@ After an install, prune controllers beyond the newest three by readiness time; p
 and working directories protect live controllers. Failed process inspection preserves them.
 `continue --at` resolves that revision here, and uses its launcher on the peer.
 Environment files stay on their own machine and relative names remain relative to the configured
-checkout. A login shell supplies its tools; `ANA_HOP=1` prevents recursive fan-out and leaves a
-keeper started there counting every host. `on` remains an explicit override. `hosts` shows peer statuses; `hosts --health` includes this machine and
+checkout, and a host's own `.env.runs` always loads last, which `runs sync` generates. A login shell
+supplies its tools, and `ANA_HOP=1` prevents recursive fan-out. A keeper started there drops it, and
+so counts every host that machine's own `ANA_HOSTS` lists. `on` remains an explicit override. `hosts` shows peer statuses; `hosts --health` includes this machine and
 every peer in one reading. The shared `scriptOn` and
 `askedScript` in `tools/runs/hosts.ts` provide the same boundary to skill scripts, and any script
 that parses through `.claude/skills/main/cli.ts` runs on a peer with `--host <name>`.
@@ -362,6 +364,37 @@ stands for a remote process. Pulse labels this machine separately from its peers
 
 Direct skill and WRI commands need the host environment too: use
 `bun --env-file=.env.runs <script> ...`, or export `ANA_HOSTS`. No script opens that file itself.
+
+## Keep the machines' settings in step
+
+One machine's `.env.runs` holds the settings, and `bun run runs sync` carries them to every host
+`ANA_HOSTS` lists. With no flag it prints what differs on each machine and changes nothing; `--yes`
+applies that, then reads again and exits 1 on anything left; `--check` prints the same and exits 1 on
+a difference or a host that did not answer, for a timer. `--host <name>` narrows it, `here` among the
+names. With no host and no `ANA_PYTHON` it says there is nothing to do and exits 0 with no ssh.
+
+- **Settings.** A host's `<tree>/.env.runs` is generated from this machine's `ANA_LOGINS`,
+  `ANA_LOGIN_RUNS`, `ANA_LOGIN_SUBS`, `ANA_KEEP` and `ANA_SEARCH_ROOTS`, its entry's `capacity` as
+  `ANA_RUN_CAP`, and its entry's `settings` over those. A file that does not say it was generated is
+  refused by name, with its keys named and its values unread. Anything else, a credential above all,
+  is refused and its value never printed. A running process keeps the environment it started with, so
+  the file reaches what starts after it: a peer's next verb or keeper then obeys `ANA_LOGINS`.
+- **`ANA_HOSTS` stays on the one machine.** A peer that held it would gather every listed host's
+  records at its daily `retire`. So a keeper started on a peer counts that machine alone, under the
+  caps the generated file gives it.
+- **Python.** `ANA_PYTHON` pins one version on every machine through `uv`, in
+  `~/.local/share/ana-python`, ahead of everything else on the wall's path where it exists and absent
+  from it otherwise. `ANA_PYTHON_PACKAGES` are kept in it, with pip checked present. It uninstalls
+  nothing, and a package nobody named is reported and stays. A seat's home is its own, so a seat's `uv`
+  reads no `uv.toml` from the real home, which is why sync reports that file and does not carry it.
+  What a solve finds is `hostPython`, which verifies the result as it does a launch's receipt.
+- **Refused.** A Python move under a live campaign, or where the live count cannot be read, is refused
+  unless `--force`. A runner reinstall here is refused unless `--force` while hosts are listed and none
+  sets `checks`, because that install would run every check on this machine. A version `uv` does not
+  offer and a machine with no `uv` are refused whatever the flag. Settings are carried either way:
+  nothing running reads them. No sync stops, edits or restarts a run.
+- **Not carried:** `.env` and anything passed as `--env-file`, since a login goes between hosts by the
+  operator's hand alone; `ANA_HOSTS`; and whatever a machine's own scripts hold.
 
 ## What is refused, and where
 

@@ -27,6 +27,7 @@ import {
 } from "../loc/source-policy.ts";
 import { copiedBlocks } from "./tree-copied-block.ts";
 import { identitiesWithoutOwner } from "./tree-identity.ts";
+import { overwrittenKeys } from "./tree-overwritten-key.ts";
 import {
   NOT_SLOP_LEDGER,
   type Place,
@@ -48,6 +49,7 @@ type TreeFindingKind =
   | "orphan-module"
   | "test-only-module"
   | "unread-forward"
+  | "overwritten-key"
   | "filesystem-import-budget";
 
 export interface TreeFinding {
@@ -107,6 +109,8 @@ export const TREE_FINDING_ARGUMENTS: Readonly<Record<TreeFindingKind, string>> =
     "A module only tests import or name. The product never reaches it, so its tests prove a path nobody takes. Delete it with its tests, or import it where the product needs it.",
   "unread-forward":
     'A re-export (`export { a } from "./owner.ts"`, or `export { a }` of an imported name) that no file imports from the forwarding module. Every caller reads the owner, so the forward is a second door kept in step for nobody. Delete it. A package `index` and a `node:` forward are skipped.',
+  "overwritten-key":
+    "A key a caller passes in the object it hands a function that spreads that parameter and then sets the same key itself, so the caller's value is never read. Delete the caller's key, or where the caller meant something the function ignores, make the function honour it. A key set before the spread, inside a conditional spread or read from the parameter anywhere in the function stays the caller's, and a parameter the function passes on whole is not read.",
   "filesystem-import-budget":
     "How many names a file imports from src/meta/filesystem.ts, above six. A register: the count stands, and a change adds at most one.",
 };
@@ -200,6 +204,14 @@ export const TREE_FINDING_EXAMPLES: Readonly<
       before:
         '// reports.ts forwards a name every caller imports from room.ts itself\nexport { roomOf } from "./room.ts";',
       after: '// the forward is deleted; callers keep their own import\nimport { roomOf } from "./room.ts";',
+    },
+  ],
+  "overwritten-key": [
+    {
+      before:
+        '// answer.ts: tool() returns defineTool({ ...definition, executionMode: "sequential" })\nexport const listTool = tool({ name: "list", executionMode: "sequential", execute });',
+      after:
+        '// tool() owns the mode, so the caller leaves it out\nexport const listTool = tool({ name: "list", execute });',
     },
   ],
 };
@@ -595,6 +607,7 @@ export function treeSites(): TreeSite[] {
     ...compatibilityPaths(code),
     ...unreadModules(code, prose),
     ...unreadForwards(tree),
+    ...overwrittenKeys(owned),
     ...filesystemBudget(tree),
   ]
     .filter(

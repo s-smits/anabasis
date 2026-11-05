@@ -137,17 +137,6 @@ export function unpromoted(events: readonly LogEvent[], plan: Plan, harness: str
     : `harness ${short(harness)} has no comparison that read a step against the reference harness`;
 }
 
-/** The tasks held out since the last release or promotion, which every release the host makes
- *  draws on (`releaseOwed`, `campaign-actions.ts`), as the table's did until 5 November
- *  (`toPractise`): one with nothing new held would take the next comparison's frontier. */
-export const heldSinceRelease = (events: readonly LogEvent[]): number =>
-  heldAfter(
-    events,
-    events.findLastIndex(
-      ({ kind, data }) => kind === PROMOTED || (kind === "task.state" && data.state === "released"),
-    ),
-  );
-
 /** The tasks held out after the log's index `after` that are held out still. Until 2 November a
  *  task released since counted, and a rehearsal named a starter comparison on six tasks that were
  *  all released after a promotion, whose draw then held none. */
@@ -602,7 +591,8 @@ function buildsOn(ground: Ground): string {
  * Builder passed all 103 practice solves on its 18 tasks, and three `release_practice` calls
  * released nothing while two more comparisons read the same candidate.
  *
- * Each release is one task fewer to compare, so once practice exists or a promotion is on record
+ * Each release is one task fewer to compare, so a reading with nothing held out since the last
+ * release is owed one task, and once practice exists or a promotion is on record
  * it leaves the admission floor at `level` of frontier tasks held: top-ups before a promotion
  * consumed esp32-r2's frontier (20 October, whole-run investigations of six campaigns). The
  * frontier is read on the reference's own solves alone, since the comparison's can change with
@@ -629,7 +619,18 @@ export function practiceDue(
     released === 0 && !events.some(({ kind }) => kind === PROMOTED)
       ? Infinity
       : Math.max(0, poolOf(events).practiceFrontier.length - comparisonFloor(level));
-  const owed = Math.min(Math.max(0, practice - count), allowance);
+  // With nothing held out since the last release, a reading is owed one task, and none since a
+  // promotion: the new reference's practice is held out for it. Until 5 November each report released all that
+  // was owed from the next comparison's frontier, and from then until this guard moved here
+  // `releaseOwed` released none, a state 16 of 247 recorded campaigns reached after a reading.
+  // The last release before the reading, so the reading's own releases do not count as one.
+  const last = events.findLastIndex(
+    ({ kind, data }, at) =>
+      at <= since && (kind === PROMOTED || (kind === "task.state" && data.state === "released")),
+  );
+  const fresh =
+    heldAfter(events, last) > 0 ? Infinity : events[last]?.kind === PROMOTED ? 0 : Math.max(0, 1 - count);
+  const owed = Math.min(Math.max(0, practice - count), allowance, fresh);
   if (owed === 0) return null;
   return {
     to: released + owed,

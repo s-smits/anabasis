@@ -31,7 +31,7 @@
 import { Type } from "typebox";
 import type { SeatTool } from "#src/agent/session.ts";
 import { Refused, stopRule } from "#src/campaign/admission.ts";
-import { CRASHES, decide, heldSinceRelease, practiceDue } from "#src/campaign/decide.ts";
+import { CRASHES, decide, practiceDue } from "#src/campaign/decide.ts";
 import { comparisonsOf, crashedRun } from "#src/campaign/ground.ts";
 import { campaignOf } from "#src/campaign/handover.ts";
 import { type Decided, short } from "#src/campaign/move.ts";
@@ -379,9 +379,6 @@ export async function releaseOwed(context: CampaignContext, cause: string, bench
   const { turn, decided } = actionTurn(context);
   if (decided.move === "promote" || decided.move === "end") return false;
   if (comparisonsOf(turn.events).some(({ reported }) => reported === null)) return false;
-  // Practice comes from tasks held out since the last release or promotion: until 5 November each
-  // comparison's report released the practice owed with nothing new held, from the next one's frontier.
-  if (heldSinceRelease(turn.events) === 0) return false;
   const before = taskSets(turn.events).released.length;
   const due = practiceDue(turn.events, turn.plan.practice, turn.plan.wanted.level);
   if (due === null) return false;

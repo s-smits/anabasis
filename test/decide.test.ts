@@ -784,7 +784,8 @@ describe("the build conditions", () => {
   // tasks held after its second promotion while its Builder passed all 103 practice solves.
   it("owes the practice named again after each reading, and not before one", () => {
     const released = (version: string) => event("task.state", { version, state: "released" });
-    const read = [...FIRST, ...compared("g-1", "h1", "no-step")];
+    // A task held out since the last release, so each reading is owed the whole practice named.
+    const read = [...FIRST, ...heldOut("w1"), ...compared("g-1", "h1", "no-step")];
     expect(owed(FIRST, 1, 0.1)).toBe(0);
     expect(practiceDue(FIRST, 1, 0.1)).toBeNull();
     expect(owed(read, 1, 0.1)).toBe(1);
@@ -795,7 +796,17 @@ describe("the build conditions", () => {
     const settled = [...read, released("v1"), released("v2"), released("v3")];
     const again = settled.findLast(({ kind }) => kind === "comparison.reported");
     expect(owed([...settled, ...(again === undefined ? [] : [again])], 3, 0.1)).toBe(0);
-    expect(owed([...settled, ...compared("g-2", "h1", "no-step")], 3, 0.1)).toBe(3);
+    // With nothing held out since the last release, the next reading is owed one task, and once it
+    // is released, none more; a promotion with nothing held is owed none.
+    const next = [...settled, ...compared("g-2", "h1", "no-step")];
+    expect(owed(next, 3, 0.1)).toBe(1);
+    expect(owed([...next, released("v4")], 3, 0.1)).toBe(0);
+    // Tasks held out after that release bring back the rest of the reading's practice, two of the
+    // three, where the frontier less the floor leaves room for them.
+    const recovered = [...next, released("v4"), ...heldOut("w2"), ...heldOut("w3")];
+    expect(poolOf(recovered).practiceFrontier.length - 6).toBeGreaterThanOrEqual(2);
+    expect(owed(recovered, 3, 0.1)).toBe(2);
+    expect(owed([...settled, event("harness.promoted", { harness: "h1" })], 3, 0.1)).toBe(0);
     // The allowance still bounds what is owed: the frontier less the admission floor.
     expect(owed(read, 1000, 0.1)).toBe(poolOf(read).practiceFrontier.length - 6);
     // A campaign that names no practice is owed none.

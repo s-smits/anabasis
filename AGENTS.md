@@ -369,9 +369,10 @@ shows as answers reached within it that the reference does not reach.
 order: `stop`, `exam`, `bound`, `tasks`, `unfinished`, `step`, `no-room`, `unread` and
 `build`. Where admission wants tasks, `build` asks for them and ends the campaign `exam` at supply
 patience. The host releases owed practice (`practiceDue`) as tasks are held out, as an Examiner
-session ends and as a conversation opens on tasks held since the last release. Improvement patience stops the campaign after six
-eligible moves without a gain since the last promotion (`stopRule`, `src/campaign/admission.ts`).
-Continuing then requires `--past-stop`.
+session ends, as a conversation opens on tasks held since the last release, and after a reading
+that promoted nothing, which is owed one task where nothing was held out since the last release.
+Improvement patience stops the campaign after six eligible moves without a gain since the last
+promotion (`stopRule`, `src/campaign/admission.ts`). Continuing then requires `--past-stop`.
 
 **In `comparison-reading`, section 7** (`draw-and-solves.md`, `tally-and-test.md`,
 `limits-and-room.md`, `move-table.md`): the mirror; the tally's floors; the A/A; the cap; room;

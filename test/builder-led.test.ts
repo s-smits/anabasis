@@ -270,6 +270,8 @@ describe("a campaign run by its live Builder", () => {
       "prepare",
       "build",
       "compare",
+      // g-1's reading is owed one task with nothing held out since the last release (5 November).
+      "prepare",
       "build",
       "build",
       "build",
@@ -759,6 +761,8 @@ describe("a campaign run by its live Builder", () => {
       "examine",
       "prepare",
       "compare",
+      // The starter comparison read with nothing held out since x-1's release, which owes one task.
+      "prepare",
       "compare",
       "promote",
       "examine",
@@ -990,14 +994,16 @@ describe("a campaign tool where the table names more than the action", () => {
     expect(of(name, "build.checkpoint")).toHaveLength(1);
     expect(said(name, "compare")[1]).toContain("the starter harness was read against it");
     // The new reference's practice is released by the host as x-1 ends, before the starter comparison;
-    // that comparison's report releases none, since nothing was held out since, and the table builds.
+    // that comparison's report releases one, the most a reading with nothing held out since the last
+    // release is owed (until 5 November it released none, and the table built), and the table builds.
     expect(
       of(name, MOVED)
-        .slice(6, 9)
+        .slice(6, 10)
         .map(({ move, code }) => [move, code]),
     ).toEqual([
       ["prepare", "practice"],
       ["compare", "unread"],
+      ["prepare", "practice"],
       ["build", "led"],
     ]);
     // buffer-149, 14 October: its Builder finished on the harness just promoted, and the climb
@@ -1308,14 +1314,14 @@ describe("a campaign tool where the table names more than the action", () => {
     const flags = [...FLAGS.slice(0, -LEVEL.length - 2), "--target", "8", ...LEVEL];
     // The comparisons draw t-2, t-4, t-6, t-8 to t-12. Each ties six and the candidate wins two; in
     // the second campaign g-2 wins t-2 in place of t-11. No task is held out between them, so g-1's
-    // report releases none.
+    // report releases one, the most a reading with nothing held out since the last release is owed.
     const tied = ["t-2", "t-4", "t-6", "t-8", "t-9", "t-10"];
     const same = await read_(`${STEM}-short-one`, { "g-1": tied, "g-2": tied }, flags);
     const moved = await read_(`${STEM}-short-two`, { "g-1": tied, "g-2": [...tied.slice(1), "t-11"] }, flags);
     const awaiting = ["one", "two"].map((world) => supplyOf(logOf(`${STEM}-short-${world}`)).awaiting);
     // Until 31 October a candidate's pass took a task out of the wait: 6 and 5 waited, and the
     // first campaign's Builder was told to examine where the second's was told to build.
-    expect(awaiting).toEqual([8, 8]);
+    expect(awaiting).toEqual([7, 7]);
     expect(same).toContain("2 won, 0 lost, 6 tied");
     expect(moved).toBe(same);
   });

@@ -69,6 +69,7 @@ import { EXAMINE } from "#src/campaign/admission.ts";
 import { gateAnswers, measuredGate } from "#tools/wri/gate-era.ts";
 import type { writing as Writing } from "#src/examiner/write.ts";
 import type { examineCommand as ExamineCommand } from "#tools/d1b/examine.ts";
+import type { solved as Solved } from "#tools/d2/round.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { ROOM } from "#src/kernel/compare.ts";
 import { type Call, tracesIn } from "#src/kernel/trace.ts";
@@ -716,8 +717,13 @@ async function prompt(args: CommandArgs, command: readonly string[]): Promise<nu
   const { examineCommand } = (await import(join(tree, script))) as { examineCommand: typeof ExamineCommand };
   // SAFETY: as above.
   const { writing } = (await import(join(tree, "src/examiner/write.ts"))) as { writing: typeof Writing };
+  // A stand-in session is given no tries unless seats are passed, so until 5 November this printed
+  // the writing prompt without "Trying the reference", which every campaign's session reads. The
+  // tree's own seats are passed and never solve: the session below exits before its first turn.
+  // SAFETY: as above.
+  const { solved } = (await import(join(tree, "tools/d2/round.ts"))) as { solved: typeof Solved };
   runtimeProcess.chdir(tree);
-  await examineCommand([...flags, "--name", name], (request, wall) => {
+  const composed: Parameters<typeof ExamineCommand>[1] = (request, wall) => {
     const mode = writing(request, undefined, wall?.reference === undefined ? "unseen" : "in-home");
     console.log(`=== SYSTEM\n${mode.system}\n\n=== OPENING\n${mode.opening}`);
     for (const tool of mode.tools) console.log(`\n=== TOOL ${tool.name}\n${tool.description}`);
@@ -726,7 +732,8 @@ async function prompt(args: CommandArgs, command: readonly string[]): Promise<nu
       console.error(`${name}: composing wrote ${String(read(log).length - before)} events`);
     }
     return runtimeProcess.exit(0);
-  });
+  };
+  await examineCommand([...flags, "--name", name], composed, solved);
   return 0;
 }
 

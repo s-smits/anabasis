@@ -31,13 +31,13 @@ export function anyOf(constructor: NumberConstructor | StringConstructor | Boole
 }
 
 /** An object that holds at least these fields. */
-export function objectWith<Fields extends object>(fields: Fields): never {
+export function objectWith(fields: Parameters<typeof expect.objectContaining>[0]): never {
   // SAFETY: an asymmetric matcher is compared by `toEqual` and never read as a value.
   return expect.objectContaining(fields) as never;
 }
 
 /** An array that holds at least these items. */
-export function arrayWith<Item>(items: readonly Item[]): never {
+export function arrayWith(items: readonly unknown[]): never {
   // SAFETY: an asymmetric matcher is compared by `toEqual` and never read as a value.
   return expect.arrayContaining([...items]) as never;
 }

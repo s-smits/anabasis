@@ -80,6 +80,7 @@ export type DomainHarnessFactory = (task: {
   publicInput: unknown;
 }) => DomainHarness;
 
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- a Built Harness names `D` for its details, read through `NoInfer<D>` in the spec, and kept harnesses compile against this signature
 export function defineDraftTool<P extends TSchema, D = unknown>(
   spec: DefineDraftToolSpec<P, NoInfer<D>>,
 ): DraftTool {

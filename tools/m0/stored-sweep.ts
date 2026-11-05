@@ -304,8 +304,8 @@ export function pricedRows(rows: readonly Row[]) {
 
 /** A v1 check program's pack: its brief, its tasks and their hidden values, and its controls. */
 export function readPack(bundle: string) {
-  const read = <T>(file: string) => parseJsonAs<T>(readFileSync(join(bundle, file), "utf8"));
-  return { brief: read<PackBrief>(BRIEF_FILE), tasks: read<Task[]>(TASKS_FILE) };
+  const read = (file: string): string => readFileSync(join(bundle, file), "utf8");
+  return { brief: parseJsonAs<PackBrief>(read(BRIEF_FILE)), tasks: parseJsonAs<Task[]>(read(TASKS_FILE)) };
 }
 
 /** Whether the bundle's tool tree holds a tool on the path a check is given, by its id. */

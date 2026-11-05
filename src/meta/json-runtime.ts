@@ -48,6 +48,7 @@ export function decodedJsonText(value: JsonValue): JsonValue {
  * The captured binding is used rather than the ambient one, so a generated module that replaces
  * `JSON` after load does not change what the controller reads.
  */
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- `T` is the caller's declared contract, narrowed once here for every reader of a log or a pack
 export function parseJsonAs<T>(text: string): T {
   // SAFETY: `T` is the caller's declaration of the contract these bytes were written under. The
   // assertion narrows the `any` that JSON.parse returns and asserts nothing else.

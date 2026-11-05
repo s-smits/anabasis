@@ -79,9 +79,7 @@ export function stageExam(dir: string, draft: Draft): Staged {
   mkdirSync(model, { recursive: true });
   mkdirSync(join(bundle, ".toolchain", "bin"), { recursive: true });
   const hidden = draft.tasks.some((task) => task.hidden !== null) ? "whole" : "none";
-  const write = <T>(file: string, value: T) =>
-    writeFileSync(join(model, file), `${capturedJsonStringify(value, null, 2)}\n`);
-  write("brief.json", {
+  const brief = {
     correctnessContract: CHECK_PROGRAM_CONTRACT,
     domain: draft.domain,
     scope: draft.scope,
@@ -102,19 +100,23 @@ export function stageExam(dir: string, draft: Draft): Staged {
     ...keyIfDefined("objective", draft.objective),
     artifactSchema: [],
     designRuleConstants: [],
-  });
-  write(
-    "tasks.json",
-    draft.tasks.map((task, index) => ({ taskId: exampleId(index), ...task })),
-  );
-  write("controls.json", {
+  };
+  const controls = {
     accept: draft.accept.map(({ task, answer }) => ({ taskId: exampleId(task), artifact: answer })),
     reject: draft.reject.map(({ task, answer, check }) => ({
       taskId: exampleId(task),
       artifact: answer,
       expectedCheckId: check,
     })),
-  });
+  };
+  const tasks = draft.tasks.map((task, index) => ({ taskId: exampleId(index), ...task }));
+  for (const [file, value] of [
+    ["brief.json", brief],
+    ["tasks.json", tasks],
+    ["controls.json", controls],
+  ] as const) {
+    writeFileSync(join(model, file), `${capturedJsonStringify(value, null, 2)}\n`);
+  }
   writeFileSync(join(model, EVALUATOR_FILE), draft.evaluator);
   checkProgram(bundle, checks);
   return { bundle, checks };

@@ -20,9 +20,9 @@
  *
  * **The Builder makes the moves after set-up.** The host drafts and reads the exam, sets the tasks
  * apart, makes the promotion the rule names and the comparison it owes (`converse`), and from there
- * one live Builder conversation makes the moves through its campaign tools: an Examiner session,
- * a release, a comparison, a promotion (`campaign-actions.ts`). The table's move is its advice,
- * and every condition above stays the host's at each action. A conversation that ends at its own
+ * one live Builder conversation makes the moves through its campaign tools: an Examiner session
+ * and a comparison (`campaign-actions.ts`). The host releases the practice owed and makes the
+ * promotion a step names, and every condition above stays the host's at each action. A conversation that ends at its own
  * limits is followed by another on the Builder's notes, and so is one the Builder ends with
  * `finish`, until three in a row have made no campaign move (`finished`). Every ending the table
  * names ends a live conversation too, a lack of room among them: until 22 October that one was
@@ -138,7 +138,7 @@ import { draftCommand } from "../d1b/draft.ts";
 import { nextRun, writeReceipt } from "../runs/receipt.ts";
 import { standing } from "../runs/registry.ts";
 import { campaignLog, openCampaign, packNamed, REPO, treeFault } from "./campaign.ts";
-import { type CampaignContext, campaignTools } from "./campaign-actions.ts";
+import { awaitsOperator, type CampaignContext, campaignTools, releaseOwed } from "./campaign-actions.ts";
 import {
   comparisonOf,
   examinerRun,
@@ -210,10 +210,9 @@ async function make(decided: Made, turn: Turn, begin: (named: JsonObject) => voi
     return;
   }
   if (decided.move === "prepare") {
-    const practice = decided.practice === undefined ? values.practice : String(decided.practice);
     // The campaign's terms, so what it prints of a comparison's size is the campaign's.
     begin({});
-    await prepareCommand([...pack, ...flag("practice", practice), ...flag("level", values.level)]);
+    await prepareCommand([...pack, ...flag("practice", values.practice), ...flag("level", values.level)]);
     return;
   }
   if (decided.move === "promote") {
@@ -348,6 +347,9 @@ async function converse(
   const { cap, reviewer, pastStop } = sharedOf(turn);
   const session = nextId(turn.events, "b");
   const { builder } = turn.opening.seats;
+  // The practice owed since the last reading, a comparison or a promotion the host made between
+  // conversations among them, is in the workspace the conversation opens on.
+  await releaseOwed(context, "a Builder conversation opens");
   append(log, MOVED, {
     move: "build",
     code: "led",
@@ -594,9 +596,7 @@ export async function harnessBuilder(
     }
     if (values["dry-run"] || made >= most) return decided;
     if (decided.move === "promote" && opening.attended) {
-      console.log(
-        `under --hitl a promotion is the operator's word: bun tools/d2/promote.ts --name ${name} --harness ${decided.harness} --yes, or run this command with --no-hitl`,
-      );
+      console.log(awaitsOperator(name, decided.harness));
       return decided;
     }
     const begin = beginning(log, decided);

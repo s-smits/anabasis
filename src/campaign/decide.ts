@@ -8,15 +8,20 @@
  * content: what a harness holds, what a task asks and how it is solved stay a model's.
  *
  * The table is `ROWS`, asked in order of one reading of the log (`groundOf`, `ground.ts`): the
- * first row that names a move chooses it. The build row releases practice owed before a Builder
- * session (`practice`). Until 2 November it also asked for tasks after a session that left its
- * harness as it was with no practice failure shown (`unshown`); it named that move twice in 146
- * archived logs and none after 26 October, and a Builder with nothing to work on asks the Examiner
- * itself. Comparison admission
- * owns its refusals (`refusals`, `admission.ts`), and the rows read its codes.
- * Since 26 October its floor leaves one set-aside task and one tie above a sweep: g-1 of
- * truss-fresh-opus-v071 lost its chance to promote when one of six tasks was set aside. The
- * `short` row asks for tasks first; practice releases and Examiner counts keep the same floor.
+ * first row that names a move chooses it. Comparison admission owns its refusals (`refusals`,
+ * `admission.ts`), and the rows read its codes. Since 26 October its floor leaves one set-aside
+ * task and one tie above a sweep: g-1 of truss-fresh-opus-v071 lost its chance to promote when one
+ * of six tasks was set aside; practice releases and Examiner counts keep the same floor.
+ *
+ * The table names the host's moves and the endings; a Builder that leads its campaign makes its
+ * own moves and is never told the table's. So it names no advice for it: until 5 November the
+ * build row also named a release of owed practice (`toPractise`, now the host's own as each
+ * conversation opens and each comparison reports, `releaseOwed`), and a `short` row named an
+ * Examiner session where admission would refuse for want of tasks, which the refusal itself tells
+ * a Builder that compares; 13 of 16 jobstat comparisons were logged as the Builder going against
+ * the table's advice, 9 of them where it named a build (overhaul report 11, 5 November). Until 2 November the
+ * build row also asked for tasks after a session that left its harness as it was with no practice
+ * failure shown (`unshown`); it named that move twice in 146 archived logs.
  *
  * One count ends a campaign that cannot be given tasks or room (`roomless`), at its supply patience.
  *
@@ -67,18 +72,23 @@ const ROWS: readonly {
   { code: "step", move: stepped },
   // The reference's last reading left it nothing to gain: the tasks change.
   { code: "no-room", move: noRoom },
-  // Comparison admission would refuse the next comparison for want of tasks: they are written first, since a
-  // changed harness can only tie again on tasks the reference closed.
-  { code: "short", move: wanting },
-  // Tasks held out since the last reading are read before a Builder session is paid for: the
-  // starter comparison a promotion owes, or a waiting harness whose last reading left no room.
-  { code: "unread", move: heldSince },
-  // Nothing new to read, and room to gain: the Builder builds.
+  // Tasks held out since the last reading are read before a Builder session is paid for, where
+  // admission would take the comparison: the starter comparison a promotion owes, or a waiting
+  // harness whose last reading left no room.
+  { code: "unread", move: unread },
+  // Nothing new to read, or too few tasks to read it on: the Builder builds, and asks the Examiner
+  // itself. Short of tasks at the supply patience, the campaign ends on its exam.
   {
     code: "build",
     move: (ground) => {
-      const practice = toPractise(ground);
-      return practice === null ? { move: "build", why: buildsOn(ground) } : { ...practice, code: "practice" };
+      const { read } = ground;
+      // Examiner sessions that held out nothing count as every reading that left nothing to gain.
+      if (wantsTasks(ground)) {
+        return spent(ground, "tasks", WANTS) ?? { move: "build", why: `${WANTS}: ${ASKS}` };
+      }
+      return read?.report.reading === "not-scored"
+        ? { move: "build", why: `comparison ${read.id} tallied no task: ${ASKS}` }
+        : { move: "build", why: buildsOn(ground) };
     },
   },
 ];
@@ -91,6 +101,10 @@ const DRAFTS = 3;
 export const CRASHES = DRAFTS;
 /** Admission refusal codes caused by insufficient held-out tasks (`refusals`, `admission.ts`). */
 const SHORT = ["no-held", "held-short"] as const;
+const WANTS = "comparison admission refuses the next comparison for want of tasks";
+const ASKS = "the Builder builds, and asks for tasks";
+/** Whether comparison admission would refuse the next comparison for want of tasks. */
+const wantsTasks = ({ refused }: Ground): boolean => SHORT.some((code) => refused.has(code));
 
 const end = (ending: Ending, why: string): Move => ({ move: "end", ending, why });
 /** A comparison of the latest harness, or of the starter, with the reference one (a starter comparison). */
@@ -123,6 +137,17 @@ export function unpromoted(events: readonly LogEvent[], plan: Plan, harness: str
     : `harness ${short(harness)} has no comparison that read a step against the reference harness`;
 }
 
+/** The tasks held out since the last release or promotion, which every release the host makes
+ *  draws on (`releaseOwed`, `campaign-actions.ts`), as the table's did until 5 November
+ *  (`toPractise`): one with nothing new held would take the next comparison's frontier. */
+export const heldSinceRelease = (events: readonly LogEvent[]): number =>
+  heldAfter(
+    events,
+    events.findLastIndex(
+      ({ kind, data }) => kind === PROMOTED || (kind === "task.state" && data.state === "released"),
+    ),
+  );
+
 /** The tasks held out after the log's index `after` that are held out still. Until 2 November a
  *  task released since counted, and a rehearsal named a starter comparison on six tasks that were
  *  all released after a promotion, whose draw then held none. */
@@ -142,9 +167,15 @@ export function heldAfter(events: readonly LogEvent[], after: number): number {
  *  If so, compare them before asking for another Examiner session. Enough is as many new tasks as
  *  could clear the level alone (`sweepOf`): on 3 November esp32-fresh-opus-forkedPR579 g-2 paid 72
  *  solves on 4 new tasks beside 14 the reference had closed. */
-function writtenSince({ events, refused, plan }: Ground, reading: Reading): boolean {
-  const enough = heldAfter(events, reading.reported) >= sweepOf(plan.wanted.level);
-  return enough && !SHORT.some((code) => refused.has(code));
+function writtenSince(ground: Ground, reading: Reading): boolean {
+  const { events, plan } = ground;
+  // Tasks held after the reading began, which its draw did not take (`scoredSet`, `round.ts`): from
+  // 5 November an Examiner session writes beside a comparison, and until then the count began at
+  // the report. A session writing as a step reports aims at the reference before the promotion it
+  // waits for (`promoteOwed`), so only tasks held after the promotion are written for the new one.
+  const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED);
+  const since = heldAfter(events, Math.max(reading.at, promotedAt));
+  return since >= sweepOf(plan.wanted.level) && !wantsTasks(ground);
 }
 
 /**
@@ -496,27 +527,8 @@ function noRoom(ground: Ground): Move | null {
   return spent(ground, "room", why) ?? { move: "examine", why };
 }
 
-/**
- * Tasks, where comparison admission would refuse the next comparison for want of them, or the pair's last
- * comparison tallied none. On tasks the reference harness answered in every solve a changed harness
- * can only tie again, so the next comparison has to have tasks to untie before a session is worth
- * its cost: on 10 October a comparison read 3-0-2 on 5 tasks, the new harness valid on every
- * solve; two sessions then left it unchanged, and the stop rule ended the campaign where an
- * Examiner session was the move. After a starter comparison as much: a simulated climb built three times on a
- * set of which the reference had closed all but two or three, 2-0-6 each time.
- */
-function wanting(ground: Ground): Move | null {
-  const { refused, read } = ground;
-  const lacks = SHORT.find((code) => refused.has(code));
-  const written = (why: string) => examine(ground, "tasks", why);
-  if (read?.report.reading === "not-scored") {
-    const answered = lacks === undefined && writtenSince(ground, read);
-    return answered ? null : written(`comparison ${read.id} tallied no task`);
-  }
-  if (lacks === undefined) return null;
-  return written(
-    "the campaign holds fewer frontier tasks than a sweep plus one set-aside task and one tie needs: those the reference harness answered in every solve, and those held out before its promotion that it has stood in no comparison of, are read apart",
-  );
+function unread(ground: Ground): Move | null {
+  return wantsTasks(ground) ? null : heldSince(ground);
 }
 
 /**
@@ -537,11 +549,15 @@ function wanting(ground: Ground): Move | null {
  */
 function heldSince(ground: Ground): Move | null {
   const { events, read, reports, waiting, reference, starter } = ground;
-  const since = heldAfter(events, reports.at(-1)?.reported ?? -1);
+  // Tasks held after the promotion and after the last starter comparison began, so the confirmation
+  // reads tasks aimed at this reference: a Builder's own comparison beside its first session hides none.
+  const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED);
+  const lastStarter = reports.findLast(({ old, fresh }) => old === starter || fresh === starter);
+  const since = heldAfter(events, Math.max(lastStarter?.at ?? -1, promotedAt));
   const owed = reference !== null && starter !== null && reference !== starter && since > 0;
   if (owed && epochsOf(events).at(-1)?.starter_tally === null) {
     return compare(
-      `harness ${short(reference)} is the reference, and ${plural(since, "task")} ${since === 1 ? "was" : "were"} held out since the last comparison: the starter is compared with it, those tasks first, to read whether they leave it room and whether it stands above the starter`,
+      `harness ${short(reference)} is the reference, and ${plural(since, "task")} ${since === 1 ? "was" : "were"} held out for it: the starter is compared with it, those tasks first, to read whether they leave it room and whether it stands above the starter`,
       "starter",
     );
   }
@@ -574,8 +590,10 @@ function buildsOn(ground: Ground): string {
 /**
  * The released total a release brings practice to now, and the sentence that says why, or null
  * where practice is owed none. Two bounds decide it, and this is their one reader (rule 12): the
- * table's release before a Builder session (`toPractise`), the host's inside a conversation and
- * the Builder's own `release_practice` (`campaign-actions.ts`).
+ * host's releases as a conversation opens, as the gate holds a task out and as a comparison reports
+ * (`releaseOwed`, `campaign-actions.ts`). Until 5 November the table also named it before a Builder
+ * session (`toPractise`), and the Builder had its own `release_practice`: 10 calls in seven jobstat
+ * campaigns, 4 of which released nothing (overhaul report 11).
  *
  * The practice named is owed again after each reading, a comparison's report or a promotion.
  * Until 16 October it was the campaign's, and three campaigns released none after their
@@ -617,24 +635,4 @@ export function practiceDue(
     to: released + owed,
     said: `${String(count)} of the ${plural(practice, "practice task")} the campaign names are released${since === -1 ? "" : " since the last reading"}`,
   };
-}
-
-/** A release for practice before a Builder session, where practice is owed (`practiceDue`) and
- *  tasks were held out since the last release and promotion: on 9 October two sessions practised
- *  on the same two tasks while sixteen more were held. A starter comparison that read room is a
- *  reading like any other, so the practice it is owed needs no branch of its own; one that read
- *  none is row `no-room`'s before any build. */
-function toPractise({ events, plan, supply }: Ground): Move | null {
-  const last = events.findLastIndex(
-    ({ kind, data }) => kind === PROMOTED || (kind === "task.state" && data.state === "released"),
-  );
-  if (supply.held < 2 || heldAfter(events, last) === 0) return null;
-  const due = practiceDue(events, plan.practice, plan.wanted.level);
-  return due === null
-    ? null
-    : {
-        move: "prepare",
-        practice: due.to,
-        why: `${due.said}, and tasks were held out since the last release: the contract's draw releases more before the Builder builds`,
-      };
 }

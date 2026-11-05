@@ -124,7 +124,6 @@ const WATCHED = new Map<string, readonly [string, "alarm" | "reading"]>([
   ["BROKEN AT END", ["climb", "alarm"]],
   ["STEP CARRIERS", ["climb", "reading"]],
   ["CHAIN", ["climb", "reading"]],
-  ["MOVES ASKED", ["honesty", "reading"]],
   ["SCORED SET MOVED", ["honesty", "alarm"]],
   ["HOST CODE MOVED", ["honesty", "alarm"]],
   ["PRACTISED TASK MEASURED", ["honesty", "alarm"]],

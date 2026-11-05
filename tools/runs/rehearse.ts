@@ -9,7 +9,7 @@
  * are a session's, and rehearse one Builder session with no comparison after it
  * (`tools/d2/session.ts`): several sessions are walked before a standalone comparison.
  * With `--campaign` the flags are the Harness Builder's (`tools/d2/harness-builder.ts`), and the
- * live Builder is rehearsed: its script follows the public prompt advice, until it ends or
+ * live Builder is rehearsed: its script edits the guide and finishes each conversation, until it ends or
  * `--moves` are made. Over a stored pack no script sits in the Examiner's seat, so a rehearsal
  * that needs tasks written finishes when its Examiner tool is unavailable; over a drafted exam
  * the Examiner is scripted from the seed's source campaign, and proposes the tasks its sessions wrote after the
@@ -31,8 +31,8 @@
  * stored pack's graded passes and control answers where `--root --sweep --bundle` name one, and otherwise
  * the drafted exam's control answers and every answer the seed's source campaign passed (`draftedGraded`).
  *
- * The Builder's script edits the guide through its walled shell. In a campaign it follows public
- * action advice, or compares its edit itself; in an isolated session it finishes after the edit.
+ * The Builder's script edits the guide through its walled shell. In a campaign it compares its
+ * edit itself; in an isolated session it finishes after the edit.
  * A solve's script ends one of three ways. For `pass` it writes an answer on record that the checks
  * accepted into the answer file, through the harness's own `write` or its `bash`, and submits it.
  * For `fail` it does the same with one a check rejected. For `none` it submits with no answer
@@ -121,6 +121,11 @@ const TOOL_USE = { stopReason: "toolUse" } as const;
 const PRICE = { input: 1, output: 1, cacheRead: 1, cacheWrite: 1 };
 /** The guide a scripted Builder writes on, from its home. */
 const GUIDE = "harness/agent/BUILT_AGENTS.md";
+/** The opening of the system message pi's compaction sends its summariser
+ *  (`@earendil-works/pi-durable`, `harness/compaction.js`), and the most summaries one scripted
+ *  session is given beside its script. */
+const SUMMARISER = "You are a context summarization assistant.";
+const SUMMARIES = 50;
 
 /** A task by what it asks, its id aside: a seed's sessions number their tasks afresh, so the
  *  source's x-2-002 is another task than the seed's, and until 16 October the script wrote the
@@ -188,51 +193,56 @@ export function answersOf(graded: readonly Control[], events: readonly LogEvent[
   return known;
 }
 
-/** A model that makes `calls` in order, a turn each, and then says nothing more however often it is
- *  asked: a script that ran out would be the provider's failure, and the solve would be run again. */
+/** A model that makes `calls` in order, a turn each, then answers `asked` times with no call, and
+ *  then fails as a provider would: a script that ran out is the provider's failure, and the solve is
+ *  run again. A compaction's summary takes no turn of the script: until 5 November it was given the
+ *  next call, and every scripted Examiner session that grew long enough ended `crashed`. */
 function scripted(calls: readonly (readonly [string, JsonObject] | FauxResponseFactory)[], asked: number) {
   const faux = fauxProvider({
     models: [{ id: "script", contextWindow: 200_000, cost: PRICE }],
   });
-  faux.setResponses([
+  const turns: FauxResponseFactory[] = [
     ...calls.map((call) =>
-      isFunction(call) ? call : fauxAssistantMessage(fauxToolCall(call[0], call[1]), TOOL_USE),
+      isFunction(call) ? call : () => fauxAssistantMessage(fauxToolCall(call[0], call[1]), TOOL_USE),
     ),
-    ...Array.from({ length: asked }, () => fauxAssistantMessage("The script holds no further call.")),
-  ]);
+    ...Array.from({ length: asked }, () => () => fauxAssistantMessage("The script holds no further call.")),
+  ];
+  let next = 0;
+  const answer: FauxResponseFactory = (context, ...rest) => {
+    const summarising = context.messages.some(
+      ({ role, content }) => role === "system" && isString(content) && content.startsWith(SUMMARISER),
+    );
+    if (summarising) return fauxAssistantMessage("A scripted session holds nothing to summarise.");
+    const turn = turns[next++];
+    if (turn === undefined) throw new Error("No more faux responses queued");
+    return turn(context, ...rest);
+  };
+  faux.setResponses(Array.from({ length: turns.length + SUMMARIES }, () => answer));
   const models = createModels();
   models.setProvider(faux.provider);
   return { model: faux.getModel(), models: () => models };
 }
 
-/** One scripted Builder follows public campaign advice, or edits, compares what it edited and
- *  finishes: since 5 November no count of sessions has the host compare a harness for it. */
+/** One scripted Builder edits, compares what it edited and finishes: since 5 November no count of
+ *  sessions has the host compare a harness for it, and no result tells it the table's move. */
 function scriptedBuilder() {
   let [changed, compared] = [false, false];
   const choose: FauxResponseFactory = (context) => {
     const last = JSON.stringify(context.messages.at(-1));
-    const suggested = /Suggested action: ([a-z_]+)\./u.exec(last ?? "")?.[1];
     // An isolated session holds no `compare`, and finishes after its edit.
     const comparing = context.messages.some(
       (message) =>
         message.role === "system" &&
         message.toolsAdded?.some(({ name: tool }) => tool === "compare") === true,
     );
-    let name = suggested ?? (compared || (changed && !comparing) ? "finish" : "build");
-    if (last?.includes("no Examiner") || name === "end") name = "finish";
-    if (name === "build") {
-      name = changed ? "compare" : "bash";
-      changed = true;
-    }
-    if (name === "compare") [changed, compared] = [false, true];
-    // The next conversation edits again.
-    if (name === "finish") [changed, compared] = [false, false];
+    const finish = compared || (changed && !comparing) || last.includes("no Examiner");
+    const name = finish ? "finish" : changed ? "compare" : "bash";
+    // An edit is compared next; the next conversation edits again.
+    [changed, compared] = name === "bash" ? [true, false] : [false, name === "compare"];
     const args =
       name === "bash"
         ? { command: `printf '\\nA rehearsal added this line.\\n' >> "$HOME/${GUIDE}"` }
-        : name === "finish"
-          ? { note: "The scripted Builder has no further action." }
-          : {};
+        : { note: "The scripted Builder has no further action." };
     return fauxAssistantMessage(fauxToolCall(name, args), TOOL_USE);
   };
   return scripted(

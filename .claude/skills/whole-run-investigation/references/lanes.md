@@ -881,8 +881,8 @@ the first such comparison of its epoch that tallied a task reads the reference a
 UNCONFIRMED` names each promotion whose epoch holds no such reading, open or closed, and the
 tally where one read no step. For each, say which of three it is: the epoch is still open and
 the table has not yet named the comparison; the table named it and another move took its place
-(lane 28's `MOVES ASKED` tallies a Builder's compare by what the table named, so a compare made
-where the table named the starter is one); or it ran and the starter held level. On 1 November
+(in a log before 1 November, a `campaign.move` coded `asked` whose reason names the starter is
+one; since then `comparedOf` runs the starter comparison first); or it ran and the starter held level. On 1 November
 none of six promotions in four campaigns was confirmed, each for the second reason. Read which tasks the starter
 answers that a harness does not, by the solves' endings and never their text. The decision it
 changes is whether the starter's guide stays as it is, at the first task admission whether the
@@ -1025,29 +1025,26 @@ campaign is kept running toward a second one, and what the host must fix before 
 after a promotion the rule did not make, `examiner-prompt` (`src/examiner/prompt.ts`) for room
 written where there is none, and `environment` for the shared temporary folder and the load.
 
-**28. The moves against the table.**
+**28. The endings and the operator's words.**
 
 Label: `climb`.
 Importance: 0.6.
 
-Starts from `MOVES ASKED (lane 28)`, `ENDED AND WENT ON (lane 28)` and `OPERATOR WORDS (lane 28)`.
+Starts from `ENDED AND WENT ON (lane 28)` and `OPERATOR WORDS (lane 28)`.
 
 The question is whether the campaign command made the moves its table names, and whether each
-of its endings came for the reason it records. The table (`decide`, `src/campaign/decide.ts`)
-advises; inside a led campaign the Builder chooses, and the host makes what needs no Builder
-(`make`, `tools/d2/harness-builder.ts`). `MOVES ASKED` counts the `campaign.move` events with
-the code `asked`, by move and by what the table named, out of every move: the Builder asked for
-one move where the table named another. Read each beside the decision the table gave at that
-point (`bun run runs view` replays it as its last line) and say whether the move it took moved
-the chain (lane 26) or spent a comparison the table would have saved. A compare asked where the
-table named a comparison of the starter took that comparison's place, and its promotion stays
-unconfirmed (lane 24). A compare asked where the table named a comparison of the latest harness
-may be the table's own move under another code: say whether the harness compared is that latest
-one. Then, for each comparison of a harness that is not the latest one read against the same
-reference, diff it against that one (lane 15's diff). Where only wording, order or a default no
-solve reads moved, the comparison is a second draw of one pair in effect, which `AGENTS.md`
-section 4 allows only where the table names it; on 1 November a promoted harness and the no-step
-one read before it differed by one search default. Then read the endings. A `campaign.ended` is the last
+of its endings came for the reason it records. Inside a led campaign the Builder chooses its own
+moves and is never told the table's (`decide`, `src/campaign/decide.ts`); the host makes what
+needs no Builder (`make`, `tools/d2/harness-builder.ts`), the promotion a step names and the
+practice owed (`releaseOwed`, `tools/d2/campaign-actions.ts`). A `campaign.move` carries the
+table's code where the move is the one the table names, and `led` where the Builder chose another;
+a log before 5 November writes `asked` there, and until then `MOVES ASKED` counted them, which
+read bookkeeping (13 of 16 jobstat comparisons, 9 where the table named a build). For each
+comparison of a harness that is not the latest one read against the same reference, diff it
+against that one (lane 15's diff). Where only wording, order or a default no solve reads moved,
+the comparison is a second draw of one pair in effect, which `AGENTS.md` section 4 allows only
+where the table names it; on 1 November a promoted harness and the no-step one read before it
+differed by one search default. Then read the endings. A `campaign.ended` is the last
 event of a run that stopped, so `ENDED AND WENT ON` names each ending that later events follow: a
 continuation, which is right after `operator`, `finished`, `environment` or a crash, and a fault
 after `budget`, `stop` or `no-room` unless an operator's word (`--budget`, `--past-stop`) stands

@@ -153,7 +153,7 @@ describe("the climb", () => {
       let written = 0;
       const seats: Seats = {
         seated: (campaign) => ({
-          // One scripted Builder keeps its conversation while it edits, compares and promotes, and
+          // One scripted Builder keeps its conversation while it edits and compares, and
           // the conversations after it make no campaign move.
           builder: read(campaign.log).some(({ kind }) => kind === "build.started")
             ? scriptedModel([IDLE, IDLE])
@@ -161,8 +161,9 @@ describe("the climb", () => {
                 ...Array.from({ length: 3 }, (_, epoch) => {
                   const strength = STARTER_STRENGTH + (epoch + 1) * RAISE;
                   return [
+                    // The comparisons read the tasks the session writes, so the Builder waits for it.
                     ["examine", {}],
-                    ["release_practice", {}],
+                    ["wait", {}],
                     [
                       "bash",
                       {
@@ -171,7 +172,6 @@ describe("the climb", () => {
                     ],
                     ["compare", {}],
                     ["compare", {}],
-                    ["promote", {}],
                   ] satisfies readonly (readonly [string, JsonObject])[];
                 }).flat(),
                 ["finish", { note: "Three scripted improvements in one conversation." }],

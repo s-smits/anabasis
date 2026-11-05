@@ -58,7 +58,7 @@ The tools of each model seat, as its source names them:
   (`src/examiner/shell.ts`).
 - Builder: `read`, `bash`, `edit`, `write`, `practice`, `read_trace`, `read_opening`,
   `check_harness`, `preview_harness` and `finish`; in the campaign command also `examine`,
-  `release_practice`, `compare`, `promote`, `campaign_status` and `wait`.
+  `compare`, `campaign_status` and `wait`.
 - Solver: `read`, `bash`, `edit`, `write` and `submit`. Its answer is the file `answer.json`;
   `submit` with `malformed` states the task is malformed, instead of an answer.
 - Referee: `probe_check`, `read_check_program` and `record_ruling`.

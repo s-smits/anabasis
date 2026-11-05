@@ -78,8 +78,9 @@ The host does not forecast a move's final cost. A comparison cut short by its ca
 A Builder's `finish` ends one conversation, never the campaign. Between conversations the host makes
 whatever move the table names that needs no Builder, a comparison or a promotion (`make`,
 `tools/d2/harness-builder.ts`), and an Examiner session the table names starts beside the next
-conversation (`campaignTools`, `tools/d2/campaign-actions.ts`). A reading with no room is advice to
-request other tasks, and supply patience over such readings ends the campaign, conversation or not
+conversation (`campaignTools`, `tools/d2/campaign-actions.ts`). Before a conversation opens the
+host releases the practice owed (`releaseOwed`). After a reading with no room the table names an
+Examiner session for other tasks, and supply patience over such readings ends the campaign, conversation or not
 (`roomless`, section 7). A conversation the provider crashed or a stop killed, an Examiner session
 beside it that ended so without holding out a task, and one the host refused do not count towards
 the three idle ones (`idleOf`, `tools/d2/campaign-terms.ts`), and the status a Builder reads counts

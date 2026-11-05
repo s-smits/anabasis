@@ -6,7 +6,7 @@
  *
  * The existing run view lists the climb and next move, but omits ending history and counts against
  * stopping thresholds. This script lists campaign.ended events with the preceding campaign.move
- * counts, separating Builder choices recorded as asked. It then shows the current budget,
+ * counts. It then shows the current budget,
  * improvement and supply patience, consecutive crashes, idle conversations, admission refusals,
  * pending operator instructions and next move.
  *
@@ -39,15 +39,15 @@ const USAGE = `usage: ending.ts <name | /abs/path/to/log.jsonl>
 
 Each ending on record with the moves before it, and the counts the table's endings are read on.`;
 
-/** The `campaign.move` events of `events`: how many, how many the Builder asked against the table,
- *  and each `move·code` counted (`countBy`) in the order it first appears. */
+/** The `campaign.move` events of `events`: how many, and each `move·code` counted (`countBy`) in the
+ *  order it first appears. A Builder's own move reads `led`, and `asked` in a log before 5 November. */
 function movesOf(events: readonly LogEvent[]) {
   const moves = events.flatMap(({ kind, data }) => (kind === MOVED ? [data] : []));
   const counts = countBy(
     moves,
     ({ move, code }) => `${isString(move) ? move : "?"}·${isString(code) ? code : "?"}`,
   );
-  return { total: moves.length, asked: moves.filter(({ code }) => code === "asked").length, counts };
+  return { total: moves.length, counts };
 }
 
 /** The counts the table's endings are read on now, each beside its bound, and the move the table
@@ -87,12 +87,12 @@ export function campaignEnding(events: readonly LogEvent[]) {
   };
 }
 
-function movesLine({ total, asked, counts }: ReturnType<typeof movesOf>): string {
+function movesLine({ total, counts }: ReturnType<typeof movesOf>): string {
   if (total === 0) return "no move";
   const listed = Object.entries(counts)
     .map(([key, count]) => `${key} ${String(count)}`)
     .join(", ");
-  return `${plural(total, "move")} (${listed}${asked === 0 ? "" : `; ${String(asked)} asked against the table`})`;
+  return `${plural(total, "move")} (${listed})`;
 }
 
 /** The standing counts, a line each. */

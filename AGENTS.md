@@ -264,10 +264,10 @@ tests; `examiner-view <name>` counts what an Examiner opening would be told, and
 ## 4. The Harness Builder
 
 One Builder conversation leads the campaign (`tools/d2/harness-builder.ts`).
-Its campaign tools are `examine`, `release_practice`, `compare`, `promote`,
-`campaign_status` and `wait`. Each uses the same admission checks as the operator's command.
-The move table advises the Builder, while code enforces endings and selects the promotable
-harness. Three invariants protect the evaluation:
+Its campaign tools are `examine`, `compare`, `campaign_status` and `wait`. Each uses the same
+admission checks as the operator's command. The Builder chooses its own moves; code enforces
+endings, releases owed practice and promotes the harness a step names. Three invariants protect
+the evaluation:
 
 - a comparison reads the harness it froze, and a step promotes that one, whatever `harness/` holds
   by then;
@@ -365,12 +365,13 @@ With equal margins it clears at 6 to 0, 8 to 1, 10 to 2 or 12 to 3 at 0.02.
 **The budget** is the setting's model turns and deadline, the same on both sides: a better harness
 shows as answers reached within it that the reference does not reach.
 
-**The next move** comes from `decide` (`src/campaign/decide.ts`), which checks ten rows in
-order: `stop`, `exam`, `bound`, `tasks`, `unfinished`, `step`, `no-room`,
-`short`, `unread` and `build`. The `build` row first releases owed practice
-(`practice`). Improvement patience stops the campaign after six eligible moves without a gain
-since the last promotion (`stopRule`, `src/campaign/admission.ts`). Continuing then requires
-`--past-stop`.
+**The next move** comes from `decide` (`src/campaign/decide.ts`), which checks nine rows in
+order: `stop`, `exam`, `bound`, `tasks`, `unfinished`, `step`, `no-room`, `unread` and
+`build`. Where admission wants tasks, `build` asks for them and ends the campaign `exam` at supply
+patience. The host releases owed practice (`practiceDue`) as tasks are held out, as an Examiner
+session ends and as a conversation opens on tasks held since the last release. Improvement patience stops the campaign after six
+eligible moves without a gain since the last promotion (`stopRule`, `src/campaign/admission.ts`).
+Continuing then requires `--past-stop`.
 
 **In `comparison-reading`, section 7** (`draw-and-solves.md`, `tally-and-test.md`,
 `limits-and-room.md`, `move-table.md`): the mirror; the tally's floors; the A/A; the cap; room;

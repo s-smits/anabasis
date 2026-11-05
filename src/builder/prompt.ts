@@ -187,7 +187,7 @@ export const SAID: Readonly<Record<"host" | "builder", Said>> = {
   },
   builder: {
     closing:
-      "You lead the campaign with its tools, and each one's result ends with the campaign's facts and the move the host's table would make, which you may follow or not. A promotion ends nothing: the next step is measured against the new reference, and the climb goes on for as many steps as you find. The campaign ends at its budget, on its provider, after as many moves in a row without a gain as its patience, or once three conversations in a row have made no campaign move.",
+      "You lead the campaign with its tools, and each one's result ends with the campaign's facts. A promotion ends nothing: the next step is measured against the new reference, and the climb goes on for as many steps as you find. The campaign ends at its budget, on its provider, after as many moves in a row without a gain as its patience, or once three conversations in a row have made no campaign move.",
     frozen: "frozen",
     opening:
       "Read the current public rules, practice tasks, failed practice solves, comparison tallies and session limits, for when this conversation no longer holds them. It changes nothing.",

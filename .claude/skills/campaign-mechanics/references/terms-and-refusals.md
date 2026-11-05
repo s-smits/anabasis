@@ -37,8 +37,10 @@ default, is where the solver's Claude Code compacts; a model served with a 200K 
 **Practice follows the supply and the outcomes.** A release takes at most half of what is held.
 `--practice` is owed again after each reading, a comparison's report or a promotion (`practiceDue`,
 `src/campaign/decide.ts`), so a Builder whose practice no longer fails gets new tasks; inside a
-conversation the host releases what is owed as each Examiner session beside it holds a task
-(`releaseOwed`, `tools/d2/campaign-actions.ts`). Once practice exists, a release never leaves fewer
+conversation the host releases what is owed as each Examiner session beside it holds a task or
+ends, and as a conversation opens where tasks were held out since the last release or promotion,
+never while a comparison is unreported (`releaseOwed`,
+`tools/d2/campaign-actions.ts`). Once practice exists, a release never leaves fewer
 frontier tasks, read on the reference's own solves, than a comparison needs (`comparisonFloor`).
 Each release is one task fewer to compare. A release takes, in this order (`releaseOrder`,
 `src/kernel/reports.ts`):

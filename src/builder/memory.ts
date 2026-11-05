@@ -4,8 +4,8 @@
  * its own session, so no extra model turn is spent rewriting them, and they are no part of the
  * harness that is frozen and measured.
  *
- * Copied from v1, `src/author/builder-memory.ts` (s-smits/anabasis at 3f93d06, MIT), with its
- * tests (`test/author-builder-memory.test.ts`): the two files and their starters, the byte limits
+ * Copied from v1, `3f93d06:src/author/builder-memory.ts` (s-smits/anabasis, MIT), with its
+ * tests (`3f93d06:test/author-builder-memory.test.ts`): the two files and their starters, the byte limits
  * and the cut that keeps both ends and marks what went, the one copy of a repeated section, the
  * notes block a fresh session opens on, the notice for a file over its limit, and the carry, with
  * the `scratch/` helpers under their two limits and no link followed. The plan keeps v1's notes as

@@ -28,9 +28,9 @@ crossed the wall or a target told to the Examiner cannot establish a gain of the
 A cycle runs on the operator's word for it ("work towards 0.6.4"), which covers its runs, their
 stops and its patches, and its landing, release and next runs only where the word names them:
 merging is the operator's (`AGENTS.md`, section 11). Record each grant and each decision still open.
-Keep the cycle's plan in one local file beside the handover, on the central host (`ANA_CENTRAL` in
-`.env.runs`), which also gathers every host's records: the word, the threshold, the reviews, and a
-log line per step. Every step below reads that file first.
+Keep the cycle's plan in one local file beside the handover, on the central host, the one machine
+that keeps every cycle's files and gathers every host's records: the word, the threshold, the
+reviews, and a log line per step. Every step below reads that file first.
 
 **The order is fixed, and nothing moves a step ahead of the one before it:**
 
@@ -113,7 +113,7 @@ the operator and ask, rather than land first.
    reads, whose falsifier names what settles it instead (the next landing, a reader, the launch).
    A pull request without a run-side reading still gets its row.
    **One folder a cycle**: `cycle.md` and `Predictions.md`, spelled so, live together in
-   `.ana/wri/<YYYY-MM-DD>-cycle-<release>/` of the central host's main checkout (`ANA_CENTRAL`),
+   `.ana/wri/<YYYY-MM-DD>-cycle-<release>/` of the central host's main checkout,
    dated by the fork and named by its release (`2026-10-27-cycle-v073`), beside the cycle's
    investigations. One ledger covers every run of the cycle, and an investigation of several runs
    reads it whole, so it is never copied into a run's or an investigation's folder: `wri.ts index`

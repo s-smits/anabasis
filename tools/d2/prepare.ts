@@ -11,7 +11,7 @@
  * Each task of the pack that the log does not hold is proposed and put to the shape check
  * of its package (`src/kernel/task.ts`). A task that passes is a held-out task. No solve and no
  * stored answer has a say: until 2026-10-09 a pack's task entered a log through four admission checks, on a
- * stored cycle's answer and v1's control answers for it (`tools/m1/admit-sweep.ts`, removed).
+ * stored cycle's answer and v1's control answers for it (`fdafb372a:tools/m1/admit-sweep.ts`, removed).
  *
  * A stored answer does say whether a task has a known valid answer. Each held-out task the
  * stored sweep accepted an answer to is rechecked under today's checks, until one passes, and a

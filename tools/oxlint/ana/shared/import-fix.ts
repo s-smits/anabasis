@@ -7,8 +7,9 @@ import { repoRelative } from "./file-role.ts";
  * The trees `anti-slop/prefer-subpath-import` leaves relative here, read off the option the lint
  * config passes it, so a fix and the rule never disagree about where an alias belongs.
  *
- * `src`, `starters` and `tools/harness` are copied by `src/run/bundle-export.ts` under a manifest
- * it writes without `imports`, and candidate isolation resolves their specifiers as paths.
+ * The list came over from v1, where `5bc9988:src/run/bundle-export.ts` copied `src`, `starters`
+ * and `5bc9988:tools/harness` under a manifest it wrote without `imports`, and candidate isolation
+ * resolved their specifiers as paths. Two of those three trees are not in v2.
  * `vendor` holds three packages with a manifest of their own, which the rule's nearest-manifest
  * reading already leaves alone, and three without one, which would otherwise read the root's.
  */

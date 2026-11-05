@@ -57,7 +57,6 @@ describe("ana/no-hand-rolled-error-render", () => {
       [RULE, CAUGHT, 5, INSIDE],
       [RULE, CAUGHT, 0, "src/meta/runtime-values.ts"],
       [RULE, CAUGHT, 0, "packages/ui/src/live.ts"],
-      [RULE, CAUGHT, 0, "starters/pi-built-harness/agent/tools.ts"],
     ]);
   });
 

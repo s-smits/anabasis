@@ -9,8 +9,8 @@
  *    bytes to a path no rule mentions. `moveBlockingRules` denies those renames.
  *
  * The rename rules are copied, with the two departures named below, from `generateMoveBlockingRules`
- * in anthropic-experimental/sandbox-runtime, `src/sandbox/macos-sandbox-utils.ts`, Apache-2.0,
- * pinned at 295f0e1af832131efe40db22f2c65a57f461d849 (@anthropic-ai/sandbox-runtime 0.0.67).
+ * in anthropic-experimental/sandbox-runtime, `295f0e1af:src/sandbox/macos-sandbox-utils.ts`,
+ * Apache-2.0, pinned at 295f0e1af832131efe40db22f2c65a57f461d849 (@anthropic-ai/sandbox-runtime 0.0.67).
  *
  * Why the rules exist. `(deny file-read* (subpath P))` names P as a string, so a confined process
  * that can rename an ancestor of P relocates the protected bytes to a path no rule mentions and

@@ -347,8 +347,8 @@ export function packageOf(checks: string, task: Task): TaskPackage {
 }
 
 /**
- * The public resources the sweep's solver read, sed from harness-builder-v4 at 7af7315,
- * `src/truth/public-resources.ts:118-144` with the row projections of lines 66-111: each row is
+ * The public resources the sweep's solver read, sed from harness-builder-v4,
+ * `7af7315:src/truth/public-resources.ts:118-144` with the row projections of lines 66-111: each row is
  * rebuilt from its declared fields alone, in their order, and a field the row lacks is left out.
  */
 export function sweepResources(brief: PackBrief): PublicResource[] {

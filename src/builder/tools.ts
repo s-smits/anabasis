@@ -17,7 +17,7 @@
  * The wall is the solver's, so the repository, the operator's home and every other solve's scratch
  * are closed to the Builder by the operating system and not by a path check in this process. v1
  * said of its own Builder that a guard in the process it constrains is a convention and not a wall
- * (`src/builder/candidate-isolation.ts` at 7af7315), which is why every file tool here works
+ * (`7af7315:src/builder/candidate-isolation.ts`), which is why every file tool here works
  * through a walled command and none reads or writes a path for the Builder in the host's name.
  *
  * One read is the host's own: a harness snapshot is opened and bundled by the host, as a solve
@@ -734,7 +734,7 @@ export function finishTool(bench: Bench, unmeasured?: Unmeasured): SeatTool {
     parameters: Type.Object({ note: Type.String({ minLength: 1, maxLength: 700 }) }),
     execute: async (args) => {
       // `finish` ends the session at this turn, so a finish notice on the next turn would reach nobody:
-      // the call itself carries it, as v1's submit did (`src/gate/submit-tool.ts` at 3f93d06).
+      // the call itself carries it, as v1's submit did (`3f93d06:src/gate/submit-tool.ts`).
       const notes = memoryOverCapNotice(bench.home);
       if (notes !== null) throw new Error(`Not finished. ${notes} Then call finish again.`);
       const stands = await finishNotice(bench, unmeasured);

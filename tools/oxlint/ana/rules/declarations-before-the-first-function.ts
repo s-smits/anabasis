@@ -5,8 +5,8 @@ import type { RuleExample } from "../../rule-examples.ts";
  * Every type, interface and module constant at the front of the file, then the code.
  *
  * What the tree does instead is alternate: a function, the interface it returns, another function,
- * the union that interface joins. `src/solve/built-starter.ts` had 23 declarations after its first
- * function and `src/builder/command-guard.ts` 18. A reader looking for the shape of
+ * the union that interface joins. `5bc9988:src/solve/built-starter.ts` had 23 declarations after its first
+ * function and `5bc9988:src/builder/command-guard.ts` 18. A reader looking for the shape of
  * `GeneratedToolStart` has to read the whole file to learn whether it is there at all, and a reader
  * looking for the constant a default came from has the same problem.
  *
@@ -35,7 +35,7 @@ import type { RuleExample } from "../../rule-examples.ts";
  * `if (runner === undefined) throw …`, `const bun: string = runner` compiles only below the guard,
  * so a read of a name some test above it narrows is barred exactly like an unsafe one. And a
  * const wedged into a run of module `let`s is part of a block of state, not a constant a reader
- * goes looking for at the front; `src/backends/pi-built-child.ts` had three of them among six
+ * goes looking for at the front; `5bc9988:src/backends/pi-built-child.ts` had three of them among six
  * `let`s, and hoisting those three alone left the block worse than it was found.
  *
  * The fixer is the reason the rule is worth having: this is a reordering pass, not a set of
@@ -254,7 +254,7 @@ function barredReadPositions(
 /**
  * Whether this declaration stands directly beside module mutable state, which it is part of.
  *
- * `src/backends/pi-built-child.ts` keeps six `let`s and four collections in one block under its
+ * `5bc9988:src/backends/pi-built-child.ts` keeps six `let`s and four collections in one block under its
  * bootstrap call, and the rule never moves a `let`. Hoisting the collections out of the middle of
  * that block leaves it worse than it was found, so a `const` whose neighbour is a module `let` or
  * `var` stays where it is. A blank line between them says the author meant two blocks, and a

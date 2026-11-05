@@ -7,6 +7,10 @@
 > that did. The `**/src/backends/oauth/**` and `packages/ui/**` blocks went on 10 October, since
 > neither tree is here, and `ana/no-hand-read-controller-evidence` was removed the same day: a v2
 > run is its log, with no `opening.json` or `terminal.json` to read by hand.
+>
+> A file this tree no longer holds is cited at the last commit that held it, as `<sha>:path`. A
+> file deleted before this repository's first commit (`d21f1a270`, 22 September 2026) is in no
+> commit here, so it is named without its root (`backends/approval-gate.ts`).
 
 Each block in `overrides` that turns one rule `"off"` for a list of files is that rule's debt on
 the day it was turned on: the files that already broke it. The rule holds every other file in the
@@ -14,7 +18,7 @@ repository from that moment, including every new one.
 
 **The lists only shrink.** A file is never added to one. An overhaul that clears a file deletes
 its line, and the rule then holds that file too. This is the same contract as
-`tools/loc/complexity-baseline.json`, which `--write-baseline` may only make smaller.
+`5bc9988:tools/loc/complexity-baseline.json`, which `--write-baseline` may only make smaller.
 
 The alternative was to leave a rule unregistered until its overhaul finished, and it is worse: an
 unregistered rule holds nothing, so the pattern keeps arriving in new files while the old ones are
@@ -38,12 +42,12 @@ block, went on 2026-09-26 with the last file it matched; the section of that dat
 Eight entries that were a rule losing to a stricter one are gone, because the rule now measures
 what it is losing to. `ana/no-single-caller-helper` reads its caller before reporting: if the
 inlined lines put that caller over the 80 nonblank lines in `tools/loc/source-policy.ts`, or its
-branch count at the 22 in `tools/loc/complexity-policy.ts`, the helper keeps its name and nothing
+branch count at the 22 in `5bc9988:tools/loc/complexity-policy.ts`, the helper keeps its name and nothing
 is reported. A caller at either ceiling has no legal spelling that also absorbs a helper, so the
 report asked for a file that could not pass the gate; that is the admission test in
 `SHAPE-RULESET.md` failing at a site, and the rule yields at the site rather than being baselined
-per file. Twelve reports across `src/author`, `src/backends`, `src/builder`, `src/solve`,
-`src/correctness-bundle` and `vendor/pi-claude-bridge` went that way, and no site that should report stopped
+per file. Twelve reports across `94b305a54:src/author`, `e7636e472:src/backends`, `src/builder`, `e7636e472:src/solve`,
+`5bc9988:src/correctness-bundle` and `vendor/pi-claude-bridge` went that way, and no site that should report stopped
 reporting: the whole-tree A/B with the ledger block emptied read 41 before and 28 after.
 
 Two details of that measurement are worth keeping. The line ceiling reads the **outermost**
@@ -62,7 +66,7 @@ the lease ignores falsified identity. `eslint/no-extend-native` reports the test
 `Object.prototype` to prove DraftStore ignores inherited properties, with a `finally` that removes
 it. `eslint/no-unmodified-loop-condition` reports the prompt stream's wait, whose two flags are
 set by the producer that also resumes it; the same rule already carried two inline disables of
-that shape in `src/author` and `src/backends`, so this is the third of a known class.
+that shape in `94b305a54:src/author` and `e7636e472:src/backends`, so this is the third of a known class.
 
 Three rules were removed rather than baselined.
 
@@ -153,8 +157,8 @@ parameter is what tells it apart from one that forwards.
 array opening with `"git"`, `spawnSync("git", …)`, `` $`git …` `` — under `.claude/skills/`
 outside `main/git.ts` and `main/run.ts`: **7 sites in 3 files**, four of them in `launch.ts`. It
 covers `src` too, where it reports nothing: production cannot import a skill module, and `src`
-already has two owners that differ on purpose, the committing helper in `src/author/domain-repo.ts`
-that pins the author identity and the read-only capture in `src/run/source-identity.ts` that runs
+already has two owners that differ on purpose, the committing helper in `5bc9988:src/author/domain-repo.ts`
+that pins the author identity and the read-only capture in `5bc9988:src/run/source-identity.ts` that runs
 without optional locks. `tools/` is left out. It spells git at seven sites in six files with no
 owner of its own, and making it import a skill module is a layering decision a lint rule should
 not take by the back door.
@@ -164,7 +168,7 @@ reaches a JSON read under `.claude/skills/` outside `main/run.ts`, whose `openRe
 the controller's strict reader: **16 sites in 11 files**. The shipped defect it answers was
 `runtimeNonResult === true` tested against a field holding a reason string. The file may be spelled
 as the literal, a local `const OPENING = "opening.json"`, or the `OPENING_FILE` and `TERMINAL_FILE`
-that `src/run/controller-lineage.ts` exports; importing the constant and joining it by hand is
+that `5bc9988:src/run/controller-lineage.ts` exports; importing the constant and joining it by hand is
 still a hand read, because the constant names the file and says nothing about its fields. What
 passes is every use that parses no field: `zip-run.mjs` adding both files to an archive as bytes,
 `trace-digest.mjs` matching the `terminal.json.tmp-*` prefix of an orphan, `existsSync` discovery
@@ -330,7 +334,7 @@ at all: `normalised` collapses a literal only on a line carrying two identifiers
 share is kept because it is one number where the cap is a count per line, not because it was shown
 to be the better of the two.
 
-`test/simplify-census.test.ts` carries both shapes. The enum is the case that falls. The mapping is
+`5bc9988:test/simplify-census.test.ts` carries both shapes. The enum is the case that falls. The mapping is
 there to hold the identifier condition rather than the share: loosening it would make two unrelated
 mappings match, and that test is where it would show.
 
@@ -372,7 +376,7 @@ The statement keywords are kept because the census fixture does: `copy-a` and `c
 shape and the pair as four lines of code rather than five. A predicate that calls a bare `return`
 nothing is wrong whether or not this tree currently holds a pair that proves it.
 
-`test/simplify-census.test.ts` gained two pairs beside the closing-punctuation and import-specifier
+`5bc9988:test/simplify-census.test.ts` gained two pairs beside the closing-punctuation and import-specifier
 ones already there, each mirroring a site this floor withdraws: two files naming the same closed
 vocabulary, and two probes returning the one verdict shape their declared type gives them. Both were
 checked to report under the old floor before they were written down, so the fixture holds the
@@ -433,7 +437,7 @@ reason. `.claude` is the second commit below and is not in the 921.
 
 `--fix` needs three passes, not one: the fixer braces the outer statement and reports the inner one
 next time, so `for (…)\n  for (…)\n    stmt;` settles on the third run. What it cannot do is notice
-a comment it has orphaned. In `vendor/pi-claude-bridge/turn-translation.ts` the opening brace landed
+a comment it has orphaned. In `5bc9988:vendor/pi-claude-bridge/turn-translation.ts` the opening brace landed
 between a `SAFETY:` comment and the assertion it justifies, and
 `anti-slop/require-safety-comment-for-type-assertion` then reported the site the comment was written
 for. That was the one hand edit, and it reads better than the original: the comment now sits inside
@@ -503,7 +507,7 @@ the `try`, hoist a `let`, count the stat failure separately — is longer than w
 the considered rule had already decided that shape was fine.
 
 So the registration is withdrawn, and with it the two edits whose only driver was the crude count:
-`src/run/census-gate.ts` and `src/meta/temp-scratch-clean.ts` are back to the bodies they had.
+`5bc9988:src/run/census-gate.ts` and `94b305a54:src/meta/temp-scratch-clean.ts` are back to the bodies they had.
 `mutation-adjudicate.mjs` keeps its rewrite, because it stands without the rule: the three lcov line
 kinds are mutually exclusive prefixes, so the body is one guard chain rather than a compound `if`
 with a branch inside it.
@@ -586,13 +590,13 @@ naming.
 **Five of the 28 were test-table callbacks, which is a different shape.** Their arity comes from the
 data table above them, not from a call site, so the admission test has to be asked of the table:
 
-- `test/turn-usage.test.ts` called `usage(100, 40, 64, 8, 212, 0.0123)`. Six bare numbers is the
+- `turn-usage.test.ts` called `usage(100, 40, 64, 8, 212, 0.0123)`. Six bare numbers is the
   clearest single illustration of what the rule is for; the counts are now one named record and the
   price stays its own argument.
-- `test/launch-run.test.js` rows carried five long strings positionally. Each row became
+- `783e4fb3f:test/launch-run.test.js` rows carried five long strings positionally. Each row became
   `["launchd", { service, running, notRunning, absent, foreign }]`, which keeps `%s` in the test
   title working and names the columns.
-- `test/experiment-intent.e2e.test.ts` and its tool variant destructured six columns only to
+- `5bc9988:test/experiment-intent.e2e.test.ts` and its tool variant destructured six columns only to
   re-assemble them for `checkIntent`, which destructures the row itself. The row now travels whole.
 
 **Bun's `each` callback carries a trailing `done`.** `(...row) => checkIntent(adopted, row)` looks
@@ -622,7 +626,7 @@ than this repository. So the shipped rule asks two narrower questions:
 - **How long is the tail.** `a ? x : b ? y : z` is three cases and reads fine. Four is where the
   last value is only reachable by holding three rejected conditions in mind, and four is what the
   rule reports — 17 sites. The remedy is usually the `Map` the conditions were spelling out
-  (`test/replay-cli.test.ts`, `test/verifier-lifetime.test.ts`, `source-delta.mjs`) or a function
+  (`5bc9988:test/replay-cli.test.ts`, `5bc9988:test/verifier-lifetime.test.ts`, `source-delta.mjs`) or a function
   whose branches return (`discriminationOf`, `bandZone`, `accessKind`, `censusDecision`,
   `reservedName`, `adjudicate`).
 - **Where it grew.** A ternary in the *test* or *consequent* of another is reported at any length —
@@ -652,7 +656,7 @@ own line, which also reads better. `reservedName(name, preset, names.has(tool.na
 `"listed-twice" | "first-listing"`. Both are the ruleset checking the remedy, which is the point of
 asking the admission test at every site rather than once.
 
-Extracting `aggregateDecision` out of `src/claim/judge.ts` also made that file's entry in
+Extracting `aggregateDecision` out of `5bc9988:src/claim/judge.ts` also made that file's entry in
 `tools/loc/source-policy.json` stale — 205 nonblank lines, no function over 115 — and the copy-limit
 gate says so out loud. The entry is gone rather than re-frozen at a lower number.
 
@@ -664,7 +668,7 @@ setup, where a long body is a script reading top to bottom, and `src` has almost
 findings are four fifths outside the tree it is meant to shape is measuring the wrong thing.
 
 The line count already has an owner that does this better. `tools/loc/source-policy.ts` holds new
-functions at 115 lines, and `tools/loc/complexity-policy.ts` holds every function below cyclomatic
+functions at 115 lines, and `5bc9988:tools/loc/complexity-policy.ts` holds every function below cyclomatic
 22 and 80 nonblank lines. Those two read the same functions and disagree with `max-statements` on
 which ones matter: functions over 115 lines are `src` 6, `tools` 3, `vendor` 1, `test` 153,
 `.claude` 19, `packages` 4 — the same skew, already handled by a gate that knows which roots it
@@ -695,7 +699,7 @@ env PATH=/usr/bin:/bin bun node_modules/oxlint/bin/oxlint -c .oxlintrc.json src 
 
 It exits 1 rather than skipping the rules, so nothing was ever silently unlinted. But it means the
 lint step passed on this machine only because a shell-scoped version manager had left a `node` on
-PATH, and a detached `env -i` launch — how `tools/fullrun-launchd.zsh` starts a paid run — carries
+PATH, and a detached `env -i` launch — how `5bc9988:tools/fullrun-launchd.zsh` starts a paid run — carries
 no such thing. A gate that passes or fails on which shell started it is not a gate.
 
 `OXLINT_TSGOLINT_PATH` (found in the strings of the oxlint native binding) points oxlint straight
@@ -773,7 +777,7 @@ Eighteen of the 137 were conditions the type checker had already proved could no
 them are worth naming, because each is a check somebody wrote on purpose and the checker had
 quietly retired:
 
-- **`src/backends/oauth/callback-flow.ts`.** `manualError` is assigned inside a `.catch` callback
+- **`5bc9988:src/backends/oauth/callback-flow.ts`.** `manualError` is assigned inside a `.catch` callback
   and read twice: once after the browser race settles, once after `await manualPromise`. The first
   read throws, which narrows the variable to `undefined` for everything after it, so the checker
   proved the second read dead — while at runtime the callback assigns between the two. Both reads
@@ -782,15 +786,15 @@ quietly retired:
 - **`packages/ui/src/components/primitives.tsx`.** `navigator.clipboard` is non-nullable in the DOM
   types, so the fallback branch was dead — and it is the branch that makes the copy button work
   over plain HTTP. The fact is now in the annotation.
-- **`.claude/skills/whole-run-investigation/scripts/archive-shape.mjs`.** `pattern = null` with no
+- **`783e4fb3f:.claude/skills/whole-run-investigation/scripts/archive-shape.mjs`.** `pattern = null` with no
   JSDoc infers the type `null`, so `pattern.test(value)` was unreachable and every caller passing a
   `RegExp` was invisible. One `@param` restores it.
-- **`.claude/skills/whole-run-investigation/scripts/manifest-compose.mjs`** and
-  **`.claude/skills/zip-run/scripts/zip-run.mjs`**, the same shape on `expected = null` and on four
+- **`783e4fb3f:.claude/skills/whole-run-investigation/scripts/manifest-compose.mjs`** and
+  **`7f4d85b01:.claude/skills/zip-run/scripts/zip-run.mjs`**, the same shape on `expected = null` and on four
   fields of an `args` object initialised to `null`.
-- **`test/campaign-status.test.mjs`.** `if (nonResult)` over an element of a `[string, boolean]`
+- **`cba24e975:test/campaign-status.test.mjs`.** `if (nonResult)` over an element of a `[string, boolean]`
   tuple, where the checker sees `string | boolean`. It was
-  `.claude/skills/run-improvement-campaign/scripts/status.test.mjs` when this was written, and
+  `run-improvement-campaign/scripts/status.test.mjs` when this was written, and
   moved in `094d1306e`, which gave each skill suite its own file under `test/`.
 
 The remaining twelve are `vendor/pi-claude-bridge` reading SDK payload fields the SDK types promise
@@ -873,7 +877,7 @@ that is not the whole condition.
 
 ### A local binding collided with the shared name
 
-`vendor/pi-claude-bridge/convert.ts` already had the concept, as `let hasText = false` two lines
+`5bc9988:vendor/pi-claude-bridge/convert.ts` already had the concept, as `let hasText = false` two lines
 under what became a call to the imported `hasText`. The wrap produced a file that type-checks as a
 boolean being called, and `eslint(no-shadow)` reported it before `tsc` did. The local flag is now
 `carriedText`. Worth remembering when a codemod introduces a name: the tree may already use it for
@@ -881,7 +885,7 @@ something else, and the collision is silent at the point of insertion.
 
 ### Two files at a frozen size refused the import line
 
-`src/builder/tools.ts` is held at 403 nonblank lines and `src/correctness-bundle/probes.ts` at 436 in
+`src/builder/tools.ts` is held at 403 nonblank lines and `5bc9988:src/correctness-bundle/probes.ts` at 436 in
 `tools/loc/source-policy.json`. An import line is a line, and both went one over. Three conditions
 in those two files therefore spell the comparison out instead of importing the predicate. That is
 the frozen limit working as intended — it asks for the smaller honest form, and here the smaller
@@ -908,12 +912,12 @@ Check `packages/ui/node_modules` exists before reading a type-aware number, the 
 
 ### `ana/no-single-caller-helper` gained a site, and its exemption is four times its reason
 
-`defaultOpenRouterModel` in `src/backends/openrouter-backend.ts` has had one caller for as long as
+`defaultOpenRouterModel` in `backends/openrouter-backend.ts` has had one caller for as long as
 it has existed. It went unreported because that call sat inside a `||`, and the rule exempts any
 use below a `LogicalExpression`. Rewriting `deps.model?.trim() || defaultOpenRouterModel()` as
 `textOr(…)` took the call out of the chain and the rule reported it at once. It is inlined here.
 
-The exemption's stated reason is `tools/outcome/builder-execution-current.ts`: twenty one-line
+The exemption's stated reason is `5bc9988:tools/outcome/builder-execution-current.ts`: twenty one-line
 predicates, each read once, each an operand of a long `&&`, which are a vocabulary rather than
 hidden lines. Measured on this tree, the exemption hides **15** sites, and only 3 of them are in
 that file. Requiring the enclosing chain to hold **three or more operands** — so a two-term `a || b`
@@ -939,7 +943,7 @@ trees are in scope for this rule now, and the anti-slop sites it was hiding are 
 which the rule does not read: it charges each report against the 115-line function ceiling and
 complexity 22, the two ceilings its doc names, and not against a file frozen at its size. Inlining
 into such a file fails the gate the same way, which is the admission test failing at one site. This
-pass hit that from the other direction — `src/builder/tools.ts` and `src/correctness-bundle/probes.ts` had no
+pass hit that from the other direction — `src/builder/tools.ts` and `5bc9988:src/correctness-bundle/probes.ts` had no
 room for an import line, three sections above.
 
 ### The next rung after that
@@ -959,21 +963,21 @@ wrong about this tree, in four repeatable ways.
 
 **A `let` a closure assigns — nine.** Control-flow analysis does not follow an assignment made
 inside a callback, so a flag set in a `forEach` or a stream handler reads as never-assigned at the
-`if` below it. `src/builder/file-window.ts:166` and `:193`, `src/correctness-bundle/verification-runner.ts:494`
-and `:497`, `src/builder/command-guard.ts:245`, `src/review/review-sources.ts:70`,
-`tools/runtime/test-suite.ts:348`, `test/read-root-attestation.test.ts:26`. Deleting any of those
+`if` below it. `5bc9988:src/builder/file-window.ts:166` and `:193`, `5bc9988:src/correctness-bundle/verification-runner.ts:494`
+and `:497`, `5bc9988:src/builder/command-guard.ts:245`, `5bc9988:src/review/review-sources.ts:70`,
+`tools/runtime/test-suite.ts:348`, `0732a6118:test/read-root-attestation.test.ts:26`. Deleting any of those
 checks changes what the program does.
 
 **`lib.d.ts` promises more than the runtime keeps — two.** `JSON.stringify` is declared to return
 `string` and returns `undefined` for `undefined` or a function (`src/meta/json-runtime.ts:45`); a
 `RegExpMatchArray` indexes as `string`, and an optional group that did not participate is
-`undefined` (`tools/oxlint/ana/rules/tree-findings.ts:223`).
+`undefined` (`ana/rules/tree-findings.ts:223`).
 
-**A validator over external input — two.** `src/meta/file-map.ts:27` and
-`src/claim/usage-reader.ts:39`. The declared type is the promise and the check is what makes it one;
+**A validator over external input — two.** `meta/file-map.ts:27` and
+`claim/usage-reader.ts:39`. The declared type is the promise and the check is what makes it one;
 AGENTS.md rule 8 says so in as many words, and deleting the check deletes the guarantee.
 
-**A deliberate exhaustiveness check — one.** `src/backends/model-preflight.ts:98` is the arm that
+**A deliberate exhaustiveness check — one.** `backends/model-preflight.ts:98` is the arm that
 exists so that widening a closed union fails the build.
 
 Two of the rest are `while (true)`, which the rule's own `allowConstantLoopConditions` option exists
@@ -1038,7 +1042,7 @@ at 4 (115 sites). And four typescript rules registered nowhere, measured here fo
 `require-array-sort-compare` (24), `no-base-to-string` (17), `restrict-template-expressions` (8)
 and `no-misused-spread` (1) were the four the previous census had counted and nobody had read.
 Re-measured on `094d1306e`: fifty sites, and **every one of them is a `.mjs` file** — forty-nine
-under `.claude`, and one in `test/` only because `test/campaign-status.test.mjs` moved there from
+under `.claude`, and one in `test/` only because `cba24e975:test/campaign-status.test.mjs` moved there from
 `.claude` earlier in this stack. Not one is in `src/`, `tools/`, `packages/` or `vendor/`.
 (`restrict-template-expressions` was 10 in the earlier count and is 8 now; two of its sites went
 out with the strict-boolean and nullable-string passes.)
@@ -1116,8 +1120,8 @@ With these adjudicated, every typescript rule the census has ever counted now ha
 Every type, interface and module constant at the front of the file, then the code. 965 sites in
 339 files: 549 types and interfaces, 416 constants. By root, `src` 561, `test` 212, `.claude` 102,
 `tools` 69, `packages` 11, `vendor` 9, `starters` 1. The worst files were
-`src/solve/built-starter.ts` at 25, `src/builder/command-guard.ts` 18,
-`src/review/epoch-review-findings.ts` 15 and `src/verify/host.ts` 14, each of them an alternation:
+`5bc9988:src/solve/built-starter.ts` at 25, `5bc9988:src/builder/command-guard.ts` 18,
+`5bc9988:src/review/epoch-review-findings.ts` 15 and `5bc9988:src/verify/host.ts` 14, each of them an alternation:
 a function, the interface it returns, another function, the union that interface joins. A reader
 looking for the shape of `GeneratedToolStart` had to read the whole file to learn whether it was
 there.
@@ -1173,7 +1177,7 @@ The widening added 100 sites. Reading them gave back 9:
    narrowable: `if (isBoolean(value))` names an imported predicate it merely calls and `if (x ===
    undefined)` names a global, and barring later reads of those refused two constants for nothing.
 
-2. **A constant standing against module state.** `src/backends/pi-built-child.ts` keeps six `let`s
+2. **A constant standing against module state.** `5bc9988:src/backends/pi-built-child.ts` keeps six `let`s
    and four collections in one block under its bootstrap call. The rule never moves a `let`, so
    hoisting the collections out of the middle of that block left it worse than it was found. A
    `const` whose immediate neighbour is a module `let` or `var` now stays. A blank line between
@@ -1227,7 +1231,7 @@ thrown away and redone after each.
 2. **The blank line under a declaration was dropped.** The move took the declaration's own line
    and left the blank line that separated it behind, which closes no gap at the old site and packs
    the front of the file into one wall: the first sweep came out 660 lines shorter than it went
-   in, and `src/verify/host.ts` had an interface body abutting the constant above it. The move
+   in, and `5bc9988:src/verify/host.ts` had an interface body abutting the constant above it. The move
    carries the author's spacing now, and adds none where there was none. The final sweep changed
    339 source files and **every one of them is net zero lines**.
 
@@ -1393,7 +1397,7 @@ them outright:
 - **A commented statement.** A comment names the run, the invariant or the rejected alternative a
   line exists for; the simplify contract in `AGENTS.md` says so in as many words. If someone wrote
   one over the statement holding the site, the site is a judgement rather than a typo. It is the
-  bluntest of the three and it is the one that catches `tools/replay/cli.ts`, where the comment
+  bluntest of the three and it is the one that catches `5bc9988:tools/replay/cli.ts`, where the comment
   above the line says which of two spellings older records use. 21 sites held back.
 
 The fourth member is not mechanical, because **the type itself is the lie**: `row?.taskId` over
@@ -1424,7 +1428,7 @@ comparison. The two remaining type errors are the same leftover in another form:
 last read of a name and the tool does not delete the declaration with it.
 
 **Nine of the 14 failures come from one edit the reader kept.** Dropping `?.` from
-`outcome.iterations?.at(-1)` in `src/run/full-run-build-step.ts` is correct — every real producer
+`outcome.iterations?.at(-1)` in `5bc9988:src/run/full-run-build-step.ts` is correct — every real producer
 supplies `iterations`, and `BuildOutcome` is derived from that producer's return type — and it
 fails five battery-sizing tests, three next-move tests and one promotion test because their build
 doubles omit the field. The doubles were the defect; this commit completes them. The other five
@@ -1479,17 +1483,17 @@ which is why the count was three times the work.
 
 | where | sites | reading |
 | --- | --- | --- |
-| `src/builder/file-window.ts` | 2 | fixed — the callbacks are gone, see below |
-| `vendor/pi-built/jsonl-reader.ts` | 2 | fixed — `append` takes and returns the dropping state |
-| `src/builder/command-guard.ts` | 1 | fixed — the rewriter collects targets, the decision reads them |
-| `src/review/review-sources.ts` | 1 | fixed — `add` and `walk` answer whether the cap is still open |
-| `src/correctness-bundle/verification-runner.ts` | 3 | **no outcome to return.** `gradingStarted` and `gradingStopped` are one phase's lifecycle, set by a per-case callback a bounded-concurrency pool invokes. The pool has no single outcome to hand back, and the phase lines are the point |
-| `src/verify/host.ts` | 1 | a different cause: `scope.closed` is narrowed by a guard before an `await` and changed by another task during it, the fifth cause this file already records |
+| `5bc9988:src/builder/file-window.ts` | 2 | fixed — the callbacks are gone, see below |
+| `5bc9988:vendor/pi-built/jsonl-reader.ts` | 2 | fixed — `append` takes and returns the dropping state |
+| `5bc9988:src/builder/command-guard.ts` | 1 | fixed — the rewriter collects targets, the decision reads them |
+| `5bc9988:src/review/review-sources.ts` | 1 | fixed — `add` and `walk` answer whether the cap is still open |
+| `5bc9988:src/correctness-bundle/verification-runner.ts` | 3 | **no outcome to return.** `gradingStarted` and `gradingStopped` are one phase's lifecycle, set by a per-case callback a bounded-concurrency pool invokes. The pool has no single outcome to hand back, and the phase lines are the point |
+| `5bc9988:src/verify/host.ts` | 1 | a different cause: `scope.closed` is narrowed by a guard before an `await` and changed by another task during it, the fifth cause this file already records |
 | `tools/runtime/test-suite.ts` | 1 | `walled` is set by a `setInterval` tick. A timer has no return path at all |
 | `vendor/pi-claude-bridge/prompt-stream.ts` | 1 | in the tree `claude/bridge-rewrite-0919` is rewriting; take it there |
 | `tools/oxlint/anti-slop/rules/require-safety-comment-for-type-assertion.ts` | 1 | not this class: the rule is reporting `while (true)` |
-| `test/read-root-attestation.test.ts` | 1 | a hostile-fixture flag the test body sets, which is what a fixture is |
-| `.claude/skills/prompt-surface-census/scripts/extract-prompt-surface.mjs` | 1 | `.mjs`, so the default-program cause above |
+| `0732a6118:test/read-root-attestation.test.ts` | 1 | a hostile-fixture flag the test body sets, which is what a fixture is |
+| `783e4fb3f:.claude/skills/prompt-surface-census/scripts/extract-prompt-surface.mjs` | 1 | `.mjs`, so the default-program cause above |
 
 **What generalises is not "return a boolean".** `file-window.ts` held two of the six and the repair
 there was to delete the callback. `walkBytes` and `walkText` became `fileChunks` and `textPieces`,
@@ -1519,7 +1523,7 @@ Five of the twenty-three are in `vendor/pi-claude-bridge`, where the same shape 
 stream whose SDK types promise fields the wire does not always carry.
 
 **A captured `let` is narrowed where the closure is created, not where it runs.** In
-`src/backends/oauth/callback-flow.ts` a binding is declared, assigned, and read inside
+`5bc9988:src/backends/oauth/callback-flow.ts` a binding is declared, assigned, and read inside
 `close: () => bound?.stop(true)`; where the arrow is written the assignment has not happened, so
 the rule reads the guard as dead. The closure runs later, when it is not. No workaround exists.
 
@@ -1534,7 +1538,7 @@ closed, so the sweep's 152 becomes 154 and 116 remain. Six are admitted, and one
 cause the four above do not.
 
 **The two defects are the same defect twice.** `ToolInterface` has exactly two members, and both
-`src/run/builder-runtime.ts` and `test/builder-tool-mount.test.ts` projected it through a
+`5bc9988:src/run/builder-runtime.ts` and `5bc9988:test/builder-tool-mount.test.ts` projected it through a
 three-arm chain: test one kind, test the other, fall back to `[]`. After the first test the second
 compares a literal with itself, and the `[]` arm cannot be reached. Dropping the dead test is not
 only shorter — it is the safer of the two shapes, because a third member would then fail to
@@ -1549,7 +1553,7 @@ a shape like this survives: the copy makes it look intentional.
 guards are the OS wall's own case — a spawn the boundary killed — so the operand the checker calls
 impossible is the one the probe exists for.
 
-**`src/verify/host.ts:756` is a fifth cause: a property narrowed before an `await`.** Line 638
+**`5bc9988:src/verify/host.ts:756` is a fifth cause: a property narrowed before an `await`.** Line 638
 tests `scope.closed` and returns; TypeScript carries that narrowing across the `await` on line 754,
 so `!scope.closed` at 756 reads as always true. Another task closes the scope during the wait —
 line 873 keeps the comment saying so — and this is the check that stops a run that outlived its
@@ -1557,12 +1561,12 @@ scope from binding evidence. Unlike the callback-assigned `let`, no annotation a
 this file changes the reading: the narrowing is correct at the point it is made and wrong at the
 point it is used, and only the `await` between them says so.
 
-**`test/verification-runner-census.test.ts:273` holds a property in place.** `subjectKind` has one
+**`5bc9988:test/verification-runner-census.test.ts:273` holds a property in place.** `subjectKind` has one
 member because rule 9 removed the Judge control census, so inside `!== "battery-case"` the value
 can only be `undefined` and the `?? "?"` is dead. That is the assertion, not a redundancy: the test
 is what fails on the day a control subject reaches the Judge again.
 
-**`vendor/pi-claude-bridge/turn-translation.ts:238` is vendored.** The rule's own fixer refuses
+**`5bc9988:vendor/pi-claude-bridge/turn-translation.ts:238` is vendored.** The rule's own fixer refuses
 that tree for the merge cost it would pay, and reading it by hand reaches the same answer.
 
 ### The residual read out, 2026-09-20
@@ -1585,7 +1589,7 @@ here: `match.index`, `globalThis.Bun`, `JSON.stringify`, `Subprocess.exitCode`,
 `navigator.clipboard`, and an index signature this tree reads without `noUncheckedIndexedAccess`.
 
 **No defect is left in the residual.** The one it still held was `readManifest` in
-`src/claim/evidence-log.ts`, and the `parseJsonAs` step reached it by reading four sites rather
+`5bc9988:src/claim/evidence-log.ts`, and the `parseJsonAs` step reached it by reading four sites rather
 than eighty. That is the whole yield of this rule on this tree: 270 sites, three defects, every one
 of them found by a reader, none by the gate the rule would have been. The hunt is finished; a later
 census of the same rule is a new program, not an open item.
@@ -1650,9 +1654,9 @@ had to settle: `defaultOpenRouterModel` had a single caller all along and was ex
 `ana/no-single-caller-helper` only because the call sat inside a `||` the fixer removed.
 
 The six disagreements are worth naming because none of them is a defect. Two are in
-`.claude/skills/launch-run/scripts/launch.ts`, where the reader used `hasText(routed)` and the tool
+`5bc9988:.claude/skills/launch-run/scripts/launch.ts`, where the reader used `hasText(routed)` and the tool
 kept the `routed !== ""` already written, which the rule never reported. One is
-`vendor/pi-claude-bridge/convert.ts`, where the tool spells the predicate out because the file
+`5bc9988:vendor/pi-claude-bridge/convert.ts`, where the tool spells the predicate out because the file
 binds that name already and the reader instead renamed the local to `carriedText` — two reasonable
 answers to the same collision. One is a sibling site the reader renamed as well. Two the reader
 restructured for a reason that has nothing to do with the rule.
@@ -1671,9 +1675,9 @@ a rewrite disturbs. Four classes came out of it, three of them refusals a parse 
 - **A value is not a condition.** `result.status || result.signal || "unknown"` inside a template
   literal is a fallback chain, not a test, and the condition transforms turn it into a boolean. The
   compiler accepted `command failed (true)` because a template literal takes anything;
-  `test/bun-spawn-sync.test.ts` caught it. Only the fallback transform is valid in a value
+  `5bc9988:test/bun-spawn-sync.test.ts` caught it. Only the fallback transform is valid in a value
   position, and everything else there is hand work.
-- **A name already taken.** `vendor/pi-claude-bridge/convert.ts` binds `hasText` as a local
+- **A name already taken.** `5bc9988:vendor/pi-claude-bridge/convert.ts` binds `hasText` as a local
   boolean, so the import would have collided and the call would have meant something else. This
   one stopped being a refusal once the predicate had a spelling that needs no import.
 - **`(n ?? 0) !== 0` does not narrow `n`.** It is exactly the original test, and a later unguarded
@@ -1692,7 +1696,7 @@ one-off, because once a rule is in the gate its sites never accumulate again, wh
 what makes the next one-off safe.
 
 The oracle has to be the whole gate and not just the type checker, and the size policy is the
-reason. Two files, `src/builder/tools.ts` and `src/correctness-bundle/probes.ts`, sit at a frozen size in
+reason. Two files, `src/builder/tools.ts` and `5bc9988:src/correctness-bundle/probes.ts`, sit at a frozen size in
 `tools/loc/source-policy.json`, where the one added import line is the whole cost. A file like
 that is not held — the edits were not wrong — it is **constrained**, and the fixer is told it may
 not grow. What to do then is the fixer's business, and this one writes the predicate out inline,
@@ -1944,25 +1948,25 @@ Reading those 26 produced three refusals a size dial cannot express, and they ar
 keeping:
 
 - **`using`.** It disposes at the end of the block that declares it. `admissionPayload`
-  (`src/run/admission.ts:137`) opens the controller ledger, reads one string and closes it at its
+  (`5bc9988:src/run/admission.ts:137`) opens the controller ledger, reads one string and closes it at its
   return; the same three lines in `readAdmission` hold the ledger for the rest of that function.
   Refused at any size.
 - **`try`.** JavaScript has no try expression, so a body that catches is the one shape a call site
-  cannot spell. `symlinkText` (`src/verify/exact-read-attestation.ts:115`) returns a decoded link
+  cannot spell. `symlinkText` (`0732a6118:src/verify/exact-read-attestation.ts:115`) returns a decoded link
   or throws a refusal; inlined into the loop at `:192` it is a `let`, a try and a catch inside a
   loop that already holds two of each.
 - **A decision chain.** A body that is nothing but `if (…) return a;` lines and a final `return z`
   has no spelling *this ruleset* accepts: a nested ternary trips `ana/no-tangled-ternary`, and one
   assignment per arm trips `ana/no-arms-differing-in-one-term`. `leafCategory`
-  (`src/correctness-bundle/draft-summary.ts:6`) is three of them, and every legal form of it inside
+  (`5bc9988:src/correctness-bundle/draft-summary.ts:6`) is three of them, and every legal form of it inside
   `boundedDraftSummary` is refused by one of this repository's own rules.
 
 That left **17**, swept by hand across sixteen files, and the rule measures 0.
 
 Two of the seventeen changed more than their own lines. `capLedgerNote`
-(`src/run/climb-ledger-note.ts:334`) opened with `if (note.length <= MAX) return note;`, which its
+(`run/climb-ledger-note.ts:334`) opened with `if (note.length <= MAX) return note;`, which its
 only call site had already tested three lines earlier — the inline dropped a dead guard the rule
-was not looking for. And `rejected` (`src/solve/built-starter.ts:375`) was not inlined but split:
+was not looking for. And `rejected` (`5bc9988:src/solve/built-starter.ts:375`) was not inlined but split:
 its caller built the same `Submit blocked:` result a second time in the accept path, so the shared
 half became `blocked` with two callers, and `submitMaterializedArtifact` came out shorter than it
 went in. A rule that asks "why does this name exist" gets answers the rule did not ask for.
@@ -2041,7 +2045,7 @@ thirteen reports and changed nothing else.
 The remaining two were a real two-way dependency: `admission.ts` called `evaluationIdentity` from
 `candidate-promotion.ts`, and `candidate-promotion.ts` called `admissionPointerPayload` from
 `admission.ts`. `evaluationIdentity` is composed of `fingerprintSlug` and `batteryHash`, both
-defined in `src/claim/fingerprint.ts`, and three modules outside promotion wanted it. It moved
+defined in `5bc9988:src/claim/fingerprint.ts`, and three modules outside promotion wanted it. It moved
 there with `EvaluationIdentity` and `taskSetDigest`, which is where a reader would look for it
 anyway. No new module, and `candidate-promotion.ts` got shorter.
 
@@ -2071,7 +2075,7 @@ sometimes right:
 
 One further collision settles it. The autofix rewrote
 `plain !== null && plain.schema === BUILDER_EXECUTION_SCHEMA` in
-`tools/outcome/builder-execution-current.ts`, and the full lint then failed on
+`5bc9988:tools/outcome/builder-execution-current.ts`, and the full lint then failed on
 `ana/unproven-unknown-parameter`: the explicit `!== null` was the proof that the `unknown` arriving
 at that boundary had been narrowed, and the optional chain erased it. That edit was reverted. A
 built-in style rule whose fix removes a proof one of this tree's own rules requires is not a gate
@@ -2100,7 +2104,7 @@ file. It sized that move by the **exported declaration** and checked the reader'
 against it. The file is what moves: it holds one export, by the shape's own rule, so its private
 helpers, its imports and its header travel with it. Measuring the declaration misread two of the
 three rows the scan then carried — `tools/oxlint/tree-identity.ts` is a 24-line export inside 211
-lines of its own scan, and `packages/ui/src/views/climb.tsx` a 55-line chart beside the private
+lines of its own scan, and `5bc9988:packages/ui/src/views/climb.tsx` a 55-line chart beside the private
 tooltip it renders. Both read as helpers under the old measurement; both are what the shape's own
 argument calls a module in its own right.
 
@@ -2110,11 +2114,11 @@ directory, and every one is answered **no**:
 
 | what | its only reader | why it stays |
 | --- | --- | --- |
-| `codexApprovalDecision`, `src/backends/approval-gate.ts` | `codex-app-server.ts` | the file is the policy — every native approval request is declined — under fifteen lines of protocol reasoning about which `requestApproval` methods codex-cli 0.153 still sends. Inside the connection loop that decision reads as transport |
-| `PushQueue`, `src/backends/claude-push-queue.ts` | `claude-backend.ts` | a queue with no dependency on the backend; the file records the 2026-08-20 split that made it |
-| `classifyCodexAppServerMessage`, `src/backends/codex-app-server-protocol.ts` | `codex-app-server.ts` | the one place that decides what a JSON-RPC frame is, `id: 0` included. That is the protocol, not the connection that speaks it |
-| `fixedProductBoundary`, `src/run/fixed-product-policy.ts` | `full-run-build-step.ts` | a declared invocation boundary with an exhaustive switch over `NextMove`. Moving a refusal into the step it refuses makes that step its own owner |
-| `engineCellEnv`, `src/verify/engine-cell-env.ts` | `host.ts` | its first sentence is "Split from host.ts so the fresh HOME and TMPDIR rule has one owner", and that rule is an isolation guarantee |
+| `codexApprovalDecision`, `backends/approval-gate.ts` | `codex-app-server.ts` | the file is the policy — every native approval request is declined — under fifteen lines of protocol reasoning about which `requestApproval` methods codex-cli 0.153 still sends. Inside the connection loop that decision reads as transport |
+| `PushQueue`, `backends/claude-push-queue.ts` | `claude-backend.ts` | a queue with no dependency on the backend; the file records the 2026-08-20 split that made it |
+| `classifyCodexAppServerMessage`, `backends/codex-app-server-protocol.ts` | `codex-app-server.ts` | the one place that decides what a JSON-RPC frame is, `id: 0` included. That is the protocol, not the connection that speaks it |
+| `fixedProductBoundary`, `5bc9988:src/run/fixed-product-policy.ts` | `full-run-build-step.ts` | a declared invocation boundary with an exhaustive switch over `NextMove`. Moving a refusal into the step it refuses makes that step its own owner |
+| `engineCellEnv`, `0732a6118:src/verify/engine-cell-env.ts` | `host.ts` | its first sentence is "Split from host.ts so the fresh HOME and TMPDIR rule has one owner", and that rule is an isolation guarantee |
 
 Three discriminators were tried against those five and all three were dropped: the header naming
 its reader, the export name matching the filename, and the file carrying a module header. The last
@@ -2131,7 +2135,7 @@ environment rule, so a single export no longer describes it. The fourth stands.
 
 Seven names spelled in two files each with no constant naming either copy.
 
-**Fixed, all in the pi launchers under `.claude/skills/run-cycles/scripts/inference/launcher/`.**
+**Fixed, all in the pi launchers under `run-cycles/scripts/inference/launcher/`.**
 `pi-claude.ts` and `pi-codex.ts` differ in their credential and their argv defaults and in nothing
 else: each reached into the pinned `./pi-codex` checkout for the same three modules, replaced
 `AuthStorage` with an in-memory store, called `setupCli()` and handed its arguments to `main()`.
@@ -2376,7 +2380,7 @@ was to return `null` where `members[0] ?? null` already returns `null`.
 ### The genuine pin is an override, and always was
 
 `biome.json` already carries a `formatter: { enabled: false }` override naming eleven
-`vendor/pi-claude-bridge` and `vendor/pi-built` files one at a time. That is what a real pin looks
+`vendor/pi-claude-bridge` and `5bc9988:vendor/pi-built` files one at a time. That is what a real pin looks
 like in this file: written down, per file, visible in the block that states it. The
 `tools/oxlint` entry was in `files.includes`, which removes a path from biome's world entirely —
 the same shape as the `.oxlintrc.json` block item 13 removed, one layer out and with no reason
@@ -2498,7 +2502,7 @@ why only four sites are left for it to find.
 
 ### The four, read
 
-**`src/claim/evidence-log.ts` — fixed.** `readManifest` is the one where the guard's absence from
+**`5bc9988:src/claim/evidence-log.ts` — fixed.** `readManifest` is the one where the guard's absence from
 the checker was hiding a real gap. Its own comment states the reason it exists: "a plausible
 `files` map with a missing or unknown schemaVersion could be treated as evidence under rules the
 reader has never validated (2026-08-03 evidence-reader audit)". It checked the schema and that
@@ -2506,15 +2510,15 @@ reader has never validated (2026-08-03 evidence-reader audit)". It checked the s
 `sha256(bytes) !== expected` as a non-string and came back as one changed file, rather than as a
 manifest this reader cannot read. It now parses `JsonValue` and builds the manifest from validated
 rows; a row it cannot read is `run-unrecorded`, which is the refusal the comment already promised.
-Two hostile cases in `test/evidence-log.test.ts` fail when either guard is weakened to a `continue`.
+Two hostile cases in `5bc9988:test/evidence-log.test.ts` fail when either guard is weakened to a `continue`.
 
-**`src/correctness-bundle/reference-solve-child.ts` and `src/correctness-bundle/evaluator-process-child.ts` — admitted.**
+**`5bc9988:src/correctness-bundle/reference-solve-child.ts` and `5bc9988:src/correctness-bundle/evaluator-process-child.ts` — admitted.**
 Both read a protocol message from the parent process that spawned them, over a pipe the host owns.
 `request.protocol !== PROTOCOL` and `row.type === "start"` are version tripwires over bytes this
 program wrote itself, not validation of untrusted input, and the writer is one build away from the
 reader.
 
-**`src/author/rebuild-advice.ts` — admitted.** `readLatestRebuildAdvice` guards a seven-field
+**`5bc9988:src/author/rebuild-advice.ts` — admitted.** `readLatestRebuildAdvice` guards a seven-field
 nested packet — `families[]`, `issues[]`, `findings[]`, `judge` — on its `schema` field, because a
 packet another schema wrote is a different fact and every consumer already spells that as null.
 The guard earned itself: throwing instead killed the first analyse step of all 47 recorded
@@ -2554,7 +2558,7 @@ linter's 129, because it also sees a name bound in type position — and the spl
 | no | yes | 155 |
 | yes | yes | 1 |
 
-The single exception is `test/build-manifest.test.ts:171`, and it is not one: `amend(change:
+The single exception is `5bc9988:test/build-manifest.test.ts:171`, and it is not one: `amend(change:
 (status: Status) => void)` names the parameter of a function *type*, which binds nothing at
 runtime and shadows nothing a reader must track.
 
@@ -2606,15 +2610,15 @@ against the source text. 4,378 lines of ledger, and the result is:
 | camelCase identifiers | every mention | 40, of which **0** are stale |
 
 The one stale claim is fixed above: the `require-type-for-null-default` census named
-`.claude/skills/run-improvement-campaign/scripts/status.test.mjs`, which `094d1306e` moved to
-`test/campaign-status.test.mjs` when each skill suite got its own file under `test/`. The finding
+`run-improvement-campaign/scripts/status.test.mjs`, which `094d1306e` moved to
+`cba24e975:test/campaign-status.test.mjs` when each skill suite got its own file under `test/`. The finding
 itself still holds at the new path, `=== true` and all.
 
 The other 50 are the scan being blunt rather than the ledger being wrong, and they are worth
 naming so the next reader does not re-derive them. Ten of the eleven paths are not tree paths at
 all: `lib.d.ts` and `.d.mts` are the language's own files and a suffix, `conformance.json`,
 `claude-oauth.json` and `auth.json` are written at runtime and never tracked, and
-`src/solve/draft-candidates.ts` is named twice by an entry that exists to record its deletion. All
+`solve/draft-candidates.ts` is named twice by an entry that exists to record its deletion. All
 40 identifiers are option names rather than source names — `allowAny`, `allowNullableString`,
 `allowConstantLoopConditions`, `checkJs`, `ignoreStringArrays` — or names a pass removed, which is
 the entry's subject.

@@ -155,7 +155,7 @@ reads the nearest manifest's `imports` as every resolver does, and the trees an 
 copies without them are named in `.oxlintrc.json` as its `relativeOnly` option, which the `ana`
 fixers that write imports read too.
 `no-hand-spelled-tree-root` left on 15 October with the owner it pointed at: the `campaigns/` and
-`domains/` trees it kept to `src/meta/campaign-root.ts` were v1's, and v2 writes neither.
+`domains/` trees it kept to `6c88e73dd:src/meta/campaign-root.ts` were v1's, and v2 writes neither.
 
 **The count of rules is the wrong denominator.** The largest sweep in the set had a fixer and the
 second largest deliberately did not. `declarations-before-the-first-function` moved 965

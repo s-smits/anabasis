@@ -326,13 +326,13 @@ Each runtime surface has one owner. Import from it; add a missing member beside 
 Three `ana` rules name owners in their messages. Since 10 October every one they name is in this
 tree. Two more were removed: `no-hand-read-controller-evidence` named a v1 run's `opening.json` and
 `terminal.json`, and a v2 run is its log, opened through `tools/runs/`; `no-hand-spelled-tree-root`
-named `src/meta/campaign-root.ts` for v1's `campaigns/` and `domains/` trees, and v2 keeps a
+named `6c88e73dd:src/meta/campaign-root.ts` for v1's `campaigns/` and `domains/` trees, and v2 keeps a
 campaign under `.ana/d2/<name>` (15 October):
 
 | Rule | It names | Here |
 | --- | --- | --- |
 | `no-hand-read-argv` | `.claude/skills/main/cli.ts` | Present. A skill script declares a `runCommand` spec, or passes its arguments to `parseOrDie` or `parseCommandOrDie`. The commands under `tools/` are outside the rule and parse with `parseArgs` from `#src/meta/process.ts` |
-| `no-hand-spelled-git` | `src/meta/git.ts` (`gitOutput`, `gitText`, `gitMaybe`), from skills, `src`, `tools/runs` and `tools/d2` | Present. Until 15 October the owner was `.claude/skills/main/git.ts`, which production cannot import, and `tools/runs` and `tools/d2` spelled git at five sites. The landing and gate commands of `tools/runtime`, and tests, are outside the rule: they read exit codes and feed input |
+| `no-hand-spelled-git` | `src/meta/git.ts` (`gitOutput`, `gitText`, `gitMaybe`), from skills, `src`, `tools/runs` and `tools/d2` | Present. Until 15 October the owner was `e3dfa9eb8:.claude/skills/main/git.ts`, which production cannot import, and `tools/runs` and `tools/d2` spelled git at five sites. The landing and gate commands of `tools/runtime`, and tests, are outside the rule: they read exit codes and feed input |
 | `no-lifetime-outside-owner` | `stageCommandIsolation` (`src/wall/isolation.ts`), `killProcessGroup` and `terminateAndReapProcessGroupId` (`src/meta/subprocess.ts`) | Present. The owner and its reader are the two files the rule exempts |
 
 If a rule reports on your code and names an owner that is absent, do not obey a remedy that

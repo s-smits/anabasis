@@ -123,7 +123,7 @@ export const preferConditionOverBooleanReturnsRule = defineRule({
     function guardAbove(node: ESTree.IfStatement): boolean | null {
       const body = blockBody(node);
       if (body === null) return null;
-      // A value computed between two guards does not end the run: `tools/outcome/query.ts` names
+      // A value computed between two guards does not end the run: `5bc9988:tools/outcome/query.ts` names
       // the projection it is about to search halfway down its four refusals.
       for (let at = body.indexOf(node) - 1; at >= 0; at -= 1) {
         const above = body[at];
@@ -140,7 +140,7 @@ export const preferConditionOverBooleanReturnsRule = defineRule({
         const alternative = otherwise(node);
         const second = returnedBoolean(alternative);
         if (second === null || first === second) return;
-        // The last of a run of guards is not the whole condition. `tools/outcome/query.ts` refuses
+        // The last of a run of guards is not the whole condition. `5bc9988:tools/outcome/query.ts` refuses
         // a row over four separate tests and then returns true; folding only the fourth into
         // `return !(…)` leaves three guards above it answering the same question a different way.
         if (guardAbove(node) === first) return;

@@ -8,11 +8,11 @@
  * refusals or unavailable tools; diagnostics may follow the reminder.
  *
  * v1's Builder wrote the exam beside the harness, and most of its prompt was about the exam. What is
- * taken here is what bore on the harness, from harness-builder-v4 at 7af7315: the role sentence
- * (`src/author/builder-start-prompt.ts`, `INTENT_CLAUSE`), the ceiling on what a solver's tools may
- * do (`NO_GRADER_IN_REACH`), and the three files' contracts in brief
- * (`starters/pi-built-harness/starter-pack/contract.md`, the agent sections). Their shapes in full,
- * with a worked example, are `HARNESS.md` in the session's home (`src/harness/starter.ts`).
+ * taken here is what bore on the harness, from harness-builder-v4: the role sentence
+ * (`7af7315:src/author/builder-start-prompt.ts`, `INTENT_CLAUSE`), the ceiling on what a solver's
+ * tools may do (`NO_GRADER_IN_REACH`), and the three files' contracts in brief
+ * (`7af7315:starters/pi-built-harness/starter-pack/contract.md`, the agent sections). Their shapes
+ * in full, with a worked example, are `HARNESS.md` in the session's home (`src/harness/starter.ts`).
  *
  * Each part of a harness is given one purpose, here as there: the presets select pi's tools, the
  * programs and the tools of the harness's own compute, and the guide is words about them. v1's
@@ -203,10 +203,10 @@ export const SAID: Readonly<Record<"host" | "builder", Said>> = {
   },
 };
 
-/** What the next session receives from this one (v1's `HANDOVER`, `src/author/builder-session.ts`
- *  at 3f93d06). Every session opens in a new home, and the Builder's own notes cross only through
- *  these files; `finish` ends the session at the turn that calls it, so a note meant for after it
- *  is never written. */
+/** What the next session receives from this one (v1's `HANDOVER`,
+ *  `3f93d06:src/author/builder-session.ts`). Every session opens in a new home, and the Builder's
+ *  own notes cross only through these files; `finish` ends the session at the turn that calls it,
+ *  so a note meant for after it is never written. */
 const HANDOVER =
   `The next session opens in a new home, and what you learned reaches it only through ${MEMORY_FILE}, ` +
   `${SCRATCHPAD_FILE} and ${SCRATCH_DIR}/ in your home directory (${SCRATCH_LIMITS}; a larger file stays behind, a top-level folder that ` +
@@ -280,7 +280,7 @@ export function usedLine(used: Used, limits: Pick<Told, "wallSeconds" | "turns">
  * What a Builder is sent when a turn of its ends with no tool call and no `finish`: that the
  * session goes on, its goal, what it has used of its limits, where `harness/` stands, and where
  * the opening facts are served again. It is v1's continuation (`continuePrompt`,
- * `src/author/builder-continuation.ts` at 3f93d06), which restated the goal and the round's facts
+ * `3f93d06:src/author/builder-continuation.ts`), which restated the goal and the round's facts
  * at every turn boundary so that a compaction needed no signal.
  *
  * One part of v1's is left out on purpose: the line that named the next action. v1's Builder had a

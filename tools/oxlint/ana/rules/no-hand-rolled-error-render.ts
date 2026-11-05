@@ -23,10 +23,9 @@ import { importTracker } from "../shared/import-fix.ts";
  * overlapping one it has already applied and a single carrier is lost exactly when it is the
  * one dropped.
  *
- * Two trees are outside it. `packages/ui` builds a browser bundle, and the owner sits beside
+ * One tree is outside it. `packages/ui` builds a browser bundle, and the owner sits beside
  * `src/meta/process.ts` in a module that bundle should not pull in; its nine sites stay hand
- * spelled. `starters/` is a Builder-visible template with its own module graph, which may not
- * reach into `src/` at all.
+ * spelled. v1 exempted its starters tree too, and v2 has none.
  *
  * The rule reads the subject as source text, so `result.error instanceof Error ?
  * result.error.message : String(result.error)` is caught as readily as a bare identifier, and
@@ -102,10 +101,7 @@ export const noHandRolledErrorRenderRule = defineRule({
 
     return {
       // The owner spells both shapes itself, which is the point of it.
-      before: () =>
-        !isOneOf(context.filename, [OWNER]) &&
-        !isUnder(context.filename, "packages/ui") &&
-        !isUnder(context.filename, "starters"),
+      before: () => !isOneOf(context.filename, [OWNER]) && !isUnder(context.filename, "packages/ui"),
 
       Program: (node) => imports.read(node),
 

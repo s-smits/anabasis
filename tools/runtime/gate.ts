@@ -162,6 +162,7 @@ const WHAT = {
   static: "the static steps and its nearby tests",
   whole: "the whole gate",
 } as const satisfies Record<Pass, string>;
+const FAILED = { failure: "failed on its own checkout", error: "its runner gave no verdict" } as const;
 const FLAGS = { static: ["--static"], whole: [] } as const satisfies Record<Pass, readonly string[]>;
 /** The test wrapper's two lines that send failed files to a second run, which then decides, in the
  *  words a pulse repeats. A `host-wall: error:` or `idle-wall: error:` line keeps the failures. */
@@ -438,6 +439,8 @@ export const failedLine = (failure: Failure): string =>
  * failure, since every commit above a fix changes id with it. Passes side by side share the cores:
  * each suite left to itself takes two fewer workers than the host has, and on 20 October three at
  * once took a host of 12 cores to a load of 42, where their browser files timed out by the dozen.
+ * So a static pass gets its share of the cores, unless the caller's environment names
+ * `ANA_TEST_WORKERS`.
  */
 export async function proveCommits(
   root: string,
@@ -445,11 +448,10 @@ export async function proveCommits(
   prover: Prover,
 ): Promise<Failure | null> {
   const { who, say, mark } = prover;
-  const record = join(
-    git(root, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
-    "ana-gate-passed",
+  const [common = "", logs = ""] = lines(
+    git(root, ["rev-parse", "--path-format=absolute", "--git-common-dir", "--git-path", "ana-gate"]),
   );
-  const logs = git(root, ["rev-parse", "--path-format=absolute", "--git-path", "ana-gate"]);
+  const record = join(common, "ana-gate-passed");
   mkdirSync(logs, { recursive: true });
   runSync(["find", logs, "-name", "*.log", "-mtime", `+${String(LOG_DAYS)}`, "-delete"]);
   // The checker that runs every pass, as one digest: this CI gate and the files its imports reach, read
@@ -467,15 +469,13 @@ export async function proveCommits(
       .map((file) => `${file} ${sha256OfFile(join(top, file))}`)
       .join("\n"),
   ).slice(0, 16);
-  const passed = new Set(
+  const remembered =
     runtimeProcess.env.ANA_GATE_FRESH === "1"
-      ? []
-      : lines(
-          await Bun.file(record)
-            .text()
-            .catch(() => ""),
-        ),
-  );
+      ? ""
+      : await Bun.file(record)
+          .text()
+          .catch(() => "");
+  const passed = new Set(lines(remembered));
   const free: string[] = [];
   const made: string[] = [];
   const failures: (Failure & { index: number })[] = [];
@@ -499,11 +499,9 @@ export async function proveCommits(
     const child = Bun.spawn(["bun", GATE, ...FLAGS[pass]], {
       cwd: tree,
       env: {
+        ...keysIf(pass === "static", () => ({ ANA_TEST_WORKERS: share })),
         ...runtimeProcess.env,
         ANA_TEST_BAIL: "1",
-        ...keysIf(pass === "static" && runtimeProcess.env.ANA_TEST_WORKERS === undefined, () => ({
-          ANA_TEST_WORKERS: share,
-        })),
       },
       stdin: "ignore",
       stdout: fd,
@@ -523,13 +521,10 @@ export async function proveCommits(
     const said = output.map((line) => /^gate: step (\S+) (failed|gave no verdict)/u.exec(line));
     const [, failedStep = "the gate", verdict = "failed"] =
       said.findLast((line) => line?.[2] === "failed") ?? said.findLast(Boolean) ?? [];
-    const failure = { commit, step: failedStep, log, verdict: verdict === "failed" };
+    const state = verdict === "failed" ? "failure" : "error";
+    const failure = { commit, step: failedStep, log, verdict: state === "failure" };
     failures.push({ index, ...failure });
-    mark(
-      commit,
-      failure.verdict ? "failure" : "error",
-      failure.verdict ? "failed on its own checkout" : "its runner gave no verdict",
-    );
+    mark(commit, state, FAILED[state]);
     console.error(output.slice(-30).join("\n"));
     console.error(`${who}: ${failedLine(failure)}. Log: ${log}`);
   };

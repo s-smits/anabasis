@@ -54,7 +54,7 @@ import {
   proveCommits,
   short,
 } from "./gate.ts";
-import { gh, MERGEABLE_CONTEXT, openPulls, type Pull } from "./pulls.ts";
+import { api, gh, MERGEABLE_CONTEXT, openPulls, postStatus, type Pull } from "./pulls.ts";
 
 /** Git names a ref that does not exist by an all-zero object name (githooks(5), pre-push). */
 const ABSENT = /^0+$/u;
@@ -95,9 +95,7 @@ function secretsIn(root: string, line: readonly string[], tips: readonly string[
  *  asked that a pushed pull request still show the check. A failure to mark is said and nothing more. */
 async function mark(root: string, pushed: readonly { readonly branch: string; readonly sha: string }[]) {
   const deadline = Date.now() + MARK_WAIT_MS;
-  while (
-    !pushed.every(({ sha }) => gh(root, ["api", `repos/{owner}/{repo}/commits/${sha}`, "--silent"]).ok)
-  ) {
+  while (!pushed.every(({ sha }) => gh(root, ["api", api(`commits/${sha}`), "--silent"]).ok)) {
     if (Date.now() > deadline) {
       say(
         `GitHub does not hold ${pushed.map(({ sha }) => short(sha)).join(", ")}, so nothing was marked pending.`,
@@ -131,7 +129,7 @@ async function mark(root: string, pushed: readonly { readonly branch: string; re
         ({ sha }) =>
           gh(root, [
             "api",
-            `repos/{owner}/{repo}/commits/${sha}/status`,
+            api(`commits/${sha}/status`),
             "--jq",
             `[.statuses[] | select(.context == "${MERGEABLE_CONTEXT}")] | length`,
           ]).out === "0",
@@ -139,21 +137,9 @@ async function mark(root: string, pushed: readonly { readonly branch: string; re
       .map(({ branch, sha }) => ({ name: branch, sha })),
     ...above.map((pull) => ({ name: `#${String(pull.number)}`, sha: pull.headRefOid })),
   ];
+  const description = "waiting for bun run land to prove every commit up to this head";
   const failed = heads.filter(
-    ({ sha }) =>
-      !gh(root, [
-        "api",
-        "-X",
-        "POST",
-        `repos/{owner}/{repo}/statuses/${sha}`,
-        "-f",
-        "state=pending",
-        "-f",
-        `context=${MERGEABLE_CONTEXT}`,
-        "-f",
-        "description=waiting for bun run land to prove every commit up to this head",
-        "--silent",
-      ]).ok,
+    ({ sha }) => !postStatus(root, sha, { context: MERGEABLE_CONTEXT, state: "pending", description }),
   );
   const named = (each: readonly { readonly name: string }[]) => each.map(({ name }) => name).join(", ");
   const done = heads.filter((head) => !failed.includes(head));

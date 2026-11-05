@@ -2,7 +2,7 @@ import { defineRule, type ESTree } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
 import { importTracker } from "../shared/import-fix.ts";
 import { withoutProse } from "../shared/masked.ts";
-import { everyStatementList, onlyStatement, singleConst } from "../shared/statements.ts";
+import { everyStatementList, identifierName, onlyStatement, singleConst } from "../shared/statements.ts";
 
 /**
  * An object literal followed by `if (x !== undefined) o.k = x;` is one literal with the key
@@ -85,7 +85,7 @@ function guardTest(
     [test.right, test.left],
     [test.left, test.right],
   ] as const) {
-    const isUndefined = absent.type === "Identifier" && absent.name === "undefined";
+    const isUndefined = identifierName(absent) === "undefined";
     const isNull = absent.type === "Literal" && absent.value === null;
     if (!isUndefined && !isNull) continue;
     const helper = isUndefined && test.operator === "!==" ? "keyIfDefined" : "keyIfNotNull";

@@ -133,7 +133,7 @@ function identifierName(value: unknown): string | null {
 function isNullish(value: unknown): boolean {
   if (!isNode(value)) return false;
   if (value.type === "Literal") return value.value === null;
-  return value.type === "Identifier" && value.name === "undefined";
+  return identifierName(value) === "undefined";
 }
 
 /** `instanceof`, `in` and a comparison against null or undefined each prove one operand. */

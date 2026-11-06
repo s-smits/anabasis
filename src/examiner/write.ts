@@ -297,7 +297,6 @@ function proposeTool(desk: Desk): SeatTool {
     if (before === "now") return "An instance proposed before was not taken again.";
     if (before === "earlier") return "An instance an earlier session wrote was not taken again.";
     if (spent(desk)) return "An instance was not taken: this session can propose no further task.";
-    if (supplied(desk)) return `An instance was not taken. ${SUPPLIED}`;
     // Until 14 October an instance was still proposed after the deadline: recode-151's x-1 ended with
     // two batches of room solves killed so.
     if (stop.aborted) return "An instance was not taken: the session has ended.";

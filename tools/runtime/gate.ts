@@ -164,19 +164,12 @@ const WHAT = {
 } as const satisfies Record<Pass, string>;
 const FAILED = { failure: "failed on its own checkout", error: "its runner gave no verdict" } as const;
 const FLAGS = { static: ["--static"], whole: [] } as const satisfies Record<Pass, readonly string[]>;
-/** The test wrapper's two lines that send failed files to a second run, which then decides, in the
- *  words a pulse repeats. A `host-wall: error:` or `idle-wall: error:` line keeps the failures. */
-const RERUNS: readonly (readonly [RegExp, (said: string) => string])[] = [
-  [
-    /host-wall: (.*); running their /u,
-    (said) => `; ${said}, so the failed files are running again in one fresh process and that run decides`,
-  ],
-  [
-    /idle-wall: retrying (.*) one at a time /u,
-    (said) =>
-      `; the idle wall ended the suite, so its ${said} are running again one at a time and that run decides`,
-  ],
-];
+/** The test wrapper's line that sends the files the idle wall left unfinished to a second run,
+ *  which then decides, in the words a pulse repeats. */
+const RERUN = /idle-wall: retrying (.*) one at a time /u;
+const RESULT = /^\((?:pass|fail|skip|todo)\) /u;
+/** The most of one failed test's output a failed pass prints; the log holds the rest. */
+const TEST_REPORT_LINES = 200;
 /** A pass keeps its output in a log and prints nothing for minutes, which reads like a hung push. */
 const PULSE_MS = (Number(runtimeProcess.env.ANA_GATE_PULSE_SECONDS) || 60) * 1000;
 const LOG_DAYS = 14;
@@ -412,14 +405,34 @@ function pulse(log: string, started: number): string {
   } catch {
     // The child has not written its first line yet.
   }
-  const rerun = RERUNS.flatMap(([pattern, said]) => {
-    const match = pattern.exec(text)?.[1];
-    return match === undefined ? [] : [said(match)];
-  });
+  const rerun = RERUN.exec(text)?.[1];
   const minutes = Math.floor((Date.now() - started) / 60_000);
   const passed = text.match(/\(pass\)/gu)?.length ?? 0;
-  const failed = text.match(/\(fail\)/gu)?.length ?? 0;
-  return `still running after ${String(minutes)} min: ${String(passed)} tests passed, ${String(failed)} failed so far${rerun[0] ?? ""}.`;
+  // Bun prints each failure again in its closing summary, word for word, duration included.
+  const failed = new Set(text.match(/\(fail\) .*/gu)).size;
+  const rerunning =
+    rerun === undefined
+      ? ""
+      : `; the idle wall ended the suite, so its ${rerun} are running again one at a time and that run decides`;
+  return `still running after ${String(minutes)} min: ${String(passed)} tests passed, ${String(failed)} failed so far${rerunning}.`;
+}
+
+/** Each failed test once, with what it printed and its assertion, so that whoever fixes it reads
+ *  them at the failure line. The log's last lines alone can miss them: on 5 November S10's assertion
+ *  stood about 6,400 lines above the end of its bailed run, which the other workers' files filled. */
+function failedTests(output: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const report: string[] = [];
+  let start = 0;
+  for (const [index, line] of output.entries()) {
+    if (!RESULT.test(line)) continue;
+    if (line.startsWith("(fail) ") && !seen.has(line)) {
+      seen.add(line);
+      report.push(...output.slice(Math.max(start, index - TEST_REPORT_LINES), index + 1));
+    }
+    start = index + 1;
+  }
+  return report;
 }
 
 /** One line for a failure, the same for every caller. */
@@ -520,7 +533,7 @@ export async function proveCommits(
     const failure = { commit, step: failedStep, log, verdict: state === "failure" };
     failures.push({ index, ...failure });
     mark(commit, state, FAILED[state]);
-    console.error(output.slice(-30).join("\n"));
+    console.error([...failedTests(output), ...output.slice(-30)].join("\n"));
     console.error(`${who}: ${failedLine(failure)}. Log: ${log}`);
   };
   const running = new Set<Promise<void>>();

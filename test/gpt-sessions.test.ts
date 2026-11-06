@@ -95,8 +95,9 @@ describe("a launch", () => {
     plan({
       flaky: [{ thread: "thread_flaky_0001", exit: 1 }, { report: "report from flaky" }],
       limited: [{ stderr: "429 Too Many Requests", exit: 1 }],
+      spent: [{ stderr: "You've hit your usage limit.", exit: 1 }],
     });
-    const sessions = ["ok", "flaky", "limited"].map((name) => ({ name, task: `Task of ${name}.` }));
+    const sessions = ["ok", "flaky", "limited", "spent"].map((name) => ({ name, task: `Task of ${name}.` }));
     const manifest = join(root, "manifest.json");
     writeFileSync(manifest, capturedJsonStringify({ workdir, sessions }));
     const launched = run(
@@ -128,6 +129,7 @@ describe("a launch", () => {
       ["ok", "completed", 1, null],
       ["flaky", "completed", 2, null],
       ["limited", "failed", 2, "rate-limit"],
+      ["spent", "failed", 2, "rate-limit"],
     ]);
     const resumed = calls().filter((call) => call.name === "flaky")[1];
     expect(calls()[0]?.args.slice(0, 2)).toStrictEqual(["--search", "exec"]);
@@ -138,7 +140,7 @@ describe("a launch", () => {
     expect(first.stdout).toContain("## ok");
     expect(first.stdout).toContain("Failure kind: rate-limit");
     expect(run("--drain", out).stdout).toBe("");
-    plan({ limited: [{ report: "report from limited" }] });
+    plan({ limited: [{ report: "report from limited" }], spent: [{ report: "report from spent" }] });
     const before = calls().length;
     const retried = run("--retry", out, "--codex-bin", codex);
     expect(retried.code).toBe(0);
@@ -146,7 +148,7 @@ describe("a launch", () => {
       calls()
         .slice(before)
         .map((call) => call.name),
-    ).toStrictEqual(["limited"]);
+    ).toStrictEqual(["limited", "spent"]);
     expect(run("--drain", out).stdout).toContain("report from limited");
   });
 

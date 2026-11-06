@@ -32,7 +32,7 @@ take the comparison's billed dollars past the cap.
 - **room**: at least one task is informative for the reference. It passes some solves but not all;
   another valid answer improves on one of its answers by the objective gap floor; or it passes no
   solve while a valid answer is on record. The better answer may be its own, the other harness's
-  or the author's (`informative`, which `try_task` also read until 1 November).
+  or the author's (`informative`).
 - **too-hard**: no valid answer exists on record.
 - **none**: a valid answer exists, but no task is informative.
 

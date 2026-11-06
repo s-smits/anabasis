@@ -50,8 +50,8 @@ so it is in `git log` before anything is removed and survives a compaction.
 - **The boundaries**: every case the old tests hold, read whole, one line each, and every guard in
   the old code that no test holds: a refusal, a check before something is deleted, a fallback. The
   rewrite keeps each one or retires it with a reason. A guard no test holds is the one a rewrite
-  drops unseen: the check that no process works in a worktree before `retire` removes it had no
-  test until the rewrite of 28 October.
+  drops unseen: the check that no process works in a worktree before `retire` removes it once had no
+  test.
 
 Two compartments carry two hypotheses, or they are one compartment.
 

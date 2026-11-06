@@ -631,6 +631,9 @@ Write plain, understated British English for a careful colleague who has not rea
   dates. A head comment says why the code is as it is, with the record and the date.
 - A prompt states each fact once, where it belongs; when an interface failure recurs, fix the tool
   instead of adding a sentence.
+- A skill says how things are now, in general statements with general examples: no date, and no
+  chronology of how it came to be ("an older log" where a reader meets an old format). History goes
+  to the commit, the pull request, the backlog or a head comment.
 
 **In `repository-practice`, section 13** (`code-and-writing.md`): the long form, with examples.
 

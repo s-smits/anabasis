@@ -25,7 +25,7 @@ Choose the reference for the mechanism you are working on:
 | --- | --- |
 | change `tools/d2/harness-builder.ts`, `tools/d2/campaign-actions.ts` or a Builder campaign tool | `references/builder-conversation.md` |
 | explain why `compare` did something other than what the Builder asked, or why the host promoted or released (`comparedOf`, `promoteOwed`, `releaseOwed`) | `references/builder-conversation.md` |
-| ask whether a move is recorded, counted against `--moves`, or carries `led` (`asked` before 5 November) | `references/builder-conversation.md` |
+| ask whether a move is recorded, counted against `--moves`, or carries `led` (`asked` in an older log) | `references/builder-conversation.md` |
 | change the Builder's deadline, its clock during a campaign action, or compaction | `references/builder-conversation.md` |
 | add an event kind, a file beside the log, or a reader of a fact the log holds | `references/the-log.md` |
 | ask what a condition names, or whether two solves are comparable | `references/the-log.md`; run `scripts/conditions.ts` on the log |
@@ -59,7 +59,7 @@ An explicit path can read a remote host's archived copy after that host stops li
 It reports:
 
 - Each `campaign.ended`, its reason and preceding `campaign.move` counts. `led` marks
-  a Builder choice that differed from the table (`asked` in a log before 5 November). Moves after the last ending are shown separately.
+  a Builder choice that differed from the table (`asked` in an older log). Moves after the last ending are shown separately.
 - The current budget, improvement patience (`stopRule`), supply patience (`supplyRun`),
   consecutive crashes (`crashedRun` against `CRASHES`) and idle conversations
   (`idleOf` against `IDLE`).
@@ -79,5 +79,5 @@ bun .claude/skills/campaign-mechanics/scripts/conditions.ts <name | /abs/path/to
 It lists settings in first-use order (`settingId`) and their changes: model, effort, compaction
 and side values; limit and runtime keys; short digests for other fields. For each comparison,
 it reports differences beyond harness, tool tree and task, or `comparable` when none exist.
-It also groups practice solves, and an earlier log's Examiner room solves (until 1 November). A host-code change appears as a changed
+It also groups practice solves, and an older log's Examiner room solves. A host-code change appears as a changed
 `host`. Output omits tasks but remains exam-side and must stay out of tracked files.

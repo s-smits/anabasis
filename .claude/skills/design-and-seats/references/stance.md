@@ -27,7 +27,7 @@ second because code cannot reason about a domain it has never seen. Seven conseq
    towards it, and one told each answer's distance from its limit moves the limits. So the Examiner
    hears what was measured on the reference side, with no number to reach (section 3, "What the
    Examiner reads"), and the solve budget, within which a better method answers what a worse does
-   not. It also learns which harness won each task. On 20 October the operator accepted that this
+   not. It also learns which harness won each task. The operator accepted that this
    feedback may shape tasks towards the newest harness, helping the Examiner find where the
    exam no longer distinguishes methods.
 3. **Keep the Builder free.** It may change or rewrite anything in the harness. One limit stands:

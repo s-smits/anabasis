@@ -89,5 +89,5 @@ its reasons and edges.
     result. Do not patch, triage or report such an ending as a failure, count it against a change,
     or spend a pull request waiting it out; a generic 429, a timeout or a crash naming no limit is
     investigated. Logins are spent soonest weekly reset first, a nearly spent one included (`room`,
-    `tools/runs/logins.ts`; operator, 25 October). `hoursLine` (`tools/wri/time.ts`) gives a run's
+    `tools/runs/logins.ts`; operator). `hoursLine` (`tools/wri/time.ts`) gives a run's
     hours with and without its recorded waits.

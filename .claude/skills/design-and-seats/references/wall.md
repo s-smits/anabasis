@@ -17,7 +17,7 @@ anything of a held-out task, even which one its harness won, could fit the test 
 would measure that fit. The Examiner can read feedback in the other
 direction: reference outcomes and each task's winning harness (section 3). This may shape tasks
 towards the newest harness. Admission limits that risk by requiring room on the reference; the
-operator accepted the risk on 20 October.
+operator accepted the risk.
 
 What crosses from the exam side to the build side is the closed list in `AGENTS.md` section 1, and
 nothing else (rule 3).

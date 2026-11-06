@@ -46,7 +46,7 @@ file notes/gate-record-report.md :: A subagent's count, checked against the log.
 ```
 
 Every source part is read at `--commit` through `git show`, never from a working tree, and the
-script refuses a commit no remote holds. On 3 November a whole-flow document appended the main
+script refuses a commit no remote holds. A whole-flow document once appended the main
 checkout's `AGENTS.md`, behind the stack's top, and the Oracle's sharpest contradiction was one
 the top had already resolved. So name the stack's top, or the commit the runs in question ran,
 and cite every other commit by its own link. Each `src` part links to its GitHub lines, a `diff`
@@ -55,9 +55,11 @@ only. A table of the parts and their size follows the head. A `pr` part gives th
 branch, head, body and files. A `file` path is read from the parts file's folder.
 
 **Take generously; do not trim to a size.** A document of 100,000 to 150,000 o200k tokens has
-served (3 November about 100,000, 4 November 142,579), and the script prints the size it made. It
+served, and the script prints the size it made. It
 caps nothing: append everything relevant and say why each part is there. Put the sources the
-question turns on in whole or by declaration, and the rest as links.
+question turns on in whole or by declaration, and the rest as links. **A size the operator names
+in tokens is an indication, not a limit.** Go over or under it wherever the question asks for that,
+say the size made, and do not trim or pad to reach it.
 
 **Choose log slices from what you already know.** You do not need to read a log before slicing
 it. A guess at a wide range is fine: a range past the end stops at the end, and a selector that
@@ -153,8 +155,8 @@ bun .claude/skills/oracle-handover/scripts/bundle.ts <dir> [--max-mb 20]
 It puts every file that is not itself a zip to the repository's secret rules and refuses the
 bundle on a hit, zips the folder beside itself, tests the zip and prints its size and file
 count. Its default cap is 20 MiB, overridden by `--max-mb`. If it refuses the size, reduce the
-evidence to what the question needs or use a larger authorised cap. Receipts from before
-11 October 2026 may hold the env file's path; current receipts set `envFile` to `null`
+evidence to what the question needs or use a larger authorised cap. Older receipts
+may hold the env file's path; current receipts set `envFile` to `null`
 (`keepReceipt`, `tools/d2/harness-builder.ts`). Read older receipts for private paths before
 sending. Never copy an env file. Keep a copy of
 the document in the local notes, so the next handover can see what was asked.

@@ -29,9 +29,7 @@ evaluates the nine `ROWS` in order and returns the first applicable move with it
    conversation.
 8. `unread`: where admission would take the comparison, tasks held out since the last reading are
    compared (`heldSince`; `programs-of:` remains a harness name for an audit by hand). A harness no
-   comparison has read waits for the Builder's own `compare`: until 5 November it was compared once
-   the opening's Builder sessions (`--sessions`, 2) had run, 3 times in the 108 paid campaigns
-   opened from 28 October. After a promotion, until one has tallied a task in the epoch, a **starter comparison**
+   comparison has read waits for the Builder's own `compare`. After a promotion, until one has tallied a task in the epoch, a **starter comparison**
    reads those tasks, whatever harness waits. It draws as every comparison does, those
    tasks first and then older ones, so that the promotion it confirms is read beyond the tasks
    written above the new reference's grade. A waiting harness is read again on new
@@ -40,16 +38,13 @@ evaluates the nine `ROWS` in order and returns the first applicable move with it
 9. `build`: otherwise the Builder builds. Where comparison admission would refuse the next
    comparison for want of tasks (`refusals`, `src/campaign/admission.ts`), or the last comparison
    tallied none, the reason says the Builder asks for tasks, and at supply patience the row ends the
-   campaign `exam`. Until 5 November a row `short` named an Examiner session there, which the
-   refusal already tells a Builder that compares (`held-short`). A Builder with nothing to work on asks the Examiner
+   campaign `exam`. The refusal tells a Builder that compares (`held-short`). A Builder with nothing to work on asks the Examiner
    itself.
 
 The table names no release. The host releases the practice owed (`practiceDue`, `releaseOwed` in
 `tools/d2/campaign-actions.ts`) as an Examiner session beside a conversation holds a task or ends,
 and as a Builder conversation opens where tasks were held out since the last release or promotion
-(`converse`, `tools/d2/harness-builder.ts`), never while a comparison is unreported. Until
-5 November the `build` row named the release (`practice`) and the Builder had a `release_practice`
-tool.
+(`converse`, `tools/d2/harness-builder.ts`), never while a comparison is unreported.
 
 ## Supply patience
 

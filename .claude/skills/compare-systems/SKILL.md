@@ -86,7 +86,7 @@ operator's word.
    included, so it runs a little over the solves' own. Show the table with the verdict, and quote no
    cost per valid answer. When a system's time is high, split its calls into the model's turns and
    the tools it ran (`solve.call` carries `ms`): a harness whose own programs search up to a
-   deadline fills the wall (Terra in the truss harness: 28.1 of 28.6 minutes a solve on 28 October),
+   deadline fills the wall (Terra in the truss harness: 28.1 of 28.6 minutes a solve),
    and a slower system is then a harness cost, not a slower model.
 3. **The A/A**, only at an even count of two solves or more.
 4. **One block a candidate.** Wins, losses and ties against the baseline; which measure carried the

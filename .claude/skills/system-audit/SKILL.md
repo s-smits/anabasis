@@ -50,23 +50,22 @@ blocks no row goes below them all. Vetting and the report keep that order.
 
 ## The record
 
-- **16 October.** Five Claude teammates read the promotion path at one commit, each writing what
+- **One commit, five readers.** Five Claude teammates read the promotion path at one commit, each writing what
   the path does and then its flaws, citing counts, ids and lines.
-- **29 October, round 1.** Three gpt-6.1-sol sessions at high effort, one each for measurement,
+- **A first round.** Three gpt-6.1-sol sessions at high effort, one each for measurement,
   the learning loop, and runtime and recovery, returned four bounded issues:
   - settlement corrections that three readers missed;
   - rollback selection;
   - stale drafts after a restart;
   - the provider-wait reader.
-- **29 October, round 2.** With those four assumed repaired, three sessions read accumulated
+- **A second round.** With those four assumed repaired, three sessions read accumulated
   capability, learning information and evaluation grounding. They confirmed one design-level
   flaw: an exam was accepted that left out the compilation the operator's prompt required. Two
   supported concerns stood beside it, and no false promotion was demonstrated
-  (`.ana/wri/2026-10-29-fundamental-sol-audit-2/vetting.md`).
+  (the round's `vetting.md` under `.ana/wri/`).
 
-- **11 October.** One prompt asked whether the factors were the right set, measurable from the
-  log, stated once and true to the source. It was kept in `a650fe98b:docs/prompts.md` until
-  30 October, and is the factors lens below.
+- **The factors.** One prompt asked whether the factors were the right set, measurable from the
+  log, stated once and true to the source. It was kept in `a650fe98b:docs/prompts.md`, and is the factors lens below.
 
 What both rounds lacked: every session was asked only for proved flaws, capped at two or three. So
 each reported the nearest bounded bug, and nothing asked whether a mechanism should exist at all.

@@ -90,7 +90,7 @@ start a step until the check named for the one before holds.
    spend, a change to a run or the tree and a read of an env file, so those hard rules hold in code.
    Claude Code offers the type only where the session's own checkout holds the file. Where the Agent
    tool lists no `wri-lane`, start the lanes from a session opened in a worktree at the stack's top,
-   never as `general-purpose`: on 4 November 72 lane sessions ran that way, unguarded, from a main
+   never as `general-purpose`: 72 lane sessions once ran that way, unguarded, from a main
    checkout the stack had moved past.
    *Check:* read the model each transcript recorded before using its report, and that each lane ran
    as `wri-lane` (its `subagent_type`).
@@ -177,7 +177,7 @@ a dependence between tasks. Neither prints a reason or a task's text.
 of a log's prose, the words a turn holds, with the nearest of a fixed set of anchors, and appends
 each batch's vectors to the reader store under `.ana/pulse/`, so a cut read goes on from where it was
 (`tools/wri/embed.ts` owns the model and the store, for any reader that wants vectors). It prints counts by seat, session and ending, never a passage. Its labels are leads and decide
-nothing. On five logs read on 5 November its own floor called every one thin, more than half of the
+nothing. On five logs its own floor called every one thin, more than half of the
 units falling under the margin, and its line for a session adrift never fired, so read it as what a
 log's prose was about and not as whether the work advanced. A model that speaks only in tool calls
 leaves a row of noughts.
@@ -308,7 +308,7 @@ decisions and predictions. The primary then treats the note as research, in two 
 
 Vet every finding, and above all every one that would change code or a decision. Write the result
 as `<dir>/vetting.md`, one row a finding with its verdict and what was checked, and never report a
-finding that was only triaged as vetted. On 22 October eight of thirteen findings were first
+finding that was only triaged as vetted. In one investigation eight of thirteen findings were first
 reported as adjudicated after triage alone.
 
 **Backtrack the predictions before the synthesis's own findings.** Where the campaigns belong to a

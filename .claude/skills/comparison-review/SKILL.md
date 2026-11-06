@@ -218,7 +218,7 @@ leniency:
 
 ## The record
 
-- **5 November 2026.** The first promoted jobstat harness scored 310 of 550 against the bare
+- **A promoted harness below the bare Starter.** The first promoted jobstat harness scored 310 of 550 against the bare
   Starter's 342 on eight JobBench tasks, one rollout each (`docs/backlog/jobbench-scoring.md`). The
   operator asked "maybe we did not copy everything and the system was brittle", then "launch another
   opus review subagent, only give it hints". Levels 3, 4, 6 and 7 found the files carried, false

@@ -14,7 +14,7 @@ Simplification here has two halves. The **deterministic half** is `bun run simpl
 strict lint. It was measured from 628 commits and 20 recorded passes. It names each shape with a
 fixed argument, lists every site under it, and records a kept site in the not-slop ledger with a
 checkable reason. A shape that held up there was promoted to a lint rule once its sites reached
-zero. On 20 October it found one site and the filesystem register over the whole tree. What is
+zero. What is
 left for a reading pass is what no program can decide: why code exists, whether any recorded run
 uses it, and which owner already does its job. This skill does that half, and does it the way
 the census works: by shape, with every site decided, every decision recorded, and every recurring
@@ -78,14 +78,14 @@ removes the most first. Each row names the recorded case that put it here.
 
 | # | Shape | Settle it with | Recorded case |
 | --- | --- | --- | --- |
-| H1 | **Nothing on record uses it.** A flag, a field or an option whose value never varied, a branch no log reaches, a decision that never changed | Count it in every log that could hold it (`AGENTS.md`, section 11: count an event kind in the logs that hold it), and in the launch receipts. One value everywhere means the option goes | The named scored set: `tasks: null` in all 544 `campaign.setting` events on one host and 17 on another, removed with −123 production lines (20 October). The Diagnoser: 20 of 20 readings named the solver, removed with 1,063 lines |
-| H2 | **A second reading of one fact.** A reader that derives again what a fold or a report already states | Find the fold that reads it (`AGENTS.md`, section 5, habit 2) and call that | `onValidity` in #276 derived again what every report prints as "the objective decided N tasks", and was removed with its report line and test before publication (20 October) |
+| H1 | **Nothing on record uses it.** A flag, a field or an option whose value never varied, a branch no log reaches, a decision that never changed | Count it in every log that could hold it (`AGENTS.md`, section 11: count an event kind in the logs that hold it), and in the launch receipts. One value everywhere means the option goes | The named scored set: `tasks: null` in all 544 `campaign.setting` events on one host and 17 on another, removed with −123 production lines. The Diagnoser: 20 of 20 readings named the solver, removed with 1,063 lines |
+| H2 | **A second reading of one fact.** A reader that derives again what a fold or a report already states | Find the fold that reads it (`AGENTS.md`, section 5, habit 2) and call that | `onValidity` in #276 derived again what every report prints as "the objective decided N tasks", and was removed with its report line and test before publication |
 | H3 | **A guard for a state that cannot arrive.** An earlier refusal, a type or a removal already excludes it | Name the refusal that comes first, and the test of its hostile case | A guard that existed because a removed producer could yield nothing goes with that producer |
-| H4 | **A patch on the instance.** The fix answers the trigger seen live, and the class stays open. Ask the operator's question of 19 October: would the bug occur next time? | Find the owner every instance runs through, fix it there, and remove the per-trigger patch | A move that changed nothing killed a campaign without an ending. It was fixed in `harnessBuilder`, where every move ends, rather than in the one draw that took no task (#299, 20 October) |
-| H5 | **A helper or a wrapper inside one module, with one caller.** The census's `single-reader-export` sees whole modules only | Inline it unless its name explains a branch the caller would otherwise carry | `shellSeconds` into `heldSeconds`, `carryMemoryForward` into `keepMemory` (14 and 15 October) |
-| H6 | **A fact stated twice in prose.** Two skills, a prompt and its tool result, `AGENTS.md` and a head comment | Keep it where it is read, and point to it from the rest (`AGENTS.md`, section 13) | Four restated passages across the skills became pointers to the skills that own them (9 October) |
-| H7 | **One computation done twice.** Parse once, read once, compute once | Hold the first result and pass it on | The Referee's verdict parsed once (7 October) |
-| H8 | **Hand-rolled where the platform has it.** Bun, an installed dependency, an owner in `src/meta` (HABITS 12.8), or a library used at one to three sites that the platform replaces | Cite the platform's or the reference project's form, then fit it into the existing owner. Never add a dependency for a few lines | The operator's ask of 1 October |
+| H4 | **A patch on the instance.** The fix answers the trigger seen live, and the class stays open. Ask the operator's question: would the bug occur next time? | Find the owner every instance runs through, fix it there, and remove the per-trigger patch | A move that changed nothing killed a campaign without an ending. It was fixed in `harnessBuilder`, where every move ends, rather than in the one draw that took no task (#299) |
+| H5 | **A helper or a wrapper inside one module, with one caller.** The census's `single-reader-export` sees whole modules only | Inline it unless its name explains a branch the caller would otherwise carry | `shellSeconds` into `heldSeconds`, `carryMemoryForward` into `keepMemory` |
+| H6 | **A fact stated twice in prose.** Two skills, a prompt and its tool result, `AGENTS.md` and a head comment | Keep it where it is read, and point to it from the rest (`AGENTS.md`, section 13) | Four restated passages across the skills became pointers to the skills that own them |
+| H7 | **One computation done twice.** Parse once, read once, compute once | Hold the first result and pass it on | The Referee's verdict parsed once |
+| H8 | **Hand-rolled where the platform has it.** Bun, an installed dependency, an owner in `src/meta` (HABITS 12.8), or a library used at one to three sites that the platform replaces | Cite the platform's or the reference project's form, then fit it into the existing owner. Never add a dependency for a few lines | The operator's ask |
 
 v2's own review named four forms its growth took (`7f0add79:docs/simplify.md`, section 5). Each is
 an H1, H2 or H4 question: two generations of one mechanism standing side by side; a weak seat
@@ -113,7 +113,7 @@ still does.
 
 ## 3. The disagreement test
 
-The operator's rule of 20 October: if you disagree with fixing something, it is probably too
+The operator's rule: if you disagree with fixing something, it is probably too
 complex. So a site stays only on **one sentence a reviewer can check** against a file, a test or a
 log. "A test pins it", "it works", "it may be needed" and "the fix touches many files" are no such
 sentence. Where the reason takes more than one sentence, or argues that the fix is hard rather
@@ -152,7 +152,7 @@ Moving a helper's body into three callers is no removal.
 - **A producer or a reader is replayed.** Code that writes events, rows, reports or prompts is
   measured on recorded input: `bun run runs replay` reads every campaign log in the repository's
   worktrees and reports selected folds. Count the changed output before and after with its owning
-  reader, and say which logs were read. On 11 October a pass replayed all 66 logs and found them
+  reader, and say which logs were read. For example, a pass replayed all 66 logs and found them
   identical. A count taken any other way is labelled an estimate.
 - While editing, run only the owning tests: `bun run test -- <paths>`. Run `bun run commit:check`
   before the commit, and the CI gate (`AGENTS.md`, section 11) once before delivery, reading
@@ -204,7 +204,7 @@ rule as a warning in a strict lint run, a whole-tree shape as a scan in `tree-fi
 `bun run simplify` prints. It is
 promoted to `.oxlintrc.json` only once its sites are at zero and it passes the admission test: at
 every site, some spelling satisfies every other rule. A heuristic reports and never blocks, since
-a false positive costs more than a miss (operator, 1 October). The shapes of section 2 that need a
+a false positive costs more than a miss (operator). The shapes of section 2 that need a
 log, a caller's intent or a model's reading stay here. A new one joins the table with its recorded
 case.
 

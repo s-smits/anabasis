@@ -116,7 +116,7 @@ Each card gets one:
 - **Dropped.** Failed the gate. Stays listed with the question it failed, so the next review need not
   rediscover it and the count of ideas stays honest.
 
-## Worked cards, 5 November 2026
+## Worked cards
 
 The first JobBench reading of the promoted jobstat harness. Every row is at the level "Planned" or
 below. The dispositions are the author's and were not made blind; none has been tested forward. They

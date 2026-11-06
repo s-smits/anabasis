@@ -33,7 +33,7 @@ Write "nothing" when you read nothing yet. -->
 Each log is its campaign's whole record: one event a line, append-only. Its folder also holds
 the check program as it was staged, at `checks/` for a stored pack and at `exams/<digest>/checks/`
 for an exam the campaign drafted, and `states/`, every harness state by digest. A
-campaign command that ran left `launch-run-<n>.json` there as well (and until 11 October a round
+campaign command that ran left `launch-run-<n>.json` there as well (and an older round
 started by `bun run runs launch` left `launch-<session>.json`): the flags it was
 given, the commit and the load it started under, with its output beside it. Read all of them; write
 to none.
@@ -57,7 +57,7 @@ to none.
 - You are independent: open no other lane's prompt or report and no synthesis of this investigation.
 - Run the repository's commands (`bun tools/...`, `bun .claude/...`) from the checkout the campaigns'
   rows name, which has its dependencies installed, and name a log or a tree by its path: a
-  campaign's own tree may hold none, and on 14 October four lanes could not start a reader there.
+  campaign's own tree may hold none, and four lanes once could not start a reader there.
 - Read source where each campaign's host line says the code it last ran stands: the campaign's own tree
   when the line names it, and otherwise the checkout the rows name. Where the line says the last
   condition ran under another host hash than both, every statement you make about source is about

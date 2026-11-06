@@ -12,6 +12,8 @@ const bash = (command: string) => refusalOf("Bash", { command });
 describe("the lane guard", () => {
   it("lets a lane write its own report, the synthesis and scratch, and nothing else", () => {
     expect(refusalOf("Write", { file_path: `${WRI}/lanes/07-report.md` })).toBeNull();
+    expect(refusalOf("Write", { file_path: `${WRI}/lanes/34a-report.md` })).toBeNull();
+    expect(refusalOf("Write", { file_path: `${WRI}/lanes/34-prompt.md` })).not.toBeNull();
     expect(refusalOf("Edit", { file_path: `${WRI}/synthesis.md` })).toBeNull();
     expect(refusalOf("Write", { file_path: join(tmpdir(), "lane-07", "counts.txt") })).toBeNull();
     expect(

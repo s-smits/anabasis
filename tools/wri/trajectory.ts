@@ -259,24 +259,27 @@ export function ownPrograms(files: readonly { readonly path: string; readonly by
     .map(({ path }) => path);
 }
 
+/** The programs a kept harness wrote, under the real root of its tool tree. */
+export function ownFilesOf(state: string): { readonly root: string; readonly paths: readonly string[] } {
+  const tree = join(state, TOOL_TREE_DIR);
+  if (!existsSync(tree)) return { root: tree, paths: [] };
+  const root = realpathSync(tree);
+  const files = pathsUnder(root).flatMap((path) => {
+    const stat = lstatSync(join(root, path));
+    return stat.isFile() ? [{ path, bytes: stat.size }] : [];
+  });
+  return { root, paths: ownPrograms(files) };
+}
+
 /** A kept harness's weight from its state beside the log, or null where the copy keeps none. */
 export function weightOf(state: string): Weight | null {
   if (!existsSync(state)) return null;
   const text = (file: string) =>
     existsSync(join(state, file)) ? readFileSync(join(state, file), "utf8") : "";
   const nonblank = (body: string) => body.split("\n").filter((line) => line.trim() !== "").length;
-  const tree = join(state, TOOL_TREE_DIR);
-  const real = existsSync(tree) ? realpathSync(tree) : null;
-  const files =
-    real === null
-      ? []
-      : pathsUnder(real).flatMap((path) => {
-          const stat = lstatSync(join(real, path));
-          return stat.isFile() ? [{ path, bytes: stat.size }] : [];
-        });
-  const own = ownPrograms(files);
-  const lines = own.reduce((sum, path) => sum + nonblank(readFileSync(join(real ?? "", path), "utf8")), 0);
-  return { guide: nonblank(text(`${AGENT_DIR}${GUIDE_FILE}`)), files: own.length, lines };
+  const { root, paths } = ownFilesOf(state);
+  const lines = paths.reduce((sum, path) => sum + nonblank(readFileSync(join(root, path), "utf8")), 0);
+  return { guide: nonblank(text(`${AGENT_DIR}${GUIDE_FILE}`)), files: paths.length, lines };
 }
 
 /** The task grades of a lane 34 report: its `task` rows, anything else passed over. */

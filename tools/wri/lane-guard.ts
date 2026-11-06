@@ -27,7 +27,7 @@ interface Input {
 }
 
 /** A lane writes its report, and the synthesis session its note, both inside an investigation. */
-const WRITABLE = /\/\.ana\/wri\/[^/]+\/(?:lanes\/\d{2}-report\.md|synthesis\.md)$/u;
+const WRITABLE = /\/\.ana\/wri\/[^/]+\/(?:lanes\/\d{2}[a-z]?-report\.md|synthesis\.md)$/u;
 
 /** Scratch a lane keeps for itself, which the hard rules put in a temporary directory of its own. */
 const SCRATCH = [tmpdir(), realpathSync(tmpdir()), "/tmp", "/private/tmp"];
@@ -70,7 +70,7 @@ const LIFE = new Set([
   "fetch",
   "on",
 ]);
-const PRIMARY = new Set(["start", "lanes", "collect", "synthesis", "derive"]);
+const PRIMARY = new Set(["start", "lanes", "collect", "synthesis", "derive", "packets"]);
 
 /** Git verbs that change a tree, a branch or a remote; `stash` and `worktree` only past `list`. */
 const GIT =

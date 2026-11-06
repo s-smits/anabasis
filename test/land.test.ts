@@ -30,6 +30,7 @@ import { afterAll, beforeEach, describe, expect, it } from "bun:test";
 
 import { execTextSync, spawnTextSync } from "./helpers/bun-spawn-sync.ts";
 import { fakeBun, gatesRun, logLines } from "./helpers/fake-bun.ts";
+import { STACK_MEMBERS } from "../tools/runtime/pulls.ts";
 
 const land = join(import.meta.dir, "..", "tools", "runtime", "land.ts");
 const fixture = mkdtempSync(join(tmpdir(), "ana-land-"));
@@ -731,5 +732,23 @@ describe("bun run land", () => {
     );
     expect(logLines(ghLog).some((line) => line.startsWith("workflow run"))).toBe(false);
     expect(gatesRun(gateLog)).toEqual([]);
+  });
+});
+
+describe("the stack a landing reads after a partial merge", () => {
+  it("leaves the members already merged out of the next landing's chain", () => {
+    const stacks = JSON.stringify([
+      {
+        number: 7,
+        open: true,
+        pull_requests: [
+          { number: 11, state: "closed" },
+          { number: 12, state: "open" },
+          { number: 13, state: "open" },
+        ],
+      },
+    ]);
+    const read = spawnTextSync("jq", ["-r", STACK_MEMBERS], { stdin: stacks });
+    expect(read.stdout.trim()).toBe("7 12,13");
   });
 });

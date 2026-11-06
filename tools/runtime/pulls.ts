@@ -12,6 +12,11 @@ import { decodeOutput, runSync } from "../../src/meta/subprocess.ts";
  *  passed, and the pre-push hook turns pending on each head stacked above a pushed branch. */
 export const MERGEABLE_CONTEXT = "mergeable";
 
+/** `gh api`'s filter over the stacks a pull request is in: the open one's number and its members still
+ *  open, bottom first. A stack keeps the members a partial merge took, listed closed, and until
+ *  5 November they read as part of the next landing, which `stackOf` then refused. */
+export const STACK_MEMBERS = String.raw`map(select(.open)) | first // empty | "\(.number) \(.pull_requests | map(select(.state == "open") | .number) | join(","))"`;
+
 /** An open pull request, in the fields `gh pr list --json` names. */
 export interface Pull {
   readonly number: number;
@@ -50,6 +55,10 @@ export function ghOrThrow(root: string, args: readonly string[]): string {
   if (!answer.ok) throw new Error(`gh ${args.join(" ")}: ${answer.err}`);
   return answer.out;
 }
+
+/** The default branch of the repository `root`'s remote names, as GitHub says now. */
+export const trunkOf = (root: string): string =>
+  ghOrThrow(root, ["repo", "view", "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"]);
 
 /** `gh api`'s form fields, `-f key=value` each, leaving out a field that has no value. */
 export const form = (fields: Readonly<Record<string, string | undefined>>): string[] =>

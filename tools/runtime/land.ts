@@ -9,7 +9,8 @@
  * new top where one was stacked meanwhile (`topAbove`). Proofs are remembered by tree, so a moved
  * top costs only its new commits. Named without `--auto`, a landing stops at the pull request named,
  * and a pull request stacked above it stays open, moved onto the trunk once the merge goes
- * through. With no pull request named, it
+ * through; `bun run split` then replays the rest onto the merge with every pass kept. With no pull
+ * request named, it
  * lands the stack that holds the oldest stacked pull request, its bottom on main with another above
  * it, and follows its top (`oldestStack`; operator, 27 October). It never follows into another
  * chain on main.
@@ -114,6 +115,8 @@ import {
   postStatus,
   type Pull,
   type Status,
+  STACK_MEMBERS,
+  trunkOf,
 } from "./pulls.ts";
 import {
   addedLine,
@@ -201,9 +204,6 @@ class Moved extends Refusal {}
 
 const say = (line: string): void => console.log(`land: ${line}`);
 const numbers = (pulls: readonly Pull[]): string => pulls.map((pull) => `#${String(pull.number)}`).join(", ");
-
-const trunkOf = (root: string): string =>
-  ghOrThrow(root, ["repo", "view", "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"]);
 
 /** The top of the longest chain of open pull requests above `from`, each based on the head of the
  *  one beneath it; `from` itself where none is. Of two chains of one length the older wins. */
@@ -436,12 +436,7 @@ async function awaitCi(root: string, top: Pull): Promise<void> {
  *  not say, is refused, since the top's merge would merge it alone into its base. */
 function stackOf(root: string, landing: Landing): number | null {
   const { top } = landing;
-  const read = gh(root, [
-    "api",
-    api(`stacks?pull_request=${String(top.number)}`),
-    "--jq",
-    String.raw`map(select(.open)) | first // empty | "\(.number) \(.pull_requests | map(.number) | join(","))"`,
-  ]);
+  const read = gh(root, ["api", api(`stacks?pull_request=${String(top.number)}`), "--jq", STACK_MEMBERS]);
   if (!read.ok) {
     throw new Refusal(`GitHub did not say which stack #${String(top.number)} is in: ${read.err} Land again.`);
   }

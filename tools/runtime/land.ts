@@ -196,6 +196,9 @@ export const CATEGORIES = new Set([
 const USAGE =
   "usage: bun run land -- [<pull request>] [--auto] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]";
 const TAG = /^v\d+\.\d+\.\d+$/u;
+/** The one command that replays a stack onto the trunk once what it stood on has landed. */
+const REPLAY = (top: number): string =>
+  `replay the stack onto it with \`bun .claude/skills/stack-pr/scripts/republish.ts --onto-main ${String(top)} --yes\``;
 
 class Refusal extends Error {}
 /** A head moved while the landing was proved. Passes are remembered by tree, so landing again costs
@@ -255,7 +258,8 @@ function readLanding(root: string, target: number): Landing {
   if (bottom.baseRefName !== trunk) {
     throw new Refusal(
       `#${String(bottom.number)} (${bottom.headRefName}) is based on ${bottom.baseRefName}, which is neither ${trunk} ` +
-        `nor an open pull request's head. Base it on what it stacks on, and land again.`,
+        `nor an open pull request's head. Where what it stood on has landed, ${REPLAY(target)}; otherwise base ` +
+        `it on what it stacks on, and land again.`,
     );
   }
   const trunkSha = git(root, ["ls-remote", "origin", `refs/heads/${trunk}`]).split("\t")[0] ?? "";
@@ -300,9 +304,12 @@ function checkChain(root: string, landing: Landing): void {
   let below = { name: `${landing.trunk}'s head`, sha: landing.trunkSha };
   for (const pull of landing.pulls) {
     if (!gitSays(root, ["merge-base", "--is-ancestor", below.sha, pull.headRefOid])) {
+      const how =
+        pull === landing.pulls[0]
+          ? `${REPLAY(landing.top.number)} and land again`
+          : `Replay it and every pull request above it on what is beneath it, push them together, and land again`;
       throw new Refusal(
-        `#${String(pull.number)} (${pull.headRefName}) does not contain ${below.name} ${short(below.sha)}. Replay ` +
-          `it and every pull request above it on what is beneath it, push them together, and land again.`,
+        `#${String(pull.number)} (${pull.headRefName}) does not contain ${below.name} ${short(below.sha)}. ${how}.`,
       );
     }
     below = { name: `#${String(pull.number)}'s head`, sha: pull.headRefOid };

@@ -15,10 +15,14 @@
  * head holds another's without standing on it (`doubled.ts`), which `land` refuses as well.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
+import { gitMaybe } from "#src/meta/git.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { doubledLines } from "#tools/runtime/doubled.ts";
 import { ranksOf } from "#tools/runtime/land.ts";
 import { openPulls, type Pull } from "#tools/runtime/pulls.ts";
+
+/** origin/main's head commit, as every reader of the trunk names it. */
+export const TRUNK = "origin/main^{commit}";
 
 /** The stacks: each the longest chain of open pull requests left, bottom first, longest first, and
  *  the pull requests on no such chain. A chain starts on a base that is no open pull request's head,
@@ -89,6 +93,28 @@ export function told(pulls: readonly Pull[], branch: string | null): string[] {
   ];
 }
 
+/** A line for each stack whose bottom stands on a branch that is not main, or misses origin/main's
+ *  head, naming the one command that replays it. On 6 November #632 stood on a branch that had
+ *  merged, and `land` found it only when asked to land. */
+export function offMain(root: string, pulls: readonly Pull[]): string[] {
+  const trunk = gitMaybe(root, "rev-parse", "--verify", "-q", TRUNK);
+  if (trunk === null) return [];
+  return chains(pulls).stacks.flatMap((line) => {
+    const [bottom, top] = [line[0], line.at(-1)];
+    if (bottom === undefined || top === undefined) return [];
+    const holds = gitMaybe(root, "merge-base", "--is-ancestor", trunk, bottom.headRefOid) !== null;
+    if (bottom.baseRefName === "main" && holds) return [];
+    const why =
+      bottom.baseRefName === "main"
+        ? `misses main at ${trunk.slice(0, 7)}`
+        : `stands on ${bottom.baseRefName}`;
+    return [
+      `off main: #${String(bottom.number)} ${why}; replay the stack with ` +
+        `bun .claude/skills/stack-pr/scripts/republish.ts --onto-main ${String(top.number)} --yes`,
+    ];
+  });
+}
+
 if (import.meta.main) {
   await runCommand(
     { name: "stack", usage: "stack.ts [--branch <branch>]", options: { branch: "text" } },
@@ -96,6 +122,7 @@ if (import.meta.main) {
       const open = openPulls(runtimeProcess.cwd());
       const repeating = doubledLines(runtimeProcess.cwd(), open);
       console.log(told(open, args.value("branch")).join("\n"));
+      for (const line of offMain(runtimeProcess.cwd(), open)) console.log(line);
       if (repeating.length > 0) console.log(["repeating another's commits:", ...repeating].join("\n  "));
     },
   );

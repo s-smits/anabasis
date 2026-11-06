@@ -3,7 +3,7 @@
 import { describe, expect, it } from "bun:test";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import { isString, type JsonObject, type JsonValue } from "../src/meta/json-shape.ts";
-import { keyIfNotNull } from "../src/meta/optional-key.ts";
+import { keyIfDefined, keyIfNotNull } from "../src/meta/optional-key.ts";
 import { answerRows } from "../tools/wri/answers.ts";
 import { indexOf } from "../tools/wri/folds.ts";
 import { routeRows } from "../tools/wri/routes.ts";
@@ -35,14 +35,21 @@ const reported = (session: string, reading: string, terms: JsonObject) =>
   });
 
 describe("answers", () => {
-  /** A comparison of one task whose four solves handed in `answers`, in order, or none for null. */
-  function oneTask(spelled: string, answers: readonly (JsonValue | null)[]) {
+  /** A comparison of one task whose four solves handed in `answers`, in order, or none for null, the
+   *  reference's two first, each measuring its place in `measures`, or nothing where that is empty. */
+  function oneTask(
+    spelled: string,
+    answers: readonly (JsonValue | null)[],
+    measures: readonly (number | undefined)[] = [],
+  ) {
     const { events, terms } = roundSolves("g-1", ["h1", "h2"], { task: spelled });
     const verdicts = startsIn(events).flatMap((solve, at) => {
       const answer = answers[at] ?? null;
-      return answer === null ? [] : [event("verdict", { solve, kind: "pass", answer })];
+      const objective = keyIfDefined("objective", measures[at]);
+      return answer === null ? [] : [event("verdict", { solve, kind: "pass", answer, ...objective })];
     });
-    return [...held("task"), ...events, ...verdicts, reported("g-1", "step", terms)];
+    const objective = { measure: "m", direction: "lower" };
+    return [...held("task"), ...events, ...verdicts, reported("g-1", "step", { ...terms, objective })];
   }
 
   it("counts a side that repeats itself apart from one that does not", () => {
@@ -64,6 +71,29 @@ describe("answers", () => {
     expect(missed[0]).toContain("both sides gave one answer on 0 of 0");
     const unanswered = answerRows(oneTask("PP PP", ["a", null, "c", "c"]));
     expect(unanswered[0]).toContain("0 of 0 under the reference");
+  });
+
+  it("reads two answers of different bytes and one objective as a repeat on the objective and none on the answer", () => {
+    const [row] = answerRows(oneTask("PP PP", [{ x: 1 }, { x: 2 }, "c", "d"], [1.5, 1.5, 2, 2.1]));
+    expect(row).toContain("0 of 1 under the reference; both sides");
+    expect(row).toContain(
+      "the objective repeated exactly on 0 of 1 and within the floor on 0 of 1 under the new harness, exactly on 1 of 1 and within the floor on 1 of 1 under the reference",
+    );
+    expect(row).not.toContain("1.5");
+  });
+
+  it("tells a measure within the floor from one repeated exactly", () => {
+    const [row] = answerRows(oneTask("PP PP", ["a", "b", "c", "d"], [1.5, 1.5, 2, 2.004]));
+    expect(row).toContain("exactly on 0 of 1 and within the floor on 1 of 1 under the new harness");
+  });
+
+  it("leaves a side out of the objective's count where a solve missed or measured nothing", () => {
+    // A failed solve's verdict holds no measure.
+    const missed = answerRows(oneTask("PF PP", ["a", "a", "c", "c"], [1.5, undefined, 2, 2]));
+    expect(missed[0]).toContain("exactly on 0 of 0 and within the floor on 0 of 0 under the reference");
+    expect(missed[0]).toContain("exactly on 1 of 1 and within the floor on 1 of 1 under the new harness");
+    const unmeasured = answerRows(oneTask("PP PP", ["a", "b", "c", "c"], [1.5]));
+    expect(unmeasured[0]).not.toContain("the objective repeated");
   });
 
   it("prints no answer", () => {

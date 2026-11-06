@@ -1269,7 +1269,8 @@ Grade before you read a result, in this order, writing each grade into the repor
    the copy does not keep (`versions.txt` says so) goes under `## Not read`, ungraded: refreshing
    the copy is the primary's (`runs fetch <name>`), and no lane reads another host's folder.
 3. Read `tasks.txt`: each scored task's public input and the comparisons that scored it, with no
-   outcome (`tools/wri/tasks.ts`), and the checks under `exams/` it is held to. Grade reach.
+   outcome (`tools/wri/tasks.ts`), and the checks under `exams/` it is held to. Grade reach on those.
+   The tasks marked as practised and never scored say what a version was built against.
 4. Only then read the results: `versions.txt` (each version's comparisons and promotions),
    `readings.txt` (each comparison's tally, the tally without the bill and its A/A), and rows D and
    E in `rows.txt` (each task's valid share).

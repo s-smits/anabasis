@@ -17,6 +17,9 @@
  * is read beside the climb.
  * A count over the gathered record alone misses campaigns not yet retired: on 6 November it held 13
  * reads where this holds 15.
+ * An origin can hold several writing sessions: on 6 November one read's 10-6-0 on the tasks read at
+ * its promotion held one writer's 1-5-0, which stood nearer the 0-6-0 on the tasks written after it
+ * than the rest of its own group. So each read also gives one line a writer.
  *
  * The tally `epochsOf` stored and read is printed as it is. The split is scored under this tree's
  * rule (`differenceOf`), so on an older log the two can differ. `--all` counts copies of one
@@ -53,6 +56,7 @@ function readLines(each: StarterRead, called: (digest: string) => string): strin
     `${each.session}: reference ${called(each.reference)} on the old side, starter ${called(each.starter)} on the new; tallies are the reference's wins, losses and ties`,
     `  stored ${wlt(each.stored)}, ${each.confirmed ? "a step, confirmed" : "no step"} at ${String(each.level)}; without the tasks that chose it, ${each.outside ? "a step" : "no step"}`,
     ...ORIGINS.map((origin) => originLine(origin, each.origins[origin])),
+    ...each.authors.map(({ session, tally }) => `  written by ${session}: ${wlt(tally)}`),
   ];
 }
 

@@ -60,7 +60,8 @@ bun .claude/skills/comparison-reading/scripts/starter-reads.ts <log.jsonl | camp
 - `starter-reads.ts` splits each promotion's starter read into the tasks that chose the harness, those
   written before and not drawn then, and those written after, each with its whole tally, the tasks on
   which validity differed and the rest. Each read names its sides, since a read has the reference on
-  the old side. It also says whether the tasks that did not choose the harness read a step alone. With
+  the old side. It also says whether the tasks that did not choose the harness read a step alone, and
+  gives the tally on each writing session's tasks. With
   `--all` it sums each campaign and then all of them, and `--name` keeps the campaigns whose name holds
   a text, such as a pack. The fold is `starterReads` (`src/campaign/climb.ts`), and `runs alerts` prints
   the written-after tally beside each starter read. It decides no move.

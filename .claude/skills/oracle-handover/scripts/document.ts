@@ -169,7 +169,8 @@ const isVerb = (verb: string): verb is keyof typeof PARTS => Object.hasOwn(PARTS
 
 /** `text` with every home folder as `~`, also where a path is written with dashes (a session's
  *  folder), every login number dropped (machine rules: none in published text), and each
- *  machine's names, `machines[i]`, in any case, as one alias. */
+ *  machine's names, `machines[i]`, in any case, as one alias. A tree and a session's scratchpad go
+ *  whole: a document of 6 November carried both, and a login's table row, to the outside. */
 export function sanitised(text: string, machines: readonly (readonly string[])[]) {
   const aliases = new Map(
     machines.flatMap((names, index) =>
@@ -179,10 +180,16 @@ export function sanitised(text: string, machines: readonly (readonly string[])[]
     ),
   );
   let out = text
+    .replaceAll(/\/private\/tmp\/claude-\d+\/[^\s`"')]*?\/scratchpad\//gu, "<scratch>/")
+    .replaceAll(
+      /(?<![\w.-])(?:\/(?:Users|home)\/[^/\s"'`),;:]+|~)(?:\/[^/\s"'`),;:]+)*?\/anabasis[-\w.]*/gu,
+      "<tree>",
+    )
     .replaceAll(/(?<![\w.-])\/(?:Users|home)\/[^/\s"'`),;:]+/gu, "~")
     .replaceAll(/-(?:Users|home)-[^-/\s]+-/gu, "-~-")
     .replaceAll(/(\.claude-account|CLAUDE_CODE_OAUTH_TOKEN)\d+/gu, "$1")
-    .replaceAll(/\b(?:logins? \d+(?:(?:, ?| and | or )\d+)*|claude[1-9])\b/giu, "a login");
+    .replaceAll(/\b(?:logins? \d+(?:(?:, ?| and | or )\d+)*|claude[1-9])\b/giu, "a login")
+    .replaceAll(/(\|\s*logins?\s*\|\s*)\d+\b/giu, "$1a login");
   for (const [name, alias] of [...aliases].toSorted(([a], [b]) => b.length - a.length)) {
     out = out.replaceAll(new RegExp(name.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`), "giu"), alias);
   }

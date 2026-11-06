@@ -30,7 +30,8 @@ import {
   liveEverywhere,
   noLogin,
   plainOnly,
-  readLogins,
+  type readLogins,
+  readNotClosed,
   room,
 } from "./logins.ts";
 import { localCatalogue, remoteRuns } from "./snapshots.ts";
@@ -146,7 +147,7 @@ export async function freshFleet(): Promise<Live[]> {
 export async function freshLogin(
   requested: string | undefined,
   live: readonly Live[],
-  read: typeof readLogins = readLogins,
+  read: typeof readLogins = readNotClosed,
   allowed = allowedLogins(runtimeProcess.env),
 ): Promise<string | undefined> {
   const env = runtimeProcess.env;

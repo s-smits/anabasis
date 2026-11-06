@@ -291,7 +291,7 @@ A change of login on one machine needs no move: `continue --after <event> --logi
 ## Logins and other hosts
 
 ```sh
-bun run runs usage [N ...] [--json]   # `bun run runs` loads .env and .env.runs itself
+bun run runs usage [N ...] [--json] [--open] [--closed]   # `bun run runs` loads .env and .env.runs itself
 bun --env-file=<file> --env-file=.env.runs run runs status [--all]
 bun --env-file=<file> --env-file=.env.runs run runs on <host> status
 bun --env-file=<file> --env-file=.env.runs run runs hosts [--all]
@@ -301,6 +301,10 @@ bun --env-file=<file> --env-file=.env.runs run runs hosts [--all]
 `active --here` at once), by the login each run's last launch named. Every login `ANA_LOGINS` names
 gets a line, runs that name none get one, and so do hosts that did not answer; a host whose tree
 predates `active` is one. Count it before a launch, a continue or a move.
+
+Each login's head line reads `open` or `closed until <its reset>`. A closed login opens by the
+clock at its reset, and `keep` and `fresh` ask the provider only of the logins the last full `usage`
+did not find closed (`login-state.ts`), so the next `usage` overrules what was kept.
 
 `usage` reads each login's five-hour and weekly window from the provider's usage endpoint, or
 from the rate-limit headers of a one-token request where that is refused, and keeps a snapshot

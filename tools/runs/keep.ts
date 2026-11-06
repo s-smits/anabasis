@@ -46,7 +46,8 @@ import {
   fiveHourWith,
   liveEverywhere,
   plainOnly,
-  readLogins,
+  type readLogins,
+  readNotClosed,
   room,
   startRefusal,
 } from "./logins.ts";
@@ -138,7 +139,7 @@ export async function roomFor(
   logins: readonly string[],
   spent: ReadonlySet<string>,
   { live, unasked }: { live: readonly Live[]; unasked: readonly string[] },
-  read: typeof readLogins = readLogins,
+  read: typeof readLogins = readNotClosed,
   { env = runtimeProcess.env, now = Date.now() }: { env?: Env; now?: number } = {},
 ): Promise<{ logins: string[]; why: string }> {
   if (unasked.length > 0) return { logins: [], why: "" };
@@ -245,7 +246,7 @@ async function keepGoing(run: Run, logins: readonly string[], waitMs: number): P
     open: () => writers(run, processes()).length > 0,
     last: () => lastRun(run),
     fleet: () => liveEverywhere("configured"),
-    read: readLogins,
+    read: readNotClosed,
     stop: () => stop([run.name, "--yes"]),
     start: (login) => start(run, rerun(lastRun(run).flags, undefined), login, undefined),
     say: (line) => console.log(line),

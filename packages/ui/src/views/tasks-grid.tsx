@@ -77,6 +77,7 @@ function taskNote(row: TaskRow): string {
   return [
     row.state,
     ...(row.awaitingLabel ? ["waits for a label"] : []),
+    ...(row.doubted ? ["doubted"] : []),
     ...(row.exhausted ? ["exhausted"] : []),
     ...(row.retained ? ["retained"] : []),
   ].join(" · ");

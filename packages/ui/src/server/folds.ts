@@ -60,6 +60,7 @@ export const callsIn = once(({ events }) =>
 const poolIn = once(({ events }) => poolOf(events));
 export const awaitingIn = once((log) => new Set(poolIn(log).awaiting));
 export const exhaustedIn = once((log) => new Set(poolIn(log).exhausted));
+export const doubtedIn = once((log) => new Set(poolIn(log).doubted));
 export const retainedIn = once((log) => new Set(poolIn(log).retained));
 export const stopIn = once(({ events }) => stopRule(events));
 export const openingIn = once(({ events }) => openingOf(events));

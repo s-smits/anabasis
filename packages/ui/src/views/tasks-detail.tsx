@@ -55,6 +55,7 @@ export function TaskDetailView({
           <>
             <Badge tone={STATE_TONES[row.state]}>{row.state}</Badge>
             {row.awaitingLabel ? <Badge tone="warn">waits for a label</Badge> : null}
+            {row.doubted ? <Badge tone="warn">doubted</Badge> : null}
             {row.exhausted ? <Badge tone="neutral">exhausted</Badge> : null}
           </>
         }

@@ -168,9 +168,10 @@ function NoComparison({ reading }: { reading: CampaignReading }) {
   const { supply } = reading;
   const target = reading.target === null ? "" : ` A comparison scores ${String(reading.target)}.`;
   const waiting = supply.awaiting === 0 ? "" : `, ${String(supply.awaiting)} waiting for a label`;
+  const doubted = supply.doubted === 0 ? "" : `, ${String(supply.doubted)} doubted`;
   return (
     <NoSignal title="No comparison yet">
-      {`${plural(supply.held, "held-out task")} can be scored, ${String(supply.released)} released for practice${waiting}.${target}`}
+      {`${plural(supply.held, "held-out task")} can be scored, ${String(supply.released)} released for practice${waiting}${doubted}.${target}`}
     </NoSignal>
   );
 }
@@ -191,7 +192,7 @@ function SetUp({ reading }: { reading: CampaignReading }) {
     <Disclosure title="Set-up">
       {prompt === null ? null : <p className="ana-campaign-prompt">{prompt}</p>}
       <p className="ana-campaign-setup">
-        {`${String(supply.held)} held out on the frontier · ${String(supply.released)} released for practice · ${String(supply.awaiting)} wait for a label · ${String(supply.exhausted)} exhausted, scored as retained · ${checker}`}
+        {`${String(supply.held)} held out on the frontier · ${String(supply.released)} released for practice · ${String(supply.awaiting)} wait for a label · ${String(supply.doubted)} doubted, out of the draw · ${String(supply.exhausted)} exhausted, scored as retained · ${checker}`}
       </p>
       <dl className="ana-facts ana-facts--row">
         {seated.map(([seat, said]) => (

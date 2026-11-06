@@ -57,7 +57,6 @@ import {
   mkdtempSync,
   openSync,
   readFileSync,
-  rmSync,
 } from "../../src/meta/filesystem.ts";
 import { sha256, sha256OfFile } from "../../src/meta/digest.ts";
 import { keysIf } from "../../src/meta/optional-key.ts";
@@ -441,45 +440,6 @@ export const failedLine = (failure: Failure): string =>
   failure.verdict
     ? `${short(failure.commit)} FAILS ${failure.step} ON ITS OWN`
     : `${short(failure.commit)} GAVE NO VERDICT ON ${failure.step}: its runner dropped twice`;
-
-/** Hold this clone's `who` alone until the returned release, waiting while another live one holds
- *  it. On 6 November two landings of one stack proved 795f3758c at once on two runners into one
- *  log, and the one whose flaky test failed posted red over a head the other had passed. The later
- *  landing now waits, then finds the earlier one's passes remembered. */
-export async function holdAlone(
-  root: string,
-  who: string,
-  say: (line: string) => void,
-  pauseMs = 15_000,
-): Promise<() => void> {
-  const [common = ""] = lines(git(root, ["rev-parse", "--path-format=absolute", "--git-common-dir"]));
-  const lock = join(common, `ana-${who}.lock`);
-  const pidFile = join(lock, "pid");
-  const release = () => rmSync(lock, { recursive: true, force: true });
-  for (let looks = 0; ; looks += 1) {
-    try {
-      mkdirSync(lock);
-      appendFileSync(pidFile, String(runtimeProcess.pid));
-      return release;
-    } catch (error) {
-      if (!existsSync(lock)) throw error;
-    }
-    const holder = existsSync(pidFile) ? Number(readFileSync(pidFile, "utf8")) : null;
-    try {
-      // A lock with no pid is one being taken, which lasts a moment; signal 0 reads whether its
-      // holder still runs, and throws where it does not.
-      if (holder !== null) runtimeProcess.kill(holder, 0);
-      else if (looks >= 5) throw new Error("a lock left without its pid");
-    } catch {
-      release();
-      continue;
-    }
-    if (looks % 20 === 0) {
-      say(`another ${who} (pid ${String(holder)}) is running in this clone; waiting for it to end`);
-    }
-    await Bun.sleep(pauseMs);
-  }
-}
 
 /**
  * Runs each commit's pass over a checkout of it, up to `jobs` at once, and returns the lowest

@@ -19,7 +19,7 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
-import { holdAlone } from "../tools/runtime/gate.ts";
+import { holdAlone, sayingPulls } from "../tools/runtime/landing.ts";
 
 import { afterAll, beforeEach, describe, expect, it } from "bun:test";
 
@@ -318,5 +318,23 @@ describe("one landing of a clone at a time", () => {
     const again = await holdAlone(clone, "land", () => undefined, 20);
     expect(readFileSync(join(lock, "pid"), "utf8")).toBe(mine);
     again();
+  });
+
+  it("names each commit's pull request on the lines that name the commit", () => {
+    const said: string[] = [];
+    const proofs = ["a", "b", "c", "d"].map((letter) => ({ commit: letter.repeat(40), pass: null }));
+    // #2 has no commit of its own: its head is #1's, so c and d are #3's.
+    const pulls = [1, 2, 3].map((number) => ({ number, headRefOid: (number === 3 ? "d" : "b").repeat(40) }));
+    const say = sayingPulls(proofs, pulls, (line) => said.push(line));
+    say(`1 of 4, ${"a".repeat(9)}: documentation only.`);
+    say(`${"c".repeat(9)} still running after 1 min`);
+    say(`4 of 4, ${"d".repeat(9)}: passed.`);
+    say("#1, #2, #3 onto main: 4 commits.");
+    expect(said).toEqual([
+      `1 of 4, pr1 ${"a".repeat(9)}: documentation only.`,
+      `pr3 ${"c".repeat(9)} still running after 1 min`,
+      `4 of 4, pr3 ${"d".repeat(9)}: passed.`,
+      "#1, #2, #3 onto main: 4 commits.",
+    ]);
   });
 });

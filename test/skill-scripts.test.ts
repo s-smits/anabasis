@@ -110,6 +110,14 @@ describe("following the stack's top", () => {
       pulls: [193, 194, 199],
     });
     expect(nativeTop(stacks.filter((stack) => !stack.open))).toBeUndefined();
+    // #200 was stacked on #199 and #202 on #200 before anyone linked them: #202 is the top.
+    const open = [pull(193, "a", "main"), pull(194, "b", "a"), pull(199, "c", "b"), pull(200, "d", "c")];
+    expect(
+      nativeTop(
+        stacks.filter((stack) => stack.number !== 205),
+        [...open, pull(202, "e", "d")],
+      ),
+    ).toStrictEqual({ number: 202, branch: "e", pulls: [193, 194, 199, 200, 202] });
   });
 
   it("moves a restacked checkout to the new top, keeps its uncommitted change and drops the old branch", () => {
@@ -189,6 +197,10 @@ describe("the hourly follow's reasons not to move", () => {
     writeFileSync(join(co, ".git", "index.lock"), "");
     expect(why()).toStrictEqual(["a git operation is under way here (index.lock)"]);
     rmSync(join(co, ".git", "index.lock"));
+    writeFileSync(join(co, ".git", "info", "exclude"), "new.txt\n");
+    expect(why().join("\n"), "an ignored file, which a switch overwrites, is not in the way").not.toContain(
+      "files the top adds",
+    );
     expect(readFileSync(join(co, "shared.txt"), "utf8"), "nothing moved").toBe("mine\n");
   });
 });

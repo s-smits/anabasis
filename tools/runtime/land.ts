@@ -124,11 +124,11 @@ import {
   failedLine,
   git,
   gitSays,
-  holdAlone,
   type Proof,
   proveCommits,
   short,
 } from "./gate.ts";
+import { holdAlone, sayingPulls } from "./landing.ts";
 
 interface Landing {
   readonly trunk: string;
@@ -706,7 +706,7 @@ async function landTo(root: string, target: number, mode: Mode): Promise<number 
   const failed = await proveCommits(root, proofs, {
     who: "land",
     jobs: mode.jobs,
-    say,
+    say: sayingPulls(proofs, landing.pulls, say),
     mark: (commit, state, description) => {
       if (state === "pending") {
         checkListed(root, target, landing);

@@ -201,7 +201,9 @@ describe("bun run land", () => {
     const result = runLand(["12"]);
     expect(result.status).toBe(0);
     expect(gatesRun(gateLog)).toEqual([`${lower} -`, `${lowerMore} test/owner.test.ts`, `${upper} suite`]);
-    expect(result.stdout).toContain(`3 of 4, ${short(lowerDocs)}: documentation only.`);
+    // Each line names the pull request that holds its commit, so a long landing shows where it is.
+    expect(result.stdout).toContain(`3 of 4, pr11 ${short(lowerDocs)}: documentation only.`);
+    expect(result.stdout).toContain(`4 of 4, pr12 ${short(upper)}: passed.`);
     expect(result.stdout).toContain("--sanitize shows it on GitHub");
     expect(writes()).toEqual([]);
     rmSync(gateLog, { force: true });

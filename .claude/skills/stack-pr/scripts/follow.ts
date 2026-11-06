@@ -33,7 +33,7 @@ import { runtimeProcess } from "#src/meta/process.ts";
 import { lstatSync } from "#src/meta/filesystem.ts";
 import { join } from "#src/meta/path.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
-import { ghOrThrow, openPulls } from "#tools/runtime/pulls.ts";
+import { ghOrThrow, openPulls, type Pull } from "#tools/runtime/pulls.ts";
 import { chains } from "./stack.ts";
 
 /** Where GitHub lists the repository's native stacks. */
@@ -75,8 +75,9 @@ const WORKING = /^\S*git\b|\b(land|gate|test|typecheck|lint|install|preflight|si
 const QUIET_MS = 10 * 60_000;
 
 /** The top of the open native stack that holds the oldest open pull request, or undefined where
- *  GitHub holds no open one. */
-export function nativeTop(stacks: readonly NativeStack[]): Top | undefined {
+ *  GitHub holds no open one. A pull request of `pulls` stacked on that top before anyone linked it
+ *  is the top: on 6 November follow stopped at #657 while #658 stood on it, unlinked. */
+export function nativeTop(stacks: readonly NativeStack[], pulls: readonly Pull[] = []): Top | undefined {
   const oldest = stacks
     .flatMap((stack) => {
       const open = stack.pull_requests.filter((pull) => pull.state === "open");
@@ -87,15 +88,25 @@ export function nativeTop(stacks: readonly NativeStack[]): Top | undefined {
     .toSorted((a, b) => a.first - b.first)[0];
   const top = oldest?.open.at(-1);
   if (oldest === undefined || top === undefined) return undefined;
-  return { number: top.number, branch: top.head.ref, pulls: oldest.open.map((pull) => pull.number) };
+  const linked = oldest.open.map((pull) => pull.number);
+  const line = chains(pulls).stacks.find((stack) => stack.some((pull) => pull.number === top.number)) ?? [];
+  const above = line.slice(line.findIndex((pull) => pull.number === top.number) + 1);
+  const end = above.at(-1);
+  return end === undefined
+    ? { number: top.number, branch: top.head.ref, pulls: linked }
+    : {
+        number: end.number,
+        branch: end.headRefName,
+        pulls: [...linked, ...above.map((pull) => pull.number)],
+      };
 }
 
 function topNow(root: string): Top | undefined {
   const stacks = parseJsonAs<NativeStack[]>(ghOrThrow(root, ["api", STACKS]));
-  const native = nativeTop(stacks);
+  const open = openPulls(root);
+  const native = nativeTop(stacks, open);
   if (native !== undefined) return native;
-  const line =
-    chains(openPulls(root)).stacks.toSorted((a, b) => (a[0]?.number ?? 0) - (b[0]?.number ?? 0))[0] ?? [];
+  const line = chains(open).stacks.toSorted((a, b) => (a[0]?.number ?? 0) - (b[0]?.number ?? 0))[0] ?? [];
   const top = line.at(-1);
   if (top === undefined) return undefined;
   return { number: top.number, branch: top.headRefName, pulls: line.map((pull) => pull.number) };
@@ -143,17 +154,16 @@ export function hazards(root: string, name: string, upstream: string, now = Date
     gitText(root, ...args, "-z")
       .split("\0")
       .filter(Boolean);
+  const untracked = listed("ls-files", "-o", "--exclude-standard");
   const touched = [
-    ...new Set([
-      ...listed("ls-files", "-m", "-o", "--exclude-standard"),
-      ...listed("diff", "--cached", "--name-only"),
-    ]),
+    ...new Set([...listed("ls-files", "-m"), ...untracked, ...listed("diff", "--cached", "--name-only")]),
   ].filter((path) => now - (changedAt(join(root, path)) ?? -Infinity) < QUIET_MS);
   if (touched.length > 0) {
     found.push(`edited in the last ${String(QUIET_MS / 60_000)} minutes: ${touched.slice(0, 5).join(", ")}`);
   }
-  const added = listed("diff", "--name-only", "--no-renames", "--diff-filter=A", "HEAD", upstream);
-  const inWay = added.filter((path) => changedAt(join(root, path)) !== null);
+  // A switch overwrites an ignored file, so only an untracked one it would refuse to lose is in the way.
+  const added = new Set(listed("diff", "--name-only", "--no-renames", "--diff-filter=A", "HEAD", upstream));
+  const inWay = untracked.filter((path) => added.has(path));
   if (inWay.length > 0) found.push(`files the top adds are here already: ${inWay.slice(0, 5).join(", ")}`);
   const changes = gitText(root, "stash", "create");
   if (changes !== "") {

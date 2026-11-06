@@ -775,6 +775,9 @@ async function main(argv: readonly string[]): Promise<number> {
     console.error(USAGE);
     return 2;
   }
+  // A pass is remembered by content and never expires, so a merge alone reads none of them: the one
+  // moment worth an hour's proof, and what reaches `main` was then run on this day's machine and Bun.
+  if (values.merge) runtimeProcess.env.ANA_GATE_FRESH = "1";
   const root = git(runtimeProcess.cwd(), ["rev-parse", "--show-toplevel"]);
   const mode = {
     merge: values.merge,

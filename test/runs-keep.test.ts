@@ -389,16 +389,11 @@ describe("the keeper a run gets by itself", () => {
     expect(said).toContain("sample ended on budget: kept no longer");
   }, 20_000);
 
-  it("is not left where continue was told not to, by a word or by the environment", () => {
-    for (const [extra, environment] of [
-      [["--no-keep"], {}],
-      [[], { ANA_KEEP: "off" }],
-    ] as const) {
-      const { result, out } = goOn([...extra], { ...environment });
-      expect(result.code).toBe(0);
-      expect(result.out).not.toContain("kept by pid");
-      expect(existsSync(out)).toBe(false);
-    }
+  it("is not left where the environment turns keepers off", () => {
+    const { result, out } = goOn([], { ANA_KEEP: "off" });
+    expect(result.code).toBe(0);
+    expect(result.out).not.toContain("kept by pid");
+    expect(existsSync(out)).toBe(false);
   }, 20_000);
 });
 

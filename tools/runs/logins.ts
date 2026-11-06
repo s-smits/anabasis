@@ -100,6 +100,8 @@ interface Week {
 }
 
 const TOKEN = "CLAUDE_CODE_OAUTH_TOKEN";
+/** The plain login's name among the logins `readLogins` is asked for: its key is `TOKEN` and nothing. */
+const PLAIN = "";
 const BASE = "https://api.anthropic.com";
 const BETA = "oauth-2025-04-20";
 const TIMEOUT_MS = 30_000;
@@ -143,11 +145,26 @@ const SUBS: Readonly<Record<"claude" | "codex", Readonly<Record<string, string>>
   codex: { pro100: "2", pro200: "4" },
 };
 
-/** Every login `env` holds, by its number. */
+/** Every login `env` holds, by its number. A key left empty holds none: a copied `.env.example`
+ *  names `CLAUDE_CODE_OAUTH_TOKEN2=`, and until 5 November that made a login nobody can pay with, so
+ *  `fresh` said no login had room. */
 function loginsIn(env: Readonly<Record<string, string | undefined>>): string[] {
-  return Object.keys(env)
-    .flatMap((key) => new RegExp(`^${TOKEN}(\\d+)$`).exec(key)?.[1] ?? [])
+  return Object.entries(env)
+    .flatMap(([key, value]) =>
+      value === undefined || value === "" ? [] : (new RegExp(`^${TOKEN}(\\d+)$`).exec(key)?.[1] ?? []),
+    )
     .toSorted((one, other) => Number(one) - Number(other));
+}
+
+/** The key to set where none of `allowed` holds one, or null where one does. Until 5 November this
+ *  read as no login having room, which names a limit where the credential is what is missing. */
+export function noLogin(
+  env: Readonly<Record<string, string | undefined>>,
+  allowed: readonly string[],
+): string | null {
+  if (allowed.some((login) => (env[`${TOKEN}${login}`] ?? "") !== "")) return null;
+  const keys = allowed.length === 0 ? TOKEN : allowed.map((login) => `${TOKEN}${login}`).join(" or ");
+  return `no login here: set ${keys} in the process environment, or in a file named with bun --env-file=<file>`;
 }
 
 /** The logins a run may take: those `ANA_LOGINS` names, or every login `env` holds. */
@@ -734,9 +751,13 @@ export async function logins(args: readonly string[]): Promise<void> {
     allowPositionals: true,
     options: { json: { type: "boolean", default: false } },
   });
-  const held = loginsIn(runtimeProcess.env);
+  // A machine with one Claude login holds the plain credential: until 5 November `usage` refused it.
+  const numbered = loginsIn(runtimeProcess.env);
+  const held = numbered.length === 0 && plainOnly(runtimeProcess.env) ? [PLAIN] : numbered;
   if (held.length === 0) {
-    throw new Error(`no ${TOKEN}<N> is set: run the verb under bun --env-file=<the file that holds them>`);
+    throw new Error(
+      `neither ${TOKEN} nor ${TOKEN}<N> is set: run the verb under bun --env-file=<the file that holds them>`,
+    );
   }
   // Every host is asked for its live runs while the logins are read.
   const [readings, counted] = await Promise.all([
@@ -758,7 +779,8 @@ export async function logins(args: readonly string[]): Promise<void> {
         .map((line) => parseJsonAs<Snapshot>(line))
     : [];
   const rate = perRunRate(kept.filter(({ at }) => now - at < RATE_MS));
-  const onEach = (login: string) => counted?.live.filter((run) => run.login === login).length ?? 0;
+  // A run on the plain login names no login.
+  const onEach = (login: string) => counted?.live.filter((run) => (run.login ?? PLAIN) === login).length ?? 0;
   if (values.json) console.log(capturedJsonStringify(readings, null, 2));
   for (const reading of values.json ? [] : readings) {
     const week = weeks.find(({ login }) => login === reading.login);
@@ -769,7 +791,8 @@ export async function logins(args: readonly string[]): Promise<void> {
         ? ""
         : ` · ${carried(onEach(reading.login), capOf(runtimeProcess.env, reading.login), fit)}`;
     const sub = subOf(runtimeProcess.env, reading.login);
-    const head = `login ${reading.login}${sub === null ? "" : ` · ${sub.sub}`}${runsOn}${reading.plain ? `  (= plain ${TOKEN})` : ""}`;
+    const own = reading.login === PLAIN ? `plain ${TOKEN}` : `login ${reading.login}`;
+    const head = `${own}${sub === null ? "" : ` · ${sub.sub}`}${runsOn}${reading.plain && reading.login !== PLAIN ? `  (= plain ${TOKEN})` : ""}`;
     console.log(
       "error" in reading
         ? `${head}\n  ${reading.error}`

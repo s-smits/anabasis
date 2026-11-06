@@ -6,14 +6,23 @@
  * the bare command printed the names alone and exited 1 (operator: "give the agents insights of
  * everything we can do"). A verb that names a run no worktree here holds runs on the host that holds
  * it (`routed`), and `holds` is what that host is asked.
+ *
+ * `here` always names this machine, whichever verb hears it: `--here` is accepted by every verb, and a
+ * verb with no use of its own for it reaches no other host for that one call, as a verb another host
+ * sent here does (`ANA_HOP`, `hostsOf`). With no hosts it changes nothing, since an empty list is
+ * already this machine alone. A refusal prints its one line and exits 1; until 5 November each of
+ * about 25 ordinary refusals printed a Bun frame and a stack trace. An error of another kind keeps
+ * its trace, since that is a defect and not an answer.
  */
 import { readFileSync } from "#src/meta/filesystem.ts";
+import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { fresh } from "./fresh.ts";
 import { holds, on, routed, verbOn } from "./hosts.ts";
 import { hostsHealth } from "./health.ts";
 import { keep } from "./keep.ts";
+import { HERE, KEEPING } from "./registry.ts";
 import { loadwatch } from "./loadwatch.ts";
 import { active, logins } from "./logins.ts";
 import { continueRun, launch, pause } from "./manage.ts";
@@ -30,12 +39,16 @@ import { zipRuns } from "./zip.ts";
 import { catalogue } from "./snapshots.ts";
 import { continueOn } from "./continuation.ts";
 import { search } from "./search.ts";
+import { sync } from "./sync.ts";
 
 interface Verb {
   readonly run: (args: readonly string[]) => Promise<void> | void;
   readonly file: string;
   readonly says: string;
 }
+
+/** The verbs whose own parser reads `--here`, each with more to it than reaching no other host. */
+const READS_HERE: ReadonlySet<string | undefined> = new Set(["active", "hosts", "keep", "pulse", "search"]);
 
 /** Each verb: its function, the file whose head states its usage, and what it does, in the groups
  *  the bare command prints. */
@@ -136,6 +149,11 @@ const GROUPS = {
       says: "each other host's runs, or with `--health` each machine's load, disk and busiest processes",
     },
     on: { run: on, file: "hosts.ts", says: "run any verb on another host" },
+    sync: {
+      run: sync,
+      file: "sync.ts",
+      says: "bring every host to this machine's Python, table of tools and check runner, or say what differs",
+    },
     holds: {
       run: holds,
       file: "hosts.ts",
@@ -212,9 +230,24 @@ function usageOf(verb: string, { file, says }: Verb): string {
   return `${verb}: ${says}\n\n${usage.map((line) => `  ${line}`).join("\n")}\n\nWhy, and what each option does: the head of tools/runs/${file}.`;
 }
 
-const [verb, ...args] = Bun.argv.slice(2);
+/** What a verb refused, as opposed to a defect: a plain `Error`, or a flag `parseArgs` did not take. */
+const refusal = (error: unknown): error is Error => {
+  if (!(error instanceof Error)) return false;
+  const code = asRecord(error)?.code;
+  return error.constructor === Error || (isString(code) && code.startsWith("ERR_PARSE_ARGS"));
+};
+
+// `on here <verb>` is that verb here, reaching no further host, as one sent to a peer does.
+const argv = Bun.argv.slice(2);
+const onHere = argv[0] === "on" && argv[1] === HERE;
+if (onHere) runtimeProcess.env.ANA_HOP = "1";
+const [verb, ...given] = onHere ? argv.slice(2) : argv;
 const chosen = Object.entries(VERBS).find(([name]) => name === verb)?.[1];
-const own = args.includes("--") ? args.slice(0, args.indexOf("--")) : args;
+const dashes = given.includes("--") ? given.indexOf("--") : given.length;
+const own = given.slice(0, dashes);
+const stripped = !READS_HERE.has(verb) && own.includes(KEEPING);
+if (stripped) runtimeProcess.env.ANA_HOP = "1";
+const args = stripped ? [...own.filter((word) => word !== KEEPING), ...given.slice(dashes)] : given;
 if (chosen === undefined) {
   // A bare command or `help` asks for the list; any other word is a mistake that still gets it.
   const asked = verb === undefined || verb === "help" || verb === "--help" || verb === "-h";
@@ -223,12 +256,18 @@ if (chosen === undefined) {
 } else if (own.includes("--help") || own.includes("-h")) {
   console.log(usageOf(verb ?? "", chosen));
 } else {
-  const { here, away } = await routed(verb ?? "", args);
-  for (const [host, words] of away) {
-    const code = await (verb === "continue" ? continueOn(host, words) : verbOn(host, words));
-    if (code !== 0) runtimeProcess.exitCode = code;
+  try {
+    const { here, away } = await routed(verb ?? "", args);
+    for (const [host, words] of away) {
+      const code = await (verb === "continue" ? continueOn(host, words) : verbOn(host, words));
+      if (code !== 0) runtimeProcess.exitCode = code;
+    }
+    if (here !== null) await chosen.run(here);
+  } catch (error) {
+    if (!refusal(error)) throw error;
+    console.error(error.message);
+    runtimeProcess.exitCode = 1;
   }
-  if (here !== null) await chosen.run(here);
 }
 // With the code a verb set: a verb that refused is not a success.
 runtimeProcess.exit();

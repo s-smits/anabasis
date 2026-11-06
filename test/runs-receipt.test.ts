@@ -139,6 +139,27 @@ describe("what a launch records of the host's Python", () => {
   const said = (version: string, ...packages: string[]) =>
     `echo '${capturedJsonStringify([version, packages])}'`;
 
+  // Added while production was being written, on the 5 November reading of 17 packages for 12 names,
+  // with numpy named at 2.5.3 where an import found 2.5.4.
+  const realPython = Bun.which("python3");
+  it.skipIf(realPython === null)(
+    "names a package once where stale folders hold several, at the version an import finds",
+    () => {
+      const site = join(root, "site");
+      for (const version of ["1.0", "2.0"]) {
+        const folder = join(site, `dupe-${version}.dist-info`);
+        mkdirSync(folder, { recursive: true });
+        writeFileSync(join(folder, "METADATA"), `Metadata-Version: 2.1\nName: dupe\nVersion: ${version}\n`);
+      }
+      mkdirSync(join(site, "nameless-1.0.dist-info"), { recursive: true });
+      writeFileSync(join(site, "dupe.py"), '__version__ = "2.0"\n');
+      const start = `import sys; sys.path.insert(0, '${site}'); exec(sys.argv[1])`;
+      const dir = pythonIn("stale", `exec "${realPython ?? ""}" -c "${start}" "$3"`);
+      const found = hostPython([dir])?.packages.filter((one) => /^(dupe|nameless)/u.test(one));
+      expect(found).toEqual(["dupe==2.0"]);
+    },
+  );
+
   it("reads the first python3 on the path, with its packages sorted", () => {
     const first = pythonIn("first", said("3.14.7", "scipy==1", "numpy==2"));
     const second = pythonIn("second", said("3.15.0"));

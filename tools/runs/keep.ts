@@ -5,7 +5,7 @@
  *
  * `launch`, `continue` and so `fresh` and `move` leave a run on a numbered login its keeper by
  * themselves (`keepsItself`, `manage.ts`); this verb attaches one to a run already live, or to a run
- * that was started with `--no-keep`.
+ * started under `ANA_KEEP=off`.
  *
  * A keeper looks at the run once a minute and takes one of four turns (`turnOf`). While the run's
  * process lives and its log ends on a provider wait (`campaign.waited`, `for: "provider"`), whichever

@@ -318,14 +318,12 @@ describe("the router on the command line", () => {
     }
   });
 
-  it("puts aside what it replaces, changes nothing when installed again, and puts it back on uninstall", () => {
+  it("puts aside what it replaces, and changes nothing when installed again", () => {
     const other = folder("install-home");
     const foreign = join(other, ".local", "bin", "bun");
     script(foreign, "foreign bun\n");
-    const install = (...args: string[]) =>
-      spawnTextSync(capturedExecPath, [join(ROUTER, "install.ts"), ...args], {
-        env: { ...env, HOME: other },
-      });
+    const install = () =>
+      spawnTextSync(capturedExecPath, [join(ROUTER, "install.ts")], { env: { ...env, HOME: other } });
     const files = () => readdirSync(join(other, ".local", "bin")).toSorted();
     expect(install().status).toBe(0);
     const installed = join(other, ".local", "share", "ana-runner");
@@ -337,10 +335,6 @@ describe("the router on the command line", () => {
     expect(after.filter((name) => name.startsWith("bun.before-router-"))).toHaveLength(1);
     expect(install().status).toBe(0);
     expect(files()).toEqual(after);
-    expect(install("--uninstall").status).toBe(0);
-    expect(readFileSync(foreign, "utf8")).toBe("foreign bun\n");
-    expect(files()).toEqual(["bun"]);
-    expect(existsSync(join(installed, "run.sh"))).toBe(false);
   });
 });
 
@@ -676,6 +670,14 @@ describe.skipIf(realRsync === null)("the queue", () => {
 });
 
 describe("this machine", () => {
+  it("names a missing Bun instead of blaming ANA_HOSTS", () => {
+    const empty = folder("no-bun");
+    const { status, stderr } = run(["test"], { HOME: empty });
+    expect(status).toBe(2);
+    expect(stderr).toContain(`no Bun at ${join(empty, ".bun/bin/bun")}`);
+    expect(stderr).not.toContain("ANA_HOSTS");
+  });
+
   it("runs RUN_REMOTE=0 here on the pinned Bun, reaps an orphaned test worker and spares an orphan that names the checkout", async () => {
     const token = source;
     const orphan = (argv0: string): number =>

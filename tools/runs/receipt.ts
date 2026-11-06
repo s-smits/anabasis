@@ -88,10 +88,27 @@ const SHOWN = 3;
 /** Where `--has` looks: the code a run executes, and none of the documents that name a mechanism
  *  before it is built. */
 const CODE = ["src", "tools", "packages"];
-/** Prints a Python's version and packages. Run with `-I`: a solve's home is its own, so the user's
- *  site packages and `PYTHONPATH` of the shell that launched a run are none of what a solve finds. */
-const PYTHON_PROBE = `import importlib.metadata as m, json, sys
-print(json.dumps([sys.version.split()[0], [d.metadata["Name"] + "==" + d.version for d in m.distributions()]]))`;
+/**
+ * Prints a Python's version and packages. Run with `-I`: a solve's home is its own, so the user's
+ * site packages and `PYTHONPATH` of the shell that launched a run are none of what a solve finds.
+ * Each name appears once, and where stale `dist-info` folders give it several versions, the version is
+ * the imported module's own. On 5 November one host's receipt said 17 packages for 12 names, with numpy
+ * named at 2.5.3 where an import found 2.5.4, and requirements taken from that could not be satisfied.
+ * Only a name with several folders is imported, since an import runs that package's code.
+ */
+export const PYTHON_PROBE = `import importlib, importlib.metadata as m, json, re, sys
+found = {}
+for d in m.distributions():
+    try: name, version = d.metadata["Name"], d.version
+    except Exception: continue
+    if name: found.setdefault(re.sub("[-_.]+", "-", name).lower(), []).append((name, version))
+def named(many):
+    name, version = many[0]
+    if len(many) > 1:
+        try: version = importlib.import_module(name.replace("-", "_")).__version__
+        except Exception: pass
+    return name + "==" + version
+print(json.dumps([sys.version.split()[0], [named(many) for many in found.values()]]))`;
 const PYTHON_SECONDS = 10;
 const runOf = (session: string) => Number(/^run-(\d+)$/.exec(session)?.[1] ?? 0);
 
@@ -103,12 +120,15 @@ export function hostPython(dirs: readonly string[] = toolchainPathDirs()): HostP
   const { exitCode, stdout } = runSync([path, "-I", "-c", PYTHON_PROBE], {
     timeout: PYTHON_SECONDS * 1000,
   });
-  if (exitCode !== 0) return null;
+  return exitCode === 0 ? pythonIn(decodeOutput(stdout)) : null;
+}
+
+/** What `PYTHON_PROBE` printed, or null: a program named python3 may print something else. */
+export function pythonIn(said: string): HostPython | null {
   try {
-    const [version, packages] = parseJsonAs<[string, string[]]>(decodeOutput(stdout));
+    const [version, packages] = parseJsonAs<[string, string[]]>(said);
     return { version, packages: packages.toSorted(compareCodeUnits) };
   } catch {
-    // A program named python3 that prints something else is no Python this can read.
     return null;
   }
 }

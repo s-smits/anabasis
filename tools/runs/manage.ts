@@ -1,9 +1,9 @@
 /**
  * Start a campaign, go on with one, and pause one at a clean point.
  *
- *   bun --env-file=<file> run runs launch <name> [--login N] [--no-keep] [--yes] -- <the campaign command's flags>
+ *   bun --env-file=<file> run runs launch <name> [--login N] [--yes] -- <the campaign command's flags>
  *   bun --env-file=<file> run runs continue <name> [--at <commit>] [--login N] [--budget N]
- *     [--after next|compacted|reported|finished] [--no-keep] [--yes] [-- <flags>]
+ *     [--after next|compacted|reported|finished] [--yes] [-- <flags>]
  *   bun run runs pause <name> [--after next|compacted|reported|finished] [--yes]
  *
  * `launch` starts the campaign command (`tools/d2/harness-builder.ts`) under a name no worktree
@@ -20,8 +20,8 @@
  *
  * A run `launch` or `continue` starts on a numbered login gets a keeper (`keep.ts`) where another login
  * is allowed, so that it goes on elsewhere at a limit with nobody there (operator, 5 November: "bring
- * over to other account that still has room if 5hr limit or full limit is reached"). `--no-keep` leaves
- * that run without one and `ANA_KEEP=off` every run the environment starts (`keepsItself`). Until then
+ * over to other account that still has room if 5hr limit or full limit is reached"). `ANA_KEEP=off`
+ * leaves every run the environment starts without one (`keepsItself`). Until then
  * a keeper took a person's `runs keep` a run, and on 5 November two campaigns on a login whose week ran
  * out sat idle in their wait, two days from its reset, with no keeper to move them.
  *
@@ -270,10 +270,10 @@ export function keepsItself(
 async function startKept(
   run: Run,
   flags: readonly string[],
-  { login, at, noKeep }: { login: string | undefined; at: string | undefined; noKeep: boolean },
+  { login, at }: { login: string | undefined; at: string | undefined },
 ): Promise<void> {
   const running = await start(run, flags, login, at);
-  if (running && !noKeep && keepsItself(runtimeProcess.env, login) && keepers(run.name).length === 0) {
+  if (running && keepsItself(runtimeProcess.env, login) && keepers(run.name).length === 0) {
     leaveKeeper(run, allowedLogins(runtimeProcess.env), WAIT_HOURS);
   }
 }
@@ -296,14 +296,13 @@ export async function launch(args: readonly string[]): Promise<void> {
     allowPositionals: true,
     options: {
       login: { type: "string" },
-      "no-keep": { type: "boolean", default: false },
       yes: { type: "boolean", default: false },
     },
   });
   const [name, ...flags] = positionals;
   if (name === undefined || flags.some((flag) => flag === "--name" || flag.startsWith("--name="))) {
     throw new Error(
-      "usage: bun run runs launch <name> [--login N] [--no-keep] [--yes] -- <the campaign command's flags but --name>",
+      "usage: bun run runs launch <name> [--login N] [--yes] -- <the campaign command's flags but --name>",
     );
   }
   // By case too: on macOS's file system a name that differs only by case is the same folder.
@@ -313,7 +312,7 @@ export async function launch(args: readonly string[]): Promise<void> {
   }
   const run = campaignOf(runtimeProcess.cwd(), name);
   if (!values.yes) return said(run, `would start ${BUILDER} ${flags.join(" ")}`);
-  await startKept(run, flags, { login: values.login, at: undefined, noKeep: values["no-keep"] });
+  await startKept(run, flags, { login: values.login, at: undefined });
 }
 
 /** `bun run runs continue`. */
@@ -326,14 +325,13 @@ export async function continueRun(args: readonly string[]): Promise<void> {
       login: { type: "string" },
       budget: { type: "string" },
       after: { type: "string" },
-      "no-keep": { type: "boolean", default: false },
       yes: { type: "boolean", default: false },
     },
   });
   const [name, ...given] = positionals;
   if (name === undefined) {
     throw new Error(
-      "usage: bun run runs continue <name> [--at <commit>] [--login N] [--budget N] [--after <event>] [--no-keep] [--yes] [-- <flags>]",
+      "usage: bun run runs continue <name> [--at <commit>] [--login N] [--budget N] [--after <event>] [--yes] [-- <flags>]",
     );
   }
   const run = runNamed(name);
@@ -357,7 +355,7 @@ export async function continueRun(args: readonly string[]): Promise<void> {
     await roomToStart(payerOf(values.login, flags), "here", run.name);
     await pauseAt(run, values.after);
   }
-  await startKept(run, flags, { login: values.login, at: target, noKeep: values["no-keep"] });
+  await startKept(run, flags, { login: values.login, at: target });
 }
 
 /** `bun run runs pause`. */

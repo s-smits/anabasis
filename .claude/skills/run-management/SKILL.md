@@ -23,9 +23,9 @@ archived campaign; `copy <name> --to <worktree>` brings this machine's back to g
 
 | verb | what it does | file |
 | --- | --- | --- |
-| `fresh <pack> [<pack> ...] [--logins <allowed-list>] [--model opus\|sonnet\|gpt\|<provider>/<id>] [--effort hhmm] [--login N] [--budget 800] [--as <suffix>] [--at <c>] [--host <host>] [--no-keep] [--yes] [-- <flags>]` | names a campaign from a blank project, makes its worktree at a published commit and launches it there | `fresh.ts` |
-| `launch <name> [--login N] [--no-keep] [--yes] -- <flags>` | starts the campaign command under a new name, in this worktree | `manage.ts` |
-| `continue <name> [--at <c>] [--login N] [--budget N] [--after <event>] [--no-keep] [--yes] [-- <flags>]` | runs a campaign again from its log, on its kept flags or their replacement after `--` | `manage.ts` |
+| `fresh <pack> [<pack> ...] [--logins <allowed-list>] [--model opus\|sonnet\|gpt\|<provider>/<id>] [--effort hhmm] [--login N] [--budget 800] [--as <suffix>] [--at <c>] [--host <host>] [--yes] [-- <flags>]` | names a campaign from a blank project, makes its worktree at a published commit and launches it there | `fresh.ts` |
+| `launch <name> [--login N] [--yes] -- <flags>` | starts the campaign command under a new name, in this worktree | `manage.ts` |
+| `continue <name> [--at <c>] [--login N] [--budget N] [--after <event>] [--yes] [-- <flags>]` | runs a campaign again from its log, on its kept flags or their replacement after `--` | `manage.ts` |
 | `pause <name> [--after <event>] [--yes]` | stops a campaign at its next finished solve or tool call, or, with a clean-point event, once its log gains one more of it and nothing but its Builder's conversation is open | `manage.ts` |
 | `keep <name> [--logins <list>] [--wait-hours 0.25] [--yes]` | keeps a campaign going: moves it off a provider wait on either limit, and continues it after a death or an `environment` ending. A run on a numbered login gets one by itself; this verb attaches one to a run that has none | `keep.ts` |
 | `copy <name> --to <worktree> [--yes]` | copies a stopped campaign whole to another worktree, from a worktree or the archive, and sets the source aside | `move.ts` |
@@ -34,7 +34,8 @@ archived campaign; `copy <name> --to <worktree>` brings this machine's back to g
 | `status [--all]` | one row a run: the live ones and those whose log moved in a day, with tree, commit, login, open comparison, comparisons reported, promotions and ending, and on a closed row the hours until it leaves; under the rows, the closed runs it leaves out and the archive's newest campaigns; then each host `ANA_HOSTS` lists, all asked at once and each printed as it answers, within 30 s after cold preparation | `pulse.ts` |
 | `usage [N ...] [--json]` | each login's five-hour and weekly use and, without `--json`, how many runs and simulation seats are live on it on every host (`1/2 active`, out of the most `ANA_LOGIN_RUNS` or its subscription in `ANA_LOGIN_SUBS` lets it carry, such as `2,N:4` or `N:ultra`); without numbers or `--json`, also the pool forecast | `logins.ts` |
 | `active` | the runs and simulation seats live on each login by name, on this machine and every host, asking no provider | `logins.ts` |
-| `search <pattern> [--regex] [--ignore-case] [--host <name>]... [--here] [--in logs\|notes\|all] [--max <chars>]` | searches campaign folders, notes and docs on all hosts concurrently; private extra note roots come from `ANA_SEARCH_ROOTS` in `.env.runs`; reports each engine and spills complete matches to a temporary log when output is cut | `search.ts` |
+| `sync [--yes \| --check] [--force]` | what differs from `ANA_TOOLS` and `ANA_PYTHON` on every host, and a stale runner, changing nothing unless `--yes`; `--check` exits 1 on any difference; nothing to do with no hosts | `sync.ts` |
+| `search <pattern> [--regex] [--ignore-case] [--here] [--in logs\|notes\|all] [--max <chars>]` | searches campaign folders, notes and docs on all hosts concurrently; reports each engine and spills complete matches to a temporary log when output is cut | `search.ts` |
 | `fetch [<name>] [--from <host>]` | a copy of a campaign another machine holds, to read here, into the archive as `data/runs/<host>/<name>/`; with no name, the records (log and receipts) of every campaign the other machines hold, which a timer on the central machine runs every ten minutes | `move.ts` |
 | `retire [--days 1] [--yes]` | moves each campaign no process writes or keeps, idle for `--days`, into the archive whole (a seed, `seed.json` beside its log, is deleted instead, the archive's too), and deletes each worktree nothing has used for a week (two for one with uncommitted work) and each local branch no worktree holds that nothing has used for a week, tagging a commit nothing else holds; then refreshes each other host's records here. A daily job on every host runs it with `--yes`; nothing else in an archive is deleted | `retire.ts` |
 | `on <host> <verb ...>`, `hosts [--all]` | any verb on another host over ssh; `status` on each other host alone. A verb that names a run goes to its host by itself | `hosts.ts` |
@@ -224,9 +225,8 @@ bun --env-file=<file> --env-file=<hosts file> run runs keep <name> [--logins <li
 `launch`, `continue`, `fresh` and the continue at the end of a `move` each leave the run a keeper by
 themselves, on the machine it runs on, where it pays by a numbered login and another login is allowed
 (`keepsItself`, `tools/runs/manage.ts`). A keeper may then spend on another allowed login with nobody
-asked. `--no-keep` leaves one run without one. `ANA_KEEP=off` in `.env.runs` leaves every run started
-from that machine without one, on a peer too, and ends no keeper already running. A run started before
-this, or with `--no-keep`, takes one by the verb above. A run with no numbered login, GPT's or a plain
+asked. `ANA_KEEP=off` in `.env.runs` leaves every run started from that machine without one, on a peer
+too, and ends no keeper already running. A run started before this takes one by the verb above. A run with no numbered login, GPT's or a plain
 login's, gets none: it has nowhere to move.
 
 A keeper takes its logins from `--logins`, then `ANA_LOGINS`, then the numbered logins in the
@@ -337,8 +337,9 @@ After an install, prune controllers beyond the newest three by readiness time; p
 and working directories protect live controllers. Failed process inspection preserves them.
 `continue --at` resolves that revision here, and uses its launcher on the peer.
 Environment files stay on their own machine and relative names remain relative to the configured
-checkout. A login shell supplies its tools; `ANA_HOP=1` prevents recursive fan-out and leaves a
-keeper started there counting every host. `on` remains an explicit override. `hosts` shows peer statuses; `hosts --health` includes this machine and
+checkout. A login shell
+supplies its tools, and `ANA_HOP=1` prevents recursive fan-out. A keeper started there drops it, and
+so counts every host that machine's own `ANA_HOSTS` lists. `on` remains an explicit override. `hosts` shows peer statuses; `hosts --health` includes this machine and
 every peer in one reading. The shared `scriptOn` and
 `askedScript` in `tools/runs/hosts.ts` provide the same boundary to skill scripts, and any script
 that parses through `.claude/skills/main/cli.ts` runs on a peer with `--host <name>`.
@@ -362,6 +363,40 @@ stands for a remote process. Pulse labels this machine separately from its peers
 
 Direct skill and WRI commands need the host environment too: use
 `bun --env-file=.env.runs <script> ...`, or export `ANA_HOSTS`. No script opens that file itself.
+
+## Keep the machines' settings in step
+
+One machine's `.env.runs` holds the settings, and two things carry them. Every remote verb takes
+`ANA_LOGINS`, `ANA_LOGIN_RUNS`, `ANA_LOGIN_SUBS`, `ANA_KEEP` and its host's `capacity` with it, an
+entry's `settings` over the shared values (`carriedTo`, `tools/runs/hosts.ts`), so a keeper it starts
+inherits them and no peer holds a copy to drift. A value that looks like a credential is refused, by
+sync and by every remote verb, and its value is never printed. `bun run runs sync` keeps what does live
+on a machine, for every host `ANA_HOSTS` lists. With no flag it prints what differs and changes
+nothing; `--yes` applies that, then reads again and exits 1 on anything left; `--check` prints the same
+and exits 1 on a difference or a host that did not answer, for a timer. With no host, no `ANA_PYTHON`
+and no `ANA_TOOLS` it says there is nothing to do and exits 0 with no ssh.
+
+- **`ANA_HOSTS` stays on the one machine.** A peer that held it would gather every listed host's
+  records at its daily `retire`. A verb a peer's own job starts sees no shared setting, and `retire`
+  reads none.
+- **Tools.** `ANA_TOOLS` is one table of each tool and its version (`.env.runs.example`), read in the
+  wall's order of folders, since a login shell can find another copy. A row may say how to read the
+  version, a `run` that makes the tool do its job and whose failure reads as drift at any version, and
+  how to install it; with no install, drift is reported and `--yes` leaves it. A host's `exclude` lists
+  rows it keeps outside the table: reported, no drift, never changed.
+- **Python.** `ANA_PYTHON` pins one version on every machine through `uv`, in
+  `~/.local/share/ana-python`, ahead of everything else on the wall's path where it exists and absent
+  from it otherwise. `ANA_PYTHON_PACKAGES` are kept in it, with pip checked present. It uninstalls
+  nothing, and a package nobody named is reported and stays. What a solve finds is `hostPython`, which
+  names each package once, at the version an import finds where stale folders disagree.
+- **Refused.** A change a seat would find, a Python or a table row unless it says `"seats":false`, is
+  refused on a host with a live campaign, naming it, or where the live count cannot be read, unless
+  `--force`: changing what a solver is given is the operator's. A runner reinstall here is refused
+  unless `--force` while hosts are listed and none sets `checks`, because that install would run every
+  check on this machine. A machine with no `uv` is refused whatever the flag, and a version `uv` does
+  not offer fails at `--yes` in `uv`'s words. No sync stops, edits or restarts a run.
+- **Not carried:** `.env` and anything passed as `--env-file`, since a login goes between hosts by the
+  operator's hand alone; `ANA_HOSTS`; and whatever a machine's own scripts hold.
 
 ## What is refused, and where
 

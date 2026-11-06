@@ -28,10 +28,11 @@
  */
 import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { runCaptured } from "#src/meta/subprocess.ts";
-import { type Host, hostsOf, hostNamed, configuredRuntime } from "./host-config.ts";
+import { CARRIED, type Host, hostsOf, hostNamed, configuredRuntime } from "./host-config.ts";
 import { quoted, shellPath, sshScript, treeBun } from "./host-command.ts";
 import { readControllers } from "./code.ts";
 import { CLI, runs } from "./registry.ts";
+import { scanText } from "../secrets/rules.ts";
 
 /** How long `hosts` waits for one host's rows, and a verb for each host's `holds`. */
 const HOST_MS = 30_000;
@@ -48,6 +49,25 @@ interface Routes {
   readonly away: readonly (readonly [Host, readonly string[]])[];
 }
 
+/**
+ * What a verb on `host` is told, whatever its own files say: this machine's shared settings, the
+ * entry's own over them, an empty value sending none, and its capacity. It goes with the verb, so a
+ * keeper the verb starts inherits it and no peer holds a copy to drift: until 5 November the central
+ * file named no `ANA_RUN_CAP`, and a verb on either peer saw no `ANA_LOGINS`, so every login there was
+ * allowed and uncapped. A value that looks like a credential is refused, naming its key alone.
+ */
+export function carriedTo(host: Host): Readonly<Record<string, string>> {
+  const shared = CARRIED.map((key) => [key, runtimeProcess.env[key] ?? ""] as const);
+  const merged = { ...Object.fromEntries(shared), ...host.settings, ANA_RUN_CAP: String(host.capacity ?? 2) };
+  const sent = Object.entries(merged).filter(([, value]) => value !== "");
+  for (const [key, value] of sent) {
+    if (scanText(key, value).length > 0) {
+      throw new Error(`${host.name}: the value of ${key} looks like a credential, and none travels`);
+    }
+  }
+  return Object.fromEntries(sent);
+}
+
 /** The ssh command that runs the verb `args` on `host`. */
 function scriptCommand(host: Host, script: string, args: readonly string[]): string[] {
   if (
@@ -58,11 +78,10 @@ function scriptCommand(host: Host, script: string, args: readonly string[]): str
   }
   const runtime = host.prepared === true ? host : configuredRuntime(host);
   const env = (runtime.envFiles ?? []).map((file) => ` --env-file=${shellPath(file)}`).join("");
-  // An entry may name its own env files, so the off switch of `keepsItself` goes with the verb.
-  const keep = runtimeProcess.env.ANA_KEEP === "off" ? "ANA_KEEP=off " : "";
+  const carried = Object.entries(carriedTo(host)).map(([key, value]) => `${key}=${quoted(value)} `);
   return sshScript(
     host,
-    `cd ${shellPath(host.tree)}\n${keep}ANA_HOP=1 ANA_RUN_CAP=${quoted(String(host.capacity ?? 2))} ${treeBun(runtime.bun)}${env} ${quoted(script)} ${args.map(quoted).join(" ")}`,
+    `cd ${shellPath(host.tree)}\n${carried.join("")}ANA_HOP=1 ${treeBun(runtime.bun)}${env} ${quoted(script)} ${args.map(quoted).join(" ")}`,
   );
 }
 

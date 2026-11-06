@@ -229,9 +229,8 @@ describe("code preparation", () => {
     expect(command).toMatch(/--as\W+terra-runner\W/);
     expect(command).toContain("ANA_RUN_CAP");
     expect(command).not.toContain("ANA_KEEP");
-    expect(command).not.toContain("--no-keep");
     const off = made.run(
-      'import { fresh } from "REPOSITORY/tools/runs/fresh.ts"; await fresh(["sample", "--model", "gpt", "--as", "terra", "--host", "runner", "--no-keep", "--yes"]);',
+      'import { fresh } from "REPOSITORY/tools/runs/fresh.ts"; await fresh(["sample", "--model", "gpt", "--as", "terra", "--host", "runner", "--yes"]);',
       { ANA_KEEP: "off" },
     );
     expect(off.code).toBe(0);
@@ -240,8 +239,8 @@ describe("code preparation", () => {
         .recorded()
         .findLast((call) => call.tool === "ssh")
         ?.args.at(-1) ?? "";
-    expect(sent).toContain("ANA_KEEP=off ANA_HOP=1");
-    expect(sent).toContain("--no-keep");
+    // The off switch reaches the peer's keeper as every shared setting does: by the verb's own line.
+    expect(sent).toMatch(/ANA_KEEP=\W*off\W.*ANA_HOP=1/u);
   });
 
   it("resolves a remote continuation's revision here and ignores a campaign's --at and --yes", () => {

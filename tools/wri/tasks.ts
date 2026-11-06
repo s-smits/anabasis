@@ -17,16 +17,15 @@
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { draftOf } from "#src/examiner/draft.ts";
 import { proposalsOf } from "#src/kernel/history.ts";
-import { read } from "#src/kernel/log.ts";
+import { type LogEvent, read } from "#src/kernel/log.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { exampleId } from "#tools/d2/exam.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 
 const USAGE = "usage: bun tools/wri/tasks.ts <log.jsonl | campaign folder | name>";
 
-async function main(args: CommandArgs): Promise<number> {
-  const [named = ""] = args.positionals;
-  const events = read(await logAcross(named));
+/** Each task a comparison scored, with what its author wrote and the comparisons that scored it. */
+export function scoredTasks(events: readonly LogEvent[]) {
   const scoredIn = new Map<string, string[]>();
   for (const { kind, data } of events) {
     if (kind !== "comparison.started" || !isString(data.session) || !Array.isArray(data.tasks)) continue;
@@ -37,16 +36,21 @@ async function main(args: CommandArgs): Promise<number> {
   const drafted = new Map(
     (draftOf(events)?.tasks ?? []).map((example, index) => [exampleId(index), example]),
   );
-  const lines = proposalsOf(events).flatMap(({ version, taskId, family, session, task }) => {
+  return proposalsOf(events).flatMap(({ version, taskId, family, session, task }) => {
     const sessions = scoredIn.get(version);
     if (sessions === undefined) return [];
-    const input = task ?? drafted.get(taskId ?? "");
-    return [
-      `${version.slice(0, 8)}  ${taskId ?? "no id"}  written by ${session ?? (input === undefined ? "the pack" : "the draft")}  scored in ${sessions.join(", ")}`,
-      `  family: ${family ?? "none"}`,
-      `  public: ${input === undefined ? "none in the log (a pack's task: its public input is in the pack)" : JSON.stringify(input.publicInput)}`,
-    ];
+    return [{ version, taskId, family, session, sessions, input: task ?? drafted.get(taskId ?? "") }];
   });
+}
+
+async function main(args: CommandArgs): Promise<number> {
+  const [named = ""] = args.positionals;
+  const events = read(await logAcross(named));
+  const lines = scoredTasks(events).flatMap(({ version, taskId, family, session, sessions, input }) => [
+    `${version.slice(0, 8)}  ${taskId ?? "no id"}  written by ${session ?? (input === undefined ? "the pack" : "the draft")}  scored in ${sessions.join(", ")}`,
+    `  family: ${family ?? "none"}`,
+    `  public: ${input === undefined ? "none in the log (a pack's task: its public input is in the pack)" : JSON.stringify(input.publicInput)}`,
+  ]);
   console.log(lines.length === 0 ? "no comparison has scored a task" : lines.join("\n"));
   return 0;
 }

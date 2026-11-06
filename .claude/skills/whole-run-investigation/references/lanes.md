@@ -1337,8 +1337,14 @@ at each hour (promotions, confirmations, its lead over the Starter, the referenc
 comparison's own hours and median task grade, and the gaps between promotions with and without the
 starter comparisons in them. Reach and soundness stay this lane's reading and are not summed into one
 number: reach held mostly reads the highest grade the exam offered, and a stopped run reads as stopped.
-Grades read across campaigns need one grader, or graders who share anchor tasks that say how far they
-differ.
+
+Across campaigns, whether promotions bought ability is read with graders kept blind to run and result,
+which a lane reading one run cannot be: `wri.ts packets --log <logs> --out <dir> --graders 2` writes
+each grader's packets under opaque labels, with anchor tasks from the others', and a `launch.json`.
+Launch it, then `wri.ts packets --out <dir> --join` writes `grades.tsv` for `trajectory --grades`, says
+how far the graders differ on the anchors, and writes a regrade of any task graded 5 or more that the
+Starter answered every time; launch that once, and join again. Read a difference between campaigns
+only beside the anchors, and rule 1 still keeps "better" for a comparison on one set of tasks.
 
 ## Retired from v1
 

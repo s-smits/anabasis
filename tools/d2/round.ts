@@ -128,7 +128,7 @@ export interface Seats extends SolverSeat {
   /** Set by the paid seats, and kept by whatever holds them, as the solve queue does: until
    *  20 October a command told them by `seated === solved`, and every move the campaign command
    *  made through the solve queue read as a rehearsal's and skipped its admission (a Builder's compare on
-   *  esp32-fresh-opus-m1-air-r2 began on 1 task, where a step at the level takes 6). The cap is still read by identity before the campaign opens,
+   *  esp32-fresh-opus-r2 began on 1 task, where a step at the level takes 6). The cap is still read by identity before the campaign opens,
    *  and the admission refuses a paid move without one. */
   readonly paid?: true;
 }

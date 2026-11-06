@@ -267,7 +267,7 @@ function keptTreeContent(toolTree: string) {
  *
  * A kept state's `.toolchain` is a link to the tree beside it (`stagedState`), so a tool that imports
  * the harness's own programs reached that tree and was refused once frozen, though it opened in the
- * Builder's home: on 26 October a Builder of `buffer-fresh-opus-forkedPR377-m1-air` copied its
+ * Builder's home: on 26 October a Builder of `buffer-fresh-opus-forkedPR377` copied its
  * `.toolchain/lib` into `agent/` to get past it. That tree is admitted where it lies directly beside
  * the harness, and no other: a link to the folder above or to a tree further off still reaches
  * outside.

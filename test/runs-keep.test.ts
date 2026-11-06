@@ -58,7 +58,7 @@ describe("the turn a keeper takes", () => {
       event("build.turn", { session: "b-1", stopReason: "toolUse" }),
       event("solve.turn", { solve: "s-1", stopReason: "toolUse" }),
     ];
-    // A going-on into a network failure, as esp32-fresh-opus-m1-air-r2 wrote it 15 times.
+    // A going-on into a network failure, as esp32-fresh-opus-r2 wrote it 15 times.
     const failed = [
       event("campaign.move", { move: "build", code: "led" }),
       event("build.started", { session: "b-2" }),

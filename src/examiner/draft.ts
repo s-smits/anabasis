@@ -36,7 +36,7 @@
  * (esp32 0 of 62, jobstat 7 of 180, 0 promotions). The business-records exams, also work products,
  * declared an objective in 18 of 21 puts and untied 49 of 50 tasks; the jobstat exams declared one
  * in 0 of 17, each convention naming a data defect's repair and each task's input naming every
- * step, and one program answered 43 of 43 solves (jobstat-fresh-opus-forkedPR600-turns6-stijn-pro,
+ * step, and one program answered 43 of 43 solves (jobstat-fresh-opus-forkedPR600-turns6,
  * g-1). Until then the objective was one optional paragraph ending "a field with no such quantity
  * declares none", and omitting it was silent. Now the session is asked what a practitioner
  * prefers between two valid answers, and a draft gives a quantity with its direction or its
@@ -47,7 +47,7 @@
  *
  * On 5 November an exam that declared the objective as the share of an answer's values agreeing
  * with a recomputation from the input scored 243 of 265 solves at exactly 1, and its three
- * comparisons tied every task, 51 of 51 (jobstath2-fresh-opus-forkedPR608-stijn-pro). So the
+ * comparisons tied every task, 51 of 51 (jobstath2-fresh-opus-forkedPR608). So the
  * prompt names that measure as one the standard method reaches, beside one read against what the
  * task was built from. A rule requiring hidden values whenever an objective is declared was
  * weighed and not taken: truss's mass reads none, and the standard method does not reach its best.

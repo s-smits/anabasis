@@ -272,7 +272,7 @@ export async function keepPractised(log: string, id: string, states: string): Pr
 
 /** Keep the notes of session `id`, cut by a stop or a lost process, from its home while the home
  *  stands, as its own end would have (`keepMemory`). Until 27 October only a session that ended
- *  itself kept them: a stop released the home with the notes in it, and PR377-m1-air's b-2 opened
+ *  itself kept them: a stop released the home with the notes in it, and PR377's b-2 opened
  *  on the starter's (lane 33 of the investigation of 27 October). */
 export function keepCutNotes(log: string, id: string): void {
   const { home } = sessionDirs(log, id);

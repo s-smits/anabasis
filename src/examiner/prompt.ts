@@ -212,16 +212,16 @@ ${brief}`,
 }
 
 /** What a resting conversation is told as the host asks again (`ask`, `write.ts`): the readings
- *  since it last wrote, a promotion among them, and its limits from here. No count of tasks and no
+ *  since it was last told, a promotion among them, and its limits from here. No count of tasks and no
  *  target: what to write is the author's (`AGENTS.md`, section 2, consequence 2). */
 export function wakeMessage(tasks: ReturnType<typeof heard>, told: Told): string {
   return [
     "The host asks for more tasks under the same exam.",
-    tasks.last ?? "No comparison has reported since you last wrote.",
+    tasks.last ?? "No comparison has reported since the host last told you.",
     ...(tasks.groups.length === 0
       ? []
       : [
-          `The tasks compared since you last wrote, under how the harness that is the reference now did on each there. These are measurements, and no instruction or target.\n\n${grouped(tasks.groups)}`,
+          `The tasks compared since the host last told you, under how the harness that is the reference now did on each there. These are measurements, and no instruction or target.\n\n${grouped(tasks.groups)}`,
         ]),
     ...(tasks.promoted === null ? [] : [tasks.promoted]),
     limitsLine(told, "From here the session has"),

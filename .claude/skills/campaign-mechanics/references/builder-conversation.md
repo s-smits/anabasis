@@ -23,7 +23,7 @@ Each `examine` is one ask of one Examiner conversation (`conversing`, `tools/d2/
 since 5 November). Where an ask has supplied the tasks or its `finish` is accepted, it ends on record
 (`exam.finished`) and the call that ended it waits, off any clock, for the next ask. The next
 `examine` wakes it: its `exam.started` names its own session and the `conversation` it continues, and
-the call's result tells it the comparisons reported since it last wrote, a promotion among them and
+the call's result tells it the comparisons reported since it was last told, a promotion among them and
 its limits from here (`wakeMessage`, `src/examiner/prompt.ts`), never a count of tasks or a target.
 Each ask has its own wall clock, turns, drafts and tries in full; the wait counts towards none. The
 conversation ends with the Builder's (`closing`), at a halt or kill, or where an ask crashed or met

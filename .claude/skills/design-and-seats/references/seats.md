@@ -27,7 +27,7 @@ The **Examiner** reads the following view of the log (`src/examiner/record.ts`):
   differed in that comparison's A/A where it sat on the old side (`lastLine`).
 - The checks a `check-defect` ruling found at fault on an answer to a task (`faultedOf`), by id.
 - The promotion line.
-- At each later ask of its conversation, only what reported since it last wrote: the last
+- At each later ask of its conversation, only what reported since it was last told: the last
   comparison's line, the tasks compared since under the reference's outcome, a promotion among them,
   and its limits from here (`heard` with `after`, `wakeMessage`).
 - Its home, with the reference harness, and check results obtained through `try_answer`.

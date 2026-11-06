@@ -72,6 +72,7 @@ import {
   KEEPING,
   logEvents,
   keepers,
+  keptFile,
   openComparisons,
   processes,
   type Run,
@@ -250,7 +251,7 @@ export async function start(
 
 /** Leave a keeper of `run` on `logins` running by itself, its output in `keep.out` beside the log. */
 export function leaveKeeper(run: Run, logins: readonly string[], waitHours: string): void {
-  const out = join(dirname(run.path), "keep.out");
+  const out = keptFile(run);
   const child = capturedSpawn(
     [
       capturedExecPath,

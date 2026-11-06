@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "../s
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { join } from "../src/meta/path.ts";
 import { seats } from "../tools/runs/fresh.ts";
-import { keeperOf, nextLogin, roomFor, type Turn, turnOf, turnsIn } from "../tools/runs/keep.ts";
+import { keeperActed, keeperOf, nextLogin, roomFor, type Turn, turnOf, turnsIn } from "../tools/runs/keep.ts";
 import { billsLogin, fiveHourWith, type Reading, room } from "../tools/runs/logins.ts";
 import { keepsItself, WAIT_HOURS } from "../tools/runs/manage.ts";
 import { type Receipt, writeReceipt } from "../tools/runs/receipt.ts";
@@ -237,6 +237,31 @@ describe("a keeper's looks, scripted", () => {
       expect(await look(NOW)).toBe(false);
       expect(state.acted).toEqual(["stop", "start 3"]);
     }
+  });
+
+  it("says a move, a wait and a barren run in lines the alerts read, and leaves a run's own ending to its log", async () => {
+    const moved = scripted();
+    moved.state.events = [waited(40)];
+    await moved.look(NOW);
+    const waiting = scripted();
+    waiting.state.events = [waited(40)];
+    waiting.state.readings = [];
+    await waiting.look(NOW);
+    const ended = scripted();
+    ended.state.open = false;
+    ended.state.events = [event("campaign.ended", { ending: "budget" })];
+    await ended.look(NOW);
+    const barren = scripted();
+    barren.state.open = false;
+    barren.state.events = [event("build.started", { session: "b-1" })];
+    for (const minute of [0, 1, 2, 3]) await barren.look(NOW + minute * MINUTE);
+    expect(moved.state.said.filter(keeperActed)).toHaveLength(1);
+    expect(waiting.state.said.filter(keeperActed)).toHaveLength(1);
+    expect(ended.state.said).toHaveLength(1);
+    expect(ended.state.said.filter(keeperActed)).toEqual([]);
+    expect(barren.state.said.at(-1)).toContain("kept no longer");
+    expect(barren.state.said.every(keeperActed)).toBe(true);
+    expect(keeperActed("  a refusal's own text, with a colon: in it")).toBe(false);
   });
 
   it("leaves a run whose login recovers first to go on by itself", async () => {

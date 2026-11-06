@@ -57,7 +57,7 @@ const OPTIONS = { promotions: "int", hours: "int", days: "int", out: "abs" } as 
 const HOUR_MS = 3_600_000;
 const WRI = "tools/wri/wri.ts";
 
-/** The trigger's defaults: two promotions (the cycle's `--promotions 2`) or twelve hours. */
+/** The trigger's defaults, which name an investigation and stop nothing: two promotions or twelve hours. */
 const LIMITS = { promotions: 2, hours: 12 } as const;
 
 /** One run as its log reads. */

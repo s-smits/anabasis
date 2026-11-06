@@ -621,10 +621,11 @@ async function look(
   };
 }
 
-function remember(state: string, memory: Memory): void {
+/** Write a look's state whole, so a kill leaves the last one. */
+export function remember(state: string, text: string): void {
   // A checkout no campaign ran in has no `.ana/`, as the Linux runner's had none on 20 October.
   mkdirSync(dirname(state), { recursive: true });
-  writeFileSync(`${state}.tmp`, capturedJsonStringify(memory));
+  writeFileSync(`${state}.tmp`, text);
   renameSync(`${state}.tmp`, state);
 }
 
@@ -634,7 +635,7 @@ function settle(state: string, ack: string): void {
   const pending = `${state}.pending`;
   if (!existsSync(pending)) return;
   const { token, memory } = parseJsonAs<{ token: string; memory: Memory }>(readFileSync(pending, "utf8"));
-  if (token === ack) remember(state, memory);
+  if (token === ack) remember(state, capturedJsonStringify(memory));
   rmSync(pending, { force: true });
 }
 
@@ -727,16 +728,20 @@ export async function watch(args: readonly string[]): Promise<void> {
           [...(values.here || hostsOf().length === 0 ? [] : ["── here"]), ...here.lines].join("\n"),
         );
       }
-      remember(state, here.memory);
+      remember(state, capturedJsonStringify(here.memory));
     }
     const { acks, unanswered } = await saidOfPeers(away, started, memory.acks ?? {});
-    if (away.length > 0) remember(state, { ...here.memory, acks });
+    if (away.length > 0) remember(state, capturedJsonStringify({ ...here.memory, acks }));
     // A host still preparing holds this process for up to five minutes, and the hook's limit is 40 s.
     if (values.every === undefined && unanswered) runtimeProcess.exit(1);
     if (values.every === undefined) break;
     await Bun.sleep(Number(values.every) * 1000);
   }
 }
+
+/** Whether `status` shows a run without `--all`, whose log last changed `age` ago. */
+export const onStatus = (run: Run, open: boolean, age: number): boolean =>
+  open || (run.seed !== true && age <= RECENT_MS);
 
 /**
  * `bun run runs status`: one row a run, open or written in the last day, or every one with `--all`;
@@ -755,7 +760,7 @@ export async function runsStatus(args: readonly string[]): Promise<void> {
     const age = now - statSync(run.path).mtimeMs;
     // A seed no process writes is a rehearsal's copy, and its promotions are its source's; one a
     // process writes was continued as a run (16 October: fork-ladder-buffer-opus was not shown).
-    if (!values.all && !open && (run.seed === true || age > RECENT_MS)) {
+    if (!values.all && !onStatus(run, open, age)) {
       if (run.seed !== true) quiet += 1;
       continue;
     }

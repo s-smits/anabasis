@@ -79,7 +79,7 @@ export function drawLines(
     `next comparison at target ${String(target)}: ${plural(drawn.scored, "frontier task")} and ${plural(drawn.retained, "retained task")} (one for every three frontier)`,
     `frontier by epoch, newest first: ${drawn.byEpoch.map(({ nth, drawn: count }) => `epoch ${String(nth)} of ${String(drawn.epochs)}: ${String(count)}`).join(", ") || "none from task admission"}`,
     `admission at level ${String(level)}: a floor of ${String(comparisonFloor(level))} frontier tasks; ${refused.length === 0 ? "no refusal" : `refused ${refused.map(({ code }) => code).join(", ")}`}`,
-    ...sizeLines(drawn.scored, { level }),
+    ...sizeLines(drawn.scored, level),
   ];
 }
 

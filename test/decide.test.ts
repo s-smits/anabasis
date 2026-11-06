@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { decide, practiceDue, shortOf, supplyRun, unpromoted } from "../src/campaign/decide.ts";
 import type { Plan } from "../src/campaign/ground.ts";
 import { pendingWords } from "../src/campaign/word.ts";
-import { tally as tallyPairs } from "../src/kernel/compare.ts";
+import { scored } from "../src/kernel/compare.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import { pairsReported, lastReports, poolOf, releaseOrder } from "../src/kernel/reports.ts";
 import { stopRule } from "../src/campaign/admission.ts";
@@ -757,9 +757,12 @@ describe("the build conditions", () => {
       const released = logs.map((events) =>
         releaseOrder(events, taskSets(events).held, owed(events, 1000, 0.02), "seed"),
       );
-      const tallies = logs.map((events) =>
-        tallyPairs(lastReports(events).flatMap((report) => pairsReported(events, report))),
-      );
+      const tallies = logs.map((events) => {
+        const { wins, losses, ties } = scored(
+          lastReports(events).flatMap((report) => pairsReported(events, report)),
+        );
+        return { wins, losses, ties };
+      });
       expect(tallies[0]).toEqual(tallies[1]);
       // One reading closes neither task, so the frontier holds both whichever one the new harness won.
       expect(logs.map((events) => poolOf(events).frontier.length)).toEqual([9 + extra, 9 + extra]);

@@ -15,7 +15,7 @@
  * had promoted once each and none twice, and no view said at which epoch a campaign stood or what
  * its tasks had done since the promotion. `runs view` prints the rows.
  */
-import { readsStep, readsStepEitherWay, scoresIn, type Tally, testOf } from "../kernel/compare.ts";
+import { readsStep, readsStepEitherWay, scoresIn, type Tally, testedSet, testOf } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { lastReports, type Reported } from "../kernel/reports.ts";
 import { billedBetween } from "../kernel/meter.ts";
@@ -98,7 +98,6 @@ const MILESTONE = { promotions: 6, controls: 10 } as const;
 
 /** A step's worth against the bar (`worthOf`, `promotionsWorth`). */
 export interface Worth {
-  readonly bars: Readonly<Record<keyof typeof BARS, number>>;
   /** The epoch's promotion attempts, Builder sessions and billed dollars, and whether the attempts
    *  are within the bar, which set-up's epoch always is. */
   readonly cost: {
@@ -106,8 +105,10 @@ export interface Worth {
     readonly sessions: number;
     readonly dollars: number;
     readonly met: boolean;
-  } | null;
+  };
 }
+
+const levelOf = ({ data }: Reported) => (isNumber(data.level) ? data.level : 0);
 
 /** Where each epoch starts: the log's opening, then each promotion. */
 function boundsOf(events: readonly LogEvent[]): { index: number; harness: string }[] {
@@ -151,11 +152,9 @@ export function epochsOf(events: readonly LogEvent[]): Epoch[] {
     // that finished read 0 in every epoch of a led campaign (WRI lane 31).
     const built = events.filter(({ kind }, at) => within(at) && kind.startsWith("build."));
     // An old ladder's readings are no comparison of the epoch's (`lastReports`).
-    const comparisons = events.flatMap(({ kind, data }, at) =>
-      within(at) && kind === "comparison.reported" && isString(data.session) && data.ladder !== true
-        ? [{ id: data.session, reading: isString(data.reading) ? data.reading : "" }]
-        : [],
-    );
+    const comparisons = reports
+      .filter(({ index }) => within(index))
+      .map(({ session, data }) => ({ id: session, reading: isString(data.reading) ? data.reading : "" }));
     const referenceDigest = reference === "starter" ? starter : reference;
     return {
       nth: nth + 1,
@@ -198,15 +197,12 @@ function againstStarter(
   if (first === undefined) return { starter_tally: null, starter_read: null, confirmed: false };
   const ahead = scoresIn(first.data.scored).map((one) => -one);
   const { wins, losses, ties } = testOf(ahead);
-  const level = isNumber(first.data.level) ? first.data.level : 0;
   return {
     starter_tally: { wins, losses, ties },
     starter_read: first.session,
-    confirmed: readsStep(ahead, level),
+    confirmed: readsStep(ahead, levelOf(first)),
   };
 }
-
-const levelOf = ({ data }: Reported) => (isNumber(data.level) ? data.level : 0);
 
 /** Each A/A comparison beside `reports`, the reference against itself read as a comparison is:
  *  whether it had enough untied tasks to read a step at its level, and whether it read one. */
@@ -240,7 +236,7 @@ function falsePromotionOf(
   /** The test's own chance a reading at its margins reads a step between equal harnesses
    *  (`falseRate`, the frontier's before 20 October), the level where its report holds none. */
   const rateOf = (attempt: Reported) => {
-    const rate = asRecord(attempt.data.scored)?.falseRate ?? asRecord(attempt.data.frontier)?.falseRate;
+    const rate = testedSet(asRecord(attempt.data.scored), asRecord(attempt.data.frontier))?.falseRate;
     return isNumber(rate) ? rate : levelOf(attempt);
   };
   const read = controlsIn(reports);
@@ -323,16 +319,10 @@ export function riskLines(events: readonly LogEvent[]): string[] {
 
 /** An epoch's cost against the cost bar (`Worth`), with `pending` attempts the log holds no
  *  report of yet. */
-function costOf(
-  events: readonly LogEvent[],
-  epoch: Epoch | undefined,
-  bar: number,
-  pending = 0,
-): Worth["cost"] {
-  if (epoch === undefined) return null;
+function costOf(events: readonly LogEvent[], epoch: Epoch, pending = 0): Worth["cost"] {
   const attempts = epoch.falsePromotion.attempts + pending;
   const dollars = billedBetween(events, epoch.from, epoch.to ?? undefined);
-  return { attempts, sessions: epoch.sessions, dollars, met: epoch.nth === 1 || attempts <= bar };
+  return { attempts, sessions: epoch.sessions, dollars, met: epoch.nth === 1 || attempts <= BARS.cost };
 }
 
 /** Comparison `id`'s worth where it reads a step (the plan's W): the cost of the log's last
@@ -340,25 +330,22 @@ function costOf(
  *  read again says what it said. Until 19 October a repeat was its first stage's attempt. */
 export function worthOf(events: readonly LogEvent[], id: string): Worth {
   const before = events.filter(({ kind, data }) => kind !== "comparison.reported" || data.session !== id);
-  return { bars: BARS, cost: costOf(before, epochsOf(before).at(-1), BARS.cost, 1) };
+  // SAFETY: `boundsOf` opens every log with its first epoch.
+  return { cost: costOf(before, epochsOf(before).at(-1) as Epoch, 1) };
 }
 
 /** Each promoted harness's worth (the plan's W): the cost of the epoch it ended. */
 export function promotionsWorth(events: readonly LogEvent[]): ReadonlyMap<string, Worth> {
   return new Map(
     epochsOf(events).flatMap((epoch) =>
-      epoch.promoted === null
-        ? []
-        : [[epoch.promoted, { bars: BARS, cost: costOf(events, epoch, BARS.cost) }] as const],
+      epoch.promoted === null ? [] : [[epoch.promoted, { cost: costOf(events, epoch) }] as const],
     ),
   );
 }
 
 /** Summarise the reported cost target; it does not affect admission. */
-export function worthLine({ bars, cost }: Worth): string {
-  return cost === null
-    ? "cost unread"
-    : `cost, reported only: ${plural(cost.attempts, ATTEMPT)} this epoch (bar ${String(bars.cost)} after set-up): ${cost.met ? "met" : "over it"}, over ${plural(cost.sessions, "Builder session")} and ${cost.dollars.toFixed(2)} dollars billed`;
+export function worthLine({ cost }: Worth): string {
+  return `cost, reported only: ${plural(cost.attempts, ATTEMPT)} this epoch (bar ${String(BARS.cost)} after set-up): ${cost.met ? "met" : "over it"}, over ${plural(cost.sessions, "Builder session")} and ${cost.dollars.toFixed(2)} dollars billed`;
 }
 
 /**
@@ -376,9 +363,9 @@ export function barLines(events: readonly LogEvent[]): string[] {
   const confirmed = climbed.filter((epoch) => epoch.confirmed === true).length;
   const unread = climbed.filter(({ starter_tally: tally }) => tally === null).length;
   const over = climbed.flatMap((epoch) => {
-    const cost = costOf(events, epoch, BARS.cost);
+    const cost = costOf(events, epoch);
     const open = epoch.promoted === null ? ", open" : "";
-    return cost?.met === false ? [`epoch ${String(epoch.nth)} at ${String(cost.attempts)}${open}`] : [];
+    return cost.met ? [] : [`epoch ${String(epoch.nth)} at ${String(cost.attempts)}${open}`];
   });
   return [
     `- Climb: ${plural(climbed.length, "promotion")}, ${String(confirmed)} confirmed against a milestone of ${String(MILESTONE.promotions)}; ${String(climbed.length - confirmed - unread)} read against the starter without a step, ${String(unread)} not read against it.`,

@@ -36,6 +36,7 @@
  * next look, on stdout, where the hook's filter keeps them.
  */
 import { comparisonFloor } from "#src/campaign/admission.ts";
+import { BARS } from "#src/campaign/climb.ts";
 import { readsStepEitherWay, scoresIn, testOf } from "#src/kernel/compare.ts";
 import type { EventKind, LogEvent } from "#src/kernel/log.ts";
 import { degradations, traceKind, tracesIn } from "#src/kernel/trace.ts";
@@ -230,7 +231,6 @@ function factorsOf(data: JsonObject): { said: string; look: boolean } {
   const aa = scores === undefined ? null : testOf(scores);
   const clears = scores !== undefined && readsStepEitherWay(scores, level);
   const worth = asRecord(data.worth);
-  const bar = asRecord(worth?.bars)?.cost;
   const spent = asRecord(worth?.cost);
   const attempts = spent?.attempts;
   const scant = isNumber(informative) && informative < floor;
@@ -243,7 +243,7 @@ function factorsOf(data: JsonObject): { said: string; look: boolean } {
     aa === null
       ? ""
       : `A/A ${String(aa.wins)}-${String(aa.losses)}-${String(aa.ties)}${clears ? " cleared the level" : ""}`,
-    isNumber(attempts) ? `attempt ${String(attempts)} of ${word(bar)} this epoch` : "",
+    isNumber(attempts) ? `attempt ${String(attempts)} of ${String(BARS.cost)} this epoch` : "",
   ].filter((part) => part !== "");
   return { said: parts.map((part) => ` · ${part}`).join(""), look: clears || dear || scant };
 }

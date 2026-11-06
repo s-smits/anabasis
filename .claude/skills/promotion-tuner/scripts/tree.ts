@@ -16,12 +16,12 @@
  * none), a name that starts `sim-`, `rh-` or `test-`, and a rehearsal, whose seats are
  * `faux/script`.
  */
-import { type Measures, type Paired, UNMEASURED } from "#src/kernel/compare.ts";
+import { type Paired, UNMEASURED } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import type { Reported } from "#src/kernel/reports.ts";
 import { closeSync, openSync, readdirSync, readSync, statSync } from "#src/meta/filesystem.ts";
 import { gitText } from "#src/meta/git.ts";
-import { type JsonValue, asRecord, isFunction, isString } from "#src/meta/json-shape.ts";
+import { asRecord, isFunction, isString } from "#src/meta/json-shape.ts";
 import { join } from "#src/meta/path.ts";
 import { CAMPAIGNS, campaignsIn } from "#tools/runs/registry.ts";
 import { readableAcross } from "#tools/runs/snapshots.ts";
@@ -33,7 +33,7 @@ interface Sides {
   readonly setting: string;
   readonly comparison: string;
   readonly halves: "mirrored";
-  readonly objective?: { readonly direction: "lower" | "higher" };
+  readonly objective?: { readonly direction: "lower" | "higher" } | undefined;
 }
 
 /** A task's points by measure. A tree from before 2 November also scores the bill; a tree after it
@@ -64,8 +64,6 @@ export interface Tree {
   readsStep: (differences: readonly number[], unbilled: readonly number[] | null, level: number) => boolean;
   /** Whether a reading of a harness against itself reads a step either way at `level`. */
   readsStepEitherWay: (differences: readonly number[], level: number, unbilled: readonly number[]) => boolean;
-  /** The points a report holds by measure, or undefined in a report from before the weights. */
-  measures: (value: JsonValue | undefined) => Measures | undefined;
   billedBetween: (events: readonly LogEvent[], from: number, to: number) => number;
 }
 
@@ -77,7 +75,7 @@ export interface Found {
 /** Bytes read from a log's end to find its last event's time without reading the whole file. */
 const TAIL = 65_536;
 const LEFT_OUT = ["sim-", "rh-", "test-"] as const;
-const AT = '{"at":"';
+export const AT = '{"at":"';
 
 /** The kernel of the worktree at `path`, imported from its own files; refused where it scores no
  *  weighted measures. */
@@ -115,9 +113,11 @@ export async function loadTree(path: string): Promise<Tree> {
     // from 2 November scores no bill, so its scores are the ones it reads. A rule that needs scores
     // without the bill where none can be read refuses them, and reads no step.
     readsStep: (differences, unbilled, level) => {
+      const stepOf: unknown = Reflect.get(compare, "stepOf");
+      if (!isFunction(stepOf)) return compare.readsStep(differences, level);
       try {
         const frontier = unbilled === null ? { differences } : { differences, unbilled };
-        return compare.stepOf({ frontier, retained: UNMEASURED }, level) === "step";
+        return Reflect.apply(stepOf, undefined, [{ frontier, retained: UNMEASURED }, level]) === "step";
       } catch {
         return false;
       }
@@ -128,7 +128,6 @@ export async function loadTree(path: string): Promise<Tree> {
       isFunction(compare.readsStep) && compare.readsStep.length === 2
         ? compare.readsStepEitherWay(unbilled, level)
         : Reflect.apply(compare.readsStepEitherWay, undefined, [differences, level, unbilled]) === true,
-    measures: (value) => compare.measuresIn(value),
     billedBetween: (events, from, to) => Number(Reflect.apply(billing, undefined, [events, from, to])),
   };
 }

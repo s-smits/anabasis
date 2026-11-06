@@ -122,7 +122,7 @@ const BY = ["release", "pack", "setting", "host", "none"] as const;
 const ROWS = ["recent", "groups", "runs", "promotions"] as const;
 /** A run whose log has been quiet for longer than this, or whose last event is an ending, is not
  *  live. A run sitting out a provider's reset longer than this reads as finished with no ending. */
-const LIVE_MS = 2 * HOUR_MS;
+export const LIVE_MS = 2 * HOUR_MS;
 /** The elapsed hours a group is compared at. */
 const MARKS = [6, 12, 24] as const;
 const MISSING = "-";

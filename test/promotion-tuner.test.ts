@@ -1,4 +1,4 @@
-// Replay follows the selected tree's rule, including historical records and weight sweeps.
+// Replay follows the selected tree's rule, including historical records.
 import { expect, it } from "bun:test";
 import { campaignLines, emptyTotals } from "#skills/promotion-tuner/scripts/replay.ts";
 import { campaignLogs, loadTree, type Tree } from "#skills/promotion-tuner/scripts/tree.ts";
@@ -23,7 +23,6 @@ function replay(
   tree: Tree,
   pairs: readonly Paired[],
   frontier: JsonObject = { ...scored(pairs), of: pairs.map(({ task }) => task) },
-  scale = { validity: 1, objective: 1, bill: 1 },
 ) {
   const events: LogEvent[] = [
     {
@@ -52,19 +51,14 @@ function replay(
   ];
   const totals = emptyTotals();
   campaignLines(
-    {
-      tree: { ...tree, read: () => events, pairsReported: () => [...pairs], pairsOf: () => [...pairs] },
-      scale,
-      own: false,
-      level: null,
-    },
+    { ...tree, read: () => events, pairsReported: () => [...pairs], pairsOf: () => [...pairs] },
     { name: "recorded", path: "unused" },
     totals,
   );
   return totals;
 }
 
-it("promotes and diagnoses A/A steps by the tree's own rule under the requested weights", async () => {
+it("promotes and diagnoses A/A steps by the tree's own rule", async () => {
   const tree = await loadTree(ROOT);
   for (const [pairs, steps] of [
     [CHEAP, 0],
@@ -76,8 +70,6 @@ it("promotes and diagnoses A/A steps by the tree's own rule under the requested 
       1 - steps,
       steps,
     ]);
-    const scaled = replay(tree, pairs, undefined, { validity: 0, objective: 1, bill: 1 });
-    expect([scaled.rightful + scaled.doubted, scaled.aaSteps]).toEqual([0, 0]);
   }
 });
 
@@ -147,7 +139,7 @@ it("uses a candidate tree's own stepOf without requiring a readsStep export", as
       writeFileSync(
         join(tree, "src", "kernel", "compare.ts"),
         `import * as real from "${join(ROOT, "src", "kernel", "compare.ts")}";\n` +
-          "export const { WEIGHTS, flipP, measuresIn, pairsOf, pointsOf, readsStepEitherWay } = real;\n" +
+          "export const { WEIGHTS, flipP, pairsOf, pointsOf, readsStepEitherWay } = real;\n" +
           `export const stepOf = ${rule};\n`,
       );
       execTextSync("git", ["-C", tree, "init", "-q"]);

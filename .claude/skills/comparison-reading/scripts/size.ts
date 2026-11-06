@@ -76,7 +76,7 @@ function sizeTold(untied: number, level: number): string[] {
   return [
     `level ${String(level)}: the smallest scored set that can read a step is ${String(sweep)} tasks, all won (sweepOf)`,
     `comparison admission asks for ${String(floor)} frontier tasks (comparisonFloor: a sweep plus one set aside and one tie)`,
-    ...sizeLines(untied, { level }),
+    ...sizeLines(untied, level),
     `every tally that clears with equal margins on ${String(untied)} untied tasks: ${
       clearing(untied, level)
         .map(({ wins, losses }) => `${String(wins)}-${String(losses)}`)

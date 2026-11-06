@@ -133,18 +133,9 @@ took the step from 7 of the 46 promotions the scored test reads, and added none.
 score, and the closing report owns the cost (`close.ts`). `carriedBy` also named the bill while it
 scored: in buffer-fresh-opus-v065-a's g-3 it carried 25 of 25 wins.
 
-**`SAME`.** 22 of 4,852 pairings of valid answers in 11 campaigns differed by less than it. A margin
-once stood in its place, 0.01 of the larger magnitude by default and a term of each comparison
-(`--margin`), and for a while the last A/A set it from the reference's own spread. It turned wins into
-ties and protected no reading. Replayed on the solves of 18 campaigns, the A/A of 38 comparisons read
-no step at 0.01 or at 0, and at 0 the reference against itself won 140 untied tasks and lost 139,
-where the new harness won 23 of 24 in r2's comparison g-3, which read 4-0-20 at 0.01; the same solves
-promote 14 pairs where they promoted 12. The sign-flip test already reads how often equal harnesses
-win a task by the objective, so a difference the test does not trust is a tie of the test's own.
-
 **`ROOM`.** In buffer-fresh-opus-r6 every solve of both sides was valid on all 24 tasks of comparison
 g-2, which read 23-0-1 and promoted on gains of 0.01% to 0.65%: at the floor the same solves read
-3-3-18, and its task admission held 10 of the 29 drafts it held at `SAME`. Without the floor six tasks
+3-3-18, and its task admission held 10 of the 29 drafts it held with no floor. Without the floor six tasks
 with room won by 0.01% read p = 0.016 and promote. A `--room` term that set it per campaign was named
 by no campaign, so the operator chose one fixed floor, and the tree reads every comparison at it. The
 author's answer counts towards room (`hasObjectiveGap`): when it counted from solves alone, a live
@@ -163,7 +154,7 @@ older ones included: the report each wrote is its record.
 
 **The gain is uncapped.** A pairing's objective gain once counted as its share of a tenth (`FULL`, 0.1),
 capped at one, so every gain from 10% up weighed alike. A replay at 0.1, 0.3 and 1.0 found it close to
-inert, and it went: the gain counts as its own share of the larger magnitude, which `gainOver` already
+inert, and it went: the gain counts as its own share of the larger magnitude, which `gainOver`
 bounds at one. Replayed by the promotion tuner over 154 local campaigns (224 readings, 224 A/A
 comparisons), the tree with `FULL` reads 105 recorded promotions as rightful and 106 pairs promoted,
 and the tree without it 103 and 104, with no A/A step in either. The two promotions it drops are

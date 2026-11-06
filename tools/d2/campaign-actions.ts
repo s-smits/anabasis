@@ -503,7 +503,7 @@ const compareTool = (context: CampaignContext, bench: Bench): SeatTool =>
     // What a comparison of so many tasks can read, as the operator reads it before one: until
     // 13 October the Builder was not told, and a led Builder bought one of six scored tasks.
     const size = Array.isArray(scored)
-      ? [`Comparison size: ${sizeLines(scored.length, turn.plan.wanted)[0] ?? ""}.`]
+      ? [`Comparison size: ${sizeLines(scored.length, turn.plan.wanted.level)[0] ?? ""}.`]
       : [];
     const promoted = await promoteOwed(context, bench);
     // A reading owes practice again (`practiceDue`), so the host releases it as the report lands

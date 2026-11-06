@@ -214,8 +214,8 @@ describe("what a start's reader is told", () => {
   it("says the sets and the size, and what the cap, the checker, the labels and the practice leave open", () => {
     const notes = admitComparison(checked, ASKED);
     expect(notes[0]).toMatch(/^6\D+0\D+6\D*$/);
-    expect(notes.slice(1, -1)).toEqual(sizeLines(6, WANTED));
-    expect(notes).toHaveLength(sizeLines(6, WANTED).length + 2);
+    expect(notes.slice(1, -1)).toEqual(sizeLines(6, WANTED.level));
+    expect(notes).toHaveLength(sizeLines(6, WANTED.level).length + 2);
     const told = (wanted: Partial<Wanted> = {}) =>
       admitComparison(checked, { ...ASKED, wanted: { ...WANTED, ...wanted } });
     expect(told({ builds: false })).toHaveLength(notes.length - 1);

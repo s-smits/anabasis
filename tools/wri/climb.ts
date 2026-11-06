@@ -15,7 +15,15 @@ import { pairsReported } from "#src/kernel/reports.ts";
 import { epochsOf as epochsRead } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";
 import { gateAnswers } from "./gate-era.ts";
-import { differenceOf, flipP, informative, type Kept, type Paired } from "#src/kernel/compare.ts";
+import {
+  differenceOf,
+  flipP,
+  readsStep,
+  informative,
+  type Paired,
+  pointsOf,
+  wholePoints,
+} from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { asRecord, isNumber } from "#src/meta/json-shape.ts";
 import { validityOf } from "#tools/d2/close.ts";
@@ -178,14 +186,14 @@ export function safeguardTriggers(log: Index): Trigger[] {
     const level = count(rests[0]?.last.level);
     const reports = rests.map(({ last }) => last);
     const joined = joinedTest(reports);
-    if (rests.length === 0 || flipP(joined) > level) return [];
+    if (rests.length === 0 || !readsStep(joined, level)) return [];
     const harness = `${short(text(data.harness))} ${said(joined)} joined at level ${String(level)}`;
     const without = joinedTest(reports, authored);
-    const valid = measuredOf(log.events, rests, "validity");
-    return [{ level, harness, without, valid, scored: measuredOf(log.events, rests, "scored") }];
+    const valid = measuredOf(log.events, rests, (pair) => wholePoints(pointsOf(pair).validity));
+    return [{ level, harness, without, valid, scored: measuredOf(log.events, rests, differenceOf) }];
   });
-  const author = promotions.filter(({ without, level }) => flipP(without) > level);
-  const beyond = promotions.filter(({ valid, level }) => flipP(valid) > level);
+  const author = promotions.filter(({ without, level }) => !readsStep(without, level));
+  const beyond = promotions.filter(({ valid, level }) => !readsStep(valid, level));
   return [
     ...(author.length > 0
       ? [
@@ -216,17 +224,18 @@ export function safeguardTriggers(log: Index): Trigger[] {
   ];
 }
 
-/** Each tested task's score (`testedOf`) on the measures `kept` names, as the step reads it
- *  (`differenceOf`), from the settled pairs (`pairsReported`), summed
- *  over a promotion's two readings as `joined` sums them. Until 25 October
- *  it summed the measures itself, and rounded half points up where the step rounds them away from
- *  zero. */
-function measuredOf(events: readonly LogEvent[], rests: readonly Compared[], kept: Kept) {
+/** Each tested task's score (`testedOf`) by `scoreOf`, from the settled pairs (`pairsReported`),
+ *  summed over a promotion's two readings as `joined` sums them. */
+function measuredOf(
+  events: readonly LogEvent[],
+  rests: readonly Compared[],
+  scoreOf: (pair: Paired) => number,
+) {
   const sums = new Map<string, number>();
   for (const { session, at, last } of rests) {
     const tested = new Set(testedOf(last).of);
     for (const pair of pairsReported(events, { session, index: at, data: last })) {
-      if (tested.has(pair.task)) sums.set(pair.task, (sums.get(pair.task) ?? 0) + differenceOf(pair, kept));
+      if (tested.has(pair.task)) sums.set(pair.task, (sums.get(pair.task) ?? 0) + scoreOf(pair));
     }
   }
   return [...sums.values()];

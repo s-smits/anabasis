@@ -178,8 +178,9 @@ export async function prepareCommand(
   console.log(`${String(sets.held.length)} held out, ${String(sets.released.length)} released for practice`);
   // What a comparison would score: the tasks the draw can take (`scoredSet`).
   const scored = Math.min(target, poolOf(events).scorable.length);
-  const asked = { level: Number(values.level) };
-  for (const line of [...sizeLines(scored, asked), ...awaitingLines(campaign)]) console.log(line);
+  for (const line of [...sizeLines(scored, Number(values.level)), ...awaitingLines(campaign)]) {
+    console.log(line);
+  }
   return 0;
 }
 

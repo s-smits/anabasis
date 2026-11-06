@@ -277,7 +277,7 @@ describe("a campaign", () => {
     // The pack's seven tasks are proposed and put to their one gate, with no solve and no stored
     // answer. Two of the eight held out are then released for practice, by the contract's draw.
     const versions = TASKS.map((task) => taskVersion(campaign.pack(task)));
-    const summary = ["6 held out, 2 released for practice", ...sizeLines(6, ASKED)].join("\n");
+    const summary = ["6 held out, 2 released for practice", ...sizeLines(6, ASKED.level)].join("\n");
     // Each release is said by its task: a release cannot be taken back.
     const [proposed, ...lines] = (await prepare()).split("\n");
     expect(proposed).toBe("7 of the pack's tasks proposed: 7 held out, 0 refused");
@@ -301,7 +301,7 @@ describe("a campaign", () => {
     expect(read(campaign.log)).toHaveLength(events);
     // Asked for no more practice than there is, it says what a comparison of the size asked for can show.
     expect(await prepare("--target", "3")).toBe(
-      ["6 held out, 2 released for practice", ...sizeLines(3, ASKED)].join("\n"),
+      ["6 held out, 2 released for practice", ...sizeLines(3, ASKED.level)].join("\n"),
     );
   });
 

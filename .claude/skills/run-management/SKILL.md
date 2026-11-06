@@ -446,15 +446,14 @@ log moved, and says what this observer has not seen:
   30 a look, and `◆ the readers' full text: <folder>` for the rest. A line that moved only in a number
   waits for the first result past a milestone. A reader's first result is remembered and not said, as
   a trigger's is on a first look. `--no-readers` leaves all of this out, and `--no-embed` only the
-  readers that load the local embedding model (`posture`, `restated`, `nearness`), on every host it
+  readers that load the local embedding model (`restated`, `nearness`), on every host it
   asks. It does not stick: a later look without it runs them again.
 - **What it cost.** One pass a host (`tools/wri/pass.ts`) does the reading at the lowest priority, one
   reader at a time, for at most 30 s once in 4 minutes however many sessions look, and each reader
   starts only where the one-minute load leaves a core under the line where a solve waits. A look waits
-  for it at most 20 s. Under load the readers are shed, and said to be. `posture`, `restated` and
-  `nearness` alone load a local model, on one thread, and only for words not yet embedded: their vectors
-  are kept after every batch,
-  so a read the 30 s cuts goes on from there at the next pass.
+  for it at most 20 s. Under load the readers are shed, and said to be. `restated` and `nearness` alone
+  load a local model, on one thread, and only for words not yet embedded: their vectors are kept after
+  every batch, so a read the 30 s cuts goes on from there at the next pass.
 - **What a cut says.** `⚠ not read since the last look: <readers>; <why>` names each reader that read
   nothing past this observer's last look, on a log that moved since, whatever stopped it. It comes
   again until the reader catches up, and what the reader then says comes as ordinary news. A pass
@@ -464,7 +463,7 @@ log moved, and says what this observer has not seen:
   look exits 1.
 - **Where it lies.** Results lie in the main worktree's `.ana/pulse/readers/`, and each observer's copy
   of a reader with news in `<state>.d/<run>/`. Both hold hidden values as the log does, and no seat can
-  read them (`test/runs-pulse-readers.test.ts`, and `test/wri-posture.test.ts` for the readers' vectors,
+  read them (`test/runs-pulse-readers.test.ts`, and `test/wri-vectors.test.ts` for the readers' vectors,
   which lie in the same folders). A result may come from another session's commit.
 
 ## Stop

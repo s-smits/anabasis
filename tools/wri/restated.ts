@@ -19,21 +19,17 @@
  * (`AGENTS.md`, section 9), so this is a lead and decides nothing. It counts rulings and names checks,
  * and prints no reason.
  */
-import { type LogEvent, read } from "#src/kernel/log.ts";
-import { SEATS, traceKind } from "#src/kernel/trace.ts";
+import { read } from "#src/kernel/log.ts";
 import { blockingOf } from "#src/kernel/verify.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { type EmbedWays, groupsOf, runVectorReader, vectorLines } from "./embed.ts";
-import { indexOf, text } from "./folds.ts";
+import { indexOf, NO_TRACES, text } from "./folds.ts";
 
 /** v1's line, kept for the reason above. */
 const SAME_COMPLAINT = 0.93;
 /** Two can be chance wording, and a pair ruled two ways is named whatever its size. */
 const NAMED_FROM = 3;
 const NAMED_CHECKS = 2;
-const NO_TRACES: ReadonlySet<LogEvent["kind"]> = new Set(
-  SEATS.flatMap((seat) => [traceKind(seat, "call"), traceKind(seat, "turn")]),
-);
 
 interface Ruled {
   readonly words: string;

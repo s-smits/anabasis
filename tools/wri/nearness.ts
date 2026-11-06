@@ -27,16 +27,13 @@ import { differenceOf } from "#src/kernel/compare.ts";
 import { proposalsOf } from "#src/kernel/history.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { lastReports, pairsReported } from "#src/kernel/reports.ts";
-import { SEATS, traceKind } from "#src/kernel/trace.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { dot, type EmbedWays, groupsOf, runVectorReader, vectorLines } from "./embed.ts";
+import { NO_TRACES } from "./folds.ts";
 
 /** v1's line for a restated task. */
 const NEAR = 0.98;
-const NO_TRACES: ReadonlySet<LogEvent["kind"]> = new Set(
-  SEATS.flatMap((seat) => [traceKind(seat, "call"), traceKind(seat, "turn")]),
-);
 
 interface Written {
   readonly version: string;

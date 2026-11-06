@@ -18,9 +18,8 @@
 import { read } from "#src/kernel/log.ts";
 import type { Call, Traced } from "#src/kernel/trace.ts";
 import type { JsonValue } from "#src/meta/json-shape.ts";
-import { runtimeProcess } from "#src/meta/process.ts";
 import { median } from "#src/meta/tally.ts";
-import { type Index, indexOf, type Solve } from "./folds.ts";
+import { type Index, indexOf, printRows, type Solve } from "./folds.ts";
 
 const SESSION_SEATS: ReadonlySet<string> = new Set(["build", "exam", "draft"]);
 const MINUTE_MS = 60_000;
@@ -95,8 +94,4 @@ export function waitRows(index: Index): string[] {
   return rows.length === 0 ? ["waits: no call on record holds its time"] : rows;
 }
 
-if (import.meta.main) {
-  const [log] = runtimeProcess.argv.slice(2);
-  if (log === undefined) throw new Error("name a log: bun tools/wri/waits.ts <log>");
-  console.log(waitRows(indexOf(read(log))).join("\n"));
-}
+if (import.meta.main) printRows("waits", (log) => waitRows(indexOf(read(log))));

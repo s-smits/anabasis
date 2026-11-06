@@ -122,7 +122,6 @@ export const READERS: readonly Reader[] = [
   { name: "answers", args: (log) => ["tools/wri/answers.ts", log] },
   { name: "waits", args: (log) => ["tools/wri/waits.ts", log] },
   { name: "routes", args: (log) => ["tools/wri/routes.ts", log] },
-  { name: "posture", embeds: true, args: (log) => ["tools/wri/posture.ts", log] },
   { name: "restated", embeds: true, args: (log) => ["tools/wri/restated.ts", log] },
   { name: "nearness", embeds: true, args: (log) => ["tools/wri/nearness.ts", log] },
   skillReader("versions", "harness-audit/scripts/harness-versions.ts"),

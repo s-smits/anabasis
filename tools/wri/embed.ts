@@ -117,22 +117,21 @@ async function embedMissing(
 }
 
 /** The vectors of `wanted` for one log: those kept, and the rest embedded and appended batch by batch.
- *  `stopped` says why the embedder gave up, with what it finished kept; `unkept` why the store could not
- *  be written, with every vector still in hand. `missing` counts what this read found to embed. */
-export async function vectorsOf(log: string, wanted: readonly string[], { store, load }: EmbedWays) {
+ *  `stopped` is the one line a reader prints where the embedder gave up, with what it finished kept;
+ *  `unkept` the line it prints beside its reading where the store could not be written, with every
+ *  vector still in hand. Each names the reader. */
+export async function vectorLines(
+  name: string,
+  log: string,
+  wanted: readonly string[],
+  { store, load }: EmbedWays,
+) {
   const file = join(folderOf(store, log), `vectors-${sha256(`${MODEL}@${REVISION}`).slice(0, 8)}.jsonl`);
   const lines = existsSync(file) ? readFileSync(file, "utf8").split("\n") : [];
   const vectors = new Map(lines.map(rowOf).filter((row) => row !== null));
-  const found = await embedMissing(vectors, wanted, { file, load });
-  return { ...found, vectorOf: (words: string) => vectors.get(keyOf(words)) ?? new Float32Array() };
-}
-
-/** `vectorsOf` for a reader's lines: `stopped` is the one line it then prints, and `unkept` the line to
- *  print beside its reading, each naming the reader. */
-export async function vectorLines(name: string, log: string, wanted: readonly string[], ways: EmbedWays) {
-  const { vectorOf, embedded, missing, stopped, unkept } = await vectorsOf(log, wanted, ways);
+  const { embedded, missing, stopped, unkept } = await embedMissing(vectors, wanted, { file, load });
   return {
-    vectorOf,
+    vectorOf: (words: string) => vectors.get(keyOf(words)) ?? new Float32Array(),
     embedded,
     stopped:
       stopped === null
@@ -168,7 +167,7 @@ export function groupsOf(vectors: readonly Float32Array[], least: number): numbe
 }
 
 /** The pinned model on one thread, from its folder where that holds all of it, else fetched there. */
-export async function localModel(): Promise<Embed> {
+async function localModel(): Promise<Embed> {
   const { env, pipeline } = await import("@huggingface/transformers");
   const cache = join(homedir(), ".cache", "huggingface", "transformers.js");
   const folder = join(cache, MODEL, REVISION);

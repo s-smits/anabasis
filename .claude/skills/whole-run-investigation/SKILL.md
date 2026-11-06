@@ -166,21 +166,13 @@ answer); and what writes (`wri.ts start`, `lanes`, `collect`, `synthesis`, `inde
 `wri2p2.ts open`, `tools/c/rejections.ts`, `tools/d2/close.ts`) or calls a paid model
 (`system-path-simulation/scripts/live-seat.ts` and `referee-seat.ts`, `compare-systems/scripts/systems.ts`).
 
-`restated` and `nearness` run the same local model on two other texts. `restated` groups the Referee's
-reasons at cosine 0.93 and names the groups of three or more, and any one ruled two ways, with the
-checks and rulings, so one complaint read 41 times is read once. `nearness` says how close each Examiner
-session's tasks read to earlier ones, and how many groups a comparison's scored tasks fall in. Within a
-log near tasks tied and split as far ones did, so read it for how alike an exam's words are and not as
-a dependence between tasks. Neither prints a reason or a task's text.
-
-`posture` labels with a model too, and it was the first to keep something: it labels each unit
-of a log's prose, the words a turn holds, with the nearest of a fixed set of anchors, and appends
-each batch's vectors to the reader store under `.ana/pulse/`, so a cut read goes on from where it was
-(`tools/wri/embed.ts` owns the model and the store, for any reader that wants vectors). It prints counts by seat, session and ending, never a passage. Its labels are leads and decide
-nothing. On five logs its own floor called every one thin, more than half of the
-units falling under the margin, and its line for a session adrift never fired, so read it as what a
-log's prose was about and not as whether the work advanced. A model that speaks only in tool calls
-leaves a row of noughts.
+`restated` and `nearness` run a local model on two texts, and `tools/wri/embed.ts` owns the model and
+the vector store under `.ana/pulse/`, so a cut read goes on from where it was. `restated` groups the
+Referee's reasons at cosine 0.93 and names the groups of three or more, and any one ruled two ways, with
+the checks and rulings, so one complaint read 41 times is read once. `nearness` says how close each
+Examiner session's tasks read to earlier ones, and how many groups a comparison's scored tasks fall in.
+Within a log near tasks tied and split as far ones did, so read it for how alike an exam's words are and
+not as a dependence between tasks. Neither prints a reason or a task's text.
 
 One investigation reads one question, over one campaign or several. Two campaigns of one pack, one
 under a checker and one under its repair, are read apart, and lane 3 of the later one joins them.

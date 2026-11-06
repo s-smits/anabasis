@@ -15,9 +15,8 @@
  */
 import { read } from "#src/kernel/log.ts";
 import type { JsonValue } from "#src/meta/json-shape.ts";
-import { runtimeProcess } from "#src/meta/process.ts";
 import { median } from "#src/meta/tally.ts";
-import { type Index, indexOf, type Solve, text } from "./folds.ts";
+import { type Index, indexOf, printRows, type Solve, text } from "./folds.ts";
 
 function sideOf(scoring: readonly Solve[], harness: JsonValue | undefined): string {
   const passes = scoring.filter((solve) => solve.harness === harness && solve.outcome === "pass");
@@ -39,8 +38,4 @@ export function routeRows(index: Index): string[] {
   return rows.length === 0 ? ["routes: no comparison holds a solve"] : rows;
 }
 
-if (import.meta.main) {
-  const [log] = runtimeProcess.argv.slice(2);
-  if (log === undefined) throw new Error("name a log: bun tools/wri/routes.ts <log>");
-  console.log(routeRows(indexOf(read(log))).join("\n"));
-}
+if (import.meta.main) printRows("routes", (log) => routeRows(indexOf(read(log))));

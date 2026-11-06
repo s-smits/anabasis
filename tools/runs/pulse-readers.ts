@@ -56,7 +56,7 @@ import { errorCode } from "#src/meta/runtime-values.ts";
 
 /** How long a look waits for the pass. The hook kills a look at 40 s, a peer's answer is awaited for
  *  30 s, and a look has its own 2 to 4 s of reading besides. */
-export const WAIT_MS = 20_000;
+const WAIT_MS = 20_000;
 /** The most one pass runs. A reader's collector takes about 1.5 cores, so at most 0.6 is added to the
  *  one-minute load. */
 const PASS_MS = 30_000;
@@ -90,8 +90,6 @@ interface ReaderResult {
 export interface PassEnding {
   readonly at: number;
   readonly ended: "finished" | "budget" | "load";
-  readonly load: number;
-  readonly cores: number;
 }
 
 /** What this observer has compared of one reader on one log. */
@@ -199,7 +197,7 @@ export const room = (load = loadNow(), cores = availableParallelism()): boolean 
 
 /** Record how a pass ended, and drop the results of logs no look has moved for a week. */
 export function endPass(store: string, ended: PassEnding["ended"]): void {
-  const ending: PassEnding = { at: Date.now(), ended, load: loadNow(), cores: availableParallelism() };
+  const ending: PassEnding = { at: Date.now(), ended };
   written(join(store, LAST), capturedJsonStringify(ending));
   for (const entry of readdirSync(store, { withFileTypes: true })) {
     const folder = join(store, entry.name);
@@ -281,15 +279,14 @@ export async function startPass(
   {
     tree,
     waitMs = WAIT_MS,
-    gapMs = GAP_MS,
     roomNow = room,
     noEmbed = false,
-  }: { tree: string; waitMs?: number; gapMs?: number; roomNow?: () => boolean; noEmbed?: boolean },
+  }: { tree: string; waitMs?: number; roomNow?: () => boolean; noEmbed?: boolean },
 ): Promise<void> {
   const deadline = performance.now() + waitMs;
   mkdirSync(store, { recursive: true });
   const last = lastPass(store);
-  const rested = last === null || Date.now() - last.at >= gapMs;
+  const rested = last === null || Date.now() - last.at >= GAP_MS;
   if (logs.length > 0 && rested && roomNow() && !passRunning(store) && due(store, logs)) {
     const { PATH, HOME } = runtimeProcess.env;
     const pass = capturedSpawn(
@@ -335,9 +332,7 @@ function whyNot(store: string): string {
   const last = lastPass(store);
   if (last === null) return "no pass has finished on this host";
   const at = new Date(last.at).toISOString().slice(11, 16);
-  if (last.ended === "load") {
-    return `the pass of ${at}Z stopped at a load of ${last.load.toFixed(1)} of ${String(last.cores)} cores`;
-  }
+  if (last.ended === "load") return `the pass of ${at}Z stopped for the load`;
   if (last.ended === "budget") return `the pass of ${at}Z ended at its limit of ${String(PASS_MS / 1000)} s`;
   return `the last pass ended at ${at}Z, and passes rest ${String(GAP_MS / 60_000)} minutes`;
 }

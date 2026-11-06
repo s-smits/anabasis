@@ -29,7 +29,7 @@ print. The other readers take a name each and write nothing:
 ```sh
 bun run runs view <name>
 bun tools/wri/wri.ts read --log <log>
-bun run runs pulse --once <name>
+bun run runs pulse <name>
 ```
 
 A line that moved on a real log is the change's effect, counted. Say how many logs were read and how

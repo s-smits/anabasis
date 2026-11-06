@@ -491,7 +491,7 @@ describe("the fleet pulse", () => {
   it("polls each host once and keeps a local state path out of remote commands", () => {
     const made = fixture();
     const state = join(made.root, "state.json");
-    const command = `import { watch } from "REPOSITORY/tools/runs/pulse.ts"; await watch(["--once", "--state", ${JSON.stringify(state)}]);`;
+    const command = `import { watch } from "REPOSITORY/tools/runs/pulse.ts"; await watch(["--once", "--no-readers", "--state", ${JSON.stringify(state)}]);`;
     const result = made.run(command);
     expect(result.code).toBe(0);
     expect(result.out).toContain("reported step");
@@ -504,11 +504,11 @@ describe("the fleet pulse", () => {
     expect(remote).toContain("--here");
     const failed = made.run(command, { FAKE_OFFLINE: "1" });
     expect(failed.code).toBe(1);
-    expect(failed.err).toContain("pulse unavailable");
+    expect(failed.out).toContain("pulse unavailable");
     const local = fixture();
     expect(
       local.run(
-        `import { watch } from "REPOSITORY/tools/runs/pulse.ts"; await watch(["--once", "--here", "--state", ${JSON.stringify(join(local.root, "local.json"))}]);`,
+        `import { watch } from "REPOSITORY/tools/runs/pulse.ts"; await watch(["--once", "--no-readers", "--here", "--state", ${JSON.stringify(join(local.root, "local.json"))}]);`,
       ).code,
     ).toBe(0);
     expect(local.recorded().filter((call) => call.tool === "ssh")).toHaveLength(0);

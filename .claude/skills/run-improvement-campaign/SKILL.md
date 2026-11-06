@@ -270,7 +270,7 @@ Read the operator's local handover where one is kept, then read the current evid
 
 ```sh
 bun --env-file=.env.runs run runs status     # every run on this host and each host ANA_HOSTS lists
-bun run runs pulse --once                    # open runs and endings since the last look
+bun run runs pulse                    # open runs and endings since the last look
 bun run runs view <name>                     # comparisons, climb and the table's next move
 bun run runs source <name>                   # each launch's commit and whether it was clean
 bun .claude/skills/stack-pr/scripts/stack.ts   # the open stack and its top
@@ -505,7 +505,7 @@ so.
 ## 5. Watch
 
 ```sh
-bun run runs pulse --once [<name>]
+bun run runs pulse [<name>]
 ```
 
 Read at each milestone and at the timer's predicted moment.

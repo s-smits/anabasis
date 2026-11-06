@@ -124,7 +124,7 @@ many of their solves were valid, then one of two last lines.
 Then put the seed through the readers a real run meets, since a join can break after the report:
 
 ```sh
-bun run runs pulse --once sim-<what>
+bun run runs pulse sim-<what>
 bun run runs view sim-<what>
 bun tools/wri/wri.ts read --log .ana/d2/sim-<what>/log.jsonl
 ```

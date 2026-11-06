@@ -178,7 +178,7 @@ describe("controller pruning and cursor storage", () => {
     const log = join(folder, "log.jsonl");
     append(log, "campaign.ended", { ending: "finished", why: "fixture" });
     const read =
-      'import { watch } from "REPOSITORY/tools/runs/pulse.ts"; process.chdir(process.env.FAKE_CONTROLLER!); await watch(["distant", "--once", "--here", "--state", ".ana/pulse/observer.json"]);';
+      'import { watch } from "REPOSITORY/tools/runs/pulse.ts"; process.chdir(process.env.FAKE_CONTROLLER!); await watch(["distant", "--once", "--no-readers", "--here", "--state", ".ana/pulse/observer.json"]);';
     for (const commit of [made.commit, "b".repeat(40)]) {
       const controller = join(made.root, "git", "ana-code", commit);
       mkdirSync(controller, { recursive: true });

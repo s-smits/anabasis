@@ -53,9 +53,18 @@ describe("a stop", () => {
     expect(left({ path })).toEqual([
       "solve-build-r1-b-2",
       "solve-exam-r1-d-1",
+      "solve-exam-r1-x-1",
       "solve-exam-r1-x-2",
       "solve-s-2",
     ]);
+    // A run stopped at a rest: every ask has finished, and the root of the first still stands.
+    const rested = join(root, "r2", "log.jsonl");
+    mkdirSync(dirname(rested));
+    append(rested, "exam.started", { session: "x-1" });
+    append(rested, "exam.finished", { session: "x-1" });
+    append(rested, "exam.started", { session: "x-2", conversation: "x-1" });
+    append(rested, "exam.finished", { session: "x-2" });
+    expect(left({ path: rested })).toEqual(["solve-exam-r2-x-1", "solve-exam-r2-x-2"]);
     // A seed of that run where it stands. The solve and the session the run has open are still
     // the run's, and may be live: a stop of the seed names only what the seed started.
     const copy = join(root, "sim-r1", "log.jsonl");

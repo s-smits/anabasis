@@ -22,6 +22,7 @@
 import { EXAMINE } from "#src/campaign/admission.ts";
 import { keepCutNotes, sessionDirs, spent } from "#src/builder/session.ts";
 import { examinerDirs } from "#src/examiner/shell.ts";
+import { examinerSessions } from "#src/kernel/solves.ts";
 import { unfinished } from "#src/kernel/trace.ts";
 import { existsSync, rmSync } from "#src/meta/filesystem.ts";
 import { isString } from "#src/meta/json-shape.ts";
@@ -63,16 +64,22 @@ export function family(table: string, pid: number): number[] {
  *
  * An Examiner session has a root as a Builder's: left out here, the root of the one a stop cut
  * stayed and had to be released by hand (buffer x-1, 2026-10-10). A session that drafts
- * an exam has had one since 11 October.
+ * an exam has had one since 11 October. Every Examiner session is named, finished or not: the
+ * root is its conversation's first ask's, which stands through each rest with that ask finished
+ * and goes only when the conversation ends, so one that stands was left. A run stopped at a rest
+ * kept 517 MB under x-1 after x-3 had finished (forkedPR629, 5 November).
  */
 export function leftOpen(run: Pick<Run, "path" | "seed">): (SolveDirs & { build?: string })[] {
   const events = logEvents(run.path).slice(run.seed === true ? seedCut(dirname(run.path)) : 0);
-  return unfinished(events).flatMap(({ of, id }) => {
+  const seats = unfinished(events).flatMap(({ of, id }) => {
     if (!isString(id)) return [];
     if (of === "solve") return [solveDirs(id)];
-    if (of === "build") return [{ ...sessionDirs(run.path, id), build: id }];
-    return of === "exam" || of === "draft" ? [examinerDirs(run.path, id)] : [];
+    return of === "build" ? [{ ...sessionDirs(run.path, id), build: id }] : [];
   });
+  return [
+    ...seats,
+    ...[...examinerSessions(events)].filter(isString).map((id) => examinerDirs(run.path, id)),
+  ];
 }
 
 /** What a stopped process's run may go on with, by the command it ran. A round has no ending to

@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import { drawLines, drawOf } from "#skills/comparison-reading/scripts/draw.ts";
+import { gapLines, sideGap } from "#skills/comparison-reading/scripts/gap.ts";
 import { scoresRead, sizeOf } from "#skills/comparison-reading/scripts/size.ts";
 import { rowsOf } from "#skills/comparison-reading/scripts/reading.ts";
 import { flipP } from "../src/kernel/compare.ts";
@@ -234,5 +235,55 @@ describe("what the next comparison would score", () => {
     const lines = drawLines(exam(5, 2), { target: 24, level: 0.02 });
     expect(lines.find((line) => line.startsWith("admission "))).toContain("refused held-short");
     for (const canary of [HIDDEN, "task-", "v-"]) expect(lines.join("\n")).not.toContain(canary);
+  });
+});
+
+describe("how far a comparison's sides stood from the best on record", () => {
+  /** A task whose two solves a side measured these, read by `direction`. */
+  const task = (
+    name: string,
+    direction: "lower" | "higher",
+    old: readonly (number | null)[],
+    fresh: readonly (number | null)[],
+  ) => ({
+    task: name,
+    old: old.map((one) => one !== null),
+    fresh: fresh.map((one) => one !== null),
+    objective: { direction, old, fresh },
+  });
+  const bests = new Map([
+    ["low", 100],
+    ["high", 200],
+    ["zero", 0],
+  ]);
+
+  it("reads a reference far from the best and a candidate at it, whichever way the objective runs", () => {
+    const pairs = [
+      task("low", "lower", [200, 200], [100, 100]),
+      task("high", "higher", [100, 100], [200, 200]),
+    ];
+    expect(sideGap(pairs, "old", bests)).toEqual({ ratio: 2, atBest: 0, read: 2, unread: 0 });
+    expect(sideGap(pairs, "fresh", bests)).toEqual({ ratio: 1, atBest: 2, read: 2, unread: 0 });
+  });
+
+  it("counts a reference already at the best within the floor, and one just past it as not", () => {
+    const at = sideGap([task("low", "lower", [101, 101], [])], "old", bests);
+    const past = sideGap([task("low", "lower", [102, 102], [])], "old", bests);
+    expect([at.atBest, past.atBest]).toEqual([1, 0]);
+  });
+
+  it("leaves out a side with no valid answer, and counts one a ratio cannot read", () => {
+    const pairs = [
+      task("low", "lower", [null, null], [100, null]),
+      task("none", "lower", [100, 100], [100, 100]),
+      task("zero", "lower", [100, 100], [100, 100]),
+      task("high", "higher", [0, -3], [200, 200]),
+    ];
+    expect(sideGap(pairs, "old", bests)).toEqual({ ratio: null, atBest: 0, read: 0, unread: 3 });
+    expect(sideGap(pairs, "fresh", bests).read).toBe(2);
+  });
+
+  it("prints no line for a log with no comparison under an objective", () => {
+    expect(gapLines([START])).toEqual([]);
   });
 });

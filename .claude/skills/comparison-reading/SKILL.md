@@ -33,6 +33,7 @@ comparisons again under other weights or a candidate tree is `promotion-tuner` '
 | Change `pointsOf`, `WEIGHTS`, `ROOM`, `flipP`, `stepOf`, `readsStep` or the A/A | `references/tally-and-test.md`, then `promotion-tuner` to replay the record |
 | Ask how many tasks a step needs, which tallies clear the level, the false rate or the detectable share | `scripts/size.ts` |
 | Ask whether a given set of task scores reads a step without the bill, and what they read with it | `scripts/size.ts --scores ... --unbilled ...` |
+| Ask how far a comparison's sides stood from the best answer on record, or whether a large gap is a strong candidate or a weak reference | `scripts/gap.ts <log or name>` (exam-side output) |
 | Ask what the next comparison would score, why it scored fewer tasks than its target, or why admission refuses `held-short` | `scripts/draw.ts <log or name>`, then `references/draw-and-solves.md` |
 | Ask why a recorded comparison read `step`, `no-step` or `not-scored`, or what its A/A read | `scripts/reading.ts <log or name>`, then `references/tally-and-test.md` |
 | Change a rejection's ruling path, the cap, the budget, `roomOf`, `stopRule` or promotion | `references/limits-and-room.md` |
@@ -41,9 +42,9 @@ comparisons again under other weights or a candidate tree is `promotion-tuner` '
 
 ## Scripts
 
-All three scripts use production readers for evaluation. They print counts, ids, short digests and
-harness letters, omitting task identities, families, answers, objective measures and checks. Each
-takes `--help`, and `--host <name>` through `.claude/skills/main/cli.ts`.
+Every script uses production readers for evaluation. `size`, `reading` and `draw` print counts, ids,
+short digests and harness letters, omitting task identities, families, answers, objective measures
+and checks; `gap` prints ratios drawn from objective measures, and names no task. Each takes `--help`, and `--host <name>` through `.claude/skills/main/cli.ts`.
 
 ```text
 bun .claude/skills/comparison-reading/scripts/size.ts [--level <n>] [--untied <n>]
@@ -51,6 +52,7 @@ bun .claude/skills/comparison-reading/scripts/size.ts [--level <n>] [--untied <n
 bun .claude/skills/comparison-reading/scripts/reading.ts <log.jsonl | campaign folder | name>
   [--comparison <id>] [--level <n>]
 bun .claude/skills/comparison-reading/scripts/draw.ts <log.jsonl | campaign name> [--target <n>] [--level <n>]
+bun .claude/skills/comparison-reading/scripts/gap.ts <log.jsonl | campaign name>
 ```
 
 - `size.ts` prints, at a level and a count of untied tasks, the smallest scored set that reads a step
@@ -70,3 +72,7 @@ bun .claude/skills/comparison-reading/scripts/draw.ts <log.jsonl | campaign name
   its frontier tasks by epoch (`tasksByEpoch`), comparison admission's floor and refusal codes
   (`comparisonFloor`, `refusals`), and `sizeLines` for that set, at the target and level the table
   asks under (`planOn`) unless `--target` or `--level` names others.
+- `gap.ts` prints, for each comparison tallied under an objective, each side's median ratio to the
+  best answer on record (`bests`, `poolOf`), and on how many tasks it came within the floor of it:
+  a large gap can be a strong candidate or a weak reference, and a task score does not say which.
+  Its output comes from hidden values, so it stays exam-side.

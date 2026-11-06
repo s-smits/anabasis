@@ -562,7 +562,7 @@ export async function harnessBuilder(
     const turn = turnOf({ log, values, opening, seats, held, campaign });
     const { plan } = turn;
     if (made === 0) {
-      const size = sizeLines(plan.wanted.target, plan.wanted);
+      const size = sizeLines(plan.wanted.target, plan.wanted.level);
       for (const line of size) console.log(line);
       // A paid campaign that could never read a step is refused before it is paid for (rule 14):
       // until 20 October it ran, and the table sent for tasks no target that small could use.

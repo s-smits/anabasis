@@ -28,7 +28,6 @@ import {
   scored,
   readsStep,
   type Tally,
-  tally,
   UNMEASURED,
   unsolved,
   informative,
@@ -57,7 +56,7 @@ import { type Worth, worthOf } from "./climb.ts";
  * `against`: readings of a third arm that solved the starter on a step. The starter is now the
  * starter comparison after a promotion (`decide.ts`).
  */
-type Reading = "step" | "no-step" | "regressed" | "narrow" | "not-scored" | "check-defects" | "no-change";
+type Reading = "step" | "no-step" | "not-scored" | "check-defects" | "no-change";
 /** One test's tally, each task's score, and its p; and, in a report of 26 October to 2 November,
  *  each task's score without the bill, which its step was read on (`scoresIn`, `compare.ts`). */
 type Tested = ReturnType<typeof scored> & { readonly unbilled?: readonly number[] };
@@ -115,7 +114,7 @@ export interface Report {
   readonly retained: Entered | typeof UNMEASURED | null;
   /** Each family's tallies on the two sets, from the same rows, so they sum to the whole. They show
    *  concentration; a family name can hide correlated tasks, and they establish no independence. */
-  readonly families: Readonly<Record<string, { readonly frontier: Tally; readonly retained: Tally }>> | null;
+  readonly families: Readonly<Record<string, { readonly frontier: Tally }>> | null;
   /** The preceding comparison of the same two harnesses, and their initial draws' intersection. */
   readonly overlap: { readonly with: string; readonly tasks: readonly string[] } | null;
   /** The reference harness against itself on halves of its own solves mirrored in time, the A/A comparison,
@@ -123,9 +122,8 @@ export interface Report {
    *  disagree (`flips`), the least share of its untied tasks one half has to win for the test
    *  without the bill at the level to detect it four times in five (`detectable`, on the scores as
    *  they stand before 31 October), which says how much its reading no step can show. A report of
-   *  12 to 18 October also holds the objective's margin its own spread set, which the next
-   *  comparison read by until one margin stood for all, and none since 19 October (`SAME`,
-   *  `compare.ts`). Older reports without unbilled scores are read on their scores as they stand. */
+   *  12 to 18 October also holds the objective's margin its own spread set, which nothing reads now.
+   *  Older reports without unbilled scores are read on their scores as they stand. */
   readonly noise:
     | (Tested & {
         readonly flips: number | null;
@@ -373,16 +371,15 @@ function setsOf(
     const of = tallied[set].map(({ task }) => task);
     return { tasks: fixed.tasks.filter(within), aside: aside.filter(within), ...scored(tallied[set]), of };
   };
-  const ofFamily = (family: string, set: keyof typeof tallied) =>
-    tally(tallied[set].filter(({ task }) => familyOf(task) === family));
+  const ofFamily = (family: string): Tally => {
+    const { wins, losses, ties } = scored(tallied.frontier.filter(({ task }) => familyOf(task) === family));
+    return { wins, losses, ties };
+  };
   return {
     frontier: setOf("frontier"),
     retained: tallied.retained.length > 0 ? setOf("retained") : UNMEASURED,
     families: Object.fromEntries(
-      [...new Set(fixed.tasks.map(familyOf))].map((family) => [
-        family,
-        { frontier: ofFamily(family, "frontier"), retained: ofFamily(family, "retained") },
-      ]),
+      [...new Set(fixed.tasks.map(familyOf))].map((family) => [family, { frontier: ofFamily(family) }]),
     ),
   };
 }
@@ -459,8 +456,11 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
   // The A/A (12 October, the plan's section 4b): where the reference's solves of a task are even,
   // split into halves mirrored in time. At two a side, the default since 29 October, it is its
   // first solve against its second, which reads the flip rate and a step between halves alike.
-  const mirrored = fixed.solves >= 2 && fixed.solves % 2 === 0 ? itself() : null;
-  const aa = mirrored === null ? null : scored(mirrored);
+  const mirroredOf = (halves: readonly Paired[]) => {
+    const aa = scored(halves);
+    return { ...aa, flips: flipsOf(halves), detectable: detectable(aa.differences, fixed.level) };
+  };
+  const mirrored = fixed.solves % 2 === 0 ? mirroredOf(itself()) : null;
   const tested = scored(pairs);
   const stepped = readsStep(tested.differences, fixed.level);
   const reading: Reading = pairs.length === 0 ? "not-scored" : stepped ? "step" : "no-step";
@@ -477,14 +477,7 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
     overlap: overlapOf(all, fixed),
     valid: validOf(pairs, fixed.solves, poolOf(events)),
     billed: { old: billedMean(pairs, "old"), fresh: billedMean(pairs, "fresh") },
-    noise:
-      mirrored === null || aa === null
-        ? null
-        : {
-            ...aa,
-            flips: flipsOf(mirrored),
-            detectable: detectable(aa.differences, fixed.level),
-          },
+    noise: mirrored,
     counted: pairs.length === first.length ? null : scored(first),
     versions: pairs.map(({ task }) => task),
     aside,
@@ -530,9 +523,7 @@ function flipsOf(pairs: readonly Paired[]): number | null {
   const each = pairs.map(({ old, fresh }) => {
     const solves = [...old, ...fresh];
     const valid = solves.filter(Boolean).length;
-    return solves.length < 2
-      ? 0
-      : (valid * (solves.length - valid)) / ((solves.length * (solves.length - 1)) / 2);
+    return (valid * (solves.length - valid)) / ((solves.length * (solves.length - 1)) / 2);
   });
   return each.length === 0 ? null : each.reduce((sum, one) => sum + one, 0) / each.length;
 }

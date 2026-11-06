@@ -623,8 +623,8 @@ describe("a round", () => {
         retained: "unmeasured",
         // Each family's tallies, from the same rows, sum to the whole.
         families: {
-          f1: { frontier: { wins: 2, losses: 0, ties: 0 }, retained: { wins: 0, losses: 0, ties: 0 } },
-          f2: { frontier: { wins: 2, losses: 0, ties: 0 }, retained: { wins: 0, losses: 0, ties: 0 } },
+          f1: { frontier: { wins: 2, losses: 0, ties: 0 } },
+          f2: { frontier: { wins: 2, losses: 0, ties: 0 } },
         },
         overlap: null,
         // Each harness by itself: the reference answered no task validly, the new one all, twice.
@@ -652,7 +652,6 @@ describe("a round", () => {
         // The cost bar, read and gating nothing (the plan's W): this comparison the first attempt
         // of set-up's epoch.
         worth: {
-          bars: { cost: 3 },
           cost: { attempts: 1, sessions: 1, dollars: anyOf(Number), met: true },
         },
       },

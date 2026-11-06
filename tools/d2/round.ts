@@ -72,7 +72,7 @@ import { worthLine } from "#src/campaign/climb.ts";
 import { predicted, type Report } from "#src/campaign/comparison.ts";
 import { refuseTerms, type RoundRequest, round, scoredSet } from "#src/campaign/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
-import { type ObjectiveRule, testOf, WEIGHTS } from "#src/kernel/compare.ts";
+import { type ObjectiveRule, testedSet, testOf, WEIGHTS } from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { read } from "#src/kernel/log.ts";
@@ -456,7 +456,7 @@ export function reportLines({
     old === null || fresh === null ? [] : [{ old, fresh }],
   );
   const took = (side: "old" | "fresh") => String(median(both.map((each) => each[side])));
-  const test = scored?.falseRate === undefined ? frontier : scored;
+  const test = testedSet(scored, frontier);
   const share = test?.detectable ?? null;
   // A report of 26 October to 2 November read its step on its scores without the bill (`scoresIn`).
   const unbilled = test?.unbilled === undefined ? null : testOf(test.unbilled);

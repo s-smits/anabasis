@@ -99,7 +99,7 @@ tasks wanted, so the production draw takes them:
 owners alone: the pairs (`pairsReported`), each task's points by measure (`pointsOf`), their
 rounding (`wholePoints`), the one-sided paired sign-flip test (`flipP`), and the epochs
 (`tasksByEpoch`). Without the bill a task's score is its validity and objective points, the
-tree's weights of 0.6 and 0.3, as the promotion tuner's `--weights 60,30,0` reads it. The tuner is
+tree's weights of 0.6 and 0.3. The tuner is
 not used because it tests the frontier and the retained set together and leaves seeds out. The
 reading is made by `read.ts` at this study's commit, whatever commit the solves ran at. It checks
 itself by scoring each set again with the bill against the differences the report stored: over

@@ -24,7 +24,6 @@
  * shows, never a silent empty list.
  */
 import type { Supply } from "../../../src/campaign/admission.ts";
-import type { Worth } from "../../../src/campaign/climb.ts";
 import type { Handover } from "../../../src/campaign/handover.ts";
 import type { Decided, Ending as CampaignEnding } from "../../../src/campaign/move.ts";
 import type { Seat, Terms } from "../../../src/campaign/opening.ts";
@@ -359,7 +358,7 @@ export interface CampaignReading extends Answer {
   readonly attended: boolean;
   /** The bar a promotion's cost is read against (`BARS`, `src/campaign/climb.ts`): read and
    *  printed, refusing nothing. */
-  readonly bars: Worth["bars"];
+  readonly bars: { readonly cost: number };
   /** The supply as the next comparison reads it, and beside it the doubted tasks (`poolOf`), which
    *  it leaves out and counts nowhere. */
   readonly supply: Supply & { readonly doubted: number };

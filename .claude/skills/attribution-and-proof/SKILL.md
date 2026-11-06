@@ -21,7 +21,7 @@ interleaved, a one-sided paired sign-flip test over each task's score (`flipP`,
 `src/kernel/compare.ts`). Validity weighs most; a declared objective compares two valid answers, and
 what a solve billed decides nothing. The null treats each untied task's sign as equally likely and independent, at its fixed
 margin. `step` means one test over the frontier and the retained tasks together cleared its level
-(`stepOf`); an older report that holds `unbilled` scores is read on those (`scoresIn`).
+(`readsStep`); an older report that holds `unbilled` scores is read on those (`scoresIn`).
 It does not say:
 
 - **that the harness is better under another condition.** Another deadline, budget, solver, effort

@@ -502,6 +502,7 @@ the runs it names and no others. The skills own the procedures:
 | Starting, continuing, pausing, moving or stopping a run | `run-management` |
 | Wording a claim | `attribution-and-proof` |
 | Doubting a reading; what a fail was | `whole-run-investigation` |
+| Why a comparison read as it did; what it says of the system, without fitting to it | `comparison-review` |
 | Kept harnesses, before a promotion or a handover | `harness-audit` |
 | Rethinking the system: its biggest flaws, what to delete, how to harden it | `system-audit` |
 | Promotions on record; tuning the rule | `promotion-tuner` |

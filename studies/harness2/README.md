@@ -362,6 +362,9 @@ sweep of ours can be set beside the pilot's Python one; its head comment lists w
 `bun studies/harness2/score.ts score` scores any arm the pilot scored, an Anabasis kept harness
 included, on that same rollout and JobBench's own `judge.py`, one record a task, and `score.ts
 table` prints the pilot's arms table from the records; its head comment names what is tuned.
+`bun studies/harness2/compare.ts` runs a whole comparison through that scorer on terms fixed before
+the first rollout (tasks, neutral sides, an A/A, one primary measure), judges existing deliverables
+again without a rollout, and reads the result with `levels.ts`; its head comment gives each verb.
 
 ## Predictions
 

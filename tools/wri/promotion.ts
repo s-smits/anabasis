@@ -262,7 +262,8 @@ function restTriggers(log: Index, { at, until, data }: Epoch): Trigger[] {
 }
 
 /** `AFTER THE PROMOTION`: the room Examiner, the controls, the comparisons against the promoted
- *  harness and the Builder sessions from it, in the epoch the promotion opened. */
+ *  harness and the Builder sessions that worked in the epoch the promotion opened: a led Builder's
+ *  conversation opened before the promotion goes on across it. */
 function afterTrigger(log: Index, { at, until, data }: Epoch, starter: string): Trigger {
   const promoted = text(data.harness);
   const within = (index: number) => index > at && index < until;
@@ -322,7 +323,7 @@ function afterTrigger(log: Index, { at, until, data }: Epoch, starter: string): 
       : [],
   );
   const builds = log.builds
-    .filter((build) => within(build.from))
+    .filter((build) => within(build.from) || build.calls.some((call) => within(call.index)))
     .map((build) => {
       const practised = new Set(practiceOf(log, build).map((solve) => solve.version));
       const fresh = [...practised].filter((version) => proposed.has(version)).length;

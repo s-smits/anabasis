@@ -292,6 +292,17 @@ describe("zone", () => {
     ]);
   });
 
+  it("ties a task whose objective points round to nothing, as the comparison's report does", () => {
+    const { events, terms } = roundSolves("g-1", ["h1", "h2"], { near: "PP PP" });
+    const log = [
+      ...held("near"),
+      ...events,
+      ...measured(events, [100, 112, 106, 106]),
+      reported("g-1", ["h1", "h2"], terms, { objective: { direction: "lower" } }),
+    ];
+    expect(zoneRows("c", log)[0]?.slice(10, 13)).toEqual(["0", "0", "1"]);
+  });
+
   it("calls a task untied on the objective only past its floor, and only with validity tied", () => {
     const { events, terms } = roundSolves("g-1", ["h1", "h2"], { apart: "PP PP" });
     const close = roundSolves("g-2", ["h1", "h2"], { close: "PP PP" });

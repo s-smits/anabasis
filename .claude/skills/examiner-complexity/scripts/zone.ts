@@ -8,13 +8,14 @@
  * gives the reference's tasks with no, some and every solve valid, the tasks untied on validity and
  * on the objective alone, and the A/A comparison's untied tasks beside them, since between equal
  * harnesses a task passed half the time also unties, so a share that rises with noise says nothing
- * by itself. It is a reading and decides nothing. No prompt or tool names it, because an author told
+ * by itself. A task is tied or carried as the comparison reads it (`carriedBy`), so a residual below
+ * half a point is a tie here as it is in the report. It is a reading and decides nothing. No prompt or tool names it, because an author told
  * a share writes towards it (`AGENTS.md`, section 2, consequence 2).
  *
  * A one-off reader of 5 November (`docs/backlog/examiner-power-zone.md`) found jobstat at the ceiling
  * before any promotion, and the operator asked for it on every run.
  */
-import { pointsOf } from "#src/kernel/compare.ts";
+import { carriedBy, pointsOf } from "#src/kernel/compare.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { lastReports, pairsReported } from "#src/kernel/reports.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
@@ -64,9 +65,7 @@ export function zoneRows(campaign: string, events: readonly LogEvent[]): string[
       counts.valid += valid;
       counts.solves += pair.old.length;
       counts[valid === 0 ? "none" : valid === pair.old.length ? "all" : "some"] += 1;
-      const { validity, objective } = pointsOf(pair);
-      if (validity === 0 && objective === 0) counts.tied += 1;
-      else counts[validity === 0 ? "objective" : "validity"] += 1;
+      counts[carriedBy(pointsOf(pair)) ?? "tied"] += 1;
     }
     const aa = aaOf(report.data.noise);
     return [

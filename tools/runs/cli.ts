@@ -59,7 +59,7 @@ const GROUPS = {
     keep: {
       run: keep,
       file: "keep.ts",
-      says: "keep a campaign going across logins until it ends on its own terms",
+      says: "attach a keeper, which a run on a numbered login gets by itself, to go on across logins",
     },
     pause: {
       run: pause,

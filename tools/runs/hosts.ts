@@ -58,9 +58,11 @@ function scriptCommand(host: Host, script: string, args: readonly string[]): str
   }
   const runtime = host.prepared === true ? host : configuredRuntime(host);
   const env = (runtime.envFiles ?? []).map((file) => ` --env-file=${shellPath(file)}`).join("");
+  // An entry may name its own env files, so the off switch of `keepsItself` goes with the verb.
+  const keep = runtimeProcess.env.ANA_KEEP === "off" ? "ANA_KEEP=off " : "";
   return sshScript(
     host,
-    `cd ${shellPath(host.tree)}\nANA_HOP=1 ANA_RUN_CAP=${quoted(String(host.capacity ?? 2))} ${treeBun(runtime.bun)}${env} ${quoted(script)} ${args.map(quoted).join(" ")}`,
+    `cd ${shellPath(host.tree)}\n${keep}ANA_HOP=1 ANA_RUN_CAP=${quoted(String(host.capacity ?? 2))} ${treeBun(runtime.bun)}${env} ${quoted(script)} ${args.map(quoted).join(" ")}`,
   );
 }
 

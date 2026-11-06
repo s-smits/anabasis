@@ -1,11 +1,18 @@
 /**
  * Keep a campaign going until it ends on its own terms.
  *
- *   bun --env-file=<file> run runs keep <name> [--logins 2,3,4] [--wait-hours 1] [--yes]
+ *   bun --env-file=<file> run runs keep <name> [--logins 2,3,4] [--wait-hours 0.25] [--yes]
+ *
+ * `launch`, `continue` and so `fresh` and `move` leave a run on a numbered login its keeper by
+ * themselves (`keepsItself`, `manage.ts`); this verb attaches one to a run already live, or to a run
+ * that was started with `--no-keep`.
  *
  * A keeper looks at the run once a minute and takes one of four turns (`turnOf`). While the run's
- * process lives and its log ends on a provider wait (`campaign.waited`, `for: "provider"`) longer
- * than `--wait-hours`, it stops the run and goes on with it on another login. Where the process
+ * process lives and its log ends on a provider wait (`campaign.waited`, `for: "provider"`), whichever
+ * limit named it, the week's or the five hours', and more than `--wait-hours` of it is left, it stops
+ * the run and goes on with it on another login (operator, 5 November). Less than that is left to the
+ * login's own reset, since a move cuts the Builder's conversation: until 5 November the bound was an
+ * hour, so a five-hour limit met in its window's last hour was sat out. Where the process
  * is gone it goes on with the run on the same login, unless that login carries its cap of live
  * runs: after an ending on the environment, as the operator asked of every such run, and after no
  * ending at all, a process that died. Any other
@@ -13,8 +20,12 @@
  * its worktree stands at, on its kept flags, through the refusals of `runs continue`.
  *
  * The next login is the one with capacity whose week resets soonest, of those this keeper has not seen
- * spent (`room`, `logins.ts`), and `--logins` defaults to `ANA_LOGINS`. With none it says so once
- * and waits. A run none of whose seats is a `claude/` model bills no login and goes on without one
+ * spent (`room`, `logins.ts`), those below their cap of live runs on every host (`atCap`), and those
+ * whose five hours are read to last to their reset with this run added (`fiveHourWith`). A login that
+ * could not be read is not taken: a move spends on another login, so it needs a reading to say it
+ * may. `--logins` defaults to `ANA_LOGINS`. With none it says why once and waits, and asks again every
+ * `ASK_MS`. Its own login goes unasked on a continue, since its runs are already in its pace.
+ * A run none of whose seats is a `claude/` model bills no login and goes on without one
  * (`billsLogin`), and so does every run on a machine that holds only the plain login (`plainOnly`). A run that goes on three times in a row without a model turn of any seat that the
  * provider answered (`turnsIn`) is left: something the keeper cannot mend ends it each time.
  *
@@ -23,10 +34,8 @@
  * 15 October this was three shell loops of the operator's and a wrapper a login, each moving one run.
  */
 import type { LogEvent } from "#src/kernel/log.ts";
-import { openSync } from "#src/meta/filesystem.ts";
 import { isString } from "#src/meta/json-shape.ts";
-import { dirname, join } from "#src/meta/path.ts";
-import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { providerWait } from "./diagnosis.ts";
 import { payerOf } from "./live.ts";
@@ -34,6 +43,7 @@ import {
   allowedLogins,
   atCap,
   billsLogin,
+  fiveHourWith,
   liveEverywhere,
   plainOnly,
   readLogins,
@@ -41,13 +51,30 @@ import {
   startRefusal,
 } from "./logins.ts";
 import type { Live } from "./live.ts";
-import { lastRun, rerun, start } from "./manage.ts";
-import { KEEPING, keepers, logEvents, processes, type Run, runNamed, writers } from "./registry.ts";
+import { lastRun, leaveKeeper, rerun, start, WAIT_HOURS } from "./manage.ts";
+import { keepers, logEvents, processes, type Run, runNamed, writers } from "./registry.ts";
 import { stop } from "./stop.ts";
 
 export type Turn = "watch" | "move" | "continue" | "done";
+type Env = Readonly<Record<string, string | undefined>>;
+
+/** What a keeper's look reads and does, which a test scripts. */
+interface Hands {
+  readonly events: () => readonly LogEvent[];
+  readonly open: () => boolean;
+  readonly last: () => { readonly login?: string | undefined; readonly flags: readonly string[] };
+  readonly fleet: () => Promise<{ live: Live[]; unasked: string[] }>;
+  readonly read: typeof readLogins;
+  readonly stop: () => Promise<void>;
+  readonly start: (login: string | undefined) => Promise<boolean>;
+  readonly say: (line: string) => void;
+  readonly env: Env;
+}
 
 const LOOK_MS = 60_000;
+/** How long a keeper with nowhere to go waits before it reads the logins again: a reading may cost a
+ *  one-token request a login (`readLogins`), and a week's wait lasts for days. */
+const ASK_MS = 10 * 60_000;
 const HOUR = 3_600_000;
 /** Goings-on in a row with no model turn, after which a keeper leaves its run. */
 const BARREN = 3;
@@ -86,6 +113,8 @@ export function turnOf(
  * three spent logins none of their seats used; until 26 October such a run went on as a login all
  * the same, and `runs usage` counted it against that login's most. A dead run is not live, so until
  * 26 October its own login could fill its live-run cap elsewhere and the keeper went on above it.
+ * A run that bills no login has nowhere to move and sits out its wait: until 5 November its keeper
+ * stopped and restarted it on the same account every look, into the same limit.
  */
 export async function nextLogin(
   turn: Turn,
@@ -93,53 +122,66 @@ export async function nextLogin(
   roomy: () => Promise<readonly string[]>,
   full: (login: string) => Promise<boolean>,
 ): Promise<string | undefined | null> {
-  if (!billed) return undefined;
+  if (!billed) return turn === "move" ? null : undefined;
   if (turn === "continue" && current !== undefined && !spent.has(current) && !(await full(current))) {
     return current;
   }
   return (await roomy())[0] ?? null;
 }
 
-/** The logins of `logins` a run may move to: those with capacity, less those this keeper saw `spent`
- *  and those at their live-run cap across the fleet (`atCap`), or none while a host goes uncounted.
- *  Until 26 October a keeper moved a run onto a login with capacity whatever runs it carried already,
- *  which `fresh` refuses. */
+/** The logins of `logins` a run may move to: those with capacity, less those this keeper saw `spent`,
+ *  those at their live-run cap across the fleet (`atCap`) and those whose five hours run out or could
+ *  not be read with this run added (`fiveHourWith`), or none while a host goes uncounted; and why any
+ *  was left for its five hours. Until 26 October a keeper moved a run onto a login with capacity
+ *  whatever runs it carried already, which `fresh` refuses. */
 export async function roomFor(
   logins: readonly string[],
   spent: ReadonlySet<string>,
   { live, unasked }: { live: readonly Live[]; unasked: readonly string[] },
   read: typeof readLogins = readLogins,
-  env: Readonly<Record<string, string | undefined>> = runtimeProcess.env,
-): Promise<string[]> {
-  if (unasked.length > 0) return [];
+  { env = runtimeProcess.env, now = Date.now() }: { env?: Env; now?: number } = {},
+): Promise<{ logins: string[]; why: string }> {
+  if (unasked.length > 0) return { logins: [], why: "" };
   const out = new Set([...spent, ...atCap(env, logins, live)]);
-  return room(
-    await read(
-      logins.filter((login) => !out.has(login)),
-      env,
-    ),
-    logins,
-    out,
+  const readings = await read(
+    logins.filter((login) => !out.has(login)),
+    env,
   );
+  const forecast = readings.map((reading) => ({
+    login: reading.login,
+    at: fiveHourWith(reading, live.filter((run) => run.login === reading.login).length, now),
+  }));
+  const over = forecast.filter(({ at }) => at !== null && at >= 100).map(({ login }) => login);
+  const unread = forecast.filter(({ at }) => at === null).map(({ login }) => login);
+  const said = [
+    ...(over.length === 0 ? [] : [`login ${over.join(", ")} would reach five hours with this run added`]),
+    ...(unread.length === 0 ? [] : [`login ${unread.join(", ")} could not be read`]),
+  ];
+  return { logins: room(readings, logins, new Set([...out, ...over, ...unread])), why: said.join("; ") };
 }
 
-/** Keep `run` going on `logins` until it ends on its own terms. */
-async function keepGoing(run: Run, logins: readonly string[], waitMs: number): Promise<void> {
+/** A keeper of the run `name` on `logins`: each call is one look at `now`, and says whether it leaves. */
+export function keeperOf(name: string, logins: readonly string[], waitMs: number, hands: Hands) {
   // A login this keeper moved off, until its limit resets.
   const spentUntil = new Map<string, number>();
   let barren = 0;
   let worked = -1;
-  let waiting = false;
-  for (; ; await Bun.sleep(LOOK_MS)) {
-    const events = logEvents(run.path);
-    const now = Date.now();
-    const turn = turnOf(events, writers(run, processes()).length > 0 ? "open" : "closed", now, waitMs);
+  let said = "";
+  let askAt = 0;
+  return async (now: number): Promise<boolean> => {
+    const events = hands.events();
+    const turn = turnOf(events, hands.open() ? "open" : "closed", now, waitMs);
     if (turn === "done") {
       const ending = events.at(-1)?.data.ending;
-      return console.log(`${run.name} ended on ${isString(ending) ? ending : "?"}: kept no longer`);
+      hands.say(`${name} ended on ${isString(ending) ? ending : "?"}: kept no longer`);
+      return true;
     }
-    if (turn === "watch") continue;
-    const current = lastRun(run).login;
+    if (turn === "watch") {
+      said = "";
+      askAt = 0;
+      return false;
+    }
+    const { login: current, flags } = hands.last();
     const until = providerWait(events)?.data.until;
     if (turn === "move" && current !== undefined && isString(until)) {
       spentUntil.set(current, Date.parse(until));
@@ -147,52 +189,69 @@ async function keepGoing(run: Run, logins: readonly string[], waitMs: number): P
     for (const [login, at] of spentUntil) {
       if (at <= now) spentUntil.delete(login);
     }
+    if (now < askAt) return false;
     const spent = new Set(spentUntil.keys());
-    let fleet: Awaited<ReturnType<typeof liveEverywhere>> | undefined;
-    const counted = async () => (fleet ??= await liveEverywhere("configured"));
+    let fleet: Awaited<ReturnType<Hands["fleet"]>> | undefined;
+    const counted = async () => (fleet ??= await hands.fleet());
+    let why = "";
     const target = await nextLogin(
       turn,
-      { current, spent, billed: logins.length > 0 && billsLogin(events, lastRun(run).flags) },
-      async () => roomFor(logins, spent, await counted()),
+      { current, spent, billed: logins.length > 0 && billsLogin(events, flags) },
+      async () => {
+        const found = await roomFor(logins, spent, await counted(), hands.read, { env: hands.env, now });
+        ({ why } = found);
+        return found.logins;
+      },
       async (login) => {
         const { live, unasked } = await counted();
-        return unasked.length > 0 || atCap(runtimeProcess.env, [login], live).size > 0;
+        return unasked.length > 0 || atCap(hands.env, [login], live).size > 0;
       },
     );
     const full =
-      target === null
-        ? null
-        : startRefusal(
-            runtimeProcess.env,
-            payerOf(target, lastRun(run).flags),
-            "here",
-            await counted(),
-            run.name,
-          );
+      target === null ? null : startRefusal(hands.env, payerOf(target, flags), "here", await counted(), name);
     if (target === null || full !== null) {
-      if (!waiting) console.log(`${run.name}: ${full ?? "no login with capacity"}; left waiting`);
-      waiting = true;
-      continue;
+      const reason = full ?? (why === "" ? "no login to go on with" : why);
+      if (reason !== said) hands.say(`${name}: ${reason}; left waiting`);
+      said = reason;
+      askAt = now + ASK_MS;
+      return false;
     }
-    waiting = false;
+    said = "";
+    askAt = 0;
     const turns = turnsIn(events);
     barren = turn === "continue" && turns === worked ? barren + 1 : 0;
     worked = turns;
     if (barren >= BARREN) {
-      return console.log(
-        `${run.name} went on ${String(BARREN)} times and no seat took a model turn: kept no longer`,
-      );
+      hands.say(`${name} went on ${String(BARREN)} times and no seat took a model turn: kept no longer`);
+      return true;
     }
-    console.log(
-      `${new Date(now).toISOString()} ${run.name}: ${turn} ${target === undefined ? "without a login" : `on login ${target}`}`,
+    hands.say(
+      `${new Date(now).toISOString()} ${name}: ${turn} ${target === undefined ? "without a login" : `on login ${target}`}`,
     );
     try {
-      if (turn === "move") await stop([run.name, "--yes"]);
-      await start(run, rerun(lastRun(run).flags, undefined), target, undefined);
+      if (turn === "move") await hands.stop();
+      await hands.start(target);
     } catch (error) {
-      console.log(`  ${errorMessage(error)}`);
+      hands.say(`  ${errorMessage(error)}`);
     }
-  }
+    return false;
+  };
+}
+
+/** Keep `run` going on `logins` until it ends on its own terms. */
+async function keepGoing(run: Run, logins: readonly string[], waitMs: number): Promise<void> {
+  const look = keeperOf(run.name, logins, waitMs, {
+    events: () => logEvents(run.path),
+    open: () => writers(run, processes()).length > 0,
+    last: () => lastRun(run),
+    fleet: () => liveEverywhere("configured"),
+    read: readLogins,
+    stop: () => stop([run.name, "--yes"]),
+    start: (login) => start(run, rerun(lastRun(run).flags, undefined), login, undefined),
+    say: (line) => console.log(line),
+    env: runtimeProcess.env,
+  });
+  while (!(await look(Date.now()))) await Bun.sleep(LOOK_MS);
 }
 
 /** `bun run runs keep`. */
@@ -202,7 +261,7 @@ export async function keep(args: readonly string[]): Promise<void> {
     allowPositionals: true,
     options: {
       logins: { type: "string" },
-      "wait-hours": { type: "string", default: "1" },
+      "wait-hours": { type: "string", default: WAIT_HOURS },
       yes: { type: "boolean", default: false },
       here: { type: "boolean", default: false },
     },
@@ -214,7 +273,7 @@ export async function keep(args: readonly string[]): Promise<void> {
     values.logins?.split(",").filter((login) => login !== "") ?? allowedLogins(runtimeProcess.env);
   if (name === undefined) {
     throw new Error(
-      "usage: bun --env-file=<file> run runs keep <name> --logins 2,3,4 [--wait-hours 1] [--yes]",
+      `usage: bun --env-file=<file> run runs keep <name> --logins 2,3,4 [--wait-hours ${WAIT_HOURS}] [--yes]`,
     );
   }
   const run = runNamed(name);
@@ -232,29 +291,5 @@ export async function keep(args: readonly string[]): Promise<void> {
       `${name} in ${run.tree}: would be kept going on logins ${logins.join(", ")}; nothing is done without --yes`,
     );
   }
-  const out = join(dirname(run.path), "keep.out");
-  const child = capturedSpawn(
-    [
-      capturedExecPath,
-      join(import.meta.dir, "cli.ts"),
-      "keep",
-      name,
-      "--logins",
-      logins.join(","),
-      "--wait-hours",
-      values["wait-hours"],
-      KEEPING,
-    ],
-    {
-      cwd: run.tree,
-      // A keeper outlives the verb, and counts every machine's runs even where another host sent it.
-      env: { ...runtimeProcess.env, ANA_HOP: undefined },
-      detached: true,
-      stdin: "ignore",
-      stdout: openSync(out, "a"),
-      stderr: openSync(out, "a"),
-    },
-  );
-  child.unref();
-  console.log(`${name}: kept by pid ${String(child.pid)}; ${out}`);
+  leaveKeeper(run, logins, values["wait-hours"]);
 }

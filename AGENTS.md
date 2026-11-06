@@ -255,7 +255,9 @@ Launching a campaign gives three of these words once: it freezes a fault-free ex
 check its author decided (`--admit-authored`, rule 10), and promotes the harness the rule names.
 `--hitl` hands all three back, and any other fault, or going past the stop rule, takes the
 operator's word each time. The host builds every message a Builder reads, and "a person" is written
-only for one of the seven.
+only for one of the seven. A launch on a numbered login also gives the word for which account pays
+at a limit, to the run's keeper (`keepsItself`, `tools/runs/manage.ts`); `--no-keep` or `ANA_KEEP=off`
+hands it back.
 
 **In `design-and-seats`, section 3** (`seats.md`, `operator-and-harness.md`): what each seat reads
 and its tools; what a launch decides. `seat-view` names the seats a diff reaches and their wall

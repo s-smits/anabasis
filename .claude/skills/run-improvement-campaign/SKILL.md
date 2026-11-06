@@ -242,8 +242,8 @@ its end, and carry on in the same order; the window gives no step a reason to sk
 **The threshold.** No run carries a cap on promotions. Each promotion alerts (`runs alerts`), and a
 run is paused on the operator's word after that promotion's starter comparison reports, since a pause
 before it leaves the promotion unconfirmed for good. **Two promotions** remain the trigger for
-investigating a run, and stop nothing. A run not paused by then is stopped **twelve hours after its
-opening** (operator). `--promotions N` stays an available flag (run-management).
+investigating a run, and stop nothing, and no hour stops a run either: one goes on until the operator
+pauses it or it reaches its own ending. `--promotions N` stays an available flag (run-management).
 `scripts/wri2p2.ts` names the step `open` at the threshold (`--promotions`, `--hours`), and times a live run to now, so a run in a long
 wait still reaches its hours. The running window ends when every run the cycle stops has ended. The
 #306 forks
@@ -637,7 +637,7 @@ At step 4 of the cycle every row still open is marked `unreached`.
 | --- | --- | --- |
 | pulse (the watch and the cycle's driver) | every 290 seconds: one Monitor on `bun run runs pulse --every 290`, its actionable lines only | every run's milestone, ending and stall on every host; a line naming a milestone, an ending or a stall starts the protocol, with the first cycle step not done, ended runs closed out and `runs usage`; a run at the trigger starts an iteration, and a freed slot gets a fresh run at the top |
 | milestone | one-shot at a predicted event, or at a prediction's deadline | the named milestone or row, and any investigation it owes |
-| cycle review | one-shot at each step of the release cycle: the stop at the latest opening plus twelve hours, and the end of the improvement window at the last stop plus twelve hours | the step `wri2p2.ts` names; at the window's end, what is proved and what is left |
+| cycle review | one-shot at each step of the release cycle: the investigation's trigger at the latest opening plus twelve hours, and the end of the improvement window at the last stop plus twelve hours | the step `wri2p2.ts` names; at the window's end, what is proved and what is left |
 | handover | one-shot at the agreed handover time | five points, changes and decisions waiting, and which timers were useful by their ledger rows |
 
 The pulse is the one recurring watch (operator): no hourly or longer watch beside it. A

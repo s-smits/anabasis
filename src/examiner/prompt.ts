@@ -191,7 +191,7 @@ ${brief}`,
     // within it and a worse one does not, which nobody can write without knowing it.
     ...(budget === null ? [] : [budgetLine(budget)]),
     `The checks, by id:\n${checks.map((row) => `- ${row.id} (${families(row)}): ${row.assertion}`).join("\n") || "(none)"}`,
-    ...(tasks.last === null ? [] : [tasks.last]),
+    ...(tasks.stood === null ? [] : [tasks.stood]),
     tasks.groups.length === 0
       ? "The exam holds no task yet."
       : `The tasks of the exam so far, under how the harness that is the reference now did on each in the last comparison that scored it, wherever it stood there. These are measurements, and no instruction or target.\n\n${grouped(tasks.groups)}`,
@@ -217,7 +217,7 @@ ${brief}`,
 export function wakeMessage(tasks: ReturnType<typeof heard>, told: Told): string {
   return [
     "The host asks for more tasks under the same exam.",
-    tasks.last ?? "No comparison has reported since the host last told you.",
+    tasks.stood ?? "No comparison has reported since the host last told you.",
     ...(tasks.groups.length === 0
       ? []
       : [

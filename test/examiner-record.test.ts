@@ -197,7 +197,7 @@ describe("the tasks a writing session hears", () => {
     const opening = s.sent[0] ?? "";
     const told = heard(log.events, tasks);
     const at = (text: string) => opening.indexOf(JSON.stringify(text).slice(1, -1));
-    const places = [told.last ?? "", ...told.groups.map(({ heading }) => heading)].map(at);
+    const places = [told.stood ?? "", ...told.groups.map(({ heading }) => heading)].map(at);
     expect(places).not.toContain(-1);
     expect(places).toEqual(places.toSorted((a, b) => a - b));
     for (const line of told.groups.flatMap(({ lines }) => lines)) expect(at(line)).toBeGreaterThan(-1);
@@ -240,7 +240,7 @@ describe("the last comparison the reference stood in", () => {
       "1 more was set aside",
       "differed on 2 of the 3",
     ]) {
-      expect(told.last).toContain(fact);
+      expect(told.stood).toContain(fact);
     }
     // A comparison between two other harnesses, before or after, is none of the reference's.
     const first = log.events.length;
@@ -249,8 +249,8 @@ describe("the last comparison the reference stood in", () => {
     log.reported("c-0", ["h3", "h4"], ["b"], { differences: [600] });
     const control = log.events.splice(first);
     const held = log.events.findLastIndex(({ kind }) => kind === TASK_ADMISSION) + 1;
-    expect(heard(log.events.toSpliced(held, 0, ...control), tasks).last).toBe(told.last);
-    expect(heard([...log.events, ...control], tasks).last).toBe(told.last);
+    expect(heard(log.events.toSpliced(held, 0, ...control), tasks).stood).toBe(told.stood);
+    expect(heard([...log.events, ...control], tasks).stood).toBe(told.stood);
     expect(JSON.stringify(told)).not.toMatch(/\bh[1-4]\b/u);
   });
 
@@ -262,18 +262,18 @@ describe("the last comparison the reference stood in", () => {
     });
     log.add("harness.promoted", { harness: "h2", from: "h1", rests: [{ comparison: "c-1" }] });
     const told = heard(log.events, ["a", "b", "c"].map(fixture));
-    expect(told.last).toContain(
+    expect(told.stood).toContain(
       "the reference harness won 2, the harness it was compared with won 1, and 0 tied",
     );
-    expect(told.last).toContain("valid in every solve on 2 of them, in some on 0 and in none on 1");
-    expect(told.last).not.toContain("differed");
+    expect(told.stood).toContain("valid in every solve on 2 of them, in some on 0 and in none on 1");
+    expect(told.stood).not.toContain("differed");
   });
 
   it("is null before any comparison", () => {
     const log = logged();
     log.hold(["a"]);
-    expect(heard(log.events, [fixture("a")]).last).toBeNull();
-    expect(heard([], []).last).toBeNull();
+    expect(heard(log.events, [fixture("a")]).stood).toBeNull();
+    expect(heard([], []).stood).toBeNull();
   });
 });
 
@@ -437,6 +437,29 @@ describe("a wake", () => {
     expect(second).not.toContain("run (fixture)");
   });
 
+  it("tells a wake every comparison the reference stood in since, and an opening only the last", () => {
+    const log = logged();
+    log.hold(["run", "mixed"]);
+    const since = log.events.length;
+    log.reported("g-3", ["h1", "h2"], ["run"], { differences: [600] });
+    // Between two other harnesses, so nothing of it is told even though it reported in the window.
+    log.reported("g-4", ["h2", "h3"], ["mixed"], { differences: [600] });
+    log.reported("g-5", ["h1", "h3"], ["mixed"], { differences: [-300] });
+    const tasks = ["run", "mixed"].map(fixture);
+    const woken = heard(log.events, tasks, since).stood ?? "";
+    const told = woken.split("\n\n");
+    expect(told.map((line) => line.split(",")[0])).toEqual(["Comparison g-3", "Comparison g-5"]);
+    // Each from the reference's side: it stood old in both, so the new side's win is its loss.
+    expect(told[0]).toContain("the reference harness won 0, the harness it was compared with won 1");
+    expect(told[1]).toContain("the reference harness won 1, the harness it was compared with won 0");
+    expect(woken).not.toContain("g-4");
+    const opening = heard(log.events, tasks).stood ?? "";
+    expect(opening).toStartWith(
+      "The last comparison the reference harness stood in, g-5, scored 0 tasks: the ",
+    );
+    expect(opening).not.toContain("g-3");
+  });
+
   it("tells only the comparisons reported after the conversation was last told, and the tasks they scored", () => {
     const log = logged();
     log.hold(["run", "mixed"]);
@@ -452,7 +475,8 @@ describe("a wake", () => {
     log.add("referee.finding", { solve: "s-run", task: "run", ruling: "check-defect", check: "check-unit" });
     const tasks = ["run", "mixed"].map(fixture);
     const woken = heard(log.events, tasks, since);
-    expect(woken.last).toContain("b-2");
+    expect(woken.stood).toContain("b-2");
+    expect(woken.stood).not.toContain("b-1");
     const lines = woken.groups.flatMap((group) => group.lines);
     expect(lines.map((line) => line.split(" ")[0])).toEqual(["run"]);
     // A task the wake names reads as its line at an opening would.
@@ -460,7 +484,7 @@ describe("a wake", () => {
     expect(lines[0]).toEndWith("; ruled at fault on an answer to it: check-unit");
     // Nothing reported since: no reading, no task.
     expect(heard(log.events, tasks, log.events.length)).toEqual({
-      last: null,
+      stood: null,
       groups: [],
       promoted: null,
       refused: [],

@@ -297,7 +297,7 @@ const examiner: Scenario = ({ readers: { record }, log }) => {
     built.events,
     ["a", "b", "c", "d"].map((taskId) => ({ taskId, family: "f" })),
   );
-  console.log(heard.last ?? "(no comparison)");
+  console.log(heard.stood ?? "(no comparison)");
   for (const { heading, lines } of heard.groups) {
     console.log(`${heading}:`);
     for (const line of lines) console.log(`  ${line}`);

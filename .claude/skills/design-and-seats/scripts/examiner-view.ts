@@ -42,7 +42,7 @@ export function examinerCounts(events: readonly LogEvent[]): string[] {
         .map(([outcome, count]) => `${outcome} ${String(count)}`)
         .join(", ") || "none"
     }`,
-    `last: ${view.last ?? "none"}`,
+    `last: ${view.stood ?? "none"}`,
     `promotion: ${view.promoted ?? "none"}`,
   ];
 }

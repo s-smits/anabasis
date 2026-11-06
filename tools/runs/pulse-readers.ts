@@ -321,9 +321,12 @@ export async function startPass(
 
 /** Why a look finds readers behind, in the terms of what it can see now. */
 function whyNot(store: string): string {
-  // What a pass printed on stderr is what is left of one that could not run.
+  // What a pass printed on stderr is what is left of one that could not run, until a later pass
+  // ends: a pass that prints nothing leaves the file as it was, so on 6 November a look called the
+  // pass of 08:19 the last one for hours after others had ended.
   const errors = join(store, ERRORS);
-  const failed = existsSync(errors) ? readFileSync(errors, "utf8").trim().split("\n").at(-1) : "";
+  const standing = existsSync(errors) && statSync(errors).mtimeMs > (lastPass(store)?.at ?? 0);
+  const failed = standing ? readFileSync(errors, "utf8").trim().split("\n").at(-1) : "";
   if (failed !== undefined && failed !== "") return `the last pass failed: ${short(failed)}`;
   if (passRunning(store)) return "a pass is still reading, and what it finishes comes to the next look";
   if (!room()) {

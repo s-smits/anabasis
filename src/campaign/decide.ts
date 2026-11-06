@@ -405,10 +405,15 @@ function tasks(ground: Ground): Move | null {
  * fewest new tasks a comparison waits for after a reading that left no room (`writtenSince`); 0
  * stays 0, leaving the command's default of 12. Until 4 November it was not raised, and
  * jobstat-fresh-opus-forkedPR595's x-3 was asked for 4 where the table waited for 6.
+ *
+ * The sweep comes on top of the practice a reading releases (`practiceDue`), or the release takes
+ * it: where a session after a promotion was asked for a sweep alone, the next comparison held 40
+ * new tasks of 206, against 1,252 of 2,350 overall, and
+ * jobstat-anabasis-fresh-opus-forkedPR631 released 5 of the session's 6 tasks at that reading.
  */
 export function shortOf(events: readonly LogEvent[], plan: Plan): number {
   const count = shortBy(groundOf(events, plan));
-  return count === 0 ? 0 : Math.max(count, sweepOf(plan.wanted.level));
+  return count === 0 ? 0 : Math.max(count, sweepOf(plan.wanted.level) + (plan.practice ?? 0));
 }
 
 function shortBy({ plan, supply, all }: Ground): number {

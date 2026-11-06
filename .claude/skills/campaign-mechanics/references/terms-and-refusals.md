@@ -114,8 +114,8 @@ An Examiner session can finish under three conditions:
 
 - It has supplied the needed tasks (`shortOf`, `src/campaign/decide.ts`), either at `finish`
   or at the end of that turn. The need includes practice and the admission floor before the first
-  comparison, and the target afterwards, raised to at least a sweep (`sweepOf`) where it is short at
-  all, or the explicit `--exam-tasks` request.
+  comparison, and the target afterwards, raised to at least a sweep (`sweepOf`) and the practice a
+  reading releases where it is short at all, or the explicit `--exam-tasks` request.
 - It calls `finish` twice without proposing a task between the calls.
 - It calls `finish` after using its full proposal allowance (`spent`, `src/examiner/write.ts`).
 

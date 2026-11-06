@@ -408,6 +408,8 @@ describe("task supply", () => {
     // One short of the floor, the session is still asked for a sweep (4 at 0.1).
     expect([shortOf(FIVE, PLAN), shortOf(SIX, PLAN)]).toEqual([4, 0]);
     expect(shortOf([...SIX, ...compared("g-1", "h1", "no-step")], PLAN)).toBe(6);
+    // The sweep comes on top of the practice a reading releases.
+    expect(shortOf(FIVE, { ...PLAN, practice: 5 })).toBe(9);
     expect(move([...SIX, built("b-1", "h1"), ...HELD.slice(6).flatMap(heldOut)])).toMatchObject({
       move: "build",
     });

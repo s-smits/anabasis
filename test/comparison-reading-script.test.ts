@@ -15,7 +15,7 @@ import { LOG_FILE, type LogEvent } from "../src/kernel/log.ts";
 import { mkdtempSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { capturedJsonStringify } from "../src/meta/json-runtime.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
-import { keyIfNotNull } from "../src/meta/optional-key.ts";
+import { keyIfDefined, keyIfNotNull } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
@@ -136,7 +136,7 @@ describe("the size figures the skill states", () => {
 });
 
 describe("a promotion's starter read, split by what its tasks had been through", () => {
-  const gate = (version: string): LogEvent[] => [
+  const gate = (version: string, session?: string): LogEvent[] => [
     {
       at: AT,
       kind: "task.proposed",
@@ -144,6 +144,7 @@ describe("a promotion's starter read, split by what its tasks had been through",
         version,
         taskId: version,
         task: { taskId: version, family: "fixture", publicInput: {}, hidden: null },
+        ...keyIfDefined("session", session),
       },
     },
     { at: AT, kind: "task.gate", data: { version, gate: 1, outcome: "passed" } },
@@ -178,15 +179,15 @@ describe("a promotion's starter read, split by what its tasks had been through",
   };
   const chose = Array.from({ length: 7 }, (_, nth) => `chose-${String(nth)}`);
   const log: LogEvent[] = [
-    ...[...chose, "undrawn"].flatMap(gate),
+    ...[...chose, "undrawn"].flatMap((task) => gate(task)),
     // The reference won its own promotion on seven tasks, from the new side.
     ...comparison("g-1", [STARTER, NEW], Object.fromEntries(chose.map((task) => [task, "FF PP"])), {
       reading: "step",
       differences: scores(7, 0),
     }),
     { at: AT, kind: "harness.promoted", data: { harness: NEW, from: STARTER, rests: [] } },
-    ...gate("lost"),
-    ...gate("tied"),
+    ...gate("lost", "x-1"),
+    ...gate("tied", "x-2"),
     // Then the starter, on the new side, loses those seven again and the task never drawn, and the
     // reference loses one written since: 8 to 1 clears the level, and 1 to 1 does not.
     ...comparison(
@@ -219,6 +220,24 @@ describe("a promotion's starter read, split by what its tasks had been through",
       validity: { wins: 0, losses: 1, ties: 0 },
       rest: { wins: 0, losses: 0, ties: 1 },
     });
+  });
+
+  it("gives each writing session its own tally where one origin holds two sessions' tasks", () => {
+    expect(starterReads(log)[0]?.authors).toEqual([
+      { session: "the opening exam", tally: { wins: 8, losses: 0, ties: 0 } },
+      { session: "x-1", tally: { wins: 0, losses: 1, ties: 0 } },
+      { session: "x-2", tally: { wins: 0, losses: 0, ties: 1 } },
+    ]);
+  });
+
+  it("prints a writing session's tally under its read", () => {
+    const folder = mkdtempSync(join(tmpdir(), "starter-reads-"));
+    writeFileSync(join(folder, LOG_FILE), `${log.map((event) => capturedJsonStringify(event)).join("\n")}\n`);
+    const reads = join(import.meta.dir, "..", ".claude/skills/comparison-reading/scripts/starter-reads.ts");
+    const out = decodeOutput(runSync([capturedExecPath, reads, folder]).stdout);
+    expect(out).toContain("  written by the opening exam: 8-0-0\n");
+    expect(out).toContain("  written by x-1: 0-1-0\n");
+    expect(out).toContain("  written by x-2: 0-0-1\n");
   });
 
   it("reads no step without the tasks that chose the harness, though the whole tally confirms it", () => {

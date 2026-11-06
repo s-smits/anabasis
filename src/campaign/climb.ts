@@ -28,6 +28,7 @@ import {
   testedSet,
   testOf,
 } from "../kernel/compare.ts";
+import { proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { lastReports, pairsReported, type Reported } from "../kernel/reports.ts";
 import { billedBetween } from "../kernel/meter.ts";
@@ -141,6 +142,8 @@ export interface StarterRead {
   readonly confirmed: boolean;
   readonly level: number;
   readonly origins: Readonly<Record<Origin, Split>>;
+  /** The tally on each writer's tasks, in the order the writers first proposed one. */
+  readonly authors: readonly { readonly session: string; readonly tally: Tally }[];
   /** Whether the tasks that did not choose the harness read a step alone, under this tree's rule. */
   readonly outside: boolean;
   /** The harnesses and tasks, which a copy of the comparison shares. */
@@ -320,10 +323,22 @@ function chosenOn(
   return new Set(chose.flatMap((report) => pairsReported(events, report).map(({ task }) => task)));
 }
 
+/** `pairs` by who wrote each task, each with its tally. */
+function byAuthor(writers: ReadonlyMap<string, string>, pairs: readonly Paired[]): StarterRead["authors"] {
+  return [...new Set(writers.values())].flatMap((session) => {
+    const own = pairs.filter(({ task }) => writers.get(task) === session);
+    return own.length === 0 ? [] : [{ session, tally: tallyOf(own) }];
+  });
+}
+
 /** Each starter read of `events`, oldest first. */
 export function starterReads(events: readonly LogEvent[]): StarterRead[] {
   const reports = lastReports(events);
   const epochs = epochsOf(events);
+  // A task no session proposed came with the opening: a stored pack's or the drafted exam's.
+  const writers = new Map(
+    proposalsOf(events).map(({ version, session }) => [version, session ?? "the opening exam"]),
+  );
   return epochs.flatMap((epoch, nth) => {
     const report = reports.find(({ session }) => session === epoch.starter_read);
     const fresh = report?.data.fresh;
@@ -356,6 +371,7 @@ export function starterReads(events: readonly LogEvent[]): StarterRead[] {
           [ORIGINS[1]]: splitOf(ORIGINS[1]),
           [ORIGINS[2]]: splitOf(ORIGINS[2]),
         },
+        authors: byAuthor(writers, pairs),
         outside: readsStep(
           pairs.filter(({ task }) => !chosen.has(task)).map((pair) => -differenceOf(pair)),
           at,

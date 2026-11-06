@@ -8,6 +8,7 @@ import { buildPackets, type Campaign, joinPackets } from "#tools/wri/packets.ts"
 
 const STARTER = "s".repeat(64);
 const HIDDEN = "a hidden value no packet may hold";
+const PRACTISED = "a question only ever practised";
 const room = mkdtempSync(join(tmpdir(), "wri-packets-"));
 afterAll(() => {
   rmSync(room, { recursive: true, force: true });
@@ -46,6 +47,18 @@ function campaign(name: string, at: string, tasks: number, answered: readonly nu
     log: join(room, name, "log.jsonl"),
     events: [
       ...proposed,
+      event(at, "task.proposed", {
+        version: `v-${name}-practice`,
+        taskId: "ex-practice",
+        task: {
+          taskId: "ex-practice",
+          family: "family",
+          publicInput: { asks: PRACTISED },
+          hidden: { value: HIDDEN },
+        },
+      }),
+      event(at, "task.gate", { version: `v-${name}-practice`, gate: 1, outcome: "passed" }),
+      event(at, "task.state", { version: `v-${name}-practice`, state: "released" }),
       event(at, "comparison.started", {
         session: "g-1",
         starter: STARTER,
@@ -78,6 +91,13 @@ const labelOf = (name: string) =>
 const read = (log: string) => campaigns.find((one) => one.log === log)?.events ?? [];
 
 describe("the packets", () => {
+  test("a packet holds the scored tasks alone, leaving out one only practised", () => {
+    for (const grader of ["a", "b"]) {
+      expect(packet(grader)).toContain("the question numbered 0");
+      expect(packet(grader)).not.toContain(PRACTISED);
+    }
+  });
+
   test("each grader holds half the campaigns, old and new alternating", () => {
     expect(made).toHaveLength(2);
     const graderOf = (name: string) => key.campaigns[labelOf(name)]?.grader;

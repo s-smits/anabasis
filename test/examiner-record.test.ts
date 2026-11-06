@@ -6,12 +6,12 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { heard } from "../src/examiner/record.ts";
 import { examine } from "../src/examiner/session.ts";
 import { conditionId, settingId } from "../src/kernel/condition.ts";
-import { append, type EventKind, type LogEvent } from "../src/kernel/log.ts";
+import { append, type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
 import type { Ending } from "../src/kernel/solve.ts";
-import { isNumber, type JsonObject } from "../src/meta/json-shape.ts";
+import { isNumber, isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
-import { condition, finish, seat } from "./helpers/examiner-seat.ts";
+import { condition, finish, propose, seat } from "./helpers/examiner-seat.ts";
 
 const TASK_ADMISSION = "task.gate";
 const PROPOSED = "task.proposed";
@@ -367,7 +367,7 @@ describe("after a promotion", () => {
       ["old", "new"].map(fixture),
     );
     expect(unpromoted.promoted).toBeNull();
-    // At a wake the promotion is told where it came after the conversation last wrote.
+    // At a wake the promotion is told where it came after the conversation was last told.
     const at = log.events.findIndex(({ kind }) => kind === "harness.promoted");
     const woken = heard(log.events, ["old", "new"].map(fixture), at);
     expect(woken.promoted).toContain("g-9");
@@ -391,7 +391,53 @@ describe("a draft its author tried on the reference", () => {
 });
 
 describe("a wake", () => {
-  it("tells only the comparisons reported after the conversation last wrote, and the tasks they scored", () => {
+  it("tells a comparison and a promotion that reported while the ask before it wrote, and tells them once", async () => {
+    const s = seat("write", [propose(2), propose(3), propose(4)]);
+    const log = logged();
+    const onRecord = () => {
+      for (const { kind, data } of log.events.splice(0)) append(s.log, kind, data);
+    };
+    log.hold(["run", "mixed"]);
+    log.solved("b-1", "mixed", "h1", [true, true]);
+    log.solved("b-1", "mixed", "h2", [false, false]);
+    log.reported("b-1", ["h1", "h2"], ["mixed"]);
+    onRecord();
+    const tasks = ["run", "mixed"].map((id) => ({ ...fixture(id), publicInput: {}, hidden: null }));
+    const later = (id: string) => ({ ...s.request, id, tasks, wanted: 1 });
+    const asks = [later("x-2"), later("x-3")];
+    await examine({
+      ...s.request,
+      tasks,
+      wanted: 1,
+      // A comparison and its promotion beside the first ask, after its opening and before its rest.
+      opened: () => {
+        log.solved("b-2", "run", "h1", [false, false]);
+        log.solved("b-2", "run", "h2", [true, true]);
+        log.reported("b-2", ["h1", "h2"], ["run"]);
+        log.add("harness.promoted", { harness: "h2", from: "h1", rests: [{ comparison: "b-2" }] });
+        onRecord();
+      },
+      rest: async () => {
+        const request = asks.shift();
+        return request === undefined ? null : { request };
+      },
+    });
+    const wakes = s
+      .of("exam.call")
+      .flatMap(({ text }) => (isString(text) && text.includes("The host asks for more tasks") ? [text] : []));
+    expect(wakes).toHaveLength(2);
+    const [first, second] = wakes;
+    expect(first).toContain("b-2");
+    expect(first).toContain("run (fixture)");
+    const since = read(s.log).findIndex(({ kind }) => kind === "exam.started");
+    expect(first).toContain(heard(read(s.log), [fixture("run")], since).promoted ?? "no promotion line");
+    // What the opening told stays out of the wake, and the next wake repeats nothing.
+    expect(first).not.toContain("mixed (fixture)");
+    expect(second).not.toContain("b-2");
+    expect(second).not.toContain("run (fixture)");
+  });
+
+  it("tells only the comparisons reported after the conversation was last told, and the tasks they scored", () => {
     const log = logged();
     log.hold(["run", "mixed"]);
     for (const task of ["run", "mixed"]) {

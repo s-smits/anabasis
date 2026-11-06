@@ -608,10 +608,13 @@ export function writing(
     counted: () => ({ proposed: desk.proposed, held: desk.held, refused: desk.refused }),
     result: () => ({ puts: desk.proposed, held: desk.held, refused: desk.refused }),
     // Each ask counts its own drafts and tries; what the conversation saw and answered stays.
-    ask: (next: Terms, since: number) => {
+    ask: (next: Terms) => {
       Object.assign(desk, { request: next, proposed: 0, tried: 0, held: [], refused: [] });
       const events = read(next.log);
       told = openedOn(next, events);
+      // The last ask's start is where the conversation last heard the log. A comparison runs beside
+      // a writing ask, so counting from that ask's rest passed over a reading that reported as it wrote.
+      const since = events.findLastIndex(({ kind }) => kind === "exam.started");
       return wakeMessage(heard(events, next.tasks, since), {
         ...next.limits,
         tries: next.probe?.tries ?? 0,

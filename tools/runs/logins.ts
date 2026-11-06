@@ -32,8 +32,7 @@
  * on this machine and every host `ANA_HOSTS` lists (`liveEverywhere`), and asks no
  * provider, and `usage` puts each login's count on its head line, out of the most `ANA_LOGIN_RUNS`
  * or its subscription in `ANA_LOGIN_SUBS` lets that login carry (`capOf`), and sums the
- * subscriptions' most under the logins. Until 22 October that count took `status` on every host
- * and a tally by hand before each launch, a continue or a move.
+ * subscriptions' most under the logins.
  *
  * Each reading keeps that count beside each login's week, and the rises between readings over the
  * runs counted give the share of a week a run spends an hour (`perRunRate`). The most a login
@@ -79,6 +78,7 @@ import {
   HORIZON,
   sameWindow,
   type Snapshot,
+  weekEnd,
   weekPace,
 } from "./usage-model.ts";
 
@@ -117,12 +117,10 @@ const HOUR = 3_600_000;
 const WEEK = 168 * HOUR;
 const AHEAD = 4 * WEEK;
 const STEP = HOUR / 12;
-/** The readings kept, for the longest window of `usage-model.ts`; the per-run rate reads the last
- *  `RATE_MS` of them, as it read all it kept until 1 November. */
+/** The readings kept, for `usage-model.ts`'s longest window; the per-run rate reads the last `RATE_MS`. */
 const KEPT_MS = 28 * 24 * HOUR;
 const RATE_MS = 8 * 24 * HOUR;
-/** The share of a day a run is taken to be active when a week is read for how many runs it fits:
- *  16 of 24 hours (operator, 22 October). */
+/** The share of a day a run is read active for the runs a week fits: 16 of 24 hours (operator, 22 October). */
 const ACTIVE_SHARE = 16 / 24;
 /** The hours a run is read to live: the release cycle stops its runs twelve hours after their
  *  opening (`AGENTS.md`, section 1). Until 29 October each run was read to live until its login's
@@ -601,28 +599,30 @@ function poolLines(
   ];
 }
 
-/** The model's lines (`usage-model.ts`): when the pool runs out at its pace over the next
- *  `HORIZON` hours, and each login's rise at a few of those hours and the hour its week runs out
- *  within them; or what keeps the model from speaking. */
+/** The model's lines (`usage-model.ts`): when the pool runs out at its pace over the next `HORIZON`
+ *  hours, each login's rise at a few of those hours and the hour its week ends; or what stops it. */
 export function modelLines(
   weeks: readonly Week[],
   recorded: readonly Snapshot[],
   assessment: Assessment | null,
   now: number,
+  rate: number | null,
 ): string[] {
-  if (assessment === null) return ["  model       off: no readings yet to fit on and hold out"];
-  const errors = `fitted on ${String(assessment.days)} days; held-out error ${assessment.error.toFixed(2)} vs ${assessment.week.toFixed(2)} for the week pace and ${assessment.run.toFixed(2)} for the per-run rate, % over ${String(assessment.held)} rows`;
+  if (assessment === null) return ["  model       off: no rows yet to fit on and hold out"];
+  const errors = `fitted on ${String(assessment.days)} days; held-out error ${assessment.error.toFixed(2)} vs ${assessment.week.toFixed(2)} for the week pace and ${assessment.run.toFixed(2)} for the per-run rate, % over ${String(assessment.held)} rows of logins with room`;
   if (assessment.model === null) return [`  model       not used: ${errors}`];
   const rises = ahead(assessment.model, recorded);
+  const live = byTime(recorded).at(-1)?.runs ?? {};
   const day = weeks.reduce((sum, { login }) => sum + (rises[login]?.at(-1) ?? 0), 0);
-  const each = weeks.map(({ login, pct }) => {
-    const curve = rises[login] ?? [];
+  const each = weeks.map((week) => {
+    const curve = rises[week.login] ?? [];
     const at = [1, 3, 6, 12, HORIZON].map(
       (hours) => `+${String(hours)}h ${(curve[hours - 1] ?? 0).toFixed(1)}%`,
     );
-    const out = pct < 100 ? curve.findIndex((rise) => pct + rise >= 100) : -1;
-    const ends = out === -1 ? "" : ` · week out ~${clock(now + (out + 1) * HOUR)}`;
-    return `  login ${login.padEnd(6)}${at.join("  ")}${ends}`;
+    const out = weekEnd(curve, week, now, (live[week.login] ?? 0) * (rate ?? 0));
+    const kept = out === weekEnd(curve, week, now) ? "" : " if its runs keep going";
+    const ends = out === null ? "" : ` · week out ~${clock(out)}${kept}`;
+    return `  login ${week.login.padEnd(6)}${at.join("  ")}${ends}`;
   });
   return [
     `  model ${`${String(HORIZON)}h`.padEnd(6)}~${String(Math.round((day * 24) / HORIZON))}%/day: ${forecast(weeks, day / HORIZON, now)}`,
@@ -834,7 +834,7 @@ export async function logins(args: readonly string[]): Promise<void> {
       ? `  a run       no measured rate yet (under ${String(LEAST_RUN_HOURS)} run-hours): each login's week pace over its live runs`
       : `  a run       ~${rate.toFixed(2)}% of a login's week an hour, active ${String(Math.round(ACTIVE_SHARE * 24))} of 24h: the most each login carries for ${String(RUN_HOURS)}h`,
   );
-  console.log(modelLines(weeks, recorded, assess(recorded, now, perRunRate), now).join("\n"));
+  console.log(modelLines(weeks, recorded, assess(recorded, now, perRunRate), now, rate).join("\n"));
   mkdirSync(dirname(history), { recursive: true });
   const lines = recorded.map((one) => capturedJsonStringify(one));
   writeFileSync(history, `${lines.join("\n")}\n`);

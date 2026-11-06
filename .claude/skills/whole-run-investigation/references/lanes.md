@@ -1329,6 +1329,14 @@ it routes to `operator` for that report, `harness/guide` or `harness/tools` for 
 and the reference answers them, and `builder-prompt` (`src/builder/prompt.ts`) where soundness falls
 while promotions go on.
 
+Add each grade under `## Grade rows` as one tab-separated line, `task<TAB>campaign<TAB>id<TAB>grade`
+and `version<TAB>campaign<TAB>digest<TAB>grade`. The primary reads them with `wri.ts trajectory
+--log <logs> --grades <report>`, which sets every campaign on one clock of work hours: what each had
+at each hour (promotions, confirmations, its lead over the Starter, the reference's weight and
+quality), each comparison's own hours, the gaps between promotions, and mean quality up to an early
+and a late horizon, so a race that stalled shows beside a slow start that kept climbing. Grades read
+across campaigns need one grader, or graders who share anchor tasks that say how far they differ.
+
 ## Retired from v1
 
 `from-v1.md` holds the whole account: which of v1's nine rows and thirty-eight lanes were kept,

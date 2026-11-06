@@ -51,7 +51,7 @@ second.
 ## What the record shows (6 November)
 
 Two campaigns, read with `zone.ts` and from each `comparison.reported`: the jobstat campaign under
-the tuned prompt ("v5", at `933cfb995`, which matches no stack head, live, with `g-7` not reported),
+the tuned prompt ("v5", at `933cfb995`, which matches no stack head, stopped with `g-8` not reported),
 and the Opus buffer control (at `0e53cc190`, stopped with no ending). They differ in pack and commit,
 so they are described side by side and neither is read against the other. Each tally is from the
 fresh side of its comparison.
@@ -64,23 +64,25 @@ fresh side of its comparison.
 | v5 `g-4` | Starter | no-step | 8-10-0 | 0 of 18 | 0 | 18 | 14 | 1-6-11 | 7 of 18 |
 | v5 `g-5` | candidate | no-step | 7-1-4 | 0 of 12 | 0 | 8 | 9 | 0-3-9 | 3 of 12 |
 | v5 `g-6` | candidate | step | 11-5-6 | 0 of 22 | 0 | 16 | 20 | 7-3-12 | 10 of 22 |
+| v5 `g-7` | Starter | no-step | 12-10-0 | 0 of 22 | 0 | 22 | 17 | 5-7-10 | 12 of 22 |
 | control `g-1` | candidate | step | 7-0-1 | 0 of 8 | 0 | 7 | 7 | 3-1-4 | 4 of 8 |
 | control `g-2` | Starter | no-step | 1-26-5 | 0 of 32 | 6 | 21 | 18 | 0-0-32 | 0 of 32 |
 | control `g-3` | candidate | step | 12-0-14 | 0 of 26 | 0 | 12 | 12 | 0-0-26 | 0 of 26 |
 
-- **Validity.** No comparison of the nine holds a task the reference failed in any solve. All five
+- **Validity.** No comparison of the ten holds a task the reference failed in any solve. All five
   steps have 0 validity points. The only tasks untied on validity are the 6 of control `g-2`, where
   the Starter failed.
-- **Supply.** Ties fell to 12 of 96 tasks in v5, where the jobstat runs of the first table tied 192
+- **Supply.** Ties fell to 12 of 118 tasks in v5, where the jobstat runs of the first table tied 192
   of 194. The prompt, the commit and the Builder draw all differ, so this describes the change and
   does not attribute it.
-- **Noise beside the gain.** No A/A of the nine read a step. v5's A/A untied 48 of 96 tasks and the
+- **Noise beside the gain.** No A/A of the ten read a step. v5's A/A untied 60 of 118 tasks and the
   control's 4 of 66, so in v5 a harness's own two solves often differ past the 1% floor. The test
   holds its false rate on this noise, and the noise costs power.
-- **What the steps held.** v5's two starter reads have the Starter ahead, 11-10-0 and 8-10-0, so 0
-  of its 3 promotions is confirmed so far, with the third read owed. The control's one read is
-  26-1-5 for the reference.
-- **Rulings.** v5: 0 rejections in 535 valid and 16 provider non-results, 0 `referee.call`. Control:
+- **What the steps held.** v5's three starter reads confirm none of its 3 promotions. The test's sum
+  of task scores favours the Starter in all three (p 0.050, 0.241 and 0.048, each short of the 0.02
+  level), while by tasks they stand 11-10-0, 8-10-0 and 12-10-0. The control's one read is 26-1-5
+  for the reference.
+- **Rulings.** v5: 0 rejections in 717 valid and 16 provider non-results, 0 `referee.call`. Control:
   5 rejections, 5 `earned`, 0 `check-defect` or `unclear`, 27 `referee.call`, 1 flagged, 292 valid.
 - **Tries.** v5: 102 of 102 valid over 56 instances. Control: 23 of 23 over 15. No try failed, so no
   seat could have kept an instance for failing one. These are the seats' own tries, which item 3

@@ -18,7 +18,8 @@ import {
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { capturedExecPath } from "../src/meta/process.ts";
+import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
+import { holdAlone } from "../tools/runtime/gate.ts";
 
 import { afterAll, beforeEach, describe, expect, it } from "bun:test";
 
@@ -294,4 +295,28 @@ describe("proveCommits", () => {
     },
     20_000,
   );
+});
+
+describe("one landing of a clone at a time", () => {
+  it("waits while a live process holds the clone, and takes the lock over once its holder is gone", async () => {
+    const clone = mkdtempSync(join(fixture, "alone-"));
+    execTextSync("git", ["init", "-q"], { cwd: clone });
+    const lock = join(clone, ".git", "ana-land.lock");
+    const mine = String(runtimeProcess.pid);
+    mkdirSync(lock);
+    writeFileSync(join(lock, "pid"), mine);
+    const said: string[] = [];
+    const held = holdAlone(clone, "land", (line) => said.push(line), 20);
+    const early = await Promise.race([held.then(() => "held"), Bun.sleep(200).then(() => "waiting")]);
+    expect(early).toBe("waiting");
+    expect(said).toEqual([`another land (pid ${mine}) is running in this clone; waiting for it to end`]);
+    // Above any pid either system gives, so no process answers it.
+    writeFileSync(join(lock, "pid"), "4194399");
+    const release = await held;
+    expect(readFileSync(join(lock, "pid"), "utf8")).toBe(mine);
+    release();
+    const again = await holdAlone(clone, "land", () => undefined, 20);
+    expect(readFileSync(join(lock, "pid"), "utf8")).toBe(mine);
+    again();
+  });
 });

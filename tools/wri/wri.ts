@@ -4,7 +4,7 @@
  *
  *   bun tools/wri/wri.ts read --log .ana/d2/truss/log.jsonl
  *   bun tools/wri/wri.ts climb --log .ana/d2/truss/log.jsonl[,<log>,<log>]
- *   bun tools/wri/wri.ts trajectory --log <log>[,<log>...] [--grades <report>[,<report>]] [--hours 2,4,8] [--horizons 6,12]
+ *   bun tools/wri/wri.ts trajectory --log <log>[,<log>...] [--grades <report>[,<report>]] [--hours 2,4,8]
  *   bun tools/wri/wri.ts start --log .ana/d2/truss/log.jsonl[,<log>,<log>] --out .ana/wri/20261008-truss [--snapshot]
  *   bun tools/wri/wri.ts lanes --out .ana/wri/20261008-truss [--lanes 1-4,7] [--agents 3]
  *   bun tools/wri/wri.ts collect --out .ana/wri/20261008-truss
@@ -137,7 +137,6 @@ const { values, positionals } = parseArgs({
     snapshot: { type: "boolean" },
     grades: { type: "string" },
     hours: { type: "string" },
-    horizons: { type: "string" },
   },
 });
 
@@ -595,7 +594,6 @@ async function main(): Promise<number> {
                 .join("\n"),
             ),
       hours: values.hours?.split(",").map(Number) ?? HOURS,
-      horizons: values.horizons?.split(",").map(Number) ?? [6, 12],
     });
     console.log(text);
     return 0;

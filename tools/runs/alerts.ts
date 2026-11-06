@@ -135,13 +135,21 @@ function rowOf(run: Run, open: boolean, now: number): Row {
   };
 }
 
-/** This machine's rows: those `status` shows, and the name of every campaign its worktrees hold. */
+/**
+ * Whether a look reads a run: as `status` shows it, less a seed no launch continued. A rehearsal
+ * writes its seed, so `status` shows it, and on 6 November two reached the operator's notifications
+ * as "first seen with 6 promotions" beside a real second promotion.
+ */
+export const onAlerts = (run: Run, open: boolean, age: number): boolean =>
+  (run.seed !== true || lastLaunch(run.path) !== undefined) && onStatus(run, open, age);
+
+/** This machine's rows, and the name of every campaign its worktrees hold. */
 function rowsHere(now: number): HostRows {
   const running = processes();
   const held = runs().filter(isCampaign);
   const rows = held.flatMap((run) => {
     const open = writers(run, running).length > 0;
-    return onStatus(run, open, now - statSync(run.path).mtimeMs) ? [rowOf(run, open, now)] : [];
+    return onAlerts(run, open, now - statSync(run.path).mtimeMs) ? [rowOf(run, open, now)] : [];
   });
   return { rows, held: held.map(({ name }) => name) };
 }

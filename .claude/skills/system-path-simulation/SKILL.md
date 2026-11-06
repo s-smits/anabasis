@@ -197,7 +197,8 @@ Rehearsals have found joins that still matter:
 - **A hard kill is survived.** `kill -9` 13 seconds into a round left 8 solves started and 4
   finished. Run again with the same `--session`, it went on from its log and reported as scripted.
 - **A kill left roots behind, and session ids collided across campaigns.** `bun run runs stop
-  <name> --yes` releases roots left by unfinished solves and sessions (`leftOpen`, `releaseRoot`),
+  <name> --yes` releases roots left by unfinished solves and sessions and by an Examiner's
+  conversation, which stands through its rests (`leftOpen`, `releaseRoot`),
   and `sessionDirs` names a Builder's root by its campaign too.
 - **Claude Code went on after its solve closed.** 14 of 35 solve records held a call after the one
   that ended the solve. A live probe traced it to an abort closing stdin while a turn was parked on

@@ -124,6 +124,7 @@ import {
   failedLine,
   git,
   gitSays,
+  holdAlone,
   type Proof,
   proveCommits,
   short,
@@ -783,6 +784,7 @@ async function main(argv: readonly string[]): Promise<number> {
     jobs,
     tag: values.tag ?? null,
   };
+  const alone = await holdAlone(root, "land", say);
   try {
     // A release the merge could not take is refused before anything is gated.
     // `--exit-code` exits 2 where origin holds no such ref; any other failure says nothing of the tag.
@@ -815,6 +817,8 @@ async function main(argv: readonly string[]): Promise<number> {
     if (!(error instanceof Refusal)) throw error;
     console.error(`land: ${error.message} Nothing was merged.`);
     return 1;
+  } finally {
+    alone();
   }
 }
 

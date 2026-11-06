@@ -598,7 +598,8 @@ brief states authority, paths, revision, observed facts, question and whether it
 Give reviewers the code without prescribing a conclusion. Verify findings against the owner,
 callers, tests and newest relevant runs. Report them as confirmed (with events), plausible (with
 a test or run that would settle them) or refuted. Act on confirmed findings within the task's
-authority.
+authority. Mostly let an active subagent run, or steer it with a message, rather than stopping it
+and starting another.
 
 **In `repository-practice`, section 11** (`working-in-the-repository.md`): the command table, the
 hooks, CI's jobs and native stacks. `preflight` prints what a diff owes before a commit: the tests

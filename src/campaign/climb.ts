@@ -69,6 +69,12 @@ export interface Epoch {
   readonly starter_tally: Tally | null;
   /** That comparison's id, null where `starter_tally` is. */
   readonly starter_read: string | null;
+  /** That tally by when each task was written: `before` the promotion, among them those that chose
+   *  it, and `since`, under the promoted reference. Null where `starter_tally` is, and where a
+   *  report's tasks do not name its scores. Confirmation still reads the whole draw: scored on the
+   *  tasks written since alone from 30 October to 2 November (`78178aecf`, `89a6a1768`), it asked
+   *  the reference to beat the starter only where the Examiner had aimed at it. */
+  readonly starter_split: { readonly before: Tally; readonly since: Tally } | null;
   /** Whether the promotion that opened the epoch is confirmed: its first starter comparison that
    *  tallied a task reads the reference above the starter without the bill, at that comparison's
    *  level (`AGENTS.md`,
@@ -165,7 +171,7 @@ export function epochsOf(events: readonly LogEvent[]): Epoch[] {
       tasks,
       sessions: new Set(built.flatMap(({ data }) => (isString(data.session) ? [data.session] : []))).size,
       comparisons,
-      ...againstStarter(reports, within, reference === "starter" ? null : referenceDigest, starter),
+      ...againstStarter(reports, within, reference === "starter" ? null : referenceDigest, starter, tasks),
       falsePromotion: falsePromotionOf(reports, within, { reference: referenceDigest, starter }),
     };
   });
@@ -184,8 +190,10 @@ function againstStarter(
   within: (at: number) => boolean,
   reference: string | null,
   starter: string | null,
-): Pick<Epoch, "starter_tally" | "starter_read" | "confirmed"> {
-  if (reference === null) return { starter_tally: null, starter_read: null, confirmed: null };
+  written: readonly string[],
+): Pick<Epoch, "starter_tally" | "starter_read" | "starter_split" | "confirmed"> {
+  const unread = { starter_tally: null, starter_read: null, starter_split: null };
+  if (reference === null) return { ...unread, confirmed: null };
   const first = reports.find(
     ({ index, data }) =>
       within(index) &&
@@ -194,14 +202,27 @@ function againstStarter(
       data.reading !== "not-scored" &&
       asRecord(data.scored) !== null,
   );
-  if (first === undefined) return { starter_tally: null, starter_read: null, confirmed: false };
+  if (first === undefined) return { ...unread, confirmed: false };
   const ahead = scoresIn(first.data.scored).map((one) => -one);
-  const { wins, losses, ties } = testOf(ahead);
   return {
-    starter_tally: { wins, losses, ties },
+    starter_tally: tallyOf(ahead),
     starter_read: first.session,
+    starter_split: splitOf(ahead, first.data.versions, written),
     confirmed: readsStep(ahead, levelOf(first)),
   };
+}
+
+function tallyOf(scores: readonly number[]): Tally {
+  const { wins, losses, ties } = testOf(scores);
+  return { wins, losses, ties };
+}
+
+/** `scores`, of `versions` in their order, parted by whether the epoch's gate admitted each task. */
+function splitOf(scores: readonly number[], versions: unknown, written: readonly string[]) {
+  if (!Array.isArray(versions) || versions.length !== scores.length) return null;
+  const since = new Set<unknown>(written);
+  const part = (wanted: boolean) => tallyOf(scores.filter((_, at) => since.has(versions[at]) === wanted));
+  return { before: part(false), since: part(true) };
 }
 
 /** Each A/A comparison beside `reports`, the reference against itself read as a comparison is:
@@ -255,11 +276,31 @@ function falsePromotionOf(
 }
 
 /** The epoch's starter comparison as the line prints it, nothing in the first epoch. */
-function starterOf({ reference, starter_tally: tally, confirmed }: Epoch): string {
+const shortTally = ({ wins, losses, ties }: Tally) => `${String(wins)}-${String(losses)}-${String(ties)}`;
+
+function starterOf({ reference, starter_tally: tally, starter_split: split, confirmed }: Epoch): string {
   if (reference === "starter") return "";
   if (tally === null) return ", against the starter unread";
   const read = confirmed === true ? "a step, so its promotion is confirmed" : "no step";
-  return `, against the starter ${String(tally.wins)} won, ${String(tally.losses)} lost, ${String(tally.ties)} tied, ${read}`;
+  const parts =
+    split === null
+      ? ""
+      : ` (${shortTally(split.before)} written before it, ${shortTally(split.since)} since)`;
+  return `, against the starter ${String(tally.wins)} won, ${String(tally.losses)} lost, ${String(tally.ties)} tied${parts}, ${read}`;
+}
+
+/** The reads' tallies added up by when each task was written, for the closing report, which prints
+ *  no epoch line. Empty where no read has a split. */
+function splitsLine(epochs: readonly Epoch[]): string {
+  const splits = epochs.flatMap(({ starter_split: split }) => (split === null ? [] : [split]));
+  if (splits.length === 0) return "";
+  const added = (part: "before" | "since") =>
+    shortTally({
+      wins: splits.reduce((sum, split) => sum + split[part].wins, 0),
+      losses: splits.reduce((sum, split) => sum + split[part].losses, 0),
+      ties: splits.reduce((sum, split) => sum + split[part].ties, 0),
+    });
+  return ` Over those reads, the reference ${added("before")} on tasks written before its promotion and ${added("since")} on tasks written since.`;
 }
 
 /** One line an epoch, as the view prints them, each harness `called` as the view names it, and the
@@ -368,7 +409,7 @@ export function barLines(events: readonly LogEvent[]): string[] {
     return cost.met ? [] : [`epoch ${String(epoch.nth)} at ${String(cost.attempts)}${open}`];
   });
   return [
-    `- Climb: ${plural(climbed.length, "promotion")}, ${String(confirmed)} confirmed against a milestone of ${String(MILESTONE.promotions)}; ${String(climbed.length - confirmed - unread)} read against the starter without a step, ${String(unread)} not read against it.`,
+    `- Climb: ${plural(climbed.length, "promotion")}, ${String(confirmed)} confirmed against a milestone of ${String(MILESTONE.promotions)}; ${String(climbed.length - confirmed - unread)} read against the starter without a step, ${String(unread)} not read against it.${splitsLine(climbed)}`,
     honestyLine(events, epochs[MILESTONE.promotions]?.from),
     `- Economy: ${plural(climbed.length, "epoch")} after set-up against a bar of ${plural(BARS.cost, ATTEMPT)} each, ${String(over.length)} over it${over.length === 0 ? "" : `: ${over.join("; ")}`}. Reported only.`,
   ];

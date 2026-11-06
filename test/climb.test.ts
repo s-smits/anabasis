@@ -470,6 +470,50 @@ describe("the starter comparison in an epoch's row", () => {
     expect(epochsOf([opened, promoted, empty, again])[1]?.confirmed).toBe(true);
   });
 
+  it("parts a read by when each task was written, and confirmation still reads the whole draw", () => {
+    // Eight older tasks won, and of two written since one lost and one tied: the whole clears the
+    // level at 8 to 1, the part since would not, and the promotion stays confirmed.
+    const versions = ["o1", "o2", "o3", "o4", "o5", "o6", "o7", "o8", "n1", "n2"];
+    const reported = starterRead({ differences: [-1, -1, -1, -1, -1, -1, -1, -1, 1, 0] }, { versions });
+    const log = [opened, promoted, ...heldOut("n1"), ...heldOut("n2"), reported];
+    const [, second] = epochsOf(log);
+    expect(second?.starter_split).toEqual({
+      before: { wins: 8, losses: 0, ties: 0 },
+      since: { wins: 0, losses: 1, ties: 1 },
+    });
+    expect(second?.starter_tally).toEqual({ wins: 8, losses: 1, ties: 1 });
+    expect(second?.confirmed).toBe(true);
+    expect(epochLine(present(second))).toContain(
+      "against the starter 8 won, 1 lost, 1 tied (8-0-0 written before it, 0-1-1 since), a step",
+    );
+    expect(barLines(log)[0]).toContain(
+      "the reference 8-0-0 on tasks written before its promotion and 0-1-1 on tasks written since",
+    );
+  });
+
+  it("leaves a task written in the epoch before out of the part since, and counts every read in the closing line", () => {
+    const earlier = [...heldOut("o1"), ...heldOut("o2")];
+    const reported = starterRead({ differences: [-1, -1, 1] }, { versions: ["o1", "o2", "n1"] });
+    const log = [opened, ...earlier, promoted, ...heldOut("n1"), reported];
+    expect(epochsOf(log)[1]?.starter_split).toEqual({
+      before: { wins: 2, losses: 0, ties: 0 },
+      since: { wins: 0, losses: 1, ties: 0 },
+    });
+  });
+
+  it("gives no parts where a report's tasks do not name its scores, and leaves the rest as it was", () => {
+    const unnamed = starterRead({ differences: [-1, -1, 1] });
+    const short = starterRead({ differences: [-1, -1, 1] }, { versions: ["o1", "o2"] });
+    for (const reported of [unnamed, short]) {
+      const log = [opened, promoted, reported];
+      const [, second] = epochsOf(log);
+      expect(second?.starter_split).toBeNull();
+      expect(second?.starter_tally).toEqual({ wins: 2, losses: 1, ties: 0 });
+      expect(epochLine(present(second))).toContain("against the starter 2 won, 1 lost, 0 tied, no step");
+      expect(barLines(log)[0]).not.toContain("Over those reads");
+    }
+  });
+
   it("says unread before a starter comparison reports, and nothing in the first epoch", () => {
     const [first, second] = epochsOf([opened, promoted]);
     expect(second?.starter_tally).toBeNull();

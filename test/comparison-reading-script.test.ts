@@ -230,6 +230,17 @@ describe("a promotion's starter read, split by what its tasks had been through",
     expect(starterReads(log.slice(0, promotedAt + 1))).toEqual([]);
     expect(starterReads(log.slice(0, promotedAt))).toEqual([]);
   });
+
+  it("says so and exits clean on a log with no promotion, since the derived readers run it on every log", () => {
+    const folder = mkdtempSync(join(tmpdir(), "starter-reads-"));
+    const promotedAt = log.findIndex(({ kind }) => kind === "harness.promoted");
+    const unpromoted = log.slice(0, promotedAt).map((event) => capturedJsonStringify(event));
+    writeFileSync(join(folder, LOG_FILE), `${unpromoted.join("\n")}\n`);
+    const reads = join(import.meta.dir, "..", ".claude/skills/comparison-reading/scripts/starter-reads.ts");
+    const ran = runSync([capturedExecPath, reads, folder]);
+    expect(ran.exitCode).toBe(0);
+    expect(decodeOutput(ran.stdout)).toContain("no promotion");
+  });
 });
 
 describe("a log's comparisons read again", () => {

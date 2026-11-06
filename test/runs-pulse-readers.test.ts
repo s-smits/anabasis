@@ -221,6 +221,19 @@ describe("a reader that was not read never reads as nothing new", () => {
     expect(look({ size: 200, lastSize: 100 }).said.at(-1)).toContain("load");
   });
 
+  it("says a pass failed until a later pass ends, and not after", async () => {
+    const { store, log, look } = world(["rows", "chain"]);
+    keepResult(store, log, "rows", result(200), "a\n");
+    keepResult(store, log, "chain", result(100), "a\n");
+    endPass(store, "finished");
+    await Bun.sleep(5);
+    writeFileSync(join(store, "pass.err"), "a trace\nthe runtime's last line\n");
+    expect(look({ size: 200, lastSize: 100 }).said.at(-1)).toContain("the last pass failed");
+    await Bun.sleep(5);
+    endPass(store, "budget");
+    expect(look({ size: 200, lastSize: 100 }).said.at(-1)).not.toContain("the last pass failed");
+  });
+
   it("names every reader where no result exists, and keeps a closed run owed until each has read it", () => {
     const { store, log, look } = world(["rows", "chain"]);
     const nothing = look({ size: 200, lastSize: 100 });

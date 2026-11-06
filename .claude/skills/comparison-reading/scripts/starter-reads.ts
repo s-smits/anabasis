@@ -23,7 +23,7 @@
  * comparison once, by its harnesses and tasks. Output holds session ids, harness letters and counts,
  * and nothing of a task.
  */
-import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
+import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { campaignLogs, rehearsed } from "#skills/promotion-tuner/scripts/tree.ts";
 import { epochsOf } from "#src/campaign/climb.ts";
 import { calledBy, namesOf } from "#src/campaign/names.ts";
@@ -203,7 +203,8 @@ if (import.meta.main) {
       const events = read(await logAcross(named));
       const reads = starterReads(events);
       if (reads.length === 0 && !events.some(({ kind }) => kind === "harness.promoted")) {
-        throw new CommandFailure("no promotion in this log, so no starter read");
+        console.log("no promotion in this log, so no starter read");
+        return;
       }
       const called = calledBy(namesOf(events));
       console.log([...reads.flatMap((each) => readLines(each, called)), ...totalLines(reads)].join("\n"));

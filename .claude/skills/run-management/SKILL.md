@@ -26,7 +26,7 @@ archived campaign; `copy <name> --to <worktree>` brings this machine's back to g
 | `fresh <pack> [<pack> ...] [--logins <allowed-list>] [--model opus\|sonnet\|gpt\|<provider>/<id>] [--effort hhmm] [--login N] [--budget 800] [--as <suffix>] [--at <c>] [--host <host>] [--yes] [-- <flags>]` | names a campaign from a blank project, makes its worktree at a published commit and launches it there | `fresh.ts` |
 | `launch <name> [--login N] [--yes] -- <flags>` | starts the campaign command under a new name, in this worktree | `manage.ts` |
 | `continue <name> [--at <c>] [--login N] [--budget N] [--after <event>] [--yes] [-- <flags>]` | runs a campaign again from its log, on its kept flags or their replacement after `--` | `manage.ts` |
-| `pause <name> [--after <event>] [--yes]` | stops a campaign at its next finished solve or tool call, or, with a clean-point event, once its log gains one more of it and nothing but its Builder's conversation is open | `manage.ts` |
+| `pause <name> [--after <event>] [--yes]` | lets a campaign's open solves finish, starts no other, and stops it, or, with a clean-point event, once its log gains one more of it and nothing but its Builder's conversation is open | `manage.ts` |
 | `keep <name> [--logins <list>] [--wait-hours 0.25] [--yes]` | keeps a campaign going: moves it off a provider wait on either limit, and continues it after a death or an `environment` ending. A run on a numbered login gets one by itself; this verb attaches one to a run that has none | `keep.ts` |
 | `copy <name> --to <worktree> [--yes]` | copies a stopped campaign whole to another worktree, from a worktree or the archive, and sets the source aside | `move.ts` |
 | `move <name> --to <host> [--from <host>] [--login N] [--after <event>] [--hold] [--yes] [-- <flags>]` | pauses a campaign at a clean point, takes its folder whole to a new worktree on the other machine at the same commit, sets the source aside and continues it there on its kept flags | `move.ts` |
@@ -199,10 +199,14 @@ Examiner session or draft is open, and then stops the run. The Builder's convers
 throughout a led campaign, and a pause cuts it: the campaign continued opens a new one on its
 notes, and the session the stop fell inside has spent its id. `continue --after <event>` is that
 pause and then the continue, which is how a run moves to another login or commit at a clean point.
-`--after next`, the default of `pause`, waits only for the next finished solve or tool call any
-seat records (`solve.finished` or a `*.call`), looking every second, and stops the run there with
-whatever is open: the quickest way to free a login. A comparison it cuts goes on under its own
-terms when the run continues, and a cut solve is solved again.
+`--after next`, the default of `pause`, drains a run to spare a login's credit: it leaves a `pause`
+word, the solve queue starts no further solve for any seat, and the run stops at the next finished
+solve or tool call (`solve.finished` or a `*.call`) with no solve open, a Builder's own practice
+solves included, looking every second. Past the limit on a solve the run recorded, and a minute, it
+stops with whatever is open. Sessions go on spending until then, and a word left before a
+process began holds nothing, so a run continued starts solves again. A comparison it cuts goes on
+under its own terms when the run continues, and a cut solve is solved again. `runs stop` is the
+one that frees a login at once.
 
 A word left with `tools/d2/word.ts` acts at the next move boundary and spends no session:
 `--stop "<why>"` ends the campaign `operator`, which is a pause the operator words; `--budget N`
@@ -442,15 +446,14 @@ log moved, and says what this observer has not seen:
   30 a look, and `◆ the readers' full text: <folder>` for the rest. A line that moved only in a number
   waits for the first result past a milestone. A reader's first result is remembered and not said, as
   a trigger's is on a first look. `--no-readers` leaves all of this out, and `--no-embed` only the
-  readers that load the local embedding model (`posture`, `restated`, `nearness`), on every host it
+  readers that load the local embedding model (`restated`, `nearness`), on every host it
   asks. It does not stick: a later look without it runs them again.
 - **What it cost.** One pass a host (`tools/wri/pass.ts`) does the reading at the lowest priority, one
   reader at a time, for at most 30 s once in 4 minutes however many sessions look, and each reader
   starts only where the one-minute load leaves a core under the line where a solve waits. A look waits
-  for it at most 20 s. Under load the readers are shed, and said to be. `posture`, `restated` and
-  `nearness` alone load a local model, on one thread, and only for words not yet embedded: their vectors
-  are kept after every batch,
-  so a read the 30 s cuts goes on from there at the next pass.
+  for it at most 20 s. Under load the readers are shed, and said to be. `restated` and `nearness` alone
+  load a local model, on one thread, and only for words not yet embedded: their vectors are kept after
+  every batch, so a read the 30 s cuts goes on from there at the next pass.
 - **What a cut says.** `⚠ not read since the last look: <readers>; <why>` names each reader that read
   nothing past this observer's last look, on a log that moved since, whatever stopped it. It comes
   again until the reader catches up, and what the reader then says comes as ordinary news. A pass
@@ -460,7 +463,7 @@ log moved, and says what this observer has not seen:
   look exits 1.
 - **Where it lies.** Results lie in the main worktree's `.ana/pulse/readers/`, and each observer's copy
   of a reader with news in `<state>.d/<run>/`. Both hold hidden values as the log does, and no seat can
-  read them (`test/runs-pulse-readers.test.ts`, and `test/wri-posture.test.ts` for the readers' vectors,
+  read them (`test/runs-pulse-readers.test.ts`, and `test/wri-vectors.test.ts` for the readers' vectors,
   which lie in the same folders). A result may come from another session's commit.
 
 ## Stop

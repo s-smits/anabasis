@@ -8,11 +8,13 @@
  * A promotion is confirmed by one tally over three kinds of task: those of the comparison that chose
  * the harness, which it is read on again; those written before the promotion and not drawn then; and
  * those written after it. Only the last two can say anything about tasks that did not choose it, and
- * the tally does not tell them apart. A read also has the reference on the old side, where the
- * promoting comparison had it on the new, and on 5 November a table printed with no sides was read
- * backwards by two reviews. So each read names its sides, and each origin gives its whole tally, its
- * tasks on which validity differed, and the rest. `epochsOf` gave up a split of this tally on
- * 3 November since it decided no move; this decides none either, and is read beside the climb.
+ * the tally does not tell them apart. The middle group is no neutral one: on 6 November all 19 of its
+ * tasks on record had been scored in a step that chose an earlier promotion. A read also has the
+ * reference on the old side, where the promoting comparison had it on the new, and on 5 November a
+ * table printed with no sides was read backwards by two reviews. So each read names its sides, and
+ * each origin gives its whole tally, its tasks on which validity differed, and the rest. `epochsOf`
+ * gave up a split of this tally on 3 November since it decided no move; this decides none either, and
+ * is read beside the climb.
  * A count over the gathered record alone misses campaigns not yet retired: on 6 November it held 13
  * reads where this holds 15.
  *
@@ -38,7 +40,7 @@ const USAGE = `usage:
 --all    every campaign log the registry reads on every configured host, rehearsals left out
 --since  with --all, only logs whose last event is at or after this date`;
 const OPTIONS = { all: "flag", since: "text" } as const;
-const ORIGINS = ["read at the promotion", "written before, undrawn", "written after"] as const;
+const ORIGINS = ["read at the promotion", "written before, not chosen on", "written after"] as const;
 type Origin = (typeof ORIGINS)[number];
 
 /** An origin's tasks: the whole tally, those on which validity differed, and the rest. */
@@ -49,7 +51,7 @@ interface Split {
 }
 
 /** One promotion's first starter comparison that tallied a task. */
-export interface StarterRead {
+interface StarterRead {
   readonly session: string;
   /** The harnesses, by digest: the reference is the old side, the starter the new. */
   readonly reference: string;

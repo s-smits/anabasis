@@ -409,7 +409,7 @@ appendFileSync(${JSON.stringify(marks)}, "ended\\n");`,
   it("claims nothing of an embedding reader once a pass under --no-embed dropped it", () => {
     const { store, log } = stubTree("");
     mkdirSync(store, { recursive: true });
-    keepNames(store, ["rows", "posture"]);
+    keepNames(store, ["rows", "restated"]);
     keepResult(store, log, "rows", result(20), "");
     const asked = {
       store,
@@ -422,9 +422,9 @@ appendFileSync(${JSON.stringify(marks)}, "ended\\n");`,
       spare: 12,
       saidElsewhere: () => false,
     };
-    expect(readersSaid(asked).said.join("\n")).toContain("posture");
+    expect(readersSaid(asked).said.join("\n")).toContain("restated");
     keepNames(store, ["rows"]);
-    expect(readersSaid(asked).said.join("\n")).not.toContain("posture");
+    expect(readersSaid(asked).said.join("\n")).not.toContain("restated");
   });
 
   it("starts no pass within the rest between passes, nor one nothing is due of", async () => {

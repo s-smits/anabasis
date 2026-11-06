@@ -14,7 +14,7 @@ import { dot, type Embed, groupsOf } from "../tools/wri/embed.ts";
 import { nearnessOf } from "../tools/wri/nearness.ts";
 import { restatedOf } from "../tools/wri/restated.ts";
 import { roundSolves } from "./helpers/logged-round.ts";
-import { fakeEmbed } from "./helpers/posture-embed.ts";
+import { fakeEmbed } from "./helpers/fake-embed.ts";
 
 const CANARY = "hidden-value-71839";
 const WIDTH = 16;
@@ -340,7 +340,6 @@ describe("as readers of a pass", () => {
     const named = (noEmbed: boolean) => readersOf(noEmbed).map(({ name }) => name);
     expect(named(false)).toEqual(READERS.map(({ name }) => name));
     expect(READERS.map(({ name }) => name).filter((name) => !named(true).includes(name))).toEqual([
-      "posture",
       "restated",
       "nearness",
     ]);

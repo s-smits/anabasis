@@ -90,6 +90,10 @@ it("starts a server and never stops it", () => {
       return false;
     }
   };
+  // A killed process answers until its new parent reaps it, which on a loaded Linux runner takes a
+  // moment. A sleeper the suite missed sleeps for minutes, so this wait still fails on it.
+  const until = Date.now() + 5000;
+  while (alive() && Date.now() < until) Bun.sleepSync(20);
   const left = alive();
   if (left) runtimeProcess.kill(pid, "SIGKILL");
   expect({ status: result.status, left }).toEqual({ status: 0, left: false });

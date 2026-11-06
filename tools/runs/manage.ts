@@ -14,7 +14,9 @@
  * Examiner session or draft is open, and then stops the run (`stop.ts`); `continue --after` is that
  * pause and then the continue, which moves a run to another login or commit. `next`, the word a
  * pause takes where none is named, waits for the next solve that finishes or tool call any seat
- * records, and stops the run there with whatever is open: on 29 October a login had to be freed
+ * records, having left a word that starts no further solve, once every open solve has finished, or
+ * past the run's own limit on a solve with whatever is open, since a cut solve is paid for again:
+ * `runs stop` is the one that does not wait. On 29 October a login had to be freed
  * from a campaign in the middle of an Examiner session, which the clean-point words would only have
  * stopped once the session ended. Flags after `--` stand for the kept ones. A campaign's folder moves by `runs copy` and `runs move` (`move.ts`).
  *
@@ -51,13 +53,16 @@
  * admission of a move (`7f0add79:docs/simplify.md`, D2): the command refuses what it refuses.
  */
 import { unfinished } from "#src/kernel/trace.ts";
-import type { LogEvent } from "#src/kernel/log.ts";
+import { append, type LogEvent } from "#src/kernel/log.ts";
+import { PAUSE } from "#src/campaign/word.ts";
 import { mkdirSync, openSync, statSync } from "#src/meta/filesystem.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { decodeOutput, processGroupExists, runSync } from "#src/meta/subprocess.ts";
 import { lastLaunch, nextRun } from "./receipt.ts";
 import { payerOf } from "./live.ts";
+import { LIMITS } from "../d2/campaign.ts";
+import { recordedSetting } from "../d2/setting.ts";
 import { allowedLogins, roomToStart } from "./logins.ts";
 import {
   BUILDER,
@@ -103,6 +108,8 @@ const DROPPED = ["--name", "--budget"];
 const LOOK_MS = 30_000;
 /** How often a pause at the next step looks, since a step follows another within seconds. */
 const STEP_MS = 1000;
+/** Past a solve's own limit, what a pause at the next step allows it to end and be recorded. */
+const MARGIN_MS = 60_000;
 
 /** The flags a campaign runs again on: `flags` less its name and total, and `budget` where named. */
 export function rerun(flags: readonly string[], budget: string | undefined): string[] {
@@ -137,33 +144,47 @@ const countOf = (events: readonly LogEvent[], after: string) =>
   events.filter((event) => kindsOf(after)?.includes(event.kind) === true).length;
 
 /** Whether a pause may stop the run whose log is `events`: it holds more than `base` of the kinds
- *  `after` names, and, past the next step, no comparison, Examiner session or draft is open. The
- *  Builder's conversation is open throughout a led campaign, and a pause cuts it: the campaign run
- *  again opens a new one on its notes. */
+ *  `after` names, and no solve is open at the next step, or, past it, no comparison, Examiner session
+ *  or draft. The Builder's conversation is open throughout a led campaign, and a pause cuts it: the
+ *  campaign run again opens a new one on its notes. */
 export function restsAfter(events: readonly LogEvent[], after: string, base: number): boolean {
-  return (
-    countOf(events, after) > base &&
-    (after === "next" ||
-      (!unfinished(events).some(({ of }) => of === "exam" || of === "draft") &&
-        openComparisons(events).length === 0))
-  );
+  if (countOf(events, after) <= base) return false;
+  const open = unfinished(events);
+  return after === "next"
+    ? !open.some(({ of }) => of === "solve")
+    : !open.some(({ of }) => of === "exam" || of === "draft") && openComparisons(events).length === 0;
 }
 
-/** Wait in `run` for one more `after` event at a point it rests, then stop it. */
+/** How long a pause at the next step lets the open solves of the run whose log is `events` finish:
+ *  the limit its setting recorded, as the solves were given it. */
+export function solvesMs(events: readonly LogEvent[]): number {
+  return (recordedSetting(events)?.minutes ?? LIMITS.wallSeconds / 60) * 60_000 + MARGIN_MS;
+}
+
 async function pauseAt(run: Run, after: string): Promise<void> {
   const kinds = kindsOf(after);
   if (kinds === undefined) throw new Error(`--after takes ${Object.keys(AFTER).join(", ")}`);
-  const base = countOf(logEvents(run.path), after);
+  const events = logEvents(run.path);
+  const base = countOf(events, after);
+  const allowed = solvesMs(events);
   console.log(
     after === "next"
-      ? `${run.name}: waiting for its next finished solve or tool call`
+      ? `${run.name}: starting no further solve, and letting its open ones finish, ${String(allowed / 60_000)} minutes at most`
       : `${run.name}: waiting for ${kinds.join(", ")} past ${String(base)}, with no comparison or Examiner session open`,
   );
+  if (after === "next" && writers(run, processes()).length > 0) {
+    append(run.path, "campaign.word", { word: PAUSE });
+  }
+  const patience = Date.now() + allowed;
   // A log runs to tens of megabytes, and one that did not grow says what it said.
   let size = -1;
   while (writers(run, processes()).length > 0) {
     const grown = statSync(run.path).size;
-    if (grown !== size && restsAfter(logEvents(run.path), after, base)) return stop([run.name, "--yes"]);
+    // Past its patience nothing need have moved: a held solve records nothing.
+    const late = after === "next" && Date.now() > patience;
+    if (late || (grown !== size && restsAfter(logEvents(run.path), after, base))) {
+      return stop([run.name, "--yes"]);
+    }
     size = grown;
     await Bun.sleep(after === "next" ? STEP_MS : LOOK_MS);
   }

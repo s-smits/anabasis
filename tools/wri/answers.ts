@@ -20,14 +20,9 @@
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { lastReports, pairsReported } from "#src/kernel/reports.ts";
 import { type Judged, verdictsOf } from "#src/kernel/solves.ts";
-import { SEATS, traceKind } from "#src/kernel/trace.ts";
 import { isString } from "#src/meta/json-shape.ts";
-import { runtimeProcess } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
-
-const NO_TRACES: ReadonlySet<LogEvent["kind"]> = new Set(
-  SEATS.flatMap((seat) => [traceKind(seat, "call"), traceKind(seat, "turn")]),
-);
+import { NO_TRACES, printRows } from "./folds.ts";
 
 interface Repeats {
   same: number;
@@ -78,8 +73,4 @@ export function answerRows(events: readonly LogEvent[]): string[] {
   return rows.length === 0 ? ["answers: no comparison tallied a task two sides passed"] : rows;
 }
 
-if (import.meta.main) {
-  const [log] = runtimeProcess.argv.slice(2);
-  if (log === undefined) throw new Error("name a log: bun tools/wri/answers.ts <log>");
-  console.log(answerRows(read(log, NO_TRACES)).join("\n"));
-}
+if (import.meta.main) printRows("answers", (log) => answerRows(read(log, NO_TRACES)));

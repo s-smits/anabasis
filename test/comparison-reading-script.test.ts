@@ -8,7 +8,7 @@ import { drawLines, drawOf } from "#skills/comparison-reading/scripts/draw.ts";
 import { gapLines, sideGap } from "#skills/comparison-reading/scripts/gap.ts";
 import { scoresRead, sizeOf } from "#skills/comparison-reading/scripts/size.ts";
 import { rowsOf } from "#skills/comparison-reading/scripts/reading.ts";
-import { starterReads } from "#skills/comparison-reading/scripts/starter-reads.ts";
+import { starterReads } from "../src/campaign/climb.ts";
 import { flipP } from "../src/kernel/compare.ts";
 import { clearing } from "../src/kernel/size.ts";
 import { LOG_FILE, type LogEvent } from "../src/kernel/log.ts";

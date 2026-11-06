@@ -30,8 +30,18 @@ append(log, "task.proposed", {
   session: "x-1",
   task: task("x-1-002"),
 });
+append(log, "task.proposed", {
+  version: "e".repeat(64),
+  taskId: "x-1-003",
+  session: "x-1",
+  task: { ...task("x-1-003"), publicInput: { volume_L: 3, systems: ["Only practised"] } },
+});
 append(log, "comparison.started", { session: "g-1", tasks: ["a".repeat(64), "b".repeat(64)], retained: [] });
 append(log, "comparison.started", { session: "g-2", tasks: ["b".repeat(64)], retained: ["b".repeat(64)] });
+for (const version of ["b".repeat(64), "e".repeat(64)]) {
+  append(log, "task.gate", { version, gate: 1, outcome: "passed" });
+  append(log, "task.state", { version, state: "released" });
+}
 
 describe("the scored tasks", () => {
   it("prints each scored task's public input once a comparison, and no hidden value or unscored task", () => {
@@ -42,6 +52,18 @@ describe("the scored tasks", () => {
     expect(out).toContain('"systems":["Tris"]');
     expect(out).toContain("ex-001  written by the pack  scored in g-1");
     expect(out).toContain("public input is in the pack");
+    expect(out).not.toContain("x-1-002");
+    expect(out).not.toContain("HIDDEN-VALUE");
+  });
+
+  it("marks a task practised and never scored, with its public input, and lists a scored one once", () => {
+    const out = decodeOutput(
+      runSync([capturedExecPath, resolve(import.meta.dir, "../tools/wri/tasks.ts"), log]).stdout,
+    );
+    expect(out).toContain("x-1-003  written by x-1  practised, never scored\n");
+    expect(out).toContain('"systems":["Only practised"]');
+    expect(out).not.toContain("x-1-001  written by x-1  practised");
+    expect(out.match(/x-1-001/gu)).toHaveLength(1);
     expect(out).not.toContain("x-1-002");
     expect(out).not.toContain("HIDDEN-VALUE");
   });

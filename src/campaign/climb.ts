@@ -8,16 +8,29 @@
  * comparison solves both harnesses afresh on one draw, and the starter comparison after a
  * promotion draws the tasks held out since first, so the reference's share of valid solves, the
  * set-aside count and the split of the starter tally into the epoch's own tasks and older ones,
- * which decided no move, went (the examiner-complexity scripts read the reference's share, and
- * comparison-reading's `starter-reads.ts` that split, for the operator).
+ * which decided no move, went (the examiner-complexity scripts read the reference's share).
+ * `starterReads` below holds that split for the operator apart from the rows: on 6 November an alert's
+ * 10 to 12 hid that the tasks written after the promotion stood 0 to 6, so `runs alerts` prints it, and
+ * comparison-reading's `starter-reads.ts` prints it whole. It decides no move.
  *
  * Written when the operator asked for the climb to be read as such: ten campaigns
  * had promoted once each and none twice, and no view said at which epoch a campaign stood or what
  * its tasks had done since the promotion. `runs view` prints the rows.
  */
-import { readsStep, readsStepEitherWay, scoresIn, type Tally, testedSet, testOf } from "../kernel/compare.ts";
+import {
+  differenceOf,
+  type Paired,
+  pointsOf,
+  readsStep,
+  readsStepEitherWay,
+  scoresIn,
+  type Tally,
+  testedSet,
+  testOf,
+} from "../kernel/compare.ts";
+import { proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import { lastReports, type Reported } from "../kernel/reports.ts";
+import { lastReports, pairsReported, type Reported } from "../kernel/reports.ts";
 import { billedBetween } from "../kernel/meter.ts";
 import { heldAtGate } from "../kernel/task.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
@@ -106,6 +119,35 @@ export interface Worth {
     readonly dollars: number;
     readonly met: boolean;
   };
+}
+
+export const ORIGINS = ["read at the promotion", "written before, not chosen on", "written after"] as const;
+export type Origin = (typeof ORIGINS)[number];
+
+/** An origin's tasks: the whole tally, those on which validity differed, and the rest. */
+export interface Split {
+  readonly whole: Tally;
+  readonly validity: Tally;
+  readonly rest: Tally;
+}
+
+/** One promotion's first starter comparison that tallied a task. */
+export interface StarterRead {
+  readonly session: string;
+  /** The harnesses, by digest: the reference is the old side, the starter the new. */
+  readonly reference: string;
+  readonly starter: string;
+  /** The tally and confirmation `epochsOf` read, on the stored scores without the bill. */
+  readonly stored: Tally;
+  readonly confirmed: boolean;
+  readonly level: number;
+  readonly origins: Readonly<Record<Origin, Split>>;
+  /** The tally on each writer's tasks, in the order the writers first proposed one. */
+  readonly authors: readonly { readonly session: string; readonly tally: Tally }[];
+  /** Whether the tasks that did not choose the harness read a step alone, under this tree's rule. */
+  readonly outside: boolean;
+  /** The harnesses and tasks, which a copy of the comparison shares. */
+  readonly key: string;
 }
 
 const levelOf = ({ data }: Reported) => (isNumber(data.level) ? data.level : 0);
@@ -260,6 +302,87 @@ function starterOf({ reference, starter_tally: tally, confirmed }: Epoch): strin
   if (tally === null) return ", against the starter unread";
   const read = confirmed === true ? "a step, so its promotion is confirmed" : "no step";
   return `, against the starter ${String(tally.wins)} won, ${String(tally.losses)} lost, ${String(tally.ties)} tied, ${read}`;
+}
+
+/** The tally from the reference's side of `pairs`, which holds it on the old side. */
+const tallyOf = (pairs: readonly Paired[]): Tally => {
+  const { wins, losses, ties } = testOf(pairs.map((pair) => -differenceOf(pair)));
+  return { wins, losses, ties };
+};
+
+/** The tasks the comparisons that promoted `reference` read, before the promotion at `from`. */
+function chosenOn(
+  events: readonly LogEvent[],
+  reports: readonly Reported[],
+  reference: string,
+  from: number,
+) {
+  const chose = reports.filter(
+    ({ index, data }) => index < from && data.fresh === reference && data.reading === "step",
+  );
+  return new Set(chose.flatMap((report) => pairsReported(events, report).map(({ task }) => task)));
+}
+
+/** `pairs` by who wrote each task, each with its tally. */
+function byAuthor(writers: ReadonlyMap<string, string>, pairs: readonly Paired[]): StarterRead["authors"] {
+  return [...new Set(writers.values())].flatMap((session) => {
+    const own = pairs.filter(({ task }) => writers.get(task) === session);
+    return own.length === 0 ? [] : [{ session, tally: tallyOf(own) }];
+  });
+}
+
+/** Each starter read of `events`, oldest first. */
+export function starterReads(events: readonly LogEvent[]): StarterRead[] {
+  const reports = lastReports(events);
+  const epochs = epochsOf(events);
+  // A task no session proposed came with the opening: a stored pack's or the drafted exam's.
+  const writers = new Map(
+    proposalsOf(events).map(({ version, session }) => [version, session ?? "the opening exam"]),
+  );
+  return epochs.flatMap((epoch, nth) => {
+    const report = reports.find(({ session }) => session === epoch.starter_read);
+    const fresh = report?.data.fresh;
+    if (report === undefined || epoch.starter_tally === null || !isString(fresh)) return [];
+    const { level } = report.data;
+    const chosen = chosenOn(events, reports, epoch.reference, epoch.from);
+    const earlier = new Set(epochs.slice(0, nth).flatMap(({ tasks }) => tasks));
+    const pairs = pairsReported(events, report);
+    const originOf = ({ task }: Paired): Origin =>
+      chosen.has(task) ? ORIGINS[0] : earlier.has(task) ? ORIGINS[1] : ORIGINS[2];
+    const splitOf = (origin: Origin): Split => {
+      const own = pairs.filter((pair) => originOf(pair) === origin);
+      return {
+        whole: tallyOf(own),
+        validity: tallyOf(own.filter((pair) => pointsOf(pair).validity !== 0)),
+        rest: tallyOf(own.filter((pair) => pointsOf(pair).validity === 0)),
+      };
+    };
+    const at = isNumber(level) ? level : 0;
+    return [
+      {
+        session: report.session,
+        reference: epoch.reference,
+        starter: fresh,
+        stored: epoch.starter_tally,
+        confirmed: epoch.confirmed === true,
+        level: at,
+        origins: {
+          [ORIGINS[0]]: splitOf(ORIGINS[0]),
+          [ORIGINS[1]]: splitOf(ORIGINS[1]),
+          [ORIGINS[2]]: splitOf(ORIGINS[2]),
+        },
+        authors: byAuthor(writers, pairs),
+        outside: readsStep(
+          pairs.filter(({ task }) => !chosen.has(task)).map((pair) => -differenceOf(pair)),
+          at,
+        ),
+        key: `${epoch.reference}|${fresh}|${pairs
+          .map(({ task }) => task)
+          .toSorted()
+          .join(",")}`,
+      },
+    ];
+  });
 }
 
 /** One line an epoch, as the view prints them, each harness `called` as the view names it, and the

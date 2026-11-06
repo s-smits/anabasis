@@ -32,9 +32,11 @@ procedures; they are not commands to run inside a read-only investigation.
 | What does a repaired checker move, and does the repair stand? | `bun tools/c/repaired.ts --log <log> --bundle <repaired pack>` |
 | A report names tasks set aside on rejections: what does it read once they are labelled? | `bun tools/d2/settle.ts <the campaign's flags> --session <id>`, then label the rejections it draws |
 | Did a model other than the one asked for answer any seat? | `bun tools/runs/degradations.ts <name>`: each seat's share, the comparisons it reached, a line a session; `data/runs/degradations/` keeps one file a degraded campaign, which the ten-minute gather writes |
+| Did the tasks and harnesses grow across many campaigns, graded blind to run and result? | `bun tools/wri/wri.ts packets --log <log>,<log> --out <dir> --graders 2` (it prints each grader's size, so raise `--graders` where one is past a session's room), launch its `launch.json`, then `packets --out <dir> --join` and `trajectory --grades <dir>/grades.tsv` (lane 34) |
 | Which sessions ran, from which parent, with which reading? | `bun tools/wri/wri.ts read --log <log>`, row F and the `CHAIN` line |
 | Did a promotion climb, beside the campaigns that ran the same pack, and did one campaign's `/tmp` reach another's solves? | `bun tools/wri/wri.ts climb --log <log>,<log>,<log>`: one row a campaign, then each solve that named what another campaign's session left |
 | What did every earlier investigation find, and which constraint keeps recurring in a domain? | `bun tools/wri/wri.ts index`: rewrites `.ana/wri/INDEX.md` whole, one row an investigation, each campaign group's binding constraints in time order, every cycle folder and prediction ledger (also in `notes/`) and every campaign that moved in the last 14 days with the investigations that name it; it quotes hidden values, so it stays under `.ana/` |
+| How far had each campaign got at each hour, and did its harness and its tasks grow? | `bun tools/wri/wri.ts trajectory --log <log>,<log> [--grades <lane 34's report>]`: promotions, confirmations and reads, lead over the Starter, weight and each comparison's hours on one clock, with the median task grade from blind grades. Side by side only: rule 1 keeps "better" for a comparison on one set of tasks |
 | How do this run's hours and dollars a promotion stand against every run of its release, pack and setting? | `.claude/skills/promotion-tuner/scripts/table.ts --rows groups` (or `--name <part> --rows promotions`): across campaigns, without `climb`'s solves |
 
 ## The procedure
@@ -116,6 +118,7 @@ Each runs as `bun tools/wri/wri.ts <verb>` from the checkout. The usage block at
 | --- | --- | --- |
 | read | `read --log <log>` | nothing: the rows, the triggers and the host line, printed |
 | compare climbs | `climb --log <log>,<log>[,<log>...]` | nothing: the campaign table and shared temporary paths, printed |
+| read over time | `trajectory --log <log>[,<log>...] [--grades <report>[,<report>]] [--hours 2,4,8]` | nothing: one table a channel by work hour, and a row a comparison, printed |
 | 1 | `start --log <log>[,<log>...] --out <dir>` | `overview.md`, `shared-instructions.md`, `investigation.json` |
 | 3 | `lanes --out <dir> [--lanes 1-4,7] [--agents N]` | `lanes/NN-prompt.md`, `launch.json` |
 | 5 | `collect --out <dir>` | `reports.md` |
@@ -130,10 +133,10 @@ Thirty deterministic readers take one log and print what it holds (`READERS`,
 what its tasks had been through (`starter-reads`), the served models (`degradations`), the climb, the gap to the answer on record, the campaign's view and its table's
 next move, the iteration's trigger (`loop`), the commit (`source`), the logged readings (`logged`),
 its dollars a promotion (`cost`) and row of the release table (`table`), each promotion scored again
-with the measure that won each task (`replay`), the conditions, the scored tasks' public input
-(`tasks`), the next draw, what a Builder and an Examiner opening would be told, each Examiner
+with the measure that won each task (`replay`), the conditions, the public input of the tasks scored
+and of those only practised (`tasks`), the next draw, what a Builder and an Examiner opening would be told, each Examiner
 session's admissions (`ambition`) and drafts (`exams`), where each comparison sits in the reference's
-power zone (`zone`), whether a side repeats its own answers (`answers`), how much of a solve's or a
+power zone (`zone`), whether a side repeats its own answers and measures (`answers`), how much of a solve's or a
 session's time went inside its calls (`waits`), how a side's passes got there (`routes`), and the kept
 versions measured (`versions`) and blind (`chain`). `chain` and `tasks` carry no result, so a lane that grades before it reads an
 outcome (34) reads them first. `bun run runs pulse` runs the same list for each look

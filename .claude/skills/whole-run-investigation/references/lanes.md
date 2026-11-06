@@ -589,8 +589,9 @@ the ones the Builder described. Every state a session left is kept by digest und
 digest and its kept state rather than assuming a stored sweep supplied it. Where a state is
 unavailable, say the diff could not be made. Diff the two part by part: the guide, the tool spec, the tools module, the config, the tool
 tree; `harness-versions.ts --diff` of [harness-audit](../../harness-audit/SKILL.md) counts it.
-Describe each change by its kind and size; quote no line. The note is in `harness.version`: say
-whether what it claims is what changed. When the final state did not open, the round measured the
+Describe each change by its kind and size; quote no line. A session that ended left a note in
+`harness.version`: say whether what it claims is what changed. A led conversation's
+`build.checkpoint` takes no note, so there read its turns' words instead, and say so. When the final state did not open, the round measured the
 last state the session practised with, and the note describes edits that were never measured:
 name the edits made after that practice from `build.call`. The host ignores `agent/config.yaml`:
 confirm limits from the condition. A session that wrote with its shell
@@ -1143,10 +1144,10 @@ The question is where the hours and the dollars went, whether the bill holds all
 what each long silence was. Start with the bill's completeness, since every dollar below rests on
 it. Row F's `campaign` line sets the backend's own totals beside the host's calculated bill on the
 same ending records (`costLine`, `src/kernel/meter.ts`): a gap of more than a few percent says a
-turn was priced at another model or a part of the work was priced at nothing. `UNBILLED
-COMPACTIONS` counts the compactions whose summary was billed nothing, by seat; a Claude Code
-compaction reports no usage of its own, so three in one log billed nothing while
-the backend's totals ran about 0.19 dollars over the bill on two sessions. Name each part the bill
+turn was priced at another model or a part of the work was priced at nothing. Count the
+compactions with empty `usages` by seat (`exam.compacted`, `build.compacted`), since their summary
+was billed nothing; a Claude Code compaction reports no usage of its own, so three in one log billed
+nothing while the backend's totals ran about 0.19 dollars over the bill on two sessions. Name each part the bill
 leaves out and what it would add, and route it to `host` (`src/agent/session.ts`, the backend that
 reports it). `BUILDER COMPACTED` gives each Builder session's compactions beside its turns: read
 each one's `tokensBefore`, seconds and any `error`, and whether the calls after it repeated a move
@@ -1268,7 +1269,8 @@ Grade before you read a result, in this order, writing each grade into the repor
    the copy does not keep (`versions.txt` says so) goes under `## Not read`, ungraded: refreshing
    the copy is the primary's (`runs fetch <name>`), and no lane reads another host's folder.
 3. Read `tasks.txt`: each scored task's public input and the comparisons that scored it, with no
-   outcome (`tools/wri/tasks.ts`), and the checks under `exams/` it is held to. Grade reach.
+   outcome (`tools/wri/tasks.ts`), and the checks under `exams/` it is held to. Grade reach on those.
+   The tasks marked as practised and never scored say what a version was built against.
 4. Only then read the results: `versions.txt` (each version's comparisons and promotions),
    `readings.txt` (each comparison's tally, the tally without the bill and its A/A), and rows D and
    E in `rows.txt` (each task's valid share).
@@ -1328,6 +1330,22 @@ it routes to `operator` for that report, `harness/guide` or `harness/tools` for 
 0 or 1, `examiner-prompt` (`src/examiner/prompt.ts`) where the scored tasks all grade 2 or below
 and the reference answers them, and `builder-prompt` (`src/builder/prompt.ts`) where soundness falls
 while promotions go on.
+
+Add each grade under `## Grade rows` as one tab-separated line, `task<TAB>campaign<TAB>id<TAB>grade`
+and `version<TAB>campaign<TAB>digest<TAB>grade`. The primary reads them with `wri.ts trajectory
+--log <logs> --grades <report>`, which sets every campaign on one clock of work hours: what each had
+at each hour (promotions, confirmations, its lead over the Starter, the reference's weight), each
+comparison's own hours and median task grade, and the gaps between promotions with and without the
+starter comparisons in them. Reach and soundness stay this lane's reading and are not summed into one
+number: reach held mostly reads the highest grade the exam offered, and a stopped run reads as stopped.
+
+Across campaigns, whether promotions bought ability is read with graders kept blind to run and result,
+which a lane reading one run cannot be: `wri.ts packets --log <logs> --out <dir> --graders 2` writes
+each grader's packets under opaque labels, with anchor tasks from the others', and a `launch.json`.
+Launch it, then `wri.ts packets --out <dir> --join` writes `grades.tsv` for `trajectory --grades`, says
+how far the graders differ on the anchors, and writes a regrade of any task graded 5 or more that the
+Starter answered every time; launch that once, and join again. Read a difference between campaigns
+only beside the anchors, and rule 1 still keeps "better" for a comparison on one set of tasks.
 
 ## Retired from v1
 

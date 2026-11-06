@@ -54,14 +54,17 @@ bun .claude/skills/comparison-reading/scripts/reading.ts <log.jsonl | campaign f
   [--comparison <id>] [--level <n>]
 bun .claude/skills/comparison-reading/scripts/draw.ts <log.jsonl | campaign name> [--target <n>] [--level <n>]
 bun .claude/skills/comparison-reading/scripts/gap.ts <log.jsonl | campaign name>
-bun .claude/skills/comparison-reading/scripts/starter-reads.ts <log.jsonl | campaign folder | name> | --all [--since <date>]
+bun .claude/skills/comparison-reading/scripts/starter-reads.ts <log.jsonl | campaign folder | name> | --all [--since <date>] [--name <part>]
 ```
 
 - `starter-reads.ts` splits each promotion's starter read into the tasks that chose the harness, those
   written before and not drawn then, and those written after, each with its whole tally, the tasks on
   which validity differed and the rest. Each read names its sides, since a read has the reference on
-  the old side. It also says whether the tasks that did not choose the harness read a step alone. It
-  decides no move.
+  the old side. It also says whether the tasks that did not choose the harness read a step alone, and
+  gives the tally on each writing session's tasks. With
+  `--all` it sums each campaign and then all of them, and `--name` keeps the campaigns whose name holds
+  a text, such as a pack. The fold is `starterReads` (`src/campaign/climb.ts`), and `runs alerts` prints
+  the written-after tally beside each starter read. It decides no move.
 
 - `size.ts` prints, at a level and a count of untied tasks, the smallest scored set that reads a step
   (`sweepOf`), the admission floor (`comparisonFloor`) and the production's own size lines

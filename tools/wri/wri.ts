@@ -4,6 +4,9 @@
  *
  *   bun tools/wri/wri.ts read --log .ana/d2/truss/log.jsonl
  *   bun tools/wri/wri.ts climb --log .ana/d2/truss/log.jsonl[,<log>,<log>]
+ *   bun tools/wri/wri.ts trajectory --log <log>[,<log>...] [--grades <report>[,<report>]] [--hours 2,4,8]
+ *   bun tools/wri/wri.ts packets --log <log>,<log>[,...] --out <dir> [--graders 2]
+ *   bun tools/wri/wri.ts packets --out <dir> --join
  *   bun tools/wri/wri.ts start --log .ana/d2/truss/log.jsonl[,<log>,<log>] --out .ana/wri/20261008-truss [--snapshot]
  *   bun tools/wri/wri.ts lanes --out .ana/wri/20261008-truss [--lanes 1-4,7] [--agents 3]
  *   bun tools/wri/wri.ts collect --out .ana/wri/20261008-truss
@@ -14,6 +17,10 @@
  *
  * - `climb` prints lane 27's columns for every log `--log` names, one row each, and the paths
  *   under the host's `/tmp` one campaign named before another's solve ran them. It reads the logs as they stand, so it can be run on campaigns still running.
+ * - `trajectory` prints how far each campaign had got at each work hour, on the rulers its runs
+ *   share (`tools/wri/trajectory.ts`), with lane 34's blind grades where `--grades` names them.
+ * - `packets` writes lane 34's blind packets for several graders across campaigns, and with `--join`
+ *   reads their reports into `grades.tsv` for `trajectory --grades` (`tools/wri/packets.ts`).
  * - `read` prints the six rows and every trigger with the lane it starts (`tools/wri/read.ts`), and
  *   the host hash of the last condition beside this checkout's, and beside the campaign's own
  *   tree's when this checkout's differs.
@@ -104,6 +111,8 @@ import {
 } from "./investigation.ts";
 import { INVESTIGATION, investigationIndex, REPORTS, SHARED } from "./index.ts";
 import { overview, rendered } from "./read.ts";
+import { buildPackets, joinPackets } from "./packets.ts";
+import { gradesIn, HOURS, trajectoryText } from "./trajectory.ts";
 
 interface Investigation {
   readonly out: string;
@@ -113,7 +122,7 @@ interface Investigation {
 
 const REPO = resolve(import.meta.dir, "..", "..");
 const USAGE =
-  "usage: bun tools/wri/wri.ts read | climb | start | lanes | collect | synthesis | grade | derive | index";
+  "usage: bun tools/wri/wri.ts read | climb | trajectory | start | lanes | collect | synthesis | grade | derive | index";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -131,6 +140,10 @@ const { values, positionals } = parseArgs({
     force: { type: "boolean" },
     "no-embed": { type: "boolean" },
     snapshot: { type: "boolean" },
+    grades: { type: "string" },
+    graders: { type: "string" },
+    join: { type: "boolean" },
+    hours: { type: "string" },
   },
 });
 
@@ -572,6 +585,38 @@ async function main(): Promise<number> {
   if (verb === "climb") {
     needed("log");
     console.log(climbText(resolvedLogs));
+    return 0;
+  }
+  if (verb === "trajectory") {
+    needed("log");
+    const campaigns = resolvedLogs.map((log) => ({ name: nameOf(log), log, events: read(log) }));
+    const text = trajectoryText(campaigns, {
+      grades:
+        values.grades === undefined
+          ? null
+          : gradesIn(
+              values.grades
+                .split(",")
+                .map((file) => readFileSync(file, "utf8"))
+                .join("\n"),
+            ),
+      hours: values.hours?.split(",").map(Number) ?? HOURS,
+    });
+    console.log(text);
+    return 0;
+  }
+  if (verb === "packets") {
+    needed("out");
+    const out = values.out ?? "";
+    const lines =
+      values.join === true
+        ? joinPackets(out, read)
+        : buildPackets(
+            resolvedLogs.map((log) => ({ name: nameOf(log), log, events: read(log) })),
+            out,
+            Number(values.graders ?? 2),
+          );
+    console.log(lines.join("\n"));
     return 0;
   }
   const step = Object.entries({ start, lanes, collect, synthesis }).find(([name]) => name === verb)?.[1];

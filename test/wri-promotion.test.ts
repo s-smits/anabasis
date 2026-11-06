@@ -211,6 +211,24 @@ describe("lane 27: a promotion and the climb after it", () => {
     expect(triggered(log)("AFTER THE PROMOTION")[0]).toContain("after the promotion none, before it none");
   });
 
+  it("names a Builder conversation that worked on across a promotion, and leaves out one that had finished", () => {
+    const { log, put, compare } = campaign();
+    for (const version of HELD) {
+      put("task.proposed", { version });
+      put("task.gate", { version, gate: 1, outcome: "passed" });
+    }
+    put("build.started", { session: "b-done", parent: "hbase", tasks: [] });
+    put("build.call", { session: "b-done", tool: "edit", args: {}, toolCallId: "c-1", turn: 1 });
+    put("build.finished", { session: "b-done", harness: "hn" });
+    put("build.started", { session: "b-led", parent: "hbase", tasks: [] });
+    compare("g-1", "hbase", "hn", STEP)();
+    put("harness.promoted", { harness: "hn", from: "hbase", rests: [{ comparison: "g-1" }] });
+    put("build.call", { session: "b-led", tool: "edit", args: {}, toolCallId: "c-2", turn: 2 });
+    const after = triggered(log)("AFTER THE PROMOTION")[0];
+    expect(after).toContain("b-led from");
+    expect(after).not.toContain("b-done");
+  });
+
   it("names a promotion no starter comparison confirmed, and leaves out one that a starter comparison did", () => {
     // The gate ablation of 1 November: five promotions, a Builder's comparison in each starter
     // comparison's place, and none confirmed.

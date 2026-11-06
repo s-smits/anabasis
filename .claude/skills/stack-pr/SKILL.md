@@ -51,7 +51,8 @@ reading from the start of the task is a lead, not a fact.
   none does, it is the stack `bun run follow` follows, the one that holds the oldest open pull request. The cycle's first change, after
   a release has landed, starts the stack on `main`. Any other stack of its own on `main` starts only
   on the operator's word, for a change that has to land before the cycle's stack; it lands alone,
-  and once one of the two lands, `land` refuses the other until it is replayed onto the new `main`.
+  and once one of the two lands, `land` refuses the other until it is replayed onto the new `main`
+  (`republish.ts --onto-main <top>`, section 8).
   Never base a change on the middle of a stack. Say which in the body.
 - **Another session's pull request is never yours to change.** No commit, no rebase, no force
   push, whatever the fix. Carry the fix as a `fixup!` on the top, as above, or tell the owner.
@@ -306,6 +307,22 @@ replay: send its owner the exact `git rebase --onto` line and wait.
 
 Restacking the open stack as a whole is a separate operation and needs the operator's word. A
 hop to the top, or a new pull request, never authorises it: section 10 is that operation.
+
+**When what a stack stood on has landed**, its bottom is based on a merged branch, or misses
+`main`'s new head, and `land` refuses it. `stack.ts` says so in an `off main:` line, and so does
+the hourly follow's log. One command replays the whole chain onto `origin/main` with `git replay`
+(no worktree, no ref moved), checks that every commit came across under its subject, names each
+head, then unstacks, retargets, pushes every head under a lease and relinks the native stack:
+
+```sh
+bun .claude/skills/stack-pr/scripts/republish.ts --onto-main <top>        # show the plan
+bun .claude/skills/stack-pr/scripts/republish.ts --onto-main <top> --yes  # carry it out
+```
+
+It is a restack of the whole stack, so it takes the operator's word. It refuses a chain that does
+not replay cleanly and names the `git rebase --onto` line to resolve by hand. On 6 November #632 to
+#653 stood on `claude/landing-fixes` after #646 merged; the repair by hand took an unstack, a base
+edit, a rebase in a scratch worktree, a map of 18 heads and a republish.
 
 ## 9. Land
 

@@ -6,11 +6,18 @@ import { gitText } from "#src/meta/git.ts";
 import { bundle } from "#skills/oracle-handover/scripts/bundle.ts";
 import { declarationLines, sanitised, sectionLines } from "#skills/oracle-handover/scripts/document.ts";
 import { groupsOf, parseSelector, pick, slice } from "#skills/oracle-handover/scripts/slice.ts";
-import { follow, type NativeStack, nativeTop } from "#skills/stack-pr/scripts/follow.ts";
+import { follow, hazards, type NativeStack, nativeTop } from "#skills/stack-pr/scripts/follow.ts";
 import { pairLines } from "#skills/compare-systems/scripts/systems.ts";
 import { censusOf, newsOf } from "#skills/system-path-simulation/scripts/live-seat.ts";
-import { pairs, planConsolidation, pushArgs, republish } from "#skills/stack-pr/scripts/republish.ts";
-import { chains, told as stackTold } from "#skills/stack-pr/scripts/stack.ts";
+import {
+  lineOf,
+  pairs,
+  planConsolidation,
+  pushArgs,
+  replayedHeads,
+  republish,
+} from "#skills/stack-pr/scripts/republish.ts";
+import { chains, offMain, told as stackTold } from "#skills/stack-pr/scripts/stack.ts";
 import type { Pull } from "#tools/runtime/pulls.ts";
 import {
   existsSync,
@@ -37,6 +44,12 @@ afterAll(() => rmSync(root, { recursive: true, force: true }));
 const script = join(import.meta.dir, "..", ".claude/skills/system-path-simulation/scripts/live-seat.ts");
 const git = (repo: string, ...args: string[]) =>
   runTextSyncOrThrow(["git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@t.dev", ...args]);
+
+const commitFile = (repo: string, file: string, text: string) => {
+  writeFileSync(join(repo, file), text);
+  git(repo, "add", file);
+  git(repo, "commit", "-q", "-m", `write ${file}`);
+};
 
 const pull = (number: number, head: string, base: string, labels: readonly string[] = []): Pull => ({
   number,
@@ -71,11 +84,6 @@ describe("following the stack's top", () => {
     open,
     pull_requests: pulls.map(([n, ref, state]) => ({ number: n, state, head: { ref } })),
   });
-  const commit = (repo: string, file: string, text: string) => {
-    writeFileSync(join(repo, file), text);
-    git(repo, "add", file);
-    git(repo, "commit", "-q", "-m", `write ${file}`);
-  };
 
   it("takes the last open pull request of the open native stack that holds the oldest one", () => {
     const stacks = [
@@ -109,9 +117,9 @@ describe("following the stack's top", () => {
     const co = join(root, "follow-co");
     mkdirSync(up);
     git(up, "init", "-q", "-b", "main");
-    commit(up, "mine.txt", "base\n");
+    commitFile(up, "mine.txt", "base\n");
     git(up, "switch", "-q", "-c", "claude/one");
-    commit(up, "one.txt", "first\n");
+    commitFile(up, "one.txt", "first\n");
     git(up, "clone", "-q", up, co);
     git(co, "config", "user.name", "t");
     git(co, "config", "user.email", "t@t.dev");
@@ -120,9 +128,9 @@ describe("following the stack's top", () => {
     git(up, "switch", "-q", "main");
     git(up, "branch", "-D", "claude/one");
     git(up, "switch", "-q", "-c", "claude/one");
-    commit(up, "one.txt", "rewritten\n");
+    commitFile(up, "one.txt", "rewritten\n");
     git(up, "switch", "-q", "-c", "claude/two");
-    commit(up, "two.txt", "second\n");
+    commitFile(up, "two.txt", "second\n");
     git(co, "fetch", "-q", "--prune", "origin");
     writeFileSync(join(co, "mine.txt"), "changed here\n");
     writeFileSync(join(co, "untracked.txt"), "kept\n");
@@ -140,6 +148,48 @@ describe("following the stack's top", () => {
     expect(existsSync(join(co, "untracked.txt"))).toBe(true);
     expect(gitText(co, "stash", "list")).toBe("");
     expect(follow(co, top)[0]).toStartWith("stack-pr2 is already at #2");
+  });
+});
+
+describe("the hourly follow's reasons not to move", () => {
+  const up = join(root, "safe-up");
+  const co = join(root, "safe-co");
+  mkdirSync(up);
+  git(up, "init", "-q", "-b", "main");
+  commitFile(up, "shared.txt", "base\n");
+  commitFile(up, "other.txt", "base\n");
+  git(up, "switch", "-q", "-c", "claude/top");
+  commitFile(up, "shared.txt", "top\n");
+  commitFile(up, "new.txt", "top\n");
+  git(up, "switch", "-q", "main");
+  git(up, "clone", "-q", up, co);
+  git(co, "config", "user.name", "t");
+  git(co, "config", "user.email", "t@t.dev");
+  const later = () => Date.now() + 3_600_000;
+  const why = (now = later()) => hazards(co, "stack-pr1", "origin/claude/top", now);
+
+  it("finds none on a clean checkout, and carries an edit the top does not touch", () => {
+    expect(why()).toStrictEqual([]);
+    writeFileSync(join(co, "other.txt"), "mine\n");
+    expect(why(), "an edit that merges onto the top is carried, not a reason").toStrictEqual([]);
+    expect(why(Date.now()).join("\n"), "an edit made just now is").toContain(
+      "edited in the last 10 minutes: other.txt",
+    );
+    expect(gitText(co, "stash", "list"), "the checks stash nothing").toBe("");
+  });
+
+  it("names a conflicting edit, a file in the way, a branch it does not own and a git operation under way", () => {
+    writeFileSync(join(co, "shared.txt"), "mine\n");
+    writeFileSync(join(co, "new.txt"), "mine, untracked\n");
+    git(co, "switch", "-q", "-c", "feature");
+    const said = why().join("\n");
+    expect(said).toContain("would conflict with the top: shared.txt");
+    expect(said).toContain("files the top adds are here already: new.txt");
+    expect(said).toContain("on feature, which follow does not own");
+    writeFileSync(join(co, ".git", "index.lock"), "");
+    expect(why()).toStrictEqual(["a git operation is under way here (index.lock)"]);
+    rmSync(join(co, ".git", "index.lock"));
+    expect(readFileSync(join(co, "shared.txt"), "utf8"), "nothing moved").toBe("mine\n");
   });
 });
 
@@ -274,6 +324,77 @@ describe("republishing a consolidated stack", () => {
     git(co, "push", "-q", "--force", "origin", "HEAD:refs/heads/main");
     git(co, "fetch", "-q", "origin");
     expect(() => planConsolidation(co, pulls, heads, absorbed)).toThrow("does not hold origin/main");
+  });
+});
+
+describe("replaying a stack onto main once what it stood on landed", () => {
+  const up = join(root, "replay-up");
+  const co = join(root, "replay-co");
+  const sha = (ref: string) => gitText(co, "rev-parse", ref);
+  const step = (file: string, text: string) => {
+    writeFileSync(join(co, file), text);
+    git(co, "add", file);
+    git(co, "commit", "-q", "-m", `write ${file}`);
+    return sha("HEAD");
+  };
+  git(root, "init", "-q", "--bare", "-b", "main", up);
+  git(root, "clone", "-q", up, co);
+  // A replay writes commits, so the clone carries an identity of its own for the runner's sake.
+  git(co, "config", "user.name", "t");
+  git(co, "config", "user.email", "t@t.dev");
+  step("base.txt", "base\n");
+  git(co, "push", "-q", "origin", "HEAD:refs/heads/main");
+  // As on 6 November: #1 stands on `lower`, which then merges into main, and #2 stands on #1.
+  git(co, "switch", "-q", "-c", "lower");
+  const lower = step("lower.txt", "lower\n");
+  const a = step("a.txt", "a\n");
+  const b = step("b.txt", "b\n");
+  git(co, "switch", "-q", "main");
+  git(co, "merge", "-q", "--no-ff", "-m", "Merge lower", lower);
+  git(co, "push", "-q", "origin", "main", `${a}:refs/heads/a`, `${b}:refs/heads/b`);
+  git(co, "fetch", "-q", "origin");
+  const line = [
+    { ...pull(1, "a", "lower"), headRefOid: a },
+    { ...pull(2, "b", "a"), headRefOid: b },
+  ];
+
+  it("names a head for every pull request, each on main and in its old order, with its commits' trees", () => {
+    expect(offMain(co, line).join("\n")).toContain("off main: #1 stands on lower");
+    expect(offMain(co, line).join("\n")).toContain("republish.ts --onto-main 2 --yes");
+    const heads = replayedHeads(co, line);
+    const [a1, b1] = [heads.get(1) ?? "", heads.get(2) ?? ""];
+    expect(gitText(co, "rev-parse", `${a1}^`)).toBe(sha("origin/main"));
+    expect(gitText(co, "rev-parse", `${b1}^`)).toBe(a1);
+    expect([sha(`${a1}^{tree}`), sha(`${b1}^{tree}`)]).toStrictEqual([
+      sha(`${a}^{tree}`),
+      sha(`${b}^{tree}`),
+    ]);
+    expect(sha("origin/a"), "a replay moves no ref").toBe(a);
+    const plan = planConsolidation(co, line, heads, new Map());
+    expect(plan.moves.map((move) => [move.pull.number, move.base])).toStrictEqual([
+      [1, "main"],
+      [2, "a"],
+    ]);
+  });
+
+  it("keeps a chain that already holds main, and refuses one that conflicts with it", () => {
+    const heads = replayedHeads(co, line);
+    const settled = line.map((each, index) => ({
+      ...each,
+      baseRefName: index === 0 ? "main" : each.baseRefName,
+      headRefOid: heads.get(each.number) ?? "",
+    }));
+    expect(replayedHeads(co, settled)).toStrictEqual(heads);
+    expect(offMain(co, settled), "a stack on main that holds it is not said").toStrictEqual([]);
+    step("a.txt", "a, written on main\n");
+    git(co, "push", "-q", "origin", "HEAD:refs/heads/main");
+    git(co, "fetch", "-q", "origin");
+    expect(() => replayedHeads(co, line)).toThrow("does not replay cleanly");
+  });
+
+  it("finds the open stack holding a pull request, and refuses one on none", () => {
+    expect(lineOf(line, 2).map((each) => each.number)).toStrictEqual([1, 2]);
+    expect(() => lineOf(line, 9)).toThrow("not on an open stack");
   });
 });
 

@@ -125,9 +125,9 @@ Each runs as `bun tools/wri/wri.ts <verb>` from the checkout. The usage block at
 
 ### The readers, derived
 
-Twenty-nine deterministic readers take one log and print what it holds (`READERS`,
-`tools/wri/derive.ts`): the rows and triggers, the ending, the readings, the served models
-(`degradations`), the climb, the gap to the answer on record, the campaign's view and its table's
+Thirty deterministic readers take one log and print what it holds (`READERS`,
+`tools/wri/derive.ts`): the rows and triggers, the ending, the readings, each starter read split by
+what its tasks had been through (`starter-reads`), the served models (`degradations`), the climb, the gap to the answer on record, the campaign's view and its table's
 next move, the iteration's trigger (`loop`), the commit (`source`), the logged readings (`logged`),
 its dollars a promotion (`cost`) and row of the release table (`table`), each promotion scored again
 with the measure that won each task (`replay`), the conditions, the scored tasks' public input

@@ -75,6 +75,17 @@ describe("the fold of one look", () => {
     expect(lines[0]).not.toContain("wait");
     expect(lines[1]).toContain("starter comparison g-3 after promotion 1 (aaaa) read no-step");
     expect(lines[1]).toContain("won 6, lost 0, tied 2, not confirmed");
+    // A peer whose tree predates the split sends no tally of it, and its line stands without one.
+    expect(lines[1]).not.toContain("written after");
+  });
+
+  it("says beside a starter read how the tasks written after the promotion stood", () => {
+    const told = read("aaaa", "g-3", false);
+    const split = { ...told, read: { ...told.read, writtenAfter: { wins: 0, losses: 6, ties: 1 } } };
+    const { lines } = alertsOf(lookedAt(row()), here(row({ promotions: [split] })));
+    expect(lines[1]).toContain(
+      "won 6, lost 0, tied 2, not confirmed; on tasks written after it won 0, lost 6, tied 1",
+    );
   });
 
   it("says a run is ready to pause, with the command, once a second promotion is read and only then", () => {

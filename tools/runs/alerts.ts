@@ -17,12 +17,13 @@
  * a run leaves the state only once a host that answered no longer holds it. A first look, or one
  * after a state file that cannot be read, records the present and fires on no history.
  */
-import { epochsOf } from "#src/campaign/climb.ts";
+import { epochsOf, starterReads } from "#src/campaign/climb.ts";
 import type { Tally } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { existsSync, readFileSync, statSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isBoolean, isNumber, isString } from "#src/meta/json-shape.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
@@ -51,6 +52,8 @@ interface Promotion {
     readonly reading: string;
     readonly tally: Tally;
     readonly confirmed: boolean;
+    /** The tally on the tasks written after the promotion. A peer whose tree predates it sends none. */
+    readonly writtenAfter?: Tally;
   } | null;
 }
 
@@ -100,21 +103,27 @@ const DIGEST_CHARS = 8;
 /** The file's last look, where no `--state` names another. */
 const STATE = join(".ana", "runs-alerts.json");
 
-const promotionsOf = (events: readonly LogEvent[]): Promotion[] =>
-  epochsOf(events)
+function promotionsOf(events: readonly LogEvent[]): Promotion[] {
+  const reads = starterReads(events);
+  return epochsOf(events)
     .slice(1)
-    .map(({ reference, starter_read: session, starter_tally: tally, confirmed, comparisons }) => ({
-      digest: reference.slice(0, DIGEST_CHARS),
-      read:
-        session === null || tally === null
-          ? null
-          : {
-              session,
-              reading: comparisons.findLast(({ id }) => id === session)?.reading ?? "",
-              tally,
-              confirmed: confirmed === true,
-            },
-    }));
+    .map(({ reference, starter_read: session, starter_tally: tally, confirmed, comparisons }) => {
+      const after = reads.find((each) => each.session === session)?.origins["written after"].whole;
+      return {
+        digest: reference.slice(0, DIGEST_CHARS),
+        read:
+          session === null || tally === null
+            ? null
+            : {
+                session,
+                reading: comparisons.findLast(({ id }) => id === session)?.reading ?? "",
+                tally,
+                confirmed: confirmed === true,
+                ...keyIfDefined("writtenAfter", after),
+              },
+      };
+    });
+}
 
 /** The row of `run`, whose log is read at `now`. */
 function rowOf(run: Run, open: boolean, now: number): Row {
@@ -200,9 +209,10 @@ function climbLines(row: Row, seen: Seen): string[] {
           ];
     if (read === null || seen.reads.includes(read.session)) return promoted;
     const { wins, losses, ties } = read.tally;
+    const after = read.writtenAfter;
     return [
       ...promoted,
-      `starter comparison ${read.session} after promotion ${nth} (${digest}) read ${read.reading}: the reference won ${String(wins)}, lost ${String(losses)}, tied ${String(ties)}, ${read.confirmed ? "confirmed" : "not confirmed"}`,
+      `starter comparison ${read.session} after promotion ${nth} (${digest}) read ${read.reading}: the reference won ${String(wins)}, lost ${String(losses)}, tied ${String(ties)}, ${read.confirmed ? "confirmed" : "not confirmed"}${after === undefined ? "" : `; on tasks written after it won ${String(after.wins)}, lost ${String(after.losses)}, tied ${String(after.ties)}`}`,
     ];
   });
   const read = row.promotions.filter((one) => one.read !== null).length;

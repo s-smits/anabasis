@@ -40,6 +40,7 @@ archived campaign; `copy <name> --to <worktree>` brings this machine's back to g
 | `retire [--days 1] [--yes]` | moves each campaign no process writes or keeps, idle for `--days`, into the archive whole (a seed, `seed.json` beside its log, is deleted instead, the archive's too), and deletes each worktree nothing has used for a week (two for one with uncommitted work) and each local branch no worktree holds that nothing has used for a week, tagging a commit nothing else holds; then refreshes each other host's records here. A daily job on every host runs it with `--yes`; nothing else in an archive is deleted | `retire.ts` |
 | `on <host> <verb ...>`, `hosts [--all]` | any verb on another host over ssh; `status` on each other host alone. A verb that names a run goes to its host by itself | `hosts.ts` |
 | `pulse [<part of a name> ...] [--every 290] [--state <file>] [--no-readers] [--no-embed]` | what each run gained since the last look, and what every reader of its log says that this observer has not seen; state defaults to `.ana/runs-pulse.json` | `pulse.ts` |
+| `alerts [--state <file>]` | for cron, with no model in the loop: one line for each promotion, starter comparison, keeper's move or wait, missing process, ending and stall new since the last look, on every host; state defaults to `.ana/runs-alerts.json` | `alerts.ts` |
 | `view <name>` | one campaign as its log reads, and the move the table names next | `view.ts` |
 | `source <name> [--holds <c>]...` | each run's commit, its tree, where the commit is published, whether it holds a fix | `receipt.ts` |
 | `zip`, `replay`, `seed`, `rehearse` | handover, readers over every log, a seed, a rehearsal | zip-run, system-path-simulation |
@@ -438,6 +439,13 @@ may decline. `view` uses this checkout's reader on a fresh copy where needed. `p
 limits a poll to this machine. Each observer has its own remote cursors under the main worktree,
 so they survive controller changes; a local `--state` path is never sent to a peer. Neither starts
 a run.
+
+`bun run runs alerts` is the watch for cron, where no session is looking. It prints on stdout one
+line for each thing new since its state file's last look and nothing otherwise, and exits 0 whatever
+it found, so a cron job forwards stdout and drops stderr, where `bun run` and each unanswered ask
+write at every look. A first look records the present and says so in one line, and a host that does
+not answer is one line, once. It prints the `runs pause` command once two promotions are read
+against the starter, and never runs it. A host answers only from a commit that holds the verb.
 
 Each look also runs every deterministic reader (`READERS`, `tools/wri/derive.ts`) over each run whose
 log moved, and says what this observer has not seen:

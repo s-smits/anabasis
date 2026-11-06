@@ -66,6 +66,7 @@ describe("a clone with no hosts", () => {
       ["fetch"],
       ["sync"],
       ["sync", "--check"],
+      ["alerts"],
     ]) {
       const result = runs(verb);
       expect([verb, result.code, result.err]).toEqual([verb, 0, ""]);

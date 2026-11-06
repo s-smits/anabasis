@@ -298,6 +298,9 @@ export function openComparisons(events: readonly LogEvent[]): string[] {
   return [...new Set(begun.filter(isString))].filter((session) => !reported.has(session));
 }
 
+/** The file beside `run`'s log that holds its keeper's output. */
+export const keptFile = (run: Run) => join(dirname(run.path), "keep.out");
+
 /** The processes that keep campaign `name` going (`keep.ts`), but this one. */
 export function keepers(name: string): number[] {
   return runTextSyncOrThrow(["ps", "-axo", "pid=,args="])

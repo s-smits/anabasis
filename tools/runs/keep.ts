@@ -161,6 +161,13 @@ export async function roomFor(
   return { logins: room(readings, logins, new Set([...out, ...over, ...unread])), why: said.join("; ") };
 }
 
+/** Whether a line of `keep.out` says this keeper moved or restarted its run, left it waiting or gave it
+ *  up (`keeperOf`), as against its error text and a run that ended by itself, which the log says. */
+export const keeperActed = (line: string): boolean =>
+  /: (?:move|continue) (?:on login|without a login)|; left waiting$|no seat took a model turn: kept no longer$/u.test(
+    line,
+  );
+
 /** A keeper of the run `name` on `logins`: each call is one look at `now`, and says whether it leaves. */
 export function keeperOf(name: string, logins: readonly string[], waitMs: number, hands: Hands) {
   // A login this keeper moved off, until its limit resets.

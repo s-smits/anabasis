@@ -62,9 +62,10 @@ stops, launches and merges nothing. The whole-run investigation stays a tool of 
 
 1. **The trigger**, whichever comes first (operator): two promotions, twelve hours since
    the opening, a comparison that left no task untied ("they likely won't promote so that's a bit
-   ironic that we need to wait"), or an ending after a comparison. A buffer run carries
-   `--promotions 2`, which ends it `operator` at its second promotion (`AGENTS.md`, factor 1); a
-   jobstat run carries no cap. Resolve every row of `Predictions.md` whose event exists.
+   ironic that we need to wait"), or an ending after a comparison. The trigger stops nothing and no
+   run carries a cap: each promotion alerts (`runs alerts`), and a run is paused on the operator's
+   word after that promotion's starter comparison reports (`AGENTS.md`, factor 1). Resolve every row
+   of `Predictions.md` whose event exists.
 2. **Investigate** it with whole-run-investigation, opened by `wri2p2.ts open`, with the other
    triggered runs of the same code and pack as equals where there are any. A live run is read on a
    frozen copy (`wri.ts start --snapshot`) and goes on: stopping one is the operator's (`AGENTS.md`,
@@ -86,7 +87,7 @@ stops, launches and merges nothing. The whole-run investigation stays a tool of 
    A slot free with no iteration to measure is filled at the current top too: capacity left idle
    measures nothing.
 
-Iterations overlap. A second run can reach its cap while the first's pull request is being written;
+Iterations overlap. A second run can reach the trigger while the first's pull request is being written;
 it starts its own iteration, and each pull request stacks on the one before. Nothing in an
 iteration is merged: the release does that (steps 9 and 10).
 
@@ -238,15 +239,18 @@ its end, and carry on in the same order; the window gives no step a reason to sk
    The major moves only on the operator's word, for a break in the design.
 11. **Predict and fork** the next cycle at the release's merge commit: steps 1 and 2 again.
 
-**The threshold.** Each run ends at **two promotions**, by its own `--promotions 2` (operator),
-or is stopped **twelve hours after its opening**, whichever comes first (operator). A run the operator lets go on to the milestone of six drops the flag.
+**The threshold.** No run carries a cap on promotions. Each promotion alerts (`runs alerts`), and a
+run is paused on the operator's word after that promotion's starter comparison reports, since a pause
+before it leaves the promotion unconfirmed for good. **Two promotions** remain the trigger for
+investigating a run, and stop nothing. A run not paused by then is stopped **twelve hours after its
+opening** (operator). `--promotions N` stays an available flag (run-management).
 `scripts/wri2p2.ts` names the step `open` at the threshold (`--promotions`, `--hours`), and times a live run to now, so a run in a long
 wait still reaches its hours. The running window ends when every run the cycle stops has ended. The
 #306 forks
 reached their first promotion at 11.9 and 14.4 hours after their opening and their third at 17.8
 and 19.1 hours (`wri.ts start`, lane 27); no run has yet been timed to its sixth. The A/A of every promoting
 reading should read no step; the release says where one did. No seat is told the threshold and no
-campaign stops at it (`AGENTS.md`, factor 1): the cycle stops the runs.
+campaign stops at it (`AGENTS.md`, factor 1): the cycle pauses or stops the runs.
 
 ### The script: `scripts/wri2p2.ts`
 
@@ -631,7 +635,7 @@ At step 4 of the cycle every row still open is marked `unreached`.
 
 | Timer | When | Its step 3 |
 | --- | --- | --- |
-| pulse (the watch and the cycle's driver) | every 290 seconds: one Monitor on `bun run runs pulse --every 290`, its actionable lines only | every run's milestone, ending and stall on every host; a line naming a milestone, an ending or a stall starts the protocol, with the first cycle step not done, ended runs closed out and `runs usage`; a run ended at its cap starts an iteration, and a freed slot gets a fresh run at the top |
+| pulse (the watch and the cycle's driver) | every 290 seconds: one Monitor on `bun run runs pulse --every 290`, its actionable lines only | every run's milestone, ending and stall on every host; a line naming a milestone, an ending or a stall starts the protocol, with the first cycle step not done, ended runs closed out and `runs usage`; a run at the trigger starts an iteration, and a freed slot gets a fresh run at the top |
 | milestone | one-shot at a predicted event, or at a prediction's deadline | the named milestone or row, and any investigation it owes |
 | cycle review | one-shot at each step of the release cycle: the stop at the latest opening plus twelve hours, and the end of the improvement window at the last stop plus twelve hours | the step `wri2p2.ts` names; at the window's end, what is proved and what is left |
 | handover | one-shot at the agreed handover time | five points, changes and decisions waiting, and which timers were useful by their ledger rows |

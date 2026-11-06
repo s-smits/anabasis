@@ -1631,6 +1631,18 @@ describe("a standalone comparison", () => {
     });
   });
 
+  it("finds the comparison before it of the same two harnesses with their sides swapped, and not of another pair", async () => {
+    const s = await setup([], step);
+    const reference = { dir: s.parent, digest: s.old };
+    await checkpoint(s.compare("g1", { tasks: ["s1", "s2"] }));
+    const against = await checkpoint(
+      s.compare("g2", { old: s.starter, fresh: reference, tasks: ["s2", "s3"] }),
+    );
+    expect(against.overlap).toEqual({ with: "g1", tasks: ["s2"] });
+    const other = await checkpoint(s.paired("g3", { tasks: ["s1", "s2"] }));
+    expect(other.overlap).toBeNull();
+  });
+
   it("stops at its dollar cap, reads not scored and is finished, whatever lanes it runs in", async () => {
     // Each solve is billed two dollars and held at three before it starts: at a cap of eleven the
     // sixth would take ten billed and three reserved past it. Four lanes start no more than one

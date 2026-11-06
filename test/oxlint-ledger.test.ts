@@ -15,11 +15,11 @@ import { describe, expect, it } from "bun:test";
 import oxlintrc from "../.oxlintrc.json" with { type: "json" };
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
-import { existsSync, readFileSync } from "../src/meta/filesystem.ts";
-import { resolve } from "../src/meta/path.ts";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "../src/meta/filesystem.ts";
+import { tmpdir } from "../src/meta/os.ts";
+import { join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
 import { OXLINT_BINARY } from "../tools/runtime/lint.ts";
-import { spawnTextSync } from "./helpers/bun-spawn-sync.ts";
 
 const repoRoot = resolve(import.meta.dirname, "..");
 const topRules: Readonly<Record<string, JsonValue>> = oxlintrc.rules;
@@ -95,12 +95,20 @@ describe("the ledger of rules left off", () => {
   });
 
   it("decides every rule Oxlint offers in scope: configured, or a row with its sentence", () => {
-    const listed = spawnTextSync(capturedExecPath, [OXLINT_BINARY, "--rules", "-f", "json"], {
+    // To a file instead of a pipe: under Bun on Linux the listing leaves through the pipe cut short,
+    // with exit 0, in 4 of 5 tries on the Linux runner, and whole through a file in 5 of 5.
+    const folder = mkdtempSync(join(tmpdir(), "ana-oxlint-rules-"));
+    const listing = join(folder, "rules.json");
+    const listed = Bun.spawnSync({
+      cmd: [capturedExecPath, OXLINT_BINARY, "--rules", "-f", "json"],
       cwd: repoRoot,
+      stdout: Bun.file(listing),
       timeout: 30_000,
     });
-    expect(listed.status).toBe(0);
-    const offered = parseJsonAs<OfferedRule[]>(listed.stdout)
+    expect(listed.exitCode).toBe(0);
+    const text = readFileSync(listing, "utf8");
+    rmSync(folder, { recursive: true });
+    const offered = parseJsonAs<OfferedRule[]>(text)
       .filter(({ scope, category }) => PLUGINS.has(scope) && CATEGORIES.has(category))
       .map(({ scope, value }) => `${scope}/${value}`);
     const everywhere = new Set(rows.filter((row) => row.files === "*").map((row) => row.rule));

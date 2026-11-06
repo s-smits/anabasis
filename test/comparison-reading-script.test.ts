@@ -8,6 +8,7 @@ import { drawLines, drawOf } from "#skills/comparison-reading/scripts/draw.ts";
 import { gapLines, sideGap } from "#skills/comparison-reading/scripts/gap.ts";
 import { scoresRead, sizeOf } from "#skills/comparison-reading/scripts/size.ts";
 import { rowsOf } from "#skills/comparison-reading/scripts/reading.ts";
+import { starterReads } from "#skills/comparison-reading/scripts/starter-reads.ts";
 import { flipP } from "../src/kernel/compare.ts";
 import { clearing } from "../src/kernel/size.ts";
 import { LOG_FILE, type LogEvent } from "../src/kernel/log.ts";
@@ -19,6 +20,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
+import { roundSolves } from "./helpers/logged-round.ts";
 
 const STARTER = "a".repeat(64);
 const NEW = "b".repeat(64);
@@ -130,6 +132,103 @@ describe("the size figures the skill states", () => {
     expect([billed.wins, billed.p <= 0.02, billed.step]).toEqual([6, true, false]);
     expect(scoresRead(full, 0.02, null).step).toBeNull();
     expect(() => scoresRead(full, 0.02, [1])).toThrow();
+  });
+});
+
+describe("a promotion's starter read, split by what its tasks had been through", () => {
+  const gate = (version: string): LogEvent[] => [
+    {
+      at: AT,
+      kind: "task.proposed",
+      data: {
+        version,
+        taskId: version,
+        task: { taskId: version, family: "fixture", publicInput: {}, hidden: null },
+      },
+    },
+    { at: AT, kind: "task.gate", data: { version, gate: 1, outcome: "passed" } },
+  ];
+  const comparison = (
+    session: string,
+    sides: readonly [string, string],
+    outcomes: Readonly<Record<string, string>>,
+    tested: { reading: string; differences: readonly number[] },
+  ): LogEvent[] => {
+    const { events, terms } = roundSolves(session, sides, outcomes);
+    const [old, fresh] = sides;
+    return [
+      { at: AT, kind: "comparison.started", data: { session, old, fresh, starter: STARTER } },
+      ...events,
+      {
+        at: AT,
+        kind: "comparison.reported",
+        data: {
+          session,
+          old,
+          fresh,
+          starter: STARTER,
+          level: 0.02,
+          reading: tested.reading,
+          noise: null,
+          scored: set(tested.differences, null),
+          ...terms,
+        },
+      },
+    ];
+  };
+  const chose = Array.from({ length: 7 }, (_, nth) => `chose-${String(nth)}`);
+  const log: LogEvent[] = [
+    ...[...chose, "undrawn"].flatMap(gate),
+    // The reference won its own promotion on seven tasks, from the new side.
+    ...comparison("g-1", [STARTER, NEW], Object.fromEntries(chose.map((task) => [task, "FF PP"])), {
+      reading: "step",
+      differences: scores(7, 0),
+    }),
+    { at: AT, kind: "harness.promoted", data: { harness: NEW, from: STARTER, rests: [] } },
+    ...gate("lost"),
+    ...gate("tied"),
+    // Then the starter, on the new side, loses those seven again and the task never drawn, and the
+    // reference loses one written since: 8 to 1 clears the level, and 1 to 1 does not.
+    ...comparison(
+      "g-2",
+      [NEW, STARTER],
+      {
+        ...Object.fromEntries(chose.map((task) => [task, "PP FF"])),
+        undrawn: "PP FF",
+        lost: "FF PP",
+        tied: "PP PP",
+      },
+      { reading: "step", differences: [...scores(1, 8), 0] },
+    ),
+  ];
+
+  it("names the read's sides and sets the tasks that chose the harness apart from the rest", () => {
+    const [read] = starterReads(log);
+    expect(starterReads(log)).toHaveLength(1);
+    expect(read).toMatchObject({
+      session: "g-2",
+      reference: NEW,
+      starter: STARTER,
+      stored: { wins: 8, losses: 1, ties: 1 },
+      confirmed: true,
+    });
+    expect(read?.origins["read at the promotion"].whole).toEqual({ wins: 7, losses: 0, ties: 0 });
+    expect(read?.origins["written before, undrawn"].whole).toEqual({ wins: 1, losses: 0, ties: 0 });
+    expect(read?.origins["written after"]).toEqual({
+      whole: { wins: 0, losses: 1, ties: 1 },
+      validity: { wins: 0, losses: 1, ties: 0 },
+      rest: { wins: 0, losses: 0, ties: 1 },
+    });
+  });
+
+  it("reads no step without the tasks that chose the harness, though the whole tally confirms it", () => {
+    expect(starterReads(log)[0]?.outside).toBe(false);
+  });
+
+  it("finds no read before a starter comparison reports, and none in a log with no promotion", () => {
+    const promotedAt = log.findIndex(({ kind }) => kind === "harness.promoted");
+    expect(starterReads(log.slice(0, promotedAt + 1))).toEqual([]);
+    expect(starterReads(log.slice(0, promotedAt))).toEqual([]);
   });
 });
 

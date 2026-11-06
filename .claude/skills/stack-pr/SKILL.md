@@ -204,7 +204,8 @@ history as a branch of its own, fetch it as a remote first, so that its commits 
 **A pushed commit is unproved.** Its tests run when the stack is proved: `bun run land -- <top>
 --sanitize` (section 9) gives every commit its static steps and nearby tests and the top the whole
 CI gate, the full suite among it, and posts each verdict. Run it when the stack is worth proving, such
-as after a restack or before asking for a merge; `--merge` runs the same proof again. A pass is
+as after a restack or before asking for a merge; `--merge` runs the same proof again and reads no
+remembered pass. A pass is
 remembered by content in the common Git directory, a whole or checks pass by the commit's tree and a
 static one by its tree and its parent's, so a push its lease refused or a restack that kept every
 tree is not run again, and after a failure the commits beneath the fix keep their passes. The key

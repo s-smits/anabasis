@@ -61,9 +61,9 @@ bun .claude/skills/comparison-reading/scripts/gap.ts <log.jsonl | campaign name>
   every clearing tally that fits (`clearing`). With
   `--scores` it reads one set of task scores (`testOf`, `power`, `detectable`, and `readsStep` with
   `--unbilled`).
-- `reading.ts` prints every comparison of a log by its last report (`lastReports`; ladder readings
-  of 14 to 16 October left out): the reading, the test as tallied (and without the bill in a report of 26 October to
-  2 November, which the step read), the frontier and
+- `reading.ts` prints every comparison of a log by its last report (`lastReports`; older ladder readings
+  left out): the reading, the test as tallied (and without the bill in an older report that holds `unbilled`,
+  which the step read), the frontier and
   retained sets, the A/A read either way (`readsStepEitherWay`), the room (`roomOf`) and the tasks
   left out, and marks a recorded reading the tree's `stepOf` reads otherwise. A name is found on any
   host through `logAcross`.

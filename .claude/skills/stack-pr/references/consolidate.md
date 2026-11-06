@@ -1,13 +1,13 @@
 # Consolidate the stack
 
 A stack grows in the order its fixes were found: one pull request a finding, made along the way or
-after a whole-run investigation, each answering what was known that day. Consolidating turns it into
+after a whole-run investigation, each answering what was known then. Consolidating turns it into
 a smaller stack structured by subject: it reviews the whole open stack, folds the fixes into the
 commits they belong to, merges related pull requests into one, and publishes the result as one
 native stack. It rewrites other
 sessions' pull requests, so it runs only on the operator's word (`SKILL.md`, sections 2 and 8). The
-procedure below is the one run on 25 October over #353 to #378, where 25 open pull requests became 18.
-Its record is under `.ana/wri/2026-10-25-cycle-pr370/` in the runs checkout: `review/` and
+procedure below is the one run over #353 to #378, where 25 open pull requests became 18.
+Its record is under `.ana/wri/`, in the cycle of #370, in the runs checkout: `review/` and
 `restack/`.
 
 ## Spend by importance
@@ -33,14 +33,14 @@ touch rather than by number, keeping `I0` and `I1` pull requests out of groups w
 (`review/brief.md`): read the code first and the runs second, measure rather than assert, and say
 per pull request keep, simplify, merge or drop. The reviewers are read-only and write one report
 each. Where the importance table calls for both reviews, use another model family with no sight
-of the first: on 25 October the GPT review added nine findings beyond the eight Opus reports
+of the first: one GPT review added nine findings beyond the eight Opus reports
 (`review/10-gpt-review-summary.md`). Check every finding against the source and a log before it
 becomes a fix (`AGENTS.md`, section 11, "Reviews and subagents").
 
 ## 2. Restructure first, in one rebase
 
 Drop a pull request's commit, or fold one pull request's commit into another, in one scripted
-`git rebase -i` over the whole stack before any fix is written (on 25 October: #370 dropped, #358
+`git rebase -i` over the whole stack before any fix is written (for example: #370 dropped, #358
 folded into #361, #378 into #362). Every fix is then written against the shape that will be
 published, and the result's head is the lanes' one base.
 
@@ -76,7 +76,7 @@ the range and replaying its descendants.
 ## 5. Check the assembly
 
 `git diff consolidate/pre HEAD` must print nothing. Autosquash moves each fixup down the history,
-and a resolution can silently leave a hunk behind: on 25 October this check found a resolution at
+and a resolution can silently leave a hunk behind: this check once found a resolution at
 #367 that had dropped lane 5's tests. Then typecheck every commit where it sits
 (`git rebase --exec 'bun run typecheck' origin/main`), since the tip passing says nothing about a
 commit beneath it.
@@ -84,7 +84,7 @@ commit beneath it.
 ## 6. Regroup
 
 Reorder commits so that related pull requests sit next to each other, `I0` and `I1` lowest and
-`I3` at the top, and make each group one pull request (on 25 October: #356 and #371 into #353, #360 and #367 into #359). Retitle the
+`I3` at the top, and make each group one pull request (for example: #356 and #371 into #353, #360 and #367 into #359). Retitle the
 survivor and rewrite its body (`gh pr edit`). A title carries no "Ix:" prefix: the importance is
 the pull request's `importance:I0` to `importance:I3` label, which the survivor keeps. A reorder
 that conflicts in many hunks is abandoned for that group and the pull requests stay apart: the
@@ -112,12 +112,12 @@ before and after, and prints every operation in order. With `--yes`, that same s
 5. Closes every absorbed pull request with a comment naming its survivor and new head.
 6. Links the survivors bottom to top (`gh extension install github/gh-stack` once).
 
-On 25 October, pushing a reordered head while its old bases remained attached let GitHub mark
+Pushing a reordered head while its old bases remained attached has let GitHub mark
 #390 and #392 merged into intermediate branches. Unstacking alone does not remove those bases;
 retargeting every survivor before pushing keeps each open. If a metadata edit or push fails, the
 script stops there: read the current heads, bases and native stack before planning recovery.
 By hand, the push
-went wrong twice on 25 October: zsh read `$sha:refs/...` as a `:r` modifier, and macOS's
+has gone wrong twice: zsh read `$sha:refs/...` as a `:r` modifier, and macOS's
 `/bin/bash` 3.2 has no `mapfile`. The script runs git without a shell.
 
 `--no-verify` is used only on the operator's word, and the stack is then unproved until
@@ -125,11 +125,11 @@ went wrong twice on 25 October: zsh read `$sha:refs/...` as a `:r` modifier, and
 
 ## 8. Hazards
 
-- **main can move or be rewritten mid-consolidation.** On 25 October at 14:24Z an author-identity fix
+- **main can move or be rewritten mid-consolidation.** An author-identity fix once
   rewrote main (the same tree under new commits) and force-pushed 98 branches. The stack had to be
   replayed with `git rebase --onto origin/main <old main> <top>`. Fetch and check
   `git merge-base --is-ancestor origin/main <bottom head>` before every push; `republish.ts` does.
-  Since that day ruleset 25824510 refuses a non-fast-forward push to main (`SKILL.md`, section 9).
+  Ruleset 25824510 now refuses a non-fast-forward push to main (`SKILL.md`, section 9).
 - **Others build on the top.** When the top moves, tell every lane and agent building on it the
   old and new head, so it replays with `git rebase --onto <new> <old>` rather than pushing a
   branch on a head that no longer exists.

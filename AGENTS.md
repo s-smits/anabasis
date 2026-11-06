@@ -598,7 +598,8 @@ brief states authority, paths, revision, observed facts, question and whether it
 Give reviewers the code without prescribing a conclusion. Verify findings against the owner,
 callers, tests and newest relevant runs. Report them as confirmed (with events), plausible (with
 a test or run that would settle them) or refuted. Act on confirmed findings within the task's
-authority.
+authority. Mostly let an active subagent run, or steer it with a message, rather than stopping it
+and starting another.
 
 **In `repository-practice`, section 11** (`working-in-the-repository.md`): the command table, the
 hooks, CI's jobs and native stacks. `preflight` prints what a diff owes before a commit: the tests
@@ -631,6 +632,9 @@ Write plain, understated British English for a careful colleague who has not rea
   dates. A head comment says why the code is as it is, with the record and the date.
 - A prompt states each fact once, where it belongs; when an interface failure recurs, fix the tool
   instead of adding a sentence.
+- A skill says how things are now, in general statements with general examples: no date, and no
+  chronology of how it came to be ("an older log" where a reader meets an old format). History goes
+  to the commit, the pull request, the backlog or a head comment.
 
 **In `repository-practice`, section 13** (`code-and-writing.md`): the long form, with examples.
 

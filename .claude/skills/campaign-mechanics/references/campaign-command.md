@@ -39,8 +39,6 @@ it starts once the one-minute load is at or under the cores, or after half an ho
 (`campaign.waited`, `tools/d2/host.ts`; `--loaded` skips the wait), and waits off the record while
 the budget holds no reserve for it beside the solves in flight (`affords`). A cancelled wait starts
 no solve: a comparison so cancelled ends killed, and a practice solve ends its Builder session.
-Until 1 November the gate's room solves queued too, and a cancelled one left its draft refused
-unmeasured.
 
 **It opens over a stored pack, or from a prompt** (`--prompt "<text>"` or `--prompt-file <path>`,
 with `--solver`), whose first move is the draft of row 0. A draft stands once the host's reading,
@@ -57,8 +55,7 @@ operator's word for each (rule 10): the reading the draft stood on is kept as th
 (`checker.read`) with every such check admitted, and the exam is frozen if nothing else is at fault
 (`keepReading`, `tools/c/accept.ts`, called by row 0). Under `--hitl` the reading is kept with none
 admitted, the campaign ends on its exam there, and goes on when run again with `--admit <checks>`,
-which reads it again at row 1. Until 5 November every drafted exam was read a second time at row 1,
-and 71 of 71 such readings found no fault.
+which reads it again at row 1.
 
 **The budget covers the whole campaign.** Each move receives the total `--budget` minus recorded
 spending. The campaign ends when the remaining amount is below one solve's reserve (`--reserve`).

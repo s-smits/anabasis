@@ -68,7 +68,7 @@ seats `openai-codex/gpt-6.1-sol` through the Codex CLI's login, which `--login` 
 and any other model a backend serves goes as its `<provider>/<id>`, at `hhhh` and named by its id:
 `--model openrouter/deepseek/deepseek-v4.1-flash-1017` makes `<pack>-fresh-deepseek-v4.1-flash-1017`.
 A run or a simulation seats Claude unless the operator names another model, and DeepInfra serves
-DeepSeek alone, only where the operator names DeepSeek (operator, 31 October).
+DeepSeek alone, only where the operator names DeepSeek (operator).
 The solve defaults are the campaign's: 20 model turns and 30 minutes (`LIMITS`,
 `tools/d2/campaign.ts`).
 
@@ -123,8 +123,7 @@ bun --env-file=<file> run runs launch <name> [--login N] --yes -- \
 ```
 
 The flags after `--` are the command's own, parsed by `flagsOf` in `tools/d2/campaign-terms.ts`,
-without `--name`. Until 19 October 2026, `--trigger` bought a repeat and `--margin` set an
-objective margin. Both flags are now refused. One reading of `step` promotes outside `--hitl`.
+without `--name`. The old `--trigger` and `--margin` flags are refused. One reading of `step` promotes outside `--hitl`.
 Before it starts anything the verb refuses a name any worktree holds a campaign
 of, a log a process already writes, a worktree with a change no commit names, and a commit no
 remote branch holds. It then installs (`bun install --frozen-lockfile`), runs the command's own
@@ -486,6 +485,6 @@ where a clean point can be waited for. Whether a run should be stopped is a read
 release failures printed by `stop`. The pulse may still say `reported` for a stopped run whose
 last work reported (`stage`).
 
-For roots left by a Mac runner before 19 October 2026, `stop` may report a mounted disk image
+For roots left by an older Mac runner, `stop` may report a mounted disk image
 it cannot remove. Detach that image with `hdiutil detach` before stopping the run again
 (`release`, `tools/runs/stop.ts`).

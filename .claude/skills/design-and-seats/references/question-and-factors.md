@@ -108,7 +108,7 @@ establishes its cost.
 
 ### What changed from v1
 
-v1 is this repository's history before v2 took it over on 11 October 2026 (`git show
+v1 is this repository's history before v2 took it over (`git show
 5bc9988:<path>`; `docs/transfer.md` keeps the account). It was published as a squashed history, so a
 v1 commit cited in `docs/transfer.md` is missing here. Much of `src/meta`, `src/wall`, `tools/loc`
 and `tools/oxlint` came from v1, so v1's wording survives in comments, and a comment citing

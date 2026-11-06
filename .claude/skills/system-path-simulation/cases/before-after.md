@@ -33,7 +33,7 @@ Give both arms the same input. A reader takes the same logs by name or path, and
 a log from either fork. A seed is cut once in each fork from the same source at the same cut, under
 two names, because the registry refuses a name two worktrees hold, and a seat's root is named by
 its campaign and session, so two live arms under one name on one host refuse the second's root
-(`claimRoot`, `src/wall/seat-root.ts`; 27 October):
+(`claimRoot`, `src/wall/seat-root.ts`):
 `bun run runs seed --from <campaign folder> --name sim-<what>-before` in the one and `-after` in
 the other, with the same cut flags. A script (`--held`, `--starter`, `--supply`) is the same in both.
 
@@ -48,7 +48,7 @@ the other, with the same cut flags. A script (`--held`, `--starter`, `--supply`)
 | A model seat | `scripts/live-seat.ts start` from each arm's seed, on the operator's word for both seats | one draw per arm (rule 6 of `AGENTS.md`): a difference is a lead unless it is one the change forces. Rounds of pairs that tune a prompt until a count moves are [optimize](optimize.md) |
 
 Before diffing a reader's output, run each arm twice. A reader that prints the time, the load or a
-process's state differs from itself, and those lines are no effect of the change. On 21 October
+process's state differs from itself, and those lines are no effect of the change. For example,
 `runs view` of the retired #306 fork on the Linux runner printed 23 lines twice alike at `7adfd387`
 (#306) and twice alike at `7d77a65a` (#329), and the two arms matched each other: the stack between
 them left that log's view unchanged.

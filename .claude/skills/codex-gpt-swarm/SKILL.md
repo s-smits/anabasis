@@ -29,7 +29,7 @@ typed non-results, retried later, and never a defect of the work.
 
 ## Model, effort and count
 
-The operator's batch policy of 4 September decides when the request names no model:
+The operator's batch policy decides when the request names no model:
 
 | independent questions | model and effort |
 | --- | --- |
@@ -52,7 +52,7 @@ The table is the batch policy, not a count-based choice in the launcher. Pass it
 
 With neither flag the launcher uses `gpt-6-luna` at `max`, even for a small batch. Every launch
 uses the `priority` service tier (`DEFAULT_MODEL`, `SERVICE_TIER`). From Claude Code at most two
-Claude subagents run at once (the operator, 4 September); Codex sessions do not count against that.
+Claude subagents run at once (the operator); Codex sessions do not count against that.
 
 ## Where to stop
 
@@ -118,7 +118,7 @@ it so for a read-only session and for one that owns its whole workdir.
 
 Start the whole batch in one detached launcher, so neither the Bash tool's 600-second limit nor the
 end of the turn takes it down: a launcher started as an ordinary background command died with its
-parent on 28 August and took all 24 sessions with it. The output directory must not exist yet, and
+parent and took all 24 sessions with it. The output directory must not exist yet, and
 the log goes outside it:
 
 ```sh
@@ -140,8 +140,8 @@ stays read-only.
 
 Read the launcher's log: one `gpt_session.finished` line a session, then
 `gpt_sessions.completed`. Drain while it runs, not only at the end: `--drain <output dir>` prints
-what `reports.md` gained since the last drain, and sixty lanes of one v1 batch sat unread on
-29 September because nothing drained them. `reports.md` gains each report as its session settles,
+what `reports.md` gained since the last drain, and sixty lanes of one v1 batch sat unread
+because nothing drained them. `reports.md` gains each report as its session settles,
 so it holds every settled report even if the launcher dies.
 
 After `gpt_sessions.completed`, drain once more and read `summary.json`: one result for each

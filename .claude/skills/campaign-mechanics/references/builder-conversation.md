@@ -13,14 +13,14 @@ admissions and commands as a move the operator launches.
 beside it: its draw is fixed as it starts, so tasks held out later join the next one, and each of
 its solves waits while others are in flight and the campaign's total left covers no more
 (`queued`, `tools/d2/host.ts`).
-Only the end of the conversation and a second `examine` wait for that session; until 5 November a
-comparison and a promotion waited too, and jobstat Builders spent 39 to 86% of their conversations
+Only the end of the conversation and a second `examine` wait for that session. A comparison and a
+promotion wait for nothing: where they waited, jobstat Builders spent 39 to 86% of their conversations
 in that wait. The host releases the practice owed (`releaseOwed`, `practiceDue`) as the session
 holds a task or ends and as a conversation opens on tasks held out since the last release or
 promotion, never while a comparison is unreported. A host halt or kill interrupts the session and records it as killed.
 
-Each `examine` is one ask of one Examiner conversation (`conversing`, `tools/d2/campaign-actions.ts`;
-since 5 November). Where an ask has supplied the tasks or its `finish` is accepted, it ends on record
+Each `examine` is one ask of one Examiner conversation (`conversing`, `tools/d2/campaign-actions.ts`).
+Where an ask has supplied the tasks or its `finish` is accepted, it ends on record
 (`exam.finished`) and the call that ended it waits, off any clock, for the next ask. The next
 `examine` wakes it: its `exam.started` names its own session and the `conversation` it continues, and
 the call's result tells it the comparisons reported since it was last told, a promotion among them and
@@ -41,10 +41,10 @@ chance at a step (section 1, factor 2). A step is promoted by the host as its co
 An action refused before starting, or one with nothing to do, writes no `campaign.move`. Examiner
 sessions and comparisons record their move when they begin. The event carries the table row's code
 and reason where the move is the one the table names, and `led` where the Builder chose another
-(`asked` with the table's move in a log before 5 November). A refusal after that start
+(`asked` with the table's move in an older log). A refusal after that start
 leaves the recorded move counted against `--moves`. The conversation is a `build` move with the
-code `led`. The Builder is never told the table's move (section 2, consequence 1); until 5 November
-each tool's result ended with it as a "Suggested action". The host still makes the Examiner session
+code `led`. The Builder is never told the table's move (section 2, consequence 1).
+The host still makes the Examiner session
 the table names after a promotion (row `no-room`), and the endings code owns end the run inside a
 conversation as between them. The
 controller's private reasons (`campaign.move`, `campaign.ended`) never reach a seat's message.

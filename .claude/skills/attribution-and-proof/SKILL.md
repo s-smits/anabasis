@@ -21,7 +21,7 @@ interleaved, a one-sided paired sign-flip test over each task's score (`flipP`,
 `src/kernel/compare.ts`). Validity weighs most; a declared objective compares two valid answers, and
 what a solve billed decides nothing. The null treats each untied task's sign as equally likely and independent, at its fixed
 margin. `step` means one test over the frontier and the retained tasks together cleared its level
-(`stepOf`); a report of 26 October to 2 November is read on its scores without the bill (`scoresIn`).
+(`stepOf`); an older report that holds `unbilled` scores is read on those (`scoresIn`).
 It does not say:
 
 - **that the harness is better under another condition.** Another deadline, budget, solver, effort
@@ -67,7 +67,7 @@ Answer these from the log before using the word step in a sentence of your own:
 
 - **Repeated?** One reading promotes. A standalone comparison of the same two harnesses with a new `--id`
   makes a second draw on fresh solves; the same id returns the existing report. Until a later
-  reading holds the step, say it is one draw at its level. Until 19 October promotion required a repeat.
+  reading holds the step, say it is one draw at its level. An older log may repeat a step before promoting it.
 - **What does the reference do against itself?** Read `noise` on the same tallied tasks, with
   halves of the reference's solves mirrored in time. It is available at any even number of solves
   per side; at two, it compares the first solve with the second (`compared`,
@@ -78,19 +78,19 @@ Answer these from the log before using the word step in a sentence of your own:
   (p = 0.015625), and 5-0 (p = 0.03125) reads none. With equal pair margins, 8-1, 10-2 and
   12-3 also clear 0.02; unequal margins need `flipP`, rather than the tally alone. The retained
   tasks are in the same test, so a gain on new tasks can offset a loss on old ones: give the
-  retained tally apart. An empty retained set is `unmeasured`, not evidence of no loss. A report
-  written from 12 to 20 October read the frontier alone and may hold `regressed`.
+  retained tally apart. An empty retained set is `unmeasured`, not evidence of no loss. An older report
+  may have read the frontier alone and may hold `regressed`.
 - **How much power and risk?** Give `scored.detectable`, the least winning share detected four
   times in five at these margins, and `scored.falseRate`, `power(differences, 0.5, level)` (on
-  `frontier` in a report written before 20 October).
+  `frontier` in an older report).
   The latter is at most the level under the test's null. `sizeLines` assumes no ties and equal
   margins before a run (`src/kernel/size.ts`); the level is a per-comparison level.
   Give the campaign estimate from `riskLines` in `src/campaign/climb.ts`: it sums attempt rates,
   capped at one, across epochs. It is an estimate, not a measured bound. Its A/A error count is
   one-sided at the comparison's level, and counts only the controls that could read a step.
 - **Which measure?** Give `points` beside the untied count: the points validity and the objective
-  gave the tallied tasks. A report of 26 October to 2 November also holds the bill's points, and a
-  report begun before 21 October holds `objective.decided` instead.
+  gave the tallied tasks. An older report may also hold the bill's points, or
+  `objective.decided` in their place.
 - **Under what load?** A deadline counts elapsed time. The reader's `HOST LOADED` and `LOAD MOVED` say
   when solve-start loads were high or moved between halves within or across comparisons. Compare
   no times across those loads.
@@ -127,8 +127,8 @@ Check in order, and stop at the first that fails. One command answers the first 
 bun run runs source <name> --holds <fix>
 ```
 
-1. **The commit.** `launch-run-<n>.json` beside the log (and `launch-<session>.json` for a round
-   launched before 11 October) names the commit and whether the tree held uncommitted changes. A
+1. **The commit.** `launch-run-<n>.json` beside the log (and `launch-<session>.json` for an older
+   round) names the commit and whether the tree held uncommitted changes. A
    round started by hand has no receipt: the condition's host
    hash still names the code by content, and the commit is then unknown.
 2. **Containment.** `--holds` asks whether the fix is an ancestor of each receipt's commit.

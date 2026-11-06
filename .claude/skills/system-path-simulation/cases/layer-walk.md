@@ -33,7 +33,7 @@ runs.
   priced at zero, since a free model would be read as a free solve. pi's faux provider is priced at
   zero. No test met the two together, so the first rehearsal died at its first turn with
   `faux/script has no list price to freeze`.
-- **The walled shell and the home.** On 8 October 2026 a relative guide path missed the Builder's
+- **The walled shell and the home.** A relative guide path once missed the Builder's
   home, the harness kept its parent's digest, and the round read `no-change`. Shell commands with
   no staged files now start in the seat's home (`runWalled`, `src/tools/command.ts`). The script names the guide
   through `"$HOME/harness/agent/BUILT_AGENTS.md"` (`scriptedBuilder`).

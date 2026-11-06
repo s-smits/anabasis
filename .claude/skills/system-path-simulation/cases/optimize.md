@@ -51,13 +51,13 @@ before anything runs.
 
 | seat | count | graded loss | guards |
 | --- | --- | --- | --- |
-| Examiner after a promotion | drafts held, and in a tree from before 1 November by where their room came from (`some`, `none, proved`, an objective) | drafts refused; before 1 November, the author's gain over the reference's best answer at each task admission (`reference.gap`; `compare`'s `gap >= 1%` and `median gap`), and the share of task admissions that read `some` | dollars per admission attempt, and room solves per draft before 1 November |
+| Examiner after a promotion | drafts held, and in an older tree by where their room came from (`some`, `none, proved`, an objective) | drafts refused; in an older tree, the author's gain over the reference's best answer at each task admission (`reference.gap`; `compare`'s `gap >= 1%` and `median gap`), and the share of task admissions that read `some` | dollars per admission attempt, and room solves per draft in an older tree |
 | Examiner at an opening | drafts held before the first comparison | drafts refused on their package | dollars per admission attempt |
 | Referee | rulings that agree with a recorded hand label | evidence refusals per ruling | rulings refused for their evidence |
 | Builder | practice solves before its first edit, edits that reach a comparison | practice solves that fail on the same check twice | dollars per session |
 
-A measure the change moves is no graded loss unless it moves with the count. In round 8 of
-27 October one sentence of the opening moved the Opus Examiner's drafts to tasks the reference took
+A measure the change moves is no graded loss unless it moves with the count. In round 8
+one sentence of the opening moved the Opus Examiner's drafts to tasks the reference took
 longer on: median reference turns rose from 2 to 6, while holds fell from 14 to 10 over 14 admission
 attempts per arm. Every reference solve returned a valid answer on those 28 drafts. Longer solves
 alone did not establish room.
@@ -85,7 +85,7 @@ only where its structure closes it:
 
 - every rule's check is one the reference harness's programs already compute, and the contract
   declares no objective. The reference answers every draft, and only a task outside the contract
-  could leave room (finding F01 of the prompt rewrite, 27 October: on an esp32 seed cut after its
+  could leave room (finding F01 of the prompt rewrite: on an esp32 seed cut after its
   promotion both arms held 0, and each refusal read `every`);
 - the reference's last comparison left room on no task, and no seat in any recorded campaign has
   held a draft there since.
@@ -115,8 +115,8 @@ any edit. Three questions find most defects:
 
   `live-seat.ts calls <log or campaign folder>...` is that census over any number of logs: every
   Examiner call once, however many seeds copied it, and a seed's only from its cut, the failed ones by tool and by the line that
-  names the error, and the `finish` calls the session went on after. On 28 October, over the 213
-  campaign logs that the scratch census of 27 October read, it counted 42,146 calls, as that census had; among
+  names the error, and the `finish` calls the session went on after. For example, over the 213
+  campaign logs that a scratch census read, it counted 42,146 calls, as that census had; among
   them 31 failed `read_example` and 23 failed `finish` calls, 217 of 418 finishes the session went
   on after, and 65 `cat reference-harness/agent/BUILT_AGENTS.md` that found no file. Run it on the arms' seeds
   after a round too: a kind that grows in one arm is the change's side effect.
@@ -154,8 +154,8 @@ mean. This step costs nothing, so repeat it after every edit.
 its cut), the Examiner and Referee models with their efforts, each pair's cap and minutes, the task admission
 count every pair is read at, and the host class. Every round seats each position of the outline as
 a fresh control and arm pair, and only the variable moves. A round that changes the outline starts
-a new series, and its readings are not set beside the earlier rounds. Rounds 8 and 9 of 27 and
-28 October seated different positions and models, so only two of round 9's three pairs could be
+a new series, and its readings are not set beside the earlier rounds. Rounds 8 and 9
+seated different positions and models, so only two of round 9's three pairs could be
 set beside round 8. A position that cannot reach the task admission count within its cap leaves the outline
 between series, never within one.
 
@@ -172,13 +172,13 @@ between series, never within one.
   when each started.
 - **A seed on another host is seeded there.** `bun run runs seed --from <campaign> --name <name>`
   on that host fetches the source across `ANA_HOSTS` and cuts it in place. A seed copied by hand
-  keeps its links as links: on 27 October two seats on another host crashed on a missing file
+  keeps its links as links: two seats on another host once crashed on a missing file
   after `rsync -a`, and `rsync -aL` worked. `start` refuses a seed whose `checks/`, `exams/` or
   `states/` hold a link that points at nothing, and names the first. Where a pair's seeds must be
   copied, copy one: the two are the same cut in two trees. Create the target tree's `.ana/d2`
   first, copy the seed once with `rsync -aL`, check it there (its log's line count against the
   source's, no links left, `seed.json` present), then copy it on the target under the other arm's
-  name with `cp -a`. Delete nothing before that check: on 28 October a copy loop trashed each local
+  name with `cp -a`. Delete nothing before that check: a copy loop once trashed each local
   seed after its `rsync`, a `rsync` into a tree with no `.ana/d2` failed, and both arm seeds went,
   over a link that took 20 minutes for one 523 MB seed.
 - **A host with capacity, both arms at once.** Each arm's task admission runs the reference's solves, up to three to a
@@ -209,7 +209,7 @@ tree is not the one variable. `compare` names each arm's commit: check it agains
 result reaches the seat only where the tool runs on a draft that produces it, so count the results
 that carry the new text in each arm, from its seed's cut: `tail -n +<events + 1> <log> | grep -c
 '<text>'`, with `events` from the seed's `seed.json`, prints a count and no line of the log. The arm
-should count some and the control none. In round 11 of 28 October the arm's log held the task admission's
+should count some and the control none. In round 11 the arm's log held the task admission's
 method facts in 6 events by its third task admission, and the control's in none. An arm that never received
 its variable reads `unreached` (run-improvement-campaign, section 7): the round then holds two
 draws of the control's code, worth keeping for the spread below, and says nothing of the change.
@@ -240,7 +240,7 @@ within its cap is **thin**: reported, and counted as untested (`pairs` marks a p
 ended thin, or when the pairs that reached it fix the sign whatever the rest read; the ledger names
 the pairs a decision rests on. Then close the round with `live-seat.ts stop <prefix>...` over every
 prefix the round's seating scripts name, seated or not: it ends each running group, lets each
-`start` print its reading, and closes the prefixes not yet seated. On 28 October a script still
+`start` print its reading, and closes the prefixes not yet seated. A script still
 waiting for load seated a fresh pair of round 8 twenty minutes after the round was decided.
 
 **Against two draws of one commit.** This is the round's A/A. An Examiner session varies from draw
@@ -303,7 +303,7 @@ An arm goes into its pull request on one of two bars, and the ledger and the pul
   control, or moved the graded loss, by more than the series' spread; no guard moved; and the move
   held again on a confirming position from another campaign (step 2). One round that meets the rest
   is a lead (`AGENTS.md`, rule 6).
-- **As good, and simpler.** The operator's bar of 28 October, on which round 10's deletion was
+- **As good, and simpler.** The operator's bar, on which round 10's deletion was
   taken: in no pair did the arm hold fewer than the control by more than the spread, the cost guard
   held, and the change removes more of the Examiner's prompt, tools or code than it adds, as
   reduce-complexity measures it. A change that adds text or machinery cannot pass on this bar.

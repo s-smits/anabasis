@@ -48,5 +48,6 @@ for a careful colleague who has not read the conversation.
   that showed it, and the date. Keep it true in the change that alters the code.
 - State each prompt fact and limit once, in its owning surface: system prompt, opening message or
   tool result. Fix a recurring interface failure in the schema or tool rather than adding advice.
-- Dates are absolute ("9 October"). `AGENTS.md` and the skills say how things are now; history goes
-  to the commit, the pull request and the head comment.
+- A date is absolute, the day and the month, and stays out of the skills. `AGENTS.md` and the skills
+  say how things are now, as general statements with general examples; history goes to the commit,
+  the pull request, the backlog and the head comment.

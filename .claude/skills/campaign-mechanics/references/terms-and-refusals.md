@@ -9,11 +9,11 @@ of `AGENTS.md` section 6; the commands are in `campaign-command.md`.
 name alone: the project, the total and the reserve, improvement and supply patience
 (`--patience`, 6 each), who sits in each seat, and the terms of its moves as a command last named
 them (`TERMS`, `src/campaign/opening.ts`): the level, a Builder conversation's minutes and turns,
-the practice tasks, the tasks an Examiner session is asked for and the cap of promotions. Until
-5 November it also kept a solve's model turns, three copies of the setting's facts, the Builder
+the practice tasks, the tasks an Examiner session is asked for and the cap of promotions. An
+older opening may also keep a solve's model turns, three copies of the setting's facts, the Builder
 sessions before the table advised a comparison (`--sessions`), and six terms no log named
 (`--defects`, `--practice-solves`, `--exam-proposals`, `--exam-minutes`, `--exam-turns`,
-`--cost`); an older opening's are read past, and each move runs by its own default. An unspecified term uses its default. Later invocations
+`--cost`); these are read past, and each move runs by its own default. An unspecified term uses its default. Later invocations
 inherit recorded terms unless an explicit override records a replacement. These terms are the
 operator's conditions.
 

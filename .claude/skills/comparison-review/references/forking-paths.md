@@ -10,7 +10,7 @@ confirmatory. It keeps exploration honest, so that what leaves it is a lead of k
 - **The hidden look.** A cut run, disliked and never mentioned. *Stop:* every cut has a ledger row
   before it runs, saying why. An unplanned cut is allowed and marked `after seeing`.
 - **The uncounted family.** Ten scripts of cuts read as one investigation. *Stop:* report the number
-  of cuts beside any pattern ("one of 14 cuts"). On 5 November nobody could give that number.
+  of cuts beside any pattern ("one of 14 cuts"). A review that cannot give that number has lost its family.
 - **Rewriting history.** A row reworded once its answer is known. *Stop:* the ledger only grows.
   Correct by a new row that names the old one.
 - **Pretending to be blind.** A review always follows a result. *Stop:* the first thing the ledger
@@ -29,7 +29,7 @@ confirmatory. It keeps exploration honest, so that what leaves it is a lead of k
   has stopped being held out for this system, and the report says so.
 - **The benchmark taught by degrees.** Each round's small fix fits the benchmark a little more. *Stop:*
   each fix passes the gate on its own, and the burned list carries across reviews.
-- **A proposal tested on its own tasks.** On 5 November both designs for the next run, this skill's
+- **A proposal tested on its own tasks.** For example, both designs for the next run, this skill's
   author's and the blind reviewer's, repeated the same 8 tasks with an arm whose changes came from
   reading them. *Stop:* those tasks may still measure noise, which no proposal suggested. The arm drawn
   from them runs on tasks nobody has read.
@@ -43,7 +43,7 @@ confirmatory. It keeps exploration honest, so that what leaves it is a lead of k
   whatever changes. *Stop:* read every task of the half, or a draw fixed by the hash.
 - **The garden of measures.** Points read a loss, so criteria are tried, then rubrics. *Stop:* the
   ledger freezes the primary measure, and any other is reported beside it, as description, always.
-  On 5 November the operator was told p 0.25 on criteria, while the benchmark's own measure of points
+  For example, an operator was told p 0.25 on criteria, while the benchmark's own measure of points
   read p 0.074 on the same eight tasks. No one meant to pick the milder figure, which is why the
   freeze has to come first.
 - **Subgroups after the fact.** "It lost only on the social science tasks." *Stop:* a subgroup is a
@@ -60,7 +60,7 @@ confirmatory. It keeps exploration honest, so that what leaves it is a lead of k
 - **Averages across arms' own recoveries.** Fewer turns read as less effort when part of the gap is the
   other arm repairing its environment. *Stop:* sort before comparing (level 9).
 - **The sighted card writer.** A blind session counts the shapes, but an author who knows the direction
-  chose them, so the blinding starts one step too late. On 5 November most cards came from what had
+  chose them, so the blinding starts one step too late. Most cards can come from what had
   been lost. *Stop:* write a card from every kind of row, won and lost, count the two in the report,
   and let a reader who has not seen the result answer the mirror question.
 - **Instrument taken for ability.** A grader that never read the page. *Stop:* level 6 before level 8.
@@ -87,7 +87,7 @@ confirmatory. It keeps exploration honest, so that what leaves it is a lead of k
 ## People and sessions
 
 - **The anchored reviewer.** Told the conclusion, it confirms it. *Stop:* pointers and open questions,
-  no counts (the brief in `report.md`). The operator's request of 5 November, "only give it hints", is
+  no counts (the brief in `report.md`). The operator's request, "only give it hints", is
   this rule. Tell it where to look and what could be worth checking, never what you found.
 - **Blind in name only.** Paths and tool names can reveal an arm: `.toolchain/`, a guide's words, the
   folder's label. *Stop:* neutral names by hash, and say what could still leak.

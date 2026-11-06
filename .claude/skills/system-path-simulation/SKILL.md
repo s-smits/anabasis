@@ -53,7 +53,7 @@ read a remote pid as local.
 
 1. **Write the prediction first.** Before a simulation runs, write what it will read and why, in a
    file. Resolve each line after. A miss is the finding: the product does something you did not
-   know, or your picture of it is stale. On 8 October 2026 one prediction missed because a round
+   know, or your picture of it is stale. For example, one prediction missed because a round
    that scores nothing reads `not-scored`; another seed was cut before its only held task existed.
 2. **Seed late, and from a real run.** A log a run wrote beats a position you would author. Cut
    right before the thing in question, from a log at rest, and say in one line how the seed differs
@@ -188,7 +188,7 @@ ruling to count one.
 
 ### What the first rehearsals settled
 
-The rehearsals of 8 October 2026 found joins that still matter:
+Rehearsals have found joins that still matter:
 
 - **A step takes enough untied tasks, all won.** A campaign that holds fewer cannot read one, and
   the comparison's admission now refuses it.
@@ -237,8 +237,8 @@ bun --env-file=<file> .claude/skills/system-path-simulation/scripts/live-seat.ts
 Three rules are this option's own:
 
 - **The env file is a path.** It is passed on and never opened, printed or copied.
-- **One live seat a login at a time.** A login at its session limit fails every solve in flight; on
-  8 October 2026 that took three solves and $8.25 with it. Two seats at once take two logins.
+- **One live seat a login at a time.** A login at its session limit fails every solve in flight; that
+  has taken three solves and $8.25 with it. Two seats at once take two logins.
 - **A seat's result is one sample.** It proves a path and measures no rate. Whether a prompt or a
   term moves a count is rounds of paired seats against two draws of one commit, read on a graded
   loss beside the count ([optimize](cases/optimize.md)).

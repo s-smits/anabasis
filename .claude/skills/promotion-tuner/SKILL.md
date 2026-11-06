@@ -7,7 +7,7 @@ description: "Replay recorded comparisons under a tree's scoring rules without m
 
 A comparison scores each task by two weighted measures over the pairings of its solves, validity
 and the objective, and one test over those scores must clear the level to promote (`AGENTS.md`,
-section 7, "The tally" and "The test"). A tree from before 2 November also scored the bill, and
+section 7, "The tally" and "The test"). An older tree also scored the bill, and
 the replay scores it where the tree under replay weighs it (`Points`, `scripts/tree.ts`). This skill asks whether a tree's score supports the recorded promotions, and how other
 weights, another level or a candidate tree read the same solves. A replay starts no solve, calls no
 model and writes nothing of a campaign's.
@@ -21,7 +21,7 @@ as this skill reads a replay.
 
 | Term | Where it lives | How the replay changes it |
 | --- | --- | --- |
-| The weights of validity and the objective (and the bill, in a tree before 2 November) | `WEIGHTS`, `src/kernel/compare.ts`; the operator's, in steps of five | `--weights v,o,b`, in hundredths, `b` 0 for a tree that weighs no bill |
+| The weights of validity and the objective (and the bill, in an older tree) | `WEIGHTS`, `src/kernel/compare.ts`; the operator's, in steps of five | `--weights v,o,b`, in hundredths, `b` 0 for a tree that weighs no bill |
 | The level | the campaign's opening; the operator's | `--level` |
 | The objective gap floor | `ROOM` | a candidate tree |
 | How a measure is read over the pairings, and the test | `pointsOf`, `flipP`, `stepOf` | a candidate tree |
@@ -43,8 +43,8 @@ bun .claude/skills/promotion-tuner/scripts/replay.ts --tree <worktree> \
 ```
 
 - `--tree` names the worktree whose kernel scores the record, as an absolute path. The totals name
-  its commit and whether `src/` has uncommitted changes. A tree from before 21 October, which
-  scores no weighted measures, is refused. Replay calls the selected tree's `stepOf`; trees from before the dual rule keep their full-score-only decision.
+  its commit and whether `src/` has uncommitted changes. An older tree that
+  scores no weighted measures is refused. Replay calls the selected tree's `stepOf`; trees from before the dual rule keep their full-score-only decision.
 - By default the shared run registry discovers campaigns in every worktree and archive, and
   refreshes remote logs and receipts through `ANA_HOSTS`. Load the host environment with
   `bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/replay.ts ...`.
@@ -89,8 +89,8 @@ bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/table.ts \
 - **Hours say how fast, not on what.** `groups` and `runs` also give the room on validity (scored
   tasks the reference did not answer validly in every solve, of those scored, summed over the
   reported comparisons), the steps won by validity (`validityOf`) and the confirmed promotions.
-  A cycle whose room is near zero can promote only on the objective (and, before 2 November, the bill), whatever its
-  hours: buffer after v0.8.0 held 7 of 571, its steps 5 of 17 on validity (1 November).
+  A cycle whose room is near zero can promote only on the objective (and, in an older tree, the bill), whatever its
+  hours: buffer after v0.8.0 held 7 of 571, its steps 5 of 17 on validity.
 - **`--has`** and **`--holds`** keep the runs whose every launch ran with a mechanism (`ranWith`),
   which is how a change is read against the runs without it (`AGENTS.md`, section 9, "Evidence").
 - Hours are on the log's clock, the same on macOS and Linux. Active hours subtract the union of every
@@ -101,8 +101,8 @@ bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/table.ts \
 
 ### Dollars a promotion on one meter
 
-`table.ts` reads each run's dollars as its own meter billed them, and the meter moved (25 October:
-each turn at the model that served it; 1 November: a session on its backend's ledger). Before
+`table.ts` reads each run's dollars as its own meter billed them, and the meter moved (first to
+each turn at the model that served it, then to a session on its backend's ledger). Before
 saying a cycle is cheaper, price every run the same way:
 
 ```sh
@@ -113,10 +113,10 @@ bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/cost.ts \
 It prices every recorded turn with today's seat meter (`seatMeter` on its provider's catalogue),
 sets that beside the recorded bill, and pools the finished runs of each week (or pack) and
 setting into dollars a promotion. Turns are the one measure every log holds; a backend's excess
-over them (compactions, retries) is billed only by runs from 1 November on, so `repriced/recorded`
-just under 1 on those runs is that excess. On 2 November buffer at Opus 5.5 medium read $320 a
-promotion in the week of 12 October, then $58 and $56, with repriced and recorded within 1% from
-19 October on: the fall was the system's, not the meter's.
+over them (compactions, retries) is billed only by newer runs, so `repriced/recorded`
+just under 1 on those runs is that excess. For example, buffer at Opus 5.5 medium read $320 a
+promotion in its first week, then $58 and $56, with repriced and recorded within 1% over the later
+two: the fall was the system's, not the meter's.
 
 ## What to read
 
@@ -128,7 +128,7 @@ For each pair of harnesses, old digest first:
   campaign did not promote.
 - **Which measure won each task** of that reading: validity where validity gave it points, the
   objective where only the measures between two valid answers did and the objective among them,
-  and, under a tree before 2 November, the bill alone. This is the count to watch when the
+  and, under an older tree, the bill alone. This is the count to watch when the
   weights move: the bill took a tenth of the weight, yet a task every solve of both sides answered
   validly could be won by the bill alone, which is why it left the score.
 - A pair that never steps: each reading, short of its level, with its A/A. `NOT PROMOTED by this
@@ -148,7 +148,7 @@ epochs' hours and dollars.
   own weights, its frontier, retained and A/A differences must read as stored: `read otherwise
   than stored` is 0 at the tree that wrote them. Anything else is a candidate change or a replay
   defect, and is explained before any other count is read.
-- A report from before 21 October was tallied rule by rule (validity, else the objective, else the
+- An older report was tallied rule by rule (validity, else the objective, else the
   bill) and holds no points. `reading otherwise than recorded`, to a step and from a step, counts
   what the weights changed on those readings. It is a finding about the score, never a defect.
 
@@ -156,8 +156,8 @@ An A/A is the reference against itself on mirrored halves of its solves (`pairsO
 `halves: "mirrored"`), available at any even number of solves a side, so at two it reads the first solve against the
 second (`src/campaign/comparison.ts`). The tree's
 `readsStepEitherWay` reads a step where the scores clear the comparison's level in either direction,
-as the whole-run reader and the UI do: from 31 October on the unbilled scores alone, and in a tree
-before that where the scored and unbilled tests clear together. An A/A step is false by construction.
+as the whole-run reader and the UI do: on the unbilled scores alone, and in an older tree
+where the scored and unbilled tests clear together. An A/A step is false by construction.
 Recorded reports without unbilled A/A scores retain their scored-only reading; the replay reconstructs
 both scores from the pairs. A reading with a stored task that has neither a pair nor an unbilled
 score cannot establish a replayed step.
@@ -201,8 +201,8 @@ Limits of the replay:
   The replay reads pairs on the recorded path, not a campaign under the candidate.
 - A reading never bought has no solves to replay, and the weights change which comparisons a
   campaign would have bought.
-- A report before 14 October may name no task: its stored differences stand, and no weight moves
-  them. Reports before 12 October hold no frontier and are left unread.
+- An older report may name no task: its stored differences stand, and no weight moves
+  them. A report that holds no frontier is left unread.
 - In a led campaign, Examiner sessions and comparisons run inside the Builder conversation.
   `Builder alone` subtracts their union; `neither` is time outside all three. A Builder session
   across a promotion bills each epoch what its turns metered there: every part is billed through

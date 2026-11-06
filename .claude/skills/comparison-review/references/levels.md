@@ -6,8 +6,8 @@ Levels 0 to 6 need no score, so they cover every task, the sealed half included.
 outcomes, so they cover the open half until the unsealing.
 
 `Inside` names the owner for a campaign comparison, where most of this is already a fold. `Outside`
-is what a study on another runtime has to read by hand. A recorded case is in italics where one
-exists.
+is what a study on another runtime has to read by hand. An example from one review, a promoted
+harness against the bare Starter, is in italics where one exists.
 
 ## 0. Who ran
 
@@ -18,7 +18,7 @@ exists.
 - Was the arm's label ever swapped, or a folder reused from an earlier batch?
 - **Inside:** `condition.recorded`; `bun tools/runs/degradations.ts <name>`.
   **Outside:** each trace's model field and ending, `export.json`.
-- *5 November: every assistant turn of both arms answered as the model asked for, on all 16
+- *Example: every assistant turn of both arms answered as the model asked for, on all 16
   rollouts, so this level was closed in one count.*
 
 ## 1. Coverage
@@ -32,7 +32,7 @@ exists.
   Every rate carries its denominator.
 - **Inside:** `draw <name>`, `reading <name>`, the admission line.
   **Outside:** the study's record, the benchmark's task list.
-- *5 November: 8 of 65 main tasks, 3 of 35 professions, one rollout each, in the campaign's own
+- *Example: 8 of 65 main tasks, 3 of 35 professions, one rollout each, in the campaign's own
   neighbourhood by choice.*
 
 ## 2. Conditions
@@ -50,7 +50,7 @@ Name each that could differ, and say whether it did, with the evidence:
 - **Host:** load, machine, a deadline measured under different load.
 - **The grader:** the same model, version, settings and conversion for both?
 - **Inside:** `conditions <name>`; `HOST LOADED` and `LOAD MOVED`. **Outside:** by hand, each row.
-- *5 November: only three of the eight tasks ran side by side, and they differ by 6 of 254, against
+- *Example: only three of the eight tasks ran side by side, and they differ by 6 of 254, against
   26 of 296 on the five run a day apart. The two arms' environments differ from the pilot's too, so
   no figure from the pilot serves as a noise estimate.*
 
@@ -65,7 +65,7 @@ Byte identity first, then whether each part still works where it landed.
 - What did the export drop on purpose, and did the dropped part hold anything (`agent/tools.ts`)?
 - Did the solver load the guide? Look for a sign in its first turns.
 - **Inside:** the digest proves it. **Outside:** `studies/shared/claude-export.ts` and its tree.
-- *5 November: the guide matched byte for byte; 8,353 of 8,360 kept toolchain files arrived with the
+- *Example: the guide matched byte for byte; 8,353 of 8,360 kept toolchain files arrived with the
   same sha-256 (13,727 of 13,734 counting compiled caches) and 7 dangling links did not, one of them
   `bin/python`, with `bin/python3` still working; `tools: []` meant the dropped tool file held nothing.
   2 of 185 tool calls failed on a dropped path, and both solvers recovered. The operator's suspicion of
@@ -85,7 +85,7 @@ workspace, and sort every factual statement:
 - Which of these did a note or the export correct? Which did it leave?
 - Then the behaviour: did any solver cite it, and did its actions follow it? Absence of a citation
   proves little where thinking cannot be read.
-- *5 November: a note corrected three names. "20 turns and 30 minutes", a scoring section and a path
+- *Example: a note corrected three names. "20 turns and 30 minutes", a scoring section and a path
   layout stayed. One program failed both times it was tried, on a path that exists only in a
   campaign. No visible text cited the budget, and 5 of 8 rollouts passed 20 turns, so the false limit
   is a defect whatever it did and its effect is unproved.*
@@ -104,7 +104,7 @@ Could the gain that promoted this harness be expected to show here at all?
   narrowly.
 - State what the study already expected (`studies/harness2/README.md`, "Read every result against how
   uneven the comparison is"). A result the protocol predicted is no surprise to explain away.
-- *5 November: the promotion was carried by the objective alone, on checks that read numbers; the
+- *Example: the promotion was carried by the objective alone, on checks that read numbers; the
   benchmark's rubrics read written deliverables. Every rollout ended normally, so nothing suggested
   a refusal.*
 
@@ -124,7 +124,7 @@ own conversion does, with no model call.
 - Read it apart and report it beside the official score, never in its place.
 - **Inside:** the verifier reads the answer whole; the Referee rules rejections with evidence
   (lanes 1 to 8 of a whole-run investigation).
-- *5 November: on one task the data sheets filled the cap, so the summary sheets were never read: 4
+- *Example: on one task the data sheets filled the cap, so the summary sheets were never read: 4
   rubrics worth 32 of that task's 68 points fell on all three arms, and a fifth worth 8 on two of them.
   A statement of one arm sat near character 209,140 of a 200,000 cap, which cost it 8 points the other
   arm won with the same statement placed earlier. A memo's two embedded figures took about 300,500
@@ -144,7 +144,7 @@ own conversion does, with no model call.
   holds.
 - Do weights make one kind of work decide the total?
 - Read the paired test both ways, on the task differences (`scripts/levels.ts`, `testOf`).
-- *5 November: a gap of 7 criteria of 241 became 32 points of 550, on 11 split rubrics of 68: the
+- *Example: a gap of 7 criteria of 241 became 32 points of 550, on 11 split rubrics of 68: the
   candidate won 3 for 30 points and lost 8 for 62, and each of the 8 was one criterion short. By task
   the bare arm led 6 to 2 on points (p 0.074) and 5 to 2 with one tie on criteria (p 0.25), so the
   grain changes how strong the same result looks. Leaving out each task in turn kept the sign and moved
@@ -162,7 +162,7 @@ own conversion does, with no model call.
 - For a win as for a loss: does the explanation you favour predict this row?
 - **Inside:** the wall holds, so per-task reading stays with the investigation's lanes, and the
   report names ids and counts.
-- *5 November: none of the 8 rubrics lost was a wrong number, and all were absent or unseen
+- *Example: none of the 8 rubrics lost was a wrong number, and all were absent or unseen
   statements. A second read sorted the 62 points as 8 unseen, 14 substantive and 40 a single sentence
   or framing, a judgement and not a count. Both arms made the same wrong choice of year on one task,
   which says nothing of either harness.*
@@ -178,7 +178,7 @@ own conversion does, with no model call.
 - Read any association across so few tasks as description. A rank correlation on eight points
   decides nothing.
 - **Inside:** `solve.call`, the lanes on solves, `chain`, `tasks`.
-- *5 November: the candidate took 197 turns to 285 and wrote 326,010 tokens to 400,143, lower on 8 of
+- *Example: the candidate took 197 turns to 285 and wrote 326,010 tokens to 400,143, lower on 8 of
   8. Part of that gap is the bare arm recovering from missing packages (42 module errors to 13, 25 of
   them on one task), and neither read found the turn or call gap tracking the score gap across tasks
   (rank correlation -0.18 on turns, Pearson 0.07 on calls, both on 8).*
@@ -194,7 +194,7 @@ Say how far one harness moves against itself, and how that was measured, or say 
 - How large a difference could this size show (`bun .claude/skills/comparison-reading/scripts/size.ts`)?
 - Report the test's p beside its size, never as "within the noise" without a measured noise.
 - **Inside:** the A/A beside each comparison (`noise`), `falseRate`, `incapable`.
-- *5 November: the only same-harness pair crossed a change of installed packages, 298 against 342.
+- *Example: the only same-harness pair crossed a change of installed packages, 298 against 342.
   Quoting it as noise was wrong, and no clean A/A exists yet. Its per-task differences (mean +5.5,
   standard deviation 5.4) are a shift and a spread together. A second read still named chance as the
   leading explanation, while that spread puts the gap of -4 a task about 2.1 standard errors out on 8
@@ -204,7 +204,7 @@ Say how far one harness moves against itself, and how that was measured, or say 
 
 - Each arm's dollars and hours beside its score, on one meter (`billOf`). Grader dollars apart.
 - Whether one arm's cost hides a saving elsewhere: a harness that saves turns but pays for a program.
-- *5 November: 11 rollouts billed 124.13 dollars, 20.78 for solving and 103.35 for grading over 98
+- *Example: 11 rollouts billed 124.13 dollars, 20.78 for solving and 103.35 for grading over 98
   calls, so a repeat is priced mostly by the grader. The pilot's rate was 1.74 dollars a call and this
   one 1.05: an estimate names the rate it used, since the same design came to about 1,400 and about
   2,200 dollars on the two.*

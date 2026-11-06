@@ -4,7 +4,7 @@ A real model in one seat, from a recorded position. Use it when the question is 
 and a script would only say what you told it to. It spends money, so it needs the operator's word
 to spend, and a size said before it starts (run-management's sizing: solves times dollars and minutes).
 
-The first live seats from a seed ran on 18 and 19 October: the supply ablation, two Examiner
+The first live seats from a seed were the supply ablation, two Examiner
 sessions over one seed of esp32-fresh-opus cut after its promotion, one as the Examiner is and one
 with a copy of the reference harness in its home. What they taught is in "Run it with the script"
 and in the rules below.
@@ -41,7 +41,7 @@ bun .claude/skills/system-path-simulation/scripts/live-seat.ts read --seat <scra
   roots; inspect them with `bun run runs stop sim-<what>` and follow run-management for cleanup.
 - Run `start` as one background command and wait for its end. It is the seat's end, so nothing
   re-arms a monitor every 30 minutes, and no turn ends with a seat running unwatched: the
-  ablation's watcher did both on 18 October.
+  ablation's watcher did both.
 - `read` gives the stretch's minutes and billed dollars (`billedBetween`), its sessions and how
   they ended, the drafts proposed, each task admission as `every`, `some`, `none`, `none, proved`, `package`
   or `unread` (`measuredGate`, `heldAtGate`), how many were held, the turns the reference's valid
@@ -91,8 +91,8 @@ command takes one. Read both with
 
 A backend can be seated with no campaign at all: its own provider (`claudeProvider` in
 `src/agent/backends/claude.ts`), one prompt, one tool and the small model, in a script kept outside the
-tree. It answers what the backend's child does around one turn. On 8 October 2026 such
-a probe closed a query on a parked `submit` and counted the child's calls and its lifetime, on the
+tree. It answers what the backend's child does around one turn. One such
+probe closed a query on a parked `submit` and counted the child's calls and its lifetime, on the
 tree before a fix and on the tree after. What it proves goes into the backend's test
 (`test/claude-backend.test.ts`), since the probe itself is not kept.
 
@@ -108,15 +108,12 @@ a legacy sweep probe, not a campaign solve under the current default of 20 model
   what holds everything else still.
 - **The env file is a path.** `--env-file <file>` is passed on and never opened. Do not print it,
   copy it or look for another.
-- **One live seat a login at a time.** A login at its session limit fails every solve in flight. On
-  8 October 2026 that took three solves and $8.25 with it.
+- **One live seat a login at a time.** A login at its session limit fails every solve in flight. That
+  has taken three solves and $8.25 with it.
 - **Size it in drafts, not in sessions.** An Examiner session that its task admission refuses finishes on its
-  own: on 18 October arm A finished after 20 drafts. Its dollars were then its room solves, about
-  $0.25 a draft at three solves of the reference, and its Examiner's turns besides; since
-  1 November the gate solves no draft, so a seat's dollars are its Examiner's turns, and since
-  4 November also the solves its `try_reference` asks of the reference harness, at most
-  `--proposals` of them. That is a dated measurement, not a price estimate for another model or
-  domain.
+  own: one arm finished after 20 drafts. The gate solves no draft, so a seat's dollars are its
+  Examiner's turns and the solves its `try_reference` asks of the reference harness, at most
+  `--proposals` of them.
 - **A live seat's result is one sample.** One solve a side says the path works. It says nothing of
   a rate. Report it as a path proven, not as a model measured.
 

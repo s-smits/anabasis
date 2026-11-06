@@ -18,11 +18,11 @@ session. It decides the wording of a claim from what the log already holds.
 
 A v2 claim rests on a comparison: two harnesses, the same held-out tasks, solves made afresh and
 interleaved, a one-sided paired sign-flip test over each task's score (`flipP`,
-`src/kernel/compare.ts`). Validity weighs most; a declared objective and the bill compare two valid
-answers. The null treats each untied task's sign as equally likely and independent, at its fixed
-margin. `step` means one test over the frontier and the retained tasks together cleared its level,
-on the tasks' scores and again on their scores without the bill (`stepOf`, since 26 October). It
-does not say:
+`src/kernel/compare.ts`). Validity weighs most; a declared objective compares two valid answers, and
+what a solve billed decides nothing. The null treats each untied task's sign as equally likely and independent, at its fixed
+margin. `step` means one test over the frontier and the retained tasks together cleared its level
+(`stepOf`); a report of 26 October to 2 November is read on its scores without the bill (`scoresIn`).
+It does not say:
 
 - **that the harness is better under another condition.** Another deadline, budget, solver, effort
   or host code is another condition, and no solve of one counts for the other.
@@ -72,7 +72,7 @@ Answer these from the log before using the word step in a sentence of your own:
   halves of the reference's solves mirrored in time. It is available at any even number of solves
   per side; at two, it compares the first solve with the second (`compared`,
   `src/campaign/comparison.ts`). An A/A reading ends nothing. A step in either direction, at the
-  comparison's level without the bill (`readsStepEitherWay`), indicates that the two
+  comparison's level (`readsStepEitherWay`), indicates that the two
   halves were not interchangeable. Report it beside the candidate's step.
 - **How thin?** At `--level 0.02`, six untied tasks all won is the least that reads a step
   (p = 0.015625), and 5-0 (p = 0.03125) reads none. With equal pair margins, 8-1, 10-2 and
@@ -88,9 +88,9 @@ Answer these from the log before using the word step in a sentence of your own:
   Give the campaign estimate from `riskLines` in `src/campaign/climb.ts`: it sums attempt rates,
   capped at one, across epochs. It is an estimate, not a measured bound. Its A/A error count is
   one-sided at the comparison's level, and counts only the controls that could read a step.
-- **Which measure?** Give `points` beside the untied count: the points validity, the objective and
-  the bill gave the tallied tasks, so a win the bill carried is named as one; a step must clear
-  without the bill too. A report begun before 21 October holds `objective.decided` instead.
+- **Which measure?** Give `points` beside the untied count: the points validity and the objective
+  gave the tallied tasks. A report of 26 October to 2 November also holds the bill's points, and a
+  report begun before 21 October holds `objective.decided` instead.
 - **Under what load?** A deadline counts elapsed time. The reader's `HOST LOADED` and `LOAD MOVED` say
   when solve-start loads were high or moved between halves within or across comparisons. Compare
   no times across those loads.

@@ -9,7 +9,7 @@
  *   bun tools/wri/wri.ts collect --out .ana/wri/20261008-truss
  *   bun tools/wri/wri.ts synthesis --out .ana/wri/20261008-truss
  *   bun tools/wri/wri.ts grade --log .ana/d2/truss/log.jsonl [--bundle <pack>] --task <taskId> --answer <file>
- *   bun tools/wri/wri.ts derive (--log <log>[,<log>...] | --all) [--verbose] [--force]
+ *   bun tools/wri/wri.ts derive (--log <log>[,<log>...] | --all) [--verbose] [--force] [--no-embed]
  *   bun tools/wri/wri.ts index [--root <dir>] [--out <file>]
  *
  * - `climb` prints lane 27's columns for every log `--log` names, one row each, and the paths
@@ -82,7 +82,7 @@ import { receipts } from "../runs/receipt.ts";
 import { isCampaign, processes, readable } from "../runs/registry.ts";
 import { stillRunning } from "../runs/diagnosis.ts";
 import { snapshotCampaign } from "../runs/seed.ts";
-import { type Derived, derive, derivedLine, derivedOf, derivedText } from "./derive.ts";
+import { type Derived, derive, derivedLine, derivedOf, derivedText, readersOf } from "./derive.ts";
 import { logAcross } from "../runs/snapshots.ts";
 import { stagedExamOf } from "../d2/exam.ts";
 import { readPack } from "../m0/stored-sweep.ts";
@@ -129,6 +129,7 @@ const { values, positionals } = parseArgs({
     all: { type: "boolean" },
     verbose: { type: "boolean" },
     force: { type: "boolean" },
+    "no-embed": { type: "boolean" },
     snapshot: { type: "boolean" },
   },
 });
@@ -228,7 +229,10 @@ async function derived(logs: readonly string[]): Promise<{ done: Derived[]; line
   const root = derivedOf(REPO);
   const done: Derived[] = [];
   // One campaign at a time: the job that runs this shares its host with live campaigns.
-  for (const log of logs) done.push(await derive(log, { root, repo: REPO, force: values.force === true }));
+  const readers = readersOf(values["no-embed"] === true);
+  for (const log of logs) {
+    done.push(await derive(log, { root, repo: REPO, force: values.force === true, readers }));
+  }
   return { done, line: derivedLine(done, root) };
 }
 

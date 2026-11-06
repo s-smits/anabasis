@@ -121,19 +121,21 @@ Each runs as `bun tools/wri/wri.ts <verb>` from the checkout. The usage block at
 | 5 | `collect --out <dir>` | `reports.md` |
 | 6 | `synthesis --out <dir>` | `synthesis-prompt.md` |
 | lanes 1, 5 | `grade --log <log> [--bundle <pack>] --task <taskId> --answer <file>` | nothing: one verdict line. `--bundle` names a stored pack; a campaign that drafted its exam names none |
-| any | `derive (--log <log>[,<log>...] \| --all) [--verbose] [--force]` | `data/derived/<campaign>/`: one file a reader, and `manifest.json` |
+| any | `derive (--log <log>[,<log>...] \| --all) [--verbose] [--force] [--no-embed]` | `data/derived/<campaign>/`: one file a reader, and `manifest.json` |
 
 ### The readers, derived
 
-Twenty-two deterministic readers take one log and print what it holds (`READERS`,
+Twenty-nine deterministic readers take one log and print what it holds (`READERS`,
 `tools/wri/derive.ts`): the rows and triggers, the ending, the readings, the served models
 (`degradations`), the climb, the gap to the answer on record, the campaign's view and its table's
 next move, the iteration's trigger (`loop`), the commit (`source`), the logged readings (`logged`),
 its dollars a promotion (`cost`) and row of the release table (`table`), each promotion scored again
 with the measure that won each task (`replay`), the conditions, the scored tasks' public input
 (`tasks`), the next draw, what a Builder and an Examiner opening would be told, each Examiner
-session's admissions (`ambition`) and drafts (`exams`), and the kept versions measured (`versions`)
-and blind (`chain`). `chain` and `tasks` carry no result, so a lane that grades before it reads an
+session's admissions (`ambition`) and drafts (`exams`), where each comparison sits in the reference's
+power zone (`zone`), whether a side repeats its own answers (`answers`), how much of a solve's or a
+session's time went inside its calls (`waits`), how a side's passes got there (`routes`), and the kept
+versions measured (`versions`) and blind (`chain`). `chain` and `tasks` carry no result, so a lane that grades before it reads an
 outcome (34) reads them first. `bun run runs pulse` runs the same list for each look
 (run-management, "Watch"). `derive` runs
 them all over a log into the main worktree's `data/derived/<campaign>/`, one `<reader>.txt` each,
@@ -151,6 +153,8 @@ There are two ways to use it:
   nothing a quiet pass would not; with an unmoved log it prints the folder as it stands.
 
 `--force` derives again although nothing moved, after a reader's code changed without a commit.
+`--no-embed` leaves out the readers that load the local embedding model, and a later derive without
+it writes the whole folder.
 The folders hold hidden values as the log does, so they stay on the exam side and out of every
 prompt a seat reads.
 
@@ -159,8 +163,24 @@ Left out of the list, each for its reason: what reads no run (`comparison-readin
 campaign (`examiner-complexity/scripts/grades.ts` a grader's file, `oracle-handover/scripts/slice.ts`
 a selector, `tools/c/repaired.ts` a bundle, `tools/runs/search.ts` a query, `wri.ts grade` an
 answer); and what writes (`wri.ts start`, `lanes`, `collect`, `synthesis`, `index` and `derive`,
-`wri2p2.ts open`, `tools/c/rejections.ts`, `tools/d2/close.ts`) or calls a model
+`wri2p2.ts open`, `tools/c/rejections.ts`, `tools/d2/close.ts`) or calls a paid model
 (`system-path-simulation/scripts/live-seat.ts` and `referee-seat.ts`, `compare-systems/scripts/systems.ts`).
+
+`restated` and `nearness` run the same local model on two other texts. `restated` groups the Referee's
+reasons at cosine 0.93 and names the groups of three or more, and any one ruled two ways, with the
+checks and rulings, so one complaint read 41 times is read once. `nearness` says how close each Examiner
+session's tasks read to earlier ones, and how many groups a comparison's scored tasks fall in. Within a
+log near tasks tied and split as far ones did, so read it for how alike an exam's words are and not as
+a dependence between tasks. Neither prints a reason or a task's text.
+
+`posture` labels with a model too, and it was the first to keep something: it labels each unit
+of a log's prose, the words a turn holds, with the nearest of a fixed set of anchors, and appends
+each batch's vectors to the reader store under `.ana/pulse/`, so a cut read goes on from where it was
+(`tools/wri/embed.ts` owns the model and the store, for any reader that wants vectors). It prints counts by seat, session and ending, never a passage. Its labels are leads and decide
+nothing. On five logs read on 5 November its own floor called every one thin, more than half of the
+units falling under the margin, and its line for a session adrift never fired, so read it as what a
+log's prose was about and not as whether the work advanced. A model that speaks only in tool calls
+leaves a row of noughts.
 
 One investigation reads one question, over one campaign or several. Two campaigns of one pack, one
 under a checker and one under its repair, are read apart, and lane 3 of the later one joins them.

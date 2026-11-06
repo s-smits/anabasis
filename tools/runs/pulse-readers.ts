@@ -143,7 +143,7 @@ const TRIGGER_LINE = /^([A-Z][A-Z0-9 -]*[A-Z0-9]) \(lane (\d+)\): (.*)$/;
 export const triggerNameOf = (line: string): string => TRIGGER_LINE.exec(line)?.[1] ?? "";
 
 export const storeOf = (cwd: string): string => join(mainTree(cwd), ".ana", "pulse", "readers");
-const folderOf = (store: string, log: string) => join(store, sha256(log).slice(0, 16));
+export const folderOf = (store: string, log: string) => join(store, sha256(log).slice(0, 16));
 const hashOf = (text: string) => sha256(text).slice(0, 8);
 const short = (line: string) => line.replaceAll(/\s+/g, " ").trim().slice(0, 160);
 const loadNow = () => loadavg()[0] ?? 0;
@@ -283,7 +283,8 @@ export async function startPass(
     waitMs = WAIT_MS,
     gapMs = GAP_MS,
     roomNow = room,
-  }: { tree: string; waitMs?: number; gapMs?: number; roomNow?: () => boolean },
+    noEmbed = false,
+  }: { tree: string; waitMs?: number; gapMs?: number; roomNow?: () => boolean; noEmbed?: boolean },
 ): Promise<void> {
   const deadline = performance.now() + waitMs;
   mkdirSync(store, { recursive: true });
@@ -302,6 +303,7 @@ export async function startPass(
         store,
         "--budget",
         String(PASS_MS),
+        ...(noEmbed ? ["--no-embed"] : []),
         ...logs,
       ],
       {

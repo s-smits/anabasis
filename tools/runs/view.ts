@@ -22,7 +22,7 @@
  * closing report. It names no task, and it is for the operator and the session that stands in for
  * the campaign's owner: what a Builder is told of the same rows is `src/builder/past.ts`.
  */
-import { epochLine, epochsOf } from "#src/campaign/climb.ts";
+import { barLines, epochLine, epochsOf } from "#src/campaign/climb.ts";
 import { decide } from "#src/campaign/decide.ts";
 import type { Plan } from "#src/campaign/ground.ts";
 import { type Decided, decidedLine, short } from "#src/campaign/move.ts";
@@ -220,6 +220,7 @@ export async function view(args: readonly string[]): Promise<void> {
     ...lines,
     "the climb",
     ...climb,
+    ...barLines(events).map((bar) => `  ${bar}`),
     open.length === 0
       ? "the table's move"
       : `the table's move, on the log as it stands with ${open.join(", ")} open`,

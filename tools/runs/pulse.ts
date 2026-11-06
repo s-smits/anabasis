@@ -22,6 +22,7 @@
  *
  * Since 5 November a look also says what the deterministic readers found in each run whose log moved
  * (`pulse-readers.ts`), which `--no-readers` leaves out, and the triggers come from their `rows`.
+ * `--no-embed` keeps them and leaves out only those that load the local embedding model.
  * Until then a look took 2.1 s at the median and read the investigation only after an event that can
  * move a trigger (27% of the looks where a log grew, over 57 recorded logs): a pass now shares that
  * read between observers and bounds it, so the two of 358 alarms it said up to 29 minutes late are said
@@ -564,7 +565,7 @@ async function look(
   state: string,
   names: readonly string[],
   memory: Memory,
-  store: string | null,
+  { store, noEmbed }: { readonly store: string | null; readonly noEmbed: boolean },
 ): Promise<{ lines: string[]; memory: Memory }> {
   const running = processes();
   const all = runs().map((run) => ({
@@ -590,7 +591,7 @@ async function look(
     await startPass(
       store,
       chosen.map(({ run }) => run.path),
-      { tree },
+      { tree, noEmbed },
     );
   }
   const now = Date.now();
@@ -679,6 +680,7 @@ export async function watch(args: readonly string[]): Promise<void> {
       here: { type: "boolean", default: false },
       ack: { type: "string" },
       "no-readers": { type: "boolean", default: false },
+      "no-embed": { type: "boolean", default: false },
     },
   });
   const cwd = runtimeProcess.cwd();
@@ -707,11 +709,12 @@ export async function watch(args: readonly string[]): Promise<void> {
           "--ack",
           memory.acks?.[host.name] ?? "none",
           ...(readers ? [] : ["--no-readers"]),
+          ...(values["no-embed"] ? ["--no-embed"] : []),
         ],
         [host],
       ),
     }));
-    const here = await look(state, names, memory, store);
+    const here = await look(state, names, memory, { store, noEmbed: values["no-embed"] });
     if (values.ack !== undefined && here.lines.length > 0) {
       // A peer's answer: what it would remember waits for its caller to return the last line.
       const token = sha256(`${String(Date.now())}\n${String(runtimeProcess.pid)}`).slice(0, 16);

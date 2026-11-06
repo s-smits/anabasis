@@ -537,13 +537,20 @@ function flipsOf(pairs: readonly Paired[]): number | null {
   return each.length === 0 ? null : each.reduce((sum, one) => sum + one, 0) / each.length;
 }
 
-/** The preceding comparison of the same two harnesses, and the intersection of the two
- *  comparisons' initial draws; null where none began before `fixed`. */
+/** The preceding comparison of the same two harnesses, on either side, and the intersection of the
+ *  two comparisons' initial draws; null where none began before `fixed`. A starter read swaps the
+ *  sides of the comparison that promoted. Until 6 November the gathered record held null in all 9
+ *  reports with only a swapped comparison before them, 5 of which share 48 tasks with it. */
 function overlapOf(events: readonly LogEvent[], fixed: Fixed) {
   const began = events.findIndex(({ kind, data }) => kind === STARTED && data.session === fixed.id);
   const before = events
     .slice(0, Math.max(0, began))
-    .findLast(({ kind, data }) => kind === STARTED && data.old === fixed.old && data.fresh === fixed.fresh);
+    .findLast(
+      ({ kind, data }) =>
+        kind === STARTED &&
+        ((data.old === fixed.old && data.fresh === fixed.fresh) ||
+          (data.old === fixed.fresh && data.fresh === fixed.old)),
+    );
   if (before === undefined || !isString(before.data.session)) return null;
   const drawnThen = new Set(Array.isArray(before.data.tasks) ? before.data.tasks.filter(isString) : []);
   return { with: before.data.session, tasks: fixed.tasks.filter((task) => drawnThen.has(task)) };

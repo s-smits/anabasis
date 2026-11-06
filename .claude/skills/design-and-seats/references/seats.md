@@ -24,11 +24,11 @@ The **Examiner** reads the following view of the log (`src/examiner/record.ts`):
   and whether a valid answer exists.
 - Which harness won each task and on which measure (`carriedBy`), authorised by the operator.
 - The last comparison the reference stood in, from its side, with how often its own two solves
-  differed in that comparison's A/A where it sat on the old side (`lastLine`).
+  differed in that comparison's A/A where it sat on the old side (`stoodLines`).
 - The checks a `check-defect` ruling found at fault on an answer to a task (`faultedOf`), by id.
 - The promotion line.
-- At each later ask of its conversation, only what reported since it was last told: the last
-  comparison's line, the tasks compared since under the reference's outcome, a promotion among them,
+- At each later ask of its conversation, only what reported since it was last told: a line for
+  each comparison the reference stood in, the tasks compared since under the reference's outcome, a promotion among them,
   and its limits from here (`heard` with `after`, `wakeMessage`).
 - Its home, with the reference harness, and check results obtained through `try_answer`.
 - Of each solve its `try_reference` asked of the reference harness: whether it was valid, its turns

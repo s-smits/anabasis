@@ -89,6 +89,7 @@ export const READERS: readonly Reader[] = [
   { name: "rows", args: (log) => ["tools/wri/wri.ts", "read", "--log", log] },
   skillReader("ending", "campaign-mechanics/scripts/ending.ts"),
   skillReader("readings", "comparison-reading/scripts/reading.ts"),
+  skillReader("starter-reads", "comparison-reading/scripts/starter-reads.ts"),
   { name: "degradations", args: (log) => ["tools/runs/degradations.ts", log] },
   { name: "climb", args: (log) => ["tools/wri/wri.ts", "climb", "--log", log] },
   skillReader("gap", "comparison-reading/scripts/gap.ts"),

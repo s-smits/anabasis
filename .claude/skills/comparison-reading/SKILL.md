@@ -36,6 +36,7 @@ comparisons again under other weights or a candidate tree is `promotion-tuner` '
 | Ask how far a comparison's sides stood from the best answer on record, or whether a large gap is a strong candidate or a weak reference | `scripts/gap.ts <log or name>` (exam-side output) |
 | Ask what the next comparison would score, why it scored fewer tasks than its target, or why admission refuses `held-short` | `scripts/draw.ts <log or name>`, then `references/draw-and-solves.md` |
 | Ask why a recorded comparison read `step`, `no-step` or `not-scored`, or what its A/A read | `scripts/reading.ts <log or name>`, then `references/tally-and-test.md` |
+| Ask what a confirmed promotion rests on, or whether a harness holds on tasks that did not choose it | `scripts/starter-reads.ts <log or name>`, or `--all` for the record |
 | Change a rejection's ruling path, the cap, the budget, `roomOf`, `stopRule` or promotion | `references/limits-and-room.md` |
 | Explain or change the view's last line, a row of `decide`, or `roomless` | `references/move-table.md` |
 | Cite a rule in a pull request or a review, or touch what a rule binds | `references/rules.md` |
@@ -53,7 +54,14 @@ bun .claude/skills/comparison-reading/scripts/reading.ts <log.jsonl | campaign f
   [--comparison <id>] [--level <n>]
 bun .claude/skills/comparison-reading/scripts/draw.ts <log.jsonl | campaign name> [--target <n>] [--level <n>]
 bun .claude/skills/comparison-reading/scripts/gap.ts <log.jsonl | campaign name>
+bun .claude/skills/comparison-reading/scripts/starter-reads.ts <log.jsonl | campaign folder | name> | --all [--since <date>]
 ```
+
+- `starter-reads.ts` splits each promotion's starter read into the tasks that chose the harness, those
+  written before and not drawn then, and those written after, each with its whole tally, the tasks on
+  which validity differed and the rest. Each read names its sides, since a read has the reference on
+  the old side. It also says whether the tasks that did not choose the harness read a step alone. It
+  decides no move.
 
 - `size.ts` prints, at a level and a count of untied tasks, the smallest scored set that reads a step
   (`sweepOf`), the admission floor (`comparisonFloor`) and the production's own size lines

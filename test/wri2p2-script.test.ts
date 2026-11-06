@@ -92,8 +92,8 @@ describe("the next step of an investigation", () => {
     write("plan.md", "# Plan\n\nPull request: #602 (on the top)\n");
     expect(step()[0]).toStartWith("step: launch");
     expect(step()[1]).toContain("--as forkedPR602");
-    expect(step(["jobstat-fresh-opus-forkedPR602-stijn-pro"])).toEqual([
-      "step: done · #602 is measured by jobstat-fresh-opus-forkedPR602-stijn-pro",
+    expect(step(["jobstat-fresh-opus-forkedPR602"])).toEqual([
+      "step: done · #602 is measured by jobstat-fresh-opus-forkedPR602",
     ]);
   });
 

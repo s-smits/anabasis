@@ -512,6 +512,30 @@ describe("an Oracle document's parts", () => {
       "on a login, a login, a login, ~/.claude-account/jobs, TOKEN CLAUDE_CODE_OAUTH_TOKEN",
     );
   });
+
+  it("drops a tree's name, a session's scratchpad and a login's table row, and keeps a path in the repository", () => {
+    const made = sanitised(
+      [
+        "/Users/someone/Developer/anabasis-after-review/src/a.ts",
+        "~/Developer/anabasis",
+        "/home/other/anabasis-run/x",
+        "/private/tmp/claude-501/-Users-someone-x/0d54-436d/scratchpad/lane/report.md",
+        "| Login | 4 (the operator's) |",
+        "~/.anabasis/AGENTS.md",
+        "https://github.com/someone/anabasis/blob/a.ts",
+      ].join("\n"),
+      [],
+    );
+    expect(made.text.split("\n")).toEqual([
+      "<tree>/src/a.ts",
+      "<tree>",
+      "<tree>/x",
+      "<scratch>/lane/report.md",
+      "| Login | a login (the operator's) |",
+      "~/.anabasis/AGENTS.md",
+      "https://github.com/someone/anabasis/blob/a.ts",
+    ]);
+  });
 });
 
 describe("a live seat's reading", () => {

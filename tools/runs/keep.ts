@@ -84,7 +84,7 @@ const BARREN = 3;
  * The model turns `events` record that the provider answered, of any seat: what a going-on has to
  * add to count as work. A launch into a failure still writes its moves, its ending and a turn of
  * each seat it opened, stopped on `error`, so the log grows however little was done: on 20 October
- * esp32-fresh-opus-m1-air-r2 went on 15 times in a row, every 13 minutes, into one DNS failure, four
+ * esp32-fresh-opus-r2 went on 15 times in a row, every 13 minutes, into one DNS failure, four
  * failed turns each time, and its keeper, which counted the log's bytes, never left (lane 35 of the
  * investigation of 27 October).
  */

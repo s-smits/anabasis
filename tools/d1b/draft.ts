@@ -111,10 +111,11 @@ export async function draftCommand(
   // A draft that stands keeps the reading it stood on as the checker's (`keepReading`), and a
   // launch without `--hitl` is the operator's word on its checks and its freeze, as at the `accept`
   // move. Until 5 November that move read the same exam again: 71 of 71 such readings found no fault.
-  const stood = read(log).some(({ kind, data }) => kind === "exam.drafted" && data.session === id);
+  const after = read(log);
+  const stood = after.some(({ kind, data }) => kind === "exam.drafted" && data.session === id);
   const last = readings.at(-1);
   if (stood && last !== undefined) {
-    const unattended = openingOf(events)?.attended !== true;
+    const unattended = openingOf(after)?.attended !== true;
     keepReading(log, last.checker, last.reading, {
       stored: 0,
       admitted: new Set(),

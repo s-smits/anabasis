@@ -1331,7 +1331,7 @@ describe("a campaign tool where the table names more than the action", () => {
         CHANGE_GUIDE,
         ["compare", {}],
         // The promoted harness, kept after the conversation opened: until 4 November kept/ held
-        // only what was kept before, and buffer-fresh-opus-forkedPR588-stijn-pro's Builder found
+        // only what was kept before, and buffer-fresh-opus-forkedPR588's Builder found
         // it empty and practised six tasks under the reference instead.
         ["bash", { command: 'ls "$HOME/kept"' }],
         ["examine", {}],
@@ -1339,7 +1339,7 @@ describe("a campaign tool where the table names more than the action", () => {
         ["compare", {}],
         // New tasks held after the starter comparison confirmed the promotion: until 4 November
         // they turned this compare into a second starter comparison of the same pair, and
-        // buffer-fresh-opus-forkedPR588-stijn-pro's changed harness/ went 11.8 hours unread.
+        // buffer-fresh-opus-forkedPR588's changed harness/ went 11.8 hours unread.
         ["examine", {}],
         ["compare", {}],
         ["finish", { note: "The change was read." }],

@@ -8,7 +8,8 @@
  * comparison solves both harnesses afresh on one draw, and the starter comparison after a
  * promotion draws the tasks held out since first, so the reference's share of valid solves, the
  * set-aside count and the split of the starter tally into the epoch's own tasks and older ones,
- * which decided no move, went (the examiner-complexity scripts read the reference's share).
+ * which decided no move, went (the examiner-complexity scripts read the reference's share, and
+ * comparison-reading's `starter-reads.ts` that split, for the operator).
  *
  * Written when the operator asked for the climb to be read as such: ten campaigns
  * had promoted once each and none twice, and no view said at which epoch a campaign stood or what
@@ -66,6 +67,8 @@ export interface Epoch {
    *  4 to 28 in the reference's favour as a near tie in an objective domain (buffer-forkedPR530's
    *  g-6). */
   readonly starter_tally: Tally | null;
+  /** That comparison's id, null where `starter_tally` is. */
+  readonly starter_read: string | null;
   /** Whether the promotion that opened the epoch is confirmed: its first starter comparison that
    *  tallied a task reads the reference above the starter without the bill, at that comparison's
    *  level (`AGENTS.md`,
@@ -182,8 +185,8 @@ function againstStarter(
   within: (at: number) => boolean,
   reference: string | null,
   starter: string | null,
-): Pick<Epoch, "starter_tally" | "confirmed"> {
-  if (reference === null) return { starter_tally: null, confirmed: null };
+): Pick<Epoch, "starter_tally" | "starter_read" | "confirmed"> {
+  if (reference === null) return { starter_tally: null, starter_read: null, confirmed: null };
   const first = reports.find(
     ({ index, data }) =>
       within(index) &&
@@ -192,11 +195,15 @@ function againstStarter(
       data.reading !== "not-scored" &&
       asRecord(data.scored) !== null,
   );
-  if (first === undefined) return { starter_tally: null, confirmed: false };
+  if (first === undefined) return { starter_tally: null, starter_read: null, confirmed: false };
   const ahead = scoresIn(first.data.scored).map((one) => -one);
   const { wins, losses, ties } = testOf(ahead);
   const level = isNumber(first.data.level) ? first.data.level : 0;
-  return { starter_tally: { wins, losses, ties }, confirmed: readsStep(ahead, level) };
+  return {
+    starter_tally: { wins, losses, ties },
+    starter_read: first.session,
+    confirmed: readsStep(ahead, level),
+  };
 }
 
 const levelOf = ({ data }: Reported) => (isNumber(data.level) ? data.level : 0);

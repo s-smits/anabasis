@@ -256,8 +256,8 @@ const UNCOMPARED: ReadonlySet<string> = new Set(["session", "tasks", "retained"]
  * The starter comparison after a promotion draws alike. From 30 October to 2 November it scored
  * the tasks held out since alone, which the Examiner writes above the new reference's grade, so
  * the promotion's confirmation (`confirmed`, `climb.ts`) read the reference only where it was
- * weakest: in the six on record it lost those tasks to the starter 23 to 33 and won the older
- * ones 61 to 20.
+ * weakest: in the six on record it lost those tasks to the starter 24 to 33 and won the older
+ * ones 62 to 17, as scored on 6 November.
  */
 export function scoredSet(events: readonly LogEvent[], target: number, contract: string) {
   const pool = poolOf(events);

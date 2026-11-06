@@ -213,7 +213,7 @@ describe("a promotion's starter read, split by what its tasks had been through",
       confirmed: true,
     });
     expect(read?.origins["read at the promotion"].whole).toEqual({ wins: 7, losses: 0, ties: 0 });
-    expect(read?.origins["written before, undrawn"].whole).toEqual({ wins: 1, losses: 0, ties: 0 });
+    expect(read?.origins["written before, not chosen on"].whole).toEqual({ wins: 1, losses: 0, ties: 0 });
     expect(read?.origins["written after"]).toEqual({
       whole: { wins: 0, losses: 1, ties: 1 },
       validity: { wins: 0, losses: 1, ties: 0 },

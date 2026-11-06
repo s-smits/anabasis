@@ -543,14 +543,10 @@ function flipsOf(pairs: readonly Paired[]): number | null {
  *  reports with only a swapped comparison before them, 5 of which share 48 tasks with it. */
 function overlapOf(events: readonly LogEvent[], fixed: Fixed) {
   const began = events.findIndex(({ kind, data }) => kind === STARTED && data.session === fixed.id);
+  const pair = new Set<unknown>([fixed.old, fixed.fresh]);
   const before = events
     .slice(0, Math.max(0, began))
-    .findLast(
-      ({ kind, data }) =>
-        kind === STARTED &&
-        ((data.old === fixed.old && data.fresh === fixed.fresh) ||
-          (data.old === fixed.fresh && data.fresh === fixed.old)),
-    );
+    .findLast(({ kind, data }) => kind === STARTED && pair.has(data.old) && pair.has(data.fresh));
   if (before === undefined || !isString(before.data.session)) return null;
   const drawnThen = new Set(Array.isArray(before.data.tasks) ? before.data.tasks.filter(isString) : []);
   return { with: before.data.session, tasks: fixed.tasks.filter((task) => drawnThen.has(task)) };

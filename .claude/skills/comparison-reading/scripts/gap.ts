@@ -29,7 +29,7 @@ import { logEvents } from "#tools/runs/registry.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 
 /** One side of one comparison, read against the best on record. */
-export interface SideGap {
+interface SideGap {
   /** The median over tasks of a task's median ratio to the best; null where no task gave one. */
   readonly ratio: number | null;
   readonly atBest: number;

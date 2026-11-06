@@ -51,7 +51,7 @@ const USAGE = `usage:
 --logs     an explicit offline folder of campaign worktrees; default: the registry and every configured host
 --since    campaigns whose last event is at or after this date; five days back by default
 --name     these campaigns only, whenever they ran (repeatable)
---weights  weigh validity, the objective and the bill thus, in place of the tree's WEIGHTS (60,30,10)
+--weights  weigh validity, the objective and the bill thus, in place of the tree's WEIGHTS (60,30,0)
 --level    read every comparison and A/A at this level, in place of the recorded one
 --totals   print the totals alone`;
 const OPTIONS = {
@@ -462,7 +462,7 @@ function scaleOf(args: CommandArgs, tree: Tree): Points {
   if (raw === null) return { validity: 1, objective: 1, bill: 1 };
   const asked = raw.split(",").map(Number);
   if (asked.length !== MEASURES.length || !asked.every((one) => Number.isFinite(one) && one >= 0)) {
-    return args.die(`--weights takes three numbers from 0 up, as 60,30,10; got ${raw}`);
+    return args.die(`--weights takes three numbers from 0 up, as 60,30,0; got ${raw}`);
   }
   const [validity = 0, objective = 0, bill = 0] = asked.map((one, at) => {
     const own = tree.weights[MEASURES[at] ?? "validity"];

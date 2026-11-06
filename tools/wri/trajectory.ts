@@ -1,7 +1,7 @@
 /**
  * How far each campaign had got at each hour, on the few rulers its runs share:
  *
- *   bun tools/wri/wri.ts trajectory --log <log>[,<log>...] [--grades <report>[,<report>]] [--hours 2,4,8] [--horizons 6,12]
+ *   bun tools/wri/wri.ts trajectory --log <log>[,<log>...] [--grades <report>[,<report>]] [--hours 2,4,8]
  *
  * A promotion count says nothing across runs whose comparisons draw other tasks under other rules,
  * and hours to a promotion says nothing of what it bought: a run that reaches a fair harness in two
@@ -12,8 +12,8 @@
  * standing still: an ended run is censored, not flat.
  *
  * The channels stay apart and none is a verdict:
- * - **Climb**: promotions and confirmed promotions by the hour, the longest stretch without one, the
- *   stretch since the last, and the share of promotions in the first half of the run's hours.
+ * - **Climb**: promotions and confirmed promotions by the hour, the longest stretch without one and
+ *   the stretch since the last.
  * - **Lead over the Starter**: points a tallied task each time the Starter sat in a comparison.
  *   The Starter's digest is one across these runs, so it is the one opponent they share, though the
  *   tasks differ. A step's own size reads against a reference that moves, so it is printed apart.
@@ -21,15 +21,19 @@
  *   installed interpreter, package or binary is left out (`ownPrograms`): a harness's first 3,526
  *   files of 6 November were 6 programs and one Python.
  * - **Exam load**: each comparison's clock, tally, and each side's turns and valid share.
- * - **Quality**, only with `--grades`: lane 34's blind grades, one row a line in any report as
- *   `task<TAB>run<TAB>id<TAB>grade` and `version<TAB>run<TAB>digest<TAB>grade`. A version's quality is
- *   the mean of its soundness and the reach it holds, and a version graded 0 or 1 for soundness,
- *   broken or fitted, counts 0 whatever it holds. The Starter holds no method of the domain and is
- *   graded for no change, so its soundness counts 0. Each `--horizons` value gives the mean quality
- *   over the hours up to it. A run that stopped earlier holds its last reference to that hour, marked
- *   `*`: a run capped at two promotions still has its harness, and an early and a late horizon side
- *   by side show a race that stalled. It is a report: it changes no reading and no seat is told it
+ * - **Task grade**, only with `--grades`: the median of lane 34's task grades in each comparison, from
+ *   `task<TAB>run<TAB>id<TAB>grade` rows in any report. It changes no reading and no seat is told it
  *   (`AGENTS.md`, rules 1 and 3).
+ *
+ * A first version read quality off the grades, the mean of a version's soundness and the highest
+ * grade it held, by the hour and up to horizons. A second reading of sixteen runs on 6 November found
+ * that the grade held was the highest grade the exam offered in 30 or 31 of 31 promoted versions, that
+ * 2.62 of the first promotion's mean rise of 2.78 was half a soundness the Starter is given none of,
+ * and that carrying a stopped run's last reference made a stall and a stop one number. So none of it
+ * is computed here, and a stopped run stays censored in every table.
+ *
+ * A read's lead falls by construction as tasks that did not choose the harness join it, so set it
+ * beside the split `starter-reads` prints, and read it across one run's reads only with that in mind.
  *
  * Runs of different commits are described side by side (`AGENTS.md`, section 9). Only a comparison on
  * one set of tasks says which harness is better. Work hours subtract every recorded wait and any
@@ -59,10 +63,7 @@ const INSTALL_MARK = /^(.*\/)?[^/]+\.(dist-info|egg-info|libs)\//;
 /** A program a harness wrote is shorter than this; an interpreter or a library's binary is not. */
 const WRITTEN_BYTES = 256 * 1024;
 
-export interface Grades {
-  readonly tasks: ReadonlyMap<string, number>;
-  readonly versions: ReadonlyMap<string, number>;
-}
+export type Grades = ReadonlyMap<string, number>;
 interface Weight {
   readonly guide: number;
   readonly files: number;
@@ -86,11 +87,14 @@ interface Reading {
   readonly aa: string;
   readonly starter: Side | null;
   readonly built: Side | null;
-  readonly reach: number | null;
+  /** The median task grade of the comparison's tasks, with `--grades`. */
+  readonly grade: number | null;
 }
 interface Promotion {
   readonly harness: string;
   readonly hour: number;
+  /** Whether a starter comparison read it at all. */
+  readonly read: boolean;
   /** The hour its starter read confirmed it, or null. */
   readonly confirmed: number | null;
 }
@@ -101,11 +105,11 @@ export interface Trajectory {
   readonly work: number;
   /** The ending the log records, or null where it records none. */
   readonly ending: string | null;
+  /** The comparison the log stops inside, or null. */
+  readonly cut: string | null;
   readonly candidate: number | null;
   readonly readings: readonly Reading[];
   readonly promotions: readonly Promotion[];
-  /** Quality of a harness by digest, with the Starter under its own digest. */
-  readonly quality: ReadonlyMap<string, number>;
   readonly starter: string | null;
 }
 
@@ -132,11 +136,10 @@ export function clockOf(events: readonly LogEvent[]): (at: string) => number {
   };
 }
 
-/** What each side did in each comparison, and each harness's valid and result counts by task. */
+/** What each side did in each comparison, and the tasks each comparison solved. */
 function solvesOf(events: readonly LogEvent[]) {
   const started = new Map<string, { comparison: string; task: string }>();
   const sides = new Map<string, { turns: number; valid: number; results: number }>();
-  const held = new Map<string, Map<string, { valid: number; results: number }>>();
   const opposed = new Map<string, Set<string>>();
   for (const { kind, data } of events) {
     if (
@@ -159,36 +162,9 @@ function solvesOf(events: readonly LogEvent[]) {
       valid: sum.valid + (outcome === "pass" ? 1 : 0),
       results: sum.results + 1,
     });
-    const tasks = held.get(data.harness) ?? new Map<string, { valid: number; results: number }>();
-    const one = tasks.get(solve.task) ?? { valid: 0, results: 0 };
-    tasks.set(solve.task, { valid: one.valid + (outcome === "pass" ? 1 : 0), results: one.results + 1 });
-    held.set(data.harness, tasks);
     opposed.set(solve.comparison, (opposed.get(solve.comparison) ?? new Set<string>()).add(solve.task));
   }
-  return { sides, held, opposed };
-}
-
-/** The highest grade at which a harness holds valid answers on most of at least two solves (lane 34). */
-export function reachHeld(
-  tasks: ReadonlyMap<string, { readonly valid: number; readonly results: number }>,
-  grade: (task: string) => number | undefined,
-): number | null {
-  const byGrade = new Map<number, { valid: number; results: number }>();
-  for (const [task, { valid, results }] of tasks) {
-    const of = grade(task);
-    if (of === undefined) continue;
-    const sum = byGrade.get(of) ?? { valid: 0, results: 0 };
-    byGrade.set(of, { valid: sum.valid + valid, results: sum.results + results });
-  }
-  const held = [...byGrade].filter(([, { valid, results }]) => results >= 2 && valid * 2 > results);
-  return held.length === 0 ? null : Math.max(...held.map(([of]) => of));
-}
-
-/** A version's quality: the mean of soundness and reach held, 0 for a broken or fitted version. */
-export function qualityOf(soundness: number | null, reach: number | null): number | null {
-  if (reach === null) return null;
-  if (soundness === null) return reach / 2;
-  return soundness <= 1 ? 0 : (soundness + reach) / 2;
+  return { sides, opposed };
 }
 
 /** The side of a comparison as printed, or null where that side ran nothing. */
@@ -201,9 +177,7 @@ export function trajectoryOf(name: string, events: readonly LogEvent[], grades: 
   const clock = clockOf(events);
   const first = events.find(({ kind }) => kind === "comparison.started");
   const starter = isString(first?.data.starter) ? first.data.starter : null;
-  const { sides, held, opposed } = solvesOf(events);
-  const key = (id: string) => `${name}\t${id}`;
-  const gradeOf = (task: string) => grades?.tasks.get(key(task));
+  const { sides, opposed } = solvesOf(events);
   const hourOfSession = new Map<string, number>();
   const readings = lastReports(events).map(({ session, index, data }): Reading => {
     const hour = clock(events[index]?.at ?? "");
@@ -221,7 +195,7 @@ export function trajectoryOf(name: string, events: readonly LogEvent[], grades: 
     const noise = testOf(scoresIn(data.noise));
     const starterFresh = data.fresh === starter;
     const starterOld = data.old === starter;
-    const graded = [...(opposed.get(session) ?? [])].flatMap((task) => gradeOf(task) ?? []);
+    const graded = [...(opposed.get(session) ?? [])].flatMap((task) => grades?.get(`${name}\t${task}`) ?? []);
     return {
       session,
       hour,
@@ -233,7 +207,7 @@ export function trajectoryOf(name: string, events: readonly LogEvent[], grades: 
       aa: `${String(noise.wins)}-${String(noise.losses)}-${String(noise.ties)}`,
       starter: starterFresh || starterOld ? sideOf(sides, session, starter) : null,
       built: sideOf(sides, session, starterFresh ? data.old : data.fresh),
-      reach: graded.length === 0 ? null : median(graded),
+      grade: graded.length === 0 ? null : median(graded),
     };
   });
   const promotions = epochsOf(events).flatMap((epoch): Promotion[] => {
@@ -242,27 +216,28 @@ export function trajectoryOf(name: string, events: readonly LogEvent[], grades: 
       epoch.confirmed === true && epoch.starter_read !== null
         ? hourOfSession.get(epoch.starter_read)
         : undefined;
-    return [{ harness: epoch.reference, hour: clock(events[epoch.from]?.at ?? ""), confirmed: read ?? null }];
+    return [
+      {
+        harness: epoch.reference,
+        hour: clock(events[epoch.from]?.at ?? ""),
+        read: epoch.starter_read !== null,
+        confirmed: read ?? null,
+      },
+    ];
   });
-  const quality = new Map<string, number>();
-  for (const harness of [...(starter === null ? [] : [starter]), ...promotions.map((one) => one.harness)]) {
-    const reach = reachHeld(held.get(harness) ?? new Map(), gradeOf);
-    const soundness = grades?.versions.get(key(harness.slice(0, 8))) ?? null;
-    const value = qualityOf(soundness, reach);
-    if (value !== null) quality.set(harness, value);
-  }
   const end = events.at(-1)?.at ?? "";
   const ending = events.findLast(({ kind }) => kind === "campaign.ended")?.data.ending;
+  const open = events.findLast(({ kind }) => kind === "comparison.started")?.data.session;
   return {
     name,
     opened: events[0]?.at ?? "",
     elapsed: (Date.parse(end) - Date.parse(events[0]?.at ?? end)) / HOUR,
     work: clock(end),
     ending: isString(ending) ? ending : null,
+    cut: isString(open) && !hourOfSession.has(open) ? open : null,
     candidate: first === undefined ? null : clock(first.at),
     readings,
     promotions,
-    quality,
     starter,
   };
 }
@@ -304,18 +279,16 @@ export function weightOf(state: string): Weight | null {
   return { guide: nonblank(text(`${AGENT_DIR}${GUIDE_FILE}`)), files: own.length, lines };
 }
 
-/** The grades of a lane 34 report: its `task` and `version` rows, anything else passed over. */
+/** The task grades of a lane 34 report: its `task` rows, anything else passed over. */
 export function gradesIn(text: string): Grades {
   const tasks = new Map<string, number>();
-  const versions = new Map<string, number>();
   for (const line of text.split("\n")) {
     const [graded, run, id, grade] = line.split("\t");
     const value = Number(grade);
-    if (run === undefined || id === undefined || grade === undefined || !Number.isFinite(value)) continue;
-    if (graded === "task") tasks.set(`${run}\t${id}`, value);
-    if (graded === "version") versions.set(`${run}\t${id.slice(0, 8)}`, value);
+    if (graded !== "task" || run === undefined || id === undefined) continue;
+    if (grade !== undefined && Number.isFinite(value)) tasks.set(`${run}\t${id}`, value);
   }
-  return { tasks, versions };
+  return tasks;
 }
 
 const fixed = (value: number | null, places = 1) => (value === null ? "-" : value.toFixed(places));
@@ -332,24 +305,6 @@ function referenceAt(
   hour: number,
 ): string | null {
   return promotions.findLast((one) => one.hour <= hour)?.harness ?? starter;
-}
-
-/** The mean of a harness-valued measure over the hours to `horizon`. Past the run's end its last
- *  reference holds, since the run still has that harness. Null where a stretch has no value. */
-export function meanTo(
-  run: Pick<Trajectory, "promotions" | "starter">,
-  horizon: number,
-  value: (harness: string | null) => number | null,
-): number | null {
-  if (horizon <= 0) return null;
-  const marks = [0, ...run.promotions.map(({ hour }) => hour).filter((hour) => hour < horizon), horizon];
-  let sum = 0;
-  for (const [nth, from] of marks.slice(0, -1).entries()) {
-    const at = value(referenceAt(run, from));
-    if (at === null) return null;
-    sum += at * ((marks[nth + 1] ?? horizon) - from);
-  }
-  return sum / horizon;
 }
 
 function row(cells: readonly (string | number)[]): string {
@@ -390,23 +345,32 @@ function stretchesOf(runs: readonly Trajectory[]): string {
       "promotions at",
       "confirmed",
       "second gap over first",
+      "less its starter reads",
       "longest gap",
       "since the last",
     ],
     runs.map((run) => {
       const [first, second] = run.promotions.map(({ hour }) => hour);
       const last = run.promotions.at(-1)?.hour ?? 0;
+      const count = (of: (one: Promotion) => boolean) => run.promotions.filter(of).length;
+      // A starter comparison in the gap is owed by the host, and no candidate needs it.
+      const owed = run.readings.filter(
+        ({ lead, hour }) => lead !== null && hour > (first ?? 0) && hour <= (second ?? 0),
+      );
+      const gap = (less: number) =>
+        first === undefined || second === undefined ? "-" : fixed((second - first - less) / first);
       return [
         run.name,
         run.opened.slice(5, 16),
-        run.ending ?? "none",
+        run.ending ?? (run.cut === null ? "none" : `none, cut in ${run.cut}`),
         fixed(run.elapsed),
         fixed(run.work),
         fixed(run.candidate),
         fixed(run.readings[0]?.hour ?? null),
         run.promotions.map(({ hour }) => fixed(hour)).join(", ") || "none",
-        `${String(run.promotions.filter(({ confirmed }) => confirmed !== null).length)} of ${String(run.promotions.length)}`,
-        first === undefined || second === undefined ? "-" : fixed((second - first) / first),
+        `${String(count(({ confirmed }) => confirmed !== null))} confirmed, ${String(count(({ read }) => read))} read, ${String(count(({ read }) => !read))} never read`,
+        gap(0),
+        gap(owed.reduce((sum, { took }) => sum + (took ?? 0), 0)),
         fixed(longestGap(run)),
         fixed(run.work - last),
       ];
@@ -432,7 +396,7 @@ function comparisonsOf(run: Trajectory): string {
       one.built === null
         ? "-"
         : `${fixed(one.built.turns / Math.max(one.built.results, 1))}, ${String(one.built.valid)}/${String(one.built.results)}`,
-      fixed(one.reach),
+      fixed(one.grade),
     ]),
   );
   return [
@@ -448,7 +412,7 @@ function comparisonsOf(run: Trajectory): string {
       "lead over the Starter",
       "Starter turns, valid",
       "built turns, valid",
-      "median reach",
+      "median task grade",
     ]),
     row(Array.from({ length: 11 }, () => "---")),
     ...lines,
@@ -460,10 +424,9 @@ export function trajectoryText(
   options: {
     readonly grades: Grades | null;
     readonly hours: readonly number[];
-    readonly horizons: readonly number[];
   },
 ): string {
-  const { grades, hours, horizons } = options;
+  const { grades, hours } = options;
   const runs = campaigns.map(({ name, events }) => trajectoryOf(name, events, grades));
   runs.sort((a, b) => Date.parse(a.opened) - Date.parse(b.opened));
   const weights = new Map<string, Weight | null>();
@@ -485,23 +448,6 @@ export function trajectoryText(
     const of = weight(run, referenceAt(run, hour));
     return of === null ? "?" : `${String(of.guide)}/${String(of.files)}/${String(of.lines)}`;
   });
-  const quality =
-    grades === null
-      ? "No `--grades`: quality and reach need lane 34's blind grades."
-      : [
-          byHour(runs, hours, (run, hour) => fixed(run.quality.get(referenceAt(run, hour) ?? "") ?? null)),
-          "Mean quality up to each horizon in work hours, `*` where the run stopped first and its last reference holds:",
-          table(
-            ["run", ...horizons.map((horizon) => `${String(horizon)} h`)],
-            runs.map((run) => [
-              run.name,
-              ...horizons.map((horizon) => {
-                const mean = meanTo(run, horizon, (harness) => run.quality.get(harness ?? "") ?? null);
-                return `${fixed(mean, 2)}${run.work < horizon ? "*" : ""}`;
-              }),
-            ]),
-          ),
-        ].join("\n\n");
   return [
     "Runs of different commits on different tasks, described side by side: only a comparison on one set of tasks says which harness is better. `.` means the run had stopped by that hour.",
     "### Stretches, in work hours",
@@ -512,8 +458,6 @@ export function trajectoryText(
     led,
     "### The reference's weight by the hour: guide lines / own program files / their lines",
     weighed,
-    "### Quality by the hour",
-    quality,
     "### Each comparison",
     ...runs.map(comparisonsOf),
   ].join("\n\n");

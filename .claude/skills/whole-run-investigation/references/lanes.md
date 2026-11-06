@@ -1333,10 +1333,12 @@ while promotions go on.
 Add each grade under `## Grade rows` as one tab-separated line, `task<TAB>campaign<TAB>id<TAB>grade`
 and `version<TAB>campaign<TAB>digest<TAB>grade`. The primary reads them with `wri.ts trajectory
 --log <logs> --grades <report>`, which sets every campaign on one clock of work hours: what each had
-at each hour (promotions, confirmations, its lead over the Starter, the reference's weight and
-quality), each comparison's own hours, the gaps between promotions, and mean quality up to an early
-and a late horizon, so a race that stalled shows beside a slow start that kept climbing. Grades read
-across campaigns need one grader, or graders who share anchor tasks that say how far they differ.
+at each hour (promotions, confirmations, its lead over the Starter, the reference's weight), each
+comparison's own hours and median task grade, and the gaps between promotions with and without the
+starter comparisons in them. Reach and soundness stay this lane's reading and are not summed into one
+number: reach held mostly reads the highest grade the exam offered, and a stopped run reads as stopped.
+Grades read across campaigns need one grader, or graders who share anchor tasks that say how far they
+differ.
 
 ## Retired from v1
 

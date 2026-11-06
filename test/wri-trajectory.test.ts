@@ -5,11 +5,9 @@ import {
   clockOf,
   gradesIn,
   longestGap,
-  meanTo,
   ownPrograms,
-  qualityOf,
-  reachHeld,
   trajectoryOf,
+  trajectoryText,
 } from "#tools/wri/trajectory.ts";
 
 const HOUR = 3_600_000;
@@ -78,82 +76,26 @@ describe("what a harness wrote", () => {
   });
 });
 
-describe("reach held", () => {
-  const grade = (task: string) => ({ easy: 2, hard: 5, ungraded: undefined })[task];
-
-  test("the highest grade where most solves are valid", () => {
-    const tasks = new Map([
-      ["easy", { valid: 2, results: 2 }],
-      ["hard", { valid: 2, results: 2 }],
-    ]);
-    expect(reachHeld(tasks, grade)).toBe(5);
-  });
-
-  test("half is not most, and a single solve is too few", () => {
-    const half = new Map([
-      ["easy", { valid: 2, results: 2 }],
-      ["hard", { valid: 1, results: 2 }],
-    ]);
-    expect(reachHeld(half, grade)).toBe(2);
-    expect(reachHeld(new Map([["hard", { valid: 1, results: 1 }]]), grade)).toBeNull();
-  });
-
-  test("an ungraded task reads as unknown, never as held", () => {
-    expect(reachHeld(new Map([["ungraded", { valid: 2, results: 2 }]]), grade)).toBeNull();
-  });
-});
-
-describe("quality", () => {
-  test("a broken or fitted version counts 0 whatever it holds", () => {
-    expect(qualityOf(1, 6)).toBe(0);
-    expect(qualityOf(0, 6)).toBe(0);
-  });
-
-  test("the Starter counts its reach beside a soundness of 0, and no reach reads as unknown", () => {
-    expect(qualityOf(null, 4)).toBe(2);
-    expect(qualityOf(5, 3)).toBe(4);
-    expect(qualityOf(5, null)).toBeNull();
-  });
-});
-
 describe("over the hours", () => {
   const run = (promotions: number[], work: number) => ({
-    promotions: promotions.map((hour, nth) => ({ harness: `h${String(nth)}`, hour, confirmed: null })),
+    promotions: promotions.map((hour, nth) => ({
+      harness: `h${String(nth)}`,
+      hour,
+      read: false,
+      confirmed: null,
+    })),
     work,
-    starter: "s",
-  });
-  const value = (harness: string | null) => ({ s: 0, h0: 4, h1: 6 })[harness ?? ""] ?? null;
-
-  test("the mean weighs each harness by the hours it was the reference", () => {
-    expect(meanTo(run([2, 6], 8), 8, value)).toBeCloseTo((4 * 4 + 6 * 2) / 8);
-  });
-
-  test("a run stopped early holds its last reference to the horizon", () => {
-    expect(meanTo(run([2], 4), 8, value)).toBeCloseTo((4 * 6) / 8);
-  });
-
-  test("a race reads above a slow start early and level with it late", () => {
-    const race = run([1], 10);
-    const slow = run([6], 10);
-    expect(meanTo(race, 4, value)).toBeGreaterThan(meanTo(slow, 4, value) ?? 0);
-    expect((meanTo(race, 24, value) ?? 0) - (meanTo(slow, 24, value) ?? 0)).toBeLessThan(
-      (meanTo(race, 4, value) ?? 0) - (meanTo(slow, 4, value) ?? 0),
-    );
   });
 
   test("the longest gap counts the stretch after the last promotion", () => {
     expect(longestGap(run([1, 2], 10))).toBeCloseTo(8);
     expect(longestGap(run([], 3))).toBeCloseTo(3);
   });
-
-  test("a stretch with no value leaves the mean unknown", () => {
-    expect(meanTo(run([2], 4), 8, () => null)).toBeNull();
-  });
 });
 
 describe("grades", () => {
-  test("rows are read among other lines, and a digest by its first eight characters", () => {
-    const { tasks, versions } = gradesIn(
+  test("task rows are read among other lines, and a version's row and a word for a grade are passed over", () => {
+    const tasks = gradesIn(
       [
         "## Grade rows",
         "task\trun\tex-1\t4",
@@ -164,7 +106,7 @@ describe("grades", () => {
     );
     expect(tasks.get("run\tex-1")).toBe(4);
     expect(tasks.has("run\tex-2")).toBe(false);
-    expect(versions.get("run\tabcdef01")).toBe(5);
+    expect(tasks.size).toBe(1);
   });
 });
 
@@ -205,5 +147,30 @@ describe("a campaign's trajectory", () => {
     const run = trajectoryOf("run", events, null);
     expect(run.ending).toBeNull();
     expect(run.promotions[0]?.hour).toBeCloseTo(0.75);
+  });
+
+  test("a promotion no starter comparison followed reads as never read, apart from one read and missed", () => {
+    expect(trajectoryOf("run", events.slice(0, 4), null).promotions[0]?.read).toBe(false);
+    expect(trajectoryOf("run", events, null).promotions[0]?.read).toBe(true);
+  });
+
+  test("a log that stops inside a comparison says so, and a reported one does not", () => {
+    const open = event(1.5, "comparison.started", { session: "g-3", old: BUILT, fresh: BUILT });
+    expect(trajectoryOf("run", [...events, open], null).cut).toBe("g-3");
+    expect(trajectoryOf("run", events, null).cut).toBeNull();
+  });
+
+  test("the second gap is also read without the starter comparisons that sat in it", () => {
+    const later = [...events, event(1.5, "harness.promoted", { harness: `c${"0".repeat(63)}` })];
+    const text = trajectoryText([{ name: "run", log: "/nowhere/log.jsonl", events: later }], {
+      grades: null,
+      hours: [1],
+    });
+    const cells = text
+      .split("\n")
+      .find((line) => line.startsWith("| run | 11-01"))
+      ?.split(" | ");
+    // The first promotion at 0.75, the second at 1.5, and a starter comparison of 0.25 between them.
+    expect(cells?.slice(9, 11)).toEqual(["1.0", "0.7"]);
   });
 });

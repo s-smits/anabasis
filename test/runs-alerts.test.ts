@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "../src/meta/file
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { join } from "../src/meta/path.ts";
-import { type AlertState, alertsOf, type HostRows, type Row } from "../tools/runs/alerts.ts";
+import { type AlertState, alertsOf, type HostRows, onAlerts, type Row } from "../tools/runs/alerts.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
 const CLI = "tools/runs/cli.ts";
@@ -228,6 +228,22 @@ describe("the verb over real logs", () => {
   }
   const STARTER = "s".repeat(64);
   const HARNESS = `abcd1234${"e".repeat(56)}`;
+
+  it("leaves out a seed a rehearsal writes, and reads one a launch continued", () => {
+    const { folder } = host();
+    const run = {
+      name: "the-run",
+      path: join(folder, "log.jsonl"),
+      tree: "",
+      end: "comparison.reported" as const,
+      seed: true,
+    };
+    expect(onAlerts(run, true, 0)).toBe(false);
+    expect(onAlerts({ ...run, seed: false }, true, 0)).toBe(true);
+    writeFileSync(join(folder, "launch-run-1.json"), JSON.stringify({ at: "2026-11-06T07:00:00.000Z" }));
+    expect(onAlerts(run, true, 0)).toBe(true);
+    expect(onAlerts(run, false, 0)).toBe(false);
+  });
 
   it("reads a promotion and its starter comparison from a log, prints each once and exits 0", () => {
     const { event, look, folder } = host();

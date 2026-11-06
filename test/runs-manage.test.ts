@@ -5,7 +5,8 @@ import { chmodSync, mkdirSync, rmSync, writeFileSync } from "../src/meta/filesys
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath, capturedSpawn } from "../src/meta/process.ts";
-import { loginEnv, restsAfter } from "../tools/runs/manage.ts";
+import { LIMITS } from "../tools/d2/campaign.ts";
+import { loginEnv, restsAfter, solvesMs } from "../tools/runs/manage.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
 const KEY = "CLAUDE_CODE_OAUTH_TOKEN";
@@ -62,7 +63,23 @@ describe("going on with a campaign", () => {
     }
   });
 
-  it("pauses at the next finished solve or tool call, whatever is open, and at no other event", () => {
+  it("pauses at the next step only once no solve is open", () => {
+    const solving = [
+      event("solve.started", { solve: "s-1" }),
+      event("solve.started", { solve: "s-2" }),
+      event("solve.finished", { solve: "s-1" }),
+    ];
+    expect(restsAfter(solving, "next", 0)).toBe(false);
+    expect(restsAfter([...solving, event("solve.finished", { solve: "s-2" })], "next", 0)).toBe(true);
+  });
+
+  it("allows open solves the limit the run recorded, and the default limit where it recorded none", () => {
+    const setting = event("campaign.setting", { minutes: 45, target: 24, solver: null, modelTurns: 20 });
+    expect(solvesMs([setting])).toBe(46 * 60_000);
+    expect(solvesMs([])).toBe((LIMITS.wallSeconds + 60) * 1000);
+  });
+
+  it("pauses at the next finished solve or tool call, sessions open or not, and at no other event", () => {
     const drafting = [
       event("exam.started", { session: "x-1" }),
       event("exam.call", { session: "x-1", turn: 1 }),

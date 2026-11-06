@@ -6,10 +6,15 @@
  * It is left while a move runs and read at the next move's boundary, by the table for a stop and
  * for other tasks (`decide.ts`) and by the campaign's command for the budget
  * (`tools/d2/harness-builder.ts`). It changes the move after it and nothing in the one that was
- * running, since a comparison's terms are fixed before its first solve. No seat reads a word or its reason.
+ * running, since a comparison's terms are fixed before its first solve; `PAUSE` holds that move's
+ * further solves and changes no term. No seat reads a word or its reason.
  */
 import type { LogEvent } from "../kernel/log.ts";
 import { isNumber, isString } from "../meta/json-shape.ts";
+
+/** The word `runs pause` leaves to let the campaign's open solves finish: the solve queue starts no
+ *  other while the process it was left for runs (`queued`, `tools/d2/host.ts`). No move reads it. */
+export const PAUSE = "pause";
 
 /** A word the operator left for the campaign, by its place in the log. */
 export interface Word {

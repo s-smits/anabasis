@@ -585,8 +585,8 @@ Each pull request needs one importance label and at least one category (`CATEGOR
 `tools/runtime/land.ts`). `I0` blocks a release; `I1` protects evaluation validity,
 prevents serious run failures or broadly simplifies the tree; `I2` is a bounded improvement;
 `I3` covers reporting, wording and convenience. Write an imperative commit subject and explain
-the problem, resulting behaviour and evidence in the body. Follow `stack-pr` section 7 for PR
-text and update it after a push. Push only your authorised branch, with `--force-with-lease`
+the problem, resulting behaviour and evidence in the body. Title and describe a pull request in
+the style of `stack-pr` section 7, and update its text after a push. Push only your authorised branch, with `--force-with-lease`
 when rewriting. Moving your own pull request onto the top of the stack is yours to do; merging,
 and restacking other sessions' branches, take the operator's authority. Before
 `bun run land -- <top> --merge`, three reviewer subagents read the landing side by side, each a
@@ -625,7 +625,8 @@ boundaries rather than exact wording.
 Write plain, understated British English for a careful colleague who has not read the conversation.
 
 - Lead with the change and a plain verb, and write "X instead of Y" rather than a negation and its
-  correction. A title is a short imperative sentence; the body says why a mechanism matters first.
+  correction. A title is a short imperative sentence in the system's own nouns (`stack-pr` section 7); the
+  body says why a mechanism matters first.
 - Give exact results with the axis named ("12 cases passed, 0 failed"), and keep tests,
   observations, estimates and uncertainty apart.
 - Use the terms of section 14 in one meaning each, and suffix an ambiguous name ("the Builder

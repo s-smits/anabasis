@@ -7,9 +7,9 @@ import type { OptionalEnvValues } from "../agent/backends/scrub-env.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync } from "../meta/filesystem.ts";
 import { activeDeveloperBinDirs } from "../meta/host-tool.ts";
-import { dirname, join, resolve } from "../meta/path.ts";
+import { dirname, isAbsolute, join, resolve } from "../meta/path.ts";
 import { keysIf } from "../meta/optional-key.ts";
-import { tmpdir } from "../meta/os.ts";
+import { homedir, tmpdir } from "../meta/os.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 
@@ -87,10 +87,10 @@ export function canonicalRoots(paths: readonly string[]): string[] {
  * the shell using tools installed somewhere the list did not name. Both read this one list, so
  * adding an installation location updates access and command lookup together.
  */
-export function darwinToolchainInstallRoots(home: string | undefined = Bun.env.HOME): string[] {
+export function darwinToolchainInstallRoots(): string[] {
   const shared = ["/usr/local"];
-  const perUser =
-    home === undefined || home === "" ? [] : TOOLCHAIN_HOME_ROOTS.map((relative) => join(home, relative));
+  const home = closedHome();
+  const perUser = home === undefined ? [] : TOOLCHAIN_HOME_ROOTS.map((relative) => join(home, relative));
   return [...shared, ...perUser].filter(existsSync).toSorted(compareCodeUnits);
 }
 
@@ -179,11 +179,24 @@ export function toolchainPathDirs(): string[] {
   const scan = { onlyFiles: false, absolute: true, followSymlinks: true };
   const glob = (cwd: string) => [...new Bun.Glob("opt/python*/libexec/bin").scanSync({ ...scan, cwd })];
   const brewed = user.map(dirname).filter(existsSync).flatMap(glob).toSorted(compareCodeUnits);
-  const home = Bun.env.HOME;
-  const pinned = home === undefined || home === "" ? [] : [pinnedPythonDir(home)];
+  const home = closedHome();
+  const pinned = home === undefined ? [] : [pinnedPythonDir(home)];
   return [...new Set([...pinned, ...user, ...brewed.toReversed(), ...installed, ...system])].filter(
     existsSync,
   );
+}
+
+/**
+ * The host's home, for the home a seat's wall closes and for the toolchains and pinned Python it puts
+ * on a seat's path: `homedir()`, which is `HOME`, or the account's home from the user database where
+ * `HOME` is unset or empty. A relative `HOME` comes back as it is and resolves against the working
+ * directory, so the wall closed that folder in the home's place, leaving the operator's home open to
+ * every seat, and put a folder there first on a seat's path, where a `python3` the seat planted ran
+ * (a layer walk under the wall, 7 November 2026). Undefined then, so the wall refuses to start.
+ */
+export function closedHome(): string | undefined {
+  const home = homedir();
+  return isAbsolute(home) ? home : undefined;
 }
 
 /**
@@ -217,10 +230,11 @@ export function pinnedPythonDir(home: string): string {
  * the compiler it starts; with the developer directory ahead of `/usr/bin` on PATH no shim runs, and
  * `cc` started by its own path finds no `<stdio.h>` unless the name is set.
  */
-export function hostToolchainEnv(home: string | undefined = Bun.env.HOME) {
+export function hostToolchainEnv() {
   const sdk = darwinAnswer("/usr/bin/xcrun", "--show-sdk-path");
   const compiler = sdk === undefined ? {} : { SDKROOT: sdk };
-  if (home === undefined || home === "") return compiler;
+  const home = closedHome();
+  if (home === undefined) return compiler;
   const rustup = join(home, ".rustup");
   return { ...compiler, ...keysIf(existsSync(rustup), () => ({ RUSTUP_HOME: rustup })) };
 }

@@ -521,9 +521,11 @@ the runs it names and no others. The skills own the procedures:
 `bun run runs` lists every verb of the run CLI with what it does, and `bun run runs <verb> --help`
 prints that verb's options.
 
-An anti-stall hook is an option, off by default. Switched on, it runs `bun run runs pulse` every
-290 seconds and wakes an idle session with the pulse's lines. It is switched on only on the
-operator's word; a session watches its runs with `Monitor` otherwise.
+An anti-stall hook is on by default. It runs `bun run runs pulse` every 290 seconds and wakes an
+idle session with the pulse's lines, only when one carries a warning, a report, an ending or a
+start, or a run has been quiet for 30 minutes. Outside an Anabasis tree it nudges an idle session
+once an interval. It is paused only on the operator's word, and a session still follows its runs
+with `Monitor` beside it.
 
 Nine conditions hold in all of them:
 

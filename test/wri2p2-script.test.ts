@@ -1,7 +1,7 @@
 // WRI2P2's driver reads each run's trigger from its log and an investigation's next step from its
 // folder, so a session or a timer takes the iteration one printed step at a time.
 import { afterAll, describe, expect, it } from "bun:test";
-import { nextOf, pullOf, rowOf, triggerOf } from "#skills/run-improvement-campaign/scripts/wri2p2.ts";
+import { idsOf, nextOf, pullOf, rowOf, triggerOf } from "#skills/run-improvement-campaign/scripts/wri2p2.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
@@ -84,8 +84,29 @@ describe("the next step of an investigation", () => {
     writeFileSync(report, "# Lane 1\n");
     expect(step()[0]).toStartWith("step: synthesise");
     write("synthesis.md", "notes");
+    // The run `r` the investigation reads owes its predictions, then each one's outcome, before vetting.
+    expect(step()[0]).toStartWith("step: predictions · r has no predictions-r.md");
+    const cycle = join(root, "cycle");
+    mkdirSync(cycle, { recursive: true });
+    const table = (ids: string[]) =>
+      `| id | claim |\n| --- | --- |\n${ids.map((id) => `| ${id} | x |`).join("\n")}\n`;
+    writeFileSync(join(cycle, "predictions-r.md"), table(["P1", "P2"]));
+    expect(step()[0]).toStartWith("step: outcomes · resolve P1, P2 of");
+    writeFileSync(join(cycle, "outcomes-r.md"), table(["P1"]));
+    expect(step()[0]).toStartWith("step: outcomes · resolve P2 of");
+    writeFileSync(join(cycle, "outcomes-r.md"), table(["P1", "P2"]));
+    expect(step()[0]).toStartWith("step: still-missing");
+    // A list with no section for what stays missing on purpose is not yet the file.
+    writeFileSync(join(cycle, "still-missing-r.md"), "# Still missing\n\n- P2\n");
+    expect(step()[0]).toStartWith("step: still-missing");
+    writeFileSync(
+      join(cycle, "still-missing-r.md"),
+      "# Still missing\n\n- P2\n\n## Intentionally opposed\n\n- none\n",
+    );
     expect(step()[0]).toStartWith("step: vet");
     write("vetting.md", "rows");
+    expect(step()[0]).toStartWith("step: across");
+    write("cross-domain.md", "rows");
     expect(step()[0]).toStartWith("step: plan");
     write("plan.md", "# Plan\n\nrows\n");
     expect(step()[0]).toStartWith("step: implement");
@@ -94,6 +115,13 @@ describe("the next step of an investigation", () => {
     expect(step()[1]).toContain("--as forkedPR602");
     expect(step(["jobstat-fresh-opus-forkedPR602"])).toEqual([
       "step: done · #602 is measured by jobstat-fresh-opus-forkedPR602",
+    ]);
+  });
+
+  it("reads a ledger's ids from each row's first cell, past its header and rule", () => {
+    expect(idsOf("# P\n\n| id | claim |\n| :-- | --- |\n| P1 | a |\n|P2|b|\ntext | not a row\n")).toEqual([
+      "P1",
+      "P2",
     ]);
   });
 

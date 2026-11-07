@@ -65,15 +65,26 @@ stops, launches and merges nothing. The whole-run investigation stays a tool of 
    ironic that we need to wait"), or an ending after a comparison. The trigger stops nothing and no
    run carries a cap: each promotion alerts (`runs alerts`), and a run is paused on the operator's
    word after that promotion's starter comparison reports (`AGENTS.md`, factor 1). Resolve every row
-   of `Predictions.md` whose event exists.
+   of the run's `predictions-<run>.md` whose event exists into its `outcomes-<run>.md`, and keep
+   its `still-missing-<run>.md` (step 1 of the running window).
 2. **Investigate** it with whole-run-investigation, opened by `wri2p2.ts open`, with the other
    triggered runs of the same code and pack as equals where there are any. A live run is read on a
    frozen copy (`wri.ts start --snapshot`) and goes on: stopping one is the operator's (`AGENTS.md`,
    section 3), and a run that will not promote is not stopped for its investigation. Then
    `wri2p2.ts next <dir>` at each step: the two blank sections, `lanes --agents 4`, one subagent a
-   lane session (it prints each one's line), the collection and the synthesis.
-3. **Vet, then plan** (steps 6 and 7): `vetting.md` and `plan.md` in the investigation's folder.
-   The plan holds repairs and tunings: read [the levers](references/levers.md) against the binding
+   lane session (it prints each one's line), the collection and the synthesis. Before the vetting,
+   `next` holds the iteration until each run it reads has its `predictions-<run>.md`, every row of
+   it a row in `outcomes-<run>.md`, and a `still-missing-<run>.md` with its "Intentionally opposed"
+   section, so each iteration shows whether its predictions were handled and what was left out.
+3. **Vet, read across domains, then plan** (steps 6 and 7): `vetting.md`, `cross-domain.md` and
+   `plan.md` in the investigation's folder. A fix found in one domain's run lands in every domain,
+   so between the vetting and the plan one read-only subagent reads the vetted investigations of the
+   other domains, the newest 5 to 10 and none from before the previous minor release (at 0.10.x,
+   from 0.9.0 on). It writes `cross-domain.md`: for each confirmed problem, whether those domains
+   show it and what differed where they do not, and whether an earlier investigation already fixed
+   it, so a fix that did not hold is named as one; for each candidate fix, what it changes in each
+   domain and how to keep that intact, with the cheapest test that would settle it. A plan row
+   whose fix would move another domain names that domain's line there. The plan holds repairs and tunings: read [the levers](references/levers.md) against the binding
    link, and give each lever the run's evidence selects a row, tuned or kept with one checkable
    sentence. A row the operator must decide is asked now, and implementing goes on around it.
 4. **Implement the plan as one pull request** on the top of the stack (step 8), with each row's
@@ -82,7 +93,9 @@ stops, launches and merges nothing. The whole-run investigation stays a tool of 
    later reading can name the fix it measures. A row whose label an open pull request of your own
    already carries goes there instead, and the iteration's pull request names it.
 5. **Predict, then fork at that pull request's head** (steps 1 and 2, with the top in place of the
-   release), `--as forkedPR<N>`, by which `next` finds the runs that measure it. The slot an ended
+   release), `--as forkedPR<N>`, by which `next` finds the runs that measure it. Each run's
+   `predictions-<run>.md` is written before its `runs fresh ... --yes`, under the name the fork
+   will give it. The slot an ended
    run held goes to a fresh run at once, on the host and login with the most room under their caps.
    A slot free with no iteration to measure is filled at the current top too: capacity left idle
    measures nothing.
@@ -129,11 +142,23 @@ the operator and ask, rather than land first.
    | id | held, falsified or unreached | event or count | time |   (Resolutions)
    ```
 
-   The cycle-wide predictions are rows of the second table, so every prediction and its resolution
-   sit in one file. A peer session's ledger for the same runs is read and linked, not repeated.
-   Every review first checks that `Predictions.md` exists. Where it is missing, the review
-   writes it before anything else, marked as written after launch, with each run's solves at the
-   time of writing. The v0.7.3 runs opened with only cycle-wide predictions, and
+   The cycle-wide predictions are rows of the second table. A peer session's ledger for the same
+   runs is read and linked, not repeated.
+   **Each run keeps a pair beside it**, in the same folder: `predictions-<run>.md`, written before
+   that run's `runs fresh ... --yes`, holds the rows the run settles (the first table's rows its
+   code runs, and its own, in the first table's columns), and `outcomes-<run>.md` holds one row a
+   prediction id, in the Resolutions columns, written as each event lands and closed at the
+   run's ending. A third file, `still-missing-<run>.md`, names what the run still lacks: each
+   falsified or unreached id and each problem it shows that no fix holds yet, with where it is
+   carried. Its section `## Intentionally opposed` names what stays missing on purpose, each as a
+   trade-off: what leaving it out buys, what it costs, and why, from a trade-off of `AGENTS.md`
+   section 1, a principle or the operator's word. A gap left by design is then never read as one
+   forgotten, and the next iteration sees which trade-offs it inherits. `Predictions.md` links
+   each run's three files, so the cycle reads whole from one file and each run from three.
+   `wri2p2.ts next` holds an iteration before its vetting while a run it reads lacks one of them,
+   an id has no outcome row, or the opposed section is missing, and names what is open. Every review first checks that `Predictions.md` and each run's
+   `predictions-<run>.md` exist. Where one is missing, the review writes it before anything
+   else, marked as written after launch, with the run's solves at the time of writing. The v0.7.3 runs opened with only cycle-wide predictions, and
    their per-PR ledger was written 15 minutes after launch; the next cycle's ledger was written
    before its fork but without labels, lanes or groups, which the tables above now ask for.
 2. **Fork at the release**, once step 1 is on record. Take the commit the last release merged (`git
@@ -152,7 +177,8 @@ the operator and ask, rather than land first.
    passed when run alone. Fresh performs the fleet login admission before each launch. Tag
    `run/<name>/1` at the commit and push the tag.
 3. **Read the runs** with `scripts/wri2p2.ts` (above) at every review and at every milestone,
-   and resolve each prediction the hour its event lands, in the ledger's Resolutions. A defect seen
+   and resolve each prediction the hour its event lands: a run's rows in its `outcomes-<run>.md`,
+   the cycle-wide rows in the ledger's Resolutions. A defect seen
    live is noted for the plan of step 7; the run
    is not stopped to fix it (`AGENTS.md`, section 10, item 6).
 
@@ -169,13 +195,14 @@ its end, and carry on in the same order; the window gives no step a reason to sk
    (`tools/d2/word.ts --stop`) waits for the next move boundary, which inside a led campaign can be
    an Examiner session of an hour or more: two words once had not acted 20
    minutes later. A stopped run's log stays where it is. Resolve every prediction whose event
-   exists, and mark the rest unreached.
+   exists, and mark the rest unreached, so its `outcomes-<run>.md` has a row for every id.
 5. **Investigate** the stopped runs as equals with
    [whole-run-investigation](../whole-run-investigation/SKILL.md): start, lanes, collect, the
    isolated lanes 5 and 19 where their triggers and the reports call for them, then the synthesis.
 6. **Vet** the synthesis: check each finding against the logs and against the head (a fix may
    already be on the stack), and mark it confirmed, plausible or refuted (whole-run-investigation,
-   "Vetting"). Backtrack every row of `Predictions.md` there first: recount it from the logs,
+   "Vetting"). Backtrack every row of `Predictions.md` and of each run's `predictions-<run>.md`
+   there first, beside its row in `outcomes-<run>.md`: recount it from the logs,
    triage and vet each falsified row as a finding, and carry each unreached row into the next
    cycle's ledger. Sorting a finding by owner is triage, and checks nothing. A finding whose
    behaviour `AGENTS.md` documents as intended is an operator decision, not a defect: ask it then,
@@ -605,10 +632,12 @@ Every firing of every timer takes the same five steps, in this order. The order 
 fixed; what the session reads, which reader or lane it opens, and what it concludes between the
 steps are its own judgment, held to the evidence and to recorded authority.
 
-1. **Read the state.** `cycle.md`, `Predictions.md` beside it, and `scripts/wri2p2.ts` over the
-   cycle's runs. Where `Predictions.md` is missing, write it first (step 1 of the cycle).
+1. **Read the state.** `cycle.md`, `Predictions.md` beside it with each run's pair, and
+   `scripts/wri2p2.ts` over the cycle's runs. Where `Predictions.md` or a run's
+   `predictions-<run>.md` is missing, write it first (step 1 of the cycle).
 2. **Resolve the predictions.** Each row whose event has landed or whose deadline has passed is
-   `held` or `falsified` in Resolutions, with the count from the log that settles it and the time.
+   `held` or `falsified` in its run's `outcomes-<run>.md`, or in Resolutions for a cycle-wide row,
+   with the count from the log that settles it and the time.
    A written resolution stays; a recount that disagrees adds a row beside it. A falsified row opens
    a triage row.
 3. **Act.** Take the step `wri2p2.ts` names, within the cycle's order and the recorded authority
@@ -620,7 +649,7 @@ steps are its own judgment, held to the evidence and to recorded authority.
 4. **Re-arm.** Add, move or delete timers toward the cycle's goal (operator). Arm a
    one-shot at the next event a run's log predicts: for a comparison, scored tasks × solves a side
    × 2 × median solve minutes, divided by concurrent solves. Once every run the cycle forked has
-   its `campaign.opened`, arm one one-shot for each row of `Predictions.md` whose claim names a time
+   its `campaign.opened`, arm one one-shot for each row of the predictions whose claim names a time
    ("within 14 hours of its opening", "by 24 hours"), at the latest opening plus that time, so one
    firing reads every run. A one-shot that a later reading made early is re-armed, and a replaced
    timer is deleted by its id.

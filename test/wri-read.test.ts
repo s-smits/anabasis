@@ -347,7 +347,7 @@ describe("the reader of a round compared with another harness than its session s
 
   // Until 11 October lane 30 opened on every live campaign's running Examiner session, and row F's
   // moves left out the move being made, whose `campaign.move` is written when it ends.
-  it("names a session open at the log's end in row F, with what it did so far, and says it apart in lane 30", () => {
+  it("names a session open at the log's end in row F, with what it did so far, and says it apart in lane 24", () => {
     const live = [...log];
     const more = appendTo(live);
     more(EXAM_STARTED, { session: "x-10" });
@@ -659,14 +659,14 @@ describe("the reader of the load a comparison's solves started under", () => {
     }
     put(REPORTED, { ...REPORT, ...terms, versions: ["v1"], reading: "no-step" });
     const { triggers } = overview(log);
-    expect(triggers.filter(({ lane }) => lane === 29)).toEqual([
+    expect(triggers.filter(({ name }) => name === "WALL SHARE" || name === "HOST LOADED")).toEqual([
       {
-        lane: 29,
+        lane: 24,
         name: "WALL SHARE",
         detail: "g-1: median 50.0% under the reference harness, 50.0% under the new",
       },
       {
-        lane: 29,
+        lane: 24,
         name: "HOST LOADED",
         detail: "g-1: load 30.0 at the median and 30.0 at most when its solves started, on 12 cores",
       },

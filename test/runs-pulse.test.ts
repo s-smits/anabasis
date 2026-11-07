@@ -219,7 +219,7 @@ describe("the runs pulse", () => {
     const second = [...first, crashed(2, "x-2")];
     const moved = pulse(round, second, "open", baseline.seen, START + 3 * 60_000);
     expect(moved.said.filter((line) => line.includes("SESSION CRASHED"))).toEqual([
-      "⚠ economy: SESSION CRASHED (lane 30): x-1, x-2",
+      "⚠ economy: SESSION CRASHED (lane 24): x-1, x-2",
     ]);
     const solved = [...second, event(3, "solve.started", { solve: "s-1", task: "t-1" })];
     const again = pulse(round, solved, "open", moved.seen, START + 4 * 60_000);
@@ -237,7 +237,7 @@ describe("the runs pulse", () => {
     const two = [...one, ...compared(3, "g-2")];
     const second = pulse(round, two, "open", first.seen, START + 5 * 60_000);
     expect(moved(second.said)).toEqual([
-      "⚠ honesty: SCORED SET MOVED (lane 22): g-2: 1 of 2 tasks it began with are not in its tally",
+      "⚠ honesty: SCORED SET MOVED (lane 5): g-2: 1 of 2 tasks it began with are not in its tally",
     ]);
     const grown = [...two, event(5, "build.started", { session: "b-2" })];
     expect(moved(pulse(round, grown, "open", second.seen, START + 6 * 60_000).said)).toEqual([]);

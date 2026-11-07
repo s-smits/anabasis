@@ -1,4 +1,4 @@
-// Lane 27 preserves reported profiles, tested tasks and promotion safeguards.
+// Lane 22 preserves reported profiles, tested tasks and promotion safeguards.
 // Missing profiles stay unmeasured even where raw solves passed.
 import { describe, expect, it } from "bun:test";
 import { conditionId } from "../src/kernel/condition.ts";
@@ -142,7 +142,7 @@ function leaning({
   return events;
 }
 
-describe("lane 27: a promotion and the climb after it", () => {
+describe("lane 22: a promotion and the climb after it", () => {
   it.each([
     [null, "unmeasured"],
     [{}, "unmeasured"],
@@ -295,8 +295,8 @@ describe("lane 27: a promotion and the climb after it", () => {
   );
 });
 
-describe("lane 27 across campaigns", () => {
-  it("sets each campaign in lane 27's columns, promoted or not", () => {
+describe("lane 22 across campaigns", () => {
+  it("sets each campaign in lane 22's columns, promoted or not", () => {
     const { log, put, compare } = campaign();
     put("campaign.opened", { budget: 300, terms: { level: "0.1", trigger: "0.25" } });
     // g-1 won on the objective alone and g-2 on validity; the reference was valid in every solve of
@@ -340,13 +340,13 @@ describe("lane 27 across campaigns", () => {
         { author: 4, spread: 2, fails: false },
         [
           {
-            lane: 9,
+            lane: 7,
             name: "SAFEGUARD-8 PROMOTION ON AUTHOR ROOM",
             detail:
               "hn 6-0 p 0.016 joined at level 0.02, 2-0 p 0.250 without the tasks held on their author's answer alone",
           },
           {
-            lane: 11,
+            lane: 8,
             name: "SAFEGUARD-9 PROMOTION BEYOND VALIDITY",
             detail:
               "hn 6-0 p 0.016 joined at level 0.02, 0-0 p 1.000 on validity alone, 6-0 p 0.016 by the current score",
@@ -357,7 +357,7 @@ describe("lane 27 across campaigns", () => {
         { author: 0, spread: 6, fails: false, by: "bill" },
         [
           {
-            lane: 11,
+            lane: 8,
             name: "SAFEGUARD-9 PROMOTION BEYOND VALIDITY",
             detail:
               "hn 6-0 p 0.016 joined at level 0.02, 0-0 p 1.000 on validity alone, 0-0 p 1.000 by the current score",

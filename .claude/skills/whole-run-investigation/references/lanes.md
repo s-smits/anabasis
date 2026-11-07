@@ -1,7 +1,7 @@
 # Whole-run investigation lanes
 
 This file is the whole catalogue: six deterministic rows the primary reviewer settles itself, and
-thirty-four lanes a paid session can be given, one question each. Read the stance below before any row
+twenty-seven lanes a paid session can be given, one question each. Read the stance below before any row
 or lane, because every one of them is written from it. `tools/wri/catalogue.ts` parses this file,
 and `test/wri-catalogue.test.ts` holds it to `TRIGGERS` in `tools/wri/folds.ts`: every trigger the reader prints
 is named in the `Starts from` paragraph of the lane it starts.
@@ -47,9 +47,10 @@ A lane is started by a trigger: the capitalised text before the first colon of a
 `bun tools/wri/wri.ts read` prints, with the lane's number beside it. A trigger says a lane has
 something to read and never what the answer is, so a lane that contradicts its trigger with
 evidence has done its job. Five lanes are standing and open on every campaign, triggered or not:
-1, 2, 18, 23 and 34. `selected` also opens them where no report exists. Lanes 5 and 19 are isolated:
+1, 2, 18, 26 and 27. `selected` also opens them where no report exists. Lanes 4 and 15 are isolated:
 each runs alone, only on its trigger, and freezes its result
-before it reads any other report.
+before it reads any other report. Lane 27 grades blind, so where `--agents N` packs it with other
+lanes it is read first in its session, before any lane that reads outcomes.
 
 Nothing here changes a verdict, a task's state or a reading. A lane's product is a finding with
 one owner, the exact evidence it cites and the observation that would reverse it. The owner is one
@@ -74,25 +75,12 @@ Each lane body opens with its importance, `Importance: <0 to 1>.`, which weighs 
 lanes --agents N` packs whole labels into sessions and which no session is shown. Packing adds the
 values, so only their ratios count: 1 is the lane with the most yield on record, and the rest sit
 far enough below it that a lane which out-yields another can rise past it. Then comes exactly
-one paragraph beginning `Starts from`. The lanes fall into nine
-sections, one for each label of "Labels" below that has lanes, and the sections run from the label
-with the most lanes to the label with the fewest: verdicts (1–8), supply (9–14), harness (15–20),
-comparison (21–25), climb (26–28), solve (29–30), economy (31), runs (32) and log (33). Lane 34,
-added last, closes the catalogue under `climb`, so the numbers before it stand.
+one paragraph beginning `Starts from`. The lanes fall into eight sections by subject: verdicts
+(1–6), supply (7–11), harness (12–16), comparison (17–20), climb (21–23), solve (24), economy (25)
+and runs (26), and lane 27 closes the catalogue under `climb`.
 
-The catalogue was renumbered once, when lanes 6, 15 and 17 were folded into lanes 3, 13
-and 16 and the rest were put in label order. A report, a ledger or a comment written before then
-cites the old numbers; read them through this table, old number first.
-
-| old | new | old | new | old | new | old | new |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 1–5 | 1–5 | 12 | 14 | 20–24 | 21–25 | 30 | 7 |
-| 6 | 3 | 13 | 15 | 25 | 26 | 31 | 27 |
-| 7 | 9 | 14 | 16 | 26 | 29 | 32 | 28 |
-| 8 | 10 | 15 | 15 | 27 | 30 | 33 | 20 |
-| 9 | 11 | 16, 17 | 17 | 28 | 31 | 34 | 8 |
-| 10 | 12 | 18, 19 | 18, 19 | 29 | 6 | 35 | 32 |
-| 11 | 13 | | | | | 36 | 33 |
+A report, a ledger or a comment written before a renumbering cites the numbers of its day; the
+head comment of `tools/wri/catalogue.ts` holds each map from old numbers to new.
 
 ## Labels
 
@@ -100,7 +88,7 @@ Every pull request carries at least one area label beside its importance label, 
 several: the label of each area its change touches. The areas are cut where a change lands in the
 code, so a pull request's files point to its labels. Each lane carries the label of the pull
 requests that change what it reads, on the line beside its importance, so a lane may sit under any
-label wherever it stands in this file. Ten labels hold lanes, each under one of the five points
+label wherever it stands in this file. Nine labels hold lanes, each under one of the five points
 every change is judged by (`AGENTS.md`, section 1: supply and the four factors), and four name
 areas of the repository that no run exercises.
 `bun run land` refuses a stack in which a pull request carries none (`checkLabels`,
@@ -109,16 +97,16 @@ labels, and the row's lanes are drawn from those labels' lanes (run-improvement-
 
 | point | lanes | label | a pull request carries it when it changes |
 | --- | --- | --- | --- |
-| verdicts | 1, 3, 8, 13 | `exam` | drafting an exam and the host's reading of a draft, the check program's reading, the verifier, control answers, the freeze or admission, or what a task's public part discloses |
-| verdicts | 2, 4–7 | `verdicts` | the Referee, its evidence and rulings, the tasks a rejection sets aside, hand labels and `settle.ts`, or what each seat is told of them |
-| supply | 9, 10, 12, 14 | `supply` | the Examiner's task writing, its task admission, which tasks are held out or released, room and the frontier, or what the Examiner is told |
-| climb | 15–20 | `harness` | the Builder session or conversation, its prompt, tools, compaction or notes, practice, the harness contract, or what crosses the wall to the Builder |
-| honesty | 11, 21–23, 25 | `comparison` | a comparison's terms, pairing, scored set, tally and which measure decided it, test, A/A comparison or condition identity |
-| climb | 24, 26–28, 34 | `climb` | the move table, the campaign command's moves, the starter comparison, promotion, the stop rule, the campaign's endings, the operator's words, or what follows a promotion |
-| honesty | 29–30 | `solve` | a solve's run, a backend, the wall, how a solve ends, non-results, or the host's solve slots and load |
-| economy | 31 | `economy` | billing, the meter, the budget, time and silence readers, or the closing report's work and spend |
-| honesty | 32 | `runs` | launching, continuing, moving and stopping runs, logins, hosts, controllers, receipts and run records |
-| honesty | rows A–F, 33 | `log` | the campaign log, its append and locks, event kinds, conditions, the folds every reader shares, `view`, `replay`, the closing report's text, the page and studies |
+| verdicts | 1, 6, 10 | `exam` | drafting an exam and the host's reading of a draft, the check program's reading, the verifier, control answers, the freeze or admission, or what a task's public part discloses |
+| verdicts | 2–5 | `verdicts` | the Referee, its evidence and rulings, the tasks a rejection sets aside, hand labels and `settle.ts`, or what each seat is told of them |
+| supply | 7, 9, 11 | `supply` | the Examiner's task writing, its task admission, which tasks are held out or released, room and the frontier, or what the Examiner is told |
+| climb | 12–16 | `harness` | the Builder session or conversation, its prompt, tools, compaction or notes, practice, the harness contract, or what crosses the wall to the Builder |
+| honesty | 8, 17, 18, 20 | `comparison` | a comparison's terms, pairing, scored set, tally and which measure decided it, test, A/A comparison or condition identity |
+| climb | 19, 21–23, 27 | `climb` | the move table, the campaign command's moves, the starter comparison, promotion, the stop rule, the campaign's endings, the operator's words, or what follows a promotion |
+| honesty | 24 | `solve` | a solve's run, a backend, the wall, how a solve ends, non-results, or the host's solve slots and load |
+| economy | 25 | `economy` | billing, the meter, the budget, time and silence readers, or the closing report's work and spend |
+| honesty | 26 | `runs` | launching, continuing, moving and stopping runs, logins, hosts, controllers, receipts and run records |
+| honesty | rows A–F | `log` | the campaign log, its append and locks, event kinds, conditions, the folds every reader shares, `view`, `replay`, the closing report's text, the page and studies |
 | none | none | `investigation` | the whole-run investigation itself: `tools/wri/`, this catalogue and its skill, and the skill scripts its lanes run |
 | none | none | `landing` | the stack, `bun run land`, the hooks, the CI gate |
 | none | none | `quality` | lint, the simplify census, the size policy, and guidance on how code and designs are written |
@@ -139,7 +127,7 @@ staged `checks/` (`exams/<digest>/checks/` for a drafted exam) and `states/`. Re
 and confirm it folds: `read` throws on a history that moves a task where it cannot go. Compare the
 host hash of the last condition with this checkout's (`wri.ts read` prints both): when they differ,
 every statement about source is about another tree, and the report says so before it says anything
-else. Row A gives billed dollars and hours by role, which lane 31 starts from.
+else. Row A gives billed dollars and hours by role, which lane 25 starts from.
 
 **B. checker identity.** Read `contract.frozen` and every `checker.read`. The checker is two
 hashes, the contract's and the check program's; a task version holds the second. A campaign with
@@ -155,11 +143,11 @@ served model is the provider's word and nothing attests it.
 
 **D. task sets.** Partition the task versions: the pack's, a session's, carried from another
 checker's campaign. Then by state: held out, released for practice, disputed, refused. The sets a
-round uses must be disjoint: a version both practised and measured is lane 18's finding and is
+round uses must be disjoint: a version both practised and measured is `PRACTISED TASK MEASURED`, lane 12's, and is
 settled here first. The row's last line counts the held-out tasks, which every comparison may
 score, and the practice tasks. A task with no valid answer on record after two comparisons that
 cut no solve of it at a limit is held out still and is left out of the scored set until a person
-labels it; lane 10 names those.
+labels it; lane 9 names those.
 
 **E. case partition.** For each side, count passes, fails by kind and non-results by kind from
 `solve.finished`, the solves that started and never finished, and those open at the log's
@@ -177,7 +165,7 @@ A step still open at the log's end is named on a line of its own, with its turns
 out or practised and when it last wrote, or, for a comparison, its solves ended and open: the
 campaign command records a move as it begins; use the step's own ending to establish closure.
 
-## Lanes 1–34
+## Lanes 1–27
 
 ### The verdicts: the instrument, its review and its draft
 
@@ -187,8 +175,11 @@ Label: `exam`.
 Importance: 0.6.
 
 Starts from `INSTRUMENT AUTHORED (lane 1)`, `REFUSALS BY CHECK (lane 1)`,
-`VERIFIER TOOLS MOVED (lane 1)` and from `PASSES UNREAD (lane 1)`, which is standing: no reviewer
-reads a pass, so every campaign with a pass leaves this open.
+`VERIFIER TOOLS MOVED (lane 1)`, the checker's own `NO CHECKER READING (lane 1)`,
+`CHECKER READ WITH FAULTS (lane 1)`, `CONTROL COVERAGE (lane 1)`, `CHECKER NOT FROZEN (lane 1)`,
+`FROZEN DESPITE FAULTS (lane 1)`, `READ AT ANOTHER VERSION (lane 1)` and `TASKS CARRIED (lane 1)`,
+and from `PASSES UNREAD (lane 1)`, which is standing: no reviewer reads a pass, so every campaign
+with a pass leaves this open.
 
 The question is what a pass establishes. The Referee reads refusals only, so a check that observes
 too little is seen by nobody: v1's passes held up, 5 vetoes in 1,411, but v1 had a Judge reading
@@ -210,11 +201,16 @@ the rows beside the brief are the whole lane, and the reading is what a pass wou
 were one taken; say that, and do not come back `could not read` for the missing sample.
 `VERIFIER TOOLS MOVED` names a log holding two tool trees (`verifierTools`), so verdicts given
 under different instruments stand side by side: say which solves ran under which, and whether a
-comparison's pairs straddle them. `wri.ts grade` puts one constructed answer to the campaign's
+comparison's pairs straddle them. Where one of the checker's own triggers fired, read the last
+`checker.read`'s faults and say under which checker each result was counted: a checker not frozen
+can change between two rounds with nothing refusing it, a control fault can be a stale control
+answer, and a campaign whose tasks were carried from another checker's campaign is read beside that
+one with `tools/c/repaired.ts`. `wri.ts grade` puts one constructed answer to the campaign's
 checker and writes nothing; use it to show a gap under the required verifier wall. Do not read a pass rate here. The
 decision it changes is whether a pass on this pack counts as the solver being right or as the
 answer having the checked shape; it routes to `pack/evaluator` for a check that reads too little
-and `pack/brief` for a rule no check enforces.
+or fails its own controls, `pack/brief` for a rule no check enforces, `pack/controls` for a stale
+control answer and `operator` for a freeze given `despite` faults.
 
 **2. What each seat was told.**
 
@@ -244,47 +240,21 @@ true one would have changed. Three such defects were once found by other lanes i
 week: the Examiner's prompt said how to plant an answer instead of what `try_answer` shows
 (83f4e43c8), the Builder was told only the tally with the bill while its step was read without it
 (#555), and the drafting prompt let a draft publish the whole model its checks hold answers to
-(lane 8). Quote a prompt's sentence where it helps, since it is in source; quote no task, answer
+(lane 6). Quote a prompt's sentence where it helps, since it is in source; quote no task, answer
 or hidden value. Never propose telling a seat a target, a share or a count: the remedy is a fact,
-or removing the sentence. Lane 18 reads whether anything crossed the wall that should not; this
-lane reads what did cross. The decision it changes is whether a seat's text is revised before the
+or removing the sentence. Row D and lane 12 read whether a harness holds what should not have
+crossed the wall; this lane reads what did cross. The decision it changes is whether a seat's text is revised before the
 next run; it routes to `examiner-prompt`, `builder-prompt` or `reviewer-prompt` with the file
 named, and to `host` for a tool result built from the wrong fold (`src/builder/past.ts`). A change
 to what the Builder reads keeps every message byte-identical under a changed hidden value (rule 3).
 
-**3. Check discrimination and control answers.**
-
-Label: `exam`.
-Importance: 0.3.
-
-Starts from `NO CHECKER READING (lane 3)`, `CHECKER READ WITH FAULTS (lane 3)`,
-`CONTROL COVERAGE (lane 3)`, `CHECKER NOT FROZEN (lane 3)`, `FROZEN DESPITE FAULTS (lane 3)`,
-`READ AT ANOTHER VERSION (lane 3)` and `TASKS CARRIED (lane 3)`.
-
-The question is whether each check has been seen to refuse what it should and pass what it should,
-and whether the controls that would show it are still right. Read the last `checker.read`: its
-faults and each check's row. `readChecker` and `acceptCommand` include control answer labels and
-repeatability, pass and refusal coverage, named reject-control coverage, missing tools,
-do-nothing answers and unadmitted authored checks, including the objective.
-Fresh control answers establish current faults; stored verdicts are reported separately. A control fault
-can be a stale control answer. Decide from the public rule, the control answer's label and its answer whether
-the control or the check is wrong. A reject control tests the
-fault its author thought of; coverage of one control answer per check says the check can say no, and
-nothing about how often it says no wrongly, which is lane 4's. A check that could not run is one
-fault that names it and never a request for another control. Say under which checker each
-result was counted: a checker not frozen can change between two rounds with nothing refusing it,
-and a campaign whose tasks were carried from another checker's campaign is read beside that one
-with `tools/c/repaired.ts`, its old log against the repaired pack. The decision it changes is
-whether the checker can be frozen as it stands; it routes to `pack/controls` for a stale control answer,
-`pack/evaluator` for a check that fails its own controls, and `operator` for a freeze given
-`despite` faults.
-
-**4. False rejection among fails.**
+**3. False rejection among fails.**
 
 Label: `verdicts`.
 Importance: 0.5.
 
-Starts from `REFUSED UNREAD (lane 4)`, `CHECK DEFECT RULED (lane 4)` and `RULED UNCLEAR (lane 4)`.
+Starts from `REFUSED UNREAD (lane 3)`, `CHECK DEFECT RULED (lane 3)`, `RULED UNCLEAR (lane 3)` and
+`REPLAY MOVED THE VERDICT (lane 3)`.
 
 The question is whether a refused answer was wrong or a right one the checks refused. Every
 reading of a comparison rests on it: a refusal that is the check's fault makes a win when it falls
@@ -295,22 +265,24 @@ published, could reject a valid answer: a tolerance tighter than the published r
 the check reads otherwise, a sentence that admits two readings with the check taking one. Then
 read the rulings against that: an earned ruling names a rule and a field, a check-defect ruling
 names a refusing check and cites a probe that moved it off its refusal (none where the check reads no answer field), and
-`EARNED WITHOUT A PROBE` in lane 7 says how many earned rulings looked at nothing but the packet. Where a person labelled a sample
+`EARNED WITHOUT A PROBE` in lane 5 says how many earned rulings looked at nothing but the packet. Where a person labelled a sample
 (`labels.json` beside a rejections campaign's log), set the rulings against the labels and say
 whether the bar in `AGENTS.md` section 1 was cleared; where none did, say the rulings are one reader's.
-Where public facts cannot decide, retain the logged ruling and ask whether lane 5 can settle it.
+`REPLAY MOVED THE VERDICT` names a rejection whose replay by the Referee gave another verdict than
+the logged one: that check does not repeat, which is `pack/evaluator`'s.
+Where public facts cannot decide, retain the logged ruling and ask whether lane 4 can settle it.
 A rejection without an `earned` ruling sets the task aside; it does not become a scored fail. Report counts per check id
 and never an answer or where it failed. The decision it changes is whether a round's fails are
 read as the solver's limit or as the exam's noise; it routes to `pack/evaluator` for the check,
 `pack/brief` for the rule's publication and `operator` for labels not yet made.
 
-**5. Valid-alternative rejection challenge.**
+**4. Valid-alternative rejection challenge.**
 
 Label: `verdicts`.
 Importance: 0.3.
 
-Starts from `FAILS ON ONE CHECK (lane 5)` and `DEFECT RULED BESIDE PASSES (lane 5)`, and only when
-lane 4 left a check undecided. It runs alone.
+Starts from `FAILS ON ONE CHECK (lane 4)` and `DEFECT RULED BESIDE PASSES (lane 4)`, and only when
+lane 3 left a check undecided. It runs alone.
 
 The question is whether a check rejects valid work, shown by construction. Freeze the corpus
 before reading the evaluator, the Referee's probes or any other report: from the public rules and
@@ -325,33 +297,14 @@ recorded answer as a base where the task is held out. The decision it changes is
 whether a repair of the named check is owed; it routes to `pack/evaluator`, and the corpus goes to
 the checker's owner as the repair's accept controls.
 
-**6. Triage: the harness, the rules or the solver.**
-
-Label: `verdicts`.
-Importance: 0.2.
-
-Starts from `REPLAY MOVED THE VERDICT (lane 6)`.
-
-The question is which side each practice fail was on, and whether the successor repaired that
-side. A practice fail is ruled by the Referee: earned, a check defect, or unclear. The
-Referee's replay runs the checks again on the logged answer; a replay whose verdict differs from
-the logged one is a check that does not repeat. Then read what the Builder changed after each
-earned fail and whether it was the side that failed. In an older log a Diagnoser named an owner
-for each earned fail, the harness, the public rules or the solver, and that log holds
-its readings beside the rulings; 20 of 20 named the solver, and the seat went
-(`7f0add79:docs/simplify.md`, E1). The decision it changes is whether the next change goes to the harness
-or to the exam's owner; it routes to `reviewer-prompt` (`src/referee/referee.ts`) for a ruling
-that cannot be right, `pack/evaluator` for a check that does not repeat, and `harness/guide` or
-`harness/tools` for a repair on the wrong side.
-
-**7. Rulings, labels and what each role was told.**
+**5. Rulings, labels and what each role was told.**
 
 Label: `verdicts`.
 Importance: 0.5.
 
-Starts from `SET ASIDE AND UNSETTLED (lane 7)`, `READING MOVES WITH THE SET-ASIDE (lane 7)`,
-`SET ASIDE BY SIDE (lane 7)`, `SETTLED BY HAND (lane 7)`, `REVIEW FAULTS (lane 7)`,
-`EARNED WITHOUT A PROBE (lane 7)` and `RULINGS REFUSED (lane 7)`.
+Starts from `SET ASIDE AND UNSETTLED (lane 5)`, `READING MOVES WITH THE SET-ASIDE (lane 5)`,
+`SET ASIDE BY SIDE (lane 5)`, `SETTLED BY HAND (lane 5)`, `REVIEW FAULTS (lane 5)`,
+`EARNED WITHOUT A PROBE (lane 5)`, `RULINGS REFUSED (lane 5)` and `SCORED SET MOVED (lane 5)`.
 
 The question is what became of each rejection, and whether each role was told enough to act and
 no more than it may know. A rejected answer counts as not valid only once it is ruled a true
@@ -363,7 +316,11 @@ harness and under the others: a rejection under one harness removes a task that 
 have lost, so rejections that fall on one side move the tally toward it.
 `READING MOVES WITH THE SET-ASIDE` fires when the report's `counted`, the tally were every such
 rejection to stand, clears its level and `scored` does not, or the reverse: the reading then
-rests on labels nobody has made. `SET ASIDE AND UNSETTLED` counts the tasks still waiting. A
+rests on labels nobody has made. `SCORED SET MOVED` fires when a tally holds fewer tasks than its
+`comparison.started` fixed. A task leaves `short` of its solves under a harness, disputed,
+`withdrawn` while the comparison ran, or `aside` on a rejection not ruled a true fail, and only
+the last can lean; confirm no second `comparison.started` carries the id (`host`,
+`src/campaign/round.ts`). `SET ASIDE AND UNSETTLED` counts the tasks still waiting. A
 person settles a comparison with `tools/d2/settle.ts`: `packetOf` draws every rejection that
 set a task aside, plus up to three earned rejections and three passes, blind to ruling and
 harness. Until then its report says `settled: "unsettled"`, and no
@@ -380,7 +337,7 @@ its earned rulings as a reviewer's, and those made without an answer probe as re
 the check. `RULINGS REFUSED` counts the `referee.refused` events by the ruling the Referee asked
 for: read each beside the ruling it then recorded for that solve, since a refused `earned` that
 becomes `unclear` sets a task aside the Referee meant to count. Count the rulings that recur: the same check ruled a defect across sessions is a
-repair owed, and lane 3 reads whether one was made. Then read what each role was told. The
+repair owed, and lane 1 reads whether one was made. Then read what each role was told. The
 Builder is told a practice task's record and the ending's outcome and kind, with no ruling,
 check id or reviewer's reason: confirm it from what `build.call` returned. Check the Examiner's
 inputs against `AGENTS.md` section 3 and `record.ts`. The decision it changes is whether the Referee's rulings
@@ -388,12 +345,12 @@ may count without a person reading each; it routes to `operator` for the bar and
 `reviewer-prompt` for rulings made without an answer probe, and `host` (`src/builder/tools.ts`,
 `src/examiner/session.ts`) for a role told more than it may know.
 
-**8. The drafted exam against its prompt.**
+**6. The drafted exam against its prompt.**
 
 Label: `exam`.
 Importance: 0.6.
 
-Starts from `EXAM DRAFTED (lane 8)`.
+Starts from `EXAM DRAFTED (lane 6)`.
 
 The question is whether the exam a campaign drafted from the operator's prompt is the exam the
 prompt asked for. The host's reading (`draftFaults`, `src/examiner/draft.ts`; `draftReading`,
@@ -409,7 +366,7 @@ a solver must produce, the objective's quantity and direction against what the p
 better, and the scope against what it leaves out. Count the drafts that did not stand by the
 reading's fault, and say whether the last draft fixed the fault or removed the rule. Where the
 measurement was interrupted or not run, the exam stood without the reference's solves on it, so
-lane 9 reads the first task admission as its first measurement. A check that only its author's computation
+lane 7 reads the first task admission as its first measurement. A check that only its author's computation
 decides was admitted by the launch (rule 10): name those the field's own engine could have decided.
 The decision it changes is whether the campaign measures the domain the operator asked about, and
 so whether its promotions answer the operator's question; it routes to `examiner-prompt`
@@ -419,13 +376,13 @@ prompt that left the exam open to more than one reading.
 
 ### The supply: the tasks
 
-**9. Supply and task admission.**
+**7. Supply and task admission.**
 
 Label: `supply`.
 Importance: 0.65.
 
-Starts from `SUPPLY THIN (lane 9)`, `GATE REFUSED (lane 9)` and
-`SAFEGUARD-8 PROMOTION ON AUTHOR ROOM (lane 9)`.
+Starts from `SUPPLY THIN (lane 7)`, `GATE REFUSED (lane 7)` and
+`SAFEGUARD-8 PROMOTION ON AUTHOR ROOM (lane 7)`.
 
 The question is where tasks are lost between a proposal and the scored set, and whether the task admission
 that refused was right to. v1's task admission audit kept 30 of 54 refusal codes at its bar of 98% sure
@@ -436,7 +393,7 @@ sometimes; one it never answers with the author's valid answer on record; or one
 reference answer is beaten by an answer on record under the objective. For each refusal read `task.gate`
 and say whether it named a real defect and whether the Examiner could have acted on the reason it
 was given. Then read what leaves the set after the task admission: tasks disputed on a check's fault, tasks
-refused by a person as infeasible, and tasks waiting for a label (lane 10). Read the campaign's
+refused by a person as infeasible, and tasks waiting for a label (lane 9). Read the campaign's
 target and level: `SIZE` defaults to 24 frontier tasks and two solves per side, with retained
 tasks alongside. `refusals` requires at least `sweepOf(level)` frontier tasks. Say how many it
 holds against those terms. Do not propose loosening the task admission from the yield alone. The
@@ -450,36 +407,13 @@ answer as the author's objective measures it, so read those answers and the obje
 promotion is reported: r3's second and third promotions read 5-0 and 3-0 without
 them, where a step at 0.02 takes 6-0.
 
-**10. Tasks no harness answers.**
-
-Label: `supply`.
-Importance: 0.3.
-
-Starts from `NO VALID ANSWER (lane 10)` and `AWAITING A LABEL (lane 10)`.
-
-The question is why a task has no valid answer under either harness: it is hard, it is wrongly
-checked, or it has no valid answer at all. No stronger solver proves a task possible now, so the
-exam can hold a task nobody can do, and it ties whatever the harnesses are. `NO VALID ANSWER`
-counts the scored tasks whose last comparison held none. `AWAITING A LABEL` names the ones with
-no valid answer anywhere on record after two comparisons that cut no solve of them at a limit:
-they are out of the scored set until a person labels each with
-`tools/d2/prepare.ts`, `--keep` or `--infeasible`. Read each by how its solves ended. Solves that
-reached their limits measured the budget: compare what they used with what the valid solves of
-other tasks used. Rejected answers are the case with two readings, and the rulings on them say
-which: a check that rejects every answer is a check defect on the task, and a task whose every
-rejection is a true fail may be infeasible, which no ruling on one answer can show. v1's record
-is that most rejections were the check's: 36 of 47 rehearsal misses. Do
-not label a task from the count alone. The decision it changes is the label each waiting task
-gets; it routes to `operator` for the label, `pack/evaluator` where the rejections are a check's
-fault, and `examiner/task` for an instance whose own limits exclude every answer.
-
-**11. Whether validity separates.**
+**8. Whether validity separates.**
 
 Label: `comparison`.
 Importance: 0.75.
 
-Starts from `TIES BETWEEN VALID ANSWERS (lane 11)` and
-`SAFEGUARD-9 PROMOTION BEYOND VALIDITY (lane 11)`.
+Starts from `TIES BETWEEN VALID ANSWERS (lane 8)` and
+`SAFEGUARD-9 PROMOTION BEYOND VALIDITY (lane 8)`.
 
 The question is which measure carried each reading: validity, the objective or the bill. A task's
 score weighs the three (`pointsOf`, `src/kernel/compare.ts`), and a step must clear its level on
@@ -503,12 +437,12 @@ and the objective's arithmetic is what a person checks first. The decision it ch
 promotion is worded, and whether the objective measures domain quality; it routes to `operator`,
 and to `host` (`src/kernel/compare.ts`) where the three tallies disagree with the report.
 
-**12. Ties and the budget.**
+**9. Ties and the budget.**
 
 Label: `supply`.
-Importance: 0.5.
+Importance: 0.55.
 
-Starts from `TIED TASKS (lane 12)`.
+Starts from `TIED TASKS (lane 9)`, `NO VALID ANSWER (lane 9)` and `AWAITING A LABEL (lane 9)`.
 
 The question is what share of the tasks tie and why. A tie says nothing, and the share of untied
 tasks is what sizes every later comparison. With two solves a side and no true difference, 38%
@@ -522,16 +456,25 @@ answered 0 of 10 solves read at two turns and 10 of 10 once it was told two. v1'
 bound: six tasks passed in 2.5 to 26 minutes of a 120-minute limit, and 265 of 299
 task sets passed whole. Say what demand the tied tasks make: v1 measured that requirements
 sharing one limit lowered pass counts, 7 of 20 against 22 of 23, where a tightened limit and a
-widened exam did not. Do not prescribe an instance. Whether the budget binds is lane 29's. The
-decision it changes is what the Examiner is asked for next and how large the next comparison must
-be; it routes to `examiner/task` for tasks every harness answers and `operator` for the size.
+widened exam did not. Do not prescribe an instance. Whether the budget binds is lane 24's.
+A tie with no valid answer is a task no harness answers: hard, wrongly checked, or with no valid
+answer at all, and no stronger solver can say which. `NO VALID ANSWER` counts the scored tasks
+whose last comparison held none, and `AWAITING A LABEL` names those with none on record after two
+comparisons that cut no solve of them at a limit, out of the scored set until a person labels each
+with `tools/d2/prepare.ts`, `--keep` or `--infeasible`. Read each by how its solves ended: a check
+that rejects every answer is a check defect on the task, and a task whose every rejection is a
+true fail may be infeasible, which no ruling on one answer can show. Do not label a task from the
+count alone. The decision it changes is what the Examiner is asked for next, how large the next
+comparison must be and the label each waiting task gets; it routes to `examiner/task` for tasks
+every harness answers or an instance whose own limits exclude every answer, `pack/evaluator`
+where the rejections are a check's fault, and `operator` for the size and the labels.
 
-**13. Public disclosure and one recipe.**
+**10. Public disclosure and one recipe.**
 
 Label: `exam`.
 Importance: 0.35.
 
-Starts from `PASSES AT A SMALL WALL SHARE (lane 13)`.
+Starts from `PASSES AT A SMALL WALL SHARE (lane 10)`.
 
 The question is whether the task, the public resources and the tools publish a sufficient
 construction, so that solving is following it. The lead is passes at a small share of the deadline in
@@ -541,19 +484,19 @@ the draft the solver had before its first simulation. Read the call sequences pe
 family is a recipe. Then read what publishes it: the contract's rules, the resources a solver is
 handed, the harness's guide and the tool descriptions. A rule that states the acceptance
 arithmetic lets the solver compute every check on its own candidate, and v1 measured that a task
-a written search reaches is a task passed, at any size. Keep this apart from lane 15: there the
+a written search reaches is a task passed, at any size. Keep this apart from lane 12: there the
 harness does a check's work, here the exam's own public text does. The decision it changes is
 whether these tasks can measure a harness at all, since a recipe leaves nothing for a guide or a
 tool to add; it routes to `pack/brief` for a rule that publishes the method, `examiner/task` for
 an instance whose public input settles it, and `harness/guide` only where the recipe is the
 Builder's.
 
-**14. Pressure on the Examiner.**
+**11. Pressure on the Examiner.**
 
 Label: `supply`.
 Importance: 0.65.
 
-Starts from `OUTCOMES BY SESSION (lane 14)`.
+Starts from `OUTCOMES BY SESSION (lane 11)`.
 
 The question is whether anything moves the Examiner toward tasks that separate harnesses,
 session over session. v1 pressed its Builder with zones, targets, slack figures and a
@@ -568,20 +511,21 @@ opened after none heard no outcome, and its tally is no effect of the channel. R
 families, the number of requirements meeting in one limit, sizes. The public inputs are in
 `task.proposed`; describe how they differ and quote none. An author told the reference failed a
 task can reach that outcome with tasks whose solves vary widely in what they need: such tasks
-split evenly and add nothing, so set a session's outcomes beside lane 25's reading of the reference
+split evenly and add nothing, so set a session's outcomes beside lane 20's reading of the reference
 harness against itself. Do not propose telling the Examiner a share, a target or a level: v1
 measured that. The decision it changes is whether the Examiner's inputs are revised before
 another session; it routes to `examiner-prompt`, and to `operator` for the reading.
 
 ### The harness
 
-**15. Harness delta against its note.**
+**12. Harness delta against its note.**
 
 Label: `harness`.
 Importance: 0.8.
 
-Starts from `HARNESS CHANGED (lane 15)`, `BROKEN AT END (lane 15)`,
-`MEASURED AN EARLIER STATE (lane 15)` and `TOOLS EDITED (lane 15)`.
+Starts from `HARNESS CHANGED (lane 12)`, `BROKEN AT END (lane 12)`,
+`MEASURED AN EARLIER STATE (lane 12)`, `TOOLS EDITED (lane 12)` and
+`PRACTISED TASK MEASURED (lane 12)`.
 
 The question is what moved between the parent and the child, and whether the measured bytes are
 the ones the Builder described. Every state a session left is kept by digest under the campaign's
@@ -599,8 +543,12 @@ leaves no `write` or `edit` call (`write_file` in an older log), and the row's l
 `.toolchain` where a shell command named the tool tree: the list is no inventory of the child,
 which the diff alone gives, and an empty one is not an unchanged harness. Read every tool and
 program the child holds for the Builder's one limit (`src/builder/prompt.ts`): nothing in a
-harness names a task, copies its text or holds its answer. A search and a filter against the
-public rules are allowed, and the solver decides what it submits; `ANSWER FROM A PROGRAM` (lane 19)
+harness names a task, copies its text or holds its answer: a task id, a passage of a task, a value
+that is an answer. A harness that carries the scored tasks' answers scores higher on exactly those
+and is no better on any other. Row D settles that no version is both practised and scored;
+`PRACTISED TASK MEASURED` names a session where one was, and the round's reading is then not
+admitted (`host`, `src/builder/tools.ts`). A search and a filter against the
+public rules are allowed, and the solver decides what it submits; `ANSWER FROM A PROGRAM` (lane 15)
 reads where a program's output was submitted unchanged. The
 decision it changes is what a step, or its absence, is attributed to, and whether a gain is the
 harness helping the solver work or answering for it; it routes to
@@ -608,17 +556,17 @@ harness helping the solver work or answering for it; it routes to
 moved, to `builder-prompt` when the limit was crossed, and to `host` (`src/builder/session.ts`)
 when the measured state is not the one the log names.
 
-**16. The guide against its programs and the solves.**
+**13. The guide against its programs and the solves.**
 
 Label: `harness`.
 Importance: 0.3.
 
-Starts from `NEVER CHECKED (lane 16)`, `TOOLS CALLED (lane 16)` and `TOOL CALLS ERRED (lane 16)`.
+Starts from `NEVER CHECKED (lane 13)`, `TOOLS CALLED (lane 13)` and `TOOL CALLS ERRED (lane 13)`.
 
 The question is whether what a harness tells its solver is true of what it ships and of what its
 solves did. A guide is appended to every solve's prompt, so a claim it makes that its programs do
 not keep costs on every scored task, and no comparison can see why. Read the child's three
-accounts of itself side by side, from lane 15's diff and the kept state:
+accounts of itself side by side, from lane 12's diff and the kept state:
 
 1. **The guide's claims.** List each thing the guide says a program does, checks or guarantees:
    a method, a check it says the program runs, a default, a limit, an order of steps.
@@ -633,20 +581,20 @@ accounts of itself side by side, from lane 15's diff and the kept state:
 
 Then read the host's own claims in the solver's prompt (`src/solver/prompt.ts`) against the
 condition: its deadline and turn sentences, and the tools it names. Do not judge the solving
-method; lane 34 grades soundness, and this lane gives it the claims that are false. The decision
+method; lane 27 grades soundness, and this lane gives it the claims that are false. The decision
 it changes is whether a failed solve failed the task or was misled, and whether a version is
 graded 0 for a guide that claims what no tool does; it routes to `harness/guide` and
 `harness/tools` for the harness's claims, which are the Builder's to correct (`AGENTS.md`,
 section 2, consequence 3), and to `host` for a sentence of the solver's prompt the condition
 contradicts.
 
-**17. What practice taught the Builder.**
+**14. What practice taught the Builder.**
 
 Label: `harness`.
-Importance: 0.25.
+Importance: 0.3.
 
-Starts from `NO PRACTICE (lane 17)`, `FINAL BYTES NEVER PRACTISED (lane 17)`,
-`SESSION ENDED (lane 17)` and `PRACTICE FAILS (lane 17)`.
+Starts from `NO PRACTICE (lane 14)`, `FINAL BYTES NEVER PRACTISED (lane 14)`,
+`SESSION ENDED (lane 14)` and `PRACTICE FAILS (lane 14)`.
 
 The question is whether the Builder used practice as evidence. In a led campaign a practice solve
 is the only outcome the Builder sees of its own harness: its ending, its kind, its trace through
@@ -673,44 +621,21 @@ result that misleads or underinforms, without telling the Builder what to do (`A
 section 2, consequence 1), and `host` (`src/builder/tools.ts`, `src/builder/session.ts`) for a
 practice limit that ended work mid edit.
 
-**18. Exposure: what the Builder could see.**
+**15. Trace challenge.**
 
 Label: `harness`.
 Importance: 0.3.
 
-Starts from `PRACTISED TASK MEASURED (lane 18)` and `SHELL COMMANDS (lane 18)`, and is standing.
-
-The question is whether the child could know the exam. A harness that carries the scored tasks'
-answers scores higher on exactly those and is no better on any other. Settle the sets first, from
-row D: no version is both practised and scored. Then read what the session
-could reach. Its shell has the network and its home; that home holds `harness/`, `practice/`,
-the public resources and the other kept harnesses under `kept/`. A v1 state can carry a correctness
-model with hidden values; `copyHarness` leaves it out at every depth. Confirm from the
-session's commands that no path under a `correctness-model/` was read, and that no command walked
-the host's temporary folder or the repository, which the wall denies. Read the commands for what
-they fetched from the network. Then read the child for what it holds of the practice tasks: a
-task id, a passage of a task, a value that is an answer. The Builder is told such a line moves
-nothing that is measured, which is true of honest tasks and false of a leak. `read_trace` serves
-practice solves only; confirm no refused call tried another. The decision it changes is whether
-the round's reading is admitted at all; it routes to `host` (`src/builder/tools.ts`,
-`src/tools/command.ts`) for a path the wall left open and `harness/guide` or `harness/tools` for
-task content in the harness.
-
-**19. Trace challenge.**
-
-Label: `harness`.
-Importance: 0.3.
-
-Starts from `WIN AT A SMALL WALL SHARE (lane 19)`, and only when lane 13, 15 or 18 suspects a
+Starts from `WIN AT A SMALL WALL SHARE (lane 15)`, and only when lane 10 or 12 suspects a
 shortcut. That trigger counts the passed solves, in few calls and a small share of their deadline, of
-tasks the new harness won, on validity, the objective or the bill alike. It also starts from `ANSWER FROM A PROGRAM (lane 19)` on its own, which needs no other
+tasks the new harness won, on validity, the objective or the bill alike. It also starts from `ANSWER FROM A PROGRAM (lane 15)` on its own, which needs no other
 lane's suspicion: that trigger counts the solves whose one shell call was followed by `submit`, with
 no file-writing call, per Builder session's practice and per comparison. It is a lead that one
 program may have made what the solve submitted. Each comparison's reference side is printed beside its new one as the
 control, since a solver can finish a task in one command of its own; on the #107 campaigns none of
 the 132 reference solves read so, and 24 of recode's 40 measured solves under its built harnesses
 did. The lane's own table is what tells a harness's program from a solver's one command.
-`WINS`, lane 20's trigger, lists each comparison's won tasks by solve. It runs alone.
+`WINS`, lane 16's trigger, lists each comparison's won tasks by solve. It runs alone.
 
 The question is where the deciding value came from. Take the tasks the new harness won by pair
 wins, which `WINS` names by solve. A task can be won by the objective with valid answers under
@@ -722,33 +647,33 @@ or nothing in the trace at all. A value that arrives whole in the first turn, on
 solver worked at under the reference harness and missed, has no recorded derivation at that point.
 Freeze the table as counts by the source's kind, each with up to three solve ids and their steps,
 and open no other lane's report.
-The primary compares the frozen table with lanes 15 and 18 afterwards. This lane
+The primary compares the frozen table with lane 12 afterwards. This lane
 reads traces of scored tasks, which no Builder may see: its report stays with
 the primary, names solves and steps, and quotes nothing. The decision it changes is whether a
 win is the harness solving or the harness knowing; it routes to `harness/tools`, `harness/guide`
 or `host`, by where the value came from.
 
-**20. What made each win.**
+**16. What made each win.**
 
 Label: `harness`.
 Importance: 0.6.
 
-Starts from `WINS (lane 20)`.
+Starts from `WINS (lane 16)`.
 
 The question is which part of the new harness made each win, or whether none did. A step says the
 new harness beat the reference (rule 1); which part did it is claimed only through a comparison
 against `programs-of:<digest>` (`AGENTS.md`, section 9), and this lane reads the traces that tell
 such a comparison where to look. `WINS` lists each comparison's won tasks with every counted solve
 on each side. Start with the steps, and within them with the tasks untied without the bill
-(`readings.txt`); `STEP CARRIERS` (lane 21's) says how many a step could lose. For each won task,
+(`readings.txt`); `STEP CARRIERS` (lane 17's) says how many a step could lose. For each won task,
 open both sides' solves (`solve.turn` and `solve.call` in order) and name the first point at which
 they part:
 
-1. a tool of the new harness was called (by name, as `TOOLS CALLED` counts them for lane 16);
+1. a tool of the new harness was called (by name, as `TOOLS CALLED` counts them for lane 13);
 2. the solve followed a line of the new guide that the reference's guide lacks;
 3. the solver chose another method with no part of the harness in it;
 4. the two sides took the same method and reached different results, which is the solver's own
-   variance (lane 25).
+   variance (lane 20).
 
 Read the harness diff only after the traces (`states/<parent>/` against `states/<digest>/`), and
 count per comparison the wins of each kind and those unread. In one campaign the promoted tools'
@@ -756,8 +681,8 @@ rescaling of prices carried supply's second step on the five tasks priced in yen
 table promoted differed from one read no-step only in a search default; both were found by reading
 harness diffs, and neither by a trace. A part that made most wins is what a `programs-of`
 comparison should test; a step most of whose wins are variance rests on the reference's spread.
-Lane 19 asks whether a deciding value had any derivation at all; this lane asks which part of the
-harness derived it, and reads lane 19's table where that lane ran. It reads traces of scored tasks,
+Lane 15 asks whether a deciding value had any derivation at all; this lane asks which part of the
+harness derived it, and reads lane 15's table where that lane ran. It reads traces of scored tasks,
 which no Builder may see: its report stays with the primary, names solves and steps, and quotes
 nothing. The decision it changes is which part a promotion is credited to and which comparison
 against `programs-of:<digest>` would settle it; it routes to `operator`, and to `harness/tools` or
@@ -765,12 +690,12 @@ against `programs-of:<digest>` would settle it; it routes to `operator`, and to 
 
 ### The comparison
 
-**21. What a step rests on.**
+**17. What a step rests on.**
 
 Label: `comparison`.
 Importance: 0.7.
 
-Starts from `STEP CARRIERS (lane 21)`.
+Starts from `STEP CARRIERS (lane 17)`.
 
 The question is whether a step stands on the harness across the scored tasks, or on a few tasks
 that share something else. `STEP CARRIERS` gives each step's untied tasks without the bill and how
@@ -779,53 +704,28 @@ smallest sweep. For each step, from `readings.txt` and `tasks.txt`:
 
 1. find the smallest set of won tasks whose removal takes the step below its level;
 2. say what those tasks share: a scale or a unit, a family, the Examiner session that wrote them,
-   a convention, the reach grade lane 34 would give them;
-3. set each against the reference's own two halves (`REFERENCE AGAINST ITSELF`, lane 25's): a win
+   a convention, the reach grade lane 27 would give them;
+3. set each against the reference's own two halves (`REFERENCE AGAINST ITSELF`, lane 20's): a win
    on a task where the reference's halves disagree is noise as much as gain;
 4. set the carriers beside the tasks the step tied: a gain on one shape of task with ties
    everywhere else is a narrow gain.
 
 For example, the gate ablation's g-3 cleared at 6-0 with none to spare and 3 of its 6 wins inside
 the reference's spread, and supply's g-2 read 4-0, p 0.0625, without its five tasks priced in yen;
-lanes 15, 23, 25 and 34 each found a part of that, and none the whole. Lane 23 owns what a test of
-that size could show, lane 25 the spread and lane 11 which measure carried the reading; this lane
+lanes 12, 18, 20 and 27 each found a part of that, and none the whole. Lane 18 owns what a test of
+that size could show, lane 20 the spread and lane 8 which measure carried the reading; this lane
 owns what the step depends on. A finished comparison is never topped up or rerun (rule 4). The
 decision it changes is whether a step is reported as general, as narrow (one shape of task) or as
 resting on spread, and whether the operator reads such steps at more solves a side; it routes to
 `operator`, and to `examiner/task` where the carriers share a shape the Examiner wrote many of.
 
-**22. The scored set and what left it.**
-
-Label: `comparison`.
-Importance: 0.35.
-
-Starts from `SCORED SET MOVED (lane 22)`.
-
-The question is whether the tasks a comparison tallied are the tasks it fixed before its first
-solve, and whether what left favours a side. `scoredSet` draws from held-out tasks by epoch and
-whether they were held since the previous comparison, then by the contract's hash. `poolOf`
-uses reference outcomes to partition frontier and retained tasks and leaves awaiting tasks out.
-The set is fixed before any result of this comparison and written into
-`comparison.started` with the harnesses, the solves a side, the level and the cap.
-`SCORED SET MOVED` fires when the tally holds fewer tasks than that event. A task leaves four
-ways: `short` of its solves under a harness, a disputed task excluded through `taskStates`,
-`withdrawn` when a person released or refused it while the comparison ran, and
-`aside` on a rejection not ruled a true fail. The last is the one that can lean: a task is set aside for a rejection under either harness, so rejections that fall on one
-side remove that side's losses, which lane 7's `SET ASIDE BY SIDE` counts. Read `counted` in
-the report, the tally were every such rejection to stand, beside `scored`. A comparison asked
-for again on other terms under the same id is refused; confirm no second `comparison.started`
-carries the id. An older round screened candidates and admitted the ones a harness
-failed; its log holds those admissions, and their tallies are of a selected set.
-The decision it changes is whether the tally is of the set that was fixed; it routes to `host`
-(`src/campaign/round.ts`) and to `operator` for the labels that would return a task.
-
-**23. What the test could show at its size.**
+**18. What the test could show at its size.**
 
 Label: `comparison`.
 Importance: 0.75.
 
-Starts from `NOTHING SCORED (lane 23)`, `CUT BY ITS CAP (lane 23)` and
-`SET SHORT (lane 23)`, and is standing.
+Starts from `NOTHING SCORED (lane 18)`, `CUT BY ITS CAP (lane 18)` and
+`SET SHORT (lane 18)`, and is standing.
 
 The question is what each comparison's test could and could not have shown at its size. The test
 is an exact one-sided sign-flip test on each task's score without the bill; a tie carries nothing,
@@ -842,8 +742,8 @@ apart. Then say plainly, a line a comparison:
 - a `step` rests on its untied tasks alone: say how many.
 
 Read the tasks that left the tally (`short`, `aside`, `withdrawn` and disputed task states, which
-`SET SHORT` counts) and whether returning them could move the reading; lane 22 owns why they left,
-and lane 25 owns the reference's own spread. Reversing one observed win establishes neither a small
+`SET SHORT` counts) and whether returning them could move the reading; lane 5 owns why they left,
+and lane 20 owns the reference's own spread. Reversing one observed win establishes neither a small
 sample nor a need to win every task. A comparison of equal harnesses reads a step at most as often
 as its level allows, and one step promotes, so a campaign's attempts sum that risk (the epoch
 line's estimate). A finished comparison keeps its terms and is never topped up or rerun for
@@ -854,12 +754,12 @@ whether the operator enlarges a future comparison, in tasks or in solves a side,
 result as it stands; it routes to `operator`, and to `host` (`src/kernel/compare.ts`) only for an
 arithmetic fault.
 
-**24. The starter.**
+**19. The starter.**
 
 Label: `climb`.
 Importance: 0.65.
 
-Starts from `VALID BY HARNESS (lane 24)` and `PROMOTION UNCONFIRMED (lane 24)`.
+Starts from `VALID BY HARNESS (lane 19)` and `PROMOTION UNCONFIRMED (lane 19)`.
 
 The question is what the starter gives a campaign to build on, whether the tasks leave a
 harness room to add anything to it, and whether each promotion still beats it. The Starter Built Harness is pi's coding agent with pi's four
@@ -892,12 +792,12 @@ tasks are replaced, and whether a promotion is counted towards the milestone; it
 `comparedOf`) for a starter comparison another move displaced, `operator`, and `harness/guide`
 or `harness/tools` where a harness loses to the starter.
 
-**25. Flips and solver variance.**
+**20. Flips and solver variance.**
 
 Label: `comparison`.
 Importance: 0.45.
 
-Starts from `FLIPS (lane 25)` and `REFERENCE AGAINST ITSELF (lane 25)`.
+Starts from `FLIPS (lane 20)` and `REFERENCE AGAINST ITSELF (lane 20)`.
 
 The question is how much of the tally is the solver's variance. A task that the same harness
 both answered validly and did not, under one condition, is a flip. v1 recorded a fail repeating
@@ -907,7 +807,7 @@ little more than the budget once and a little less the next time. `REFERENCE AGA
 the direct measure: at an even number of solves a side, two by default, `compared` splits the
 reference's own solves into two halves mirrored in time, on the tasks the comparison tallied, so
 at two a side it is the reference's first solve of each task against its second. It runs no
-extra solves. This lane owns the reference's spread; lane 23 owns what the test could show at its
+extra solves. This lane owns the reference's spread; lane 18 owns what the test could show at its
 size. For each step, say how many of its untied wins fall on tasks where the reference's own
 halves disagree: a step that rests on those rests partly on the reference's spread, as one
 validity arm's did. Two samples of one harness should tie on most tasks and win as
@@ -923,14 +823,14 @@ in hours of high load.
 
 ### The climb
 
-**26. Which link holds the next promotion.**
+**21. Which link holds the next promotion.**
 
 Label: `climb`.
 Importance: 0.6.
 
-Starts from `CHAIN (lane 26)` and `NO TASK HELD OUT (lane 26)`.
+Starts from `CHAIN (lane 21)` and `NO TASK HELD OUT (lane 21)`.
 
-The question is what stops the campaign climbing now, named as one link with its count. Lanes 24,
+The question is what stops the campaign climbing now, named as one link with its count. Lanes 19,
 27 and 28 read each promotion and each move; this lane reads the chain as a whole and answers for
 the latest epoch. Read `CHAIN` (each comparison's reference, the harness compared and its
 reading) and row F's `campaign` line (the moves, the ending, the bill against the budget). Then
@@ -939,11 +839,11 @@ walk the links of the latest epoch in order, and stop at the first that does not
 1. **Tasks.** Did the epoch's Examiner sessions hold out tasks informative for the reference, at
    least `comparisonFloor` of them at the campaign's level (`src/campaign/admission.ts`)? `NO TASK
    HELD OUT` is this link broken at its root.
-2. **Build.** Did a Builder session change the harness and practise the change (lanes 15 and 17)?
+2. **Build.** Did a Builder session change the harness and practise the change (lanes 12 and 14)?
 3. **Comparison.** Did each comparison against the reference tally enough untied tasks to read a
-   step at its level, and how many more wins would have cleared it (lane 23)?
-4. **Table.** Did the move the table named run, or did another take its place (lane 28)? A
-   starter comparison displaced leaves the promotion unconfirmed (lane 24).
+   step at its level, and how many more wins would have cleared it (lane 18)?
+4. **Table.** Did the move the table named run, or did another take its place (lane 23)? A
+   starter comparison displaced leaves the promotion unconfirmed (lane 19).
 5. **Stop.** Where the campaign ended, was it the stop rule (`stopRule`, improvement patience of
    six by default), the budget, or no room, and did the count that ended it match the log?
 
@@ -955,13 +855,13 @@ session, a larger comparison, a fix to the host, or a stop; it routes to `examin
 tasks, `builder-prompt` for builds, `operator` for a comparison's size or a stop, and `host`
 (`src/campaign/decide.ts`) for a table that named the wrong move.
 
-**27. The promotion and the climb after it.**
+**22. The promotion and the climb after it.**
 
 Label: `climb`.
 Importance: 0.75.
 
-Starts from `PROMOTED (lane 27)`, `STARTER BARE (lane 27)`, `AFTER THE PROMOTION (lane 27)` and
-`SHARED TEMPORARY FOLDER (lane 27)`. Where several campaigns are under review, it is given their
+Starts from `PROMOTED (lane 22)`, `STARTER BARE (lane 22)`, `AFTER THE PROMOTION (lane 22)` and
+`SHARED TEMPORARY FOLDER (lane 22)`. Where several campaigns are under review, it is given their
 climbs side by side, in the columns `wri.ts climb` prints.
 
 The question is whether a promotion measured what the campaign exists to measure, and whether the
@@ -974,7 +874,7 @@ exactly and still measure little.
    (`tools/d2/promote.ts`, with any faults it was promoted `despite`), and the comparisons it rests
    on, each with its tally, p, level and A/A. Name the level the opening pinned, or the tree's
    default. One reading of `step` promotes; set its tally beside its A/A as evidence about
-   variance, never as a second threshold. Say whether the promotion is confirmed (lane 24's
+   variance, never as a second threshold. Say whether the promotion is confirmed (lane 19's
    `PROMOTION UNCONFIRMED`): an unconfirmed promotion is a step read once, and does not count
    towards the milestone. An older log repeated a step before promoting it; read it
    by the rule it ran under.
@@ -982,10 +882,10 @@ exactly and still measure little.
    answered none of its solves on more than half its tasks; name that reference, which need not be
    the starter. There the step reads "a harness that carries an engine beats one that carries
    none": real, but silent on how good the engine is, which a second promotion is the first to
-   show. Read `VALID BY HARNESS` at the recorded budget, lane 15's account of what changed and lane
+   show. Read `VALID BY HARNESS` at the recorded budget, lane 12's account of what changed and lane
    19's of the winning solves: whether the wins came from the change the note claims, from a
    program the harness ships, or from the solver's own work. Which measure won
-   the tasks is lane 11's.
+   the tasks is lane 8's.
 3. **What touched both sides.** `SHARED TEMPORARY FOLDER` counts the solves and sessions that named
    a path under the host's `/tmp` or `/var/tmp`, their `/private` spellings included, solves by
    comparison and side and practice apart, with `/bin/` paths and paths more than one solve or
@@ -1002,13 +902,13 @@ exactly and still measure little.
    (`informative`), the starter comparison, a Builder session and its practice, and a comparison
    against the promoted reference. Read the reference's valid share and objective gap epoch by
    epoch: where every new task is one the promoted harness already answers, the campaign is
-   measuring ties (lane 23 says how many tasks a step would need); where the tasks fail for reasons
-   no harness can change, the room is false (lane 10).
+   measuring ties (lane 18 says how many tasks a step would need); where the tasks fail for reasons
+   no harness can change, the room is false (lane 9).
 5. **The cost.** Dollars and hours from the opening to the promotion, and from the promotion to the
-   next session's end, by role (lane 31). A campaign that spent most of its budget reaching a step
+   next session's end, by role (lane 25). A campaign that spent most of its budget reaching a step
    against a bare starter has little left to climb with.
 
-Where several campaigns are under review, align them before comparing: lane 32 names the
+Where several campaigns are under review, align them before comparing: lane 26 names the
 differences between them beyond the one being read. The prompt's section on them opens with `wri.ts
 climb`'s table, and with each solve, its side named, that named a path under a shared temporary root
 that another campaign's Builder or Examiner session named first (`crossings`: the first occurrence a
@@ -1026,12 +926,12 @@ campaign is kept running toward a second one, and what the host must fix before 
 after a promotion the rule did not make, `examiner-prompt` (`src/examiner/prompt.ts`) for room
 written where there is none, and `environment` for the shared temporary folder and the load.
 
-**28. The endings and the operator's words.**
+**23. The endings and the operator's words.**
 
 Label: `climb`.
 Importance: 0.6.
 
-Starts from `ENDED AND WENT ON (lane 28)` and `OPERATOR WORDS (lane 28)`.
+Starts from `ENDED AND WENT ON (lane 23)` and `OPERATOR WORDS (lane 23)`.
 
 The question is whether the campaign command made the moves its table names, and whether each
 of its endings came for the reason it records. Inside a led campaign the Builder chooses its own
@@ -1042,7 +942,7 @@ table's code where the move is the one the table names, and `led` where the Buil
 an older log writes `asked` there, and `MOVES ASKED` counted them, which
 read bookkeeping (13 of 16 jobstat comparisons, 9 where the table named a build). For each
 comparison of a harness that is not the latest one read against the same reference, diff it
-against that one (lane 15's diff). Where only wording, order or a default no solve reads moved,
+against that one (lane 12's diff). Where only wording, order or a default no solve reads moved,
 the comparison is a second draw of one pair in effect, which `AGENTS.md` section 4 allows only
 where the table names it; in one campaign a promoted harness and the no-step one read before it
 differed by one search default. Then read the endings. A `campaign.ended` is the last
@@ -1063,20 +963,23 @@ Builder read and set aside, and `operator` for a word that did not act.
 
 ### The solve
 
-**29. Does the budget bind, and on which side.**
+**24. Does the budget bind, and how each solve ended.**
 
 Label: `solve`.
-Importance: 0.4.
+Importance: 0.45.
 
-Starts from `MISSES AT A LIMIT (lane 29)`, `WALL SHARE (lane 29)`, `HOST LOADED (lane 29)`,
-`LOAD MOVED (lane 29)` and `STARTS OUT OF TURN (lane 29)`.
+Starts from `MISSES AT A LIMIT (lane 24)`, `WALL SHARE (lane 24)`, `HOST LOADED (lane 24)`,
+`LOAD MOVED (lane 24)`, `STARTS OUT OF TURN (lane 24)`, `NON-RESULTS (lane 24)`,
+`SOLVE NEVER FINISHED (lane 24)`, `EXAMINER NEVER FINISHED (lane 24)`,
+`MISSES WITHOUT A VERDICT (lane 24)`, `SESSION CRASHED (lane 24)`, `TOOL MISSING (lane 24)` and
+`SERVED ANOTHER MODEL (lane 24)`.
 
 The question is whether the solve budget separates the harnesses. Both sides solve under one
 setting's model turns and deadline (`LIMITS`, `tools/d2/campaign.ts`: 20 turns and 30 minutes by
 default), and a better harness shows as answers reached within it that the reference does not
 reach (`AGENTS.md`, section 7). A budget no solve comes near cannot show that: the comparison then
 separates the harnesses on validity and the objective alone. Both draws of one
-investigation found the budget never bound, and lane 12 found it, not this lane.
+investigation found the budget never bound, and lane 9 found it, not this lane.
 
 Read, by comparison and side, from the solves each comparison counted:
 
@@ -1094,51 +997,32 @@ busiest half ran under twice the load of its calmest. One harness answered the s
 tasks in a median of 105 s under a load of 31 and 40 s under a load of 6. One worker runs a task's
 slots in their mirrored order (`drain`), so a side that started late waited for something:
 `STARTS OUT OF TURN` names the tasks, and `campaign.waited` and the provider's reruns say what each
-waited for. The decision it changes
-is whether the setting's budget is one under which a harness can show it saves effort; it routes
-to `operator` for the limits, which only the operator changes (`AGENTS.md`, section 3), and
-`environment` for load.
+waited for.
 
-**30. Failure mechanism and non-result honesty.**
-
-Label: `solve`.
-Importance: 0.45.
-
-Starts from `NON-RESULTS (lane 30)`, `SOLVE NEVER FINISHED (lane 30)`,
-`EXAMINER NEVER FINISHED (lane 30)`, `MISSES WITHOUT A VERDICT (lane 30)`,
-`SESSION CRASHED (lane 30)`, `TOOL MISSING (lane 30)` and `SERVED ANOTHER MODEL (lane 30)`.
-
-The question is, for every ending that is not a pass or a refused answer, which link broke first
-and whether its kind is honest. A non-result is never counted and a solve-side one is run again,
-up to three times; a fail counts against the harness. So the line between them decides a tally:
-v1 excused timeouts as the environment's and could leave out a quarter of its cases, and a
-harness that timed out more could look better. Here the deadline, the context and a missing answer
-are fails. Read each non-result's kind and reason: `provider` after its retries, `verifier`,
-`check`, `moved-files`, `killed`. Say whether reruns fell evenly on the two harnesses, since a
-side whose bad solves are rerun and whose good ones stand is favoured: `NON-RESULTS` gives each
-comparison's count under the reference harness and under the others. A solve that started and
-never finished, where the campaign went past it, was cut by a kill; its root may still be on disk.
-So was an Examiner session with a start and no ending that the campaign went past: its id is
-spent, and what it proposed before the cut is in the log and held out. Both triggers name what is
-open at the log's end apart: it may be running or stopped, and `bun run runs stop` writes no
-ending, and `bun run runs pulse` says whether its process is alive. A fail of kind `broken-harness` fails every task alike.
-`TOOL MISSING` names a check tool the path lacks, which stops a run before any control
-(`accept.ts`). `SERVED ANOTHER MODEL` counts by side the solves whose provider named another model
-than the condition asked for (row C, `degradations.txt`): say whether it falls on one side. For a session that crashed, name the turn and whether
-its round was refused as the rule says. The decision it changes is whether a count is trusted as
-written; it routes to `host` (`src/solver/run.ts`, `src/kernel/solve.ts`) for a kind that hides a
-cause, `environment` for a provider or the machine, and `harness/tools` for a harness that does
-not open.
+Then the endings that are neither a pass nor a refused answer: a non-result is solved again and
+counted nowhere, and a fail counts against its harness, so the line between them decides a tally.
+Row E counts them by kind; say whether each kind is honest and whether reruns fell evenly on the
+two sides (`NON-RESULTS` gives each comparison's count by side), since a side whose bad solves are
+rerun and whose good ones stand is favoured. `SOLVE NEVER FINISHED` and `EXAMINER NEVER FINISHED`
+name what the campaign went past, cut by a kill, apart from what is open at the log's end, which
+may still run (`bun run runs pulse` says whether its process is alive). `SESSION CRASHED` names a
+seat that crashed; say at which turn and whether its round was refused as the rule says.
+`TOOL MISSING` names a check tool the path lacks, and `SERVED ANOTHER MODEL` counts by side the
+solves another model answered (row C): say whether it falls on one side. The decision it changes
+is whether the setting's budget is one under which a harness can show it saves effort, and whether
+a count is trusted as written; it routes to `operator` for the limits, which only the operator
+changes (`AGENTS.md`, section 3), `environment` for load, a provider or the machine, and `host`
+(`src/solver/run.ts`, `src/kernel/solve.ts`) for an ending's kind that hides its cause.
 
 ### The economy
 
-**31. Time, spend and silence.**
+**25. Time, spend and silence.**
 
 Label: `economy`.
 Importance: 0.35.
 
-Starts from `LONG SILENCES (lane 31)`, `SPEND LED BY A ROLE (lane 31)` and
-`BUILDER COMPACTED (lane 31)`.
+Starts from `LONG SILENCES (lane 25)`, `SPEND LED BY A ROLE (lane 25)` and
+`BUILDER COMPACTED (lane 25)`.
 
 The question is where the hours and the dollars went, whether the bill holds all of them, and
 what each long silence was. Start with the bill's completeness, since every dollar below rests on
@@ -1155,7 +1039,7 @@ already made, which routes to `builder-prompt` for a fact the host does not repe
 `spendOf`, which delegates billing to `billedAll`: ending records count closed work and turn
 records count work without an ending. Drafting and `try_task` admission solves, in an older
 log, are the Examiner's spend. Read metered and backend-reported amounts separately where the events hold
-them. Say what share the reviewers took here and what their rulings changed, which is lane 7's.
+them. Say what share the reviewers took here and what their rulings changed, which is lane 5's.
 Row A puts the hours by role beside the billed dollars: each Builder and Examiner session and
 each comparison from its start to its end, a session a stop cut to the stop, and the rest of the
 campaign's span as between moves; in one campaign recode's Builder took 52% of the hours against
@@ -1176,13 +1060,13 @@ bill leaves out, and `environment` for a wait nobody chose.
 
 ### The runs
 
-**32. The run's launches, logins and hosts.**
+**26. The run's launches, logins and hosts.**
 
 Label: `runs`.
-Importance: 0.25.
+Importance: 0.3.
 
-Starts from `LAUNCHES (lane 32)`, `NO LAUNCH RECEIPT (lane 32)` and `HOST CODE MOVED (lane 32)`,
-and is standing.
+Starts from `LAUNCHES (lane 26)`, `NO LAUNCH RECEIPT (lane 26)`, `HOST CODE MOVED (lane 26)` and
+`LOG OUT OF ORDER (lane 26)`, and is standing.
 
 The question is whether the run is the run its readings claim: fresh from a prompt, at one commit,
 from a clean tree, and continued only after a pause, a restart or a change of login (`AGENTS.md`,
@@ -1201,56 +1085,31 @@ each finding cites. Count the runs live on each login at each launch against the
 receipt's load against its cores, and read the `campaign.waited` events and any wait at a named
 reset (`waitOut`) as the host's time. `HOST CODE MOVED` names a campaign whose host code changed
 inside it: name the commits between the two hashes from the receipts, and say which comparisons
-straddle the change, since a comparison's two sides must run on one host-code digest. Where several campaigns are read as the arms of one
+straddle the change, since a comparison's two sides must run on one host-code digest.
+`LOG OUT OF ORDER` names a history no single writer under the log's lock makes (a timestamp
+earlier than the line above it, a `solve.finished` whose solve never started, one comparison id
+started twice): read it against the receipts, since two controllers on one log is the usual
+cause. A copy gathered from another host (`data/runs/<host>/<name>`) may lag its original: count
+the states `versions.txt` marks not kept, and say whether `runs fetch <name>` finds the original. Where several campaigns are read as the arms of one
 experiment, set each arm's variables side by side: the pack or drafted exam, the host, the commit,
 the seats and their efforts, the budget and the opening's terms. Name every difference beyond the
 one the experiment moves as a confound, and say which findings it could explain; one
 ablation's arms differed in their exam and their host at once, so neither could be read alone. The decision it changes is whether the run's
 promotions count towards the milestone, and whether a launch path let a run start at a commit or
 tree it should not; it routes to `operator` for a run whose promotions do not count, `environment`
-for a host, a login or a load, and `host` (`tools/runs/`, `tools/d2/harness-builder.ts`) for a
-receipt missing or wrong.
-
-### The log
-
-**33. The log and what reads it.**
-
-Label: `log`.
-Importance: 0.45.
-
-Starts from `LOG OUT OF ORDER (lane 33)`. It also opens where it is named, since every report
-rests on the folds it checks.
-
-The question is whether the log holds one consistent history, and whether the readers print what
-the log holds. The log is append-only with one writer under a lock (`src/kernel/log.ts`), so a
-timestamp earlier than the line above it, a `solve.finished` whose solve never started, or a
-`comparison.started` written twice under one id are each a history no writer should have made.
-`LOG OUT OF ORDER` names which and how many. Read each against the processes the receipts record
-(lane 32): two controllers on one log is the usual cause. Then recount one number from each reader
-a person reads against the folds: the view's comparisons and next move (`bun run runs view`), the
-closing report's promotions and spend (`tools/d2/close.ts`), the pulse's open runs and endings,
-run-improvement-campaign's `scripts/wri2p2.ts` promotions and hours, and the page where it was used. A reader that disagrees
-with the fold it should call is a second reader of one fact (rule 12). Run `bun run runs replay`
-where the tree that reads differs from the tree that wrote, and say which event kinds this tree
-cannot read. Then read the copy under review against its log: a copy gathered from another host
-(`data/runs/<host>/<name>`) may lag the original, and every harness state the log names should lie
-under its `states/`. `versions.txt` in the derived folder marks each one not kept; count them, say
-which lanes could not read their diff because of it, and whether `runs fetch <name>` finds the
-original. One gathered copy held 2 of 8 states and the fetch found no host holding the
-campaign. The decision it changes is whether any count in the other reports can be believed as
-the log's, which reader to correct, and whether the copy must be refreshed before the lanes run; it routes to `host` (`src/kernel/log.ts`,
-`src/kernel/reports.ts`, `tools/d2/close.ts`, `tools/runs/`) for a writer or reader at fault and
-for a copy that lacks what its log names (`tools/runs/move.ts`), and `environment` for a log
-written by two processes.
+for a host, a login, a load or a log written by two processes, and `host` (`tools/runs/`,
+`tools/d2/harness-builder.ts`, `src/kernel/log.ts`) for a receipt missing or wrong, a writer at
+fault or a copy that lacks what its log names.
 
 ### The audit
 
-**34. Harness quality, version by version.**
+**27. Harness quality, version by version.**
 
 Label: `climb`.
 Importance: 1.
 
-Starts from every harness version the campaign kept, and is standing.
+Starts from every harness version the campaign kept, and is standing. It grades blind, so a session
+that holds it reads it first.
 
 The question is whether the harnesses a campaign climbed through got better at the domain, or only
 quicker at winning comparisons. A step says the new harness beat the reference on the scored tasks
@@ -1296,7 +1155,7 @@ Before the first grade, write the features of this domain's tasks that place one
 use (sizes, limits, tolerances), so a second reader grading from them reaches the same grades.
 
 Then set each grade beside the reference's valid share of the task (rows D and E, `rows.txt`). A
-task graded low that no harness answers is lane 10's question; one graded high that the starter
+task graded low that no harness answers is lane 9's question; one graded high that the starter
 answers every time says the grade is too high for this solver, and is regraded once with that
 reason. For each comparison, give the grades of the untied tasks the new harness won and those it
 lost, and say on which grades the step rests. A version's reach is the highest grade at which it
@@ -1308,7 +1167,7 @@ objective wins moved the objective, and on which grades.
 each version against its parent from the diff alone, before reading its comparison:
 
 - 0: it breaks or misleads: the guide claims what no tool does, or a tool fails its own call;
-- 1: it is fitted: it names practice content or narrows to the practice set's shapes (lane 18's limit);
+- 1: it is fitted: it names practice content or narrows to the practice set's shapes (the Builder's one limit, lane 12);
 - 2: churn: rewording or reordering that no solve's behaviour could follow;
 - 3: plausible but narrow: it helps a few task shapes and is silent on the rest;
 - 4: sound for one part of the domain, stated generally;

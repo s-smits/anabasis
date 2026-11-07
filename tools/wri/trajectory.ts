@@ -21,7 +21,7 @@
  *   installed interpreter, package or binary is left out (`ownPrograms`): a harness's first 3,526
  *   files of 6 November were 6 programs and one Python.
  * - **Exam load**: each comparison's clock, tally, and each side's turns and valid share.
- * - **Task grade**, only with `--grades`: the median of lane 34's task grades in each comparison, from
+ * - **Task grade**, only with `--grades`: the median of lane 27's task grades in each comparison, from
  *   `task<TAB>run<TAB>id<TAB>grade` rows in any report. It changes no reading and no seat is told it
  *   (`AGENTS.md`, rules 1 and 3).
  *
@@ -282,7 +282,7 @@ export function weightOf(state: string): Weight | null {
   return { guide: nonblank(text(`${AGENT_DIR}${GUIDE_FILE}`)), files: paths.length, lines };
 }
 
-/** The task grades of a lane 34 report: its `task` rows, anything else passed over. */
+/** The task grades of a lane 27 report: its `task` rows, anything else passed over. */
 export function gradesIn(text: string): Grades {
   const tasks = new Map<string, number>();
   for (const line of text.split("\n")) {

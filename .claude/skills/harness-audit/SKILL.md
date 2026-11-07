@@ -15,7 +15,7 @@ marked, and each needs the operator's word (`AGENTS.md`, section 10).
 | The question | Read |
 | --- | --- |
 | Which harnesses, where each came from, what measured it | `harness-versions.ts` |
-| What moved from a parent to its child | `harness-versions.ts --diff`, the lines through [git](#the-lines-that-moved), and lane 15 for what it means |
+| What moved from a parent to its child | `harness-versions.ts --diff`, the lines through [git](#the-lines-that-moved), and lane 12 for what it means |
 | How one runs on a task | [Trying a kept harness](#trying-a-kept-harness) |
 | Ready to promote, or to hand over | [Before a promotion](#before-a-promotion) and [At a handover](#at-a-handover) |
 | Which part of a harness did it | a standalone comparison against `programs-of:<digest>`, worded by [attribution-and-proof](../attribution-and-proof/SKILL.md) |
@@ -56,7 +56,7 @@ keeps, the starter first:
 `--diff` counts what moved, part by part, against the parent the log records or `--against`:
 lines added and removed in the guide and the tools module, tools added and removed in the spec,
 files added, removed and changed in the tool tree and under which folders, and other files by path.
-It quotes no line, and neither does anything written from it (lane 15). It takes no control: the
+It quotes no line, and neither does anything written from it (lane 12). It takes no control: the
 command that compares one makes it.
 
 ### The lines that moved
@@ -77,7 +77,7 @@ showed the guide and a changed link, where the trees behind the links differed i
 the tree where the link leads, and the exclusion leaves out the caches the digest ignores: in
 buffer-fresh-gpt-v071 they were 404 of 405 changed files. Where one side has no tool tree, git
 refuses the second command, and the counts already say how many files the other side holds. The
-patch quotes lines: read it, and write what it shows by kind and size, as lane 15 asks.
+patch quotes lines: read it, and write what it shows by kind and size, as lane 12 asks.
 
 ## Trying a kept harness
 
@@ -107,8 +107,8 @@ manual promotion, put these in front of the operator.
    a promotion makes, which can span several sessions, and [the lines](#the-lines-that-moved) show
    it. Attributing a gain to one part requires a standalone comparison against `programs-of:<digest>`
    (`AGENTS.md`, section 9).
-4. **What it measured.** Lane 27 of [whole-run-investigation](../whole-run-investigation/SKILL.md)
-   reads a promotion's rule, what its step measured and the climb after it; lanes 15 to 17 read
+4. **What it measured.** Lane 22 of [whole-run-investigation](../whole-run-investigation/SKILL.md)
+   reads a promotion's rule, what its step measured and the climb after it; lanes 12 to 14 read
    the change, the guide's truth, check mirroring and the finish. Open them when a reading is in
    doubt, not as a ritual.
 
@@ -135,7 +135,7 @@ Without `--solve` it calls no model. Then arrange a blind review:
 ## Whether a part earns its place
 
 A program, a tool or a guide line is read from what solves under it did: their `solve.call` rows,
-which lane 16 counts. Count use over the solves where the need arose and the part was there; a
+which lane 13 counts. Count use over the solves where the need arose and the part was there; a
 missing record is unknown, never zero. A successful call is not a valid answer, a failed answer
 does not say which part failed it, and a shell command alone is no reason for a tool.
 

@@ -4,7 +4,7 @@
  *   bun .claude/skills/examiner-complexity/scripts/grades.ts <grades.tsv> <log or campaign folder>...
  *
  * `grades.tsv` has a header and one row a task, `task<TAB>grade`, written by a grader who read the
- * task's public input and the public rules alone, on lane 34's scale (`GRADES`,
+ * task's public input and the public rules alone, on lane 27's scale (`GRADES`,
  * `src/examiner/ladder.ts`). For each grade it prints the tasks graded so, the solves that gave a
  * result under any harness, how many were valid, the tasks valid on every solve, and the median
  * turns of the valid ones. Non-results count nowhere (rule 7) and a flag is its side's fail. A grade

@@ -172,7 +172,7 @@ its end, and carry on in the same order; the window gives no step a reason to sk
    exists, and mark the rest unreached.
 5. **Investigate** the stopped runs as equals with
    [whole-run-investigation](../whole-run-investigation/SKILL.md): start, lanes, collect, the
-   isolated lanes 5 and 19 where their triggers and the reports call for them, then the synthesis.
+   isolated lanes 4 and 15 where their triggers and the reports call for them, then the synthesis.
 6. **Vet** the synthesis: check each finding against the logs and against the head (a fix may
    already be on the stack), and mark it confirmed, plausible or refuted (whole-run-investigation,
    "Vetting"). Backtrack every row of `Predictions.md` there first: recount it from the logs,
@@ -248,7 +248,7 @@ pauses it or it reaches its own ending. `--promotions N` stays an available flag
 wait still reaches its hours. The running window ends when every run the cycle stops has ended. The
 #306 forks
 reached their first promotion at 11.9 and 14.4 hours after their opening and their third at 17.8
-and 19.1 hours (`wri.ts start`, lane 27); no run has yet been timed to its sixth. The A/A of every promoting
+and 19.1 hours (`wri.ts start`, lane 22); no run has yet been timed to its sixth. The A/A of every promoting
 reading should read no step; the release says where one did. No seat is told the threshold and no
 campaign stops at it (`AGENTS.md`, factor 1): the cycle pauses or stops the runs.
 
@@ -349,12 +349,12 @@ predicts. Quiet between milestones is read against the limits of the work in fli
 | M3 first reading | first `comparison.reported` | `valid.informative.old`, tested untied and tied, `scored.detectable`, A/A, load | reading and untied count | only if a `read` trigger fires |
 | M4 step | `comparison.reported` with `reading: step` against the reference | tested margins, the retained tally apart, A/A | untied count and A/A result | none |
 | M5 promotion | `harness.promoted` | supporting reading, untied tasks, A/A and campaign risk; `wri.ts climb --log <log>,<peer>,<peer>` | write M6 prediction now | first promotion, once M6's first Examiner session has ended |
-| M6 next epoch | first Examiner session and first comparison after M5 | drafts held and refused by reason, frontier and retained sizes, objective gap | held out after M5 against before it | lane 27 with standing lanes, when owed at M5 |
+| M6 next epoch | first Examiner session and first comparison after M5 | drafts held and refused by reason, frontier and retained sizes, objective gap | held out after M5 against before it | lane 22 with standing lanes, when owed at M5 |
 | M7 ending | `campaign.ended` | ending kind, closing report, resolve every prediction | every open row | full investigation where the campaign promoted or an early ending raises an unresolved question |
 
 An investigation follows its event and waits for a comparison's `comparison.reported`. Open it for
 a question the readers cannot settle, a reading in doubt or an unclear failure owner. A timer alone
-raises no question. A second promotion reopens lane 27 only where `wri.ts climb` shows something the
+raises no question. A second promotion reopens lane 22 only where `wri.ts climb` shows something the
 first did not. For an ending other than improvement patience, report "reached N promotions; further
 improvement unresolved" (`AGENTS.md`, factor 1).
 
@@ -667,7 +667,7 @@ cycle above owns the steps and authority for the next cycle too.
 | --- | --- | --- |
 | cycle | the plan file and its log | run-management to fork and stop; whole-run-investigation on the stopped runs; system-path-simulation's before-and-after for each patch; stack-pr to implement on the open stack, its section 10 to consolidate it by subject, and `bun run land` to release |
 | score | five points and milestone | none |
-| walk | epoch, pulse, reader, link table | whole-run-investigation lane 26 for a campaign with a chain |
+| walk | epoch, pulse, reader, link table | whole-run-investigation lane 21 for a campaign with a chain |
 | choose | link, owner, falsifier | stack-pr for source; simplify over the diff |
 | prove | replay and launch dry run | system-path-simulation rehearsal for a round or campaign path |
 | predict | ledger before first solve | `--predict` on a manual comparison |

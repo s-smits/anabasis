@@ -15,13 +15,13 @@ comparison and the exam keeps moving after each promotion.
 The procedure tunes text the Examiner reads, never a task, rule or check (rule 2), and states facts,
 never a count or share to reach (section 2, consequence 2). `system-path-simulation`
 (`cases/optimize.md`) owns the paired seats, `run-management` the launches, and
-`whole-run-investigation` lane 34 the reach scale this skill grades on.
+`whole-run-investigation` lane 27 the reach scale this skill grades on.
 
 ## 1. Calibrate the record
 
 Before any edit, grade what the reference already answers. A grader reads each scored or held
 task's public input and the public rules alone (never hidden values, checks or outcomes) and
-writes `task<TAB>grade` on lane 34's scale (`GRADES`, `src/examiner/ladder.ts`). Then:
+writes `task<TAB>grade` on lane 27's scale (`GRADES`, `src/examiner/ladder.ts`). Then:
 
 ```sh
 bun .claude/skills/examiner-complexity/scripts/grades.ts <grades.tsv> <campaign folder>...
@@ -79,7 +79,7 @@ are rewritten again.
 | How hard an exam can be, how a rule is stated, the two ways a task is untied and the objective's decision | `src/examiner/draft.ts`, the drafting system prompt |
 | Writing above the reference's grade | `src/examiner/prompt.ts`, "How hard" |
 
-`test/examiner-ladder.test.ts` holds the scale to lane 34's words, keeps every examined domain and
+`test/examiner-ladder.test.ts` holds the scale to lane 27's words, keeps every examined domain and
 its neighbours out of the examples, and checks both modes are shown the ladder. Each rung names the
 place it sits in; a rung that is a closed form, a search over a few variables or a finite list of
 cases is grade 2 for this solver whatever its words. Rewrite rather than add a sentence (rule 13),

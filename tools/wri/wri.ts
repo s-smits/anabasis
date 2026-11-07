@@ -15,11 +15,11 @@
  *   bun tools/wri/wri.ts derive (--log <log>[,<log>...] | --all) [--verbose] [--force] [--no-embed]
  *   bun tools/wri/wri.ts index [--root <dir>] [--out <file>]
  *
- * - `climb` prints lane 27's columns for every log `--log` names, one row each, and the paths
+ * - `climb` prints lane 22's columns for every log `--log` names, one row each, and the paths
  *   under the host's `/tmp` one campaign named before another's solve ran them. It reads the logs as they stand, so it can be run on campaigns still running.
  * - `trajectory` prints how far each campaign had got at each work hour, on the rulers its runs
- *   share (`tools/wri/trajectory.ts`), with lane 34's blind grades where `--grades` names them.
- * - `packets` writes lane 34's blind packets for several graders across campaigns, and with `--join`
+ *   share (`tools/wri/trajectory.ts`), with lane 27's blind grades where `--grades` names them.
+ * - `packets` writes lane 27's blind packets for several graders across campaigns, and with `--join`
  *   reads their reports into `grades.tsv` for `trajectory --grades` (`tools/wri/packets.ts`).
  * - `read` prints the six rows and every trigger with the lane it starts (`tools/wri/read.ts`), and
  *   the host hash of the last condition beside this checkout's, and beside the campaign's own
@@ -361,7 +361,7 @@ function opened(): Investigation {
   return { out, shared: readFileSync(join(out, SHARED), "utf8"), campaigns };
 }
 
-/** The campaigns in lane 27's columns, and the `/tmp` paths one named before another's solve ran
+/** The campaigns in lane 22's columns, and the `/tmp` paths one named before another's solve ran
  *  them (`tools/wri/climb.ts`). */
 function climbText(logs: readonly string[]): string {
   const campaigns = logs.map((each) => ({ name: nameOf(each), events: read(each) }));

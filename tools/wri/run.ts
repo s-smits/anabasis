@@ -1,8 +1,8 @@
 /**
  * The triggers of the lanes that read how a run was conducted rather than what it measured: the
- * endings a campaign went on from and the operator's words (lane 28), the Builder's conversation across
- * its compactions (lane 31), the exam a campaign drafted from its prompt (lane 8), the launches
- * that ran it (lane 32), and whether its log reads in order (lane 33). Lane 7's count of the
+ * endings a campaign went on from and the operator's words (lane 23), the Builder's conversation across
+ * its compactions (lane 25), the exam a campaign drafted from its prompt (lane 6), the launches
+ * that ran it (lane 26), and whether its log reads in order (lane 26 too). Lane 5's count of the
  * Referee's refused evidence sits here too, since `read.ts` stands near the size policy's ceiling.
  *
  * Added on 27 October, when every pull request was given an area label (`references/lanes.md`,
@@ -18,7 +18,7 @@ import { plural } from "#src/meta/text.ts";
 import type { Receipt } from "../runs/receipt.ts";
 import { fired, type Index, share, tally, text, type Trigger } from "./folds.ts";
 
-/** Lane 28: endings the campaign went on from, and the operator's words with how many an event
+/** Lane 23: endings the campaign went on from, and the operator's words with how many an event
  *  acted on. Until 5 November it also counted the moves a Builder made where the table named
  *  another (`MOVES ASKED`): the Builder is no longer told the table's move, so the count read
  *  bookkeeping: 13 of 16 jobstat comparisons, 9 where the table named a build (overhaul report 11). */
@@ -44,7 +44,7 @@ function moveTriggers(log: Index): Trigger[] {
   ];
 }
 
-/** Lane 31: each Builder session's compactions beside its turns and its calls of `read_opening`. */
+/** Lane 25: each Builder session's compactions beside its turns and its calls of `read_opening`. */
 function conversationTriggers(log: Index): Trigger[] {
   const per = (kind: LogEvent["kind"]) => countBy(log.of(kind), (data) => text(data.session));
   const [compacted, turns] = [per("build.compacted"), per("build.turn")];
@@ -60,7 +60,7 @@ function conversationTriggers(log: Index): Trigger[] {
   return lines.length > 0 ? [fired("BUILDER COMPACTED", lines.join("; "))] : [];
 }
 
-/** Lane 8: the drafts an exam took, how each drafting session ended, and the measurement it
+/** Lane 6: the drafts an exam took, how each drafting session ended, and the measurement it
  *  recorded. */
 function draftTriggers(log: Index): Trigger[] {
   const drafted = log.of("exam.drafted");
@@ -77,7 +77,7 @@ function draftTriggers(log: Index): Trigger[] {
   ];
 }
 
-/** Lane 32: the launches beside the log, where there is more than one, more than one commit, a
+/** Lane 26: the launches beside the log, where there is more than one, more than one commit, a
  *  dirty tree, or a campaign command that left no receipt. */
 function launchTriggers(log: Index, launches: readonly Receipt[]): Trigger[] {
   if (launches.length === 0) {
@@ -99,7 +99,7 @@ function launchTriggers(log: Index, launches: readonly Receipt[]): Trigger[] {
     : [];
 }
 
-/** Lane 33: what an append-only log of one writer cannot hold: a clock that runs backwards, a solve
+/** Lane 26: what an append-only log of one writer cannot hold: a clock that runs backwards, a solve
  *  that finished without starting, a comparison started twice under one id. */
 function orderTriggers(log: Index): Trigger[] {
   const backwards = log.events.filter(
@@ -118,7 +118,7 @@ function orderTriggers(log: Index): Trigger[] {
   return said.length > 0 ? [fired("LOG OUT OF ORDER", said.join("; "))] : [];
 }
 
-/** Lane 7: the rulings the host refused for want of their evidence, by the ruling asked for. */
+/** Lane 5: the rulings the host refused for want of their evidence, by the ruling asked for. */
 function refusalTriggers(log: Index): Trigger[] {
   const refused = log.of("referee.refused");
   return refused.length > 0

@@ -123,7 +123,7 @@ own conversion does, with no model call.
   the cap is an artefact, and "not found" where it is absent is a miss.
 - Read it apart and report it beside the official score, never in its place.
 - **Inside:** the verifier reads the answer whole; the Referee rules rejections with evidence
-  (lanes 1 to 8 of a whole-run investigation).
+  (lanes 1 to 6 of a whole-run investigation).
 - *Example: on one task the data sheets filled the cap, so the summary sheets were never read: 4
   rubrics worth 32 of that task's 68 points fell on all three arms, and a fifth worth 8 on two of them.
   A statement of one arm sat near character 209,140 of a 200,000 cap, which cost it 8 points the other

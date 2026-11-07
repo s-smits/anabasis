@@ -1,5 +1,5 @@
 /**
- * Lane 27's triggers: a campaign that promoted a harness, read for what the promotion rested on,
+ * Lane 22's triggers: a campaign that promoted a harness, read for what the promotion rested on,
  * what it measured, what touched both sides of it, and what the campaign did after it.
  * Validity percentages require a profile with a task and solve denominator; missing measurements
  * read unmeasured, while a nonempty profile of failed solves reads zero.
@@ -174,7 +174,7 @@ export function untied(tested: JsonValue | undefined): string {
   return step === null ? "-" : share(step.wins + step.losses, step.wins + step.losses + step.ties);
 }
 
-/** One rest comparison as lane 27 reads it: the tally against its own A/A noise, the tally at each
+/** One rest comparison as lane 22 reads it: the tally against its own A/A noise, the tally at each
  *  budget, and the host's load while its solves started. */
 function restSaid(log: Index, { session, last }: Compared): string {
   const noise =
@@ -188,7 +188,7 @@ function restSaid(log: Index, { session, last }: Compared): string {
       ? []
       : [`${unit} ${String(count(record[unit]))} ${testSaid(record)}`];
   });
-  // Over the solves it measured, as lane 29 reads them: buffer's g-1 read 15.3 over its 70 starts on 12
+  // Over the solves it measured, as lane 24 reads them: buffer's g-1 read 15.3 over its 70 starts on 12
   // October and 37.9 over the 48 that were not non-results.
   const solves = log.solves.filter((solve) => solve.comparison === session && measured(solve));
   const loads = solves.flatMap(({ load }) => (load === null ? [] : [load]));
@@ -391,7 +391,7 @@ function sharedTmpTrigger(log: Index): Trigger[] {
   return lines.length > 0 ? [fired("SHARED TEMPORARY FOLDER", lines.join("; "))] : [];
 }
 
-/** Lane 27: every promotion the log holds, and the host's temporary folder wherever it is named. */
+/** Lane 22: every promotion the log holds, and the host's temporary folder wherever it is named. */
 export function promotionTriggers(log: Index): Trigger[] {
   const starter = log.compared.map(({ last }) => last.starter).find(isString) ?? "";
   const epochs = epochsOf(log.events);
@@ -403,7 +403,7 @@ export function promotionTriggers(log: Index): Trigger[] {
   ];
 }
 
-/** `STEP CARRIERS` (lane 21): each step's untied tasks on the scores it is read on (`scoresIn`), and how many of its largest
+/** `STEP CARRIERS` (lane 17): each step's untied tasks on the scores it is read on (`scoresIn`), and how many of its largest
  *  wins it could lose to a tie and still clear its level. On 1 November the gate ablation's g-3 cleared at
  *  6-0 with none to spare, and supply's g-2 lost its step without the 5 tasks priced in yen; lanes
  *  15, 23, 25 and 34 each found a part of that. */
@@ -422,7 +422,7 @@ function carrierTrigger(log: Index): Trigger[] {
   return lines.length > 0 ? [fired("STEP CARRIERS", lines.join("; "))] : [];
 }
 
-/** `PROMOTION UNCONFIRMED` (lane 24): each promotion whose epoch has no starter comparison, or whose
+/** `PROMOTION UNCONFIRMED` (lane 19): each promotion whose epoch has no starter comparison, or whose
  *  first one that tallied a task does not read the reference above the starter (`confirmed`,
  *  `src/campaign/climb.ts`; the last one until 2 November).
  *  On 1 November none of the gate ablation's five promotions and the validity arm's one was

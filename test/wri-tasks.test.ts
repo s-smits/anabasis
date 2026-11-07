@@ -1,4 +1,4 @@
-// The scored tasks as lane 34 grades them: each one's public input, and nothing hidden or unscored.
+// The scored tasks as lane 27 grades them: each one's public input, and nothing hidden or unscored.
 import { afterAll, describe, expect, it } from "bun:test";
 import { append } from "../src/kernel/log.ts";
 import { mkdirSync, mkdtempSync, rmSync } from "../src/meta/filesystem.ts";

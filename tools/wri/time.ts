@@ -1,6 +1,6 @@
 /**
  * The lanes of a whole-run investigation that read the clock: the solver's deadlines, limits and load
- * (lane 29), and where the campaign's hours, dollars and silences went (lane 31).
+ * (lane 24), and where the campaign's hours, dollars and silences went (lane 25).
  * Role hours are elapsed open spans and can overlap. Every recorded wait, a provider's reset
  * (its grace minute included), a network wait and a solve-queue wait, joins one union, and the hours
  * a promotion stand with and without it. Until 25 October only provider waits were read, then load
@@ -200,13 +200,13 @@ function servedTriggers(log: Index, results: ReturnType<typeof scoredOf>): Trigg
 const scoredOf = (log: Index) =>
   log.compared.map((each) => ({ ...each, scoring: tallied(each).filter(measured) }));
 
-/** Lane 29: the misses at a limit, and over the solves each comparison measured, not the non-results
+/** Lane 24: the misses at a limit, and over the solves each comparison measured, not the non-results
  *  it reran, the share of the deadline each harness used and the host's load when they started. */
 export function deadlineTriggers(log: Index): Trigger[] {
   const results = scoredOf(log);
   const deadlineShares = results.flatMap(({ session, own, scoring }) => {
     // The median share of its deadline a harness's solves used, or null for none under a deadline. v1 read
-    // this share as the measure that moves on every task set and leads a fail (lane 29).
+    // this share as the measure that moves on every task set and leads a fail (lane 24).
     const under = (harness: JsonValue | undefined) =>
       median(
         scoring.flatMap((solve) =>
@@ -441,7 +441,7 @@ function causeOf(log: Index, spans: readonly Span[], index: number, gap: number)
   return open ? `before ${log.events[index]?.kind ?? ""}` : BETWEEN_MOVES;
 }
 
-/** Lane 31: the longest silences, each by what ran through it, and a role that took most of the
+/** Lane 25: the longest silences, each by what ran through it, and a role that took most of the
  *  dollars. A silence is read against the campaign's own median solve: at a fixed twenty minutes it
  *  read nothing on buffer on 10 October, whose longest gap was 19.5 minutes, and gave recode's two
  *  longer ones as a count and the time of the first, with nothing of what ran. */

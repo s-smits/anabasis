@@ -1,13 +1,15 @@
-// The catalogue keeps its thirty-four lanes numbered in order.
+// The catalogue keeps its twenty-seven lanes numbered in order, each trigger starting the lane the
+// reader names, and a session that holds the blind lane reads it first.
 import { describe, expect, it } from "bun:test";
 import { catalogueText, type Lane, lanesOf } from "../tools/wri/catalogue.ts";
 import { sessionsOf, suggestedSessions, weightOf } from "../tools/wri/investigation.ts";
 import { CATEGORIES } from "../tools/runtime/land.ts";
+import { TRIGGERS } from "../tools/wri/folds.ts";
 
 describe("the lane catalogue", () => {
-  it("holds thirty-four lanes, numbered in order", () => {
+  it("holds twenty-seven lanes, numbered in order", () => {
     expect(lanesOf(catalogueText()).map(({ number }) => number)).toEqual(
-      Array.from({ length: 34 }, (_, index) => index + 1),
+      Array.from({ length: 27 }, (_, index) => index + 1),
     );
   });
 
@@ -15,25 +17,25 @@ describe("the lane catalogue", () => {
     const lanes = lanesOf(catalogueText());
     const held = new Set(lanes.map(({ label }) => label));
     expect(held).toEqual(
-      new Set([
-        "exam",
-        "verdicts",
-        "supply",
-        "harness",
-        "comparison",
-        "climb",
-        "solve",
-        "economy",
-        "runs",
-        "log",
-      ]),
+      new Set(["exam", "verdicts", "supply", "harness", "comparison", "climb", "solve", "economy", "runs"]),
     );
     for (const label of held) expect(CATEGORIES.has(label)).toBe(true);
     for (const { importance } of lanes) expect(importance >= 0 && importance <= 1).toBe(true);
-    // A lane's own label holds wherever it stands: lane 24 sits among the comparison's lanes.
-    expect(lanes.find(({ number }) => number === 24)?.label).toBe("climb");
-    expect(lanes.find(({ number }) => number === 34)?.label).toBe("climb");
+    // A lane's own label holds wherever it stands: lane 19 sits among the comparison's lanes.
+    expect(lanes.find(({ number }) => number === 19)?.label).toBe("climb");
+    expect(lanes.find(({ number }) => number === 27)?.label).toBe("climb");
     for (const { body } of lanes) expect(body).not.toMatch(/Importance:|Label:/u);
+  });
+
+  it("names each trigger the reader can fire under the lane the reader opens with it", () => {
+    const named = lanesOf(catalogueText()).flatMap(({ number, triggers }) =>
+      triggers.map((name) => `${name} (lane ${String(number)})`),
+    );
+    expect(named.toSorted()).toEqual(
+      Object.entries(TRIGGERS)
+        .map(([name, number]) => `${name} (lane ${String(number)})`)
+        .toSorted(),
+    );
   });
 
   it("names a lane that carries no label of its own", () => {
@@ -100,6 +102,23 @@ describe("lanes packed into sessions", () => {
       [1, 2, 3],
       [4, 5, 6],
     ]);
+  });
+
+  // On 7 November the blind grading lane, packed after three lanes that read outcomes, said its
+  // grades were not blind.
+  it("puts the blind lane first in its session, and the rest in number order", () => {
+    const blind = lanes.filter((each) => each.blind);
+    expect(blind.map(({ number }) => number)).toEqual([27]);
+    expect(blind.every(({ standing }) => standing)).toBe(true);
+    for (const count of [1, 2, 3, 4, 6, 8]) {
+      const sessions = sessionsOf(lanes, count);
+      const home = sessions.find((session) => session.some((each) => each.blind));
+      expect(home?.[0]?.number).toBe(27);
+      for (const session of sessions) {
+        const rest = session.filter((each) => !each.blind).map(({ number }) => number);
+        expect(rest).toEqual(rest.toSorted((one, other) => one - other));
+      }
+    }
   });
 
   it("suggests the most sessions whose lightest weighs at least half the heaviest", () => {

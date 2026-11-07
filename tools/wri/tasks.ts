@@ -1,6 +1,6 @@
 /**
  * Every task a campaign's comparisons scored, with its public input and nothing of how it was
- * answered, so lane 34 grades reach before it reads an outcome. On 30 October the first lane-34
+ * answered, so lane 27 grades reach before it reads an outcome. On 30 October the first lane-34
  * session spent fifteen calls finding the tasks' text in the log and joining it to the scored sets
  * by hand. It prints no hidden value, no check and no answer, though the file stays on the exam
  * side with the log it reads.
@@ -15,7 +15,7 @@
  * input in the log, and says so.
  *
  * A task released and never scored follows, marked, since what a harness practised on is part of what
- * it was built against: on 6 November v5 held 11 such tasks that no reader listed. Lane 34's packets
+ * it was built against: on 6 November v5 held 11 such tasks that no reader listed. Lane 27's packets
  * read `scoredTasks` alone, as a blind grader's set stays the tasks that were scored.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";

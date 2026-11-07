@@ -1,5 +1,5 @@
 /**
- * Lane 34 across campaigns: blind packets for several graders, and the join of what they graded.
+ * Lane 27 across campaigns: blind packets for several graders, and the join of what they graded.
  *
  *   bun tools/wri/wri.ts packets --log <log>,<log>[,...] --out <dir> [--graders 2]
  *   bun tools/wri/wri.ts packets --out <dir> --join
@@ -34,7 +34,7 @@ import { ownFilesOf, weightOf } from "./trajectory.ts";
 const VALUE_BYTES = 1500;
 const DIFF_LINES = 3000;
 const ANCHORS = 6;
-/** The grade from which a task the Starter answers every time is regraded: specialist work (lane 34). */
+/** The grade from which a task the Starter answers every time is regraded: specialist work (lane 27). */
 const HIGH = 5;
 const GUIDE = `${AGENT_DIR}${GUIDE_FILE}`;
 
@@ -154,13 +154,13 @@ function versionsOf({ log, events }: Campaign, label: string): Packed[] {
 function between(text: string, from: string, to: string): string {
   const start = text.indexOf(from);
   const stop = text.indexOf(to, start);
-  if (start === -1 || stop === -1) throw new Error(`lane 34's text no longer holds "${from}"`);
+  if (start === -1 || stop === -1) throw new Error(`lane 27's text no longer holds "${from}"`);
   return text.slice(start, stop).trim();
 }
 
 function graderPrompt(out: string, grader: string, tasks: number, versions: number): string {
   const lane = catalogueText();
-  return `# Blind grades for lane 34 of a whole-run investigation
+  return `# Blind grades for lane 27 of a whole-run investigation
 
 You grade tasks and harness versions. A harness is a guide and programs that a fixed solver model uses to answer a domain's tasks. Your grades are a reviewer's reading: they change no verdict, reading, promotion or move, and no seat is told them.
 
@@ -195,7 +195,7 @@ The versions packet shows each of ${String(versions)} versions' diff against its
 In this shape and order, with real tabs in the rows:
 
 \`\`\`
-# Lane 34: Harness quality, version by version
+# Lane 27: Harness quality, version by version
 
 Verdict: no finding
 
@@ -331,7 +331,7 @@ function starterAnswers(events: readonly LogEvent[]): Set<string> {
 }
 
 function regradePrompt(out: string, grader: string, owed: readonly string[]): string {
-  return `# Regrade, once, for lane 34
+  return `# Regrade, once, for lane 27
 
 Each task below is one you graded high, and the Starter, the plainest harness, answered it validly on every solve. That says the grade may be too high for this solver. Read each again in \`${join(out, `packet-${grader}-tasks.md`)}\`, on that reason alone, and keep the grade where the reason does not move it.
 

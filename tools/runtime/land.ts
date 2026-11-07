@@ -47,7 +47,9 @@
  * `ci.yml` takes `workflow_dispatch`, `--merge` dispatches one before gating, so it runs meanwhile,
  * and waits for it after. No pull request merges before that run has passed. A failed run is not dispatched again, since nothing about its head changed, unless no runner
  * ever took the jobs that did not pass: on 5 November GitHub cancelled both macOS jobs of run
- * 41910589537 untaken, so `land` reruns those jobs once and waits for them. Then, on heads
+ * 41910589537 untaken, so `land` reruns those jobs once and waits for them. Where the newest full run
+ * on the top's branch failed in its tests, the run dispatched on the fixed head is `ci-fixes`: the
+ * files that failed and the tests near the fix alone (`fixesFor`, `tools/runtime/ci-runs.ts`). Then, on heads
  * read again, it posts `ana/stack-gate` on every head and merges through GitHub, so each pull request
  * ends Merged; a local merge pushed to main left 98 pull requests open on 21 September 2026. The
  * merge is GitHub's asynchronous merge of the top, pinned to the top's gated head, which merges
@@ -104,6 +106,7 @@
 import { parseArgs, runtimeProcess } from "../../src/meta/process.ts";
 import { decodeOutput, runSync } from "../../src/meta/subprocess.ts";
 import { plural, textOr } from "../../src/meta/text.ts";
+import { CI_WORKFLOW, ciRun, failedFiles, FIXES, fixesFor } from "./ci-runs.ts";
 import { doubledLines } from "./doubled.ts";
 import {
   api,
@@ -156,7 +159,6 @@ interface Mode {
 const COMMIT_CONTEXT = "ana/commit";
 const STACK_CONTEXT = "ana/stack-gate";
 const CI_CONTEXT = "ci.yml";
-const CI_WORKFLOW = "ci.yml";
 /** ANA_CI_POLL_MS shortens it for the tests that walk a run from queued to completed. */
 const CI_POLL_MS = Number(runtimeProcess.env.ANA_CI_POLL_MS) || 20_000;
 /** `ci.yml`'s jobs stop at 45 minutes; the rest is the macOS runner's queue. */
@@ -337,26 +339,6 @@ function statusPoster(root: string, shas: readonly string[]): (sha: string, stat
   };
 }
 
-/** The newest `ci.yml` run on `sha` that a later one did not cancel, as its status, conclusion, id
- *  and link; null when there is none; undefined when GitHub did not answer, which is never read as
- *  none. */
-function ciRun(root: string, sha: string): string[] | null | undefined {
-  const read = gh(root, [
-    "run",
-    "list",
-    "--workflow",
-    CI_WORKFLOW,
-    "--commit",
-    sha,
-    "--json",
-    "status,conclusion,databaseId,url,createdAt",
-    "--jq",
-    String.raw`[.[] | select(.conclusion != "cancelled")] | first // empty | [.status, .conclusion, .databaseId, .url, .createdAt] | map(tostring) | join("\t")`,
-  ]);
-  if (!read.ok) return undefined;
-  return read.out === "" ? null : read.out.split("\t");
-}
-
 /** Dispatches `ci.yml` on the top's head unless a run is already there. */
 function startCi(root: string, top: Pull): void {
   const head = `#${String(top.number)}'s head ${short(top.headRefOid)}`;
@@ -389,8 +371,12 @@ function startCi(root: string, top: Pull): void {
         `Land again once a run exists.`,
     );
   }
-  ghOrThrow(root, ["workflow", "run", CI_WORKFLOW, "--ref", top.headRefName]);
-  say(`dispatched ${CI_WORKFLOW} on ${head}; it runs while the commits are gated here.`);
+  const fixes = /^\s+ui_tests:/mu.test(decodeOutput(workflow.stdout)) ? fixesFor(root, top, say) : null;
+  const inputs = fixes === null ? [] : ["-f", `tests=${fixes.tests}`, "-f", `ui_tests=${fixes.uiTests}`];
+  ghOrThrow(root, ["workflow", "run", CI_WORKFLOW, "--ref", top.headRefName, ...inputs]);
+  const what =
+    fixes === null ? CI_WORKFLOW : `${FIXES}, ${plural(fixes.count, "test file")} since ${fixes.since},`;
+  say(`dispatched ${what} on ${head}; it runs while the commits are gated here.`);
 }
 
 /** Waits for `ci.yml` on the top's head and shows its verdict there as the check `ci.yml`, linked to
@@ -407,16 +393,17 @@ async function awaitCi(root: string, top: Pull): Promise<void> {
     await Bun.sleep(CI_POLL_MS);
     ci = ciRun(root, top.headRefOid) ?? ci;
   }
-  const [status, conclusion, id = "", url] = ci ?? [];
+  const [status, conclusion, id = "", url, , title = "ci"] = ci ?? [];
   const head = `#${String(top.number)}'s head ${short(top.headRefOid)}`;
+  const name = title === FIXES ? `${CI_WORKFLOW}'s ${FIXES}` : CI_WORKFLOW;
   if (conclusion === "success") {
-    show("success", `ci.yml run ${id} passed on this head`);
-    say(`${CI_WORKFLOW} passed on ${head}: ${url ?? ""}`);
+    show("success", `${name} run ${id} passed on this head`);
+    say(`${name} passed on ${head}: ${url ?? ""}`);
     return;
   }
   show(
     status === "completed" ? "failure" : "pending",
-    `ci.yml run ${id} ${textOr(conclusion, "has not finished")}`,
+    `${name} run ${id} ${textOr(conclusion, "has not finished")}`,
   );
   if (status !== "completed") {
     throw new Refusal(
@@ -432,6 +419,8 @@ async function awaitCi(root: string, top: Pull): Promise<void> {
   await Bun.write(log, `${failed}\n`);
   if (steps !== "") console.error(steps);
   console.error(failed.split("\n").slice(-CI_TAIL).join("\n"));
+  const files = failedFiles(failed);
+  if (files.length > 0) console.error(`land: failed test files: ${files.join(" ")}`);
   throw new Refusal(
     `${CI_WORKFLOW} ended ${conclusion ?? ""} on ${head}: ${url ?? ""}. Its failed jobs' log: ${log}. Fix the ` +
       `commit it names, or run gh run rerun ${id} if the runner was at fault, and land again.`,

@@ -34,10 +34,9 @@ import {
   changedSince,
   DOCUMENTATION,
   lines,
-  NEAR,
-  nearbyTests,
   parentOf,
   TEST_FILE,
+  testsNear,
   UI_ROOT,
   UI_SETUP,
 } from "#tools/runtime/gate.ts";
@@ -217,9 +216,6 @@ export function labelsOf(files: readonly string[]): Pick<Owed, "category" | "imp
 
 /** What `change` owes, read in `root`. */
 export function owedOf(root: string, change: Change): Owed {
-  const tests = lines(gitText(root, "ls-files", "--cached", "--others", "--exclude-standard", "test")).filter(
-    (file) => TEST_FILE.test(file),
-  );
   const areas = new Map<string, Area>();
   for (const file of change.all) {
     for (const route of momentsOf({ file_path: file }, new Set())) {
@@ -235,7 +231,7 @@ export function owedOf(root: string, change: Change): Owed {
   return {
     changed: change.all.length,
     documentationOnly: change.code.length === 0,
-    tests: change.code.length === 0 ? [] : nearbyTests(root, new Set(change.code), tests, NEAR.root),
+    tests: change.code.length === 0 ? [] : testsNear(root, new Set(change.code)),
     ui: change.code.filter((file) => [UI_ROOT, ...UI_SETUP].some((path) => inside(file, path))),
     areas: [...areas.values()],
     size: authored.flatMap((file) => {

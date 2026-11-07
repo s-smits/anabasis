@@ -23,6 +23,7 @@ day had held 193 Actions runs, 189 of them for checks this machine already made 
 | a pull request that repeats another's commits | `stack.ts` lists it, `land` refuses it (`doubled.ts`) | nothing |
 | each commit passes alone; the whole gate at the top | `bun run land -- <top> --sanitize`, on a runner host | `ana/commit`, `mergeable` success or failure |
 | the clean-machine suite on both platforms | `ci.yml`, dispatched by `land --merge` | `ci.yml` |
+| after a full run that failed only in its tests: the files that failed and the tests near what changed since | `ci.yml` as `ci-fixes`, dispatched by `land --merge` (`fixesFor`, `tools/runtime/ci-runs.ts`) | `ci.yml` |
 | the landing itself | `land --merge` | `ana/stack-gate`, the one check the ruleset on `main` requires |
 
 A plain `bun run gate|test|typecheck|lint` already goes to a runner host through the Bun shim, so

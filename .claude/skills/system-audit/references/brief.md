@@ -12,7 +12,7 @@ and a session fills the parts its lens names. Its rules come from the briefs of 
 The operator asks: «the operator's question, in their words». This round is «n» independent
 sessions, each with one part of the system and one lens (flaws, rethink, delete, factors or robustness),
 named in your task. Every claim names the pillar it bears on (wall, supply, climb, honesty,
-verdicts, grounding, economy, outside) and the v1.0 requirement it blocks
+verdicts, grounding, economy, systems, outside) and the v1.0 requirement it blocks
 or moves, as the system-audit skill's table "The pillars and the v1.0 bar" sets them, or says it
 touches none. The subject is the system's design as a whole, measured against the question of
 the pinned `AGENTS.md` section 1, not the newest pull request. Do not assume a flaw exists, and do

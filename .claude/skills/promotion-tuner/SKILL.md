@@ -216,7 +216,7 @@ lucky draw; the A/A, the false-promotion estimate and a later reading on fresh s
 evidence (`AGENTS.md`, factor 2). Where only one score supports a promotion, name the score.
 
 Whether the promotions on record bought ability is another question, which no rule here settles.
-Lane 34 reads it beside these columns: a task's grade and a version's soundness, graded blind to
+Lane 27 reads it beside these columns: a task's grade and a version's soundness, graded blind to
 campaign and result, and the wins by what each version changed (whole-run-investigation).
 
 ## Tuning the score

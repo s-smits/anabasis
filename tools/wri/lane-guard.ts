@@ -1,7 +1,8 @@
 /**
  * The hook the `wri-lane` agent type (`.claude/agents/wri-lane.md`) runs before each of its tool
- * calls: it refuses a write anywhere but the lane's own report or the synthesis, a shell command that
- * would spend, start a seat or move a campaign, and a read of an env file. Everything else passes.
+ * calls: it refuses a write anywhere but the lane's own report, the synthesis or the across note, a
+ * shell command that would spend, start a seat, move a campaign or run inside one, and a read of an
+ * env file. Everything else passes.
  *
  * The hard rules of a whole-run investigation ("never write under the campaign's folder", "start no
  * solve, session, round or check run", `AGENTS.md` section 10 item 5) were text in every lane prompt
@@ -9,11 +10,20 @@
  * agent type of its own for the lanes, so the rules a tool call can break are now refused in code,
  * and the prompt keeps only those a call cannot show (quote nothing behind the walls). A refusal
  * names its reason, so a lane that needed the call says so in its report.
+ *
+ * On 7 November 2026 a lane ran kept harness programs with Python from Bash inside a stopped
+ * campaign's folder, which left `__pycache__` in three of its `states/` trees, and an audit of
+ * `refusalOf` found interpreters, `perl -i`, `tar -C`, redirects into the investigation's gate files,
+ * two writing steps of the primary and every `.env.*` but two let through. So a command now runs
+ * nowhere inside a campaign, an interpreter names no campaign path, Python runs with its bytecode
+ * off, a shell write under `.ana/wri/` reaches only what the Write tool may, and every `.env*` file
+ * but a committed `*.example` is closed. It stays a list of protected roots, never a reader of what
+ * a program does.
  */
 import { realpathSync } from "../../src/meta/filesystem.ts";
 import { capturedJsonParse } from "../../src/meta/json-runtime.ts";
 import { isRecord, isString } from "../../src/meta/json-shape.ts";
-import { tmpdir } from "../../src/meta/os.ts";
+import { homedir, tmpdir } from "../../src/meta/os.ts";
 import { basename, resolve } from "../../src/meta/path.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
 
@@ -26,8 +36,20 @@ interface Input {
   readonly command?: unknown;
 }
 
-/** A lane writes its report, and the synthesis session its note, both inside an investigation. */
-const WRITABLE = /\/\.ana\/wri\/[^/]+\/(?:lanes\/\d{2}[a-z]?-report\.md|synthesis\.md)$/u;
+/** Where a line stands as one of its commands runs, and the names it set before it. */
+interface Scope {
+  readonly cwd: string;
+  readonly known: ReadonlyMap<string, string>;
+}
+
+/**
+ * A lane writes its report, the synthesis session its note and the across session (WRI2P2's
+ * `across` step) `cross-domain.md`, each inside an investigation.
+ */
+const WRITABLE = /\/\.ana\/wri\/[^/]+\/(?:lanes\/\d{2}[a-z]?-report\.md|synthesis\.md|cross-domain\.md)$/u;
+
+/** The investigations and cycles, whose every other file is the primary's or a gate's. */
+const INVESTIGATIONS = /\/\.ana\/wri(?:\/|$)/u;
 
 /** Scratch a lane keeps for itself, which the hard rules put in a temporary directory of its own. */
 const SCRATCH = [tmpdir(), realpathSync(tmpdir()), "/tmp", "/private/tmp"];
@@ -70,7 +92,7 @@ const LIFE = new Set([
   "fetch",
   "on",
 ]);
-const PRIMARY = new Set(["start", "lanes", "collect", "synthesis", "derive", "packets"]);
+const PRIMARY = new Set(["start", "lanes", "collect", "synthesis", "derive", "packets", "index"]);
 
 /** Git verbs that change a tree, a branch or a remote; `stash` and `worktree` only past `list`. */
 const GIT =
@@ -80,8 +102,12 @@ const GIT =
 const CAMPAIGN_PATH =
   /(?:^|\/)(?:\.ana\/d2|data\/runs)(?:\/|$)|\/states\/|\/exams\/|\/\.ana\/wri\/[^/]+\/snapshot\//u;
 
-/** A word that names an env file, alone, as a path or as a flag's value. */
-const ENV_FILE = /(?:^|[/=<])\.env(?:\.runs)?$/u;
+/** The same paths inside a program's text, where a quote, a space, `=` or `(` may stand before one. */
+const NAMES_CAMPAIGN =
+  /(?:^|[\s"'=(/])(?:\.ana\/d2|data\/runs)(?:[/\s"')]|$)|\/states\/|\/exams\/|\/\.ana\/wri\/[^/]+\/snapshot\//u;
+
+/** A word that names an env file, alone, as a path, a glob or a flag's value, but no `*.example`. */
+const ENV_FILE = /(?:^|[/=<])\.env(?![^/]*\.example$)[^/]*$/u;
 
 /** Words that run the command after them: a wrapper, with its flags and a count or a duration. */
 const WRAPPERS = new Set([
@@ -96,6 +122,22 @@ const WRAPPERS = new Set([
   "xargs",
   "sudo",
 ]);
+
+/** Programs that run code a word gives them, or a file of it, and may write wherever that code says. */
+const INTERPRETER =
+  /^(?:python[\d.]*|pypy[\d.]*|pytest|perl[\d.]*|ruby|node|deno|php|Rscript|julia|lua|osascript)$/u;
+
+/** Python and its test runner, which leave `__pycache__` beside every module they import. */
+const PYTHON = /^(?:python[\d.]*|pypy[\d.]*|pytest)$/u;
+
+/** A file a program runs: a script, which a kept harness keeps in `.toolchain/`. */
+const SCRIPT = /\.(?:[cm]?[jt]sx?|py|pl|rb|sh|bash|zsh|php|lua|r)$/iu;
+
+/** The flags that move a command into a directory: `git -C`, `tar -C`, `make -C`, `bun --cwd`. */
+const DIR_FLAGS = new Set(["-C", "--cwd", "--directory", "--chdir", "--work-tree", "--git-dir"]);
+
+/** The flags whose value is inline code, for `bun`, `sed`, `perl` and `ruby`. */
+const CODE_FLAGS = new Set(["-e", "--eval", "-p", "--print", "-E"]);
 
 /**
  * The simple commands a shell line runs, each as its words, with every heredoc's body dropped and
@@ -148,23 +190,158 @@ function commandsOf(line: string): string[][] {
   return commands.filter((words) => words.length > 0);
 }
 
-/** Why one simple command is refused, given the directory the line has moved to. */
-function commandRefusal(words: readonly string[], cwd: string): string | null {
+/** A word as the path it names from where the line stands, with `~` as the home folder. */
+function pathOf(word: string, cwd: string): string {
+  return resolve(cwd, word.startsWith("~") ? `${homedir()}${word.slice(1)}` : word);
+}
+
+/** Why a write to this path is refused: a campaign's folder, or a file of the investigation's own. */
+function writeRefusal(path: string): string | null {
+  if (CAMPAIGN_PATH.test(path)) return "a write under a campaign";
+  return INVESTIGATIONS.test(path) && !WRITABLE.test(path) ? "a write to the primary's files" : null;
+}
+
+/** The files an in-place edit rewrites: every plain word but its program, unless a flag names that. */
+function inPlaceFiles(rest: readonly string[], programFlags: readonly string[]): string[] {
+  const named = rest.some((word) => programFlags.includes(word));
+  const files = rest.filter(
+    (word, index) =>
+      word !== "" &&
+      word !== "inplace" &&
+      !word.startsWith("-") &&
+      !programFlags.includes(rest[index - 1] ?? ""),
+  );
+  return named ? files : files.slice(1);
+}
+
+/** The directories a command moves into before it runs: by a flag, or each one `find -execdir` visits. */
+function dirsOf(tool: string, words: readonly string[], plain: readonly string[]): string[] {
+  const dirs = words.flatMap((word, index) => {
+    if (DIR_FLAGS.has(words[index - 1] ?? "")) return [word];
+    const long = /^--(?:cwd|directory|chdir|work-tree|git-dir)=(.*)$/u.exec(word)?.[1];
+    if (long !== undefined) return [long];
+    return word.startsWith("-C/") ? [word.slice(2)] : [];
+  });
+  if (tool === "find" && words.includes("-execdir")) dirs.push(...plain);
+  return dirs;
+}
+
+/**
+ * Why a program is refused for what it runs: one kept in a campaign, an interpreter given a
+ * campaign's path or code naming one, or Python with its bytecode on.
+ */
+function runRefusal(
+  tool: string,
+  name: string,
+  prefix: readonly string[],
+  rest: readonly string[],
+  scope: Scope,
+): string | null {
+  const kept = (word: string) => CAMPAIGN_PATH.test(pathOf(word, scope.cwd));
+  if (name.includes("/") && kept(name)) return "a program kept in a campaign";
+  const interpreter = INTERPRETER.test(tool);
+  const plain = rest.filter((word) => !word.startsWith("-"));
+  const sources = tool === "source" || tool === ".";
+  const runsFiles = interpreter || sources || ["bun", "bash", "sh", "zsh"].includes(tool);
+  if (runsFiles && plain.some((word) => (sources || SCRIPT.test(word)) && kept(word))) {
+    return "a program kept in a campaign";
+  }
+  // An interpreter's every word is read, but a file on standard input is named to the shell alone.
+  // `bun`, `sed` and `awk` take campaign files as data, so only their program's text is read.
+  const named = interpreter
+    ? rest.filter((word, index) => !word.startsWith("<") && rest[index - 1] !== "<")
+    : rest.filter(
+        (word, index) =>
+          CODE_FLAGS.has(rest[index - 1] ?? "") ||
+          word.startsWith("--eval=") ||
+          (tool !== "bun" && /[\s{}()"';]/u.test(word)),
+      );
+  const reads = interpreter || ["bun", "sed", "awk", "gawk"].includes(tool);
+  if (reads && named.some((word) => NAMES_CAMPAIGN.test(word) || (interpreter && kept(word)))) {
+    return "an interpreter naming a campaign";
+  }
+  if (!PYTHON.test(tool)) return null;
+  const first = rest.findIndex((word) => !word.startsWith("-"));
+  const flags = first === -1 ? rest : rest.slice(0, first);
+  const off =
+    prefix.some((word) => /^PYTHONDONTWRITEBYTECODE=./u.test(word)) ||
+    (scope.known.get("PYTHONDONTWRITEBYTECODE") ?? "") !== "" ||
+    flags.some((word) => /^-[A-Za-z]*B/u.test(word));
+  return off ? null : "Python with its bytecode on (pass -B or set PYTHONDONTWRITEBYTECODE=1 on the line)";
+}
+
+/** Why one simple command's writes are refused, from the paths the shell and the tool's flags name. */
+function writesRefusal(
+  words: readonly string[],
+  tool: string,
+  rest: readonly string[],
+  cwd: string,
+): string | null {
   const writes = words.flatMap((word, index) => (words[index - 1] === ">" ? [word] : []));
+  const plain = rest.filter((word) => !word.startsWith("-"));
+  if (tool === "tee" || tool === "sponge") writes.push(...plain);
+  if (tool === "find" && rest.includes("-delete")) writes.push(...plain);
+  writes.push(...words.flatMap((word) => (word.startsWith("of=") ? [word.slice(3)] : [])));
+  if (["cp", "mv", "ln", "rsync", "install"].includes(tool)) writes.push(...plain.slice(-1));
+  if (["rm", "trash", "rmdir", "touch", "mkdir", "truncate"].includes(tool)) writes.push(...plain);
+  // `sed -i ''` leaves an empty script word, which `inPlaceFiles` drops.
+  if (tool === "sed" && rest.some((word) => word.startsWith("-i"))) {
+    writes.push(...inPlaceFiles(rest, ["-e", "-f"]));
+  }
+  if (/^(?:perl[\d.]*|ruby)$/u.test(tool) && rest.some((word) => /^-(?![MmIx])\w*i/u.test(word))) {
+    writes.push(...inPlaceFiles(rest, ["-e", "-E"]));
+  }
+  const inplace = rest.some(
+    (word, index) => word === "-iinplace" || (word === "inplace" && rest[index - 1] === "-i"),
+  );
+  if ((tool === "awk" || tool === "gawk") && inplace) writes.push(...inPlaceFiles(rest, ["-f"]));
+  if (tool === "tar") writes.push(...tarWrites(rest, cwd));
+  return writes.map((word) => writeRefusal(pathOf(word, cwd))).find((why) => why !== null) ?? null;
+}
+
+/** What a `tar` writes: the archive it creates, or the directory it extracts into. */
+function tarWrites(rest: readonly string[], cwd: string): string[] {
+  // The mode is a cluster of letters, bare as the first word or after a dash, or a long flag.
+  const letters = rest
+    .filter((word, index) => /^-[A-Za-z]+$/u.test(word) || (index === 0 && /^[A-Za-z]+$/u.test(word)))
+    .join("");
+  const long = rest.filter((word) => word.startsWith("--"));
+  if (letters.includes("x") || long.some((word) => /^--(?:extract|get)$/u.test(word))) {
+    const into = rest.includes("-C") ? (rest[rest.indexOf("-C") + 1] ?? cwd) : cwd;
+    return [`${pathOf(into, cwd)}/*`];
+  }
+  if (!/[cru]/u.test(letters) && !long.some((word) => /^--(?:create|append|update)$/u.test(word))) return [];
+  return rest.flatMap((word, index) => {
+    if (word.startsWith("--file=")) return [word.slice(7)];
+    const cluster = /^-?[A-Za-z]*f$/u.test(word) && (index === 0 || word.startsWith("-"));
+    return cluster ? [rest[index + 1] ?? ""] : [];
+  });
+}
+
+/** Why one simple command is refused, given where the line stands and what it set. */
+function commandRefusal(words: readonly string[], scope: Scope): string | null {
   const args = words.filter((word, index) => word !== ">" && words[index - 1] !== ">");
   const head = args.findIndex(
     (word) => !/^\w+=/u.test(word) && !WRAPPERS.has(basename(word)) && !/^-|^\d+[smhd]?$/u.test(word),
   );
+  // Assignments alone run no program, but a redirect beside them still writes.
+  if (head === -1) return writesRefusal(words, "", [], scope.cwd);
   const [name = "", ...rest] = args.slice(head);
   const plain = rest.filter((word) => !word.startsWith("-"));
   const tool = basename(name);
+  const inside = (dir: string) => CAMPAIGN_PATH.test(`${pathOf(dir, scope.cwd)}/`);
+  // A `cd` may always leave; what runs after it is read from where it went.
+  const moves = tool === "cd" || tool === "pushd";
+  if (!moves && (inside(scope.cwd) || dirsOf(tool, words, plain).some(inside))) {
+    return "a command run inside a campaign";
+  }
   if (["bash", "sh", "zsh"].includes(tool) && rest.includes("-c")) {
-    return refusalOfLine(rest.at(rest.indexOf("-c") + 1) ?? "");
+    return refusalOfLine(rest.at(rest.indexOf("-c") + 1) ?? "", scope.cwd);
   }
   if (tool === "claude" || tool === "codex") return "a paid session";
   if (tool === "find" && rest.some((word) => word === "-exec" || word === "-execdir")) {
     const at = rest.findIndex((word) => word === "-exec" || word === "-execdir");
-    const why = commandRefusal(rest.slice(at + 1), cwd);
+    const why = commandRefusal(rest.slice(at + 1), scope);
     if (why !== null) return why;
   }
   if (tool === "bun") {
@@ -177,6 +354,8 @@ function commandRefusal(words: readonly string[], cwd: string): string | null {
     if (runs !== -1 && plain.slice(runs + 1).some((word) => LIFE.has(word))) return "a run's life";
     const wri = plain.findIndex((word) => basename(word) === "wri.ts");
     if (wri !== -1 && PRIMARY.has(plain[wri + 1] ?? "")) return "the primary's step";
+    const loop = plain.findIndex((word) => basename(word) === "wri2p2.ts");
+    if (loop !== -1 && plain[loop + 1] === "open") return "the primary's step";
   }
   if (tool === "git") {
     const verb = rest.find(
@@ -190,28 +369,15 @@ function commandRefusal(words: readonly string[], cwd: string): string | null {
       return "a change to the tree";
     }
   }
-  if (tool === "tee" || tool === "sponge") writes.push(...plain);
-  if (tool === "find" && rest.includes("-delete")) writes.push(...plain);
-  writes.push(...words.flatMap((word) => (word.startsWith("of=") ? [word.slice(3)] : [])));
-  if (["cp", "mv", "ln", "rsync", "install"].includes(tool)) writes.push(...plain.slice(-1));
-  if (["rm", "trash", "rmdir", "touch", "mkdir", "truncate"].includes(tool)) writes.push(...plain);
-  if (tool === "sed" && rest.some((word) => word.startsWith("-i"))) {
-    // The script is the first plain word unless `-e` or `-f` names it; `-i ''` leaves an empty one.
-    const named = rest.includes("-e") || rest.includes("-f");
-    const files = rest.filter(
-      (word, index) => word !== "" && !word.startsWith("-") && !["-e", "-f"].includes(rest[index - 1] ?? ""),
-    );
-    writes.push(...(named ? files : files.slice(1)));
-  }
-  return writes.some((path) => CAMPAIGN_PATH.test(path.startsWith("/") ? path : `${cwd}/${path}`))
-    ? "a write under a campaign"
-    : null;
+  const ran = runRefusal(tool, name, args.slice(0, head), rest, scope);
+  if (ran !== null) return ran;
+  return writesRefusal(words, tool, rest, scope.cwd);
 }
 
 /** Why a shell line is refused: an env file named anywhere it runs, or the first refused command. */
-function refusalOfLine(line: string): string | null {
+function refusalOfLine(line: string, start: string): string | null {
   const known = new Map<string, string>();
-  let cwd = "";
+  let cwd = start;
   for (const raw of commandsOf(line)) {
     // `$NAME` takes a value set earlier on the line, or the hook's own environment.
     const words = raw.map((word) =>
@@ -226,34 +392,35 @@ function refusalOfLine(line: string): string | null {
       const assigns = words.length === 1 || (words.length === 2 && words[0] === "export");
       if (key !== undefined && value !== undefined && assigns) known.set(key, value);
     }
-    if (words[0] === "cd") cwd = words[1]?.startsWith("/") === true ? words[1] : `${cwd}/${words[1] ?? ""}`;
-    const why = commandRefusal(words, cwd);
+    const why = commandRefusal(words, { cwd, known });
     if (why !== null) return why;
+    if (words[0] === "cd" || words[0] === "pushd") cwd = pathOf(words[1] ?? "~", cwd);
   }
   return null;
 }
 
-/** Why the call is refused, or null where it may run. */
-export function refusalOf(tool: string, input: Input): string | null {
+/** Why the call is refused, or null where it may run, from the session's working directory. */
+export function refusalOf(tool: string, input: Input, cwd = runtimeProcess.cwd()): string | null {
   const path = [input.file_path, input.notebook_path].find(isString);
   if (tool === "Read" || tool === "Grep" || tool === "Glob") {
     const named = [path, input.path, input.glob].filter(isString);
-    return named.some((each) => /^\.env(?:\.runs)?$/u.test(basename(each))) ? "an env file" : null;
+    return named.some((each) => ENV_FILE.test(basename(each))) ? "an env file" : null;
   }
   if (tool === "Write" || tool === "Edit" || tool === "MultiEdit" || tool === "NotebookEdit") {
-    const at = path === undefined ? "" : resolve(path);
+    const at = path === undefined ? "" : resolve(cwd, path);
     return WRITABLE.test(at) || SCRATCH.some((root) => at.startsWith(`${root}/`)) || JOB_SCRATCH.test(at)
       ? null
       : "a write outside the lane's report";
   }
-  return tool === "Bash" && isString(input.command) ? refusalOfLine(input.command) : null;
+  return tool === "Bash" && isString(input.command) ? refusalOfLine(input.command, cwd) : null;
 }
 
 // Exit 2 with the reason on stderr is the refusal a subagent's own hook is documented to give.
 if (import.meta.main) {
   const call: unknown = capturedJsonParse(await Bun.stdin.text());
   const input = isRecord(call) && isRecord(call.tool_input) ? call.tool_input : {};
-  const why = isRecord(call) && isString(call.tool_name) ? refusalOf(call.tool_name, input) : null;
+  const cwd = isRecord(call) && isString(call.cwd) ? call.cwd : runtimeProcess.cwd();
+  const why = isRecord(call) && isString(call.tool_name) ? refusalOf(call.tool_name, input, cwd) : null;
   if (why !== null) {
     console.error(
       `wri-lane refuses ${why}: a lane reads, and writes its own report only (whole-run-investigation, "Hard rules"). Say in the report what this call would have settled.`,

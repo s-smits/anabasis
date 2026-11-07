@@ -110,7 +110,7 @@ Each card gets one:
 - **Instrument fact.** True of the grader or the conditions. Report it beside the score, and change
   nothing in the system.
 - **Limit of the claim.** What this comparison cannot show. Goes into the wording of every claim from it.
-- **Lead.** Passed the gate, and needs an experiment. One row in `Predictions.md`, with its burned tasks.
+- **Lead.** Passed the gate, and needs an experiment. One row in `Predictions.md` or in the measuring run's `predictions-<run>.md`, with its burned tasks, settled in its `outcomes-<run>.md` and, where it does not hold, carried in its `still-missing-<run>.md` beside the "Intentionally opposed" trade-offs.
 - **Domain choice.** Only the operator's: what to ask a campaign to build. Put as a decision with
   evidence.
 - **Dropped.** Failed the gate. Stays listed with the question it failed, so the next review need not

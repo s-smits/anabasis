@@ -61,7 +61,9 @@ the event kinds, solve ids and counts the report cites: a report is a lead and n
    the plan's decision where one already stands.
 7. **Predictions.** Falsifiable rows for the next round: the moved variable, the claim, the
    direction, the falsifier. Where a row checks a `patch` row, name it, so that the next cycle's
-   `Predictions.md` can carry it under that patch's pull request.
+   `Predictions.md`, or the `predictions-<run>.md` of a run forked to measure it, can carry it under
+   that patch's pull request, and its `outcomes-<run>.md` and `still-missing-<run>.md` (with its
+   "Intentionally opposed" trade-offs) settle it.
 
 ## Hard rules
 

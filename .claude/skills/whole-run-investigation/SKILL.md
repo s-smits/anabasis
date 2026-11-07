@@ -139,7 +139,7 @@ session's admissions (`ambition`) and drafts (`exams`), where each comparison si
 power zone (`zone`), whether a side repeats its own answers and measures (`answers`), how much of a solve's or a
 session's time went inside its calls (`waits`), how a side's passes got there (`routes`), and the kept
 versions measured (`versions`) and blind (`chain`). `chain` and `tasks` carry no result, so a lane that grades before it reads an
-outcome (34) reads them first. `bun run runs pulse` runs the same list for each look
+outcome (27) reads them first. `bun run runs pulse` runs the same list for each look
 (run-management, "Watch"). `derive` runs
 them all over a log into the main worktree's `data/derived/<campaign>/`, one `<reader>.txt` each,
 and replaces the folder whole where the log or the commit reading it moved since; a folder whose
@@ -281,11 +281,13 @@ and deleting a heading drops its section on purpose.
 
 A lane told what to find finds it. An earlier diagnosis goes under the prior state as a hypothesis,
 never under the orientation as a premise. Where the campaigns belong to a release cycle, the prior
-state lists every row of the cycle's `Predictions.md` (one ledger a cycle, in
-`.ana/wri/<date>-cycle-<release>/`, run-improvement-campaign step 1; an investigation of several
-runs reads it there and keeps no copy) as a hypothesis: its pull request, its
-area labels ("Labels" in [the catalogue](references/lanes.md)), lanes, claim and falsifier,
-without the ledger's resolution. Step 3 opens every lane a row names with
+state lists as hypotheses every row of the cycle's `Predictions.md` and of each run's
+`predictions-<run>.md` (all in `.ana/wri/<date>-cycle-<release>/`, run-improvement-campaign step 1;
+an investigation of several runs reads them there and keeps no copy): its pull request, its area
+labels ("Labels" in [the catalogue](references/lanes.md)), lanes, claim and falsifier, without the
+resolution in `outcomes-<run>.md`. Where the runs measure an earlier iteration's pull request, it
+also lists the parent iteration's `still-missing-<run>.md`: each id that did not hold and each
+"Intentionally opposed" trade-off, as hypotheses. Step 3 opens every lane a row names with
 `--lanes`, triggered or not, since a row whose lanes never opened has no report to backtrack from.
 Lanes 4 and 15 stay isolated: no row names them, and they are given no row.
 
@@ -307,8 +309,8 @@ finding that was only triaged as vetted. In one investigation eight of thirteen 
 reported as adjudicated after triage alone.
 
 **Backtrack the predictions before the synthesis's own findings.** Where the campaigns belong to a
-release cycle, `vetting.md` opens with one row for each row of the cycle's `Predictions.md`, and
-of its `cycle.md`:
+release cycle, `vetting.md` opens with one row for each row of the cycle's `Predictions.md` and
+for every prediction id of each run's `predictions-<run>.md`, beside its row in `outcomes-<run>.md`:
 
 - **Resolve it from the logs.** Mark it held, falsified or unreached, with the count recounted here
   from the events the row names. The reports of the lanes the row names are read first, as leads.
@@ -321,10 +323,11 @@ of its `cycle.md`:
   prediction's reasoning, or the run's condition), then vet it like every other finding. A
   confirmed one becomes a row of the cycle's plan.
 - **Carry an unreached row forward.** Say why its trigger never came. Its pull request is still
-  unmeasured, and the row goes into the next cycle's `Predictions.md`.
+  unmeasured: the row goes into the next cycle's `Predictions.md`, and the id into the run's
+  `still-missing-<run>.md`, from which the next fork carries it.
 
 A finding of the synthesis that bears on a prediction names that row. The step's check: `vetting.md`
-holds as many prediction rows as the two ledgers do. Beside the rows, count them by label: held,
+holds as many prediction rows as `Predictions.md` and the runs' `predictions-<run>.md` do. Beside the rows, count them by label: held,
 falsified and unreached for each area label, which shows where the cycle's changes were measured
 and where they still wait.
 

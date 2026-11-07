@@ -28,7 +28,7 @@ crossed the wall or a target told to the Examiner cannot establish a gain of the
 A cycle runs on the operator's word for it ("work towards 0.6.4"), which covers its runs, their
 stops and its patches, and its landing, release and next runs only where the word names them:
 merging is the operator's (`AGENTS.md`, section 11). Record each grant and each decision still open.
-Keep the cycle's plan in one local file beside the handover, on the central host, the one machine
+Keep the cycle's ledger, `cycle.md` (each iteration's own plan is its `plan.md`), in one local file beside the handover, on the central host, the one machine
 that keeps every cycle's files and gathers every host's records: the word, the threshold, the
 reviews, and a log line per step. Every step below reads that file first.
 
@@ -68,14 +68,17 @@ stops, launches and merges nothing. The whole-run investigation stays a tool of 
    of the run's `predictions-<run>.md` whose event exists into its `outcomes-<run>.md`, and keep
    its `still-missing-<run>.md` (step 1 of the running window).
 2. **Investigate** it with whole-run-investigation, opened by `wri2p2.ts open`, with the other
-   triggered runs of the same code and pack as equals where there are any. A live run is read on a
+   triggered runs of the same code and pack as equals where there are any. `open` writes
+   `iteration.json` into the investigation's folder (`{ "opened": <ISO>, "runs": [<names>] }`), and
+   the gates below hold only a folder that carries it. A live run is read on a
    frozen copy (`wri.ts start --snapshot`) and goes on: stopping one is the operator's (`AGENTS.md`,
    section 3), and a run that will not promote is not stopped for its investigation. Then
    `wri2p2.ts next <dir>` at each step: the two blank sections, `lanes --agents 4`, one subagent a
    lane session (it prints each one's line), the collection and the synthesis. Before the vetting,
-   `next` holds the iteration until each run it reads has its `predictions-<run>.md`, every row of
-   it a row in `outcomes-<run>.md`, and a `still-missing-<run>.md` with its "Intentionally opposed"
-   section, so each iteration shows whether its predictions were handled and what was left out.
+   `next` holds the iteration until each run it reads has its three files (step 1 of the running
+   window), so each iteration shows whether its predictions were handled and what was left out. It
+   looks for them only in `*-cycle-*` folders and the investigation's own, and refuses where two of
+   them hold the same file.
 3. **Vet, read across domains, then plan** (steps 6 and 7): `vetting.md`, `cross-domain.md` and
    `plan.md` in the investigation's folder. A fix found in one domain's run lands in every domain,
    so between the vetting and the plan one read-only subagent reads the vetted investigations of the
@@ -86,7 +89,10 @@ stops, launches and merges nothing. The whole-run investigation stays a tool of 
    domain and how to keep that intact, with the cheapest test that would settle it. A plan row
    whose fix would move another domain names that domain's line there. The plan holds repairs and tunings: read [the levers](references/levers.md) against the binding
    link, and give each lever the run's evidence selects a row, tuned or kept with one checkable
-   sentence. A row the operator must decide is asked now, and implementing goes on around it.
+   sentence. `plan.md`, linked from `cycle.md`, names `cross-domain.md`, each confirmed vetting row
+   by its id (`vet-<n>`, such as `vet-3`) in a row or under `## Not done`, and at least three lever ids of
+   `references/levers.md` (`E1`, `B2`). A row the operator must decide is asked now, and
+   implementing goes on around it.
 4. **Implement the plan as one pull request** on the top of the stack (step 8), with each row's
    hostile test, proved with `bun run land -- <top> --sanitize`, and name it in `plan.md` on a line
    of its own, `Pull request: #N`, which `next` reads. One iteration is one pull request, so a
@@ -95,10 +101,21 @@ stops, launches and merges nothing. The whole-run investigation stays a tool of 
 5. **Predict, then fork at that pull request's head** (steps 1 and 2, with the top in place of the
    release), `--as forkedPR<N>`, by which `next` finds the runs that measure it. Each run's
    `predictions-<run>.md` is written before its `runs fresh ... --yes`, under the name the fork
-   will give it. The slot an ended
+   will give it, which the dry run of `runs fresh` (without `--yes`) prints. A fork's
+   `predictions-<run>.md` holds a section `## Carried` that names each id its parent iteration's
+   runs did not hold, as `<parent run>:<id>`, and links `still-missing-<parent run>.md`. The slot an ended
    run held goes to a fresh run at once, on the host and login with the most room under their caps.
    A slot free with no iteration to measure is filled at the current top too: capacity left idle
    measures nothing.
+
+`next` names the steps in this order: `open`, `instruct`, `lanes`, `reports`, `isolated`,
+`synthesise`, then for each run `predictions`, `outcomes`, `still-missing` and, for a fork, `carry`, then
+`vet`, `across`, `plan`, `implement`, `launch`, `forks` (each fork's own `predictions` and `carry`)
+and `done`. A folder without `iteration.json` takes the shared steps alone, as before the per-run
+ledgers. Every gate but `done` is a default to deviate from with a recorded reason, never a wall
+(operator: "to-be-deviated-from each time"): a row of `deviations.md` in the investigation's folder
+(`| step | reason |`, the step alone or as `<step>:<run>` for one run) with a reason passes that
+step, and `next` prints `deviated: <step> · <reason>` beside the step it reaches.
 
 Iterations overlap. A second run can reach the trigger while the first's pull request is being written;
 it starts its own iteration, and each pull request stacks on the one before. Nothing in an
@@ -139,28 +156,27 @@ the operator and ask, rather than land first.
    ```text
    | id | PR | labels | lanes | group | claim, as a count | falsified by |
    | id | claim, as a count | lanes | falsified by |            (cycle-wide: supply, climb, honesty)
-   | id | held, falsified or unreached | event or count | time |   (Resolutions)
+   | id | held, falsified, unreached or pending | event or count | time |   (Resolutions)
    ```
 
    The cycle-wide predictions are rows of the second table. A peer session's ledger for the same
    runs is read and linked, not repeated.
-   **Each run keeps a pair beside it**, in the same folder: `predictions-<run>.md`, written before
+   **Each run keeps three files beside it**, in the same folder: `predictions-<run>.md`, written before
    that run's `runs fresh ... --yes`, holds the rows the run settles (the first table's rows its
-   code runs, and its own, in the first table's columns), and `outcomes-<run>.md` holds one row a
-   prediction id, in the Resolutions columns, written as each event lands and closed at the
-   run's ending. A third file, `still-missing-<run>.md`, names what the run still lacks: each
-   falsified or unreached id and each problem it shows that no fix holds yet, with where it is
-   carried. Its section `## Intentionally opposed` names what stays missing on purpose, each as a
+   code runs, and its own, in the first table's columns), and `outcomes-<run>.md` holds one row for
+   each prediction id and no other, in the Resolutions columns, written as each event lands and
+   closed at the run's ending. An outcome is `held`, `falsified`, `unreached` or `pending`, the last
+   only while a live run's event has not come. A third file, `still-missing-<run>.md`, names what
+   the run still lacks: every id whose outcome is not `held` and each problem it shows that no fix
+   holds yet, with where it is carried. Its section `## Intentionally opposed` (at least one line;
+   `none` counts) names what stays missing on purpose, each as a
    trade-off: what leaving it out buys, what it costs, and why, from a trade-off of `AGENTS.md`
    section 1, a principle or the operator's word. A gap left by design is then never read as one
    forgotten, and the next iteration sees which trade-offs it inherits. `Predictions.md` links
    each run's three files, so the cycle reads whole from one file and each run from three.
-   `wri2p2.ts next` holds an iteration before its vetting while a run it reads lacks one of them,
-   an id has no outcome row, or the opposed section is missing, and names what is open. Every review first checks that `Predictions.md` and each run's
-   `predictions-<run>.md` exist. Where one is missing, the review writes it before anything
-   else, marked as written after launch, with the run's solves at the time of writing. The v0.7.3 runs opened with only cycle-wide predictions, and
-   their per-PR ledger was written 15 minutes after launch; the next cycle's ledger was written
-   before its fork but without labels, lanes or groups, which the tables above now ask for.
+   Every review first checks that `Predictions.md` and each run's `predictions-<run>.md` exist.
+   Where one is missing, the review writes it before anything else, marked as written after
+   launch, with the run's solves at the time of writing.
 2. **Fork at the release**, once step 1 is on record. Take the commit the last release merged (`git
    tag` of `main`), or, inside an iteration, the head of the pull request it opened ("The
    iteration" above; the operator's word). A pull request above it that changes code a
@@ -209,7 +225,8 @@ its end, and carry on in the same order; the window gives no step a reason to sk
    with the evidence and a recommendation.
 7. **Plan.** One row per confirmed finding, falsified prediction and defect seen live, each with
    its owner, the hostile test that fails without the fix, and the before-and-after it needs; the
-   rows the operator must decide are asked now. Keep the plan in the cycle's file.
+   rows the operator must decide are asked now. Keep the plan in `plan.md` in the investigation's
+   folder, linked from `cycle.md` (step 3 of the iteration).
 8. **Implement** every row on the top of the stack through stack-pr, with its hostile test, or a
    line under "Not done" in the release. A peer session's open pull request is never changed; stack
    above it. Each patch is also simulated before and after (system-path-simulation,
@@ -287,8 +304,8 @@ live or closed with its ending, promotions, comparisons and hours since the open
 run's step: `run`, `open` with the trigger, or the step its investigation has reached.
 
 The cycle's reviews start from the pulse's lines (section "Timers"); each runs the script and takes
-the step it names: at M1 after the fork, then at each run's comparisons and promotions, and once
-the script reads `stop`, at each step of the improvement window. Each review
+the step it names: at M1 after the fork, then at each run's comparisons and promotions, and
+from `open` on, at each step it prints until `done`. Each review
 may move the plan forward within the order above, and add, move or delete the cycle's own timers to
 reach its goal.
 
@@ -632,12 +649,13 @@ Every firing of every timer takes the same five steps, in this order. The order 
 fixed; what the session reads, which reader or lane it opens, and what it concludes between the
 steps are its own judgment, held to the evidence and to recorded authority.
 
-1. **Read the state.** `cycle.md`, `Predictions.md` beside it with each run's pair, and
+1. **Read the state.** `cycle.md`, `Predictions.md` beside it with each run's three files, and
    `scripts/wri2p2.ts` over the cycle's runs. Where `Predictions.md` or a run's
    `predictions-<run>.md` is missing, write it first (step 1 of the cycle).
 2. **Resolve the predictions.** Each row whose event has landed or whose deadline has passed is
    `held` or `falsified` in its run's `outcomes-<run>.md`, or in Resolutions for a cycle-wide row,
-   with the count from the log that settles it and the time.
+   with the count from the log that settles it and the time; a row of a live run whose event has not
+   come is `pending`, and one whose trigger can no longer come is `unreached`.
    A written resolution stays; a recount that disagrees adds a row beside it. A falsified row opens
    a triage row.
 3. **Act.** Take the step `wri2p2.ts` names, within the cycle's order and the recorded authority

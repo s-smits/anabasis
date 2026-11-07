@@ -5,6 +5,8 @@
 // the gate, which reads their packages alone (since 1 November 2026).
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { normalizeContext } from "@earendil-works/pi-ai";
+import { conversing } from "../src/examiner/session.ts";
+import { examinerDirs } from "../src/examiner/shell.ts";
 import { type LogEvent, read } from "../src/kernel/log.ts";
 import type { TaskPackage } from "../src/kernel/task.ts";
 import type { Ending } from "../src/kernel/solve.ts";
@@ -22,11 +24,11 @@ import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { dirname, join } from "../src/meta/path.ts";
+import { basename, dirname, join } from "../src/meta/path.ts";
 import { starter } from "../tools/d2/campaign.ts";
 import type { Campaign } from "../tools/d2/round.ts";
 import { answersOf, scriptedExaminer, scriptedSeats, sidesOf } from "../tools/runs/rehearse.ts";
-import { seat, sweep } from "./helpers/examiner-seat.ts";
+import { seat, sweep, WALL } from "./helpers/examiner-seat.ts";
 import { SEED_FILE } from "../tools/runs/registry.ts";
 import { replayed } from "../tools/runs/replay.ts";
 import { seedCampaign, snapshotCampaign } from "../tools/runs/seed.ts";
@@ -288,6 +290,38 @@ describe("a rehearsal's scripted Examiner", () => {
     expect(gates).toMatchObject([{ outcome: "passed" }, { outcome: "passed" }]);
     expect(read(campaign.log).filter(({ kind }) => kind === "task.feasible")).toHaveLength(2);
     expect(named).toEqual([]);
+  });
+
+  // A stop at an Examiner's rest is a rehearsal's to walk: until 7 November each scripted ask was a
+  // session of its own with no shell, so no rehearsal claimed an Examiner's root or rested.
+  it("rests as one conversation in its wall, its root standing, and makes each later ask's own calls", async () => {
+    const folder = campaignAt(`rest-${basename(root)}`, []);
+    writeFileSync(join(folder, SEED_FILE), "{}\n");
+    const { campaign } = campaignOver(folder);
+    const source = { taskId: "source", family: "fixture", publicInput: { base: 2 }, hidden: null };
+    const controls = [{ taskId: source.taskId, answer: { answer: "12", unit: "N" }, refusedBy: null }];
+    const { request } = seat("write", []);
+    const examiner = conversing(scriptedExaminer([], [source], 4, controls));
+    const ask = async (id: string) =>
+      await examiner.session(
+        { ...request, id, log: campaign.log, wanted: 1, verify: async () => ({ kind: "pass" }) },
+        WALL,
+      );
+    const { root: resting } = examinerDirs(campaign.log, "x-1");
+    try {
+      expect(await ask("x-1")).toMatchObject({ ended: "supplied", puts: 1 });
+      expect(existsSync(resting)).toBe(true);
+      const second = await ask("x-2");
+      expect(second).toMatchObject({ ended: "supplied", puts: 1 });
+      expect(second.held).toHaveLength(1);
+      const starts = read(campaign.log).flatMap(({ kind, data }) => (kind === "exam.started" ? [data] : []));
+      expect(starts).toMatchObject([{ session: "x-1" }, { session: "x-2", conversation: "x-1" }]);
+      await examiner.close();
+      expect(existsSync(resting)).toBe(false);
+    } finally {
+      await examiner.close();
+      rmSync(resting, { recursive: true, force: true });
+    }
   });
 });
 

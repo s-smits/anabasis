@@ -64,7 +64,7 @@ import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { proposalsOf } from "#src/kernel/history.ts";
 import { examinerSessions, verdictsOf } from "#src/kernel/solves.ts";
 import type { Task } from "#src/kernel/verify.ts";
-import { examine, type Session } from "#src/examiner/session.ts";
+import { type Examined, examine, type Session } from "#src/examiner/session.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isFunction, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
@@ -122,10 +122,8 @@ const PRICE = { input: 1, output: 1, cacheRead: 1, cacheWrite: 1 };
 /** The guide a scripted Builder writes on, from its home. */
 const GUIDE = "harness/agent/BUILT_AGENTS.md";
 /** The opening of the system message pi's compaction sends its summariser
- *  (`@earendil-works/pi-durable`, `harness/compaction.js`), and the most summaries one scripted
- *  session is given beside its script. */
+ *  (`@earendil-works/pi-durable`, `harness/compaction.js`). */
 const SUMMARISER = "You are a context summarization assistant.";
-const SUMMARIES = 50;
 
 /** A task by what it asks, its id aside: a seed's sessions number their tasks afresh, so the
  *  source's x-2-002 is another task than the seed's, and until 16 October the script wrote the
@@ -196,28 +194,33 @@ export function answersOf(graded: readonly Control[], events: readonly LogEvent[
 /** A model that makes `calls` in order, a turn each, then answers `asked` times with no call, and
  *  then fails as a provider would: a script that ran out is the provider's failure, and the solve is
  *  run again. A compaction's summary takes no turn of the script: until 5 November it was given the
- *  next call, and every scripted Examiner session that grew long enough ended `crashed`. */
+ *  next call, and every scripted Examiner session that grew long enough ended `crashed`. `calls` is
+ *  read as each turn comes, so a script its caller lengthens is made whole: an Examiner's
+ *  conversation lays each later ask's calls there as the ask wakes it (`scriptedExaminer`). */
 function scripted(calls: readonly (readonly [string, JsonObject] | FauxResponseFactory)[], asked: number) {
   const faux = fauxProvider({
     models: [{ id: "script", contextWindow: 200_000, cost: PRICE }],
   });
-  const turns: FauxResponseFactory[] = [
-    ...calls.map((call) =>
-      isFunction(call) ? call : () => fauxAssistantMessage(fauxToolCall(call[0], call[1]), TOOL_USE),
-    ),
-    ...Array.from({ length: asked }, () => () => fauxAssistantMessage("The script holds no further call.")),
-  ];
   let next = 0;
   const answer: FauxResponseFactory = (context, ...rest) => {
+    // The provider's queue is the script's own: each answer queues the next, and the script alone
+    // says when it has run out.
+    faux.appendResponses([answer]);
     const summarising = context.messages.some(
       ({ role, content }) => role === "system" && isString(content) && content.startsWith(SUMMARISER),
     );
     if (summarising) return fauxAssistantMessage("A scripted session holds nothing to summarise.");
-    const turn = turns[next++];
-    if (turn === undefined) throw new Error("No more faux responses queued");
-    return turn(context, ...rest);
+    const at = next++;
+    const call = calls[at];
+    if (call !== undefined) {
+      return isFunction(call)
+        ? call(context, ...rest)
+        : fauxAssistantMessage(fauxToolCall(call[0], call[1]), TOOL_USE);
+    }
+    if (at < calls.length + asked) return fauxAssistantMessage("The script holds no further call.");
+    throw new Error("No more faux responses queued");
   };
-  faux.setResponses(Array.from({ length: turns.length + SUMMARIES }, () => answer));
+  faux.setResponses([answer]);
   const models = createModels();
   models.setProvider(faux.provider);
   return { model: faux.getModel(), models: () => models };
@@ -384,10 +387,16 @@ function draftedSource(name: string): DraftedSource {
 }
 
 /**
- * An Examiner session scripted from the source campaign's: each proposes the next tasks the
- * source's sessions wrote after the cut, as many as the host asks for, and finishes; one with
- * none left proposes copies of the source's answered tasks while `--supply` lasts, and then
+ * An Examiner conversation scripted from the source campaign's sessions: each ask proposes the next
+ * tasks the source's sessions wrote after the cut, as many as the host asks for, and finishes; one
+ * with none left proposes copies of the source's answered tasks while `--supply` lasts, and then
  * finishes with none, which the campaign reads as a session that held out no task.
+ *
+ * It sits as a real one does: in its wall, with its root claimed, resting after each ask with that
+ * root standing until the next ask wakes it or the Builder's conversation closes it (`conversing`,
+ * `src/examiner/session.ts`). Until 7 November each ask was a session of its own with no shell, so
+ * no rehearsal claimed an Examiner's root, rested or woke, and a stop at a rest, which once kept
+ * 517 MB of a closed run's root, was out of every rehearsal's reach.
  */
 export function scriptedExaminer(
   later: Task[],
@@ -397,10 +406,11 @@ export function scriptedExaminer(
 ): Session<"write"> {
   const answers = answersOf(graded, []);
   let copies = 0;
-  return (request) => {
-    const own = later.splice(0, request.wanted);
+  /** One ask's calls: try each task it has an answer for, put them all, and finish. */
+  const callsFor = (wanted: number): (readonly [string, JsonObject])[] => {
+    const own = later.splice(0, wanted);
     const copied: Task[] = [];
-    while (own.length + copied.length < request.wanted && copies < supply && answered.length > 0) {
+    while (own.length + copied.length < wanted && copies < supply && answered.length > 0) {
       const source = answered[copies % answered.length];
       if (source === undefined) break;
       copies += 1;
@@ -414,7 +424,7 @@ export function scriptedExaminer(
       public_input: publicInput,
       hidden: hidden ?? null,
     }));
-    const calls: (readonly [string, JsonObject])[] = [
+    return [
       ...[...own, ...copied].flatMap((task, index): (readonly [string, JsonObject])[] => {
         const source = asRecord(asRecord(task.publicInput)?.[COPY])?.of;
         const answer =
@@ -435,8 +445,30 @@ export function scriptedExaminer(
           ] as const,
       ),
     ];
-    // Each session's script is its own, and holds no call for a later ask (`conversing`).
-    return examine({ ...request, ...scripted(calls, 0), rest: undefined });
+  };
+  return (request, wall) => {
+    // The ask in force's calls, a turn each. A wake lays the next ask's in place of what the last
+    // left, such as a second finish the host did not need, and the script grows by as many turns.
+    const queue = callsFor(request.wanted);
+    const pull: FauxResponseFactory = () => {
+      const call = queue.shift();
+      if (call === undefined) throw new Error("No more faux responses queued");
+      return fauxAssistantMessage(fauxToolCall(call[0], call[1]), TOOL_USE);
+    };
+    const turns = queue.map(() => pull);
+    const { rest } = request;
+    const woken =
+      rest === undefined
+        ? undefined
+        : async (examined: Examined) => {
+            const ask = await rest(examined);
+            if (ask !== null) {
+              queue.splice(0, queue.length, ...callsFor(ask.request.wanted));
+              turns.push(...queue.map(() => pull));
+            }
+            return ask;
+          };
+    return examine({ ...request, ...scripted(turns, 0), rest: woken }, wall);
   };
 }
 

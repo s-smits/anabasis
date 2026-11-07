@@ -351,7 +351,9 @@ const examineAction =
       });
     context.examining = { session, done, released: () => next.promise };
     return {
-      said: `Examiner session ${session} is writing ${tasks === undefined ? "tasks" : plural(Number(tasks), "task")} beside this conversation: edit, practise and compare meanwhile. As it holds tasks the host releases the practice owed since the last reading.`,
+      // The count is where the session stops, not a size it reaches: the esp32 run of 7 November
+      // asked 12 to 22 in 18 sessions and 0 of 17 ended holding that many.
+      said: `Examiner session ${session} is writing tasks beside this conversation${tasks === undefined ? "" : `, and stops once it holds ${plural(Number(tasks), "task")}`}: edit, practise and compare meanwhile. As it holds tasks the host releases the practice owed since the last reading.`,
     };
   };
 

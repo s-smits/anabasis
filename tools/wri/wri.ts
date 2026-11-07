@@ -184,7 +184,10 @@ function hostOf(tree: string): string | undefined {
  * campaign runs in (`<tree>/.ana/d2/<campaign>/log.jsonl`), which a live campaign keeps unmoved.
  * The condition names that code by a digest of its content, which is no commit: two lanes of
  * 14 October read one digest against a receipt's commit as two trees. So the line calls it a
- * digest and names the commit the last launch's receipt holds (`receipts`) beside it.
+ * digest and names the commit the last launch's receipt holds (`receipts`) beside it. A snapshot's
+ * log lies under the investigation, not the campaign's tree, so the tree `sourceTree` checks out at
+ * that commit is asked too: on 7 November the esp32 investigation's line called that tree, which
+ * held the code that ran, "another tree", and three lanes discounted exact source evidence.
  */
 function hostLine(log: string): string {
   const ran = read(log).findLast(({ kind }) => kind === "condition.recorded")?.data.condition;
@@ -200,13 +203,17 @@ function hostLine(log: string): string {
     `host-code digest (of src, vendor and package.json, not a commit): ${line}${commit}`;
   if (last === undefined) return said(`no condition in the log; this checkout's is ${here.slice(0, 8)}`);
   if (last === here) return said(`the last condition's and this checkout's are both ${here.slice(0, 8)}`);
-  const tree = resolve(dirname(log), "..", "..", "..");
-  return hostOf(tree) === last
+  const trees = [
+    resolve(dirname(log), "..", "..", ".."),
+    ...(launch === undefined ? [] : [wriTree(launch.commit)]),
+  ];
+  const tree = trees.find((each) => hostOf(each) === last);
+  return tree === undefined
     ? said(
-        `the last condition's is ${last.slice(0, 8)}, which the campaign's own tree \`${tree}\` holds as it stands, so read source there; this checkout's is ${here.slice(0, 8)}`,
+        `the last condition's is ${last.slice(0, 8)} and this checkout's is ${here.slice(0, 8)}, so every statement about source is about another tree`,
       )
     : said(
-        `the last condition's is ${last.slice(0, 8)} and this checkout's is ${here.slice(0, 8)}, so every statement about source is about another tree`,
+        `the last condition's is ${last.slice(0, 8)}, which \`${tree}\` holds as it stands, so read source there; this checkout's is ${here.slice(0, 8)}`,
       );
 }
 
@@ -227,10 +234,15 @@ function sourceTree(log: string): string | null {
   ) {
     return null;
   }
-  const tree = join(dirname(mainTree(REPO)), `anabasis-wri-${commit.slice(0, 9)}`);
+  const tree = wriTree(commit);
   if (!existsSync(tree)) gitText(REPO, "worktree", "add", "-q", "--detach", tree, commit);
   if (!existsSync(join(tree, "node_modules"))) installAt(tree, commit);
   return tree;
+}
+
+/** Where `sourceTree` checks out a launch's commit, beside the main checkout. */
+function wriTree(commit: string): string {
+  return join(dirname(mainTree(REPO)), `anabasis-wri-${commit.slice(0, 9)}`);
 }
 
 function overviewText(log: string): string {
@@ -309,7 +321,7 @@ async function start(): Promise<number> {
   if (new Set(logs.map((log) => nameOf(log))).size < logs.length) throw new Error("--log names a log twice");
   mkdirSync(join(out, "lanes"), { recursive: true });
   const { done, line } = await derived(logs);
-  const texts = logs.map(overviewText);
+  // Each launch's tree first, so that the host line can name it.
   const trees = logs.flatMap((log) => {
     const tree = sourceTree(log);
     return tree === null
@@ -318,6 +330,7 @@ async function start(): Promise<number> {
           `- ${nameOf(log)}: the code its last launch ran is checked out at \`${tree}\`, its dependencies installed. Read source there, and run a reader there (\`cd ${tree} && bun tools/...\`) to see what it printed at that commit; the derived files below come from this checkout's code.`,
         ];
   });
+  const texts = logs.map(overviewText);
   const campaigns = [
     "| campaign | log | events | checkout |",
     "| --- | --- | --- | --- |",

@@ -521,6 +521,10 @@ the runs it names and no others. The skills own the procedures:
 `bun run runs` lists every verb of the run CLI with what it does, and `bun run runs <verb> --help`
 prints that verb's options.
 
+An anti-stall hook is an option, off by default. Switched on, it runs `bun run runs pulse` every
+290 seconds and wakes an idle session with the pulse's lines. It is switched on only on the
+operator's word; a session watches its runs with `Monitor` otherwise.
+
 Nine conditions hold in all of them:
 
 1. **The worktree is the condition.** A run executes its worktree's source, so start each from a

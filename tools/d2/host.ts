@@ -84,7 +84,15 @@ function queued({ seated, loaded, host = seated === solved ? HOST : undefined }:
   if (host === undefined) return seated;
   // A pause left before this process began was for the one it stopped.
   const began = read(log).length;
-  const pausing = () => pendingWords(read(log)).some(({ at, word }) => word === PAUSE && at >= began);
+  // It holds for one solve's limit and a minute, as `runs pause` waits: nothing else answers it, so
+  // a pause that died before its stop held the campaign for good (landing review, 7 November 2026).
+  const pausing = (wallSeconds: number, events = read(log)) =>
+    pendingWords(events).some(
+      ({ at, word }) =>
+        word === PAUSE &&
+        at >= began &&
+        Date.now() - Date.parse(events[at]?.at ?? "") < wallSeconds * 1000 + 60_000,
+    );
   return (campaign, given) => {
     const seats = seated(campaign, given);
     return {
@@ -104,7 +112,10 @@ function queued({ seated, loaded, host = seated === solved ? HOST : undefined }:
         let [looks, load, ms] = [0, 0, 0];
         for (;;) {
           const [now, flown] = [loaded || looks >= LOOKS ? 0 : host.load(), inFlight(log)];
-          const full = flown >= campaign.limits.concurrency || (flown > 0 && !affords(log, 1)) || pausing();
+          const full =
+            flown >= campaign.limits.concurrency ||
+            (flown > 0 && !affords(log, 1)) ||
+            pausing(campaign.limits.wallSeconds);
           if (kill?.aborted === true || (now <= host.cores && !full)) break;
           if (now > host.cores && (looks += 1) === 1) {
             load = now;

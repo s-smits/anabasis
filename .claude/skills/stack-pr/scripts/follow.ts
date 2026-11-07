@@ -161,9 +161,10 @@ export function hazards(root: string, name: string, upstream: string, now = Date
   if (touched.length > 0) {
     found.push(`edited in the last ${String(QUIET_MS / 60_000)} minutes: ${touched.slice(0, 5).join(", ")}`);
   }
-  // A switch overwrites an ignored file, so only an untracked one it would refuse to lose is in the way.
-  const added = new Set(listed("diff", "--name-only", "--no-renames", "--diff-filter=A", "HEAD", upstream));
-  const inWay = untracked.filter((path) => added.has(path));
+  // Any file here at a path the top adds is in the way, ignored ones too: the switch refuses to
+  // overwrite those as well, so no ignored local file is lost unseen (landing review, 7 November 2026).
+  const added = listed("diff", "--name-only", "--no-renames", "--diff-filter=A", "HEAD", upstream);
+  const inWay = added.filter((path) => changedAt(join(root, path)) !== null);
   if (inWay.length > 0) found.push(`files the top adds are here already: ${inWay.slice(0, 5).join(", ")}`);
   const changes = gitText(root, "stash", "create");
   if (changes !== "") {
@@ -215,7 +216,7 @@ export function follow(root: string, top: Top | undefined): string[] {
   const stashed = saved !== "" && !before.includes(saved);
   const at = (): string => `stash@{${String(stashes().indexOf(saved))}}`;
   try {
-    gitText(root, "switch", "-q", "--track", "-C", name, upstream);
+    gitText(root, "switch", "-q", "--no-overwrite-ignore", "--track", "-C", name, upstream);
   } catch (error) {
     if (stashed) gitText(root, "stash", "pop", "-q", at());
     throw error;

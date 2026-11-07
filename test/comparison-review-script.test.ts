@@ -107,12 +107,13 @@ describe("the open reading", () => {
 });
 
 describe("the seal", () => {
-  it("splits one set in half, the same whatever order it came in", () => {
+  it("puts each task in one half by its name alone, whatever order it came in and whatever was graded since", () => {
     const { open, sealed } = sealOf(TASKS, "c0mm1t");
-    expect(open).toHaveLength(2);
-    expect(sealed).toHaveLength(2);
     expect([...open, ...sealed].toSorted()).toStrictEqual(TASKS);
     expect(sealOf(TASKS.toReversed(), "c0mm1t")).toStrictEqual({ open, sealed });
+    const more = sealOf([...TASKS, "m/task1", "m/task2", "m/task3"], "c0mm1t");
+    expect(more.sealed.filter((task) => TASKS.includes(task))).toStrictEqual(sealed);
+    expect(more.open.filter((task) => TASKS.includes(task))).toStrictEqual(open);
   });
 
   it("moves with the salt, so a split follows from the ledger's first version", () => {
@@ -130,7 +131,7 @@ describe("the seal", () => {
       expect(told).not.toContain(`${task}: points`);
       expect(told).not.toContain(`${task} rubric`);
     }
-    expect(told).toContain("2 tasks, built v bare");
+    expect(told).toContain(`${String(TASKS.length - sealed.length)} tasks, built v bare`);
     expect(told).not.toContain("4 tasks, built v bare");
   });
 

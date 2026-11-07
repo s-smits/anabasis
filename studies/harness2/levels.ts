@@ -113,14 +113,13 @@ export function armOf(dataset: string, arm: string): Map<string, Graded> {
   return graded;
 }
 
-/** The tasks in the salt's order, split in half: the same tasks whatever order they came in. */
+/** Each task's half by a hash of the salt and its own name, about half each way. A cut at half the
+ *  tasks graded so far moved a sealed task into the open half as each grading arrived (landing
+ *  review, 7 November 2026), so no task's half depends on the others. */
 export function sealOf(tasks: readonly string[], salt: string) {
-  const ordered = tasks
-    .map((task) => ({ task, order: sha256(`${salt}\n${task}`) }))
-    .toSorted((one, other) => one.order.localeCompare(other.order))
-    .map(({ task }) => task);
-  const half = Math.ceil(ordered.length / 2);
-  return { open: ordered.slice(0, half).toSorted(), sealed: ordered.slice(half).toSorted() };
+  const sealed = (task: string) => Number.parseInt(sha256(`${salt}\n${task}`).slice(0, 1), 16) >= 8;
+  const sorted = tasks.toSorted();
+  return { open: sorted.filter((task) => !sealed(task)), sealed: sorted.filter(sealed) };
 }
 
 export const passedAll = (graded: Graded) => graded.rubrics.reduce((sum, rubric) => sum + rubric.passed, 0);

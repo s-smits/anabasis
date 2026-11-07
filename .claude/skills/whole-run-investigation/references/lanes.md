@@ -92,8 +92,10 @@ label wherever it stands in this file. Nine labels hold lanes, each under one of
 every change is judged by (`AGENTS.md`, section 1: supply and the four factors), and four name
 areas of the repository that no run exercises.
 `bun run land` refuses a stack in which a pull request carries none (`checkLabels`,
-`tools/runtime/land.ts`). A release cycle's `Predictions.md` gives each row its pull request's
-labels, and the row's lanes are drawn from those labels' lanes (run-improvement-campaign, step 1).
+`tools/runtime/land.ts`). A release cycle's `Predictions.md` and each run's `predictions-<run>.md`
+give each row its pull request's labels, and the row's lanes are drawn from those labels' lanes
+(run-improvement-campaign, step 1); the run's `outcomes-<run>.md` and `still-missing-<run>.md`, with
+its "Intentionally opposed" trade-offs, settle and carry them.
 
 | point | lanes | label | a pull request carries it when it changes |
 | --- | --- | --- | --- |

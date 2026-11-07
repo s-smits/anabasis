@@ -132,8 +132,10 @@ the central host, beside the cycle's files. No step starts until the check befor
     had has no gate.
     *Check:* every card has one disposition, and the dropped ones are listed.
 
-11. **Test forward, once.** A lead gets one prediction in the cycle's `Predictions.md`, settled by a
-    count in the system's own measure, then a fresh run (`AGENTS.md`, section 10, item 9). The
+11. **Test forward, once.** A lead gets one prediction in the cycle's `Predictions.md`, or in the
+    `predictions-<run>.md` of the run that measures it, settled by a count in the system's own
+    measure in that run's `outcomes-<run>.md` (an id that does not hold goes into its
+    `still-missing-<run>.md`, beside the "Intentionally opposed" trade-offs), then a fresh run (`AGENTS.md`, section 10, item 9). The
     outside benchmark is read last, on tasks not burned, with its primary measure and margin fixed
     before the first solve. One attempt: a second one is reported beside the first, never instead of
     it. Several changes tested together get an ablation before any is credited.

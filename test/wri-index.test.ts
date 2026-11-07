@@ -193,7 +193,7 @@ describe("the investigation index", () => {
       "`2026-10-20-no-vetting`",
       "`2026-10-15-multipromotion`",
     ]);
-    expect(rows).toEqual({ investigations: 9, ledgers: 3, runs: 3 });
+    expect(rows).toEqual({ investigations: 9, ledgers: 3, runs: 3, pulls: 0 });
     expect(parsed).toEqual({
       "read whole": 2,
       "read in part": 2,
@@ -298,5 +298,92 @@ describe("the investigation index", () => {
     expect(buffer).toContain("lanes: 1 with findings, 1 with none, 1 missing or invalid");
     expect(groups).toContain("### truss (1 investigation)");
     expect(groups).not.toContain("lanes/01-report.md");
+  });
+});
+
+describe("the pull requests and their forks", () => {
+  const PARENT = "esp32-fresh-opus-p1";
+  const FORK = "esp32-fresh-opus-forkedPR60-a";
+  const ledger = (header: string, rows: readonly string[]) =>
+    [header, `|${" --- |".repeat(header.split("|").length - 2)}`, ...rows, ""].join("\n");
+  const predictions = (ids: readonly string[]) =>
+    ledger(
+      "| id | PR | labels | lanes | group | claim, as a count | falsified by |",
+      ids.map((id) => `| ${id} | #60 | I1 | 2 | g | a count | a count |`),
+    );
+  const outcomes = (rows: readonly (readonly [string, string])[]) =>
+    ledger(
+      "| id | outcome | event or count | time |",
+      rows.map(([id, outcome]) => `| ${id} | ${outcome} | PER-RUN-SECRET | t |`),
+    );
+  const rowOfPull = (text: string, pull: string) =>
+    section(text, "## Pull requests")
+      .split("\n")
+      .find((line) => line.startsWith(`| ${pull} |`)) ?? "";
+
+  beforeEach(() => {
+    folder("2026-11-06-parent", {
+      "investigation.json": JSON.stringify({ logs: [`/w/.ana/d2/${PARENT}/log.jsonl`] }),
+      "plan.md": "# Plan\n\nPull request: #60 (this iteration's)\n",
+    });
+    folder("2026-11-06-other", { "plan.md": "Pull request: #600\n" });
+    folder("2026-11-06-cycle-v100", {
+      [`predictions-${PARENT}.md`]: predictions(["N1", "N2", "N3"]),
+      [`outcomes-${PARENT}.md`]: outcomes([
+        ["N1", "held"],
+        ["N2", "**falsified**"],
+        ["N3", "unreached"],
+      ]),
+      [`predictions-${FORK}.md`]: `${predictions(["F1", "F2", "F3"])}\n## Carried\n\n- \`${PARENT}:N2\`, see still-missing-${PARENT}.md\n- ${PARENT}:N30 is another id\n`,
+      [`outcomes-${FORK}.md`]: outcomes([
+        ["F1", "held"],
+        ["F2", "pending"],
+      ]),
+      [`still-missing-${FORK}.md`]:
+        "F3 is not resolved.\n\n## Intentionally opposed\n\n<!-- - a comment -->\n- the first trade-off\n  carried on\n- the second\n\n```\n- an example\n```\n",
+      "outcomes-esp32-fresh-opus-forkedPR61-c.md": outcomes([["X1", "held"]]),
+    });
+    folder("2026-11-07-cycle-v101", {
+      "outcomes-esp32-fresh-opus-forkedPR61-c.md": outcomes([["X1", "held"]]),
+      "still-missing-esp32-fresh-opus-forkedPR62-d.md": "## Intentionally opposed\n\nnone\n",
+    });
+    runs.push(
+      campaign("esp32-fresh-opus-forkedPR600-b", [[1, "campaign.opened", {}]]),
+      campaign("buffer-fresh-gpt-forkedPR223_v0_5_4-r2", [[30, "campaign.opened", {}]], { archived: "peer" }),
+    );
+  });
+
+  it("rows a pull request with its fork's outcomes, unresolved predictions, opposed items and carried ids", () => {
+    const { text, rows } = index();
+    expect(rowOfPull(text, "#60")).toBe(
+      `| #60 | \`2026-11-06-parent\` | \`${FORK}\` | held 1, falsified 0, unreached 0, pending 1 | ${FORK}:F3 | 2 | ${FORK}: 1 of 2 carried, missing ${PARENT}:N3 |`,
+    );
+    expect(rows.pulls).toBe(5);
+    expect(text).not.toContain("PER-RUN-SECRET");
+  });
+
+  it("matches a fork to its pull request exactly, and reads a fork before the per-run files as such", () => {
+    const { text } = index();
+    expect(rowOfPull(text, "#600")).toBe(
+      "| #600 | `2026-11-06-other` | `esp32-fresh-opus-forkedPR600-b` (no per-run files) | no per-run files | no per-run files | no per-run files | no per-run files |",
+    );
+    expect(rowOfPull(text, "#223")).toContain(
+      "| none | `buffer-fresh-gpt-forkedPR223_v0_5_4-r2` (no per-run files) | no per-run files |",
+    );
+    expect(rowOfPull(text, "#60")).not.toContain("forkedPR600");
+    const order = section(text, "## Pull requests")
+      .split("\n")
+      .flatMap((line) => /^\| (#\d+) \|/u.exec(line)?.[1] ?? []);
+    expect(order).toEqual(["#600", "#223", "#62", "#61", "#60"]);
+  });
+
+  it("names a ledger two folders hold, counts `none` as no opposed item, and says when no parent kept files", () => {
+    const { text } = index();
+    expect(rowOfPull(text, "#61")).toContain(
+      "`esp32-fresh-opus-forkedPR61-c` (outcomes-esp32-fresh-opus-forkedPR61-c.md in 2 folders)",
+    );
+    expect(rowOfPull(text, "#62")).toBe(
+      "| #62 | none | `esp32-fresh-opus-forkedPR62-d` | held 0, falsified 0, unreached 0, pending 0 | none | 0 | esp32-fresh-opus-forkedPR62-d: parents: no per-run files |",
+    );
   });
 });

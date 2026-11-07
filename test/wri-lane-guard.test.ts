@@ -21,6 +21,10 @@ describe("the lane guard", () => {
     ).toBeNull();
     expect(refusalOf("Write", { file_path: `${WRI}/lanes/07-prompt.md` })).not.toBeNull();
     expect(refusalOf("Write", { file_path: `${WRI}/vetting.md` })).not.toBeNull();
+    // The across session writes the investigation's cross-domain note, and only at its root.
+    expect(refusalOf("Write", { file_path: `${WRI}/cross-domain.md` })).toBeNull();
+    expect(refusalOf("Write", { file_path: `${WRI}/lanes/cross-domain.md` })).not.toBeNull();
+    expect(refusalOf("Write", { file_path: `${WRI}/plan.md` })).not.toBeNull();
     expect(refusalOf("Edit", { file_path: "/Users/x/anabasis/.ana/d2/run/log.jsonl" })).not.toBeNull();
     // A path that climbs out of the lanes folder is read where it lands.
     expect(
@@ -62,7 +66,7 @@ describe("the lane guard", () => {
       "S=/tmp/lane; mkdir -p $S/eng; cp /a/.ana/d2/run/exams/x/checks/evaluator.ts $S/eng/",
       "jq -r .data /a/data/runs/h/run/log.jsonl > /tmp/lane/out.txt 2>&1",
       String.raw`grep -n '\.env' src/meta/env.ts`,
-      `cd /a/.ana/d2/run/states; sed -i '' 's/a/b/' ${WRI}/lanes/34-report.md`,
+      `cd ${WRI}; sed -i '' 's/a/b/' lanes/34-report.md`,
     ]) {
       expect(bash(ok)).toBeNull();
     }
@@ -79,7 +83,9 @@ describe("the lane guard", () => {
       ["git -C /a/anabasis commit -qm x", "a change to the tree"],
       ["echo x | tee -a /a/.ana/d2/run/log.jsonl", "a write under a campaign"],
       ["L=/a/.ana/d2/run/log.jsonl; echo x >> $L", "a write under a campaign"],
-      ["cd /a/.ana/d2/run && echo x > notes.md", "a write under a campaign"],
+      ["L=/a/.ana/d2/run/log.jsonl > /a/.ana/d2/run/x", "a write under a campaign"],
+      ["> /a/.ana/d2/run/log.jsonl", "a write under a campaign"],
+      ["cd /a/.ana/d2/run && echo x > notes.md", "a command run inside a campaign"],
       ["rm -rf /a/data/runs/h/run", "a write under a campaign"],
       ["cat > /a/.ana/d2/run/notes.md <<'EOF'\nx\nEOF", "a write under a campaign"],
       ["sed -i -e 's/a/b/' /a/.ana/d2/run/log.jsonl", "a write under a campaign"],
@@ -96,6 +102,15 @@ describe("the lane guard", () => {
     expect(bash("cat .env")).toBe("an env file");
     expect(bash("grep TOKEN <.env")).toBe("an env file");
     expect(bash("cat .env.runs.example")).toBeNull();
+    // Every other `.env*` is closed too: a local override, a glob and direnv's file.
+    expect(refusalOf("Read", { file_path: "/Users/x/anabasis/.env.example" })).toBeNull();
+    expect(refusalOf("Read", { file_path: "/Users/x/anabasis/.env.local" })).toBe("an env file");
+    expect(bash("cat .env.example")).toBeNull();
+    expect(bash("cat .env.local")).toBe("an env file");
+    expect(bash("cat .env*")).toBe("an env file");
+    expect(bash("head -1 /Users/x/anabasis/.envrc")).toBe("an env file");
+    expect(refusalOf("Glob", { glob: "**/.env*" })).toBe("an env file");
+    expect(refusalOf("Glob", { glob: "**/*.example" })).toBeNull();
     expect(refusalOf("Grep", { path: "/Users/x/anabasis/.env" })).toBe("an env file");
     expect(refusalOf("Glob", { glob: ".env.runs" })).toBe("an env file");
     expect(refusalOf("Grep", { path: "/Users/x/anabasis/src" })).toBeNull();
@@ -119,6 +134,101 @@ describe("the lane guard", () => {
     ] as const) {
       expect(bash(refused)).toBe(why);
     }
+  });
+
+  it("runs no interpreter on a campaign's path or a program kept in one, and Python with bytecode off", () => {
+    // The nearest allowed cases: a campaign's file piped or redirected in, a reader given its path.
+    for (const ok of [
+      `cat /a/.ana/d2/r/log.jsonl | python3 -B -c "import sys; print(sum(1 for _ in sys.stdin))"`,
+      "python3 -B /tmp/lane/count.py < /a/.ana/d2/r/log.jsonl",
+      "PYTHONDONTWRITEBYTECODE=1 python3 /tmp/lane/count.py",
+      "export PYTHONDONTWRITEBYTECODE=1; python3 -c 'print(1)'",
+      "bun tools/wri/wri.ts read --log /a/.ana/d2/r/log.jsonl",
+      'bun -e "console.log(1)"',
+      "sed -n 1,5p /a/.ana/d2/r/log.jsonl",
+      "awk '{print $1}' /a/.ana/d2/r/log.jsonl",
+      "perl -ne 'print if /x/' /tmp/lane/x.txt",
+    ]) {
+      expect(bash(ok)).toBeNull();
+    }
+    for (const [refused, why] of [
+      [`python3 -B -c "open('/a/.ana/d2/r/states/h/x', 'w')"`, "an interpreter naming a campaign"],
+      [`bun -e "await Bun.write('/a/.ana/d2/r/states/h/x', '')"`, "an interpreter naming a campaign"],
+      ["python3 -B /tmp/lane/x.py /a/.ana/d2/r/log.jsonl", "an interpreter naming a campaign"],
+      ["perl -pi -e 's/a/b/' /a/.ana/d2/r/log.jsonl", "an interpreter naming a campaign"],
+      [`awk '{print > "/a/.ana/d2/r/out"}' /tmp/x`, "an interpreter naming a campaign"],
+      ["sed 's/a/b/w /a/.ana/d2/r/out' /tmp/x", "an interpreter naming a campaign"],
+      ["python3 -B /a/.ana/d2/r/states/h/.toolchain/run.py", "a program kept in a campaign"],
+      ["/a/.ana/d2/r/states/h/.toolchain/bin/check x", "a program kept in a campaign"],
+      ["bun /a/.ana/d2/r/states/h/agent/tools.ts", "a program kept in a campaign"],
+      ["bash /a/data/runs/h/r/states/h/.toolchain/go.sh", "a program kept in a campaign"],
+    ] as const) {
+      expect(bash(refused)).toBe(why);
+    }
+    expect(bash("python3 /tmp/lane/count.py")).toContain("bytecode");
+    expect(bash("PYTHONDONTWRITEBYTECODE= python3 /tmp/lane/count.py")).toContain("bytecode");
+    expect(bash("pytest /tmp/lane")).toContain("bytecode");
+  });
+
+  it("runs no command inside a campaign's folder, by `cd`, a directory flag or the session's own", () => {
+    for (const ok of [
+      `cd ${WRI} && grep -c x lanes/07-report.md`,
+      "git -C /a/anabasis log -1",
+      "grep -C 3 solve /a/.ana/d2/r/log.jsonl",
+      "tar -cf /tmp/lane/s.tar /a/.ana/d2/r/states",
+      "tar -xf /tmp/lane/s.tar -C /tmp/lane/out",
+    ]) {
+      expect(bash(ok)).toBeNull();
+    }
+    for (const refused of [
+      `cd /a/.ana/d2/run/states; sed -i '' 's/a/b/' ${WRI}/lanes/34-report.md`,
+      "cd /a/.ana/d2/r/states/h && python3 -B run.py",
+      "cd /a/.ana/d2/r && ls",
+      "tar -C /a/.ana/d2/r/states -xf /tmp/x.tar",
+      "tar -xf /tmp/x.tar -C/a/.ana/d2/r/states",
+      "git -C /a/.ana/d2/r/states/h status",
+      "bun --cwd=/a/.ana/d2/r/states/h x.ts",
+      "find /a/.ana/d2/r -name '*.py' -execdir python3 -B {} ;",
+    ]) {
+      expect(bash(refused)).toBe("a command run inside a campaign");
+    }
+    expect(refusalOf("Bash", { command: "ls" }, "/a/anabasis")).toBeNull();
+    expect(refusalOf("Bash", { command: "ls" }, "/a/.ana/d2/r/states/h")).toBe(
+      "a command run inside a campaign",
+    );
+    expect(refusalOf("Bash", { command: "cd /tmp && ls" }, "/a/.ana/d2/r/states/h")).toBeNull();
+  });
+
+  it("lets a shell write reach only the files the Write tool may under an investigation", () => {
+    const cycle = "/Users/x/anabasis/.ana/wri/2026-11-07-cycle-v0.10";
+    for (const ok of [
+      `echo x >> ${WRI}/lanes/07-report.md`,
+      `echo x > ${WRI}/cross-domain.md`,
+      `perl -pi -e 's/a/b/' ${WRI}/lanes/07-report.md`,
+      "echo x > /tmp/lane/vetting.md",
+    ]) {
+      expect(bash(ok)).toBeNull();
+    }
+    for (const refused of [
+      `echo x > ${WRI}/vetting.md`,
+      `cat >> ${cycle}/outcomes-r.md <<'EOF'\nx\nEOF`,
+      `cp /tmp/x ${WRI}/plan.md`,
+      `cd ${WRI} && echo x > iteration.json`,
+      `perl -pi -e 's/a/b/' ${WRI}/vetting.md`,
+      `tar -cf ${WRI}/vetting.md /tmp/x`,
+      `cd ${WRI} && tar -xf /tmp/x.tar`,
+      `sed -i '' 's/a/b/' ${cycle}/predictions-r.md`,
+    ]) {
+      expect(bash(refused)).toBe("a write to the primary's files");
+    }
+    for (const step of [
+      "bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts open r1",
+      "bun tools/wri/wri.ts index",
+    ]) {
+      expect(bash(step)).toBe("the primary's step");
+    }
+    expect(bash(`bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts next ${WRI}`)).toBeNull();
+    expect(bash("bun tools/wri/wri.ts climb --log /a/.ana/d2/r/log.jsonl")).toBeNull();
   });
 
   it("is the hook the agent type runs", () => {

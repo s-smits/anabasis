@@ -50,8 +50,9 @@
  *   and writes one page over them to `--out` (`<root>/INDEX.md`): a row a folder, newest first,
  *   then each campaign group's binding constraints in time order, each cycle folder and prediction
  *   ledger there and in the main checkout's `notes/`, and each campaign whose log moved in the last
- *   fourteen days (`tools/wri/index.ts`). It prints each section's row count and how many folders
- *   it read whole, in part or not at all, and never the page, which holds hidden values.
+ *   fourteen days, then each pull request a `plan.md` or a fork's `forkedPR<N>` names, with its forks'
+ *   per-run ledgers read (`tools/wri/index.ts`). It prints each section's row count and how many
+ *   folders it read whole, in part or not at all, and never the page, which holds hidden values.
  * - `grade` puts one answer to the campaign's own checker and prints the verdict in one line. It
  *   writes nothing and logs nothing. It needs the pack and its tool tree, and the Mac's verifier wall.
  *   An answer outside a drafted exam's answer format is refused first, as `judge` refuses a
@@ -591,7 +592,7 @@ async function main(): Promise<number> {
     writeFileSync(out, text);
     const how = Object.entries(parsed).map(([way, count]) => `${String(count)} ${way}`);
     console.log(
-      `wrote ${out}: ${plural(rows.investigations, "investigation")} (${how.join(", ")}), ${plural(rows.ledgers, "ledger folder")}, ${plural(rows.runs, "recent campaign")}`,
+      `wrote ${out}: ${plural(rows.investigations, "investigation")} (${how.join(", ")}), ${plural(rows.ledgers, "ledger folder")}, ${plural(rows.runs, "recent campaign")}, ${plural(rows.pulls, "pull request")}`,
     );
     return 0;
   }

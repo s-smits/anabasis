@@ -60,7 +60,25 @@ console.log(JSON.stringify(toolchainPathDirs()));`;
   test("an empty home puts nothing from the working directory on the wall's path", () => {
     const cwd = temp("ana-pinned-cwd");
     mkdirSync(join(cwd, pinnedPythonDir("")), { recursive: true });
-    expect(wallPath("", cwd).filter((dir) => dir.includes("ana-python"))).toEqual([]);
+    expect(wallPath("", cwd).filter((dir) => !dir.startsWith("/") || dir.startsWith(cwd))).toEqual([]);
+  });
+
+  test("a relative home puts nothing from the working directory on the path, and the wall refuses to start", () => {
+    const cwd = temp("ana-pinned-cwd");
+    mkdirSync(join(cwd, pinnedPythonDir(".")), { recursive: true });
+    expect(wallPath(".", cwd).filter((dir) => !dir.startsWith("/") || dir.startsWith(cwd))).toEqual([]);
+    const script = `import { solveIsolationPolicy } from "${join(REPO, "src/wall/base.ts")}";
+const policy = solveIsolationPolicy({ repoRoot: "${REPO}" });
+console.log(JSON.stringify("unsupported" in policy ? policy.unsupported : policy.deniedReadRoots));`;
+    for (const home of [".", "relative/home"]) {
+      const { stdout } = runSync([capturedExecPath, "-e", script], {
+        cwd,
+        env: { ...runtimeProcess.env, HOME: home },
+      });
+      expect(parseJsonAs<unknown>(decodeOutput(stdout)), home).toBe(
+        "HOME is a relative path, so the wall cannot name the home it closes",
+      );
+    }
   });
 
   test("the wall's path has the pinned folder first where it exists, and is as it was where it does not", () => {

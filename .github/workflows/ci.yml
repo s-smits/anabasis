@@ -27,18 +27,36 @@
 # check and the whole suite, so one run named one failure where it could have named all. Since
 # 19 October `darwin-ui` runs `ui:gate`'s steps apart for the same reason: its `&&` let a failed
 # build skip every UI test. No step bails at its first failure: the suite runs every file.
+#
+# `tests` and `ui_tests` make the run `ci-fixes`: after a full run failed in its tests, `land`
+# dispatches the next one with the files that failed and the tests near what changed since, and
+# each job runs only those (`tools/runtime/ci-runs.ts`). A job with no file named is skipped, and the
+# static steps and the climb simulation, which a failure of their own sends back to a full run, are
+# left out. Dispatched with neither, the run is the full one.
 name: ci
+run-name: ${{ (inputs.tests != '' || inputs.ui_tests != '') && 'ci-fixes' || 'ci' }}
 on:
   workflow_dispatch:
+    inputs:
+      tests:
+        description: ci-fixes only, the root test files to run in place of the suite
+        default: ''
+      ui_tests:
+        description: ci-fixes only, the UI's test files to run in place of its tests
+        default: ''
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 permissions:
   contents: read
+env:
+  TESTS: ${{ inputs.tests }}
+  UI_TESTS: ${{ inputs.ui_tests }}
 jobs:
   darwin:
     # macOS 15, as the Mac the solves run on. Until 14 October the disk cap also moved a released
     # image to the Trash with /usr/bin/trash, which macOS 14 does not have; it unlinks it since.
+    if: ${{ inputs.tests != '' || inputs.ui_tests == '' }}
     runs-on: macos-15
     timeout-minutes: 45
     steps:
@@ -54,21 +72,22 @@ jobs:
       - run: bun run ui:deps
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
       - run: bun run typecheck
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && inputs.tests == '' }}
       - run: bun run lint -- --strict
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && inputs.tests == '' }}
       - run: bun run format:check
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && inputs.tests == '' }}
       # Every tracked file, where the pre-push hook scans only what a push adds.
       - run: bun run secrets
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-      - run: bun run test
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && inputs.tests == '' }}
+      - run: bun run test -- $TESTS
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
 
   darwin-ui:
     # The UI's own gate, with its browser tests, on a runner of its own: on 14 October its 235 tests
     # took 9 to 23 minutes on a macOS runner of 3 cores, and the suite 23 to 35, so one job holding
     # both passed its 45 minutes before the suite ended.
+    if: ${{ inputs.ui_tests != '' || inputs.tests == '' }}
     runs-on: macos-15
     timeout-minutes: 45
     steps:
@@ -84,12 +103,13 @@ jobs:
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
       - run: bun run ui:build
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
-      - run: bun run test -- packages/ui/test
+      - run: bun run test -- ${UI_TESTS:-packages/ui/test}
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
 
   linux:
     # A VM runner, not a container: Bubblewrap creates user and mount namespaces, which an ordinary
     # container withholds.
+    if: ${{ inputs.tests != '' || inputs.ui_tests == '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -106,8 +126,8 @@ jobs:
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - id: install
         run: bun install --frozen-lockfile
-      - run: bun run test
+      - run: bun run test -- $TESTS
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
       - name: The climb simulation
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && inputs.tests == '' }}
         run: ANA_CLIMB=1 bun run test -- test/climb.test.ts

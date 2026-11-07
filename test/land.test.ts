@@ -53,6 +53,7 @@ else
 fi ;;
 "repo view"*) echo main ;;
 "api graphql"*) [ -z "$ANA_FAKE_SHOWN" ] || cat "$ANA_FAKE_SHOWN" ;;
+"run list --workflow ci.yml --branch"*) printf '%s\n' "$ANA_FAKE_CI_BRANCH" ;;
 "run list"*) if [ -n "$ANA_FAKE_CI_STATES" ]; then
   row=$(head -n 1 "$ANA_FAKE_CI_STATES")
   [ "$(wc -l < "$ANA_FAKE_CI_STATES")" -le 1 ] || { tail -n +2 "$ANA_FAKE_CI_STATES" > "$ANA_FAKE_CI_STATES.n"; mv "$ANA_FAKE_CI_STATES.n" "$ANA_FAKE_CI_STATES"; }
@@ -61,8 +62,10 @@ elif [ -z "$ANA_FAKE_CI_AFTER" ] || [ -e "$ANA_FAKE_CI_AFTER" ]; then
   if [ -n "$ANA_FAKE_CI" ]; then printf '%s\n' "$ANA_FAKE_CI"; else printf 'completed\tsuccess\t1\thttps://ci/1\n'; fi
 fi ;;
 "run view"*"no runner took"*) [ -z "$ANA_FAKE_UNTAKEN" ] || printf '%s\n' "$ANA_FAKE_UNTAKEN" ;;
+"run view"*"if .conclusion"*) printf '%s\n' "$ANA_FAKE_CI_STEPS" ;;
 "run view"*"--log-failed") [ -z "$ANA_FAKE_LOG_DOWN" ] || { echo "gh: Bad Gateway (HTTP 502)" >&2; exit 1; }
-  printf 'darwin\tRun the suite\t(fail) a test that broke on the clean runner\n' ;;
+  if [ -n "$ANA_FAKE_FAILED_LOG" ]; then cat "$ANA_FAKE_FAILED_LOG"
+  else printf 'darwin\tRun the suite\t(fail) a test that broke on the clean runner\n'; fi ;;
 "run view"*) echo "darwin: Run the suite" ;;
 "workflow run"*) [ -z "$ANA_FAKE_CI_AFTER" ] || touch "$ANA_FAKE_CI_AFTER" ;;
 "api -X PUT"*"/merge-async"*) [ "$ANA_FAKE_STACK_END" != refused ] || { echo "gh: Stack is not mergeable (HTTP 422)" >&2; exit 1; }
@@ -121,6 +124,13 @@ git("checkout", "-q", "-b", "nodispatch", "main");
 const noDispatch = commit(".github/workflows/ci.yml", workflow(""), "no dispatch");
 git("checkout", "-q", "-b", "c", "b");
 const stacked = commit("src/e.ts", "export const e = 1;\n", "c");
+// A head where ci.yml failed, and its fix: the only test near the fix is test/a.test.ts.
+git("checkout", "-q", "-b", "fix", "b");
+writeFileSync(join(work, "test", "a.test.ts"), 'import { a } from "../src/a.ts";\nexport { a };\n');
+writeFileSync(join(work, "test", "far.test.ts"), "export {};\n");
+const fixesWorkflow = workflow("  workflow_dispatch:\n    inputs:\n      tests:\n      ui_tests:\n");
+const broken = commit(".github/workflows/ci.yml", fixesWorkflow, "a head ci.yml failed on");
+const fixed = commit("src/a.ts", "export const a = 2;\n", "the fix");
 git("checkout", "-q", "b");
 execTextSync("git", ["init", "-q", "--bare", origin]);
 execTextSync("git", ["-C", origin, "config", "uploadpack.allowAnySHA1InWant", "true"]);
@@ -716,6 +726,62 @@ describe("bun run land", () => {
     );
     expect(logLines(ghLog)).toContain("run rerun 9 --failed");
     expect(statuses("ci.yml").at(-1)).toBe(`success ${upper}`);
+  });
+
+  describe("after a full run failed in its tests on an earlier head of the top's branch", () => {
+    const fixPulls = JSON.stringify([pull(11, "a", "main", lowerDocs), pull(12, "fix", "a", fixed)]);
+    const failedLog = join(fixture, "failed.log");
+    const step = "Run bun run test -- $TESTS";
+    writeFileSync(
+      failedLog,
+      [
+        `linux\t${step}\t2026-11-07T10:00:00.1Z test/owner.test.ts:`,
+        `darwin\t${step}\t2026-11-07T10:00:00.2Z test/far.test.ts:`,
+        `linux\t${step}\t2026-11-07T10:00:00.3Z (fail) the owner > holds one [1.00ms]`,
+        `darwin\t${step}\t2026-11-07T10:00:00.4Z (pass) far > stays [1.00ms]`,
+        // Bun's closing list repeats the failure after the last file's header, and names no file.
+        `linux\t${step}\t2026-11-07T10:00:00.5Z test/far.test.ts:`,
+        `linux\t${step}\t2026-11-07T10:00:00.6Z 1 tests failed:`,
+        `linux\t${step}\t2026-11-07T10:00:00.7Z (fail) the owner > holds one [1.00ms]`,
+      ].join("\n"),
+    );
+    const fixesLand = (env: Record<string, string>) =>
+      runLand(["12", "--merge"], {
+        ANA_FAKE_PULLS: fixPulls,
+        ANA_FAKE_CI_STATES: ciStates(
+          "none",
+          "completed\tsuccess\t3\thttps://ci/3\t2026-11-07T11:00:00Z\tci-fixes",
+        ),
+        ANA_FAKE_FAILED_LOG: failedLog,
+        ANA_FAKE_CI_BRANCH: `${broken}\tfailure\t9`,
+        ANA_FAKE_STACK_SHA: fixed,
+        ...env,
+      });
+    const dispatches = (): string[] => logLines(ghLog).filter((line) => line.startsWith("workflow run"));
+
+    it("dispatches ci-fixes with the files that failed and the tests one import from the fix, and merges once it passes", () => {
+      const result = fixesLand({});
+      expect(result.status).toBe(0);
+      expect(dispatches()).toEqual([
+        "workflow run ci.yml --ref fix -f tests=test/a.test.ts test/owner.test.ts -f ui_tests=",
+      ]);
+      expect(result.stdout).toContain(`dispatched ci-fixes, 2 test files since run 9 on ${short(broken)},`);
+      expect(described("ci.yml").at(-1)).toBe(`${fixed} ci.yml's ci-fixes run 3 passed on this head`);
+    });
+
+    it("dispatches the full run where the failed run failed beyond its tests", () => {
+      const result = fixesLand({ ANA_FAKE_CI_STEPS: `${step}, The climb simulation` });
+      expect(dispatches()).toEqual(["workflow run ci.yml --ref fix"]);
+      expect(result.stdout).toContain(
+        `ci.yml runs in full: run 9 on ${short(broken)} failed beyond its tests (The climb simulation).`,
+      );
+    });
+
+    it("dispatches the full run where what runs the suite changed since", () => {
+      const result = fixesLand({ ANA_FAKE_CI_BRANCH: `${upper}\tfailure\t9` });
+      expect(dispatches()).toEqual(["workflow run ci.yml --ref fix"]);
+      expect(result.stdout).toContain("ci.yml runs in full: .github/workflows/ci.yml changed since run 9.");
+    });
   });
 
   it("refuses before gating when no run exists and ci.yml takes no dispatch", () => {

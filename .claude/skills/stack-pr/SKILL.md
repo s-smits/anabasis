@@ -134,7 +134,9 @@ claims a simplification, give the net source lines in the body. Test growth is n
 suite that passes on one platform establishes nothing about the other. The UI's CI gate has a
 macOS runner of its own. CI starts only by `workflow_dispatch`: neither a pull request push nor a
 merge into `main` starts a run, and `bun run land -- <top> --merge` dispatches the top's run where
-none exists. After the root install, checks continue despite earlier check failures; the UI build
+none exists, as `ci-fixes` where the newest full run on the top's branch failed only in its tests:
+those files and the tests near what changed since, each job running only its own
+(`tools/runtime/ci-runs.ts`). After the root install, checks continue despite earlier check failures; the UI build
 and tests both require the UI's dependency install to pass.
 
 | job | steps |

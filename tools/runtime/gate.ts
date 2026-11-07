@@ -142,7 +142,7 @@ const BROWSER_FILE = /^packages\/ui\/test\/browser-[^/]+\.test\.ts$/u;
 const IMPORTS = new Map<string, string[]>();
 const TRANSPILERS = { ts: new Bun.Transpiler({ loader: "ts" }), tsx: new Bun.Transpiler({ loader: "tsx" }) };
 /** Maximum import distance for nearby tests, as defined in the head comment. */
-export const NEAR = { root: 1, ui: 3 } as const;
+const NEAR = { root: 1, ui: 3 } as const;
 const FIRST = [
   ["install", ["install", "--frozen-lockfile"]],
   ["format", ["run", "format:check"]],
@@ -286,8 +286,29 @@ export const changedSince = (root: string, base: string): Set<string> =>
     ...lines(git(root, ["ls-files", "--others", "--exclude-standard", "--", ".", ...DOCUMENTATION])),
   ]);
 
+/** The files under `path` that `pattern` matches, tracked or new, in `root`. */
+const listed = (root: string, path: string, pattern: RegExp): string[] =>
+  lines(git(root, ["ls-files", "--cached", "--others", "--exclude-standard", path])).filter((file) =>
+    pattern.test(file),
+  );
+
+/** The root's test files near `changed` in `root`, at `NEAR.root`: the one choice of the static
+ *  pass, `preflight` and `ci-fixes`. */
+export const testsNear = (root: string, changed: ReadonlySet<string>): string[] =>
+  nearbyTests(root, changed, listed(root, "test", TEST_FILE), NEAR.root);
+
+/** The UI's test files near `changed` in `root`, at `NEAR.ui`, its browser files only where
+ *  `browser` holds. */
+export const uiTestsNear = (root: string, changed: ReadonlySet<string>, browser: boolean): string[] =>
+  nearbyTests(
+    root,
+    changed,
+    listed(root, UI_ROOT, UI_TEST).filter((file) => browser || !BROWSER_FILE.test(file)),
+    NEAR.ui,
+  );
+
 /** The test files among `tests` near `changed`, by the rule in the head comment, at `depth` imports. */
-export function nearbyTests(
+function nearbyTests(
   root: string,
   changed: ReadonlySet<string>,
   tests: readonly string[],
@@ -329,12 +350,7 @@ async function uiStep(root: string, pass: Pass): Promise<number> {
     console.log(`gate: step ui skipped: nothing it reads changed since ${short(base ?? "")}`);
     return 0;
   }
-  const tests = nearbyTests(
-    root,
-    changed,
-    files.filter((file) => UI_TEST.test(file) && (pass === "whole" || !BROWSER_FILE.test(file))),
-    NEAR.ui,
-  );
+  const tests = uiTestsNear(root, changed, pass === "whole");
   for (const args of [["run", "ui:build"], ...(tests.length > 0 ? [["run", "test", "--", ...tests]] : [])]) {
     const code = await step(root, "ui", args, true);
     if (code !== 0) return code;
@@ -377,9 +393,7 @@ async function gate(argv: readonly string[]): Promise<number> {
     const code = await step(root, name, args);
     if (code !== 0) return code;
   }
-  const tests = lines(git(root, ["ls-files", "test"])).filter((file) => TEST_FILE.test(file));
-  const near =
-    pass === "whole" ? [] : nearbyTests(root, changedSince(root, parentOf(root, "HEAD")), tests, NEAR.root);
+  const near = pass === "whole" ? [] : testsNear(root, changedSince(root, parentOf(root, "HEAD")));
   if (pass === "static" && near.length === 0) console.log("gate: no test file is near what HEAD changed.");
   // The strict lint reads whether the UI's dependencies are there as it starts, so they are
   // installed before the steps that run side by side (the release review of 3 November).

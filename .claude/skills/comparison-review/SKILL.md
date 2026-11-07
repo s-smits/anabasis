@@ -70,8 +70,9 @@ the central host, beside the cycle's files. No step starts until the check befor
    *Check:* its digest (`shasum -a 256`) is taken and written down with the time. That digest is the
    seal's salt, and one salt is all a review gets, so an unwelcome split cannot be drawn again.
 
-2. **Seal half the tasks.** Run the script (`bun studies/harness2/levels.ts --salt <salt>`). It orders the tasks
-   by a hash of the salt and prints the first half; the rest stay withheld until step 7. Where the
+2. **Seal half the tasks.** Run the script (`bun studies/harness2/levels.ts --salt <salt>`). It puts each task
+   in the open or the sealed half by a hash of the salt and its name alone, so a task graded later
+   moves no other, and prints the open half; the rest stay withheld until step 7. Where the
    seal leaves fewer than a sweep (six at level 0.02), the sealed half can falsify a story and can
    read no step, and the ledger says so. A task already read closely before the freeze confirms
    nothing whichever half it falls in: the ledger names it, and its row is left out of the count at

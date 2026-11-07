@@ -4,7 +4,7 @@
  * that failed a session. Queued solves leave on cancellation while the host's sleep remains unresolved;
  * only load waits record their elapsed time. Tests inject the host's sleeps and clock.
  */
-import { afterAll, describe, expect, it, spyOn } from "bun:test";
+import { afterAll, describe, expect, it, setSystemTime, spyOn } from "bun:test";
 import { resetOf } from "../src/agent/backends/claude.ts";
 import { crashedRun } from "../src/campaign/ground.ts";
 import { affords, flying } from "../src/campaign/opening.ts";
@@ -58,7 +58,7 @@ function gate(log: string, host: Host, loaded = false, concurrency = 4) {
     },
   };
   // SAFETY: the host reads only these solve limits; the scripted seat reads no campaign fields.
-  const campaign = { limits: { concurrency } } as Campaign;
+  const campaign = { limits: { concurrency, wallSeconds: 1800 } } as Campaign;
   const seats = gated({ seated: () => seat, loaded, host }, log)(campaign, {
     builder: undefined,
     reference: "h1",
@@ -239,10 +239,28 @@ describe("a pause's word", () => {
     );
     const held = gate(log, left);
     append(log, "campaign.word", { word: "pause" });
-    expect(held.solve(TASK, HARNESS, kill.signal)).rejects.toBe(reason);
+    const solving = expect(held.solve(TASK, HARNESS, kill.signal)).rejects.toBe(reason);
     await Bun.sleep(0);
     expect(left.slept.length).toBeGreaterThan(0);
     expect(held.calls).toEqual([]);
+    await solving;
+  });
+
+  it("lets solves start again once a pause that never stopped the run is past a solve's limit", async () => {
+    const log = logIn("pause-abandoned");
+    append(log, "campaign.opened", {});
+    const seats = gate(
+      log,
+      hostOf(() => 0),
+    );
+    append(log, "campaign.word", { word: "pause" });
+    setSystemTime(new Date(Date.now() + 2 * 3_600_000));
+    try {
+      await seats.solve(TASK, HARNESS, new AbortController().signal);
+    } finally {
+      setSystemTime();
+    }
+    expect(seats.calls).toHaveLength(1);
   });
 });
 

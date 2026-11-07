@@ -21,6 +21,7 @@ import { existsSync, statSync } from "#src/meta/filesystem.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";
 import { runCommand } from "#skills/main/cli.ts";
+import { ownedBy } from "#src/kernel/trace.ts";
 import { validityOf } from "#tools/d2/close.ts";
 import { readingOf } from "#skills/system-path-simulation/scripts/live-seat.ts";
 
@@ -44,12 +45,16 @@ export function sessionLines(events: readonly LogEvent[]): string[] {
     const reading = readingOf(events.slice(0, end), start, []);
     const reference = referenceAt(events, start);
     const session = events[start]?.data.session;
+    // The window to the next start also holds the comparisons and Builder sessions between, so the
+    // line bills only what this session owns: its own end and its tries (`ownedBy`). Over the stopped
+    // esp32 run of 7 November the window gave its 9 empty sessions $45.18 where they billed $18.52.
+    const own = isString(session) ? events.slice(start, end).filter(ownedBy(events, session)) : [];
     const words = Object.entries(reading.gates)
       .map(([word, count]) => `${word} ${String(count)}`)
       .join(", ");
     const gated = Object.values(reading.gates).reduce((sum, count) => sum + count, 0);
     const turns = reading.turns === null ? "no valid room solve" : `median turns ${String(reading.turns[1])}`;
-    return `${isString(session) ? session : "?"} · reference ${reference} · held ${String(reading.held)} of ${String(gated)} (${words || "no task admission"}) · ${turns} · $${reading.billed.toFixed(2)}`;
+    return `${isString(session) ? session : "?"} · reference ${reference} · held ${String(reading.held)} of ${String(gated)} (${words || "no task admission"}) · ${turns} · $${billedAll(own).toFixed(2)}`;
   });
 }
 

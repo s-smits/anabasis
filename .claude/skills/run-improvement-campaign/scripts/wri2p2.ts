@@ -20,8 +20,11 @@
  *   never stopped for its iteration, since stopping one is the operator's.
  * - `next` reads an investigation's folder and prints the one step left, in the order of the
  *   iteration: the shared instructions' blank sections, the lanes, each lane session still owing a
- *   report (with the line a subagent is handed), the collection and the synthesis, the vetting, the
- *   plan against the levers, the pull request (named in `plan.md` as `Pull request: #N`), and the
+ *   report (with the line a subagent is handed), the collection and the synthesis, each run's
+ *   `predictions-<run>.md` resolved row by row in `outcomes-<run>.md`, with what it still lacks in
+ *   `still-missing-<run>.md` (and what it lacks on purpose under "Intentionally opposed"), the
+ *   vetting, the read across
+ *   domains (`cross-domain.md`), the plan against the levers, the pull request (named in `plan.md` as `Pull request: #N`), and the
  *   fresh runs at its head (`runs fresh --as forkedPR<N>`), which are launched without asking.
  *
  * Until 4 November `cycle.ts` read a release cycle's named runs by asking each host to run it in its
@@ -51,6 +54,8 @@ import { INVESTIGATION, SHARED, SYNTHESIS, VETTING } from "#tools/wri/index.ts";
 import { blankSections } from "#tools/wri/investigation.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 
+/** The read across domains that the plan rests on beside the vetting. */
+const ACROSS = "cross-domain.md";
 const SCRIPT = ".claude/skills/run-improvement-campaign/scripts/wri2p2.ts";
 const USAGE = `usage: bun ${SCRIPT} [<part> ...] [--promotions 2] [--hours 12] [--days 2] | open <name>[,<name>] [--out <dir>] | next <dir>`;
 const OPTIONS = { promotions: "int", hours: "int", days: "int", out: "abs" } as const;
@@ -113,17 +118,56 @@ function investigations(root: string): { dir: string; names: string[] }[] {
   return readdirSync(root)
     .filter((entry) => existsSync(join(root, entry, INVESTIGATION)))
     .toSorted((one, other) => other.localeCompare(one))
-    .map((entry) => {
-      const dir = join(root, entry);
-      // Before 21 October an investigation read one log, named `log`.
-      const { logs, log } = parseJsonAs<{ logs?: string[]; log?: string }>(
-        readFileSync(join(dir, INVESTIGATION), "utf8"),
-      );
-      return {
-        dir,
-        names: (logs ?? (log === undefined ? [] : [log])).map((each) => basename(dirname(each))),
-      };
-    });
+    .map((entry) => ({ dir: join(root, entry), names: runsOf(join(root, entry)) }));
+}
+
+/** The campaigns the investigation `dir` reads, by name. */
+function runsOf(dir: string): string[] {
+  // Before 21 October an investigation read one log, named `log`.
+  const { logs, log } = parseJsonAs<{ logs?: string[]; log?: string }>(
+    readFileSync(join(dir, INVESTIGATION), "utf8"),
+  );
+  return (logs ?? (log === undefined ? [] : [log])).map((each) => basename(dirname(each)));
+}
+
+/** The ids of a ledger's table rows: each row's first cell, past the header and its rule. */
+export function idsOf(text: string): string[] {
+  return text.split("\n").flatMap((line) => {
+    const cell = /^\|\s*([^|]*?)\s*\|/u.exec(line)?.[1];
+    return cell === undefined || cell === "" || cell === "id" || /^:?-+:?$/u.test(cell) ? [] : [cell];
+  });
+}
+
+/**
+ * The step `run` owes its predictions, or null once each row of its `predictions-<run>.md`, in a
+ * folder under `root`, has its row in `outcomes-<run>.md` beside it. Operator, 7 November: each run
+ * keeps its predictions and their outcomes as a linked pair, so an iteration shows whether its
+ * predictions were handled before it vets anything.
+ */
+function outcomesOwed(root: string, run: string): string[] | null {
+  const name = `predictions-${run}.md`;
+  const folder = readdirSync(root).find((entry) => existsSync(join(root, entry, name)));
+  if (folder === undefined) {
+    return [
+      `step: predictions · ${run} has no ${name}: write it in its cycle's folder under ${root}, marked as written after its launch`,
+    ];
+  }
+  const predictions = join(root, folder, name);
+  const outcomes = join(root, folder, `outcomes-${run}.md`);
+  const resolved = new Set(existsSync(outcomes) ? idsOf(readFileSync(outcomes, "utf8")) : []);
+  const unsettled = idsOf(readFileSync(predictions, "utf8")).filter((id) => !resolved.has(id));
+  if (unsettled.length > 0) {
+    return [
+      `step: outcomes · resolve ${unsettled.join(", ")} of ${predictions} into ${outcomes} from the log: held, falsified or unreached, each with its count or event`,
+    ];
+  }
+  // Operator, 7 November: what the run still lacks is kept beside its outcomes, with what is left
+  // out on purpose in a section of its own, so a gap left by design is never read as one forgotten.
+  const missing = join(root, folder, `still-missing-${run}.md`);
+  if (existsSync(missing) && /^## Intentionally opposed$/mu.test(readFileSync(missing, "utf8"))) return null;
+  return [
+    `step: still-missing · write ${missing}: each falsified or unreached id and each problem the run shows that no fix holds yet, with where it is carried, then "## Intentionally opposed": what stays missing on purpose, each as a trade-off, what it buys, what it costs and why (the trade-off of AGENTS.md section 1, the principle or the operator's word)`,
+  ];
 }
 
 /** The lane sessions a manifest of `dir` launched whose reports are not all written. */
@@ -170,8 +214,19 @@ export function nextOf(dir: string, launchedAt: (pull: number) => string[]): str
       `${wri("collect")} && bun ${WRI} synthesis --out ${dir}`,
     ];
   }
+  const unresolved = runsOf(dir)
+    .map((run) => outcomesOwed(dirname(dir), run))
+    .find((lines) => lines !== null);
+  if (unresolved !== undefined) return unresolved;
   if (!existsSync(at(VETTING))) {
     return [`step: vet · recount each finding of ${at(SYNTHESIS)} into ${at(VETTING)}, predictions first`];
+  }
+  // Operator, 7 November: a fix found in one domain's run must keep the other domains intact, so a
+  // read of their recent investigations stands between the vetting and the plan.
+  if (!existsSync(at(ACROSS))) {
+    return [
+      `step: across · one read-only subagent reads the vetted investigations of the other domains (the newest 5 to 10, none from before the previous minor release) beside ${at(VETTING)}, and writes ${at(ACROSS)}: for each confirmed problem, whether those domains show it and whether an earlier investigation's fix for it should have held here; for each candidate fix, what it changes there and how to keep that intact`,
+    ];
   }
   const plan = existsSync(at("plan.md")) ? readFileSync(at("plan.md"), "utf8") : null;
   if (plan === null) {
@@ -188,7 +243,7 @@ export function nextOf(dir: string, launchedAt: (pull: number) => string[]): str
   const launched = launchedAt(pull);
   if (launched.length === 0) {
     return [
-      `step: launch · write the prediction, then fork at #${String(pull)}'s head on the host and login with room`,
+      `step: launch · write predictions-<run>.md in the cycle's folder, then fork at #${String(pull)}'s head on the host and login with room`,
       `  bun run runs fresh <pack> --at <#${String(pull)} head> --as forkedPR${String(pull)} --yes`,
     ];
   }

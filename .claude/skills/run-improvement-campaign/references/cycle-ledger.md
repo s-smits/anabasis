@@ -20,7 +20,7 @@ evidence against those steps and supplies no additional authority.
 | Stops | Closed runs / named cycle runs to stop, excluding `--keep`; list exceptions and unread runs separately |
 | Investigation | Links to synthesis, vetting and each finding's evidence and disposition |
 | Plan and patches | Owner, hostile test, before-and-after result, commit or PR, checks and exit codes |
-| Predictions | A link to `Predictions.md` beside this file, which holds every prediction of the cycle and its resolution ([step 1](../SKILL.md#the-running-window-until-six-promotions-or-twelve-hours-a-run)) |
+| Predictions | A link to `Predictions.md` beside this file, which holds the cycle-wide predictions with their resolutions and links each run's `predictions-<run>.md`, `outcomes-<run>.md` and `still-missing-<run>.md`, the last with its "Intentionally opposed" trade-offs ([step 1](../SKILL.md#the-running-window-until-six-promotions-or-twelve-hours-a-run)) |
 | Release | Operator's word, tree-equality proof, land result, merge commit and tag |
 | Next cycle | Link to its ledger, authority, named runs and opening commits |
 
@@ -29,5 +29,5 @@ evidence against those steps and supplies no additional authority.
 | Kind | Record |
 | --- | --- |
 | Armed timer | Name, id, schedule with UTC offset, purpose and authority link |
-| Firing | Time with UTC offset, finding, `Predictions.md` rows resolved, usefulness, skill step after, timer change |
+| Firing | Time with UTC offset, finding, prediction rows resolved (cycle-wide and each run's outcomes), usefulness, skill step after, timer change |
 | Primary log | Dated append-only line for work between firings |

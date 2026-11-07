@@ -28,25 +28,37 @@ can.
 
 Every claim names the pillar it bears on. The pillars are those of `AGENTS.md` section 1: supply,
 the condition before the four, then climb, honesty, verdicts and economy, with the wall beside them
-as a correctness property, and two rows a release adds: grounding (rule 10) and the outside
-comparison. A v1.0 release needs every row below. The values stand in
-`docs/plan.md`; this table holds what each requires and what reads it.
+as a correctness property, and three rows a release adds: grounding (rule 10), the systems reading
+of section 1's wider aim, and the outside comparison. A v1.0 release needs every row below. This
+table owns what each row requires, its threshold, the reader that prints its status and the
+decision it serves; `docs/plan.md`, "The v1.0 bar, now", owns each row's present value and level,
+and nothing else states either. A threshold is the operator's (`AGENTS.md`, section 3), and no
+seat is told one (section 2, consequence 2).
 
-| pillar | v1.0 requires | read by |
-| --- | --- | --- |
-| wall | the wall tests pass on macOS and on Linux (plan row H1) | `test/builder.test.ts`, `test/builder-led.test.ts`, the wall's start-up test |
-| supply | every comparison admitted on at least `comparisonFloor` frontier tasks, and informative tasks among those it scores | `src/campaign/admission.ts`, `bun run runs view <name>` |
-| climb | six confirmed promotions in one measured campaign (`AGENTS.md`, section 10, item 9), then the same in a second domain (plan row L2). "Confirmed" is `confirmed` in `src/campaign/climb.ts`: the epoch's first starter comparison that tallied a task reads the reference above the starter without the bill at its level | `barLines`, `src/campaign/climb.ts`; `promotion-tuner/scripts/table.ts --rows runs` |
-| honesty | no step in the ten A/A comparisons after the sixth promotion, so one campaign has to run past six | `barLines` (`src/campaign/climb.ts`) for those after the sixth; `falsePromotion`, `incapable` and the table's A/A column read a whole campaign |
-| verdicts | at least 30 blind labels; three in four check defects caught; at most one in ten earned rejections voided; PABAK beside kappa | `clears`, `src/referee/agreement.ts`, read by `tools/c/rejections.ts`; `tools/d2/settle.ts` draws a packet of one campaign |
-| grounding | one domain whose exam names the field's installed engine, so its checks stand without `--admit-authored` (rule 10, plan row F32) | `tools/c/accept.ts` |
-| economy | dollars and hours per promotion read from the log; attempts an epoch after set-up reported against 3 | `tools/d2/close.ts`, `worthOf`, `barLines` |
-| outside | a harness built without a benchmark's tasks or grades beats pi's starter on WorkBuddy-Bench Code, then Harness² `k=1` rerun on the same tasks and executor, under a claim and margin fixed before the first scored solve and repeated by a second campaign (plan row X1). The operator's later course towards a JobBench parity test is `docs/backlog/jobbench-scoring.md`, and whether it replaces this row is not decided | `studies/harness2/README.md`, `studies/harness2/run.ts read` |
+| row | v1.0 requires | threshold | status printed by | decision it serves |
+| --- | --- | --- | --- | --- |
+| wall | every wall test passes on macOS and on Linux at the release's top, and no solve of the measured campaign ran unwalled | no failure on either system; an unavailable wall is a typed non-result, never a pass | `bun run gate` on a runner of each system (`test/builder.test.ts`, `test/builder-led.test.ts`, the wall's start-up test); `sandbox-crash` non-results in the closing report | whether any reading of the release can be trusted at all |
+| supply | every comparison of the measured campaign after set-up scores enough untied tasks to read a step at its level, and some of its steps are won on validity | at least 6 untied tasks a comparison, the fewest an exact one-sided sign-flip test can clear at 0.02 (one in 2^6); the share of steps won on validity is the operator's | `examiner-complexity/scripts/zone.ts <log>` (untied on validity and on the objective alone, the reference's valid share); `promotion-tuner/scripts/table.ts --rows runs`, column "steps won by validity" | whether the exam leaves room for a step to mean a better harness, and so whether the next work is the Examiner's or the Builder's |
+| climb | six confirmed promotions in one measured campaign (`AGENTS.md`, section 10, item 9), at one commit, then the same in a second domain the operator names (plan row L2). "Confirmed" is `confirmed` in `src/campaign/climb.ts`. Beside each confirmed promotion the release states whether its read is a step without the tasks that chose the harness | 6 in each domain; whether a read counts the tasks that chose the harness is the operator's | `barLines` (`src/campaign/climb.ts`: the closing report and `bun run runs view <name>`); `comparison-reading/scripts/starter-reads.ts` for the split by origin | whether a promotion is a gain beyond the tasks that selected it, the release's main claim |
+| honesty | no step in the ten A/A comparisons able to read one after the sixth promotion of the climb's campaign, and across the measured campaigns of the release cycle a share of A/A steps no higher than the level's design rate | 0 of 10 able; at most 1.1% at 0.02 (`falseRate`) over at least 100 able (proposed, the operator's to set) | `barLines`, whose honesty line keeps the able apart; `table.ts --rows runs`, column "A/A steps/capable" | whether the level is loose for the noise, and so whether a step can be taken at its word |
+| verdicts | at least 30 blind labels pooled across campaigns, among them enough labelled check defects to read the catch rate; three in four check defects caught; at most one in ten earned rejections voided; PABAK beside kappa | 30 labels, of which at least 8 are labelled check defects (proposed, the operator's to set); 3 in 4; 1 in 10 | `tools/d2/settle.ts` over one campaign's packets (`clears`, `src/referee/agreement.ts`); no reader pools packets across campaigns yet | whether a label the Referee gives can stand in for a person's |
+| grounding | one domain whose exam names the field's installed engine, so its checks stand without `--admit-authored` (rule 10, plan row F32) | 0 checks decided by their author's computation in the measured campaign of that domain | the closing report's "What decides a pass" line (`unadmitted`, `tools/d2/close.ts`); `tools/c/accept.ts` decides admission | whether a pass means the field's own tool agrees, not only the exam's author |
+| economy | dollars and active hours per promotion and per confirmed promotion, priced on one meter, for the measured campaign and for the release cycle's runs; attempts an epoch after set-up reported against 3 | 3 attempts, reported; any dollar target is the operator's | `tools/d2/close.ts` and `barLines` for one campaign; `promotion-tuner/scripts/cost.ts` across runs | what a gain costs, read apart from whether it is one |
+| systems | a cheap solver inside a harness a measured campaign built against a dear solver inside the starter, on that campaign's held-out tasks, under a claim and margin fixed before the first solve (`compare-systems`) | the pair of solvers, the margin and the solves a task are the operator's | `compare-systems/scripts/systems.ts` | section 1's wider aim: whether building a harness lets a cheaper system do a dearer one's work |
+| outside | a frozen harness built without a benchmark's tasks or grades, against Harness² on tasks neither has adapted to, under one solver, the same prompt and inputs and the benchmark's own grader, with the margin fixed after a Starter A/A and before the first built rollout, at two rollouts a side, and repeated by a second campaign | the course, the tasks and the margin are the operator's: JobBench parity (`docs/backlog/jobbench-scoring.md`) or WorkBuddy-Bench Code (`studies/harness2/README.md`) | `studies/harness2/compare.ts read` for JobBench; `studies/harness2/run.ts read` for WorkBuddy-Bench | whether a climb on an exam Anabasis wrote itself carries to a grader nobody in either loop wrote |
+
+**How the bar is kept.** No reader of its own, since each row's reader exists: at each release the
+session that writes the notes reads every row from the reader named above, on the release's
+measured campaign and its cycle's runs, and puts one line a row in the notes' "Validation and
+limits" (met, not met with its count, or unmeasured), then copies the same lines into
+`docs/plan.md`, "The v1.0 bar, now". A row whose reader has no value is unmeasured, never met. A
+system audit reads the same table to triage (below). v1.0 is the release at whose top every row
+reads met.
 
 **Triage on top.** Before vetting, sort every claim by the first row it blocks, in the table's
 order: the measurement's honesty before supply, a result before its credibility, credibility
-before its cost, and the outside comparison last, since it rests on all the rest. A claim that
-blocks no row goes below them all. Vetting and the report keep that order.
+before its cost, and the systems and outside comparisons last, since they rest on all the rest. A
+claim that blocks no row goes below them all. Vetting and the report keep that order.
 
 ## The record
 

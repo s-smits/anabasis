@@ -9,8 +9,7 @@
  *
  * One look and out, unless `--every <seconds>` asks it to keep looking. Until 5 November a bare pulse
  * watched for ever, so a session reading one run through a pipe waited 80 minutes for an end that never
- * came. `--once` still parses and changes nothing: the anti-stall hook and a peer's ask send it, and
- * either can meet a tree from before this, where leaving it out would watch for ever.
+ * came.
  *
  * With no names a look covers the open runs and those open at the last look, so a run's ending is
  * said once; an observer's first look of a run also covers one stopped in the last day without an
@@ -675,7 +674,6 @@ export async function watch(args: readonly string[]): Promise<void> {
     args: [...args],
     allowPositionals: true,
     options: {
-      once: { type: "boolean", default: false },
       every: { type: "string" },
       state: { type: "string", default: join(".ana", "runs-pulse.json") },
       here: { type: "boolean", default: false },
@@ -703,7 +701,6 @@ export async function watch(args: readonly string[]): Promise<void> {
         [
           "pulse",
           ...names,
-          "--once",
           "--here",
           "--state",
           `.ana/pulse/${cursor}.json`,

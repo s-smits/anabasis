@@ -40,7 +40,7 @@ const HOST_MS = 30_000;
 const NAMING = new Set(["stop", "continue", "pause", "keep", "copy"]);
 /** The options of the verbs in `NAMING` that take no value. Any other option not joined to its value
  *  by `=` takes the next argument as its value. */
-const SWITCHES = new Set(["--yes", "--all", "--once", "--json", "--hold", "--here"]);
+const SWITCHES = new Set(["--yes", "--all", "--json", "--hold", "--here"]);
 
 /** Where a verb runs: here with `here` (none where every name it was given is elsewhere), and on
  *  each host with the words it is sent. */

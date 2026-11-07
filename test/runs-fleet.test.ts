@@ -492,7 +492,7 @@ describe("the fleet pulse", () => {
     const remoteOf = (...flags: readonly string[]) => {
       const made = fixture();
       const state = join(made.root, "state.json");
-      const asked = JSON.stringify(["--once", "--no-readers", ...flags, "--state", state]);
+      const asked = JSON.stringify(["--no-readers", ...flags, "--state", state]);
       made.run(`import { watch } from "REPOSITORY/tools/runs/pulse.ts"; await watch(${asked});`);
       return (
         made
@@ -508,7 +508,7 @@ describe("the fleet pulse", () => {
   it("polls each host once and keeps a local state path out of remote commands", () => {
     const made = fixture();
     const state = join(made.root, "state.json");
-    const command = `import { watch } from "REPOSITORY/tools/runs/pulse.ts"; await watch(["--once", "--no-readers", "--state", ${JSON.stringify(state)}]);`;
+    const command = `import { watch } from "REPOSITORY/tools/runs/pulse.ts"; await watch(["--no-readers", "--state", ${JSON.stringify(state)}]);`;
     const result = made.run(command);
     expect(result.code).toBe(0);
     expect(result.out).toContain("reported step");
@@ -525,7 +525,7 @@ describe("the fleet pulse", () => {
     const local = fixture();
     expect(
       local.run(
-        `import { watch } from "REPOSITORY/tools/runs/pulse.ts"; await watch(["--once", "--no-readers", "--here", "--state", ${JSON.stringify(join(local.root, "local.json"))}]);`,
+        `import { watch } from "REPOSITORY/tools/runs/pulse.ts"; await watch(["--no-readers", "--here", "--state", ${JSON.stringify(join(local.root, "local.json"))}]);`,
       ).code,
     ).toBe(0);
     expect(local.recorded().filter((call) => call.tool === "ssh")).toHaveLength(0);

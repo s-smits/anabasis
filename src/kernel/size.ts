@@ -15,7 +15,7 @@
  * that a task the two harnesses split was won or lost by four pairs for each valid answer that
  * parted them. Four bought about a sixth more of a campaign's dollars and more of its hours, which
  * the Builder spends waiting on comparisons, and one reading of four solves still could not call a
- * task easy without a second (`easyAt`, `reports.ts`). Two keep a split task visible, and the
+ * task easy without a second (`poolOf`, `reports.ts`). Two keep a split task visible, and the
  * readings pool. At level 0.02, twenty-four untied tasks detect a harness that wins 80% of them
  * four times in five, where twelve need 87%. A comparison buys tasks and the power is in untied ones: the tie share between them is
  * what the reference read against itself measures (`comparison.ts`, `noise`), and until it has been
@@ -44,11 +44,6 @@ import { detectable, flipP, power, sweepOf } from "./compare.ts";
 interface Result {
   readonly wins: number;
   readonly losses: number;
-}
-
-/** What a comparison is read by: the level a step clears. */
-interface Asked {
-  readonly level: number;
 }
 
 /** A comparison's size where nothing names another: the scored tasks and the solves a side. */
@@ -91,7 +86,7 @@ export function clearing(tasks: number, level: number): Result[] {
  * `prepare.ts`'s output: the smallest results that read a step, the least share of the tasks won
  * that one reading detects four times in five, were none to tie, and one reading's rate.
  */
-export function sizeLines(tasks: number, { level }: Asked): string[] {
+export function sizeLines(tasks: number, level: number): string[] {
   const results = clearing(tasks, level);
   const scored = `${tasks === 0 ? "no held-out task" : plural(tasks, "held-out task")} can be scored`;
   if (results.length === 0) {
@@ -103,16 +98,15 @@ export function sizeLines(tasks: number, { level }: Asked): string[] {
     .slice(0, NAMED)
     .map(({ wins, losses }) => `${String(wins)}-${String(losses)}`)
     .join(", ");
-  const share = detectable(units(tasks, 0), level);
+  // A task set that can clear the level at all clears it at a share of one, so a share is found.
+  const share = detectable(units(tasks, 0), level) ?? 1;
   // The test's own rate at these margins, never over the level, to a tenth of a percent, and one
   // under that said as under it, never as none.
   const rate = power(units(tasks, 0), 0.5, level);
   const rated = rate > 0 && rate < 0.0005 ? "under 0.1%" : `${String(Math.round(1000 * rate) / 10)}%`;
   return [
     `${scored}; at --level ${String(level)} the smallest results that read a step are ${said}, each task won or lost by as many pairs`,
-    share === null
-      ? `were no task to tie, one reading at --level ${String(level)} would detect no share of ${plural(tasks, "task")}: it takes ${String(sweepOf(level))}, all won`
-      : `were no task to tie, one reading at --level ${String(level)} would detect four times in five a harness that wins ${String(Math.round(100 * share))}% of the tasks, and fewer untied tasks need a larger share`,
+    `were no task to tie, one reading at --level ${String(level)} would detect four times in five a harness that wins ${String(Math.round(100 * share))}% of the tasks, and fewer untied tasks need a larger share`,
     `one reading at these margins reads a step between equal harnesses ${rated} of the time where no task ties: the level is a per-comparison level`,
   ];
 }

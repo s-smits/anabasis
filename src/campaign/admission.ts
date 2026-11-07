@@ -257,7 +257,7 @@ function stopped({ stop }: Supply, pastStop: string | undefined) {
  */
 export function refusals(supply: Supply, wanted: Sized) {
   const { scored, least } = sized(supply, wanted);
-  const [size = ""] = sizeLines(scored, wanted);
+  const [size = ""] = sizeLines(scored, wanted.level);
   const more = `An Examiner session writes more held-out tasks (examine, or ${EXAMINE} by hand)`;
   const stop = stopped(supply, wanted.pastStop);
   const rows = [
@@ -310,7 +310,7 @@ function admission(supply: Supply, wanted: Wanted): Admission {
     ],
     notes: [
       `${String(supply.held)} held out · ${String(supply.released)} released for practice · ${String(scored)} to score`,
-      ...(scored < least ? [] : sizeLines(scored, wanted)),
+      ...(scored < least ? [] : sizeLines(scored, wanted.level)),
       ...said([
         [
           supply.awaiting > 0,

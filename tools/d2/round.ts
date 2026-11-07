@@ -72,7 +72,7 @@ import { worthLine } from "#src/campaign/climb.ts";
 import { predicted, type Report } from "#src/campaign/comparison.ts";
 import { refuseTerms, type RoundRequest, round, scoredSet } from "#src/campaign/round.ts";
 import type { BuildRequest, Practised } from "#src/builder/session.ts";
-import { type ObjectiveRule, testOf, WEIGHTS } from "#src/kernel/compare.ts";
+import { type ObjectiveRule, testedSet, testOf, WEIGHTS } from "#src/kernel/compare.ts";
 import type { Limits } from "#src/kernel/condition.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { read } from "#src/kernel/log.ts";
@@ -128,7 +128,7 @@ export interface Seats extends SolverSeat {
   /** Set by the paid seats, and kept by whatever holds them, as the solve queue does: until
    *  20 October a command told them by `seated === solved`, and every move the campaign command
    *  made through the solve queue read as a rehearsal's and skipped its admission (a Builder's compare on
-   *  esp32-fresh-opus-m1-air-r2 began on 1 task, where a step at the level takes 6). The cap is still read by identity before the campaign opens,
+   *  esp32-fresh-opus-r2 began on 1 task, where a step at the level takes 6). The cap is still read by identity before the campaign opens,
    *  and the admission refuses a paid move without one. */
   readonly paid?: true;
 }
@@ -456,7 +456,7 @@ export function reportLines({
     old === null || fresh === null ? [] : [{ old, fresh }],
   );
   const took = (side: "old" | "fresh") => String(median(both.map((each) => each[side])));
-  const test = scored?.falseRate === undefined ? frontier : scored;
+  const test = testedSet(scored, frontier);
   const share = test?.detectable ?? null;
   // A report of 26 October to 2 November read its step on its scores without the bill (`scoresIn`).
   const unbilled = test?.unbilled === undefined ? null : testOf(test.unbilled);

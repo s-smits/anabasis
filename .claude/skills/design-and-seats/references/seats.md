@@ -22,13 +22,13 @@ The **Examiner** reads the following view of the log (`src/examiner/record.ts`):
 - Per-task reference outcomes from the last scored comparison (`poolOf`), the turns of each of the
   reference's valid answers in it and, under an objective, what each measured (`referenceAnswers`),
   and whether a valid answer exists.
-- Which harness won each task and on which measure (`carriedBy`), authorised on 20 October.
+- Which harness won each task and on which measure (`carriedBy`), authorised by the operator.
 - The last comparison the reference stood in, from its side, with how often its own two solves
-  differed in that comparison's A/A where it sat on the old side (`lastLine`).
+  differed in that comparison's A/A where it sat on the old side (`stoodLines`).
 - The checks a `check-defect` ruling found at fault on an answer to a task (`faultedOf`), by id.
 - The promotion line.
-- At each later ask of its conversation, only what reported since it last wrote: the last
-  comparison's line, the tasks compared since under the reference's outcome, a promotion among them,
+- At each later ask of its conversation, only what reported since it was last told: a line for
+  each comparison the reference stood in, the tasks compared since under the reference's outcome, a promotion among them,
   and its limits from here (`heard` with `after`, `wakeMessage`).
 - Its home, with the reference harness, and check results obtained through `try_answer`.
 - Of each solve its `try_reference` asked of the reference harness: whether it was valid, its turns
@@ -44,8 +44,8 @@ answer, a trace or the check that refused one, its own tries included.
 
 The tools of each model seat, as its source names them:
 
-- Examiner: `propose_tasks`, which puts each draft to the gate and solves none (until 1 November
-  `try_task` and `wait` had the reference solve a draft), then `read_example`, `try_answer`,
+- Examiner: `propose_tasks`, which puts each draft to the gate and solves none,
+  then `read_example`, `try_answer`,
   `try_reference`, `read_opening`, `bash`, `read`, `write` and `finish` (`src/examiner/write.ts`).
   `try_reference` runs one or two fresh solves of an instance by the reference harness in force,
   through the comparison's launcher and solve queue under the campaign's setting, each start naming

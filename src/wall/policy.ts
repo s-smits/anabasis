@@ -32,6 +32,21 @@ export const BUILT_COMMAND_SCRATCH_ROOT = join(tmpdir(), "ana-built-bash");
  */
 const HOST_SCRATCH_ROOT = join(tmpdir(), "ana-host");
 
+/** Where under a home a toolchain installs itself, in the order the wall's path takes them. */
+export const TOOLCHAIN_HOME_ROOTS = [
+  ".bun",
+  ".cargo",
+  ".deno",
+  ".espressif",
+  ".local",
+  ".nvm",
+  ".platformio",
+  ".pyenv",
+  ".rustup",
+  "Library/Arduino15",
+  "go",
+];
+
 /** The two roots of the host's own above, in both path forms, for a wall to close whole. */
 export function hostRoots(): string[] {
   return [BUILT_COMMAND_SCRATCH_ROOT, HOST_SCRATCH_ROOT].flatMap(canonicalForms).toSorted(compareCodeUnits);
@@ -75,21 +90,7 @@ export function canonicalRoots(paths: readonly string[]): string[] {
 export function darwinToolchainInstallRoots(home: string | undefined = Bun.env.HOME): string[] {
   const shared = ["/usr/local"];
   const perUser =
-    home === undefined || home === ""
-      ? []
-      : [
-          ".bun",
-          ".cargo",
-          ".deno",
-          ".espressif",
-          ".local",
-          ".nvm",
-          ".platformio",
-          ".pyenv",
-          ".rustup",
-          "Library/Arduino15",
-          "go",
-        ].map((relative) => join(home, relative));
+    home === undefined || home === "" ? [] : TOOLCHAIN_HOME_ROOTS.map((relative) => join(home, relative));
   return [...shared, ...perUser].filter(existsSync).toSorted(compareCodeUnits);
 }
 
@@ -178,7 +179,21 @@ export function toolchainPathDirs(): string[] {
   const scan = { onlyFiles: false, absolute: true, followSymlinks: true };
   const glob = (cwd: string) => [...new Bun.Glob("opt/python*/libexec/bin").scanSync({ ...scan, cwd })];
   const brewed = user.map(dirname).filter(existsSync).flatMap(glob).toSorted(compareCodeUnits);
-  return [...new Set([...user, ...brewed.toReversed(), ...installed, ...system])].filter(existsSync);
+  const home = Bun.env.HOME;
+  const pinned = home === undefined || home === "" ? [] : [pinnedPythonDir(home)];
+  return [...new Set([...pinned, ...user, ...brewed.toReversed(), ...installed, ...system])].filter(
+    existsSync,
+  );
+}
+
+/**
+ * The folder of the Python `bun run runs sync` keeps on a host, first on the wall's path where it
+ * exists, so a machine that never pinned one finds what it always found. On 5 November the hosts'
+ * `python3` was moved by hand through three package managers. It sits under `~/.local`, which the
+ * wall already lets a seat read (`darwinToolchainInstallRoots`).
+ */
+export function pinnedPythonDir(home: string): string {
+  return join(home, ".local", "share", "ana-python", "bin");
 }
 
 /**

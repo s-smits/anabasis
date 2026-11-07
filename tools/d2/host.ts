@@ -15,6 +15,8 @@
  *   practice and, until 1 November, the gate's room solves to the concurrency the condition records. On 26 October,
  *   buffer-fresh-opus-v072 showed 13 overlapping room solves at a recorded concurrency of 4:
  *   each draft and its remaining room solves could start together, outside the comparison's workers.
+ * - **A pause's word**, which starts no further solve while the process it was left for runs, so
+ *   that `runs pause` lets the open ones finish (`PAUSE`, `src/campaign/word.ts`).
  * - **A provider's named reset.** A usage limit that names when it lifts is slept out, not a crash:
  *   on 12 October one login's limit, an hour and forty minutes from its reset, ended five campaigns
  *   on two hosts at once (`waitOut`, `src/solver/run.ts`, which a solve also calls).
@@ -22,15 +24,16 @@
  *   in buffer-149 on 13 October, Builder session b-2 began 2 s after b-1 crashed on a failed DNS
  *   lookup (`waitCrashed`).
  *
- * Every wait but the reserve's and slots' is on record as `campaign.waited`, so a reader tells
+ * Every wait but the reserve's, slots' and pause's is on record as `campaign.waited`, so a reader tells
  * the solver's time from the host's, and a provider's starts the crash rule's count again
  * (`crashedRun`). A queued solve leaves on its kill signal without invoking the solving seat.
- * Load, reserve and slot waits are interruptible; a load wait records its elapsed time even when
+ * Load, reserve, slot and pause waits are interruptible; a load wait records its elapsed time even when
  * cancellation ends it.
  */
 import { CRASHES } from "#src/campaign/decide.ts";
 import { crashedRun } from "#src/campaign/ground.ts";
 import { affords, flying, inFlight } from "#src/campaign/opening.ts";
+import { PAUSE, pendingWords } from "#src/campaign/word.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
@@ -79,6 +82,9 @@ export { queued as gated };
  */
 function queued({ seated, loaded, host = seated === solved ? HOST : undefined }: Queue, log: string): Seated {
   if (host === undefined) return seated;
+  // A pause left before this process began was for the one it stopped.
+  const began = read(log).length;
+  const pausing = () => pendingWords(read(log)).some(({ at, word }) => word === PAUSE && at >= began);
   return (campaign, given) => {
     const seats = seated(campaign, given);
     return {
@@ -98,7 +104,7 @@ function queued({ seated, loaded, host = seated === solved ? HOST : undefined }:
         let [looks, load, ms] = [0, 0, 0];
         for (;;) {
           const [now, flown] = [loaded || looks >= LOOKS ? 0 : host.load(), inFlight(log)];
-          const full = flown >= campaign.limits.concurrency || (flown > 0 && !affords(log, 1));
+          const full = flown >= campaign.limits.concurrency || (flown > 0 && !affords(log, 1)) || pausing();
           if (kill?.aborted === true || (now <= host.cores && !full)) break;
           if (now > host.cores && (looks += 1) === 1) {
             load = now;

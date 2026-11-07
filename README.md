@@ -52,9 +52,14 @@ This example uses Claude for all four model seats.
 ```sh
 git clone https://github.com/s-smits/anabasis.git
 cd anabasis
+cp .env.example .env   # set CLAUDE_CODE_OAUTH_TOKEN in it; `claude setup-token` prints one
+
+# A run executes its tree's source, so it starts from a worktree of its own.
+git worktree add --detach ../anabasis-trusses
+cd ../anabasis-trusses
 bun install --frozen-lockfile
 
-bun tools/d2/harness-builder.ts \
+bun --env-file=../anabasis/.env tools/d2/harness-builder.ts \
   --name trusses \
   --project steel \
   --prompt "Design lightweight steel roof trusses to Eurocode 3 within strict mass limits." \
@@ -68,8 +73,10 @@ bun tools/d2/harness-builder.ts \
 `--budget` is required: it caps the dollars the whole campaign may bill.
 `--project` is required when the campaign opens; run the command again with the same `--name` to continue that campaign, or use `--prompt-file` for a longer prompt. `bun run runs view <name>` prints the campaign as its log reads.
 Builder, Examiner, Referee (`--reviewer`) and solver can each use Claude (Claude Code or the API), Codex or OpenRouter, with their own model and effort.
-For Claude, `CLAUDE_CODE_OAUTH_TOKEN` (process environment or `.env`; `claude setup-token` prints one) serves all four seats at once.
-`.env.example` lists every credential a seat reads; copy it to `.env`, which git ignores. `.env.runs.example` holds what your own machines add for `bun run runs`: the logins a run may take and the other hosts whose runs `runs status` shows.
+For Claude, `CLAUDE_CODE_OAUTH_TOKEN` (the process environment, or a file named with `bun --env-file=<file>`; Bun loads no env file by itself here) serves all four seats at once.
+`.env.example` lists every credential a seat reads; copy it to `.env`, which git ignores. A paid seat refuses a repository's main worktree, so `--dry-run` says so there and a run starts in a worktree of its own.
+With nothing else set, Anabasis runs on this one machine and reaches for no other. `.env.runs.example` holds what your own machines add for `bun run runs`: the logins a run may take, the other hosts whose runs `runs status` shows, and the Python and table of tools `bun run runs sync` keeps on them.
+`bun run runs search` also needs [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`).
 
 ## Take the Harness along
 
@@ -107,6 +114,9 @@ with `git diff --check` and the secret scan, and the pushed head with `bun run g
 The two lint plugins, `anti-slop` (copied from dmmulroy/anti-slop) and the repository's own `ana`
 simplify catchers, are optional: their findings are counted on every run and fail only
 `bun run lint -- --strict`, which the gate runs, or a run with `ANA_LINT_STRICT=1` in the environment.
+
+Anabasis neither needs nor reads [dcg](https://github.com/Dicklesworthstone/destructive_command_guard). If you
+run it, `.dcg.toml` holds three general allowances to copy into your own config, and says what they give up.
 
 ## Licence
 

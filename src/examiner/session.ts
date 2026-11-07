@@ -131,8 +131,8 @@ interface Mode {
   /** What its end event holds of its work, under the log's own words. */
   readonly counted: () => JsonObject;
   readonly result: () => Omit<Examined, "ended">;
-  /** Takes in the next ask, `since` the log's length at the last one's end, and says what it is told. */
-  readonly ask?: (next: Ask["request"], since: number) => string;
+  /** Takes in the next ask and says what it is told. */
+  readonly ask?: (next: Ask["request"]) => string;
 }
 
 /** What `finish` leaves the loop: the note, and what the mode had counted at the last declined one. */
@@ -257,7 +257,6 @@ async function examining(
       // An ask's home is kept at its rest, as a session's was at its end before one conversation
       // held every ask: the conversation's wall closes only when the conversation does.
       walls?.keep();
-      const since = read(log).length;
       const closed = AbortSignal.any([spent.signal, caller.signal]);
       const next = await Promise.race([
         request.rest(result),
@@ -275,7 +274,7 @@ async function examining(
       [current, from, began] = [next.request, turns.length, performance.now()];
       Object.assign(said, { note: null, declined: null });
       clock = clocked();
-      const woken = asking(next.request, since);
+      const woken = asking(next.request);
       start();
       next.request.opened?.();
       return woken;

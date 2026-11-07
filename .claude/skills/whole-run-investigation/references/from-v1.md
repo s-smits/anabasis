@@ -1,8 +1,8 @@
 # From v1's catalogue to v2's
 
 Read this mapping when a v1 archive names a lane this catalogue lacks. It records the first
-thirty v2 lanes, in that catalogue's numbers. A lane was added on 10 October to read promotions and
-what followed them, and five on 27 October, when every pull request was labelled by area and five
+thirty v2 lanes, in that catalogue's numbers. A lane was added to read promotions and
+what followed them, and five more when every pull request was labelled by area and five
 areas had no lane: the campaign command's moves against its table, the Builder's conversation
 across compactions, the drafted exam against its prompt (v1's lane 31, "Brief against the
 request", returns as lane 8), the launches and logins, and the log with its readers. The same day
@@ -71,7 +71,7 @@ whose author is not the Builder.
 | 14. Finding routing and recurrence | 30. Rulings, labels and feedback | Referee rulings, blind labels and what each seat received |
 | 19. Semantic repair closure | 6. Checker identity and repair closure | Separate campaigns and the reading from `repaired.ts` |
 | 20. Task movement and attribution | 13. Harness delta | Kept harness states and the Builder's note |
-| 27. Task-admission cost and confidence | 9. Supply and task admission | Package refusals, and `try_task` admission in logs before 1 November |
+| 27. Task-admission cost and confidence | 9. Supply and task admission | Package refusals, and `try_task` admission in older logs |
 | 33. Reference provenance and author's answer strength | 8. Tasks no harness answers | Recorded valid answers, including `task.feasible`, and infeasibility labels |
 
 ## Merged (5)
@@ -92,7 +92,7 @@ Read these from the v1 archive. Their original mechanism has no current lane wit
 | --- | --- |
 | 3. Authoring-to-host contract compatibility | The Examiner drafts an exam before task writing; `draftReading` checks its shape |
 | 9. Rehearsal instrument reach | Practice uses the campaign's verifier |
-| 31. Brief against the request | A prompt can now open a campaign; lane 8 reads the drafted exam against it since 27 October |
+| 31. Brief against the request | A prompt can now open a campaign; lane 8 reads the drafted exam against it |
 | 36. Difficulty pressure on the Builder | The Examiner writes tasks; lane 14 reads its inputs |
 | 37. Scored-set size and probe graduation | Lanes 9 and 23 read supply and statistical power |
 | 12. Epoch Reviewer standing duties | The Referee reads rejected answers; lanes 6 and 7 read its work |
@@ -100,7 +100,7 @@ Read these from the v1 archive. Their original mechanism has no current lane wit
 | 32. Judge pass decidability | A person labels sampled passes in `settle.ts` |
 | 10. Difficulty calibration loop | The setting stays fixed; lanes 12 and 26 read ties and the chain |
 | 17. Round hand-off census | Lane 7 reads what each seat received |
-| 26. Builder memory and posture | `memory.ts` carries notes and scratch; lane 31 reads them with the conversation's compactions since 27 October |
+| 26. Builder memory and posture | `memory.ts` carries notes and scratch; lane 31 reads them with the conversation's compactions |
 | 29. Hardware target coverage against public ground truth | Lane 1 weighs the instrument used by each check |
 | 30. Ground-truth verdict comparison | Lane 1 weighs what a pass establishes |
 
@@ -109,5 +109,5 @@ Read these from the v1 archive. Their original mechanism has no current lane wit
 The first catalogue added lanes 9, 12, 17, 18 and 20 to 25. They read validity and objective
 separation, Examiner inputs, follow-up of practice fails, exposure, pair identity, the scored set,
 the test's power, the starter, solver variance and the comparison chain. A later lane, 27 today, added
-the promotion and its consequences. Until 19 October a promotion used a first reading and a repeat;
+the promotion and its consequences. An older log's promotion used a first reading and a repeat;
 one reading of `step` now promotes under the campaign rule.

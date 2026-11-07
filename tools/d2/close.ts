@@ -20,7 +20,8 @@
  *                folder written to leave the host.
  *   RULES.md     the domain's public contract: its scope, conventions, rules and answer format.
  *   REPORT.md    the closing report: how the campaign ended, each promotion and the comparisons
- *                behind it, every comparison's tally and reading, the chance of a false promotion
+ *                behind it, every comparison's tally and reading, the campaign against the bars of
+ *                the milestone and of economy (`barLines`), the chance of a false promotion
  *                over the whole campaign (`riskLines`), which checks their author's own computation
  *                decides (`unadmitted`), what the Referee ruled and what a person's labels
  *                settled, and what was billed. It names each harness by its letter beside its
@@ -54,7 +55,7 @@
  * counts; the command prints how it ended. A released task is the one to name: a held-out task
  * is solved for nothing a Builder could learn from, but its answer then lies in that log.
  */
-import { promotionsWorth, riskLines, worthLine } from "#src/campaign/climb.ts";
+import { barLines, promotionsWorth, riskLines, worthLine } from "#src/campaign/climb.ts";
 import { UNSETTLED } from "#src/campaign/comparison.ts";
 import { campaignOf, type Handover } from "#src/campaign/handover.ts";
 import { short } from "#src/campaign/move.ts";
@@ -194,6 +195,8 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
       ...comparisons.map((step) => comparisonRow(step, called)),
     ].join("\n"),
     "A reading is of one setting. Tallies under different limits, or against different harnesses, are not one series.",
+    "## The campaign against its bars",
+    barLines(events).join("\n"),
     "## The chance of a false promotion",
     riskLines(events).join("\n"),
     "## What was audited, and what was not",

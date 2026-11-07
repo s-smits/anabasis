@@ -4,6 +4,7 @@
  * no pull request is open.
  *
  *   bun run follow
+ *   bun run follow -- --if-safe    # move only where `hazards` finds nothing, else say why and stay
  *
  * The top is the last pull request of GitHub's open native stack (`gh api .../stacks`), or, where
  * GitHub holds none, the end of a chain of bases (`stack.ts`). Of several open stacks it follows
@@ -29,8 +30,10 @@ import { CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { gitMaybe, gitText } from "#src/meta/git.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
-import { runSync } from "#src/meta/subprocess.ts";
-import { ghOrThrow, openPulls } from "#tools/runtime/pulls.ts";
+import { lstatSync } from "#src/meta/filesystem.ts";
+import { join } from "#src/meta/path.ts";
+import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
+import { ghOrThrow, openPulls, type Pull } from "#tools/runtime/pulls.ts";
 import { chains } from "./stack.ts";
 
 /** Where GitHub lists the repository's native stacks. */
@@ -55,10 +58,26 @@ export interface Top {
 }
 
 const STACK_BRANCH = /^stack-pr\d+$/;
+/** A git operation under way leaves one of these in the git folder; a move then would cut it. */
+const UNDER_WAY = [
+  "index.lock",
+  "MERGE_HEAD",
+  "CHERRY_PICK_HEAD",
+  "REVERT_HEAD",
+  "BISECT_LOG",
+  "rebase-merge",
+  "rebase-apply",
+];
+/** Work a switch would pull files from under: git itself, or Bun landing, checking or installing.
+ *  A watcher such as `runs loadwatch`, alive for days, holds its code in memory and is no reason. */
+const WORKING = /^\S*git\b|\b(land|gate|test|typecheck|lint|install|preflight|simplify)\b|tools\/runtime\//;
+/** A file touched this recently means someone is editing here now. */
+const QUIET_MS = 10 * 60_000;
 
 /** The top of the open native stack that holds the oldest open pull request, or undefined where
- *  GitHub holds no open one. */
-export function nativeTop(stacks: readonly NativeStack[]): Top | undefined {
+ *  GitHub holds no open one. A pull request of `pulls` stacked on that top before anyone linked it
+ *  is the top: on 6 November follow stopped at #657 while #658 stood on it, unlinked. */
+export function nativeTop(stacks: readonly NativeStack[], pulls: readonly Pull[] = []): Top | undefined {
   const oldest = stacks
     .flatMap((stack) => {
       const open = stack.pull_requests.filter((pull) => pull.state === "open");
@@ -69,18 +88,107 @@ export function nativeTop(stacks: readonly NativeStack[]): Top | undefined {
     .toSorted((a, b) => a.first - b.first)[0];
   const top = oldest?.open.at(-1);
   if (oldest === undefined || top === undefined) return undefined;
-  return { number: top.number, branch: top.head.ref, pulls: oldest.open.map((pull) => pull.number) };
+  const linked = oldest.open.map((pull) => pull.number);
+  const line = chains(pulls).stacks.find((stack) => stack.some((pull) => pull.number === top.number)) ?? [];
+  const above = line.slice(line.findIndex((pull) => pull.number === top.number) + 1);
+  const end = above.at(-1);
+  return end === undefined
+    ? { number: top.number, branch: top.head.ref, pulls: linked }
+    : {
+        number: end.number,
+        branch: end.headRefName,
+        pulls: [...linked, ...above.map((pull) => pull.number)],
+      };
 }
 
 function topNow(root: string): Top | undefined {
   const stacks = parseJsonAs<NativeStack[]>(ghOrThrow(root, ["api", STACKS]));
-  const native = nativeTop(stacks);
+  const open = openPulls(root);
+  const native = nativeTop(stacks, open);
   if (native !== undefined) return native;
-  const line =
-    chains(openPulls(root)).stacks.toSorted((a, b) => (a[0]?.number ?? 0) - (b[0]?.number ?? 0))[0] ?? [];
+  const line = chains(open).stacks.toSorted((a, b) => (a[0]?.number ?? 0) - (b[0]?.number ?? 0))[0] ?? [];
   const top = line.at(-1);
   if (top === undefined) return undefined;
   return { number: top.number, branch: top.headRefName, pulls: line.map((pull) => pull.number) };
+}
+
+/** What `lsof` says of the processes whose working folder is `root`, as their command lines. */
+function workingIn(root: string): string[] {
+  const listed = runSync(["lsof", "-a", "-d", "cwd", "-c", "bun", "-c", "git", "-Fpn"]);
+  if (listed.exitCode === null) return [];
+  const pids: string[] = [];
+  let pid = "";
+  for (const line of decodeOutput(listed.stdout).split("\n")) {
+    if (line.startsWith("p")) pid = line.slice(1);
+    else if (line === `n${root}`) pids.push(pid);
+  }
+  if (pids.length === 0) return [];
+  const commands = decodeOutput(runSync(["ps", "-o", "command=", "-p", pids.join(",")]).stdout);
+  return commands.split("\n").filter((command) => WORKING.test(command));
+}
+
+/** Why moving the checkout at `root` to `upstream` now could lose or disturb work, one reason a
+ *  line, or none where the move is safe. The hourly pass of ana.follow moves the checkout only then,
+ *  and leaves stashing, saving and clearing to its three daily passes (operator, 6 November 2026:
+ *  follow hourly, but never cost local work or block more than it must). Uncommitted changes are no
+ *  reason in themselves, since `follow` carries them: only where they would not merge onto the new
+ *  top. Each check reads git or the file system and moves nothing. */
+export function hazards(root: string, name: string, upstream: string, now = Date.now()): string[] {
+  const found: string[] = [];
+  const changedAt = (at: string): number | null => {
+    try {
+      return lstatSync(at).mtimeMs;
+    } catch {
+      return null;
+    }
+  };
+  const gitDir = gitText(root, "rev-parse", "--absolute-git-dir");
+  const under = UNDER_WAY.filter((marker) => changedAt(join(gitDir, marker)) !== null);
+  // The checks below take the index, which a git operation under way holds.
+  if (under.length > 0) return [`a git operation is under way here (${under.join(", ")})`];
+  const was = gitMaybe(root, "symbolic-ref", "--short", "-q", "HEAD");
+  if (was !== null && was !== name && was !== "main" && !STACK_BRANCH.test(was)) {
+    found.push(`the checkout is on ${was}, which follow does not own`);
+  }
+  const listed = (...args: string[]) =>
+    gitText(root, ...args, "-z")
+      .split("\0")
+      .filter(Boolean);
+  const untracked = listed("ls-files", "-o", "--exclude-standard");
+  const touched = [
+    ...new Set([...listed("ls-files", "-m"), ...untracked, ...listed("diff", "--cached", "--name-only")]),
+  ].filter((path) => now - (changedAt(join(root, path)) ?? -Infinity) < QUIET_MS);
+  if (touched.length > 0) {
+    found.push(`edited in the last ${String(QUIET_MS / 60_000)} minutes: ${touched.slice(0, 5).join(", ")}`);
+  }
+  // A switch overwrites an ignored file, so only an untracked one it would refuse to lose is in the way.
+  const added = new Set(listed("diff", "--name-only", "--no-renames", "--diff-filter=A", "HEAD", upstream));
+  const inWay = untracked.filter((path) => added.has(path));
+  if (inWay.length > 0) found.push(`files the top adds are here already: ${inWay.slice(0, 5).join(", ")}`);
+  const changes = gitText(root, "stash", "create");
+  if (changes !== "") {
+    const merges = gitMaybe(
+      root,
+      "merge-tree",
+      "--write-tree",
+      "--no-messages",
+      "--merge-base=HEAD",
+      upstream,
+      changes,
+    );
+    if (merges === null) {
+      const theirs = new Set(listed("diff", "--name-only", "--no-renames", "HEAD", upstream));
+      const both = listed("diff", "--name-only", "--no-renames", "HEAD", changes).filter((path) =>
+        theirs.has(path),
+      );
+      found.push(`uncommitted changes would conflict with the top: ${both.slice(0, 5).join(", ")}`);
+    }
+  }
+  const working = workingIn(gitText(root, "rev-parse", "--show-toplevel"));
+  if (working.length > 0) {
+    found.push(`work is running here: ${working.map((command) => command.slice(0, 80)).join("; ")}`);
+  }
+  return found;
 }
 
 /** Move the checkout at `root` to `top`, or to `main` where no pull request is open, fetched
@@ -136,9 +244,27 @@ export function follow(root: string, top: Top | undefined): string[] {
 }
 
 if (import.meta.main) {
-  await runCommand({ name: "follow", usage: "bun run follow" }, () => {
-    const root = gitText(runtimeProcess.cwd(), "rev-parse", "--show-toplevel");
-    gitText(root, "fetch", "-q", "--prune", "origin");
-    console.log(follow(root, topNow(root)).join("\n"));
-  });
+  await runCommand(
+    { name: "follow", usage: "bun run follow [-- --if-safe]", options: { "if-safe": "flag" } },
+    (args) => {
+      const root = gitText(runtimeProcess.cwd(), "rev-parse", "--show-toplevel");
+      gitText(root, "fetch", "-q", "--prune", "origin");
+      const top = topNow(root);
+      const name = top === undefined ? "main" : `stack-pr${String(top.number)}`;
+      const upstream = `origin/${top?.branch ?? "main"}`;
+      const moves =
+        gitMaybe(root, "symbolic-ref", "--short", "-q", "HEAD") !== name ||
+        gitText(root, "rev-parse", "HEAD") !== gitText(root, "rev-parse", upstream);
+      const unsafe = args.flag("if-safe") && moves ? hazards(root, name, upstream) : [];
+      if (unsafe.length > 0) {
+        console.log(
+          [`skip: not moving to ${name} at ${upstream} this time`, ...unsafe.map((why) => `  ${why}`)].join(
+            "\n",
+          ),
+        );
+        return;
+      }
+      console.log(follow(root, top).join("\n"));
+    },
+  );
 }

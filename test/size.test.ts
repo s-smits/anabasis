@@ -7,7 +7,7 @@ import { sizeLines } from "../src/kernel/size.ts";
 
 describe("what a comparison of a given size can show, said before it runs", () => {
   it("names the smallest results that read a step, the share one reading detects and its rate between equal harnesses", () => {
-    const [results, share, rate] = sizeLines(12, { level: 0.1 });
+    const [results, share, rate] = sizeLines(12, 0.1);
     // The plan's results at 0.10 are 4-0, 6-1, 7-2 and 9-3: a line names the three smallest,
     // each the fewest wins beside its losses.
     expect(results).toMatch(/^12 held-out tasks\b.*--level 0\.1\b.*\b4-0, 6-1, 7-2,/u);
@@ -16,9 +16,9 @@ describe("what a comparison of a given size can show, said before it runs", () =
     for (const fact of ["7.3%", "no task ties", "per-comparison"]) expect(rate).toContain(fact);
     // Three campaigns of 9 and 10 October stopped on 3-0, one win short of the sweep at 0.10. At
     // 0.20 a 3-0 clears, and neither 2-0 nor 3-1 does.
-    expect(sizeLines(12, { level: 0.2 }).at(0)).toContain("3-0, 4-1, 6-2");
-    expect(sizeLines(24, { level: 0.02 }).at(0)).toContain("6-0, 8-1, 10-2");
+    expect(sizeLines(12, 0.2).at(0)).toContain("3-0, 4-1, 6-2");
+    expect(sizeLines(24, 0.02).at(0)).toContain("6-0, 8-1, 10-2");
     // A rate too small for a tenth of a percent is said as under it, never as none.
-    expect(sizeLines(24, { level: 0.0001 }).at(2)).toContain("under 0.1%");
+    expect(sizeLines(24, 0.0001).at(2)).toContain("under 0.1%");
   });
 });

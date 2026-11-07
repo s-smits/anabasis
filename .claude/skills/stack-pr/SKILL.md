@@ -23,8 +23,8 @@ bun .claude/skills/stack-pr/scripts/stack.ts --branch <branch>   # one branch: w
 Each stack's top is the end of its chain. It is not the highest number: a side branch off the
 middle carries a higher one, and the script lists those apart.
 
-**The stack moves under you.** On 9 October another session stacked eight pull requests in one
-afternoon above a branch that had been read as the top two hours before. Read the edges again
+**The stack moves under you.** Another session can stack eight pull requests in one
+afternoon above a branch that was read as the top two hours before. Read the edges again
 immediately before `git worktree add`, before `gh pr create`, and before any push that rewrites a branch. A
 reading from the start of the task is a lead, not a fact.
 
@@ -34,8 +34,8 @@ reading from the start of the task is a lead, not a fact.
   the files the change touches with each one's diff (`git diff --name-only <base> <head>`). A
   change belongs to a pull request when it fixes, simplifies, completes or supersedes that pull
   request's own code: it rewrites lines that pull request added, or makes one of its hunks dead.
-  Sharing a file is not enough, since half the stack touches `decide.ts` or `AGENTS.md`. On
-  27 October, of eight lanes stacked as new pull requests, #420 rewrote #403's reader, #423 capped
+  Sharing a file is not enough, since half the stack touches `decide.ts` or `AGENTS.md`. For
+  example, of eight lanes stacked as new pull requests, #420 rewrote #403's reader, #423 capped
   the concurrency #404 had added, and #427 superseded #417's spill. The other five were new
   subjects, and right as new pull requests.
 - **A change that belongs to an open pull request expands it.** With no children (`stack.ts
@@ -51,7 +51,8 @@ reading from the start of the task is a lead, not a fact.
   none does, it is the stack `bun run follow` follows, the one that holds the oldest open pull request. The cycle's first change, after
   a release has landed, starts the stack on `main`. Any other stack of its own on `main` starts only
   on the operator's word, for a change that has to land before the cycle's stack; it lands alone,
-  and once one of the two lands, `land` refuses the other until it is replayed onto the new `main`.
+  and once one of the two lands, `land` refuses the other until it is replayed onto the new `main`
+  (`republish.ts --onto-main <top>`, section 8).
   Never base a change on the middle of a stack. Say which in the body.
 - **Another session's pull request is never yours to change.** No commit, no rebase, no force
   push, whatever the fix. Carry the fix as a `fixup!` on the top, as above, or tell the owner.
@@ -73,7 +74,7 @@ Pin by commit because the branch can move between the fetch and the checkout. Ru
 
 Never branch in, or switch, a worktree a run was launched from. A campaign's folder lives under
 that tree's `.ana/`, its receipt names that tree's commit, and a comparison continued from its
-log executes whatever source is there then. `bun run runs pulse --once` says which trees hold
+log executes whatever source is there then. `bun run runs pulse` says which trees hold
 an open run.
 
 ## 4. Hop without losing work
@@ -176,9 +177,9 @@ git push --force-with-lease=refs/heads/<branch>:<old-sha> origin <sha>:refs/head
 
 Over HTTPS, `git push origin HEAD:refs/heads/<branch>` lets the remote helper resolve `HEAD` again
 after the pre-push hook read it. A commit made in that tree while the checks ran can then go out
-unchecked. An explicit commit keeps the published head equal to the one the hook read (20 October).
+unchecked. An explicit commit keeps the published head equal to the one the hook read.
 When committing and pushing in one shell command, chain them with `&&`. With `;`, a failed commit
-still pushes the previous head (20 October).
+still pushes the previous head.
 
 Read a refusal and correct its cause within your authority. Pass `--no-verify` only where the
 operator says so, and never push to `main`. It skips the hook whole, so the pushed head shows no
@@ -196,7 +197,7 @@ UI's steps as far as they are due, the format check, the secret scan, typecheck,
 the test files one import away from what the head's own commit changed. `bun run land` reads that
 pass back and does not run it again. The working tree may hold anything. A
 history brought in through a merge's other parent is counted and left alone, and the merge is
-checked: 444 of v2's commits came into this repository that way on 11 October, and v1's hook, which
+checked: 444 of v2's commits came into this repository that way, and v1's hook, which
 ran the CI gate on every commit new to the remote, could not pass one of them. To push another repository's
 history as a branch of its own, fetch it as a remote first, so that its commits are already held.
 
@@ -228,7 +229,7 @@ Every pull request carries exactly one importance label, defined in the reposito
 `importance:I0` blocks a release or further operation, `I1` protects comparison validity, prevents
 a serious run failure, or broadly simplifies the tree or the suite, `I2` is a bounded functional
 improvement, and `I3` is reporting, wording or convenience (AGENTS.md section 11 owns the
-definitions). The title carries no "Ix:" prefix; the label replaced it on 25 October. `bun run land`
+definitions). The title carries no "Ix:" prefix; the label replaced it. `bun run land`
 refuses a stack in which any pull request has no importance label or more than one, or no category
 label, naming each, before it runs any checks, so `--sanitize` shows such a stack as not ready
 (`gh pr edit <number> --add-label <label>` repairs it). The categories are the subjects a pull request
@@ -307,11 +308,27 @@ replay: send its owner the exact `git rebase --onto` line and wait.
 Restacking the open stack as a whole is a separate operation and needs the operator's word. A
 hop to the top, or a new pull request, never authorises it: section 10 is that operation.
 
+**When what a stack stood on has landed**, its bottom is based on a merged branch, or misses
+`main`'s new head, and `land` refuses it. `stack.ts` says so in an `off main:` line, and so does
+the hourly follow's log. One command replays the whole chain onto `origin/main` with `git replay`
+(no worktree, no ref moved), checks that every commit came across under its subject, names each
+head, then unstacks, retargets, pushes every head under a lease and relinks the native stack:
+
+```sh
+bun .claude/skills/stack-pr/scripts/republish.ts --onto-main <top>        # show the plan
+bun .claude/skills/stack-pr/scripts/republish.ts --onto-main <top> --yes  # carry it out
+```
+
+It is a restack of the whole stack, so it takes the operator's word. It refuses a chain that does
+not replay cleanly and names the `git rebase --onto` line to resolve by hand. On 6 November #632 to
+#653 stood on `claude/landing-fixes` after #646 merged; the repair by hand took an unstack, a base
+edit, a rebase in a scratch worktree, a map of 18 heads and a republish.
+
 ## 9. Land
 
 Merging is the operator's call. Nothing is tagged or versioned by a session unless asked. A stack
 lands through GitHub, so each pull request ends Merged; a local merge pushed to `main` leaves them
-open (98 of them on 21 September in v1). The command is `tools/runtime/land.ts`:
+open (98 of them at once in v1). The command is `tools/runtime/land.ts`:
 
 ```sh
 bun run land -- <top>                 # prove it here; nothing is written to GitHub
@@ -323,10 +340,10 @@ bun run land -- <top> --merge --alone # merge beside another chain on main, on t
 bun run land -- <top> --merge --tag v0.9.0 # and cut that release at the merge, with the notes GitHub writes
 ```
 
-GitHub enforces this. Since 25 October the repository allows merge commits only, with squash,
+GitHub enforces this. The repository allows merge commits only, with squash,
 rebase and auto-merge off. Ruleset 25824510 on the default branch, "main lands only through bun run
 land --merge", has no bypass actors. It refuses deleting `main` and any non-fast-forward push to it
-(`main` was rewritten on 25 October at 14:24Z), and it requires a pull request merged by the merge
+(`main` has been rewritten before), and it requires a pull request merged by the merge
 method with the status `ana/stack-gate`, which only `bun run land -- <top> --merge` posts. Read it
 with `gh api repos/s-smits/anabasis/rulesets/25824510`. One gap remains: a token with admin rights
 can post `ana/stack-gate` by hand.
@@ -365,6 +382,15 @@ queue, leaves the statuses in place and asks for the trunk to be read before ano
 `--tag vX.Y.Z` cuts that release at the merge commit with GitHub's generated notes, which the
 release notes below then replace; a tag origin already holds is refused before the proof. Test
 `land` against a fake `gh` only (`test/land.test.ts`); never against this repository.
+
+**Landing part of a stack.** A landing's members must be its native stack's, so divide the stack at
+the last pull request to land: `bun run split -- <pull request> --yes` makes two stacks and moves no
+branch, so every pass stands. Without `--yes` it prints what the copy after the merge would do. Land
+the lower one, then run `bun run split -- <pull request> --yes` again. That copies every commit above
+the merge onto it with only its parents changed, so each keeps its tree and its pass, pushes in one
+atomic step under leases and without the hook, moves the bases to the trunk and links the upper stack
+there. `land --sanitize` on its top then shows the passes on the new heads. `test/split.test.ts` runs
+against a fake `gh`; never try `split` on this repository without the operator's word.
 
 ### Release notes, when the operator asks for the next version
 

@@ -1,11 +1,12 @@
 /** Machine identities and capacities come only from ANA_HOSTS (22 October 2026). */
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
-import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { hostname } from "#src/meta/os.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { isAbsolute } from "#src/meta/path.ts";
+import { errorMessage } from "#src/meta/runtime-values.ts";
 
 export interface Host {
   readonly name: string;
@@ -21,8 +22,40 @@ export interface Host {
   readonly checks?: number;
   /** The packs this machine is kept for: it takes no other, and no other machine takes them. */
   readonly packs?: readonly string[];
+  /** This host's own values of what a verb carries, over the shared ones; an empty one sends none. */
+  readonly settings?: Readonly<Record<string, string>>;
+  /** The `ANA_TOOLS` rows this machine keeps outside the table: reported, and never changed. */
+  readonly exclude?: readonly string[];
   /** A controller already prepared by code.ts, never accepted from configuration. */
   readonly prepared?: true;
+}
+
+/** What every remote verb carries from this machine's environment, and all an entry's `settings` may
+ *  name: `ANA_HOSTS` stays here, since a peer holding it would gather every host's records. */
+export const CARRIED: readonly string[] = ["ANA_KEEP", "ANA_LOGINS", "ANA_LOGIN_RUNS", "ANA_LOGIN_SUBS"];
+
+/** An entry's `settings`: an object of strings, and only of what is carried. */
+function settingsOf(name: string, value: unknown): Readonly<Record<string, string>> | undefined {
+  if (value === undefined) return undefined;
+  const entries = Object.entries(asRecord(value) ?? { "": null });
+  for (const [key, one] of entries) {
+    if (!isString(one)) throw new Error(`${name}: settings takes an object of strings`);
+    if (!CARRIED.includes(key)) {
+      throw new Error(`${name}: settings takes ${CARRIED.join(", ")}, and not ${key}`);
+    }
+  }
+  return Object.fromEntries(entries.flatMap(([key, one]) => (isString(one) ? [[key, one] as const] : [])));
+}
+
+/** What `ANA_HOSTS` says. Set and empty, as a copied `.env.runs.example` leaves it, is unset: no host,
+ *  and this machine alone. */
+function listedHosts(text: string): JsonValue {
+  if (text.trim() === "") return [];
+  try {
+    return capturedJsonParse(text);
+  } catch (error) {
+    throw new Error(`ANA_HOSTS is not JSON: ${errorMessage(error)}`, { cause: error });
+  }
 }
 
 export function hostsOf(): readonly Host[] {
@@ -31,7 +64,7 @@ export function hostsOf(): readonly Host[] {
   // 28 October the sender emptied `ANA_HOSTS` instead, and a keeper started that way inherited the
   // empty list and counted no other machine's runs against a login's cap.
   if (runtimeProcess.env.ANA_HOP === "1") return [];
-  const value = capturedJsonParse(runtimeProcess.env.ANA_HOSTS ?? "[]");
+  const value = listedHosts(runtimeProcess.env.ANA_HOSTS ?? "");
   if (!Array.isArray(value)) throw new Error("ANA_HOSTS takes a JSON list");
   const names = new Set<string>();
   return value.map((entry) => {
@@ -70,6 +103,10 @@ export function hostsOf(): readonly Host[] {
     ) {
       throw new Error(`${host.name}: packs takes a list of pack names`);
     }
+    const { exclude } = host;
+    if (exclude !== undefined && (!Array.isArray(exclude) || !exclude.every(isString))) {
+      throw new Error(`${host.name}: exclude takes a list of tool names`);
+    }
     return {
       name: host.name,
       ssh: host.ssh,
@@ -79,6 +116,8 @@ export function hostsOf(): readonly Host[] {
       ...keyIfDefined("capacity", count("capacity")),
       ...keyIfDefined("checks", count("checks")),
       ...keyIfDefined("packs", packs),
+      ...keyIfDefined("settings", settingsOf(host.name, host.settings)),
+      ...keyIfDefined("exclude", exclude),
     };
   });
 }
@@ -94,14 +133,14 @@ export function configuredRuntime(host: Host) {
 }
 /** This machine's own name, its short hostname: what `fresh` ends a run's name with when it runs
  *  here, and what `move` reads as `here`. */
-export const ownName = (): string => hostname().split(".")[0] ?? "here";
+export const ownName = (): string => hostname().replace(/\..*$/u, "");
 
 export function hostNamed(name: string | undefined): Host {
   const known = hostsOf();
   const host = known.find((one) => one.name === name);
   if (host === undefined) {
     throw new Error(
-      `no host ${String(name)}: ANA_HOSTS names ${known.map((one) => one.name).join(", ") || "none here"}`,
+      `no host ${name ?? "named"}: ANA_HOSTS names ${known.map((one) => one.name).join(", ") || "none here"}`,
     );
   }
   return host;

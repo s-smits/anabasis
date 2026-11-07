@@ -68,25 +68,29 @@ factor it affects, or the separate purpose it serves. Recorded values live in `d
   confirmed promotions in one real campaign and then in a second domain, is for observation only
   (a promotion is confirmed when the first starter comparison of its epoch that tallied a task
   reads the reference above the starter at its level: `confirmed`, `src/campaign/climb.ts`),
-  so no prompt, tool or move names a count. A release cycle stops most runs at two promotions while
-  the system changes (`--promotions 2`, the campaign's cap, which ends it `operator` before the starter comparison
-  owed for the last promotion, so that one is never confirmed), so the milestone is read from a run
-  the operator lets go on.
+  so no prompt, tool or move names a count. No run carries a cap: each promotion alerts (`runs
+  alerts`), and a run is paused on the operator's word after that promotion's starter comparison
+  reports, since a pause before it leaves the promotion unconfirmed for good. Two promotions remain
+  the trigger for investigating a run. `--promotions N` stays an available flag, which ends a campaign
+  `operator` before the starter comparison owed for its last promotion. The milestone is read from a
+  run the operator lets go on.
 - **2. Honesty**: could a gain be chance or drift? An A/A comparison beside every comparison, the
   reference's first solve of each task against its second, measures it. One reading clears between
   equal harnesses at most as often as its level (`falseRate`: 1.1% at 0.02 on 24 untied tasks), and
   the climb sums the attempts' rates as an estimate, not a bound, leaving out an A/A too small to
-  reach the level (`incapable`). Bar: no step in ten A/A comparisons.
+  reach the level (`incapable`). Bar: no step in the ten A/A comparisons after the six promotions
+  (`barLines`, `src/campaign/climb.ts`, printed by the closing report and `runs view`).
 - **3. Verdicts**: are the labels right? The Referee rules every rejection (never a pass, a cut
   solve or a crash) once the host's replay of the checks repeats it. `earned` must name the broken
   rule and field, cited by a rejecting check, with an answer probe that moved that check, and
   `check-defect` must name a refusing check and cite a probe that moved it; a ruling without its evidence is refused. Bar, on at
-  least 30 blind labels (`settle.ts`): it catches three in four true check defects and voids at
-  most one in ten earned rejections, with PABAK beside kappa.
+  least 30 blind labels (`clears`, `src/referee/agreement.ts`; `settle.ts` reports each campaign's
+  agreement): it catches three in four true check defects and voids at most one in ten earned
+  rejections, with PABAK beside kappa.
 - **4. Economy**: what did each gain cost? The closing report reads dollars and hours per promotion
   from the log alone (`tools/d2/close.ts`), at list price (`billOf`, `src/kernel/meter.ts`). Its
-  one bar, an opening term that refuses nothing, is at most 3 promotion attempts per epoch after
-  set-up (`worthOf`, `src/campaign/climb.ts`).
+  one bar, a reported constant that refuses nothing, is at most 3 promotion attempts per epoch after
+  set-up (`BARS`, `worthOf` and `barLines`, `src/campaign/climb.ts`).
 
 ### Trade-offs to keep in view
 
@@ -110,13 +114,15 @@ reads the sign to watch (section 9).
 - **Promotion against confirmation.** A step reads the frontier; confirmation is one read of the
   reference against the starter, at a step's level, on the scored tasks of the epoch's first
   starter comparison, which draws the tasks written since the promotion first.
-  In the archive the reference leads the starter in eight of ten such reads and four clear the
-  level, so a miss is mostly the read's power on few untied tasks, and six confirmed promotions
-  take about fifteen. Confirmation decides no move. Losses on validity matter; losses on the
+  In the archive the reference leads the starter in eleven of thirteen such reads and seven clear
+  the level (5 November), so a miss is mostly the read's power on few untied tasks, and six
+  confirmed promotions take about eleven. Confirmation decides no move. Losses on validity matter; losses on the
   objective are mostly noise. The host owes one starter comparison
   after every promotion and runs it at the Builder's next `compare` (`heldSince`,
-  `src/campaign/decide.ts`), at about one comparison a promotion. The host, not the Builder,
-  chooses when, so a Builder can never put off a test of its own reference.
+  `src/campaign/decide.ts`), at about one comparison a promotion. Once the table owes it the host,
+  not the Builder, chooses when. Before that, with too few tasks held out since the promotion, a
+  Builder's own comparison can read first, and its step leaves that promotion unconfirmed for good
+  (`test/milestone-walk.test.ts`).
 - **Cost against value.** A dearer promotion may buy more and a cheaper one may be thin. The bill
   decides no step; economy is read apart, as dollars per promotion and per confirmed promotion on
   one meter (`promotion-tuner/scripts/cost.ts`), and as a cheap built system against a dear bare one
@@ -255,7 +261,8 @@ Launching a campaign gives three of these words once: it freezes a fault-free ex
 check its author decided (`--admit-authored`, rule 10), and promotes the harness the rule names.
 `--hitl` hands all three back, and any other fault, or going past the stop rule, takes the
 operator's word each time. The host builds every message a Builder reads, and "a person" is written
-only for one of the seven.
+only for one of the seven. A launch on a numbered login also gives the word for which account pays
+at a limit, to the run's keeper (`keepsItself`, `tools/runs/manage.ts`); `ANA_KEEP=off` hands it back.
 
 **In `design-and-seats`, section 3** (`seats.md`, `operator-and-harness.md`): what each seat reads
 and its tools; what a launch decides. `seat-view` names the seats a diff reaches and their wall
@@ -288,9 +295,10 @@ the Builder's; which moves are recorded; the Builder's clock; sessions by hand.
 
 A campaign's record is one append-only file, `.ana/d2/<name>/log.jsonl` (`src/kernel/log.ts`), and
 every state and report is a fold over it. An append is synced before it returns, and a read refuses
-a torn or unknown line. A **condition** (`src/kernel/condition.ts`) names everything that could
-change a solve; two solves compare only where their conditions differ in the one thing compared.
-Four habits keep the log the only truth:
+a torn or unknown line. A **condition** (`src/kernel/condition.ts`) names everything the host fixes
+for a solve; two solves compare only where their conditions differ in the one thing compared. It
+names no program the host's own path offers, such as its Python, which differs between hosts; a
+launch's receipt records that. Four habits keep the log the only truth:
 
 1. **Add no second store.** A fact needed later is an event.
 2. **Add no second reader of one fact.** Find the fold and call it.
@@ -382,7 +390,8 @@ promotion (`stopRule`, `src/campaign/admission.ts`). Continuing then requires `-
 **In `comparison-reading`, section 7** (`draw-and-solves.md`, `tally-and-test.md`,
 `limits-and-room.md`, `move-table.md`): the mirror; the tally's floors; the A/A; the cap; room;
 promotion; each row of `decide`. `size` says what a size can show, `reading <name>` sets a
-log's readings side by side, and `draw <name>` what the next comparison would score.
+log's readings side by side, `gap <name>` how far each side stood from the best on record, and
+`draw <name>` what the next comparison would score.
 
 ## 8. Rules
 
@@ -502,6 +511,7 @@ the runs it names and no others. The skills own the procedures:
 | Starting, continuing, pausing, moving or stopping a run | `run-management` |
 | Wording a claim | `attribution-and-proof` |
 | Doubting a reading; what a fail was | `whole-run-investigation` |
+| Why a comparison read as it did; what it says of the system, without fitting to it | `comparison-review` |
 | Kept harnesses, before a promotion or a handover | `harness-audit` |
 | Rethinking the system: its biggest flaws, what to delete, how to harden it | `system-audit` |
 | Promotions on record; tuning the rule | `promotion-tuner` |
@@ -590,7 +600,8 @@ brief states authority, paths, revision, observed facts, question and whether it
 Give reviewers the code without prescribing a conclusion. Verify findings against the owner,
 callers, tests and newest relevant runs. Report them as confirmed (with events), plausible (with
 a test or run that would settle them) or refuted. Act on confirmed findings within the task's
-authority.
+authority. Mostly let an active subagent run, or steer it with a message, rather than stopping it
+and starting another.
 
 **In `repository-practice`, section 11** (`working-in-the-repository.md`): the command table, the
 hooks, CI's jobs and native stacks. `preflight` prints what a diff owes before a commit: the tests
@@ -623,6 +634,9 @@ Write plain, understated British English for a careful colleague who has not rea
   dates. A head comment says why the code is as it is, with the record and the date.
 - A prompt states each fact once, where it belongs; when an interface failure recurs, fix the tool
   instead of adding a sentence.
+- A skill says how things are now, in general statements with general examples: no date, and no
+  chronology of how it came to be ("an older log" where a reader meets an old format). History goes
+  to the commit, the pull request, the backlog or a head comment.
 
 **In `repository-practice`, section 13** (`code-and-writing.md`): the long form, with examples.
 

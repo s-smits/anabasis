@@ -9,11 +9,11 @@ of `AGENTS.md` section 6; the commands are in `campaign-command.md`.
 name alone: the project, the total and the reserve, improvement and supply patience
 (`--patience`, 6 each), who sits in each seat, and the terms of its moves as a command last named
 them (`TERMS`, `src/campaign/opening.ts`): the level, a Builder conversation's minutes and turns,
-the practice tasks, the tasks an Examiner session is asked for and the cap of promotions. Until
-5 November it also kept a solve's model turns, three copies of the setting's facts, the Builder
+the practice tasks, the tasks an Examiner session is asked for and the cap of promotions. An
+older opening may also keep a solve's model turns, three copies of the setting's facts, the Builder
 sessions before the table advised a comparison (`--sessions`), and six terms no log named
 (`--defects`, `--practice-solves`, `--exam-proposals`, `--exam-minutes`, `--exam-turns`,
-`--cost`); an older opening's are read past, and each move runs by its own default. An unspecified term uses its default. Later invocations
+`--cost`); these are read past, and each move runs by its own default. An unspecified term uses its default. Later invocations
 inherit recorded terms unless an explicit override records a replacement. These terms are the
 operator's conditions.
 
@@ -114,8 +114,8 @@ An Examiner session can finish under three conditions:
 
 - It has supplied the needed tasks (`shortOf`, `src/campaign/decide.ts`), either at `finish`
   or at the end of that turn. The need includes practice and the admission floor before the first
-  comparison, and the target afterwards, raised to at least a sweep (`sweepOf`) where it is short at
-  all, or the explicit `--exam-tasks` request.
+  comparison, and the target afterwards, raised to at least a sweep (`sweepOf`) and the practice a
+  reading releases where it is short at all, or the explicit `--exam-tasks` request.
 - It calls `finish` twice without proposing a task between the calls.
 - It calls `finish` after using its full proposal allowance (`spent`, `src/examiner/write.ts`).
 

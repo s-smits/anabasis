@@ -2,8 +2,7 @@
 The shared instructions every session of one round of a system audit carries, whole. Copy this
 file to <dir>/shared-instructions.md and replace each «field»; delete the "Assumed repaired" section
 in round 1. Each session's task names its part and its lens; this file carries every lens's report,
-and a session fills the parts its lens names. Its rules come from the briefs of 29 October, rounds 1
-and 2 (.ana/wri/2026-10-29-general-sol-audit-1/, .ana/wri/2026-10-29-fundamental-sol-audit-2/).
+and a session fills the parts its lens names. Its rules come from the briefs of two earlier rounds, under .ana/wri/.
 -->
 
 # System audit «round», «subject»

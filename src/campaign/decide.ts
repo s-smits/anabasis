@@ -404,11 +404,16 @@ function tasks(ground: Ground): Move | null {
  * session's ask (`examTasks`, `campaign-terms.ts`) is never less than a sweep (`sweepOf`), the
  * fewest new tasks a comparison waits for after a reading that left no room (`writtenSince`); 0
  * stays 0, leaving the command's default of 12. Until 4 November it was not raised, and
- * jobstat-fresh-opus-forkedPR595-stijn-linux's x-3 was asked for 4 where the table waited for 6.
+ * jobstat-fresh-opus-forkedPR595's x-3 was asked for 4 where the table waited for 6.
+ *
+ * The sweep comes on top of the practice a reading releases (`practiceDue`), or the release takes
+ * it: where a session after a promotion was asked for a sweep alone, the next comparison held 40
+ * new tasks of 206, against 1,252 of 2,350 overall, and
+ * jobstat-anabasis-fresh-opus-forkedPR631 released 5 of the session's 6 tasks at that reading.
  */
 export function shortOf(events: readonly LogEvent[], plan: Plan): number {
   const count = shortBy(groundOf(events, plan));
-  return count === 0 ? 0 : Math.max(count, sweepOf(plan.wanted.level));
+  return count === 0 ? 0 : Math.max(count, sweepOf(plan.wanted.level) + (plan.practice ?? 0));
 }
 
 function shortBy({ plan, supply, all }: Ground): number {
@@ -532,7 +537,7 @@ function unread(ground: Ground): Move | null {
  * any report of the pair stopped the debt, so one that tallied nothing left the epoch unconfirmed.
  * Once one has tallied it is not owed again: until 4 November it was, with no harness waiting,
  * which a led Builder's harness/ never is (`latestBuilt`), so each task held since put the pair
- * first again, and buffer-fresh-opus-forkedPR588-stijn-pro spent 96% of its epoch's solver dollars
+ * first again, and buffer-fresh-opus-forkedPR588 spent 96% of its epoch's solver dollars
  * on it with its changed harness/ unread for 11.8 hours. A waiting harness whose last reading tested nothing, or left no room, is
  * read on them. One whose reading had room and read no step is not: that would be a second draw of
  * one pair (`AGENTS.md`, section 4). Until 2 November this row redrew it, 13 times in the archive,

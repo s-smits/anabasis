@@ -105,7 +105,7 @@ Put your prediction in a file first (rule 1), then build the smallest log that c
 
 ## What it settled
 
-On 29 October it read the task pool at two solves a side on #516's tree, and again on a scratch tree
+For example, it read the task pool at two solves a side on #516's tree, and again on a scratch tree
 with `SIZE.solves` at 4 and `RUNS.easy` and `RUNS.unsolved` at 3. On #516 two readings each valid
 in every solve made a task easy and one did not. Two readings with no valid solve sent a task to
 review, unless the deadline cut them or an answer was on record. A later harness valid in one solve

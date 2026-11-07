@@ -623,8 +623,8 @@ describe("a round", () => {
         retained: "unmeasured",
         // Each family's tallies, from the same rows, sum to the whole.
         families: {
-          f1: { frontier: { wins: 2, losses: 0, ties: 0 }, retained: { wins: 0, losses: 0, ties: 0 } },
-          f2: { frontier: { wins: 2, losses: 0, ties: 0 }, retained: { wins: 0, losses: 0, ties: 0 } },
+          f1: { frontier: { wins: 2, losses: 0, ties: 0 } },
+          f2: { frontier: { wins: 2, losses: 0, ties: 0 } },
         },
         overlap: null,
         // Each harness by itself: the reference answered no task validly, the new one all, twice.
@@ -652,7 +652,6 @@ describe("a round", () => {
         // The cost bar, read and gating nothing (the plan's W): this comparison the first attempt
         // of set-up's epoch.
         worth: {
-          bars: { cost: 3 },
           cost: { attempts: 1, sessions: 1, dollars: anyOf(Number), met: true },
         },
       },
@@ -1629,6 +1628,18 @@ describe("a standalone comparison", () => {
       scored: { wins: 4, losses: 1, ties: 0, p: 0.1875 },
       reading: "no-step",
     });
+  });
+
+  it("finds the comparison before it of the same two harnesses with their sides swapped, and not of another pair", async () => {
+    const s = await setup([], step);
+    const reference = { dir: s.parent, digest: s.old };
+    await checkpoint(s.compare("g1", { tasks: ["s1", "s2"] }));
+    const against = await checkpoint(
+      s.compare("g2", { old: s.starter, fresh: reference, tasks: ["s2", "s3"] }),
+    );
+    expect(against.overlap).toEqual({ with: "g1", tasks: ["s2"] });
+    const other = await checkpoint(s.paired("g3", { tasks: ["s1", "s2"] }));
+    expect(other.overlap).toBeNull();
   });
 
   it("stops at its dollar cap, reads not scored and is finished, whatever lanes it runs in", async () => {

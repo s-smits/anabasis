@@ -14,9 +14,18 @@
  * Examiner session or draft is open, and then stops the run (`stop.ts`); `continue --after` is that
  * pause and then the continue, which moves a run to another login or commit. `next`, the word a
  * pause takes where none is named, waits for the next solve that finishes or tool call any seat
- * records, and stops the run there with whatever is open: on 29 October a login had to be freed
+ * records, having left a word that starts no further solve, once every open solve has finished, or
+ * past the run's own limit on a solve with whatever is open, since a cut solve is paid for again:
+ * `runs stop` is the one that does not wait. On 29 October a login had to be freed
  * from a campaign in the middle of an Examiner session, which the clean-point words would only have
  * stopped once the session ended. Flags after `--` stand for the kept ones. A campaign's folder moves by `runs copy` and `runs move` (`move.ts`).
+ *
+ * A run `launch` or `continue` starts on a numbered login gets a keeper (`keep.ts`) where another login
+ * is allowed, so that it goes on elsewhere at a limit with nobody there (operator, 5 November: "bring
+ * over to other account that still has room if 5hr limit or full limit is reached"). `ANA_KEEP=off`
+ * leaves every run the environment starts without one (`keepsItself`). Until then
+ * a keeper took a person's `runs keep` a run, and on 5 November two campaigns on a login whose week ran
+ * out sat idle in their wait, two days from its reset, with no keeper to move them.
  *
  * Without `--yes` a verb says what it would do and does nothing. With it, a start refuses a run a
  * process writes, a worktree with a change no commit names and a commit no remote branch holds;
@@ -44,21 +53,26 @@
  * admission of a move (`7f0add79:docs/simplify.md`, D2): the command refuses what it refuses.
  */
 import { unfinished } from "#src/kernel/trace.ts";
-import type { LogEvent } from "#src/kernel/log.ts";
+import { append, type LogEvent } from "#src/kernel/log.ts";
+import { PAUSE } from "#src/campaign/word.ts";
 import { mkdirSync, openSync, statSync } from "#src/meta/filesystem.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { decodeOutput, processGroupExists, runSync } from "#src/meta/subprocess.ts";
 import { lastLaunch, nextRun } from "./receipt.ts";
 import { payerOf } from "./live.ts";
-import { roomToStart } from "./logins.ts";
+import { LIMITS } from "../d2/campaign.ts";
+import { recordedSetting } from "../d2/setting.ts";
+import { allowedLogins, roomToStart } from "./logins.ts";
 import {
   BUILDER,
   campaignOf,
   everyRun,
   isCampaign,
+  KEEPING,
   logEvents,
   keepers,
+  keptFile,
   openComparisons,
   processes,
   type Run,
@@ -68,6 +82,9 @@ import {
 } from "./registry.ts";
 import { stop } from "./stop.ts";
 import { installAt, publishedAt } from "./code.ts";
+
+/** The hours left in a provider wait below which a keeper leaves its run to the login's own reset. */
+export const WAIT_HOURS = "0.25";
 
 /** The events a pause waits for one more of, by the word that names it: `next` is the smallest step
  *  a run completes, a finished solve or a recorded tool call of any seat. */
@@ -92,6 +109,8 @@ const DROPPED = ["--name", "--budget"];
 const LOOK_MS = 30_000;
 /** How often a pause at the next step looks, since a step follows another within seconds. */
 const STEP_MS = 1000;
+/** Past a solve's own limit, what a pause at the next step allows it to end and be recorded. */
+const MARGIN_MS = 60_000;
 
 /** The flags a campaign runs again on: `flags` less its name and total, and `budget` where named. */
 export function rerun(flags: readonly string[], budget: string | undefined): string[] {
@@ -126,33 +145,47 @@ const countOf = (events: readonly LogEvent[], after: string) =>
   events.filter((event) => kindsOf(after)?.includes(event.kind) === true).length;
 
 /** Whether a pause may stop the run whose log is `events`: it holds more than `base` of the kinds
- *  `after` names, and, past the next step, no comparison, Examiner session or draft is open. The
- *  Builder's conversation is open throughout a led campaign, and a pause cuts it: the campaign run
- *  again opens a new one on its notes. */
+ *  `after` names, and no solve is open at the next step, or, past it, no comparison, Examiner session
+ *  or draft. The Builder's conversation is open throughout a led campaign, and a pause cuts it: the
+ *  campaign run again opens a new one on its notes. */
 export function restsAfter(events: readonly LogEvent[], after: string, base: number): boolean {
-  return (
-    countOf(events, after) > base &&
-    (after === "next" ||
-      (!unfinished(events).some(({ of }) => of === "exam" || of === "draft") &&
-        openComparisons(events).length === 0))
-  );
+  if (countOf(events, after) <= base) return false;
+  const open = unfinished(events);
+  return after === "next"
+    ? !open.some(({ of }) => of === "solve")
+    : !open.some(({ of }) => of === "exam" || of === "draft") && openComparisons(events).length === 0;
 }
 
-/** Wait in `run` for one more `after` event at a point it rests, then stop it. */
+/** How long a pause at the next step lets the open solves of the run whose log is `events` finish:
+ *  the limit its setting recorded, as the solves were given it. */
+export function solvesMs(events: readonly LogEvent[]): number {
+  return (recordedSetting(events)?.minutes ?? LIMITS.wallSeconds / 60) * 60_000 + MARGIN_MS;
+}
+
 async function pauseAt(run: Run, after: string): Promise<void> {
   const kinds = kindsOf(after);
   if (kinds === undefined) throw new Error(`--after takes ${Object.keys(AFTER).join(", ")}`);
-  const base = countOf(logEvents(run.path), after);
+  const events = logEvents(run.path);
+  const base = countOf(events, after);
+  const allowed = solvesMs(events);
   console.log(
     after === "next"
-      ? `${run.name}: waiting for its next finished solve or tool call`
+      ? `${run.name}: starting no further solve, and letting its open ones finish, ${String(allowed / 60_000)} minutes at most`
       : `${run.name}: waiting for ${kinds.join(", ")} past ${String(base)}, with no comparison or Examiner session open`,
   );
+  if (after === "next" && writers(run, processes()).length > 0) {
+    append(run.path, "campaign.word", { word: PAUSE });
+  }
+  const patience = Date.now() + allowed;
   // A log runs to tens of megabytes, and one that did not grow says what it said.
   let size = -1;
   while (writers(run, processes()).length > 0) {
     const grown = statSync(run.path).size;
-    if (grown !== size && restsAfter(logEvents(run.path), after, base)) return stop([run.name, "--yes"]);
+    // Past its patience nothing need have moved: a held solve records nothing.
+    const late = after === "next" && Date.now() > patience;
+    if (late || (grown !== size && restsAfter(logEvents(run.path), after, base))) {
+      return stop([run.name, "--yes"]);
+    }
     size = grown;
     await Bun.sleep(after === "next" ? STEP_MS : LOOK_MS);
   }
@@ -163,13 +196,14 @@ async function pauseAt(run: Run, after: string): Promise<void> {
 }
 
 /** Start the campaign command for `run` on `flags` in its worktree, as `login` where named and at
- *  `at` where named, once every refusal of the head comment is passed and its dry run passed. */
+ *  `at` where named, once every refusal of the head comment is passed and its dry run passed, and
+ *  say whether it is running three seconds on. */
 export async function start(
   run: Run,
   flags: readonly string[],
   login: string | undefined,
   at: string | undefined,
-) {
+): Promise<boolean> {
   const env = loginEnv(runtimeProcess.env, login);
   if (writers(run, processes()).length > 0) {
     throw new Error(`${run.name} is already being written in ${run.tree}`);
@@ -212,6 +246,58 @@ export async function start(
     `${run.name} in ${run.tree} at ${target.slice(0, 9)}: pid ${String(child.pid)}, ${alive ? "running" : "gone"}; ${out}.err`,
   );
   if (!alive) runtimeProcess.exitCode = 1;
+  return alive;
+}
+
+/** Leave a keeper of `run` on `logins` running by itself, its output in `keep.out` beside the log. */
+export function leaveKeeper(run: Run, logins: readonly string[], waitHours: string): void {
+  const out = keptFile(run);
+  const child = capturedSpawn(
+    [
+      capturedExecPath,
+      join(import.meta.dir, "cli.ts"),
+      "keep",
+      run.name,
+      "--logins",
+      logins.join(","),
+      "--wait-hours",
+      waitHours,
+      KEEPING,
+    ],
+    {
+      cwd: run.tree,
+      // A keeper outlives the verb, and counts every machine's runs even where another host sent it.
+      env: { ...runtimeProcess.env, ANA_HOP: undefined },
+      detached: true,
+      stdin: "ignore",
+      stdout: openSync(out, "a"),
+      stderr: openSync(out, "a"),
+    },
+  );
+  child.unref();
+  console.log(`${run.name}: kept by pid ${String(child.pid)}; ${out}`);
+}
+
+/** Whether a run started on `login` gets a keeper by itself: it pays by a numbered login, another is
+ *  allowed to go on with, and `ANA_KEEP=off` did not say otherwise. A run with no numbered login has
+ *  nowhere to move, and goes on as it was started. */
+export function keepsItself(
+  env: Readonly<Record<string, string | undefined>>,
+  login: string | undefined,
+): boolean {
+  return env.ANA_KEEP !== "off" && login !== undefined && allowedLogins(env).some((other) => other !== login);
+}
+
+/** `start`, then a keeper where the run is running and `keepsItself`, unless it has one. */
+async function startKept(
+  run: Run,
+  flags: readonly string[],
+  { login, at }: { login: string | undefined; at: string | undefined },
+): Promise<void> {
+  const running = await start(run, flags, login, at);
+  if (running && keepsItself(runtimeProcess.env, login) && keepers(run.name).length === 0) {
+    leaveKeeper(run, allowedLogins(runtimeProcess.env), WAIT_HOURS);
+  }
 }
 
 /** The last run of the campaign command `run` kept a receipt of. */
@@ -230,7 +316,10 @@ export async function launch(args: readonly string[]): Promise<void> {
   const { values, positionals } = parseArgs({
     args: [...args],
     allowPositionals: true,
-    options: { login: { type: "string" }, yes: { type: "boolean", default: false } },
+    options: {
+      login: { type: "string" },
+      yes: { type: "boolean", default: false },
+    },
   });
   const [name, ...flags] = positionals;
   if (name === undefined || flags.some((flag) => flag === "--name" || flag.startsWith("--name="))) {
@@ -245,7 +334,7 @@ export async function launch(args: readonly string[]): Promise<void> {
   }
   const run = campaignOf(runtimeProcess.cwd(), name);
   if (!values.yes) return said(run, `would start ${BUILDER} ${flags.join(" ")}`);
-  await start(run, flags, values.login, undefined);
+  await startKept(run, flags, { login: values.login, at: undefined });
 }
 
 /** `bun run runs continue`. */
@@ -288,7 +377,7 @@ export async function continueRun(args: readonly string[]): Promise<void> {
     await roomToStart(payerOf(values.login, flags), "here", run.name);
     await pauseAt(run, values.after);
   }
-  await start(run, flags, values.login, target);
+  await startKept(run, flags, { login: values.login, at: target });
 }
 
 /** `bun run runs pause`. */

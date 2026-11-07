@@ -29,7 +29,7 @@ bun .claude/skills/examiner-complexity/scripts/grades.ts <grades.tsv> <campaign 
 
 prints, by grade, the tasks, the solves valid out of those with a result, the tasks valid on every
 solve and the median turns. The grade at which the reference is valid on every solve in a few turns
-is the ceiling the exam has to climb past. On 31 October, 1,438 of 1,465 solves of buffer, job and
+is the ceiling the exam has to climb past. In one reading, 1,438 of 1,465 solves of buffer, job and
 esp32 tasks graded 2 to 5 were valid, at a median of 3 to 5 turns, so a solver with a shell sits
 two grades above what the scale's words alone suggest; the ladder was re-rated on that record.
 
@@ -41,7 +41,7 @@ lands in the wrong basin; the convenient model differs, near the specification, 
 that decides; or the specification sits within a tolerance of a theoretical bound. Read the drafted
 exam (`draft.finished`, the brief) and the session's proposals for which of these the domain offers
 and whether the rules hand the solver the whole model. Rules that restate the field's tables and
-equations cap every task at grade 2 however the tasks are written; on 31 October both esp32 arms
+equations cap every task at grade 2 however the tasks are written; both arms of one esp32 pair
 drafted such rules, and their examples passed 9 of 9 solves at 3 turns. A frozen exam caps reach the
 same way, so a ladder edit is seated only where the exam is still open (section 4): on the esp32
 wiring-plan seed, both ladders held none of 10 or more drafts at a writing position, while the
@@ -62,7 +62,7 @@ off the ceiling, and across arms for whether one ladder's drafts differ in kind 
 The drafted exam's own examples (`ex-001` on) are not rows, since their proposals hold no content.
 
 A ladder pitched too high shows as starved supply, not as bad tasks: refusals until the budget is
-gone, and no comparison to say what the exam was worth. On 31 October the first ladder's esp32 arm
+gone, and no comparison to say what the exam was worth. An esp32 arm under a ladder pitched too high
 held 1 of 89 session drafts over 12 hours and $79, every refusal at the ceiling, its drafts about
 40% longer than the control's from the first session and no longer after; the control held 17 of 80
 and compared twice, its 59 refusals at the ceiling too, and neither wrote a draft the reference
@@ -96,7 +96,7 @@ bun .claude/skills/examiner-complexity/scripts/rungs.ts compare <rungs.tsv>...
 rung (`<field>.<rung>`). Hand it to two graders or more that have not read the ladder or this
 conversation, each writing `id<TAB>grade<TAB>place` and saying whether a verifier could decide an
 answer from the stated engine alone. `compare` sets their grades beside the stated one and flags
-each rung whose median is `below` its grade or `flat` against the rung before; on 31 October two
+each rung whose median is `below` its grade or `flat` against the rung before; in one pass two
 graders agreed exactly on 13 of 18 rungs and within one on the rest, so one grader is a lead.
 Rewrite a flagged rung inside the place the graders named, or move it into one, and fix every rung
 a grader could not decide: a bound or optimum the contract does not state as a number, or a
@@ -116,6 +116,18 @@ A paid seat names `--reviewer` and `--reviewer-effort` as its source campaign di
 
 ## 5. Read a fresh pair to its first comparison
 
+Where a campaign's comparisons sit in the test's power zone is one reading per comparison:
+
+```sh
+bun .claude/skills/examiner-complexity/scripts/zone.ts <log or campaign name>...
+```
+
+prints a table of the reference's tasks with no, some and every solve valid, the tasks untied on
+validity and on the objective alone, and the A/A's untied share beside them. Read the two shares
+together: at a 100% valid share the candidate's untied tasks are all on the objective, where a
+harness's own two solves differ too, so a share near the A/A's shows noise and no room. It decides
+nothing, and no seat reads it.
+
 Seats read one session after a cut. Whether an exam change raises supply, and holds across a
 promotion, only a fresh campaign at its commit shows (`AGENTS.md`, section 10, item 9). Launch the
 control and the arm together, one domain, one login, the same host class, on the operator's word
@@ -129,7 +141,7 @@ prints what each campaign had spent by its first `comparison.started` and `harne
 hours, solves and dollars, since a host's load moves only the hours, and one line per Examiner
 session: the reference in force, drafts held of those admitted, the admission words
 (`every`, `some`, `none, proved`), the median turns of the reference's valid room solves and the
-dollars; the words and turns come from room solves, which the gate ran until 1 November, so a later
+dollars; the words and turns come from room solves, which only an older log holds, so a newer
 session shows its drafts held and refused alone. Read in this order: whether each arm's sessions received their text, the share of
 admissions reading `every` (the ceiling), the drafts held, answerability (the author's answer or a
 valid solve on record), then the steps to the first comparison and promotion. Put the predictions
@@ -139,7 +151,7 @@ on record before the first solve, and settle each by its count.
 
 A seat round is two draws and a lead (rule 6). A fresh pair is one campaign an arm. "The exam is
 harder" needs blind grades of the held tasks above the control's, joined to the reference's outcomes
-by `grades.ts`: on 31 October two graders put the first ladder's esp32 drafts a grade above the
+by `grades.ts`: in one pair two graders put an arm's esp32 drafts a grade above the
 control's while the reference answered 28 of 29 solves of its 5s and 6s at 3 turns. "Supply rose"
 needs the arm's held share and its first comparison ahead of the control's on fresh campaigns,
 repeated in a second domain; neither says a harness got better, which only a comparison reads (rule 1). Keep counts with

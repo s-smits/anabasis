@@ -91,7 +91,7 @@ export const SUMMARY_FILE = "summary.json";
 const LAUNCH_FILE = "launch.json";
 /** The first event of a Codex thread, which names it: `{"type":"thread.started","thread_id":…}`. */
 const THREAD_STARTED = /^\{"type":"thread\.started","thread_id":"([\w-]{8,128})"/m;
-const RATE_LIMIT = /(?:\b429\b|too many requests|rate.?limit)/i;
+const RATE_LIMIT = /(?:\b429\b|too many requests|(?:rate|usage).?limit)/i;
 
 /** Where a session's prompt, event log, stderr, report and result live. */
 export function sessionPaths(outputDir: string, name: string) {

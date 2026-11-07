@@ -2,9 +2,10 @@
  * What a writing session is told of its campaign's past at its opening, and at a wake what came
  * since (`after`): a view of the log, with no store of its own (`heard`), in four parts.
  *
- * - `last`: the last comparison the reference harness stood in, from its side: the tasks it scored,
- *   how many each harness won, the reference's every, some and none, the tasks set aside, and how
- *   often its own two solves differed in that comparison's A/A. On 2 November the archive's
+ * - `stood`: the comparisons the reference harness stood in that the session has not heard of, each
+ *   from its side: the tasks it scored, how many each harness won, the reference's every, some and
+ *   none, the tasks set aside, and how often its own two solves differed in that comparison's A/A. An
+ *   opening tells the last one, and a wake each since it was last told. On 2 November the archive's
  *   objective domains showed the reference's own solves differing on the objective alone on 314 of
  *   1,373 tasks, which the prompt then named as a count; the session's own comparison now says it.
  * - `groups`: every task under the reference's outcome in the last comparison that scored it, one
@@ -46,6 +47,7 @@ import {
   pairsReported,
   poolOf,
   referenceOf,
+  type Reported,
   type Standing,
 } from "../kernel/reports.ts";
 import { spreadOf } from "../kernel/size.ts";
@@ -133,7 +135,7 @@ export function heard(
     return held.length === 0 ? [] : [{ heading, lines: held }];
   });
   return {
-    last: lastLine(events, after ?? 0),
+    stood: stoodLines(events, after),
     groups,
     promoted: since < (after ?? 0) ? null : promotedLine(events, since, listed),
     refused: after === undefined ? refusedLines(events, since) : [],
@@ -217,17 +219,33 @@ function standingOf(standing: Standing | undefined): string[] {
   ];
 }
 
-/** The last comparison the reference harness stood in, from its side, or null before any: the
- *  tasks scored, the wins each way (from the per-task winners the lines already tell), its every,
- *  some and none, the tasks set aside, and how many of them its own two solves differed on. The
- *  A/A pairs the old side's solves with each other, so it measures the reference only there. No
- *  count of the other harness's valid solves is told. */
-function lastLine(events: readonly LogEvent[], after: number): string | null {
+/** The comparisons the reference harness stood in that a session has not heard of, or null where
+ *  there are none: the last at an opening, whose record lists every task, and at a wake each one
+ *  reported since `after`. Until 6 November a wake told only the newest, so 1 of the 6 wakes on
+ *  record heard of its g-4 and not of the g-3 that read the new reference against the starter. */
+function stoodLines(events: readonly LogEvent[], after: number | undefined): string | null {
   const reference = referenceOf(events);
-  const report = lastReports(events).findLast(
-    ({ data }) => data.old === reference || data.fresh === reference,
-  );
-  if (report === undefined || report.index < after) return null;
+  const stood = lastReports(events).filter(({ data }) => data.old === reference || data.fresh === reference);
+  const told = after === undefined ? stood.slice(-1) : stood.filter(({ index }) => index >= after);
+  if (told.length === 0) return null;
+  const named = ({ session }: Reported) =>
+    after === undefined
+      ? `The last comparison the reference harness stood in, ${session}`
+      : `Comparison ${session}, which the reference harness stood in`;
+  return told.map((report) => stoodLine(events, report, reference, named(report))).join("\n\n");
+}
+
+/** One comparison the reference harness stood in, from its side: the tasks scored, the wins each
+ *  way (from the per-task winners the lines already tell), its every, some and none, the tasks set
+ *  aside, and how many of them its own two solves differed on. The A/A pairs the old side's solves
+ *  with each other, so it measures the reference only there. No count of the other harness's valid
+ *  solves is told. */
+function stoodLine(
+  events: readonly LogEvent[],
+  report: Reported,
+  reference: string | null,
+  named: string,
+): string {
   const side = report.data.fresh === reference ? "fresh" : "old";
   const spreads = pairsReported(events, report).map((pair) => spreadOf(pair[side]));
   const count = (spread: string) => String(spreads.filter((each) => each === spread).length);
@@ -236,7 +254,7 @@ function lastLine(events: readonly LogEvent[], after: number): string | null {
   const aside = Array.isArray(report.data.aside) ? report.data.aside.length : 0;
   const own = side === "old" ? scoresIn(report.data.noise) : [];
   return [
-    `The last comparison the reference harness stood in, ${report.session}, scored ${plural(spreads.length, "task")}: the reference harness won ${won(1)}, the harness it was compared with won ${won(-1)}, and ${won(0)} tied.`,
+    `${named}, scored ${plural(spreads.length, "task")}: the reference harness won ${won(1)}, the harness it was compared with won ${won(-1)}, and ${won(0)} tied.`,
     `The reference harness was valid in every solve on ${count("every")} of them, in some on ${count("some")} and in none on ${count("none")}; ${String(aside)} more ${aside === 1 ? "was" : "were"} set aside.`,
     ...(own.length === 0
       ? []

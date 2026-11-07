@@ -24,7 +24,7 @@ import { type Condition, conditionsOf } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { flipP, unsolved as noneAnswered } from "#src/kernel/compare.ts";
 import { lastReports, poolOf, pairsReported, referenceOf } from "#src/kernel/reports.ts";
-import { type Traced, traced, tracesIn } from "#src/kernel/trace.ts";
+import { SEATS, type Traced, traced, traceKind, tracesIn } from "#src/kernel/trace.ts";
 import { spendOf } from "#src/kernel/meter.ts";
 import { type Judged, solvesIn, verdictsOf } from "#src/kernel/solves.ts";
 import { heldAtGate, taskSets } from "#src/kernel/task.ts";
@@ -32,6 +32,7 @@ import { blockingOf, OBJECTIVE } from "#src/kernel/verify.ts";
 import type { Handover } from "#src/campaign/handover.ts";
 import { short } from "#src/campaign/move.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
+import { runtimeProcess } from "#src/meta/process.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 
@@ -135,6 +136,10 @@ export interface Index {
 
 /** A pass under this share of its deadline, on few calls, is the lead v1 read for a published recipe. */
 export const SMALL_DEADLINE_SHARE = 0.05;
+/** What a reader of no seat's words reads a large log without. */
+export const NO_TRACES: ReadonlySet<LogEvent["kind"]> = new Set(
+  SEATS.flatMap((seat) => [traceKind(seat, "call"), traceKind(seat, "turn")]),
+);
 const DEFECT = "check-defect";
 export const TEST = "test";
 export const BUILD_END = "build.finished";
@@ -730,4 +735,11 @@ export function taskTriggers(log: Index): Trigger[] {
       : []),
     ...(heard.length > 0 ? [fired("OUTCOMES BY SESSION", `held, by ${by}: ${heard.join("; ")}`)] : []),
   ];
+}
+
+/** A reader's command line: `bun tools/wri/<name>.ts <log>`. */
+export function printRows(name: string, rowsOf: (log: string) => readonly string[]): void {
+  const [log] = runtimeProcess.argv.slice(2);
+  if (log === undefined) throw new Error(`name a log: bun tools/wri/${name}.ts <log>`);
+  console.log(rowsOf(log).join("\n"));
 }

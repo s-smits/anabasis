@@ -352,7 +352,7 @@ export function cutSessions(events: readonly LogEvent[]) {
  * each completed `draft_exam` (`desk.tries`, `src/examiner/draft.ts`), and one more where solves
  * naming the session started after the last: a draft with no fault is measured inside its call,
  * which logs nothing until it returns, so a cut there left the put counted live and absent from the
- * calls. On 28 October buffer-fresh-gpt-stackedPR489-stijn-linux's d-1 was cut with 9 such solves
+ * calls. On 28 October buffer-fresh-gpt-stackedPR489's d-1 was cut with 9 such solves
  * and no completed call, and read 0 drafts, which `drafting` (`src/campaign/decide.ts`) passes over.
  * An Examiner session holds out and refuses what the task admissions of its proposals decided
  * (`desk.held`, `src/examiner/write.ts`): until 29 October its killed ending held none, so

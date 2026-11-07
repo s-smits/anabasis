@@ -53,9 +53,18 @@ describe("a stop", () => {
     expect(left({ path })).toEqual([
       "solve-build-r1-b-2",
       "solve-exam-r1-d-1",
+      "solve-exam-r1-x-1",
       "solve-exam-r1-x-2",
       "solve-s-2",
     ]);
+    // A run stopped at a rest: every ask has finished, and the root of the first still stands.
+    const rested = join(root, "r2", "log.jsonl");
+    mkdirSync(dirname(rested));
+    append(rested, "exam.started", { session: "x-1" });
+    append(rested, "exam.finished", { session: "x-1" });
+    append(rested, "exam.started", { session: "x-2", conversation: "x-1" });
+    append(rested, "exam.finished", { session: "x-2" });
+    expect(left({ path: rested })).toEqual(["solve-exam-r2-x-1", "solve-exam-r2-x-2"]);
     // A seed of that run where it stands. The solve and the session the run has open are still
     // the run's, and may be live: a stop of the seed names only what the seed started.
     const copy = join(root, "sim-r1", "log.jsonl");
@@ -66,7 +75,7 @@ describe("a stop", () => {
     expect(left({ path: copy, seed: true })).toEqual(["solve-build-sim-r1-b-2", "solve-s-3"]);
   });
 
-  // A stop releases a cut Builder's root, and its home with it. PR377-m1-air's b-2 opened on the
+  // A stop releases a cut Builder's root, and its home with it. PR377's b-2 opened on the
   // starter's notes after its b-1 was stopped (lane 33 of the investigation of 27 October).
   it("keeps a cut Builder's notes for the next session before its home goes", () => {
     const path = join(root, basename(root), "log.jsonl");

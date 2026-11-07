@@ -86,14 +86,14 @@ word, for a change that must land before the cycle's stack.
 - **A native stack** is made with `gh stack link <pr> <pr> ...`, bottom to top, which sets the
   bases; setting a base alone leaves a pull request outside it. Name the whole chain: the shortcut
   `gh stack link <stack> <pr>` appends above GitHub's top of that stack, which is not the chain's
-  where a pull request was never linked, and rebases the new one there (#531 on 30 October 2026).
+  where a pull request was never linked, and rebases the new one there (#531).
   `link` never reorders, so a wrong order is mended with `gh stack unstack <stack>` and the chain
   linked again. A head that holds another open pull request's without standing on it is listed by
   `stack.ts` and refused by `land` (`tools/runtime/doubled.ts`), both here, so read the stack after
   every link.
 
-v2 was built in `s-smits/anabasis-v2` until 11 October 2026: a pull request number written before
-then, up to #235, is that repository's (cite it as `anabasis-v2#N`); this one's run to #140 for v1
+v2 was built in `s-smits/anabasis-v2` before it came here: a pull request number written then,
+up to #235, is that repository's (cite it as `anabasis-v2#N`); this one's run to #140 for v1
 and continue from there. A cited v2 hash that does not resolve here was on one of that repository's
 pull-request branches, rewritten before it merged.
 

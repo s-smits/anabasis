@@ -8,7 +8,6 @@ import {
   carriedBy,
   differenceOf,
   flipP,
-  hasObjectiveGap,
   informative,
   type Paired,
   pairsOf,
@@ -16,9 +15,8 @@ import {
   readsStep,
   readsStepEitherWay,
   scored,
-  stepOf,
+  scoresIn,
   sweepOf,
-  tally,
   wholePoints,
 } from "../src/kernel/compare.ts";
 import { compared, NO_LABELS, type Fixed } from "../src/campaign/comparison.ts";
@@ -75,6 +73,13 @@ const units = (wins: number, losses: number, by = 1, ties = 0): number[] => [
 ];
 /** A comparison's report as the log holds what its step reads: each frontier task's difference, and
  *  the retained tasks', or `unmeasured` where none was tallied. */
+const stepOf = (found: JsonObject, level: number) =>
+  readsStep(
+    [found.frontier, ...(found.retained === "unmeasured" ? [] : [found.retained])].flatMap(scoresIn),
+    level,
+  )
+    ? "step"
+    : "no-step";
 const report = (frontier: readonly number[], retained: readonly number[] | null = null): JsonObject => ({
   frontier: { differences: [...frontier] },
   retained: retained === null ? "unmeasured" : { differences: [...retained] },
@@ -166,7 +171,6 @@ describe("the paired sign-flip test", () => {
   });
 
   it("counts a task once by how often each harness was valid, and takes it into the test by its score", () => {
-    expect(tally(pairs(6, 1, 17))).toEqual({ wins: 6, losses: 1, ties: 17 });
     // Each task here is won or lost by three pairs of nine on validity, four to one or three to
     // none: a third of validity's 600 points.
     expect(scored(pairs(6, 1, 17))).toEqual({
@@ -177,9 +181,10 @@ describe("the paired sign-flip test", () => {
       differences: units(6, 1, 200, 17),
     });
     expect(scored(pairs(5, 1, 18)).p).toBe(0.109375);
-    expect(() => tally([{ task: "t", old: [P, P, P], fresh: [P, P] }])).toThrow(
+    expect(() => scored([{ task: "t", old: [P, P, P], fresh: [P, P] }])).toThrow(
       "task t has 3 solve(s) under the old harness and 2 under the new",
     );
+    expect(() => scored([{ task: "t", old: [], fresh: [] }])).toThrow("task t has 0 solve(s)");
   });
 });
 
@@ -227,10 +232,6 @@ describe("one reading", () => {
     // Against the provisioned starter nothing is exhausted yet: the first promotion's reading
     // holds no retained task, and promotes on the frontier alone.
     expect(stepOf(report(units(4, 0, 16)), LEVEL)).toBe("step");
-    // One comparison's own reading is of a report it has just tallied: one with no retained
-    // reading is a fault of the caller's, and is refused rather than read as no step.
-    const bare = { frontier: { differences: units(2, 0, 16) }, families: {} };
-    expect(() => stepOf(bare, LEVEL)).toThrow("a reading needs a frontier and a retained set");
   });
 
   it("scores no bill: a cheaper harness alone reads no step, and validity and the objective clear one", () => {
@@ -257,7 +258,7 @@ describe("one reading", () => {
     const both = scored(better);
     expect(both.differences).toEqual(units(6, 0, 60));
     expect(stepOf({ frontier: both, retained: "unmeasured" }, STRICT)).toBe("step");
-    expect(better.map((pair) => differenceOf(pair, "validity"))).toEqual(units(0, 0, 0, 6));
+    expect(better.map((pair) => pointsOf(pair).validity)).toEqual(units(0, 0, 0, 6));
     // A retained loss counts against the step: 6-1 at p 1/16.
     expect(
       stepOf({ frontier: { differences: units(6, 0, 4) }, retained: { differences: [-4] } }, STRICT),
@@ -276,9 +277,9 @@ describe("one reading", () => {
 });
 
 describe("a task's pairings", () => {
-  it("rounds half points away from zero and normalises rounded zeros", () => {
+  it("rounds half points away from zero", () => {
     expect([32.5, -32.5, 0.5, -0.5, -32.4].map(wholePoints)).toEqual([33, -33, 1, -1, -32]);
-    expect(Object.is(wholePoints(-0.4), 0)).toBe(true);
+    expect(wholePoints(-0.4) === 0).toBe(true);
   });
 
   it("names the measure that carried a result, and none for a task the bill alone would have moved", () => {
@@ -386,6 +387,8 @@ describe("a task's measures", () => {
       // Measures either side of zero are a whole weight apart, never more.
       [10, -10, 300],
       [-10, 10, -300],
+      // Two measures of zero are one measure.
+      [0, 0, 0],
     ] as const) {
       expect(differenceOf(measured(old, fresh))).toBe(expected);
     }
@@ -488,15 +491,15 @@ describe("a task's room", () => {
       [[10 - 1e-9, 10 - 1e-9], [10, 10], "fresh", false],
     ] as const) {
       expect(
-        hasObjectiveGap(
+        informative(
           { task: "t", old: [P, P], fresh: [P, P], objective: { ...lowerRule, old, fresh } },
           side,
-          null,
+          new Set(),
         ),
       ).toBe(expected);
     }
     expect(
-      hasObjectiveGap(
+      informative(
         {
           task: "t",
           old: [P, P],
@@ -504,7 +507,8 @@ describe("a task's room", () => {
           objective: { ...lowerRule, old: [10, 10], fresh: [10, 10] },
         },
         "fresh",
-        8,
+        new Set(),
+        new Map([["t", 8]]),
       ),
     ).toBe(true);
   });

@@ -11,15 +11,23 @@
  * lack the scores required by the current rule. --level uses the requested level for the test.
  *
  * Names resolve through logAcross; read and lastReports own log parsing and report selection.
- * This script evaluates recorded scores. Use promotion-tuner/replay.ts to rescore recorded solves
- * under other weights. Output contains session ids, counts, short digests and harness letters;
+ * This script evaluates recorded scores. Use promotion-tuner/lab.ts to rescore recorded solves
+ * under other rules. Output contains session ids, counts, short digests and harness letters;
  * it omits task identities, families, answers, objective measures and checks.
  *
  * Written on 30 October, when AGENTS.md sections 7 and 8 moved into comparison-reading.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { calledBy, type Called, namesOf } from "#src/campaign/names.ts";
-import { readsStepEitherWay, stepOf, testOf, type Tally, UNMEASURED } from "#src/kernel/compare.ts";
+import {
+  readsStep,
+  readsStepEitherWay,
+  scoresIn,
+  testedSet,
+  testOf,
+  type Tally,
+  UNMEASURED,
+} from "#src/kernel/compare.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { lastReports, roomOf } from "#src/kernel/reports.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
@@ -91,12 +99,8 @@ function count(value: JsonValue | undefined): number {
 
 /** The step this tree's rule reads on the report, or null where it holds too little to read. */
 function rereadOf(data: JsonObject, level: number): "step" | "no-step" | null {
-  try {
-    return stepOf(data, level);
-  } catch {
-    // stepOf refuses a report without a frontier and its unbilled scores: nothing to read again.
-    return null;
-  }
+  if (!Array.isArray(asRecord(data.scored)?.differences)) return null;
+  return readsStep(scoresIn(data.scored), level) ? "step" : "no-step";
 }
 
 /** The A/A of a report, read either way at `level`. */
@@ -122,7 +126,7 @@ function rowOf(session: string, data: JsonObject, level: number | null): Row {
   const tested = testedIn(data.scored);
   const unbilled = numbers(scored?.unbilled);
   // Before 20 October the frontier held the test's detectable share and false rate (`reportLines`).
-  const sized = scored?.falseRate === undefined ? asRecord(data.frontier) : scored;
+  const sized = testedSet(scored, asRecord(data.frontier));
   const share = sized?.detectable;
   const retained = data.retained === UNMEASURED ? UNMEASURED : testedIn(data.retained);
   return {

@@ -4,17 +4,13 @@
  * weighted measures from the recorded solves. It starts no solve, calls no model and writes nothing.
  *
  *   bun .claude/skills/promotion-tuner/scripts/replay.ts --tree <worktree>
- *     [--logs <dir>] [--since <date>] [--name <campaign>]... [--weights v,o,b] [--level <n>] [--totals]
+ *     [--logs <dir>] [--since <date>] [--name <campaign>]... [--totals]
  *
  * For each pair of harnesses a campaign compared, the tree's `pairsReported` reads each comparison's
  * pairs again, and the tree's `pointsOf` scores each task by validity, the objective and the bill.
- * `--weights` weighs those measures otherwise without a candidate tree: each measure's points are
- * its mean over the pairings times its weight, so the tree's points are divided by its own weight
- * and multiplied by the one asked. The floor (`ROOM`) shapes the mean itself, so
- * a floor is changed in a candidate tree. One reading at or under the level over the frontier and
- * retained tasks together promotes only where the tree's own rule reads a step (`readsStep`, by
- * `stepOf`: without the bill from 31 October, both ways from 25 October), at the recorded level or
- * at `--level`.
+ * One reading at or under the level over the frontier and retained tasks together promotes only where
+ * the tree's own rule reads a step (`readsStep`, by `stepOf`: without the bill from 31 October, both
+ * ways from 25 October), at the recorded level. Other weights, levels and rules are `lab.ts`'s.
  *
  * Beside each promotion it prints the tally and p it rests on, as scored and without the bill,
  * which measure won each task, the A/A of that comparison (the reference against itself on halves
@@ -37,49 +33,34 @@ import { carriedBy as carriedOn, type Paired, wholePoints } from "#src/kernel/co
 import type { LogEvent } from "#src/kernel/log.ts";
 import type { Reported } from "#src/kernel/reports.ts";
 import { type JsonValue, asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
-import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { median } from "#src/meta/tally.ts";
+import { selfTerms } from "./record.ts";
 import { epochLines } from "./time.ts";
 import { type Found, type Points, type Tree, campaignLogs, loadTree, rehearsed } from "./tree.ts";
 
 const USAGE = `usage:
   bun .claude/skills/promotion-tuner/scripts/replay.ts --tree <worktree>
-    [--logs <dir>] [--since <date>] [--name <campaign>]... [--weights v,o,b] [--level <n>] [--totals]
+    [--logs <dir>] [--since <date>] [--name <campaign>]... [--totals]
 
 --tree     the worktree whose src/kernel scores the record (main's, or a candidate's)
 --logs     an explicit offline folder of campaign worktrees; default: the registry and every configured host
 --since    campaigns whose last event is at or after this date; five days back by default
 --name     these campaigns only, whenever they ran (repeatable)
---weights  weigh validity, the objective and the bill thus, in place of the tree's WEIGHTS (60,30,10)
---level    read every comparison and A/A at this level, in place of the recorded one
 --totals   print the totals alone`;
 const OPTIONS = {
   tree: "abs",
   logs: "abs",
   since: "text",
   name: "list",
-  weights: "text",
-  level: "text",
   totals: "flag",
 } as const;
 const DAYS_BACK = 5;
 const DAY_MS = 86_400_000;
-const LEVEL = 0.02;
 const PROMOTED = "harness.promoted";
 const MEASURES = ["validity", "objective", "bill"] as const;
 
 type Measure = (typeof MEASURES)[number];
-
-/** How the replay scores a task: the tree's points, each measure scaled by the weight asked over
- *  the tree's own. */
-interface Score {
-  readonly tree: Tree;
-  readonly scale: Points;
-  /** Whether the weights are the tree's own, so a weighted report's differences reconcile. */
-  readonly own: boolean;
-  readonly level: number | null;
-}
 
 /** One comparison's last report, scored again. */
 interface Reading {
@@ -170,6 +151,12 @@ const lost = (differences: readonly number[]) => differences.filter((one) => one
 const wlt = (differences: readonly number[]) =>
   `${String(won(differences))}-${String(lost(differences))}-${String(differences.length - won(differences) - lost(differences))}`;
 
+/** Whether a report holds the points each measure gave, as none before the weights does. */
+function weightedIn(points: JsonValue | undefined): boolean {
+  const { validity, objective } = asRecord(points) ?? {};
+  return isNumber(validity) && isNumber(objective);
+}
+
 /** A task's scores from its points: with the bill where the tree scores one (before 2 November),
  *  and without it, which a step is read on. */
 function scoresOf({ validity, objective, bill }: Points) {
@@ -184,20 +171,10 @@ function carriedBy(points: Points): Measure | null {
   return Math.sign(unbilled) === Math.sign(scored) ? carriedOn(points) : "bill";
 }
 
-/** A task's points by measure under the weights asked. */
-function pointsOf(score: Score, pair: Paired): Points {
-  const points = score.tree.points(pair);
-  return {
-    validity: points.validity * score.scale.validity,
-    objective: points.objective * score.scale.objective,
-    bill: points.bill * score.scale.bill,
-  };
-}
-
 /** Reconstruct named tasks from pairs; retain stored scores where the log lacks a pair.
  * Missing cost-excluded evidence stays unknown, so the dual rule cannot promote it. */
 function scoredSet(
-  score: Score,
+  tree: Tree,
   set: JsonValue | undefined,
   pairs: ReadonlyMap<string, Paired>,
   totals: Totals,
@@ -216,7 +193,7 @@ function scoredSet(
       totals.storedTasks += 1;
       return { scored: stored[at] ?? 0, unbilled: unbilled[at] ?? null };
     }
-    const one = pointsOf(score, pair);
+    const one = tree.points(pair);
     points.push(one);
     return scoresOf(one);
   });
@@ -232,26 +209,14 @@ function scoredSet(
 
 /** The reference against itself on halves of its own solves, as the comparison's report reads it
  *  (`compared`, `comparison.ts`), or null under two solves a side or an odd number. */
-function aaOf(score: Score, events: readonly LogEvent[], report: Reported): Reading["aa"] {
-  const { old, setting, solves, versions, objective } = report.data;
-  if (!isString(old) || !isString(setting) || !isNumber(solves) || solves < 2 || solves % 2 !== 0) {
-    return null;
-  }
-  const direction = asRecord(objective)?.direction;
-  const rule: { direction: "lower" | "higher" } | undefined =
-    direction === "lower" || direction === "higher" ? { direction } : undefined;
-  const sides = {
-    old,
-    fresh: old,
-    setting,
-    comparison: report.session,
-    halves: "mirrored" as const,
-    ...keyIfDefined("objective", rule),
-  };
+function aaOf(tree: Tree, events: readonly LogEvent[], report: Reported): Reading["aa"] {
+  const terms = selfTerms(report);
+  if (terms === null) return null;
+  const { versions } = report.data;
   const tasks = Array.isArray(versions) ? versions.filter(isString) : [];
-  const scores = score.tree
-    .pairsOf(events.slice(0, report.index + 1), tasks, sides, solves / 2)
-    .map((pair) => scoresOf(pointsOf(score, pair)));
+  const scores = tree
+    .pairsOf(events.slice(0, report.index + 1), tasks, terms.sides, terms.solves)
+    .map((pair) => scoresOf(tree.points(pair)));
   return {
     differences: scores.map((one) => one.scored),
     unbilled: scores.map((one) => one.unbilled),
@@ -259,23 +224,23 @@ function aaOf(score: Score, events: readonly LogEvent[], report: Reported): Read
 }
 
 /** Each comparison with a frontier, scored again, its counts added to `totals`. */
-function readingsOf(score: Score, events: readonly LogEvent[], totals: Totals): Reading[] {
-  return score.tree.lastReports(events).flatMap((report): Reading[] => {
+function readingsOf(tree: Tree, events: readonly LogEvent[], totals: Totals): Reading[] {
+  return tree.lastReports(events).flatMap((report): Reading[] => {
     const { old, fresh, frontier, retained, noise, points, reading, level: recorded } = report.data;
     if (!Array.isArray(asRecord(frontier)?.differences) || !isString(old) || !isString(fresh)) return [];
-    const pairs = new Map(score.tree.pairsReported(events, report).map((pair) => [pair.task, pair]));
-    const sets = [scoredSet(score, frontier, pairs, totals), scoredSet(score, retained, pairs, totals)];
+    const pairs = new Map(tree.pairsReported(events, report).map((pair) => [pair.task, pair]));
+    const sets = [scoredSet(tree, frontier, pairs, totals), scoredSet(tree, retained, pairs, totals)];
     const differences = sets.flatMap((set) => set.differences);
-    const level = score.level ?? (isNumber(recorded) ? recorded : LEVEL);
+    const level = isNumber(recorded) ? recorded : 0;
     const unbilled = sets.every((set) => set.unbilled !== null)
       ? sets.flatMap((set) => set.unbilled ?? [])
       : null;
-    const step = score.tree.readsStep(differences, unbilled, level);
-    const weighted = score.tree.measures(points) !== undefined;
-    const aa = aaOf(score, events, report);
+    const step = tree.readsStep(differences, unbilled, level);
+    const weighted = weightedIn(points);
+    const aa = aaOf(tree, events, report);
     totals.readings += 1;
     totals.weighted += weighted ? 1 : 0;
-    if (weighted && score.own) {
+    if (weighted) {
       totals.moved += differences.join(",") === sets.flatMap((set) => set.stored).join(",") ? 0 : 1;
       totals.aaMoved +=
         aa !== null && aa.differences.join(",") !== numbers(asRecord(noise)?.differences).join(",") ? 1 : 0;
@@ -293,17 +258,17 @@ function readingsOf(score: Score, events: readonly LogEvent[], totals: Totals): 
   });
 }
 
-const toldReading = (score: Score, reading: Reading) =>
-  `${reading.session} ${wlt(reading.differences)} p ${score.tree.flipP(reading.differences).toFixed(4)}; without the bill ${reading.unbilled === null ? "unread" : `${wlt(reading.unbilled)} p ${score.tree.flipP(reading.unbilled).toFixed(4)}`}`;
+const toldReading = (tree: Tree, reading: Reading) =>
+  `${reading.session} ${wlt(reading.differences)} p ${tree.flipP(reading.differences).toFixed(4)}; without the bill ${reading.unbilled === null ? "unread" : `${wlt(reading.unbilled)} p ${tree.flipP(reading.unbilled).toFixed(4)}`}`;
 
-const aaLine = (score: Score, reading: Reading) =>
+const aaLine = (tree: Tree, reading: Reading) =>
   reading.aa === null
     ? "A/A unread"
-    : `A/A ${wlt(reading.aa.differences)}${score.tree.readsStepEitherWay(reading.aa.differences, reading.level, reading.aa.unbilled) ? " STEP" : ""}`;
+    : `A/A ${wlt(reading.aa.differences)}${tree.readsStepEitherWay(reading.aa.differences, reading.level, reading.aa.unbilled) ? " STEP" : ""}`;
 
 /** A pair the score promotes: the reading it rests on, its A/A, and later readings. */
 function promotedLines(
-  score: Score,
+  tree: Tree,
   readings: readonly Reading[],
   at: number,
   recorded: boolean,
@@ -314,8 +279,7 @@ function promotedLines(
   const later = readings.slice(at + 1);
   const against = later.filter(({ differences }) => lost(differences) > won(differences));
   const doubts = [
-    ...(rests.aa !== null &&
-    score.tree.readsStepEitherWay(rests.aa.differences, rests.level, rests.aa.unbilled)
+    ...(rests.aa !== null && tree.readsStepEitherWay(rests.aa.differences, rests.level, rests.aa.unbilled)
       ? ["its A/A read a step"]
       : []),
     ...(against.length > 0 ? [`${String(against.length)} later reading lost more than it won`] : []),
@@ -326,15 +290,15 @@ function promotedLines(
   else totals.doubted += 1;
   const verdict = doubts.length === 0 ? "rightful" : `in doubt: ${doubts.join("; ")}`;
   return [
-    `    ${toldReading(score, rests)}: promotes; ${recorded ? verdict : "added by this score"}`,
-    `    won by validity ${String(rests.wonBy.validity)}, by the objective ${String(rests.wonBy.objective)}, by the bill alone ${String(rests.wonBy.bill)}; ${aaLine(score, rests)}`,
-    `    later readings of the pair: ${later.length === 0 ? "none" : later.map((one) => toldReading(score, one)).join(", ")}`,
+    `    ${toldReading(tree, rests)}: promotes; ${recorded ? verdict : "added by this score"}`,
+    `    won by validity ${String(rests.wonBy.validity)}, by the objective ${String(rests.wonBy.objective)}, by the bill alone ${String(rests.wonBy.bill)}; ${aaLine(tree, rests)}`,
+    `    later readings of the pair: ${later.length === 0 ? "none" : later.map((one) => toldReading(tree, one)).join(", ")}`,
   ];
 }
 
 /** The pairs a campaign compared, each with what the score reads of it. */
 function pairLines(
-  score: Score,
+  tree: Tree,
   readings: readonly Reading[],
   promotions: readonly Promotion[],
   totals: Totals,
@@ -348,13 +312,13 @@ function pairLines(
     const [old = "", fresh = ""] = key.split(">");
     lines.push(`  ${short(old)} > ${short(fresh)}${recorded ? ", promoted on record" : ""}`);
     if (at !== -1) {
-      lines.push(...promotedLines(score, list, at, recorded, totals));
+      lines.push(...promotedLines(tree, list, at, recorded, totals));
       continue;
     }
     if (recorded) totals.dropped += 1;
     for (const one of list) {
       lines.push(
-        `    ${toldReading(score, one)}: reads no step by the tree's rule at ${String(one.level)}; ${aaLine(score, one)}`,
+        `    ${toldReading(tree, one)}: reads no step by the tree's rule at ${String(one.level)}; ${aaLine(tree, one)}`,
       );
     }
     lines.push(`    ${recorded ? "NOT PROMOTED by this score" : "no promotion"}`);
@@ -384,10 +348,10 @@ function countFollowed(list: readonly Reading[], totals: Totals): void {
 }
 
 /** One campaign's block, its counts added to `totals`. */
-export function campaignLines(score: Score, found: Found, totals: Totals): string[] {
+export function campaignLines(tree: Tree, found: Found, totals: Totals): string[] {
   let events: LogEvent[];
   try {
-    events = score.tree.read(found.path);
+    events = tree.read(found.path);
   } catch (error) {
     return [`${found.name}: not read, ${errorMessage(error)}`];
   }
@@ -399,17 +363,17 @@ export function campaignLines(score: Score, found: Found, totals: Totals): strin
       : [],
   );
   totals.recorded += promotions.length;
-  const readings = readingsOf(score, events, totals);
+  const readings = readingsOf(tree, events, totals);
   totals.compared += readings.length > 0 ? 1 : 0;
   for (const { aa, level } of readings) {
     if (aa === null) continue;
     totals.controls += 1;
-    totals.aaSteps += score.tree.readsStepEitherWay(aa.differences, level, aa.unbilled) ? 1 : 0;
+    totals.aaSteps += tree.readsStepEitherWay(aa.differences, level, aa.unbilled) ? 1 : 0;
     totals.aaWon += won(aa.differences);
     totals.aaLost += lost(aa.differences);
   }
   const time = epochLines(
-    score.tree,
+    tree,
     events,
     promotions.map(({ index }) => index),
   );
@@ -417,25 +381,21 @@ export function campaignLines(score: Score, found: Found, totals: Totals): strin
   totals.dollars.push(...time.promoted.map(({ dollars }) => dollars));
   return [
     `${found.name}: ${String(promotions.length)} promoted on record, ${String(readings.length)} readings`,
-    ...pairLines(score, readings, promotions, totals),
+    ...pairLines(tree, readings, promotions, totals),
     ...time.lines,
   ];
 }
 
-function totalLines(score: Score, totals: Totals): string[] {
+function totalLines(tree: Tree, totals: Totals): string[] {
   const per = (values: readonly number[], unit: string) =>
     values.length === 0
       ? "none"
       : `median ${(median(values) ?? 0).toFixed(1)}${unit}, from ${Math.min(...values).toFixed(1)} to ${Math.max(...values).toFixed(1)}`;
-  const weights = MEASURES.map((measure) =>
-    String(Math.round(score.tree.weights[measure] * score.scale[measure] * 100)),
-  ).join(",");
-  const reconciled = score.own
-    ? `; of the ${String(totals.weighted)} written under the weights, read otherwise than stored ${String(totals.moved)}, A/A ${String(totals.aaMoved)}`
-    : `; ${String(totals.weighted)} written under the weights, not reconciled under weights asked`;
+  const weights = MEASURES.map((measure) => String(Math.round(tree.weights[measure] * 100))).join(",");
+  const reconciled = `; of the ${String(totals.weighted)} written under the weights, read otherwise than stored ${String(totals.moved)}, A/A ${String(totals.aaMoved)}`;
   const { validity, objective, bill } = totals.wonBy;
   return [
-    `totals, tree ${score.tree.path} at ${score.tree.commit}, weights ${weights}${score.own ? " (the tree's)" : ""}, ${score.level === null ? "the recorded level" : `level ${String(score.level)}`}`,
+    `totals, tree ${tree.path} at ${tree.commit}, weights ${weights}, the recorded level`,
     `  campaigns ${String(totals.campaigns)}, with a reading ${String(totals.compared)}; promotions on record ${String(totals.recorded)}: rightful ${String(totals.rightful)}, in doubt ${String(totals.doubted)}, not promoted by this score ${String(totals.dropped)}, on readings with no frontier (before 12 October) ${String(totals.unread)}`,
     `  pairs this score promotes ${String(totals.rightful + totals.doubted + totals.added)} (added ${String(totals.added)})`,
     `  readings ${String(totals.readings)}${reconciled}; reading otherwise than recorded: to a step ${String(totals.toStep)}, from a step ${String(totals.fromStep)}; tasks read from the stored difference for want of a pair ${String(totals.storedTasks)}`,
@@ -446,47 +406,16 @@ function totalLines(score: Score, totals: Totals): string[] {
   ];
 }
 
-/** A number option, or null where it was not passed. */
-function numberOption(args: CommandArgs, name: string): number | null {
-  const raw = args.value(name);
-  if (raw === null) return null;
-  const value = Number(raw);
-  return Number.isFinite(value) && value >= 0
-    ? value
-    : args.die(`--${name} must be a number from 0 up, got ${raw}`);
-}
-
-/** The scale of each measure for `--weights v,o,b`, in hundredths, over the tree's own weights. */
-function scaleOf(args: CommandArgs, tree: Tree): Points {
-  const raw = args.value("weights");
-  if (raw === null) return { validity: 1, objective: 1, bill: 1 };
-  const asked = raw.split(",").map(Number);
-  if (asked.length !== MEASURES.length || !asked.every((one) => Number.isFinite(one) && one >= 0)) {
-    return args.die(`--weights takes three numbers from 0 up, as 60,30,10; got ${raw}`);
-  }
-  const [validity = 0, objective = 0, bill = 0] = asked.map((one, at) => {
-    const own = tree.weights[MEASURES[at] ?? "validity"];
-    if (own > 0) return one / 100 / own;
-    return one === 0
-      ? 0
-      : args.die(`the tree weighs ${MEASURES[at] ?? ""} at 0; change it in a candidate tree`);
-  });
-  return { validity, objective, bill };
-}
-
 async function main(args: CommandArgs): Promise<number> {
   const tree = await loadTree(args.required("tree"));
-  const scale = scaleOf(args, tree);
-  const own = MEASURES.every((measure) => Math.abs(scale[measure] - 1) < 1e-9);
-  const score = { tree, scale, own, level: numberOption(args, "level") };
   const since = args.value("since") ?? new Date(Date.now() - DAYS_BACK * DAY_MS).toISOString();
   const logs = await campaignLogs(args.value("logs"), args.list("name"), since);
   const totals = emptyTotals();
   for (const found of logs) {
-    const lines = campaignLines(score, found, totals);
+    const lines = campaignLines(tree, found, totals);
     if (!args.flag("totals") && lines.length > 0) console.log(`${lines.join("\n")}\n`);
   }
-  console.log(totalLines(score, totals).join("\n"));
+  console.log(totalLines(tree, totals).join("\n"));
   return 0;
 }
 

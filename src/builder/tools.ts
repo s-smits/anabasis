@@ -4,42 +4,34 @@
  * working directory, its home. On top of them are the tools that are a Builder's alone. Two ask
  * the host about `harness/` as it stands and run on the same wall: `check_harness` and
  * `preview_harness`. Four are the host's: `practice`, `read_trace`, `read_opening` and `finish`.
- * `reset_harness`, which put `harness/agent` back as the session found it, went on 15 October:
- * no Builder on record had called it, 0 of 1,261 calls.
  *
- * v1's Builder had pi's file tools too, with `harness_inspect`, `harness_trial` and `harness_reset`
- * (`src/builder/tools.ts:75` at 7af7315). A Builder with the shell and one `write_file` alone
- * rewrote a 30 KB tools file through a heredoc to change a line, backed its tools file up by hand
- * before it tried something, and could not see what a solver would be shown. The shell is the
- * whole of its action space beyond these: it searches, lists and installs through it, and no tool
- * is given for what a command already does.
+ * v1's Builder had pi's file tools too. A Builder with the shell and one `write_file` alone rewrote
+ * a 30 KB tools file through a heredoc to change a line and could not see what a solver would be
+ * shown (`7af7315:src/builder/tools.ts`). The shell is the whole of its action space beyond these,
+ * and no tool is given for what a command already does.
  *
  * The wall is the solver's, so the repository, the operator's home and every other solve's scratch
- * are closed to the Builder by the operating system and not by a path check in this process. v1
- * said of its own Builder that a guard in the process it constrains is a convention and not a wall
- * (`7af7315:src/builder/candidate-isolation.ts`), which is why every file tool here works
- * through a walled command and none reads or writes a path for the Builder in the host's name.
+ * are closed to the Builder by the operating system and not by a path check in this process: a guard
+ * in the process it constrains is a convention and not a wall (`7af7315:src/builder/candidate-isolation.ts`).
+ * So every file tool here works through a walled command.
  *
- * One read is the host's own: a harness snapshot is opened and bundled by the host, as a solve
- * opens any harness. `openHarness` builds a harness's tools from its own files alone: it refuses a
- * named file that links out of the harness and an import that lands outside it, so nothing here asks
- * that question a second time.
+ * One read is the host's own: the host opens and bundles a harness snapshot, as a solve opens any
+ * harness. `openHarness` builds a harness's tools from its own files alone, refusing a named file
+ * that links out of the harness and an import that lands outside it, so nothing here asks that again.
  *
  * The installed programs are the session's own. `harness/.toolchain` starts as a copy of the
- * parent's tool tree, which the wall puts first on PATH, and the Builder installs into it as it
- * likes. A frozen harness links to a copy of that tree kept beside the states, made again only when
- * the tree has changed since. A harness is frozen, and its solves run, away from the home it was
- * built in, which is gone once the session ends; so a harness snapshot naming that home in a link
- * or script is refused, with how to write it instead. A compiled program is not read for it: a path
- * built into one is as often a build's record as the place it runs from.
+ * parent's tool tree, which the wall puts first on PATH. A frozen harness links to a copy of that
+ * tree kept beside the states, made again only when the tree has changed since. A harness is frozen,
+ * and its solves run, away from the home it was built in, which is gone once the session ends; so a
+ * snapshot naming that home in a link or script is refused, with how to write it instead. A compiled
+ * program is not read for it: a path built into one is as often a build's record as the place it runs from.
  *
  * `practice` is where the Referee meets the Builder. A rejected answer goes to it, as in a
  * comparison; a check defect's task leaves the session. The triage of 20 October found unclear and
  * unread rejections still shown as failures. What comes back names the ending and the
  * task's record, and never a check, a verdict's detail or the Referee's reasons. A practice solve
  * that could not be run at all, the verifier failing to decide for one, ends the session: its
- * error can name a check, so it is kept for the host and the Builder is told only that the session
- * ends.
+ * error can name a check, so it is kept for the host and the Builder is told only that the session ends.
  * Finish reads counted practice for the exact current digest, including restored states; a frozen
  * harness snapshot alone supplies no practice evidence. The same record supplies continuation facts.
  */

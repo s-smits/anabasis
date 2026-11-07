@@ -228,6 +228,19 @@ describe("code preparation", () => {
     // `freeName` reads its own names alone: the host goes into the suffix.
     expect(command).toMatch(/--as\W+terra-runner\W/);
     expect(command).toContain("ANA_RUN_CAP");
+    expect(command).not.toContain("ANA_KEEP");
+    const off = made.run(
+      'import { fresh } from "REPOSITORY/tools/runs/fresh.ts"; await fresh(["sample", "--model", "gpt", "--as", "terra", "--host", "runner", "--yes"]);',
+      { ANA_KEEP: "off" },
+    );
+    expect(off.code).toBe(0);
+    const sent =
+      made
+        .recorded()
+        .findLast((call) => call.tool === "ssh")
+        ?.args.at(-1) ?? "";
+    // The off switch reaches the peer's keeper as every shared setting does: by the verb's own line.
+    expect(sent).toMatch(/ANA_KEEP=\W*off\W.*ANA_HOP=1/u);
   });
 
   it("resolves a remote continuation's revision here and ignores a campaign's --at and --yes", () => {
@@ -475,10 +488,27 @@ describe("snapshot depth", () => {
 });
 
 describe("the fleet pulse", () => {
+  it("asks a peer for --no-embed only where the look was given it", () => {
+    const remoteOf = (...flags: readonly string[]) => {
+      const made = fixture();
+      const state = join(made.root, "state.json");
+      const asked = JSON.stringify(["--once", "--no-readers", ...flags, "--state", state]);
+      made.run(`import { watch } from "REPOSITORY/tools/runs/pulse.ts"; await watch(${asked});`);
+      return (
+        made
+          .recorded()
+          .findLast((call) => call.tool === "ssh")
+          ?.args.at(-1) ?? ""
+      );
+    };
+    expect(remoteOf("--no-embed")).toContain("--no-embed");
+    expect(remoteOf()).not.toContain("--no-embed");
+  });
+
   it("polls each host once and keeps a local state path out of remote commands", () => {
     const made = fixture();
     const state = join(made.root, "state.json");
-    const command = `import { watch } from "REPOSITORY/tools/runs/pulse.ts"; await watch(["--once", "--state", ${JSON.stringify(state)}]);`;
+    const command = `import { watch } from "REPOSITORY/tools/runs/pulse.ts"; await watch(["--once", "--no-readers", "--state", ${JSON.stringify(state)}]);`;
     const result = made.run(command);
     expect(result.code).toBe(0);
     expect(result.out).toContain("reported step");
@@ -491,11 +521,11 @@ describe("the fleet pulse", () => {
     expect(remote).toContain("--here");
     const failed = made.run(command, { FAKE_OFFLINE: "1" });
     expect(failed.code).toBe(1);
-    expect(failed.err).toContain("pulse unavailable");
+    expect(failed.out).toContain("pulse unavailable");
     const local = fixture();
     expect(
       local.run(
-        `import { watch } from "REPOSITORY/tools/runs/pulse.ts"; await watch(["--once", "--here", "--state", ${JSON.stringify(join(local.root, "local.json"))}]);`,
+        `import { watch } from "REPOSITORY/tools/runs/pulse.ts"; await watch(["--once", "--no-readers", "--here", "--state", ${JSON.stringify(join(local.root, "local.json"))}]);`,
       ).code,
     ).toBe(0);
     expect(local.recorded().filter((call) => call.tool === "ssh")).toHaveLength(0);

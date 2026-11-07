@@ -6,12 +6,12 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { heard } from "../src/examiner/record.ts";
 import { examine } from "../src/examiner/session.ts";
 import { conditionId, settingId } from "../src/kernel/condition.ts";
-import { append, type EventKind, type LogEvent } from "../src/kernel/log.ts";
+import { append, type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
 import type { Ending } from "../src/kernel/solve.ts";
-import { isNumber, type JsonObject } from "../src/meta/json-shape.ts";
+import { isNumber, isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
-import { condition, finish, seat } from "./helpers/examiner-seat.ts";
+import { condition, finish, propose, seat } from "./helpers/examiner-seat.ts";
 
 const TASK_ADMISSION = "task.gate";
 const PROPOSED = "task.proposed";
@@ -197,7 +197,7 @@ describe("the tasks a writing session hears", () => {
     const opening = s.sent[0] ?? "";
     const told = heard(log.events, tasks);
     const at = (text: string) => opening.indexOf(JSON.stringify(text).slice(1, -1));
-    const places = [told.last ?? "", ...told.groups.map(({ heading }) => heading)].map(at);
+    const places = [told.stood ?? "", ...told.groups.map(({ heading }) => heading)].map(at);
     expect(places).not.toContain(-1);
     expect(places).toEqual(places.toSorted((a, b) => a - b));
     for (const line of told.groups.flatMap(({ lines }) => lines)) expect(at(line)).toBeGreaterThan(-1);
@@ -240,7 +240,7 @@ describe("the last comparison the reference stood in", () => {
       "1 more was set aside",
       "differed on 2 of the 3",
     ]) {
-      expect(told.last).toContain(fact);
+      expect(told.stood).toContain(fact);
     }
     // A comparison between two other harnesses, before or after, is none of the reference's.
     const first = log.events.length;
@@ -249,8 +249,8 @@ describe("the last comparison the reference stood in", () => {
     log.reported("c-0", ["h3", "h4"], ["b"], { differences: [600] });
     const control = log.events.splice(first);
     const held = log.events.findLastIndex(({ kind }) => kind === TASK_ADMISSION) + 1;
-    expect(heard(log.events.toSpliced(held, 0, ...control), tasks).last).toBe(told.last);
-    expect(heard([...log.events, ...control], tasks).last).toBe(told.last);
+    expect(heard(log.events.toSpliced(held, 0, ...control), tasks).stood).toBe(told.stood);
+    expect(heard([...log.events, ...control], tasks).stood).toBe(told.stood);
     expect(JSON.stringify(told)).not.toMatch(/\bh[1-4]\b/u);
   });
 
@@ -262,18 +262,18 @@ describe("the last comparison the reference stood in", () => {
     });
     log.add("harness.promoted", { harness: "h2", from: "h1", rests: [{ comparison: "c-1" }] });
     const told = heard(log.events, ["a", "b", "c"].map(fixture));
-    expect(told.last).toContain(
+    expect(told.stood).toContain(
       "the reference harness won 2, the harness it was compared with won 1, and 0 tied",
     );
-    expect(told.last).toContain("valid in every solve on 2 of them, in some on 0 and in none on 1");
-    expect(told.last).not.toContain("differed");
+    expect(told.stood).toContain("valid in every solve on 2 of them, in some on 0 and in none on 1");
+    expect(told.stood).not.toContain("differed");
   });
 
   it("is null before any comparison", () => {
     const log = logged();
     log.hold(["a"]);
-    expect(heard(log.events, [fixture("a")]).last).toBeNull();
-    expect(heard([], []).last).toBeNull();
+    expect(heard(log.events, [fixture("a")]).stood).toBeNull();
+    expect(heard([], []).stood).toBeNull();
   });
 });
 
@@ -367,7 +367,7 @@ describe("after a promotion", () => {
       ["old", "new"].map(fixture),
     );
     expect(unpromoted.promoted).toBeNull();
-    // At a wake the promotion is told where it came after the conversation last wrote.
+    // At a wake the promotion is told where it came after the conversation was last told.
     const at = log.events.findIndex(({ kind }) => kind === "harness.promoted");
     const woken = heard(log.events, ["old", "new"].map(fixture), at);
     expect(woken.promoted).toContain("g-9");
@@ -391,7 +391,76 @@ describe("a draft its author tried on the reference", () => {
 });
 
 describe("a wake", () => {
-  it("tells only the comparisons reported after the conversation last wrote, and the tasks they scored", () => {
+  it("tells a comparison and a promotion that reported while the ask before it wrote, and tells them once", async () => {
+    const s = seat("write", [propose(2), propose(3), propose(4)]);
+    const log = logged();
+    const onRecord = () => {
+      for (const { kind, data } of log.events.splice(0)) append(s.log, kind, data);
+    };
+    log.hold(["run", "mixed"]);
+    log.solved("b-1", "mixed", "h1", [true, true]);
+    log.solved("b-1", "mixed", "h2", [false, false]);
+    log.reported("b-1", ["h1", "h2"], ["mixed"]);
+    onRecord();
+    const tasks = ["run", "mixed"].map((id) => ({ ...fixture(id), publicInput: {}, hidden: null }));
+    const later = (id: string) => ({ ...s.request, id, tasks, wanted: 1 });
+    const asks = [later("x-2"), later("x-3")];
+    await examine({
+      ...s.request,
+      tasks,
+      wanted: 1,
+      // A comparison and its promotion beside the first ask, after its opening and before its rest.
+      opened: () => {
+        log.solved("b-2", "run", "h1", [false, false]);
+        log.solved("b-2", "run", "h2", [true, true]);
+        log.reported("b-2", ["h1", "h2"], ["run"]);
+        log.add("harness.promoted", { harness: "h2", from: "h1", rests: [{ comparison: "b-2" }] });
+        onRecord();
+      },
+      rest: async () => {
+        const request = asks.shift();
+        return request === undefined ? null : { request };
+      },
+    });
+    const wakes = s
+      .of("exam.call")
+      .flatMap(({ text }) => (isString(text) && text.includes("The host asks for more tasks") ? [text] : []));
+    expect(wakes).toHaveLength(2);
+    const [first, second] = wakes;
+    expect(first).toContain("b-2");
+    expect(first).toContain("run (fixture)");
+    const since = read(s.log).findIndex(({ kind }) => kind === "exam.started");
+    expect(first).toContain(heard(read(s.log), [fixture("run")], since).promoted ?? "no promotion line");
+    // What the opening told stays out of the wake, and the next wake repeats nothing.
+    expect(first).not.toContain("mixed (fixture)");
+    expect(second).not.toContain("b-2");
+    expect(second).not.toContain("run (fixture)");
+  });
+
+  it("tells a wake every comparison the reference stood in since, and an opening only the last", () => {
+    const log = logged();
+    log.hold(["run", "mixed"]);
+    const since = log.events.length;
+    log.reported("g-3", ["h1", "h2"], ["run"], { differences: [600] });
+    // Between two other harnesses, so nothing of it is told even though it reported in the window.
+    log.reported("g-4", ["h2", "h3"], ["mixed"], { differences: [600] });
+    log.reported("g-5", ["h1", "h3"], ["mixed"], { differences: [-300] });
+    const tasks = ["run", "mixed"].map(fixture);
+    const woken = heard(log.events, tasks, since).stood ?? "";
+    const told = woken.split("\n\n");
+    expect(told.map((line) => line.split(",")[0])).toEqual(["Comparison g-3", "Comparison g-5"]);
+    // Each from the reference's side: it stood old in both, so the new side's win is its loss.
+    expect(told[0]).toContain("the reference harness won 0, the harness it was compared with won 1");
+    expect(told[1]).toContain("the reference harness won 1, the harness it was compared with won 0");
+    expect(woken).not.toContain("g-4");
+    const opening = heard(log.events, tasks).stood ?? "";
+    expect(opening).toStartWith(
+      "The last comparison the reference harness stood in, g-5, scored 0 tasks: the ",
+    );
+    expect(opening).not.toContain("g-3");
+  });
+
+  it("tells only the comparisons reported after the conversation was last told, and the tasks they scored", () => {
     const log = logged();
     log.hold(["run", "mixed"]);
     for (const task of ["run", "mixed"]) {
@@ -406,7 +475,8 @@ describe("a wake", () => {
     log.add("referee.finding", { solve: "s-run", task: "run", ruling: "check-defect", check: "check-unit" });
     const tasks = ["run", "mixed"].map(fixture);
     const woken = heard(log.events, tasks, since);
-    expect(woken.last).toContain("b-2");
+    expect(woken.stood).toContain("b-2");
+    expect(woken.stood).not.toContain("b-1");
     const lines = woken.groups.flatMap((group) => group.lines);
     expect(lines.map((line) => line.split(" ")[0])).toEqual(["run"]);
     // A task the wake names reads as its line at an opening would.
@@ -414,7 +484,7 @@ describe("a wake", () => {
     expect(lines[0]).toEndWith("; ruled at fault on an answer to it: check-unit");
     // Nothing reported since: no reading, no task.
     expect(heard(log.events, tasks, log.events.length)).toEqual({
-      last: null,
+      stood: null,
       groups: [],
       promoted: null,
       refused: [],

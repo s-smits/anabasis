@@ -11,7 +11,8 @@
  * horizon, in % of its week, read at the reading nearest that hour, half an hour either side, in
  * the same weekly window. Its features are the horizon, the login's live runs, the runs live on
  * every login, the local hour now and at the horizon, whether it is a weekend, the share of its
- * week left, and its rise an hour over the hours before (`NONE` with no reading 3 to 6 hours back).
+ * week left, its rise an hour over the hours before (`NONE` with no reading 3 to 6 hours back), and
+ * how many logins have room.
  * Each horizon is learnt directly rather than an hour stepped with the runs held, because runs stop
  * and start: a model that holds them reads a login busy for the last five hours as busy all day,
  * and a login idle at 21:00 whose runs come at night as idle (operator, 1 November). A week's use is
@@ -27,7 +28,24 @@
  * record, cut at now and 24, 48 and 72 hours before 1 November 21:00, the model beat the per-run rate
  * at all four cuts and the week pace at two (2.66 against 3.81, 2.73 against 3.84), so the held-out
  * test against both is the gate instead, and the record kept so far is the start (operator,
- * 1 November).
+ * 1 November). That test scores logins with room only, since a spent login's rise is none whichever
+ * forecast reads it: 440 of 1,048 forecast rows on 6 November, which took the model's error from 3.09
+ * to 1.79 without its forecasts changing and never changed when it spoke.
+ *
+ * The hour a login's week ends is a question of its own (`weekEnd`). The curve stays the trees' own,
+ * for the reason above, but they read a mean, and a login busy now that goes on being busy runs out
+ * before its mean does, so the end also asks what its live runs would spend if they kept going, and
+ * says so where that decides it. Past the horizon it goes on at the day's mean rate. Walked forward
+ * over the 127 hours from 28 October to 6 November that had enough record, forecasting only from the
+ * readings up to each hour and speaking only where the gate let it, 34 of the 38 calls that a week
+ * ends within a day were right and they caught 34 of 50 forecasts whose week did; with this, 45 of 53
+ * and 45 of 52. Before 3 November it caught more at the price of more false alarms (right in 16 of
+ * 19 calls, then 21 of 28). Every window that closed on this record ran out, so only the day's call
+ * can show a false alarm, and nothing tests an end named days ahead, which was off by 14 hours at
+ * one to three days and 35 beyond. The count of logins with room is a feature because a spent login's
+ * runs move to the others: it took the curve's error from 3.09 to 2.52 over the hours both spoke.
+ * These were chosen on this record from overlapping hourly forecasts, so they are estimates until
+ * later readings repeat them.
  */
 
 export interface Snapshot {
@@ -35,6 +53,8 @@ export interface Snapshot {
   readonly weeks: Record<string, { pct: number; reset: number }>;
   /** Each login's live runs when the reading was taken; readings before 22 October hold none. */
   readonly runs?: Record<string, number>;
+  /** Each closed login's reset (`login-state.ts`); readings before 5 November 2026 hold none. */
+  readonly closed?: Record<string, number>;
 }
 
 interface Row {
@@ -123,7 +143,8 @@ function stateOf(sorted: readonly Snapshot[], index: number, login: string): num
   const all = Object.values(runs).reduce((sum, count) => sum + count, 0);
   const left = 100 - (weeks[login]?.pct ?? 100);
   const weekend = day === 0 || day === 6 ? 1 : 0;
-  return [runs[login] ?? 0, all, date.getHours(), weekend, left, riseBefore(sorted, index, login)];
+  const open = Object.values(weeks).filter(({ pct }) => pct < 100).length;
+  return [runs[login] ?? 0, all, date.getHours(), weekend, left, riseBefore(sorted, index, login), open];
 }
 
 const withHorizon = (state: readonly number[], at: number, hours: number) => [
@@ -271,9 +292,9 @@ const predict = (model: Model, x: readonly number[], hours: number, left: number
   );
 
 /** Fits on the rows of each of `WINDOWS` that end before the last `HELD` hours, and reads the mean
- *  absolute error on the rows of those hours of the fit with the lower one, of the week pace, and of
- *  `rateOf` the earlier readings times each row's runs, each capped at what the week has left. Null
- *  with no row to hold out or none to fit before it. */
+ *  absolute error on the rows of those hours for a login with room, of the fit with the lower one, of
+ *  the week pace, and of `rateOf` the earlier readings times each row's runs, each capped at what the
+ *  week has left. Null with no row to hold out or none to fit before it. */
 export function assess(
   history: readonly Snapshot[],
   now: number,
@@ -284,7 +305,7 @@ export function assess(
   );
   const rows = rowsOf(sorted);
   const cut = now - HELD * HOUR;
-  const held = rows.filter(({ at }) => at >= cut);
+  const held = rows.filter(({ at, left }) => at >= cut && left > 0);
   const errorOf = (guess: (row: Row) => number) => mean(held.map((row) => Math.abs(guess(row) - row.y)));
   const since = (days: number) => rows.filter(({ at }) => now - at < days * 24 * HOUR);
   // A window reaching past the oldest reading reads what a shorter one did, so it is not fitted.
@@ -326,4 +347,23 @@ export function ahead(model: Model, history: readonly Snapshot[]): Record<string
       return [login, rises];
     }),
   );
+}
+
+/** The hour `week` runs out from `at`, by `curve`, its rise hour by hour to `HORIZON`, or by `held`,
+ *  the rise an hour its live runs would keep up, whichever is sooner, and past `HORIZON` at the mean
+ *  rate of what those read by then. Null where it reaches its reset first. */
+export function weekEnd(
+  curve: readonly number[],
+  week: { pct: number; reset: number },
+  at: number,
+  held = 0,
+): number | null {
+  const left = 100 - week.pct;
+  if (left <= 0) return null;
+  const rises = curve.map((rise, hour) => Math.max(rise, held * (hour + 1)));
+  const hour = rises.findIndex((rise) => rise >= left);
+  const day = rises.at(-1) ?? 0;
+  const hours = hour === -1 ? (left / day) * HORIZON : hour + 1;
+  const end = at + hours * HOUR;
+  return end < week.reset ? end : null;
 }

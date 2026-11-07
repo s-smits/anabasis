@@ -12,7 +12,7 @@
  * with the places of both.
  */
 import { fixedIn, predicted, type Report, reported } from "../../../../src/campaign/comparison.ts";
-import { carriedBy, type Measures, pointsOf } from "../../../../src/kernel/compare.ts";
+import { carriedBy, type Measures, pointsOf, testedSet } from "../../../../src/kernel/compare.ts";
 import { passed, type Ran } from "../../../../src/kernel/solves.ts";
 import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
 import type { Move, MoveDetail, Outcome, Query, ScoredTask, Sensitivity, SolveRow, Tier } from "../models.ts";
@@ -127,7 +127,7 @@ function sensitivityOf(report: Report): Sensitivity | null {
   const untied = Object.values(families ?? {}).map(({ frontier: { wins, losses } }) => wins + losses);
   // The set the step was read on: the scored tasks, or the frontier in a report before 20 October;
   // untied on the scores the step reads (`steppedOf`).
-  const test = scored.falseRate === undefined ? frontier : scored;
+  const test = testedSet(scored, frontier);
   const { wins, losses } = test === null ? { wins: 0, losses: 0 } : steppedOf(test).tally;
   return {
     frontier:

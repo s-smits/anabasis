@@ -38,7 +38,9 @@ one ruled a check defect or unclear, or left unruled, sets its task aside for ev
 ## The procedure
 
 1. **Seed the campaign.** `bun run runs seed --from <campaign> --name cmp-<what>`, or for a stored
-   pack `--events N` cut before its first release, so every task is still held. The script refuses
+   pack `--events N` cut before its first release, so every task is still held. To hold a comparison's
+   tasks as it found them, cut with `--events N` at its `comparison.started`: `--before` takes a
+   session that writes, never a comparison. The script refuses
    a folder without `seed.json`, so a real campaign is never written. The bare system needs nothing
    more: every seed holds the starter, named `starter` or `A`. Written out, the starter is
    `data/harnesses/starter/bare-harness` in the main checkout, beside every campaign's handover and
@@ -84,7 +86,7 @@ operator's word.
    included, so it runs a little over the solves' own. Show the table with the verdict, and quote no
    cost per valid answer. When a system's time is high, split its calls into the model's turns and
    the tools it ran (`solve.call` carries `ms`): a harness whose own programs search up to a
-   deadline fills the wall (Terra in the truss harness: 28.1 of 28.6 minutes a solve on 28 October),
+   deadline fills the wall (Terra in the truss harness: 28.1 of 28.6 minutes a solve),
    and a slower system is then a harness cost, not a slower model.
 3. **The A/A**, only at an even count of two solves or more.
 4. **One block a candidate.** Wins, losses and ties against the baseline; which measure carried the
@@ -105,5 +107,10 @@ solve beside it.
 - **No person's labels.** The Referee is a model, and its rulings stand until a person labels them.
 - **Another campaign's harness** is read under this campaign's contract and answer format. A
   harness built for another exam of the same domain may lose on the format alone.
+  Before any solve, compare the two contracts' formats, and freeze what a no-step settles if the
+  candidate's valid share falls well below the baseline's.
+- **The host's programs.** A solve's `python3` is the host's, and a harness may hold no interpreter
+  of its own and rely on it. Read such a harness on the host it was built on, and set every read of
+  one question on one host (`bun run runs source` prints what a launch found).
 - **Hidden values.** The trial logs hold them. Keep them under `.ana/compare/`, and keep their
   content out of prompts, pull requests and pastes (`AGENTS.md`, section 5).

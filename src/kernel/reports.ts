@@ -32,8 +32,8 @@ import {
   type Paired,
   pairsOf,
   pointsOf,
-  objectiveGap,
-  tally,
+  differenceOf,
+  gapAgainst,
 } from "./compare.ts";
 import { failWrongPasses, wrongPasses, wrongPassesIn } from "./history.ts";
 import type { LogEvent } from "./log.ts";
@@ -89,10 +89,9 @@ interface TalliedIn {
   readonly won: "old" | "fresh" | null;
   /** The measure that carried the win (`carriedBy`), null for a tie. */
   readonly by: keyof Measures | null;
-  /** The objective gap the reference harness's answers left there, against its own and its
-   *  author's (`objectiveGap`), and 0 under the floor (`ROOM`), where it leaves none; null where it
-   *  stood on neither side. */
-  readonly room: number | null;
+  /** Whether the reference harness's answers left an objective gap there, against its own and its
+   *  author's (`gapAgainst`); false under the floor (`ROOM`), and where it stood on neither side. */
+  readonly room: boolean;
 }
 
 /**
@@ -418,9 +417,7 @@ function tallyReports(
       const { task, old, fresh } = pair;
       const cutOn = (harness: unknown): boolean =>
         isString(harness) && cut.has(cutIn(session, task, harness));
-      const { wins, losses } = tally([pair]);
-      // An objective gap under the floor decides no pair, so it leaves no room (`roomOn`).
-      const gap = side === null ? null : objectiveGap(pair, side, [of(task).best]);
+      const score = differenceOf(pair);
       order += 1;
       of(task).tallied.push({
         index,
@@ -430,9 +427,10 @@ function tallyReports(
         reference: side,
         cut: cutOn(data.old) || cutOn(data.fresh),
         referenceCut: side !== null && cutOn(data[side]),
-        won: wins > 0 ? "fresh" : losses > 0 ? "old" : null,
+        won: score > 0 ? "fresh" : score < 0 ? "old" : null,
         by: carriedBy(pointsOf(pair)),
-        room: gap,
+        // An objective gap under the floor decides no pair, so it leaves no room.
+        room: side !== null && gapAgainst(pair, side, [of(task).best]),
       });
     }
     const labels = asRecord(asRecord(data.settled)?.labels);
@@ -497,9 +495,9 @@ function tallyReports(
  * that labels the reference's rejections earned returns it, and so does a person who keeps it
  * (`task.state`) after that comparison. Only the reference's own rejections count, as for the
  * exhausted tasks: a candidate's rejection that stands unearned moves nothing the Builder is told
- * (rule 3).
+ * (rule 3). The list (`doubted`) is read by the log page alone.
  *
- * **Exhausted** are the tasks the reference harness has been read easy on (`easyAt`), and they
+ * **Exhausted** are the tasks the reference harness has been read easy on (`poolOf`), and they
  * leave the frontier for the retained set (`scoredSet`). The readings are the comparisons it stood
  * in of the task, on whichever side, each without a solve of its own a limit cut, and only its own
  * solves count: the frontier sets the size the Builder is told and admission reads, so it may not
@@ -508,7 +506,7 @@ function tallyReports(
  * (the v0.9.0 review); a task a later harness breaks still scores as a retained task. A task is
  * easy once its newest `RUNS.easy` readings in a row were each valid in every solve, with no
  * room by the objective, where a better answer would be there for the next harness to reach: room
- * from the reference's own measures or its author's (`objectiveGap`, `compare.ts`), never the other
+ * from the reference's own measures or its author's (`gapAgainst`, `compare.ts`), never the other
  * harness's, which until the v0.9.0 review moved the size with which task it bettered. The words are every, some and none, as its author hears them, so the
  * rule reads the same at any count of solves, and no ratio of solves pools across readings. The
  * fold is read against whatever harness is the reference at the time, so a promotion re-derives it
@@ -570,13 +568,13 @@ export function poolOf(events: readonly LogEvent[]) {
   const awaiting = placed(heldRecords, ({ independentValidAnswer, keptAt, tallied }) =>
     runOf(tallied.filter(({ index, cut }) => !independentValidAnswer && index >= keptAt && !cut)),
   );
-  const spent = placed(heldRecords, ({ tallied }) =>
-    easyAt(
-      tallied.filter(({ reference, referenceCut }) => reference !== null && !referenceCut),
-      ownOf,
-      roomOn,
-    ),
-  );
+  // Easy: the newest `RUNS.easy` readings in a row valid in every solve of the reference, with no
+  // room by the objective.
+  const spent = placed(heldRecords, ({ tallied }) => {
+    const readings = tallied.filter(({ reference, referenceCut }) => reference !== null && !referenceCut);
+    const open = readings.findLastIndex((reading) => spreadOf(ownOf(reading)) !== "every" || reading.room);
+    return readings.length - 1 - open >= RUNS.easy ? readings.at(-1)?.order : undefined;
+  });
   const doubted = placed(heldRecords, ({ doubtedAt, keptAt, tallied }) =>
     doubtedAt > keptAt && doubtedAt > (tallied.at(-1)?.index ?? -1) ? doubtedAt : undefined,
   );
@@ -623,6 +621,7 @@ export function poolOf(events: readonly LogEvent[]) {
     // the reference alone, so which task another harness won moves nothing here (rule 3).
     practicePool: held.filter((task) => !doubted.includes(task)),
     awaiting,
+    doubted,
     exhausted,
     retained,
     feasible: new Set(
@@ -634,29 +633,6 @@ export function poolOf(events: readonly LogEvent[]) {
   };
 }
 
-/** How many of the newest readings closed a task in a row: valid in every solve `solves` reads,
- *  with no room by the objective. */
-function closedRun(
-  readings: readonly TalliedIn[],
-  solves: (reading: TalliedIn) => readonly boolean[],
-  roomy: (reading: TalliedIn) => boolean,
-): number {
-  return (
-    readings.length -
-    1 -
-    readings.findLastIndex((reading) => spreadOf(solves(reading)) !== "every" || roomy(reading))
-  );
-}
-
-/** Where readings of a task call it easy (`poolOf`), the place of the newest, or undefined. */
-function easyAt(
-  readings: readonly TalliedIn[],
-  solves: (reading: TalliedIn) => readonly boolean[],
-  roomy: (reading: TalliedIn) => boolean,
-): number | undefined {
-  return closedRun(readings, solves, roomy) >= RUNS.easy ? readings.at(-1)?.order : undefined;
-}
-
 /** The reference harness's own solves of a task in one comparison, empty where it stood on neither side. */
 function ownOf({ reference, old, fresh }: TalliedIn): readonly boolean[] {
   return reference === "old" ? old : reference === "fresh" ? fresh : [];
@@ -666,8 +642,6 @@ function ownOf({ reference, old, fresh }: TalliedIn): readonly boolean[] {
 function sideOf(tallied: TalliedIn): "every" | "some" | "none" | null {
   return tallied.reference === null ? null : spreadOf(ownOf(tallied));
 }
-
-const roomOn = ({ room }: TalliedIn) => (room ?? 0) > 0;
 
 /** What a task's author hears of it (`poolOf`, outcomes), or nothing where no report read it. */
 function outcomeOf(record: TaskRecord): [string, Outcome][] {
@@ -700,7 +674,7 @@ function standingOf(record: TaskRecord): [string, Standing][] {
  * measure a practice pass returns. From 16 to 20 October the draw left them out, and so withheld
  * the tasks the objective left room on: after r3's third, fourth and fifth promotions 12, 18 and 22
  * frontier tasks were held, with room to release 6, 12 and 16, and none could be drawn. Reading
- * that room here would read the other harness's answers and its author's (`hasObjectiveGap`), so which
+ * that room here would read the other harness's answers and its author's (`informative`), so which
  * held-out task a new harness won would change what is released, which the Builder reads (rule 3):
  * the release reads the reference's own solves alone. The release in `tools/d2/prepare.ts` calls it.
  *
@@ -712,7 +686,7 @@ function standingOf(record: TaskRecord): [string, Standing][] {
  *
  * A task the reference answered in every solve of its last reading still leaves it room where an
  * answer of its own or its author's on record is better by the objective by at least the floor
- * (`room`, `objectiveGap`), and it is put first beside the failed ones, since in an objective
+ * (`room`, `gapAgainst`), and it is put first beside the failed ones, since in an objective
  * domain every solve is valid (seven buffer campaigns, 21 October). The other harness's answers stay out of `room`, so which held-out task it won moves no release (rule 3).
  *
  * The tasks the reference never answered are the held-out ones it gave no valid answer in
@@ -742,7 +716,7 @@ export function releaseOrder(
   const failed = placed(eligible, (record) => {
     const last = lastRead(record);
     if (last === null || last === "aside" || last.reference === null) return undefined;
-    return last[last.reference].some((valid) => !valid) || (last.room ?? 0) > 0 ? last.order : undefined;
+    return last[last.reference].some((valid) => !valid) || last.room ? last.order : undefined;
   }).filter((version) => !unanswered.includes(version));
   const first = among([...unanswered, ...failed.slice(0, Math.floor(failed.length / 2))]);
   const rest = pool.filter((version) => !first.includes(version) && !failed.includes(version));

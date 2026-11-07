@@ -65,7 +65,7 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
-import { type Host, hostNamed, ownName } from "./host-config.ts";
+import { type Host, hostNamed, hostsOf, ownName } from "./host-config.ts";
 import { quoted, rsync, shellPath, sshScript, worktreesIn } from "./host-command.ts";
 import { verbOn } from "./hosts.ts";
 import { CAMPAIGNS, HERE, keepers, processes, readNamed, writers } from "./registry.ts";
@@ -254,7 +254,11 @@ export async function fetch(args: readonly string[]): Promise<void> {
     ...(name === undefined ? { depth: "record" } : { match: "exact" }),
   });
   if (copies.length === 0 && name !== undefined) {
-    throw new Error(`no host ANA_HOSTS lists holds a campaign ${name}`);
+    throw new Error(
+      hostsOf().length === 0
+        ? `ANA_HOSTS lists no host, so there is nowhere to fetch ${name} from`
+        : `no host ANA_HOSTS lists holds a campaign ${name}`,
+    );
   }
   for (const log of copies) console.log(log);
   if (name === undefined) {

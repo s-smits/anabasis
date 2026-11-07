@@ -1,6 +1,7 @@
 # Examiner tasks in the reference's power zone
 
-Status: planned, and the target of 5 November. In source: the zigzag (every new task is solved
+Status: item 1 proved without a model (#640), item 3's record read with no model, the paired seats
+not run, and the rest planned or left to the operator. In source: the zigzag (every new task is solved
 afresh by the older harness too), `try_reference` (on `main` from 4 November, 21:18), the 0 to 7
 reach ladder (#551), the package gate (#552), the drafting prompt that asks for an objective or a
 reason for none (`e7e8f2ba8`, 4 November, 16:23) and the one that keeps what a task was built from
@@ -125,6 +126,20 @@ In order: each rests on the one before, except item 7, which comes before item 3
    and one live writing seat on the jobstat exam of 5 November lowered it: it tried 3 instances,
    the reference answered all 6 solves, and the seat dropped each instance and proposed none in 51
    minutes and 15 dollars. Its 86 turns billed 84% of that, and the tries 16%. One sample.
+   The record now reads the same way, from fresh campaigns rather than paired seats, so with no
+   control beside it: at PR629 73 of 73 tries of 38 instances were valid, at PR631 58 of 58 of 35,
+   and in the opening of a third campaign 8 of 8 of 3. Of the instances tried and then held, the
+   reference failed none in any try: 0 of 22, 0 of 11 and 0 of 1. Comparison solves agree: 135
+   valid of 139 at PR629 with the other 4 provider non-results, and 260 of 260 at PR631. Rulings: 1
+   `earned` and no `check-defect` or `unclear` over 38 written tasks at PR629, none over 38 at
+   PR631. This count reads the seats' own tries, which the paragraph above forbids as a measure of
+   `try_reference`. It is kept as a bound in one direction: an Examiner that keeps the instances a
+   try failed would raise the count of held tasks with a failed try, and it stands at 0 of 34. It
+   says nothing of what a seat without tries would have held, since no control sits beside it.
+   The paired seats were not run: after the two runs already authorised, no login had room under
+   its cap, and a pair would be two draws against a record of 34 held tasks. Their prediction, for
+   when they run: at most 2 of the treated seat's held tasks fail a fresh reference solve, against
+   the same or fewer in the control seat, with no `check-defect` or `unclear` ruling on either side.
 4. **Tell the Examiner its ties as a fact after each comparison.** Its record already gives each
    task's reference outcomes (#622). Add, if paired seats show it moves supply, how many of its
    tasks the last comparison tied on validity, and why a tie teaches the comparison nothing. Never a
@@ -145,7 +160,30 @@ In order: each rests on the one before, except item 7, which comes before item 3
      Examiner-asked solve out of a task's record; and the archive replay of `decide` and admission
      over every log, counting the comparisons it would have withheld and the campaigns it would
      have ended.
-   - 4 solves a side where the reference passes under a third, and the turn and time limits.
+     Checked on 5 November, evening, with no model, and not built, since the third check fails. The
+     condition holds: 131 of 131 tries in the jobstat campaigns at PR629 and PR631 ran under a
+     comparison's condition but for the task. Rule 5 holds as far as a try decides admission alone.
+     The replay, of admission's floor over every log with a comparison, taking from the frontier
+     each task whose Examiner-asked solves under the reference in force were all valid: in those two
+     fresh campaigns it withholds 3 of 7 comparisons, and the 1 `step` among them is one of the 3 (20
+     of 22 and 22 of 24 frontier tasks closed at PR629, 19 of 21 at PR631). Across the 141 campaigns
+     opened earlier, where the solves are mostly the gate's room solves and so only a proxy, it
+     withholds 76 of 417 comparisons, 19 of 206 `step` readings and 14 first comparisons. (The high
+     share of steps is the archive's own and no doubling of logs: a recount over this host's archive
+     read 174 of 310 reports as `step`, and the ten campaigns with the most are all buffer.) A try
+     valid every time still leaves room by the objective, which `easyAt` reads and this reading
+     cannot, and an objective carried that step. The figure rests on two campaigns; the shape agrees
+     with "A strict gate against a capable model" (`AGENTS.md`, section 1). Recommendation: leave it
+     out.
+   - **4 solves a side where the reference passes under a third.** They about double the chance of
+     a step at the hard end, at twice the dollars a comparison, and do little at the ceiling. The
+     newest jobstat comparisons have no hard end: 395 valid of 399 solves at PR629 and PR631, the
+     other 4 provider non-results. Recommendation: not yet; read it again once a comparison's
+     reference passes under a third of its solves.
+   - **The turn and time limits.** One reading: a limit of 6 model turns tied all 8 tasks at PR600,
+     with the method in the exam (culprit 6). That exam is gone from source, so the reading does
+     not carry over. Recommendation: leave them until a run under the tuned prompt has reported,
+     then read the turns its solves took against the limit.
    - **The jobstat domain prompt, and the drafting clause that lets an exam name the method**
      (`src/examiner/draft.ts`, the rule on what conventions may state). Both outside reviews of
      5 November read jobstat as estimation against a hidden truth whose drafted inputs name every
@@ -173,13 +211,15 @@ In order: each rests on the one before, except item 7, which comes before item 3
      5 November ("tune indeed"), and it is the operator's prompt file for jobstat from then, the
      one before kept beside it. The case: the 4 November revision kept recomputation as the
      objective ("the larger share of computed values ... that agree with a recomputation"), and
-     the campaign that ran it, jobstath2-fresh-opus-forkedPR608-stijn-pro, scored 243 of 265
+     the campaign that ran it, jobstath2-fresh-opus-forkedPR608, scored 243 of 265
      solves at exactly 1 and tied 51 of 51 tasks over three comparisons, every one `no-step`.
    - A draw ordered by the reference's past outcomes instead of by hash (`scoredSet`,
      `src/campaign/round.ts`). It is honest between the sides, since both solve afresh; the
      reference's luck in the record that chose a task regresses on the fresh solves, which costs
      the candidate power and never gives it a step. But it aims each comparison at the old
      reference's weak spots, the pattern behind the starter losses on own-epoch tasks below.
+     Recommendation: keep the hash. At the ceiling there are no weak spots to aim at (0 of 34 held
+     tasks failed a try), so it would buy nothing until supply moves, and it costs power then.
 7. **Requests that write a demanded string with markup** (plausible, one exam). In a live round of
    5 November on the jobstat exam and the seed it ran on, 18 of 19 rulings were on one check
    (`check-manifest`), from 5 tasks whose request writes each demanded section heading as a
@@ -467,3 +507,23 @@ one exception (3). Watch these with every change above:
   one was found already true (a fresh fallback session opens with the whole record), the domain
   prompt's opposition was withdrawn (item 6), and two were opposed (item 13). The seat texts that
   are the operator's are item 14.
+- **5 November, 11:23 UTC.** The campaign launched at `ca526ad1f` (#631) read the first step on a
+  tuned jobstat prompt: its second comparison scored 13 won, 2 lost, 6 tied, p 0.0004, carried by
+  the objective, and promoted. The A/A beside it read 4 won, 9 lost, 8 tied, a step the other way
+  where none can be. A later comparison of the Starter against the promoted harness scored 6 won,
+  12 lost, 3 tied. The Referee commits of #631 did not bear on the step: that log holds no
+  `referee.call` and no rejection in 396 verdicts. The campaign at `11a330c60`, without those
+  commits, holds 4 `referee.call` and one finding, ruled earned, and scored 11 won, 11 lost at its
+  second comparison. The two differ in prompt text, host, exam draw and Builder draw at once, with
+  one campaign each, so this does not say which change helped. Both are paused on a login limit
+  with no ending.
+- **5 November, 19:07 to 22:00.** The cron set at 03:00 fired, with the operator's "fully optimize"
+  covering seats and leaving fresh campaigns to their word. Item 1 went up as #640. Item 3's three
+  checks ran with no model: the condition and rule 5 held and the replay did not, so it was not
+  built. The paired seats were not run, for lack of a login under its cap once the two authorised
+  runs were placed, and the record was read in their place (item 3), for no money. Items 4 and 5
+  wait: each asks for what paired seats show, and no exam under the tuned prompt has reported yet.
+  Three things in this file pull against each other and stay open for the operator: item 3 forbids
+  counting a seat's own tries, which is what the record offers; item 2 asks for the drafting fixes
+  to be measured first and item 7 for blind labels first, and neither is on record; and item 6
+  leaves admission reading tries to the operator, where the replay now recommends against it.

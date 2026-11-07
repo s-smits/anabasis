@@ -127,7 +127,7 @@ Without `--solve` it calls no model. Then arrange a blind review:
   and tool matches what is there; stale or duplicate files; a launcher or a link that names a path
   outside the folder; anything that answers a particular task: a part that names a task, copies its
   text or holds its answer (`AGENTS.md`, section 2); obvious missing parts. A search that tests its
-  candidates against the public rules and reports which meet them is allowed since 20 October
+  candidates against the public rules and reports which meet them is allowed
   (`src/builder/prompt.ts`).
 - Record the digest and the folder beside the review. The review is advisory: it decides no
   promotion, reading or claim. A harness promoted after it is another handover and another review.

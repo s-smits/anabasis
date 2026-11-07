@@ -20,9 +20,8 @@ out since the last comparison began, each drawn by the contract's hash. The draw
 out a task with no valid answer after two comparisons until a person labels it, and takes off the
 frontier as **exhausted** a task the reference answered in every one of its own solves in the last
 two comparisons it stood in for it, on either side (`ownOf`): the other harness's solves never
-count, so which held-out task it won moves no size the Builder is told (rule 3). A bill saving can
-still win an exhausted task. A task stays open where one of the reference's own answers or its
-author's betters another of its answers by the objective gap floor (`objectiveGap`), since the next
+count, so which held-out task it won moves no size the Builder is told (rule 3). A task stays open where one of the reference's own answers or its
+author's betters another of its answers by the objective gap floor (`gapAgainst`), since the next
 harness can still win it. The counts live in one place (`SIZE`, `RUNS`,
 `src/kernel/size.ts`), and every rule reads a side's every, some or none, so they hold at any
 number of solves.

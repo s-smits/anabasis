@@ -218,6 +218,34 @@ describe("load and reserve admission", () => {
   });
 });
 
+describe("a pause's word", () => {
+  it("starts no further solve once left, until the kill, and a word from before the process holds none", async () => {
+    const log = logIn("pause");
+    append(log, "campaign.opened", {});
+    append(log, "campaign.word", { word: "pause" });
+    const seats = gate(
+      log,
+      hostOf(() => 0),
+    );
+    await seats.solve(TASK, HARNESS, new AbortController().signal);
+    expect(seats.calls).toHaveLength(1);
+
+    const reason = new Error("the run stopped");
+    const kill = new AbortController();
+    const left = hostOf(
+      () => 0,
+      4,
+      () => kill.abort(reason),
+    );
+    const held = gate(log, left);
+    append(log, "campaign.word", { word: "pause" });
+    expect(held.solve(TASK, HARNESS, kill.signal)).rejects.toBe(reason);
+    await Bun.sleep(0);
+    expect(left.slept.length).toBeGreaterThan(0);
+    expect(held.calls).toEqual([]);
+  });
+});
+
 describe("cancelling queued solves", () => {
   it("leaves a load, reserve or slot wait on cancellation without releasing the host's sleep", async () => {
     for (const queued of ["load", "reserve", "slot"]) {

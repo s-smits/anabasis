@@ -36,12 +36,12 @@ comparison. A v1.0 release needs every row below. The values stand in
 | --- | --- | --- |
 | wall | the wall tests pass on macOS and on Linux (plan row H1) | `test/builder.test.ts`, `test/builder-led.test.ts`, the wall's start-up test |
 | supply | every comparison admitted on at least `comparisonFloor` frontier tasks, and informative tasks among those it scores | `src/campaign/admission.ts`, `bun run runs view <name>` |
-| climb | six confirmed promotions in one measured campaign (`AGENTS.md`, section 10, item 9), then the same in a second domain (plan row L2). "Confirmed" is `confirmed` in `src/campaign/climb.ts`: the epoch's first starter comparison that tallied a task reads the reference above the starter without the bill at its level | `src/campaign/climb.ts`, `promotion-tuner/scripts/table.ts --rows runs` |
-| honesty | no step in the ten A/A comparisons after the sixth promotion, so one campaign has to run past six | `falsePromotion` and `incapable` (`src/campaign/climb.ts`), the table's A/A column |
-| verdicts | at least 30 blind labels; three in four check defects caught; at most one in ten earned rejections voided; PABAK beside kappa | `tools/d2/settle.ts`, `src/referee/agreement.ts` |
+| climb | six confirmed promotions in one measured campaign (`AGENTS.md`, section 10, item 9), then the same in a second domain (plan row L2). "Confirmed" is `confirmed` in `src/campaign/climb.ts`: the epoch's first starter comparison that tallied a task reads the reference above the starter without the bill at its level | `barLines`, `src/campaign/climb.ts`; `promotion-tuner/scripts/table.ts --rows runs` |
+| honesty | no step in the ten A/A comparisons after the sixth promotion, so one campaign has to run past six | `barLines` (`src/campaign/climb.ts`) for those after the sixth; `falsePromotion`, `incapable` and the table's A/A column read a whole campaign |
+| verdicts | at least 30 blind labels; three in four check defects caught; at most one in ten earned rejections voided; PABAK beside kappa | `clears`, `src/referee/agreement.ts`, read by `tools/c/rejections.ts`; `tools/d2/settle.ts` draws a packet of one campaign |
 | grounding | one domain whose exam names the field's installed engine, so its checks stand without `--admit-authored` (rule 10, plan row F32) | `tools/c/accept.ts` |
-| economy | dollars and hours per promotion read from the log; attempts an epoch after set-up reported against 3 | `tools/d2/close.ts`, `worthOf` |
-| outside | a harness built without a benchmark's tasks or grades beats pi's starter on WorkBuddy-Bench Code, then Harness² `k=1` rerun on the same tasks and executor, under a claim and margin fixed before the first scored solve and repeated by a second campaign (plan row X1) | `studies/harness2/README.md`, `studies/harness2/run.ts read` |
+| economy | dollars and hours per promotion read from the log; attempts an epoch after set-up reported against 3 | `tools/d2/close.ts`, `worthOf`, `barLines` |
+| outside | a harness built without a benchmark's tasks or grades beats pi's starter on WorkBuddy-Bench Code, then Harness² `k=1` rerun on the same tasks and executor, under a claim and margin fixed before the first scored solve and repeated by a second campaign (plan row X1). The operator's later course towards a JobBench parity test is `docs/backlog/jobbench-scoring.md`, and whether it replaces this row is not decided | `studies/harness2/README.md`, `studies/harness2/run.ts read` |
 
 **Triage on top.** Before vetting, sort every claim by the first row it blocks, in the table's
 order: the measurement's honesty before supply, a result before its credibility, credibility
@@ -50,23 +50,22 @@ blocks no row goes below them all. Vetting and the report keep that order.
 
 ## The record
 
-- **16 October.** Five Claude teammates read the promotion path at one commit, each writing what
+- **One commit, five readers.** Five Claude teammates read the promotion path at one commit, each writing what
   the path does and then its flaws, citing counts, ids and lines.
-- **29 October, round 1.** Three gpt-6.1-sol sessions at high effort, one each for measurement,
+- **A first round.** Three gpt-6.1-sol sessions at high effort, one each for measurement,
   the learning loop, and runtime and recovery, returned four bounded issues:
   - settlement corrections that three readers missed;
   - rollback selection;
   - stale drafts after a restart;
   - the provider-wait reader.
-- **29 October, round 2.** With those four assumed repaired, three sessions read accumulated
+- **A second round.** With those four assumed repaired, three sessions read accumulated
   capability, learning information and evaluation grounding. They confirmed one design-level
   flaw: an exam was accepted that left out the compilation the operator's prompt required. Two
   supported concerns stood beside it, and no false promotion was demonstrated
-  (`.ana/wri/2026-10-29-fundamental-sol-audit-2/vetting.md`).
+  (the round's `vetting.md` under `.ana/wri/`).
 
-- **11 October.** One prompt asked whether the factors were the right set, measurable from the
-  log, stated once and true to the source. It was kept in `a650fe98b:docs/prompts.md` until
-  30 October, and is the factors lens below.
+- **The factors.** One prompt asked whether the factors were the right set, measurable from the
+  log, stated once and true to the source. It was kept in `a650fe98b:docs/prompts.md`, and is the factors lens below.
 
 What both rounds lacked: every session was asked only for proved flaws, capped at two or three. So
 each reported the nearest bounded bug, and nothing asked whether a mechanism should exist at all.

@@ -18,7 +18,8 @@ import {
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { capturedExecPath } from "../src/meta/process.ts";
+import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
+import { holdAlone, sayingPulls } from "../tools/runtime/landing.ts";
 
 import { afterAll, beforeEach, describe, expect, it } from "bun:test";
 
@@ -254,25 +255,34 @@ describe("proveCommits", () => {
     expect(prove(landing).stderr).not.toContain("passed earlier");
   });
 
-  // The wrapper prints its host-wall lines in colour, so the recorded shape begins with an escape.
+  it("prints each failed test's assertion once, however far above the log's end it stands", () => {
+    const after = Array.from({ length: 40 }, (_, line) => `later output ${String(line)}`).join("\n");
+    const result = prove([`${source}:whole`], {
+      ANA_FAKE_FAIL: `${source} test`,
+      ANA_FAKE_SUITE: `(pass) one\nerror: expect(received).toBe(expected)\nReceived: 31.5\n(fail) two [5.00ms]\n1 tests failed:\n(fail) two [5.00ms]\n${after}`,
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("error: expect(received).toBe(expected)\nReceived: 31.5\n(fail) two");
+    expect(result.stderr.match(/\(fail\) two/gu)).toHaveLength(1);
+    expect(result.stderr).not.toContain("(pass) one");
+    expect(result.stderr).toContain("later output 39");
+  });
+
+  // The wrapper prints its lines in colour, so the recorded shape begins with an escape.
   const red = "\u001B[0m\u001B[31m";
   const pulses = [
     [
-      "a host-wall rerun",
-      `${red}host-wall: 1 test(s) failed on time alone, none on an assertion; running their 1 file(s) again in one fresh process: test/two.test.ts`,
+      "an idle-wall rerun",
+      `${red}idle-wall: retrying 1 interrupted and 0 unfinished file(s) one at a time in one fresh process: test/two.test.ts`,
       true,
     ],
-    [
-      "a host-wall error",
-      `${red}host-wall: error: the host reached a load average of 20.0 on 8 cores, but 1 file(s) printed no result at all: test/two.test.ts`,
-      false,
-    ],
+    ["an idle-wall error", `${red}idle-wall: error: the suite was ended by the idle wall`, false],
   ] as const;
   it.each(pulses)(
     "reports counts and rerun state after %s",
     (_name, wall, rerunning) => {
       const result = prove([`${source}:whole`], {
-        ANA_FAKE_SUITE: `(pass) one\n(fail) two\n${wall}\n(pass) two`,
+        ANA_FAKE_SUITE: `(pass) one\n(fail) two [5.00ms]\n1 tests failed:\n(fail) two [5.00ms]\n${wall}\n(pass) two`,
         ANA_GATE_PULSE_SECONDS: "1",
       });
       expect(result.status).toBe(0);
@@ -281,9 +291,50 @@ describe("proveCommits", () => {
       expect(result.stderr).toContain(
         `prove: ${short(source)} still running after 0 min: 2 tests passed, 1 failed`,
       );
-      expect(result.stderr.includes("1 test(s) failed on time alone, none on an assertion")).toBe(rerunning);
-      expect(result.stderr.includes("failed files are running again in one fresh process")).toBe(rerunning);
+      expect(result.stderr.includes("are running again one at a time")).toBe(rerunning);
     },
     20_000,
   );
+});
+
+describe("one landing of a clone at a time", () => {
+  it("waits while a live process holds the clone, and takes the lock over once its holder is gone", async () => {
+    const clone = mkdtempSync(join(fixture, "alone-"));
+    execTextSync("git", ["init", "-q"], { cwd: clone });
+    const lock = join(clone, ".git", "ana-land.lock");
+    const mine = String(runtimeProcess.pid);
+    mkdirSync(lock);
+    writeFileSync(join(lock, "pid"), mine);
+    const said: string[] = [];
+    const held = holdAlone(clone, "land", (line) => said.push(line), 20);
+    const early = await Promise.race([held.then(() => "held"), Bun.sleep(200).then(() => "waiting")]);
+    expect(early).toBe("waiting");
+    expect(said).toEqual([`another land (pid ${mine}) is running in this clone; waiting for it to end`]);
+    // Above any pid either system gives, so no process answers it.
+    writeFileSync(join(lock, "pid"), "4194399");
+    const release = await held;
+    expect(readFileSync(join(lock, "pid"), "utf8")).toBe(mine);
+    release();
+    const again = await holdAlone(clone, "land", () => undefined, 20);
+    expect(readFileSync(join(lock, "pid"), "utf8")).toBe(mine);
+    again();
+  });
+
+  it("names each commit's pull request on the lines that name the commit", () => {
+    const said: string[] = [];
+    const proofs = ["a", "b", "c", "d"].map((letter) => ({ commit: letter.repeat(40), pass: null }));
+    // #2 has no commit of its own: its head is #1's, so c and d are #3's.
+    const pulls = [1, 2, 3].map((number) => ({ number, headRefOid: (number === 3 ? "d" : "b").repeat(40) }));
+    const say = sayingPulls(proofs, pulls, (line) => said.push(line));
+    say(`1 of 4, ${"a".repeat(9)}: documentation only.`);
+    say(`${"c".repeat(9)} still running after 1 min`);
+    say(`4 of 4, ${"d".repeat(9)}: passed.`);
+    say("#1, #2, #3 onto main: 4 commits.");
+    expect(said).toEqual([
+      `1 of 4, pr1 ${"a".repeat(9)}: documentation only.`,
+      `pr3 ${"c".repeat(9)} still running after 1 min`,
+      `4 of 4, pr3 ${"d".repeat(9)}: passed.`,
+      "#1, #2, #3 onto main: 4 commits.",
+    ]);
+  });
 });

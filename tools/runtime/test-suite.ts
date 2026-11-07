@@ -13,21 +13,18 @@
  * cells, generated-tool workers, git -- so a worker running four concurrent tests already loads
  * more than one core.
  *
- * The host the suite shares. The cores a machine has are not the cores this suite gets, and a
- * failure it did not cause is not a verdict on the branch. The worker count subtracts half the
- * one-minute load average, so a runner already carrying four jobs of its own is not asked for
- * three times itself, while a laptop that merely looks busy keeps its workers. Then, when the
- * first process fails, the run is attributed before it is believed: if a clock ended every
- * failure, or the host passed its cores in load while they ran, the failed files run again
- * alone, beside any whose worker crashed or that Bun never finished, and that verdict is the
- * suite's. A failure on a quiet host, and more of those files than a busy host explains, stand as
- * they were printed.
+ * The host the suite shares. The cores a machine has are not the cores this suite gets. The worker
+ * count subtracts half the one-minute load average, so a runner already carrying four jobs of its
+ * own is not asked for three times itself, while a laptop that merely looks busy keeps its workers.
+ *
+ * A failed test is the verdict, whatever the host's load. Until 5 November a failure ran again
+ * where a clock ended it or the host's peak load passed its cores, and a pass then cleared it. That
+ * test held on nearly every proof of a busy runner, and a retry cannot tell a test that depends on
+ * time from a real race, so the operator took it out: a failure stops the run for someone to fix.
  *
  * `ANA_TEST_BAIL=1` stops the run at its first failed test (`--bail`), which every proof of the
  * pre-push hook and `bun run land` asks for, so a red commit comes back in minutes rather than after
- * the rest of its tests; CI leaves it unset, so one run names every failure. A bailed run never
- * reached the files after its failure, so where the machine is to blame the failed files run alone
- * first and, once they pass, the whole request runs again and decides.
+ * the rest of its tests; CI leaves it unset, so one run names every failure.
  *
  * The wall. `--timeout=60000` bounds each test, not the worker. Bun 1.4 sometimes leaves a
  * `--test-worker` spinning at full CPU with exited, unreaped children after a subprocess-heavy
@@ -84,8 +81,8 @@ const OPERAND_FLAGS = new Set([
 const IDLE_WALL_SECONDS = 180;
 /** Bun prints no `(pass)` line when any of the first three is set, as a quieter mode for agents,
  *  and `runWalled` counts a file as reported only from its result lines. Inherited from an agent's
- *  shell, every passing file read as unreported, so no clock-only, crowded-host or idle-wall rerun
- *  could run. `GITHUB_ACTIONS` does the same from the other side: Bun then heads each file with
+ *  shell, every passing file read as unreported, so an idle-wall rerun took every file for
+ *  unfinished. `GITHUB_ACTIONS` does the same from the other side: Bun then heads each file with
  *  `::group::` and reports a failure as an `::error` annotation, neither of which the parser reads.
  *  The suite owns the output it parses, so its child never sees them. */
 const AGENT_MARKERS = new Set(["CLAUDECODE", "AGENT", "REPL_ID", "GITHUB_ACTIONS"]);
@@ -102,12 +99,10 @@ const COMMON_FLAGS = [
 /** `reported` holds every file whose results Bun printed and `failed` those among them with a
  *  `(fail)` line; `inFlight` is the file whose block was printed last, so with one streaming
  *  worker it is the file the wall interrupted. `exitCode` is null when the wall ended the group.
- *  `failures` counts the `(fail)` lines and `clockEnded` how many a wall ended rather than an
- *  assertion: a run where the two agree failed on time alone. `errors` counts what Bun printed
- *  outside any test, which appears in no result line and so in neither set. `interrupted` holds the
- *  files Bun said it was still running when interrupted, or whose worker crashed, and `incomplete`
- *  those it said it had not started, or aborted, or had no live worker for. `bailed` says Bun
- *  stopped at `--bail`, leaving files it never ran and so never named. */
+ *  `errors` counts what Bun printed outside any test, which appears in no result line and so in
+ *  neither set. `interrupted` holds the files Bun said it was still running when interrupted, or
+ *  whose worker crashed, and `incomplete` those it said it had not started, or aborted, or had no
+ *  live worker for. */
 interface WalledRun {
   exitCode: number | null;
   reported: Set<string>;
@@ -115,15 +110,11 @@ interface WalledRun {
   interrupted: Set<string>;
   incomplete: Set<string>;
   inFlight: string | null;
-  failures: number;
-  clockEnded: number;
   errors: number;
-  bailed: boolean;
-  peakLoad: number;
 }
 
-/** What a process printed, before its exit and the wall's load reading join it. */
-type ProcessOutput = Omit<WalledRun, "exitCode" | "peakLoad">;
+/** What a process printed, before its exit joins it. */
+type ProcessOutput = Omit<WalledRun, "exitCode">;
 
 /** `run` fills as `scanLine` reads each line of one process's stderr. */
 interface OutputReader {
@@ -135,20 +126,8 @@ interface OutputReader {
  *  the wall reads it, and `walled` says the wall fired. */
 interface WallState {
   lastOutputAt: number;
-  peakLoad: number;
   walled: boolean;
 }
-
-/** Bun names a per-test wall on the line after the result, in one of two sentences: the test's
- *  own, or a hook's, which is also what a timed-out `beforeAll` or `afterAll` prints. Either way
- *  the clock decided, and nothing was asserted about the code. The duration on the result line is
- *  no substitute: a test with a longer timeout of its own can fail an assertion after the suite's
- *  wall, and then nothing about it was the clock's. */
-const TIMED_OUT_NOTICE =
-  /^\s*\^ (?:this test timed out after \d+ms|a beforeEach\/afterEach hook timed out for this test)\.$/;
-
-/** Bun's line when `--bail` stopped the run, on stderr after the failure that tripped it. */
-const BAILED_OUT = /^Bailed out after \d+ failures?$/;
 
 /** How long the coordinator has between the wall's SIGTERM and the group kill: the `gracefulTimeout`
  *  of Bun's own CI runner. */
@@ -156,16 +135,7 @@ const GRACE_MS = 15_000;
 
 /** Why the suite did what it did with a first process's result. `stands` takes that verdict with
  *  nothing to say; the rest each print one sentence naming `subject`. */
-type Reason =
-  | "stands"
-  | "already-failed"
-  | "none-left"
-  | "never-finished"
-  | "too-many-failed"
-  | "clock-only"
-  | "crowded-host"
-  | "unhandled-error"
-  | "bailed";
+type Reason = "stands" | "already-failed" | "none-left" | "never-finished" | "unhandled-error";
 
 /** What to do with a first process's result: run `rerun` again and take that verdict, or let the
  *  first verdict stand. `subject` is the files the reason is about, for the sentence the caller
@@ -176,8 +146,6 @@ interface Attribution {
   because: Reason;
   subject: readonly string[];
 }
-
-const RERUN_FILE_LIMIT = 8;
 
 /** One spelling for a file, so a name the request gave and a header Bun printed compare as the
  *  same file. Darwin reaches its temp root through a symlink -- `/var` is `/private/var` -- and Bun
@@ -410,7 +378,6 @@ let active: Bun.Subprocess | null = null;
 function startWall(child: Bun.Subprocess, state: WallState): ReturnType<typeof setInterval> {
   const ticker = setInterval(() => {
     const busy = hostLoad();
-    state.peakLoad = Math.max(state.peakLoad, busy);
     // The silence a starved host earns. On a machine with more runnable threads than cores a file
     // takes longer to print its first line, and a suite waiting for a core looks wedged. Scaling by
     // the reading `workerCount` uses keeps the flat wall on a quiet machine. The suite's own
@@ -437,9 +404,9 @@ function startWall(child: Bun.Subprocess, state: WallState): ReturnType<typeof s
 }
 
 /** What one process's stderr says, line by line: a line about a file Bun did not finish, a file
- *  header, a result line under it, the notice that a clock ended the test above it, an error
- *  outside any test, or the bail. Bun prints file headers relative to `cwd`, the request's working
- *  directory. `run` fills as `scanLine` reads, so the relay and a test feed it the same way. */
+ *  header, a result line under it, or an error outside any test. Bun prints file headers relative
+ *  to `cwd`, the request's working directory. `run` fills as `scanLine` reads, so the relay and a
+ *  test feed it the same way. */
 function outputReader(cwd: string): OutputReader {
   const run: ProcessOutput = {
     reported: new Set<string>(),
@@ -447,12 +414,8 @@ function outputReader(cwd: string): OutputReader {
     interrupted: new Set<string>(),
     incomplete: new Set<string>(),
     inFlight: null,
-    failures: 0,
-    clockEnded: 0,
     errors: 0,
-    bailed: false,
   };
-  let awaitingNotice = false;
   // Bun's `norm`, resolving to this file's spelling of a file rather than to a bucket entry.
   const norm = (p: string) =>
     fileIdentity(
@@ -470,24 +433,15 @@ function outputReader(cwd: string): OutputReader {
     if (readInterrupt(line)) return;
     if (/^\S+\.(?:test|spec)\.[cm]?[jt]sx?:$/.test(line)) {
       run.inFlight = fileIdentity(resolve(cwd, line.slice(0, -1)));
-      awaitingNotice = false;
       return;
     }
     const header = run.inFlight;
     if (header === null || !/^\((?:pass|fail|skip|todo)\) /.test(line)) {
-      if (awaitingNotice && TIMED_OUT_NOTICE.test(line)) {
-        run.clockEnded++;
-        awaitingNotice = false;
-      } else if (line.startsWith("# Unhandled error")) {
-        run.errors++;
-      } else if (BAILED_OUT.test(line)) run.bailed = true;
+      if (line.startsWith("# Unhandled error")) run.errors++;
       return;
     }
     run.reported.add(header);
-    awaitingNotice = line.startsWith("(fail) ");
-    if (!awaitingNotice) return;
-    run.failed.add(header);
-    run.failures++;
+    if (line.startsWith("(fail) ")) run.failed.add(header);
   };
   return { run, scanLine };
 }
@@ -508,7 +462,7 @@ async function runWalled(command: string[], temporaryRoot: string, cwd: string):
     detached: true,
   });
   active = child;
-  const state: WallState = { lastOutputAt: performance.now(), peakLoad: hostLoad(), walled: false };
+  const state: WallState = { lastOutputAt: performance.now(), walled: false };
   let pending = "";
   const { run, scanLine } = outputReader(cwd);
   const relay = async (
@@ -537,67 +491,39 @@ async function runWalled(command: string[], temporaryRoot: string, cwd: string):
   clearInterval(ticker);
   // Once the wall has fired, the group's own exit (130 after the interrupt, 137 after a kill) is not
   // the verdict.
-  return { ...run, exitCode: state.walled ? null : exitCode, peakLoad: state.peakLoad };
+  return { ...run, exitCode: state.walled ? null : exitCode };
 }
 
-/** Every rule that decides whose verdict the suite reports, in one place and away from the
- *  spawning. They are all attribution rather than execution -- a clock decided rather than an
- *  assertion, the host was carrying more runnable work than it has cores, too many
- *  files failed for a busy host to explain, a file printed no result at all -- so deciding them
- *  here costs a plain call where deciding them inside `main` cost a real sub-suite each. */
+/** Whose verdict the suite reports. A process that ended by itself reports its own, and one the
+ *  wall ended reports nothing about the files it never finished, so only those run again. */
 function attribute(first: WalledRun, asked: readonly string[]): Attribution {
-  const cores = availableParallelism();
-  const failed = [...first.failed];
-  // An error Bun printed outside any test is in its exit code and in no result line, so nothing in
-  // `failed` speaks for it and running those files again cannot unsay it: a clock-only or
-  // crowded-host rerun would return zero and take the error with it.
+  // An error Bun printed outside any test is in its exit code and in no result line, so running
+  // those files again could return zero and take the error with it.
   if (first.errors > 0) {
     return { rerun: null, exitCode: first.exitCode ?? 1, because: "unhandled-error", subject: [] };
   }
-  if (first.exitCode === null) {
-    // The wall ended the group. A failure it had already printed on an assertion is the verdict:
-    // the rerun covers the files the first process never finished, never the verdict of one it
-    // did. A clock that ended every printed failure is the machine's verdict, as it is without a
-    // wall, so those files join the rerun on the terms a clock-only run's would.
-    const clockOnly =
-      first.failures > 0 && first.clockEnded === first.failures && failed.length <= RERUN_FILE_LIMIT;
-    if (failed.length > 0 && !clockOnly) {
-      return { rerun: null, exitCode: 1, because: "already-failed", subject: failed };
-    }
-    // Every file left unfinished runs again, however many: Bun's own CI runner reruns each one an
-    // interrupted batch left, uncapped, because a queue two wedges stranded says nothing about the
-    // files behind them. The files Bun named join those asked for that printed nothing, so the
-    // rerun holds when a request named a directory or the coordinator printed no report. The file
-    // printed last may be a streamed block the wall cut short, so it runs again too.
-    const remaining = [
-      ...new Set([
-        ...failed,
-        ...first.interrupted,
-        ...first.incomplete,
-        ...asked.filter((file) => !first.reported.has(file) || file === first.inFlight),
-      ]),
-    ];
-    if (remaining.length === 0) return { rerun: null, exitCode: 1, because: "none-left", subject: remaining };
-    return { rerun: remaining, exitCode: 1, because: "never-finished", subject: remaining };
-  }
-  if (first.exitCode === 0 || first.failures === 0) {
+  if (first.exitCode !== null) {
     return { rerun: null, exitCode: first.exitCode, because: "stands", subject: [] };
   }
-  // Two failures the branch did not cause: every one of them ended by a clock, and any of them on
-  // a host carrying more work than the suite asked of it. Either way the machine decided.
-  const because: Reason | null =
-    first.clockEnded === first.failures ? "clock-only" : first.peakLoad > cores ? "crowded-host" : null;
-  if (because === null) return { rerun: null, exitCode: first.exitCode, because: "stands", subject: [] };
-  // A bailed run never ran the files after the failure that stopped it, and names none of them, so
-  // a passing rerun of the failed files alone clears only those: `main` then runs the whole request.
-  if (first.bailed) return { rerun: failed, exitCode: first.exitCode, because: "bailed", subject: failed };
-  // A file whose worker crashed, or that Bun aborted or never started, printed no `(fail)` line, so
-  // it is not in `failed` but it is in the exit code: it runs again beside them or the verdict stands.
-  const unfinished = [...new Set([...failed, ...first.interrupted, ...first.incomplete])];
-  if (unfinished.length > RERUN_FILE_LIMIT) {
-    return { rerun: null, exitCode: first.exitCode, because: "too-many-failed", subject: unfinished };
+  // The wall ended the group. A failure it had already printed is the verdict: the rerun covers
+  // the files the first process never finished, never the verdict of one it did.
+  if (first.failed.size > 0) {
+    return { rerun: null, exitCode: 1, because: "already-failed", subject: [...first.failed] };
   }
-  return { rerun: unfinished, exitCode: first.exitCode, because, subject: unfinished };
+  // Every file left unfinished runs again, however many: Bun's own CI runner reruns each one an
+  // interrupted batch left, uncapped, because a queue two wedges stranded says nothing about the
+  // files behind them. The files Bun named join those asked for that printed nothing, so the
+  // rerun holds when a request named a directory or the coordinator printed no report. The file
+  // printed last may be a streamed block the wall cut short, so it runs again too.
+  const remaining = [
+    ...new Set([
+      ...first.interrupted,
+      ...first.incomplete,
+      ...asked.filter((file) => !first.reported.has(file) || file === first.inFlight),
+    ]),
+  ];
+  if (remaining.length === 0) return { rerun: null, exitCode: 1, because: "none-left", subject: remaining };
+  return { rerun: remaining, exitCode: 1, because: "never-finished", subject: remaining };
 }
 
 async function main(): Promise<number> {
@@ -637,28 +563,16 @@ async function main(): Promise<number> {
       // The ticker printed the wall it enforced and the load that set it; repeating the flat
       // value here would name a wall that may not be the one that fired.
       const silence = "the suite was ended by the idle wall";
-      const machine =
-        first.clockEnded === first.failures
-          ? `${String(first.failures)} test(s) failed on time alone, none on an assertion`
-          : `the host reached a load average of ${first.peakLoad.toFixed(1)} on ${String(availableParallelism())} cores while these ran`;
-      const interrupted = step.subject.filter(
-        (file) => first.interrupted.has(file) || first.failed.has(file),
-      ).length;
-      const rerunning = `running their ${String(step.subject.length)} file(s) again in one fresh process: ${relative(step.subject)}`;
+      const interrupted = step.subject.filter((file) => first.interrupted.has(file)).length;
       // A Record, so a new reason cannot be added without a sentence that names its subject.
       const said: Record<Exclude<Reason, "stands">, string> = {
         "already-failed": `idle-wall: error: ${silence}; ${String(step.subject.length)} file(s) had already failed: ${relative(step.subject)}`,
         // Every file it can name printed its result, so there is nothing to run again, and the
         // process that went silent afterwards left no exit code to take as the verdict.
         "none-left": `idle-wall: error: ${silence} with no file left unfinished that it can name, so nothing can run again and there is no exit code to take as the verdict.`,
-        // Bun's own CI runner's line for the same rerun, where `interrupted` is its `failed`: the
-        // files the wall interrupted and any a clock failed before it.
+        // Bun's own CI runner's line for the same rerun, where `interrupted` is its `failed`.
         "never-finished": `idle-wall: retrying ${String(interrupted)} interrupted and ${String(step.subject.length - interrupted)} unfinished file(s) one at a time in one fresh process: ${relative(step.subject)}`,
-        "too-many-failed": `host-wall: error: ${machine}, but ${String(step.subject.length)} files failed, which is more than a busy host explains: ${relative(step.subject)}`,
-        "clock-only": `host-wall: ${machine}; ${rerunning}`,
-        "crowded-host": `host-wall: ${machine}; ${rerunning}`,
-        "unhandled-error": `host-wall: error: ${String(first.errors)} error(s) printed outside any test, which running any file again cannot clear.`,
-        bailed: `host-wall: ${machine}, and the run bailed; ${rerunning}, and once they pass the whole request again`,
+        "unhandled-error": `test-suite: error: ${String(first.errors)} error(s) printed outside any test, which running any file again cannot clear.`,
       };
       console.error(said[step.because]);
     }
@@ -682,9 +596,7 @@ async function main(): Promise<number> {
     if (again.exitCode === null) {
       console.error("idle-wall: error: the rerun was ended by the idle wall named above.");
     }
-    if (step.because !== "bailed" || again.exitCode !== 0) return again.exitCode ?? 1;
-    const whole = await runWalled(testCommand(requested, Bun.env.ANA_TEST_WORKERS), temporaryRoot, cwd);
-    return whole.exitCode ?? 1;
+    return again.exitCode ?? 1;
   } finally {
     endNaming(roots);
     // A test the idle wall ended can leave something under the root its removal fails on: on

@@ -41,9 +41,9 @@ release:    proof run at the top to 2 promotions, unchanged → three reviewers 
 
 ### The iteration (WRI2P2): one run's trigger, one pull request
 
-WRI2P2, the Whole Run Improvement Implementation Plan StackedPR Protocol (the operator's name,
-4 November: two I's and two P's), is the whole sweep from one run's investigation to a stacked pull
-request and a new run. The operator's protocol of 4 November: "Repeat the protocol more and more
+WRI2P2, the Whole Run Improvement Implementation Plan StackedPR Protocol (the operator's name:
+two I's and two P's), is the whole sweep from one run's investigation to a stacked pull
+request and a new run. The operator's protocol: "Repeat the protocol more and more
 once 2-promotions come in of launching and improving, stack PR per fullRun Improvement iteration
 (Plan + Implementation after WRI)", and the fresh runs after it are launched without asking ("you
 can autonomously launch new runs after" it). One script reads where every run and every iteration
@@ -60,11 +60,12 @@ host and needs no env file. It writes nothing but an investigation's files, thro
 stops, launches and merges nothing. The whole-run investigation stays a tool of its own
 (`wri.ts`), for a question that is no iteration.
 
-1. **The trigger**, whichever comes first (operator, 4 November): two promotions, twelve hours since
+1. **The trigger**, whichever comes first (operator): two promotions, twelve hours since
    the opening, a comparison that left no task untied ("they likely won't promote so that's a bit
-   ironic that we need to wait"), or an ending after a comparison. A buffer run carries
-   `--promotions 2`, which ends it `operator` at its second promotion (`AGENTS.md`, factor 1); a
-   jobstat run carries no cap. Resolve every row of `Predictions.md` whose event exists.
+   ironic that we need to wait"), or an ending after a comparison. The trigger stops nothing and no
+   run carries a cap: each promotion alerts (`runs alerts`), and a run is paused on the operator's
+   word after that promotion's starter comparison reports (`AGENTS.md`, factor 1). Resolve every row
+   of `Predictions.md` whose event exists.
 2. **Investigate** it with whole-run-investigation, opened by `wri2p2.ts open`, with the other
    triggered runs of the same code and pack as equals where there are any. A live run is read on a
    frozen copy (`wri.ts start --snapshot`) and goes on: stopping one is the operator's (`AGENTS.md`,
@@ -86,13 +87,13 @@ stops, launches and merges nothing. The whole-run investigation stays a tool of 
    A slot free with no iteration to measure is filled at the current top too: capacity left idle
    measures nothing.
 
-Iterations overlap. A second run can reach its cap while the first's pull request is being written;
+Iterations overlap. A second run can reach the trigger while the first's pull request is being written;
 it starts its own iteration, and each pull request stacks on the one before. Nothing in an
 iteration is merged: the release does that (steps 9 and 10).
 
 A run is evidence about the code it ran (`AGENTS.md`, section 9), so a run left going while its code
 is investigated measures code that is about to be replaced, and a release landed before the
-investigation is read ships without what the investigation found. On 22 October v0.6.4 was landed
+investigation is read ships without what the investigation found. For example, v0.6.4 was landed
 and six runs were forked on it while the investigation of the runs before them was still being read;
 the operator stopped five of the six 20 minutes later, and the investigation's one patch became
 v0.6.5. A deadline does not reorder the steps: where the investigation cannot be read in time, tell
@@ -114,7 +115,7 @@ the operator and ask, rather than land first.
    A pull request without a run-side reading still gets its row.
    **One folder a cycle**: `cycle.md` and `Predictions.md`, spelled so, live together in
    `.ana/wri/<YYYY-MM-DD>-cycle-<release>/` of the central host's main checkout,
-   dated by the fork and named by its release (`2026-10-27-cycle-v073`), beside the cycle's
+   dated by the fork and named by its release (`<YYYY-MM-DD>-cycle-v073`), beside the cycle's
    investigations. One ledger covers every run of the cycle, and an investigation of several runs
    reads it whole, so it is never copied into a run's or an investigation's folder: `wri.ts index`
    lists each recent run with the ledgers and investigations that name it. It goes in neither
@@ -132,12 +133,12 @@ the operator and ask, rather than land first.
    sit in one file. A peer session's ledger for the same runs is read and linked, not repeated.
    Every review first checks that `Predictions.md` exists. Where it is missing, the review
    writes it before anything else, marked as written after launch, with each run's solves at the
-   time of writing. On 27 October the v0.7.3 runs opened with only cycle-wide predictions, and
+   time of writing. The v0.7.3 runs opened with only cycle-wide predictions, and
    their per-PR ledger was written 15 minutes after launch; the next cycle's ledger was written
    before its fork but without labels, lanes or groups, which the tables above now ask for.
 2. **Fork at the release**, once step 1 is on record. Take the commit the last release merged (`git
    tag` of `main`), or, inside an iteration, the head of the pull request it opened ("The
-   iteration" above; the operator's word of 4 November). A pull request above it that changes code a
+   iteration" above; the operator's word). A pull request above it that changes code a
    campaign runs need not hold up the fork; name it. Fork **one fresh campaign per runner host**,
    or the set the operator names, so each runs on a host no other campaign loads:
    `runs fresh <pack> --host <host> --at <commit> --login N --as <suffix> --yes`, after a dry run
@@ -146,8 +147,8 @@ the operator and ask, rather than land first.
    already be available there. This explicit override belongs to the isolation condition; read
    `runs hosts --health` before selecting idle hosts. Ordinary forks omit `--host` and `--login`:
    `fresh` prefers the pack's prior eligible host and chooses a login below its fleet cap. Several
-   packs sharing their flags can use one fresh batch. Launch the hosts one after the other: on 22
-   October two `fresh --host` launches sent at once from one checkout both exited 1, and each
+   packs sharing their flags can use one fresh batch. Launch the hosts one after the other: two
+   `fresh --host` launches sent at once from one checkout have both exited 1, and each
    passed when run alone. Fresh performs the fleet login admission before each launch. Tag
    `run/<name>/1` at the commit and push the tag.
 3. **Read the runs** with `scripts/wri2p2.ts` (above) at every review and at every milestone,
@@ -157,7 +158,7 @@ the operator and ask, rather than land first.
 
 ### The improvement window, in this order
 
-Steps 4 to 9 share one window of **twelve hours** from the last stop (operator, 28 October): stop,
+Steps 4 to 9 share one window of **twelve hours** from the last stop (operator): stop,
 investigate, vet, plan, implement and consolidate, so the stack is proved by its end. Step 10 waits
 for the operator's word to land. Where a step cannot finish inside the window, say what is left at
 its end, and carry on in the same order; the window gives no step a reason to skip the one before.
@@ -166,7 +167,7 @@ its end, and carry on in the same order; the window gives no step a reason to sk
    (`runs on <host> stop`), since two hosts may hold one name; one the operator keeps, such as an
    ablation, goes on and is read on a snapshot (`wri.ts start --snapshot`). A stop word
    (`tools/d2/word.ts --stop`) waits for the next move boundary, which inside a led campaign can be
-   an Examiner session of an hour or more: on 21 October two words left at 23:44 had not acted 20
+   an Examiner session of an hour or more: two words once had not acted 20
    minutes later. A stopped run's log stays where it is. Resolve every prediction whose event
    exists, and mark the rest unreached.
 5. **Investigate** the stopped runs as equals with
@@ -209,8 +210,8 @@ its end, and carry on in the same order; the window gives no step a reason to sk
    **A run proves the release, and `--sanitize` does not.** `land` proves that each commit passes
    its checks. Whether the stack still climbs takes a run. So a stack lands only once a fresh campaign
    launched at the top's head has reached **two promotions** with its code unchanged throughout
-   (operator, 4 November: "we need at least two promotions to merge it right (unchanged during the
-   run) now that we're getting more serious"). Before that day one reported comparison was enough.
+   (operator: "we need at least two promotions to merge it right (unchanged during the
+   run) now that we're getting more serious").
    Four conditions decide whether that run proves the landing:
    - **The commit, unchanged.** Every launch in `bun run runs source <name>` names the top's head, or
      a commit whose `src`, `vendor` and `package.json` match it (`git diff --stat`), each with a clean
@@ -224,7 +225,7 @@ its end, and carry on in the same order; the window gives no step a reason to sk
    - **Nothing above it.** A pull request published above the run's commit is not proved by it. Land
      the proved top by its number and leave the newer one above. A pull request that changes what a
      seat reads waits for its paired round of seats first (system-path-simulation, `cases/optimize.md`),
-     then for a run of its own. On 4 November #601, a draft rewording the seats, was stacked above
+     then for a run of its own. For example, #601, a draft rewording the seats, was stacked above
      v0.9.3's proved top before its round.
 
    The release notes name the proof run, its commit and its two `harness.promoted` events.
@@ -238,25 +239,25 @@ its end, and carry on in the same order; the window gives no step a reason to sk
    The major moves only on the operator's word, for a break in the design.
 11. **Predict and fork** the next cycle at the release's merge commit: steps 1 and 2 again.
 
-**The threshold.** Each run ends at **two promotions**, by its own `--promotions 2` (operator,
-2 November), or is stopped **twelve hours after its opening**, whichever comes first (operator,
-28 October). A run the operator lets go on to the milestone of six drops the flag.
+**The threshold.** No run carries a cap on promotions. Each promotion alerts (`runs alerts`), and a
+run is paused on the operator's word after that promotion's starter comparison reports, since a pause
+before it leaves the promotion unconfirmed for good. **Two promotions** remain the trigger for
+investigating a run, and stop nothing, and no hour stops a run either: one goes on until the operator
+pauses it or it reaches its own ending. `--promotions N` stays an available flag (run-management).
 `scripts/wri2p2.ts` names the step `open` at the threshold (`--promotions`, `--hours`), and times a live run to now, so a run in a long
 wait still reaches its hours. The running window ends when every run the cycle stops has ended. The
 #306 forks
 reached their first promotion at 11.9 and 14.4 hours after their opening and their third at 17.8
 and 19.1 hours (`wri.ts start`, lane 27); no run has yet been timed to its sixth. The A/A of every promoting
 reading should read no step; the release says where one did. No seat is told the threshold and no
-campaign stops at it (`AGENTS.md`, factor 1): the cycle stops the runs.
+campaign stops at it (`AGENTS.md`, factor 1): the cycle pauses or stops the runs.
 
 ### The script: `scripts/wri2p2.ts`
 
 The cycle's state is read by one script, the iteration's ("The iteration" above), so a review or a
 timer is one line and nobody reads the runs by hand to decide the step. Its rows hold the host,
 live or closed with its ending, promotions, comparisons and hours since the opening, and then each
-run's step: `run`, `open` with the trigger, or the step its investigation has reached. Until
-4 November `cycle.ts` asked each host to run it in its own tree, so a host whose tree predated the
-script answered no rows, and it read `investigate` only once no run was live.
+run's step: `run`, `open` with the trigger, or the step its investigation has reached.
 
 The cycle's reviews start from the pulse's lines (section "Timers"); each runs the script and takes
 the step it names: at M1 after the fork, then at each run's comparisons and promotions, and once
@@ -270,7 +271,7 @@ Read the operator's local handover where one is kept, then read the current evid
 
 ```sh
 bun --env-file=.env.runs run runs status     # every run on this host and each host ANA_HOSTS lists
-bun run runs pulse --once                    # open runs and endings since the last look
+bun run runs pulse                    # open runs and endings since the last look
 bun run runs view <name>                     # comparisons, climb and the table's next move
 bun run runs source <name>                   # each launch's commit and whether it was clean
 bun .claude/skills/stack-pr/scripts/stack.ts   # the open stack and its top
@@ -416,8 +417,8 @@ walk chooses what to do about it.
    blaming the harness. Owner: the number of campaigns on that host; use the launch load rule.
 7. **Promotion:** `no-step` near the level, a retained loss, or an A/A step. Owners: supply and
    size first. One `step` promotes (`stepOf`), its one test over the frontier and the retained
-   tasks together, cleared on the scores and on the scores without the bill; until 19 October a
-   first reading could buy a repeat, and until 20 October the
+   tasks together, cleared on the scores; in an older log a
+   first reading could buy a repeat, and the
    retained tasks were a second test that could read `regressed`. No retained task tallied is
    `unmeasured`.
 8. **Next epoch:** refused drafts, idle conversations or few frontier tasks after promotion.
@@ -459,7 +460,7 @@ comparisons miss alike, or a prediction fails, walk the links again before choos
   campaign cut at its `contract.frozen` (`--events <its line>`) into a worktree at each commit,
   and run each seed on the source's launch flags (its `launch-run-1.json`), dry run first. Both
   arms hold one contract, one check program and the draft's tasks, and write the rest themselves.
-  On 3 November a drafted ESP32 campaign cut at 21 of 2,387 events dry-ran at the stack's top with
+  For example, a drafted ESP32 campaign cut at 21 of 2,387 events dry-ran at the stack's top with
   its log unchanged and named holding the drafted tasks next. The seed keeps the source's opening
   terms, its reserve included. Its promotions are no climb (`AGENTS.md`, section 10, item 9) and
   each arm is one stream, so the result is a lead for a fresh run, never a step. Each arm is a paid
@@ -505,7 +506,7 @@ so.
 ## 5. Watch
 
 ```sh
-bun run runs pulse --once [<name>]
+bun run runs pulse [<name>]
 ```
 
 Read at each milestone and at the timer's predicted moment.
@@ -516,7 +517,7 @@ Read at each milestone and at the timer's predicted moment.
   growing is a lead, not a process check.
 - Read a quiet run's last event before naming its state. A `status` row saying "solving" or
   "working" hours after its last event is usually a `campaign.waited` naming its reset. An
-  `environment` ending under a live keeper is a pause, not an end. On 20 October both were misread:
+  `environment` ending under a live keeper is a pause, not an end. Both have been misread:
   a weekly limit as a stall, and three paused runs as finished.
 - `waitOut` in `src/solver/run.ts` waits for a named provider reset, inside the solve it ended and
   after a session crash (`tools/d2/host.ts`). After an interruption, continue
@@ -561,7 +562,7 @@ consecutive events, leaving out:
 - every stretch that ends in a `provider` non-result or an errored model turn before anything
   productive happens.
 
-On 20 October r5 and r6 read 16 elapsed hours and 7.5 and 9.4 active hours: a DNS outage had failed
+For example, r5 and r6 read 16 elapsed hours and 7.5 and 9.4 active hours: a DNS outage had failed
 their solves as `provider` non-results for four hours. Name each setting the runs differ in (limits,
 objective rule, promotion rule) beside the comparison. No reader in the tree computes active hours
 yet, so give the script with the counts.
@@ -616,7 +617,7 @@ steps are its own judgment, held to the evidence and to recorded authority.
    pass: problem, link, event or count, how found, and status, ranked by the first failed link and
    then by the number of runs showing it. Check a row against log and source, and prove it with a
    replay or rehearsal that passes its link.
-4. **Re-arm.** Add, move or delete timers toward the cycle's goal (operator, 21 October). Arm a
+4. **Re-arm.** Add, move or delete timers toward the cycle's goal (operator). Arm a
    one-shot at the next event a run's log predicts: for a comparison, scored tasks × solves a side
    × 2 × median solve minutes, divided by concurrent solves. Once every run the cycle forked has
    its `campaign.opened`, arm one one-shot for each row of `Predictions.md` whose claim names a time
@@ -634,14 +635,14 @@ At step 4 of the cycle every row still open is marked `unreached`.
 
 | Timer | When | Its step 3 |
 | --- | --- | --- |
-| pulse (the watch and the cycle's driver) | every 290 seconds: one Monitor on `bun run runs pulse --every 290`, its actionable lines only | every run's milestone, ending and stall on every host; a line naming a milestone, an ending or a stall starts the protocol, with the first cycle step not done, ended runs closed out and `runs usage`; a run ended at its cap starts an iteration, and a freed slot gets a fresh run at the top |
+| pulse (the watch and the cycle's driver) | every 290 seconds: one Monitor on `bun run runs pulse --every 290`, its actionable lines only | every run's milestone, ending and stall on every host; a line naming a milestone, an ending or a stall starts the protocol, with the first cycle step not done, ended runs closed out and `runs usage`; a run at the trigger starts an iteration, and a freed slot gets a fresh run at the top |
 | milestone | one-shot at a predicted event, or at a prediction's deadline | the named milestone or row, and any investigation it owes |
-| cycle review | one-shot at each step of the release cycle: the stop at the latest opening plus twelve hours, and the end of the improvement window at the last stop plus twelve hours | the step `wri2p2.ts` names; at the window's end, what is proved and what is left |
+| cycle review | one-shot at each step of the release cycle: the investigation's trigger at the latest opening plus twelve hours, and the end of the improvement window at the last stop plus twelve hours | the step `wri2p2.ts` names; at the window's end, what is proved and what is left |
 | handover | one-shot at the agreed handover time | five points, changes and decisions waiting, and which timers were useful by their ledger rows |
 
-The pulse is the one recurring watch (operator, 2 November): no hourly or longer watch beside it. A
+The pulse is the one recurring watch (operator): no hourly or longer watch beside it. A
 Claude Code Monitor lasts at most its tool's limit, so re-arm the same command at each expiry
-notice; a one-off wait for a promotion never stands in for it, since on 2 November that swap left
+notice; a one-off wait for a promotion never stands in for it, since that swap once left
 the runs unwatched for hours. Pass `--state <file>` so a re-armed pulse says nothing twice.
 
 A Claude Code timer (`CronCreate`) lives only in the session that armed it. It dies when that
@@ -653,9 +654,9 @@ idle, a few minutes off the time it names. So:
   run-improvement-campaign's Timers". It fires after compactions that will have dropped the context
   it was armed in.
 - Review the one-shots from the ledger at each protocol run, not with a separate recurring Codex
-  session: on 24 October one fired four times in about eight and a half hours, and three of the
+  session: one fired four times in about eight and a half hours, and three of the
   four read a stale ledger, found no change or found the timer redundant.
-- Write the time with its UTC offset in the ledger and the prompt (DST ended 25 October 03:00).
+- Write the time with its UTC offset in the ledger and the prompt (a clock change moves a local time).
 
 Use [references/cycle-ledger.md](references/cycle-ledger.md) for the evidence fields. The release
 cycle above owns the steps and authority for the next cycle too.

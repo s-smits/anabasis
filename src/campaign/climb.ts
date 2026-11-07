@@ -8,13 +8,14 @@
  * comparison solves both harnesses afresh on one draw, and the starter comparison after a
  * promotion draws the tasks held out since first, so the reference's share of valid solves, the
  * set-aside count and the split of the starter tally into the epoch's own tasks and older ones,
- * which decided no move, went (the examiner-complexity scripts read the reference's share).
+ * which decided no move, went (the examiner-complexity scripts read the reference's share, and
+ * comparison-reading's `starter-reads.ts` that split, for the operator).
  *
  * Written when the operator asked for the climb to be read as such: ten campaigns
  * had promoted once each and none twice, and no view said at which epoch a campaign stood or what
  * its tasks had done since the promotion. `runs view` prints the rows.
  */
-import { readsStep, scoresIn, type Tally, testOf } from "../kernel/compare.ts";
+import { readsStep, readsStepEitherWay, scoresIn, type Tally, testedSet, testOf } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { lastReports, type Reported } from "../kernel/reports.ts";
 import { billedBetween } from "../kernel/meter.ts";
@@ -66,6 +67,8 @@ export interface Epoch {
    *  4 to 28 in the reference's favour as a near tie in an objective domain (buffer-forkedPR530's
    *  g-6). */
   readonly starter_tally: Tally | null;
+  /** That comparison's id, null where `starter_tally` is. */
+  readonly starter_read: string | null;
   /** Whether the promotion that opened the epoch is confirmed: its first starter comparison that
    *  tallied a task reads the reference above the starter without the bill, at that comparison's
    *  level (`AGENTS.md`,
@@ -76,6 +79,7 @@ export interface Epoch {
 }
 
 const PROMOTED = "harness.promoted";
+const ATTEMPT = "promotion attempt";
 
 /** The bar a promotion's cost is read against (the plan's W): the promotion attempts of an epoch after set-up, comparisons against its
  *  reference, which are what the false-promotion estimate counts, so the bar does not move with the
@@ -87,9 +91,13 @@ const PROMOTED = "harness.promoted";
  *  opening could name another (`--cost`), and none of 310 logs did. */
 export const BARS = { cost: 3 } as const;
 
+/** The milestone a campaign is read against for the operator (`AGENTS.md`, factors 1 and 2; the
+ *  plan's M1 and M2): six confirmed promotions, then the A/A comparisons after the sixth. It is
+ *  observation only, so no prompt, tool or move reads it. */
+const MILESTONE = { promotions: 6, controls: 10 } as const;
+
 /** A step's worth against the bar (`worthOf`, `promotionsWorth`). */
 export interface Worth {
-  readonly bars: Readonly<Record<keyof typeof BARS, number>>;
   /** The epoch's promotion attempts, Builder sessions and billed dollars, and whether the attempts
    *  are within the bar, which set-up's epoch always is. */
   readonly cost: {
@@ -97,8 +105,10 @@ export interface Worth {
     readonly sessions: number;
     readonly dollars: number;
     readonly met: boolean;
-  } | null;
+  };
 }
+
+const levelOf = ({ data }: Reported) => (isNumber(data.level) ? data.level : 0);
 
 /** Where each epoch starts: the log's opening, then each promotion. */
 function boundsOf(events: readonly LogEvent[]): { index: number; harness: string }[] {
@@ -142,11 +152,9 @@ export function epochsOf(events: readonly LogEvent[]): Epoch[] {
     // that finished read 0 in every epoch of a led campaign (WRI lane 31).
     const built = events.filter(({ kind }, at) => within(at) && kind.startsWith("build."));
     // An old ladder's readings are no comparison of the epoch's (`lastReports`).
-    const comparisons = events.flatMap(({ kind, data }, at) =>
-      within(at) && kind === "comparison.reported" && isString(data.session) && data.ladder !== true
-        ? [{ id: data.session, reading: isString(data.reading) ? data.reading : "" }]
-        : [],
-    );
+    const comparisons = reports
+      .filter(({ index }) => within(index))
+      .map(({ session, data }) => ({ id: session, reading: isString(data.reading) ? data.reading : "" }));
     const referenceDigest = reference === "starter" ? starter : reference;
     return {
       nth: nth + 1,
@@ -176,8 +184,8 @@ function againstStarter(
   within: (at: number) => boolean,
   reference: string | null,
   starter: string | null,
-): Pick<Epoch, "starter_tally" | "confirmed"> {
-  if (reference === null) return { starter_tally: null, confirmed: null };
+): Pick<Epoch, "starter_tally" | "starter_read" | "confirmed"> {
+  if (reference === null) return { starter_tally: null, starter_read: null, confirmed: null };
   const first = reports.find(
     ({ index, data }) =>
       within(index) &&
@@ -186,24 +194,38 @@ function againstStarter(
       data.reading !== "not-scored" &&
       asRecord(data.scored) !== null,
   );
-  if (first === undefined) return { starter_tally: null, confirmed: false };
+  if (first === undefined) return { starter_tally: null, starter_read: null, confirmed: false };
   const ahead = scoresIn(first.data.scored).map((one) => -one);
   const { wins, losses, ties } = testOf(ahead);
-  const level = isNumber(first.data.level) ? first.data.level : 0;
-  return { starter_tally: { wins, losses, ties }, confirmed: readsStep(ahead, level) };
+  return {
+    starter_tally: { wins, losses, ties },
+    starter_read: first.session,
+    confirmed: readsStep(ahead, levelOf(first)),
+  };
+}
+
+/** Each A/A comparison beside `reports`, the reference against itself read as a comparison is:
+ *  whether it had enough untied tasks to read a step at its level, and whether it read one. */
+function controlsIn(reports: readonly Reported[]) {
+  return reports.flatMap((each) => {
+    const noise = asRecord(each.data.noise);
+    if (!Array.isArray(noise?.differences)) return [];
+    const level = levelOf(each);
+    const scores = scoresIn(noise);
+    const able = readsStep(scores.map(Math.abs), level);
+    return [{ index: each.index, level, scores, able, step: readsStep(scores, level) }];
+  });
 }
 
 /**
  * An epoch's false-promotion reading (`FalsePromotion`): its attempts, from `reports` within it
- * against `reference`, each at its own rate, and beside them the campaign's A/A comparisons, each the
- * reference against itself read as a comparison is.
+ * against `reference`, each at its own rate, and beside them the campaign's A/A comparisons.
  */
 function falsePromotionOf(
   reports: readonly Reported[],
   within: (at: number) => boolean,
   harnesses: { readonly reference: string | null; readonly starter: string | null },
 ): FalsePromotion {
-  const levelOf = ({ data }: Reported) => (isNumber(data.level) ? data.level : 0);
   const attempts = reports.filter(
     ({ index, data }) =>
       within(index) &&
@@ -214,24 +236,17 @@ function falsePromotionOf(
   /** The test's own chance a reading at its margins reads a step between equal harnesses
    *  (`falseRate`, the frontier's before 20 October), the level where its report holds none. */
   const rateOf = (attempt: Reported) => {
-    const rate = asRecord(attempt.data.scored)?.falseRate ?? asRecord(attempt.data.frontier)?.falseRate;
+    const rate = testedSet(asRecord(attempt.data.scored), asRecord(attempt.data.frontier))?.falseRate;
     return isNumber(rate) ? rate : levelOf(attempt);
   };
-  const read = reports.flatMap((each) => {
-    const noise = asRecord(each.data.noise);
-    if (!Array.isArray(noise?.differences)) return [];
-    return [
-      { level: levelOf(each), differences: noise.differences.filter(isNumber), scores: scoresIn(noise) },
-    ];
-  });
-  const aaComparisons = read.filter(({ scores, level }) => readsStep(scores.map(Math.abs), level));
-  const errors = aaComparisons.filter(({ scores, level }) => readsStep(scores, level)).length;
+  const read = controlsIn(reports);
+  const controls = read.filter(({ able }) => able).length;
   const rates = attempts.map(rateOf);
   return {
     attempts: attempts.length,
-    errors,
-    controls: aaComparisons.length,
-    incapable: read.length - aaComparisons.length,
+    errors: read.filter(({ step }) => step).length,
+    controls,
+    incapable: read.length - controls,
     union: Math.min(
       1,
       rates.reduce((sum, rate) => sum + rate, 0),
@@ -256,7 +271,7 @@ export function epochLine(epoch: Epoch, called: Called = short): string {
   const rung = epoch.nth === 1 ? "as set-up (epoch 0)" : `as rung ${String(epoch.nth - 1)} of the climb`;
   const end = epoch.promoted === null ? "open" : `promoted ${called(epoch.promoted)} ${rung}`;
   const risk = epoch.falsePromotion;
-  return `epoch ${String(epoch.nth)}: reference ${reference}; ${String(epoch.tasks.length)} tasks admitted; ${plural(epoch.sessions, "Builder session")}; comparisons ${readings}${starterOf(epoch)}; ${plural(risk.attempts, "promotion attempt")} under this reference, a false promotion among them estimated at ${percent(risk.union)}; ${sourceOf(risk)}; ${end}`;
+  return `epoch ${String(epoch.nth)}: reference ${reference}; ${String(epoch.tasks.length)} tasks admitted; ${plural(epoch.sessions, "Builder session")}; comparisons ${readings}${starterOf(epoch)}; ${plural(risk.attempts, ATTEMPT)} under this reference, a false promotion among them estimated at ${percent(risk.union)}; ${sourceOf(risk)}; ${end}`;
 }
 
 /** A chance in whole percent, or to a tenth under ten, where an attempt's rate of 1.8% read as 2%;
@@ -294,7 +309,7 @@ export function riskLines(events: readonly LogEvent[]): string[] {
   );
   return [
     ...epochs.map(({ nth, falsePromotion: risk }) => {
-      const attempts = plural(risk.attempts, "promotion attempt");
+      const attempts = plural(risk.attempts, ATTEMPT);
       return `- Epoch ${String(nth)}: ${attempts}, a false promotion among them estimated at ${percent(risk.union)}; ${sourceOf(risk)}.`;
     }),
     `Over the campaign, a false promotion in any epoch estimated at ${percent(total)}: the sum of the epochs' estimates, capped at one, which assumes nothing of how the attempts depend on one another. It sums estimates, so it is an estimate and no bound.`,
@@ -304,16 +319,10 @@ export function riskLines(events: readonly LogEvent[]): string[] {
 
 /** An epoch's cost against the cost bar (`Worth`), with `pending` attempts the log holds no
  *  report of yet. */
-function costOf(
-  events: readonly LogEvent[],
-  epoch: Epoch | undefined,
-  bar: number,
-  pending = 0,
-): Worth["cost"] {
-  if (epoch === undefined) return null;
+function costOf(events: readonly LogEvent[], epoch: Epoch, pending = 0): Worth["cost"] {
   const attempts = epoch.falsePromotion.attempts + pending;
   const dollars = billedBetween(events, epoch.from, epoch.to ?? undefined);
-  return { attempts, sessions: epoch.sessions, dollars, met: epoch.nth === 1 || attempts <= bar };
+  return { attempts, sessions: epoch.sessions, dollars, met: epoch.nth === 1 || attempts <= BARS.cost };
 }
 
 /** Comparison `id`'s worth where it reads a step (the plan's W): the cost of the log's last
@@ -321,23 +330,60 @@ function costOf(
  *  read again says what it said. Until 19 October a repeat was its first stage's attempt. */
 export function worthOf(events: readonly LogEvent[], id: string): Worth {
   const before = events.filter(({ kind, data }) => kind !== "comparison.reported" || data.session !== id);
-  return { bars: BARS, cost: costOf(before, epochsOf(before).at(-1), BARS.cost, 1) };
+  // SAFETY: `boundsOf` opens every log with its first epoch.
+  return { cost: costOf(before, epochsOf(before).at(-1) as Epoch, 1) };
 }
 
 /** Each promoted harness's worth (the plan's W): the cost of the epoch it ended. */
 export function promotionsWorth(events: readonly LogEvent[]): ReadonlyMap<string, Worth> {
   return new Map(
     epochsOf(events).flatMap((epoch) =>
-      epoch.promoted === null
-        ? []
-        : [[epoch.promoted, { bars: BARS, cost: costOf(events, epoch, BARS.cost) }] as const],
+      epoch.promoted === null ? [] : [[epoch.promoted, { cost: costOf(events, epoch) }] as const],
     ),
   );
 }
 
 /** Summarise the reported cost target; it does not affect admission. */
-export function worthLine({ bars, cost }: Worth): string {
-  return cost === null
-    ? "cost unread"
-    : `cost, reported only: ${plural(cost.attempts, "promotion attempt")} this epoch (bar ${String(bars.cost)} after set-up): ${cost.met ? "met" : "over it"}, over ${plural(cost.sessions, "Builder session")} and ${cost.dollars.toFixed(2)} dollars billed`;
+export function worthLine({ cost }: Worth): string {
+  return `cost, reported only: ${plural(cost.attempts, ATTEMPT)} this epoch (bar ${String(BARS.cost)} after set-up): ${cost.met ? "met" : "over it"}, over ${plural(cost.sessions, "Builder session")} and ${cost.dollars.toFixed(2)} dollars billed`;
+}
+
+/**
+ * A campaign against the bars of the milestone and of economy, for the operator: the closing report
+ * and `runs view` print it, and it decides nothing. Written on 5 November, when a recount of what a
+ * release still requires found that no reader answered these over one campaign: `epochLine` says
+ * one epoch's confirmation; `falsePromotion` reads the A/A comparisons of the whole campaign, so
+ * nothing said what those after the sixth promotion read; and `worthLine` reads an epoch only once
+ * a promotion ended it, so the 2 of 62 open epochs on record that stood over the bar were stated
+ * nowhere.
+ */
+export function barLines(events: readonly LogEvent[]): string[] {
+  const epochs = epochsOf(events);
+  const climbed = epochs.filter(({ nth }) => nth > 1);
+  const confirmed = climbed.filter((epoch) => epoch.confirmed === true).length;
+  const unread = climbed.filter(({ starter_tally: tally }) => tally === null).length;
+  const over = climbed.flatMap((epoch) => {
+    const cost = costOf(events, epoch);
+    const open = epoch.promoted === null ? ", open" : "";
+    return cost.met ? [] : [`epoch ${String(epoch.nth)} at ${String(cost.attempts)}${open}`];
+  });
+  return [
+    `- Climb: ${plural(climbed.length, "promotion")}, ${String(confirmed)} confirmed against a milestone of ${String(MILESTONE.promotions)}; ${String(climbed.length - confirmed - unread)} read against the starter without a step, ${String(unread)} not read against it.`,
+    honestyLine(events, epochs[MILESTONE.promotions]?.from),
+    `- Economy: ${plural(climbed.length, "epoch")} after set-up against a bar of ${plural(BARS.cost, ATTEMPT)} each, ${String(over.length)} over it${over.length === 0 ? "" : `: ${over.join("; ")}`}. Reported only.`,
+  ];
+}
+
+/** The A/A comparisons reported after the log's index `sixth`, where the milestone's last promotion
+ *  stands. Whether one too small to read a step counts towards the bar, and whether a step reads one
+ *  way or either, is the operator's, so the line keeps them apart. */
+function honestyLine(events: readonly LogEvent[], sixth: number | undefined): string {
+  const named = `promotion ${String(MILESTONE.promotions)}`;
+  const bar = `the bar's ${String(MILESTONE.controls)}`;
+  if (sixth === undefined) return `- Honesty: no ${named} yet, so none of ${bar} A/A comparisons after it.`;
+  const after = controlsIn(lastReports(events)).filter(({ index }) => index > sixth);
+  const able = after.filter((control) => control.able).length;
+  const steps = after.filter(({ step }) => step).length;
+  const either = after.filter(({ scores, level }) => readsStepEitherWay(scores, level)).length;
+  return `- Honesty: after ${named}, ${plural(after.length, "A/A comparison")} against ${bar}, ${String(able)} with enough untied tasks to read a step: ${String(steps)} read one, ${String(either)} read one either way.`;
 }

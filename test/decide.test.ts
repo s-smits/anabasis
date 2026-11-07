@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { decide, practiceDue, shortOf, supplyRun, unpromoted } from "../src/campaign/decide.ts";
 import type { Plan } from "../src/campaign/ground.ts";
 import { pendingWords } from "../src/campaign/word.ts";
-import { tally as tallyPairs } from "../src/kernel/compare.ts";
+import { scored } from "../src/kernel/compare.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import { pairsReported, lastReports, poolOf, releaseOrder } from "../src/kernel/reports.ts";
 import { stopRule } from "../src/campaign/admission.ts";
@@ -408,6 +408,8 @@ describe("task supply", () => {
     // One short of the floor, the session is still asked for a sweep (4 at 0.1).
     expect([shortOf(FIVE, PLAN), shortOf(SIX, PLAN)]).toEqual([4, 0]);
     expect(shortOf([...SIX, ...compared("g-1", "h1", "no-step")], PLAN)).toBe(6);
+    // The sweep comes on top of the practice a reading releases.
+    expect(shortOf(FIVE, { ...PLAN, practice: 5 })).toBe(9);
     expect(move([...SIX, built("b-1", "h1"), ...HELD.slice(6).flatMap(heldOut)])).toMatchObject({
       move: "build",
     });
@@ -755,9 +757,12 @@ describe("the build conditions", () => {
       const released = logs.map((events) =>
         releaseOrder(events, taskSets(events).held, owed(events, 1000, 0.02), "seed"),
       );
-      const tallies = logs.map((events) =>
-        tallyPairs(lastReports(events).flatMap((report) => pairsReported(events, report))),
-      );
+      const tallies = logs.map((events) => {
+        const { wins, losses, ties } = scored(
+          lastReports(events).flatMap((report) => pairsReported(events, report)),
+        );
+        return { wins, losses, ties };
+      });
       expect(tallies[0]).toEqual(tallies[1]);
       // One reading closes neither task, so the frontier holds both whichever one the new harness won.
       expect(logs.map((events) => poolOf(events).frontier.length)).toEqual([9 + extra, 9 + extra]);

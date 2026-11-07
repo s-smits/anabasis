@@ -34,7 +34,7 @@ import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { backends } from "#src/agent/backends/models.ts";
 import { modelNamed, sweepOptions } from "#tools/m0/stored-sweep.ts";
-import { printed } from "./table.ts";
+import { LIVE_MS, printed } from "./table.ts";
 import { campaignLogs, rehearsed } from "./tree.ts";
 
 const SINCE = "2026-10-01";
@@ -58,7 +58,6 @@ const SEAT = new Map([
 const DAY_MS = 86_400_000;
 /** A run whose log has been quiet this long, or whose last event is an ending, is not live
  *  (`LIVE_MS`, `table.ts`). */
-const LIVE_MS = 7_200_000;
 
 interface Run {
   readonly name: string;

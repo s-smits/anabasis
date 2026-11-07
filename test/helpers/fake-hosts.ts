@@ -26,11 +26,13 @@ const SCRIPTS = {
 const script = args.at(-1);
 const peer = JSON.parse(process.env.FAKE_FLEET ?? "{}")[args.at(-2)] ?? {};
 if (process.env.FAKE_OFFLINE === "1" || peer.offline) process.exit(255);
-if (peer.timeout && script.includes("ANA_HOP")) await Bun.sleep(35000);
+if (peer.timeout && script.includes("ANA_HOP")) await Bun.sleep(50000);
 if (peer.freshExit && script.includes("ANA_HOP") && script.includes("fresh")) process.exit(peer.freshExit);
+if (peer.active !== undefined && peer.execute && script.includes("'active'")) { console.log(peer.active); process.exit(0); }
+if (peer.alerts !== undefined && script.includes("'alerts'")) { console.log(peer.alerts); process.exit(0); }
 if (process.env.FAKE_EXECUTE === "1" || peer.execute || (process.env.FAKE_PREPARE_EXECUTE === "1" && !script.includes("ANA_HOP"))) {
   const env = {...process.env, ...(peer.env ?? {})};
-  const child = Bun.spawn(["sh", "-c", script], {env, stdin:"ignore", stdout:"inherit", stderr:"inherit"});
+  const child = Bun.spawn(["sh", "-c", script], {env, stdout:"inherit", stderr:"inherit"});
   process.exit(await child.exited);
 }
 if (script.includes("--health")) console.log(JSON.stringify(peer.health ?? JSON.parse(process.env.FAKE_HEALTH ?? "null")));

@@ -9,7 +9,8 @@
  * new top where one was stacked meanwhile (`topAbove`). Proofs are remembered by tree, so a moved
  * top costs only its new commits. Named without `--auto`, a landing stops at the pull request named,
  * and a pull request stacked above it stays open, moved onto the trunk once the merge goes
- * through. With no pull request named, it
+ * through; `bun run split` then replays the rest onto the merge with every pass kept. With no pull
+ * request named, it
  * lands the stack that holds the oldest stacked pull request, its bottom on main with another above
  * it, and follows its top (`oldestStack`; operator, 27 October). It never follows into another
  * chain on main.
@@ -114,6 +115,8 @@ import {
   postStatus,
   type Pull,
   type Status,
+  STACK_MEMBERS,
+  trunkOf,
 } from "./pulls.ts";
 import {
   addedLine,
@@ -125,6 +128,7 @@ import {
   proveCommits,
   short,
 } from "./gate.ts";
+import { holdAlone, sayingPulls } from "./landing.ts";
 
 interface Landing {
   readonly trunk: string;
@@ -193,6 +197,9 @@ export const CATEGORIES = new Set([
 const USAGE =
   "usage: bun run land -- [<pull request>] [--auto] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]";
 const TAG = /^v\d+\.\d+\.\d+$/u;
+/** The one command that replays a stack onto the trunk once what it stood on has landed. */
+const REPLAY = (top: number): string =>
+  `replay the stack onto it with \`bun .claude/skills/stack-pr/scripts/republish.ts --onto-main ${String(top)} --yes\``;
 
 class Refusal extends Error {}
 /** A head moved while the landing was proved. Passes are remembered by tree, so landing again costs
@@ -201,9 +208,6 @@ class Moved extends Refusal {}
 
 const say = (line: string): void => console.log(`land: ${line}`);
 const numbers = (pulls: readonly Pull[]): string => pulls.map((pull) => `#${String(pull.number)}`).join(", ");
-
-const trunkOf = (root: string): string =>
-  ghOrThrow(root, ["repo", "view", "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"]);
 
 /** The top of the longest chain of open pull requests above `from`, each based on the head of the
  *  one beneath it; `from` itself where none is. Of two chains of one length the older wins. */
@@ -255,7 +259,8 @@ function readLanding(root: string, target: number): Landing {
   if (bottom.baseRefName !== trunk) {
     throw new Refusal(
       `#${String(bottom.number)} (${bottom.headRefName}) is based on ${bottom.baseRefName}, which is neither ${trunk} ` +
-        `nor an open pull request's head. Base it on what it stacks on, and land again.`,
+        `nor an open pull request's head. Where what it stood on has landed, ${REPLAY(target)}; otherwise base ` +
+        `it on what it stacks on, and land again.`,
     );
   }
   const trunkSha = git(root, ["ls-remote", "origin", `refs/heads/${trunk}`]).split("\t")[0] ?? "";
@@ -300,9 +305,12 @@ function checkChain(root: string, landing: Landing): void {
   let below = { name: `${landing.trunk}'s head`, sha: landing.trunkSha };
   for (const pull of landing.pulls) {
     if (!gitSays(root, ["merge-base", "--is-ancestor", below.sha, pull.headRefOid])) {
+      const how =
+        pull === landing.pulls[0]
+          ? `${REPLAY(landing.top.number)} and land again`
+          : `Replay it and every pull request above it on what is beneath it, push them together, and land again`;
       throw new Refusal(
-        `#${String(pull.number)} (${pull.headRefName}) does not contain ${below.name} ${short(below.sha)}. Replay ` +
-          `it and every pull request above it on what is beneath it, push them together, and land again.`,
+        `#${String(pull.number)} (${pull.headRefName}) does not contain ${below.name} ${short(below.sha)}. ${how}.`,
       );
     }
     below = { name: `#${String(pull.number)}'s head`, sha: pull.headRefOid };
@@ -436,12 +444,7 @@ async function awaitCi(root: string, top: Pull): Promise<void> {
  *  not say, is refused, since the top's merge would merge it alone into its base. */
 function stackOf(root: string, landing: Landing): number | null {
   const { top } = landing;
-  const read = gh(root, [
-    "api",
-    api(`stacks?pull_request=${String(top.number)}`),
-    "--jq",
-    String.raw`map(select(.open)) | first // empty | "\(.number) \(.pull_requests | map(.number) | join(","))"`,
-  ]);
+  const read = gh(root, ["api", api(`stacks?pull_request=${String(top.number)}`), "--jq", STACK_MEMBERS]);
   if (!read.ok) {
     throw new Refusal(`GitHub did not say which stack #${String(top.number)} is in: ${read.err} Land again.`);
   }
@@ -703,7 +706,7 @@ async function landTo(root: string, target: number, mode: Mode): Promise<number 
   const failed = await proveCommits(root, proofs, {
     who: "land",
     jobs: mode.jobs,
-    say,
+    say: sayingPulls(proofs, landing.pulls, say),
     mark: (commit, state, description) => {
       if (state === "pending") {
         checkListed(root, target, landing);
@@ -781,6 +784,7 @@ async function main(argv: readonly string[]): Promise<number> {
     jobs,
     tag: values.tag ?? null,
   };
+  const alone = await holdAlone(root, "land", say);
   try {
     // A release the merge could not take is refused before anything is gated.
     // `--exit-code` exits 2 where origin holds no such ref; any other failure says nothing of the tag.
@@ -813,6 +817,8 @@ async function main(argv: readonly string[]): Promise<number> {
     if (!(error instanceof Refusal)) throw error;
     console.error(`land: ${error.message} Nothing was merged.`);
     return 1;
+  } finally {
+    alone();
   }
 }
 

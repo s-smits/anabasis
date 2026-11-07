@@ -3,11 +3,11 @@
  * and, read over every login, when the pool runs out: what a move to another login asks before it
  * chooses one (`room`, `keep.ts`).
  *
- *   bun --env-file=<file> run runs usage [N ...] [--json]
+ *   bun --env-file=<file> run runs usage [N ...] [--json] [--open] [--closed]
  *
  * A login is `CLAUDE_CODE_OAUTH_TOKEN<N>` in this process's environment, which Bun's own
  * `--env-file` loads: the verb opens no file of credentials, and prints no token. With no number it
- * reads every login the environment holds.
+ * reads every login the environment holds. `--open` and `--closed` are `login-state.ts`'s.
  *
  * Two routes, the first taken from steipete/CodexBar@afeb28146cec
  * (Sources/CodexBarCore/Providers/Claude/ClaudeOAuth/ClaudeOAuthUsageFetcher.swift): GET
@@ -24,15 +24,15 @@
  * worktree's `.ana/logins-history.jsonl` (28 days): a login still in the window of a reading 2 to 24
  * hours old gives its rise since, any other its week's pace; and the model's, hour by hour over the next
  * day, once it beats the week pace and the per-run rate on hours held out (`usage-model.ts`, 1 November). The
- * 5-hour windows are left out: they cap how fast one login spends, not what a week holds.
+ * 5-hour windows are left out: they cap how fast one login spends, not what a week holds. A keeper
+ * asks of one login's five hours by themselves, with the run it would move there added (`fiveHourWith`).
  *
  * `bun run runs active` names the runs a process writes, by the login each run's last launch named,
  * and the live seats of `system-path-simulation`, by the login each seat names (`liveHere`),
  * on this machine and every host `ANA_HOSTS` lists (`liveEverywhere`), and asks no
  * provider, and `usage` puts each login's count on its head line, out of the most `ANA_LOGIN_RUNS`
  * or its subscription in `ANA_LOGIN_SUBS` lets that login carry (`capOf`), and sums the
- * subscriptions' most under the logins. Until 22 October that count took `status` on every host
- * and a tally by hand before each launch, a continue or a move.
+ * subscriptions' most under the logins.
  *
  * Each reading keeps that count beside each login's week, and the rises between readings over the
  * runs counted give the share of a week a run spends an hour (`perRunRate`). The most a login
@@ -43,17 +43,15 @@
  * (`perRunHour`).
  *
  * `ANA_LOGINS` in the environment, such as `2,3,4`, names the logins a run may take (`allowedLogins`),
- * every login the environment holds where it is unset. Until 15 October this was a script of the
- * operator's, which read the checkout's `.env` itself, and a shell loop applied the capacity rule.
+ * every login the environment holds where it is unset.
  */
 import { openingOf, SEATS } from "#src/campaign/opening.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
-import { mainTree } from "#src/meta/git.ts";
-import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
+import { mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
+import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { keysIf } from "#src/meta/optional-key.ts";
-import { dirname, join } from "#src/meta/path.ts";
+import { dirname } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { runSync, zeroExitText } from "#src/meta/subprocess.ts";
@@ -63,6 +61,16 @@ import { asked } from "./hosts.ts";
 import { hostsOf } from "./host-config.ts";
 import { CODEX, type Live, liveHere, liveOf } from "./live.ts";
 import {
+  closedResets,
+  historyFile,
+  keptReadings,
+  listedBy,
+  notClosed,
+  resetOf,
+  stateWords,
+  windowOpen,
+} from "./login-state.ts";
+import {
   ahead,
   assess,
   type Assessment,
@@ -70,10 +78,11 @@ import {
   HORIZON,
   sameWindow,
   type Snapshot,
+  weekEnd,
   weekPace,
 } from "./usage-model.ts";
 
-interface Window {
+export interface Window {
   readonly pct: number | null;
   readonly resetsAt: string | null;
   readonly status?: string;
@@ -99,6 +108,8 @@ interface Week {
 }
 
 const TOKEN = "CLAUDE_CODE_OAUTH_TOKEN";
+/** The plain login's name among the logins `readLogins` is asked for: its key is `TOKEN` and nothing. */
+const PLAIN = "";
 const BASE = "https://api.anthropic.com";
 const BETA = "oauth-2025-04-20";
 const TIMEOUT_MS = 30_000;
@@ -106,12 +117,10 @@ const HOUR = 3_600_000;
 const WEEK = 168 * HOUR;
 const AHEAD = 4 * WEEK;
 const STEP = HOUR / 12;
-/** The readings kept, for the longest window of `usage-model.ts`; the per-run rate reads the last
- *  `RATE_MS` of them, as it read all it kept until 1 November. */
+/** The readings kept, for `usage-model.ts`'s longest window; the per-run rate reads the last `RATE_MS`. */
 const KEPT_MS = 28 * 24 * HOUR;
 const RATE_MS = 8 * 24 * HOUR;
-/** The share of a day a run is taken to be active when a week is read for how many runs it fits:
- *  16 of 24 hours (operator, 22 October). */
+/** The share of a day a run is read active for the runs a week fits: 16 of 24 hours (operator, 22 October). */
 const ACTIVE_SHARE = 16 / 24;
 /** The hours a run is read to live: the release cycle stops its runs twelve hours after their
  *  opening (`AGENTS.md`, section 1). Until 29 October each run was read to live until its login's
@@ -120,6 +129,13 @@ const ACTIVE_SHARE = 16 / 24;
 const RUN_HOURS = 12;
 /** Fewer run-hours than this on record measure no rate a run spends (`perRunRate`). */
 const LEAST_RUN_HOURS = 6;
+const FIVE_HOURS = 5 * 60;
+/** The % of a login's five-hour window a run is taken to spend an hour where the login carries no run
+ *  to read it from (`fiveHourWith`). This is the upper end of what was printed: over 126 readings of a
+ *  window at least an hour old up to 5 November, its pace over its live runs read a median of 6.0 and
+ *  a ninetieth percentile of 15.5, with medians from 1.9 to 12.8 by login, so one number serves only
+ *  where a login's own pace says nothing. An empty window reads 75% at its reset. */
+const RUN_FIVE_HOUR = 15;
 const NOTED = [
   ["seven_day_opus", "opus"],
   ["seven_day_sonnet", "sonnet"],
@@ -135,11 +151,26 @@ const SUBS: Readonly<Record<"claude" | "codex", Readonly<Record<string, string>>
   codex: { pro100: "2", pro200: "4" },
 };
 
-/** Every login `env` holds, by its number. */
+/** Every login `env` holds, by its number. A key left empty holds none: a copied `.env.example`
+ *  names `CLAUDE_CODE_OAUTH_TOKEN2=`, and until 5 November that made a login nobody can pay with, so
+ *  `fresh` said no login had room. */
 function loginsIn(env: Readonly<Record<string, string | undefined>>): string[] {
-  return Object.keys(env)
-    .flatMap((key) => new RegExp(`^${TOKEN}(\\d+)$`).exec(key)?.[1] ?? [])
+  return Object.entries(env)
+    .flatMap(([key, value]) =>
+      value === undefined || value === "" ? [] : (new RegExp(`^${TOKEN}(\\d+)$`).exec(key)?.[1] ?? []),
+    )
     .toSorted((one, other) => Number(one) - Number(other));
+}
+
+/** The key to set where none of `allowed` holds one, or null where one does. Until 5 November this
+ *  read as no login having room, which names a limit where the credential is what is missing. */
+export function noLogin(
+  env: Readonly<Record<string, string | undefined>>,
+  allowed: readonly string[],
+): string | null {
+  if (allowed.some((login) => (env[`${TOKEN}${login}`] ?? "") !== "")) return null;
+  const keys = allowed.length === 0 ? TOKEN : allowed.map((login) => `${TOKEN}${login}`).join(" or ");
+  return `no login here: set ${keys} in the process environment, or in a file named with bun --env-file=<file>`;
 }
 
 /** The logins a run may take: those `ANA_LOGINS` names, or every login `env` holds. */
@@ -383,10 +414,9 @@ export async function readLogins(
   );
 }
 
-const resetOf = (iso: string | null): number | null => {
-  const at = iso === null ? Number.NaN : new Date(iso).getTime();
-  return Number.isNaN(at) ? null : at;
-};
+/** `readLogins`, less each login the last `usage` found closed until its reset (`login-state.ts`). */
+export const readNotClosed: typeof readLogins = (wanted, env) =>
+  readLogins(notClosed(wanted, keptReadings(historyFile()), Date.now()), env);
 
 /** The logins of `readings` a run may move to, the week that resets soonest first: in `allowed`,
  *  not in `spent`, neither window used up or refused. A nearly spent week is taken first where it
@@ -397,15 +427,13 @@ export function room(
   allowed: readonly string[],
   spent: ReadonlySet<string>,
 ): string[] {
-  const open = (window: Window) =>
-    (window.status ?? "allowed").startsWith("allowed") && (window.pct ?? 0) < 100;
   return readings
     .flatMap((reading) =>
       "error" in reading ||
       !allowed.includes(reading.login) ||
       spent.has(reading.login) ||
-      !open(reading.sevenDay) ||
-      !open(reading.fiveHour)
+      !windowOpen(reading.sevenDay) ||
+      !windowOpen(reading.fiveHour)
         ? []
         : [{ login: reading.login, reset: resetOf(reading.sevenDay.resetsAt) ?? Number.POSITIVE_INFINITY }],
     )
@@ -430,6 +458,35 @@ const stamp = (at: number): string =>
     })
     .replace(" at ", " ");
 
+/** What `window` of `length` minutes holds at its reset at the pace it was used so far, or null where
+ *  either is unread. */
+function atReset(window: Window, length: number, now: number): number | null {
+  const reset = resetOf(window.resetsAt);
+  if (reset === null || window.pct === null) return null;
+  const used = length - (reset - now) / 60_000;
+  return used <= 0 ? window.pct : (window.pct * length) / used;
+}
+
+/**
+ * What the five-hour window of `reading` holds at its reset once one more run goes on there beside
+ * the `on` it carries, or null where it cannot be said: no reading, no share, or a share with no
+ * reset to read it against. Each run on the login is taken to spend what the window's pace so far
+ * shares out to it, so a login's own runs are what prices the one added. An idle login has no such
+ * pace, and what its window holds came from runs that have left, so it reads the window's share and
+ * `RUN_FIVE_HOUR` to its reset. A person's own session on a login is charged to its runs, as in
+ * `perRunRate`, and a window minutes old reads high until the next look. The week's forecast cannot
+ * answer this: the readings kept hold no five-hour share, and a run's rate is in % of a week.
+ */
+export function fiveHourWith(reading: Reading, on: number, now: number): number | null {
+  if ("error" in reading) return null;
+  const { fiveHour } = reading;
+  const { pct } = fiveHour;
+  const reset = resetOf(fiveHour.resetsAt);
+  if (pct === null || (pct > 0 && reset === null)) return null;
+  if (on > 0) return pct + (((atReset(fiveHour, FIVE_HOURS, now) ?? pct) - pct) * (on + 1)) / on;
+  return pct + RUN_FIVE_HOUR * (reset === null ? FIVE_HOURS / 60 : Math.max(0, (reset - now) / HOUR));
+}
+
 /** When `window` of `length` minutes runs out at the pace it was used so far: it opened `length`
  *  minutes before its reset, so 40% in the first 2 of 7 days runs out 3 days on. */
 function pace(window: Window, length: number, now: number): string {
@@ -441,7 +498,7 @@ function pace(window: Window, length: number, now: number): string {
   if (window.pct <= 0 || used <= 0) return "lasts";
   const mins = Math.round(((100 - window.pct) * used) / window.pct);
   return mins >= left
-    ? `lasts, ~${String(Math.round((window.pct * length) / used))}% at reset`
+    ? `lasts, ~${String(Math.round(atReset(window, length, now) ?? window.pct))}% at reset`
     : `ends in ${spanOf(mins)} (${clock(now + mins * 60_000)})`;
 }
 
@@ -542,28 +599,30 @@ function poolLines(
   ];
 }
 
-/** The model's lines (`usage-model.ts`): when the pool runs out at its pace over the next
- *  `HORIZON` hours, and each login's rise at a few of those hours and the hour its week runs out
- *  within them; or what keeps the model from speaking. */
+/** The model's lines (`usage-model.ts`): when the pool runs out at its pace over the next `HORIZON`
+ *  hours, each login's rise at a few of those hours and the hour its week ends; or what stops it. */
 export function modelLines(
   weeks: readonly Week[],
   recorded: readonly Snapshot[],
   assessment: Assessment | null,
   now: number,
+  rate: number | null,
 ): string[] {
-  if (assessment === null) return ["  model       off: no readings yet to fit on and hold out"];
-  const errors = `fitted on ${String(assessment.days)} days; held-out error ${assessment.error.toFixed(2)} vs ${assessment.week.toFixed(2)} for the week pace and ${assessment.run.toFixed(2)} for the per-run rate, % over ${String(assessment.held)} rows`;
+  if (assessment === null) return ["  model       off: no rows yet to fit on and hold out"];
+  const errors = `fitted on ${String(assessment.days)} days; held-out error ${assessment.error.toFixed(2)} vs ${assessment.week.toFixed(2)} for the week pace and ${assessment.run.toFixed(2)} for the per-run rate, % over ${String(assessment.held)} rows of logins with room`;
   if (assessment.model === null) return [`  model       not used: ${errors}`];
   const rises = ahead(assessment.model, recorded);
+  const live = byTime(recorded).at(-1)?.runs ?? {};
   const day = weeks.reduce((sum, { login }) => sum + (rises[login]?.at(-1) ?? 0), 0);
-  const each = weeks.map(({ login, pct }) => {
-    const curve = rises[login] ?? [];
+  const each = weeks.map((week) => {
+    const curve = rises[week.login] ?? [];
     const at = [1, 3, 6, 12, HORIZON].map(
       (hours) => `+${String(hours)}h ${(curve[hours - 1] ?? 0).toFixed(1)}%`,
     );
-    const out = pct < 100 ? curve.findIndex((rise) => pct + rise >= 100) : -1;
-    const ends = out === -1 ? "" : ` · week out ~${clock(now + (out + 1) * HOUR)}`;
-    return `  login ${login.padEnd(6)}${at.join("  ")}${ends}`;
+    const out = weekEnd(curve, week, now, (live[week.login] ?? 0) * (rate ?? 0));
+    const kept = out === weekEnd(curve, week, now) ? "" : " if its runs keep going";
+    const ends = out === null ? "" : ` · week out ~${clock(out)}${kept}`;
+    return `  login ${week.login.padEnd(6)}${at.join("  ")}${ends}`;
   });
   return [
     `  model ${`${String(HORIZON)}h`.padEnd(6)}~${String(Math.round((day * 24) / HORIZON))}%/day: ${forecast(weeks, day / HORIZON, now)}`,
@@ -690,16 +749,22 @@ export async function active(args: readonly string[]): Promise<void> {
   console.log(activeLines(live, allowedLogins(runtimeProcess.env), unasked, runtimeProcess.env).join("\n"));
 }
 
+const FLAG = { type: "boolean", default: false } as const;
+
 /** `bun run runs usage`. */
 export async function logins(args: readonly string[]): Promise<void> {
   const { values, positionals } = parseArgs({
     args: [...args],
     allowPositionals: true,
-    options: { json: { type: "boolean", default: false } },
+    options: { json: FLAG, open: FLAG, closed: FLAG },
   });
-  const held = loginsIn(runtimeProcess.env);
+  // A machine with one Claude login holds the plain credential: until 5 November `usage` refused it.
+  const numbered = loginsIn(runtimeProcess.env);
+  const held = numbered.length === 0 && plainOnly(runtimeProcess.env) ? [PLAIN] : numbered;
   if (held.length === 0) {
-    throw new Error(`no ${TOKEN}<N> is set: run the verb under bun --env-file=<the file that holds them>`);
+    throw new Error(
+      `neither ${TOKEN} nor ${TOKEN}<N> is set: run the verb under bun --env-file=<the file that holds them>`,
+    );
   }
   // Every host is asked for its live runs while the logins are read.
   const [readings, counted] = await Promise.all([
@@ -713,17 +778,14 @@ export async function logins(args: readonly string[]): Promise<void> {
       ? []
       : [{ login: reading.login, pct: reading.sevenDay.pct, reset }];
   });
-  const history = join(mainTree(runtimeProcess.cwd()), ".ana", "logins-history.jsonl");
-  const kept = existsSync(history)
-    ? readFileSync(history, "utf8")
-        .split("\n")
-        .filter((line) => line !== "")
-        .map((line) => parseJsonAs<Snapshot>(line))
-    : [];
+  const history = historyFile();
+  const kept = keptReadings(history);
   const rate = perRunRate(kept.filter(({ at }) => now - at < RATE_MS));
-  const onEach = (login: string) => counted?.live.filter((run) => run.login === login).length ?? 0;
-  if (values.json) console.log(capturedJsonStringify(readings, null, 2));
-  for (const reading of values.json ? [] : readings) {
+  // A run on the plain login names no login.
+  const onEach = (login: string) => counted?.live.filter((run) => (run.login ?? PLAIN) === login).length ?? 0;
+  const listed = listedBy(readings, values);
+  if (values.json) console.log(capturedJsonStringify(listed, null, 2));
+  for (const reading of values.json ? [] : listed) {
     const week = weeks.find(({ login }) => login === reading.login);
     const fit =
       week === undefined ? null : fitOf(week, perRunHour(week, onEach(reading.login), rate, now), now);
@@ -732,7 +794,9 @@ export async function logins(args: readonly string[]): Promise<void> {
         ? ""
         : ` · ${carried(onEach(reading.login), capOf(runtimeProcess.env, reading.login), fit)}`;
     const sub = subOf(runtimeProcess.env, reading.login);
-    const head = `login ${reading.login}${sub === null ? "" : ` · ${sub.sub}`}${runsOn}${reading.plain ? `  (= plain ${TOKEN})` : ""}`;
+    const own = reading.login === PLAIN ? `plain ${TOKEN}` : `login ${reading.login}`;
+    const state = stateWords(reading, allowedLogins(runtimeProcess.env), clock);
+    const head = `${own}${sub === null ? "" : ` · ${sub.sub}`}${state}${runsOn}${reading.plain && reading.login !== PLAIN ? `  (= plain ${TOKEN})` : ""}`;
     console.log(
       "error" in reading
         ? `${head}\n  ${reading.error}`
@@ -758,6 +822,7 @@ export async function logins(args: readonly string[]): Promise<void> {
   const snapshot: Snapshot = {
     at: now,
     weeks: Object.fromEntries(weeks.map(({ login, pct, reset }) => [login, { pct, reset }])),
+    closed: closedResets(readings),
     ...keysIf(counted?.unasked.length === 0, () => ({
       runs: Object.fromEntries(weeks.map(({ login }) => [login, onEach(login)])),
     })),
@@ -769,7 +834,7 @@ export async function logins(args: readonly string[]): Promise<void> {
       ? `  a run       no measured rate yet (under ${String(LEAST_RUN_HOURS)} run-hours): each login's week pace over its live runs`
       : `  a run       ~${rate.toFixed(2)}% of a login's week an hour, active ${String(Math.round(ACTIVE_SHARE * 24))} of 24h: the most each login carries for ${String(RUN_HOURS)}h`,
   );
-  console.log(modelLines(weeks, recorded, assess(recorded, now, perRunRate), now).join("\n"));
+  console.log(modelLines(weeks, recorded, assess(recorded, now, perRunRate), now, rate).join("\n"));
   mkdirSync(dirname(history), { recursive: true });
   const lines = recorded.map((one) => capturedJsonStringify(one));
   writeFileSync(history, `${lines.join("\n")}\n`);

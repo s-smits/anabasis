@@ -12,15 +12,17 @@
  * Source comes from a published commit (`publishedAt`), never the working tree: on 3 November a
  * document appended the main checkout's `AGENTS.md`, behind the stack's top, and the Oracle
  * reported a contradiction the top had resolved. Home folders become `~/` and each machine
- * `ANA_HOSTS` names `host-a`, `host-b` (said here, not in the file); a credential refuses it.
+ * `ANA_HOSTS` names `host-a`, `host-b` (said here, not in the file); a credential refuses it, and so
+ * does a `.env.runs` that names hosts this command did not load. With no hosts this machine's own
+ * name is the one to alias.
  * Its size is printed, never capped (operator, 4 November: "do not optimize for it"), in o200k
  * tokens at 3.17 bytes each, from the 4 November document (452 KB, 142,579 tokens).
  */
 import * as ts from "typescript5";
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
-import { readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
-import { gitOutput, gitText } from "#src/meta/git.ts";
-import { basename, dirname, extname, resolve } from "#src/meta/path.ts";
+import { existsSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
+import { gitOutput, gitText, mainTree } from "#src/meta/git.ts";
+import { basename, dirname, extname, join, resolve } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { publishedAt } from "#tools/runs/code.ts";
 import { hostsOf, ownName } from "#tools/runs/host-config.ts";
@@ -167,7 +169,8 @@ const isVerb = (verb: string): verb is keyof typeof PARTS => Object.hasOwn(PARTS
 
 /** `text` with every home folder as `~`, also where a path is written with dashes (a session's
  *  folder), every login number dropped (machine rules: none in published text), and each
- *  machine's names, `machines[i]`, in any case, as one alias. */
+ *  machine's names, `machines[i]`, in any case, as one alias. A tree and a session's scratchpad go
+ *  whole: a document of 6 November carried both, and a login's table row, to the outside. */
 export function sanitised(text: string, machines: readonly (readonly string[])[]) {
   const aliases = new Map(
     machines.flatMap((names, index) =>
@@ -177,10 +180,16 @@ export function sanitised(text: string, machines: readonly (readonly string[])[]
     ),
   );
   let out = text
+    .replaceAll(/\/private\/tmp\/claude-\d+\/[^\s`"')]*?\/scratchpad\//gu, "<scratch>/")
+    .replaceAll(
+      /(?<![\w.-])(?:\/(?:Users|home)\/[^/\s"'`),;:]+|~)(?:\/[^/\s"'`),;:]+)*?\/anabasis[-\w.]*/gu,
+      "<tree>",
+    )
     .replaceAll(/(?<![\w.-])\/(?:Users|home)\/[^/\s"'`),;:]+/gu, "~")
     .replaceAll(/-(?:Users|home)-[^-/\s]+-/gu, "-~-")
     .replaceAll(/(\.claude-account|CLAUDE_CODE_OAUTH_TOKEN)\d+/gu, "$1")
-    .replaceAll(/\b(?:logins? \d+(?:(?:, ?| and | or )\d+)*|claude[1-9])\b/giu, "a login");
+    .replaceAll(/\b(?:logins? \d+(?:(?:, ?| and | or )\d+)*|claude[1-9])\b/giu, "a login")
+    .replaceAll(/(\|\s*logins?\s*\|\s*)\d+\b/giu, "$1a login");
   for (const [name, alias] of [...aliases].toSorted(([a], [b]) => b.length - a.length)) {
     out = out.replaceAll(new RegExp(name.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`), "giu"), alias);
   }
@@ -233,13 +242,14 @@ async function documentOf(partsFile: string, repo: string, commit: string) {
 
 /** This machine's name, then each peer's names, as `ANA_HOSTS` gives them: the aliases' order. */
 function machinesOf(): string[][] {
-  const peers = hostsOf();
-  if (peers.length === 0) {
+  const file = join(mainTree(runtimeProcess.cwd()), ".env.runs");
+  const unloaded = runtimeProcess.env.ANA_HOSTS === undefined && existsSync(file);
+  if (unloaded && /^ANA_HOSTS=/mu.test(readFileSync(file, "utf8"))) {
     throw new CommandFailure(
-      "no ANA_HOSTS: run with --env-file=.env.runs, so that every host name is aliased",
+      `${file} names ANA_HOSTS, and this command did not load it: run with --env-file=<that file>, so that every host name is aliased`,
     );
   }
-  return [[ownName()], ...peers.map((host) => [host.name, host.ssh.replace(/^.*@/u, "")])];
+  return [[ownName()], ...hostsOf().map((host) => [host.name, host.ssh.replace(/^.*@/u, "")])];
 }
 
 if (import.meta.main) {

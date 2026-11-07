@@ -30,6 +30,7 @@ import { afterAll, beforeEach, describe, expect, it } from "bun:test";
 
 import { execTextSync, spawnTextSync } from "./helpers/bun-spawn-sync.ts";
 import { fakeBun, gatesRun, logLines } from "./helpers/fake-bun.ts";
+import { STACK_MEMBERS } from "../tools/runtime/pulls.ts";
 
 const land = join(import.meta.dir, "..", "tools", "runtime", "land.ts");
 const fixture = mkdtempSync(join(tmpdir(), "ana-land-"));
@@ -200,7 +201,9 @@ describe("bun run land", () => {
     const result = runLand(["12"]);
     expect(result.status).toBe(0);
     expect(gatesRun(gateLog)).toEqual([`${lower} -`, `${lowerMore} test/owner.test.ts`, `${upper} suite`]);
-    expect(result.stdout).toContain(`3 of 4, ${short(lowerDocs)}: documentation only.`);
+    // Each line names the pull request that holds its commit, so a long landing shows where it is.
+    expect(result.stdout).toContain(`3 of 4, pr11 ${short(lowerDocs)}: documentation only.`);
+    expect(result.stdout).toContain(`4 of 4, pr12 ${short(upper)}: passed.`);
     expect(result.stdout).toContain("--sanitize shows it on GitHub");
     expect(writes()).toEqual([]);
     rmSync(gateLog, { force: true });
@@ -731,5 +734,23 @@ describe("bun run land", () => {
     );
     expect(logLines(ghLog).some((line) => line.startsWith("workflow run"))).toBe(false);
     expect(gatesRun(gateLog)).toEqual([]);
+  });
+});
+
+describe("the stack a landing reads after a partial merge", () => {
+  it("leaves the members already merged out of the next landing's chain", () => {
+    const stacks = JSON.stringify([
+      {
+        number: 7,
+        open: true,
+        pull_requests: [
+          { number: 11, state: "closed" },
+          { number: 12, state: "open" },
+          { number: 13, state: "open" },
+        ],
+      },
+    ]);
+    const read = spawnTextSync("jq", ["-r", STACK_MEMBERS], { stdin: stacks });
+    expect(read.stdout.trim()).toBe("7 12,13");
   });
 });

@@ -9,8 +9,8 @@ GitHub Actions runs one workflow, `ci.yml`, and only when `bun run land -- <top>
 dispatches it on the top's head. It stays there because its tests need a machine independent of the
 operator's: a clean macOS runner for Seatbelt and the disk image, a clean Linux one for Bubblewrap,
 and the UI's browser tests beside them. Every other check runs here, and where GitHub should show
-its result, it posts a commit status through the API, which costs one call and no runner. On
-30 October 2026 the operator asked for this ("as much locally as possible except 'ci'"): the last
+its result, it posts a commit status through the API, which costs one call and no runner. The
+operator asked for this ("as much locally as possible except 'ci'"): one
 day had held 193 Actions runs, 189 of them for checks this machine already made or could make.
 
 ## Where each check lives
@@ -46,8 +46,7 @@ Where GitHub should show the result, post a status with `gh api -X POST
 repos/{owner}/{repo}/statuses/<sha> -f state=... -f context=<name>`, naming the context once in
 `tools/runtime/pulls.ts` or `land.ts`. A status belongs to its commit, so a new commit starts with
 none. A GitHub event this machine never sees, such as a base changed with no push, is caught at the
-next `stack.ts` or landing instead of by a workflow: `stacked.yml` ran 49 times in 15.5 hours on
-30 October for a check `land` already made before every merge.
+next `stack.ts` or landing instead of by a workflow: `stacked.yml` once ran 49 times in 15.5 hours for a check `land` already made before every merge.
 
 ## Measuring
 
@@ -58,6 +57,5 @@ bun .claude/skills/local-checks/scripts/actions.ts [--hours 24]
 prints each workflow's runs over the window, by the event that started them, and its first run, so
 a workflow younger than the window is read against the hours it existed. Give the count before and
 after in a pull request that adds, moves or removes a check. A run of `ci.yml` costs far more
-runner time than any other workflow ever did (about 17 runner-minutes over its three jobs on
-30 October, against 5 to 12 seconds), so count runs for how often GitHub is woken and minutes for
+runner time than any other workflow ever did (about 17 runner-minutes over its three jobs, against 5 to 12 seconds), so count runs for how often GitHub is woken and minutes for
 what it costs.

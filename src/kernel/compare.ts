@@ -71,9 +71,6 @@ export interface Tally {
   readonly ties: number;
 }
 
-/** The measures retained in a task's score (`scoresOf`). */
-export type Kept = "scored" | "validity";
-
 /** What a comparison is made between: the two harnesses by digest, and the setting every counted
  *  solve ran under (`settingId`). */
 interface Sides {
@@ -95,19 +92,15 @@ interface Sides {
 const POWER = 0.8;
 /** What a report holds for a retained set no task was tallied in: no reading, never no loss. */
 export const UNMEASURED = "unmeasured" as const;
-/** Two measures within this share of the larger are one measure: what floating-point arithmetic
- *  leaves between two answers of the same value, and nothing a harness did. */
-const SAME = 1e-9;
 /** The least improvement by the objective worth counting, as a share of the larger magnitude: the
  *  objective gap floor. Two valid answers closer than it tie in a pair (`told`), and an answer on
  *  record better than one of a harness's own by less leaves it no room on the task
- *  (`hasObjectiveGap`), which decides task admission, the frontier and `roomOf`. The test says
+ *  (`informative`), which decides task admission, the frontier and `roomOf`. The test says
  *  whether a difference is believable, and the floor whether it is worth counting. */
 export const ROOM = 0.01;
 
-/** How much each measure weighs in a task's score (`pointsOf`). Each measure is its mean over the
- *  task's pairings, from -1 to 1, and a pairing counts on one measure only, so a task's score runs
- *  from -600 to 600 thousandths (`POINTS`). */
+/** How much each measure weighs in a task's score (`pointsOf`), in thousandths (`POINTS`). Each
+ *  measure is its mean over the task's pairings, and a pairing counts on one measure only. */
 export const WEIGHTS: Measures = { validity: 0.6, objective: 0.3 };
 /** A task's score in whole points: thousandths, since the test's convolution is over whole numbers. */
 const POINTS = 1000;
@@ -221,21 +214,13 @@ export function sweepOf(level: number): number {
   return sweep;
 }
 
-/** The promotion tuner's reading at `level`: `step` where frontier and retained tasks together
- *  clear it (`readsStep`). It reads only sets this tree has just scored, so a set without its
- *  scores is the caller's fault and is refused: a report before 12 October holds a pooled tally
- *  alone. A recorded report keeps the reading it wrote; the promotion tuner scores its pairs again
- *  instead. */
-export function stepOf(report: JsonObject, level: number): "step" | "no-step" {
-  const sets = [report.frontier, ...(report.retained === UNMEASURED ? [] : [report.retained])];
-  const scores = sets.flatMap((set) => {
-    const found = asRecord(set)?.differences;
-    if (!Array.isArray(found) || !found.every(isNumber)) {
-      throw new Error("a reading needs a frontier and a retained set, each with its differences");
-    }
-    return scoresIn(set);
-  });
-  return readsStep(scores, level) ? "step" : "no-step";
+/** The set a report's step was read on: the scored tasks, whose `falseRate` marks them, or the
+ *  frontier in a report before 20 October. */
+export function testedSet<S extends { readonly falseRate?: unknown }, F>(
+  whole: S | null,
+  frontier: F,
+): S | F {
+  return whole?.falseRate === undefined ? frontier : whole;
 }
 
 /** The objective rule a comparison's start, or its report, carries, or undefined where it fixed
@@ -246,19 +231,13 @@ export function objectiveRuleIn(data: JsonObject): ObjectiveRule | undefined {
   return direction === "lower" || direction === "higher" ? { direction } : undefined;
 }
 
-/** A number for each measure where `value` holds one, as a report holds the points each measure
- *  gave; undefined otherwise, as in every report before 21 October. */
-export function measuresIn(value: unknown): Measures | undefined {
-  const { validity, objective } = asRecord(value) ?? {};
-  return isNumber(validity) && isNumber(objective) ? { validity, objective } : undefined;
-}
-
 /**
  * Whether a task tells something of the harness on `side`: valid on some of its solves and not all;
- * valid on all where a better answer is on record (`hasObjectiveGap`); or valid on none where the
- * task is among `feasible`, the versions a valid answer is on record for (`poolOf`, `reports.ts`).
- * A task it answers alike in every solve, at the best answer on record, leaves it nothing to gain
- * on, and so does one it fails in every solve that nobody has answered.
+ * valid on all where a better answer is on record (`gapAgainst`): another of its own, the other
+ * side's, or its author's (`task.feasible`), which proves a better answer exists; or valid on none
+ * where the task is among `feasible`, the versions a valid answer is on record for (`poolOf`,
+ * `reports.ts`). A task it answers alike in every solve, at the best answer on record, leaves it
+ * nothing to gain on, and so does one it fails in every solve that nobody has answered.
  */
 export function informative(
   pair: Paired,
@@ -268,68 +247,54 @@ export function informative(
 ): boolean {
   const valid = pair[side].filter(Boolean).length;
   if (valid === 0) return knownValidAnswers.has(pair.task);
-  return valid < pair[side].length || hasObjectiveGap(pair, side, bests.get(pair.task) ?? null);
+  if (valid < pair[side].length) return true;
+  const other = pair.objective?.[side === "old" ? "fresh" : "old"] ?? [];
+  return gapAgainst(pair, side, [...other, bests.get(pair.task) ?? null]);
 }
 
-/**
- * Whether a measure on record is better by the objective, by at least the floor (`ROOM`), than one
- * of the side's own valid answers: another of its own, the other side's, or `best`, its author's
- * (`task.feasible`). A harness that reaches it wins the pairs against that answer, so the task has
- * room. False where the pair carries no objective; a valid answer with no measure is compared with
- * nothing. The author's answer counts because it proves a better answer exists, which is the room
- * a better harness can take; it never reaches a solver.
- */
-export function hasObjectiveGap(pair: Paired, side: "old" | "fresh", best: number | null): boolean {
-  return (
-    (objectiveGap(pair, side, [...(pair.objective?.[side === "old" ? "fresh" : "old"] ?? []), best]) ?? 0) > 0
-  );
-}
-
-/** The most that a measure, one of the side's own or one `against` it, is better by than one of
- *  the side's own valid answers, as a share of the larger magnitude, where that reaches the floor
- *  (`ROOM`), and 0 under it: the objective gap the task leaves that harness. Null where the pair carries no
- *  objective or the side no measure. Its author is told it against the side's own answers alone,
- *  since the other harness's answers are its result on the task. */
-export function objectiveGap(
+/** Whether a measure, one of the side's own or one `against` it, is better by at least the floor
+ *  (`ROOM`) than one of the side's own valid answers: the objective gap the task leaves that harness.
+ *  False where the pair carries no objective or the side no measure. The draw of a task's author
+ *  reads it against the side's own answers and the author's alone, since the other harness's answers
+ *  are its result on the task. */
+export function gapAgainst(
   pair: Paired,
   side: "old" | "fresh",
   against: readonly (number | null)[],
-): number | null {
+): boolean {
   const rule = pair.objective;
-  const own = rule?.[side].filter(isNumber) ?? [];
-  if (rule === undefined || own.length === 0) return null;
+  if (rule === undefined) return false;
+  const own = rule[side].filter(isNumber);
   const known = [...own, ...against.filter(isNumber)];
-  const most = Math.max(...own.flatMap((mine) => known.map((other) => gainOver(rule, other, mine) ?? 0)));
-  return most >= ROOM ? most : 0;
+  return own.some((mine) => known.some((other) => gainOver(rule, other, mine) >= ROOM));
 }
 
 /** How much better `one` is than `other` by the objective, as a share of the larger magnitude:
- *  negative where it is worse, 0 where they are one measure (`SAME`), null where one is missing.
- *  The floor plays no part: this is the fact a floor is held to. */
-function gainOver(rule: ObjectiveRule, one: number | null, other: number | null): number | null {
-  if (one === null || other === null) return null;
-  // How far apart they are, as a share of the larger magnitude, and at most one: two measures
-  // either side of zero would otherwise be up to two apart, past the objective's weight.
+ *  negative where it is worse, 0 where one is missing. The floor plays no part: this is the fact a
+ *  floor is held to. */
+function gainOver(
+  rule: ObjectiveRule,
+  one: number | null | undefined,
+  other: number | null | undefined,
+): number {
+  if (!isNumber(one) || !isNumber(other)) return 0;
   const larger = Math.max(Math.abs(one), Math.abs(other));
-  const gap = larger === 0 ? 0 : Math.min(1, Math.abs(one - other) / larger);
-  if (gap <= SAME) return 0;
-  return (rule.direction === "lower") === one < other ? gap : -gap;
+  if (larger === 0) return 0;
+  return Math.max(-1, Math.min(1, (rule.direction === "lower" ? other - one : one - other) / larger));
 }
 
 /** How much better the new side's answer of pairing (`f`, `o`) is by the objective, between two
- *  valid answers: its gain as a share of the larger magnitude, which `gainOver` bounds at one
- *  either way; 0 under the floor (`ROOM`) or where a measure is missing. */
+ *  valid answers (`gainOver`); 0 under the floor (`ROOM`). */
 function told(pair: Paired, f: number, o: number): number {
   const rule = pair.objective;
-  const gain = rule === undefined ? 0 : (gainOver(rule, rule.fresh[f] ?? null, rule.old[o] ?? null) ?? 0);
+  const gain = rule === undefined ? 0 : gainOver(rule, rule.fresh[f], rule.old[o]);
   return Math.abs(gain) < ROOM ? 0 : gain;
 }
 
 /** One task's score by measure, the new side's against the reference's over every pairing of a solve
- *  of each: each measure is its mean over the pairings, from -1 to 1, times its weight (`WEIGHTS`),
- *  in thousandths (`POINTS`): `validity` where one answer of the two was valid, the `objective`
- *  between two valid answers (`told`). A pairing counts on one of the two, so the sum runs from
- *  -600 to 600. */
+ *  of each: each measure is its mean over the pairings times its weight (`WEIGHTS`), in thousandths
+ *  (`POINTS`): `validity` where one answer of the two was valid, the `objective` between two valid
+ *  answers (`told`). */
 export function pointsOf(pair: Paired): Measures {
   const sums = { validity: 0, objective: 0 };
   for (const [f, freshValid] of pair.fresh.entries()) {
@@ -338,7 +303,7 @@ export function pointsOf(pair: Paired): Measures {
       else if (freshValid) sums.objective += told(pair, f, o);
     }
   }
-  const each = POINTS / Math.max(1, pair.fresh.length * pair.old.length);
+  const each = POINTS / (pair.fresh.length * pair.old.length);
   return {
     validity: sums.validity * WEIGHTS.validity * each,
     objective: sums.objective * WEIGHTS.objective * each,
@@ -348,48 +313,26 @@ export function pointsOf(pair: Paired): Measures {
 /** `points` to the whole point, half points away from zero and zero normalised, so that exchanging
  *  the sides negates it: the one rounding of a score, its measures' totals and the tuner's replay. */
 export function wholePoints(points: number): number {
-  const magnitude = Math.round(Math.abs(points));
-  return magnitude === 0 ? 0 : Math.sign(points) * magnitude;
+  return Math.sign(points) * Math.round(Math.abs(points));
 }
 
-/** Project one task's weighted components, rounding only after adding the kept measures.
- * Both readings share this arithmetic, including replay under different weights. */
-export function scoresOf({ validity, objective }: Measures): Readonly<Record<Kept, number>> {
-  return { scored: wholePoints(validity + objective), validity: wholePoints(validity) };
-}
-
-/** One task's rounded score on the measures `kept` names. */
-export function differenceOf(pair: Paired, kept: Kept = "scored"): number {
-  return scoresOf(pointsOf(pair))[kept];
+/** One task's score: its measures added, then rounded. */
+export function differenceOf(pair: Paired): number {
+  const { validity, objective } = pointsOf(pair);
+  return wholePoints(validity + objective);
 }
 
 /** The measure that carried a task's result from its points (`pointsOf`), null for a tie: validity
- *  where its points alone share the score's sign, and otherwise the objective. It reads points
- *  rather than a pair so that the promotion tuner, which scales them by other weights, credits a
- *  win by this rule too. */
-export function carriedBy(points: Measures): keyof Measures | null {
-  const score = scoresOf(points);
-  const sign = Math.sign(score.scored);
+ *  where its points alone share the score's sign, and otherwise the objective. */
+export function carriedBy({ validity, objective }: Measures): keyof Measures | null {
+  const sign = Math.sign(wholePoints(validity + objective));
   if (sign === 0) return null;
-  return Math.sign(score.validity) === sign ? "validity" : "objective";
+  return Math.sign(wholePoints(validity)) === sign ? "validity" : "objective";
 }
 
 /** Whether no solve of a pair gave a valid answer. */
 export function unsolved({ old, fresh }: Paired): boolean {
   return ![...old, ...fresh].some(Boolean);
-}
-
-/** Validate complete, balanced pairs and calculate their score components once. */
-function differencesOf(pairs: readonly Paired[]) {
-  return pairs.map((pair) => {
-    const { task, old, fresh } = pair;
-    if (old.length === 0 || old.length !== fresh.length) {
-      throw new Error(
-        `task ${task} has ${String(old.length)} solve(s) under the old harness and ${String(fresh.length)} under the new; a comparison needs as many of each`,
-      );
-    }
-    return scoresOf(pointsOf(pair));
-  });
 }
 
 /** The test of `differences`: each task won by the harness its score favours and tied otherwise,
@@ -399,16 +342,19 @@ export function testOf(differences: readonly number[]): Tally & { readonly p: nu
   return { wins: count(1), losses: count(-1), ties: count(0), p: flipP(differences) };
 }
 
-/** The scores of `pairs`, in their order, and their test. */
+/** The scores of `pairs`, in their order, and their test. A pair that is not complete and balanced
+ *  is refused. */
 export function scored(pairs: readonly Paired[]) {
-  const differences = differencesOf(pairs).map((one) => one.scored);
+  const differences = pairs.map((pair) => {
+    const { task, old, fresh } = pair;
+    if (old.length === 0 || old.length !== fresh.length) {
+      throw new Error(
+        `task ${task} has ${String(old.length)} solve(s) under the old harness and ${String(fresh.length)} under the new; a comparison needs as many of each`,
+      );
+    }
+    return differenceOf(pair);
+  });
   return { ...testOf(differences), differences };
-}
-
-/** The tally of `scored` alone. */
-export function tally(pairs: readonly Paired[]): Tally {
-  const { wins, losses, ties } = testOf(differencesOf(pairs).map((one) => one.scored));
-  return { wins, losses, ties };
 }
 
 /** `count` of `versions`, chosen by `seed` and nothing else. Each version is ranked by the hash of

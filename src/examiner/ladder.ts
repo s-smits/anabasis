@@ -6,7 +6,7 @@
  * drafting prompt none either. The investigation of that day graded every scored task of
  * kernel-cyber2-fresh-DeepSeek-V4.1-Flash-1017 at reach 3 or below on lane 34's scale (12 of 37 at
  * 3, none above), because the drafted exam defined each weakness by its exact syntax and each fix
- * as one canonical edit. Of esp32-fresh-opus-stijn-pro's 81 drafts, the reference harness answered
+ * as one canonical edit. Of esp32-fresh-opus's 81 drafts, the reference harness answered
  * all 3 solves of 76, so task admission refused them. And the reference's room came from chance on easy
  * tasks: it flipped between a valid and an invalid solve on 18 of 85 compared tasks. Two
  * promotions bought no reach the starter lacked. The operator asked the same day for a ladder from

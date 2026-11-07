@@ -26,6 +26,7 @@
     "gate": "bun tools/runtime/gate.ts",
     "hooks:install": "git config core.hooksPath .githooks && git config alias.complexity '!python3 .claude/skills/reduce-complexity/scripts/stack-complexity.py'",
     "land": "bun tools/runtime/land.ts",
+    "split": "bun tools/runtime/split.ts",
     "follow": "bun .claude/skills/stack-pr/scripts/follow.ts",
     "ui:dev": "cd packages/ui && bun run dev",
     "ui:build": "cd packages/ui && bun run build",
@@ -44,6 +45,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.13",
+    "@huggingface/transformers": "4.2.0",
     "@oxlint/plugins": "1.83.0",
     "@types/bun": "1.4.3",
     "@types/cross-spawn": "^6.0.6",

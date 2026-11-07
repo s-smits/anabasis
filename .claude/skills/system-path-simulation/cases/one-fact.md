@@ -7,7 +7,7 @@ before building anything.
 | --- | --- | --- |
 | Which move follows on this campaign, and what would refuse it? | `bun tools/d2/harness-builder.ts --name <name> --dry-run` | nothing |
 | Which sets does a log hold? | `bun run runs replay <name>` | nothing |
-| Is a run alive, and what did it last do? | `bun run runs pulse --once <name>` | the pulse's own state file |
+| Is a run alive, and what did it last do? | `bun run runs pulse <name>` | the pulse's own state file |
 | Is there supply for a comparison, and what can it show? | `bun run runs view <name>`: its set-up line, and the admission's notes when the move is made | nothing |
 | Which sessions ran, from which parent, with which reading? | `bun tools/wri/wri.ts read --log <log>`, row F and the `CHAIN` line | nothing |
 | Under what did a campaign's comparisons run? | `bun run runs view <name>` | nothing |

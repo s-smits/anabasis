@@ -90,7 +90,7 @@ start a step until the check named for the one before holds.
    spend, a change to a run or the tree and a read of an env file, so those hard rules hold in code.
    Claude Code offers the type only where the session's own checkout holds the file. Where the Agent
    tool lists no `wri-lane`, start the lanes from a session opened in a worktree at the stack's top,
-   never as `general-purpose`: on 4 November 72 lane sessions ran that way, unguarded, from a main
+   never as `general-purpose`: 72 lane sessions once ran that way, unguarded, from a main
    checkout the stack had moved past.
    *Check:* read the model each transcript recorded before using its report, and that each lane ran
    as `wri-lane` (its `subagent_type`).
@@ -121,16 +121,23 @@ Each runs as `bun tools/wri/wri.ts <verb>` from the checkout. The usage block at
 | 5 | `collect --out <dir>` | `reports.md` |
 | 6 | `synthesis --out <dir>` | `synthesis-prompt.md` |
 | lanes 1, 5 | `grade --log <log> [--bundle <pack>] --task <taskId> --answer <file>` | nothing: one verdict line. `--bundle` names a stored pack; a campaign that drafted its exam names none |
-| any | `derive (--log <log>[,<log>...] \| --all) [--verbose] [--force]` | `data/derived/<campaign>/`: one file a reader, and `manifest.json` |
+| any | `derive (--log <log>[,<log>...] \| --all) [--verbose] [--force] [--no-embed]` | `data/derived/<campaign>/`: one file a reader, and `manifest.json` |
 
 ### The readers, derived
 
-Eleven deterministic readers take one log and print what it holds (`READERS`,
-`tools/wri/derive.ts`): the rows and triggers, the kept versions blind (`chain`) and measured
-(`versions`), the scored tasks' public input (`tasks`), the readings, each promotion scored again
-with the measure that won each task (`replay`), the next draw, the ending, the conditions, and what
-a Builder and an Examiner opening would be told. `chain` and `tasks` carry no result, so a lane that
-grades before it reads an outcome (34) reads them first. `derive` runs
+Thirty deterministic readers take one log and print what it holds (`READERS`,
+`tools/wri/derive.ts`): the rows and triggers, the ending, the readings, each starter read split by
+what its tasks had been through (`starter-reads`), the served models (`degradations`), the climb, the gap to the answer on record, the campaign's view and its table's
+next move, the iteration's trigger (`loop`), the commit (`source`), the logged readings (`logged`),
+its dollars a promotion (`cost`) and row of the release table (`table`), each promotion scored again
+with the measure that won each task (`replay`), the conditions, the scored tasks' public input
+(`tasks`), the next draw, what a Builder and an Examiner opening would be told, each Examiner
+session's admissions (`ambition`) and drafts (`exams`), where each comparison sits in the reference's
+power zone (`zone`), whether a side repeats its own answers (`answers`), how much of a solve's or a
+session's time went inside its calls (`waits`), how a side's passes got there (`routes`), and the kept
+versions measured (`versions`) and blind (`chain`). `chain` and `tasks` carry no result, so a lane that grades before it reads an
+outcome (34) reads them first. `bun run runs pulse` runs the same list for each look
+(run-management, "Watch"). `derive` runs
 them all over a log into the main worktree's `data/derived/<campaign>/`, one `<reader>.txt` each,
 and replaces the folder whole where the log or the commit reading it moved since; a folder whose
 log stands is kept. So the files always describe one moment of the log, the latest a pass saw.
@@ -139,15 +146,33 @@ There are two ways to use it:
 
 - **Quiet**, the default. It prints one line: how many campaigns it derived, how many it kept and
   which readers failed. `start` runs it for its logs and names the folders in the instructions, and
-  a job on the central host runs `derive --all` after each gather, so every run on every host has
-  its folder while it runs and after. Read the files rather than running the readers again.
+  `derive --all` does so for every log a host holds or has gathered. Read the files rather than
+  running the readers again.
 - **Verbose**, `--verbose`, for a session that wants to see everything at once: it prints every
   reader's file, under a heading naming the campaign and the reader, then the same line. It runs
   nothing a quiet pass would not; with an unmoved log it prints the folder as it stands.
 
 `--force` derives again although nothing moved, after a reader's code changed without a commit.
+`--no-embed` leaves out the readers that load the local embedding model, and a later derive without
+it writes the whole folder.
 The folders hold hidden values as the log does, so they stay on the exam side and out of every
 prompt a seat reads.
+
+Left out of the list, each for its reason: what reads no run (`comparison-reading/scripts/size.ts`,
+`examiner-complexity/scripts/rungs.ts`, `system-audit/scripts/recent.ts`); what needs more than a
+campaign (`examiner-complexity/scripts/grades.ts` a grader's file, `oracle-handover/scripts/slice.ts`
+a selector, `tools/c/repaired.ts` a bundle, `tools/runs/search.ts` a query, `wri.ts grade` an
+answer); and what writes (`wri.ts start`, `lanes`, `collect`, `synthesis`, `index` and `derive`,
+`wri2p2.ts open`, `tools/c/rejections.ts`, `tools/d2/close.ts`) or calls a paid model
+(`system-path-simulation/scripts/live-seat.ts` and `referee-seat.ts`, `compare-systems/scripts/systems.ts`).
+
+`restated` and `nearness` run a local model on two texts, and `tools/wri/embed.ts` owns the model and
+the vector store under `.ana/pulse/`, so a cut read goes on from where it was. `restated` groups the
+Referee's reasons at cosine 0.93 and names the groups of three or more, and any one ruled two ways, with
+the checks and rulings, so one complaint read 41 times is read once. `nearness` says how close each
+Examiner session's tasks read to earlier ones, and how many groups a comparison's scored tasks fall in.
+Within a log near tasks tied and split as far ones did, so read it for how alike an exam's words are and
+not as a dependence between tasks. Neither prints a reason or a task's text.
 
 One investigation reads one question, over one campaign or several. Two campaigns of one pack, one
 under a checker and one under its repair, are read apart, and lane 3 of the later one joins them.
@@ -275,7 +300,7 @@ decisions and predictions. The primary then treats the note as research, in two 
 
 Vet every finding, and above all every one that would change code or a decision. Write the result
 as `<dir>/vetting.md`, one row a finding with its verdict and what was checked, and never report a
-finding that was only triaged as vetted. On 22 October eight of thirteen findings were first
+finding that was only triaged as vetted. In one investigation eight of thirteen findings were first
 reported as adjudicated after triage alone.
 
 **Backtrack the predictions before the synthesis's own findings.** Where the campaigns belong to a

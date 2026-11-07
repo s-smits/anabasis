@@ -164,7 +164,7 @@ describe("the campaign's line and readouts", () => {
     await summary.click();
     await expect(details).toHaveAttribute("open", "");
     await expect(body).toContainText(
-      /\b13\b.*frontier.*\b2\b.*practice.*\b1\b.*label.*\b1\b.*exhausted.*retained/u,
+      /\b13\b.*frontier.*\b2\b.*practice.*\b1\b.*label.*\b1\b doubted.*\b1\b.*exhausted.*retained/u,
     );
     await expect(body).toContainText(/checker.*\b0\b.*faults.*frozen/u);
     await expect(body.getByText(/faux\/solver-1.*high/u)).toBeVisible();

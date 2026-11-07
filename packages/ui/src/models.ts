@@ -24,7 +24,6 @@
  * shows, never a silent empty list.
  */
 import type { Supply } from "../../../src/campaign/admission.ts";
-import type { Worth } from "../../../src/campaign/climb.ts";
 import type { Handover } from "../../../src/campaign/handover.ts";
 import type { Decided, Ending as CampaignEnding } from "../../../src/campaign/move.ts";
 import type { Seat, Terms } from "../../../src/campaign/opening.ts";
@@ -359,8 +358,10 @@ export interface CampaignReading extends Answer {
   readonly attended: boolean;
   /** The bar a promotion's cost is read against (`BARS`, `src/campaign/climb.ts`): read and
    *  printed, refusing nothing. */
-  readonly bars: Worth["bars"];
-  readonly supply: Supply;
+  readonly bars: { readonly cost: number };
+  /** The supply as the next comparison reads it, and beside it the doubted tasks (`poolOf`), which
+   *  it leaves out and counts nowhere. */
+  readonly supply: Supply & { readonly doubted: number };
   /** Digests: the harness last promoted, and the starter as the comparisons name it. Null where the
    *  log names none. */
   readonly reference: string | null;
@@ -558,12 +559,14 @@ export interface TaskRow {
   readonly version: string;
   readonly id: string | null;
   readonly state: TaskState;
-  /** Two readings beside the state: waiting for a person's label (`poolOf`), and answered
-   *  by the reference in every solve of its last reading (`poolOf`). */
+  /** Three readings beside the state (`poolOf`): waiting for a person's label; out of the draw
+   *  while a rejection of the reference's that set it aside stands unearned (doubted); and
+   *  answered by the reference in every solve of its last reading. */
   readonly awaitingLabel: boolean;
+  readonly doubted: boolean;
   readonly exhausted: boolean;
-  /** Whether a comparison scores it in its retained set (`poolOf`), where a step may not lose more
-   *  than it wins: every exhausted task is, since 16 October. */
+  /** Whether a comparison scores it in its retained set (`poolOf`): every exhausted task is, since
+   *  16 October. */
   readonly retained: boolean;
   readonly proposedAt: string | null;
 }

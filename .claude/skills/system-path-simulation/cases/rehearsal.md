@@ -55,8 +55,8 @@ target cannot be changed by these flags. Six frontier wins clear 0.02; four do n
   is promoted. `none:pass` scripts wins, which read a step only with enough frontier tasks at the
   level. `--starter` applies where the starter is neither side, for example in a campaign's starter comparison
   after a promotion. A comparison adds no third arm after a step.
-- In a campaign the task admission seats the same scripted solver, under the promoted reference
-  as `old`, with three fresh solves per draft (18 October 2026). Five rehearsals seated none, while
+- In an older campaign the task admission seated the same scripted solver, under the promoted reference
+  as `old`, with three fresh solves per draft. Five rehearsals seated none, while
   esp32-fresh-opus refused 45 of 50 drafts after promotion. The scripted
   Examiner tries each available recorded valid answer through `try_answer`, so an unanswered draft
   can be held on that known valid answer. `pass:pass` refuses an answered draft unless an answer on record
@@ -124,7 +124,7 @@ many of their solves were valid, then one of two last lines.
 Then put the seed through the readers a real run meets, since a join can break after the report:
 
 ```sh
-bun run runs pulse --once sim-<what>
+bun run runs pulse sim-<what>
 bun run runs view sim-<what>
 bun tools/wri/wri.ts read --log .ana/d2/sim-<what>/log.jsonl
 ```
@@ -150,7 +150,7 @@ A kill can leave the ordinary root of each unfinished solve or session.
 `bun run runs stop sim-<what>` names them, and with `--yes` releases them. While it runs this is the stop a paid
 round gets: it ends the process and what it started, then releases. A seed's stop reads only what
 the seed wrote after its cut (`leftOpen`), so what its source still has open is never touched.
-Until 19 October macOS roots held disk images. For a root still mounted by that older code,
+Older macOS roots held disk images. For a root still mounted by that code,
 `stop.ts` requires `hdiutil detach` first. Current stops remove folders and end their remaining processes.
 
 ## Plant a condition for a reader

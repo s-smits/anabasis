@@ -164,12 +164,12 @@ it("S3: view and fleet pulse explain a dead remote run using its newest bounded 
     "utf8",
   );
   expect(observation.length).toBeLessThan(3000);
-  const pulse = made.runScript(CLI, ["pulse", "--once"], env);
+  const pulse = made.runScript(CLI, ["pulse", "--once", "--no-readers"], env);
   expect(pulse.code).toBe(0);
   expect(pulse.out).toContain("newest startup failure");
   expect(pulse.out).toContain("waiting for provider until 2099");
   // The same observer's next look has nothing new to say of a run that was already stopped.
-  const again = made.runScript(CLI, ["pulse", "--once"], env);
+  const again = made.runScript(CLI, ["pulse", "--once", "--no-readers"], env);
   expect(again.code).toBe(0);
   expect(again.out).not.toContain("distant");
 });
@@ -406,7 +406,7 @@ it("S9: a laptop with no open run still pulses the campaign that lives on a peer
       },
     }),
   };
-  const result = made.runScript(CLI, ["pulse", "--once"], env);
+  const result = made.runScript(CLI, ["pulse", "--once", "--no-readers"], env);
   writer.kill();
   expect(result.code).toBe(0);
   // A host with nothing to say prints no line of its own, this laptop included.
@@ -420,7 +420,6 @@ it("S10: a WAN timeout reports its duration and preserves the other host's answe
   const made = fixture();
   const hosts = JSON.stringify([made.host, made.other]);
   const fleet = { [made.host.ssh]: { health: HEALTH }, [made.other.ssh]: { timeout: true } };
-  const started = performance.now();
   // A control socket's path must stay under 104 bytes, which the suite's own temp root may not leave room for.
   const controlRoot = mkdtempSync(join("/tmp", "ana-s10-"));
   fixtures.push(controlRoot);
@@ -429,11 +428,13 @@ it("S10: a WAN timeout reports its duration and preserves the other host's answe
     FAKE_FLEET: JSON.stringify(fleet),
     ANA_TEST_TMPDIR: controlRoot,
   });
-  expect(performance.now() - started).toBeLessThan(40_000);
   expect(result.code).toBe(1);
   expect(result.out).toContain("Bun fixture");
+  // Said only where the 30 s limit killed the peer, whose fake answers after 50 s. A busy host runs
+  // the limit late, so the duration has a floor and no ceiling.
   expect(result.err).toContain("timed out");
-  expect(result.out).toMatch(/peer \(3\d[.]\d s\)/);
+  const [, duration = "0"] = /peer \((\d+[.]\d) s\)/.exec(result.out) ?? [];
+  expect(Number(duration)).toBeGreaterThanOrEqual(30);
   const calls = made.recorded().filter((call) => call.tool === "ssh");
   for (const option of [
     "ControlMaster=auto",

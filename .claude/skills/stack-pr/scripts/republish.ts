@@ -4,6 +4,10 @@
  *
  *   bun .claude/skills/stack-pr/scripts/republish.ts --head <pr>=<commit> ... [--absorb <pr>=<into>] ...
  *     [--yes] [--no-verify]
+ *   bun .claude/skills/stack-pr/scripts/republish.ts --onto-main <pr> [--yes] [--no-verify]
+ *
+ * `--onto-main` replays the open stack holding <pr> onto origin/main and names every head itself:
+ * the repair once what the stack stood on has landed (`replayedHeads`).
  *
  * Without `--yes` it shows each branch before and after, and every operation in order. With it,
  * it unstacks, retargets every survivor to main, pushes moved heads atomically with leases on the
@@ -26,11 +30,12 @@ import { CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { gitMaybe, gitText } from "#src/meta/git.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
+import { errorMessage } from "#src/meta/runtime-values.ts";
 import { shellQuote } from "#src/wall/isolation.ts";
 import { short } from "#tools/runtime/gate.ts";
 import { ghOrThrow, openPulls, type Pull } from "#tools/runtime/pulls.ts";
 import { type NativeStack, STACKS } from "./follow.ts";
-import { chains } from "./stack.ts";
+import { chains, TRUNK } from "./stack.ts";
 
 /** One surviving pull request: its new head and final base. */
 interface Move {
@@ -48,7 +53,8 @@ interface Consolidation {
 
 type Verify = "verify" | "no-verify";
 
-const USAGE = "republish.ts --head <pr>=<commit> ... [--absorb <pr>=<into pr>] ... [--yes] [--no-verify]";
+const USAGE =
+  "republish.ts (--head <pr>=<commit> ... [--absorb <pr>=<into pr>] ... | --onto-main <pr>) [--yes] [--no-verify]";
 
 const named = (pull: Pull): string => `#${String(pull.number)}`;
 const holds = (root: string, older: string, newer: string): boolean =>
@@ -104,7 +110,7 @@ export function planConsolidation(
       );
     }
   }
-  const trunk = gitText(root, "rev-parse", "--verify", "origin/main^{commit}");
+  const trunk = gitText(root, "rev-parse", "--verify", TRUNK);
   const moves = kept.map((pull, index): Move => {
     const given = heads.get(pull.number);
     const to = given === undefined ? pull.headRefOid : commitOf(root, pull, given);
@@ -131,6 +137,61 @@ export function planConsolidation(
     }
   }
   return { trunk, moves, absorbed: gone.map((pull) => ({ pull, into: absorbed.get(pull.number) ?? 0 })) };
+}
+
+/** The new head of every pull request on `line`, bottom to top: the chain replayed onto origin/main
+ *  by `git replay`, which needs no worktree and moves no ref, from where it last met main (the
+ *  merge of what it was stacked on), each head mapped to the replayed commit at its place. A chain
+ *  that already holds origin/main keeps its heads. On 6 November #632 to #653 stood on a merged
+ *  branch, and the fix took an unstack, a base edit, a rebase in a scratch worktree, a hand-built map
+ *  of 18 heads and this script; `--onto-main` is that sequence. */
+export function replayedHeads(root: string, line: readonly Pull[]): Map<number, string> {
+  const top = line.at(-1);
+  if (top === undefined) throw new CommandFailure("no open stack to replay");
+  const trunk = gitText(root, "rev-parse", "--verify", TRUNK);
+  if (holds(root, trunk, line[0]?.headRefOid ?? top.headRefOid)) {
+    return new Map(line.map((pull) => [pull.number, pull.headRefOid]));
+  }
+  const from = gitText(root, "merge-base", trunk, top.headRefOid);
+  const range = `${from}..${top.headRefOid}`;
+  let said: string;
+  try {
+    said = gitText(root, "replay", "--ref-action=print", "--onto", trunk, "--ref", "refs/ana/replay", range);
+  } catch (cause) {
+    said = errorMessage(cause);
+  }
+  const replayed = /^update \S+ ([0-9a-f]{40})/m.exec(said)?.[1];
+  if (replayed === undefined) {
+    throw new CommandFailure(
+      `the chain up to ${named(top)} does not replay cleanly onto origin/main at ${short(trunk)} (${said.trim()}): ` +
+        `resolve it with \`git rebase --onto origin/main ${short(from)} <top>\`, then name the new heads with --head`,
+    );
+  }
+  const commits = (span: string) => gitText(root, "rev-list", "--reverse", span).split("\n").filter(Boolean);
+  const subjects = (span: string) => gitText(root, "log", "--reverse", "--format=%s", span);
+  const before = commits(range);
+  const after = commits(`${trunk}..${replayed}`);
+  if (subjects(range) !== subjects(`${trunk}..${replayed}`)) {
+    throw new CommandFailure(
+      `replaying ${range} dropped or changed commits (${String(before.length)} before, ` +
+        `${String(after.length)} after): replay it by hand and name the new heads with --head`,
+    );
+  }
+  return new Map(
+    line.map((pull) => {
+      const at = before.indexOf(pull.headRefOid);
+      const to = after[at];
+      if (to === undefined) throw new CommandFailure(`${named(pull)}'s head is not on the chain ${range}`);
+      return [pull.number, to];
+    }),
+  );
+}
+
+/** The open stack that holds `number`, bottom to top. */
+export function lineOf(pulls: readonly Pull[], number: number): readonly Pull[] {
+  const line = chains(pulls).stacks.find((each) => each.some((pull) => pull.number === number));
+  if (line === undefined) throw new CommandFailure(`#${String(number)} is not on an open stack`);
+  return line;
 }
 
 /** The one push that moves every changed head, each with a lease on the head GitHub showed. */
@@ -214,18 +275,27 @@ if (import.meta.main) {
     {
       name: "republish",
       usage: USAGE,
-      options: { head: "list", absorb: "list", yes: "flag", "no-verify": "flag" },
+      options: { head: "list", absorb: "list", "onto-main": "int", yes: "flag", "no-verify": "flag" },
     },
     (args) => {
       const root = gitText(runtimeProcess.cwd(), "rev-parse", "--show-toplevel");
       gitText(root, "fetch", "-q", "origin");
+      const onto = args.int("onto-main");
+      if (onto !== null && args.list("head").length + args.list("absorb").length > 0) {
+        throw new CommandFailure(
+          "--onto-main works out every head itself: pass it without --head or --absorb",
+        );
+      }
+      const pulls = openPulls(root);
+      const given =
+        onto === null ? pairs("head", args.list("head")) : replayedHeads(root, lineOf(pulls, onto));
       const absorbed = new Map(
         [...pairs("absorb", args.list("absorb"))].map(([pull, into]) => {
           if (!/^#?\d+$/.test(into)) throw new CommandFailure(`--absorb takes <pr>=<pr>, got ${into}`);
           return [pull, Number(into.replace("#", ""))];
         }),
       );
-      const plan = planConsolidation(root, openPulls(root), pairs("head", args.list("head")), absorbed);
+      const plan = planConsolidation(root, pulls, given, absorbed);
       const verify: Verify = args.flag("no-verify") ? "no-verify" : "verify";
       console.log(shown(plan).join("\n"));
       console.log(

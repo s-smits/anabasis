@@ -23,6 +23,13 @@ description no longer matches its mechanism, correct it in the change that finds
 area, the hook supplies its invariants and links to the relevant section and skill. It does this
 once per area per session and never blocks a call.
 
+**The operator's own machines.** What is true only on the operator's machines (hosts, logins,
+accounts, local jobs, check runners and the caps they set) lives in a local skill,
+`operator-machines`, which Git ignores and nothing publishes. Where it is present, read it before
+the first command; on those machines it wins where it disagrees with this file. Keep its contents
+(host names, login numbers, account names, paths) out of every tracked file, commit message and
+pull request.
+
 Carry authorised work through implementation, checks and delivery. Resolve routine ambiguity using
 the most reasonable reading and state the assumption. Verify findings from your own review or
 subagents before acting on them. An audit, review or plan requested on its own remains read-only.

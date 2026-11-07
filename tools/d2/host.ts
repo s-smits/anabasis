@@ -33,7 +33,7 @@
 import { CRASHES } from "#src/campaign/decide.ts";
 import { crashedRun } from "#src/campaign/ground.ts";
 import { affords, flying, inFlight } from "#src/campaign/opening.ts";
-import { PAUSE, pendingWords } from "#src/campaign/word.ts";
+import { PAUSE, pauseWaitMs, pendingWords } from "#src/campaign/word.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
@@ -75,23 +75,28 @@ const WAITED = "campaign.waited";
 // External tests and skills still import this public name.
 export { queued as gated };
 
+/** A rehearsal's host: no load, so that only the reserve, the slots and a pause's word hold its
+ *  scripted solves, looked at every second. */
+const SCRIPTED: Host = { load: () => 0, cores: 1, waitMs: 1000 };
+
 /**
- * `seated` with each solve held at the load, reserve and shared slots. A rehearsal's scripts, whose
- * times nobody compares and which bill nothing, are seated without the solve queue unless a test stands in a
- * host.
+ * `seated` with each solve held at the load, reserve and shared slots, and at a pause's word. A
+ * rehearsal's scripts, whose times nobody compares, meet no load: until 7 November they met no queue
+ * at all, and a `runs pause` of a rehearsed campaign started 73 solves after its word and cut the 4
+ * still open at its patience of 9 minutes, where the queue of a paid run let the open 4 finish and
+ * stopped in 39 s (ablation study S1).
  */
-function queued({ seated, loaded, host = seated === solved ? HOST : undefined }: Queue, log: string): Seated {
-  if (host === undefined) return seated;
+function queued({ seated, loaded, host = seated === solved ? HOST : SCRIPTED }: Queue, log: string): Seated {
   // A pause left before this process began was for the one it stopped.
   const began = read(log).length;
-  // It holds for one solve's limit and a minute, as `runs pause` waits: nothing else answers it, so
+  // It holds a minute past `runs pause`'s wait, so the stop comes first: nothing else answers it, so
   // a pause that died before its stop held the campaign for good (landing review, 7 November 2026).
   const pausing = (wallSeconds: number, events = read(log)) =>
     pendingWords(events).some(
       ({ at, word }) =>
         word === PAUSE &&
         at >= began &&
-        Date.now() - Date.parse(events[at]?.at ?? "") < wallSeconds * 1000 + 60_000,
+        Date.now() - Date.parse(events[at]?.at ?? "") < pauseWaitMs(wallSeconds) + 60_000,
     );
   return (campaign, given) => {
     const seats = seated(campaign, given);

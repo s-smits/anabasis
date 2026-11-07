@@ -1,38 +1,34 @@
 ---
 name: promotion-tuner
-description: "Read recorded comparisons under other promotion rules without model calls or spending. scripts/lab.ts tries any mechanism (weights, a resource such as the bill, turns or seconds as a gain or a guard, floors, the test, the level, or free code in a file) on one panel over the whole record: steps added and dropped, A/A against how many A/As could read a step, starter reads, sign repeats, later outcomes, every row by pack. scripts/replay.ts asks whether one tree's rule supports the promotions on record, which measure won each task and what each promotion cost. scripts/table.ts describes runs by release, pack and setting, and scripts/cost.ts prices promotions on one meter. Applies to questions about past promotions, changed scoring, what a promotion should reward, or comparisons between release cycles; a replay never establishes a live improvement."
+description: "Read recorded comparisons under other promotion rules without model calls or spending. scripts/lab.ts tries any mechanism (weights, the bill, turns or seconds as a gain or a guard, floors, the test, the level, free code) on one panel over the record; scripts/replay.ts asks whether a tree's rule supports the promotions on record and which measure won each task; scripts/table.ts describes runs by release, pack and setting; scripts/cost.ts prices promotions on one meter. Use for past promotions, changed scoring, what a promotion should reward, or comparisons between release cycles; a replay never establishes a live improvement."
 ---
 
 # Promotion tuner
 
-A comparison scores each task by two weighted measures over the pairings of its solves, validity
-and the objective, and one test over those scores must clear the level to promote (`AGENTS.md`,
-section 7, "The tally" and "The test"). An older tree also scored the bill, and
-the replay scores it where the tree under replay weighs it (`Points`, `scripts/tree.ts`). This skill
-asks what any rule would read of the solves on record. It starts no solve, calls no model and writes
-nothing of a campaign's.
+A comparison scores each task by weighted validity and objective over its solve pairings, and a
+sign-flip test over those scores must clear the level to promote (`AGENTS.md`, section 7). This
+skill re-evaluates the promotion rule off-policy: what any other rule would read of the solves on
+record. It starts no solve, calls no model and writes nothing of a campaign's. What a seat is told
+is tuned instead with live seats ([optimize](../system-path-simulation/cases/optimize.md)).
 
-It tunes how a comparison scores the solves it bought. What a seat is told (the Examiner's prompt,
-a task admission's reply) is tuned by seating it in rounds of live pairs, system-path-simulation's
-[optimize](../system-path-simulation/cases/optimize.md), which reads its rounds in the same order
-as this skill reads a panel.
+Every term of the rule is the operator's condition, so a sweep is evidence with a recommendation,
+never a change. A change to the score is no gain of a harness, and **a replay never establishes a
+live improvement**.
 
-## What can be tuned, and whose it is
+## What can be tuned
 
-Every term of the rule is the operator's condition, so a sweep is evidence brought to the operator
-with a recommendation, never a change made on its own. A change to the score is no gain of a harness.
-
-| Term | Where it lives | How the lab changes it |
+| Term | Where it lives | Lab knob |
 | --- | --- | --- |
-| The weights of validity and the objective | `WEIGHTS`, `src/kernel/compare.ts`, in steps of five | `validity=`, `objective=` |
-| A resource as a gain | nothing scores one in production | `bill=`, `turns=`, `seconds=`, with `when=`, `side=`, `lead=`, `floor=` |
+| Weights of validity and the objective | `WEIGHTS`, `src/kernel/compare.ts`, in steps of five | `validity=`, `objective=` |
+| A resource as a gain | none in production | `bill=`, `turns=`, `seconds=`, with `when=`, `side=`, `lead=`, `floor=` |
 | A resource as a guard | none in production | `mostBill=`, `mostTurns=`, `mostSeconds=` |
-| The objective gap floor and the form of a gain | `ROOM`, `pointsOf` | `room=`, `gain=` |
+| The gap floor and form of a gain | `ROOM`, `pointsOf` | `room=`, `gain=` |
 | The test | `flipP`, `stepOf` | `test=`, `untied=`, `level=` |
 | Which tasks enter | `scoredSet` | `retained=` |
 | Anything else | | a `--mechanism` file, or a candidate tree with `--against` |
 
-`scripts/mechanisms.ts` says what each knob does.
+`scripts/mechanisms.ts` documents each knob. An older tree also scored the bill; the replay scores
+it where that tree weighs it (`Points`, `scripts/tree.ts`).
 
 ## The lab
 
@@ -43,79 +39,67 @@ bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/lab.ts \
   [--split <tag or date>] [--named]
 ```
 
-With no `--try`, `--mechanism` or `--against` it prints a standard set. Each `--try` is a list of
-knobs over today's values, as `--try bill=0.1,lead=answers`. A `--mechanism` file exports a
-`Mechanism` or a list of them, whose `score`, `test` and `guard` are free code. `--record <file>`
-keeps the reduced record under `data/derived/`, and it holds exam-side measures, so it stays out of
-every prompt, pull request and paste. `--refresh` reads the logs again.
+With no `--try`, `--mechanism` or `--against` it prints a standard set. `--try
+bill=0.1,lead=answers` sets knobs over today's values; a `--mechanism` file exports `Mechanism`s
+with free `score`, `test` and `guard` code. `--record <file>` keeps the reduced record under
+`data/derived/` (exam-side: never in a prompt, pull request or paste); `--refresh` rereads the logs;
+`--split` gives step rates either side of a release; `--named` names each comparison a row added or
+dropped. **First check the reconciliation lines**: today's knobs must differ from the tree's score
+on 0 tasks.
 
-The first lines reconcile the lab with the tree. Read them first: the knobs at today's values must
-differ from the tree's score on 0 tasks, or the knob rows are not read from the tree's rule.
+Read a panel row by all its columns, never by steps alone:
 
-**The panel.** Read a row by these columns, and never by its steps alone:
-
-| Column | What it says | How it misleads |
+| Column | Says | Misleads because |
 | --- | --- | --- |
-| steps, `+`, `-` | candidates it would promote, against the tree | a rule that promotes more is not a better rule |
-| ahead, lvl, 0-0, bhd | what the tree's own tally of an added step's tasks read | a `0-0` step rests on no answer at all |
-| starter | starter comparisons it reads for the reference | few, and a rule that favours what the climb grew also reads high |
-| A/A (could) | A/As it reads a step on, either way, over those whose margins could read one at all, with all of them in brackets | most are too small to read a step, so a rate over all of them flatters any rule |
-| repeat | how often a task's sign holds on the comparison's other solves | a resource repeats readily, since it measures the harness's habits rather than its answers |
-| bill, turns, secs | the new side over the reference on tasks both answered, median over the steps | a guard reads the largest of these, never the median |
-| $/step, h/step | the candidates' solves over its steps | assumes the campaigns would have bought the same comparisons |
-| by pack | steps in each pack | a pooled rate reads the mix of packs |
-| moved | tasks whose score changed, and how | a weight moves many scores and few readings |
-| same, other, none, unread | what became of an added step | runs that read nothing after are censored, not failures |
+| steps, `+`, `-` | promotions against the tree | more promotions is not a better rule |
+| ahead, lvl, 0-0, bhd | the tree's tally on an added step | a `0-0` step rests on no answer |
+| starter | starter reads for the reference | few, and favour what the climb grew |
+| A/A (could) | A/A steps over A/As able to read one | a rate over all A/As flatters |
+| repeat | sign agreement on other solves | resources repeat as habits |
+| bill, turns, secs, $/step, h/step | medians and spend a step | a guard bites on the maximum |
+| by pack, moved, same/other/none/unread | mix, changed scores, fate of an added step | later-unread runs are censored |
 
-`--split` prints each row's step rate either side of a release, raw and at one mix of packs, and
-`--named` names each comparison a row added or dropped.
-
-**What the record has taught about a rule**, each checkable on the panel:
-
-- A weight sets a margin, and only rarely a reading: where a measure makes tied tasks lean, a small
-  weight adds nearly the steps a large one does.
-- A score must negate when the sides swap, since the test assumes it. A form that counts one way
-  only leans between identical harnesses: read its A/A before its steps.
-- A guard can only remove a step and needs a step to refuse, so read the largest ratio among today's
-  steps before expecting a ceiling to bite. It pushes nothing down.
-- A gain and a guard differ in what they can do: only a gain rewards a saving.
-- Time follows load, the host and the solve queue, so it repeats worse than the bill and is read
-  with that in mind.
-- Replay the same tree before any rule row: the record holds different packs, and pooling reads
-  their mix.
+On the record: a weight sets margins and rarely readings; a score must negate when the sides swap,
+or it leans in the A/A; a guard only removes steps (read the largest ratio first), and only a gain
+rewards a saving; time follows load and repeats worse than the bill; replay the same tree before
+any rule row.
 
 ## The replay
 
 ```sh
-bun .claude/skills/promotion-tuner/scripts/replay.ts --tree <worktree> \
+bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/replay.ts --tree <worktree> \
   [--logs <dir>] [--since <date>] [--name <campaign>]... [--totals]
 ```
 
-- `--tree` names the worktree whose kernel scores the record, as an absolute path. The totals name
-  its commit and whether `src/` has uncommitted changes. An older tree that
-  scores no weighted measures is refused. Replay calls the selected tree's `stepOf`; trees from before the dual rule keep their full-score-only decision.
-- By default the shared run registry discovers campaigns in every worktree and archive, and
-  refreshes remote logs and receipts through `ANA_HOSTS`. Load the host environment with
-  `bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/replay.ts ...`.
-  Explicit `--logs` selects the offline layout `<logs>/<worktree>/.ana/d2/<name>/log.jsonl`, taking
-  the largest copy of each campaign name there. Seeds with
-  `seed.json`, names beginning `sim-`, `rh-` or `test-`, and rehearsals with a `faux/` seat or
-  solver are left out (`campaignLogs`, `rehearsed` in `scripts/tree.ts`). A campaign on another
-  host is read from a copy laid out the same way: `<dir>/<any>/.ana/d2/<name>/log.jsonl`.
-- `--since` selects campaigns whose last event is at or after the date, five days back by
-  default. Repeated `--name` selects named campaigns regardless of date.
-- `--totals` prints only the totals.
+`--tree` is the absolute path of the worktree whose kernel scores the record; the totals name its
+commit and any uncommitted `src/` change, and a tree that scores no weighted measures is refused.
+By default the run registry finds campaigns in every worktree, archive and host (`ANA_HOSTS`);
+`--logs` reads the offline layout `<logs>/<any>/.ana/d2/<name>/log.jsonl`, the largest copy of each
+name. Seeds, `sim-`, `rh-` and `test-` names and rehearsals are left out (`campaignLogs`,
+`rehearsed`, `scripts/tree.ts`). `--since` defaults to five days back; `--name` overrides the date;
+`--totals` prints only totals. Live logs grow, so read baseline and candidate close together and
+note the minute. The script reaches a tree only through `loadTree`.
 
-Live logs grow. Read the baseline and the candidate close together, and record the minute of each.
+For each pair of harnesses it prints the first reading that steps (`W-L-T`, p) as `rightful`,
+`in doubt` (its A/A stepped, or a later reading of the pair lost more than it won) or
+`added by this score`; **which measure won each task** (validity, the objective, or under an older
+tree the bill alone, which is why the bill left the score); pairs that never step, marking
+`NOT PROMOTED by this score`; and each epoch's hours and dollars split into Examiner, comparisons
+and Builder (`scripts/time.ts`).
 
-The script reaches a tree only through its own `read`, `lastReports`, `pairsReported`, `pairsOf`,
-`pointsOf`, `WEIGHTS`, `flipP`, `stepOf`, `readsStepEitherWay`, `billedBetween` and `BILLED` (`loadTree`).
+**Read the reconciliation first.** A report written under weights stores each measure's points, and
+at the writing tree `read otherwise than stored` must be 0; anything else is a candidate change or a
+replay defect, explained before any other count. An older report tallied rule by rule holds no
+points, so `reading otherwise than recorded` counts what the weights changed: a finding about the
+score, never a defect.
+
+An A/A pairs the reference's mirrored halves of its solves (`pairsOf`, `halves: "mirrored"`), and
+`readsStepEitherWay` reads a step either way on unbilled scores; an A/A step is false by
+construction. `rightful` means the recorded solves support the promotion under this score; it cannot
+detect a lucky draw, which the A/A and a later fresh reading address. Whether promotions bought
+ability is whole-run-investigation's lane 27.
 
 ## Every run side by side
-
-`replay.ts` asks whether a score supports the promotions on record. `scripts/table.ts` asks how the
-runs compare: one row a run, a group or a promotion, from the same logs and receipts, with nothing
-scored again.
 
 ```sh
 bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/table.ts \
@@ -123,154 +107,53 @@ bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/table.ts \
   [--since <date>] [--name <part>]... [--last 20] [--has <text>]... [--holds <commit>]... [--format md|tsv]
 ```
 
-- **`recent`**, the default, is the quick look: every live run, whatever it has promoted, then the
-  latest twenty finished runs that promoted at least once. Each row gives the hours to the first
-  promotion, which is set-up, the promotions reached, and the mean hours, active hours and dollars
-  of a rung, a promotion after set-up. Set-up takes longer, so it is kept apart, and the all-in hours
-  a promotion stand beside it. A line under the table gives the medians a live run is read against.
-- **`groups`** compares cycles. A run's release is the tag before its first launch (`after v0.8.0`
-  is the cycle building the next release), its pack the first word of its name, its setting the
-  solver, effort and solve limits. The default groups by all three, since results are never compared
-  across settings (`AGENTS.md`, section 9); `--by release` pools them and marks the group `POOLED`.
-  `by 6 h`, `by 12 h` and `by 24 h` count the runs promoted by then over those that were or lasted
-  that long, so a young run is no miss. Grouping by stack pull request was rejected: a stack's
-  numbers mean nothing from one cycle to the next.
-- **Hours say how fast, not on what.** `groups` and `runs` also give the room on validity (scored
-  tasks the reference did not answer validly in every solve, of those scored, summed over the
-  reported comparisons), the steps won by validity (`validityOf`) and the confirmed promotions.
-  A cycle whose room is near zero can promote only on the objective (and, in an older tree, the bill), whatever its
-  hours: buffer after v0.8.0 held 7 of 571, its steps 5 of 17 on validity.
-- **`--has`** and **`--holds`** keep the runs whose every launch ran with a mechanism (`ranWith`),
-  which is how a change is read against the runs without it (`AGENTS.md`, section 9, "Evidence").
-- Hours are on the log's clock, the same on macOS and Linux. Active hours subtract the union of every
-  recorded wait (`waitsOf`, `tools/wri/time.ts`). Host, cores, load per core at a solve's start and
-  the median solve stand beside them as indicators; no hour is scaled by them.
-- A run sitting out a provider reset longer than two hours reads as finished with `no ending`.
-  One run is one draw: read a group's medians beside its run count.
+One row a run, group or promotion, nothing rescored. **`recent`** (default) lists live runs and the
+latest twenty that promoted, set-up hours apart from hours and dollars a later promotion.
+**`groups`** groups by release (the tag before the first launch), pack and setting, since settings
+are never compared (`AGENTS.md`, section 9); `--by release` pools them as `POOLED`. `groups` and
+`runs` also give validity room and steps won by validity (`validityOf`): without room a cycle
+promotes only on the objective. `--has` and `--holds` keep runs whose every launch had a mechanism
+(`ranWith`). Active hours subtract recorded waits (`waitsOf`, `tools/wri/time.ts`). One run is one
+draw.
 
-### Dollars a promotion on one meter
-
-`table.ts` reads each run's dollars as its own meter billed them, and the meter moved (first to
-each turn at the model that served it, then to a session on its backend's ledger). Before
-saying a cycle is cheaper, price every run the same way:
+`table.ts` uses each run's own meter, which has changed. Before calling a cycle cheaper, price all
+runs on one meter:
 
 ```sh
 bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/cost.ts \
   [--since <date>] [--name <part>]... [--by week|pack|setting|none] [--format md|tsv]
 ```
 
-It prices every recorded turn with today's seat meter (`seatMeter` on its provider's catalogue),
-sets that beside the recorded bill, and pools the finished runs of each week (or pack) and
-setting into dollars a promotion. Turns are the one measure every log holds; a backend's excess
-over them (compactions, retries) is billed only by newer runs, so `repriced/recorded`
-just under 1 on those runs is that excess. For example, buffer at Opus 5.5 medium read $320 a
-promotion in its first week, then $58 and $56, with repriced and recorded within 1% over the later
-two: the fall was the system's, not the meter's.
-
-## What to read
-
-For each pair of harnesses, old digest first:
-
-- The first reading of the pair that steps, its `W-L-T` over the frontier and retained tasks
-  together and its p, and then `rightful`, `in doubt` with its reasons (its A/A read a step, or a
-  later reading of the pair lost more tasks than it won), or `added by this score` for a pair the
-  campaign did not promote.
-- **Which measure won each task** of that reading: validity where validity gave it points, the
-  objective where only the measures between two valid answers did and the objective among them,
-  and, under an older tree, the bill alone. This is the count to watch when the
-  weights move: the bill took a tenth of the weight, yet a task every solve of both sides answered
-  validly could be won by the bill alone, which is why it left the score.
-- A pair that never steps: each reading, short of its level, with its A/A. `NOT PROMOTED by this
-  score` marks a recorded promotion the score rejects.
-- Each promoted epoch and the open one: hours and billed dollars, split into the Examiner,
-  comparisons and the Builder's own time (`scripts/time.ts`).
-
-The totals count recorded promotions (rightful, in doubt, rejected), pairs the score adds, A/A
-controls and their steps, the tasks the promoting readings won by each measure, steps followed by
-a later reading of the pair and how many of those stepped again at their level, and how many only
-won at least as many tasks as they lost, and the median and range of promoted
-epochs' hours and dollars.
-
-**Read the reconciliation counts first.**
-
-- A report written under the weights holds the points each measure gave (`points`). At the tree's
-  own weights, its frontier, retained and A/A differences must read as stored: `read otherwise
-  than stored` is 0 at the tree that wrote them. Anything else is a candidate change or a replay
-  defect, and is explained before any other count is read.
-- An older report was tallied rule by rule (validity, else the objective, else the
-  bill) and holds no points. `reading otherwise than recorded`, to a step and from a step, counts
-  what the weights changed on those readings. It is a finding about the score, never a defect.
-
-An A/A is the reference against itself on mirrored halves of its solves (`pairsOf` with
-`halves: "mirrored"`), available at any even number of solves a side, so at two it reads the first solve against the
-second (`src/campaign/comparison.ts`). The tree's
-`readsStepEitherWay` reads a step where the scores clear the comparison's level in either direction,
-as the whole-run reader and the UI do: on the unbilled scores alone, and in an older tree
-where the scored and unbilled tests clear together. An A/A step is false by construction.
-Recorded reports without unbilled A/A scores retain their scored-only reading; the replay reconstructs
-both scores from the pairs. A reading with a stored task that has neither a pair nor an unbilled
-score cannot establish a replayed step.
-
-`rightful` means the recorded solves support the promotion under this score. It cannot detect a
-lucky draw; the A/A, the false-promotion estimate and a later reading on fresh solves give other
-evidence (`AGENTS.md`, factor 2). Where only one score supports a promotion, name the score.
-
-Whether the promotions on record bought ability is another question, which no rule here settles.
-Lane 27 reads it beside these columns: a task's grade and a version's soundness, graded blind to
-campaign and result, and the wins by what each version changed (whole-run-investigation).
+It reprices every recorded turn with today's `seatMeter` beside the recorded bill and pools dollars
+a promotion; on newer runs `repriced/recorded` just under 1 is the backend's excess (compactions,
+retries).
 
 ## Tuning the score
 
-1. Write the prediction first, in the investigation's folder (`.ana/wri/<date>-<what>/`): for each
-   mechanism to be tried, the counts of step 5 it should move and which way. A sweep read before its
-   prediction invites the setting that reads best, which is a description of the record, never a
-   tuning of it.
-2. Read the lab's reconciliation lines and the tree's row, with the host environment loaded. Default
-   discovery refreshes every host's records; keep a `--record` when a frozen comparison is needed.
-3. Try the mechanisms with `--try` or a `--mechanism` file. Keep each set of weights in steps of five.
-4. Where knobs and free code cannot say it, make a candidate worktree from `origin/main`, following
-   [stack-pr](../stack-pr/SKILL.md), that changes one thing, and read it with `--against`.
-5. Recommend a candidate on one of two bars, and name which:
-   - **a gain**: promotions rise or hours per promotion fall, no A/A reads a step, and no added
-     promotion is contradicted by a later reading of its pair. Count an added promotion with no
-     later reading as untested;
-   - **as good, and simpler**: a candidate that removes a floor, a measure or a branch of the test
-     reads the same promotions as rightful, adds no A/A step and leaves hours per promotion where
-     they were, and is simpler by reduce-complexity's measures.
+1. **Predict first**, in `.ana/wri/<date>-<what>/`: for each mechanism, which counts of step 5 move
+   and which way. A sweep read before its prediction describes the record instead of tuning it.
+2. Read the lab's reconciliation and the tree's row; keep a `--record` where a frozen comparison
+   is needed.
+3. Try mechanisms with `--try` or a `--mechanism` file, weights in steps of five.
+4. Where knobs cannot express it, make a candidate worktree from `origin/main` through
+   [stack-pr](../stack-pr/SKILL.md) that changes one thing, and read it with `--against`.
+5. Recommend on one named bar. **A gain**: promotions rise or hours a promotion fall, no A/A
+   steps, and no added promotion is contradicted later (one with no later reading is untested).
+   **As good, and simpler**: removing a floor, measure or branch keeps the same rightful promotions,
+   adds no A/A step, keeps hours a promotion, and is simpler by reduce-complexity's measures. Give
+   won-by counts beside each candidate, and resolve each prediction as held or missed.
+6. Deliver both tables in the pull request as counts, reconciliation explained.
+7. Confirm live only on the operator's word, in a fresh campaign from a prompt at the candidate's
+   commit with a prediction before the first solve (`AGENTS.md`, section 10, item 9).
 
-   Give the won-by counts beside every candidate, and resolve each prediction of step 1 as held or
-   missed with its count.
-6. Deliver both tables in the pull request as counts, with the reconciliation explained.
-7. Confirm live only on the operator's word, with a fresh campaign from a prompt at the candidate's
-   commit and a prediction recorded before the first solve (`AGENTS.md`, section 10, item 9).
-   Continuing a campaign at another commit measures no climb.
+The replay reads pairs on the recorded path, so it cannot show the counterfactual campaign: an
+earlier promotion would change the reference, the tasks and later comparisons, unbought readings
+have no solves, and a rewarded measure changes what the Builder aims at.
 
-Limits of the replay:
+## The wall and the report
 
-- An earlier promotion would change the reference, the Examiner's tasks and later comparisons.
-  The replay reads pairs on the recorded path, not a campaign under the candidate.
-- A reading never bought has no solves to replay, and a rule changes which comparisons a campaign
-  would have bought. A rule that rewards a measure also changes what a Builder aims at, which only
-  fresh runs can show.
-- An older report may name no task: its stored differences stand in the replay, and the lab leaves
-  it out. A report that holds no frontier is left unread.
-- In a led campaign, Examiner sessions and comparisons run inside the Builder conversation.
-  `Builder alone` subtracts their union; `neither` is time outside all three. A Builder session
-  across a promotion bills each epoch what its turns metered there: every part is billed through
-  the tree's `billedBetween` over its own events, so an open session counts its metered turns and
-  the parts add up to the epoch's total.
-
-## The wall and the result
-
-Keep the log on the exam side (`AGENTS.md`, sections 5 and 8). The script prints counts, session
-ids, short digests and campaign names, never task contents, answers, measures or checks. Only
-those aggregate results belong in a pull request or this skill.
-
-Report, in order:
-
-1. The trees, their commits, the mechanisms read, and the minute each was read.
-2. The reconciliation counts on each.
-3. Recorded promotions: rightful, in doubt with reasons, and rejected by the score.
-4. Each candidate's totals beside the baseline: the bar of tuning step 5, each of its conditions
-   with its count, each prediction held or missed, and the won-by counts.
-5. Campaigns left out, reports read from stored differences, and live counts that may move.
+The log stays exam-side (`AGENTS.md`, sections 5 and 8): only the scripts' aggregates (counts, ids,
+digests, campaign names) go in a pull request. Report in order: the trees, commits, mechanisms and
+reading minutes; the reconciliation counts; recorded promotions as rightful, in doubt with reasons,
+or rejected; each candidate beside the baseline on its step 5 bar, with predictions and won-by
+counts; and campaigns left out, reports read from stored differences, and live counts that may move.

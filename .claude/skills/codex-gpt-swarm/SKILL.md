@@ -1,13 +1,12 @@
 ---
 name: codex-gpt-swarm
-description: "Launch and collect independent Codex sessions (gpt-6-luna at high, xhigh or max; gpt-6.1-sol at low to xhigh) for bounded parallel work, from Claude Code or Codex: one manifest, one detached launcher, one report a session, a drain while it runs, and a retry of incomplete sessions. Owns the Codex transport when another skill sets the questions, as whole-run-investigation does for its lanes. Use when the operator asks for Luna or Sol sessions, a swarm, many sessions, a reasoning effort, a Codex subagent from Claude Code, or a later collection of reports. Distinguish a request to launch from one to wait and collect."
+description: "Launch and collect independent Codex sessions (gpt-6-luna at high, xhigh or max; gpt-6.1-sol at low to xhigh) for bounded parallel work: one manifest, one detached launcher, one report a session, a drain and a retry. Owns the Codex transport when another skill, such as whole-run-investigation, sets the questions. Use when the operator asks for Luna or Sol sessions, a swarm, many sessions, a reasoning effort, a Codex subagent from Claude Code, or a later collection of reports. Distinguish a request to launch from one to wait and collect."
 ---
 
 # Codex GPT swarm
 
-One independent Codex session per bounded task. The orchestration stays in the session that
-launches, and the preparation stays smaller than the work it hands out. One script does the
-transport:
+One independent Codex session per bounded question, orchestrated by the launcher's session. The
+script's head lists every flag; it reads no `.env`, so no login's key reaches a session.
 
 ```sh
 bun .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts --manifest <json> --output-dir <new dir> [options]
@@ -15,111 +14,69 @@ bun .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts --drain <output dir>
 bun .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts --retry <output dir> [--max-active N] [--start-interval-ms N]
 ```
 
-The usage block at the head of `gpt-sessions.ts` lists every flag. The launcher reads no `.env`:
-`bunfig.toml` sets `env = false`, so no login's key reaches it or the sessions it starts.
-
 ## The author before the report
 
-A failed session is missing work, never work done by something else. When two Luna lanes of v1
-failed on exhausted credits, Claude subagents wrote the reports and the session called them "Luna
-at max, both completed"; nothing in the reports showed it. So read who ran before reading what was
-claimed: `summary.json` holds each session's result, and a report with no result there is not a
-Codex session's. Exhaustion is an ordinary interruption (`AGENTS.md`, rule 15): those sessions are
-typed non-results, retried later, and never a defect of the work.
+A failed session is missing work, never work done by something else. Read who ran before what was
+claimed: a report with no result in `summary.json` is not a Codex session's. Exhausted credits are
+a typed non-result, retried later (rule 15).
 
 ## Model, effort and count
 
-The operator's batch policy decides when the request names no model:
+With no model named, the batch policy decides:
 
 | independent questions | model and effort |
 | --- | --- |
 | 2 to 5 | `--model gpt-6.1-sol --reasoning-effort medium` |
 | 6 or more | `--model gpt-6-luna --reasoning-effort xhigh`, all in one launch |
 
-An explicit choice for this batch replaces the table. Keep an effort exactly as named and never
-raise it; Luna named without an effort runs at `max`. One launch runs one model at one effort, so
-mixed efforts are one launch a group. Do not split two useful questions into six to reach a Luna
-batch, and do not wait for earlier reports before starting the rest of a batch: the count follows
-the questions the evidence has not settled.
+An explicit choice replaces the table; keep a named effort exactly (Luna named alone runs at `max`).
+One launch is one model at one effort. The count follows the unsettled questions, never split to
+reach a Luna batch. Always pass the flags: the launcher defaults to `gpt-6-luna` at `max`.
 
-The table is the batch policy, not a count-based choice in the launcher. Pass its flags explicitly.
-`MODELS` in `gpt-sessions.ts` accepts these values:
-
-| model | accepted efforts | default effort |
+| model (`MODELS`) | efforts | default |
 | --- | --- | --- |
 | `gpt-6-luna` | `high`, `xhigh`, `max` | `max` |
 | `gpt-6.1-sol` | `low`, `medium`, `high`, `xhigh` | `medium` |
 
-With neither flag the launcher uses `gpt-6-luna` at `max`, even for a small batch. Every launch
-uses the `priority` service tier (`DEFAULT_MODEL`, `SERVICE_TIER`). From Claude Code at most two
-Claude subagents run at once (the operator); Codex sessions do not count against that.
+Every launch uses the `priority` tier (`SERVICE_TIER`).
 
 ## Where to stop
 
-- **Launch, start, spawn**: start every session and return the start line. Do not wait for reports
-  unless the request also says wait, collect, review or summarise.
-- **Wait, collect, review, summarise**: stay until the launch completes, drain every report, and
-  return the synthesis asked for.
+"Launch" or "spawn" means start every session and return the start line; "wait", "collect" or
+"summarise" means drain every report and return the synthesis. Say `launched` only after
+`gpt_sessions.started`. When the brief is clear, launch in the same turn.
 
-Say `preparing` while writing the manifest, `launched` only once the launcher printed
-`gpt_sessions.started`, and `collecting` only when collection was asked for. When the repository,
-the count, the authority and the output are clear, make bounded assumptions and start in the same
-turn; do not stop at a plan unless a preview was asked for.
+## The sessions and the manifest
 
-## The sessions
+Shared material (commit, evidence rules, limits, report form, any command all would rediscover)
+goes once in the instructions file. Each row needs one question with
+its limits, where to start, its authority and the outcome to return. A causal question tests at
+least three hypotheses, one innocent, and proposes a fix only for a proved defect. Sessions are
+read-only by default; a write session owns named paths and is told others may be editing, and no
+session starts another. Reports stay within the seat's view (`AGENTS.md`, sections 1 and 3), carry
+no private details, and are research to check before acting on (section 11).
 
-Read shared material once and put it in the shared instructions: the commit, the evidence rules,
-the limits and the report's form. A row then needs a unique lowercase name, one question and its
-limits, where inspection starts, its authority, and the outcome it returns. A title, a line range
-or "review this" is too weak; the same generic question numbered six times is one question.
-
-- **A step every session would repeat** goes in the instructions once as an exact command. Look for
-  it first in the `bun run` scripts, the commands under `tools/` (`bun tools/wri/wri.ts read --log
-  <log>` reads a campaign) and the owning skill's `scripts/`.
-- **A causal question** asks the session to test at least three hypotheses where the evidence shows
-  a mismatch, an innocent or intended one among them, to count the callers and tests, and to propose
-  a correction only for a defect it proved.
-- **Read-only by default.** A write session owns named paths and is told others may be editing.
-  Where fixes are asked for and nobody owns the paths, sessions propose and the launching session
-  checks and makes the confirmed fixes. No coordinator, and no session starts another.
-- **Keep reports within the seat's permitted view** (`AGENTS.md`, sections 1 and 3), and keep
-  private details out of prompts and published text (section 10).
-
-Reports are research. Check every finding you act on as `AGENTS.md`, section 11, says.
-
-## The manifest
-
-Write it as a file, using a file-writing tool rather than shell interpolation:
+Write the manifest with a file-writing tool:
 
 ```json
 {
   "workdir": "/absolute/worktree",
   "instructionsFile": "/absolute/shared-instructions.md",
   "sessions": [
-    { "name": "readers", "task": "Own the readers of comparison.reported from the log to the view. Report each reader, what it reads, and any two that disagree." },
+    { "name": "readers", "task": "List every reader of comparison.reported and any two that disagree." },
     { "name": "fixture", "task": "Write the hostile case named in the instructions.", "sandbox": "workspace-write", "ownedPaths": ["test/compare.test.ts"] }
   ]
 }
 ```
 
-Every session has Codex's live web search (`codex --search`) unless the manifest holds
-`"search": false`, and the launch record keeps the choice for a retry. A query leaves the machine,
-so a session that reads campaign logs, which hold hidden values, runs without it: the manifest of a
-whole-run investigation's lanes says so itself. Tell a searching session to put only public
-concepts in its queries, and to cite each claim from the web by its URL.
-
-Each session receives the shared instructions (the file's, then `instructions`), its task, then a
-line stating its authority. A row takes only `name`, `task`, `workdir`, `sandbox` and `ownedPaths`;
-names match `^[a-z][a-z0-9_]{0,47}$`, tasks are distinct, and a `workspace-write` session declares
-`ownedPaths`. Codex starts only inside a Git work tree unless told otherwise, and the launcher tells
-it so for a read-only session and for one that owns its whole workdir.
+A row takes only `name` (`^[a-z][a-z0-9_]{0,47}$`), a distinct `task`, `workdir`, `sandbox` and
+`ownedPaths` (required by `workspace-write`). Web search is on unless `"search": false`, which a
+session reading campaign logs needs; a searching session queries only public concepts and cites URLs.
 
 ## Launch
 
-Start the whole batch in one detached launcher, so neither the Bash tool's 600-second limit nor the
-end of the turn takes it down: a launcher started as an ordinary background command died with its
-parent and took all 24 sessions with it. The output directory must not exist yet, and
-the log goes outside it:
+Start the batch detached, so neither a tool timeout nor the turn's end kills it, into a new output
+directory outside any campaign folder:
 
 ```sh
 nohup bun .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts \
@@ -128,46 +85,27 @@ nohup bun .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts \
   > <scratch>/gpt.log 2>&1 &
 ```
 
-Put the output directory somewhere the host does not clean, in the session's scratchpad or beside
-the evidence it serves, never under a campaign's folder. The first line of the log is
-`gpt_sessions.started`; only then report the directory, the count, the model, the effort, the
-service tier, the active count and the pace as launched. The launcher finds Codex by `--codex-bin`,
-then the ChatGPT app's copy, then Homebrew's, then `codex` on the `PATH`. It needs Codex's own state;
-request shell access only if the sandbox refuses the authorised launch. Each read-only session
-stays read-only.
+Once the log opens with `gpt_sessions.started`, report directory, count, model, effort and pace.
+`--codex-bin` overrides where Codex is found.
 
 ## Watch, drain, retry
 
-Read the launcher's log: one `gpt_session.finished` line a session, then
-`gpt_sessions.completed`. Drain while it runs, not only at the end: `--drain <output dir>` prints
-what `reports.md` gained since the last drain, and sixty lanes of one v1 batch sat unread
-because nothing drained them. `reports.md` gains each report as its session settles,
-so it holds every settled report even if the launcher dies.
+The log gains a `gpt_session.finished` line per session, then `gpt_sessions.completed`. Drain while
+it runs: `--drain` prints what `reports.md` gained, and `reports.md` survives the launcher's death.
+At the end, drain again and read `summary.json` (an incomplete session's `failureKind` is `spawn`,
+`rate-limit` or `null`). Where the bound model
+carries a claim, read the session's own event log.
 
-After `gpt_sessions.completed`, drain once more and read `summary.json`: one result for each
-session asked for. A session that did not complete is missing work, and its result says why
-(`failureKind`: `spawn`, `rate-limit`, or `null` when unclassified). A transport warning in stderr is not a
-failure: a fall-back from WebSocket to HTTPS may still complete. The start line proves the
-configuration asked for, not the model a remote session bound; where identity carries a claim,
-read the session's own event log before making it.
-
-Codex retries a request inside a session. A session completes only when its last attempt exits 0
-and writes a report (`settle`, `gpt-receipts.ts`). An incomplete session gets one further attempt
-by default (`--retries`, 0 to 5): `codex exec resume` of its thread where Codex named one, a fresh
-start otherwise. After rate-limited sessions, let the launch settle, then run
-again only what is missing, under the recorded model, effort and prompts:
+A session completes when its last attempt exits 0 and writes a report (`settle`,
+`gpt-receipts.ts`), with `--retries` further attempts (default 1, at most 5). After rate limits, let
+the launch settle and rerun only what is missing under the recorded settings:
 
 ```sh
 bun .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts --retry <output dir> --max-active 4 --start-interval-ms 5000
 ```
 
-A retry leaves `launch.json` and every completed result as they were, appends the rerun reports to
-`reports.md`, and refuses while that directory's launcher still runs.
-
 ## Lanes of a whole-run investigation
 
-[whole-run-investigation](../whole-run-investigation/SKILL.md) step 3 writes the manifest,
-`<dir>/launch.json`: one `workspace-write` session a lane built, or with `--agents N` one a group
-of whole labels, owning the reports it writes, in the checkout the investigation reads. Launch it as it stands. A lane that runs alone (5 and 19) is
-built, and launched, on its own after the reports it waits on, from its own `<dir>/launch-NN.json`. Then `wri.ts collect` reads the
-reports as from any seat.
+[whole-run-investigation](../whole-run-investigation/SKILL.md) writes `<dir>/launch.json`; launch it
+as it stands. A lone lane (4 and 15) launches after the reports it waits on from
+`<dir>/launch-NN.json`, and `wri.ts collect` reads the reports.

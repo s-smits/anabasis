@@ -1,116 +1,71 @@
 ---
 name: compare-systems
-description: Compare a built system with a cheap solver against a bare system with a dear solver, on one campaign's held-out tasks, one solve a task and system, outside the campaign's readings. Answers "can Terra with our truss harness reach Opus", and, when asked, how the harnesses of one domain stand under one solver. One script joins production primitives (a seed, the campaign's paid solve in a trial log, the comparison's tally and step rule) and prints one plain reading. Use when the operator asks to compare models, a cheap model against a dear one, harnesses, or "can X reach equal scores".
+description: Compare a built system with a cheap solver against a bare system with a dear solver on one campaign's held-out tasks, outside the campaign's readings. Answers "can Terra with our truss harness reach Opus" and, when asked, how one domain's harnesses stand under one solver. One script joins production primitives and prints one plain reading. Use when the operator asks to compare models, a cheap model against a dear one, harnesses, or "can X reach equal scores".
 ---
 
 # Compare systems
 
-Building a harness pays off when a cheap solver in it does what a dear solver does in the starter.
-This skill measures that. A **system** is a solver in a harness (`AGENTS.md`, section 14): a **bare
-system** has the starter, a **built system** a harness a Builder wrote. The default reading is
+A harness pays off when a cheap solver inside it matches a dear solver inside the starter. A
+campaign cannot read this, since its setting fixes the solver, so this skill reads it on one
+campaign's held-out tasks, by default one solve per task and system:
 
 ```text
 bare  = claude/claude-opus-5-5:medium   inside the starter (A)
 built = openai-codex/gpt-6.1-terra:high inside the domain's built harness
 ```
 
-on every held-out task of one campaign, **one solve a task and system**. A campaign cannot make this
-reading, because its setting fixes the solver and its comparisons set two harnesses under that one
-solver (`AGENTS.md`, section 6). Terra in the starter against Terra in the built harness is that
-campaign question again: run it only when the operator asks for it by name.
+Terra against Terra is the campaign's own question, run only when named. The reading is a study's
+(`studies/README.md`) and reaches no seat.
 
-It promotes nothing and moves no campaign. Its readings are a study's (`studies/README.md`), never
-a campaign's step, and they go into no seat's message.
-
-## What it reuses
-
-`scripts/systems.ts` only joins what the campaign already does. Each system opens a **seed** of the
-campaign with its own solver and its own trial log (`openCampaign`, the path `close.ts --solve`
-takes), and solves through the campaign's paid seat held at the host's load (`solved`, `gated`), so
-every solve has the campaign's checks, limits and wall. Each candidate is scored against the
-baseline with the comparison's own functions: the tally and the sign-flip test (`scored`), the step
-rule without the bill (`readsStep`), the least detectable shift (`detectable`) and the
-measure that carried each task (`carriedBy`). The checks give each answer its verdict, and the
-Referee `--reviewer` names rules every rejection before it counts: one ruled earned is a fail, and
-one ruled a check defect or unclear, or left unruled, sets its task aside for every system
-(`rejectionAside`).
+`scripts/systems.ts` only joins production. Each system opens a seed with its own solver and trial
+log (`openCampaign`, as `close.ts --solve` does) and solves through the paid seat under the load
+gate (`solved`, `gated`), with the campaign's checks, limits and wall. Candidates are scored against
+the baseline by `scored`, `readsStep` without the bill, `detectable` and `carriedBy`; the
+`--reviewer` Referee rules each rejection, and one not ruled earned sets its task aside for every
+system (`rejectionAside`).
 
 ## The procedure
 
-1. **Seed the campaign.** `bun run runs seed --from <campaign> --name cmp-<what>`, or for a stored
-   pack `--events N` cut before its first release, so every task is still held. To hold a comparison's
-   tasks as it found them, cut with `--events N` at its `comparison.started`: `--before` takes a
-   session that writes, never a comparison. The script refuses
-   a folder without `seed.json`, so a real campaign is never written. The bare system needs nothing
-   more: every seed holds the starter, named `starter` or `A`. Written out, the starter is
-   `data/harnesses/starter/bare-harness` in the main checkout, beside every campaign's handover and
-   behind the wall of every Builder, Examiner and solve, since the wall refuses the repository's
-   worktrees; `writeStarter` (`src/harness/starter.ts`) writes it again. Import the domain's harness
-   into the seed for the built system: `bun tools/d2/import.ts --name cmp-<what> --harness <data/harnesses/<run>/harness>`.
-2. **Write the prediction first**, in `.ana/compare/cmp-<what>/prediction.md`: which system wins,
-   and the count that settles it.
-3. **Read for free.** `--read` opens every system and harness, draws the tasks and solves nothing.
-   A seed of a stored pack names it by the four flags its launch receipt holds:
+1. **Seed**: `bun run runs seed --from <campaign> --name cmp-<what>`, with `--events N` to cut a
+   stored pack before its first release or at a `comparison.started`. The script refuses a folder
+   without `seed.json`. The starter is `starter` or `A`; import the built harness with
+   `bun tools/d2/import.ts --name cmp-<what> --harness <data/harnesses/<run>/harness>`.
+2. **Predict** the winner and its settling count in `.ana/compare/cmp-<what>/prediction.md`.
+3. **Read for free**: `--read` draws the tasks and solves nothing. A stored pack's seed takes its
+   receipt's four flags:
    ```sh
    bun .claude/skills/compare-systems/scripts/systems.ts --seed cmp-truss \
      --root <root> --sweep <sweep> --cycle <cycle> --bundle <bundle> \
      --baseline bare-opus=claude/claude-opus-5-5:medium@A \
      --candidate built-terra=openai-codex/gpt-6.1-terra:high@<digest of the truss harness> --read
    ```
-   A harness is `starter` (or `A`), `promoted`, or a whole digest or a letter the seed keeps.
-4. **Solve, on the operator's word.** The same command with `--cap <dollars>`, `--reviewer <model>`,
-   `--login N` for a Claude solver (the login `CLAUDE_CODE_OAUTH_TOKEN<N>`, counted by hand against
-   its most), and without `--read`. Run it from a checkout whose `.env` holds the logins, with
-   `bun --env-file=<that .env>`, on one quiet host; truss runs where the operator's machine rules put
-   it. It stops starting solves at the cap. Run it again to go on: each system solves only what its
-   own log is still short of.
-5. **Clean up.** Move the seed and its trial logs to the Trash once the reading is recorded:
-   `/usr/bin/trash .ana/d2/cmp-<what> .ana/compare/cmp-<what>`.
+4. **Solve, on the operator's word**: drop `--read`, add `--cap <dollars>`, `--reviewer <model>` and,
+   for a Claude solver, `--login N`, counted by hand against that login's cap. Run under
+   `bun --env-file=<.env with the logins>` on one quiet host (truss where the machine rules place
+   it). Rerunning solves only what each log lacks.
+5. **Clean up**: `/usr/bin/trash .ana/d2/cmp-<what> .ana/compare/cmp-<what>`.
 
-**Size and price.** Solves are tasks times `--solves` times systems. Price them from the bills of
-earlier solves under the same solver on the same pack (`solve.finished.billed`). On the truss pack
-`round4-veryhard`, Opus 5.5 at medium in the starter billed $0.63 a solve on average (115 solves,
-`truss-141-m3`), and Terra at high $0.08 on the truss campaigns it solved (54 solves), so 25 tasks
-once each cost about $16 and $2. `--solves 2` adds the A/A, the baseline read against itself on halves
-of its solves mirrored in time (first solve against second), at twice the price; take it only on the
-operator's word.
+Price solves from earlier `solve.finished.billed` of the same solver and pack. `--solves 2` adds the A/A at twice the price, on the operator's word only.
 
 ## How to read it
 
-1. **The tasks.** How many of the seed's held-out tasks were drawn, and under which solver its
-   Examiner admitted them.
-2. **One block a system, on its own.** Valid solves of all solves; tasks where every, some or no
-   solve was valid; fails the Referee did not rule earned.
-   **One table for all systems**, on averages a solve: valid solves, cost, wall time, the slowest
-   solve and model turns. The cost is the log's whole bill over the solves, the Referee's rulings
-   included, so it runs a little over the solves' own. Show the table with the verdict, and quote no
-   cost per valid answer. When a system's time is high, split its calls into the model's turns and
-   the tools it ran (`solve.call` carries `ms`): a harness whose own programs search up to a
-   deadline fills the wall (Terra in the truss harness: 28.1 of 28.6 minutes a solve),
-   and a slower system is then a harness cost, not a slower model.
-3. **The A/A**, only at an even count of two solves or more.
-4. **One block a candidate.** Wins, losses and ties against the baseline; which measure carried the
-   untied tasks (validity, the objective, or the bill alone); p each way; and one verdict:
-   - `X is better`: a step at the level without the bill, as a campaign reads one.
-   - `no step either way`: this size found no difference. It is **no proof of equality**, and the
-     line gives the smallest share of untied tasks a side must win for this size to show it.
+Report the tasks drawn and which solver's Examiner admitted them; each system alone (valid over
+solves, tasks valid on every, some or no solve, fails not ruled earned); one table per solve of
+valid share, cost (the whole bill, rulings included), wall time, slowest solve and turns, with no
+cost per valid answer; the A/A at two or more solves; and per candidate the wins, losses, ties,
+carrying measure, p each way and one verdict: `X is better` (a step without the bill) or `no step
+either way`, which is no proof of equality and comes with the smallest winning share this size could
+show. Split high wall time into model turns and tool time (`solve.call` carries `ms`).
 
-At one solve a task, each task's result rests on one solve a side, and one solve is weak evidence
-(`AGENTS.md`, rule 6): say so beside the reading. "Reaches equal scores" is said only as: no step
-either way, at this size, with that detectable share, and each system's average cost and time a
-solve beside it.
+One solve a side is weak evidence (rule 6). "Reaches equal scores" means only no step either way at
+this size, with the detectable share and each system's cost and time beside it.
 
 ## Limits
 
-- **Selection.** Task admission used the campaign's own solver and reference harnesses. The
-  evaluation set therefore depends on those systems, which limits comparisons with other systems.
-- **No person's labels.** The Referee is a model, and its rulings stand until a person labels them.
-- **Another campaign's harness** is read under this campaign's contract and answer format. A
-  harness built for another exam of the same domain may lose on the format alone.
-  Before any solve, compare the two contracts' formats, and freeze what a no-step settles if the
-  candidate's valid share falls well below the baseline's.
-- **The host's programs.** A solve's `python3` is the host's, and a harness may hold no interpreter
-  of its own and rely on it. Read such a harness on the host it was built on, and set every read of
-  one question on one host (`bun run runs source` prints what a launch found).
-- **Hidden values.** The trial logs hold them. Keep them under `.ana/compare/`, and keep their
-  content out of prompts, pull requests and pastes (`AGENTS.md`, section 5).
+- Tasks were admitted against the campaign's own solver and references.
+- The Referee is a model until a person labels it.
+- Another campaign's harness meets this contract's format; compare formats first.
+- A harness may rely on the host's `python3`, so keep one question on the host it was built on
+  (`bun run runs source` shows what a launch found).
+- Trial logs hold hidden values: keep them under `.ana/compare/` and out of prompts, pull requests
+  and pastes.

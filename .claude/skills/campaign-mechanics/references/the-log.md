@@ -1,42 +1,24 @@
-Read this before adding events or readers, or moving a campaign. This expands `AGENTS.md` section 5:
-the log, conditions and the four rules for preserving evidence.
+Read this before adding events or readers, or moving a campaign. It expands `AGENTS.md` section 5.
 
 ## 5. The log
 
-A campaign's record is one append-only JSONL file, `.ana/d2/<name>/log.jsonl`, one event a line
-(`src/kernel/log.ts`). Every state and every report is a view over it; nothing else is stored as
-truth.
+The folds that read the log are: a task's state (`held`, `released`, `refused`, `disputed`; an older
+`ladder` reads as `held`) in `src/kernel/task.ts`; a comparison's pairs in `src/kernel/compare.ts`;
+the stop rule, tasks awaiting a label and the dollars billed in `src/kernel/reports.ts`; and every
+seat's trace (`solve.turn`, `solve.call` and each session's turns) in `src/kernel/trace.ts` alone.
 
-- An append is synced before it returns; a read refuses a torn or unknown line.
-- A task's state (`held`, `released`, `refused`, `disputed`; an older `ladder` reads as `held`) is a
-  fold over the log (`src/kernel/task.ts`), as are a comparison's pairs (`src/kernel/compare.ts`),
-  the stop rule, the tasks awaiting a label (`src/kernel/reports.ts`) and the dollars billed.
-- A **condition** is everything the host fixes for a solve, as one content-addressed record
-  (`src/kernel/condition.ts`): contract, harness, task version, model and effort, price table, the
-  runtime's packages and Bun, compaction mode, tool trees, and the sandbox by isolation profile and
-  platform (`tools/d2/campaign.ts`). Two solves are comparable only when their conditions differ in
-  the one thing compared. It names no program on the host's own path. A solve's `python3` is one, and
-  it can differ between hosts in version and libraries, so each launch's receipt keeps
-  what it found (`hostPython`, `tools/runs/receipt.ts`) and `bun run runs source` prints it. Putting
-  it in the condition would set every earlier solve aside when a run moves host, and is the
-  operator's to decide.
-- Every seat's trace is in the log (`solve.turn`, `solve.call`, and each session's turns and calls),
-  read only by `src/kernel/trace.ts`.
+A **condition** (`src/kernel/condition.ts`) is one content-addressed record of the contract,
+harness, task version, model and effort, price table, runtime packages and Bun, compaction mode,
+tool trees, and the sandbox by isolation profile and platform (`tools/d2/campaign.ts`). It leaves
+out programs on the host's path, such as `python3`, because naming them would set every earlier
+solve aside when a run moves host; whether to include them is the operator's call. Each launch's
+receipt keeps what it found instead (`hostPython`, `tools/runs/receipt.ts`, printed by
+`bun run runs source`).
 
-Four habits follow:
+Section 5's habits share one reason: a second store or a hand-written line is a second history. Old
+event kinds stay readable because the log is evidence, the one exception to the ban on compatibility
+paths (`tools/oxlint/HABITS.md`, 12.3).
 
-1. **Add no second store.** A fact a command needs later is an event it reads back; a file beside
-   the log that holds state is a second history.
-2. **Add no second reader of one fact.** Find the fold that already reads it and call that.
-3. **Never edit a log, and never write an event by hand.** A hand-written line records a history
-   that did not happen. Move or copy a campaign only with `bun run runs copy`, `move` and `retire`,
-   which carry its folder whole.
-4. **Keep old event kinds readable.** The source keeps no compatibility paths
-   (`tools/oxlint/HABITS.md`, 12.3); the log is the exception, being evidence, so `EVENT_KINDS`
-   still lists kinds no command writes.
-
-`.ana/` is ignored by Git, and every seat's wall denies the repository and its worktrees
-(`worktreesOf`, `tools/d2/campaign.ts`). After a day of inactivity, `bun run runs retire` moves the
-whole campaign to `data/runs/` in the main worktree; it deletes seeds instead. The archive is also
-ignored and walled. No other mechanism deletes these logs or traces. The log holds hidden values and
-verdicts, so it stays on the exam side: keep it out of prompts, pull requests and pastes.
+Every seat's wall denies the repository and its worktrees (`worktreesOf`, `tools/d2/campaign.ts`).
+`runs retire` moves a campaign idle for a day into `data/runs/` in the main worktree and deletes
+seeds; the archive is ignored and walled too.

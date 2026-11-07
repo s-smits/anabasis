@@ -1,68 +1,55 @@
 <!--
-The shared instructions every open lane of this investigation carries, whole. `wri.ts start` filled
-in each campaign's row; write the three marked sections before `wri.ts lanes`, and edit any other line
-every lane should read. Comments like this one are dropped when the prompts are built. A `##`
-section left blank refuses `wri.ts lanes`; delete its heading to drop it on purpose. An isolated
-lane is given the campaigns' rows and the hard rules, and none of the three sections you write.
+The shared instructions every open lane carries whole. `wri.ts start` filled each campaign's row;
+write the three AUTHOR sections before `wri.ts lanes`. Comments are dropped from the prompts, a blank
+`##` section refuses `lanes`, and deleting a heading drops it on purpose. An isolated lane gets only
+the campaigns' rows and the hard rules.
 -->
 
 ## Orientation
 
-<!-- AUTHOR: the operator's question, in your own words, and where its evidence is. Orient, never
-conclude: name the question, not the answer you expect. At most about twenty lines. Quote nothing
-from the log. -->
+<!-- AUTHOR: the operator's question in your own words, and where its evidence is. Name the question,
+never the answer you expect. At most about twenty lines; quote nothing from the log. -->
 
 ## The moved variable and prior state
 
-<!-- AUTHOR: what changed between these campaigns and the ones before them, and between each other (the checker, the host's
-code, the model, the Builder's or the Examiner's prompt), the earlier findings this investigation
-checks, and what would falsify each. Write "none" when nothing moved. An earlier diagnosis goes here
-as a hypothesis, never above as a premise. -->
+<!-- AUTHOR: what changed between these campaigns and those before, and between each other (checker,
+host code, model, a seat's prompt), the earlier findings this investigation checks, and what would
+falsify each. An earlier diagnosis goes here as a hypothesis. Write "none" when nothing moved. -->
 
 ## Already read by the primary
 
-<!-- AUTHOR: what you have already investigated, one line each with its evidence (a reader's count,
-a source path and line, a mechanism checked), so a lane builds on it or contradicts it with
-evidence and does not read it again. Name what was checked, never the answer a lane should reach.
-Write "nothing" when you read nothing yet. -->
+<!-- AUTHOR: what you have already checked, one line each with its evidence (a count, a source line, a
+mechanism), so a lane builds on it or refutes it. Never the answer a lane should reach. Write
+"nothing" when you read nothing yet. -->
 
 ## Campaigns under review
 
 {campaigns}
 
-Each log is its campaign's whole record: one event a line, append-only. Its folder also holds
-the check program as it was staged, at `checks/` for a stored pack and at `exams/<digest>/checks/`
-for an exam the campaign drafted, and `states/`, every harness state by digest. A
-campaign command that ran left `launch-run-<n>.json` there as well (and an older round
-started by `bun run runs launch` left `launch-<session>.json`): the flags it was
-given, the commit and the load it started under, with its output beside it. Read all of them; write
-to none.
+Each log is its campaign's whole append-only record, one event a line. Its folder also holds the
+staged check program (`checks/` for a stored pack, `exams/<digest>/checks/` for a drafted exam),
+`states/` with every harness state by digest, and each launch's `launch-run-<n>.json` (an older round
+left `launch-<session>.json`): flags, commit and load. Read all of them; write to none.
 
 ## Hard rules
 
-- Quote nothing the walls keep apart: no task's text, no answer, no hidden value, no check's failure
-  text, no prompt, no passage of a trace, no ruling's prose. Report event kinds, solve
-  ids, the first eight characters of a version or digest, check ids, counts, paths and line numbers,
-  and describe a mechanism in your own words.
-- Never write under a campaign's folder, and never append to a log. Open both to read. Scratch
-  goes in a temporary directory of your own.
-- Run no command with its working directory inside a campaign's folder: a tool's cache or log
-  lands where it runs.
-- Start no solve, no Builder or Examiner session, no round and no check run. `wri.ts grade` is the
-  one exception, where your lane names it, and it writes nothing.
-- Write your report early, as soon as you have its first two lines, and append as you go.
-- For `no finding`, leave `## Findings` empty and say what you checked and found sound under
-  `## Checked`, in sentences without `Observation:`, `Cause:`, `Owner:`, `Reverses if:` or
-  `Decision:` lines.
-- You are independent: open no other lane's prompt or report and no synthesis of this investigation.
-- Run the repository's commands (`bun tools/...`, `bun .claude/...`) from the checkout the campaigns'
-  rows name, which has its dependencies installed, and name a log or a tree by its path: a
-  campaign's own tree may hold none, and four lanes once could not start a reader there.
-- Read source where each campaign's host line says the code it last ran stands: the campaign's own tree
-  when the line names it, and otherwise the checkout the rows name. Where the line says the last
-  condition ran under another host hash than both, every statement you make about source is about
-  another tree and may not be what ran: say so beside the statement.
-- Your report is for the operator and the primary reviewer. It is never given to a Builder, an
-  Examiner or a Referee, and you address none of them.
-- The orientation and the moved variable orient and do not conclude: contradict either with
-  evidence and report that as the finding.
+- Quote nothing the walls keep apart: no task text, answer, hidden value, check failure text, prompt,
+  trace passage or ruling prose. Report event kinds, solve ids, the first eight characters of a
+  digest, check ids, counts, paths and line numbers, and describe mechanisms in your own words.
+- Never write under a campaign's folder or append to a log, and run no command whose working
+  directory is inside one. Scratch goes in a temporary directory of your own.
+- Start no solve, Builder or Examiner session, round or check run. `wri.ts grade` is the one
+  exception, where your lane names it; it writes nothing.
+- Write your report as soon as you have its first two lines, and append as you go.
+- For `no finding`, leave `## Findings` empty and say under `## Checked` what you checked and found
+  sound, in sentences without `Observation:`, `Cause:`, `Owner:`, `Reverses if:` or `Decision:` lines.
+- Open no other lane's prompt or report and no synthesis of this investigation.
+- Run the repository's commands (`bun tools/...`, `bun .claude/...`) from the checkout the rows name,
+  and name logs and trees by path.
+- Read source where each campaign's host line says its code stands. Where the last condition ran
+  under a host hash matching neither tree, say beside each source statement that it may not be what
+  ran.
+- Your report is for the operator and the primary. It never reaches a Builder, an Examiner or a
+  Referee, and addresses none of them.
+- The orientation and the moved variable orient and do not conclude: refuting either with evidence
+  is a finding.

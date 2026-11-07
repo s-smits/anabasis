@@ -1,44 +1,27 @@
 # One fact
 
-Most questions that sound like a simulation are one fact a reader already gives. Ask the reader
-before building anything.
+Most questions that sound like a simulation are one fact a reader already gives. Ask it first.
 
-| the fact | the command | it writes |
+| the fact | command | writes |
 | --- | --- | --- |
-| Which move follows on this campaign, and what would refuse it? | `bun tools/d2/harness-builder.ts --name <name> --dry-run` | nothing |
-| Which sets does a log hold? | `bun run runs replay <name>` | nothing |
-| Is a run alive, and what did it last do? | `bun run runs pulse <name>` | the pulse's own state file |
-| Is there supply for a comparison, and what can it show? | `bun run runs view <name>`: its set-up line, and the admission's notes when the move is made | nothing |
-| Which sessions ran, from which parent, with which reading? | `bun tools/wri/wri.ts read --log <log>`, row F and the `CHAIN` line | nothing |
-| Under what did a campaign's comparisons run? | `bun run runs view <name>` | nothing |
-| Does the checker stand on its controls? | `bun tools/c/accept.ts <pack flags> --name <campaign>` | its reading, as `checker.read` |
-| What would a solver of this task be shown? | `bun tools/m0/live-solve.ts <pack flags> --task <id>`, without `--live` | nothing |
-| What does the host still hold of a run? | `bun run runs stop <name>` without `--yes`, which names its process and the roots it left | nothing |
+| The next move, and what would refuse it | `bun tools/d2/harness-builder.ts --name <name> --dry-run` | nothing |
+| The sets a log holds | `bun run runs replay <name>` | nothing |
+| Whether a run is alive, and its last act | `bun run runs pulse <name>` | the pulse's state file |
+| Supply, and the conditions comparisons ran under | `bun run runs view <name>` | nothing |
+| Sessions, parents and readings | `bun tools/wri/wri.ts read --log <log>`, row F and `CHAIN` | nothing |
+| Whether the checker stands on its controls | `bun tools/c/accept.ts <pack flags> --name <campaign>` | `checker.read` |
+| What a solver of a task would be shown | `bun tools/m0/live-solve.ts <pack flags> --task <id>`, without `--live` | nothing |
+| What the host still holds of a run | `bun run runs stop <name>` without `--yes` | nothing |
 
-Two commands look like readers and are not. `tools/d2/prepare.ts` takes the pack's tasks in and
-releases the practice tasks, once and for good. `tools/c/accept.ts` appends what it read, and with `--freeze`
-writes `contract.frozen`. Run any of them on a seed when the fact you want is what it would do.
+`tools/d2/prepare.ts` releases practice tasks for good, and `tools/c/accept.ts` appends its reading
+(and `contract.frozen` with `--freeze`); run them on a seed.
 
-## A fact no reader gives
+For a fact no command prints, call the product's readers: `read` (`src/kernel/log.ts`), `taskStates`
+and `taskSets` (`src/kernel/task.ts`), `poolOf` (`src/kernel/reports.ts`), `stopRule`
+(`src/campaign/admission.ts`) and `conditionsOf` (`src/kernel/condition.ts`). The log holds every
+tool call (`solve.call`, `build.call`, `exam.call` with `tool` and `args`), every verdict with its
+answer, every solve's condition and every `task.proposed` in full. Prompts are rendered from source
+at the receipt's commit.
 
-Read the log with the product's own readers, not with a parser of your own: `read`
-(`src/kernel/log.ts`), `taskStates` and `taskSets` (`src/kernel/task.ts`), `poolOf`
-(`src/kernel/reports.ts`), `stopRule` (`src/campaign/admission.ts`), `conditionsOf` (`src/kernel/condition.ts`). A reader of your own agrees
-with the product until the day an event's shape moves, and then it is wrong in silence.
-
-What the log holds whole, and so answers without a run:
-
-- every tool call, as `solve.call`, `build.call` and `exam.call`, with its `tool` and its `args`;
-- every verdict, with the answer it was given;
-- every condition a solve ran under, the host's code by content among them;
-- a session-written task entire, in its `task.proposed`.
-
-What it does not hold: the prompts. They are rendered from source, so a question about what a model
-was shown is answered by the tree that ran, at the commit its receipt names. For a solver,
-`live-solve.ts` without `--live` builds the condition and prints what the solver would read, with no
-model called.
-
-## When one fact is not enough
-
-A fact says how the system stands. It does not say what a command will do from there. When the
-question is "what happens next", cut a seed at that point and rehearse it ([rehearsal](rehearsal.md)).
+A fact describes the current state. What a command will do next is a seed and a
+[rehearsal](rehearsal.md).

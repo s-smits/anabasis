@@ -31,7 +31,7 @@
  * its deadline and model turn limit, or when the Examiner calls `finish`, which it may at any count: on
  * 10 October every session held out two to four tasks and finished of its own accord. `--tasks` is
  * the host's and is never told to the Examiner. The campaign command names it from what the
- * campaign is short of, at least a sweep (`examTasks`, `tools/d2/campaign-terms.ts`); run by hand it defaults to 12,
+ * campaign is short of, at least a sweep (`examinerRun`, `tools/d2/campaign-terms.ts`); run by hand it defaults to 12,
  * a scored set's size until 12 October (`SIZE.tasks` is 24 since). Asking for many at once is what v1 found dilutes them, a probe grown to
  * 25 tasks in 10 of 13 cases (`7f0add79:docs/plan.md`).
  *

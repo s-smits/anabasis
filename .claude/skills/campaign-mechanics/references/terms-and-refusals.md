@@ -7,8 +7,7 @@ expands the second half of `AGENTS.md` section 6; the commands are in `campaign-
 
 **The opening** (`campaign.opened`) keeps what a continuation by name needs: the project, total and
 reserve, both patiences (`--patience`), the seats, and the move terms as last named (`TERMS`,
-`src/campaign/opening.ts`): level, conversation minutes and turns, practice, Examiner tasks and the
-promotion cap. A later command inherits them unless a flag records a replacement; terms an older
+`src/campaign/opening.ts`): level, conversation minutes and turns, practice and the promotion cap. A later command inherits them unless a flag records a replacement; terms an older
 opening kept that nothing reads are read past. The level is the exception: once a comparison has
 begun it is pinned to the level that comparison began at, and a command naming another is refused
 before it writes anything (rule 4).
@@ -70,7 +69,6 @@ Owners and edges of the defaults in `AGENTS.md` section 6:
   and 36 proposals (`tools/d1b/examine.ts`).
 
 An Examiner session finishes when it has supplied the need (`shortOf`, `src/campaign/decide.ts`:
-practice and the admission floor before the first comparison, the target after, at least a sweep, or
-`--exam-tasks`), when it calls `finish` twice without proposing between, or after spending its
+practice and the admission floor before the first comparison, the target after, at least a sweep), when it calls `finish` twice without proposing between, or after spending its
 proposals. An early `finish` is declined with the need but no count, since an Examiner told a count
 proposes one small batch and stops. The first two endings rest the conversation for the next ask.

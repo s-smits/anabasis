@@ -21,14 +21,15 @@
  * none.
  *
  * It also keeps the terms of the campaign's moves as a command last named them (`TERMS`): the
- * limits of a Builder conversation, the comparison's level, the practice tasks, the tasks an
- * Examiner session is asked for, and the operator's cap of promotions. Without them a command that
+ * limits of a Builder conversation, the comparison's level, the practice tasks and the operator's
+ * cap of promotions. Without them a command that
  * names nothing runs each move by its default: on 9 October a campaign opened with Builder sessions
  * of 25 minutes, continued by its name alone, gave each session 240 minutes, and nothing said so.
  * An older opening's other terms (`defects`, `practice-solves`, the Examiner's `exam-proposals`,
  * `exam-minutes` and `exam-turns`, and `cost`) are read past: none of 310 logs named one, and each
- * is its move's default now. So are its Builder sessions before a comparison (`sessions`), which
- * went with the table's row that counted them.
+ * is its move's default now. So are `exam-tasks`, which only a rehearsal's opening named, and its
+ * Builder sessions before a comparison (`sessions`), which went with the table's row that counted
+ * them.
  */
 import { type LogEvent, read } from "../kernel/log.ts";
 import { type Cap, patienceOf } from "../kernel/reports.ts";
@@ -71,9 +72,9 @@ export interface Opening {
 }
 
 /** The flags of a campaign's moves that its opening keeps: a comparison's level; a Builder
- *  conversation's deadline and session turn limit; the practice tasks; an Examiner session's tasks;
- *  and the operator's cap of promotions, `none` to lift it. */
-export const TERMS = ["level", "minutes", "turns", "practice", "exam-tasks", "promotions"] as const;
+ *  conversation's deadline and session turn limit; the practice tasks; and the operator's cap of
+ *  promotions, `none` to lift it. */
+export const TERMS = ["level", "minutes", "turns", "practice", "promotions"] as const;
 export type Terms = Readonly<Partial<Record<(typeof TERMS)[number], string>>>;
 
 /** The seats a campaign names a model for. The solver's is the setting's (`tools/d2/setting.ts`). */

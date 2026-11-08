@@ -146,8 +146,6 @@ describe("the climb", () => {
         // the third epoch reads its step at the target a real campaign runs near.
         "--target",
         "8",
-        "--exam-tasks",
-        "6",
         "--patience",
         "3",
       ];

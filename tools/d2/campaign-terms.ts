@@ -90,7 +90,6 @@ const OPTIONS = {
   turns: { type: "string" },
   practice: { type: "string" },
   admit: { type: "string" },
-  "exam-tasks": { type: "string" },
   promotions: { type: "string" },
   moves: { type: "string" },
   handover: { type: "string" },
@@ -141,7 +140,6 @@ const EXPLAINED: Readonly<Record<keyof typeof OPTIONS, string>> = {
   turns: "a Builder conversation's session turn limit (300)",
   practice: "practice tasks released after each reading or promotion, at most half of what is held",
   admit: "checks admitted by name, under --hitl",
-  "exam-tasks": "tasks an Examiner session is asked for; unnamed, what the campaign is short of",
   promotions: "the promotions after which the campaign ends on the operator's word; none to lift it (none)",
   moves: "the most campaign moves this run makes",
   handover: "a directory, outside the repository, to write what the campaign hands over at its end",
@@ -317,17 +315,6 @@ export function opened(
 }
 
 /**
- * The held-out tasks an Examiner session is asked for where no flag names them: what the campaign
- * is short of, at least a sweep (`shortOf`, `decide.ts`); undefined where it is short of nothing. Until 11 October it
- * was the command's default, 12 (buffer was short 9), and from 12 to 13 October twice the target
- * before the first comparison, which two campaigns examined towards for 16 hours.
- */
-export function examTasks({ events, plan }: Turn): string | undefined {
-  const wanting = shortOf(events, plan);
-  return wanting > 0 ? String(wanting) : undefined;
-}
-
-/**
  * The Builder sessions in a row, the latest included, that have made no campaign move since the
  * campaign last ended: the trailing run of its moves that are Builder conversations (`build`), and
  * on a log from before 3 November sessions its host made. Any other move, the host's own among them, is
@@ -403,7 +390,11 @@ export function sharedOf({ plan, opening, values, seats }: Turn) {
 /** How the campaign runs Examiner session `session`: its flags, for `draft.ts` where it drafts the
  *  exam and `examine.ts` where it writes tasks, and the count of tasks a writing session is asked
  *  for. Each session reads the campaign's setting from the log, where the campaign command
- *  records it as it starts (`startSetting`, `harness-builder.ts`), and runs by its own defaults. */
+ *  records it as it starts (`startSetting`, `harness-builder.ts`), and runs by its own defaults.
+ *
+ *  The count is what the campaign is short of, at least a sweep (`shortOf`, `decide.ts`), and none
+ *  where it is short of nothing. No flag names another count: an ask above the shortfall had
+ *  campaigns examine towards a target for hours before their first comparison. */
 export function examinerRun(turn: Turn, session: string, kind: "draft" | "write") {
   const { opening, values, seats } = turn;
   const { examiner } = opening.seats;
@@ -418,7 +409,8 @@ export function examinerRun(turn: Turn, session: string, kind: "draft" | "write"
     "--examiner-effort",
     examiner?.effort ?? DEFAULTS.effort,
   ];
-  const tasks = values["exam-tasks"] ?? examTasks(turn);
+  const wanting = shortOf(turn.events, turn.plan);
+  const tasks = wanting > 0 ? String(wanting) : undefined;
   return {
     args:
       kind === "draft"

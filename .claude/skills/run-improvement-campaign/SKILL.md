@@ -268,7 +268,7 @@ at 5; a promotion at 8) and stop at the first link that fails. Lane 21 of
 
 | # | Link | Point | Holds when | Fails as | Owner |
 | --- | --- | --- | --- | --- | --- |
-| 1 | supply | 3 | enough frontier tasks for `comparisonFloor(level)` | rows `tasks` or `short`, refused drafts | `src/examiner/prompt.ts`, `heard` (`record.ts`), `propose_tasks` (`write.ts`), `--exam-tasks` |
+| 1 | supply | 3 | enough frontier tasks for `comparisonFloor(level)` | rows `tasks` or `short`, refused drafts | `src/examiner/prompt.ts`, `heard` (`record.ts`), `propose_tasks` (`write.ts`), `shortOf` (`decide.ts`) |
 | 2 | instrument | 4 | the exam stands and rejections are ruled | `exam` ending, checker faults, tasks set aside | `planOf` (`src/campaign/opening.ts`), `readChecker` (`src/kernel/acceptance.ts`), else the check's author |
 | 3 | room | 1 | the reference has informative tasks | `no-room`, zero `valid.informative.old` | link 1; `roomOf` (`src/kernel/reports.ts`) |
 | 4 | session | 1 | the Builder changed something the solver uses | unchanged `build.finished`, idle sessions, all practice passed | `src/builder/prompt.ts`, `tools/d2/campaign-actions.ts`, `idleOf` (`tools/d2/campaign-terms.ts`) |

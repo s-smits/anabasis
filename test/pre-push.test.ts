@@ -145,6 +145,21 @@ describe("pre-push", () => {
     expect(gatesRun(log)).toEqual([]);
   });
 
+  it("names biome's own failure where it cannot format a file, rather than calling it misformatted", () => {
+    const head = git(
+      "commit-tree",
+      withFile(docs, "broken.ts", "export const = ;\n"),
+      "-p",
+      docs,
+      "-m",
+      "broken",
+    );
+    const result = push([update(head, docs)]);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(`${short(head)}:broken.ts (biome exited 1: `);
+    expect(gatesRun(log)).toEqual([]);
+  });
+
   it("refuses a push that adds a credential-shaped literal, documentation included, before any step runs", () => {
     const key = ["AKIA", "5J3KLMNOPQRSTUVW"].join("");
     const leaked = git(

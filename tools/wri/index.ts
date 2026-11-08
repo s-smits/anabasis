@@ -62,6 +62,7 @@ type Parsed = "whole" | "part" | "unread" | "absent" | "lanes";
 interface Lanes {
   readonly found: number;
   readonly none: number;
+  readonly unread: number;
   readonly other: number;
 }
 
@@ -226,13 +227,17 @@ function markedOf(text: string, header: RegExp, words: RegExp): string[] {
 const tallied = (words: readonly string[]): Counts | null =>
   words.length === 0 ? null : countBy(words, (word) => word);
 
-/** The lanes `collect` listed: with findings, with none, and every other state. */
+/** The lanes `collect` listed (`reportIndex`): with findings, read with none, left unread (omitted,
+ *  or not read, with no finding), and every other state. Until 9 November an unread lane counted as
+ *  one read with none. */
 function lanesOf(reports: string): Lanes | null {
   const lines = reports.split("\n").filter((line) => line.startsWith("- lane "));
   if (lines.length === 0) return null;
-  const found = lines.filter((line) => /: ok, (finding|could not read), [1-9]/u.test(line)).length;
-  const none = lines.filter((line) => /: ok, [a-z ]+, 0 findings/u.test(line)).length;
-  return { found, none, other: lines.length - found - none };
+  const count = (verdict: RegExp) => lines.filter((line) => verdict.test(line)).length;
+  const found = count(/: ok, [a-z ]+, [1-9]\d* findings?,/u);
+  const none = count(/: ok, no finding, 0 findings,/u);
+  const unread = count(/: ok, (omitted|could not read)[a-z ]*, 0 findings,/u);
+  return { found, none, unread, other: lines.length - found - none - unread };
 }
 
 function parsedOf(parts: readonly (boolean | null)[]): Parsed {
@@ -276,7 +281,7 @@ function entryOf(root: string, folder: string): Entry {
   const reportFiles = existsSync(lanesDir)
     ? readdirSync(lanesDir).filter((file) => file.endsWith("-report.md")).length
     : 0;
-  const laneCount = lanes === null ? reportFiles : lanes.found + lanes.none + lanes.other;
+  const laneCount = lanes === null ? reportFiles : lanes.found + lanes.none + lanes.unread + lanes.other;
   const subfolders = names.filter((name) => name !== "lanes" && isDirectory(join(dir, name))).length;
   return {
     folder,
@@ -363,11 +368,12 @@ function groupsText(entries: readonly Entry[]): string {
     .map(([group, held]) => {
       const lines = held.map((entry) => {
         const { lanes } = entry;
+        const unread = (lanes?.unread ?? 0) > 0 ? `, ${String(lanes?.unread)} unread` : "";
         const other = (lanes?.other ?? 0) > 0 ? `, ${String(lanes?.other)} missing or invalid` : "";
         const read =
           lanes === null
             ? "no lane index"
-            : `lanes: ${String(lanes.found)} with findings, ${String(lanes.none)} with none${other}`;
+            : `lanes: ${String(lanes.found)} with findings, ${String(lanes.none)} with none${unread}${other}`;
         return `- ${entry.date ?? "undated"} \`${entry.folder}\`: ${constraintText(entry)} (${read})`;
       });
       return `### ${group} (${plural(held.length, "investigation")})\n\n${lines.join("\n")}`;

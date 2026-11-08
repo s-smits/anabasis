@@ -14,12 +14,12 @@
  * choice is the operator's and the record is the log's (`7f0add79:docs/plan.md`, Phase 6). A Builder goes
  * on from the harness its last session left (`latestBuilt`), step or none.
  * Practice priority reads each task's last scored or disputed result, as its outcome does.
- * Its allowance keeps a reference-only frontier in this same fold (26 October, rule 3).
+ * Its allowance keeps a reference-only frontier in this same fold (rule 3).
  *
  * The improvement patience a campaign keeps is `patienceOf`'s; the stop rule that counts it is
- * admission's (`stopRule`, `src/campaign/admission.ts`).
- * The audit of 29 October 2026 found passes a person labelled wrong still read as valid in
- * reported pairs and known valid answers. Both now read history's view of those labels.
+ * admission's (`stopRule`, `src/campaign/admission.ts`). Reported pairs and known valid answers
+ * read history's view of a person's pass labels, so a pass labelled wrong counts as valid in
+ * neither.
  *
  * Nothing here decides a comparison or makes a solve.
  */
@@ -264,8 +264,16 @@ export function patienceOf(events: readonly LogEvent[]): number {
  * each side cut to the solves it asked for (in an older `--noise` log, the reference's first
  * mirrored half, `halves`). None for a report that compared nothing, or before a solve named its
  * comparison. Its settled wrong passes count as that side's fails.
+ *
+ * With `sides` "fresh", the new side's harness is read against itself instead, its solves of each task
+ * split into halves mirrored in time as the reference's A/A is (`noise`, `comparison.ts`): a fold
+ * over solves already paid for, none where a side's solves do not split evenly.
  */
-export function pairsReported(events: readonly LogEvent[], report: Reported): Paired[] {
+export function pairsReported(
+  events: readonly LogEvent[],
+  report: Reported,
+  sides: "both" | "fresh" = "both",
+): Paired[] {
   const { session, index, data } = report;
   const { old, fresh, setting, solves } = data;
   const versions = Array.isArray(data.versions) ? data.versions.filter(isString) : [];
@@ -273,9 +281,11 @@ export function pairsReported(events: readonly LogEvent[], report: Reported): Pa
     return [];
   }
   const begun = events.find(({ kind, data: start }) => kind === STARTED && start.session === session);
-  const halves = begun?.data.noise === true ? ("mirrored" as const) : undefined;
-  const sides = {
-    old,
+  const itself = sides === "fresh";
+  if (itself && (begun?.data.noise === true || solves % 2 !== 0)) return [];
+  const halves = begun?.data.noise === true || itself ? ("mirrored" as const) : undefined;
+  const pairing = {
+    old: itself ? fresh : old,
     fresh,
     setting,
     comparison: session,
@@ -283,7 +293,8 @@ export function pairsReported(events: readonly LogEvent[], report: Reported): Pa
     halves,
   };
   const wrong = wrongPasses(asRecord(asRecord(data.settled)?.passes) ?? {});
-  return pairsOf(failWrongPasses(events.slice(0, index + 1), wrong), versions, sides, solves).pairs;
+  const each = itself ? solves / 2 : solves;
+  return pairsOf(failWrongPasses(events.slice(0, index + 1), wrong), versions, pairing, each).pairs;
 }
 
 /** The tasks `place` gives a place, in the order of their places: the first pair that

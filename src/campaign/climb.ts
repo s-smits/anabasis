@@ -4,18 +4,11 @@
  * holds what the pillars read of it: its starter comparison's tally without the bill, which
  * confirms the promotion (the milestone), the false-promotion estimate over its attempts beside
  * the A/A comparisons (honesty), and the cost of its promotion (economy). A row holds counts and
- * nothing of a task. On 3 November the zigzag was found to need no reading of its own: every
- * comparison solves both harnesses afresh on one draw, and the starter comparison after a
- * promotion draws the tasks held out since first, so the reference's share of valid solves, the
- * set-aside count and the split of the starter tally into the epoch's own tasks and older ones,
- * which decided no move, went (the examiner-complexity scripts read the reference's share).
- * `starterReads` below holds that split for the operator apart from the rows: on 6 November an alert's
- * 10 to 12 hid that the tasks written after the promotion stood 0 to 6, so `runs alerts` prints it, and
- * comparison-reading's `starter-reads.ts` prints it whole. It decides no move.
+ * nothing of a task, and `runs view` prints the rows.
  *
- * Written when the operator asked for the climb to be read as such: ten campaigns
- * had promoted once each and none twice, and no view said at which epoch a campaign stood or what
- * its tasks had done since the promotion. `runs view` prints the rows.
+ * `starterReads` holds, apart from the rows, the split of each starter tally by where its tasks
+ * came from, since a whole tally can hide that the tasks written after the promotion went the
+ * other way; `runs alerts` and comparison-reading's `starter-reads.ts` print it. It decides no move.
  */
 import {
   differenceOf,
@@ -53,6 +46,9 @@ interface FalsePromotion {
   readonly errors: number;
   readonly controls: number;
   readonly incapable: number;
+  /** Of the incapable, those that tied every task: a reference that answers each task alike on
+   *  every solve matches itself, so its A/A can read no step at any level. */
+  readonly tied: number;
   /** min(1, the sum of the attempts' rates): the union bound's form, which assumes nothing of their
    *  independence, over estimates, so an estimate and no bound. */
   readonly union: number;
@@ -178,10 +174,15 @@ export function tasksByEpoch(events: readonly LogEvent[]): string[][] {
   });
 }
 
+/** The starter harness's digest, as the first comparison's terms name it; null before one. */
+function starterIn(events: readonly LogEvent[]): string | null {
+  const named = events.find(({ kind }) => kind === "comparison.started")?.data.starter;
+  return isString(named) ? named : null;
+}
+
 /** The epochs of a log, oldest first. A log with no promotion is one epoch. */
 export function epochsOf(events: readonly LogEvent[]): Epoch[] {
-  const named = events.find(({ kind }) => kind === "comparison.started")?.data.starter;
-  const starter = isString(named) ? named : null;
+  const starter = starterIn(events);
   const bounds = boundsOf(events);
   const byEpoch = tasksByEpoch(events);
   const reports = lastReports(events);
@@ -246,16 +247,20 @@ function againstStarter(
   };
 }
 
-/** Each A/A comparison beside `reports`, the reference against itself read as a comparison is:
- *  whether it had enough untied tasks to read a step at its level, and whether it read one. */
+/** One A/A reading of `scores` at `level`: whether it had enough untied tasks to read a step,
+ *  whether it read one, and whether it tied every task. */
+function controlOf(index: number, level: number, scores: readonly number[]) {
+  const able = readsStep(scores.map(Math.abs), level);
+  const tied = scores.length > 0 && scores.every((one) => one === 0);
+  return { index, level, scores, able, tied, step: readsStep(scores, level) };
+}
+
+/** Each A/A comparison beside `reports`, the reference against itself read as a comparison is. */
 function controlsIn(reports: readonly Reported[]) {
   return reports.flatMap((each) => {
     const noise = asRecord(each.data.noise);
     if (!Array.isArray(noise?.differences)) return [];
-    const level = levelOf(each);
-    const scores = scoresIn(noise);
-    const able = readsStep(scores.map(Math.abs), level);
-    return [{ index: each.index, level, scores, able, step: readsStep(scores, level) }];
+    return [controlOf(each.index, levelOf(each), scoresIn(noise))];
   });
 }
 
@@ -289,6 +294,7 @@ function falsePromotionOf(
     errors: read.filter(({ step }) => step).length,
     controls,
     incapable: read.length - controls,
+    tied: read.filter(({ tied }) => tied).length,
     union: Math.min(
       1,
       rates.reduce((sum, rate) => sum + rate, 0),
@@ -412,8 +418,10 @@ function sourceOf(risk: FalsePromotion): string {
     risk.controls === 0
       ? "no A/A comparison with enough untied tasks to read a step"
       : `${String(risk.errors)} of ${plural(risk.controls, "A/A comparison")} with enough untied tasks to read a step read one`;
+  const tied =
+    risk.tied === 0 ? "" : `, ${String(risk.tied)} of them because the reference tied every task with itself`;
   const incapable =
-    risk.incapable === 0 ? "" : `, and ${String(risk.incapable)} too small to read one at their level`;
+    risk.incapable === 0 ? "" : `, and ${String(risk.incapable)} too small to read one at their level${tied}`;
   return `${comparisons}${incapable}`;
 }
 
@@ -496,7 +504,16 @@ export function barLines(events: readonly LogEvent[]): string[] {
     `- Climb: ${plural(climbed.length, "promotion")}, ${String(confirmed)} confirmed against a milestone of ${String(MILESTONE.promotions)}; ${String(climbed.length - confirmed - unread)} read against the starter without a step, ${String(unread)} not read against it.`,
     honestyLine(events, epochs[MILESTONE.promotions]?.from),
     `- Economy: ${plural(climbed.length, "epoch")} after set-up against a bar of ${plural(BARS.cost, ATTEMPT)} each, ${String(over.length)} over it${over.length === 0 ? "" : `: ${over.join("; ")}`}. Reported only.`,
+    starterNoiseLine(events),
   ];
+}
+
+/** What the tied A/A comparisons among `controls` say, nothing where none tied every task. */
+function tiedOf(controls: readonly { readonly tied: boolean }[], of: string): string {
+  const tied = controls.filter((control) => control.tied).length;
+  return tied === 0
+    ? ""
+    : ` ${String(tied)} of ${of} tied every task, as the reference matched itself on every solve, and could read no step.`;
 }
 
 /** The A/A comparisons reported after the log's index `sixth`, where the milestone's last promotion
@@ -505,10 +522,40 @@ export function barLines(events: readonly LogEvent[]): string[] {
 function honestyLine(events: readonly LogEvent[], sixth: number | undefined): string {
   const named = `promotion ${String(MILESTONE.promotions)}`;
   const bar = `the bar's ${String(MILESTONE.controls)}`;
-  if (sixth === undefined) return `- Honesty: no ${named} yet, so none of ${bar} A/A comparisons after it.`;
-  const after = controlsIn(lastReports(events)).filter(({ index }) => index > sixth);
-  const able = after.filter((control) => control.able).length;
-  const steps = after.filter(({ step }) => step).length;
-  const either = after.filter(({ scores, level }) => readsStepEitherWay(scores, level)).length;
-  return `- Honesty: after ${named}, ${plural(after.length, "A/A comparison")} against ${bar}, ${String(able)} with enough untied tasks to read a step: ${String(steps)} read one, ${String(either)} read one either way.`;
+  const all = controlsIn(lastReports(events));
+  if (sixth === undefined) {
+    const so = tiedOf(all, `the campaign's ${plural(all.length, "A/A comparison")} so far`);
+    return `- Honesty: no ${named} yet, so none of ${bar} A/A comparisons after it.${so}`;
+  }
+  const after = all.filter(({ index }) => index > sixth);
+  return `- Honesty: after ${named}, ${plural(after.length, "A/A comparison")} against ${bar}, ${readOf(after)}.${tiedOf(after, "them")}`;
+}
+
+/** How many of `controls` could read a step, and how many read one, one-sided and either way. */
+function readOf(controls: readonly ReturnType<typeof controlOf>[]): string {
+  const able = controls.filter((control) => control.able).length;
+  const steps = controls.filter(({ step }) => step).length;
+  const either = controls.filter(({ scores, level }) => readsStepEitherWay(scores, level)).length;
+  return `${String(able)} with enough untied tasks to read a step: ${String(steps)} read one, ${String(either)} read one either way`;
+}
+
+/**
+ * The starter against itself in every starter comparison, its own solves of each task split in two
+ * as the reference's A/A splits the reference's (`pairsReported`): the noise of the harness each
+ * promotion is confirmed against, which the reference's A/A reads only while the starter is the
+ * reference. It folds solves already paid for, counts towards no bar and decides nothing.
+ */
+function starterNoiseLine(events: readonly LogEvent[]): string {
+  const starter = starterIn(events);
+  const read = lastReports(events).flatMap((report) => {
+    if (starter === null || report.data.fresh !== starter || report.data.old === starter) return [];
+    const pairs = pairsReported(events, report, "fresh");
+    return pairs.length === 0 ? [] : [controlOf(report.index, levelOf(report), pairs.map(differenceOf))];
+  });
+  const head = "- Starter against itself:";
+  if (read.length === 0) {
+    return `${head} no starter comparison split the starter's own solves in two. Reported only.`;
+  }
+  const tied = read.filter((control) => control.tied).length;
+  return `${head} ${plural(read.length, "starter comparison")} split the starter's own solves in two, ${readOf(read)}, and ${String(tied)} tied every task. Reported only, and counted towards no bar.`;
 }

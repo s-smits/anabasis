@@ -1,5 +1,5 @@
 /**
- * The override blocks in `.oxlintrc.json` are a debt ledger, and `tools/oxlint/BASELINE.md`
+ * The override blocks in `.oxlintrc.json` are a debt ledger, and `tools/oxlint/HABITS.md` (12.11)
  * states its one rule: the lists only shrink. Two things can quietly break that, and both are
  * silent, because an entry matching nothing simply exempts nothing.
  *

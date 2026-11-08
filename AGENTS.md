@@ -71,7 +71,9 @@ Each change names the factor it moves. Recorded values live in `docs/plan.md`.
 - **A stricter step against a faster climb**: 2 solves at 0.02 is the balance; an A/A step means the
   level is loose for the noise.
 - **The objective against chance**: once validity saturates, the noisier objective decides; say
-  which measure carried a step.
+  which measure carried a step. A reference that answers each task alike ties its own A/A and reads
+  no false rate, so read the starter against itself beside it (`barLines`). A higher gap floor
+  (`ROOM`) is no remedy for margin noise: it moves the noise to the next margin and starves supply.
 - **Promotion against confirmation**: the host owes one starter comparison after every promotion
   and runs it at the Builder's next `compare` (`heldSince`, `src/campaign/decide.ts`). Before the
   table owes it, while too few tasks are held out since the promotion, a Builder's own comparison
@@ -88,9 +90,12 @@ Each change names the factor it moves. Recorded values live in `docs/plan.md`.
   repeat are the sign.
 - **Patience against stopping too soon**: six eligible moves without a gain end a campaign, and
   each move after is another draw at the false rate; treat a step after `--past-stop` warily.
-- **Comparability against change**: set cycles side by side only under one setting, meter and rule.
-- **Simplicity against performance**: section 2, consequence 7, never at the measurement's cost; a
-  new guard is measured against what it replaces.
+- **A promotion against the starter**: a promotion beats its parent on the tasks that chose it;
+  the starter comparison after it splits its tally by where each task came from (`starterReads`),
+  and a reference that keeps losing the tasks written since is fitting its own draws, not climbing.
+- **Deciding sooner against reporting first**: a new reading reports and moves nothing until a
+  replay over the record (`promotion-tuner`) shows which decisions it would have changed; a reading
+  that decides at once is a second decider the comparison never measured (rule 1).
 - **A strict gate against a capable model**: a refusal guesses the comparison and can end a campaign
   with nothing compared; refuse only what makes a reading dishonest or a spend certainly wasted, and
   give the rest to the seat as a note.
@@ -357,6 +362,12 @@ the procedures: `run-improvement-campaign` (what to run next), `run-management` 
 9. **A measured run opens a fresh project and climbs on its own** from a prompt at one commit;
    promotions from a seed, fork, pack or another commit do not count.
 
+**Which domains to run.** Jobstat is the domain v1.0 is built towards, and buffer is the control:
+its runs read against those of two, three and four weeks before, to show that a change did not
+regress. Run both, since they are far apart: a change that holds on both, surgical ones above all,
+plausibly generalises. Until jobstat climbs, put the effort there; before v1.0, read the other
+domains' newest runs against their past ones and bring back any that regressed.
+
 An anti-stall hook is on by default: every 290 seconds it runs `bun run runs pulse` and wakes an
 idle session only on a line worth reading. It is paused only on the operator's word.
 
@@ -391,6 +402,22 @@ improvement; `I3` covers reporting, wording and convenience) and a category (`CA
 rewriting. Merging and restacking others' branches are the operator's; before `bun run land -- <top>
 --merge`, three reviewer subagents read slices of the landing, and their confirmed findings go on
 the top before `--sanitize` runs again.
+
+### Commands that run the first time
+
+A shell command runs only where its effect can be read before it runs, so write it plainly:
+
+- Create or overwrite a file with the agent's file-editing tools instead of `>` or `cat > <file> <<EOF`;
+  keep `>` for a new scratch file under the temporary directory, named by a literal path.
+- Put a script longer than a line in a file and run it (`python3 -I <file>`, `bun <file>`) instead
+  of piping text to an interpreter; a short heredoc quotes its delimiter (`<<'EOF'`) and holds no
+  `$(...)`, backtick or `${...}`.
+- Quote every expansion (`git branch --contains "$c"`), and give `mv` and `git -C` literal paths.
+- Read an older file with `git show <ref>:<path>`, and write it to a new scratch path by the rule
+  above, instead of `git checkout <ref> -- <path>`, `git restore` or `git reset --hard`; leave
+  deleting branches to the operator.
+- Move what is no longer wanted to the Trash with explicit paths instead of `rm -r`, and leave shell
+  profiles, ssh configuration and env files untouched.
 
 ### Reviews and subagents
 

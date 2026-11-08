@@ -90,7 +90,7 @@ export interface Seat {
   readonly env?: ExecutionEnv;
   /** Where the seat's turns, calls and compactions are logged, under its kind, and under `as` at
    *  each write where the seat's work is named apart from its conversation: an Examiner's ask. */
-  readonly trace?: { readonly log: string; readonly of: Traced; readonly as?: () => string };
+  readonly trace?: { readonly log: string; readonly of: SeatKind; readonly as?: () => string };
   /** Before every model request and every compaction: holds them to the seat's own bounds. A throw
    *  ends the session with what it threw. */
   readonly before?: () => void | Promise<void>;
@@ -121,18 +121,13 @@ export interface Sat {
   readonly spent: Spent;
 }
 
-/** Whose trace a log holds: a solve's, a Builder's session, an Examiner's that writes tasks, or
- *  the one in which it drafts the exam, or a Referee ruling. The word prefixes the event kinds
- *  (`draft.turn`), which `src/kernel/trace.ts` reads. */
-type Traced = Exclude<SeatKind, "repair">;
-
 /** The text of a result or a turn the trace keeps: more than pi's own tools return of an output
  *  (50 KB), so the trace holds what the solver read. At 4 KB, as v1 cut its traces, it held the
  *  head of a long result, and whoever read a fail afterwards read less than the solver had. */
 const TRACE_TEXT_BYTES = 64 * 1024;
 
 /** The trace writer used by durable hooks and by trace-reader fixtures. */
-export function traceSink(log: string, of: Traced, id: string | (() => string), turn: () => number) {
+export function traceSink(log: string, of: SeatKind, id: string | (() => string), turn: () => number) {
   const named = () => ({ [whose(of)]: isString(id) ? id : id() });
   // A call is traced under the session it started in: an Examiner's `finish` rests its ask inside
   // the call and wakes in the next, whose id the trace would otherwise give it (5 November).

@@ -23,8 +23,8 @@
  * spent (`room`, `logins.ts`), those below their cap of live runs on every host (`atCap`), and those
  * whose five hours are read to last to their reset with this run added (`fiveHourWith`). A login that
  * could not be read is not taken: a move spends on another login, so it needs a reading to say it
- * may. `--logins` defaults to `ANA_LOGINS`. With none it says why once and waits, and asks again every
- * `ASK_MS`. Its own login goes unasked on a continue, since its runs are already in its pace.
+ * may. `--logins` defaults to `ANA_LOGINS`, read again before each move (`poolOf`). With none it says
+ * why once and waits, and asks again every `ASK_MS`. Its own login goes unasked on a continue, since its runs are already in its pace.
  * A run none of whose seats is a `claude/` model bills no login and goes on without one
  * (`billsLogin`), and so does every run on a machine that holds only the plain login (`plainOnly`). A run that goes on three times in a row without a model turn of any seat that the
  * provider answered (`turnsIn`) is left: something the keeper cannot mend ends it each time.
@@ -34,7 +34,9 @@
  * 15 October this was three shell loops of the operator's and a wrapper a login, each moving one run.
  */
 import type { LogEvent } from "#src/kernel/log.ts";
+import { mainTree } from "#src/meta/git.ts";
 import { isString } from "#src/meta/json-shape.ts";
+import { join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { providerWait } from "./diagnosis.ts";
@@ -168,8 +170,9 @@ export const keeperActed = (line: string): boolean =>
     line,
   );
 
-/** A keeper of the run `name` on `logins`: each call is one look at `now`, and says whether it leaves. */
-export function keeperOf(name: string, logins: readonly string[], waitMs: number, hands: Hands) {
+/** A keeper of the run `name` on the logins `pool` gives at each move: each call is one look at `now`,
+ *  and says whether it leaves. */
+export function keeperOf(name: string, pool: () => Promise<readonly string[]>, waitMs: number, hands: Hands) {
   // A login this keeper moved off, until its limit resets.
   const spentUntil = new Map<string, number>();
   let barren = 0;
@@ -190,6 +193,7 @@ export function keeperOf(name: string, logins: readonly string[], waitMs: number
       return false;
     }
     const { login: current, flags } = hands.last();
+    const logins = await pool();
     const until = providerWait(events)?.data.until;
     if (turn === "move" && current !== undefined && isString(until)) {
       spentUntil.set(current, Date.parse(until));
@@ -246,9 +250,34 @@ export function keeperOf(name: string, logins: readonly string[], waitMs: number
   };
 }
 
-/** Keep `run` going on `logins` until it ends on its own terms. */
-async function keepGoing(run: Run, logins: readonly string[], waitMs: number): Promise<void> {
-  const look = keeperOf(run.name, logins, waitMs, {
+/**
+ * The logins a keeper started without `--logins` may move its run to: those `ANA_LOGINS` names in
+ * `file`, its host's `.env.runs`, at each call, where the pool it started with is the one that file
+ * named; otherwise the pool it started with. So an edit of the pool reaches a running keeper, and a
+ * pool carried from another host stays as carried. On 7 November the operator narrowed the pool to
+ * one login, and a running keeper went on choosing from the logins it had been started with.
+ */
+export function poolOf(file: string, env: Env): () => Promise<readonly string[]> {
+  const named = async () =>
+    /^ANA_LOGINS=["']?([^"'\s#]*)/mu.exec(
+      await Bun.file(file)
+        .text()
+        .catch(() => ""),
+    )?.[1];
+  const follows = named().then((first) => first === env.ANA_LOGINS);
+  // A file it cannot read, or a line it no longer finds, keeps the last pool rather than widening
+  // it to every login `.env` holds.
+  let last = env.ANA_LOGINS;
+  return async () => {
+    if (!(await follows)) return allowedLogins(env);
+    last = (await named()) ?? last;
+    return allowedLogins({ ...env, ANA_LOGINS: last });
+  };
+}
+
+/** Keep `run` going on the logins `pool` gives until it ends on its own terms. */
+async function keepGoing(run: Run, pool: () => Promise<readonly string[]>, waitMs: number): Promise<void> {
+  const look = keeperOf(run.name, pool, waitMs, {
     events: () => logEvents(run.path),
     open: () => writers(run, processes()).length > 0,
     last: () => lastRun(run),
@@ -275,10 +304,9 @@ export async function keep(args: readonly string[]): Promise<void> {
     },
   });
   const [name] = positionals;
-  // The detached keeper is handed its logins as one word, empty on a machine with the plain login
-  // alone, which until 28 October came back as the one login "".
-  const logins =
-    values.logins?.split(",").filter((login) => login !== "") ?? allowedLogins(runtimeProcess.env);
+  // An empty `--logins` names none, which until 28 October came back as the one login "".
+  const named = values.logins?.split(",").filter((login) => login !== "");
+  const logins = named ?? allowedLogins(runtimeProcess.env);
   if (name === undefined) {
     throw new Error(
       `usage: bun --env-file=<file> run runs keep <name> --logins 2,3,4 [--wait-hours ${WAIT_HOURS}] [--yes]`,
@@ -292,12 +320,18 @@ export async function keep(args: readonly string[]): Promise<void> {
   ) {
     throw new Error("no allowed Claude login: name --logins, set ANA_LOGINS or CLAUDE_CODE_OAUTH_TOKEN");
   }
-  if (values.here) return keepGoing(run, logins, Number(values["wait-hours"]) * HOUR);
+  if (values.here) {
+    const pool =
+      named === undefined
+        ? poolOf(join(mainTree(run.tree), ".env.runs"), runtimeProcess.env)
+        : async () => named;
+    return keepGoing(run, pool, Number(values["wait-hours"]) * HOUR);
+  }
   if (keepers(name).length > 0) throw new Error(`${name} is kept already`);
   if (!values.yes) {
     return console.log(
       `${name} in ${run.tree}: would be kept going on logins ${logins.join(", ")}; nothing is done without --yes`,
     );
   }
-  leaveKeeper(run, logins, values["wait-hours"]);
+  leaveKeeper(run, named, values["wait-hours"]);
 }

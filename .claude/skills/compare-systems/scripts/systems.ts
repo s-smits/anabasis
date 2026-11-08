@@ -48,9 +48,16 @@ import { isNumber } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { join } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
-import { keptAs, openCampaign, packNamed } from "#tools/d2/campaign.ts";
+import { type Kept, keptAs, openCampaign, packNamed } from "#tools/d2/campaign.ts";
 import { gated } from "#tools/d2/host.ts";
-import { objectiveNamed, reviewersNamed, solved } from "#tools/d2/round.ts";
+import {
+  type Campaign,
+  objectiveNamed,
+  type Reviewers,
+  reviewersNamed,
+  type Seats,
+  solved,
+} from "#tools/d2/round.ts";
 import { recordedSetting, settingNamed } from "#tools/d2/setting.ts";
 import { loginEnv } from "#tools/runs/manage.ts";
 import { SEED_FILE } from "#tools/runs/registry.ts";
@@ -86,6 +93,24 @@ interface Solved {
   readonly turns: (number | null)[];
   /** A rejection not ruled earned, which sets its task aside (`rejectionAside`). */
   readonly aside: boolean[];
+}
+
+/** One system opened for solving: its log, its kept harness, its seat and its Referee. */
+interface Opened {
+  readonly system: System;
+  readonly log: string;
+  readonly harness: Kept;
+  readonly seat: Seats;
+  readonly reviewers: Reviewers | null;
+}
+
+/** What the solves are drawn from: the seed, its drawn tasks, the solves a task and the dollar cap. */
+interface Solving {
+  readonly source: Campaign;
+  readonly seed: string;
+  readonly tasks: readonly string[];
+  readonly solves: number;
+  readonly cap: number;
 }
 
 function systemOf(flag: string, die: CommandArgs["die"]): System {
@@ -256,6 +281,57 @@ function itself(baseline: System, own: Map<string, Solved>, at: Parameters<typeo
   ];
 }
 
+/**
+ * The solves each system is still short of, read from its own log, then the Referee on every
+ * rejection no finding answers yet, this run's and an earlier one's; `--read` skips both. Solves are
+ * interleaved by solve, task and system, so every system meets the host's load alike.
+ */
+async function solveAll(opened: readonly Opened[], { source, seed, tasks, solves, cap }: Solving) {
+  const counted = opened.map(({ log }) => solvedIn(log));
+  const jobs = Array.from({ length: solves }, (_, at) => at).flatMap((at) =>
+    tasks.flatMap((task) =>
+      opened.flatMap((system, index) =>
+        (counted[index]?.get(task)?.valid.length ?? 0) <= at ? [{ system, task }] : [],
+      ),
+    ),
+  );
+  const spent = () =>
+    opened.reduce((total, { log }) => total + (existsSync(log) ? billedAll(read(log)) : 0), 0);
+  console.log(`${String(jobs.length)} solves to make, ${dollars(spent())} billed so far of ${dollars(cap)}`);
+  const packages = source.packages();
+  const work = async () => {
+    for (let job = jobs.shift(); job !== undefined && spent() < cap; job = jobs.shift()) {
+      const pack = packages.get(job.task);
+      if (pack === undefined) throw new Error(`task ${job.task} has no package in ${seed}`);
+      // A non-result is no measurement, and is solved again once, as a comparison's slot is.
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const { ending } = await job.system.seat.solve(pack, job.system.harness, undefined, undefined);
+        console.log(
+          `${job.system.system.name} ${job.task.slice(0, 8)}: ${ending.outcome}${"kind" in ending ? ` (${ending.kind})` : ""}`,
+        );
+        if (ending.outcome !== "non-result") break;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: source.limits.concurrency }, work));
+  const unruled = opened.flatMap(({ system, log, reviewers }) => {
+    const own = existsSync(log) ? read(log) : [];
+    const found = new Set(own.flatMap(({ kind, data }) => (kind === "referee.finding" ? [data.solve] : [])));
+    return ended(ranUnder(own)).flatMap((solve) =>
+      solve.ending?.kind === "rejected" && !found.has(solve.id) ? [{ system, reviewers, solve }] : [],
+    );
+  });
+  const rule = async () => {
+    for (let one = unruled.shift(); one !== undefined; one = unruled.shift()) {
+      const pack = packages.get(one.solve.under.task);
+      if (pack === undefined || one.reviewers === null) continue;
+      const { ruling } = await one.reviewers.referee(one.solve.id, pack, new AbortController().signal);
+      console.log(`${one.system.name} ${one.solve.under.task.slice(0, 8)}: the Referee ruled ${ruling}`);
+    }
+  };
+  await Promise.all(Array.from({ length: source.limits.concurrency }, rule));
+}
+
 async function main(args: CommandArgs): Promise<number> {
   const seed = args.required("seed");
   const baseline = systemOf(args.required("baseline"), args.die);
@@ -299,7 +375,7 @@ async function main(args: CommandArgs): Promise<number> {
   const { held } = taskSets(events);
   const tasks = draw(held, Math.min(count, held.length), contractHash(source.contract));
   const out = join(source.repo, ".ana", "compare", seed);
-  const opened = await Promise.all(
+  const opened: Opened[] = await Promise.all(
     systems.map(async (system) => {
       // Each system runs under the campaign's limits, with its own solver in the campaign's place.
       const { solver, limits } = settingNamed({
@@ -319,58 +395,7 @@ async function main(args: CommandArgs): Promise<number> {
       return { system, log, harness, seat, reviewers: reviewersNamed(campaign, reviewer) };
     }),
   );
-  const billed = (log: string) => (existsSync(log) ? billedAll(read(log)) : 0);
-  if (!args.flag("read")) {
-    // Interleaved by solve, task and system, so every system meets the host's load alike. A run again
-    // solves only what each system is still short of, read from its own log.
-    const counted = opened.map(({ log }) => solvedIn(log));
-    const jobs = Array.from({ length: solves }, (_, at) => at).flatMap((at) =>
-      tasks.flatMap((task) =>
-        opened.flatMap((system, index) =>
-          (counted[index]?.get(task)?.valid.length ?? 0) <= at ? [{ system, task }] : [],
-        ),
-      ),
-    );
-    const spent = () => opened.reduce((total, { log }) => total + billed(log), 0);
-    console.log(
-      `${String(jobs.length)} solves to make, ${dollars(spent())} billed so far of ${dollars(cap)}`,
-    );
-    const packages = source.packages();
-    const work = async () => {
-      for (let job = jobs.shift(); job !== undefined && spent() < cap; job = jobs.shift()) {
-        const pack = packages.get(job.task);
-        if (pack === undefined) throw new Error(`task ${job.task} has no package in ${seed}`);
-        // A non-result is no measurement, and is solved again once, as a comparison's slot is.
-        for (let attempt = 0; attempt < 2; attempt += 1) {
-          const { ending } = await job.system.seat.solve(pack, job.system.harness, undefined, undefined);
-          console.log(
-            `${job.system.system.name} ${job.task.slice(0, 8)}: ${ending.outcome}${"kind" in ending ? ` (${ending.kind})` : ""}`,
-          );
-          if (ending.outcome !== "non-result") break;
-        }
-      }
-    };
-    await Promise.all(Array.from({ length: source.limits.concurrency }, work));
-    // The Referee rules every rejection no finding answers yet, this run's and an earlier one's.
-    const unruled = opened.flatMap(({ system, log, reviewers }) => {
-      const own = existsSync(log) ? read(log) : [];
-      const found = new Set(
-        own.flatMap(({ kind, data }) => (kind === "referee.finding" ? [data.solve] : [])),
-      );
-      return ended(ranUnder(own)).flatMap((solve) =>
-        solve.ending?.kind === "rejected" && !found.has(solve.id) ? [{ system, reviewers, solve }] : [],
-      );
-    });
-    const rule = async () => {
-      for (let one = unruled.shift(); one !== undefined; one = unruled.shift()) {
-        const pack = packages.get(one.solve.under.task);
-        if (pack === undefined || one.reviewers === null) continue;
-        const { ruling } = await one.reviewers.referee(one.solve.id, pack, new AbortController().signal);
-        console.log(`${one.system.name} ${one.solve.under.task.slice(0, 8)}: the Referee ruled ${ruling}`);
-      }
-    };
-    await Promise.all(Array.from({ length: source.limits.concurrency }, rule));
-  }
+  if (!args.flag("read")) await solveAll(opened, { source, seed, tasks, solves, cap });
   const drawn = new Set(tasks);
   const solvedBy = opened.map(({ log }) => new Map([...solvedIn(log)].filter(([task]) => drawn.has(task))));
   const direction = objectiveNamed(source)?.direction;
@@ -386,7 +411,7 @@ async function main(args: CommandArgs): Promise<number> {
       opened.map(({ system, log }, index) => ({
         system,
         own: solvedBy[index] ?? new Map<string, Solved>(),
-        billed: billed(log),
+        billed: existsSync(log) ? billedAll(read(log)) : 0,
       })),
     ),
     "",

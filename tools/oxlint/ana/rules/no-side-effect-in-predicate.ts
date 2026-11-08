@@ -1,6 +1,5 @@
 import { defineRule } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
-import { mutatingCall } from "../shared/predicate-effect.ts";
 import { identifierName, inlineFunctionArgument, isNamedMember } from "../shared/statements.ts";
 
 /**
@@ -15,11 +14,12 @@ import { identifierName, inlineFunctionArgument, isNamedMember } from "../shared
  * answering a question rather than building state while it walks.
  *
  * The rule reads the six positions that take a predicate — `filter`, `find`, `findLast`,
- * `findIndex`, `some` and `every` — and reports a callback whose body mutates.
- * `shared/predicate-effect.ts` owns which calls count as a mutation, and why there are six of
- * those as well, because `ana/prefer-some-over-filter-length` needs the same answer from the other
- * side: it may turn a `.filter().length` into `.some()` only where the short-circuit cannot be
- * noticed.
+ * `findIndex`, `some` and `every` — and reports a callback whose body calls one of six mutating
+ * methods. Each changes a receiver that outlives the walk, which is what makes the number of walks
+ * observable, and a call that merely reads is invisible here. Reading the text rather than the tree
+ * keeps it to one line per name: the dot is required, so a free `add(x)` says nothing about a
+ * collection. An assignment to an outer `let` also makes the count observable, and is not
+ * reported, because the text cannot tell it from a `const` declared inside the predicate.
  *
  * `forEach`, `map` and `reduce` are outside it on purpose. `forEach` exists to have an effect,
  * a `map` that also records what it saw is a different finding with a different answer, and
@@ -32,6 +32,9 @@ import { identifierName, inlineFunctionArgument, isNamedMember } from "../shared
 
 /** The six array methods whose argument is a predicate: a question, asked once per element. */
 const PREDICATE_METHODS = new Set(["filter", "find", "findLast", "findIndex", "some", "every"]);
+
+/** Methods whose receiver is changed by the call, so a predicate holding one has an effect. */
+const MUTATIONS = new Set(["add", "set", "delete", "push", "unshift", "clear"]);
 
 export const noSideEffectInPredicateRule = defineRule({
   meta: {
@@ -62,8 +65,9 @@ export const noSideEffectInPredicateRule = defineRule({
         if (!isNamedMember(callee) || !PREDICATE_METHODS.has(identifierName(callee.property) ?? "")) return;
         const predicate = inlineFunctionArgument(node);
         if (predicate === null) return;
-        const found = mutatingCall(context.sourceCode.getText(predicate.body));
-        if (found === null) return;
+        const body = context.sourceCode.getText(predicate.body);
+        const found = [...MUTATIONS].find((name) => new RegExp(String.raw`\.${name}\s*\(`, "u").test(body));
+        if (found === undefined) return;
         context.report({
           node: callee.property,
           messageId: "mutates",

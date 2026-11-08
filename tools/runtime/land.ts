@@ -56,7 +56,10 @@
  * everything beneath it in the native stack all or nothing: GitHub refuses the pull request's own
  * merge for a stack's member (HTTP 403), and on 14 October that left stack 160, #150 to #166, open
  * after every one of its 64 commits had passed. So a landing of several pull requests has to be one
- * native stack, its members up to the top the chain of bases (`gh stack link` makes one). Until 21
+ * native stack, its members up to the top the chain of bases. Before anything is gated, `--sanitize`
+ * and `--merge` run `gh stack link` over the whole chain where the stack holds only its lower part
+ * or several are in none, so a pull request opened on the top joins at its first landing; without a
+ * flag the link is only said, and a stack in another order is refused (`stackOf`). Until 21
  * October a chain outside a stack was merged one pull request at a time, each retargeted to main
  * first; every landing since 14 October went through a stack. A merge that does not go through sets
  * the status of every head back to pending.
@@ -224,8 +227,8 @@ function topAbove(open: readonly Pull[], from: Pull): Pull {
       ...above.reduce<Pull[]>((longest, each) => (each.length > longest.length ? each : longest), []),
     ];
   };
-  // SAFETY: a chain starts with `from`.
-  return chain(from, [from]).at(-1) as Pull;
+  // A chain starts with `from`, so the fallback is never taken.
+  return chain(from, [from]).at(-1) ?? from;
 }
 
 /** The top of the stack that holds the oldest stacked pull request: a bottom on the trunk with
@@ -255,8 +258,8 @@ function readLanding(root: string, target: number): Landing {
     pulls.unshift(below);
     below = byHead.get(below.baseRefName);
   }
-  // SAFETY: `pulls` starts with the named pull request and only grows.
-  const bottom = pulls[0] as Pull;
+  // `pulls` starts with the named pull request and only grows, so the fallback is never taken.
+  const bottom = pulls[0] ?? named;
   const trunk = trunkOf(root);
   if (bottom.baseRefName !== trunk) {
     throw new Refusal(
@@ -427,33 +430,42 @@ async function awaitCi(root: string, top: Pull): Promise<void> {
   );
 }
 
-/** The open native stack GitHub holds the top in, or null for a landing of one pull request that is
- *  in none. The stack merges everything up to the top, so its members up to the top have to be the
- *  landing's pull requests, bottom to top; a landing of several outside a stack, or one GitHub did
- *  not say, is refused, since the top's merge would merge it alone into its base. */
-function stackOf(root: string, landing: Landing): number | null {
-  const { top } = landing;
-  const read = gh(root, ["api", api(`stacks?pull_request=${String(top.number)}`), "--jq", STACK_MEMBERS]);
-  if (!read.ok) {
-    throw new Refusal(`GitHub did not say which stack #${String(top.number)} is in: ${read.err} Land again.`);
+/** The open native stack GitHub holds the landing's bottom in, or null for a lone pull request in
+ *  none. The stack merges everything up to the top, so its members up to the top have to be the
+ *  landing's chain. Where they are its lower part, or several are in no stack, `"link"` links the
+ *  whole chain (the short form appends above GitHub's top, `doubled.ts`) and reads it again; `"say"`
+ *  only says it. Any other order is refused, since a link never reorders. */
+function stackOf(root: string, landing: Landing, unlinked: "link" | "say"): number | null {
+  const { pulls, top } = landing;
+  const chain = pulls.map((pull) => String(pull.number));
+  const [bottom = ""] = chain;
+  const link = `gh stack link ${chain.join(" ")}`;
+  for (let linked = false; ; linked = true) {
+    const read = gh(root, ["api", api(`stacks?pull_request=${bottom}`), "--jq", STACK_MEMBERS]);
+    if (!read.ok) {
+      throw new Refusal(`GitHub did not say which stack #${bottom} is in: ${read.err} Land again.`);
+    }
+    const [stack = "", listed = ""] = read.out.split(" ");
+    const members = listed === "" ? [] : listed.split(",");
+    const upTo = members.slice(0, members.indexOf(String(top.number)) + 1);
+    if (upTo.join(",") === chain.join(",")) return Number(stack);
+    if (read.out === "" && chain.length === 1) return null;
+    if (linked && read.out === "") throw new Refusal(`${link} left them in no stack. Land again.`);
+    if (linked || !members.every((member, index) => member === chain[index])) {
+      throw new Refusal(
+        `GitHub's stack ${stack} holds #${members.join(", #")}, and the chain of bases up to #${String(top.number)} ` +
+          `holds ${numbers(pulls)}. A link never reorders a stack: run gh stack unstack ${stack}, then ${link}, ` +
+          `and land again.`,
+      );
+    }
+    if (unlinked === "say") {
+      say(`${numbers(pulls)} are not one stack on GitHub; --sanitize or --merge runs ${link}.`);
+      return null;
+    }
+    const made = gh(root, ["stack", "link", ...chain]);
+    if (!made.ok) throw new Refusal(`${link} was refused: ${made.err} Land again.`);
+    say(`linked ${numbers(pulls)} into one stack on GitHub: ${link}.`);
   }
-  if (read.out === "" && landing.pulls.length === 1) return null;
-  if (read.out === "") {
-    throw new Refusal(
-      `${numbers(landing.pulls)} are in no stack on GitHub. Make them one, bottom to top, with ` +
-        `gh stack link ${landing.pulls.map((pull) => String(pull.number)).join(" ")}, and land again.`,
-    );
-  }
-  const [stack = "", listed = ""] = read.out.split(" ");
-  const members = listed.split(",");
-  const upTo = members.slice(0, members.indexOf(String(top.number)) + 1);
-  if (upTo.join(",") !== landing.pulls.map((pull) => String(pull.number)).join(",")) {
-    throw new Refusal(
-      `GitHub's stack ${stack} holds #${members.join(", #")}, and the chain of bases up to #${String(top.number)} ` +
-        `holds ${numbers(landing.pulls)}. Make them agree, and land again.`,
-    );
-  }
-  return Number(stack);
 }
 
 /** Merges the top, with the stack beneath it, as GitHub's asynchronous merge does, all or nothing,
@@ -550,7 +562,7 @@ function checkCurrent(root: string, target: number, landing: Landing): void {
 async function merge(root: string, target: number, landing: Landing): Promise<string | null> {
   checkCurrent(root, target, landing);
   const heads = landing.pulls.map((pull) => pull.headRefOid);
-  const stack = stackOf(root, landing);
+  const stack = stackOf(root, landing, "link");
   const gated = (sha: string, state: string, description: string): boolean =>
     postStatus(root, sha, { context: STACK_CONTEXT, state, description });
   const revoke = (): void => {
@@ -648,9 +660,9 @@ async function landTo(root: string, target: number, mode: Mode): Promise<number 
           `Put ${numbers(landing.pulls)} on that chain's top, land that chain first, or name --alone to merge it anyway.`,
       );
     }
-    stackOf(root, landing);
-    startCi(root, top);
   }
+  stackOf(root, landing, mode.merge || mode.sanitize ? "link" : "say");
+  if (mode.merge) startCi(root, top);
   // Each landing head's own line, including a lower head reached through a merge's other parent.
   const heads = landing.pulls.map((pull) => pull.headRefOid);
   const proofs = addedLine(root, heads, [landing.trunkSha], say).map(
@@ -764,9 +776,6 @@ async function main(argv: readonly string[]): Promise<number> {
     console.error(USAGE);
     return 2;
   }
-  // A pass is remembered by content and never expires, so a merge alone reads none of them: the one
-  // moment worth an hour's proof, and what reaches `main` was then run on this day's machine and Bun.
-  if (values.merge) runtimeProcess.env.ANA_GATE_FRESH = "1";
   const root = git(runtimeProcess.cwd(), ["rev-parse", "--show-toplevel"]);
   const mode = {
     merge: values.merge,

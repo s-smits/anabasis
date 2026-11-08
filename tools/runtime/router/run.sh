@@ -238,11 +238,21 @@ queue_enter() {
   ticket=""
 }
 
-# A host that does not answer, or lacks capacity for a snapshot, its dependencies and the tests'
-# scratch, starts nothing: the M1 stood 94% full on 1 October, and a full disk fails a task midway.
-preflight() {
+# ship_script <dir>: the slot's folder made, its last status cleared, the task's script written and
+# the host's free KiB printed, in one exchange. The pipe is inside, so a retry sends the script again.
+ship_script() {
+  cat "$runner_dir/lib.sh" "$runner_dir/host.sh" |
+    on_host "mkdir -p '$1' && rm -f '$1.status' && cat > '$1.run.sh' && df -Pk \"\$HOME\" | awk 'NR == 2 { print \$4 }'"
+}
+
+# set_up <dir>: the slot made ready, once it is held, so its first exchange opens the master the
+# task's others ride on. Until 8 November the free space was read in an exchange of its own before
+# the queue. A host that does not answer, or lacks capacity for a snapshot, its dependencies and the
+# tests' scratch, starts nothing: the M1 stood 94% full on 1 October, and a full disk fails a task
+# midway.
+set_up() {
   local free_kib min_gib="${ANA_RUNNER_MIN_FREE_GB:-3}"
-  if ! free_kib="$(with_retries on_host 'df -Pk "$HOME" | awk "NR == 2 { print \$4 }"')"; then
+  if ! free_kib="$(with_retries ship_script "$1")"; then
     printf "runner: %s does not answer; no sync or task started\n" "$host" >&2
     exit 69
   fi
@@ -285,19 +295,13 @@ push_tree() {
     -e "$transport" "$1/" "$host:$2/"
 }
 
-# ship_script <dir>: the slot's folder made, its last status cleared and the task's script written, in
-# one exchange.
-ship_script() {
-  cat "$runner_dir/lib.sh" "$runner_dir/host.sh" | on_host "mkdir -p '$1' && rm -f '$1.status' && cat > '$1.run.sh'"
-}
-
 # remote_run <root> <pin> [args...]: the task in the slot's folder on the host. The folder names
 # this machine too, so two machines that share a host never share a slot.
 remote_run() {
   local root=$1 pin=$2 dir quoted="" strict="" forwarded="" setting plain="" status=0
   shift 2
   dir=".cache/ana-runner/$(uname -n | cut -d. -f1)-slot-$held_slot"
-  with_retries ship_script "$dir"
+  set_up "$dir"
   with_retries push_tree "$root" "$dir"
   printf "runner: sent %s to %s, slot %s\n" "$root" "$host" "$held_slot" >&2
   # With no arguments printf would send one empty one, which changes the suite's routing.
@@ -340,7 +344,6 @@ if [[ -n "$host" ]]; then
     printf "%s pins no Bun in package.json's packageManager\n" "$root" >&2
     exit 2
   fi
-  preflight
   queue_enter
   # A plain call: under `||` bash switches `set -e` off inside it, and a sync that failed for good
   # would go on to test a stale tree. Any failing step, the task included, ends run.sh here.

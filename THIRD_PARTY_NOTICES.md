@@ -10,11 +10,21 @@ whose licences require their notices to travel with the copies.
   vendored helper, which this copy leaves out, so no file of the copy changed with them.
 - Copies: `tools/oxlint/anti-slop/`. Local changes: the plugin registers through
   `eslintCompatPlugin`; the `no-unknown-parameters`, `require-readable-spacing`, `no-array-filter-map`,
-  `no-reflect-apply`, `no-reflect-get` and Effect rules are left out; `no-module-mocking` also
-  reads `mock.module` from `bun:test`; each rule's `meta.docs` carries this repository's
+  `no-reflect-apply`, `no-reflect-get`, `no-reduce-accumulator-copy` and Effect rules are left
+  out; `no-module-mocking` also reads `mock.module` from `bun:test`, a `spyOn` over a member of
+  any import or steering global, in a test an assignment, `Object.defineProperty` or
+  `Object.assign` over one, and a faked clock; each rule's `meta.docs` carries this repository's
   `examples`; `rules/prefer-subpath-import.ts` and `shared/ast-node.ts`,
-  `shared/representation-owner.ts` and `shared/subpath-alias.ts` are this repository's own; and
-  the plugin's code carries line-scoped lint suppressions.
+  `shared/representation-owner.ts` and `shared/subpath-alias.ts` are this repository's own;
+  `no-widen-then-assert` also reads an imported `JsonValue` or `JsonObject` as a widening and an
+  imported name as an object target, a call to a local function whose declared return type
+  erases each value it returns, and a JSON round trip of a known value, follows a `const` into
+  the functions nested in its own, and reports an element read asserted present and a caught
+  value asserted to a type; `no-unknown-type-aliases` also reports an alias of `any` or of an
+  array, tuple, promise or map value of the top type, a member of an exported interface or type
+  literal, a public field of an exported class, a member of a module-local type an export hands
+  out, and an exported type parameter default; and the plugin's code carries line-scoped lint
+  suppressions.
 - Open upstream pull requests: #61 (qualified type and JSX member names are borrowed names), #58
   and #62 (an alias binds only its own parameters, and a finite nesting of one alias is not
   recursion) and #52 (a named class expression binds its name only inside itself, `any` is a

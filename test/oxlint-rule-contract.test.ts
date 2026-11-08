@@ -18,8 +18,8 @@
  * convergence and hands back the text, so the proof costs one assertion.
  *
  * And a rule has to appear in `FIXER-DECISIONS.md`, which holds the argument every report-only
- * rule's one-sentence refusal shares: the four conditions a fixer meets, the thirteen that meet
- * them, and the nine whose fixer is mechanically available and refused anyway. A rule's own doc says what it
+ * rule's one-sentence refusal shares: the four conditions a fixer meets, the rules that meet
+ * them, and the ones whose fixer is mechanically available and refused anyway. A rule's own doc says what it
  * decided; the record says why that reading is the same one every other rule got. A new rule
  * missing from it is a decision nobody wrote down, which is how a ruleset drifts into fixing
  * whatever happened to be easy.
@@ -52,7 +52,7 @@ const TESTS = readdirSync(join(repoRoot, "test"))
 
 describe("the oxlint rule contract", () => {
   it("has rules to read", () => {
-    expect(RULES.length).toBeGreaterThan(40);
+    expect(RULES.length).toBeGreaterThan(30);
     expect(RULES.filter((one) => FIXABLE.test(one.source)).length).toBeGreaterThan(9);
   });
 

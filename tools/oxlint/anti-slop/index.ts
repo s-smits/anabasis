@@ -1,6 +1,5 @@
 import { eslintCompatPlugin } from "@oxlint/plugins";
 
-import { noReduceAccumulatorCopyRule } from "./rules/no-reduce-accumulator-copy.ts";
 import { noChainedTypeAssertionsRule } from "./rules/no-chained-type-assertions.ts";
 import { noConditionalEmptyObjectSpreadRule } from "./rules/no-conditional-empty-object-spread.ts";
 import { noKnownValueWideningRule } from "./rules/no-known-value-widening.ts";
@@ -15,14 +14,14 @@ import { noWidenThenAssertRule } from "./rules/no-widen-then-assert.ts";
 import { preferSubpathImportRule } from "./rules/prefer-subpath-import.ts";
 import { requireSafetyCommentForTypeAssertionRule } from "./rules/require-safety-comment-for-type-assertion.ts";
 
-/** The fourteen generic rules, about evidence rather than about this repository: a value whose
+/** The thirteen generic rules, about evidence rather than about this repository: a value whose
  *  type nobody established, an assertion with no stated reason, a dictionary whose contents are
  *  anyone's guess.
  *
  *  The tree is copied from dmmulroy/anti-slop at commit 13909c9, with the differences recorded in
  *  `THIRD_PARTY_NOTICES.md`: the plugin registers through `eslintCompatPlugin`, upstream's
  *  `no-unknown-parameters`, `require-readable-spacing`, `no-array-filter-map`, `no-reflect-apply`,
- *  `no-reflect-get` and Effect rules are left out, and
+ *  `no-reflect-get`, `no-reduce-accumulator-copy` and Effect rules are left out, and
  *  `rules/prefer-subpath-import.ts` and three of the shared modules are this repository's own.
  *  `ana/unproven-unknown-parameter` is what stands in for the omitted one, and says there why an
  *  exemption list of files was the wrong answer.
@@ -33,7 +32,6 @@ import { requireSafetyCommentForTypeAssertionRule } from "./rules/require-safety
 const antiSlopPlugin = eslintCompatPlugin({
   meta: { name: "anti-slop" },
   rules: {
-    "no-reduce-accumulator-copy": noReduceAccumulatorCopyRule,
     "no-chained-type-assertions": noChainedTypeAssertionsRule,
     "no-conditional-empty-object-spread": noConditionalEmptyObjectSpreadRule,
     "no-known-value-widening": noKnownValueWideningRule,

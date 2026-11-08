@@ -28,7 +28,7 @@ first line, and the round trip through the linter mostly disappears.
 `--deny-warnings` and `--report-unused-disable-directives`, type-aware. `packages/ui` is linted
 once its own dependencies are installed (`bun run ui:deps`), under its own `tsconfig.json` and
 with no rule turned off for it; a whole-tree run without them leaves it out and says so. Two repository plugins ride along: `ana`
-(36 rules) and `anti-slop` (14 rules). Every enabled rule in `.oxlintrc.json` is an error.
+(29 rules) and `anti-slop` (13 rules). Every enabled rule in `.oxlintrc.json` is an error.
 
 - **Plugin findings fail the run only in strict mode**: `bun run lint -- --strict`,
   `ANA_LINT_STRICT=1`, or a clone with `git config ana.lintStrict true`. A plain run holds you to
@@ -38,7 +38,7 @@ with no rule turned off for it; a whole-tree run without them leaves it out and 
   more (two assertions in `test/wri-read.test.ts`, `.toolchain` spelled five times in
   `src/builder/tools.ts`), fixed on 11 October. Add none, and say in your pull request that the
   strict run is clean.
-- Extra arguments go to Oxlint. Fourteen rules carry a fixer, marked [fix] below, which Oxlint's
+- Extra arguments go to Oxlint. Ten rules carry a fixer, marked [fix] below, which Oxlint's
   `--fix` applies; `tools/oxlint/FIXER-DECISIONS.md` says why the others report only.
 - After its findings, a run prints each plugin rule that fired once, with one or two pairs: a
   shape the rule reports and one that passes it and every other rule. A rule keeps its pairs in
@@ -178,30 +178,28 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
 
 - `no-arms-differing-in-one-term`: two arms that are the same text but for one value are one arm
   with the condition at that value.
-- `prefer-condition-over-boolean-returns` [fix]: `if (c) return true; return false;` is
-  `return c;`.
 - `prefer-const-conditional` [fix]: `let x; if (c) x = a; else x = b;` is `const x = c ? a : b`.
   A default followed by an override is `const w = o.w ?? D`.
-- `prefer-lookup-over-equality-chain`: three or more `if (x === "lit") return …` arms are a table,
-  `{…} as const satisfies Record<Kind, …>`.
 - `no-positional-boolean-parameter`: take a union of two string literals. Tests are exempt.
 - `no-side-effect-in-predicate`: no mutation inside a `filter`, `find`, `some` or `every`
   callback. Deduplicate with `new Map(rows.map((r) => [r.id, r]))`, or write the loop.
 
 **Arrays and loops**
 
-- `prefer-find-over-loop` [fix], `prefer-some-over-filter-length` [fix],
-  `prefer-includes-over-some-equals` [fix], `prefer-flatmap-over-map-filter`,
-  `prefer-entries-over-keys-lookup`: the rewrites of 12.3.
+- `prefer-find-over-loop` [fix]: the loop rewrite of 12.3. The other array rewrites there are
+  habits with no rule.
 - `no-inline-block-reducer`: a `.reduce` with an inline block body is a hidden loop. Write the
   `for…of`.
 
 **Calls**
 
-- `no-argument-already-carried` [fix]: `f(bundle, bundle.findings)` passes one value twice. Read
-  the part inside `f`.
-- `no-transposed-argument`: two same-typed arguments passed in the other order than the
-  parameters are named. Fix whichever side is wrong.
+- `no-transposed-argument`: arguments named for one another's parameters, two swapped or three
+  or more rotated, against a callee this file declares (a function, a `const`, a `this` method,
+  an object literal's method or a class's constructor under `new`). A name is an identifier or
+  the property ending a member read, and it matches when its words begin or end with the
+  parameter's (`sourcePath` for `source`). One name out of place is not reported. A call into
+  another file is the tree scan `crossed-argument`'s, which `bun run simplify` prints. Fix
+  whichever side is wrong.
 
 **Repetition**
 
@@ -248,19 +246,31 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
   `satisfies`. An anonymous object type, a declared return type among them, is wide only through a
   member typed `any`, `unknown`, `object` or an open dictionary; one that states each member's type
   is a contract and passes.
-- `no-module-mocking`: inject through a real interface.
+- `no-module-mocking`: inject through a real interface. It also reports a `spyOn` over a member of
+  any import or of `Date`, `Math`, `performance`, `crypto`, `Bun`, `process` or `globalThis`; in a
+  test, an assignment, `Object.defineProperty` or `Object.assign` over one; and a faked clock
+  (`setSystemTime(date)`, `useFakeTimers`). Hand the code a clock, a fetcher or the command it calls
+  instead. `env`, `exitCode`, `execPath` and `console` pass: input, output, the wall's own test of
+  the captured runtime, and output a test only observes.
 - `no-object-parameters`: no parameter typed `object`.
-- `no-reduce-accumulator-copy`: no copy of the accumulator at every step. Mutate a local and
-  return it.
 - `no-runtime-typeof`: the predicates of `src/meta/json-shape.ts`. `typeof x === "undefined"` is
   allowed.
 - `no-shape-in-symbol-names`: no name with the word "shape", "shapes" or "shaped" in it. An
   object-literal key that holds a literal (`{ shape: "object {joints}" }`, a count's label) spells
   data and is exempt; a key holding a computed value is not.
 - `no-unknown-returns`, `no-unknown-type-aliases`: no `unknown` going out, as a return type or
-  behind an alias.
+  behind a name: an alias of `unknown`, `any` or an array, tuple, promise or map value of them, a
+  member of an exported interface or type literal, a public field of an exported class, a member of
+  a local type an export returns, or an exported type parameter's default. A local type an export
+  only takes in, a `Set<unknown>`, and a `cause` keep `unknown`.
 - `no-unsafe-dictionary-type`: no `Record<string, unknown>` or `Record<string, any>`.
-- `no-widen-then-assert`: do not declare a value wide and assert it back.
+- `no-widen-then-assert`: do not widen a known value and assert it back. Wide is `unknown`, `any`,
+  `object`, an open dictionary, `JsonValue` or `JsonObject`, reached by an annotation, an
+  assertion, a local function whose declared return erases what it returns, or
+  `JSON.parse(JSON.stringify(x))`; a closure over the `const` is the same flow. Give the value or
+  the function its precise type, or copy with `structuredClone`. Nor assert an element read
+  (`xs[0]`, `.at(-1)`, `.shift()`, `.find()`, `.get()`) present: check it, fall back with `??` or
+  iterate. Narrow a caught value with `instanceof Error` rather than `as`.
 - `prefer-subpath-import` [fix]: the aliases of 12.1.
 - `require-safety-comment-for-type-assertion`: every `as T` except `as const` carries a comment
   directly before the assertion or its statement, stating the invariant you checked:
@@ -299,7 +309,7 @@ Each pair has one spelling that satisfies both.
 | The pair | The spelling |
 | --- | --- |
 | Tangled ternary against negated condition | Name the inner ternary in a `const`. Do not invert the outer test |
-| Single-caller helper against thrice-spelled object or lookup chain | By count: at two uses inline, at three extract |
+| Single-caller helper against thrice-spelled object | By count: at two uses inline, at three extract |
 | Boolean parameter, `object` parameter and `max-params` | A string-literal union, or a named interface |
 | Key-if-defined, empty-object spread and `exactOptionalPropertyTypes` | `keyIfDefined`, `keyIfNotNull` or `keysIf` |
 | Strict-boolean against nullish-coalescing | `(n ?? 0) > 0`, with a `!== undefined` guard where later lines need the narrowing |
@@ -407,7 +417,7 @@ and in `.oxlintrc.json` as `"error"`, and has a fixture test. Its head comment c
 argument: the shape, its cost, what was measured and when, each exemption with the site that
 forced it, and whether it fixes and why. A rule enters only when, at every site it reports, some
 spelling passes every other rule; a rule whose remedy another rule refuses ends up switched off.
-`tools/oxlint/FIXER-DECISIONS.md` states when a rule may carry a fixer, and
-`tools/oxlint/BASELINE.md` and `SHAPE-RULESET.md` hold the measurements. Measure through
+`tools/oxlint/FIXER-DECISIONS.md` states when a rule may carry a fixer, and a rule's
+measurements go in its head comment and its commit. Measure through
 `bun run lint -c <one-rule config>`, never raw `oxlint`: a config without the type-aware option
 reports zero and says nothing.

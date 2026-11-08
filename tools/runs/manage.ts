@@ -89,15 +89,7 @@ export const WAIT_HOURS = "0.25";
 /** The events a pause waits for one more of, by the word that names it: `next` is the smallest step
  *  a run completes, a finished solve or a recorded tool call of any seat. */
 const AFTER = {
-  next: [
-    "solve.finished",
-    "build.call",
-    "draft.call",
-    "exam.call",
-    "referee.call",
-    "repair.call",
-    "solve.call",
-  ],
+  next: ["solve.finished", "build.call", "draft.call", "exam.call", "referee.call", "solve.call"],
   compacted: ["build.compacted"],
   reported: ["comparison.reported"],
   finished: ["build.finished"],
@@ -217,14 +209,7 @@ export async function start(
   }
   await roomToStart(payerOf(login, flags), "here", run.name);
   installAt(run.tree, target);
-  const command = [capturedExecPath, BUILDER, "--name", run.name, ...flags];
-  const dry = runSync([...command, "--dry-run"], { cwd: run.tree, env });
-  console.log(decodeOutput(dry.stdout).trim().split("\n").slice(-4).join("\n"));
-  if (dry.exitCode !== 0) {
-    // The campaign command's own refusal, such as a seat without a credential, is the reason.
-    console.error(decodeOutput(dry.stderr).trimEnd());
-    throw new Error(`the dry run at ${target.slice(0, 9)} refused: nothing was started`);
-  }
+  const command = dryRun(run, flags, env, target);
   mkdirSync(dirname(run.path), { recursive: true });
   // The command keeps its receipt as `launch-<nextRun>.json`, and its output sits beside it.
   const out = join(dirname(run.path), `launch-${nextRun(run.path)}`);
@@ -247,8 +232,22 @@ export async function start(
   return alive;
 }
 
-/** Leave a keeper of `run` on `logins` running by itself, its output in `keep.out` beside the log. */
-export function leaveKeeper(run: Run, logins: readonly string[], waitHours: string): void {
+/** The campaign command for `run` on `flags`, once its dry run in `run`'s tree at `at` passed. */
+function dryRun(run: Run, flags: readonly string[], env: ReturnType<typeof loginEnv>, at: string) {
+  const command = [capturedExecPath, BUILDER, "--name", run.name, ...flags];
+  const dry = runSync([...command, "--dry-run"], { cwd: run.tree, env });
+  console.log(decodeOutput(dry.stdout).trim().split("\n").slice(-4).join("\n"));
+  if (dry.exitCode !== 0) {
+    // The campaign command's own refusal, such as a seat without a credential, is the reason.
+    console.error(decodeOutput(dry.stderr).trimEnd());
+    throw new Error(`the dry run at ${at.slice(0, 9)} refused: nothing was started`);
+  }
+  return command;
+}
+
+/** Leave a keeper of `run` running by itself, its output in `keep.out` beside the log: on `logins`
+ *  where they were named, otherwise on the pool its host names at each move (`poolOf`, `keep.ts`). */
+export function leaveKeeper(run: Run, logins: readonly string[] | undefined, waitHours: string): void {
   const out = keptFile(run);
   const child = capturedSpawn(
     [
@@ -256,8 +255,7 @@ export function leaveKeeper(run: Run, logins: readonly string[], waitHours: stri
       join(import.meta.dir, "cli.ts"),
       "keep",
       run.name,
-      "--logins",
-      logins.join(","),
+      ...(logins === undefined ? [] : ["--logins", logins.join(",")]),
       "--wait-hours",
       waitHours,
       KEEPING,
@@ -294,7 +292,7 @@ async function startKept(
 ): Promise<void> {
   const running = await start(run, flags, login, at);
   if (running && keepsItself(runtimeProcess.env, login) && keepers(run.name).length === 0) {
-    leaveKeeper(run, allowedLogins(runtimeProcess.env), WAIT_HOURS);
+    leaveKeeper(run, undefined, WAIT_HOURS);
   }
 }
 
@@ -364,15 +362,18 @@ export async function continueRun(args: readonly string[]): Promise<void> {
   }
   // A commit no remote holds is refused before the pause, which would leave the run stopped.
   const target = values.at === undefined ? undefined : publishedAt(run.tree, values.at);
+  const { commit } = standing(run.tree);
   // `next` may stop the run inside a comparison, which `start` then refuses at another commit.
-  if (values.after === "next" && target !== undefined && target !== standing(run.tree).commit) {
+  if (values.after === "next" && target !== undefined && target !== commit) {
     throw new Error(
       "--after next can stop the run inside a comparison, which --at another commit refuses: name reported or finished",
     );
   }
   if (values.after !== undefined) {
-    // Counted before the pause, which would leave the run stopped where `start` then refuses it.
+    // Counted before the pause, which would leave the run stopped where `start` then refuses it, as
+    // is the command's dry run at the run's own commit; another commit is installed first, after it.
     await roomToStart(payerOf(values.login, flags), "here", run.name);
+    if ((target ?? commit) === commit) dryRun(run, flags, loginEnv(runtimeProcess.env, values.login), commit);
     await pauseAt(run, values.after);
   }
   await startKept(run, flags, { login: values.login, at: target });

@@ -175,7 +175,7 @@ function wrappersOf(path: string, file: ts.SourceFile): Wrapper[] {
 }
 
 /** The file a specifier names, among the files read. */
-function resolved(from: string, specifier: string, files: ReadonlySet<string>): string | undefined {
+export function resolved(from: string, specifier: string, files: ReadonlySet<string>): string | undefined {
   const alias = ALIASES.find(([key]) => specifier.startsWith(key));
   let base: string | undefined;
   if (alias !== undefined) base = alias[1] + specifier.slice(alias[0].length);
@@ -207,9 +207,9 @@ function namesIn(
   return named;
 }
 
-/** Every key a call hands a wrapper that the wrapper then sets over it. */
-export function overwrittenKeys(files: ReadonlyMap<string, string>): TreeFinding[] {
-  const parsed = new Map(
+/** Every file but a declaration file, parsed with its parent links set. */
+export function parsedSources(files: ReadonlyMap<string, string>): Map<string, ts.SourceFile> {
+  return new Map(
     [...files]
       .filter(([path]) => !/\.d\.m?ts$/u.test(path))
       .map(([path, text]) => [
@@ -223,6 +223,11 @@ export function overwrittenKeys(files: ReadonlyMap<string, string>): TreeFinding
         ),
       ]),
   );
+}
+
+/** Every key a call hands a wrapper that the wrapper then sets over it. */
+export function overwrittenKeys(files: ReadonlyMap<string, string>): TreeFinding[] {
+  const parsed = parsedSources(files);
   const byFile = new Map([...parsed].map(([path, file]) => [path, wrappersOf(path, file)]));
   const rows: TreeFinding[] = [];
   for (const [path, file] of parsed) {

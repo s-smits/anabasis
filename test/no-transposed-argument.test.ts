@@ -3,14 +3,16 @@
  *
  * The fixture holds the defect and every neighbour that is not one, because the whole value of
  * this rule is that it never guesses. A single argument carrying another parameter's name is a
- * coincidence; two crossed is the mistake stated twice. A pair whose declared types differ does
- * not compile and needs no rule. A callee this file does not declare has no parameter list in
- * view, and an argument that is not a plain identifier carries no name to compare.
+ * coincidence; two crossed is the mistake stated twice. A pair whose declared types differ is
+ * reported all the same, since it compiles only where they are assignable either way. A callee
+ * this file does not declare has no parameter list in view, and an argument that is a call or other expression carries no name to compare.
  *
- * It reports zero sites on this tree, out of 530 argument pairs it examines — the callee in view,
- * both parameters declaring one type, both arguments bare identifiers. The rule is registered for
- * the shape it refuses to let in, and this file is the only thing that proves it still reports at
- * all.
+ * The wider spellings sit beside their nearest neighbour that is not a swap: a member read whose
+ * property is the other parameter's name, a word-level match (`sourcePath` for `source`), a
+ * method reached through `this` or an object literal, a constructor reached by `new`, three
+ * arguments rotated, and a pair whose declared types differ but compile either way. It reports zero sites on this tree and on seven trees from 12 October to 5
+ * November, so the rule is registered for the shape it refuses to let in, and this file is the
+ * only thing that proves it still reports at all.
  */
 import { describe, expect, it } from "bun:test";
 import { expectedLines, reportedLines } from "./helpers/oxlint-rule-fixture.ts";
@@ -50,6 +52,94 @@ export function fromElsewhere(campaignId: string, runId: string): string {
 export function threeAcross(first: string, second: string, third: string): string {
   return threeAcross(third, second, first); // REPORT the outer pair is crossed across a fixed middle
 }
+export function throughMembers(edge: { from: string; to: string }): string {
+  return rename(edge.to, edge.from); // REPORT a member read carries the property's name
+}
+export function membersInOrder(edge: { from: string; to: string }): string {
+  return rename(edge.from, edge.to); // ADMITTED the properties are in the declared order
+}
+export function oneMember(edge: { from: string; to: string }, other: string): string {
+  return rename(edge.to, other); // ADMITTED one name out of place is a coincidence, not a swap
+}
+function copyTree(source: string, destination: string): string {
+  return source + destination;
+}
+export function byWords(sourcePath: string, destinationPath: string): string {
+  return copyTree(destinationPath, sourcePath); // REPORT the words of each name are the other parameter's
+}
+export function wordsInOrder(sourcePath: string, destinationPath: string): string {
+  return copyTree(sourcePath, destinationPath); // ADMITTED each name begins with its own parameter's words
+}
+function joinPath(path: string, basePath: string): string {
+  return basePath + path;
+}
+export function nestedNames(path: string, basePath: string): string {
+  return joinPath(basePath, path); // ADMITTED one parameter's name is inside the other's, so neither name decides
+}
+function measure(text: string, items: readonly string[] | string): number {
+  return text.length + items.length;
+}
+export function differentButAssignable(text: string, items: string): number {
+  return measure(items, text); // REPORT the declared types differ and both still take a string
+}
+export class Ledger {
+  move(from: string, to: string): string {
+    return from + to;
+  }
+  undo(from: string, to: string): string {
+    return this.move(to, from); // REPORT a method reached through this declares parameters too
+  }
+  redo(from: string, to: string): string {
+    return this.move(from, to); // ADMITTED this is the order the method declares
+  }
+}
+const paths = {
+  relative(base: string, target: string): string {
+    return target.slice(base.length);
+  },
+};
+export function throughObject(base: string, target: string): string {
+  return paths.relative(target, base); // REPORT a method of an object literal declares parameters too
+}
+export function objectInOrder(base: string, target: string): string {
+  return paths.relative(base, target); // ADMITTED this is the order the object's method declares
+}
+export function decided(check: (task: string, answer: string) => string, task: string, answer: string): string {
+  return check(task, answer); // ADMITTED a parameter's function is not the function declaring the parameter
+}
+class Route {
+  readonly path: string;
+  constructor(from: string, to: string) {
+    this.path = from + to;
+  }
+}
+export function reversedRoute(from: string, to: string): Route {
+  return new Route(to, from); // REPORT a constructor declares parameters too
+}
+export function route(from: string, to: string): Route {
+  return new Route(from, to); // ADMITTED this is the order the constructor declares
+}
+class Span {
+  constructor(
+    readonly start: number,
+    readonly end: number,
+  ) {}
+}
+export function inverted(range: { start: number; end: number }): Span {
+  return new Span(range.end, range.start); // REPORT parameter properties are named parameters
+}
+function place(row: string, column: string, layer: string): string {
+  return row + column + layer;
+}
+export function rotated(row: string, column: string, layer: string): string {
+  return place(column, layer, row); // REPORT three arguments rotated, each named for the next parameter
+}
+export function openChain(row: string, column: string, layer: string): string {
+  return place(column, layer, row + layer); // ADMITTED a chain that never closes is two coincidences
+}
+export function outerOrder(task: string, answer: string, check: (a: string, b: string) => string): string {
+  return decided(check, answer, task); // REPORT the outer function's own parameters, crossed
+}
 `.trimStart();
 
 describe("ana/no-transposed-argument", () => {
@@ -58,7 +148,7 @@ describe("ana/no-transposed-argument", () => {
 
   it("reports a crossed pair and nothing that merely resembles one", async () => {
     const expected = expectedLines(CALLS);
-    expect(expected).toHaveLength(3);
+    expect(expected).toHaveLength(12);
     expect(await reports("src/example.ts")).toStrictEqual(expected);
   });
 });

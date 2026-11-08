@@ -130,9 +130,9 @@ export const requireSafetyCommentForTypeAssertionRule = defineRule({
         "Require a nearby SAFETY comment for every TypeScript type assertion except const assertions.",
       examples: [
         {
-          before: "const task = held.get(id) as Task;",
+          before: "const kind = row.kind as ToolKind;",
           after:
-            "// SAFETY: `id` was drawn from `held`'s own keys above, so the lookup finds it.\nconst task = held.get(id) as Task;",
+            "// SAFETY: `KINDS.has(row.kind)` admitted the kind above.\nconst kind = row.kind as ToolKind;",
         },
         {
           before:

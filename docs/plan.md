@@ -24,7 +24,7 @@ names another reading.
 | S | Supply | Fresh buffer campaigns hold out tasks after each promotion: on 20 October r3's Examiner proved 89 author answers (`task.feasible`) over 5 epochs | supply |
 | M1 | Climb | 135 promotions in 62 campaigns, 7 confirmed (`confirmed`, read over a campaign by `barLines`, `src/campaign/climb.ts`), each in a campaign of its own: forkedPR530, forkedPR583, forkedPR592, fullrun, last and v065-b in buffer, forkedPR631 in jobstat. Four fresh buffer campaigns reached six or more promotions, each at one commit (v065-a 7, r3 6, forkedPR377 6, forkedPR506 6): 25 promotions, 3 starter comparisons tallied, none confirmed. Of the 13 epochs whose starter comparison tallied a task, the reference led in 11 and 7 cleared. 122 epochs have none, 120 of them from commits before the host owed it whatever waits; at commits that hold the owed row (`heldSince`, `src/campaign/decide.ts`) 2 of 4 promotions were read and both confirmed, and no campaign there has made a second promotion. Elsewhere at most job 3, esp32 2, recode 2, kernel 2, truss 1, jobstat 1 | climb (operator, 25 October: six, observed, no quota; 12 until then) |
 | M2 | Honesty | 1 A/A step in the 128 A/A readings able to read one, of 274 read (buffer forkedPR294, v0.6.1), 3 read either way. After a sixth promotion: 2 readings, 1 able, 0 steps. The bar's ten are unmeasured: a campaign that gains nothing after its sixth reaches `stop` seven comparisons in where each leaves room, and a release cycle's cap of two ends it long before (`test/milestone-walk.test.ts`) | honesty |
-| M3 | Verdicts | 0 hand labels: no `pass.labelled` or `diagnosis.labelled` event in any log, and of 12 packets drawn in 6 campaigns none is labelled. 1,030 rejections lie in comparisons (962 ruled earned, 35 check-defect, 33 unclear); the most rejections `settle.ts` would draw over one campaign's comparisons is 22, so the bar's 30 takes packets pooled across campaigns, which no reader pools yet | verdicts |
+| M3 | Verdicts | 0 hand labels: no log holds a hand label, and of 12 packets drawn in 6 campaigns none is labelled. 1,030 rejections lie in comparisons (962 ruled earned, 35 check-defect, 33 unclear); the most rejections `settle.ts` would draw over one campaign's comparisons is 22, so the bar's 30 takes packets pooled across campaigns, which no reader pools yet | verdicts |
 | W | Economy | r3: $401 billed for 5 promotions, 25 active hours. All fresh campaigns at 29 October: $8,060 for 92 promotions, $87.61 each ("Where the dollars went"). All 209 at 5 November: $14,165 billed for 135 promotions, none ended on its budget. Of 73 closed epochs after set-up 70 stand within the bar, and of 62 open ones 60 (`barLines`, `src/campaign/climb.ts`) | economy |
 
 ## The v1.0 bar, now
@@ -162,6 +162,36 @@ comparison and every task the reference answers only sometimes.
 | Builder-led | The single conversation's value | Proved without a model | A matched ablation against a host that makes every move, which the campaign command no longer offers (removed 3 November) |
 | X1 | Whether a harness built without a benchmark's tasks or grades scores higher on it than pi's starter (WorkBuddy-Bench Code), then how it stands against Harness² (`studies/harness2/README.md`) | Present in source (`studies/harness2/run.ts`); WorkBuddy's dry run resolves its job, no container has run it. The operator's later course, a JobBench parity test on 20 tasks of 65, is `docs/backlog/jobbench-scoring.md`; which course the outside row counts is the operator's (`docs/backlog/v1-bar.md`) | The operator's word on WorkBuddy-Bench's licence, then `run.ts check` of the starter in WorkBuddy's container and the domain fit, without a model; then the operator's word for the paid arms |
 | X2 | Whether buffer v065-a's later promotions carry over to fresh tasks selected against a third harness of its chain, or are patches against tasks chosen to beat the reference (`studies/transitivity/README.md`) | Exercised live: arms A and B ran at `87f0b07e`, P-A and P-B held, arm C not run ($46.32; `studies/runs/transitivity/`) | A second reading of f-1's pair on fresh solves, before the carry-over is claimed without qualification |
+
+## Predicted but missed
+
+Each prediction of a release cycle since v0.7.4 that was falsified or never reached, read from the
+cycles' per-run outcomes and, before 8 November, from their `Predictions.md` resolutions. A cycle
+view (`wri2p2.ts ledger <cycle folder>`) lists every prediction; this table keeps only the misses
+and the open row each bears on. An unreached row says nothing about its claim: the run ended or was
+stopped before the claim's condition arose.
+
+| Cycle | Prediction | PR | Domain | Factor | Count outcome | Plan row |
+| --- | --- | --- | --- | --- | --- | --- |
+| v0.7.4 | L1 | cycle-wide | job, buffer, truss | Supply | Unreached: 0 of 3 runs lived 14 hours, each stopped with 0 comparisons reported | none |
+| v0.7.4 | L2 | cycle-wide | job, buffer, truss | Climb | Unreached: 0 of 3 runs promoted, none lived 24 hours | none |
+| stacked | L2 | cycle-wide | job, buffer | Climb | Unreached: both stopped at 12 hours with 0 promotions; buffer's g-1 read no step at 18 won, 5 lost of 23 | none |
+| stacked | H1 | cycle-wide | job, buffer | Honesty | Unreached: no promoting reading in either run | none |
+| stacked | N2 | cycle-wide | job, buffer | none (host) | Unreached: the log records a load only when a wait begins (71 and 23 waits), so no count can show a start above the cores | none |
+| stacked | P467 | #467 | job, buffer | none (runs) | Unreached: the retire line it named was never read | none |
+| stacked | P471 | #471 | job, buffer | Supply | Unreached: no promotion in either run | none |
+| stacked | P472 | #472 | job, buffer | none (handover) | Falsified: 0 of 2 stopped runs left a handover; a stop writes none | none |
+| stacked | T1 | #497 | buffer | Supply | Unreached: stopped at 1 h 56 min with 0 comparisons started | none |
+| stacked | T2 | #497 | job | Supply | Unreached: stopped at 1 h 34 min with 0 comparisons started | none |
+| stacked | T3 | #497 | job, buffer | Supply | Unreached: neither run reached a first comparison or an ending before its stop | none |
+| stacked | U2 | #502 | buffer | Supply | Unreached: stopped about 3 hours in, before a first comparison | none |
+| stacked | U3 | #502 | job | Supply | Falsified: the contract froze 20 minutes after the opening; the drafted exam lacked the shape the prediction needed, so the defect was not exercised | none |
+| stacked | U4 | #502 | job, buffer | Supply | Unreached: both stopped before a first comparison | none |
+| stacked | V4 | #506 | truss | Supply | Unreached: the run it named was stopped in its first draft | none |
+| v0.10.0 | B2 | #668 | esp32 | Climb | Unreached: 1 promotion in 7 comparisons when stopped at 13.9 hours; the 36-hour deadline never came | F32 |
+| v0.10.0 | B2, carried | #668 | esp32 | Climb | Falsified in the fork at #687: 0 promotions, ended `no-room` at 2.5 hours, the reference valid on 33 of 33 scored tasks | F32 |
+| v0.10.0 | C1 | #687 | esp32 | Supply | Unreached: the draft declared no objective, so the stand-in sentence was not exercised | F66 |
+| v0.10.0 | C2 | #687 | esp32 | Supply, climb | Held on its count (validity untied 0 of 33 tallied tasks); its step clause unreached, since no step was read | F32 |
 
 ## Tuning
 

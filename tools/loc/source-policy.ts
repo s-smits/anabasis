@@ -27,7 +27,7 @@ import { scanTokens } from "./token-facts.ts";
 export const NEW_FILE_CEILING = 800;
 export const NEW_FUNCTION_CEILING = 115;
 
-const SOURCE_ROOTS = ["src", "tools", "vendor"] as const;
+const SOURCE_ROOTS = ["src", "tools", "vendor", ".claude/skills"] as const;
 
 /** Authored source this repository owns and may restructure, and so the roots whose exports are a
  *  finding when nothing outside their own file names them. `vendor` is pinned verbatim, and

@@ -2,36 +2,19 @@ import { describe, it } from "bun:test";
 import { lintRules } from "./helpers/lint-rule.ts";
 
 /**
- * The eleven `anti-slop` rules no other fixture makes report.
+ * The `anti-slop` rules no other fixture makes report.
  *
  * `test/oxlint-rule-contract.test.ts` reads every rule's declaration and none of their behaviour,
  * so a rule that has quietly stopped matching — an AST field renamed under it, a node type an
  * oxlint upgrade no longer hands it — passes that test, reports nothing, and leaves a gate that
- * reads exactly like a clean tree. Every one of these eleven is `error` in `.oxlintrc.json` and
+ * reads exactly like a clean tree. Every one of these is `error` in `.oxlintrc.json` and
  * fails a push here, so whether they still report is a fact about this repository's gate.
- *
- * It said eight, and was wrong by three. `no-chained-type-assertions`, `no-shape-in-symbol-names`
- * and `no-unknown-returns` had no behavioural test anywhere in this tree — the last three of the
- * sixteen — and the reason they were missed is the premise this file used to state in its own
- * doc: that `tools/oxlint/anti-slop` was pinned upstream verbatim, so its rules were somebody
- * else's to test. Nothing in the tree ever supported that. Retired 2026-09-20 with the
- * `.oxlintrc.json` block and the `isVendoredVerbatim` predicate that rested on it.
  *
  * Each fixture is the smallest pair that separates the two failures. The `// REPORT` line fails a
  * rule that has gone quiet; the line beside it fails a rule that has started reporting everything,
- * and each one is the nearest admitted case rather than an unrelated line — a lazy iterator
- * pipeline beside the eager one, an existence probe beside the narrowing `typeof`, one assertion
- * beside two.
+ * and each one is the nearest admitted case rather than an unrelated line: an existence probe
+ * beside the narrowing `typeof`, one assertion beside two.
  */
-
-const ACCUMULATOR_COPY = `
-declare const rows: { id: string }[];
-export const copied = rows.reduce((total, row) => Object.assign({}, total, row), {}); // REPORT copies
-export const mutated = rows.reduce((total: Record<string, string>, row) => {
-  total[row.id] = row.id;
-  return total;
-}, {});
-`;
 
 // `vi` is left undeclared on purpose: the rule reads it as a global reference, and declaring it
 // here would give the binding a definition that is not an import and silence the rule.
@@ -45,8 +28,55 @@ const BUN_MODULE_MOCKING = `
 import { mock } from "bun:test";
 declare const other: { module: (path: string) => void };
 mock.module("./service.ts", () => ({})); // REPORT the bun:test spelling
+mock["module"]("./service.ts", () => ({})); // REPORT the same method, computed
 other.module("./service.ts"); // ADMITTED someone else's method
 export const spy = mock(() => 1);
+`;
+
+/** A spy over an import's member or the process clock, beside one over output and a local. */
+const SPIED_SHARED_MEMBER = `
+import { spyOn } from "bun:test";
+import * as service from "./service.ts";
+import { helper } from "./helper.ts";
+declare const local: { run: () => void };
+spyOn(service, "load"); // REPORT a namespace import's export
+spyOn(helper, "run"); // REPORT a named import's member
+spyOn(Date, "now"); // REPORT the process clock
+spyOn(console, "log"); // ADMITTED output a test observes
+spyOn(local, "run"); // ADMITTED a local object
+`;
+
+/** In a test, a member of an import or steering global written over, beside the process's own
+ *  input and output and a local. */
+const ASSIGNED_SHARED_MEMBER = `
+import fs from "node:fs";
+import { runtimeProcess } from "./process.ts";
+declare const local: { readFileSync: () => string };
+fs.readFileSync = () => ""; // REPORT a default import's member
+globalThis.fetch = async () => new Response(); // REPORT the network
+process.platform = "linux"; // REPORT the process
+Object.defineProperty(Math, "random", { value: () => 0 }); // REPORT chance, defined over
+Object.assign(Bun, { spawn: () => null }); // REPORT the spawner, assigned over
+Bun.env = {}; // ADMITTED the environment is input
+runtimeProcess.exitCode = 1; // ADMITTED the process's output
+Object.defineProperty(runtimeProcess, "execPath", { value: "/absent" }); // ADMITTED the wall's own test
+local.readFileSync = () => ""; // ADMITTED a local object
+`;
+
+/** The same write outside a test is production setting an import's field, not a substitution. */
+const ASSIGNED_OUTSIDE_TEST = `
+import fs from "node:fs";
+fs.readFileSync = () => ""; // ADMITTED no test substitutes here
+export const read = fs.readFileSync;
+`;
+
+/** The process clock faked, beside the calls that give it back. */
+const FAKED_CLOCK = `
+import { jest, setSystemTime } from "bun:test";
+setSystemTime(new Date(0)); // REPORT the clock moved for every caller
+setSystemTime(); // ADMITTED the clock given back
+jest.useFakeTimers(); // REPORT the timers faked
+jest.useRealTimers(); // ADMITTED the timers given back
 `;
 
 const RUNTIME_TYPEOF = `
@@ -122,11 +152,14 @@ export const ShapeBox = () => <div />; // REPORT a name chosen here
 describe("the remaining anti-slop rule boundaries", () => {
   it("reports only the marked lines in every fixture and scope", async () => {
     await lintRules("anti-slop", [
-      ["no-reduce-accumulator-copy", ACCUMULATOR_COPY, 1],
       ["no-module-mocking", MODULE_MOCKING, 1],
-      ["no-module-mocking", BUN_MODULE_MOCKING, 1],
-      ["no-runtime-typeof", RUNTIME_TYPEOF, 1],
+      ["no-module-mocking", BUN_MODULE_MOCKING, 2],
+      ["no-module-mocking", SPIED_SHARED_MEMBER, 3],
+      ["no-module-mocking", ASSIGNED_SHARED_MEMBER, 5, "fixture.test.ts"],
+      ["no-module-mocking", ASSIGNED_OUTSIDE_TEST, 0],
+      ["no-module-mocking", FAKED_CLOCK, 2],
       ["no-unknown-type-aliases", UNKNOWN_ALIAS, 1],
+      ["no-runtime-typeof", RUNTIME_TYPEOF, 1],
       ["no-conditional-empty-object-spread", EMPTY_OBJECT_SPREAD, 1],
       ["no-chained-type-assertions", CHAINED_ASSERTIONS, 1],
       ["no-shape-in-symbol-names", FORBIDDEN_TERM_IN_NAME, 1],

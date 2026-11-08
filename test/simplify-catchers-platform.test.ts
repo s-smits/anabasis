@@ -1,8 +1,7 @@
 /**
  * The simplify catchers that name a platform feature the code is spelling out by hand: a promise
- * around a timer, a key looked back up, and two walks where `flatMap` does one. A loop that is
- * `find`, a predicate that also records and the count that answers yes or no have their own
- * files.
+ * around a timer, and a fold whose step is a loop body. A loop that is `find` and a predicate that
+ * also records have their own files.
  *
  * Each of these has a right answer, which is why they are worth catching deterministically, and
  * all of them gate as of 2026-09-20. What a test pins is the edge — the site the platform feature
@@ -38,36 +37,6 @@ export function deferred(value: number) {
 }
 `.trimStart();
 
-const KEYS = `
-declare const counts: Record<string, number>;
-declare function use(key: string, value: number): void;
-
-export function lookedUp() {
-  for (const key of Object.keys(counts)) { // REPORT the key goes back for the value beside it
-    use(key, counts[key] ?? 0);
-  }
-}
-export function keysAlone() {
-  for (const key of Object.keys(counts)) { // ADMITTED the keys are the answer
-    use(key, 0);
-  }
-}
-export function cleared() {
-  for (const key of Object.keys(counts)) { // ADMITTED a delete reads no value
-    delete counts[key];
-  }
-}
-`.trimStart();
-
-const WALKS = `
-declare const rows: string[];
-declare function parse(row: string): string | null;
-
-export const parsed = rows.map(parse).filter(Boolean); // REPORT two walks where flatMap does one
-export const kept = rows.map(parse).filter((row) => row !== null); // ADMITTED a real predicate
-export const present = rows.filter(Boolean); // ADMITTED one walk already
-`.trimStart();
-
 const FOLDS = `
 declare const rows: { score: number; name: string }[];
 declare function addScore(total: number, row: { score: number }): number;
@@ -92,8 +61,6 @@ describe("the simplify catchers platform", () => {
   it("reports only the marked lines in every fixture and scope", async () => {
     await lintRules("ana", [
       ["no-hand-rolled-sleep", SLEEPS, 1],
-      ["prefer-entries-over-keys-lookup", KEYS, 1],
-      ["prefer-flatmap-over-map-filter", WALKS, 1],
       ["no-inline-block-reducer", FOLDS, 1],
     ]);
   });

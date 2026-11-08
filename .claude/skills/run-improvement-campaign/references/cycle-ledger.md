@@ -1,7 +1,7 @@
 # Cycle ledger template
 
 `cycle.md` records evidence against the steps of [the release cycle](../SKILL.md#the-release-cycle),
-which owns their order and authority; this file grants none. It lives beside `Predictions.md`
+which owns their order and authority; this file grants none. It lives beside each run's ledgers
 ([the cycle's files](../SKILL.md#the-cycles-files)).
 
 **The word and scope**: the operator's exact word with a link to its record; the named runs, commits,
@@ -15,7 +15,8 @@ each open decision.
 - investigation: each folder (with `iteration.json`), synthesis, `vetting.md`, `cross-domain.md`,
   `deviations.md`;
 - plan: each `plan.md` with its `Pull request: #N`, checks and exit codes;
-- predictions: a link to `Predictions.md`;
+- predictions: the cycle view, `wri2p2.ts ledger <cycle folder>`, which is derived and never copied
+  here;
 - release: the word, tree-equality proof, land result, merge commit and tag;
 - next cycle: its ledger, authority, runs and commits.
 

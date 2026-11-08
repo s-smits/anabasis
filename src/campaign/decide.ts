@@ -401,7 +401,7 @@ function tasks(ground: Ground): Move | null {
  * How many held-out tasks the campaign is short of: its admission floor, or after its first
  * comparison its target where that is larger, and what the next release still draws for practice,
  * less what it holds. The table's examine before a comparison reads this count (`shortBy`). The
- * session's ask (`examTasks`, `campaign-terms.ts`) is never less than a sweep (`sweepOf`), the
+ * session's ask (`examinerRun`, `campaign-terms.ts`) is never less than a sweep (`sweepOf`), the
  * fewest new tasks a comparison waits for after a reading that left no room (`writtenSince`); 0
  * stays 0, leaving the command's default of 12. Until 4 November it was not raised, and
  * jobstat-fresh-opus-forkedPR595's x-3 was asked for 4 where the table waited for 6.

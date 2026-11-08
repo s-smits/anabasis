@@ -8,6 +8,7 @@
  *   bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts [<part> ...] [--promotions 2] [--hours 12] [--days 2]
  *   bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts open <name>[,<name>...] [--out <dir>]
  *   bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts next <dir>
+ *   bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts ledger <dir>
  *
  * - With no verb it reads every campaign this machine reads whose log moved in the last `--days`
  *   (`readable`: the worktrees' and the copies the central host's ten-minute gather keeps of every
@@ -25,10 +26,13 @@
  *   reports, the synthesis, the vetting, the plan, the pull request (`Pull request: #N` in
  *   `plan.md`) and the fresh runs at its head (`runs fresh --as forkedPR<N>`), which are launched
  *   without asking. An iteration's folder also passes the isolated lanes' decision, each run's
- *   ledgers (`predictions-<run>.md` resolved id by id in `outcomes-<run>.md`, what it still lacks in
- *   `still-missing-<run>.md` with what it lacks on purpose under "Intentionally opposed", and for a
- *   fork what it carries from the iteration that made it), the vetting of every prediction, the read
- *   across domains (`cross-domain.md`), a plan that answers both, and each fork's ledger.
+ *   ledgers (`predictions-<run>.md` resolved id by id in `outcomes-<run>.md`, and for a fork what it
+ *   carries from the iteration that made it), the vetting of every prediction, the read across
+ *   domains (`cross-domain.md`), a plan that answers both and says under "Intentionally opposed"
+ *   what it leaves out on purpose, and each fork's ledger.
+ * - `ledger` prints the views derived from those files and never written by hand: the cycle view,
+ *   every prediction of the folder's runs with its outcome, and each run's still-missing view, what
+ *   it did not hold beside its plan's `## Not done` and `## Intentionally opposed`.
  *
  * Every gate is a default, never a wall (operator, 7 November: "to-be-deviated-from each time"): a
  * row `| <step> | <reason> |` in the folder's `deviations.md` passes it, and `next` prints the
@@ -53,6 +57,7 @@ import { runSync } from "#src/meta/subprocess.ts";
 import { stillRunning } from "#tools/runs/diagnosis.ts";
 import {
   type Run,
+  type Running,
   HERE,
   isCampaign,
   logEvents,
@@ -65,6 +70,9 @@ import { INVESTIGATION, SHARED, SYNTHESIS, VETTING } from "#tools/wri/index.ts";
 import { blankSections } from "#tools/wri/investigation.ts";
 import {
   carryOf,
+  COUNTED_LINE,
+  countedOf,
+  cycleViewOf,
   forkOf,
   idsOf,
   ledgerFiles,
@@ -75,7 +83,8 @@ import {
   pullOf,
   rowsOf,
   sectionOf,
-  unheldOf,
+  staleOf,
+  stillMissingOf,
 } from "#tools/wri/ledger.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 
@@ -83,16 +92,17 @@ import type { LogEvent } from "#src/kernel/log.ts";
 const ACROSS = "cross-domain.md";
 /** The marker `open` writes: the folder is an iteration's, so its own gates apply. */
 const MARKER = "iteration.json";
+const PLAN = "plan.md";
 /** The gates a session passed on purpose, each with its reason. */
 const DEVIATIONS = "deviations.md";
 const LEVERS = join(import.meta.dir, "..", "references", "levers.md");
 const SCRIPT = ".claude/skills/run-improvement-campaign/scripts/wri2p2.ts";
-const USAGE = `usage: bun ${SCRIPT} [<part> ...] [--promotions 2] [--hours 12] [--days 2] | open <name>[,<name>] [--out <dir>] | next <dir>`;
+const USAGE = `usage: bun ${SCRIPT} [<part> ...] [--promotions 2] [--hours 12] [--days 2] | open <name>[,<name>] [--out <dir>] | next <dir> | ledger <dir>`;
 const OPTIONS = { promotions: "int", hours: "int", days: "int", out: "abs" } as const;
 const HOUR_MS = 3_600_000;
 const WRI = "tools/wri/wri.ts";
 const OPPOSED =
-  'then "## Intentionally opposed" with at least one line ("none" counts): what stays missing on purpose, each as a trade-off, what leaving it out buys, what it costs and why (a trade-off of AGENTS.md section 1, a principle or the operator\'s word)';
+  '"## Intentionally opposed" with at least one line ("none" counts): what stays missing on purpose, each as a trade-off, what leaving it out buys, what it costs and why (a trade-off of AGENTS.md section 1, a principle or the operator\'s word)';
 
 /** The trigger's defaults, which name an investigation and stop nothing: two promotions or twelve hours. */
 const LIMITS = { promotions: 2, hours: 12 } as const;
@@ -113,10 +123,12 @@ interface Row {
 /** One gate: its step, the run it reads or null, and the lines it prints while it is owed. */
 type Gate = readonly [step: string, run: string | null, owed: () => string[] | null];
 
-/** Where a run's ledgers are read: the cycles' folders under `root`, and the investigation `dir`. */
+/** Where a run's ledgers are read: the cycles' folders under `root`, and the investigation `dir`;
+ *  and how long each run's log is now, or null where this machine cannot read it. */
 interface Ledgers {
   readonly root: string;
   readonly dir: string;
+  readonly lengthOf: (run: string) => number | null;
 }
 
 /** The row of the run `seen` whose log holds `events`, read at `now`. */
@@ -203,33 +215,34 @@ function owing(dir: string): { name: string; task: string }[] {
     );
 }
 
+/** `name`'s two ledgers as the investigation `dir` reads them; "" for each it has not got, and for
+ *  both where its predictions are in two folders, which its own predictions gate names. */
+function ledgersOf(root: string, dir: string, name: string) {
+  const path = ledgerOf(root, dir, `predictions-${name}.md`);
+  const outcomes = path === null ? "" : read(join(dirname(path), `outcomes-${name}.md`));
+  return { name, predictions: read(path ?? ""), outcomes };
+}
+
 /**
  * What a fork owes the iteration that made it: in its `## Carried` section, each id the parent
- * iteration's runs did not hold, as `<run>:<id>`, and each of their `still-missing-<run>.md`, whose
- * opposed trade-offs it inherits. A run that is no fork, or whose parent wrote no plan, owes nothing.
+ * iteration's runs did not hold, as `<run>:<id>`. A run that is no fork, or whose parent wrote no
+ * plan, owes nothing.
  */
 function carryOwed(where: Ledgers, run: string, predictions: string): string[] | null {
   const pull = forkOf(run);
   if (pull === null) return null;
-  // A parent whose ledger is in two folders reads as none here; its own predictions gate names that.
   const parents = investigations(where.root)
-    .filter(({ dir }) => pullOf(read(join(dir, "plan.md"))) === pull)
-    .flatMap(({ dir, names: runs }) =>
-      runs.map((name) => {
-        const path = ledgerOf(where.root, dir, `predictions-${name}.md`);
-        const outcomes = path === null ? "" : read(join(dirname(path), `outcomes-${name}.md`));
-        return { name, predictions: read(path ?? ""), outcomes };
-      }),
-    );
+    .filter(({ dir }) => pullOf(read(join(dir, PLAN))) === pull)
+    .flatMap(({ dir, names: runs }) => runs.map((name) => ledgersOf(where.root, dir, name)));
   const { missing: absent } = carryOf(read(predictions), parents);
   return absent.length === 0
     ? null
     : [
-        `step: carry · the "## Carried" section of ${predictions} names ${absent.join(", ")}: each id the iteration that made this fork did not hold, and its runs' still-missing files with their opposed trade-offs`,
+        `step: carry · the "## Carried" section of ${predictions} names ${absent.join(", ")}: each id the iteration that made this fork did not hold`,
       ];
 }
 
-/** The gates of `run`'s ledgers: its predictions, their outcomes, what it still lacks, what it carries. */
+/** The gates of `run`'s ledgers: its predictions, their outcomes and what it carries. */
 function runGates(where: Ledgers, run: string): Gate[] {
   const file = `predictions-${run}.md`;
   const predictions = () => ledgerOf(where.root, where.dir, file) ?? "";
@@ -257,29 +270,28 @@ function runGates(where: Ledgers, run: string): Gate[] {
     }),
     gate("outcomes", () => {
       const predicted = idsOf(read(predictions()));
-      const outcomes = outcomesOf(read(beside("outcomes")));
+      const text = read(beside("outcomes"));
+      const outcomes = outcomesOf(text);
       const known: readonly string[] = OUTCOMES;
       const unsettled = predicted.filter((id) => !known.includes(outcomes.get(id) ?? ""));
       const stray = [...outcomes.keys()].filter((id) => !predicted.includes(id));
+      const events = where.lengthOf(run);
+      // A row left unreached or pending reopens once the log of a run that has stopped grows past
+      // the count it was read at, since a run continued after its trigger may yet reach it.
+      const stale = staleOf(text, events);
+      const counted = countedOf(text);
+      const record =
+        events === null ? "" : `, and record "${COUNTED_LINE} ${String(events)}" on its own line`;
       const parts = [
         unsettled.length > 0
-          ? `resolve ${unsettled.join(", ")} from the log as ${OUTCOMES.join(", ")} (pending only while its event has not come), each with its count or event and the time`
+          ? `resolve ${unsettled.join(", ")} from the log as ${OUTCOMES.join(", ")} (pending only while its event has not come), each with its count or event and the time${record}`
+          : "",
+        stale.length > 0
+          ? `${stale.join(", ")} read unreached or pending at ${counted === null ? "no recorded count" : `${String(counted)} events`} and the log holds ${String(events)} now: resolve them again${record}`
           : "",
         stray.length > 0 ? `${stray.join(", ")} predicted nowhere in ${predictions()}` : "",
       ].filter((part) => part !== "");
       return parts.length === 0 ? null : [`step: outcomes · ${beside("outcomes")}: ${parts.join("; ")}`];
-    }),
-    gate("still-missing", () => {
-      const path = beside("still-missing");
-      const text = read(path);
-      const unheld = unheldOf(read(predictions()), read(beside("outcomes")));
-      const absent = unheld.filter((id) => !names(text, id));
-      const opposed = sectionOf(text, "Intentionally opposed") ?? [];
-      if (existsSync(path) && absent.length === 0 && opposed.length > 0) return null;
-      const ids = absent.length > 0 ? `name ${absent.join(", ")}, which did not hold, and` : "name";
-      return [
-        `step: still-missing · ${path}: ${ids} each problem the run shows that no fix holds yet, with where it is carried, ${OPPOSED}`,
-      ];
     }),
     gate("carry", () => carryOwed(where, run, predictions())),
   ];
@@ -312,17 +324,12 @@ function firstOwed(
 }
 
 /** The iteration's gates for the folder `dir`, in order; an unmarked folder takes the common ones. */
-function gatesOf(
-  dir: string,
-  root: string,
-  launchedAt: (pull: number) => string[],
-  passed: string[],
-): Gate[] {
+function gatesOf(where: Ledgers, launchedAt: (pull: number) => string[], passed: string[]): Gate[] {
+  const { root, dir } = where;
   const at = (file: string) => join(dir, file);
   const wri = (verb: string, more = "") => `  bun ${WRI} ${verb} --out ${dir}${more}`;
-  const where = { root, dir };
   const runs = runsOf(dir);
-  const pull = () => pullOf(read(at("plan.md"))) ?? 0;
+  const pull = () => pullOf(read(at(PLAN))) ?? 0;
   const only = (gates: Gate[]): Gate[] => (existsSync(at(MARKER)) ? gates : []);
   return [
     [
@@ -388,7 +395,7 @@ function gatesOf(
               ],
       ],
     ]),
-    ["plan", null, () => planOwed(dir)],
+    ["plan", null, () => planOwed(where, runs)],
     [
       "implement",
       null,
@@ -458,10 +465,13 @@ function vetOwed(dir: string, root: string, runs: readonly string[]): string[] |
 /**
  * The plan's step: it exists, and in an iteration it answers the vetting and the read across domains:
  * each confirmed vetting row named as `vet-<n>`, `cross-domain.md` named, and three levers of
- * `references/levers.md` by id (its rule: a plan with repairs only names the three that came closest).
+ * `references/levers.md` by id (its rule: a plan with repairs only names the three that came closest);
+ * and it says what it leaves out on purpose, the one owner of that fact for each run it read. An
+ * iteration whose every run kept the section in a `still-missing-<run>.md`, as runs did until
+ * 8 November, has said it there.
  */
-function planOwed(dir: string): string[] | null {
-  const path = join(dir, "plan.md");
+function planOwed({ root, dir }: Ledgers, runs: readonly string[]): string[] | null {
+  const path = join(dir, PLAN);
   if (!existsSync(path)) {
     return [
       `step: plan · repairs and tunings in ${path}, each lever of references/levers.md the run selects a row`,
@@ -476,25 +486,56 @@ function planOwed(dir: string): string[] | null {
     .map(([id = ""]) => id)
     .filter((id) => names(text, id));
   const absent = [...confirmed, ACROSS].filter((token) => !names(text, token));
-  if (absent.length === 0 && levers.length >= 3) return null;
+  const opposed = (of: string) => (sectionOf(of, "Intentionally opposed") ?? []).length > 0;
+  const kept =
+    opposed(text) ||
+    (runs.length > 0 &&
+      runs.every((run) => opposed(read(ledgerOf(root, dir, `still-missing-${run}.md`) ?? ""))));
+  if (absent.length === 0 && levers.length >= 3 && kept) return null;
   const parts = [
     absent.length > 0 ? `name ${absent.join(", ")}` : "",
     levers.length < 3 ? `name at least three levers by id (${String(levers.length)} named)` : "",
+    kept ? "" : `add ${OPPOSED}`,
   ].filter((part) => part !== "");
   return [`step: plan · ${path}: ${parts.join("; ")}`];
 }
 
 /** The step left in the investigation `dir`, as lines, given the runs launched at a pull request. */
-export function nextOf(dir: string, launchedAt: (pull: number) => string[], root = dirname(dir)): string[] {
+export function nextOf(
+  dir: string,
+  launchedAt: (pull: number) => string[],
+  root = dirname(dir),
+  lengthOf: Ledgers["lengthOf"] = () => null,
+): string[] {
   if (!existsSync(join(dir, INVESTIGATION))) return [`step: open · no investigation in ${dir}`];
   const passed: string[] = [];
-  const owed = firstOwed(gatesOf(dir, root, launchedAt, passed), deviationsOf(dir), passed) ?? [];
+  const owed =
+    firstOwed(gatesOf({ root, dir, lengthOf }, launchedAt, passed), deviationsOf(dir), passed) ?? [];
   return [...owed, ...passed];
 }
 
 /** Each campaign `among` holds that forks `pull`: `forkedPR60` is never a fork of #600. */
 const launchedFrom = (among: readonly Run[]) => (pull: number) =>
   among.filter((run) => isCampaign(run) && forkOf(run.name) === pull).map(({ name }) => name);
+
+/** How long each campaign `among` holds by a name is now, read once a name; null for one it does not
+ *  hold or that may still write its log (`stillRunning`), whose log grows on every look and so would
+ *  reopen its unreached and pending rows at each `next` (review of v0.10.2). */
+export function lengthsIn(
+  among: readonly Run[],
+  running: () => readonly Running[] = processes,
+): Ledgers["lengthOf"] {
+  const lengths = new Map<string, number | null>();
+  let looked: readonly Running[] | undefined;
+  return (name) => {
+    if (!lengths.has(name)) {
+      const run = among.find((each) => isCampaign(each) && each.name === name);
+      looked ??= running();
+      lengths.set(name, run === undefined || stillRunning(run, looked) ? null : logEvents(run.path).length);
+    }
+    return lengths.get(name) ?? null;
+  };
+}
 
 /** The folder every iteration's ledgers are read under: `.ana/wri/` of the main checkout. */
 const wriRoot = (repo: string) => join(mainTree(repo), ".ana", "wri");
@@ -530,7 +571,8 @@ function due(args: CommandArgs, repo: string, known: readonly Run[]): number {
     const trigger = triggerOf(row, limits);
     const opening =
       trigger === null ? ["step: run"] : [`step: open · ${trigger}`, `  bun ${SCRIPT} open ${row.name}`];
-    const step = folder === undefined ? opening : nextOf(folder.dir, launchedFrom(known), root);
+    const step =
+      folder === undefined ? opening : nextOf(folder.dir, launchedFrom(known), root, lengthsIn(known));
     const state = row.live ? "live" : `closed${row.ending === null ? "" : ` (${row.ending})`}`;
     console.log(
       `${row.name} · ${row.host} · ${state} · ${String(row.promotions)} promoted in ${String(row.compared)} compared · ${row.hours.toFixed(1)} h`,
@@ -565,6 +607,34 @@ function open(args: CommandArgs, repo: string): number {
   return 0;
 }
 
+/**
+ * The views derived from the ledgers of `dir`, an investigation's folder or a cycle's: the cycle view
+ * of every run it holds, then each run's still-missing view beside the plan of the iteration that
+ * read it (`dir`'s own, or the latest that names the run).
+ */
+export function ledgerViews(dir: string, root: string, lengthOf: Ledgers["lengthOf"]): string[] {
+  const runs = existsSync(join(dir, INVESTIGATION))
+    ? runsOf(dir)
+    : readdirSync(dir).flatMap((file) => /^predictions-(.+)\.md$/u.exec(file)?.[1] ?? []);
+  const readers = investigations(root);
+  const ledgers = runs.map((name) => {
+    const iteration = existsSync(join(dir, INVESTIGATION))
+      ? dir
+      : readers.find(({ names: theirs }) => theirs.includes(name))?.dir;
+    const plan = iteration === undefined ? "" : read(join(iteration, PLAN));
+    const older = read(ledgerOf(root, dir, `still-missing-${name}.md`) ?? "");
+    return { ...ledgersOf(root, dir, name), plan, older, events: lengthOf(name) };
+  });
+  return [
+    `# Ledger views of ${dir}`,
+    "",
+    "Derived from each run's predictions and outcomes and its iteration's plan: never write them by hand.",
+    "",
+    ...cycleViewOf(ledgers),
+    ...ledgers.flatMap((run) => ["", ...stillMissingOf(run)]),
+  ];
+}
+
 async function main(args: CommandArgs): Promise<number> {
   const repo = runtimeProcess.cwd();
   const [verb] = args.positionals;
@@ -572,7 +642,17 @@ async function main(args: CommandArgs): Promise<number> {
   if (verb === "next") {
     const dir = args.positionals[1];
     if (dir === undefined) args.die(USAGE);
-    for (const line of nextOf(resolve(dir), launchedFrom(readable(repo)), wriRoot(repo))) console.log(line);
+    const known = readable(repo);
+    const lines = nextOf(resolve(dir), launchedFrom(known), wriRoot(repo), lengthsIn(known));
+    for (const line of lines) console.log(line);
+    return 0;
+  }
+  if (verb === "ledger") {
+    const dir = args.positionals[1];
+    if (dir === undefined) args.die(USAGE);
+    for (const line of ledgerViews(resolve(dir), wriRoot(repo), lengthsIn(readable(repo)))) {
+      console.log(line);
+    }
     return 0;
   }
   return due(args, repo, readable(repo));

@@ -94,7 +94,8 @@ function secretsIn(root: string, line: readonly string[], tips: readonly string[
  *  checks staged files, but a rebase, a cherry-pick or `--no-verify` records a commit without it,
  *  and on 5 November a stack head reached `bun run land` with an unformatted file. Biome reads each
  *  file's bytes at the tip from stdin, so the working tree may hold anything; an excluded path such
- *  as `vendor/` comes back unchanged. */
+ *  as `vendor/` comes back unchanged. A file biome could not format carries biome's last line, since
+ *  on 8 November a tree with no `node_modules` read every changed file as one biome would rewrite. */
 function unformatted(root: string, line: readonly string[], tips: readonly string[]): string[] {
   const biome = join(import.meta.dir, "../../node_modules/@biomejs/biome/bin/biome");
   return tips.flatMap((tip) => {
@@ -110,7 +111,14 @@ function unformatted(root: string, line: readonly string[], tips: readonly strin
         cwd: root,
         input,
       });
-      return decodeOutput(input) === decodeOutput(output.stdout) ? [] : [`${short(tip)}:${path}`];
+      const site = `${short(tip)}:${path}`;
+      // Biome echoes a file its configuration ignores, such as one under vendor/, and exits 1.
+      if (decodeOutput(input) === decodeOutput(output.stdout)) return [];
+      if (output.exitCode !== 0) {
+        const reason = decodeOutput(output.stderr).trim().split("\n").at(-1) ?? "";
+        return [`${site} (biome exited ${output.exitCode}: ${reason.trim()})`];
+      }
+      return [site];
     });
   });
 }
@@ -245,7 +253,7 @@ async function checked(
   const misformatted = unformatted(root, line, tips);
   if (misformatted.length > 0) {
     say(
-      `biome would rewrite ${misformatted.join(", ")}; run bun run format -- <paths> and amend. Nothing was pushed.`,
+      `biome would rewrite ${misformatted.join(", ")}; run bun run format -- <paths> and amend, or bun install where biome did not run. Nothing was pushed.`,
     );
     return false;
   }

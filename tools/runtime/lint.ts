@@ -284,8 +284,8 @@ async function main(): Promise<number> {
   const extra = args.filter((argument) => argument !== "--strict");
   const flags = [
     // `.oxlintrc.json` sets this too, so for the ordinary run the flag changes nothing. It is
-    // here for `bun run lint -c <one-rule-config>`, the recipe `tools/oxlint/SHAPE-RULESET.md`
-    // gives for measuring a single rule: a scratch config that omits the option reports zero for
+    // here for `bun run lint -c <one-rule-config>`, the recipe HABITS.md 12.13 gives for
+    // measuring a single rule: a scratch config that omits the option reports zero for
     // every type-aware rule and says nothing about why. A silent zero is worse than a flag
     // repeated once.
     "--type-aware",

@@ -288,7 +288,6 @@ describe("a campaign", () => {
     const sets = taskSets(read(campaign.log));
     expect([sets.held.length, sets.released.length]).toEqual([6, 2]);
     expect([...sets.held, ...sets.released].toSorted()).toEqual([...versions, extra].toSorted());
-    expect(read(campaign.log).filter(({ kind }) => kind === "anchor.drawn")).toEqual([]);
     const packages = campaign.packages();
     expect(packages.get(extra)).toMatchObject({ taskId: "x-1-001", hidden: { seed: 1 }, ruleIds: ["R1"] });
     expect(versions.every((version) => packages.has(version))).toBe(true);

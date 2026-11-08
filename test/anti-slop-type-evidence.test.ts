@@ -71,6 +71,8 @@ export type Recursive = Record<string, Recursive>; // ADMITTED recursion termina
 // --- no-widen-then-assert ------------------------------------------------------
 
 const WIDEN_THEN_ASSERT = `
+import type { JsonObject, JsonValue } from "./json-shape.ts";
+import type { Opened } from "./opened.ts";
 type Money = { currency: string; minor: number };
 
 export function literalThroughUnknown(): string {
@@ -171,7 +173,143 @@ export function reassigned(flag: boolean): string {
 
 export function acrossBoundaries(): () => string {
 	const raw: unknown = "eur";
-	return () => raw as string; // ADMITTED the assertion sits in a different function
+	return () => raw as string; // REPORT a closure over a const reads the same value
+}
+
+export function shadowedInClosure(): (raw: unknown) => string {
+	const raw: unknown = "eur";
+	return (raw) => raw as string; // ADMITTED the closure's parameter is another binding
+}
+
+const moduleRaw: unknown = "eur";
+export function fromModule(): string {
+	return moduleRaw as string; // REPORT a module const is one value in every function
+}
+
+export function throughJsonValue(): Money {
+	const raw: JsonValue = { currency: "eur", minor: 1 };
+	return raw as Money; // REPORT the repository's JsonValue erases as unknown does
+}
+
+export function throughJsonObject(): Money {
+	const raw: Readonly<JsonObject> = { currency: "eur", minor: 1 };
+	return raw as Money; // REPORT JsonObject is an open dictionary, imported or not
+}
+
+export function toImportedShape(): Opened {
+	const raw: Record<string, unknown> = { currency: "eur", minor: 1 };
+	return raw as Opened; // REPORT an imported name a dictionary can be asserted to is an object
+}
+
+export function jsonToJson(): JsonValue {
+	const raw: JsonObject = { currency: "eur", minor: 1 };
+	return raw as JsonValue; // ADMITTED one broad JSON type asserted to another
+}
+
+function openedRecord(): JsonObject {
+	return { currency: "eur", minor: 1 };
+}
+export function throughHelper(): Money {
+	return openedRecord() as Money; // REPORT the helper's signature erased what it returns
+}
+
+const openedArrow = (): Record<string, unknown> => ({ currency: "eur", minor: 1 });
+export function throughHelperHop(): Money {
+	const raw = openedArrow();
+	return raw as Money; // REPORT the evidence is erased by the call and asserted after a hop
+}
+
+function parsedRecord(text: string): JsonObject {
+	return JSON.parse(text);
+}
+export function throughParser(text: string): Money {
+	return parsedRecord(text) as Money; // ADMITTED the helper returns what it parsed, never a known value
+}
+
+function sometimesKnown(flag: boolean, text: string): JsonValue {
+	if (flag) return { currency: "eur", minor: 1 };
+	return JSON.parse(text);
+}
+export function throughMixedHelper(text: string): Money {
+	return sometimesKnown(true, text) as Money; // ADMITTED one return proves nothing
+}
+
+function preciseMoney(): Money {
+	return { currency: "eur", minor: 1 };
+}
+export function preciseCall(): Money {
+	const raw: unknown = preciseMoney();
+	return raw as Money; // REPORT a call with a precise declared return is known
+}
+
+export function roundTrip(): Money {
+	const kept = { currency: "eur", minor: 1 };
+	return JSON.parse(JSON.stringify(kept)) as Money; // REPORT a JSON round trip of a known value
+}
+
+export function roundTripParameter(money: Money): Money {
+	const copy = JSON.parse(JSON.stringify(money));
+	return copy as Money; // REPORT a typed parameter is known, and the copy erases it
+}
+
+export function firstAsserted(rows: readonly Money[]): Money {
+	return rows[0] as Money; // REPORT an index read asserted present
+}
+
+export function firstChecked(rows: readonly Money[]): Money {
+	const first = rows[0];
+	if (first === undefined) throw new Error("no rows");
+	return first; // ADMITTED the check keeps the element's own type
+}
+
+export function lastAsserted(rows: readonly Money[]): Money {
+	return rows.at(-1) as Money; // REPORT at() asserted present
+}
+
+export function shiftedAsserted(queue: Money[]): Money {
+	return queue.shift() as Money; // REPORT shift() asserted present
+}
+
+export function foundAsserted(rows: readonly Money[]): Money {
+	return rows.find((row) => row.minor > 0) as Money; // REPORT find() asserted present
+}
+
+export function gotAsserted(byId: ReadonlyMap<string, Money>, id: string): Money {
+	return byId.get(id) as Money; // REPORT a map read asserted present
+}
+
+export function maybeFound(rows: readonly Money[]): Money | undefined {
+	return rows.find((row) => row.minor > 0) as Money | undefined; // ADMITTED absence is kept
+}
+
+export function namedFlag(values: Record<string, string | undefined>): string {
+	return values["solver-effort"] as string; // ADMITTED a literal key is a property read
+}
+
+export function optionalRead(rows: readonly Money[] | undefined): Money | undefined {
+	return rows?.[0] as Money | undefined; // ADMITTED an optional read keeps absence
+}
+
+export function caughtAsserted(run: () => void): string {
+	try {
+		run();
+		return "";
+	} catch (error) {
+		return (error as Error).message; // REPORT a caught value is narrowed by a guess
+	}
+}
+
+export function caughtNarrowed(run: () => void): string {
+	try {
+		run();
+		return "";
+	} catch (error) {
+		return error instanceof Error ? error.message : String(error); // ADMITTED instanceof narrows it
+	}
+}
+
+export function roundTripOfInput(text: string): Money {
+	return JSON.parse(JSON.stringify(JSON.parse(text))) as Money; // ADMITTED the printed value was never known
 }
 
 export function recordToBroaderRecord(): Record<string, unknown> {
@@ -287,6 +425,106 @@ export type Second = Pair<string, Pair<number, unknown>>; // REPORT the inner ar
 export type Plain = Maybe<Maybe<string>>; // ADMITTED nothing unknown
 `;
 
+/**
+ * The places a name hides \`unknown\` beyond an alias of it: an alias of \`any\`, of an array or tuple
+ * of the top type, an exported type's member, and an exported type parameter's default. Each
+ * stands beside the nearest shape that passes: a local interface, whose readers are in its file,
+ * a \`cause\`, a parameter of a function type, and a member whose type only names another type.
+ */
+const WIDER_UNKNOWN = `
+export type Anything = any; // REPORT any hides as unknown does
+export type Rows = unknown[]; // REPORT an array of unknown
+export type Frozen = readonly unknown[]; // REPORT a readonly array of unknown
+export type Listed = ReadonlyArray<unknown>; // REPORT the built-in spelling
+export type Pair = [label: string, value?: unknown]; // REPORT a tuple element
+export type Texts = readonly string[]; // ADMITTED an array of a stated type
+interface Array<T> { readonly item: T }
+export type Local = Array<unknown>; // ADMITTED Array here is the local interface
+export interface Request {
+  readonly id: string;
+  readonly artifact: unknown; // REPORT a member of an exported interface
+  readonly nested: {
+    readonly hidden: unknown; // REPORT a nested member
+  };
+  readonly cause?: unknown; // ADMITTED a cause stays unknown
+  readonly read: (input: unknown) => string; // ADMITTED an input of a function type
+  readonly typed: Typed<string>; // ADMITTED a member that names another type
+}
+export type Reply = { readonly body: Rows }; // REPORT a member through an alias
+interface Raw {
+  readonly command?: unknown; // ADMITTED a local shape its own file parses
+}
+export function commandOf(input: Raw): string | null { // ADMITTED a local shape an export only takes in
+  return typeof input.command === "string" ? input.command : null;
+}
+export interface Evidence<D = unknown> { // REPORT an exported default
+  readonly details?: D;
+}
+export interface Typed<D = string> { // ADMITTED a stated default
+  readonly details?: D;
+}
+type Hidden<D = unknown> = { readonly details?: D }; // ADMITTED not exported
+export type Uses = [Hidden, Evidence<string>, Typed];
+`;
+
+/**
+ * Where a module-local type leaves its module, a promise or a map hands out its value, and an
+ * exported class shows its fields. Each stands beside the nearest shape that passes: a set, asked
+ * only whether it holds a value; a local type an export takes in; a private field; a local
+ * class; and a reference to an exported type, which is judged where it is declared.
+ */
+const LEAKED_UNKNOWN = `
+interface Found {
+  readonly found: boolean;
+  readonly value: unknown; // REPORT an export's return type hands the local type out
+}
+export function resolve(root: string): Found {
+  return { found: root !== "", value: root };
+}
+interface Step {
+  readonly at: { readonly raw: unknown }; // REPORT a nested member, reached through another local
+}
+type Walk = { readonly steps: readonly Step[] };
+export const walk = (): Promise<Walk> => Promise.resolve({ steps: [] });
+type Seen = { readonly raw: unknown }; // ADMITTED only a local function returns it
+function seen(): Seen {
+  return { raw: null };
+}
+interface Read {
+  readonly raw: unknown; // ADMITTED an export only takes it in
+}
+export function read(input: Read): string {
+  return String(input.raw) + String(seen().raw);
+}
+export interface Shared {
+  readonly found: Found; // ADMITTED reported once, at the local member
+}
+export interface Pending {
+  readonly reply: Promise<unknown>; // REPORT a promise hands out unknown
+  readonly cached: ReadonlyMap<string, unknown>; // REPORT a map's value
+  readonly keys: Map<unknown, string>; // ADMITTED the key is only looked up
+  readonly seen: ReadonlySet<unknown>; // ADMITTED a set is asked only whether it holds a value
+}
+export class Store {
+  value: unknown; // REPORT a public field of an exported class
+  readonly cause: unknown = null; // ADMITTED a cause stays unknown
+  private raw: unknown; // ADMITTED a private field
+  #held: unknown; // ADMITTED a private name
+  constructor(value: unknown) {
+    this.value = value;
+    this.raw = value;
+    this.#held = value;
+  }
+  last(): Step | null { // ADMITTED reported once, at the local member
+    return this.#held === this.raw ? null : null;
+  }
+}
+class Local {
+  value: unknown = null; // ADMITTED a local class
+}
+export const made = new Local();
+`;
+
 // Recursion ends: each of these must finish and report nothing.
 const RECURSIVE_ALIASES = `
 type Loop<T> = Loop<T>;
@@ -318,12 +556,14 @@ describe("type evidence and resolution", () => {
   it("reports only the marked lines in every fixture and scope", async () => {
     await lintRules("anti-slop", [
       ["no-unsafe-dictionary-type", DICTIONARY, 23],
-      ["no-widen-then-assert", WIDEN_THEN_ASSERT, 13],
+      ["no-widen-then-assert", WIDEN_THEN_ASSERT, 29],
       ["no-known-value-widening", KNOWN_VALUE_WIDENING, 17],
       ["no-unsafe-dictionary-type", CYCLIC, 0],
       ["no-unknown-type-aliases", ALIAS_SCOPES, 3],
       ["no-unsafe-dictionary-type", KEY_AND_SCOPE_EDGES, 3],
       ["no-unknown-type-aliases", RECURSIVE_ALIASES, 0],
+      ["no-unknown-type-aliases", WIDER_UNKNOWN, 9],
+      ["no-unknown-type-aliases", LEAKED_UNKNOWN, 5],
       ["no-unknown-returns", RECURSIVE_ALIASES, 0],
     ]);
   });

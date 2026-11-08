@@ -16,7 +16,7 @@
 import { afterAll, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { barLines, type Epoch, epochLine, epochsOf, riskLines, worthOf } from "../src/campaign/climb.ts";
 import { examine } from "../src/examiner/session.ts";
-import { type Condition, settingId } from "../src/kernel/condition.ts";
+import { type Condition, conditionId, settingId } from "../src/kernel/condition.ts";
 import { type EventKind, type LogEvent, read } from "../src/kernel/log.ts";
 import { GUIDE_FILE } from "../src/meta/bundle-layout.ts";
 import {
@@ -32,6 +32,7 @@ import { asRecord, isNumber, isString, type JsonObject } from "../src/meta/json-
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
+import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { ANSWER_FILE } from "../src/tools/answer.ts";
 import type { Seats } from "../tools/d2/campaign-terms.ts";
 import { harnessBuilder } from "../tools/d2/harness-builder.ts";
@@ -146,8 +147,6 @@ describe("the climb", () => {
         // the third epoch reads its step at the target a real campaign runs near.
         "--target",
         "8",
-        "--exam-tasks",
-        "6",
         "--patience",
         "3",
       ];
@@ -356,6 +355,7 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
       errors: 0,
       controls: 1,
       incapable: 3,
+      tied: 3,
     });
     expect(first?.falsePromotion.union).toBeCloseTo(0.4, 12);
     expect(second?.falsePromotion).toMatchObject({
@@ -367,8 +367,15 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
     });
     if (second === undefined) throw new Error("an epoch");
     expect(epochLine(second)).toContain(
-      "a false promotion among them estimated at 10%; 0 of 1 A/A comparison with enough untied tasks to read a step read one, and 3 too small to read one at their level",
+      "a false promotion among them estimated at 10%; 0 of 1 A/A comparison with enough untied tasks to read a step read one, and 3 too small to read one at their level, 3 of them because the reference tied every task with itself;",
     );
+    // A control too small with one untied task did not tie every task, so it is too small and no more.
+    const short = [started, attempt("g-1", "S", "h2", [1, 0, 0])];
+    expect(epochsOf(short)[0]?.falsePromotion).toMatchObject({ incapable: 1, tied: 0 });
+    expect(riskLines(short)[0]).toContain("1 too small to read one at their level.");
+    // A control with no task tallied tied none, so it is too small and no more.
+    const empty = [started, attempt("g-1", "S", "h2", [])];
+    expect(epochsOf(empty)[0]?.falsePromotion).toMatchObject({ incapable: 1, tied: 0 });
     expect(riskLines(log)[2]).toStartWith(
       "Over the campaign, a false promotion in any epoch estimated at 50%:",
     );
@@ -628,6 +635,14 @@ describe("a campaign against its bars", () => {
     expect(honesty([...six, ...after])).toBe(
       "- Honesty: after promotion 6, 4 A/A comparisons against the bar's 10, 3 with enough untied tasks to read a step: 1 read one, 2 read one either way.",
     );
+    // A reference that matched itself on every task is said apart from one merely too small.
+    const tied = reported("g-e", "h6", "h11", [0, 0, 0, 0, 0, 0]);
+    expect(honesty([...six, ...after, tied])).toBe(
+      "- Honesty: after promotion 6, 5 A/A comparisons against the bar's 10, 3 with enough untied tasks to read a step: 1 read one, 2 read one either way. 1 of them tied every task, as the reference matched itself on every solve, and could read no step.",
+    );
+    expect(honesty([...five, tied])).toBe(
+      "- Honesty: no promotion 6 yet, so none of the bar's 10 A/A comparisons after it. 1 of the campaign's 1 A/A comparison so far tied every task, as the reference matched itself on every solve, and could read no step.",
+    );
     // A settlement reports a comparison again: it stands where it first reported, before the promotion.
     const settled = [
       ...five,
@@ -636,6 +651,73 @@ describe("a campaign against its bars", () => {
       reported("g-s", "h5", "h6", allWon),
     ];
     expect(honesty(settled)).toContain("after promotion 6, 0 A/A comparisons");
+  });
+
+  it("reads the starter against itself on the halves of its own solves in each starter comparison, and counts it towards no bar", () => {
+    const starterLine = (events: readonly LogEvent[]) => barLines([opened, ...events])[3];
+    let solves = 0;
+    /** `harness`'s solves of `task` in comparison `session`, each a pass or a fail. */
+    const solved = (session: string, task: string, harness: string, valid: readonly boolean[]) => {
+      const ran = condition(task, harness);
+      const id = conditionId(ran);
+      return [
+        event("condition.recorded", { id, condition: requireJsonValue(ran) }),
+        ...valid.flatMap((each) => {
+          solves += 1;
+          const solve = `s-${String(solves)}`;
+          const ending = each ? { outcome: "pass" } : { outcome: "fail", kind: "no-answer" };
+          return [
+            event("solve.started", { solve, condition: id, comparison: session }),
+            event("solve.finished", { solve, ending }),
+          ];
+        }),
+      ];
+    };
+    const TASKS6 = ["v1", "v2", "v3", "v4", "v5", "v6"];
+    /** A comparison of `fresh` against `old` on the six tasks at `each` solves a side, the starter's
+     *  solves of every task given by `starter`. */
+    const compared = (
+      session: string,
+      old: string,
+      fresh: string,
+      each: number,
+      starter: readonly boolean[],
+    ) => [
+      ...TASKS6.flatMap((task) => [
+        ...solved(
+          session,
+          task,
+          old,
+          Array.from({ length: each }, () => true),
+        ),
+        ...solved(session, task, fresh, starter),
+      ]),
+      event(REPORTED, {
+        ...reported(session, old, fresh).data,
+        solves: each,
+        setting: SETTING,
+        versions: TASKS6,
+        scored: { differences: TASKS6.map(() => 0) },
+      }),
+    ];
+    const promoted = [reported("g-1", "S", "h1"), promotedTo("h1", "S"), ...TASKS6.flatMap(heldOut)];
+    // The starter passes its first solve of each task and fails its second: six untied tasks, all
+    // one way, which read a step for neither half one-sided and for one half either way.
+    expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 2, [true, false])])).toBe(
+      "- Starter against itself: 1 starter comparison split the starter's own solves in two, 1 with enough untied tasks to read a step: 0 read one, 1 read one either way, and 0 tied every task. Reported only, and counted towards no bar.",
+    );
+    // A starter that answers alike on every solve ties every task with itself.
+    expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 2, [true, true])])).toContain(
+      "1 starter comparison split the starter's own solves in two, 0 with enough untied tasks to read a step: 0 read one, 0 read one either way, and 1 tied every task.",
+    );
+    // One solve a side does not split, and a candidate's comparison is no starter comparison.
+    const none =
+      "- Starter against itself: no starter comparison split the starter's own solves in two. Reported only.";
+    expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 1, [true])])).toBe(none);
+    expect(starterLine([...promoted, ...compared("g-2", "h1", "h2", 2, [true, false])])).toBe(none);
+    // The reading the comparison reported is the reference's against the starter, untouched.
+    const log = [opened, ...promoted, ...compared("g-2", "h1", "S", 2, [true, false])];
+    expect(epochsOf(log)[1]?.starter_tally).toEqual({ wins: 0, losses: 0, ties: 6 });
   });
 
   it("holds every epoch after set-up to the cost bar, an open one too, and set-up's to none", () => {

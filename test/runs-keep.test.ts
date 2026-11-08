@@ -4,8 +4,18 @@ import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { join } from "../src/meta/path.ts";
+import { capturedExecPath, capturedSpawn } from "../src/meta/process.ts";
 import { seats } from "../tools/runs/fresh.ts";
-import { keeperActed, keeperOf, nextLogin, roomFor, type Turn, turnOf, turnsIn } from "../tools/runs/keep.ts";
+import {
+  keeperActed,
+  keeperOf,
+  nextLogin,
+  poolOf,
+  roomFor,
+  type Turn,
+  turnOf,
+  turnsIn,
+} from "../tools/runs/keep.ts";
 import { billsLogin, fiveHourWith, type Reading, room } from "../tools/runs/logins.ts";
 import { keepsItself, WAIT_HOURS } from "../tools/runs/manage.ts";
 import { type Receipt, writeReceipt } from "../tools/runs/receipt.ts";
@@ -201,13 +211,14 @@ describe("a keeper's looks, scripted", () => {
       events: log,
       open: true,
       readings: [read("3", 10), read("4", 10, 10, "allowed", 2)],
+      pool: ["2", "3", "4"],
       live: nobody,
       unasked: none,
       asked: 0,
       acted: [...none],
       said: [...none],
     };
-    const look = keeperOf("sample", ["2", "3", "4"], WAIT_MS, {
+    const look = keeperOf("sample", async () => state.pool, WAIT_MS, {
       events: () => state.events,
       open: () => state.open,
       last: () => ({ login, flags }),
@@ -237,6 +248,13 @@ describe("a keeper's looks, scripted", () => {
       expect(await look(NOW)).toBe(false);
       expect(state.acted).toEqual(["stop", "start 3"]);
     }
+  });
+
+  it("moves onto the pool as it stands at the move, not as it stood at the keeper's start", async () => {
+    const { state, look } = scripted();
+    state.pool = ["2", "4"];
+    expect(await look(NOW)).toBe(false);
+    expect(state.acted).toEqual(["stop", "start 4"]);
   });
 
   it("says a move, a wait and a barren run in lines the alerts read, and leaves a run's own ending to its log", async () => {
@@ -357,6 +375,26 @@ describe("a keeper's looks, scripted", () => {
   });
 });
 
+describe("the pool a keeper started without --logins reads", () => {
+  it("follows an edit of its host's file where it started on that file's pool, and keeps a carried pool", async () => {
+    const { root } = fakeHosts();
+    fixtures.push(root);
+    const file = join(root, "pool.env.runs");
+    writeFileSync(file, 'ANA_HOSTS=[]\nANA_LOGINS="2,3"\n');
+    const own = poolOf(file, { ANA_LOGINS: "2,3" });
+    const carried = poolOf(file, { ANA_LOGINS: "3,4" });
+    expect(await own()).toEqual(["2", "3"]);
+    writeFileSync(file, "ANA_LOGINS=3 # narrowed\n");
+    expect(await own()).toEqual(["3"]);
+    expect(await carried()).toEqual(["3", "4"]);
+    // A file being rewritten, or gone, keeps the last pool instead of every login `.env` holds.
+    writeFileSync(file, "");
+    expect(await own()).toEqual(["3"]);
+    rmSync(file);
+    expect(await own()).toEqual(["3"]);
+  });
+});
+
 describe("the keeper a run gets by itself", () => {
   const env = { ANA_LOGINS: "2,3" };
 
@@ -419,6 +457,84 @@ describe("the keeper a run gets by itself", () => {
     expect(result.code).toBe(0);
     expect(result.out).not.toContain("kept by pid");
     expect(existsSync(out)).toBe(false);
+  }, 20_000);
+});
+
+describe("going on with a live run after a pause", () => {
+  /** `continue --after next` of a live campaign whose comparisons began at 0.02, on `level`. The
+   *  campaign command here takes its dry run's refusal from the real opening (`opened`), and its
+   *  live run, once it reads the pause word, finishes a solve. */
+  async function goOnLive(level: string) {
+    const made = fakeHosts();
+    fixtures.push(made.root);
+    const folder = join(made.main, ".ana", "d2", "sample");
+    mkdirSync(folder, { recursive: true });
+    mkdirSync(join(made.main, "tools", "d2"), { recursive: true });
+    writeFileSync(join(made.main, "package.json"), '{ "name": "fixture" }\n');
+    const log = join(folder, "log.jsonl");
+    const terms = join(import.meta.dir, "..", "tools", "d2", "campaign-terms.ts");
+    writeFileSync(
+      join(made.main, "tools", "d2", "harness-builder.ts"),
+      `import { appendFileSync, readFileSync } from "node:fs";
+import { flagsOf, opened } from ${JSON.stringify(terms)};
+const log = ${JSON.stringify(log)};
+if (process.argv.includes("--dry-run")) opened(log, flagsOf(process.argv.slice(2)), "scripted");
+else {
+  for (let look = 0; look < 100 && !readFileSync(log, "utf8").includes("campaign.word"); look += 1) await Bun.sleep(100);
+  appendFileSync(log, JSON.stringify({ at: new Date().toISOString(), kind: "solve.finished", data: { solve: "s-1" } }) + "\\n");
+  await Bun.sleep(3000);
+}
+`,
+    );
+    writeFileSync(
+      log,
+      `${JSON.stringify(event("comparison.started", { comparison: "c-1", level: 0.02 }))}\n`,
+    );
+    const live = capturedSpawn([capturedExecPath, "tools/d2/harness-builder.ts", "--name", "sample"], {
+      cwd: made.main,
+      detached: true,
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    // The fixture's `ps` lists the live run while it lives, and not once it is a zombie, as
+    // `writers` reads it.
+    const row = `${String(live.pid)} ${capturedExecPath} tools/d2/harness-builder.ts --name sample`;
+    writeFileSync(
+      join(made.root, "bin", "ps"),
+      `#!${capturedExecPath}
+const stat = Bun.spawnSync(["/bin/ps", "-o", "stat=", "-p", "${String(live.pid)}"]).stdout.toString().trim();
+if (stat !== "" && !stat.startsWith("Z")) console.log(${JSON.stringify(row)});
+`,
+    );
+    const before = readFileSync(log, "utf8");
+    const flags = ["--project", "p", "--prompt", "a domain", "--solver", OPUS, "--level", level];
+    const words = JSON.stringify(["sample", "--after", "next", "--yes", "--", ...flags]);
+    const result = made.run(
+      `import { continueRun } from "REPOSITORY/tools/runs/manage.ts"; await continueRun(${words});`,
+      { FAKE_CWDS: `p${String(live.pid)}\nn${made.main}` },
+    );
+    const alive = await Promise.race([live.exited.then(() => false), Bun.sleep(1000).then(() => true)]);
+    live.kill();
+    return { result, before, after: readFileSync(log, "utf8"), alive };
+  }
+
+  it("refuses the campaign command's own refusal before it pauses the run, and leaves the log as it was", async () => {
+    const { result, before, after, alive } = await goOnLive("0.05");
+    expect(result.code).toBe(1);
+    expect(result.err).toContain("--level 0.05: the campaign's comparisons began at level 0.02");
+    expect(after).toBe(before);
+    expect(alive).toBe(true);
+  }, 20_000);
+
+  it("pauses the run and goes on with it where the dry run passes", async () => {
+    const { result, before, after, alive } = await goOnLive("0.02");
+    expect(result.err).toBe("");
+    expect(result.code).toBe(0);
+    expect(result.out).toContain("running");
+    expect(after.startsWith(before)).toBe(true);
+    expect(after).toContain('"kind":"campaign.word"');
+    expect(alive).toBe(false);
   }, 20_000);
 });
 

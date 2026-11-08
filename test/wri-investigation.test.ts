@@ -87,6 +87,14 @@ describe("an investigation's lanes", () => {
     expect(isolated).not.toContain("Why the step.");
     expect(isolated).toContain("quote nothing");
     expect(isolated).toContain("/r/04.md");
+    // A blind lane grades before any result, so it is given no orientation, row or trigger.
+    expect(lane(27).blind).toBe(true);
+    const blind = lanePrompt({ ...parts, lane: lane(27), report: "/r/27.md" });
+    expect(blind).not.toContain("Why the step.");
+    expect(blind).not.toContain("3 events");
+    expect(blind).not.toContain("FAILS ON ONE CHECK (lane 4)");
+    expect(blind).toContain("quote nothing");
+    expect(blind).toContain("the row");
     // One campaign is read as before, with no section on the others and no Seen in line.
     const alone = lanePrompt({ ...parts, campaigns: one, lane: lane(3) });
     expect(alone).not.toContain("as equals");

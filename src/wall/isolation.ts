@@ -136,11 +136,10 @@ export function toolTreeSearchDirs(toolTree: string): string[] {
   if (!existsSync(toolTree)) return [];
   const found: string[] = [join(toolTree, "bin")].filter(existsSync);
   const queue: { dir: string; depth: number }[] = [{ dir: toolTree, depth: 0 }];
-  for (let visited = 0; queue.length > 0 && visited < TOOL_TREE_MAX_DIRS; visited += 1) {
-    const { dir, depth } = /* SAFETY: the loop condition proves the queue is non-empty. */ queue.shift() as {
-      dir: string;
-      depth: number;
-    };
+  for (let visited = 0; visited < TOOL_TREE_MAX_DIRS; visited += 1) {
+    const next = queue.shift();
+    if (next === undefined) break;
+    const { dir, depth } = next;
     if (TOOL_TREE_BIN_DIRS.has(basename(dir)) && !found.includes(dir)) found.push(dir);
     if (depth >= TOOL_TREE_MAX_DEPTH) continue;
     try {

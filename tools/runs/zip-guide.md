@@ -22,8 +22,8 @@ not in the log.
    an optional `objective` with its quantity, direction and the answer's measure. Older runs use numbered `gate` fields: 1 is the
    shape check, 2 a pass by the stronger condition (a fail there is `too-hard`), 3 the
    check rerun on that pass, 4 the three reject control answers. The value 5 is screening, logged as the
-   state it gives: `admitted` tasks are the scored set. `anchor.drawn` names the anchor's tasks and
-   `released` ones are the Builder's practice; neither is ever scored.
+   state it gives: `admitted` tasks are the scored set, and `released` ones are the Builder's
+   practice, never scored.
 3. `build.started` to `build.finished`: one Builder session from the harness `parent`. Its
    `build.turn`s are what it said, its `build.call`s every tool call with arguments and result, and
    `build.finished` says how it ended (`finished`, or a limit such as `wall`), whether the harness
@@ -33,7 +33,7 @@ not in the log.
    old harness, `build.finished.harness` the new. The `ending` is a `pass`, a `fail` with its kind,
    or a `non-result` with its kind and reason. `verdict` holds the answer and the checks that blocked
    it.
-5. `anchor.scored` and `comparison.reported`: the two tests and the round's reading.
+5. `comparison.reported`: the round's test and its reading.
 6. `states/<digest>/agent/`: the harness a session kept, as the solver had it. The guide is
    `BUILT_AGENTS.md`, the tools are `tools.ts` and their kinds are in `tools-spec.json`.
 7. `memory/<session>/`: the notes a Builder session left the next, `MEMORY.md` and

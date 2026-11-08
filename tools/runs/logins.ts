@@ -1,7 +1,7 @@
 /**
  * How much of each login's 5-hour and weekly window is used, when each runs out at its pace so far,
- * and, read over every login, when the pool runs out: what a move to another login asks before it
- * chooses one (`room`, `keep.ts`).
+ * and, read over every login, when the pool runs out. A move to another login reads the windows
+ * alone (`room`, `keep.ts`).
  *
  *   bun --env-file=<file> run runs usage [N ...] [--json] [--open] [--closed]
  *
@@ -22,25 +22,25 @@
  * Three paces: the week's, each login's share over its window so far (floored at 12 hours, so a
  * window minutes old does not extrapolate); the recent one, from the readings kept in the main
  * worktree's `.ana/logins-history.jsonl` (28 days): a login still in the window of a reading 2 to 24
- * hours old gives its rise since, any other its week's pace; and the model's, hour by hour over the next
- * day, once it beats the week pace and the per-run rate on hours held out (`usage-model.ts`, 1 November). The
- * 5-hour windows are left out: they cap how fast one login spends, not what a week holds. A keeper
- * asks of one login's five hours by themselves, with the run it would move there added (`fiveHourWith`).
+ * hours old gives its rise since, any other its week's pace; and the model's, hour by hour over the
+ * next day, once it beats the week pace and the per-run rate on hours held out (`usage-model.ts`).
+ * The 5-hour windows are left out: they cap how fast one login spends, not what a week holds. These
+ * forecasts are printed for a person and feed no choice; a keeper asks of one login's five hours by
+ * themselves, with the run it would move there added (`fiveHourWith`).
  *
  * `bun run runs active` names the runs a process writes, by the login each run's last launch named,
- * and the live seats of `system-path-simulation`, by the login each seat names (`liveHere`),
- * on this machine and every host `ANA_HOSTS` lists (`liveEverywhere`), and asks no
- * provider, and `usage` puts each login's count on its head line, out of the most `ANA_LOGIN_RUNS`
- * or its subscription in `ANA_LOGIN_SUBS` lets that login carry (`capOf`), and sums the
- * subscriptions' most under the logins.
+ * and the live seats of `system-path-simulation`, by the login each seat names (`liveHere`), on this
+ * machine and every host `ANA_HOSTS` lists (`liveEverywhere`), and asks no provider. `usage` puts
+ * each login's count on its head line, out of the most `ANA_LOGIN_RUNS` or its subscription in
+ * `ANA_LOGIN_SUBS` lets that login carry (`capOf`), and sums the subscriptions' most under the logins.
  *
  * Each reading keeps that count beside each login's week, and the rises between readings over the
- * runs counted give the share of a week a run spends an hour (`perRunRate`). The most a login
- * carries is then the lower of its cap and the runs its week left fits over a run's twelve hours, or
- * until the reset where that comes sooner, each run active 16 of 24 hours (`fitOf`), and a login with more live runs than that reads oversubscribed
- * (`carried`): a cap of two read 0/2 on a login at 92% of its week with 11 hours of it left.
- * Until that rate is measured, a login with live runs reads its own week's pace shared over them
- * (`perRunHour`).
+ * runs counted give the share of a week a run spends an hour (`perRunRate`). The most a login can
+ * carry is then the lower of its cap and the runs its week left fits over a run's twelve hours, or
+ * until the reset where that comes sooner, each run active 16 of 24 hours (`fitOf`), and a login with
+ * more live runs than that reads oversubscribed (`carried`), so a cap of two does not read 0/2 on a
+ * login at 92% of its week with 11 hours of it left. Until that rate is measured, a login with live
+ * runs reads its own week's pace shared over them (`perRunHour`).
  *
  * `ANA_LOGINS` in the environment, such as `2,3,4`, names the logins a run may take (`allowedLogins`),
  * every login the environment holds where it is unset.

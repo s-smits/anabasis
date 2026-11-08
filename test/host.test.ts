@@ -4,7 +4,7 @@
  * that failed a session. Queued solves leave on cancellation while the host's sleep remains unresolved;
  * only load waits record their elapsed time. Tests inject the host's sleeps and clock.
  */
-import { afterAll, describe, expect, it, setSystemTime, spyOn } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
 import { resetOf } from "../src/agent/backends/claude.ts";
 import { crashedRun } from "../src/campaign/ground.ts";
 import { affords, flying } from "../src/campaign/opening.ts";
@@ -31,13 +31,19 @@ const logIn = (name: string) => join(mkdtempSync(join(tmpdir(), `ana-host-${name
 const waits = (log: string) => read(log).filter(({ kind }) => kind === "campaign.waited");
 
 /** A host whose load is `load` at each look, whose sleeps are counted, return at once and call
- *  `slept` with their count. */
-function hostOf(load: () => number, cores = 4, slept: (count: number) => void = () => {}) {
+ *  `slept` with their count, and whose clock reads `now` where one is given. */
+function hostOf(
+  load: () => number,
+  cores = 4,
+  slept: (count: number) => void = () => {},
+  now?: () => number,
+) {
   const sleeps: number[] = [];
   const host: Host = {
     load,
     cores,
     waitMs: 30_000,
+    now,
     sleep: async (ms) => {
       sleeps.push(ms);
       slept(sleeps.length);
@@ -186,14 +192,10 @@ describe("load and reserve admission", () => {
         if (count === 1) load = 0;
         if (count === 4) free.resolve();
       },
+      () => now,
     );
-    const clock = spyOn(Date, "now").mockImplementation(() => now);
-    try {
-      const held = gate(log, host, false, 1);
-      await Promise.all([flying(log, () => free.promise), held.solve(TASK, HARNESS, undefined, "x-1")]);
-    } finally {
-      clock.mockRestore();
-    }
+    const held = gate(log, host, false, 1);
+    await Promise.all([flying(log, () => free.promise), held.solve(TASK, HARNESS, undefined, "x-1")]);
     expect(host.slept).toHaveLength(4);
     expect(waits(log).map(({ data }) => data.ms)).toEqual([10_000]);
   });
@@ -270,17 +272,18 @@ describe("a pause's word", () => {
   it("lets solves start again once a pause that never stopped the run is past a solve's limit", async () => {
     const log = logIn("pause-abandoned");
     append(log, "campaign.opened", {});
+    // The host's clock reads two hours on from the pause's word.
     const seats = gate(
       log,
-      hostOf(() => 0),
+      hostOf(
+        () => 0,
+        4,
+        () => {},
+        () => Date.now() + 2 * 3_600_000,
+      ),
     );
     append(log, "campaign.word", { word: "pause" });
-    setSystemTime(new Date(Date.now() + 2 * 3_600_000));
-    try {
-      await seats.solve(TASK, HARNESS, new AbortController().signal);
-    } finally {
-      setSystemTime();
-    }
+    await seats.solve(TASK, HARNESS, new AbortController().signal);
     expect(seats.calls).toHaveLength(1);
   });
 });
@@ -293,10 +296,12 @@ describe("cancelling queued solves", () => {
       const reason = new Error("the queued solve was cancelled");
       const sleeping = Promise.withResolvers<void>();
       const release = Promise.withResolvers<void>();
+      let now = 1000;
       const host: Host = {
         load: () => (queued === "load" ? 99 : 0),
         cores: 4,
         waitMs: 30_000,
+        now: () => now,
         sleep: () => {
           sleeping.resolve();
           return release.promise;
@@ -304,47 +309,41 @@ describe("cancelling queued solves", () => {
       };
       if (queued === "reserve") append(log, "campaign.opened", { budget: { dollars: 0.7, reserve: 0.4 } });
       const held = gate(log, host, false, queued === "slot" ? 1 : 4);
-      let now = 1000;
-      const clock = spyOn(Date, "now").mockImplementation(() => now);
-      try {
-        const pending =
-          queued === "load"
-            ? held.solve(TASK, HARNESS, kill.signal, "x-1")
-            : flying(log, () => held.solve(TASK, HARNESS, kill.signal));
-        const deadline = AbortSignal.timeout(200);
-        const bounded = Promise.race([
-          pending.then(
-            () => false,
-            (error: unknown) => error instanceof Error && error === reason,
-          ),
-          new Promise<boolean>((resolve) => {
-            deadline.addEventListener("abort", () => resolve(false), {
-              once: true,
-            });
-          }),
-        ]);
-        await sleeping.promise;
-        now += 1234;
-        kill.abort(reason);
-        expect(await bounded).toBe(true);
-        expect(held.calls).toEqual([]);
-        expect(waits(log).map(({ data }) => data)).toEqual(
-          queued === "load"
-            ? [
-                {
-                  task: TASK.taskId,
-                  harness: HARNESS.digest,
-                  comparison: "x-1",
-                  load: 99,
-                  cores: 4,
-                  ms: 1234,
-                },
-              ]
-            : [],
-        );
-      } finally {
-        clock.mockRestore();
-      }
+      const pending =
+        queued === "load"
+          ? held.solve(TASK, HARNESS, kill.signal, "x-1")
+          : flying(log, () => held.solve(TASK, HARNESS, kill.signal));
+      const deadline = AbortSignal.timeout(200);
+      const bounded = Promise.race([
+        pending.then(
+          () => false,
+          (error: unknown) => error instanceof Error && error === reason,
+        ),
+        new Promise<boolean>((resolve) => {
+          deadline.addEventListener("abort", () => resolve(false), {
+            once: true,
+          });
+        }),
+      ]);
+      await sleeping.promise;
+      now += 1234;
+      kill.abort(reason);
+      expect(await bounded).toBe(true);
+      expect(held.calls).toEqual([]);
+      expect(waits(log).map(({ data }) => data)).toEqual(
+        queued === "load"
+          ? [
+              {
+                task: TASK.taskId,
+                harness: HARNESS.digest,
+                comparison: "x-1",
+                load: 99,
+                cores: 4,
+                ms: 1234,
+              },
+            ]
+          : [],
+      );
     }
   }, 1000);
 

@@ -31,8 +31,7 @@
  * name whose contract or check program is another does not open (`tools/d2/campaign.ts`): a
  * repaired checker takes a campaign of its own.
  *
- * The stored verdicts are v1's, as `grades.tsv` holds them, and are not run again: `regrade.ts`
- * holds this verifier to them. Since 14 October their rows are reported apart and only fresh
+ * The stored verdicts are v1's, as `grades.tsv` holds them, and are not run again. Since 14 October their rows are reported apart and only fresh
  * controls establish the opening's current faults. The check program is the campaign's staged copy
  * of the bundle's, without its battery, and its tools are the bundle's.
  *

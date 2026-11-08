@@ -4,7 +4,7 @@
 // the solver reads, a solve under the Starter with pi's own file tools, the host's limits over the
 // harness's, the wall, no answer, the reruns of a provider's failed turn and of moved files, and
 // the run stopping on the verifier's non-result.
-import { afterAll, describe, expect, it, jest } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
 import {
   createModels,
   fauxAssistantMessage,
@@ -24,7 +24,15 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { NUDGE } from "../src/solver/prompt.ts";
-import { judge, type Played, raiseWall, solve, type SolveRequest, timed } from "../src/solver/run.ts";
+import {
+  judge,
+  type Played,
+  raiseWall,
+  solve,
+  type SolveRequest,
+  timed,
+  type WallClock,
+} from "../src/solver/run.ts";
 import { text as toolText, tool as seatTool } from "../src/tools/answer.ts";
 import { writeStarter } from "../src/harness/starter.ts";
 import { osIsolationSupport } from "../src/wall/os-isolation.ts";
@@ -152,10 +160,33 @@ const searchHome = fauxAssistantMessage(
   toolUse,
 );
 
+/** A wall's clock that moves only when `advance` moves it, firing each deadline it passes. */
+function virtualClock() {
+  let now = 0;
+  const armed = new Set<{ readonly at: number; readonly fall: () => void }>();
+  const clock: WallClock = {
+    now: () => now,
+    after: (ms, fall) => {
+      const deadline = { at: now + ms, fall };
+      armed.add(deadline);
+      return () => armed.delete(deadline);
+    },
+  };
+  const advance = (ms: number) => {
+    now += ms;
+    for (const deadline of [...armed].filter(({ at }) => at <= now)) {
+      armed.delete(deadline);
+      deadline.fall();
+    }
+  };
+  return { clock, advance };
+}
+
+const virtual = virtualClock();
+
 /** Drive the real session hooks on a virtual thirty-minute wall, without an OS wall or a model. */
 async function atWall(responses: FauxResponseStep[], tools: SeatTool[] = []) {
-  jest.useFakeTimers();
-  const wall = raiseWall(30 * 60);
+  const wall = raiseWall(30 * 60, virtual.clock);
   try {
     const { request, events } = setup(responses);
     const turns: Played["turns"][number][] = [];
@@ -190,7 +221,6 @@ async function atWall(responses: FauxResponseStep[], tools: SeatTool[] = []) {
     };
   } finally {
     wall.lower();
-    jest.useRealTimers();
   }
 }
 
@@ -201,7 +231,7 @@ describe("a solve's wall activity", () => {
       description: "Work until the wall.",
       parameters: Type.Object({}),
       execute: async () => {
-        jest.advanceTimersByTime(30 * 60_000);
+        virtual.advance(30 * 60_000);
         return toolText("finished");
       },
     });
@@ -219,14 +249,14 @@ describe("a solve's wall activity", () => {
       },
     });
     const replies: FauxResponseStep[] = Array.from({ length: 14 }, () => () => {
-      jest.advanceTimersByTime(2 * 60_000);
+      virtual.advance(2 * 60_000);
       return fauxAssistantMessage(
         fauxToolCall(refusal === "unavailable" ? "absent" : "required", {}),
         toolUse,
       );
     });
     replies.push(() => {
-      jest.advanceTimersByTime(2 * 60_000);
+      virtual.advance(2 * 60_000);
       return providerStop("", "aborted at the wall");
     });
     const result = await atWall(replies, [required]);
@@ -239,13 +269,15 @@ describe("a solve's wall activity", () => {
   it("reads a model producing no completed turn through the whole silence as the provider's non-result", async () => {
     const result = await atWall([
       () => {
-        jest.advanceTimersByTime(30 * 60_000);
+        virtual.advance(30 * 60_000);
         return providerStop("", "aborted at the wall");
       },
     ]);
     expect(result.ending).toMatchObject({ outcome: "non-result", kind: "provider" });
     expect("reason" in result.ending && /\d+/.exec(result.ending.reason)?.[0]).toBe("30");
-    expect(result.events.filter(({ kind }) => kind === "solve.turn")).toHaveLength(0);
+    // The provider's aborted reply is on record as an error turn, and no turn completed.
+    const turns = result.events.filter(({ kind }) => kind === "solve.turn");
+    expect(turns.map(({ data }) => data.stopReason)).toEqual(["error"]);
   });
 });
 

@@ -58,7 +58,7 @@ describe("prefer-subpath-import", () => {
   it("has the fixers that write an import write the alias under this repository's own options", () => {
     for (const [path, specifier] of [
       [SKILL_SCRIPT, "#src/meta/os.ts"],
-      ["tools/oxlint/strict-boolean-fix.ts", "../../src/meta/os.ts"],
+      ["tools/oxlint/not-slop.ts", "../../src/meta/os.ts"],
       ["src/a/b/c/x.ts", "../../../meta/os.ts"],
       ["vendor/pi-built/a/b/x.ts", "../../../../src/meta/os.ts"],
     ] as const) {

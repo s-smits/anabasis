@@ -1,4 +1,4 @@
-// The catalogue keeps its twenty-seven lanes numbered in order, each trigger starting the lane the
+// The catalogue keeps its twenty-nine lanes numbered in order, each trigger starting the lane the
 // reader names, and a session that holds the blind lane reads it first.
 import { describe, expect, it } from "bun:test";
 import { catalogueText, type Lane, lanesOf } from "../tools/wri/catalogue.ts";
@@ -7,9 +7,9 @@ import { CATEGORIES } from "../tools/runtime/land.ts";
 import { TRIGGERS } from "../tools/wri/folds.ts";
 
 describe("the lane catalogue", () => {
-  it("holds twenty-seven lanes, numbered in order", () => {
+  it("holds twenty-nine lanes, numbered in order", () => {
     expect(lanesOf(catalogueText()).map(({ number }) => number)).toEqual(
-      Array.from({ length: 27 }, (_, index) => index + 1),
+      Array.from({ length: 29 }, (_, index) => index + 1),
     );
   });
 
@@ -40,9 +40,33 @@ describe("the lane catalogue", () => {
 
   it("names a lane that carries no label of its own", () => {
     const lane = (label: string) =>
-      `### A section\n\n**1. A lane.**\n\n${label}Importance: 0.5.\n\nStarts from \`A (lane 1)\`.\n`;
+      `### A section\n\n**1. A lane.**\n\n${label}Importance: 0.5.\nMarks: none.\n\nStarts from \`A (lane 1)\`.\n`;
     expect(lanesOf(lane("Label: `exam`.\n"))[0]?.label).toBe("exam");
     expect(() => lanesOf(lane(""))).toThrow("lane 1 has no label");
+  });
+
+  // The sets each lane opened under while they were read from its `Starts from` prose, before the
+  // `Marks:` line (8 November 2026); a change to one is a change to how investigations open.
+  it("reads each lane's standing, isolation, blindness and side-by-side climb from its marks", () => {
+    const lanes = lanesOf(catalogueText());
+    const marked = (flag: (lane: Lane) => boolean) =>
+      lanes.filter((lane) => flag(lane)).map(({ number }) => number);
+    expect(marked(({ standing }) => standing)).toEqual([1, 2, 18, 26, 27]);
+    expect(marked(({ isolated }) => isolated)).toEqual([4, 15]);
+    expect(marked(({ blind }) => blind)).toEqual([27]);
+    expect(marked(({ sideBySide }) => sideBySide)).toEqual([22]);
+    for (const { body } of lanes) expect(body).not.toMatch(/^Marks:/mu);
+  });
+
+  it("reads marks and not prose, and names a lane with no marks line or an unknown mark", () => {
+    const lane = (marks: string) =>
+      `**1. A lane.**\n\nLabel: \`exam\`.\nImportance: 0.5.\n${marks}\nStarts from \`A (lane 1)\`, and is standing. It runs alone.\n`;
+    const [quiet] = lanesOf(lane("Marks: none.\n"));
+    expect([quiet?.standing, quiet?.isolated]).toEqual([false, false]);
+    const [loud] = lanesOf(lane("Marks: `blind`, `side-by-side`.\n"));
+    expect([loud?.standing, loud?.blind, loud?.sideBySide]).toEqual([false, true, true]);
+    expect(() => lanesOf(lane(""))).toThrow("lane 1 has no marks line");
+    expect(() => lanesOf(lane("Marks: `standng`.\n"))).toThrow("lane 1 carries unknown marks: standng");
   });
 });
 

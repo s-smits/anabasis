@@ -29,8 +29,8 @@ export const createDomainHarness: DomainHarnessFactory = (task) => {
           try {
             return { text: readFileSync(params.path, "utf8") };
           } catch (error) {
-            // SAFETY: readFileSync throws a Node system error, which carries its errno name as `code`.
-            const { code } = error as { code?: string };
+            // readFileSync throws a Node system error, which carries its errno name as `code`.
+            const code = error instanceof Error && "code" in error ? error.code : undefined;
             throw new Error(`cannot read ${params.path}: ${String(code)}`, {
               cause: error,
             });

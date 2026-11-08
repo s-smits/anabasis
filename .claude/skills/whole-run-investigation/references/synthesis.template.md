@@ -56,8 +56,8 @@ by the event kinds, ids and counts it cites.
 6. **Operator decisions.** Each with the missing evidence, what it changes, and the plan's decision
    number where one exists.
 7. **Predictions.** Falsifiable rows for the next round: moved variable, claim, direction,
-   falsifier. Name the `patch` row each checks, so the next cycle's `Predictions.md` or a fork's
-   `predictions-<run>.md` can carry it under that pull request.
+   falsifier. Name the `patch` row each checks, so a fork's `predictions-<run>.md` can carry
+   it under that pull request.
 
 ## Hard rules
 

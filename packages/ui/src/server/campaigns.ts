@@ -49,7 +49,7 @@ function factsOf(found: Found): { readonly read: boolean; readonly listing: List
  *  it read again. A cold list read 1.7 GB of 176 logs in 4.4 s on 30 October, and a handler holds
  *  the one thread it runs on, so the selected campaign, asked beside the list, waited for all of
  *  it; between two logs it is answered at once. */
-export async function readAll(reading: Pick<Reading, "repo" | "trees">): Promise<void> {
+export async function readAll(reading: Pick<Reading, "repo" | "trees" | "now">): Promise<void> {
   for (const each of campaignsFound(reading).found) {
     if (factsOf(each).read) await Bun.sleep(0);
   }

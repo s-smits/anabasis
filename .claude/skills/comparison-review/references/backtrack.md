@@ -69,8 +69,8 @@ A card leaves only through all eight, with a written reason for each "no".
 
 **Defect**: wrong whichever way the result went; fixed at its owner (or asked, where it changes what a
 solver is told), claiming no gain. **Instrument fact**: reported beside the score. **Limit of the
-claim**: enters every claim's wording. **Lead**: one row in `Predictions.md` or the measuring run's
-`predictions-<run>.md`, settled in `outcomes-<run>.md` or carried in `still-missing-<run>.md`.
+claim**: enters every claim's wording. **Lead**: one row in the measuring run's `predictions-<run>.md`,
+settled in `outcomes-<run>.md` or carried under a fork's `## Carried`.
 **Domain choice**: the operator's decision, with evidence. **Dropped**: listed with the question it
 failed, so the count of ideas stays honest.
 

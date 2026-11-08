@@ -198,7 +198,7 @@ interface SessionFlags {
 }
 
 /** The campaign's two reviewers, as a command seats them. */
-type Reviewers = ReturnType<Campaign["reviewers"]>;
+export type Reviewers = ReturnType<Campaign["reviewers"]>;
 /** A report's tallied task versions and the lists of those it left out (`accounted`). */
 type Apart = "versions" | "aside" | "short" | "disputed" | "withdrawn";
 

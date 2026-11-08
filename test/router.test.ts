@@ -532,6 +532,8 @@ describe.skipIf(realRsync === null)("the connections to a host", () => {
     fresh();
     expect(run(["test"], { RUN_REMOTE: "m1" }).status).toBe(0);
     const first = connections();
+    // One exchange sets the slot up and reads the free space, then the sync, the task and its status.
+    expect(first).toHaveLength(4);
     expect(first.map((each) => [each.host, each.how, each.socket])).toEqual([
       ["fake-mac", "open", socket],
       ...first.slice(1).map(() => ["fake-mac", "use", socket]),
@@ -576,7 +578,7 @@ describe.skipIf(realRsync === null)("the connections to a host", () => {
   it("retries a dropped connection before the task, and starts nothing on a host that does not answer, reads no free space, or lacks room", () => {
     fresh();
     writeFileSync(join(source, "retried"), "after a dropped transfer");
-    writeFileSync(join(hostHome("fake-mac"), "flaky"), "3\n");
+    writeFileSync(join(hostHome("fake-mac"), "flaky"), "2\n");
     expect(run(["test"], { RUN_REMOTE: "m1" }).status).toBe(0);
     expect(connections().filter((each) => each.how === "dropped")).toHaveLength(1);
     expect(readFileSync(join(slot("fake-mac", 1), "retried"), "utf8")).toBe("after a dropped transfer");

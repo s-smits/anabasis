@@ -390,7 +390,7 @@ and in `.oxlintrc.json` as `"error"`, and has a fixture test. Its head comment c
 argument: the shape, its cost, what was measured and when, each exemption with the site that
 forced it, and whether it fixes and why. A rule enters only when, at every site it reports, some
 spelling passes every other rule; a rule whose remedy another rule refuses ends up switched off.
-`tools/oxlint/FIXER-DECISIONS.md` states when a rule may carry a fixer, and
-`tools/oxlint/BASELINE.md` and `SHAPE-RULESET.md` hold the measurements. Measure through
+`tools/oxlint/FIXER-DECISIONS.md` states when a rule may carry a fixer, and a rule's
+measurements go in its head comment and its commit. Measure through
 `bun run lint -c <one-rule config>`, never raw `oxlint`: a config without the type-aware option
 reports zero and says nothing.

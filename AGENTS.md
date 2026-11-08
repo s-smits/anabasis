@@ -71,7 +71,8 @@ Each change names the factor it moves. Recorded values live in `docs/plan.md`.
 - **A stricter step against a faster climb**: 2 solves at 0.02 is the balance; an A/A step means the
   level is loose for the noise.
 - **The objective against chance**: once validity saturates, the noisier objective decides; say
-  which measure carried a step.
+  which measure carried a step. A reference that answers each task alike ties its own A/A and reads
+  no false rate, so read the starter against itself beside it (`barLines`).
 - **Promotion against confirmation**: the host owes one starter comparison after every promotion
   and runs it at the Builder's next `compare` (`heldSince`, `src/campaign/decide.ts`). Before the
   table owes it, while too few tasks are held out since the promotion, a Builder's own comparison
@@ -88,9 +89,12 @@ Each change names the factor it moves. Recorded values live in `docs/plan.md`.
   repeat are the sign.
 - **Patience against stopping too soon**: six eligible moves without a gain end a campaign, and
   each move after is another draw at the false rate; treat a step after `--past-stop` warily.
-- **Comparability against change**: set cycles side by side only under one setting, meter and rule.
-- **Simplicity against performance**: section 2, consequence 7, never at the measurement's cost; a
-  new guard is measured against what it replaces.
+- **A promotion against the starter**: a promotion beats its parent on the tasks that chose it;
+  the starter comparison after it splits its tally by where each task came from (`starterReads`),
+  and a reference that keeps losing the tasks written since is fitting its own draws, not climbing.
+- **Deciding sooner against reporting first**: a new reading reports and moves nothing until a
+  replay over the record (`promotion-tuner`) shows which decisions it would have changed; a reading
+  that decides at once is a second decider the comparison never measured (rule 1).
 - **A strict gate against a capable model**: a refusal guesses the comparison and can end a campaign
   with nothing compared; refuse only what makes a reading dishonest or a spend certainly wasted, and
   give the rest to the seat as a note.

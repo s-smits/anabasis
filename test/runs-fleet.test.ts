@@ -485,6 +485,24 @@ describe("snapshot depth", () => {
       "campaign.ended",
     );
   });
+
+  it("brings every campaign's folders only for `fetch --whole`, and its record for a plain `fetch`", () => {
+    const remote = campaign();
+    const { made } = remote;
+    const memory = join(made.root, "remote", "distant", "memory");
+    mkdirSync(memory);
+    writeFileSync(join(memory, "note.txt"), "kept");
+    const fetched = (flags: string) =>
+      made.run(
+        `import { fetch as fetched } from "REPOSITORY/tools/runs/move.ts"; await fetched(${flags});`,
+        remote.env,
+      );
+    const copied = join(made.main, "data", "runs", "runner", "distant", "memory", "note.txt");
+    expect(fetched("[]").code).toBe(0);
+    expect(existsSync(copied)).toBe(false);
+    expect(fetched('["--whole"]').code).toBe(0);
+    expect(readFileSync(copied, "utf8")).toBe("kept");
+  });
 });
 
 describe("the fleet pulse", () => {

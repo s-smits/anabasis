@@ -173,7 +173,7 @@ const GROUPS = {
     fetch: {
       run: fetch,
       file: "move.ts",
-      says: "copy a campaign another machine holds into the archive, or every one",
+      says: "copy a campaign another machine holds into the archive, or the record of every one (--whole: the folders too)",
     },
     loadwatch: {
       run: loadwatch,

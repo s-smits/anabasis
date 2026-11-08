@@ -10,6 +10,7 @@ import { follow, hazards, targetOf } from "#skills/stack-pr/scripts/follow.ts";
 import { pairLines } from "#skills/compare-systems/scripts/systems.ts";
 import { censusOf, newsOf } from "#skills/system-path-simulation/scripts/live-seat.ts";
 import {
+  keptRepublish,
   pairs,
   planConsolidation,
   pushArgs,
@@ -296,10 +297,42 @@ describe("republishing a consolidated stack", () => {
     ]);
   });
 
+  it("finishes a republish cut short after its push from its record, detaching and pushing nothing again", () => {
+    // The push above went through; GitHub still shows the old heads and bases when the run is cut.
+    const plan = planConsolidation(co, pulls, heads, absorbed, "main");
+    const asked: string[] = [];
+    const answer = (args: readonly string[]): string => {
+      asked.push(args.join(" "));
+      return args[0] === "api" ? "[]" : "";
+    };
+    expect(() =>
+      republish(co, plan, "no-verify", (args) => {
+        if (args.join(" ") === "pr edit 2 --base a") throw new Error("cut short");
+        return answer(args);
+      }),
+    ).toThrow("cut short");
+    expect(asked).toStrictEqual(["api repos/{owner}/{repo}/stacks", "pr edit 1 --base main"]);
+    const kept = keptRepublish(co);
+    expect(kept?.plan).toStrictEqual(plan);
+    asked.length = 0;
+    republish(co, kept?.plan ?? plan, kept?.verify ?? "verify", answer);
+    expect(asked).toStrictEqual([
+      "api repos/{owner}/{repo}/stacks",
+      "pr edit 1 --base main",
+      "pr edit 2 --base a",
+      `pr close 3 --comment Closed when the stack was consolidated: this change is now part of #2 at ${b1.slice(0, 9)}.`,
+      "stack link 1 2",
+    ]);
+    expect(keptRepublish(co), "the record goes once the last step is done").toBeNull();
+  });
+
   it("pushes nothing where a lease fails, and refuses a stack off main or out of order", () => {
     // GitHub still shows the old heads, but the push above moved the remote, so no branch may move.
     const plan = planConsolidation(co, pulls, pairs("head", [`1=${b0}`, `2=${c0}`]), new Map(), "main");
     expect(() => republish(co, plan, "no-verify", () => "[]")).toThrow();
+    // A refused lease leaves the record, so the operator sees it before any new plan runs.
+    expect(keptRepublish(co)?.plan).toStrictEqual(plan);
+    rmSync(join(co, ".git", "ana-republish.json"));
     expect([sha(up, "a"), sha(up, "b")]).toStrictEqual([a1, b1]);
 
     expect(() =>

@@ -7,7 +7,9 @@
  * lane and the reporting rules. An isolated lane's carries the campaigns' rows, the hard rules, the
  * deterministic rows, its own triggers, the lane and the reporting rules: it is told neither the
  * operator's question nor what any other lane was started by, because it freezes its result before
- * it reads anything that could lead it.
+ * it reads anything that could lead it. A blind lane's carries the campaigns' rows and the hard rules
+ * alone: on 8 November lane 27 was handed the orientation, row F's readings and every trigger, and
+ * said its grades were sighted.
  *
  * An investigation reads one campaign or several as equals, and each lane reads every one of them.
  * Until 21 October one campaign was under review and the others were peers that only lane 27 read
@@ -292,21 +294,22 @@ export function lanePrompt({
   climb = "",
 }: PromptParts): string {
   const clean = shared.replaceAll(/<!--[\s\S]*?-->\n?/g, "").trim();
-  const context = lane.isolated
-    ? [
-        `## ${CAMPAIGN_HEADING}`,
-        section(clean, CAMPAIGN_HEADING),
-        `## ${RULES_HEADING}`,
-        section(clean, RULES_HEADING),
-        "## What the logs hold",
-        holds(campaigns, (trigger) => trigger.lane === lane.number),
-      ]
-    : [
-        clean,
-        "## What the logs hold",
-        "The rows are the primary reviewer's and are settled. A trigger says a lane has something to read and never what the answer is.",
-        holds(campaigns, () => true),
-      ];
+  const own = ["## What the logs hold", holds(campaigns, (trigger) => trigger.lane === lane.number)];
+  const context =
+    lane.isolated || lane.blind
+      ? [
+          `## ${CAMPAIGN_HEADING}`,
+          section(clean, CAMPAIGN_HEADING),
+          `## ${RULES_HEADING}`,
+          section(clean, RULES_HEADING),
+          ...(lane.blind ? [] : own),
+        ]
+      : [
+          clean,
+          "## What the logs hold",
+          "The rows are the primary reviewer's and are settled. A trigger says a lane has something to read and never what the answer is.",
+          holds(campaigns, () => true),
+        ];
   const what = campaigns.length === 1 ? "an Anabasis campaign" : "several Anabasis campaigns";
   return [
     `# Lane ${String(lane.number)}: ${lane.title}`,

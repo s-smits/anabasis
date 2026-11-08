@@ -7,11 +7,19 @@ description: "Zip recorded Anabasis runs for handover at a chosen depth (--light
 
 ```sh
 bun run runs zip [<name> ...] --light|--medium|--verbose [--out <zip>] [--max-mb N] [--note <file>] [--from <host>]
+                 [--latest N] [--minPromotions N] [--minTime 2h]
 ```
 
 Names match by substring, as in `bun run runs pulse`, against campaigns (`.ana/d2/<name>/`), live
 solves (`.ana/live/<name>.jsonl`) and archived runs (`data/runs/<host>/<name>/`); no name takes
 every run. The command fetches matches from every configured host first and refuses if that fails.
+
+`--latest N`, `--minPromotions N` and `--minTime 2h` choose the runs instead of naming them:
+campaigns on any host, seeds and live solves left out, with at least that many `harness.promoted`
+events and at least that long from the first event to the last (`s`, `m`, `h` or `d`), the N whose
+last event is newest. Names given beside them narrow the candidates. Each record is read to choose
+and only the chosen come whole; it refuses when none passes. The default file is `latest20-<level>.zip`.
+
 Where case-sensitive names cannot be copied here, zip on the run's machine with `--from <host>`
 (`bun --env-file=.env.runs run runs zip <name> --medium --from <host>`, no `--note`). Put the zip in
 the scratchpad and deliver its path; `bun run runs move` is for continuing a campaign elsewhere.

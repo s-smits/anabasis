@@ -3,7 +3,7 @@
  * level holds each chosen run's whole log, and a level adds what the log names by digest only.
  *
  *   bun run runs zip [<name> ...] --light|--medium|--verbose [--out FILE] [--max-mb N] [--note FILE]
- *                    [--from HOST]
+ *                    [--from HOST] [--latest N] [--minPromotions N] [--minTime 2h]
  *
  *   light    the log and each launch's receipt and output, each harness a session kept
  *            (`states/<digest>/`) and the brief
@@ -21,6 +21,12 @@
  * were all given one. Light is refused over
  * 2 MB a run, any level over `--max-mb`. Unnamed, the zip is `<names>-<level>.zip` where the command
  * runs.
+ *
+ * `--latest N`, `--minPromotions N` and `--minTime 2h` choose the runs instead of naming them
+ * (`newest`): campaigns on any host, seeds and live solves left out, with at least that many
+ * `harness.promoted` events and at least that long from the first event to the last (`s`, `m`, `h`
+ * or `d`), the N whose last event is newest. Names given beside them narrow the candidates. The
+ * choice is made on each campaign's record and only the chosen come whole (`pickedAcross`).
  *
  * Never held: installed packages, caches and built bundles, a link out of the run's folder, a file
  * named like a secret. A relative link inside it is held as a link, in the group of what it names:
@@ -43,6 +49,7 @@ import {
   rmSync,
   writeFileSync,
 } from "#src/meta/filesystem.ts";
+import type { LogEvent } from "#src/kernel/log.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { tmpdir } from "#src/meta/os.ts";
@@ -56,12 +63,30 @@ import { receipts } from "./receipt.ts";
 import { hostNamed } from "./host-config.ts";
 import { quoted, rsync, sshScript } from "./host-command.ts";
 import { verbOn } from "./hosts.ts";
-import { isCampaign, logEvents, type Run, standing, wholeLines } from "./registry.ts";
-import { readableAcross } from "./snapshots.ts";
+import { HERE, isCampaign, logEvents, readable, type Run, standing, wholeLines } from "./registry.ts";
+import { readableAcross, syncRuns } from "./snapshots.ts";
 
 const LEVELS = ["light", "medium", "verbose"] as const;
 const CAMPAIGN_ENDED = "campaign.ended";
+const PROMOTED = "harness.promoted";
+const CHOOSING = ["latest", "minPromotions", "minTime"] as const;
+const SECONDS = new Map([
+  ["s", 1],
+  ["m", 60],
+  ["h", 3600],
+  ["d", 86_400],
+]);
 type Level = (typeof LEVELS)[number];
+
+/** What `--latest`, `--minPromotions` and `--minTime` ask of a run. */
+interface Choice {
+  /** At most this many, the newest first; null for every run that passes. */
+  readonly latest: number | null;
+  /** At least this many `harness.promoted` events in its log. */
+  readonly promotions: number;
+  /** At least this long from its first event to its last, in seconds. */
+  readonly seconds: number;
+}
 
 /** A run folder's groups, the first match first, each with the level that starts to hold it. A
  *  harness's `correctness-model/` is the checker wherever it lies: six of the twenty runs zipped on
@@ -290,6 +315,82 @@ export function zip(
   }
 }
 
+/** `2h`, `90m`, `45s` or `1.5d` as seconds. */
+export function secondsOf(text: string): number {
+  const found = /^(\d+(?:\.\d+)?)([smhd])$/.exec(text);
+  const per = SECONDS.get(found?.[2] ?? "");
+  if (found === null || per === undefined) {
+    throw new Error(`--minTime takes a number and one of s, m, h or d (2h, 90m), not "${text}"`);
+  }
+  return Number(found[1]) * per;
+}
+
+const countOf = (flag: string, text: string, least: number) => {
+  const count = Number(text);
+  if (!Number.isInteger(count) || count < least) {
+    throw new Error(`${flag} takes a whole number of at least ${String(least)}, not "${text}"`);
+  }
+  return count;
+};
+
+const timeOf = (event: LogEvent | undefined) => (event === undefined ? Number.NaN : Date.parse(event.at));
+
+/** The campaigns of `runs` that pass `choice`, the newest last event first. A seed or a live solve
+ *  is no campaign, and a log with no event passes nothing. Reading every archived log whole takes
+ *  4 seconds (251 logs, 2.1 GB, 8 November 2026). */
+export function newest(runs: readonly Run[], choice: Choice): Run[] {
+  const read = runs
+    .filter((run) => isCampaign(run) && run.seed !== true)
+    .map((run) => {
+      const events = logEvents(run.path);
+      const last = timeOf(events.at(-1));
+      return {
+        run,
+        last,
+        promotions: events.filter(({ kind }) => kind === PROMOTED).length,
+        seconds: (last - timeOf(events.at(0))) / 1000,
+      };
+    });
+  return read
+    .filter((one) => one.promotions >= choice.promotions && one.seconds >= choice.seconds)
+    .toSorted((a, b) => b.last - a.last)
+    .slice(0, choice.latest ?? undefined)
+    .map((one) => one.run);
+}
+
+/** The flags that choose runs, as the host is sent them, and as the `Choice` they make (null when
+ *  none is given). */
+function choiceOf(values: Partial<Record<(typeof CHOOSING)[number], string>>) {
+  const forwarded = CHOOSING.flatMap((flag) => {
+    const value = values[flag];
+    return value === undefined ? [] : [`--${flag}`, value];
+  });
+  const choice: Choice | null =
+    forwarded.length === 0
+      ? null
+      : {
+          latest: values.latest === undefined ? null : countOf("--latest", values.latest, 1),
+          promotions:
+            values.minPromotions === undefined ? 0 : countOf("--minPromotions", values.minPromotions, 0),
+          seconds: values.minTime === undefined ? 0 : secondsOf(values.minTime),
+        };
+  return { choice, forwarded };
+}
+
+/** The runs `choice` names among those `names` match on every host. Each record is read to choose,
+ *  and only the chosen come whole, by exact name: asking for none would bring every campaign. */
+async function pickedAcross(names: readonly string[], choice: Choice): Promise<Run[]> {
+  const chosen = newest(await readableAcross(names), choice).map((run) => run.name);
+  if (chosen.length === 0) throw new Error("no campaign passes --latest, --minPromotions and --minTime");
+  const refreshed = await syncRuns(chosen, { match: "exact", depth: "whole" });
+  const held = new Map(
+    readable()
+      .filter((run) => run.archived === undefined || run.archived === HERE || refreshed.includes(run.path))
+      .map((run) => [run.name, run]),
+  );
+  return chosen.flatMap((name) => held.get(name) ?? []);
+}
+
 /** `bun run runs zip`. */
 export async function zipRuns(args: readonly string[]): Promise<void> {
   const { values, positionals: names } = parseArgs({
@@ -303,17 +404,25 @@ export async function zipRuns(args: readonly string[]): Promise<void> {
       "max-mb": { type: "string" },
       note: { type: "string" },
       from: { type: "string" },
+      latest: { type: "string" },
+      minPromotions: { type: "string" },
+      minTime: { type: "string" },
     },
   });
   const levels = LEVELS.filter((level) => values[level]);
   const [level] = levels;
   if (level === undefined || levels.length > 1) {
     throw new Error(
-      "usage: bun run runs zip [<name> ...] --light|--medium|--verbose [--out FILE] [--max-mb N] [--note FILE] [--from HOST]",
+      "usage: bun run runs zip [<name> ...] --light|--medium|--verbose [--out FILE] [--max-mb N] [--note FILE] [--from HOST] [--latest N] [--minPromotions N] [--minTime 2h]",
     );
   }
   const megabytes = values["max-mb"];
-  const out = values.out ?? `${names.join("-") || "runs"}-${level}.zip`;
+  const { choice, forwarded } = choiceOf(values);
+  const stem = [
+    ...names,
+    ...(choice === null ? [] : [choice.latest === null ? "picked" : `latest${String(choice.latest)}`]),
+  ];
+  const out = values.out ?? `${stem.join("-") || "runs"}-${level}.zip`;
   if (values.from !== undefined) {
     if (values.note !== undefined) {
       throw new Error("--note is added where the zip is made: zip here, or leave it out");
@@ -326,7 +435,7 @@ export async function zipRuns(args: readonly string[]): Promise<void> {
     const mb = megabytes === undefined ? [] : ["--max-mb", megabytes];
     runTextSyncOrThrow(sshScript(host, `mkdir ${scratch}`));
     try {
-      if ((await verbOn(host, ["zip", ...names, `--${level}`, "--out", there, ...mb])) !== 0) {
+      if ((await verbOn(host, ["zip", ...names, `--${level}`, "--out", there, ...mb, ...forwarded])) !== 0) {
         throw new Error(`the zip was not made on ${host.name}`);
       }
       await rsync(`${host.ssh}:${quoted(there)}`, out);
@@ -336,11 +445,15 @@ export async function zipRuns(args: readonly string[]): Promise<void> {
     console.log(`${out}  from ${host.name}`);
     return;
   }
-  const made = zip(await readableAcross(names, "whole"), level, {
-    out,
-    maxBytes: megabytes === undefined ? null : Number(megabytes) * 1024 * 1024,
-    note: values.note ?? null,
-  });
+  const made = zip(
+    choice === null ? await readableAcross(names, "whole") : await pickedAcross(names, choice),
+    level,
+    {
+      out,
+      maxBytes: megabytes === undefined ? null : Number(megabytes) * 1024 * 1024,
+      note: values.note ?? null,
+    },
+  );
   console.log(`${made.out}  ${kilobytes(made.bytes)} · ${plural(made.runs.length, "run")} · ${level}`);
   for (const { name, here } of sizes(level, made.files)) console.log(`  ${name.padEnd(10)} ${here}`);
   console.log(`  left where it was: ${String(made.left.length)} (MANIFEST.json, \`left\`)`);

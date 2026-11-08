@@ -752,10 +752,31 @@ describe("a Builder session", () => {
       objective: { quantity: "cost", direction: "lower" },
     });
     await session(measured.request, measured, measured.walled);
-    expect(measured.sent[2]).toContain("passed 2 of 2, cost 30, 40.");
+    expect(measured.sent[2]).toContain("passed 2 of 2, the objective 30, 40.");
     const plain = await setup(steps);
     await session(plain.request, plain, plain.walled);
     expect(plain.sent[2]).toContain("passed 2 of 2.");
+  });
+
+  it("states the objective's quantity once a practice result, however many solves and harnesses it names", async () => {
+    // One jobstat run restated a quantity of about 250 characters 300 times in 32 practice results.
+    const quantity = "the summed cost of every listed item";
+    const steps = [
+      edit,
+      call("practice", { tasks: ["t-1"], under: "reference" }),
+      call("practice", { tasks: ["t-1", "t-1"] }),
+      finish,
+    ];
+    const s = await setup(steps, [], false, CHECK, {
+      ...CONTRACT,
+      objective: { quantity, direction: "lower" },
+    });
+    await session(s.request, s, s.walled);
+    const results = [...(s.sent[3] ?? "").matchAll(/"toolName":"practice","content":(.*?),"details"/g)];
+    const last = results.at(-1)?.[1] ?? "";
+    expect(last).toContain("Under the harness you started from: 1 of 2, the objective 30.");
+    expect(last).toContain("Measured the objective:");
+    expect(last.split(quantity)).toHaveLength(2);
   });
 
   it("is told an author's better answer on a released task under an objective, and nothing of a held-out one's", async () => {

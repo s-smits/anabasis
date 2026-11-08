@@ -158,12 +158,12 @@ function endingText(ending: Ending): string {
     : `fail (${ending.kind})`;
 }
 
-/** What the verifier measured of a valid practice answer, where the contract states an objective:
- *  the quantity and its value, which the Builder reads of its own practice and of nothing else. */
-function measuredText(events: readonly LogEvent[], solve: string, contract: Contract): string {
+/** What the verifier measured of a valid practice answer under an objective, which the Builder reads
+ *  of its own practice only; `name` gives the quantity in full once a result, then "the objective". */
+function measuredText(events: readonly LogEvent[], solve: string, contract: Contract, name: () => string) {
   const measure = objectiveOf(verdictsOf(events).get(solve)?.checker);
   return contract.objective !== undefined && measure !== null
-    ? ` Measured ${contract.objective.quantity}: ${String(measure)} (${contract.objective.direction} is better).`
+    ? ` Measured ${name()}: ${String(measure)} (${contract.objective.direction} is better).`
     : "";
 }
 
@@ -432,20 +432,19 @@ export function practiceLeft({ request, spent }: Bench, events: readonly LogEven
 /** What a practice line says of the harness a solve ran under, by the tool's `under`. */
 const UNDER = { harness: "", reference: " under the reference harness" } as const;
 
-/** A task's practice record under each harness `roles` names, each digest once with every role
- *  it plays, and under an objective each valid answer's measure. Until 27 October it named
- *  harness/ and the parent whatever ran, so the 129 practice calls under the reference on record
- *  (of 852, 8 to 26 October) were told nothing of its record. Until 3 November it counted passes
- *  alone: on the buffer runs from v0.9.1, 283 of 285 record clauses read "passed N of N", and the
- *  measures that told the harnesses apart lay scattered over earlier results (lane 17). Until
- *  4 November it named no author's answer (`task.feasible`): buffer592's Builder practised a task
- *  18% dearer than its author's answer, read that as nothing to gain and tuned speed. Only released
- *  tasks are practised, so no held-out measure is read here. */
+/** A task's practice record under each harness `roles` names, each digest once with all its roles,
+ *  and under an objective each valid answer's measure. Until 27 October it named harness/ and the
+ *  parent whatever ran, so 129 of 852 practice calls under the reference (8 to 26 October) were told
+ *  nothing of its record; until 3 November it counted passes alone, and 283 of 285 buffer record
+ *  clauses from v0.9.1 read "passed N of N" (lane 17); until 4 November it named no author's answer
+ *  (`task.feasible`), and buffer592's Builder read a task 18% dearer than its author's as nothing to
+ *  gain. Only released tasks are practised, so no held-out measure is read here. */
 function recordText(
   events: readonly LogEvent[],
   version: string,
   roles: readonly (readonly [string | null, string])[],
   contract: Contract,
+  name: () => string,
 ) {
   const best = contract.objective === undefined ? undefined : poolOf(events).bests.get(version);
   const named = new Map<string, string[]>();
@@ -459,9 +458,7 @@ function recordText(
       const which = `${role ?? ""}${also.length > 0 ? `, which is also ${also.join(" and ")}` : ""}`;
       const measures = kept.solves.flatMap((solve) => objectiveOf(verdicts.get(solve)?.checker) ?? []);
       const measured =
-        contract.objective === undefined || measures.length === 0
-          ? ""
-          : `, ${contract.objective.quantity} ${measures.join(", ")}`;
+        contract.objective === undefined || measures.length === 0 ? "" : `, ${name()} ${measures.join(", ")}`;
       return `${index === 0 ? "Record under" : "Under"} ${which}: ${index === 0 ? "passed " : ""}${String(kept.passed)} of ${String(kept.solves.length)}${measured}.`;
     })
     .join(" ")
@@ -554,13 +551,15 @@ export function practiceTool(bench: Bench): SeatTool {
         [under === "reference" ? (bench.opened?.harness.digest ?? null) : null, "harness/ as last practised"],
         [bench.parent, "the harness you started from"],
       ] as const;
+      const names = [request.contract.objective?.quantity ?? ""];
+      const name = () => names.shift() ?? "the objective";
       const said = solved.flat().map(({ task, solve, ending, lines }) => {
         const shown = rejectionAside(events, { id: solve, ending })
           ? "rejection set aside"
           : endingText(ending);
         return [
-          `${task.task.taskId}${UNDER[under]}: ${shown}. Solve ${solve}.${usedText(events, solve)}${measuredText(events, solve, request.contract)}`,
-          recordText(events, task.version, roles, request.contract),
+          `${task.task.taskId}${UNDER[under]}: ${shown}. Solve ${solve}.${usedText(events, solve)}${measuredText(events, solve, request.contract, name)}`,
+          recordText(events, task.version, roles, request.contract, name),
           ...lines,
         ].join("\n");
       });

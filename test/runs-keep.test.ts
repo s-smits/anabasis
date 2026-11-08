@@ -16,6 +16,7 @@ import {
   turnOf,
   turnsIn,
 } from "../tools/runs/keep.ts";
+import { stateOf } from "../tools/runs/state.ts";
 import { billsLogin, fiveHourWith, type Reading, room } from "../tools/runs/logins.ts";
 import { keepsItself, WAIT_HOURS } from "../tools/runs/manage.ts";
 import { type Receipt, writeReceipt } from "../tools/runs/receipt.ts";
@@ -40,6 +41,8 @@ const waited = (hours: number, reason = "provider") =>
 
 describe("the turn a keeper takes", () => {
   it("moves only a live provider wait past its bound and continues only interrupted runs", () => {
+    const turn = (events: readonly LogEvent[], writing: boolean, launched = 0) =>
+      turnOf(stateOf(events, { writing, kept: false }, NOW, launched), NOW, HOUR);
     for (const [events, status, expected] of [
       [[waited(2)], "open", "move"],
       [[waited(1)], "open", "watch"],
@@ -56,10 +59,26 @@ describe("the turn a keeper takes", () => {
       [[event("build.started", { session: "b-1" })], "closed", "continue"],
       [[event("campaign.ended", { ending: "environment" })], "closed", "continue"],
     ] as const) {
-      expect(turnOf(events, status, NOW, HOUR)).toBe(expected);
+      expect(turn(events, status === "open")).toBe(expected);
     }
     for (const ending of ["budget", "stop", "operator", "finished", "no-room"]) {
-      expect(turnOf([event("campaign.ended", { ending })], "closed", NOW, HOUR)).toBe("done");
+      expect(turn([event("campaign.ended", { ending })], false)).toBe("done");
+    }
+    // A wait the launch before this one recorded is not this launch's to move: the keeper that just
+    // moved the run would move it again while its new process makes its first calls.
+    expect(turn([waited(2), event("exam.call", { session: "x-1" })], true, 1)).toBe("watch");
+  });
+
+  it("leaves a run that ended on its own terms whatever other keeper lives, and keeps one a login limit cut", () => {
+    const kept = (events: readonly LogEvent[]) => stateOf(events, { writing: false, kept: true }, NOW);
+    for (const ending of ["budget", "stop", "operator", "finished", "no-room", "exam"]) {
+      const state = kept([event("campaign.ended", { ending })]);
+      expect(state).toEqual({ kind: "ended", ending });
+      expect(turnOf(state, NOW, HOUR)).toBe("done");
+    }
+    // A login's limit is waited out, so its process dies on the wait or ends on its environment.
+    for (const events of [[waited(2)], [waited(2), event("campaign.ended", { ending: "environment" })]]) {
+      expect(kept(events)).toEqual({ kind: "kept" });
     }
   });
 
@@ -210,6 +229,7 @@ describe("a keeper's looks, scripted", () => {
     const state = {
       events: log,
       open: true,
+      otherKeeper: false,
       readings: [read("3", 10), read("4", 10, 10, "allowed", 2)],
       pool: ["2", "3", "4"],
       live: nobody,
@@ -220,7 +240,7 @@ describe("a keeper's looks, scripted", () => {
     };
     const look = keeperOf("sample", async () => state.pool, WAIT_MS, {
       events: () => state.events,
-      open: () => state.open,
+      stands: (events, now) => stateOf(events, { writing: state.open, kept: state.otherKeeper }, now),
       last: () => ({ login, flags }),
       fleet: () => Promise.resolve({ live: state.live, unasked: state.unasked }),
       read: (wanted) => {
@@ -366,12 +386,15 @@ describe("a keeper's looks, scripted", () => {
     expect(state.acted).toEqual(["start none"]);
   });
 
-  it("leaves when the campaign ends on its own terms", async () => {
-    const { state, look } = scripted();
-    state.events = [event("campaign.ended", { ending: "budget" })];
-    state.open = false;
-    expect(await look(NOW)).toBe(true);
-    expect(state.acted).toEqual([]);
+  it("leaves when the campaign ends on its own terms, though a second keeper of the run lives", async () => {
+    for (const otherKeeper of [false, true]) {
+      const { state, look } = scripted();
+      state.events = [event("campaign.ended", { ending: "budget" })];
+      state.open = false;
+      state.otherKeeper = otherKeeper;
+      expect(await look(NOW)).toBe(true);
+      expect(state.acted).toEqual([]);
+    }
   });
 });
 

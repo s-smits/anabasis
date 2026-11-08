@@ -35,11 +35,10 @@
  */
 import type { LogEvent } from "#src/kernel/log.ts";
 import { mainTree } from "#src/meta/git.ts";
-import { isString } from "#src/meta/json-shape.ts";
 import { join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { providerWait } from "./diagnosis.ts";
+import { GOES_ON, type RunState, runState } from "./state.ts";
 import { payerOf } from "./live.ts";
 import {
   allowedLogins,
@@ -55,7 +54,7 @@ import {
 } from "./logins.ts";
 import type { Live } from "./live.ts";
 import { lastRun, leaveKeeper, rerun, start, WAIT_HOURS } from "./manage.ts";
-import { keepers, logEvents, processes, type Run, runNamed, writers } from "./registry.ts";
+import { keepers, logEvents, processes, type Run, runNamed } from "./registry.ts";
 import { stop } from "./stop.ts";
 
 export type Turn = "watch" | "move" | "continue" | "done";
@@ -64,7 +63,7 @@ type Env = Readonly<Record<string, string | undefined>>;
 /** What a keeper's look reads and does, which a test scripts. */
 interface Hands {
   readonly events: () => readonly LogEvent[];
-  readonly open: () => boolean;
+  readonly stands: (events: readonly LogEvent[], now: number) => RunState;
   readonly last: () => { readonly login?: string | undefined; readonly flags: readonly string[] };
   readonly fleet: () => Promise<{ live: Live[]; unasked: string[] }>;
   readonly read: typeof readLogins;
@@ -93,20 +92,15 @@ const BARREN = 3;
 export const turnsIn = (events: readonly LogEvent[]): number =>
   events.filter(({ kind, data }) => kind.endsWith(".turn") && data.stopReason !== "error").length;
 
-/** What a keeper does with a run whose log is `events` and whose process is `process`, at `now`. */
-export function turnOf(
-  events: readonly LogEvent[],
-  process: "open" | "closed",
-  now: number,
-  waitMs: number,
-): Turn {
-  const last = events.at(-1);
-  if (process === "open") {
-    const until = providerWait(events)?.data.until;
-    return isString(until) && Date.parse(until) - now > waitMs ? "move" : "watch";
+/** What a keeper does at `now` with a run that stands as `state`: it moves one waiting on a provider
+ *  for longer than `waitMs`, goes on with one nothing writes unless it ended on its own terms, and
+ *  watches the rest. */
+export function turnOf(state: RunState, now: number, waitMs: number): Turn {
+  if (state.kind === "waiting") {
+    return state.wait.for === "provider" && state.wait.until - now > waitMs ? "move" : "watch";
   }
-  if (last?.kind !== "campaign.ended") return "continue";
-  return last.data.ending === "environment" ? "continue" : "done";
+  if (state.kind === "ended") return state.ending === GOES_ON ? "continue" : "done";
+  return state.kind === "kept" || state.kind === "stopped" ? "continue" : "watch";
 }
 
 /**
@@ -181,10 +175,10 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
   let askAt = 0;
   return async (now: number): Promise<boolean> => {
     const events = hands.events();
-    const turn = turnOf(events, hands.open() ? "open" : "closed", now, waitMs);
-    if (turn === "done") {
-      const ending = events.at(-1)?.data.ending;
-      hands.say(`${name} ended on ${isString(ending) ? ending : "?"}: kept no longer`);
+    const state = hands.stands(events, now);
+    const turn = turnOf(state, now, waitMs);
+    if (turn === "done" && state.kind === "ended") {
+      hands.say(`${name} ended on ${state.ending}: kept no longer`);
       return true;
     }
     if (turn === "watch") {
@@ -194,9 +188,8 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
     }
     const { login: current, flags } = hands.last();
     const logins = await pool();
-    const until = providerWait(events)?.data.until;
-    if (turn === "move" && current !== undefined && isString(until)) {
-      spentUntil.set(current, Date.parse(until));
+    if (turn === "move" && current !== undefined && state.kind === "waiting") {
+      spentUntil.set(current, state.wait.until);
     }
     for (const [login, at] of spentUntil) {
       if (at <= now) spentUntil.delete(login);
@@ -279,7 +272,7 @@ export function poolOf(file: string, env: Env): () => Promise<readonly string[]>
 async function keepGoing(run: Run, pool: () => Promise<readonly string[]>, waitMs: number): Promise<void> {
   const look = keeperOf(run.name, pool, waitMs, {
     events: () => logEvents(run.path),
-    open: () => writers(run, processes()).length > 0,
+    stands: (events, now) => runState(run, events, processes(), now),
     last: () => lastRun(run),
     fleet: () => liveEverywhere("configured"),
     read: readNotClosed,

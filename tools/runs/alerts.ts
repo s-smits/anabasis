@@ -30,17 +30,18 @@ import { plural } from "#src/meta/text.ts";
 import { asked } from "./hosts.ts";
 import { keeperActed } from "./keep.ts";
 import { keepsItself } from "./manage.ts";
-import { onStatus, pulse, remember } from "./pulse.ts";
+import { runState } from "./state.ts";
+import { onStatus, remember } from "./pulse.ts";
 import { lastLaunch, unlaunchedSeed } from "./receipt.ts";
 import {
   HERE,
   isCampaign,
-  keepers,
   keptFile,
   logEvents,
   processes,
   type Run,
   runs,
+  type Running,
   writers,
 } from "./registry.ts";
 
@@ -125,20 +126,22 @@ function promotionsOf(events: readonly LogEvent[]): Promotion[] {
     });
 }
 
-/** The row of `run`, whose log is read at `now`. */
-function rowOf(run: Run, open: boolean, now: number): Row {
+/** The row of `run`, whose log is read at `now` among the processes `running`. */
+function rowOf(run: Run, running: readonly Running[], now: number): Row {
   const events = logEvents(run.path);
   const last = events.at(-1);
-  const look = pulse(run, events, open ? "open" : "closed", undefined, { now, alarms: () => null });
+  const state = runState(run, events, running, now);
+  // A state written on carries whether a keeper lives beside the writer.
+  const writer = "kept" in state;
   const file = keptFile(run);
   return {
     name: run.name,
     promotions: promotionsOf(events),
-    ending: last?.kind === "campaign.ended" && isString(last.data.ending) ? last.data.ending : null,
-    writer: open,
-    keeper: keepers(run.name).length > 0,
+    ending: state.kind === "ended" ? state.ending : null,
+    writer,
+    keeper: writer ? state.kept : state.kind === "kept",
     owed: keepsItself(runtimeProcess.env, lastLaunch(run.path)?.login),
-    quiet: look.seen.quiet,
+    quiet: state.kind === "quiet",
     lastAt: last?.at ?? null,
     kept: existsSync(file) ? readFileSync(file, "utf8").split("\n").filter(keeperActed) : [],
   };
@@ -158,7 +161,7 @@ function rowsHere(now: number): HostRows {
   const held = runs().filter(isCampaign);
   const rows = held.flatMap((run) => {
     const open = writers(run, running).length > 0;
-    return onAlerts(run, open, now - statSync(run.path).mtimeMs) ? [rowOf(run, open, now)] : [];
+    return onAlerts(run, open, now - statSync(run.path).mtimeMs) ? [rowOf(run, running, now)] : [];
   });
   return { rows, held: held.map(({ name }) => name) };
 }

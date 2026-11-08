@@ -64,7 +64,7 @@ import { plural } from "#src/meta/text.ts";
 import { asked, hosts } from "./hosts.ts";
 import { hostsOf } from "./host-config.ts";
 import { lastLaunch, unlaunchedSeed } from "./receipt.ts";
-import { runReason } from "./diagnosis.ts";
+import { launchedIn, runReason, runState, stateOf } from "./state.ts";
 import {
   type Alarm,
   alarmsMoved,
@@ -126,7 +126,6 @@ interface Memory {
   readonly acks?: Readonly<Record<string, string>>;
 }
 
-const QUIET_MS = 20 * 60_000;
 /** A closed run `status` shows without `--all`: one whose log changed this recently. */
 const HOUR_MS = 60 * 60_000;
 const DAY_MS = 24 * HOUR_MS;
@@ -384,10 +383,7 @@ function triggersSaid(
  */
 function standing(run: Run, log: readonly LogEvent[]) {
   const solves = solvesIn(log);
-  const kept = lastLaunch(run.path);
-  const launched =
-    kept === undefined ? 0 : log.findIndex((event) => Date.parse(event.at) >= Date.parse(kept.at));
-  const begun = launched === -1 ? log.length : launched;
+  const begun = launchedIn(run, log);
   const opened = log.findLastIndex(({ kind }) => STARTS.has(kind));
   const solved = log.findLastIndex(({ kind }) => kind === "solve.started");
   const start = Math.max(0, opened);
@@ -397,13 +393,8 @@ function standing(run: Run, log: readonly LogEvent[]) {
   const led = log.some(({ kind }) => kind === "campaign.opened");
   const end: EventKind = led ? ENDED : log[start]?.kind === "exam.started" ? "exam.finished" : run.end;
   const running = solves.filter(({ finished, started }) => finished === null && started >= begun).length;
-  const until = log
-    .slice(begun)
-    .findLast(({ kind, data }) => kind === "campaign.waited" && isString(data.until))?.data.until;
-  const last = log.at(-1);
-  const since = Math.max(Date.parse(last?.at ?? ""), isString(until) ? Date.parse(until) : 0);
-  const ended = last?.kind === ENDED || (running === 0 && count(work, end) > 0);
-  return { solves, start, work, end, running, since, ended };
+  const ended = log.at(-1)?.kind === ENDED || (running === 0 && count(work, end) > 0);
+  return { solves, start, work, end, running, begun, ended };
 }
 
 /** Where a run stands: reported, closed, inside a Builder or Examiner session, or solving. A report
@@ -485,8 +476,9 @@ export function pulse(
     const which = [...new Set(others.map((row) => `${row.served} for ${row.asked}`))];
     lines.push(`⚠ ${plural(served, "turn")} served by another model: ${which.join("; ")}`);
   }
-  const quiet = open && log.length > 0 && now - stand.since > QUIET_MS;
-  if (quiet && before?.quiet !== true) lines.push(`⚠ quiet for ${minutes(now - stand.since)}`);
+  const state = stateOf(log, { writing: open, kept: false }, now, stand.begun);
+  const quiet = log.length > 0 && state.kind === "quiet";
+  if (quiet && before?.quiet !== true) lines.push(`⚠ quiet for ${minutes(now - state.since)}`);
   if (!quiet && before?.quiet === true) lines.push("· not quiet any more");
   if (before?.open === true && !open && !stand.ended) lines.push(`⚠ the process is gone before ${stand.end}`);
   const triggers = triggersSaid(before, { milestone: milestone ?? fresh.some(isMilestone), found: alarms() });
@@ -607,11 +599,11 @@ async function look(
   const said: string[] = [];
   let spare = PER_LOOK;
   for (const each of chosen) {
-    const { run, open, before } = each;
+    const { run, before } = each;
     const one = runLook(each, { now, store, state, spare });
     spare -= one.readers;
     if (before === undefined || one.said.length > 0) {
-      const reasons = await runReason(run, one.events, open ? "open" : "closed");
+      const reasons = await runReason(run, runState(run, one.events, running, now));
       said.push(one.status, ...[...one.said, ...reasons].map((line) => `  ${line}`));
     }
     logs[run.path] = one.seen;

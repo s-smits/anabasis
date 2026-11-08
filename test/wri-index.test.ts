@@ -56,6 +56,9 @@ const REPORTS = [
   "- lane 1: ok, finding, 2 findings, at `lanes/01-report.md`",
   "- lane 2: ok, no finding, 0 findings, at `lanes/02-report.md`",
   "- lane 3: missing, at `lanes/03-report.md`",
+  // A lane left unread, which until 9 November the index counted as one read with no finding.
+  "- lane 4: ok, omitted although its trigger fired, 0 findings, at `lanes/04-report.md`",
+  "- lane 5: ok, could not read, 0 findings, at `lanes/05-report.md`",
   "",
 ].join("\n");
 
@@ -214,7 +217,7 @@ describe("the investigation index", () => {
       "confirmed 1, plausible 1, refuted 1; predictions falsified 1, held 1, unreached 1",
     );
     expect(full).toContain("buffer: `buffer-fresh-opus-a`; esp32: `esp32-fresh-opus-b`");
-    expect(full).toContain("synthesis, vetting, reports, 3 lanes; read whole");
+    expect(full).toContain("synthesis, vetting, reports, 5 lanes; read whole");
   });
 
   it("reads an older folder as far as it goes and never throws", () => {
@@ -237,7 +240,7 @@ describe("the investigation index", () => {
     expect(line("2026-10-15-multipromotion")).toContain("| title: Repeated promotions held under the cap. |");
     expect(line("2026-10-15-multipromotion")).toContain("review-v2; read in part");
     expect(line("20261101-gate-validity-b")).toContain("| title: A/B synthesis |");
-    expect(line("2026-10-21-final-r5")).toContain("reports, 3 lanes; lanes collected, not synthesised");
+    expect(line("2026-10-21-final-r5")).toContain("reports, 5 lanes; lanes collected, not synthesised");
     expect(line("labels-2026-11-03")).toContain("1 other subfolder; no synthesis or vetting");
     for (const hidden of [
       "REVIEW-SECRET",
@@ -295,7 +298,7 @@ describe("the investigation index", () => {
     const buffer = groups.slice(groups.indexOf("### buffer"), groups.indexOf("### esp32"));
     expect(buffer).toContain("### buffer (2 investigations)");
     expect(buffer.indexOf("2026-10-20-no-vetting")).toBeLessThan(buffer.indexOf("2026-11-03-full"));
-    expect(buffer).toContain("lanes: 1 with findings, 1 with none, 1 missing or invalid");
+    expect(buffer).toContain("lanes: 1 with findings, 1 with none, 2 unread, 1 missing or invalid");
     expect(groups).toContain("### truss (1 investigation)");
     expect(groups).not.toContain("lanes/01-report.md");
   });

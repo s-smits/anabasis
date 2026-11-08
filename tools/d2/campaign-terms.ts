@@ -250,8 +250,14 @@ export function opened(
   const reserve = values.reserve ?? String(was?.budget?.reserve ?? DEFAULTS.reserve);
   // The level is pinned whether or not a command named it, to the one the campaign's comparisons
   // began under, as the setting is held to its first solves (`firstRecord`): a tree whose default
-  // moved would otherwise change the test of a campaign run on from it.
+  // moved would otherwise change the test of a campaign run on from it. A command that names another
+  // is refused before anything is written (rule 4), since it would move every later comparison's test.
   const began = events.findLast(({ kind, data }) => kind === STARTED && isNumber(data.level))?.data.level;
+  if (isNumber(began) && values.level !== undefined && Number(values.level) !== began) {
+    throw new Error(
+      `--level ${values.level}: the campaign's comparisons began at level ${String(began)}, and a term is never moved after a result. Drop the flag; another level is another campaign`,
+    );
+  }
   const named: Omit<Opening, "project"> = {
     budget: dollars === undefined ? null : capRead(String(dollars), reserve),
     patience: values.patience === undefined ? (was?.patience ?? PATIENCE) : Number(values.patience),
@@ -264,11 +270,12 @@ export function opened(
     prompt,
     solver: prompt === null ? null : solver,
     terms: {
-      level: isNumber(began) ? String(began) : COMPARISON_OPTIONS.level.default,
+      level: COMPARISON_OPTIONS.level.default,
       ...was?.terms,
       ...Object.fromEntries(
         TERMS.flatMap((term) => (values[term] === undefined ? [] : [[term, values[term]]])),
       ),
+      ...keyIfDefined("level", isNumber(began) ? String(began) : undefined),
     },
   };
   if (seats === "paid" && named.seats.reviewer === null) {

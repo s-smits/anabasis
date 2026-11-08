@@ -994,6 +994,16 @@ describe("a campaign run by its log", () => {
       "--solve-minutes 30 names another setting than the campaign's, which was recorded as --solve-minutes 8",
     );
     expect(of(name, OPENED)).toHaveLength(3);
+    // Once a comparison has begun, another level is refused before anything is written (rule 4),
+    // and the level it began at continues the campaign as it stands.
+    const before = read(join(REPO, ".ana", "d2", name, LOG_FILE)).length;
+    await expect(harnessBuilder(["--name", name, "--level", "0.05", "--moves", "0"], seats)).rejects.toThrow(
+      "--level 0.05: the campaign's comparisons began at level 0.02",
+    );
+    expect(read(join(REPO, ".ana", "d2", name, LOG_FILE))).toHaveLength(before);
+    await harnessBuilder(["--name", name, "--level", "0.02", "--moves", "0"], seats);
+    expect(of(name, OPENED)).toHaveLength(3);
+    expect(of(name, OPENED).at(-1)).toMatchObject({ terms: { level: "0.02" } });
   });
 
   it("hands over a harness's links as links, and leaves nothing where the copy is not the harness", async () => {

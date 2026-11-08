@@ -9,7 +9,9 @@ expands the second half of `AGENTS.md` section 6; the commands are in `campaign-
 reserve, both patiences (`--patience`), the seats, and the move terms as last named (`TERMS`,
 `src/campaign/opening.ts`): level, conversation minutes and turns, practice, Examiner tasks and the
 promotion cap. A later command inherits them unless a flag records a replacement; terms an older
-opening kept that nothing reads are read past.
+opening kept that nothing reads are read past. The level is the exception: once a comparison has
+begun it is pinned to the level that comparison began at, and a command naming another is refused
+before it writes anything (rule 4).
 
 **The project** (`--project`, required, fixed by the opening: `projectOf`) groups campaigns for the
 operator's page and changes no decision or message.

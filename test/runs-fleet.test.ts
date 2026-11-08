@@ -2,20 +2,17 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { append } from "../src/kernel/log.ts";
 import {
-  closeSync,
   existsSync,
-  fstatSync,
-  lockExclusiveSync,
   mkdirSync,
-  openSync,
+  readdirSync,
   readFileSync,
   rmSync,
   symlinkSync,
-  statSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
+import { held } from "../tools/runs/holder.ts";
 import { quoted, treeBun } from "../tools/runs/host-command.ts";
 
 import { fakeHosts } from "./helpers/fake-hosts.ts";
@@ -282,21 +279,30 @@ describe("campaign snapshots", () => {
     expect(readFileSync(copied, "utf8")).toBe(whole);
   });
 
-  it("waits for a live descriptor holder despite a stale PID, then takes over the lock a dead fetch left", async () => {
+  it("waits for a live fetch however old its lock, then takes over and reclaims what a killed one left", async () => {
     const remote = campaign();
     const { made } = remote;
-    const lock = join(made.main, "data", "runs", "runner", ".fetch-distant.lock");
-    mkdirSync(lock, { recursive: true });
-    writeFileSync(join(lock, "pid"), String(Bun.spawnSync(["true"]).pid));
+    const archive = join(made.main, "data", "runs", "runner");
+    const lock = join(archive, ".fetch-distant.lock");
+    const copied = join(archive, "distant", "log.jsonl");
+    // A whole refresh killed between setting the copy aside and publishing the new one, and a record
+    // refresh after it that keeps what that copy held.
+    mkdirSync(join(lock, "stage", "previous"), { recursive: true });
+    writeFileSync(join(lock, "stage", "previous", "artefact.txt"), "kept");
+    mkdirSync(join(lock, "stage", "campaign"), { recursive: true });
+    const holder = Bun.spawn([
+      process.execPath,
+      "-e",
+      `import { hold } from ${JSON.stringify(join(import.meta.dir, "..", "tools", "runs", "holder.ts"))}; hold(${JSON.stringify(join(lock, "holder"))}); await Bun.sleep(30000);`,
+    ]);
+    const holding = performance.now() + 10_000;
+    while (!held(join(lock, "holder")) && performance.now() < holding) await Bun.sleep(20);
     const ready = join(made.root, "reader-ready");
     const script = join(made.root, "reader.ts");
-    const copied = join(made.main, "data", "runs", "runner", "distant", "log.jsonl");
     writeFileSync(
       script,
-      `await Bun.write(${JSON.stringify(ready)}, "ready");\n${sync.replaceAll("REPOSITORY/", `${join(import.meta.dir, "..")}/`)}`,
+      `await Bun.write(${JSON.stringify(ready)}, "ready");\n${sync.replaceAll("REPOSITORY/", `${join(import.meta.dir, "..")}/`).replace('{match:"exact"}', '{match:"exact",depth:"record"}')}`,
     );
-    const fd = openSync(lock, "r");
-    lockExclusiveSync(fd);
     const reader = Bun.spawn([process.execPath, script], {
       cwd: made.main,
       env: { ...made.env, ...remote.env },
@@ -307,17 +313,17 @@ describe("campaign snapshots", () => {
       const started = performance.now() + 5000;
       while (!existsSync(ready) && performance.now() < started) await Bun.sleep(5);
       expect(existsSync(ready)).toBe(true);
-      const deadline = performance.now() + 1500;
-      while (!existsSync(copied) && performance.now() < deadline) await Bun.sleep(5);
+      await Bun.sleep(1500);
       expect(existsSync(copied)).toBe(false);
-      expect(existsSync(lock) && statSync(lock).ino === fstatSync(fd).ino).toBe(true);
     } finally {
-      closeSync(fd);
+      holder.kill("SIGKILL");
       const code = await reader.exited;
       expect({ code, err: await new Response(reader.stderr).text() }).toEqual({ code: 0, err: "" });
     }
     expect(readFileSync(copied, "utf8")).toBe(readFileSync(remote.log, "utf8"));
-    expect(existsSync(lock)).toBe(true);
+    expect(readFileSync(join(archive, "distant", "artefact.txt"), "utf8")).toBe("kept");
+    expect(readdirSync(archive).toSorted()).toEqual([".fetch-distant.lock", "distant"]);
+    expect(readdirSync(lock)).toEqual([]);
   });
 
   it("serialises refreshes in one process and releases a failed refresh", () => {

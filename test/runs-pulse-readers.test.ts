@@ -15,7 +15,7 @@ import {
 } from "../src/meta/filesystem.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
-import { tmpdir } from "../src/meta/os.ts";
+import { hostname, tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { capturedExecPath, capturedSpawn } from "../src/meta/process.ts";
 import { type CommandWall, solveDirs, walledBase } from "../src/tools/command.ts";
@@ -356,7 +356,21 @@ describe("what a pass costs a host", () => {
     expect(passRunning(store)).toBe(false);
   }, 60_000);
 
-  it("lets one pass hold a host, and frees the lock of one that died", async () => {
+  it("waits for a live pass of an older tree, which holds its lock as a file naming its pid", async () => {
+    const store = join(scratch(), "store");
+    mkdirSync(store);
+    writeFileSync(join(store, "pass.lock"), String(process.pid));
+    expect(passRunning(store)).toBe(true);
+    expect(takeLock(store)).toBe(false);
+    const gone = capturedSpawn(["true"]);
+    await gone.exited;
+    writeFileSync(join(store, "pass.lock"), String(gone.pid));
+    expect(passRunning(store)).toBe(false);
+    expect(takeLock(store)).toBe(true);
+    dropLock(store);
+  });
+
+  it("lets one pass hold a host however long it reads, and frees the lock of one that died", async () => {
     const store = join(scratch(), "store");
     expect(takeLock(store)).toBe(true);
     expect(takeLock(store)).toBe(false);
@@ -365,12 +379,13 @@ describe("what a pass costs a host", () => {
     expect(passRunning(store)).toBe(false);
     const gone = capturedSpawn(["true"]);
     await gone.exited;
-    writeFileSync(join(store, "pass.lock"), String(gone.pid));
+    writeFileSync(
+      join(store, "pass.lock"),
+      JSON.stringify({ pid: gone.pid, host: hostname(), at: Date.now() }),
+    );
     expect(passRunning(store)).toBe(false);
     expect(takeLock(store)).toBe(true);
     dropLock(store);
-    writeFileSync(join(store, "pass.lock"), String(process.pid));
-    expect(passRunning(store, Date.now() + 120_000)).toBe(false);
   });
 
   /** A tree whose `tools/wri/pass.ts` stands in for the real one, recording each start. */
@@ -507,7 +522,7 @@ describe("a look that was cut", () => {
     event("comparison.reported", { reading: "no-step" });
     const before = readFileSync(state, "utf8");
     // A running pass holds the look in its wait, where the hook's kill finds it.
-    writeFileSync(join(store, "pass.lock"), String(process.pid));
+    expect(takeLock(store)).toBe(true);
     const cut = capturedSpawn(
       [capturedExecPath, join(import.meta.dir, "..", CLI), "pulse", "--state", state, "the-run"],
       {

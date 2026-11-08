@@ -38,7 +38,7 @@ import {
 import { failWrongPasses, wrongPasses, wrongPassesIn } from "./history.ts";
 import type { LogEvent } from "./log.ts";
 import { providerFailed, windowEnded } from "./solve.ts";
-import { passed, ranUnder, rejected, rulingsOf } from "./solves.ts";
+import { passed, ranUnder, rejected, standsOf } from "./solves.ts";
 import { RUNS, spreadOf } from "./size.ts";
 import { taskSets } from "./task.ts";
 import { tracesIn } from "./trace.ts";
@@ -423,7 +423,7 @@ function tallyReports(
   { cut, rejectedIn }: { cut: ReadonlySet<string>; rejectedIn: ReadonlyMap<string, readonly string[]> },
 ): void {
   const reference = referenceOf(events);
-  const rulings = rulingsOf(events);
+  const stands = standsOf(events);
   let order = 0;
   for (const report of lastReports(events, true)) {
     const { index, session, data } = report;
@@ -448,11 +448,6 @@ function tallyReports(
         room: side !== null && gapAgainst(pair, side, [of(task).best]),
       });
     }
-    const labels = asRecord(asRecord(data.settled)?.labels);
-    const standing = (solve: string) => {
-      const label = labels?.[solve];
-      return isString(label) ? label : rulings.get(solve);
-    };
     for (const task of Array.isArray(data.aside) ? data.aside.filter(isString) : []) {
       order += 1;
       const record = of(task);
@@ -460,7 +455,7 @@ function tallyReports(
       record.asideOrder = Math.min(record.asideOrder, order);
       const harness = side === null ? undefined : data[side];
       const own = isString(harness) ? (rejectedIn.get(cutIn(session, task, harness)) ?? []) : [];
-      if (own.some((solve) => standing(solve) !== "earned")) record.doubtedAt = index;
+      if (own.some((solve) => stands.get(solve) !== "earned")) record.doubtedAt = index;
     }
   }
 }

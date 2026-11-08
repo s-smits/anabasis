@@ -203,10 +203,35 @@ export function rulingsOf(events: readonly LogEvent[]): Map<string, string | nul
   );
 }
 
-/** A rejection is established only when its last finding (`rulingsOf`) ruled it earned; other
- *  endings need no ruling. A comparison's `rejections` reads the same finding. */
+/** A person's label of each rejected answer, by its solve, as its comparison's last report holds it
+ *  once settled (`settleReading`, `src/campaign/round.ts`). Only a comparison's own rejections are
+ *  labelled, so no practice solve carries one. */
+export function labelsIn(events: readonly LogEvent[]): Map<string, string> {
+  const last = new Map(
+    events.flatMap(({ kind, data }) =>
+      kind === "comparison.reported" && isString(data.session) ? [[data.session, data] as const] : [],
+    ),
+  );
+  return new Map(
+    [...last.values()].flatMap((data) =>
+      Object.entries(asRecord(asRecord(data.settled)?.labels) ?? {}).flatMap(([solve, label]) =>
+        isString(label) ? [[solve, label] as const] : [],
+      ),
+    ),
+  );
+}
+
+/** What stands of each ruled or labelled rejection, by its solve: a person's label over the
+ *  Referee's last ruling (rule 8). Every reader of a rejection's standing reads it here; the
+ *  Referee's own ruling, which `agreement` sets against the labels, is `rulingsOf`'s. */
+export function standsOf(events: readonly LogEvent[]): Map<string, string | null> {
+  return new Map([...rulingsOf(events), ...labelsIn(events)]);
+}
+
+/** A rejection is established only where what stands of it (`standsOf`) is earned; other endings
+ *  need no ruling. */
 export function rejectionAside(events: readonly LogEvent[], solve: Pick<Solve, "id" | "ending">): boolean {
-  return rejected(solve.ending) && rulingsOf(events).get(solve.id) !== "earned";
+  return rejected(solve.ending) && standsOf(events).get(solve.id) !== "earned";
 }
 
 /** The last verdict a log holds for each solve, by the solve. */

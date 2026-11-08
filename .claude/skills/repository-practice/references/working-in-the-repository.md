@@ -52,8 +52,9 @@ Read `stack-pr` before you branch and before you push. Its rules, briefly:
 - `--no-verify` only on the operator's word. A stack lands only through `land -- <top> --merge`,
   which GitHub's ruleset on `main` enforces.
 - A native stack is `gh stack link <pr> <pr> ...`, bottom to top, naming the whole chain, since the
-  short form appends above GitHub's top, which may not be the chain's. `link` never reorders; mend
-  an order with `gh stack unstack` and link again. `stack.ts` lists, and `land` refuses, a head that
+  short form appends above GitHub's top, which may not be the chain's. `land --sanitize` and
+  `--merge` run that link themselves where the stack holds only the chain's lower part or none of
+  it. `link` never reorders; mend an order with `gh stack unstack <stack>` and link again. `stack.ts` lists, and `land` refuses, a head that
   holds another open pull request's without standing on it (`tools/runtime/doubled.ts`).
 
 Pull request numbers up to #235 from before v2 moved here are `anabasis-v2#N`. A pull request names

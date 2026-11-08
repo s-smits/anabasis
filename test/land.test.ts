@@ -7,7 +7,8 @@
  * says otherwise, or ANA_FAKE_CI_AFTER names a file only a dispatch creates. ANA_FAKE_CI_STATES
  * names a file whose lines answer successive run reads, the last repeating: `none` lists no run and
  * `down` fails as a 502 would. ANA_FAKE_STACK is the open native stack the top is in, as its number
- * and its members, `down` failing the read; by default stack 7 of #11 and #12. The top's merge is
+ * and its members, `down` failing the read; by default stack 7 of #11 and #12. Once `gh stack link`
+ * has been called, a read answers ANA_FAKE_LINKED where it is set. The top's merge is
  * asked for under the id ANA_FAKE_STACK_UUID and ends as ANA_FAKE_STACK_END says, `refused`
  * refusing the asking, with ANA_FAKE_STACK_SHA as its commit, by default the top's.
  * ANA_FAKE_SHOWN names a file of the statuses GitHub shows already, one `sha context state
@@ -72,7 +73,9 @@ fi ;;
   printf 'pending\t%s\t\t\n' "$ANA_FAKE_STACK_UUID" ;;
 "api repos/{owner}/{repo}/pulls/"*"/merge-async/"*) printf '%s\t\t%s\t%s\n' "$ANA_FAKE_STACK_END" "$ANA_FAKE_STACK_SHA" "$ANA_FAKE_STACK_END" ;;
 "api repos/{owner}/{repo}/stacks"*) [ "$ANA_FAKE_STACK" != down ] || { echo "gh: Bad Gateway (HTTP 502)" >&2; exit 1; }
-  printf '%s\n' "$ANA_FAKE_STACK" ;;
+  if [ -n "$ANA_FAKE_LINKED" ] && grep -q '^stack link' "$ANA_GH_LOG"; then printf '%s\n' "$ANA_FAKE_LINKED"
+  else printf '%s\n' "$ANA_FAKE_STACK"; fi ;;
+"stack link"*) ;;
 "api -X"*) case "$*" in *"state=success -f context=mergeable"*)
   [ -z "$ANA_FAKE_PULLS_NEXT" ] || touch "$ANA_FAKE_PULLS_NEXT.read" ;; esac ;;
 "api repos/"*) echo true ;;
@@ -477,21 +480,61 @@ describe("bun run land", () => {
     );
   });
 
-  it("refuses a landing of several pull requests in no stack, or whose stack GitHub did not say, before gating", () => {
-    for (const [listed, why] of [
-      [
-        "",
-        "#11, #12 are in no stack on GitHub. Make them one, bottom to top, with gh stack link 11 12, and land again.",
-      ],
-      ["down", "GitHub did not say which stack #12 is in: gh: Bad Gateway (HTTP 502) Land again."],
-    ] as const) {
-      writeFileSync(ghLog, "");
-      const result = runLand(["12", "--merge"], { ANA_FAKE_STACK: listed });
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain(`land: ${why} Nothing was merged.`);
-      expect(gatesRun(gateLog)).toEqual([]);
-      expect(writes()).toEqual([]);
-    }
+  it("refuses a landing whose stack GitHub did not say, before gating", () => {
+    const result = runLand(["12", "--merge"], { ANA_FAKE_STACK: "down" });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "land: GitHub did not say which stack #11 is in: gh: Bad Gateway (HTTP 502) Land again. Nothing was merged.",
+    );
+    expect(gatesRun(gateLog)).toEqual([]);
+    expect(writes()).toEqual([]);
+  });
+
+  /** #15 opened on #12, above GitHub's top of stack 7. */
+  const opened = { ANA_FAKE_PULLS: stack(upper, pull(15, "c", "b", stacked)), ANA_FAKE_STACK_SHA: stacked };
+  const linkCalls = (): string[] => logLines(ghLog).filter((line) => line.startsWith("stack link"));
+
+  it("links a pull request opened above GitHub's top into the stack, naming the whole chain, before gating", () => {
+    const result = runLand(["15", "--sanitize"], { ...opened, ANA_FAKE_LINKED: "7 11,12,15" });
+    expect(result.status).toBe(0);
+    expect(linkCalls()).toEqual(["stack link 11 12 15"]);
+    expect(result.stdout).toContain(
+      "land: linked #11, #12, #15 into one stack on GitHub: gh stack link 11 12 15.",
+    );
+    const lines = logLines(ghLog);
+    expect(lines.indexOf("stack link 11 12 15")).toBeLessThan(
+      lines.findIndex((line) => line.includes("/statuses/")),
+    );
+    expect(gatesRun(gateLog)).toContain(`${stacked} suite`);
+  });
+
+  it("links a landing of several pull requests in no stack, and merges it as one", () => {
+    const result = runLand(["12", "--merge"], { ANA_FAKE_STACK: "", ANA_FAKE_LINKED: "7 11,12" });
+    expect(result.status).toBe(0);
+    expect(linkCalls()).toEqual(["stack link 11 12"]);
+    expect(result.stdout).toContain("land: #11, #12 merged into main as stack 7");
+  });
+
+  it("refuses a stack that holds the chain in another order, naming unstack then link, and links nothing", () => {
+    const result = runLand(["12", "--sanitize"], { ANA_FAKE_STACK: "7 12,11", ANA_FAKE_LINKED: "7 11,12" });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "land: GitHub's stack 7 holds #12, #11, and the chain of bases up to #12 holds #11, #12. A link never " +
+        "reorders a stack: run gh stack unstack 7, then gh stack link 11 12, and land again. Nothing was merged.",
+    );
+    expect(linkCalls()).toEqual([]);
+    expect(gatesRun(gateLog)).toEqual([]);
+    expect(writes()).toEqual([]);
+  });
+
+  it("without a flag says the link it would run, and links nothing", () => {
+    const result = runLand(["15"], opened);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(
+      "land: #11, #12, #15 are not one stack on GitHub; --sanitize or --merge runs gh stack link 11 12 15.",
+    );
+    expect(linkCalls()).toEqual([]);
+    expect(writes()).toEqual([]);
   });
 
   const stackMerge = (end: string, more: Record<string, string> = {}) =>
@@ -598,8 +641,8 @@ describe("bun run land", () => {
     const result = runLand(["12", "--merge"], { ANA_FAKE_STACK: "7 13,12" });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
-      "land: GitHub's stack 7 holds #13, #12, and the chain of bases up to #12 holds #11, #12. " +
-        "Make them agree, and land again. Nothing was merged.",
+      "land: GitHub's stack 7 holds #13, #12, and the chain of bases up to #12 holds #11, #12. A link never " +
+        "reorders a stack: run gh stack unstack 7, then gh stack link 11 12, and land again. Nothing was merged.",
     );
     expect(statuses("ana/stack-gate")).toEqual([]);
   });

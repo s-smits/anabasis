@@ -234,8 +234,12 @@ reads "gave no verdict"; land again.
 
 `--merge` dispatches `ci.yml` where none ran, waits, and on failure says whether to fix a commit or
 `gh run rerun <id>`; then it posts `ana/stack-gate` and merges the native stack all or nothing,
-pinned to the checked head (a landing outside a native stack is refused with its `gh stack link`
-line). Test `land` only against a fake `gh` (`test/land.test.ts`).
+pinned to the checked head. To open a pull request on the top, push its branch, open it with
+`gh pr create --draft --base <top's branch>`, and run `bun run land -- <new top> --sanitize`: before
+gating, `--sanitize` and `--merge` link the whole chain into the native stack where GitHub's stack
+holds only its lower part or none of it, and a plain `land` prints the `gh stack link` it would run.
+A stack in another order is refused with its `gh stack unstack` and link lines. Test `land` only
+against a fake `gh` (`test/land.test.ts`).
 
 **Landing part of a stack.** `bun run split -- <pull request> --yes` cuts the native stack after
 the last pull request to land; once the lower part lands, the same command moves the upper commits

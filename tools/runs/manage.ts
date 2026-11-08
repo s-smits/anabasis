@@ -3,8 +3,8 @@
  *
  *   bun --env-file=<file> run runs launch <name> [--login N] [--yes] -- <the campaign command's flags>
  *   bun --env-file=<file> run runs continue <name> [--at <commit>] [--login N] [--budget N]
- *     [--after next|compacted|reported|finished] [--yes] [-- <flags>]
- *   bun run runs pause <name> [--after next|compacted|reported|finished] [--yes]
+ *     [--after <word>[|<word>...]] [--yes] [-- <flags>]
+ *   bun run runs pause <name> [--after <word>[|<word>...]] [--yes]
  *
  * `launch` starts the campaign command (`tools/d2/harness-builder.ts`) under a name no worktree
  * holds a campaign of, in this worktree. `continue` runs a campaign again from its log in the
@@ -87,11 +87,14 @@ import { installAt, publishedAt } from "./code.ts";
 export const WAIT_HOURS = "0.25";
 
 /** The events a pause waits for one more of, by the word that names it: `next` is the smallest step
- *  a run completes, a finished solve or a recorded tool call of any seat. */
+ *  a run completes, a finished solve or a recorded tool call of any seat. Words joined by `|` wait
+ *  for the first of their events. */
 const AFTER = {
   next: ["solve.finished", "build.call", "draft.call", "exam.call", "referee.call", "solve.call"],
   compacted: ["build.compacted"],
   reported: ["comparison.reported"],
+  promoted: ["harness.promoted"],
+  examined: ["exam.finished"],
   finished: ["build.finished"],
 } as const;
 const TOKEN = "CLAUDE_CODE_OAUTH_TOKEN";
@@ -126,9 +129,13 @@ export function loginEnv(env: Readonly<Record<string, string | undefined>>, logi
   return { ...kept, [TOKEN]: token, ANA_LOGIN: login };
 }
 
-/** The kinds of event the word `after` names, or undefined where it names none. */
-const kindsOf = (after: string): readonly string[] | undefined =>
-  Object.entries(AFTER).find(([word]) => word === after)?.[1];
+const isWord = (word: string): word is keyof typeof AFTER => Object.hasOwn(AFTER, word);
+
+/** The kinds of event the words `after` names, or undefined where one of them names none. */
+const kindsOf = (after: string): readonly string[] | undefined => {
+  const words = after.split("|");
+  return words.every(isWord) ? words.flatMap((word) => AFTER[word]) : undefined;
+};
 
 /** How many events of the kinds `after` names `events` holds. */
 const countOf = (events: readonly LogEvent[], after: string) =>
@@ -154,7 +161,9 @@ export function solvesMs(events: readonly LogEvent[]): number {
 
 async function pauseAt(run: Run, after: string): Promise<void> {
   const kinds = kindsOf(after);
-  if (kinds === undefined) throw new Error(`--after takes ${Object.keys(AFTER).join(", ")}`);
+  if (kinds === undefined) {
+    throw new Error(`--after takes ${Object.keys(AFTER).join(", ")}, or several joined by |`);
+  }
   const events = logEvents(run.path);
   const base = countOf(events, after);
   const allowed = solvesMs(events);
@@ -388,7 +397,7 @@ export async function pause(args: readonly string[]): Promise<void> {
   });
   const [name] = positionals;
   if (name === undefined) {
-    throw new Error("usage: bun run runs pause <name> [--after next|compacted|reported|finished] [--yes]");
+    throw new Error("usage: bun run runs pause <name> [--after <word>[|<word>...]] [--yes]");
   }
   const run = runNamed(name);
   const after = values.after ?? "next";

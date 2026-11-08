@@ -203,6 +203,8 @@ export async function syncRuns(
     readonly from?: string;
     readonly repo?: string;
     readonly depth?: Depth;
+    /** Only the campaigns no process writes, which a copy can hold whole without moving under it. */
+    readonly closed?: boolean;
   } = {},
 ): Promise<string[]> {
   const repo = options.repo ?? runtimeProcess.cwd();
@@ -221,7 +223,7 @@ export async function syncRuns(
   const remote = selected.flatMap(({ host, lines }) => {
     if (lines !== null || options.from !== undefined) {
       return remoteRuns(lines, host)
-        .filter((run) => matches(run.name))
+        .filter((run) => matches(run.name) && (options.closed !== true || !run.open))
         .map((run) => ({ host, run }));
     }
     console.error(`${host.name}: no campaign catalogue; its copies were left as they were`);

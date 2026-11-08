@@ -54,5 +54,7 @@ campaign continues from its log.
 **Operator words** (`tools/d2/word.ts`) are `campaign.word` events, read at the next move's boundary
 and by each campaign tool before it runs (`actionTurn`), never interrupting a move or being waited
 for (`pendingWords`, `src/campaign/word.ts`). The event that acts on a word names it (`answers`), so
-it acts once, and a stop followed by the same command is a pause. `bun run runs stop` is the abrupt
+it acts once, and a stop followed by the same command is a pause. A `runs pause` word is answered by
+its time instead: it holds the solves of the process it was left for during the solve limit and two
+minutes (`paused`). `bun run runs stop` is the abrupt
 form and writes no ending.

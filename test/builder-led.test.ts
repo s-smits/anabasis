@@ -392,6 +392,20 @@ describe("a campaign run by its live Builder", () => {
     expect(read(log)).toHaveLength(2);
   });
 
+  // The two budget readers between moves (`harness-builder.ts`, `campaign-actions.ts`) hand the
+  // pending totals to `opened`, which answers them. Read inside `opened` from the log alone, a word
+  // would lose to the `--budget` the command was started with, which is older.
+  it("takes an operator's total over the --budget the command was started with, and answers it once", () => {
+    const log = join(root, "terms", "budget", LOG_FILE);
+    const flags = flagsOf(["--root", root, "--name", "terms", "--project", PROJECT, "--budget", "300"]);
+    expect(opened(log, flags, "scripted").budget?.dollars).toBe(300);
+    append(log, "campaign.word", { word: "budget", dollars: 50 });
+    const totals = pendingWords(read(log));
+    expect(opened(log, flags, "scripted", totals).budget?.dollars).toBe(50);
+    expect(read(log).at(-1)).toMatchObject({ kind: OPENED, data: { budget: { dollars: 50 }, answers: [1] } });
+    expect(pendingWords(read(log))).toEqual([]);
+  });
+
   it("starts the campaign's first Examiner session as the conversation opens, where the table names one", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-first-examiner`;

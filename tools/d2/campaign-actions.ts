@@ -41,7 +41,7 @@ import { seedKept } from "#src/builder/kept.ts";
 import { type BuildRequest, layPractice } from "#src/builder/session.ts";
 import { type Bench, endingWith, snapshot, waitTool } from "#src/builder/tools.ts";
 import { pendingWords } from "#src/campaign/word.ts";
-import { conversing, examine } from "#src/examiner/session.ts";
+import { conversing, type Examined, examine } from "#src/examiner/session.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import { latestBuilt, patienceOf, promoted as lastPromoted } from "#src/kernel/reports.ts";
 import { billedParts } from "#src/kernel/meter.ts";
@@ -123,14 +123,22 @@ export interface CampaignContext {
 /** The code a move carries where the Builder chose it, and the table names another. */
 const LED = "led";
 const CHOSE = "the Builder's own move in its campaign conversation";
-/** How an Examiner session ended, as the Builder is told it: `supplied` is the host having the
- *  tasks it asked for, which is a whole session as `finished` is. */
-const EXAMINED = new Map([
-  ["finished", "ended whole"],
-  ["supplied", "ended whole"],
-  ["crashed", "crashed"],
-  ["killed", "was stopped"],
-]);
+/** How an Examiner session ended, as the Builder is told it, one line for each ending the session
+ *  can record: `supplied` is the host having the tasks it asked for, which is a whole session as
+ *  `finished` is. Until 9 November the map held four, and a session that ended `stopped` would
+ *  have been told as one that ended at its limits. */
+const EXAMINED = new Map(
+  Object.entries({
+    stands: "ended whole",
+    finished: "ended whole",
+    supplied: "ended whole",
+    crashed: "crashed",
+    killed: "was stopped",
+    stopped: "was stopped",
+    wall: "ended at its limits",
+    turns: "ended at its limits",
+  } satisfies Record<Examined["ended"], string>),
+);
 
 /** What the operator is told where a step waits for their promotion under `--hitl`. */
 export const awaitsOperator = (name: string, harness: string): string =>

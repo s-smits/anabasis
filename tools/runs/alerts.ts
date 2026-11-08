@@ -31,7 +31,7 @@ import { asked } from "./hosts.ts";
 import { keeperActed } from "./keep.ts";
 import { keepsItself } from "./manage.ts";
 import { onStatus, pulse, remember } from "./pulse.ts";
-import { lastLaunch } from "./receipt.ts";
+import { lastLaunch, unlaunchedSeed } from "./receipt.ts";
 import {
   HERE,
   isCampaign,
@@ -150,7 +150,7 @@ function rowOf(run: Run, open: boolean, now: number): Row {
  * as "first seen with 6 promotions" beside a real second promotion.
  */
 export const onAlerts = (run: Run, open: boolean, age: number): boolean =>
-  (run.seed !== true || lastLaunch(run.path) !== undefined) && onStatus(run, open, age);
+  !unlaunchedSeed(run) && onStatus(run, open, age);
 
 /** This machine's rows, and the name of every campaign its worktrees hold. */
 function rowsHere(now: number): HostRows {

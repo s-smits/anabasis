@@ -146,7 +146,8 @@ export const PATIENCE = 6;
  *  investigation reads every one as a miss at a limit (`tools/wri/time.ts`); the pool reads all but
  *  one as a cut whose answer is not known (`taskRecords`). */
 export const AT_A_LIMIT: ReadonlySet<unknown> = new Set(["wall-ended", "turns-ended", "context-ended"]);
-/** How a Builder session ends when it was cut and left half a session's work. */
+/** How a session of any seat ends when it was cut and left half its work: the provider or host
+ *  crashed it, or a stop killed it. */
 export const CUT: ReadonlySet<unknown> = new Set(["killed", "crashed"]);
 const REPORTED = "comparison.reported";
 const PROMOTED = "harness.promoted";

@@ -4,7 +4,8 @@ import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { looseFlagsOf } from "../d2/campaign-terms.ts";
 import { lastLaunch } from "./receipt.ts";
-import { processes, runs, writers } from "./registry.ts";
+import { stillRunning } from "./diagnosis.ts";
+import { processes, runs } from "./registry.ts";
 
 export interface Live {
   readonly name: string;
@@ -48,13 +49,14 @@ export function seatsIn(table: readonly string[], host: string): Live[] {
   return [...new Map(seats.map((seat) => [seat.name, seat])).values()];
 }
 
-/** The runs a process writes on this machine, which `host` names, and the simulations: a seat's
- *  seed is counted on the login the seat names. */
+/** The runs a process writes or keeps on this machine, which `host` names, and the simulations: a
+ *  seat's seed is counted on the login the seat names. A kept run between two starts holds its slot,
+ *  since its keeper starts it again there. */
 export function liveHere(host = "here"): Live[] {
   const seats = seatsIn(runTextSyncOrThrow(["ps", "-axo", "args="]).split("\n"), host);
   const running = processes();
   const live = runs()
-    .filter((run) => !seats.some(({ name }) => name === run.name) && writers(run, running).length > 0)
+    .filter((run) => !seats.some(({ name }) => name === run.name) && stillRunning(run, running))
     .map((run) => {
       const launch = lastLaunch(run.path);
       return { name: run.name, login: payerOf(launch?.login, launch?.flags ?? []) ?? null, host };

@@ -121,11 +121,11 @@ async function end(run: Run, running: readonly Running[], yes: boolean): Promise
   return found.length;
 }
 
-/** Release the roots `run` left, where no process writes it any more. A root its release could not
- *  remove is named, and the stop goes on to the next. A root an earlier tree mounted a disk image
- *  at, before 19 October, is one: `hdiutil detach` it first. */
-async function release(run: Run, yes: boolean): Promise<number> {
-  if (writers(run, processes()).length > 0) return 0;
+/** Release the roots `run` left, where no process in `running` writes it any more. A root its release
+ *  could not remove is named, and the stop goes on to the next. A root an earlier tree mounted a disk
+ *  image at, before 19 October, is one: `hdiutil detach` it first. */
+async function release(run: Run, running: readonly Running[], yes: boolean): Promise<number> {
+  if (writers(run, running).length > 0) return 0;
   const left = leftOpen(run).filter(({ root }) => existsSync(root));
   if (left.length === 0) return 0;
   console.log(
@@ -157,14 +157,17 @@ export async function stop(args: readonly string[]): Promise<void> {
   if (names.length === 0) throw new Error("usage: bun run runs stop <name> ... [--yes]");
   const named = names.map((name) => runNamed(name));
   const running = processes();
-  let acted = 0;
-  for (const run of named) acted += await end(run, running, values.yes);
-  if (acted === 0) console.log("none of these is running");
-  for (const run of named) acted += await release(run, values.yes);
-  // A run stopped by hand is not gone on with: its keeper ends with it (`keep.ts`).
-  for (const pid of values.yes ? named.flatMap(({ name }) => keepers(name)) : []) {
+  // A run stopped by hand is not gone on with: its keeper ends with it (`keep.ts`), and first, since
+  // a keeper that outlived its writer would start the run again before the stop came to it.
+  for (const pid of values.yes ? named.flatMap(({ name }) => keepers(name, running)) : []) {
     await terminateAndReapProcessGroupId(pid);
     console.log(`  its keeper, pid ${String(pid)}, ended`);
   }
+  let acted = 0;
+  for (const run of named) acted += await end(run, running, values.yes);
+  if (acted === 0) console.log("none of these is running");
+  // Read again: what ended no longer writes, and one that would not end still does.
+  const left = processes();
+  for (const run of named) acted += await release(run, left, values.yes);
   if (acted > 0 && !values.yes) console.log("nothing is ended or released without --yes");
 }

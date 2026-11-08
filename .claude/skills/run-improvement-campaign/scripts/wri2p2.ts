@@ -199,20 +199,22 @@ const LONE = lanesOf(catalogueText())
   .filter(({ isolated }) => isolated)
   .map(({ number }) => number);
 
+/** The lane sessions the manifests of `dir` launched. */
+const sessionsIn = (dir: string) =>
+  manifests(dir).flatMap(
+    (file) =>
+      parseJsonAs<{ sessions: { name: string; task: string; ownedPaths?: string[] }[] }>(
+        read(join(dir, file)),
+      ).sessions,
+  );
+
 /** The lane sessions a manifest of `dir` launched whose reports are not all written. */
 function owing(dir: string): { name: string; task: string }[] {
-  return manifests(dir)
-    .flatMap(
-      (file) =>
-        parseJsonAs<{ sessions: { name: string; task: string; ownedPaths?: string[] }[] }>(
-          read(join(dir, file)),
-        ).sessions,
-    )
-    .filter(
-      // A session that names no report it owns can never be seen to finish, so it owes until a
-      // deviation says it ran.
-      ({ ownedPaths = [] }) => ownedPaths.length === 0 || ownedPaths.some((path) => !existsSync(path)),
-    );
+  return sessionsIn(dir).filter(
+    // A session that names no report it owns can never be seen to finish, so it owes until a
+    // deviation says it ran.
+    ({ ownedPaths = [] }) => ownedPaths.length === 0 || ownedPaths.some((path) => !existsSync(path)),
+  );
 }
 
 /** `name`'s two ledgers as the investigation `dir` reads them; "" for each it has not got, and for
@@ -361,8 +363,11 @@ function gatesOf(where: Ledgers, launchedAt: (pull: number) => string[], passed:
         "isolated",
         null,
         () =>
-          manifests(dir).some((file) =>
-            (file.match(/\d+/gu) ?? []).some((lane) => LONE.includes(Number(lane))),
+          // A lane by the report its session owns (`wri.ts lanes`), whatever its manifest is named:
+          // until 9 November the gate read lane numbers from file names, and a lone lane built in
+          // the first manifest, `launch.json`, was owed for good.
+          sessionsIn(dir).some(({ ownedPaths = [] }) =>
+            ownedPaths.some((path) => LONE.includes(Number(/^(\d+)-report\.md$/u.exec(basename(path))?.[1]))),
           )
             ? null
             : [

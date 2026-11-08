@@ -34,7 +34,7 @@ branch.
   consolidation"; section 10 folds it down. Remove what the change makes dead in the same commit.
 - **Otherwise open a new pull request on the cycle's top**, whether or not it depends on what is
   below. The cycle's file names the stack; failing that, it is the one `bun run follow` follows,
-  which holds the oldest open pull request. The first change after a release starts the stack on
+  the stack of two or more that holds the oldest open pull request. The first change after a release starts the stack on
   `main`. A second stack on `main` starts only on the operator's word, lands alone, and leaves the
   other to be replayed with `republish.ts --onto-main` (section 8). Never base on the middle of a
   stack, and state the base in the body.

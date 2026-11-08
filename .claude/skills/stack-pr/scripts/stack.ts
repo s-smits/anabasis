@@ -4,7 +4,7 @@
  *
  *   bun .claude/skills/stack-pr/scripts/stack.ts [--branch <branch>]
  *
- * Several stacks may be open, each a chain of pull requests whose bottom is based on `main` and
+ * Several stacks may be open, each a chain of pull requests whose bottom is based on the trunk (`main`) and
  * which lands alone (operator, 27 October). A stack's top is the end of its chain, not the highest
  * number: a side branch off the middle carries a higher one, and is listed apart, since it cannot
  * land without the pull requests beneath it. `--branch` says where one branch sits: its parent, and
@@ -19,41 +19,10 @@ import { gitMaybe } from "#src/meta/git.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { doubledLines } from "#tools/runtime/doubled.ts";
 import { ranksOf } from "#tools/runtime/land.ts";
-import { openPulls, type Pull } from "#tools/runtime/pulls.ts";
+import { chains, openPulls, type Pull, trunkOf } from "#tools/runtime/pulls.ts";
 
-/** origin/main's head commit, as every reader of the trunk names it. */
-export const TRUNK = "origin/main^{commit}";
-
-/** The stacks: each the longest chain of open pull requests left, bottom first, longest first, and
- *  the pull requests on no such chain. A chain starts on a base that is no open pull request's head,
- *  which is `main` or a branch that has landed. Of two chains as long, the one of the lower number
- *  comes first, so the reading does not change with the order GitHub lists them in. */
-export function chains(pulls: readonly Pull[]) {
-  const longest = (free: readonly Pull[], bases: readonly string[], seen: ReadonlySet<string>): Pull[] => {
-    const children = free
-      .filter((pull) => bases.includes(pull.baseRefName) && !seen.has(pull.headRefName))
-      .toSorted((a, b) => a.number - b.number);
-    let found: Pull[] = [];
-    for (const child of children) {
-      const rest = [child, ...longest(free, [child.headRefName], new Set([...seen, child.headRefName]))];
-      if (rest.length > found.length) found = rest;
-    }
-    return found;
-  };
-  const heads = new Set(pulls.map((pull) => pull.headRefName));
-  const roots = [...new Set(pulls.map((pull) => pull.baseRefName))].filter((base) => !heads.has(base));
-  const stacks: Pull[][] = [];
-  let free = pulls;
-  for (
-    let line = longest(free, roots, new Set(roots));
-    line.length > 0;
-    line = longest(free, roots, new Set(roots))
-  ) {
-    stacks.push(line);
-    free = free.filter((pull) => !line.includes(pull));
-  }
-  return { stacks, sides: free };
-}
+/** The trunk's head commit as this clone last fetched it, as every reader of the trunk names it. */
+export const trunkHead = (trunk: string): string => `origin/${trunk}^{commit}`;
 
 const said = (pull: Pull) => {
   const [rank, ...more] = ranksOf(pull);
@@ -93,23 +62,23 @@ export function told(pulls: readonly Pull[], branch: string | null): string[] {
   ];
 }
 
-/** A line for each stack whose bottom stands on a branch that is not main, or misses origin/main's
- *  head, naming the one command that replays it. On 6 November #632 stood on a branch that had
- *  merged, and `land` found it only when asked to land. */
-export function offMain(root: string, pulls: readonly Pull[]): string[] {
-  const trunk = gitMaybe(root, "rev-parse", "--verify", "-q", TRUNK);
-  if (trunk === null) return [];
+/** A line for each stack whose bottom stands on a branch that is not the trunk, or misses its head,
+ *  naming the one command that replays it. On 6 November #632 stood on a branch that had merged,
+ *  and `land` found it only when asked to land. */
+export function offMain(root: string, pulls: readonly Pull[], trunk: string): string[] {
+  const head = gitMaybe(root, "rev-parse", "--verify", "-q", trunkHead(trunk));
+  if (head === null) return [];
   return chains(pulls).stacks.flatMap((line) => {
     const [bottom, top] = [line[0], line.at(-1)];
     if (bottom === undefined || top === undefined) return [];
-    const holds = gitMaybe(root, "merge-base", "--is-ancestor", trunk, bottom.headRefOid) !== null;
-    if (bottom.baseRefName === "main" && holds) return [];
+    const holds = gitMaybe(root, "merge-base", "--is-ancestor", head, bottom.headRefOid) !== null;
+    if (bottom.baseRefName === trunk && holds) return [];
     const why =
-      bottom.baseRefName === "main"
-        ? `misses main at ${trunk.slice(0, 7)}`
+      bottom.baseRefName === trunk
+        ? `misses ${trunk} at ${head.slice(0, 7)}`
         : `stands on ${bottom.baseRefName}`;
     return [
-      `off main: #${String(bottom.number)} ${why}; replay the stack with ` +
+      `off ${trunk}: #${String(bottom.number)} ${why}; replay the stack with ` +
         `bun .claude/skills/stack-pr/scripts/republish.ts --onto-main ${String(top.number)} --yes`,
     ];
   });
@@ -119,10 +88,11 @@ if (import.meta.main) {
   await runCommand(
     { name: "stack", usage: "stack.ts [--branch <branch>]", options: { branch: "text" } },
     (args: CommandArgs) => {
-      const open = openPulls(runtimeProcess.cwd());
-      const repeating = doubledLines(runtimeProcess.cwd(), open);
+      const root = runtimeProcess.cwd();
+      const open = openPulls(root);
+      const repeating = doubledLines(root, open);
       console.log(told(open, args.value("branch")).join("\n"));
-      for (const line of offMain(runtimeProcess.cwd(), open)) console.log(line);
+      for (const line of offMain(root, open, trunkOf(root))) console.log(line);
       if (repeating.length > 0) console.log(["repeating another's commits:", ...repeating].join("\n  "));
     },
   );

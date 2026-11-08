@@ -13,18 +13,7 @@
  * back to this machine the same evening, since it needs no clean runner.
  */
 import { git, gitSays } from "./gate.ts";
-import type { Pull } from "./pulls.ts";
-
-/** The open pull requests beneath `pull`, each the one whose head the one above is based on. */
-function beneath(open: readonly Pull[], pull: Pull): Pull[] {
-  const byHead = new Map(open.map((each) => [each.headRefName, each]));
-  const found: Pull[] = [];
-  for (let below = byHead.get(pull.baseRefName); below !== undefined && !found.includes(below); ) {
-    found.push(below);
-    below = byHead.get(below.baseRefName);
-  }
-  return found;
-}
+import { beneath, type Pull } from "./pulls.ts";
 
 /** Each open pull request whose head holds the head of another (`holds(head, other)`) that is
  *  neither beneath it nor stacked above it, with those others. */

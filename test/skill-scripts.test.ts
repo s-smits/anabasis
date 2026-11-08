@@ -6,19 +6,18 @@ import { gitText } from "#src/meta/git.ts";
 import { bundle } from "#skills/oracle-handover/scripts/bundle.ts";
 import { declarationLines, sanitised, sectionLines } from "#skills/oracle-handover/scripts/document.ts";
 import { groupsOf, parseSelector, pick, slice } from "#skills/oracle-handover/scripts/slice.ts";
-import { follow, hazards, type NativeStack, nativeTop } from "#skills/stack-pr/scripts/follow.ts";
+import { follow, hazards, targetOf } from "#skills/stack-pr/scripts/follow.ts";
 import { pairLines } from "#skills/compare-systems/scripts/systems.ts";
 import { censusOf, newsOf } from "#skills/system-path-simulation/scripts/live-seat.ts";
 import {
-  lineOf,
   pairs,
   planConsolidation,
   pushArgs,
   replayedHeads,
   republish,
 } from "#skills/stack-pr/scripts/republish.ts";
-import { chains, offMain, told as stackTold } from "#skills/stack-pr/scripts/stack.ts";
-import type { Pull } from "#tools/runtime/pulls.ts";
+import { offMain, told as stackTold } from "#skills/stack-pr/scripts/stack.ts";
+import { chains, firstStack, type Pull, stackHolding } from "#tools/runtime/pulls.ts";
 import {
   existsSync,
   mkdirSync,
@@ -75,49 +74,23 @@ describe("the stack", () => {
 });
 
 describe("following the stack's top", () => {
-  const native = (
-    number: number,
-    open: boolean,
-    pulls: readonly [number, string, string][],
-  ): NativeStack => ({
-    number,
-    open,
-    pull_requests: pulls.map(([n, ref, state]) => ({ number: n, state, head: { ref } })),
-  });
-
-  it("takes the last open pull request of the open native stack that holds the oldest one", () => {
-    const stacks = [
-      native(150, false, [
-        [140, "old", "closed"],
-        [141, "older", "closed"],
-        [142, "oldest", "closed"],
-      ]),
-      native(201, true, [
-        [193, "a", "open"],
-        [194, "b", "open"],
-        [199, "c", "open"],
-      ]),
-      native(205, true, [
-        [190, "first", "open"],
-        [196, "second", "open"],
-      ]),
-      native(208, true, [[180, "gone", "closed"]]),
-    ];
-    expect(nativeTop(stacks)).toStrictEqual({ number: 196, branch: "second", pulls: [190, 196] });
-    expect(nativeTop(stacks.filter((stack) => stack.number !== 205))).toStrictEqual({
-      number: 199,
-      branch: "c",
-      pulls: [193, 194, 199],
+  it("follows the end of the stack land lands first, named stack-pr<top>, or the trunk where none is open", () => {
+    const open = [pull(193, "a", "main"), pull(194, "b", "a"), pull(199, "c", "b"), pull(4, "lone", "main")];
+    // #202 was stacked on #199 before anyone linked it: it is the top.
+    expect(targetOf(firstStack([...open, pull(202, "e", "c")]), "main")).toStrictEqual({
+      trunk: "main",
+      name: "stack-pr202",
+      upstream: "origin/e",
+      said: "#202 e",
+      pulls: [193, 194, 199, 202],
     });
-    expect(nativeTop(stacks.filter((stack) => !stack.open))).toBeUndefined();
-    // #200 was stacked on #199 and #202 on #200 before anyone linked them: #202 is the top.
-    const open = [pull(193, "a", "main"), pull(194, "b", "a"), pull(199, "c", "b"), pull(200, "d", "c")];
-    expect(
-      nativeTop(
-        stacks.filter((stack) => stack.number !== 205),
-        [...open, pull(202, "e", "d")],
-      ),
-    ).toStrictEqual({ number: 202, branch: "e", pulls: [193, 194, 199, 200, 202] });
+    expect(targetOf(firstStack([]), "main")).toStrictEqual({
+      trunk: "main",
+      name: "main",
+      upstream: "origin/main",
+      said: "origin/main",
+      pulls: [],
+    });
   });
 
   it("moves a restacked checkout to the new top, keeps its uncommitted change and drops the old branch", () => {
@@ -143,7 +116,7 @@ describe("following the stack's top", () => {
     writeFileSync(join(co, "mine.txt"), "changed here\n");
     writeFileSync(join(co, "untracked.txt"), "kept\n");
 
-    const top = { number: 2, branch: "claude/two", pulls: [1, 2] };
+    const top = targetOf([pull(1, "claude/one", "main"), pull(2, "claude/two", "claude/one")], "main");
     const said = follow(co, top);
     expect(said[0]).toStartWith("stack-pr2 at #2 claude/two");
     expect(said).toContain("deleted stack-pr1");
@@ -174,7 +147,8 @@ describe("the hourly follow's reasons not to move", () => {
   git(co, "config", "user.name", "t");
   git(co, "config", "user.email", "t@t.dev");
   const later = () => Date.now() + 3_600_000;
-  const why = (now = later()) => hazards(co, "stack-pr1", "origin/claude/top", now);
+  const target = targetOf([pull(1, "claude/top", "main")], "main");
+  const why = (now = later()) => hazards(co, target, now);
 
   it("finds none on a clean checkout, and carries an edit the top does not touch", () => {
     expect(why()).toStrictEqual([]);
@@ -209,9 +183,7 @@ describe("the hourly follow's reasons not to move", () => {
     git(root, "clone", "-q", up, kept);
     writeFileSync(join(kept, ".git", "info", "exclude"), "new.txt\n");
     writeFileSync(join(kept, "new.txt"), "mine, ignored\n");
-    expect(() => follow(kept, { number: 1, branch: "claude/top", pulls: [1] })).toThrow(
-      "would be overwritten",
-    );
+    expect(() => follow(kept, target)).toThrow("would be overwritten");
     expect(readFileSync(join(kept, "new.txt"), "utf8")).toBe("mine, ignored\n");
   });
 });
@@ -249,7 +221,7 @@ describe("republishing a consolidated stack", () => {
   const absorbed = new Map([[3, 2]]);
 
   it("prints every publication operation in order in a dry run without changing a head or GitHub", () => {
-    const plan = planConsolidation(co, pulls, heads, absorbed);
+    const plan = planConsolidation(co, pulls, heads, absorbed, "main");
     const asked: string[] = [];
     const said = republish(
       co,
@@ -280,7 +252,7 @@ describe("republishing a consolidated stack", () => {
   });
 
   it("unstacks and retargets every survivor before pushing leased heads, then sets bases, closes and relinks", () => {
-    const plan = planConsolidation(co, pulls, heads, absorbed);
+    const plan = planConsolidation(co, pulls, heads, absorbed, "main");
     expect(plan.moves.map((move) => [move.pull.number, move.to, move.base])).toStrictEqual([
       [1, a1, "main"],
       [2, b1, "a"],
@@ -326,17 +298,17 @@ describe("republishing a consolidated stack", () => {
 
   it("pushes nothing where a lease fails, and refuses a stack off main or out of order", () => {
     // GitHub still shows the old heads, but the push above moved the remote, so no branch may move.
-    const plan = planConsolidation(co, pulls, pairs("head", [`1=${b0}`, `2=${c0}`]), new Map());
+    const plan = planConsolidation(co, pulls, pairs("head", [`1=${b0}`, `2=${c0}`]), new Map(), "main");
     expect(() => republish(co, plan, "no-verify", () => "[]")).toThrow();
     expect([sha(up, "a"), sha(up, "b")]).toStrictEqual([a1, b1]);
 
-    expect(() => planConsolidation(co, pulls, pairs("head", [`1=${b1}`, `2=${a1}`]), new Map())).toThrow(
-      "does not hold #1's",
-    );
-    expect(() => planConsolidation(co, pulls, pairs("head", ["9=HEAD"]), new Map())).toThrow(
+    expect(() =>
+      planConsolidation(co, pulls, pairs("head", [`1=${b1}`, `2=${a1}`]), new Map(), "main"),
+    ).toThrow("does not hold #1's");
+    expect(() => planConsolidation(co, pulls, pairs("head", ["9=HEAD"]), new Map(), "main")).toThrow(
       "not on the open stack",
     );
-    expect(() => planConsolidation(co, pulls, pairs("head", [`1=${a1}`]), absorbed)).toThrow(
+    expect(() => planConsolidation(co, pulls, pairs("head", [`1=${a1}`]), absorbed, "main")).toThrow(
       "absorbed into #2, which is given no new head",
     );
     expect(() => pairs("head", ["1=x", "1=y"])).toThrow("names #1 twice");
@@ -346,7 +318,7 @@ describe("republishing a consolidated stack", () => {
     git(co, "commit", "-q", "--amend", "--allow-empty", "--author", "u <u@u.dev>", "-C", "HEAD");
     git(co, "push", "-q", "--force", "origin", "HEAD:refs/heads/main");
     git(co, "fetch", "-q", "origin");
-    expect(() => planConsolidation(co, pulls, heads, absorbed)).toThrow("does not hold origin/main");
+    expect(() => planConsolidation(co, pulls, heads, absorbed, "main")).toThrow("does not hold origin/main");
   });
 });
 
@@ -382,9 +354,9 @@ describe("replaying a stack onto main once what it stood on landed", () => {
   ];
 
   it("names a head for every pull request, each on main and in its old order, with its commits' trees", () => {
-    expect(offMain(co, line).join("\n")).toContain("off main: #1 stands on lower");
-    expect(offMain(co, line).join("\n")).toContain("republish.ts --onto-main 2 --yes");
-    const heads = replayedHeads(co, line);
+    expect(offMain(co, line, "main").join("\n")).toContain("off main: #1 stands on lower");
+    expect(offMain(co, line, "main").join("\n")).toContain("republish.ts --onto-main 2 --yes");
+    const heads = replayedHeads(co, line, "main");
     const [a1, b1] = [heads.get(1) ?? "", heads.get(2) ?? ""];
     expect(gitText(co, "rev-parse", `${a1}^`)).toBe(sha("origin/main"));
     expect(gitText(co, "rev-parse", `${b1}^`)).toBe(a1);
@@ -393,7 +365,7 @@ describe("replaying a stack onto main once what it stood on landed", () => {
       sha(`${b}^{tree}`),
     ]);
     expect(sha("origin/a"), "a replay moves no ref").toBe(a);
-    const plan = planConsolidation(co, line, heads, new Map());
+    const plan = planConsolidation(co, line, heads, new Map(), "main");
     expect(plan.moves.map((move) => [move.pull.number, move.base])).toStrictEqual([
       [1, "main"],
       [2, "a"],
@@ -401,23 +373,23 @@ describe("replaying a stack onto main once what it stood on landed", () => {
   });
 
   it("keeps a chain that already holds main, and refuses one that conflicts with it", () => {
-    const heads = replayedHeads(co, line);
+    const heads = replayedHeads(co, line, "main");
     const settled = line.map((each, index) => ({
       ...each,
       baseRefName: index === 0 ? "main" : each.baseRefName,
       headRefOid: heads.get(each.number) ?? "",
     }));
-    expect(replayedHeads(co, settled)).toStrictEqual(heads);
-    expect(offMain(co, settled), "a stack on main that holds it is not said").toStrictEqual([]);
+    expect(replayedHeads(co, settled, "main")).toStrictEqual(heads);
+    expect(offMain(co, settled, "main"), "a stack on main that holds it is not said").toStrictEqual([]);
     step("a.txt", "a, written on main\n");
     git(co, "push", "-q", "origin", "HEAD:refs/heads/main");
     git(co, "fetch", "-q", "origin");
-    expect(() => replayedHeads(co, line)).toThrow("does not replay cleanly");
+    expect(() => replayedHeads(co, line, "main")).toThrow("does not replay cleanly");
   });
 
   it("finds the open stack holding a pull request, and refuses one on none", () => {
-    expect(lineOf(line, 2).map((each) => each.number)).toStrictEqual([1, 2]);
-    expect(() => lineOf(line, 9)).toThrow("not on an open stack");
+    expect(stackHolding(line, 2)?.map((each) => each.number)).toStrictEqual([1, 2]);
+    expect(stackHolding(line, 9)).toBeUndefined();
   });
 });
 

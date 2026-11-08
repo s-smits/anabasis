@@ -65,6 +65,7 @@ import { availableParallelism, tmpdir } from "../../src/meta/os.ts";
 import { basename, dirname, isAbsolute, join, relative } from "../../src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "../../src/meta/process.ts";
 import { runSync, runTextSyncOrThrow, zeroExitText } from "../../src/meta/subprocess.ts";
+import type { StatusState } from "./pulls.ts";
 
 type Pass = "static" | "whole";
 
@@ -91,11 +92,7 @@ interface Prover {
   readonly say: (line: string) => void;
   /** Told every verdict, recorded earlier or new, so land can post it as a status, and `pending` when
    *  a commit's proof starts, so a red left by an earlier landing clears once it is proved again. */
-  readonly mark: (
-    commit: string,
-    state: "pending" | "success" | "failure" | "error",
-    description: string,
-  ) => void;
+  readonly mark: (commit: string, state: StatusState, description: string) => void;
 }
 
 /** The documentation set. A commit changing nothing beyond it gets no static steps, and a push of

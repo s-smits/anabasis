@@ -126,6 +126,7 @@ import {
   statusBoard,
   type Board,
   STACK_MEMBERS,
+  type StatusState,
   trunkOf,
 } from "./pulls.ts";
 import {
@@ -345,7 +346,7 @@ function startCi(root: string, top: Pull): void {
 async function awaitCi(root: string, top: Pull): Promise<void> {
   const deadline = Date.now() + CI_WAIT_MS;
   let ci = ciRun(root, top.headRefOid);
-  const show = (state: string, description: string): void => {
+  const show = (state: StatusState, description: string): void => {
     postStatus(root, top.headRefOid, { context: CI_CONTEXT, state, description, link: ci?.[3] });
   };
   if (ci?.[0] !== "completed") show("pending", "waiting for the ci.yml run that bun run land started");
@@ -521,7 +522,7 @@ async function merge(root: string, target: number, landing: Landing): Promise<st
   checkCurrent(root, target, landing);
   const heads = landing.pulls.map((pull) => pull.headRefOid);
   const stack = stackOf(root, landing, "link");
-  const gated = (sha: string, state: string, description: string): boolean =>
+  const gated = (sha: string, state: StatusState, description: string): boolean =>
     postStatus(root, sha, { context: STACK_CONTEXT, state, description });
   const revoke = (): void => {
     for (const sha of heads) gated(sha, "pending", "Waiting for bun run land");
@@ -633,7 +634,7 @@ async function landTo(root: string, target: number, mode: Mode, board: Board): P
   );
   const reach = mode.merge || mode.sanitize;
   if (reach) board.read(proofs.map(({ commit }) => commit));
-  const mergeable = (pull: Pull, state: string, description: string): void =>
+  const mergeable = (pull: Pull, state: StatusState, description: string): void =>
     board.post(pull.headRefOid, { context: MERGEABLE_CONTEXT, state, description });
   // A pull request turns green as soon as every commit from the bottom to its head has passed,
   // so the stack shows its proof climbing while the commits above are still being gated.

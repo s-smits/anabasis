@@ -1,9 +1,10 @@
 /**
  * The whole-run investigation's catalogue, read from the one file that holds it:
  * `.claude/skills/whole-run-investigation/references/lanes.md`. A lane is its number, its title, the
- * triggers that start it, its label, its importance and its body. Whether it is standing or runs alone is read from its own
- * `Starts from` paragraph, and the owners a finding may name from the catalogue's owner table, so
- * nothing here repeats what the catalogue says. `test/wri-catalogue.test.ts` holds this file's
+ * triggers that start it, its label, its importance, its marks and its body. Whether it is
+ * standing, runs alone, grades blind or reads the campaigns side by side is read from its `Marks:`
+ * line, never from its prose, and the owners a finding may name from the catalogue's owner table,
+ * so nothing here repeats what the catalogue says. `test/wri-catalogue.test.ts` holds this file's
  * reading to `TRIGGERS` (`tools/wri/folds.ts`): every trigger the reader can print starts the lane
  * it names.
  *
@@ -57,6 +58,17 @@ const TRIGGER = /`([A-Z][A-Z0-9 ,'-]+) \(lane (\d+)\)`/g;
 const OWNER_ROW = /^\| (`[^|]+) \|/;
 const LABEL = /^Label: `([a-z]+)`\.$/;
 const IMPORTANCE = /^Importance: (0(?:\.\d+)?|1)\.$/;
+const MARKS = /^Marks: (none|`[a-z-]+`(?:, `[a-z-]+`)*)\.$/;
+/** The marks a `Marks:` line may carry, each setting one of `Lane`'s booleans. */
+const MARK_NAMES = new Set(["standing", "alone", "blind", "side-by-side"]);
+
+/** The marks of one `Marks:` line; a name outside `MARK_NAMES` is a fault of the catalogue. */
+function marksOf(number: string, line: string): Set<string> {
+  const marks = new Set([...line.matchAll(/`([a-z-]+)`/g)].map(([, mark = ""]) => mark));
+  const unknown = [...marks].filter((mark) => !MARK_NAMES.has(mark));
+  if (unknown.length > 0) throw new Error(`lane ${number} carries unknown marks: ${unknown.join(", ")}`);
+  return marks;
+}
 
 export function catalogueText(): string {
   return readFileSync(join(REFERENCES, "lanes.md"), "utf8");
@@ -72,9 +84,9 @@ export function section(markdown: string, heading: string): string {
   return (end === -1 ? rest : rest.slice(0, end)).join("\n").trim();
 }
 
-/** The lanes, in the catalogue's order, each with its own label and importance. A lane with no
- *  `Starts from` paragraph, no label or no importance is a fault of the catalogue and is named. The
- *  label and importance lines are left out of the body a session is given. */
+/** The lanes, in the catalogue's order, each with its own label, importance and marks. A lane with
+ *  no `Starts from` paragraph, no label, no importance or no marks line is a fault of the catalogue
+ *  and is named. The label, importance and marks lines are left out of the body a session is given. */
 export function lanesOf(markdown: string): Lane[] {
   const blocks: string[][] = [];
   for (const line of markdown.split("\n")) {
@@ -90,14 +102,15 @@ export function lanesOf(markdown: string): Lane[] {
     if (label === undefined || weight === undefined) {
       throw new Error(`lane ${number} has no label or no importance line`);
     }
+    const [, marked] = rest.map((line) => MARKS.exec(line)).find((match) => match !== null) ?? [];
+    if (marked === undefined) throw new Error(`lane ${number} has no marks line`);
+    const marks = marksOf(number, marked);
     const body = rest
-      .filter((line) => !IMPORTANCE.test(line) && !LABEL.test(line))
+      .filter((line) => !IMPORTANCE.test(line) && !LABEL.test(line) && !MARKS.test(line))
       .join("\n")
       .trim();
     const paragraph = body.split("\n\n").find((each) => each.startsWith("Starts from"));
     if (paragraph === undefined) throw new Error(`lane ${number} has no paragraph beginning "Starts from"`);
-    // Read as one line, so a reflow cannot move a lane's standing: one split "It runs alone" over
-    // two lines and lane 19 read as not isolated (2026-10-10).
     const startsFrom = paragraph.replaceAll("\n", " ");
     const named = [...startsFrom.matchAll(TRIGGER)];
     return {
@@ -105,10 +118,10 @@ export function lanesOf(markdown: string): Lane[] {
       title,
       startsFrom,
       triggers: named.flatMap(([, name = "", lane]) => (lane === number ? [name] : [])),
-      standing: startsFrom.includes("standing"),
-      isolated: startsFrom.includes("It runs alone"),
-      blind: startsFrom.includes("It grades blind"),
-      sideBySide: startsFrom.includes("side by side"),
+      standing: marks.has("standing"),
+      isolated: marks.has("alone"),
+      blind: marks.has("blind"),
+      sideBySide: marks.has("side-by-side"),
       label,
       importance: Number(weight),
       body,

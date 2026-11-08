@@ -54,9 +54,10 @@ owner, the evidence it cites and the observation that would reverse it:
 Cite evidence by event kind, solve id, the first eight characters of a digest, check id and count,
 never by a task's text, an answer, a hidden value or a passage of a trace.
 
-Each lane carries `Label:` and `Importance:` lines, which no session is shown. The importance
-(0 to 1, only ratios matter) weighs a lane when `wri.ts lanes --agents N` packs whole labels into
-sessions. Then comes one paragraph beginning `Starts from`. Old lane numbers in earlier reports map
+Each lane carries `Label:`, `Importance:` and `Marks:` lines, which no session is shown. The
+importance (0 to 1, only ratios matter) weighs a lane when `wri.ts lanes --agents N` packs whole
+labels into sessions. The marks (`standing`, `alone`, `blind` and `side-by-side`, or `none`) are
+what the code reads of how a lane opens; a lane's prose says the same to its session. Then comes one paragraph beginning `Starts from`. Old lane numbers in earlier reports map
 to today's through the head comment of `tools/wri/catalogue.ts`.
 
 ## Labels
@@ -130,6 +131,7 @@ step still open at the log's end on its own line and judge closure by the step's
 
 Label: `exam`.
 Importance: 0.6.
+Marks: `standing`.
 
 Starts from `INSTRUMENT AUTHORED (lane 1)`, `REFUSALS BY CHECK (lane 1)`,
 `VERIFIER TOOLS MOVED (lane 1)`, the checker's own `NO CHECKER READING (lane 1)`,
@@ -153,6 +155,7 @@ rate. The decision: whether a pass means a right answer or a well-shaped one. Ro
 
 Label: `verdicts`.
 Importance: 0.7.
+Marks: `standing`.
 
 Starts from each seat's opening at the campaign's commit, and is standing.
 
@@ -173,6 +176,7 @@ byte-identical under a changed hidden value (rule 3).
 
 Label: `verdicts`.
 Importance: 0.5.
+Marks: none.
 
 Starts from `REFUSED UNREAD (lane 3)`, `CHECK DEFECT RULED (lane 3)`, `RULED UNCLEAR (lane 3)` and
 `REPLAY MOVED THE VERDICT (lane 3)`.
@@ -193,6 +197,7 @@ as the solver's limit or the exam's noise. Routes to `pack/evaluator`, `pack/bri
 
 Label: `verdicts`.
 Importance: 0.3.
+Marks: `alone`.
 
 Starts from `FAILS ON ONE CHECK (lane 4)` and `DEFECT RULED BESIDE PASSES (lane 4)`, and only when
 lane 3 left a check undecided. It runs alone.
@@ -210,6 +215,7 @@ as accept controls.
 
 Label: `verdicts`.
 Importance: 0.5.
+Marks: none.
 
 Starts from `SET ASIDE AND UNSETTLED (lane 5)`, `READING MOVES WITH THE SET-ASIDE (lane 5)`,
 `SET ASIDE BY SIDE (lane 5)`, `SETTLED BY HAND (lane 5)`, `REVIEW FAULTS (lane 5)`,
@@ -232,6 +238,7 @@ decision: whether rulings may count without a person reading each. Routes to `op
 
 Label: `exam`.
 Importance: 0.6.
+Marks: none.
 
 Starts from `EXAM DRAFTED (lane 6)`.
 
@@ -251,6 +258,7 @@ about. Routes to `examiner-prompt` (`src/examiner/draft.ts`), `pack/brief` or `p
 
 Label: `supply`.
 Importance: 0.65.
+Marks: none.
 
 Starts from `SUPPLY THIN (lane 7)`, `GATE REFUSED (lane 7)` and
 `SAFEGUARD-8 PROMOTION ON AUTHOR ROOM (lane 7)`.
@@ -268,6 +276,7 @@ session is bought first. Routes to `examiner-prompt` (`src/examiner/prompt.ts`) 
 
 Label: `comparison`.
 Importance: 0.75.
+Marks: none.
 
 Starts from `TIES BETWEEN VALID ANSWERS (lane 8)` and
 `SAFEGUARD-9 PROMOTION BEYOND VALIDITY (lane 8)`.
@@ -286,6 +295,7 @@ a promotion is worded, and whether the objective measures quality. Routes to `op
 
 Label: `supply`.
 Importance: 0.55.
+Marks: none.
 
 Starts from `TIED TASKS (lane 9)`, `NO VALID ANSWER (lane 9)` and `AWAITING A LABEL (lane 9)`.
 
@@ -301,6 +311,7 @@ comparison is, and each waiting label. Routes to `examiner/task`, `pack/evaluato
 
 Label: `exam`.
 Importance: 0.35.
+Marks: none.
 
 Starts from `PASSES AT A SMALL WALL SHARE (lane 10)`.
 
@@ -316,6 +327,7 @@ these tasks can measure a harness at all. Routes to `pack/brief`, `examiner/task
 
 Label: `supply`.
 Importance: 0.65.
+Marks: none.
 
 Starts from `OUTCOMES BY SESSION (lane 11)`.
 
@@ -333,6 +345,7 @@ the Examiner a share, target or level. The decision: whether its inputs are revi
 
 Label: `harness`.
 Importance: 0.8.
+Marks: none.
 
 Starts from `HARNESS CHANGED (lane 12)`, `BROKEN AT END (lane 12)`,
 `MEASURED AN EARLIER STATE (lane 12)`, `TOOLS EDITED (lane 12)` and
@@ -356,6 +369,7 @@ the `harness/` part that moved, `builder-prompt` where the limit was crossed, an
 
 Label: `harness`.
 Importance: 0.3.
+Marks: none.
 
 Starts from `NEVER CHECKED (lane 13)`, `TOOLS CALLED (lane 13)` and `TOOL CALLS ERRED (lane 13)`.
 
@@ -377,6 +391,7 @@ sentence the condition contradicts.
 
 Label: `harness`.
 Importance: 0.3.
+Marks: none.
 
 Starts from `NO PRACTICE (lane 14)`, `FINAL BYTES NEVER PRACTISED (lane 14)`,
 `SESSION ENDED (lane 14)` and `PRACTICE FAILS (lane 14)`.
@@ -394,6 +409,7 @@ course) and `host` (`src/builder/tools.ts`, `src/builder/session.ts`).
 
 Label: `harness`.
 Importance: 0.3.
+Marks: `alone`.
 
 Starts from `WIN AT A SMALL WALL SHARE (lane 15)`, and only when lane 10 or 12 suspects a
 shortcut: won tasks passed in few calls at a small share of the deadline. It also starts from
@@ -412,6 +428,7 @@ harness solving or knowing. Routes to `harness/tools`, `harness/guide` or `host`
 
 Label: `harness`.
 Importance: 0.6.
+Marks: none.
 
 Starts from `WINS (lane 16)`.
 
@@ -435,6 +452,7 @@ is what a `programs-of` comparison should test. The decision: which part a promo
 
 Label: `comparison`.
 Importance: 0.7.
+Marks: none.
 
 Starts from `STEP CARRIERS (lane 17)`.
 
@@ -456,6 +474,7 @@ The decision: whether a step is reported as general, narrow or resting on spread
 
 Label: `comparison`.
 Importance: 0.75.
+Marks: `standing`.
 
 Starts from `NOTHING SCORED (lane 18)`, `CUT BY ITS CAP (lane 18)` and
 `SET SHORT (lane 18)`, and is standing.
@@ -473,6 +492,7 @@ level, and terms are never topped up (rule 4). The decision: whether the operato
 
 Label: `climb`.
 Importance: 0.65.
+Marks: none.
 
 Starts from `VALID BY HARNESS (lane 19)` and `PROMOTION UNCONFIRMED (lane 19)`.
 
@@ -492,6 +512,7 @@ replaced, and whether a promotion counts towards the milestone. Routes to `host`
 
 Label: `comparison`.
 Importance: 0.45.
+Marks: none.
 
 Starts from `FLIPS (lane 20)` and `REFERENCE AGAINST ITSELF (lane 20)`.
 
@@ -509,6 +530,7 @@ to `operator`, and `environment` where flips cluster in high-load hours.
 
 Label: `climb`.
 Importance: 0.6.
+Marks: none.
 
 Starts from `CHAIN (lane 21)` and `NO TASK HELD OUT (lane 21)`.
 
@@ -533,6 +555,7 @@ campaign only. The decision: what runs next. Routes to `examiner-prompt`, `build
 
 Label: `climb`.
 Importance: 0.75.
+Marks: `side-by-side`.
 
 Starts from `PROMOTED (lane 22)`, `STARTER BARE (lane 22)`, `AFTER THE PROMOTION (lane 22)` and
 `SHARED TEMPORARY FOLDER (lane 22)`. Where several campaigns are under review, it is given their
@@ -565,6 +588,7 @@ there is none) and `environment`.
 
 Label: `climb`.
 Importance: 0.6.
+Marks: none.
 
 Starts from `ENDED AND WENT ON (lane 23)` and `OPERATOR WORDS (lane 23)`.
 
@@ -586,6 +610,7 @@ endings read as the table's. Routes to `host` (`src/campaign/decide.ts`,
 
 Label: `solve`.
 Importance: 0.45.
+Marks: none.
 
 Starts from `MISSES AT A LIMIT (lane 24)`, `WALL SHARE (lane 24)`, `HOST LOADED (lane 24)`,
 `LOAD MOVED (lane 24)`, `STARTS OUT OF TURN (lane 24)`, `NON-RESULTS (lane 24)`,
@@ -611,6 +636,7 @@ counts are trusted. Routes to `operator` (limits), `environment`, and `host` (`s
 
 Label: `economy`.
 Importance: 0.35.
+Marks: none.
 
 Starts from `LONG SILENCES (lane 25)`, `SPEND LED BY A ROLE (lane 25)` and
 `BUILDER COMPACTED (lane 25)`.
@@ -633,6 +659,7 @@ whether the bill can be believed, and whether each role earns its spend. Routes 
 
 Label: `runs`.
 Importance: 0.3.
+Marks: `standing`.
 
 Starts from `LAUNCHES (lane 26)`, `NO LAUNCH RECEIPT (lane 26)`, `HOST CODE MOVED (lane 26)` and
 `LOG OUT OF ORDER (lane 26)`, and is standing.
@@ -657,6 +684,7 @@ the run's promotions count, and whether a launch path let it start wrongly. Rout
 
 Label: `climb`.
 Importance: 1.
+Marks: `standing`, `blind`.
 
 Starts from every harness version the campaign kept, and is standing. It grades blind, so a session
 that holds it reads it first.

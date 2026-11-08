@@ -27,7 +27,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/fi
 import { asRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
-import { catalogueText } from "./catalogue.ts";
+import { catalogueText, lanesOf } from "./catalogue.ts";
 import { scoredTasks } from "./tasks.ts";
 import { ownFilesOf, weightOf } from "./trajectory.ts";
 
@@ -159,7 +159,7 @@ function between(text: string, from: string, to: string): string {
 }
 
 function graderPrompt(out: string, grader: string, tasks: number, versions: number): string {
-  const lane = catalogueText();
+  const lane = lanesOf(catalogueText()).find(({ number }) => number === 27)?.body ?? "";
   return `# Blind grades for lane 27 of a whole-run investigation
 
 You grade tasks and harness versions. A harness is a guide and programs that a fixed solver model uses to answer a domain's tasks. Your grades are a reviewer's reading: they change no verdict, reading, promotion or move, and no seat is told them.

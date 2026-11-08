@@ -3,15 +3,16 @@
 // by the objective alone beside its own A/A.
 import type { EventKind, LogEvent } from "../../src/kernel/log.ts";
 import { flipP } from "../../src/kernel/compare.ts";
-import { asRecord, type JsonObject } from "../../src/meta/json-shape.ts";
+import { asRecord, isString, type JsonObject } from "../../src/meta/json-shape.ts";
 import { keyIfDefined } from "../../src/meta/optional-key.ts";
 import { roundSolves } from "./logged-round.ts";
 
-/** What the reference measured on its first and second valid answer of each task, and the new side
- *  on every valid answer, lower being better. */
+/** What the reference measured on its first and second valid answer of each task, or of the tasks
+ *  `tasks` names, and the new side on every valid answer, lower being better. */
 interface Measures {
   readonly old: readonly [number, number];
   readonly fresh: number;
+  readonly tasks?: Readonly<Record<string, readonly [number, number]>>;
 }
 
 const STARTER = "a".repeat(64);
@@ -64,17 +65,20 @@ function compared(
   const { events, terms } = roundSolves(session, sides, outcomes);
   const [old, fresh] = sides;
   const { reading, measures } = read;
-  let side: keyof Measures = "old";
+  let side: "old" | "fresh" = "old";
+  let task = "";
   let nth = 0;
   const solved = events.flatMap((event) => {
     if (event.kind === "condition.recorded") {
-      side = asRecord(event.data.condition)?.harness === fresh ? "fresh" : "old";
+      const condition = asRecord(event.data.condition);
+      side = condition?.harness === fresh ? "fresh" : "old";
+      task = isString(condition?.task) ? condition.task : "";
       nth = 0;
     }
     const passed = event.kind === "solve.finished" && asRecord(event.data.ending)?.outcome === "pass";
     if (event.kind === "solve.finished") nth += 1;
     if (measures === undefined || !passed) return [event];
-    const objective = side === "fresh" ? measures.fresh : measures.old[nth - 1];
+    const objective = side === "fresh" ? measures.fresh : (measures.tasks?.[task] ?? measures.old)[nth - 1];
     return [event, at("verdict", { solve: event.data.solve ?? "", kind: "pass", objective: objective ?? 0 })];
   });
   const sign = (outcome: string) => (outcome === LOST ? 600 : outcome === WON ? -600 : 0);
@@ -134,9 +138,14 @@ export function chainLog(later: "lost" | "won"): LogEvent[] {
  * against its second, differs by 21 points a task: a margin of 0.05 scores 4 points a task, and 0.5
  * scores 144. With `validity` "split", the reference misses one solve of the first task, which splits
  * its validity in the comparison; with "flip", both sides miss their second solve of the last task,
- * which ties it on validity in the comparison and splits it, at 600 points, in the A/A.
+ * which ties it on validity in the comparison and splits it, at 600 points, in the A/A. `byTask` gives
+ * the reference other measures on the tasks it names, and so its A/A another difference there.
  */
-export function objectiveLog(margin: number, validity: "tied" | "split" | "flip" = "tied"): LogEvent[] {
+export function objectiveLog(
+  margin: number,
+  validity: "tied" | "split" | "flip" = "tied",
+  byTask?: Measures["tasks"],
+): LogEvent[] {
   const tasks = named("t", 6);
   const tied = spelled(tasks, "PP PP");
   const outcomes =
@@ -145,7 +154,7 @@ export function objectiveLog(margin: number, validity: "tied" | "split" | "flip"
     ...gated(tasks),
     ...compared("g-1", [STARTER, FIRST], outcomes, {
       reading: "step",
-      measures: { old: [1, 0.93], fresh: 1 - margin },
+      measures: { old: [1, 0.93], fresh: 1 - margin, ...keyIfDefined("tasks", byTask) },
     }),
   ];
 }

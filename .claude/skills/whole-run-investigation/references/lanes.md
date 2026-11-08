@@ -517,7 +517,9 @@ after read alone (`after`: a step, a step for the starter, no step or too few), 
 one origin no step selected, and a confirmation that rests on the others reads the promoting
 comparisons again. The starter's own noise is the line `Starter against itself`
 (`barLines`, `src/campaign/climb.ts`), which splits the starter's solves in two as the A/A splits the
-reference's; a reference lead inside it says nothing. The tasks written after are written by an
+reference's; a reference lead inside it says nothing. The line `Repetition` beside it names the
+comparisons where each side gave one validity and one measure in every solve of every task: there no
+split shows noise, and a tie of every task is no measured zero. The tasks written after are written by an
 Examiner that reads the reference's outcomes (lane 11), so a loss there may be its aim and not a
 plain regression; where losses there
 recur read by read, lane 28 owns the question. The decision: whether the starter's guide stays, whether tasks are
@@ -537,8 +539,8 @@ How much of the tally is solver variance? A flip is a task one harness both answ
 under one condition. `REFERENCE AGAINST ITSELF` is the A/A: `compared` splits the reference's solves
 into two halves mirrored in time, and `readsStepEitherWay` tests it both ways at the level. Its
 untied share is the noise floor a comparison must exceed, and its differences are the margins two
-solves of one harness reach by chance: a win by no more than the A/A's largest difference is inside
-the noise (lane 29). An A/A step is reported and ends nothing.
+solves of one harness reach by chance: a win by no more than the A/A's difference on the same task is
+inside the noise (lane 29). An A/A step is reported and ends nothing.
 For each step, count wins on tasks where the reference's halves disagree, and count flips per
 harness: fewer on the new side may be steadiness. The decision: how many solves a side a task needs. Routes
 to `operator`, and `environment` where flips cluster in high-load hours.
@@ -827,10 +829,11 @@ Starts from `MARGINS INSIDE THE NOISE (lane 29)`.
 Did each step whose untied tasks all tie on validity win by more than the reference's own spread?
 Such a step is carried by the objective alone, each win a margin between two valid answers
 (`pointsOf`, `src/kernel/compare.ts`). `MARGINS INSIDE THE NOISE` names each where more than half
-of the wins are no larger than the largest difference of that report's own A/A (`noise`), the
-reference read against itself under the same setting, and counts the objective-only steps whose A/A
-tied every task, which give no spread to read. For each step, read the wins' margins beside the A/A's
-distribution, not only its largest value; where the A/A tied, use the starter's split
+of the wins are no larger than the difference of that report's own A/A (`noise`) on the same task,
+the reference read against itself under the same setting, so one outlier task sets no ceiling for
+the rest. It counts the wins on tasks whose A/A tied, which clear only a zero difference, and the
+other objective-only steps most of whose wins were of that kind, which give no spread to read. For
+each step, read the wins' margins beside the A/A's distribution; where the A/A tied, use the starter's split
 (`Starter against itself`) or another report's A/A of the same reference and say so. Then read what
 the carrying tasks share (lane 17): one family, one writing session, or one quantity whose
 measurement moves from solve to solve. Size the remedy as solves a side: from the A/A's spread and the

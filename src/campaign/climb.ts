@@ -523,7 +523,29 @@ export function barLines(events: readonly LogEvent[]): string[] {
     honestyLine(events, epochs[MILESTONE.promotions]?.from),
     `- Economy: ${plural(climbed.length, "epoch")} after set-up against a bar of ${plural(BARS.cost, ATTEMPT)} each, ${String(over.length)} over it${over.length === 0 ? "" : `: ${over.join("; ")}`}. Reported only.`,
     starterNoiseLine(events),
+    repeatLine(events),
   ];
+}
+
+/**
+ * The comparisons in which each side gave one validity in every solve of every task, and of those,
+ * the ones where each also gave one measure: there no split of a side's solves can show noise, so
+ * the A/A's and the starter's tie on every task is no measured zero. Validity is counted apart,
+ * since a harness can repeat its measure and still flip validity. Reported only; decides nothing.
+ */
+function repeatLine(events: readonly LogEvent[]): string {
+  const one = (values: readonly (boolean | number | null)[]) => values.every((value) => value === values[0]);
+  const read = lastReports(events).flatMap((report) => {
+    const pairs = pairsReported(events, report);
+    if (pairs.length === 0 || !pairs.every((pair) => one(pair.old) && one(pair.fresh))) return [];
+    const measured = pairs.every(
+      ({ objective }) => objective === undefined || (one(objective.old) && one(objective.fresh)),
+    );
+    return [{ session: report.session, measured }];
+  });
+  const whole = read.filter(({ measured }) => measured).map(({ session }) => session);
+  const named = whole.length === 0 ? "" : ` (${whole.join(", ")}), where no split of either side shows noise`;
+  return `- Repetition: in ${plural(read.length, "comparison")} each side gave one validity in every solve of every task, and in ${String(whole.length)} one measure as well${named}. Reported only.`;
 }
 
 /** What the tied A/A comparisons among `controls` say, nothing where none tied every task. */

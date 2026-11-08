@@ -47,7 +47,9 @@ import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.
 import { controllersOf } from "./code.ts";
 import { hostsOf } from "./host-config.ts";
 import { syncRuns } from "./snapshots.ts";
-import { archived, archiveOf, HERE, keepers, processes, runs, writers } from "./registry.ts";
+import { stillRunning } from "./diagnosis.ts";
+import { unlaunchedSeed } from "./receipt.ts";
+import { archived, archiveOf, HERE, processes, runs } from "./registry.ts";
 
 /** What one sweep is asked: the main worktree, how long idle is, the time, and whether to act. */
 export interface Sweep {
@@ -75,17 +77,18 @@ const say = (sweep: Sweep, line: string) => console.log(`${sweep.yes ? "" : "wou
 const daysSince = (sweep: Sweep, ms: number) => (sweep.now - ms) / DAY_MS;
 
 /** Every run no process writes or keeps whose log has not grown for `days`, moved to the archive,
- *  and every such seed, the archive's too, deleted. Returns the logs it moved or deleted, or would. */
+ *  and every such seed no launch went on from, the archive's too, deleted. Returns the logs it moved
+ *  or deleted, or would. */
 export function archiveIdle(sweep: Sweep): Set<string> {
   const moved = new Set<string>();
   const taken = new Set<string>();
   const own = archiveOf(sweep.main, HERE);
-  for (const run of [...runs(sweep.main), ...archived(sweep.main).filter((each) => each.seed === true)]) {
+  for (const run of [...runs(sweep.main), ...archived(sweep.main).filter(unlaunchedSeed)]) {
     if (daysSince(sweep, lstatSync(run.path).mtimeMs) < sweep.days) continue;
     // Read again for each run: one launched while the sweep ran is live.
-    if (writers(run, processes()).length > 0 || keepers(run.name).length > 0) continue;
+    if (stillRunning(run, processes())) continue;
     const from = run.end === "solve.finished" ? run.path : dirname(run.path);
-    if (run.seed === true) {
+    if (unlaunchedSeed(run)) {
       say(sweep, `${from}: a seed, deleted`);
       moved.add(run.path);
       if (sweep.yes) rmSync(from, { recursive: true, force: true });

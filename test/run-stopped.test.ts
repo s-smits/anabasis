@@ -36,4 +36,15 @@ describe("whether a campaign may still write its log", () => {
     const writer = { pid: 1, cwd: dir, args: ["bun", "/x/tools/d2/harness-builder.ts", "--name", run.name] };
     expect(stillRunning({ ...run, tree: "/x" }, [writer])).toBe(true);
   });
+
+  it("reads a run whose keeper waits between two starts as running, and another run's keeper as nothing", () => {
+    const run = copy("wri-test-kept", null);
+    const keeper = (name: string) => ({
+      pid: 2,
+      cwd: dir,
+      args: ["bun", "/x/tools/runs/cli.ts", "keep", name, "--here"],
+    });
+    expect(stillRunning(run, [keeper(run.name)])).toBe(true);
+    expect(stillRunning(run, [keeper("another-run")])).toBe(false);
+  });
 });

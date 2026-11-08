@@ -61,9 +61,11 @@ function observationOf(run: Run): Observation | null {
 }
 
 /** Whether `run` may still write its log: a peer's by its last fetch, this machine's by a process
- *  in `running` that writes it or a `runs keep` that would start it again. */
+ *  in `running` that writes it or a `runs keep` that would start it again. It is the one reading of
+ *  a run's life that capacity, retire, copy and the investigations share; `writers` alone says
+ *  whether a process writes it at this moment. */
 export const stillRunning = (run: Run, running: readonly Running[]): boolean =>
-  observationOf(run)?.open ?? (writers(run, running).length > 0 || keepers(run.name).length > 0);
+  observationOf(run)?.open ?? (writers(run, running).length > 0 || keepers(run.name, running).length > 0);
 
 export async function runReason(
   run: Run,

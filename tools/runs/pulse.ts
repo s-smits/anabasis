@@ -63,7 +63,7 @@ import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import { asked, hosts } from "./hosts.ts";
 import { hostsOf } from "./host-config.ts";
-import { lastLaunch } from "./receipt.ts";
+import { lastLaunch, unlaunchedSeed } from "./receipt.ts";
 import { runReason } from "./diagnosis.ts";
 import {
   type Alarm,
@@ -583,7 +583,7 @@ async function look(
         before?.open === true ||
         before?.owed === true ||
         (before === undefined &&
-          run.seed !== true &&
+          !unlaunchedSeed(run) &&
           Date.now() - statSync(run.path).mtimeMs < RECENT_MS &&
           logEvents(run.path).at(-1)?.kind !== ENDED),
   );
@@ -740,7 +740,7 @@ export async function watch(args: readonly string[]): Promise<void> {
 
 /** Whether `status` shows a run without `--all`, whose log last changed `age` ago. */
 export const onStatus = (run: Run, open: boolean, age: number): boolean =>
-  open || (run.seed !== true && age <= RECENT_MS);
+  open || (!unlaunchedSeed(run) && age <= RECENT_MS);
 
 /**
  * `bun run runs status`: one row a run, open or written in the last day, or every one with `--all`;
@@ -757,10 +757,10 @@ export async function runsStatus(args: readonly string[]): Promise<void> {
   for (const run of runs()) {
     const open = writers(run, running).length > 0;
     const age = now - statSync(run.path).mtimeMs;
-    // A seed no process writes is a rehearsal's copy, and its promotions are its source's; one a
-    // process writes was continued as a run (16 October: fork-ladder-buffer-opus was not shown).
+    // A seed no launch went on from is a rehearsal's copy, and its promotions are its source's, shown
+    // while a process writes it (16 October: fork-ladder-buffer-opus was not shown).
     if (!values.all && !onStatus(run, open, age)) {
-      if (run.seed !== true) quiet += 1;
+      if (!unlaunchedSeed(run)) quiet += 1;
       continue;
     }
     const log = logEvents(run.path);
@@ -785,7 +785,7 @@ export async function runsStatus(args: readonly string[]): Promise<void> {
   }
   console.log(`${plural(promoted, "promotion")} in ${plural(compared, "comparison")} over the runs shown`);
   // This machine's own: a host's copy is said by that host's `status`, as its rows are.
-  const archive = archived().filter((run) => run.archived === HERE && run.seed !== true);
+  const archive = archived().filter((run) => run.archived === HERE && !unlaunchedSeed(run));
   const newest = archive
     .map((run) => ({ run, at: statSync(run.path).mtimeMs }))
     .toSorted((one, other) => other.at - one.at)

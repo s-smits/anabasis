@@ -46,7 +46,7 @@ import { compareCodeUnits, hashJsonValue } from "#src/meta/stable-json.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 import { toolchainPathDirs } from "#src/wall/policy.ts";
-import { isCampaign } from "./registry.ts";
+import { isCampaign, type Run } from "./registry.ts";
 import { readAcross, readableAcross } from "./snapshots.ts";
 
 /** What a run is asked to have run with: commits its launch holds, and text its source holds. */
@@ -167,6 +167,11 @@ export function receipts(log: string): (Receipt & { readonly session: string })[
 /** The receipt of the last run of the campaign command beside `log`, if one kept one. */
 export const lastLaunch = (log: string) =>
   receipts(log).findLast(({ session }) => session.startsWith("run-"));
+
+/** Whether `run` is a seed no launch went on from: a rehearsal's copy, whose record is its source's.
+ *  A seed copies no receipt (`seed.ts`), so one a launch continued is a run like any other. */
+export const unlaunchedSeed = (run: Pick<Run, "path" | "seed">): boolean =>
+  run.seed === true && lastLaunch(run.path) === undefined;
 
 /** The session the next run of the campaign command beside `log` keeps its receipt under. */
 export function nextRun(log: string): string {

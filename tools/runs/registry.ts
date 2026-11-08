@@ -244,12 +244,13 @@ function cwdOf(pid: string): string {
   }
 }
 
-/** Every process that may write a run's log, with the worktree it runs in. */
+/** Every process that may write a run's log or keep one going, with the worktree it runs in: one
+ *  table, so that `writers` and `keepers` read the same moment. */
 export function processes(): Running[] {
   const table = runTextSyncOrThrow(["ps", "-axo", "pid=,args="]).split("\n");
   const found = table.flatMap((row) => {
     const [pid = "", ...args] = row.trim().split(/\s+/);
-    return writesCampaign(args) || runsAs(args, [LIVE]) ? [{ pid, args }] : [];
+    return writesCampaign(args) || runsAs(args, [LIVE]) || keeping(args) !== undefined ? [{ pid, args }] : [];
   });
   if (found.length === 0) return [];
   // Linux names each cwd in /proc. Its lsof walks every descriptor up to the open-file limit Bun
@@ -301,16 +302,12 @@ export function openComparisons(events: readonly LogEvent[]): string[] {
 /** The file beside `run`'s log that holds its keeper's output. */
 export const keptFile = (run: Run) => join(dirname(run.path), "keep.out");
 
-/** The processes that keep campaign `name` going (`keep.ts`), but this one. */
-export function keepers(name: string): number[] {
-  return runTextSyncOrThrow(["ps", "-axo", "pid=,args="])
-    .split("\n")
-    .flatMap((row) => {
-      const [pid = "", ...args] = row.trim().split(/\s+/);
-      const at = args.indexOf("keep");
-      return runsAs(args, [CLI]) && at !== -1 && args[at + 1] === name && args.includes(KEEPING)
-        ? [Number(pid)]
-        : [];
-    })
-    .filter((pid) => pid !== runtimeProcess.pid);
+/** The campaign a `runs keep` process keeps going (`keep.ts`), or undefined for any other process. */
+function keeping(args: readonly string[]): string | undefined {
+  const at = args.indexOf("keep");
+  return runsAs(args, [CLI]) && at !== -1 && args.includes(KEEPING) ? args[at + 1] : undefined;
 }
+
+/** The processes in `running` that keep campaign `name` going, but this one. */
+export const keepers = (name: string, running: readonly Running[] = processes()): number[] =>
+  running.flatMap(({ pid, args }) => (keeping(args) === name && pid !== runtimeProcess.pid ? [pid] : []));

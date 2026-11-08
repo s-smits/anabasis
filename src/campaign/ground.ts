@@ -10,7 +10,7 @@
  * every comparison of the log is read.
  */
 import type { LogEvent } from "../kernel/log.ts";
-import { lastReports, latestBuilt, referenceOf } from "../kernel/reports.ts";
+import { CUT, lastReports, latestBuilt, referenceOf } from "../kernel/reports.ts";
 import { isNumber, isString, type JsonObject } from "../meta/json-shape.ts";
 import { refusals, supplyOf, type Wanted } from "./admission.ts";
 
@@ -91,9 +91,7 @@ export const heldOut = (data: JsonObject) => Array.isArray(data.held) && data.he
  *  out no task. The table's want of room passes it over (`roomless`), and so does the count of
  *  conversations that made no move (`idleOf`). */
 export const cutShort = (event: LogEvent) =>
-  sessionEnded(event) &&
-  (event.data.ended === "crashed" || event.data.ended === "killed") &&
-  !heldOut(event.data);
+  sessionEnded(event) && CUT.has(event.data.ended) && !heldOut(event.data);
 
 /** The sessions in a row, up to the log's end and since the campaign last
  *  ended, that the provider failed before they held out a task or changed a harness, with what

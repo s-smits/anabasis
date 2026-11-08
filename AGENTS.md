@@ -362,6 +362,12 @@ the procedures: `run-improvement-campaign` (what to run next), `run-management` 
 9. **A measured run opens a fresh project and climbs on its own** from a prompt at one commit;
    promotions from a seed, fork, pack or another commit do not count.
 
+**Which domains to run.** Jobstat is the domain v1.0 is built towards, and buffer is the control:
+its runs read against those of two, three and four weeks before, to show that a change did not
+regress. Run both, since they are far apart: a change that holds on both, surgical ones above all,
+plausibly generalises. Until jobstat climbs, put the effort there; before v1.0, read the other
+domains' newest runs against their past ones and bring back any that regressed.
+
 An anti-stall hook is on by default: every 290 seconds it runs `bun run runs pulse` and wakes an
 idle session only on a line worth reading. It is paused only on the operator's word.
 

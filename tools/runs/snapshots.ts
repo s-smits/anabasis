@@ -18,6 +18,7 @@ import { dirname, isAbsolute, join } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { pooled } from "#src/meta/pool.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
+import { errorMessage } from "#src/meta/runtime-values.ts";
 import { asked } from "./hosts.ts";
 import { type Host, hostNamed, hostsOf } from "./host-config.ts";
 import { quoted, rsync } from "./host-command.ts";
@@ -25,6 +26,7 @@ import { hold, release } from "./holder.ts";
 import {
   archiveOf,
   HERE,
+  keepers,
   originals,
   readable,
   readNamed,
@@ -41,6 +43,8 @@ interface RemoteRun {
   readonly path: string;
   readonly project: string | null;
   readonly open: boolean;
+  /** Whether a keeper held it there; false from a host whose tree sends none. */
+  readonly kept: boolean;
   readonly stderr: string | null;
   readonly bytes: number | null;
 }
@@ -82,6 +86,7 @@ export async function catalogue(): Promise<void> {
     originals().map(async (run) => ({
       ...entryOf(run),
       open: writers(run, running).length > 0,
+      kept: keepers(run.name, running).length > 0,
       stderr: await stderrTail(run.path),
       bytes: lstatSync(run.path).size,
     })),
@@ -122,6 +127,7 @@ export function remoteRuns(lines: readonly string[] | null, host: Host): RemoteR
       path: run.path,
       project: isString(run.project) ? run.project : null,
       open: run.open,
+      kept: run.kept === true,
       stderr: run.stderr,
       bytes: isNumber(run.bytes) ? run.bytes : null,
     };
@@ -135,7 +141,7 @@ async function refresh(run: RemoteRun, into: string, host: Host, depth: Depth): 
   // A log only grows, so a record copy of the size the catalogue states has nothing to gain.
   const held = join(into, LOG_FILE);
   if (depth === "record" && run.bytes !== null && existsSync(held) && lstatSync(held).size === run.bytes) {
-    await keepObservation(into, { open: run.open, stderr: run.stderr });
+    await keepObservation(into, { open: run.open, kept: run.kept, stderr: run.stderr });
     return held;
   }
   const lock = join(dirname(into), `.fetch-${run.name}.lock`);
@@ -164,7 +170,7 @@ async function refresh(run: RemoteRun, into: string, host: Host, depth: Depth): 
     const whole = join(stage, "whole-log");
     await Bun.write(whole, wholeLines(log));
     renameSync(whole, log);
-    await keepObservation(folder, { open: run.open, stderr: run.stderr });
+    await keepObservation(folder, { open: run.open, kept: run.kept, stderr: run.stderr });
     // A record refresh keeps the artefacts a whole refresh fetched by moving only the record into
     // the copy, a file at a time, the log last. Copying the folder to keep them took 4.7 s of a
     // 5.8 s refresh of one live run on 30 October: 6,372 files, most of them its Examiner's home.
@@ -203,6 +209,8 @@ export async function syncRuns(
     readonly from?: string;
     readonly repo?: string;
     readonly depth?: Depth;
+    /** Only the campaigns no process writes, which a copy can hold whole without moving under it. */
+    readonly closed?: boolean;
   } = {},
 ): Promise<string[]> {
   const repo = options.repo ?? runtimeProcess.cwd();
@@ -221,7 +229,7 @@ export async function syncRuns(
   const remote = selected.flatMap(({ host, lines }) => {
     if (lines !== null || options.from !== undefined) {
       return remoteRuns(lines, host)
-        .filter((run) => matches(run.name))
+        .filter((run) => matches(run.name) && (options.closed !== true || !(run.open || run.kept)))
         .map((run) => ({ host, run }));
     }
     console.error(`${host.name}: no campaign catalogue; its copies were left as they were`);
@@ -249,10 +257,21 @@ export async function syncRuns(
   const stale = (from = HERE) => silent.has(from) || (from !== HERE && !known.has(from));
   const archive = archiveOf(repo);
   const left = readable(repo).filter((run) => stale(run.archived) && matches(run.name));
+  // One copy that fails holds up no other, and the read still fails once the rest are in: until 10
+  // November one aborted rsync started no further copy of its host.
+  const failed: string[] = [];
   const brought = await pooled(kept, AT_ONCE, ({ host, run }) =>
-    refresh(run, join(archive, host.name, run.name), host, options.depth ?? "whole"),
+    refresh(run, join(archive, host.name, run.name), host, options.depth ?? "whole").catch(
+      (error: unknown) => {
+        failed.push(`${host.name} ${run.name}: ${errorMessage(error)}`);
+        return null;
+      },
+    ),
   );
-  return [...brought, ...left.map((run) => run.path)];
+  if (failed.length > 0) {
+    throw new Error(`${String(failed.length)} of ${String(kept.length)} copies failed: ${failed.join("; ")}`);
+  }
+  return [...brought.filter((log) => log !== null), ...left.map((run) => run.path)];
 }
 
 /** Resolve a path as given, or refresh a named campaign before reading its existing archive copy. */

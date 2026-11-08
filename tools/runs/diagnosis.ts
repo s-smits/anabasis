@@ -8,6 +8,8 @@ import { HERE, keepers, type Run, type Running, writers } from "./registry.ts";
 
 interface Observation {
   readonly open: boolean;
+  /** Whether a keeper held the run there; absent in an observation an older tree kept. */
+  readonly kept?: boolean;
   readonly stderr: string | null;
 }
 const OBSERVATION = "observation.json";
@@ -51,10 +53,10 @@ export function observationOf(run: Run): Observation | null {
 
 /** Where `run` writes and is kept from, among the processes `running`. */
 export function lifeOf(run: Run, running: readonly Running[]): Life {
-  const seen = observationOf(run)?.open;
-  return seen === undefined
+  const seen = observationOf(run);
+  return seen === null
     ? { writing: writers(run, running).length > 0, kept: keepers(run.name, running).length > 0 }
-    : { writing: seen, kept: false };
+    : { writing: seen.open, kept: seen.kept === true };
 }
 
 /** Whether `run` may still write its log. It is the one reading of a run's life that capacity,

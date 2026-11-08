@@ -51,7 +51,7 @@ const quoted = remote ? source.split(":").slice(1).join(":").slice(0,-1) : "";
 const from = remote ? quoted.slice(1,-1).replaceAll("'\\\\''", "'") : source;
 const target = args.at(-1);
 const into = target.includes(":") ? target.split(":").slice(1).join(":").replace(/\\/$/, "").slice(1,-1) + "/" : target;
-if (process.env.FAKE_TRANSFER_FAIL === "1") { mkdirSync(into, {recursive: true}); writeFileSync(into + "log.jsonl", "partial"); process.exit(23); }
+if (process.env.FAKE_TRANSFER_FAIL === "1" || (process.env.FAKE_TRANSFER_FAIL_FROM !== undefined && from.includes(process.env.FAKE_TRANSFER_FAIL_FROM))) { mkdirSync(into, {recursive: true}); writeFileSync(into + "log.jsonl", "partial"); process.exit(23); }
 const kept = args.filter((arg) => arg.startsWith("--include=/")).map((arg) => new RegExp("^" + arg.slice(11).replaceAll(".", "[.]").replaceAll("*", ".*") + "$"));
 cpSync(from, into, {recursive: true, verbatimSymlinks: true, filter: (file) => !args.includes("--exclude=/*") || resolve(file) === resolve(from) || (dirname(file) === resolve(from) && kept.some((name) => name.test(basename(file))))});`,
   "git": `${RECORD}

@@ -1,6 +1,6 @@
 // The fleet boundary through executable command fakes, with a hostile case beside each behaviour.
 import { afterAll, describe, expect, it } from "bun:test";
-import { append } from "../src/kernel/log.ts";
+import { append, LOG_FILE } from "../src/kernel/log.ts";
 import {
   existsSync,
   mkdirSync,
@@ -36,7 +36,7 @@ function campaign() {
   const made = fixture();
   const folder = join(made.root, "remote", "distant");
   mkdirSync(folder, { recursive: true });
-  const log = join(folder, "log.jsonl");
+  const log = join(folder, LOG_FILE);
   append(log, "campaign.ended", { ending: "finished", why: "fixture" });
   writeFileSync(
     join(folder, "launch-run-1.json"),
@@ -187,7 +187,7 @@ describe("code preparation", () => {
     const made = fixture();
     const folder = join(made.main, ".ana", "d2", "distant");
     mkdirSync(folder, { recursive: true });
-    append(join(folder, "log.jsonl"), "campaign.ended", { ending: "finished" });
+    append(join(folder, LOG_FILE), "campaign.ended", { ending: "finished" });
     const result = made.run(
       'import { move } from "REPOSITORY/tools/runs/move.ts"; await move(["distant", "--to", "runner", "--yes"]);',
       { FAKE_EXECUTE: "1", FAKE_FETCH_FAIL: "1" },
@@ -269,7 +269,7 @@ describe("campaign snapshots", () => {
     writeFileSync(remote.log, `${whole}{"inFlight":`);
     const result = made.run(sync, remote.env);
     expect(result.code).toBe(0);
-    const copied = join(made.main, "data", "runs", "runner", "distant", "log.jsonl");
+    const copied = join(made.main, "data", "runs", "runner", "distant", LOG_FILE);
     expect(readFileSync(copied, "utf8")).toBe(whole);
     const transfer = made.recorded().find((call) => call.tool === "rsync");
     expect(transfer?.args).toContain("--exclude=.env");
@@ -279,12 +279,37 @@ describe("campaign snapshots", () => {
     expect(readFileSync(copied, "utf8")).toBe(whole);
   });
 
+  it("brings every other copy of a host where one copy fails, names it, and still fails the read", () => {
+    const made = fixture();
+    // One more campaign than a sync copies at once, the failing one first: until 10 November its
+    // failure started no further copy, so the last was never brought.
+    const names = ["broken", ...Array.from({ length: 6 }, (_, at) => `whole-${String(at)}`)];
+    const catalogue = names.map((name) => {
+      mkdirSync(join(made.root, "remote", name), { recursive: true });
+      const log = join(made.root, "remote", name, LOG_FILE);
+      append(log, "campaign.ended", { ending: "finished", why: "fixture" });
+      return { name, path: log };
+    });
+    const result = made.run(
+      'import { syncRuns } from "REPOSITORY/tools/runs/snapshots.ts"; await syncRuns([]);',
+      {
+        FAKE_CATALOGUE: JSON.stringify(catalogue),
+        FAKE_TRANSFER_FAIL_FROM: join("remote", "broken"),
+      },
+    );
+    expect(result.code).not.toBe(0);
+    expect(result.err).toContain("1 of 7 copies failed: runner broken:");
+    const archive = join(made.main, "data", "runs", "runner");
+    for (const name of names.slice(1)) expect(existsSync(join(archive, name, LOG_FILE))).toBe(true);
+    expect(existsSync(join(archive, "broken"))).toBe(false);
+  });
+
   it("waits for a live fetch however old its lock, then takes over and reclaims what a killed one left", async () => {
     const remote = campaign();
     const { made } = remote;
     const archive = join(made.main, "data", "runs", "runner");
     const lock = join(archive, ".fetch-distant.lock");
-    const copied = join(archive, "distant", "log.jsonl");
+    const copied = join(archive, "distant", LOG_FILE);
     // A whole refresh killed between setting the copy aside and publishing the new one, and a record
     // refresh after it that keeps what that copy held.
     mkdirSync(join(lock, "stage", "previous"), { recursive: true });
@@ -379,7 +404,7 @@ describe("campaign snapshots", () => {
     });
     expect(collection.code).toBe(0);
     expect(collection.err).toContain("other: no campaign catalogue");
-    const copied = join(made.main, "data", "runs", "runner", "distant", "log.jsonl");
+    const copied = join(made.main, "data", "runs", "runner", "distant", LOG_FILE);
     expect(readFileSync(copied, "utf8")).toBe(readFileSync(remote.log, "utf8"));
     const kept = made.run(
       'import { readAcross } from "REPOSITORY/tools/runs/snapshots.ts"; console.log((await readAcross("distant")).path);',
@@ -388,7 +413,7 @@ describe("campaign snapshots", () => {
     expect({ code: kept.code, out: kept.out.trim() }).toEqual({ code: 0, out: copied });
     const near = join(made.main, ".ana", "d2", "near");
     mkdirSync(near, { recursive: true });
-    append(join(near, "log.jsonl"), "campaign.ended", { ending: "finished" });
+    append(join(near, LOG_FILE), "campaign.ended", { ending: "finished" });
     const routing = (name: string) =>
       made.run(
         `import { routed } from "REPOSITORY/tools/runs/hosts.ts"; console.log(JSON.stringify((await routed("stop", ["${name}"])).here));`,
@@ -487,7 +512,7 @@ describe("snapshot depth", () => {
     rmSync(remote.log);
     symlinkSync(join(memory, "note.txt"), remote.log);
     expect(made.run(sync, remote.env).code).toBe(1);
-    expect(readFileSync(join(made.main, "data", "runs", "runner", "distant", "log.jsonl"), "utf8")).toContain(
+    expect(readFileSync(join(made.main, "data", "runs", "runner", "distant", LOG_FILE), "utf8")).toContain(
       "campaign.ended",
     );
   });
@@ -508,6 +533,47 @@ describe("snapshot depth", () => {
     expect(existsSync(copied)).toBe(false);
     expect(fetched('["--whole"]').code).toBe(0);
     expect(readFileSync(copied, "utf8")).toBe("kept");
+  });
+});
+
+describe("the daily retire's host step", () => {
+  it("brings a closed campaign whole and an open one as its record, and asks a silent host again at the next sweep", () => {
+    const remote = campaign();
+    const { made } = remote;
+    const busy = join(made.root, "remote", "busy");
+    mkdirSync(join(busy, "memory"), { recursive: true });
+    writeFileSync(join(busy, "memory", "note.txt"), "live");
+    append(join(busy, LOG_FILE), "campaign.word", { word: "fixture" });
+    // A run whose keeper waits between two starts has no writer, and is as open as one that has.
+    const waiting = join(made.root, "remote", "waiting");
+    mkdirSync(join(waiting, "memory"), { recursive: true });
+    append(join(waiting, LOG_FILE), "campaign.word", { word: "fixture" });
+    const memory = join(made.root, "remote", "distant", "memory");
+    mkdirSync(memory);
+    writeFileSync(join(memory, "note.txt"), "kept");
+    const env = {
+      FAKE_CATALOGUE: JSON.stringify([
+        { name: "distant", path: remote.log },
+        { name: "busy", path: join(busy, LOG_FILE), open: true },
+        { name: "waiting", path: join(waiting, LOG_FILE), kept: true },
+      ]),
+    };
+    const sweep = (extra: Record<string, string>) =>
+      made.run('import { retire } from "REPOSITORY/tools/runs/retire.ts"; await retire(["--yes"]);', {
+        ...env,
+        ...extra,
+      });
+    const copy = (name: string, file: string) => join(made.main, "data", "runs", "runner", name, file);
+    // A host that does not answer leaves nothing copied, and the sweep says so.
+    expect(sweep({ FAKE_OFFLINE: "1" }).code).toBe(1);
+    expect(existsSync(copy("distant", LOG_FILE))).toBe(false);
+    // The next sweep finds it again: the closed campaign's folders come, the open one's record only.
+    expect(sweep({}).code).toBe(0);
+    expect(readFileSync(copy("distant", "memory/note.txt"), "utf8")).toBe("kept");
+    expect(existsSync(copy("busy", LOG_FILE))).toBe(true);
+    expect(existsSync(copy("busy", "memory/note.txt"))).toBe(false);
+    expect(existsSync(copy("waiting", LOG_FILE))).toBe(true);
+    expect(existsSync(copy("waiting", "memory"))).toBe(false);
   });
 });
 

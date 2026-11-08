@@ -13,7 +13,11 @@ import type { Run } from "../tools/runs/registry.ts";
 
 let dir = "";
 
-function copy(name: string, observation: { open: boolean; stderr: null } | null, archived?: string): Run {
+function copy(
+  name: string,
+  observation: { open: boolean; kept?: boolean; stderr: null } | null,
+  archived?: string,
+): Run {
   mkdirSync(join(dir, name), { recursive: true });
   writeFileSync(join(dir, name, "log.jsonl"), "");
   if (observation !== null) writeFileSync(join(dir, name, "observation.json"), JSON.stringify(observation));
@@ -30,6 +34,12 @@ describe("whether a campaign may still write its log", () => {
   it("reads a peer's copy by the observation its last fetch kept", () => {
     expect(stillRunning(copy("wri-test-open", { open: true, stderr: null }, "peer"), [])).toBe(true);
     expect(stillRunning(copy("wri-test-closed", { open: false, stderr: null }, "peer"), [])).toBe(false);
+  });
+
+  it("reads a peer's run whose keeper waits between two starts as still running", () => {
+    const waiting = { open: false, kept: true, stderr: null };
+    expect(stillRunning(copy("wri-test-kept", waiting, "peer"), [])).toBe(true);
+    expect(stillRunning(copy("wri-test-unkept", { ...waiting, kept: false }, "peer"), [])).toBe(false);
   });
 
   it("reads this machine's own campaign by its processes, not a stale observation beside it", () => {

@@ -202,7 +202,17 @@ under four conditions:
 The notes name the proof run, its commit and its two `harness.promoted` events. The version tells
 which runs may be compared: the patch moves where runs measure what the last release's measured, the
 minor where the release changes what a run measures (a weight, the level, the step test, task
-admission, the setting; never compare runs across minors), and the major only on the operator's word.
+admission, the setting, what a seat is told; never compare runs across minors).
+
+The major moves to 1 at the release whose runs meet the v1.0 bar's measured rows (`docs/plan.md`,
+"The v1.0 bar, now"): the climb milestone, six confirmed promotions in one fresh campaign at one
+commit of the release line and then in a second domain; honesty, no A/A step in the ten comparisons
+after the sixth; verdicts, the Referee's agreement on 30 blind labels; and the wall on both
+operating systems. A row whose threshold the operator has not set (the validity share, a dollar
+target, systems, outside) is reported in the notes and holds nothing back. After 1.0 the major
+moves only where a reading stops meaning what it meant: the question of `AGENTS.md` section 1, what
+crosses the wall, or a factor's bar (operator, 8 November 2026: "decide upon what counts as a major
+version").
 
 ### The threshold
 

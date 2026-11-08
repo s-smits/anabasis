@@ -53,10 +53,13 @@ export interface Answer {
   readonly err: string;
 }
 
+/** The four states GitHub's statuses API takes. */
+export type StatusState = "pending" | "success" | "failure" | "error";
+
 /** A commit status as GitHub's statuses API takes it; `link` is the target its Details opens. */
 export interface Status {
   readonly context: string;
-  readonly state: string;
+  readonly state: StatusState;
   readonly description: string;
   readonly link?: string | undefined;
 }

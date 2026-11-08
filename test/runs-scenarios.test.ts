@@ -525,3 +525,31 @@ it("S12: one stop locates names on both peers and refuses ambiguous originals be
     made.recorded().filter((call) => call.tool === "ssh" && call.args.at(-1)?.includes("stop") === true),
   ).toHaveLength(2);
 });
+
+it("a stop ends a run's keeper before its writer, so the keeper cannot start it again between the two", async () => {
+  const made = fixture();
+  campaign(made, "local", made.main);
+  const order = join(made.root, "order");
+  // Each stands in for its process and says when it is ended.
+  const role = (name: string) =>
+    Bun.spawn(["sh", "-c", `trap 'echo ${name} >> "$0"; exit 0' TERM; while :; do sleep 0.05; done`, order], {
+      cwd: made.main,
+      detached: true,
+      stderr: "ignore",
+    });
+  const writer = role("writer");
+  const keeper = role("keeper");
+  await Bun.sleep(200);
+  const table = {
+    "-axo pid=,args=": `${String(writer.pid)} bun tools/d2/harness-builder.ts --name local\n${String(keeper.pid)} bun ${made.main}/tools/runs/cli.ts keep local --here`,
+    "-axo pid=,ppid=": `${String(writer.pid)} 1\n${String(keeper.pid)} 1`,
+  };
+  const result = made.runScript(CLI, ["stop", "local", "--yes"], {
+    FAKE_PS_TABLE: JSON.stringify(table),
+    FAKE_CWDS: `p${String(writer.pid)}\nn${made.main}\np${String(keeper.pid)}\nn${made.main}`,
+  });
+  writer.kill("SIGKILL");
+  keeper.kill("SIGKILL");
+  expect({ code: result.code, err: result.err }).toEqual({ code: 0, err: "" });
+  expect(readFileSync(order, "utf8").split("\n").filter(Boolean)).toEqual(["keeper", "writer"]);
+});

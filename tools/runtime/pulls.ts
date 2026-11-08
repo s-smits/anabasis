@@ -3,7 +3,8 @@
  * `land`, `doubled.ts` and the stack scripts. They left `land.ts` on 30 October 2026 so that
  * `doubled.ts`, which `land` calls, could read them without importing `land` back. A commit status
  * is posted here too (`postStatus`), for `land` and the pre-push hook, which spelled the same
- * `gh api` call apart until 5 November 2026. The chains of bases they form are read here as well
+ * `gh api` call apart until 5 November 2026, and a landing's statuses go through one board of what
+ * GitHub shows (`statusBoard`). The chains of bases they form are read here as well
  * (`chains`, `firstStack`): until 9 November `land`, `follow`, `stack.ts` and `republish.ts` each
  * read the stack's top their own way.
  */
@@ -18,6 +19,9 @@ export const MERGEABLE_CONTEXT = "mergeable";
  *  open, bottom first. A stack keeps the members a partial merge took, listed closed, and until
  *  5 November they read as part of the next landing, which `stackOf` then refused. */
 export const STACK_MEMBERS = String.raw`map(select(.open)) | first // empty | "\(.number) \(.pull_requests | map(select(.state == "open") | .number) | join(","))"`;
+
+/** Each status a GraphQL reading of commits finds, as `statusBoard` spells a status it posts. */
+const SHOWN = String.raw`.data.repository[] | select(. != null) | .oid as $sha | (.status.contexts // [])[] | [$sha, .context, (.state | ascii_downcase), .description] | join("\t")`;
 
 /** Where GitHub lists the repository's native stacks. */
 export const STACKS = "repos/{owner}/{repo}/stacks";
@@ -57,6 +61,13 @@ export interface Status {
   readonly link?: string | undefined;
 }
 
+/** The statuses a landing posts (`statusBoard`). */
+export interface Board {
+  readonly read: (shas: readonly string[]) => void;
+  readonly post: (sha: string, status: Status) => void;
+  readonly settle: () => void;
+}
+
 export function gh(root: string, args: readonly string[]): Answer {
   const result = runSync(["gh", ...args], { cwd: root });
   return {
@@ -92,6 +103,53 @@ export function postStatus(
   const fields = form({ state, context, description });
   const path = api(`statuses/${sha}`);
   return gh(root, ["api", "-X", "POST", path, ...fields, "--silent", ...form({ target_url: link })]).ok;
+}
+
+/** The statuses a landing posts, as one board of what each commit and context shows. Each commit's
+ *  statuses are read in one GraphQL call (`read`): on 30 October a landing over remembered passes
+ *  posted 81 statuses one by one, about 0.6 s each, every one shown already, where one reading of
+ *  the 64 commits took 0.9 s. A status is posted only where it changes what its commit shows; until
+ *  9 November a set of rows seen decided it, so a verdict GitHub showed before the landing turned it
+ *  pending was never posted again, and stayed pending. `settle` turns each status the landing left
+ *  pending into an error, however the landing ended. Unread, every status is posted. */
+export function statusBoard(root: string): Board {
+  const shown = new Map<string, string>();
+  const asked = new Set<string>();
+  const pending = new Set<string>();
+  const post = (sha: string, status: Status): void => {
+    const key = `${sha}\t${status.context}`;
+    const now = `${status.state}\t${status.description}`;
+    if (shown.get(key) !== now) {
+      if (!postStatus(root, sha, status)) return;
+      shown.set(key, now);
+    }
+    if (status.state === "pending") pending.add(key);
+    else pending.delete(key);
+  };
+  const read = (shas: readonly string[]): void => {
+    const objects = shas
+      .filter((sha) => !asked.has(sha))
+      .map(
+        (sha, index) =>
+          `c${String(index)}: object(oid: "${sha}") { ... on Commit { oid status { contexts { context state description } } } }`,
+      );
+    for (const sha of shas) asked.add(sha);
+    if (objects.length === 0) return;
+    const query = `query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { ${objects.join(" ")} } }`;
+    const args = ["api", "graphql", "-F", "owner={owner}", "-F", "name={repo}", "--jq", SHOWN];
+    const answer = gh(root, [...args, "-f", `query=${query}`]);
+    for (const row of answer.ok ? answer.out.split("\n") : []) {
+      const [sha = "", context = "", ...now] = row.split("\t");
+      shown.set(`${sha}\t${context}`, now.join("\t"));
+    }
+  };
+  const settle = (): void => {
+    for (const key of pending) {
+      const [sha = "", context = ""] = key.split("\t");
+      post(sha, { context, state: "error", description: "bun run land ended before proving it; land again" });
+    }
+  };
+  return { read, post, settle };
 }
 
 /** The longest chain in `pool` standing on any of `bases`, bottom first, each based on the head of

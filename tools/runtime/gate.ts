@@ -15,10 +15,11 @@
  * prints whole; the tests stream theirs, which the pulse reads. A failed step no longer keeps the
  * rest from starting, so the gate ends once all have. The strict lint fails on everything a plain
  * one does, so it runs once. Every step fails in one spelling, `gate: step <name> failed (exit <n>)`, which the pre-push
- * hook and `bun run land` repeat without knowing each tool's wording. A step whose runner dropped
- * its connection (exit 255) runs once more, and a second drop reads `gave no verdict`: the landing
- * then marks the commit with an error rather than a failure and prints no fix, since nothing was
- * learnt about the commit (`NO_VERDICT`).
+ * hook and `bun run land` repeat without knowing each tool's wording. A step whose runner said
+ * nothing about the commit (a dropped connection, no slot in time, or a host that does not answer or
+ * lacks the disk; `NO_VERDICT`) runs once more, and a second such exit reads `gave no verdict`: the
+ * landing then marks the commit with an error rather than a failure and prints no fix, since nothing
+ * was learnt about the commit. Each exit is read once, by `verdictOf`.
  *
  * `--static` is what the pre-push hook runs over a pushed head where the push asks (`ANA_PUSH_VERIFY=1`,
  * `tools/runtime/pre-push.ts`), and
@@ -173,9 +174,15 @@ const TEST_REPORT_LINES = 200;
 /** A pass keeps its output in a log and prints nothing for minutes, which reads like a hung push. */
 const PULSE_MS = (Number(runtimeProcess.env.ANA_GATE_PULSE_SECONDS) || 60) * 1000;
 const LOG_DAYS = 14;
-/** ssh's own exit for a dropped connection, which the check runner passes on as no verdict
- *  (`tools/runtime/router/run.sh`). */
-const NO_VERDICT = 255;
+/** The check runner's exits that say nothing about the commit (`tools/runtime/router/run.sh`): 255
+ *  where ssh dropped or the task left no status, 75 where no slot came free in time, and 69 where the
+ *  host does not answer or lacks the disk. Until 9 November only 255 counted, so a queue that timed
+ *  out failed the commit, and the landing printed a fix for a commit nothing had read. */
+const NO_VERDICT = new Set([255, 75, 69]);
+
+/** What an exit of a step, or of the gate over a commit, says about the commit. */
+const verdictOf = (code: number): "passed" | "failed" | "none" =>
+  code === 0 ? "passed" : NO_VERDICT.has(code) ? "none" : "failed";
 
 export const lines = (text: string): string[] => text.split("\n").filter((line) => line.length > 0);
 export const short = (sha: string): string => sha.slice(0, 9);
@@ -385,9 +392,13 @@ async function step(root: string, name: string, args: readonly string[], held = 
     return child.exited;
   };
   let code = await run();
-  if (code === NO_VERDICT) code = await run();
-  if (code === NO_VERDICT) console.error(`gate: step ${name} gave no verdict (exit ${String(code)})`);
-  else if (code !== 0) console.error(`gate: step ${name} failed (exit ${String(code)})`);
+  if (verdictOf(code) === "none") code = await run();
+  const verdict = verdictOf(code);
+  if (verdict !== "passed") {
+    console.error(
+      `gate: step ${name} ${verdict === "none" ? "gave no verdict" : "failed"} (exit ${String(code)})`,
+    );
+  }
   return code;
 }
 
@@ -417,7 +428,7 @@ async function gate(argv: readonly string[]): Promise<number> {
       : 0,
   ]);
   // A failure says more than a dropped runner, which says nothing about the commit.
-  return codes.find((code) => code !== 0 && code !== NO_VERDICT) ?? codes.find((code) => code !== 0) ?? 0;
+  return codes.find((code) => verdictOf(code) === "failed") ?? codes.find((code) => code !== 0) ?? 0;
 }
 
 /** What a pass's log says so far, for the pulse: tests passed and failed, and a rerun under way. */
@@ -462,7 +473,7 @@ function failedTests(output: readonly string[]): string[] {
 export const failedLine = (failure: Failure): string =>
   failure.verdict
     ? `${short(failure.commit)} FAILS ${failure.step} ON ITS OWN`
-    : `${short(failure.commit)} GAVE NO VERDICT ON ${failure.step}: its runner dropped twice`;
+    : `${short(failure.commit)} GAVE NO VERDICT ON ${failure.step}: its runner said nothing of it twice`;
 
 /**
  * Runs each commit's pass over a checkout of it, up to `jobs` at once, and returns the lowest
@@ -548,12 +559,13 @@ export async function proveCommits(
       say(`${at}: passed.`);
       return;
     }
+    // The gate's exit says whether the commit failed; its log only names the step that said so.
     const output = lines(readFileSync(log, "utf8"));
+    const verdict = verdictOf(code) === "failed";
     const said = output.map((line) => /^gate: step (\S+) (failed|gave no verdict)/u.exec(line));
-    const [, failedStep = "the gate", verdict = "failed"] =
-      said.findLast((line) => line?.[2] === "failed") ?? said.findLast(Boolean) ?? [];
-    const state = verdict === "failed" ? "failure" : "error";
-    const failure = { commit, step: failedStep, log, verdict: state === "failure" };
+    const failedStep = said.findLast((line) => line !== null && (line[2] === "failed") === verdict)?.[1];
+    const state = verdict ? "failure" : "error";
+    const failure = { commit, step: failedStep ?? "the gate", log, verdict };
     failures.push({ index, ...failure });
     mark(commit, state, FAILED[state]);
     console.error([...failedTests(output), ...output.slice(-30)].join("\n"));

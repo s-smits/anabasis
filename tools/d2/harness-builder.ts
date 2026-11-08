@@ -168,6 +168,9 @@ import { sessionCommand } from "./session.ts";
 import { type AskedSetting, firstRecord, keepSetting, recordedSetting, settingAsked } from "./setting.ts";
 
 const ENDED = "campaign.ended";
+/** How a Builder's campaign conversation ended whole, by its finish or at its own limits: the
+ *  conversations `idleOf` counts towards `finished`. One cut (`CUT`) or stopped counts none. */
+const WHOLE: ReadonlySet<unknown> = new Set(["finished", "wall", "turns"]);
 /** How a Builder's campaign conversation ended where the campaign goes on with another: at its
  *  own limits, or crashed, which the table's crash rule bounds (`crashedRun`). */
 const AGAIN: ReadonlySet<unknown> = new Set(["wall", "turns", "crashed"]);
@@ -394,7 +397,7 @@ async function converse(
   // Builder's notes until IDLE in a row have made no campaign move (`idleOf`). Until 14 October every
   // finish ended the campaign: five of five led campaigns ended so, with $22 to $122 of $300 spent,
   // and the two that promoted finished within seconds of the promotion.
-  const idle = how === "finished" || how === "wall" || how === "turns" ? idleOf(after) : 0;
+  const idle = WHOLE.has(how) ? idleOf(after) : 0;
   const table = decide(after, turnOf(context).plan);
   // A comparison, any of them, and a promotion measure what a conversation left and ask no Builder for
   // anything, so the host makes them first, and an ending the table names stands. Until 14 October a

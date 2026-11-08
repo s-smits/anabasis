@@ -3,7 +3,9 @@
  * `land`, `doubled.ts` and the stack scripts. They left `land.ts` on 30 October 2026 so that
  * `doubled.ts`, which `land` calls, could read them without importing `land` back. A commit status
  * is posted here too (`postStatus`), for `land` and the pre-push hook, which spelled the same
- * `gh api` call apart until 5 November 2026.
+ * `gh api` call apart until 5 November 2026. The chains of bases they form are read here as well
+ * (`chains`, `firstStack`): until 9 November `land`, `follow`, `stack.ts` and `republish.ts` each
+ * read the stack's top their own way.
  */
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { decodeOutput, runSync } from "../../src/meta/subprocess.ts";
@@ -16,6 +18,20 @@ export const MERGEABLE_CONTEXT = "mergeable";
  *  open, bottom first. A stack keeps the members a partial merge took, listed closed, and until
  *  5 November they read as part of the next landing, which `stackOf` then refused. */
 export const STACK_MEMBERS = String.raw`map(select(.open)) | first // empty | "\(.number) \(.pull_requests | map(select(.state == "open") | .number) | join(","))"`;
+
+/** Where GitHub lists the repository's native stacks. */
+export const STACKS = "repos/{owner}/{repo}/stacks";
+
+/** One of GitHub's native stacks, as `GET` on `STACKS` lists it. */
+export interface NativeStack {
+  readonly number: number;
+  readonly open: boolean;
+  readonly pull_requests: readonly {
+    readonly number: number;
+    readonly state: string;
+    readonly head: { readonly ref: string };
+  }[];
+}
 
 /** An open pull request, in the fields `gh pr list --json` names. */
 export interface Pull {
@@ -76,6 +92,76 @@ export function postStatus(
   const fields = form({ state, context, description });
   const path = api(`statuses/${sha}`);
   return gh(root, ["api", "-X", "POST", path, ...fields, "--silent", ...form({ target_url: link })]).ok;
+}
+
+/** The longest chain in `pool` standing on any of `bases`, bottom first, each based on the head of
+ *  the one beneath; of two as long, the one through the lower number. `seen` holds the heads
+ *  already on the chain, so a loop of bases ends. */
+function longest(pool: readonly Pull[], bases: readonly string[], seen: ReadonlySet<string>): Pull[] {
+  let found: Pull[] = [];
+  for (const child of pool
+    .filter((pull) => bases.includes(pull.baseRefName) && !seen.has(pull.headRefName))
+    .toSorted((a, b) => a.number - b.number)) {
+    const chain = [child, ...longest(pool, [child.headRefName], new Set([...seen, child.headRefName]))];
+    if (chain.length > found.length) found = chain;
+  }
+  return found;
+}
+
+/** The open pull requests beneath `pull`, nearest first: each the one whose head the one above it is
+ *  based on. */
+export function beneath(open: readonly Pull[], pull: Pull): Pull[] {
+  const byHead = new Map(open.map((each) => [each.headRefName, each]));
+  const found: Pull[] = [];
+  for (let below = byHead.get(pull.baseRefName); below !== undefined && below.number !== pull.number; ) {
+    if (found.includes(below)) break;
+    found.push(below);
+    below = byHead.get(below.baseRefName);
+  }
+  return found;
+}
+
+/** The longest chain of open pull requests above `pull`, nearest first. */
+export const chainAbove = (open: readonly Pull[], pull: Pull): Pull[] =>
+  longest(open, [pull.headRefName], new Set([pull.headRefName]));
+
+/**
+ * The stacks, and the pull requests on none: each stack the longest chain left, bottom first,
+ * longest first, starting on a base that is no open pull request's head (the trunk, or a branch that
+ * has landed). A fork off the middle of a stack is on none, since it cannot land without the pull
+ * requests beneath it. This is the one reading of the chain of bases: `land` lands the chain, and
+ * GitHub's native stacks are only checked against it (`stackOf`, `land.ts`).
+ */
+export function chains(open: readonly Pull[]): { stacks: Pull[][]; sides: Pull[] } {
+  const heads = new Set(open.map((pull) => pull.headRefName));
+  const roots = [...new Set(open.map((pull) => pull.baseRefName))].filter((base) => !heads.has(base));
+  const stacks: Pull[][] = [];
+  let free = open;
+  for (
+    let line = longest(free, roots, new Set(roots));
+    line.length > 0;
+    line = longest(free, roots, new Set(roots))
+  ) {
+    stacks.push(line);
+    free = free.filter((pull) => !line.includes(pull));
+  }
+  return { stacks, sides: [...free] };
+}
+
+/** The stack that holds pull request `number`, bottom first, or undefined for one on none. */
+export const stackHolding = (open: readonly Pull[], number: number): Pull[] | undefined =>
+  chains(open).stacks.find((line) => line.some((pull) => pull.number === number));
+
+/** The stack `bun run land` lands and `bun run follow` follows first, bottom first: of the stacks of
+ *  two or more, else of the lone pull requests, the one that holds the oldest open pull request
+ *  (operator, 27 October 2026); empty where none is open. Until 9 November `land` took the lowest
+ *  bottom on the trunk and `follow` GitHub's native stack, with its own chain where GitHub held
+ *  none, so a lone older pull request or a reordered stack sent them to different tops. */
+export function firstStack(open: readonly Pull[]): Pull[] {
+  const { stacks } = chains(open);
+  const stacked = stacks.filter((line) => line.length > 1);
+  const oldest = (line: readonly Pull[]): number => Math.min(...line.map((pull) => pull.number));
+  return (stacked.length > 0 ? stacked : stacks).toSorted((a, b) => oldest(a) - oldest(b))[0] ?? [];
 }
 
 /** Every open pull request of the repository `root`'s remote names, as GitHub lists them now. */

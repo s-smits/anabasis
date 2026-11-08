@@ -33,9 +33,16 @@ import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { shellQuote } from "#src/wall/isolation.ts";
 import { short } from "#tools/runtime/gate.ts";
-import { ghOrThrow, openPulls, type Pull } from "#tools/runtime/pulls.ts";
-import { type NativeStack, STACKS } from "./follow.ts";
-import { chains, TRUNK } from "./stack.ts";
+import {
+  ghOrThrow,
+  type NativeStack,
+  openPulls,
+  type Pull,
+  STACKS,
+  stackHolding,
+  trunkOf,
+} from "#tools/runtime/pulls.ts";
+import { trunkHead } from "./stack.ts";
 
 /** One surviving pull request: its new head and final base. */
 interface Move {
@@ -44,9 +51,11 @@ interface Move {
   readonly base: string;
 }
 
-/** What a consolidation publishes, read against GitHub's open pull requests and origin/main. */
+/** What a consolidation publishes, read against GitHub's open pull requests and the trunk: its name
+ *  and its head on origin. */
 interface Consolidation {
   readonly trunk: string;
+  readonly trunkSha: string;
   readonly moves: readonly Move[];
   readonly absorbed: readonly { readonly pull: Pull; readonly into: number }[];
 }
@@ -87,9 +96,10 @@ export function planConsolidation(
   pulls: readonly Pull[],
   heads: ReadonlyMap<number, string>,
   absorbed: ReadonlyMap<number, number>,
+  trunk: string,
 ): Consolidation {
-  const asked = new Set([...heads.keys(), ...absorbed.keys()]);
-  const line = chains(pulls).stacks.find((each) => each.some((pull) => asked.has(pull.number))) ?? [];
+  const [first = 0] = [...heads.keys(), ...absorbed.keys()];
+  const line = stackHolding(pulls, first) ?? [];
   const onStack = (number: number): Pull => {
     const pull = line.find((each) => each.number === number);
     if (pull === undefined) throw new CommandFailure(`#${String(number)} is not on the open stack`);
@@ -110,11 +120,11 @@ export function planConsolidation(
       );
     }
   }
-  const trunk = gitText(root, "rev-parse", "--verify", TRUNK);
+  const trunkSha = gitText(root, "rev-parse", "--verify", trunkHead(trunk));
   const moves = kept.map((pull, index): Move => {
     const given = heads.get(pull.number);
     const to = given === undefined ? pull.headRefOid : commitOf(root, pull, given);
-    return { pull, to, base: kept[index - 1]?.headRefName ?? "main" };
+    return { pull, to, base: kept[index - 1]?.headRefName ?? trunk };
   });
   const changed =
     moves.some((move) => move.to !== move.pull.headRefOid || move.base !== move.pull.baseRefName) ||
@@ -122,10 +132,10 @@ export function planConsolidation(
   if (!changed) throw new CommandFailure("nothing moves: every head is as GitHub shows it");
   for (const [index, move] of moves.entries()) {
     const beneath = moves[index - 1];
-    if (beneath === undefined && !holds(root, trunk, move.to)) {
+    if (beneath === undefined && !holds(root, trunkSha, move.to)) {
       throw new CommandFailure(
-        `${named(move.pull)}'s new head ${short(move.to)} does not hold origin/main at ${short(trunk)}: ` +
-          "main moved or was rewritten. Replay the stack with `git rebase --onto origin/main <the main it " +
+        `${named(move.pull)}'s new head ${short(move.to)} does not hold origin/${trunk} at ${short(trunkSha)}: ` +
+          `${trunk} moved or was rewritten. Replay the stack with \`git rebase --onto origin/${trunk} <the ${trunk} it ` +
           "was built on> <top>`, then name the new heads",
       );
     }
@@ -136,7 +146,12 @@ export function planConsolidation(
       );
     }
   }
-  return { trunk, moves, absorbed: gone.map((pull) => ({ pull, into: absorbed.get(pull.number) ?? 0 })) };
+  return {
+    trunk,
+    trunkSha,
+    moves,
+    absorbed: gone.map((pull) => ({ pull, into: absorbed.get(pull.number) ?? 0 })),
+  };
 }
 
 /** The new head of every pull request on `line`, bottom to top: the chain replayed onto origin/main
@@ -145,10 +160,10 @@ export function planConsolidation(
  *  that already holds origin/main keeps its heads. On 6 November #632 to #653 stood on a merged
  *  branch, and the fix took an unstack, a base edit, a rebase in a scratch worktree, a hand-built map
  *  of 18 heads and this script; `--onto-main` is that sequence. */
-export function replayedHeads(root: string, line: readonly Pull[]): Map<number, string> {
+export function replayedHeads(root: string, line: readonly Pull[], trunkName: string): Map<number, string> {
   const top = line.at(-1);
   if (top === undefined) throw new CommandFailure("no open stack to replay");
-  const trunk = gitText(root, "rev-parse", "--verify", TRUNK);
+  const trunk = gitText(root, "rev-parse", "--verify", trunkHead(trunkName));
   if (holds(root, trunk, line[0]?.headRefOid ?? top.headRefOid)) {
     return new Map(line.map((pull) => [pull.number, pull.headRefOid]));
   }
@@ -163,8 +178,8 @@ export function replayedHeads(root: string, line: readonly Pull[]): Map<number, 
   const replayed = /^update \S+ ([0-9a-f]{40})/m.exec(said)?.[1];
   if (replayed === undefined) {
     throw new CommandFailure(
-      `the chain up to ${named(top)} does not replay cleanly onto origin/main at ${short(trunk)} (${said.trim()}): ` +
-        `resolve it with \`git rebase --onto origin/main ${short(from)} <top>\`, then name the new heads with --head`,
+      `the chain up to ${named(top)} does not replay cleanly onto origin/${trunkName} at ${short(trunk)} (${said.trim()}): ` +
+        `resolve it with \`git rebase --onto origin/${trunkName} ${short(from)} <top>\`, then name the new heads with --head`,
     );
   }
   const commits = (span: string) => gitText(root, "rev-list", "--reverse", span).split("\n").filter(Boolean);
@@ -187,13 +202,6 @@ export function replayedHeads(root: string, line: readonly Pull[]): Map<number, 
   );
 }
 
-/** The open stack that holds `number`, bottom to top. */
-export function lineOf(pulls: readonly Pull[], number: number): readonly Pull[] {
-  const line = chains(pulls).stacks.find((each) => each.some((pull) => pull.number === number));
-  if (line === undefined) throw new CommandFailure(`#${String(number)} is not on an open stack`);
-  return line;
-}
-
 /** The one push that moves every changed head, each with a lease on the head GitHub showed. */
 export function pushArgs(plan: Consolidation, verify: Verify): string[] {
   const moved = plan.moves.filter((move) => move.to !== move.pull.headRefOid);
@@ -213,7 +221,7 @@ export function pushArgs(plan: Consolidation, verify: Verify): string[] {
 function shown(plan: Consolidation): string[] {
   const top = plan.moves.at(-1);
   return [
-    `origin/main at ${short(plan.trunk)}`,
+    `origin/${plan.trunk} at ${short(plan.trunkSha)}`,
     ...plan.moves.map((move) => {
       const head =
         move.to === move.pull.headRefOid
@@ -256,7 +264,7 @@ export function republish(
   for (const stack of stacks) {
     run("gh", ["stack", "unstack", String(stack.number)]);
   }
-  for (const { pull } of plan.moves) run("gh", ["pr", "edit", String(pull.number), "--base", "main"]);
+  for (const { pull } of plan.moves) run("gh", ["pr", "edit", String(pull.number), "--base", plan.trunk]);
   const push = pushArgs(plan, verify);
   if (push.length > 0) run("git", push);
   for (const { pull, base } of plan.moves) run("gh", ["pr", "edit", String(pull.number), "--base", base]);
@@ -287,15 +295,17 @@ if (import.meta.main) {
         );
       }
       const pulls = openPulls(root);
-      const given =
-        onto === null ? pairs("head", args.list("head")) : replayedHeads(root, lineOf(pulls, onto));
+      const trunk = trunkOf(root);
+      const line = onto === null ? [] : stackHolding(pulls, onto);
+      if (line === undefined) throw new CommandFailure(`#${String(onto)} is not on an open stack`);
+      const given = onto === null ? pairs("head", args.list("head")) : replayedHeads(root, line, trunk);
       const absorbed = new Map(
         [...pairs("absorb", args.list("absorb"))].map(([pull, into]) => {
           if (!/^#?\d+$/.test(into)) throw new CommandFailure(`--absorb takes <pr>=<pr>, got ${into}`);
           return [pull, Number(into.replace("#", ""))];
         }),
       );
-      const plan = planConsolidation(root, pulls, given, absorbed);
+      const plan = planConsolidation(root, pulls, given, absorbed, trunk);
       const verify: Verify = args.flag("no-verify") ? "no-verify" : "verify";
       console.log(shown(plan).join("\n"));
       console.log(

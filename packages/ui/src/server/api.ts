@@ -45,6 +45,8 @@ export interface ServerOptions {
   readonly token: string;
   /** `--exam-side`: answer in the exam tier. */
   readonly examSide: boolean;
+  /** The clock the listing is kept by, as `Reading` takes it. */
+  readonly now?: (() => number) | undefined;
 }
 
 /** Every endpoint's handler. */
@@ -154,7 +156,10 @@ export async function handleApiRequest(options: ServerOptions, request: Request)
   try {
     const query = queryOf(endpoint, url);
     if (endpoint === "campaigns") await readAll(options);
-    return json(200, answerOf(endpoint, query, { repo: options.repo, trees: options.trees, tier }));
+    return json(
+      200,
+      answerOf(endpoint, query, { repo: options.repo, trees: options.trees, tier, now: options.now }),
+    );
   } catch (error) {
     return json(error instanceof Unanswerable ? error.status : 500, { error: errorMessage(error) });
   }

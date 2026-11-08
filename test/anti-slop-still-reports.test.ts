@@ -28,8 +28,55 @@ const BUN_MODULE_MOCKING = `
 import { mock } from "bun:test";
 declare const other: { module: (path: string) => void };
 mock.module("./service.ts", () => ({})); // REPORT the bun:test spelling
+mock["module"]("./service.ts", () => ({})); // REPORT the same method, computed
 other.module("./service.ts"); // ADMITTED someone else's method
 export const spy = mock(() => 1);
+`;
+
+/** A spy over an import's member or the process clock, beside one over output and a local. */
+const SPIED_SHARED_MEMBER = `
+import { spyOn } from "bun:test";
+import * as service from "./service.ts";
+import { helper } from "./helper.ts";
+declare const local: { run: () => void };
+spyOn(service, "load"); // REPORT a namespace import's export
+spyOn(helper, "run"); // REPORT a named import's member
+spyOn(Date, "now"); // REPORT the process clock
+spyOn(console, "log"); // ADMITTED output a test observes
+spyOn(local, "run"); // ADMITTED a local object
+`;
+
+/** In a test, a member of an import or steering global written over, beside the process's own
+ *  input and output and a local. */
+const ASSIGNED_SHARED_MEMBER = `
+import fs from "node:fs";
+import { runtimeProcess } from "./process.ts";
+declare const local: { readFileSync: () => string };
+fs.readFileSync = () => ""; // REPORT a default import's member
+globalThis.fetch = async () => new Response(); // REPORT the network
+process.platform = "linux"; // REPORT the process
+Object.defineProperty(Math, "random", { value: () => 0 }); // REPORT chance, defined over
+Object.assign(Bun, { spawn: () => null }); // REPORT the spawner, assigned over
+Bun.env = {}; // ADMITTED the environment is input
+runtimeProcess.exitCode = 1; // ADMITTED the process's output
+Object.defineProperty(runtimeProcess, "execPath", { value: "/absent" }); // ADMITTED the wall's own test
+local.readFileSync = () => ""; // ADMITTED a local object
+`;
+
+/** The same write outside a test is production setting an import's field, not a substitution. */
+const ASSIGNED_OUTSIDE_TEST = `
+import fs from "node:fs";
+fs.readFileSync = () => ""; // ADMITTED no test substitutes here
+export const read = fs.readFileSync;
+`;
+
+/** The process clock faked, beside the calls that give it back. */
+const FAKED_CLOCK = `
+import { jest, setSystemTime } from "bun:test";
+setSystemTime(new Date(0)); // REPORT the clock moved for every caller
+setSystemTime(); // ADMITTED the clock given back
+jest.useFakeTimers(); // REPORT the timers faked
+jest.useRealTimers(); // ADMITTED the timers given back
 `;
 
 const RUNTIME_TYPEOF = `
@@ -106,7 +153,11 @@ describe("the remaining anti-slop rule boundaries", () => {
   it("reports only the marked lines in every fixture and scope", async () => {
     await lintRules("anti-slop", [
       ["no-module-mocking", MODULE_MOCKING, 1],
-      ["no-module-mocking", BUN_MODULE_MOCKING, 1],
+      ["no-module-mocking", BUN_MODULE_MOCKING, 2],
+      ["no-module-mocking", SPIED_SHARED_MEMBER, 3],
+      ["no-module-mocking", ASSIGNED_SHARED_MEMBER, 5, "fixture.test.ts"],
+      ["no-module-mocking", ASSIGNED_OUTSIDE_TEST, 0],
+      ["no-module-mocking", FAKED_CLOCK, 2],
       ["no-unknown-type-aliases", UNKNOWN_ALIAS, 1],
       ["no-runtime-typeof", RUNTIME_TYPEOF, 1],
       ["no-conditional-empty-object-spread", EMPTY_OBJECT_SPREAD, 1],

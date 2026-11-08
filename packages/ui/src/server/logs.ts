@@ -170,9 +170,9 @@ function keyed(found: readonly Run[]): Found[] {
 }
 
 /** Every campaign the server can read, and what could not be listed. */
-export function campaignsFound(reading: Pick<Reading, "repo" | "trees">): Looked {
+export function campaignsFound(reading: Pick<Reading, "repo" | "trees" | "now">): Looked {
   const where = `${reading.trees} ${reading.repo}`;
-  const now = Date.now();
+  const now = (reading.now ?? Date.now)();
   if (looked?.where === where && now - looked.at < LOOK_MS) return looked;
   const listed = reading.trees === "directory" ? underDirectory(reading.repo) : inWorktrees(reading.repo);
   const found = keyed(listed.runs.filter((run) => run.seed !== true));

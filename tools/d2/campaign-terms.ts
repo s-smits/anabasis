@@ -24,7 +24,7 @@ import { parseArgs } from "#src/meta/process.ts";
 import { sameJsonValue } from "#src/meta/stable-json.ts";
 import { projectOf } from "./campaign.ts";
 import type { Host } from "./host.ts";
-import { PRACTICE } from "./prepare.ts";
+import { PRACTICE, type prepareCommand } from "./prepare.ts";
 import { type Campaign, COMPARISON_OPTIONS, capRead, SESSION_OPTIONS, type Seated, solved } from "./round.ts";
 import { SETTING_OPTIONS } from "./setting.ts";
 
@@ -37,6 +37,9 @@ export interface Seats {
   readonly draft?: Session<"draft"> | undefined;
   /** The host a solve starts into (`host.ts`): the host's own unless a test stands in for it. */
   readonly host?: Host | undefined;
+  /** What takes a pack's tasks in and releases practice: `prepareCommand`, unless a test stands in
+   *  one that writes nothing. */
+  readonly prepare?: typeof prepareCommand | undefined;
   /** No reviewer, whatever the opening names: a rehearsal's, whose scripted rejections no model is
    *  paid to rule. Until 16 October a rehearsal over a seed seated its source's Referee. */
   readonly unreviewed?: boolean | undefined;

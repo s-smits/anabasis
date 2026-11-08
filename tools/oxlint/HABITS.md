@@ -244,7 +244,12 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
   `satisfies`. An anonymous object type, a declared return type among them, is wide only through a
   member typed `any`, `unknown`, `object` or an open dictionary; one that states each member's type
   is a contract and passes.
-- `no-module-mocking`: inject through a real interface.
+- `no-module-mocking`: inject through a real interface. It also reports a `spyOn` over a member of
+  any import or of `Date`, `Math`, `performance`, `crypto`, `Bun`, `process` or `globalThis`; in a
+  test, an assignment, `Object.defineProperty` or `Object.assign` over one; and a faked clock
+  (`setSystemTime(date)`, `useFakeTimers`). Hand the code a clock, a fetcher or the command it calls
+  instead. `env`, `exitCode`, `execPath` and `console` pass: input, output, the wall's own test of
+  the captured runtime, and output a test only observes.
 - `no-object-parameters`: no parameter typed `object`.
 - `no-runtime-typeof`: the predicates of `src/meta/json-shape.ts`. `typeof x === "undefined"` is
   allowed.

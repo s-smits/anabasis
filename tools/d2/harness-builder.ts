@@ -212,7 +212,8 @@ async function make(decided: Made, turn: Turn, begin: (named: JsonObject) => voi
   if (decided.move === "prepare") {
     // The campaign's terms, so what it prints of a comparison's size is the campaign's.
     begin({});
-    await prepareCommand([...pack, ...flag("practice", values.practice), ...flag("level", values.level)]);
+    const prepare = seats.prepare ?? prepareCommand;
+    await prepare([...pack, ...flag("practice", values.practice), ...flag("level", values.level)]);
     return;
   }
   if (decided.move === "promote") {

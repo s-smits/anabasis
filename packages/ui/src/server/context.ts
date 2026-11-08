@@ -10,12 +10,13 @@ import type { AnswerOf, Endpoint, Query, Tier } from "../models.ts";
 export type Trees = "worktrees" | "directory";
 
 /** What a handler reads by: the repository or the directory that holds the campaigns, how they are
- *  found there, and the tier the server answers in, which decides what of the exam side an answer
- *  may carry. */
+ *  found there, the tier the server answers in, which decides what of the exam side an answer
+ *  may carry, and the clock its listing is kept by, `Date.now` unless a test moves one. */
 export interface Reading {
   readonly repo: string;
   readonly trees: Trees;
   readonly tier: Tier;
+  readonly now?: (() => number) | undefined;
 }
 
 /** A handler: one endpoint's answer to one query, read from disk on every request. */

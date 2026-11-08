@@ -103,6 +103,13 @@ export interface Wall {
   readonly lower: () => void;
 }
 
+/** What a wall reads the time from and arms its deadline on: the process's own, unless a test
+ *  stands in a clock it moves itself. `after` returns what disarms the deadline. */
+export interface WallClock {
+  readonly now: () => number;
+  readonly after: (ms: number, fall: () => void) => () => void;
+}
+
 /** What a solve has used of its limits, as its tools are told to say it. */
 export interface Used {
   readonly clock: SolveClock;
@@ -353,29 +360,37 @@ async function play(
   };
 }
 
-/** A deadline armed now, that expires `seconds` from now. */
-export function raiseWall(seconds: number): Wall {
+const PROCESS_CLOCK: WallClock = {
+  now: () => performance.now(),
+  after: (ms, fall) => {
+    const timer = setTimeout(fall, ms);
+    return () => clearTimeout(timer);
+  },
+};
+
+/** A deadline armed now, that expires `seconds` from now on `clock`. */
+export function raiseWall(seconds: number, clock: WallClock = PROCESS_CLOCK): Wall {
   const fall = new AbortController();
-  let heard = performance.now();
+  let heard = clock.now();
   let running = 0;
   let silentSeconds = 0;
-  const timer = setTimeout(() => {
-    if (running === 0) silentSeconds = (performance.now() - heard) / 1000;
+  const lower = clock.after(seconds * 1000, () => {
+    if (running === 0) silentSeconds = (clock.now() - heard) / 1000;
     fall.abort();
-  }, seconds * 1000);
+  });
   return {
     signal: fall.signal,
     onTurn: () => {
-      heard = performance.now();
+      heard = clock.now();
     },
     onTool: (phase) => {
       running += phase === "start" ? 1 : -1;
-      heard = performance.now();
+      heard = clock.now();
     },
     get silentSeconds() {
       return silentSeconds;
     },
-    lower: () => clearTimeout(timer),
+    lower,
   };
 }
 

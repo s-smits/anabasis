@@ -41,7 +41,7 @@ import { waiting, waitOut } from "#src/solver/run.ts";
 import { type Seated, solved } from "./round.ts";
 
 /** A host as the waits read it: its one-minute load, its cores, how long a look waits, and, where a
- *  test stands one in, how it sleeps. `HOST` sleeps on `waiting`'s own timer, which a cancellation
+ *  test stands one in, how it sleeps and what its clock reads. `HOST` sleeps on `waiting`'s own timer, which a cancellation
  *  clears: until 25 October it slept on `Bun.sleep`, and a cancelled wait held the process until
  *  that sleep ran out. */
 export interface Host {
@@ -49,6 +49,8 @@ export interface Host {
   readonly cores: number;
   readonly waitMs: number;
   readonly sleep?: ((ms: number) => Promise<void>) | undefined;
+  /** Milliseconds since the epoch, as `Date.now` reads them where it is unset. */
+  readonly now?: (() => number) | undefined;
 }
 
 /** What the solve queue is put on: who solves, the host where a test stands one in, and `--loaded`. */
@@ -89,6 +91,7 @@ const SCRIPTED: Host = { load: () => 0, cores: 1, waitMs: 1000 };
 function queued({ seated, loaded, host = seated === solved ? HOST : SCRIPTED }: Queue, log: string): Seated {
   // A pause left before this process began was for the one it stopped.
   const began = read(log).length;
+  const clock = host.now ?? Date.now;
   // It holds a minute past `runs pause`'s wait, so the stop comes first: nothing else answers it, so
   // a pause that died before its stop held the campaign for good (landing review, 7 November 2026).
   const pausing = (wallSeconds: number, events = read(log)) =>
@@ -96,7 +99,7 @@ function queued({ seated, loaded, host = seated === solved ? HOST : SCRIPTED }: 
       ({ at, word }) =>
         word === PAUSE &&
         at >= began &&
-        Date.now() - Date.parse(events[at]?.at ?? "") < pauseWaitMs(wallSeconds) + 60_000,
+        clock() - Date.parse(events[at]?.at ?? "") < pauseWaitMs(wallSeconds) + 60_000,
     );
   return (campaign, given) => {
     const seats = seated(campaign, given);
@@ -128,9 +131,9 @@ function queued({ seated, loaded, host = seated === solved ? HOST : SCRIPTED }: 
               `the host's load is ${load.toFixed(1)} on ${String(host.cores)} cores: a solve of ${task.taskId} waits until it is at or under them, at most half an hour, or pass --loaded`,
             );
           }
-          const slept = Date.now();
+          const slept = clock();
           await waiting(host.waitMs, kill, host.sleep);
-          if (now > host.cores) ms += Date.now() - slept;
+          if (now > host.cores) ms += clock() - slept;
         }
         if (looks > 0) {
           append(log, WAITED, {

@@ -1,5 +1,5 @@
 // The server's readings of a real log: control readings, log integrity and the wall between tiers.
-import { afterAll, beforeAll, describe, expect, setSystemTime, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { read } from "../../../src/kernel/log.ts";
 import {
   appendFileSync,
@@ -41,20 +41,21 @@ beforeAll(() => {
 });
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
-/** One request as the page sends it, against the campaigns under `root`: its status, its body
- *  as text, and that body parsed. */
+/** One request as the page sends it, against the campaigns under `root` on the server's clock
+ *  `now`: its status, its body as text, and that body parsed. */
 async function ask<Name extends Endpoint>(
   endpoint: Name,
   query: Query<Name>,
   tier: Tier,
   root: string = fixture.root,
+  now?: () => number,
 ): Promise<{ readonly status: number; readonly text: string; readonly answer: AnswerOf<Name> }> {
   const values: Readonly<Record<string, string | undefined>> = query;
   const search = new URLSearchParams(
     Object.entries(values).flatMap(([name, value]) => (value === undefined ? [] : [[name, value]])),
   );
   const response = await handleApiRequest(
-    { repo: root, trees: "directory", token: TOKEN, examSide: tier === "exam" },
+    { repo: root, trees: "directory", token: TOKEN, examSide: tier === "exam", now },
     new Request(`http://127.0.0.1:5173/api/${endpoint}?${search.toString()}`, {
       headers: { host: "127.0.0.1:5173", [TOKEN_HEADER]: TOKEN },
     }),
@@ -321,7 +322,9 @@ describe("a list read again", () => {
   test("rows a log's append on the next read, and drops a campaign the listing no longer finds", async () => {
     const { root, dir } = copy();
     const event = (at: string, kind: string, data: JsonObject) => `${JSON.stringify({ at, kind, data })}\n`;
-    const names = async () => (await ask("campaigns", {}, "default", root)).answer;
+    let ahead = 0;
+    const clock = () => Date.now() + ahead;
+    const names = async () => (await ask("campaigns", {}, "default", root, clock)).answer;
     const before = await names();
     expect(before.campaigns.find(({ name }) => name === fixture.name)?.ending).toBeNull();
     appendFileSync(
@@ -335,12 +338,9 @@ describe("a list read again", () => {
     const ended = await names();
     expect(ended.campaigns.find(({ name }) => name === fixture.name)?.ending?.ending).toBe("operator");
     rmSync(join(root, ".ana", "d2", fixture.early), { recursive: true });
-    setSystemTime(new Date(Date.now() + 5000));
-    try {
-      expect((await names()).campaigns.map(({ name }) => name)).toEqual([fixture.name, fixture.units]);
-    } finally {
-      setSystemTime();
-    }
+    // Past the listing's two seconds, so the next read looks again.
+    ahead = 5000;
+    expect((await names()).campaigns.map(({ name }) => name)).toEqual([fixture.name, fixture.units]);
   });
 });
 

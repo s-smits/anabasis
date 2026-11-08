@@ -389,7 +389,8 @@ export async function releaseOwed(context: CampaignContext, cause: string, bench
   const due = practiceDue(turn.events, turn.plan.practice, turn.plan.wanted.level);
   if (due === null) return false;
   // The campaign's terms, so what it prints of a comparison's size is the campaign's.
-  const result = await prepareCommand(
+  const prepare = context.seats.prepare ?? prepareCommand;
+  const result = await prepare(
     [...packOf(context.values), "--practice", String(due.to), ...flag("level", context.values.level)],
     comparing,
   );

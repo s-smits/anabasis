@@ -37,7 +37,6 @@ import { closeCommand } from "../tools/d2/close.ts";
 import { harnessBuilder } from "../tools/d2/harness-builder.ts";
 import { HOST } from "../tools/d2/host.ts";
 import { importCommand } from "../tools/d2/import.ts";
-import * as prepare from "../tools/d2/prepare.ts";
 import { packetOf, settleCommand } from "../tools/d2/settle.ts";
 import { wordCommand } from "../tools/d2/word.ts";
 import { harnessesOf } from "../tools/runs/registry.ts";
@@ -238,14 +237,9 @@ describe("a campaign run by its log", () => {
     const name = `${STEM}-empty-move`;
     // The move that takes the pack's tasks in writes nothing, as the M1's release did on 20 October,
     // where the draw held no task and the process exited with no ending on record.
-    const released = spyOn(prepare, "prepareCommand").mockResolvedValue(0);
-    try {
-      await expect(harnessBuilder(seeded(name), { seated: answering() })).rejects.toThrow(
-        "the move changed nothing",
-      );
-    } finally {
-      released.mockRestore();
-    }
+    await expect(
+      harnessBuilder(seeded(name), { seated: answering(), prepare: async () => 0 }),
+    ).rejects.toThrow("the move changed nothing");
     expect(of(name, "campaign.ended")).toMatchObject([{ ending: "environment", move: "prepare" }]);
   });
 

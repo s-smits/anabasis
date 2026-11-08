@@ -72,7 +72,8 @@ Each change names the factor it moves. Recorded values live in `docs/plan.md`.
   level is loose for the noise.
 - **The objective against chance**: once validity saturates, the noisier objective decides; say
   which measure carried a step. A reference that answers each task alike ties its own A/A and reads
-  no false rate, so read the starter against itself beside it (`barLines`).
+  no false rate, so read the starter against itself beside it (`barLines`). A higher gap floor
+  (`ROOM`) is no remedy for margin noise: it moves the noise to the next margin and starves supply.
 - **Promotion against confirmation**: the host owes one starter comparison after every promotion
   and runs it at the Builder's next `compare` (`heldSince`, `src/campaign/decide.ts`). Before the
   table owes it, while too few tasks are held out since the promotion, a Builder's own comparison

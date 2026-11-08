@@ -11,6 +11,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 
 const live = { name: "r", host: "here", live: true };
+const PLAN_FILE = "plan.md";
 const PLAN =
   "# Plan\n\nvet-1 in cross-domain.md, by E1, B2 and S1.\n\nPull request: #602\n\n## Intentionally opposed\n\n- none\n";
 const base = realpathSync(mkdtempSync(join(tmpdir(), "ana-wri2p2-")));
@@ -117,9 +118,9 @@ describe("the next step of an investigation", () => {
     expect(step()[0]).toStartWith("step: vet");
     write("vetting.md", "rows");
     expect(step()[0]).toStartWith("step: plan");
-    write("plan.md", "# Plan\n\nrows\n");
+    write(PLAN_FILE, "# Plan\n\nrows\n");
     expect(step()[0]).toStartWith("step: implement");
-    write("plan.md", "# Plan\n\nPull request: #602 (on the top)\n");
+    write(PLAN_FILE, "# Plan\n\nPull request: #602 (on the top)\n");
     expect(step()[0]).toStartWith("step: launch");
     expect(step()[1]).toContain("--as forkedPR602");
     expect(step(["jobstat-fresh-opus-forkedPR602"])).toEqual([
@@ -161,17 +162,17 @@ describe("the next step of an investigation", () => {
     expect(step()[0]).toStartWith("step: across");
     write("cross-domain.md", "rows");
     expect(step()[0]).toStartWith("step: plan · repairs");
-    write("plan.md", "# Plan\n\nrows by E1 and Z9\n");
+    write(PLAN_FILE, "# Plan\n\nrows by E1 and Z9\n");
     expect(step()[0]).toContain("name vet-1, cross-domain.md");
     expect(step()[0]).toContain("(1 named)");
     // What the plan leaves out on purpose is its own section, and an empty one is not yet said.
-    write("plan.md", PLAN.replace("- none", "<!-- trade-offs -->"));
+    write(PLAN_FILE, PLAN.replace("- none", "<!-- trade-offs -->"));
     expect(step()[0]).toBe(
-      `step: plan · ${join(dir, "plan.md")}: add "## Intentionally opposed" with at least one line ("none" counts): what stays missing on purpose, each as a trade-off, what leaving it out buys, what it costs and why (a trade-off of AGENTS.md section 1, a principle or the operator's word)`,
+      `step: plan · ${join(dir, PLAN_FILE)}: add "## Intentionally opposed" with at least one line ("none" counts): what stays missing on purpose, each as a trade-off, what leaving it out buys, what it costs and why (a trade-off of AGENTS.md section 1, a principle or the operator's word)`,
     );
-    write("plan.md", PLAN.replace("Pull request: #602\n\n", ""));
+    write(PLAN_FILE, PLAN.replace("Pull request: #602\n\n", ""));
     expect(step()[0]).toStartWith("step: implement");
-    write("plan.md", PLAN);
+    write(PLAN_FILE, PLAN);
     expect(step()[0]).toStartWith("step: launch");
     // The fork owes its own predictions, then what it carries from the iteration that made it.
     const fork = "r-forkedPR602";
@@ -271,7 +272,7 @@ describe("the next step of an investigation", () => {
     ledger("predictions-r.md", table(["P1", "P2", "P3"]));
     ledger("outcomes-r.md", `Log events at resolution: 50\n\n${table(["P1"], "held")}| P2 | unreached |\n`);
     write(
-      "plan.md",
+      PLAN_FILE,
       "# Plan\n\n## Not done: the operator's decisions\n\n- engines for drafted exams\n\n## Intentionally opposed\n\n- the solve limits stay\n",
     );
     const views = (events: number | null) => ledgerViews(dir, root, () => events);
@@ -307,6 +308,17 @@ describe("the next step of an investigation", () => {
     expect(views(51)).toContain("| r | P1 | held |");
     // A cycle's folder holds the same views, the plan read from the iteration that names the run.
     expect(ledgerViews(cycle, root, () => 50).slice(4)).toEqual(views(50).slice(4));
+    // A plan with no opposed section shows a run's older still-missing file, never "none" over it.
+    write(PLAN_FILE, "# Plan\n\n## Not done\n\n- engines for drafted exams\n");
+    expect(views(50).slice(-1)).toEqual(["- none"]);
+    ledger(
+      "still-missing-r.md",
+      "## Not done\n\n- old\n\n## Intentionally opposed\n\n- no session repairs the pack\n",
+    );
+    expect(views(50).slice(-1)).toEqual(["- no session repairs the pack"]);
+    // The plan's own section, where it has one, is the owner and wins.
+    write(PLAN_FILE, "# Plan\n\n## Intentionally opposed\n\n- the solve limits stay\n");
+    expect(views(50).slice(-1)).toEqual(["- the solve limits stay"]);
   });
 
   it("reads a fork's parent by its whole number, so #60 never takes #600's runs", () => {
@@ -321,7 +333,7 @@ describe("the next step of an investigation", () => {
     ledger("still-missing-p.md", "- P1\n\n## Intentionally opposed\n\n- none\n");
     write("vetting.md", "| # | finding |\n| --- | --- |\n| 1 | P1 |\n");
     write("cross-domain.md", "rows");
-    write("plan.md", "cross-domain.md, by E1, B2 and S1.\n\nPull request: #600\n");
+    write(PLAN_FILE, "cross-domain.md, by E1, B2 and S1.\n\nPull request: #600\n");
     for (const fork of ["p-forkedPR60", "p-forkedPR600"]) ledger(`predictions-${fork}.md`, table(["F1"]));
     // The fork of #60 is no fork of this iteration, whose plan names #600, so it carries nothing from it.
     expect(step(["p-forkedPR60"])[0]).toStartWith("step: done");

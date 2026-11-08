@@ -32,6 +32,9 @@ export interface Parent {
 interface RunLedgers extends Parent {
   /** The `plan.md` of the iteration that read the run, or "" before one is written. */
   readonly plan: string;
+  /** The run's `still-missing-<run>.md` written before 8 November, or "": read where the plan has no
+   *  `## Intentionally opposed`, so an older run's trade-offs are shown rather than "none". */
+  readonly older: string;
   /** The run's log length now, or null where it cannot be read. */
   readonly events: number | null;
 }
@@ -159,7 +162,9 @@ export function stillMissingOf(run: RunLedgers): string[] {
     "",
     "## Intentionally opposed",
     "",
-    ...listed(sectionOf(run.plan, "Intentionally opposed") ?? []),
+    ...listed(
+      sectionOf(run.plan, "Intentionally opposed") ?? sectionOf(run.older, "Intentionally opposed") ?? [],
+    ),
   ];
 }
 

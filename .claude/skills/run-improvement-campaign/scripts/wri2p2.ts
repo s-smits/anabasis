@@ -614,7 +614,8 @@ export function ledgerViews(dir: string, root: string, lengthOf: Ledgers["length
       ? dir
       : readers.find(({ names: theirs }) => theirs.includes(name))?.dir;
     const plan = iteration === undefined ? "" : read(join(iteration, PLAN));
-    return { ...ledgersOf(root, dir, name), plan, events: lengthOf(name) };
+    const older = read(ledgerOf(root, dir, `still-missing-${name}.md`) ?? "");
+    return { ...ledgersOf(root, dir, name), plan, older, events: lengthOf(name) };
   });
   return [
     `# Ledger views of ${dir}`,

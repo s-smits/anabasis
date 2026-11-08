@@ -15,14 +15,13 @@ export async function pooled<Item, Result>(
 ): Promise<Result[]> {
   const results: Result[] = [];
   const failed: { thrown: unknown }[] = [];
-  let next = 0;
+  // One iterator the workers share, so each item is taken once, in order, by whichever is free.
+  const queue = items.entries();
   const worker = async (): Promise<void> => {
-    while (failed.length === 0 && next < items.length) {
-      const index = next;
-      next += 1;
+    for (const [index, item] of queue) {
+      if (failed.length > 0) return;
       try {
-        // SAFETY: `index` is below `items.length`, checked by the loop.
-        results[index] = await run(items[index] as Item);
+        results[index] = await run(item);
       } catch (error) {
         failed.push({ thrown: error });
       }

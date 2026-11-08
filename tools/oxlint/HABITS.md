@@ -259,7 +259,13 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
 - `no-unknown-returns`, `no-unknown-type-aliases`: no `unknown` going out, as a return type or
   behind an alias.
 - `no-unsafe-dictionary-type`: no `Record<string, unknown>` or `Record<string, any>`.
-- `no-widen-then-assert`: do not declare a value wide and assert it back.
+- `no-widen-then-assert`: do not widen a known value and assert it back. Wide is `unknown`, `any`,
+  `object`, an open dictionary, `JsonValue` or `JsonObject`, reached by an annotation, an
+  assertion, a local function whose declared return erases what it returns, or
+  `JSON.parse(JSON.stringify(x))`; a closure over the `const` is the same flow. Give the value or
+  the function its precise type, or copy with `structuredClone`. Nor assert an element read
+  (`xs[0]`, `.at(-1)`, `.shift()`, `.find()`, `.get()`) present: check it, fall back with `??` or
+  iterate. Narrow a caught value with `instanceof Error` rather than `as`.
 - `prefer-subpath-import` [fix]: the aliases of 12.1.
 - `require-safety-comment-for-type-assertion`: every `as T` except `as const` carries a comment
   directly before the assertion or its statement, stating the invariant you checked:

@@ -71,6 +71,8 @@ export type Recursive = Record<string, Recursive>; // ADMITTED recursion termina
 // --- no-widen-then-assert ------------------------------------------------------
 
 const WIDEN_THEN_ASSERT = `
+import type { JsonObject, JsonValue } from "./json-shape.ts";
+import type { Opened } from "./opened.ts";
 type Money = { currency: string; minor: number };
 
 export function literalThroughUnknown(): string {
@@ -171,7 +173,143 @@ export function reassigned(flag: boolean): string {
 
 export function acrossBoundaries(): () => string {
 	const raw: unknown = "eur";
-	return () => raw as string; // ADMITTED the assertion sits in a different function
+	return () => raw as string; // REPORT a closure over a const reads the same value
+}
+
+export function shadowedInClosure(): (raw: unknown) => string {
+	const raw: unknown = "eur";
+	return (raw) => raw as string; // ADMITTED the closure's parameter is another binding
+}
+
+const moduleRaw: unknown = "eur";
+export function fromModule(): string {
+	return moduleRaw as string; // REPORT a module const is one value in every function
+}
+
+export function throughJsonValue(): Money {
+	const raw: JsonValue = { currency: "eur", minor: 1 };
+	return raw as Money; // REPORT the repository's JsonValue erases as unknown does
+}
+
+export function throughJsonObject(): Money {
+	const raw: Readonly<JsonObject> = { currency: "eur", minor: 1 };
+	return raw as Money; // REPORT JsonObject is an open dictionary, imported or not
+}
+
+export function toImportedShape(): Opened {
+	const raw: Record<string, unknown> = { currency: "eur", minor: 1 };
+	return raw as Opened; // REPORT an imported name a dictionary can be asserted to is an object
+}
+
+export function jsonToJson(): JsonValue {
+	const raw: JsonObject = { currency: "eur", minor: 1 };
+	return raw as JsonValue; // ADMITTED one broad JSON type asserted to another
+}
+
+function openedRecord(): JsonObject {
+	return { currency: "eur", minor: 1 };
+}
+export function throughHelper(): Money {
+	return openedRecord() as Money; // REPORT the helper's signature erased what it returns
+}
+
+const openedArrow = (): Record<string, unknown> => ({ currency: "eur", minor: 1 });
+export function throughHelperHop(): Money {
+	const raw = openedArrow();
+	return raw as Money; // REPORT the evidence is erased by the call and asserted after a hop
+}
+
+function parsedRecord(text: string): JsonObject {
+	return JSON.parse(text);
+}
+export function throughParser(text: string): Money {
+	return parsedRecord(text) as Money; // ADMITTED the helper returns what it parsed, never a known value
+}
+
+function sometimesKnown(flag: boolean, text: string): JsonValue {
+	if (flag) return { currency: "eur", minor: 1 };
+	return JSON.parse(text);
+}
+export function throughMixedHelper(text: string): Money {
+	return sometimesKnown(true, text) as Money; // ADMITTED one return proves nothing
+}
+
+function preciseMoney(): Money {
+	return { currency: "eur", minor: 1 };
+}
+export function preciseCall(): Money {
+	const raw: unknown = preciseMoney();
+	return raw as Money; // REPORT a call with a precise declared return is known
+}
+
+export function roundTrip(): Money {
+	const kept = { currency: "eur", minor: 1 };
+	return JSON.parse(JSON.stringify(kept)) as Money; // REPORT a JSON round trip of a known value
+}
+
+export function roundTripParameter(money: Money): Money {
+	const copy = JSON.parse(JSON.stringify(money));
+	return copy as Money; // REPORT a typed parameter is known, and the copy erases it
+}
+
+export function firstAsserted(rows: readonly Money[]): Money {
+	return rows[0] as Money; // REPORT an index read asserted present
+}
+
+export function firstChecked(rows: readonly Money[]): Money {
+	const first = rows[0];
+	if (first === undefined) throw new Error("no rows");
+	return first; // ADMITTED the check keeps the element's own type
+}
+
+export function lastAsserted(rows: readonly Money[]): Money {
+	return rows.at(-1) as Money; // REPORT at() asserted present
+}
+
+export function shiftedAsserted(queue: Money[]): Money {
+	return queue.shift() as Money; // REPORT shift() asserted present
+}
+
+export function foundAsserted(rows: readonly Money[]): Money {
+	return rows.find((row) => row.minor > 0) as Money; // REPORT find() asserted present
+}
+
+export function gotAsserted(byId: ReadonlyMap<string, Money>, id: string): Money {
+	return byId.get(id) as Money; // REPORT a map read asserted present
+}
+
+export function maybeFound(rows: readonly Money[]): Money | undefined {
+	return rows.find((row) => row.minor > 0) as Money | undefined; // ADMITTED absence is kept
+}
+
+export function namedFlag(values: Record<string, string | undefined>): string {
+	return values["solver-effort"] as string; // ADMITTED a literal key is a property read
+}
+
+export function optionalRead(rows: readonly Money[] | undefined): Money | undefined {
+	return rows?.[0] as Money | undefined; // ADMITTED an optional read keeps absence
+}
+
+export function caughtAsserted(run: () => void): string {
+	try {
+		run();
+		return "";
+	} catch (error) {
+		return (error as Error).message; // REPORT a caught value is narrowed by a guess
+	}
+}
+
+export function caughtNarrowed(run: () => void): string {
+	try {
+		run();
+		return "";
+	} catch (error) {
+		return error instanceof Error ? error.message : String(error); // ADMITTED instanceof narrows it
+	}
+}
+
+export function roundTripOfInput(text: string): Money {
+	return JSON.parse(JSON.stringify(JSON.parse(text))) as Money; // ADMITTED the printed value was never known
 }
 
 export function recordToBroaderRecord(): Record<string, unknown> {
@@ -318,7 +456,7 @@ describe("type evidence and resolution", () => {
   it("reports only the marked lines in every fixture and scope", async () => {
     await lintRules("anti-slop", [
       ["no-unsafe-dictionary-type", DICTIONARY, 23],
-      ["no-widen-then-assert", WIDEN_THEN_ASSERT, 13],
+      ["no-widen-then-assert", WIDEN_THEN_ASSERT, 29],
       ["no-known-value-widening", KNOWN_VALUE_WIDENING, 17],
       ["no-unsafe-dictionary-type", CYCLIC, 0],
       ["no-unknown-type-aliases", ALIAS_SCOPES, 3],

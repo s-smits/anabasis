@@ -453,8 +453,10 @@ function costOf(events: readonly LogEvent[], epoch: Epoch, pending = 0): Worth["
  *  read again says what it said. Until 19 October a repeat was its first stage's attempt. */
 export function worthOf(events: readonly LogEvent[], id: string): Worth {
   const before = events.filter(({ kind, data }) => kind !== "comparison.reported" || data.session !== id);
-  // SAFETY: `boundsOf` opens every log with its first epoch.
-  return { cost: costOf(before, epochsOf(before).at(-1) as Epoch, 1) };
+  const last = epochsOf(before).at(-1);
+  // `boundsOf` opens every log with its first epoch, so a log without one is a broken reader.
+  if (last === undefined) throw new Error("epochsOf read no epoch from the log");
+  return { cost: costOf(before, last, 1) };
 }
 
 /** Each promoted harness's worth (the plan's W): the cost of the epoch it ended. */

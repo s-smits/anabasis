@@ -224,8 +224,8 @@ function topAbove(open: readonly Pull[], from: Pull): Pull {
       ...above.reduce<Pull[]>((longest, each) => (each.length > longest.length ? each : longest), []),
     ];
   };
-  // SAFETY: a chain starts with `from`.
-  return chain(from, [from]).at(-1) as Pull;
+  // A chain starts with `from`, so the fallback is never taken.
+  return chain(from, [from]).at(-1) ?? from;
 }
 
 /** The top of the stack that holds the oldest stacked pull request: a bottom on the trunk with
@@ -255,8 +255,8 @@ function readLanding(root: string, target: number): Landing {
     pulls.unshift(below);
     below = byHead.get(below.baseRefName);
   }
-  // SAFETY: `pulls` starts with the named pull request and only grows.
-  const bottom = pulls[0] as Pull;
+  // `pulls` starts with the named pull request and only grows, so the fallback is never taken.
+  const bottom = pulls[0] ?? named;
   const trunk = trunkOf(root);
   if (bottom.baseRefName !== trunk) {
     throw new Refusal(

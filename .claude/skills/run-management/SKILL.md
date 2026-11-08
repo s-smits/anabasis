@@ -126,7 +126,7 @@ the launch.
 
 ```sh
 bun --env-file=<file> run runs continue <name> [--at <commit>] [--login N] [--budget N] [--after <event>] --yes [-- <flags>]
-bun run runs pause <name> [--after next|compacted|reported|finished] --yes
+bun run runs pause <name> [--after <word>[|<word>...]] --yes
 ```
 
 `continue` reruns a stopped campaign in its worktree on the flags of its last receipt, less `--name`
@@ -138,8 +138,11 @@ It refuses as `launch` does, refuses `--at` another commit while a comparison is
 a second GPT run on one machine, or a fleet it cannot count (`startRefusal`). A measured run continues
 at its opening commit; a fix is measured by a fresh run.
 
-`pause` waits for one more `build.compacted`, `comparison.reported` or `build.finished` at a point
-with no comparison, Examiner session or draft open, then stops the run. A pause cuts the Builder's
+`pause` waits for one more event its word names at a point with no comparison, Examiner session or
+draft open, then stops the run. The words are `compacted` (`build.compacted`), `reported`
+(`comparison.reported`), `promoted` (`harness.promoted`), `examined` (`exam.finished`) and
+`finished` (`build.finished`); words joined by `|`, as `reported|promoted`, wait for the first of
+their events. A pause right after `promoted` leaves that promotion's starter comparison unread. A pause cuts the Builder's
 conversation, so the continued campaign opens a new one on its notes. `continue --after <event>`
 pauses and continues, which moves a run to another login or commit cleanly. `--after next`, the
 default, drains the run to save credit: no further solve starts, and it stops at the next finished

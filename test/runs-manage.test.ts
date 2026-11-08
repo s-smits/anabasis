@@ -63,6 +63,42 @@ describe("going on with a campaign", () => {
     }
   });
 
+  it("pauses at a promotion or an Examiner session's end, or at the first of the words joined by |", () => {
+    const climbing = [
+      event("build.started", { session: "b-1" }),
+      event("exam.started", { session: "x-1" }),
+      event("exam.finished", { session: "x-1" }),
+      event("comparison.started", { session: "g-1" }),
+      event("comparison.reported", { session: "g-1", reading: "step" }),
+      event("harness.promoted", { harness: "h" }),
+    ];
+    expect(restsAfter(climbing, "promoted", 0)).toBe(true);
+    expect(restsAfter(climbing, "promoted", 1)).toBe(false);
+    expect(restsAfter(climbing, "examined", 0)).toBe(true);
+    // The first of the joined words is enough, and the count is of their events together.
+    expect(restsAfter(climbing, "reported|promoted", 1)).toBe(true);
+    expect(restsAfter(climbing, "reported|promoted", 2)).toBe(false);
+    // The quiet point still binds: a comparison open since the promotion holds the pause.
+    const reading = [...climbing, event("comparison.started", { session: "g-2" })];
+    expect(restsAfter(reading, "promoted", 0)).toBe(false);
+  });
+
+  it("refuses a word it does not know, alone or among joined ones", async () => {
+    const made = fakeHosts();
+    fixtures.push(made.root);
+    const name = "words";
+    const folder = join(made.main, ".ana", "d2", name);
+    mkdirSync(folder, { recursive: true });
+    append(join(folder, "log.jsonl"), "campaign.opened", { name });
+    for (const after of ["promotion", "reported|toString", "reported|"]) {
+      const refused = made.run(
+        `import { pause } from "REPOSITORY/tools/runs/manage.ts"; await pause(["${name}", "--after", "${after}", "--yes"]);`,
+      );
+      expect(refused.code).not.toBe(0);
+      expect(refused.err).toContain("--after takes");
+    }
+  });
+
   it("pauses at the next step only once no solve is open", () => {
     const solving = [
       event("solve.started", { solve: "s-1" }),

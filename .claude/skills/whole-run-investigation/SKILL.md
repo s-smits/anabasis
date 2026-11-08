@@ -91,7 +91,7 @@ source.
 | 5 | `collect --out <dir>` | `reports.md` |
 | 6 | `synthesis --out <dir>` | `synthesis-prompt.md` |
 | lanes 1, 4 | `grade --log <log> [--bundle <pack>] --task <taskId> --answer <file>` | nothing: one verdict line (`--bundle` only for a stored pack) |
-| any | `derive (--log <log>[,<log>...] \| --all) [--verbose] [--force] [--no-embed]` | `data/derived/<campaign>/`: one file a reader and `manifest.json` |
+| any | `derive (--log <log>[,<log>...] \| --all) [--verbose] [--force] [--no-embed]` | `data/derived/<campaign>@<path>/` (one folder a log): one file a reader and `manifest.json` |
 
 ### The readers, derived
 
@@ -104,8 +104,9 @@ About thirty deterministic readers each map one log to text (`READERS`, `tools/w
 `index` and `derive`, `wri2p2.ts open`, `tools/c/rejections.ts`, `tools/d2/close.ts`) or that call a
 paid model (`system-path-simulation/scripts/live-seat.ts` and `referee-seat.ts`,
 `compare-systems/scripts/systems.ts`).
-`derive` writes `data/derived/<campaign>/<reader>.txt` in the main worktree, rewriting a folder only
-when its log or commit moved, so each folder describes one moment of the log. It prints one line;
+`derive` writes `data/derived/<campaign>@<path>/<reader>.txt` in the main worktree, one folder a
+log path, so a snapshot and the live log never share one, rewriting a folder only when its log or
+commit moved, so each folder describes one moment of the log. It prints one line;
 `--verbose` prints every file, `--force` rederives after an uncommitted reader change, and
 `--no-embed` skips the readers on the local embedding model (`tools/wri/embed.ts`): `restated`, which
 groups Referee reasons at cosine 0.93, and `nearness`, which measures how alike tasks read, never

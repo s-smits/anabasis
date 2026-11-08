@@ -3,6 +3,7 @@
 // `lanes` verb, run twice over one directory, building each prompt once and listing each session once.
 import { afterAll, describe, expect, it } from "bun:test";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -255,6 +256,22 @@ describe("the lanes verb", () => {
         readFileSync(join(out, `launch-${stemOf}.json`), "utf8"),
       ).sessions.map(({ name }) => name),
     ).toEqual([`lane_${stemOf}`]);
+  });
+
+  it("writes the shared instructions last, so a start that failed can be run again", () => {
+    const failed = join(dir, "failed-out");
+    // A folder in the overview's place makes the start fail as it writes.
+    mkdirSync(join(failed, "overview.md"), { recursive: true });
+    const begin = () =>
+      execTextSync(capturedExecPath, ["tools/wri/wri.ts", "start", "--log", log, "--out", failed], {
+        cwd: REPO,
+      });
+    expect(begin).toThrow();
+    expect(existsSync(join(failed, "shared-instructions.md"))).toBe(false);
+    rmSync(join(failed, "overview.md"), { recursive: true });
+    begin();
+    expect(existsSync(join(failed, "investigation.json"))).toBe(true);
+    expect(existsSync(join(failed, "shared-instructions.md"))).toBe(true);
   });
 
   it("checks out no tree for a launch whose commit this repository does not hold", () => {

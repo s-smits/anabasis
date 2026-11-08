@@ -397,6 +397,21 @@ rewriting. Merging and restacking others' branches are the operator's; before `b
 --merge`, three reviewer subagents read slices of the landing, and their confirmed findings go on
 the top before `--sanitize` runs again.
 
+### Commands that run the first time
+
+A shell command runs only where its effect can be read before it runs, so write it plainly:
+
+- Create or overwrite a file with the agent's file-editing tools instead of `>` or `cat > <<EOF`;
+  keep `>` for a new scratch file under the temporary directory, named by a literal path.
+- Put a script longer than a line in a file and run it (`python3 -I <file>`, `bun <file>`) instead
+  of piping text to an interpreter; a short heredoc quotes its delimiter (`<<'EOF'`) and holds no
+  `$(...)`, backtick or `${...}`.
+- Quote every expansion (`git branch --contains "$c"`), and give `mv` and `git -C` literal paths.
+- Take an older file with `git show <ref>:<path>` into a new path instead of `git checkout <ref> --
+  <path>`, `git restore` or `git reset --hard`; leave deleting branches to the operator.
+- Move what is no longer wanted to the Trash with explicit paths instead of `rm -r`, and leave shell
+  profiles, ssh configuration and env files untouched.
+
 ### Reviews and subagents
 
 Give each subagent one bounded task, stating authority, paths, revision, facts, the question and

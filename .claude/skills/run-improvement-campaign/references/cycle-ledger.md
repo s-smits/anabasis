@@ -10,7 +10,8 @@ each open decision.
 
 **Evidence**, one line each:
 
-- progress: step, state, time with UTC offset, evidence path or exit code;
+- progress: step, state, time with UTC offset read from the clock as the line is written (`date -u`,
+  never the time a step is expected), evidence path or exit code;
 - stops: runs closed against runs named, exceptions and unread runs apart;
 - investigation: each folder (with `iteration.json`), synthesis, `vetting.md`, `cross-domain.md`,
   `deviations.md`;

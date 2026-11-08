@@ -157,8 +157,12 @@ each pull request stacks on the one before. Nothing in an iteration is merged; t
    host, or the set the operator names, after a dry run:
    `runs fresh <pack> --host <host> --at <commit> --login N --as <suffix> --yes`. Take hosts from
    `ANA_HOSTS` (`hostsOf`) after `runs hosts --health`, and launch them one after another, since
-   concurrent `fresh --host` launches from one checkout fail. Ordinary forks let `fresh` place them.
-   Tag `run/<name>/1` at the commit and push it.
+   concurrent `fresh --host` launches from one checkout fail. Ordinary forks let `fresh` place them;
+   placement does not ask whether a peer holds the pack's prompt, so a pack whose prompt only the
+   central host holds takes `--host here`. Name a pull request's head by its number in the ledger
+   and read it (`gh pr view <n> --json headRefOid`) at the launch itself, also in a script that
+   launches once a login frees a slot: a landing beneath replays the pull requests above it onto new
+   heads. Tag `run/<name>/1` at the commit and push it.
 3. **Read** with `wri2p2.ts` at every review and milestone, resolving each prediction the hour its
    event lands. A defect seen live goes into the plan; the run is not stopped to fix it.
 
@@ -167,8 +171,9 @@ each pull request stacks on the one before. Nothing in an iteration is merged; t
 Steps 4 to 9 share twelve hours from the last stop. Where a step cannot finish in time, say what is
 left and continue in order; the window never justifies skipping a step.
 
-4. **Stop** each run past the threshold on the operator's word, with `runs on <host> stop <name>`
-   (two hosts can hold one name); a run the operator keeps is read on a snapshot. A stop word
+4. **Stop** a run past the threshold only where the operator's word names it, with
+   `runs on <host> stop <name>` (two hosts can hold one name); every other run runs on and is read
+   on a snapshot. A stop word
    (`tools/d2/word.ts --stop`) acts only at the next move boundary. Resolve the predictions and mark
    the rest `unreached`.
 
@@ -186,8 +191,8 @@ steps 2 to 4, with the isolated lanes 4 and 15 of
 ### A run proves the release
 
 `--sanitize` proves that each commit passes its checks; only a run shows that the stack still
-climbs. A stack lands once a fresh campaign launched at the top's head has reached two promotions
-under four conditions:
+climbs. Every stack, a patch that changes nothing a seat reads included, lands only once a fresh
+campaign launched at the top's head has reached two promotions under four conditions:
 
 - **One commit throughout.** Every launch in `bun run runs source <name>` names the head, or a commit
   whose `src`, `vendor` and `package.json` match it, each with a clean tree, and `wri.ts read` row C

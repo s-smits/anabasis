@@ -259,7 +259,9 @@ against a fake `gh` (`test/land.test.ts`).
 
 **Landing part of a stack.** `bun run split -- <pull request> --yes` cuts the native stack after
 the last pull request to land; once the lower part lands, the same command moves the upper commits
-onto the merge with their trees and passes intact. Run it only on the operator's word.
+onto the merge with their trees and passes intact, so each upper pull request takes a new head and
+its old one can stand on no remote branch, which `runs fresh --at` refuses; read a fork's commit
+from `gh pr view <n> --json headRefOid` at the launch. Run it only on the operator's word.
 
 ### Release notes, when the operator asks for the next version
 

@@ -130,7 +130,9 @@ bun run runs pause <name> [--after <word>[|<word>...]] --yes
 ```
 
 `continue` reruns a stopped campaign in its worktree on the flags of its last receipt, less `--name`
-and `--budget` (the log holds the total; `--budget` names another); flags after `--` replace them.
+and `--budget` (the log holds the total; `--budget` names another); flags after `--` replace them
+all, so adding one, such as `--promotions N`, means repeating the kept ones, which `continue`
+without `--yes` prints.
 It refuses as `launch` does, refuses `--at` another commit while a comparison is open
 (`openComparisons`), since that comparison needs its own code, and refuses a login at its fleet cap,
 a second GPT run on one machine, or a fleet it cannot count (`startRefusal`). A measured run continues
@@ -145,7 +147,10 @@ conversation, so the continued campaign opens a new one on its notes. `continue 
 pauses and continues, which moves a run to another login or commit cleanly. `--after next`, the
 default, drains the run to save credit: no further solve starts, and it stops at the next finished
 solve or tool call, or a minute past the solve limit. Sessions spend until then; `runs stop` frees a
-login at once.
+login at once. Its pause word (`campaign.word`, `PAUSE`) is in the log once written and holds every
+new solve of the running process for the solve limit and two minutes, so a pause or `continue
+--after next` interrupted after it leaves the run idle that long; only a restarted process ignores
+it, so arm the command once the decision is made.
 
 A word (`tools/d2/word.ts --name <name>`) acts at the next move boundary and reaches no seat:
 `--stop "<why>"` ends the campaign `operator`; `--budget N` sets its total; `--tasks "<why>"` asks for
@@ -169,7 +174,9 @@ minute (`turnOf`). On a provider wait longer than `--wait-hours`, it stops the r
 on the login with room whose week resets soonest and whose five hours are forecast to last
 (`fiveHourWith`); a login at 100% or unreadable is not taken. Where the process died without an
 ending, or ended `environment`, it continues on the same login if that is ready and under its cap
-(`atCap`), otherwise on one with room. Any other ending is the campaign's own, and the keeper leaves.
+(`atCap`), otherwise on one with room. Any other ending is the campaign's own, and the keeper leaves;
+a `budget` ending, even inside a comparison, is one no login can finish, and only a raised total
+(`continue --budget N`, the operator's dollar cap) goes on with it.
 A run with no `claude/` seat restarts after a death but sits out provider waits. Three continues in a
 row without an answered model turn end the keeper. Restarts stay at the worktree's commit; output
 goes to `keep.out`, and `runs stop <name> --yes` ends run and keeper both.

@@ -193,8 +193,11 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
 
 **Calls**
 
-- `no-transposed-argument`: two same-typed arguments passed in the other order than the
-  parameters are named. Fix whichever side is wrong.
+- `no-transposed-argument`: two arguments, each named for the other's parameter, against a
+  callee this file declares (a function, a `const`, a `this` method or an object literal's
+  method). A name is an identifier or the property ending a member read, and it matches when its
+  words begin or end with the parameter's (`sourcePath` for `source`). One name out of place is
+  not reported. Fix whichever side is wrong.
 
 **Repetition**
 

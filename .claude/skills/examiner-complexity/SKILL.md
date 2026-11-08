@@ -1,158 +1,107 @@
 ---
 name: examiner-complexity
-description: "Tune the ambition of the Examiner's exam: the reach scale and worked examples it is shown (src/examiner/ladder.ts), the drafting prompt's rules on how hard an exam can be (src/examiner/draft.ts) and the writing prompt's \"How hard\" (src/examiner/prompt.ts), so that drafted tasks leave the reference room for a good reason and stay answerable. Calibrates the record with blind reach grades against the reference's outcomes (grades.ts), re-rates each worked example's rungs blind against their stated grades so that a rung can be overhauled (rungs.ts), lists every draft an Examiner wrote beside the gate's reading of it as a CSV (exams.ts), reads each Examiner session's admissions and a campaign's time to its first comparison and promotion (ambition.ts), and runs the edit through paired live seats and a pair of fresh campaigns. Use when the operator asks whether the queries or tasks are hard enough, to tune the ladder or overhaul one of its examples, to calibrate easy to very hard, or to read whether an exam change raised supply."
+description: "Tune the ambition of the Examiner's exam: the reach scale and worked examples (src/examiner/ladder.ts), the drafting prompt (src/examiner/draft.ts) and the writing prompt's \"How hard\" (src/examiner/prompt.ts), so tasks leave the reference room and stay answerable. Scripts grade the record blind (grades.ts), re-rate example rungs (rungs.ts), list drafts with the gate's reading (exams.ts) and read admissions and time to first comparison (ambition.ts); edits go through paired live seats and fresh campaigns. Use when the operator asks whether tasks are hard enough, to tune the ladder or an example, to calibrate easy to very hard, or whether an exam change raised supply."
 ---
 
 # Examiner complexity
 
-An exam the reference answers on every solve measures nothing, and one nobody can answer measures
-nothing either. The Examiner decides what each task asks (`AGENTS.md`, section 2); what code and
-this skill own is what the Examiner is told about difficulty: one scale, worked examples from
-fields no campaign examines, and the facts of what the reference did. The goal is the ambition at
-which tasks leave the reference room through method rather than chance, so that supply reaches a
-comparison and the exam keeps moving after each promotion.
-
-The procedure tunes text the Examiner reads, never a task, rule or check (rule 2), and states facts,
-never a count or share to reach (section 2, consequence 2). `system-path-simulation`
-(`cases/optimize.md`) owns the paired seats, `run-management` the launches, and
-`whole-run-investigation` lane 34 the reach scale this skill grades on.
+A comparison has power only on tasks the reference answers sometimes, so an exam always solved, or
+never, carries no gradient. The Examiner chooses each task (`AGENTS.md`, section 2); this skill
+tunes only what it is told about difficulty: a reach scale, worked examples from fields no campaign
+examines, and facts about the reference. It edits text, never a task or check (rule 2), and states
+facts rather than a share to reach. Paired seats are `system-path-simulation`'s
+(`cases/optimize.md`) and the scale is lane 27 of `whole-run-investigation`.
 
 ## 1. Calibrate the record
 
-Before any edit, grade what the reference already answers. A grader reads each scored or held
-task's public input and the public rules alone (never hidden values, checks or outcomes) and
-writes `task<TAB>grade` on lane 34's scale (`GRADES`, `src/examiner/ladder.ts`). Then:
+A grader who sees only each task's public input and rules writes `task<TAB>grade` on the scale
+(`GRADES`, `src/examiner/ladder.ts`):
 
 ```sh
 bun .claude/skills/examiner-complexity/scripts/grades.ts <grades.tsv> <campaign folder>...
 ```
 
-prints, by grade, the tasks, the solves valid out of those with a result, the tasks valid on every
-solve and the median turns. The grade at which the reference is valid on every solve in a few turns
-is the ceiling the exam has to climb past. In one reading, 1,438 of 1,465 solves of buffer, job and
-esp32 tasks graded 2 to 5 were valid, at a median of 3 to 5 turns, so a solver with a shell sits
-two grades above what the scale's words alone suggest; the ladder was re-rated on that record.
+It prints, per grade, valid solves, tasks always valid and median turns. The highest grade the
+reference always clears in few turns is the ceiling the exam must pass.
 
 ## 2. Diagnose where a solver stops
 
-A capable solver with a shell scripts every case and checks itself, so a task climbs only by moving
-into one of three places (the ladder's closing paragraph): a local search from the obvious start
-lands in the wrong basin; the convenient model differs, near the specification, from the engine
-that decides; or the specification sits within a tolerance of a theoretical bound. Read the drafted
-exam (`draft.finished`, the brief) and the session's proposals for which of these the domain offers
-and whether the rules hand the solver the whole model. Rules that restate the field's tables and
-equations cap every task at grade 2 however the tasks are written; both arms of one esp32 pair
-drafted such rules, and their examples passed 9 of 9 solves at 3 turns. A frozen exam caps reach the
-same way, so a ladder edit is seated only where the exam is still open (section 4): on the esp32
-wiring-plan seed, both ladders held none of 10 or more drafts at a writing position, while the
-drafts grew only in device count.
-
-Whether the ladder's words reached the drafts is read from the drafts themselves, beside what the
-gate made of each:
+A solver with a shell scripts every case, so a task gets harder only in one of the ladder's three
+places: a local search from the obvious start finds the wrong basin; the convenient model departs
+from the deciding engine near the specification; or the specification sits within tolerance of a
+theoretical bound. Read the drafted exam (`draft.finished`) for which place the domain offers.
+Rules that restate the field's equations cap tasks near grade 2, as a frozen exam does, so seat a
+ladder edit only where the exam is open.
 
 ```sh
 bun .claude/skills/examiner-complexity/scripts/exams.ts [--every] <campaign folder>... > exams.csv
 ```
 
-writes one row a family a session, in the campaign's order (`--every`: one a draft): the drafts,
-how many the gate held and refused, how many of the refusals had the reference valid in every room
-solve (`noroom`, the ceiling) and how many drafts it answered in none, the author's proved answers,
-the public input's median length and a title. Read down a campaign for whether later sessions moved
-off the ceiling, and across arms for whether one ladder's drafts differ in kind or only in length.
-The drafted exam's own examples (`ex-001` on) are not rows, since their proposals hold no content.
-
-A ladder pitched too high shows as starved supply, not as bad tasks: refusals until the budget is
-gone, and no comparison to say what the exam was worth. An esp32 arm under a ladder pitched too high
-held 1 of 89 session drafts over 12 hours and $79, every refusal at the ceiling, its drafts about
-40% longer than the control's from the first session and no longer after; the control held 17 of 80
-and compared twice, its 59 refusals at the ceiling too, and neither wrote a draft the reference
-failed on every solve. A longer draft the reference still answers every time is the ladder reaching
-size and not method. An arm with no comparison by its domain's median first promotion
-(`promotion-tuner`: 9.8 h for buffer, 13.0 h for esp32) is read for starvation before its examples
-are rewritten again.
+gives one row per family and session (`--every`: per draft): drafts held and refused, refusals at
+the ceiling (`noroom`), drafts never answered, proved answers, input length and title. Look for
+movement off the ceiling and for change in kind rather than length. A ladder pitched too high
+starves supply instead, with refusals until the budget is gone; check for that before rewriting
+examples again.
 
 ## 3. Edit the owner
 
 | What | Owner |
 | --- | --- |
-| The scale, the worked fields and the three places | `src/examiner/ladder.ts` (`GRADES`, `FIELDS`, `SOLVER`; a writing session reads `LADDER`, a drafting one `REACH`, the scale and the solver alone) |
-| How hard an exam can be, how a rule is stated, the two ways a task is untied and the objective's decision | `src/examiner/draft.ts`, the drafting system prompt |
-| Writing above the reference's grade | `src/examiner/prompt.ts`, "How hard" |
+| scale, worked fields, three places | `src/examiner/ladder.ts` (`GRADES`, `FIELDS`, `SOLVER`; writing reads `LADDER`, drafting `REACH`) |
+| how hard an exam can be, how rules are stated | `src/examiner/draft.ts` |
+| writing above the reference's grade | `src/examiner/prompt.ts`, "How hard" |
 
-`test/examiner-ladder.test.ts` holds the scale to lane 34's words, keeps every examined domain and
-its neighbours out of the examples, and checks both modes are shown the ladder. Each rung names the
-place it sits in; a rung that is a closed form, a search over a few variables or a finite list of
-cases is grade 2 for this solver whatever its words. Rewrite rather than add a sentence (rule 13),
-and record each edit's reason and count in the module's head comment.
+`test/examiner-ladder.test.ts` holds the scale to lane 27, keeps examined domains out of the
+examples and checks both modes see the ladder. Rewrite rather than add (rule 13), with each edit's
+reason in the module's head comment.
 
-Each worked example is overhauled on a blind re-rating of its rungs, never on its author's grade:
+Overhaul an example on a blind re-rating, never its author's grade:
 
 ```sh
 bun .claude/skills/examiner-complexity/scripts/rungs.ts packet > <packet.md>
 bun .claude/skills/examiner-complexity/scripts/rungs.ts compare <rungs.tsv>...
 ```
 
-`packet` prints the scale, who the grades are for and every rung with its grade removed, one id a
-rung (`<field>.<rung>`). Hand it to two graders or more that have not read the ladder or this
-conversation, each writing `id<TAB>grade<TAB>place` and saying whether a verifier could decide an
-answer from the stated engine alone. `compare` sets their grades beside the stated one and flags
-each rung whose median is `below` its grade or `flat` against the rung before; in one pass two
-graders agreed exactly on 13 of 18 rungs and within one on the rest, so one grader is a lead.
-Rewrite a flagged rung inside the place the graders named, or move it into one, and fix every rung
-a grader could not decide: a bound or optimum the contract does not state as a number, or a
-measure that turns on a convention it leaves open. Then grade the new packet with fresh graders,
-since a rewrite read by the grader that flagged it is coached. A field whose rungs do not climb is
-replaced with another field outside every examined domain, which the test enforces.
+At least two graders who have read neither the ladder nor this conversation grade the packet as
+`id<TAB>grade<TAB>place` and say whether the stated engine alone decides an answer. `compare` flags
+rungs whose median is `below` their grade or `flat` against the previous one. Rewrite flagged and
+undecidable rungs, then re-grade with fresh graders, since a flagging grader is coached by the
+rewrite. Replace a field that does not climb with one outside every examined domain.
 
 ## 4. Compose, then seat
 
-Every edit that changes a composed prompt is a new arm. Diff the two arms' prompts with
-`live-seat.ts prompt` (`system-path-simulation`, `cases/optimize.md` step 4) before paying, at a
-writing position and, for `draft.ts`, at an opening. Then run paired live seats from seeds as
-`cases/optimize.md` steps 5 to 8 lay out: an opening, and a writing position only on a seed whose
-exam offers one of the three places (section 2), on one login and host, read with `pairs` at equal
-task admissions against two draws of one commit.
-A paid seat names `--reviewer` and `--reviewer-effort` as its source campaign did.
+Each edit to a composed prompt is a new arm. Diff the arms with `live-seat.ts prompt`
+(`cases/optimize.md` step 4) before paying, then, on the operator's word, run paired live seats per
+steps 5 to 8: one login and host, a writing position only where the exam offers a place, read with
+`pairs` at equal admissions, with `--reviewer` and `--reviewer-effort` as the source campaign had.
 
 ## 5. Read a fresh pair to its first comparison
-
-Where a campaign's comparisons sit in the test's power zone is one reading per comparison:
 
 ```sh
 bun .claude/skills/examiner-complexity/scripts/zone.ts <log or campaign name>...
 ```
 
-prints a table of the reference's tasks with no, some and every solve valid, the tasks untied on
-validity and on the objective alone, and the A/A's untied share beside them. Read the two shares
-together: at a 100% valid share the candidate's untied tasks are all on the objective, where a
-harness's own two solves differ too, so a share near the A/A's shows noise and no room. It decides
-nothing, and no seat reads it.
+prints per comparison the reference's tasks with no, some and every solve valid, the untied tasks
+on validity and on the objective, and the A/A's untied share. With the reference always valid, an
+untied share near the A/A's is noise. No seat reads it.
 
-Seats read one session after a cut. Whether an exam change raises supply, and holds across a
-promotion, only a fresh campaign at its commit shows (`AGENTS.md`, section 10, item 9). Launch the
-control and the arm together, one domain, one login, the same host class, on the operator's word
-(`runs fresh ... --at <commit>`), and read them side by side as they go:
+Only fresh campaigns show whether supply rose (`AGENTS.md`, section 10, item 9). On the operator's
+word, launch control and arm together with `runs fresh ... --at <commit>`, one domain, one login,
+one host class, predictions on record first:
 
 ```sh
 bun .claude/skills/examiner-complexity/scripts/ambition.ts <control folder> <arm folder>
 ```
 
-prints what each campaign had spent by its first `comparison.started` and `harness.promoted`, in
-hours, solves and dollars, since a host's load moves only the hours, and one line per Examiner
-session: the reference in force, drafts held of those admitted, the admission words
-(`every`, `some`, `none, proved`), the median turns of the reference's valid room solves and the
-dollars; the words and turns come from room solves, which only an older log holds, so a newer
-session shows its drafts held and refused alone. Read in this order: whether each arm's sessions received their text, the share of
-admissions reading `every` (the ceiling), the drafts held, answerability (the author's answer or a
-valid solve on record), then the steps to the first comparison and promotion. Put the predictions
-on record before the first solve, and settle each by its count.
+It prints hours, solves and dollars to the first `comparison.started` and `harness.promoted`, and
+per Examiner session the reference in force, drafts held, admission words (`every`, `some`,
+`none, proved`) and dollars. Read in order: the arm received its text, the share reading `every`,
+drafts held, answerability, time to first comparison.
 
 ## 6. What may be claimed
 
-A seat round is two draws and a lead (rule 6). A fresh pair is one campaign an arm. "The exam is
-harder" needs blind grades of the held tasks above the control's, joined to the reference's outcomes
-by `grades.ts`: in one pair two graders put an arm's esp32 drafts a grade above the
-control's while the reference answered 28 of 29 solves of its 5s and 6s at 3 turns. "Supply rose"
-needs the arm's held share and its first comparison ahead of the control's on fresh campaigns,
-repeated in a second domain; neither says a harness got better, which only a comparison reads (rule 1). Keep counts with
-their denominators and the logins' waits apart from the system's time (rule 15).
+A seat round is two draws and a lead (rule 6); a fresh pair is one campaign an arm. "The exam is
+harder" needs blind grades above the control's joined to outcomes by `grades.ts`. "Supply rose"
+needs a higher held share and earlier first comparison on fresh campaigns, repeated in a second
+domain. Neither says a harness improved (rule 1), and login waits are not the system's time
+(rule 15).

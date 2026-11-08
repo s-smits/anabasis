@@ -198,10 +198,21 @@ describe("the hourly follow's reasons not to move", () => {
     expect(why()).toStrictEqual(["a git operation is under way here (index.lock)"]);
     rmSync(join(co, ".git", "index.lock"));
     writeFileSync(join(co, ".git", "info", "exclude"), "new.txt\n");
-    expect(why().join("\n"), "an ignored file, which a switch overwrites, is not in the way").not.toContain(
-      "files the top adds",
+    expect(why().join("\n"), "an ignored file the top adds is in the way too").toContain(
+      "files the top adds are here already: new.txt",
     );
     expect(readFileSync(join(co, "shared.txt"), "utf8"), "nothing moved").toBe("mine\n");
+  });
+
+  it("refuses to switch over an ignored file the top adds, and keeps it", () => {
+    const kept = join(root, "safe-ignored");
+    git(root, "clone", "-q", up, kept);
+    writeFileSync(join(kept, ".git", "info", "exclude"), "new.txt\n");
+    writeFileSync(join(kept, "new.txt"), "mine, ignored\n");
+    expect(() => follow(kept, { number: 1, branch: "claude/top", pulls: [1] })).toThrow(
+      "would be overwritten",
+    );
+    expect(readFileSync(join(kept, "new.txt"), "utf8")).toBe("mine, ignored\n");
   });
 });
 

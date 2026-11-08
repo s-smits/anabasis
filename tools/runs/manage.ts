@@ -54,7 +54,7 @@
  */
 import { unfinished } from "#src/kernel/trace.ts";
 import { append, type LogEvent } from "#src/kernel/log.ts";
-import { PAUSE } from "#src/campaign/word.ts";
+import { PAUSE, pauseWaitMs } from "#src/campaign/word.ts";
 import { mkdirSync, openSync, statSync } from "#src/meta/filesystem.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -109,8 +109,6 @@ const DROPPED = ["--name", "--budget"];
 const LOOK_MS = 30_000;
 /** How often a pause at the next step looks, since a step follows another within seconds. */
 const STEP_MS = 1000;
-/** Past a solve's own limit, what a pause at the next step allows it to end and be recorded. */
-const MARGIN_MS = 60_000;
 
 /** The flags a campaign runs again on: `flags` less its name and total, and `budget` where named. */
 export function rerun(flags: readonly string[], budget: string | undefined): string[] {
@@ -159,7 +157,7 @@ export function restsAfter(events: readonly LogEvent[], after: string, base: num
 /** How long a pause at the next step lets the open solves of the run whose log is `events` finish:
  *  the limit its setting recorded, as the solves were given it. */
 export function solvesMs(events: readonly LogEvent[]): number {
-  return (recordedSetting(events)?.minutes ?? LIMITS.wallSeconds / 60) * 60_000 + MARGIN_MS;
+  return pauseWaitMs((recordedSetting(events)?.minutes ?? LIMITS.wallSeconds / 60) * 60);
 }
 
 async function pauseAt(run: Run, after: string): Promise<void> {

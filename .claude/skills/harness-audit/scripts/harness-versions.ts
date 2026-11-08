@@ -26,8 +26,8 @@
  *
  * `--blind` takes from each version how it was measured (`blinded`: every comparison, session,
  * promotion and role but the starter's) and prints its diff against a kept parent in their place.
- * Lane 34 grades soundness from it before it reads a result; on 30 October its first session read
- * the list's comparisons first.
+ * Lane 27 grades soundness from it before it reads a result; on 30 October its first session (then
+ * lane 34) read the list's comparisons first.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { type Handover, campaignOf } from "#src/campaign/handover.ts";

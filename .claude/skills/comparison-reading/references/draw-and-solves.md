@@ -1,55 +1,39 @@
 # Terms, the scored draw and the solves
 
-Read this for comparison terms, task selection and solve outcomes. This expands the first part of
-`AGENTS.md` section 7.
-
-The head comments of `src/kernel/compare.ts` (the tally, the test, the step),
-`src/campaign/round.ts` (running one: terms, fresh solves, the cap, rejections) and
-`src/campaign/comparison.ts` (reading one back) are the full account. Here is the model.
+Read this for comparison terms, the draw and how each ending counts (`AGENTS.md` section 7). The
+head comments of `src/kernel/compare.ts` (tally, test, step), `src/campaign/round.ts` (running one)
+and `src/campaign/comparison.ts` (reading one back) are the full account.
 
 ## Terms first
 
-Before solving, a comparison records its harnesses, setting, scored tasks, solves per side, level,
-objective rule, cap and any `--predict` statement in `comparison.started`. A continuation keeps
-these terms. A request to change them is refused.
+`comparison.started` records the harnesses, setting, scored tasks, solves a side, level, objective
+rule, cap and any `--predict`; a continuation refuses a change.
 
 ## The scored draw
 
-The scored tasks are `--target` held-out ones, the newest epoch's first and, within it, those held
-out since the last comparison began, each drawn by the contract's hash. The draw (`poolOf`) leaves
-out a task with no valid answer after two comparisons until a person labels it, and takes off the
-frontier as **exhausted** a task the reference answered in every one of its own solves in the last
-two comparisons it stood in for it, on either side (`ownOf`): the other harness's solves never
-count, so which held-out task it won moves no size the Builder is told (rule 3). A task stays open where one of the reference's own answers or its
-author's betters another of its answers by the objective gap floor (`gapAgainst`), since the next
-harness can still win it. The counts live in one place (`SIZE`, `RUNS`,
-`src/kernel/size.ts`), and every rule reads a side's every, some or none, so they hold at any
+The draw (`poolOf`) takes `--target` held-out tasks, newest epoch first and within it those held
+since the last comparison began, ordered by the contract's hash. It leaves out tasks awaiting review
+(no valid answer after two comparisons, "Awaiting task review" in `limits-and-room.md`) and marks as
+**exhausted** a task the reference answered in every one of its own solves in its last two
+comparisons (`ownOf`). Only the reference's solves count here, so which task the candidate won moves
+nothing the Builder is told (rule 3). A task stays open while some answer on record betters one of
+the reference's by the gap floor (`gapAgainst`). The counts live in `SIZE` and `RUNS`
+(`src/kernel/size.ts`), and every rule reads a side's every, some or none, so they hold at any
 number of solves.
 
-The draw also includes **retained** exhausted tasks: one per three frontier tasks, in addition to
-the target (`scoredSet`). They expose regressions on tasks the reference can answer. Without them,
-gains on new tasks could hide losses on old ones.
+One **retained** exhausted task joins each three frontier tasks, beyond the target (`scoredSet`), so
+that a gain on new tasks cannot hide a regression on old ones.
 
 ## Fresh solves
 
-Each scored task is solved afresh under each harness, workers taking whole tasks in a hashed order
-and the first side mirrored within a task (`round.ts`). One outer retry runs at the same slot, and a
-second non-result leaves the task short. Counted starts form a prefix of the mirror, which
-guarantees neither equal start times nor equal load or cache exposure. A solve counts only when its
-start names the comparison, and no earlier solve is reused: a condition names the host's code, which
-changes between comparisons, and one frozen draw of the reference's solves would bias every later
-reading.
+Workers take whole tasks in a hashed order, and the first side is mirrored within a task
+(`round.ts`), which balances order but not load or cache. A non-result gets one retry at the same
+slot; a second leaves the task short. A solve counts only when its start names the comparison: the
+condition names the host's code, which changes between comparisons, and one frozen draw of reference
+solves would bias every later reading (rule 5).
 
 ## How a solve ends
 
-How a solve ends (`src/kernel/solve.ts`), and its part in a pair:
-
-| Ending | Kinds | In a pair |
-| --- | --- | --- |
-| pass | | Valid. It beats an answer that is not valid; against another valid one it gains by how much better it is by the objective, where the comparison fixed one |
-| fail | `rejected`, once the rejection is ruled a true fail | Not valid |
-| fail | `wall-ended`, `turns-ended`, `context-ended`, `no-answer` | Not valid, with nothing to recompute and no ruling. A deadline on a model silent ten minutes with no tool running is the provider's non-result instead (`SILENT_SECONDS`) |
-| fail | `broken-harness` | Not valid. The harness is what is compared, and one that cannot open answers nothing |
-| fail | `rejected`, ruled a check defect or unclear, or waiting for a person | The task is set aside for both harnesses |
-| non-result | `provider`, `sandbox-crash`, `killed`, `moved-files`, `check`, `verifier` | No measurement. It is solved again and is in no pair |
-| flagged | | Not valid: the solver's statement that the task is malformed (`submit` with `malformed`), its side's own fail, reported apart (`flagged`). A task both sides flag ties |
+Section 7 lists how each kind (`src/kernel/solve.ts`) counts. Two edges: a deadline on a model
+silent for ten minutes with no tool running is a `provider` non-result (`SILENT_SECONDS`), and a
+`malformed` flag is reported apart (`flagged`), a task both sides flag being a tie.

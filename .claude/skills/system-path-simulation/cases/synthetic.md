@@ -1,42 +1,34 @@
 # Synthetic logs
 
-A reader of the log turns events into a step: a task becomes easy, a move is named, the Examiner is
-told a count, a campaign ends. A recorded log holds only the patterns its run happened to produce.
-When the question is whether a reader turns some *other* pattern into the step you expect, build
-that pattern in memory and hand it to the reader. No model runs, nothing is written, and the answer
-takes seconds.
+A reader maps events to a decision: a task becomes easy, a move is named, the Examiner is told a
+count, a campaign ends. A recorded log holds only the patterns its run happened to produce. To ask
+what a reader does with another pattern, build it in memory and pass it to the reader. This is unit
+testing on constructed inputs: no model runs, nothing is written, and it takes seconds.
 
 ```sh
 S=.claude/skills/system-path-simulation/scripts/synthetic.ts
-bun $S --list                          # the examples in the script
+bun $S --list                          # the examples
 bun $S pool                            # run one by name
 bun $S <scratchpad>/my-scenario.ts     # run your own
-bun $S pool --tree <another worktree>  # the same scenario under another tree's readers
+bun $S pool --tree <another worktree>  # under another tree's readers
 ```
 
 ## The kit
 
-`scripts/synthetic.ts` gives a scenario a `Kit`:
+A scenario default-exports one function of the `Kit` that `scripts/synthetic.ts` provides:
 
-- `log()`, a builder that appends the events each campaign writer would, in the shapes the readers
-  read: `hold(task, {valid, solves}?)`, `refuse(task, valid)`, `release(task)`, `feasible(task)`,
-  `compare(session, {old, fresh, starter?}, tasks, {terms?, reported?})` and
-  `promote(harness, from, comparison)`. Each side's solves are letters: `P` valid, `F` rejected
-  and ruled earned, `W` cut by the deadline, `N` no answer, so a task is `"PP/PF"`, or
-  `{ solves: "PP/PP", objective: [10, 10, 5, 5] }` with each solve's measure in the same order,
-  lower better. `add(kind, data)` appends any other event.
-- `compare` writes the comparison's start (`terms` override its level, objective and the rest),
-  the solves, and the report the tree itself computes from them (`compared`,
-  `src/campaign/comparison.ts`), as a round writes it. So the tally, the reading, `valid` and the
-  room every later reader reads are the tree's own. `reported` lays fields over that report, for
-  planting a contradiction a writer would never produce; a reading forced to `step` there is a
-  step no test read.
-- `readers`: the tree's `reports`, `size`, `record` (what the Examiner hears), `decide`, `move`
-  and `comparison`, already loaded. Any other module of the tree is
-  `await import(join(kit.tree, "src/..."))`.
-- `table(header, rows)` prints rows.
-
-A scenario file default-exports one function of the kit:
+- `log()` appends events in the shapes the writers produce: `hold(task, {valid, solves}?)`,
+  `refuse(task, valid)`, `release(task)`, `feasible(task)`, `compare(session, {old, fresh,
+  starter?}, tasks, {terms?, reported?})`, `promote(harness, from, comparison)`, and `add(kind,
+  data)` for anything else. Solves are letters, `P` valid, `F` rejected and ruled earned, `W` cut by
+  the deadline, `N` no answer, so a task reads `"PP/PF"`, or `{ solves: "PP/PP", objective: [10, 10,
+  5, 5] }` with lower measures better.
+- `compare` writes the start, the solves and the report the tree computes from them (`compared`,
+  `src/campaign/comparison.ts`), so tally, reading, `valid` and room are the tree's own. `terms`
+  overrides the level or objective; `reported` overlays fields to plant a contradiction no writer
+  would produce.
+- `readers` holds the tree's `reports`, `size`, `record`, `decide`, `move` and `comparison`; any other
+  module is `await import(join(kit.tree, "src/..."))`. `table(header, rows)` prints rows.
 
 ```ts
 import type { Scenario } from "<repo>/.claude/skills/system-path-simulation/scripts/synthetic.ts";
@@ -48,73 +40,27 @@ const scenario: Scenario = ({ log, readers }) => {
 export default scenario;
 ```
 
-The script holds three examples, each meant to be copied and tuned: `pool` (how the task pool sorts
-tasks by their readings), `examiner` (what the Examiner hears after a promotion) and `decision` (the
-move the table names after a tie, a step and the promotion, under one plan). Start from the nearest one, change its constants, and
-read the output again. When a builder method is missing for an event you need, find the event's
-writer in `src/` and copy the shape it writes, or the test that builds it (`test/decide.test.ts`
-and `test/reports.test.ts` build most kinds by hand). Then add the method to the kit if the next
-question will need it too.
+Start from the nearest example (`pool`, `examiner` or `decision`) and change its constants. For an
+event the kit lacks, copy its writer's shape from `src/` or from `test/decide.test.ts` and
+`test/reports.test.ts`, and add a method if it will be needed again.
 
 ## What to try
 
-Put your prediction in a file first (rule 1), then build the smallest log that can miss it.
+Write the prediction first (rule 1), then build the smallest log that could falsify it.
 
-- **A count changed in one place.** Copy the tree to a scratch worktree, change one constant
-  (`RUNS` or `SIZE` in `src/kernel/size.ts`, a floor, a weight), and run one scenario under both
-  trees with `--tree`. Every line that differs follows from that constant. A reader that does not
-  move is reading its own copy of the count.
-- **Edges of a threshold.** One reading below it, at it and above it. Readings in a row broken
-  by one fail. Ties at the objective gap floor. A task cut by the deadline beside one that failed.
-- **Two readers of one fact.** Build one log and ask every reader that should agree: the
-  frontier and the history the Examiner hears, the release and the practice frontier, the view's
-  move and the stop rule. A disagreement is a rule 12 finding.
-- **The wall.** Build two logs that differ only in something a seat must not learn (which held
-  task another harness won, a hidden value) and compare what that seat's reader returns,
-  byte for byte. Rule 3 is the reason, and `test/builder.test.ts` shows the same idea at scale.
-- **Sides that switch.** A harness that was `fresh` in one comparison and `old` in the next, a
-  promotion between readings, the starter as neither side. Does each reader follow the reference
-  harness, or the column?
-- **What a seat is told.** Build the position and print the message: `record.heard` for the
-  Examiner, the Builder's opening or status text, `move.decidedLine` for the view. Read the text a
-  model would read, as section 13 of `AGENTS.md` asks for a sentence of a prompt.
-- **The next move.** Walk a log through several states (prepared, compared, stepped, promoted,
-  out of room) and print `decide` after each, as a campaign would. Tune the plan's terms (patience,
-  target, level) and watch which row changes.
-- **Endings.** Supply patience over roomless readings, improvement patience over moves with no
-  gain, a budget spent, three crashed sessions: does the campaign end where its rule says, and not
-  one move earlier?
-- **Old logs.** An event kind no command writes now, or a field an older writer left out: does
-  today's reader still read it (section 5, habit 4)?
-- **Scale.** A thousand tasks or fifty comparisons, timed, when a reader is suspected of being slow.
+- **One constant changed** (`RUNS` or `SIZE` in `src/kernel/size.ts`, a floor, a weight) in a copied
+  tree, one scenario under both with `--tree`: a reader that does not move holds its own copy.
+- **Threshold edges**: below, at and above; a streak broken by one fail; ties at the gap floor.
+- **Two readers of one fact** should agree (rule 12), and two logs differing only in what a seat must
+  not learn should give byte-identical seat messages (rule 3).
+- **Sides that switch** across a promotion: does a reader follow the reference or the column?
+- **What a seat is told** (`record.heard`, the Builder's opening, `move.decidedLine`), the next move
+  and endings (`decide` after each state), old event kinds (section 5, habit 4), and scale.
 
-## What it cannot say
+## Limits
 
-- Only the readers you call run. No command, wall, solve, model or Referee. Whether the commands
-  join is a [rehearsal](rehearsal.md), and what a model does with the message is a
-  [live seat](live-seat.md).
-- The events are hand-built, so they prove what the reader does with *these* shapes. A shape no
-  writer produces can mislead: when a reading surprises you, check the writer before the reader.
-  Until the kit computed its reports with `compared`, a report it made up had no `valid` field,
-  and `decide` read every such comparison as leaving room, so a log in which every task was closed
-  advised a Builder session instead of `no-room`.
-- They stay in memory. Rule 3 of the skill keeps hand-built events out of every seed and campaign
-  folder, and the kit writes none.
-- A pattern that reads right here and matters to a change goes into the change's owning test, as
-  rule 9 asks.
-
-## What it settled
-
-For example, it read the task pool at two solves a side on #516's tree, and again on a scratch tree
-with `SIZE.solves` at 4 and `RUNS.easy` and `RUNS.unsolved` at 3. On #516 two readings each valid
-in every solve made a task easy and one did not. Two readings with no valid solve sent a task to
-review, unless the deadline cut them or an answer was on record. A later harness valid in one solve
-of two kept the task on the comparison frontier, while practice still called it easy. On the
-scratch tree each threshold moved to three readings in every reader. The `examiner` example then
-showed the Examiner's summary following the new reference across a promotion, which no log of the
-time held. Edges read the same day, each as predicted: a task the next harness slipped on stayed on
-the frontier; one only a replaced harness slipped on, or one read only in starter comparisons, was
-exhausted on the reference's own solves; one where the next harness's answers measured half the
-reference's stayed on the frontier, and one 0.5% better did not; and two logs that differed only
-in which task the new harness slipped on released the same tasks while their comparison frontiers
-differed. Each of these already has its owning test in `test/reports.test.ts`.
+Only the readers you call run, so command joins are a [rehearsal](rehearsal.md) and model behaviour
+a [live seat](live-seat.md). The events are hand-built, so they prove what a reader does with these
+shapes; when a reading surprises you, check the writer before the reader. The events never reach a
+seed or campaign folder (rule 3), and a pattern that matters to a change goes into its owning test
+(rule 9).

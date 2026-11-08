@@ -39,36 +39,36 @@ describe("an investigation's lanes", () => {
       overview: {
         rows,
         triggers: [
-          { lane: 4, name: "REFUSED UNREAD" as const, detail: "2 of 2" },
-          { lane: 5, name: "FAILS ON ONE CHECK" as const, detail: "check-a refused 2 of 2" },
+          { lane: 3, name: "REFUSED UNREAD" as const, detail: "2 of 2" },
+          { lane: 4, name: "FAILS ON ONE CHECK" as const, detail: "check-a refused 2 of 2" },
         ],
       },
     },
   ];
-  // A second campaign on which lane 4 fired another trigger and lane 5 none.
+  // A second campaign on which lane 3 fired another trigger and lane 4 none.
   const two = [
     ...one,
     {
       name: "buffer-b",
       log: "/b/log.jsonl",
-      overview: { rows, triggers: [{ lane: 4, name: "CHECK DEFECT RULED" as const, detail: "1 of 3" }] },
+      overview: { rows, triggers: [{ lane: 3, name: "CHECK DEFECT RULED" as const, detail: "1 of 3" }] },
     },
   ];
 
   const parts = { shared, campaigns: two, catalogue, owners, report: "/r/04.md" };
 
   it("gives the lane that reads the climb side by side the table, or says one campaign is read, and no other lane either", () => {
-    expect(lane(27).sideBySide).toBe(true);
-    const named = lanePrompt({ ...parts, lane: lane(27), climb: "CLIMB_CANARY" });
+    expect(lane(22).sideBySide).toBe(true);
+    const named = lanePrompt({ ...parts, lane: lane(22), climb: "CLIMB_CANARY" });
     expect(named).toContain("CLIMB_CANARY");
-    expect(lanePrompt({ ...parts, campaigns: one, lane: lane(27) })).toContain("One campaign");
-    const ordinary = lanePrompt({ ...parts, lane: lane(4), climb: "CLIMB_CANARY" });
+    expect(lanePrompt({ ...parts, campaigns: one, lane: lane(22) })).toContain("One campaign");
+    const ordinary = lanePrompt({ ...parts, lane: lane(3), climb: "CLIMB_CANARY" });
     expect(ordinary).not.toContain("CLIMB_CANARY");
     expect(ordinary).not.toContain("side by side");
   });
 
   it("gives every lane every campaign as an equal, with each trigger under the campaign it fired on", () => {
-    const open = lanePrompt({ ...parts, lane: lane(4) });
+    const open = lanePrompt({ ...parts, lane: lane(3) });
     expect(open).toContain("### buffer-a");
     expect(open).toContain("### buffer-b");
     expect(open).toContain("2 campaigns as equals: `buffer-a`, `buffer-b`");
@@ -79,23 +79,23 @@ describe("an investigation's lanes", () => {
       "Seen in: buffer-a <shows | absent | cannot show>, buffer-b <shows | absent | cannot show>",
     );
     // An isolated lane reads both campaigns too, and of each only its own triggers.
-    const isolated = lanePrompt({ ...parts, lane: lane(5), report: "/r/05.md" });
+    const isolated = lanePrompt({ ...parts, lane: lane(4), report: "/r/04.md" });
     expect(isolated).toContain("### buffer-b");
-    expect(isolated).toContain("FAILS ON ONE CHECK (lane 5)");
-    expect(isolated).not.toContain("CHECK DEFECT RULED (lane 4)");
-    expect(isolated).not.toContain("REFUSED UNREAD (lane 4)");
+    expect(isolated).toContain("FAILS ON ONE CHECK (lane 4)");
+    expect(isolated).not.toContain("CHECK DEFECT RULED (lane 3)");
+    expect(isolated).not.toContain("REFUSED UNREAD (lane 3)");
     expect(isolated).not.toContain("Why the step.");
     expect(isolated).toContain("quote nothing");
-    expect(isolated).toContain("/r/05.md");
+    expect(isolated).toContain("/r/04.md");
     // One campaign is read as before, with no section on the others and no Seen in line.
-    const alone = lanePrompt({ ...parts, campaigns: one, lane: lane(4) });
+    const alone = lanePrompt({ ...parts, campaigns: one, lane: lane(3) });
     expect(alone).not.toContain("as equals");
     expect(alone).not.toContain("Seen in:");
   });
 
   it("holds each finding of several campaigns to a Seen in line that names every one", () => {
     const finding = [
-      "# Lane 4: False rejection among fails",
+      "# Lane 3: False rejection among fails",
       "Verdict: finding, one check refuses a valid rounding.",
       "## Findings",
       "### The tolerance",
@@ -114,7 +114,7 @@ describe("an investigation's lanes", () => {
       ["buffer-a-r5 shows, buffer-b absent", "invalid", "buffer-a"],
     ] as const) {
       const text = seen === null ? finding : `${finding}\nSeen in: ${seen}`;
-      const report = reportOf(lane(4), text, owners, ["buffer-a", "buffer-b"]);
+      const report = reportOf(lane(3), text, owners, ["buffer-a", "buffer-b"]);
       expect(report).toMatchObject({ state, findings: 1, verdict: "finding" });
       expect(report.faults).toHaveLength(state === "ok" ? 0 : 1);
       if (missing !== null) expect(report.faults[0]).toContain(missing);
@@ -127,30 +127,30 @@ describe("an investigation's lanes", () => {
   });
 
   it("lets a session leave an open lane omitted with its reason, never an isolated one, and names one whose trigger fired", () => {
-    expect(lanePrompt({ ...parts, lane: lane(4) })).toContain("Verdict: omitted");
-    expect(lanePrompt({ ...parts, lane: lane(5), report: "/r/05.md" })).not.toContain("Verdict: omitted");
+    expect(lanePrompt({ ...parts, lane: lane(3) })).toContain("Verdict: omitted");
+    expect(lanePrompt({ ...parts, lane: lane(4), report: "/r/04.md" })).not.toContain("Verdict: omitted");
     const omitted =
-      "# Lane 4: False rejection among fails\nVerdict: omitted, lane 7 of this session covers it.\n";
-    const ok = reportOf(lane(4), omitted, owners, ["buffer-a"]);
+      "# Lane 3: False rejection among fails\nVerdict: omitted, lane 7 of this session covers it.\n";
+    const ok = reportOf(lane(3), omitted, owners, ["buffer-a"]);
     expect(ok).toMatchObject({ state: "ok", verdict: "omitted", findings: 0 });
     const written = `${omitted}## Findings\n### x\nObservation: a\nCause: b\nOwner: pack/evaluator\nReverses if: c\nDecision: d\n`;
-    expect(reportOf(lane(4), written, owners, ["buffer-a"]).faults).toEqual([
+    expect(reportOf(lane(3), written, owners, ["buffer-a"]).faults).toEqual([
       "the verdict is omitted and the report writes 1 finding",
     ]);
-    const isolated = omitted.replace("# Lane 4: False rejection among fails", "# Lane 5: x");
-    expect(reportOf(lane(5), isolated, owners, ["buffer-a"]).faults).toEqual([
+    const isolated = omitted.replace("# Lane 3: False rejection among fails", "# Lane 4: x");
+    expect(reportOf(lane(4), isolated, owners, ["buffer-a"]).faults).toEqual([
       "an isolated lane may not be omitted",
     ]);
     const index = reportIndex([ok, { ...ok, lane: 6 }], (number) => `/r/${String(number)}.md`, one);
-    expect(index).toContain("lane 4: ok, omitted although its trigger fired");
+    expect(index).toContain("lane 3: ok, omitted although its trigger fired");
     expect(index).toContain("lane 6: ok, omitted, 0 findings");
   });
 
   it("holds a report its session marked provisional as unfinished, and passes the same verdict once final", () => {
-    const final = "# Lane 32: The run's launches\nVerdict: could not read, the receipts are gone.\n";
-    expect(reportOf(lane(32), final, owners, ["buffer-a"]).faults).toEqual([]);
+    const final = "# Lane 26: The run's launches\nVerdict: could not read, the receipts are gone.\n";
+    expect(reportOf(lane(26), final, owners, ["buffer-a"]).faults).toEqual([]);
     const early = final.replace("the receipts are gone", "provisional: reading in progress");
-    expect(reportOf(lane(32), early, owners, ["buffer-a"])).toMatchObject({
+    expect(reportOf(lane(26), early, owners, ["buffer-a"])).toMatchObject({
       state: "invalid",
       faults: ["the verdict is provisional: the session is still writing"],
     });
@@ -161,7 +161,7 @@ describe("the lanes verb", () => {
   const REPO = resolve(import.meta.dir, "..");
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "ana-wri-")));
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
-  // One pass and two refusals that both name check-a: lane 5's trigger fires, among the open lanes'.
+  // One pass and two refusals that both name check-a: lane 4's trigger fires, among the open lanes'.
   const events = [
     ["solve.started", { solve: "s1", condition: "c" }],
     ["solve.finished", { solve: "s1", ending: { outcome: "pass" } }],
@@ -213,27 +213,27 @@ describe("the lanes verb", () => {
     const first = manifest();
     expect(first.search).toBe(false);
     expect(first.sessions).toHaveLength(Object.keys(built).length);
-    expect(first.sessions.map(({ name }) => name)).toContain("lane_04");
-    expect(Object.keys(built)).toContain("04-prompt.md");
-    expect(Object.keys(built)).not.toContain("05-prompt.md");
-    for (const name of ["twin@m1", "twin@linux"]) expect(built["04-prompt.md"]).toContain(name);
+    expect(first.sessions.map(({ name }) => name)).toContain("lane_03");
+    expect(Object.keys(built)).toContain("03-prompt.md");
+    expect(Object.keys(built)).not.toContain("04-prompt.md");
+    for (const name of ["twin@m1", "twin@linux"]) expect(built["03-prompt.md"]).toContain(name);
     writeFileSync(join(out, "shared-instructions.md"), shared.replace("Why the step.", "Another question."));
     lanesVerb();
     expect(prompts()).toEqual(built);
     expect(manifest()).toEqual(first);
-    lanesVerb("--lanes", "4-5");
+    lanesVerb("--lanes", "3-4");
     // A lane that runs alone gets a manifest of its own, beside the open lanes' one.
     expect(manifest()).toEqual(first);
     expect(
-      parseJsonAs<{ sessions: unknown[] }>(readFileSync(join(out, "launch-05.json"), "utf8")).sessions,
+      parseJsonAs<{ sessions: unknown[] }>(readFileSync(join(out, "launch-04.json"), "utf8")).sessions,
     ).toEqual([
       {
-        name: "lane_05",
-        task: containing("05-prompt.md"),
-        ownedPaths: [join(out, "lanes", "05-report.md")],
+        name: "lane_04",
+        task: containing("04-prompt.md"),
+        ownedPaths: [join(out, "lanes", "04-report.md")],
       },
     ]);
-    expect(prompts()["04-prompt.md"]).toBe(built["04-prompt.md"]);
+    expect(prompts()["03-prompt.md"]).toBe(built["03-prompt.md"]);
   });
 
   it("checks out no tree for a launch whose commit this repository does not hold", () => {

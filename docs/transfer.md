@@ -127,7 +127,7 @@ What the investigation of the two folders found, beyond the stop:
   records which a harness holds was the other way, and is not written. What the rule guards is a
   harness that answers for its solver; it does not make the comparison attributable, since a
   separated search and test is still an engine against a Starter that has none, one turn longer.
-  Whether a harness obeyed it is read by `ANSWER FROM A PROGRAM` (`tools/wri/read.ts`, lane 19):
+  Whether a harness obeyed it is read by `ANSWER FROM A PROGRAM` (`tools/wri/read.ts`, lane 15):
   the solves whose one shell call was followed by `submit` with no write of their own, per Builder
   session's practice and per comparison, with the reference side beside the new one as the control.
   The first reader, a shell call last before `submit`, told nothing: these solvers do everything

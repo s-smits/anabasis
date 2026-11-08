@@ -12,7 +12,7 @@
  * promotions bought no reach the starter lacked. The operator asked the same day for a ladder from
  * easy to very hard, from fields outside the system, that "REALLY get very hard".
  *
- * The grades are lane 34's reach scale word for word (`whole-run-investigation`, `lanes.md`), so
+ * The grades are lane 27's reach scale word for word (`whole-run-investigation`, `lanes.md`), so
  * the Examiner and the investigation grade on one scale. `test/examiner-ladder.test.ts` holds the
  * two together. The examples are from orbital transfers, power-distribution load flow and
  * feedback-loop tuning: fields each with an engine that decides an answer (a two-body propagator,

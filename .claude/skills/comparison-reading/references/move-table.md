@@ -1,55 +1,38 @@
 # What follows a reading: the move table and supply patience
 
-Read this to explain or change the next campaign move or supply patience. This expands the move
-table in `AGENTS.md` section 7.
+Read this to explain or change the next move or supply patience (`AGENTS.md` section 7).
 
 ## What follows a reading
 
-`decide` (`src/campaign/decide.ts`) selects the next move, printed on the view's final line. It
-evaluates the nine `ROWS` in order and returns the first applicable move with its rule code:
+`decide` (`src/campaign/decide.ts`) returns the first of its nine `ROWS` that applies, with a rule
+code, printed on the view's last line:
 
-1. `stop`: a stop the operator left ends the campaign.
-2. `exam`: the exam does not stand: it is drafted where the campaign opened from a prompt (a draft
-   that stands keeps its own reading), read where nobody has read its checker or the operator admits
-   a check the last reading did not, and the campaign ends where a fault stands that nobody froze or
-   admitted.
-3. `bound`: a bound is spent: the budget, the provider (`crashedRun`, section 6), the stop rule, or a
-   comparison stopped on check defects or cut by its cap.
-4. `tasks`: the tasks are not set up: a pack's are taken in, practice released, and tasks written
-   where there are none, where the operator asked (once a step that waits is promoted, so they are
-   written against the new reference), or before the first comparison up to the admission floor plus
-   the practice still to be drawn.
-5. `unfinished`: a comparison that began and has not reported continues.
-6. `step`: a step against the reference names the harness to promote, the newest where several wait
-   (`unpromoted` says why another is not).
-7. `no-room`: the reference's last comparison left it nothing to gain, whichever side it took: no task
-   informative for it, or none either harness answered. The Examiner writes tasks it fails; there is
-   no shorter budget to fall back to. After a promotion, whose comparison reads room by construction,
-   the row names one Examiner session for the new reference, which the host starts beside the
-   conversation.
-8. `unread`: where admission would take the comparison, tasks held out since the last reading are
-   compared (`heldSince`; `programs-of:` remains a harness name for an audit by hand). A harness no
-   comparison has read waits for the Builder's own `compare`. After a promotion, until one has tallied a task in the epoch, a **starter comparison**
-   reads those tasks, whatever harness waits. It draws as every comparison does, those
-   tasks first and then older ones, so that the promotion it confirms is read beyond the tasks
-   written above the new reference's grade. A waiting harness is read again on new
-   tasks only where its last reading tested nothing or left no room: one that had room and read
-   no step is the Builder's to change, never a second draw of the pair.
-9. `build`: otherwise the Builder builds. Where comparison admission would refuse the next
-   comparison for want of tasks (`refusals`, `src/campaign/admission.ts`), or the last comparison
-   tallied none, the reason says the Builder asks for tasks, and at supply patience the row ends the
-   campaign `exam`. The refusal tells a Builder that compares (`held-short`). A Builder with nothing to work on asks the Examiner
-   itself.
-
-The table names no release. The host releases the practice owed (`practiceDue`, `releaseOwed` in
-`tools/d2/campaign-actions.ts`) as an Examiner session beside a conversation holds a task or ends,
-and as a Builder conversation opens where tasks were held out since the last release or promotion
-(`converse`, `tools/d2/harness-builder.ts`), never while a comparison is unreported.
+1. `stop`: the operator left a stop.
+2. `exam`: the exam does not stand. It is drafted, or read where nobody read its checker or the
+   operator admitted a new check; a fault nobody froze or admitted ends the campaign.
+3. `bound`: the budget, the crash rule (`crashedRun`), the stop rule, a defect stop or a cap cut.
+4. `tasks`: a pack's tasks are taken in, practice released, or tasks written where there are none,
+   where the operator asked (after a waiting step is promoted), or before the first comparison up to
+   the admission floor plus owed practice.
+5. `unfinished`: a begun comparison continues.
+6. `step`: a step names the harness to promote, the newest where several wait (`unpromoted` says why
+   another is not).
+7. `no-room`: the reference's last comparison left it nothing to gain, so the Examiner writes tasks
+   it fails. After a promotion, which reads room by construction, this row names one Examiner
+   session for the new reference.
+8. `unread`: tasks held since the last reading are compared (`heldSince`); a harness no comparison
+   has read waits for the Builder's own `compare`. After a promotion, until a comparison tallies a
+   task in the epoch, this is a **starter comparison**, drawing those tasks first and then older
+   ones, so the confirmation reads beyond tasks written above the new reference's grade. A waiting
+   harness is read again only where its last reading tested nothing or left no room; one that had
+   room and read no step is the Builder's to change, never a second draw.
+9. `build`: otherwise the Builder builds. Where admission would refuse for want of tasks
+   (`refusals`, `src/campaign/admission.ts`) or the last comparison tallied none, the reason says to
+   ask for tasks, and supply patience then ends the campaign `exam`.
 
 ## Supply patience
 
-**Supply patience** (`roomless`) counts consecutive unsuccessful supply attempts: comparisons
-against the reference that leave no room, and completed Examiner sessions that hold out no task. At
-the configured threshold, the campaign ends `no-room` when seeking room and `exam` when seeking
-tasks. The comparison that first established the need is excluded. A comparison with room, a
-promotion, or a session supplying tasks not yet compared resets the count.
+`roomless` counts consecutive failed supply attempts: comparisons against the reference that leave
+no room, and finished Examiner sessions that hold no task. The comparison that first showed the need
+is excluded. At the threshold the campaign ends `no-room` when seeking room and `exam` when seeking
+tasks. A comparison with room, a promotion, or a session whose tasks are not yet compared resets it.

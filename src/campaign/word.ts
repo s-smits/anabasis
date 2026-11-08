@@ -25,6 +25,10 @@ export interface Word {
   readonly dollars: number | null;
 }
 
+/** How long `runs pause --after next` lets the open solves of a campaign whose solves run
+ *  `wallSeconds` finish: their limit and a minute to end and be recorded. */
+export const pauseWaitMs = (wallSeconds: number): number => wallSeconds * 1000 + 60_000;
+
 /**
  * The words the operator left that no event has acted on yet, oldest first. The event that acts
  * on a word names it by its place in the log (`answers`), which is what makes it heard once: a

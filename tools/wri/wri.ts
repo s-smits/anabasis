@@ -4,6 +4,9 @@
  *
  *   bun tools/wri/wri.ts read --log .ana/d2/truss/log.jsonl
  *   bun tools/wri/wri.ts climb --log .ana/d2/truss/log.jsonl[,<log>,<log>]
+ *   bun tools/wri/wri.ts trajectory --log <log>[,<log>...] [--grades <report>[,<report>]] [--hours 2,4,8]
+ *   bun tools/wri/wri.ts packets --log <log>,<log>[,...] --out <dir> [--graders 2]
+ *   bun tools/wri/wri.ts packets --out <dir> --join
  *   bun tools/wri/wri.ts start --log .ana/d2/truss/log.jsonl[,<log>,<log>] --out .ana/wri/20261008-truss [--snapshot]
  *   bun tools/wri/wri.ts lanes --out .ana/wri/20261008-truss [--lanes 1-4,7] [--agents 3]
  *   bun tools/wri/wri.ts collect --out .ana/wri/20261008-truss
@@ -12,8 +15,12 @@
  *   bun tools/wri/wri.ts derive (--log <log>[,<log>...] | --all) [--verbose] [--force] [--no-embed]
  *   bun tools/wri/wri.ts index [--root <dir>] [--out <file>]
  *
- * - `climb` prints lane 27's columns for every log `--log` names, one row each, and the paths
+ * - `climb` prints lane 22's columns for every log `--log` names, one row each, and the paths
  *   under the host's `/tmp` one campaign named before another's solve ran them. It reads the logs as they stand, so it can be run on campaigns still running.
+ * - `trajectory` prints how far each campaign had got at each work hour, on the rulers its runs
+ *   share (`tools/wri/trajectory.ts`), with lane 27's blind grades where `--grades` names them.
+ * - `packets` writes lane 27's blind packets for several graders across campaigns, and with `--join`
+ *   reads their reports into `grades.tsv` for `trajectory --grades` (`tools/wri/packets.ts`).
  * - `read` prints the six rows and every trigger with the lane it starts (`tools/wri/read.ts`), and
  *   the host hash of the last condition beside this checkout's, and beside the campaign's own
  *   tree's when this checkout's differs.
@@ -43,8 +50,9 @@
  *   and writes one page over them to `--out` (`<root>/INDEX.md`): a row a folder, newest first,
  *   then each campaign group's binding constraints in time order, each cycle folder and prediction
  *   ledger there and in the main checkout's `notes/`, and each campaign whose log moved in the last
- *   fourteen days (`tools/wri/index.ts`). It prints each section's row count and how many folders
- *   it read whole, in part or not at all, and never the page, which holds hidden values.
+ *   fourteen days, then each pull request a `plan.md` or a fork's `forkedPR<N>` names, with its forks'
+ *   per-run ledgers read (`tools/wri/index.ts`). It prints each section's row count and how many
+ *   folders it read whole, in part or not at all, and never the page, which holds hidden values.
  * - `grade` puts one answer to the campaign's own checker and prints the verdict in one line. It
  *   writes nothing and logs nothing. It needs the pack and its tool tree, and the Mac's verifier wall.
  *   An answer outside a drafted exam's answer format is refused first, as `judge` refuses a
@@ -104,6 +112,8 @@ import {
 } from "./investigation.ts";
 import { INVESTIGATION, investigationIndex, REPORTS, SHARED } from "./index.ts";
 import { overview, rendered } from "./read.ts";
+import { buildPackets, joinPackets } from "./packets.ts";
+import { gradesIn, HOURS, trajectoryText } from "./trajectory.ts";
 
 interface Investigation {
   readonly out: string;
@@ -113,7 +123,7 @@ interface Investigation {
 
 const REPO = resolve(import.meta.dir, "..", "..");
 const USAGE =
-  "usage: bun tools/wri/wri.ts read | climb | start | lanes | collect | synthesis | grade | derive | index";
+  "usage: bun tools/wri/wri.ts read | climb | trajectory | start | lanes | collect | synthesis | grade | derive | index";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -131,6 +141,10 @@ const { values, positionals } = parseArgs({
     force: { type: "boolean" },
     "no-embed": { type: "boolean" },
     snapshot: { type: "boolean" },
+    grades: { type: "string" },
+    graders: { type: "string" },
+    join: { type: "boolean" },
+    hours: { type: "string" },
   },
 });
 
@@ -171,7 +185,10 @@ function hostOf(tree: string): string | undefined {
  * campaign runs in (`<tree>/.ana/d2/<campaign>/log.jsonl`), which a live campaign keeps unmoved.
  * The condition names that code by a digest of its content, which is no commit: two lanes of
  * 14 October read one digest against a receipt's commit as two trees. So the line calls it a
- * digest and names the commit the last launch's receipt holds (`receipts`) beside it.
+ * digest and names the commit the last launch's receipt holds (`receipts`) beside it. A snapshot's
+ * log lies under the investigation, not the campaign's tree, so the tree `sourceTree` checks out at
+ * that commit is asked too: on 7 November the esp32 investigation's line called that tree, which
+ * held the code that ran, "another tree", and three lanes discounted exact source evidence.
  */
 function hostLine(log: string): string {
   const ran = read(log).findLast(({ kind }) => kind === "condition.recorded")?.data.condition;
@@ -187,13 +204,17 @@ function hostLine(log: string): string {
     `host-code digest (of src, vendor and package.json, not a commit): ${line}${commit}`;
   if (last === undefined) return said(`no condition in the log; this checkout's is ${here.slice(0, 8)}`);
   if (last === here) return said(`the last condition's and this checkout's are both ${here.slice(0, 8)}`);
-  const tree = resolve(dirname(log), "..", "..", "..");
-  return hostOf(tree) === last
+  const trees = [
+    resolve(dirname(log), "..", "..", ".."),
+    ...(launch === undefined ? [] : [wriTree(launch.commit)]),
+  ];
+  const tree = trees.find((each) => hostOf(each) === last);
+  return tree === undefined
     ? said(
-        `the last condition's is ${last.slice(0, 8)}, which the campaign's own tree \`${tree}\` holds as it stands, so read source there; this checkout's is ${here.slice(0, 8)}`,
+        `the last condition's is ${last.slice(0, 8)} and this checkout's is ${here.slice(0, 8)}, so every statement about source is about another tree`,
       )
     : said(
-        `the last condition's is ${last.slice(0, 8)} and this checkout's is ${here.slice(0, 8)}, so every statement about source is about another tree`,
+        `the last condition's is ${last.slice(0, 8)}, which \`${tree}\` holds as it stands, so read source there; this checkout's is ${here.slice(0, 8)}`,
       );
 }
 
@@ -214,10 +235,15 @@ function sourceTree(log: string): string | null {
   ) {
     return null;
   }
-  const tree = join(dirname(mainTree(REPO)), `anabasis-wri-${commit.slice(0, 9)}`);
+  const tree = wriTree(commit);
   if (!existsSync(tree)) gitText(REPO, "worktree", "add", "-q", "--detach", tree, commit);
   if (!existsSync(join(tree, "node_modules"))) installAt(tree, commit);
   return tree;
+}
+
+/** Where `sourceTree` checks out a launch's commit, beside the main checkout. */
+function wriTree(commit: string): string {
+  return join(dirname(mainTree(REPO)), `anabasis-wri-${commit.slice(0, 9)}`);
 }
 
 function overviewText(log: string): string {
@@ -296,7 +322,7 @@ async function start(): Promise<number> {
   if (new Set(logs.map((log) => nameOf(log))).size < logs.length) throw new Error("--log names a log twice");
   mkdirSync(join(out, "lanes"), { recursive: true });
   const { done, line } = await derived(logs);
-  const texts = logs.map(overviewText);
+  // Each launch's tree first, so that the host line can name it.
   const trees = logs.flatMap((log) => {
     const tree = sourceTree(log);
     return tree === null
@@ -305,6 +331,7 @@ async function start(): Promise<number> {
           `- ${nameOf(log)}: the code its last launch ran is checked out at \`${tree}\`, its dependencies installed. Read source there, and run a reader there (\`cd ${tree} && bun tools/...\`) to see what it printed at that commit; the derived files below come from this checkout's code.`,
         ];
   });
+  const texts = logs.map(overviewText);
   const campaigns = [
     "| campaign | log | events | checkout |",
     "| --- | --- | --- | --- |",
@@ -348,7 +375,7 @@ function opened(): Investigation {
   return { out, shared: readFileSync(join(out, SHARED), "utf8"), campaigns };
 }
 
-/** The campaigns in lane 27's columns, and the `/tmp` paths one named before another's solve ran
+/** The campaigns in lane 22's columns, and the `/tmp` paths one named before another's solve ran
  *  them (`tools/wri/climb.ts`). */
 function climbText(logs: readonly string[]): string {
   const campaigns = logs.map((each) => ({ name: nameOf(each), events: read(each) }));
@@ -565,13 +592,45 @@ async function main(): Promise<number> {
     writeFileSync(out, text);
     const how = Object.entries(parsed).map(([way, count]) => `${String(count)} ${way}`);
     console.log(
-      `wrote ${out}: ${plural(rows.investigations, "investigation")} (${how.join(", ")}), ${plural(rows.ledgers, "ledger folder")}, ${plural(rows.runs, "recent campaign")}`,
+      `wrote ${out}: ${plural(rows.investigations, "investigation")} (${how.join(", ")}), ${plural(rows.ledgers, "ledger folder")}, ${plural(rows.runs, "recent campaign")}, ${plural(rows.pulls, "pull request")}`,
     );
     return 0;
   }
   if (verb === "climb") {
     needed("log");
     console.log(climbText(resolvedLogs));
+    return 0;
+  }
+  if (verb === "trajectory") {
+    needed("log");
+    const campaigns = resolvedLogs.map((log) => ({ name: nameOf(log), log, events: read(log) }));
+    const text = trajectoryText(campaigns, {
+      grades:
+        values.grades === undefined
+          ? null
+          : gradesIn(
+              values.grades
+                .split(",")
+                .map((file) => readFileSync(file, "utf8"))
+                .join("\n"),
+            ),
+      hours: values.hours?.split(",").map(Number) ?? HOURS,
+    });
+    console.log(text);
+    return 0;
+  }
+  if (verb === "packets") {
+    needed("out");
+    const out = values.out ?? "";
+    const lines =
+      values.join === true
+        ? joinPackets(out, read)
+        : buildPackets(
+            resolvedLogs.map((log) => ({ name: nameOf(log), log, events: read(log) })),
+            out,
+            Number(values.graders ?? 2),
+          );
+    console.log(lines.join("\n"));
     return 0;
   }
   const step = Object.entries({ start, lanes, collect, synthesis }).find(([name]) => name === verb)?.[1];

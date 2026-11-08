@@ -18,7 +18,7 @@
  * The weights and floors are this tree's constants, and a comparison continued under other code is
  * refused by its condition, so none is scored by two sets of them. How each ending of a solve
  * enters a pair is `.claude/skills/comparison-reading/references/draw-and-solves.md`, and the
- * dated record behind each rule here is `references/tally-and-test.md`, "The record".
+ * counted record behind each rule here is `references/tally-and-test.md`, "The record".
  */
 import { sha256 } from "../meta/digest.ts";
 import { asRecord, isNumber, type JsonObject } from "../meta/json-shape.ts";

@@ -4,7 +4,7 @@
  * that failed a session. Queued solves leave on cancellation while the host's sleep remains unresolved;
  * only load waits record their elapsed time. Tests inject the host's sleeps and clock.
  */
-import { afterAll, describe, expect, it, spyOn } from "bun:test";
+import { afterAll, describe, expect, it, setSystemTime, spyOn } from "bun:test";
 import { resetOf } from "../src/agent/backends/claude.ts";
 import { crashedRun } from "../src/campaign/ground.ts";
 import { affords, flying } from "../src/campaign/opening.ts";
@@ -46,8 +46,9 @@ function hostOf(load: () => number, cores = 4, slept: (count: number) => void = 
   return { ...host, slept: sleeps };
 }
 
-/** The gate on a seat that passes each solve, as a campaign's solves meet it. */
-function gate(log: string, host: Host, loaded = false, concurrency = 4) {
+/** The gate on a seat that passes each solve, as a campaign's solves meet it; with no host, as a
+ *  rehearsal's scripted solves meet it. */
+function gate(log: string, host: Host | undefined, loaded = false, concurrency = 4) {
   const calls: string[] = [];
   const seat: Seats = {
     builder: null,
@@ -58,7 +59,7 @@ function gate(log: string, host: Host, loaded = false, concurrency = 4) {
     },
   };
   // SAFETY: the host reads only these solve limits; the scripted seat reads no campaign fields.
-  const campaign = { limits: { concurrency } } as Campaign;
+  const campaign = { limits: { concurrency, wallSeconds: 1800 } } as Campaign;
   const seats = gated({ seated: () => seat, loaded, host }, log)(campaign, {
     builder: undefined,
     reference: "h1",
@@ -239,10 +240,48 @@ describe("a pause's word", () => {
     );
     const held = gate(log, left);
     append(log, "campaign.word", { word: "pause" });
-    expect(held.solve(TASK, HARNESS, kill.signal)).rejects.toBe(reason);
+    const solving = expect(held.solve(TASK, HARNESS, kill.signal)).rejects.toBe(reason);
     await Bun.sleep(0);
     expect(left.slept.length).toBeGreaterThan(0);
     expect(held.calls).toEqual([]);
+    await solving;
+  });
+
+  it("holds a rehearsal's scripted solves too, where no host stands in, until the kill", async () => {
+    const log = logIn("pause-rehearsed");
+    append(log, "campaign.opened", {});
+    append(log, "campaign.word", { word: "pause" });
+    const seats = gate(log, undefined);
+    await seats.solve(TASK, HARNESS, new AbortController().signal);
+    expect(seats.calls).toHaveLength(1);
+
+    append(log, "campaign.word", { word: "pause" });
+    const reason = new Error("the run stopped");
+    const kill = new AbortController();
+    // Bun's `rejects` waits for the promise there and then, so the kill comes first.
+    const solving = seats.solve(TASK, HARNESS, kill.signal);
+    await Bun.sleep(0);
+    expect(seats.calls).toHaveLength(1);
+    kill.abort(reason);
+    await expect(solving).rejects.toBe(reason);
+    expect(seats.calls).toHaveLength(1);
+  });
+
+  it("lets solves start again once a pause that never stopped the run is past a solve's limit", async () => {
+    const log = logIn("pause-abandoned");
+    append(log, "campaign.opened", {});
+    const seats = gate(
+      log,
+      hostOf(() => 0),
+    );
+    append(log, "campaign.word", { word: "pause" });
+    setSystemTime(new Date(Date.now() + 2 * 3_600_000));
+    try {
+      await seats.solve(TASK, HARNESS, new AbortController().signal);
+    } finally {
+      setSystemTime();
+    }
+    expect(seats.calls).toHaveLength(1);
   });
 });
 

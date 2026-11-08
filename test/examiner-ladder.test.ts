@@ -1,5 +1,5 @@
 /**
- * The Examiner's difficulty ladder: one scale with lane 34's, shown to both of the Examiner's
+ * The Examiner's difficulty ladder: one scale with lane 27's, shown to both of the Examiner's
  * modes, and drawn from no field a campaign examines, since an example from an exam in use would
  * hand its author a task shape to copy (the operator, 31 October).
  */
@@ -33,7 +33,7 @@ const EXAMINED =
   /buffer|ledger|invoice|reconcil|statist|regress|cohort|survey|codebook|truss|beam|column|esp32|gpio|pin map|microcontroller|kernel|memory.safety|overflow|double.free|C11|chemi|reaction|circuit|impedance|seating|guest|timetabl|roster/i;
 
 describe("the Examiner's ladder", () => {
-  it("grades on lane 34's reach scale, word for word", () => {
+  it("grades on lane 27's reach scale, word for word", () => {
     const lanes = readFileSync(".claude/skills/whole-run-investigation/references/lanes.md", "utf8");
     for (const grade of GRADES) expect(lanes).toContain(`- ${grade}`);
   });

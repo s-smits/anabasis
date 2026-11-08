@@ -55,6 +55,25 @@ describe("ambition", () => {
     expect(second).toContain("x-2 · reference abcdef01 · held 1 of 1");
   });
 
+  it("bills a session its own end and tries, never the comparison or Builder spend before the next start", () => {
+    const solve = (minutes: number, id: string, by: string, billed: number) => [
+      event(minutes, "solve.started", { solve: id, comparison: by }),
+      event(minutes, "solve.finished", { solve: id, billed }),
+    ];
+    const billed = [
+      event(1, "exam.started", { session: "x-1" }),
+      ...solve(2, "t-1", "x-1", 1),
+      event(3, "exam.finished", { session: "x-1", billed: 2 }),
+      event(4, "build.started", { session: "b-1" }),
+      event(5, "build.finished", { session: "b-1", billed: 40 }),
+      ...solve(6, "s-1", "g-1", 5),
+      ...solve(7, "s-2", "g-1", 5),
+      event(8, "exam.started", { session: "x-2" }),
+    ];
+    const [first] = sessionLines(billed);
+    expect(first).toEndWith("· $3.00");
+  });
+
   it("gives the hours to the first comparison and promotion, or says none yet", () => {
     expect(campaignLine(log)).toBe(
       "first comparison 0.5 h / 0 solves / $0, first promotion 1.5 h / 0 solves / $0; 1 compared, 1 promoted; reference valid every solve on 5 of 6 scored tasks, 0 of 1 steps won by validity",
@@ -290,6 +309,17 @@ describe("zone", () => {
         "0.50",
       ],
     ]);
+  });
+
+  it("ties a task whose objective points round to nothing, as the comparison's report does", () => {
+    const { events, terms } = roundSolves("g-1", ["h1", "h2"], { near: "PP PP" });
+    const log = [
+      ...held("near"),
+      ...events,
+      ...measured(events, [100, 112, 106, 106]),
+      reported("g-1", ["h1", "h2"], terms, { objective: { direction: "lower" } }),
+    ];
+    expect(zoneRows("c", log)[0]?.slice(10, 13)).toEqual(["0", "0", "1"]);
   });
 
   it("calls a task untied on the objective only past its floor, and only with validity tied", () => {

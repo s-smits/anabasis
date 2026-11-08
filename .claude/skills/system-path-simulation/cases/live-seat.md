@@ -1,30 +1,11 @@
 # Live seat
 
-A real model in one seat, from a recorded position. Use it when the question is what a model does,
-and a script would only say what you told it to. It spends money, so it needs the operator's word
-to spend, and a size said before it starts (run-management's sizing: solves times dollars and minutes).
+A real model in one seat, from a recorded position, for when the question is what a model does. It
+needs the operator's word and a size stated first (solves times dollars and minutes). The seats and
+cuts are in [SKILL.md](../SKILL.md#3-seat-a-model); a round rerun under a session whose Builder
+finished compares without building again, which seats its solves alone.
 
-The first live seats from a seed were the supply ablation, two Examiner
-sessions over one seed of esp32-fresh-opus cut after its promotion, one as the Examiner is and one
-with a copy of the reference harness in its home. What they taught is in "Run it with the script"
-and in the rules below.
-
-## Seat one thing
-
-The seats, their cuts, commands and what each pays for are the table in section 3 of
-[SKILL.md](../SKILL.md#3-seat-a-model).
-
-The second row rests on a round keeping no state of its own: run again under a session whose
-Builder finished, it compares from the log and does not build again. The kept harness is
-in the seed's `states/`.
-
-Campaign commands apply their own admission to a seed as they do to its source campaign. The
-stored-sweep probe is separate and applies no campaign admission.
-
-## Run it with the script
-
-`scripts/live-seat.ts` starts a seat as `bun run runs launch` starts a campaign, and reads what it
-wrote with the readers the campaign has:
+## The script
 
 ```text
 bun --env-file=<file> .claude/skills/system-path-simulation/scripts/live-seat.ts start \
@@ -33,91 +14,55 @@ bun --env-file=<file> .claude/skills/system-path-simulation/scripts/live-seat.ts
 bun .claude/skills/system-path-simulation/scripts/live-seat.ts read --seat <scratch>/arm-a
 ```
 
-- `start` refuses a campaign that is no seed (rule 4), keeps the event the seat began at, the
-  commit and the command in `<out>.json`, runs the command niced in a process group of its own on
-  the login named, ends the group at `--cap` dollars billed since that event or at `--minutes`, and
-  prints the reading when the group is gone. It reads the log every 30 seconds, so an in-flight
-  request can take it past the named bound, and notices within a second that the group has ended. It prints each task admission, ruling and session end as it lands. An abrupt end can leave
-  roots; inspect them with `bun run runs stop sim-<what>` and follow run-management for cleanup.
-- Run `start` as one background command and wait for its end. It is the seat's end, so nothing
-  re-arms a monitor every 30 minutes, and no turn ends with a seat running unwatched: the
-  ablation's watcher did both.
-- `read` gives the stretch's minutes and billed dollars (`billedBetween`), its sessions and how
-  they ended, the drafts proposed, each task admission as `every`, `some`, `none`, `none, proved`, `package`
-  or `unread` (`measuredGate`, `heldAtGate`), how many were held, the turns the reference's valid
-  room-solve answers took (`gateAnswers`), the calls by tool, and with `--mention` the calls whose
-  arguments name a text. It quotes no task and no answer.
-- `watch --seat <prefix>` prints the same lines for a seat already running, from where it began,
-  until its process group is gone, then the reading: one Monitor in Claude Code, or any agent's
-  line reader, follows a seat that another command started. It returns only when the seat ends, so
-  a script of `watch` then `stop` never reaches the `stop`; take one look with `read` or `compare`.
-- `due <prefix>...` prints what each seat wrote since `due` last looked (kept in `<prefix>.seen`).
-  With `--hook` it writes them to stderr and exits 2 when there is any, so an agent harness that
-  reads exit codes stops the agent from ending its turn with a seat's events unread. In Claude Code
-  that is a Stop hook in the worktree's `.claude/settings.local.json`, removed with the seats:
+- `start` refuses a campaign that is no seed (rule 4), or one whose `checks/`, `exams/` or `states/`
+  hold a dangling link (as `rsync -a` leaves; seed on the seating host, or copy with `rsync -aL`). It
+  records the starting event, commit and command in `<out>.json`, runs the command niced in its own
+  process group on the named login (`RUN_REMOTE=0`, `capturedExecPath`), polls the log every 30
+  seconds, ends the group at `--cap` dollars billed since the start or at `--minutes` (an in-flight
+  request can overshoot), prints each admission, ruling and session end as it lands, and the reading
+  at the end. Run it as one background command. Inspect leftover roots with `bun run runs stop
+  sim-<what>`.
+- `read` reports minutes and dollars (`billedBetween`), sessions, drafts, each admission as `every`,
+  `some`, `none`, `none, proved`, `package` or `unread` (`measuredGate`, `heldAtGate`), holds, the
+  reference's room-solve turns (`gateAnswers`), calls by tool, and with `--mention` the calls naming a
+  text, quoting no task or answer. On a seed's log it starts at the cut unless `--from` says otherwise.
+- `watch --seat <prefix>` streams those lines until the seat ends, and only then returns.
+- `due <prefix>...` prints what each seat wrote since it last looked (`<prefix>.seen`). With
+  `--hook` it writes to stderr and exits 2, which a Claude Code Stop hook in the worktree's
+  `.claude/settings.local.json` turns into a turn the agent must take:
 
   ```json
   { "hooks": { "Stop": [{ "hooks": [{ "type": "command",
     "command": "bun .claude/skills/system-path-simulation/scripts/live-seat.ts due <scratch>/arm-a <scratch>/arm-b --hook" }] }] } }
   ```
 
-- `stop <prefix>...` ends the seats this host started once their question is answered, and each
-  `start` prints the reading with that reason and exits; a `start` still there 30 seconds after its
-  group is ended too. A prefix nothing has seated yet is closed: `start` refuses an `--out` that
-  holds a stop, so a seating script still waiting for load seats nothing for a round already read.
-  End a seat elsewhere with `stop --host <name>`, never `pkill -f <script>` over ssh: the pattern
-  matches the ssh session's own command line, and ends that session. `prompt --tree <worktree>
-  --name sim-<what> -- tools/d1b/examine.ts <its flags>` prints what that Examiner session would be
-  told, composed by the tree's own code, and seats nothing, for rounds of arms
-  ([optimize](optimize.md)).
-- `compare <prefix>...` sets seats' counts side by side, each cut at `--gates N`; `pairs
-  <control>,<arm>...` reads a round of pairs at equal task admissions and signs each measure for each Examiner
-  model apart; `calls <log or folder>...` counts the Examiner's calls and failures over any logs
-  ([optimize](optimize.md), steps 3 and 6).
-- `start` refuses a seed whose `checks/`, `exams/` or `states/` hold a link to nothing, as a seed
-  copied to another host with `rsync -a` does. Seed on the host that seats it (`bun run runs seed
-  --from <campaign>` fetches the source), or copy with `rsync -aL`.
-- `read --log` without `--from` on a seed's log reads from the seed's cut, never from its source's
-  history.
-- `start` uses `capturedExecPath`, the Bun that runs it, and sets `RUN_REMOTE=0` for the seat.
-  Its seed and selected login stay on the local runner.
+- `stop <prefix>...` ends seats whose question is answered and closes prefixes not yet seated, so a
+  seating script still waiting seats nothing. On another host use `stop --host <name>`, never `pkill
+  -f` over ssh, which matches the ssh session's own command line.
+- `prompt --tree <worktree> --name sim-<what> -- tools/d1b/examine.ts <its flags>` prints what that
+  Examiner session would be told, composed by the tree's code, and seats nothing.
+- `compare <prefix>... [--gates N]`, `pairs <control>,<arm>...` and `calls <log or folder>...` read
+  rounds of arms ([optimize](optimize.md), steps 3 and 6).
 
-Two arms of one question are two seeds cut at the same event, each in a worktree of its own at the
-commit that differs in the one variable, or at one commit with the variable as a flag where a
-command takes one. Read both with
-`read` and set the counts side by side.
+Two arms of one question are two seeds cut at the same event, each in a worktree at the commit that
+differs in the one variable, or at one commit with the variable as a flag.
 
 ## Smaller than a solve
 
-A backend can be seated with no campaign at all: its own provider (`claudeProvider` in
-`src/agent/backends/claude.ts`), one prompt, one tool and the small model, in a script kept outside the
-tree. It answers what the backend's child does around one turn. One such
-probe closed a query on a parked `submit` and counted the child's calls and its lifetime, on the
-tree before a fix and on the tree after. What it proves goes into the backend's test
-(`test/claude-backend.test.ts`), since the probe itself is not kept.
+A backend can be probed with no campaign: its provider (`claudeProvider`,
+`src/agent/backends/claude.ts`), one prompt, one tool and a small model, in a script outside the
+tree; what it shows goes into `test/claude-backend.test.ts`. `bun tools/m0/live-solve.ts <pack
+flags> --task <id> --live --solver <model>` runs one solve under a stored sweep's limits, which
+differ from a campaign's `LIMITS` (`tools/d2/campaign.ts`).
 
-One step up is `bun tools/m0/live-solve.ts <pack flags> --task <id> --live --solver <model>`.
-It walks the wall, tools, verifier and teardown using a stored sweep's harness and limits. It is
-a legacy sweep probe, not a campaign solve under the current default of 20 model turns and
-30 minutes (`LIMITS`, `tools/d2/campaign.ts`). Size it from the source before asking to run it.
+## Rules of this case
 
-## Rules that are only this case's
+- **The prompt is production's.** Nothing tells the model it is simulated or what is hoped for; if a
+  prompt is under test, that edit is the variable and the seed holds everything else still.
+- **The env file is a path.** `--env-file <file>` is passed on, never opened, printed or copied.
+- **One live seat a login at a time.** A login at its session limit fails every solve in flight.
+- **Size an Examiner seat in drafts.** A session its admission keeps refusing finishes on its own;
+  its dollars are its turns and the `try_reference` solves it asks for, at most `--proposals`.
+- **A seat is one sample.** Report it as a path proven, never as a model measured.
 
-- **The prompt is production's.** Nothing is added to tell the model it is in a simulation or what
-  is hoped for. If a prompt is what you are testing, that edit is the one variable, and the seed is
-  what holds everything else still.
-- **The env file is a path.** `--env-file <file>` is passed on and never opened. Do not print it,
-  copy it or look for another.
-- **One live seat a login at a time.** A login at its session limit fails every solve in flight. That
-  has taken three solves and $8.25 with it.
-- **Size it in drafts, not in sessions.** An Examiner session that its task admission refuses finishes on its
-  own: one arm finished after 20 drafts. The gate solves no draft, so a seat's dollars are its
-  Examiner's turns and the solves its `try_reference` asks of the reference harness, at most
-  `--proposals` of them.
-- **A live seat's result is one sample.** One solve a side says the path works. It says nothing of
-  a rate. Report it as a path proven, not as a model measured.
-
-## What goes back to the campaign
-
-Nothing. A seed's solves stay in its log. AGENTS.md, section 10, owns what a measured run may use:
-it opens fresh and continues at its own commit. A seed proves a path and shows no climb.
+Nothing goes back to the campaign (`AGENTS.md`, section 10).

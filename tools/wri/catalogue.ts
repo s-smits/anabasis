@@ -4,7 +4,24 @@
  * triggers that start it, its label, its importance and its body. Whether it is standing or runs alone is read from its own
  * `Starts from` paragraph, and the owners a finding may name from the catalogue's owner table, so
  * nothing here repeats what the catalogue says. `test/wri-catalogue.test.ts` holds this file's
- * reading to `tools/wri/read.ts`: every trigger the reader can print starts the lane it names.
+ * reading to `TRIGGERS` (`tools/wri/folds.ts`): every trigger the reader can print starts the lane
+ * it names.
+ *
+ * The catalogue has been renumbered twice. A report, a ledger or a comment cites the numbers of its
+ * day; read an old number through these maps, old number first.
+ *
+ * On 7 November 2026 seven lanes were removed on the operator's word, from 34 to 27, after twenty
+ * investigations of the week before: lane 3 (its triggers fired in none; now lane 1's), 6 (fired in
+ * none; lane 3's), 10 (built twice; lane 9's), 18 (standing, 17 of 19 reports found nothing; row D
+ * and lane 12 hold its question, and `SHELL COMMANDS`, which only opened it, went), 22 (built six
+ * times, no finding confirmed; lane 5's), 30 (10 of 17 reports found nothing, none confirmed; lane
+ * 24's) and 33 (fired in none; lane 26's). Old to new: 1–2 to 1–2, 4–5 to 3–4, 7–9 to 5–7, 11–17 to 8–14, 19–21 to 15–17,
+ * 23–29 to 18–24, 31–32 to 25–26, 34 to 27.
+ *
+ * Before then, when lanes 6, 15 and 17 were folded into lanes 3, 13 and 16 and the rest put in
+ * label order: 1–5 to 1–5, 6 to 3, 7 to 9, 8 to 10, 9 to 11, 10 to 12, 11 to 13, 12 to 14, 13 to 15,
+ * 14 to 16, 15 to 15, 16 and 17 to 17, 18 and 19 to 18 and 19, 20–24 to 21–25, 25 to 26, 26 to 29,
+ * 27 to 30, 28 to 31, 29 to 6, 30 to 7, 31 to 27, 32 to 28, 33 to 20, 34 to 8, 35 to 32, 36 to 33.
  */
 import { readFileSync } from "#src/meta/filesystem.ts";
 import { join, resolve } from "#src/meta/path.ts";
@@ -20,7 +37,9 @@ export interface Lane {
   readonly standing: boolean;
   /** Runs alone, on its trigger, and reads no other report. */
   readonly isolated: boolean;
-  /** Is given every campaign under review side by side, in lane 27's columns. */
+  /** Grades blind to outcomes, so a session that holds it reads it before any other lane. */
+  readonly blind: boolean;
+  /** Is given every campaign under review side by side, in lane 22's columns. */
   readonly sideBySide: boolean;
   /** The area label of the pull requests that change what the lane reads. */
   readonly label: string;
@@ -88,6 +107,7 @@ export function lanesOf(markdown: string): Lane[] {
       triggers: named.flatMap(([, name = "", lane]) => (lane === number ? [name] : [])),
       standing: startsFrom.includes("standing"),
       isolated: startsFrom.includes("It runs alone"),
+      blind: startsFrom.includes("It grades blind"),
       sideBySide: startsFrom.includes("side by side"),
       label,
       importance: Number(weight),

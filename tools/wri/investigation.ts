@@ -120,6 +120,8 @@ export const weightOf = (lanes: readonly Lane[]) => lanes.reduce((sum, lane) => 
  * first by the sum of its lanes' importance, joins the lightest session so far, so the sessions'
  * weights land near one another rather than equal. An isolated lane is a session of its own. The
  * operator asked for this on 1 November: four sessions of about eight lanes instead of one a lane.
+ * Within a session the lanes run in number order, a blind lane first: on 7 November the blind
+ * grading lane, read after three lanes of its session, said its grades were not blind.
  */
 export function sessionsOf(lanes: readonly Lane[], count: number): Lane[][] {
   const open = lanes.filter((lane) => !lane.isolated);
@@ -133,7 +135,9 @@ export function sessionsOf(lanes: readonly Lane[], count: number): Lane[][] {
       .push(...label);
   }
   return [
-    ...sessions.map((each) => each.toSorted((one, other) => one.number - other.number)),
+    ...sessions.map((each) =>
+      each.toSorted((one, other) => Number(other.blind) - Number(one.blind) || one.number - other.number),
+    ),
     ...lanes.filter((lane) => lane.isolated).map((lane) => [lane]),
   ];
 }

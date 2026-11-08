@@ -1,7 +1,10 @@
 # Examiner tasks in the reference's power zone
 
-Status: item 1 proved without a model (#640), item 3's record read with no model, the paired seats
-not run, and the rest planned or left to the operator. In source: the zigzag (every new task is solved
+Status (6 November, 18:40 CET): item 1 exercised on real logs, items 2 and 3 described from the
+record with no control beside it and their paired seats not run, items 4 and 5 waiting on those
+seats, and item 6 left to the operator with its recommendations unchanged. The reference still
+fails no solve in any comparison of the two newest campaigns, and the objective now gives the test
+its sample ("What the record shows (6 November)"). In source: the zigzag (every new task is solved
 afresh by the older harness too), `try_reference` (on `main` from 4 November, 21:18), the 0 to 7
 reach ladder (#551), the package gate (#552), the drafting prompt that asks for an objective or a
 reason for none (`e7e8f2ba8`, 4 November, 16:23) and the one that keeps what a task was built from
@@ -44,6 +47,52 @@ The archive agrees. Of 1,699 ties in candidate comparisons, 1,686 had both sides
 solve and 6 had both fail in every solve. Over 244 Builder comparisons in 72 campaigns, the
 reference was valid in 84% of solves before the first promotion, 96% after it and 99% after the
 second.
+
+## What the record shows (6 November)
+
+Two campaigns, read with `zone.ts` and from each `comparison.reported`: the jobstat campaign under
+the tuned prompt ("v5", at `933cfb995`, which matches no stack head, stopped with `g-8` not reported),
+and the Opus buffer control (at `0e53cc190`, stopped with no ending). They differ in pack and commit,
+so they are described side by side and neither is read against the other. Each tally is from the
+fresh side of its comparison.
+
+| Comparison | Fresh side | Reading | Tally | Reference: some or no solve valid | Untied on validity | Untied on the objective alone | Informative for the reference | A/A tally | A/A untied |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| v5 `g-1` | candidate | step | 8-0-0 | 0 of 8 | 0 | 8 | 8 | 2-5-1 | 7 of 8 |
+| v5 `g-2` | Starter | no-step | 11-10-0 | 0 of 21 | 0 | 21 | 20 | 6-7-8 | 13 of 21 |
+| v5 `g-3` | candidate | step | 12-1-2 | 0 of 15 | 0 | 13 | 13 | 1-7-7 | 8 of 15 |
+| v5 `g-4` | Starter | no-step | 8-10-0 | 0 of 18 | 0 | 18 | 14 | 1-6-11 | 7 of 18 |
+| v5 `g-5` | candidate | no-step | 7-1-4 | 0 of 12 | 0 | 8 | 9 | 0-3-9 | 3 of 12 |
+| v5 `g-6` | candidate | step | 11-5-6 | 0 of 22 | 0 | 16 | 20 | 7-3-12 | 10 of 22 |
+| v5 `g-7` | Starter | no-step | 12-10-0 | 0 of 22 | 0 | 22 | 17 | 5-7-10 | 12 of 22 |
+| control `g-1` | candidate | step | 7-0-1 | 0 of 8 | 0 | 7 | 7 | 3-1-4 | 4 of 8 |
+| control `g-2` | Starter | no-step | 1-26-5 | 0 of 32 | 6 | 21 | 18 | 0-0-32 | 0 of 32 |
+| control `g-3` | candidate | step | 12-0-14 | 0 of 26 | 0 | 12 | 12 | 0-0-26 | 0 of 26 |
+
+- **Validity.** No comparison of the ten holds a task the reference failed in any solve. All five
+  steps have 0 validity points. The only tasks untied on validity are the 6 of control `g-2`, where
+  the Starter failed.
+- **Supply.** Ties fell to 12 of 118 tasks in v5, where the jobstat runs of the first table tied 192
+  of 194. The prompt, the commit and the Builder draw all differ, so this describes the change and
+  does not attribute it.
+- **Noise beside the gain.** No A/A of the ten read a step. v5's A/A untied 60 of 118 tasks and the
+  control's 4 of 66, so in v5 a harness's own two solves often differ past the 1% floor. The test
+  holds its false rate on this noise, and the noise costs power.
+- **What the steps held.** v5's three starter reads confirm none of its 3 promotions. The test's sum
+  of task scores favours the Starter in all three (p 0.050, 0.241 and 0.048, each short of the 0.02
+  level), while by tasks they stand 11-10-0, 8-10-0 and 12-10-0. The control's one read is 26-1-5
+  for the reference.
+- **Rulings.** v5: 0 rejections in 717 valid and 16 provider non-results, 0 `referee.call`. Control:
+  5 rejections, 5 `earned`, 0 `check-defect` or `unclear`, 27 `referee.call`, 1 flagged, 292 valid.
+- **Tries.** v5: 102 of 102 valid over 56 instances. Control: 23 of 23 over 15. No try failed, so no
+  seat could have kept an instance for failing one. These are the seats' own tries, which item 3
+  forbids as a measure of `try_reference`, so this is the same one-way bound as before.
+- **Turns against the limit of 20.** v5's comparison solves: median 6, 90th percentile 10, most 15,
+  0 of 414 at the limit. Control's: median 4, 90th percentile 17, most 20, 8 of 264 at 20. Neither
+  campaign has a `turns-ended` solve.
+- **Blind grades.** A lane 34 grading of 16 buffer campaigns on the same day, not yet vetted, gave
+  the Starter 19 valid of 49 solves on tasks graded 6 in the campaigns of about 3 November, and 4 of
+  4 in the control. One grader held each campaign, and a grade 6 task is rare in the control.
 
 ### The culprits
 
@@ -527,3 +576,30 @@ one exception (3). Watch these with every change above:
   counting a seat's own tries, which is what the record offers; item 2 asks for the drafting fixes
   to be measured first and item 7 for blind labels first, and neither is on record; and item 6
   leaves admission reading tries to the operator, where the replay now recommends against it.
+- **6 November, 18:33 to 18:45 CET.** The final report of the cron set on 5 November. The table above
+  was read then, on two campaigns, with no model and no money.
+  - Item 1: `zone.ts` read both logs, one of them live. It decides nothing and no seat is told it.
+  - Item 2: the paired drafting seats were not run. v5 is a description of the tuned prompt with no
+    control beside it.
+  - Item 3: the paired writing seats were not run, and their prediction stands unsettled. Each pair
+    needs the operator's word and a login under its cap.
+  - Items 4 and 5: not built, since each waits on what those seats show. Every task of v5's
+    comparisons tied on validity, so the fact item 4 would add says the same thing each time.
+  - Item 6, admission reading tries: the recommendation stays. A try valid every time closes its
+    task under that rule, and all three of v5's steps were carried by the objective, which a try's
+    validity cannot read. This is reasoned from the tries above, with no replay taken over v5.
+  - Item 6, 4 solves a side: the recommendation stays, since no comparison here has a reference fail.
+  - Item 6, the limits: the condition for reading them is met by v5, and no solve reached 20 turns.
+    The limit has nothing to bite on there, so the recommendation to leave it stands on one campaign.
+    A lower limit is one way to reach the zone on validity and is the operator's to choose.
+  - Item 6, the prompt: the tuned prompt ran in v5. The draw stays by hash.
+  - The prediction above: 8 informative tasks in v5's first comparison and 7 in the control's, each
+    at least six, all by the objective. Neither campaign ran at the stack's top, so it stays unreached
+    until a fresh campaign at the top reports.
+
+  The zone as first asked, a reference that passes a task some of the time, has not been reached by
+  any change so far. What has moved is that the objective gives the test a sample where jobstat had
+  none. It carries noise (48 of 96 A/A tasks untied in v5), and v5's steps have not held against the
+  Starter so far, in 2 reads. Still missing, each on the operator's word: the paired drafting and
+  writing seats, and blind labels (item 7). Also missing, at no decision: v5's `g-7`, and the first
+  candidate comparison of a fresh campaign at the top. These are read again when they report.

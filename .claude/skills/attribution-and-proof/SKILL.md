@@ -5,149 +5,86 @@ description: "Use after a comparison or system change, and before claiming that 
 
 # Attribution and proof
 
-Ask one question: what may we claim? State the owner first, then the count, then what the count does
-not show. A summary must not outrun its evidence.
+This skill words a claim from what the log already holds: the owner, then the count, then what
+the count does not show. It runs after the experiment and reads no lanes, unlike
+[whole-run-investigation](../whole-run-investigation/SKILL.md). The comparison is `AGENTS.md`,
+section 7; evidence levels and the claim table are section 9.
 
-[run-improvement-campaign](../run-improvement-campaign/SKILL.md) chooses the next experiment, and
-[system-path-simulation](../system-path-simulation/SKILL.md) tests a path before spend. This skill
-starts after the run, and is narrower than a
-[whole-run-investigation](../whole-run-investigation/SKILL.md): it reads no lanes and launches no
-session. It decides the wording of a claim from what the log already holds.
+## What a step does not say
 
-## What a reading is
+A `step` (`readsStep`, `flipP` in `src/kernel/compare.ts`; older reports through `scoresIn`) is one
+draw under one condition. It does not say:
 
-A v2 claim rests on a comparison: two harnesses, the same held-out tasks, solves made afresh and
-interleaved, a one-sided paired sign-flip test over each task's score (`flipP`,
-`src/kernel/compare.ts`). Validity weighs most; a declared objective compares two valid answers, and
-what a solve billed decides nothing. The null treats each untied task's sign as equally likely and independent, at its fixed
-margin. `step` means one test over the frontier and the retained tasks together cleared its level
-(`readsStep`); an older report that holds `unbilled` scores is read on those (`scoresIn`).
-It does not say:
-
-- **that the harness is better under another condition.** Another deadline, budget, solver, effort
-  or host code is another condition, and no solve of one counts for the other.
-- **which part of the harness did it.** A harness is presets, programs and a guide. The programs ablation
-  `programs-of:<digest>` is the Starter with that harness's installed programs alone
-  (`keptAs`, `tools/d2/campaign.ts`); a standalone comparison against it separates the programs from the rest.
-- **that the solver designs better.** A harness that installs an engine the public rules name
-  saves a solver its setup time. Under a short deadline that reads as a step.
-- **that it would read so again.** One comparison is one draw.
+- that the harness is better under another deadline, budget, solver, effort or host code;
+- which part did it: only a comparison against `programs-of:<digest>` (the Starter with that
+  harness's programs, `keptAs` in `tools/d2/campaign.ts`) separates programs from guide;
+- that the solver reasons better: an installed engine saves setup time, which a short deadline
+  reads as a step;
+- that it would read so again.
 
 ## Rules
 
-- **Match the identities.** Every solve has a `condition.recorded`: contract, harness, task,
-  solver model and effort, compaction, limits, the host's code by content. Two solves compare
-  when their conditions differ in the one thing compared. Two harnesses are set side by side by
-  a standalone comparison, under one setting; rounds made apart are not a comparison (`AGENTS.md`, section 9).
-- **Count no solve twice.** Solves of two rounds were made apart, each under its own hour of
-  the host. Setting them side by side is a description. A pair is made by one comparison.
-- **Keep the counts apart**: valid answers; rejected answers, by ruling (earned, a check defect,
-  unclear); solves that ended with no answer, by how they ended; non-results (a host fault, a
-  provider's end, a cap); tasks set aside for a person's label. A rate has a denominator, and
-  the tasks left out of it are named beside it.
-- **Keep three kinds of statement apart**: the verifier's verdict, a reviewer's finding, and a
-  fact of the environment. A Referee's ruling is a model's output.
-- **Say what did not run** and what could not be compared.
-
-Take the owner from the record that produced the number, in that record's own words. Never turn a
-model's causal guess into a label.
-
-## How strong is the evidence
-
-Use the four evidence levels in `AGENTS.md`, section 9: present in source, proved without a model,
-exercised live, shown in an outcome. The last still requires a repeat on fresh solves; the promotion
-rule itself requires one reading. None of the levels stands in for the next.
-
-A replay can establish that a value is delivered while better model behaviour stays unrun. A refusal
-that fired establishes its own condition and nothing about the answers.
+- **Match the identities** in each solve's `condition.recorded`. Two harnesses are set side by side
+  only by one standalone comparison; solves from separate rounds are a description, never a pair.
+- **Keep the counts apart**: valid answers, rejections by ruling, endings without an answer by
+  kind, non-results, and tasks set aside. Every rate has a denominator and names what it left out.
+- **Keep verdicts, reviewer findings and environment facts apart.** A Referee ruling is a model's
+  output, and an owner comes from the record behind the number, never a model's guess.
+- **Say what did not run.**
 
 ## Is the reading more than noise
 
-Answer these from the log before using the word step in a sentence of your own:
+Answer from the log before writing "step".
 
-- **Repeated?** One reading promotes. A standalone comparison of the same two harnesses with a new `--id`
-  makes a second draw on fresh solves; the same id returns the existing report. Until a later
-  reading holds the step, say it is one draw at its level. An older log may repeat a step before promoting it.
-- **What does the reference do against itself?** Read `noise` on the same tallied tasks, with
-  halves of the reference's solves mirrored in time. It is available at any even number of solves
-  per side; at two, it compares the first solve with the second (`compared`,
-  `src/campaign/comparison.ts`). An A/A reading ends nothing. A step in either direction, at the
-  comparison's level (`readsStepEitherWay`), indicates that the two
-  halves were not interchangeable. Report it beside the candidate's step.
-- **How thin?** At `--level 0.02`, six untied tasks all won is the least that reads a step
-  (p = 0.015625), and 5-0 (p = 0.03125) reads none. With equal pair margins, 8-1, 10-2 and
-  12-3 also clear 0.02; unequal margins need `flipP`, rather than the tally alone. The retained
-  tasks are in the same test, so a gain on new tasks can offset a loss on old ones: give the
-  retained tally apart. An empty retained set is `unmeasured`, not evidence of no loss. An older report
-  may have read the frontier alone and may hold `regressed`.
-- **How much power and risk?** Give `scored.detectable`, the least winning share detected four
-  times in five at these margins, and `scored.falseRate`, `power(differences, 0.5, level)` (on
-  `frontier` in an older report).
-  The latter is at most the level under the test's null. `sizeLines` assumes no ties and equal
-  margins before a run (`src/kernel/size.ts`); the level is a per-comparison level.
-  Give the campaign estimate from `riskLines` in `src/campaign/climb.ts`: it sums attempt rates,
-  capped at one, across epochs. It is an estimate, not a measured bound. Its A/A error count is
-  one-sided at the comparison's level, and counts only the controls that could read a step.
-- **Which measure?** Give `points` beside the untied count: the points validity and the objective
-  gave the tallied tasks. An older report may also hold the bill's points, or
-  `objective.decided` in their place.
-- **Under what load?** A deadline counts elapsed time. The reader's `HOST LOADED` and `LOAD MOVED` say
-  when solve-start loads were high or moved between halves within or across comparisons. Compare
-  no times across those loads.
-- **At which budget?** Give the setting's model turn limit and deadline. A comparison reads the one
-  budget its solver was told; it does not rescore those solves at shorter budgets. A different
-  budget needs a separate setting and fresh solves (`settingAsked`, `tools/d2/setting.ts`).
+- **Repeated?** A new `--id` on the same pair draws fresh solves; until a later reading holds, call
+  it one draw at its level.
+- **A/A.** Read `noise`, the reference's first solve against its second (`compared`,
+  `src/campaign/comparison.ts`); a step either way (`readsStepEitherWay`) is reported beside the step.
+- **How thin?** At 0.02, 6-0 is the least that clears (p = 0.015625) and 5-0 does not; with equal
+  margins 8-1, 10-2 and 12-3 clear, and unequal margins need `flipP`. Give the retained tally apart,
+  since a gain on new tasks can offset a loss on old ones; an empty retained set is `unmeasured`.
+- **Power and risk.** Give `scored.detectable` (least winning share found four times in five),
+  `scored.falseRate`, and the campaign estimate from `riskLines` (`src/campaign/climb.ts`), a sum of
+  attempt rates rather than a bound.
+- **Which measure?** Give `points` from validity and the objective beside the untied count.
+- **Load and budget.** `HOST LOADED` and `LOAD MOVED` mark incomparable times. A comparison reads
+  only its own turns and deadline; another budget needs a new setting (`settingAsked`,
+  `tools/d2/setting.ts`) and fresh solves.
 
 ## Validity and exploitation
 
-A tally says nothing by itself of whether the exam can be passed without the work, or of whether a
-solver passed it that way. Report the two apart, each with the checks and the traces it rests on.
+Report the two apart, each with its checks and traces.
 
-- **Measurement validity**: `demonstrated gap`, `no gap found in the named checks`, or
-  `unassessed`. What v2 runs: the checker's reading (`bun tools/c/accept.ts`), which puts each
-  control answer to the checks twice and the do-nothing answer to every task; the Referee on each
-  rejection that reached a check; a person's labels where `tools/d2/settle.ts` draws them,
-  including its blind sample of passes. No model seat reviews a pass. An authored check stands
-  on the operator's admission, by `--admit` or `--admit-authored`; a campaign launch without
-  `--hitl` supplies the latter (`planOf`, `src/campaign/opening.ts`). State this coverage.
-- **Exploitation**: `observed`, `not observed in the traces read`, or `unobservable`. `observed`
-  needs a trace that joins something the solver was given to the accepted answer through the
-  gap. Keep four things apart: an ordinary efficient solution, a checker with a gap, a way past
-  it that an investigator built, and a way past it that a solver used.
+- **Measurement validity**: `demonstrated gap`, `no gap found in the named checks` or `unassessed`.
+  Coverage is the checker's reading (`bun tools/c/accept.ts`), the Referee on each rejection, and
+  the labels and blind pass sample of `tools/d2/settle.ts`; no model reviews a pass. An authored check stands on the
+  operator's `--admit` or `--admit-authored`, which a launch without `--hitl` supplies (`planOf`,
+  `src/campaign/opening.ts`).
+- **Exploitation**: `observed`, `not observed in the traces read` or `unobservable`. `observed`
+  needs a trace joining what the solver was given to the accepted answer through the gap. An
+  efficient solution, a checker gap, a bypass someone built and one a solver used are four things.
 
-Never shorten the scoped negative to "no reward hacking". A clean reading, an agreeing Referee and a
-full tally do not prove an exam cannot be passed without the work. Keep an earlier tally as it was
-recorded and put the qualification beside it.
+Never shorten the scoped negative to "no reward hacking".
 
 ## Was the mechanism live in run X?
-
-Check in order, and stop at the first that fails. One command answers the first two:
 
 ```sh
 bun run runs source <name> --holds <fix>
 ```
 
-1. **The commit.** `launch-run-<n>.json` beside the log (and `launch-<session>.json` for an older
-   round) names the commit and whether the tree held uncommitted changes. A
-   round started by hand has no receipt: the condition's host
-   hash still names the code by content, and the commit is then unknown.
-2. **Containment.** `--holds` asks whether the fix is an ancestor of each receipt's commit.
-   After a restack the fix has another commit id; name the replayed one.
-3. **The event.** Find what the mechanism writes: an event kind, a field, an ending, a refusal's
-   words in the `.out`.
-4. **The trigger.** An absent event shows an absent mechanism only where its trigger occurred.
-   Where it did not, say the mechanism was not reached.
+Check in order and stop at the first that fails:
 
-A stack published after the launch changes no running process.
+1. **The commit**: `launch-run-<n>.json` names it and whether the tree was clean; a round started
+   by hand has none, so its commit is unknown.
+2. **Containment**: `--holds` asks whether the fix is an ancestor; after a restack, name the
+   replayed commit.
+3. **The event** the mechanism writes: a kind, a field, an ending, a refusal's words in the `.out`.
+4. **The trigger**: an absent event shows an absent mechanism only where its trigger occurred.
 
 ## Procedure and report
 
-1. State the variable that moved and check every other identity.
-2. Give the counts, with what was left out of each denominator.
-3. Read the frontier and retained tasks one by one, including their pair margins and objective decisions.
-4. Look for something else that moved with it: the checker, the scored set, the limits, the
-   load, the host's code.
-5. Mark the attribution `proven`, `likely`, `mixed` or `unproven`.
+Name the variable that moved, check every other identity (checker, scored set, limits, load, host
+code), read the tasks one by one, and mark attribution `proven`, `likely`, `mixed` or `unproven`.
 
 ```text
 Claim:
@@ -168,9 +105,5 @@ Unrun or provisional:
 Evidence (log, event ids, commit):
 ```
 
-Use exact counts and scoped claims, naming the setting, frontier, retained reading and repeat. Where
-the log does not hold the evidence, say so.
-
-The report quotes no task's text, no answer, no hidden value, no check's failure text and no passage
-of a trace. Solve ids, digests, check ids, counts and paths carry it. It reaches no Builder,
-Examiner, solver or Referee.
+The report carries ids, digests, counts and paths, never a task's text, an answer, a hidden value,
+a check's failure text or a trace passage, and it reaches no seat.

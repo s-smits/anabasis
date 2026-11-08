@@ -1,26 +1,16 @@
 ---
 name: harness-audit
-description: "The harnesses a campaign keeps, read outside a run: which there are and where each came from, what each is made of and what moved from its parent, what each was measured to be, trying one on a task, the audit before a promotion and the blind review at a handover, whether a part earns its place, and changing what makes a harness or what a seat is told about one. Use when the operator asks which harness is current, what a Builder changed, whether a harness is ready to promote or hand over, to run a kept harness on a task, or to change the harness contract. Reading one run is whole-run-investigation's, wording a claim attribution-and-proof's."
+description: "The harnesses a campaign keeps, read outside a run: which there are and where each came from, what moved from its parent, what measured it, trying one on a task, the audit before a promotion, the blind review at a handover, whether a part earns its place, and changing the harness contract or what a seat is told about one. Use when the operator asks which harness is current, what a Builder changed, whether a harness is ready to promote or hand over, or to run a kept harness on a task. Reading one run is whole-run-investigation's, wording a claim attribution-and-proof's."
 ---
 
 # Harness audit
 
-A campaign keeps every harness a session froze under its digest, in `states/` beside its log
-(`tools/d2/campaign.ts`). The log says how each came to be there and what measured it:
-`harness.version` (the session, its parent and its note), `harness.imported`, `harness.promoted`,
-and each comparison's start and report. This skill reads the two together. Its script writes
-nothing of the campaign's, starts no solve and calls no model; the commands it names that solve are
-marked, and each needs the operator's word (`AGENTS.md`, section 10).
-
-| The question | Read |
-| --- | --- |
-| Which harnesses, where each came from, what measured it | `harness-versions.ts` |
-| What moved from a parent to its child | `harness-versions.ts --diff`, the lines through [git](#the-lines-that-moved), and lane 15 for what it means |
-| How one runs on a task | [Trying a kept harness](#trying-a-kept-harness) |
-| Ready to promote, or to hand over | [Before a promotion](#before-a-promotion) and [At a handover](#at-a-handover) |
-| Which part of a harness did it | a standalone comparison against `programs-of:<digest>`, worded by [attribution-and-proof](../attribution-and-proof/SKILL.md) |
-| Whether a part earns its place | [From recorded use](#whether-a-part-earns-its-place) |
-| A change to what makes a harness, or to what a seat is told | [The contract](#the-contract) |
+A campaign keeps every frozen harness under its digest in `states/` beside its log
+(`tools/d2/campaign.ts`), and the log records how each arrived (`harness.version`,
+`harness.imported`, `harness.promoted`) and what measured it. This skill reads the two together.
+Its script writes and solves nothing; commands below that solve are marked and need the operator's
+word. Which part of a harness did it is a comparison against `programs-of:<digest>`, worded by
+[attribution-and-proof](../attribution-and-proof/SKILL.md).
 
 ## The versions
 
@@ -29,146 +19,89 @@ bun .claude/skills/harness-audit/scripts/harness-versions.ts <log | campaign fol
 bun .claude/skills/harness-audit/scripts/harness-versions.ts <log | campaign folder | name> --diff <harness> [--against <harness>]
 ```
 
-A harness is named as the campaign's commands name one (`keptAs`): `starter`, `promoted`, `latest`
-or a whole digest, or its unambiguous letter from `namesOf`; a path reads a log copied out of its
-campaign, with its `states/` beside it. The list gives each harness the log names or the folder
-keeps, the starter first:
+A harness is named as the campaign's commands name one (`keptAs`: `starter`, `promoted`, `latest`,
+a digest, or a letter from `namesOf`). For each, starter first, the list gives whether it opens as
+kept (a solve refuses one that opens as another digest, as after a lost tool tree); how it was made
+(session and parent, import, starter, or no record, which means a sweep's first parent, another
+checkout's starter or a `programs-of` control: say which and never rebuild it); its roles; its parts
+(guide and `agent/tools.ts` lines, declared tools, `.toolchain` size, caches excluded as the digest
+excludes them); and what measured it, from `campaignOf` (`src/campaign/handover.ts`): sessions
+started from it and every comparison it stood in, with side and reading.
 
-- **whether it opens as kept.** Every command that hands a harness to a solve opens it first and
-  refuses one that opens as another digest: a state that lost its tool tree when its campaign was
-  moved had two solves paid for under its name. The list says it of every state at once.
-- **how it was made**: the session and the parent it froze from, with the length of its note; an
-  import and where from; the starter as this checkout writes it; or no record. A harness with no
-  record is a stored sweep's first parent, which stands in the sweep's root and is not kept here, a
-  starter written by another checkout, since a change to the Starter's parts changes its digest,
-  or a `programs-of` control, which no event records. Say which; do not rebuild a missing state.
-- **its roles**, `starter`, `reference` and `latest`, each naming the starter until something else
-  holds it.
-- **its parts**: nonblank lines of the guide and of `agent/tools.ts`, the presets and the tools the
-  spec declares, the files and size of `.toolchain` and whether it is a link, and other files.
-  `agent/config.yaml` is ignored; a module may import other files under the harness. Python's
-  bytecode caches are left out of the counts, as the digest leaves them out.
-- **what measured it**: each session that started from it, with its practice solves and counted
-  fails, and each comparison it stood in, on which side, against what, and how it read, with its
-  tally. The fold is `campaignOf` (`src/campaign/handover.ts`), the one the view and the campaign
-  command read.
-
-`--diff` counts what moved, part by part, against the parent the log records or `--against`:
-lines added and removed in the guide and the tools module, tools added and removed in the spec,
-files added, removed and changed in the tool tree and under which folders, and other files by path.
-It quotes no line, and neither does anything written from it (lane 15). It takes no control: the
-command that compares one makes it.
+`--diff` counts what moved part by part against the parent or `--against`, quoting no line.
 
 ### The lines that moved
 
-To read the change itself, for example before a promotion or when a part may answer a particular
-task, run `git diff --no-index` from the campaign's `states/`, with the two whole digests the first
-line of `--diff` prints, parent first:
+From `states/`, with the two digests `--diff` prints, parent first:
 
 ```sh
 git diff --no-index <parent> <child> -- ':!.toolchain'
 git diff --no-index <parent>/.toolchain/ <child>/.toolchain/ -- ':!*__pycache__*'
 ```
 
-Both are needed. A kept state's `.toolchain` is a link to a tree kept once beside the states
-(`tree-*`), so one `git diff` of the two folders compares the link targets and no program: in
-buffer-fresh-opus-v065-a, between its second promoted harness and the reference it replaced, it
-showed the guide and a changed link, where the trees behind the links differed in five files. The trailing slash makes git read
-the tree where the link leads, and the exclusion leaves out the caches the digest ignores: in
-buffer-fresh-gpt-v071 they were 404 of 405 changed files. Where one side has no tool tree, git
-refuses the second command, and the counts already say how many files the other side holds. The
-patch quotes lines: read it, and write what it shows by kind and size, as lane 15 asks.
+Both are needed: a kept `.toolchain` links to a shared `tree-*`, so one diff compares only link
+targets, and the slash follows the link. Describe the patch by kind and size rather than quoting it.
 
 ## Trying a kept harness
 
-- **One task, as handed over.** `bun tools/d2/close.ts --name <campaign> --to <folder outside the
-  repository> --solve <task id>` writes the handover and solves that task under the harness from the
-  folder it wrote, with the campaign's solver and checks, in a log of its own (`handover/log.jsonl`)
-  that no reading counts. Name a released task. It is a solve: the operator's word.
-- **Two harnesses on the same tasks.** `bun tools/d2/checkpoint.ts` with `--reference` and `--new`,
-  through [run-management](../run-management/SKILL.md). `programs-of:<harness>` on either side separates the
-  installed programs from the guide and the tools.
-- **Another question needs its own campaign.** The `--solve` flag names an existing task id;
-  it does not fit a new question into a recorded task.
+- **One task, as handed over** (a solve): `bun tools/d2/close.ts --name <campaign> --to <folder
+  outside the repository> --solve <task id>` solves a released task from the handover, in
+  `handover/log.jsonl`, which no reading counts.
+- **Two harnesses on the same tasks** (solves): `bun tools/d2/checkpoint.ts --reference <a> --new
+  <b>` through [run-management](../run-management/SKILL.md); `programs-of:<harness>` separates
+  programs from guide and tools.
 
 ## Before a promotion
 
-The campaign promotes automatically unless `--hitl` is set (`AGENTS.md`, section 3). For a
-manual promotion, put these in front of the operator.
+A campaign promotes by itself unless `--hitl` is set. For a manual one, show the operator:
 
-1. **The rule.** `bun tools/d2/promote.ts --name <campaign> --harness <digest>`, without `--yes`,
-   prints the comparisons the harness was the new side of and asks `unpromoted`: one comparison
-   against the current reference read `step`. It records nothing. `--yes` records the promotion;
-   `--despite "<why>"` with it records the operator's exception to the rule.
-2. **The state.** The list: it opens as kept, its line back to the starter, each session's practice
-   and each comparison's tally. Every comparison the promotion would rest on names this digest as
-   its new side.
-3. **What moved since the reference.** `--diff <digest> --against promoted` counts the whole change
-   a promotion makes, which can span several sessions, and [the lines](#the-lines-that-moved) show
-   it. Attributing a gain to one part requires a standalone comparison against `programs-of:<digest>`
-   (`AGENTS.md`, section 9).
-4. **What it measured.** Lane 27 of [whole-run-investigation](../whole-run-investigation/SKILL.md)
-   reads a promotion's rule, what its step measured and the climb after it; lanes 15 to 17 read
-   the change, the guide's truth, check mirroring and the finish. Open them when a reading is in
-   doubt, not as a ritual.
+1. **The rule**: `bun tools/d2/promote.ts --name <campaign> --harness <digest>` without `--yes`
+   prints whether a comparison with it as new side read `step` against the current reference, and
+   records nothing; `--yes` records, `--despite "<why>"` records an exception.
+2. **The state**: it opens as kept, its line to the starter, and each comparison it rests on names it.
+3. **The change**: `--diff <digest> --against promoted` and the lines above.
+4. **What it measured**: lanes 22 and 12 to 14 of
+   [whole-run-investigation](../whole-run-investigation/SKILL.md), when a reading is in doubt.
 
 ## At a handover
 
-`bun tools/d2/close.ts --name <campaign> --to <folder>` writes `harness/`, the reference harness
-opened there as kept, `RULES.md`, the domain's public contract, and `REPORT.md`, the closing report.
-Without `--solve` it calls no model. Then arrange a blind review:
-
-- Hand an independent reviewer `harness/` and `RULES.md` and nothing else: not `REPORT.md`, the
-  log, a reading, the operator's diagnosis, an expected fix or an earlier review. A Codex reviewer
-  is one read-only row through [codex-gpt-swarm](../codex-gpt-swarm/SKILL.md), with the folder as
-  its workdir.
-- Ask neutrally: the structure; whether `tools-spec.json` has one row for each tool `tools.ts`
-  returns, under the same name and in the same order; whether the guide's account of each program
-  and tool matches what is there; stale or duplicate files; a launcher or a link that names a path
-  outside the folder; anything that answers a particular task: a part that names a task, copies its
-  text or holds its answer (`AGENTS.md`, section 2); obvious missing parts. A search that tests its
-  candidates against the public rules and reports which meet them is allowed
-  (`src/builder/prompt.ts`).
-- Record the digest and the folder beside the review. The review is advisory: it decides no
-  promotion, reading or claim. A harness promoted after it is another handover and another review.
+`bun tools/d2/close.ts --name <campaign> --to <folder>` writes `harness/`, `RULES.md` and
+`REPORT.md` without calling a model. Hand an independent reviewer only `harness/` and `RULES.md`,
+never `REPORT.md`, the log or a reading (a Codex reviewer is one read-only row through
+[codex-gpt-swarm](../codex-gpt-swarm/SKILL.md), with the folder as its workdir), and ask neutrally: structure; whether `tools-spec.json` has one row per tool `tools.ts` returns, in
+name and order; whether the guide matches the programs; stale files; links leaving the folder; and
+any part that names a task, copies its text or holds its answer. A search that tests candidates
+against the public rules is allowed (`src/builder/prompt.ts`). Record digest and folder with the
+review, which is advisory only.
 
 ## Whether a part earns its place
 
-A program, a tool or a guide line is read from what solves under it did: their `solve.call` rows,
-which lane 16 counts. Count use over the solves where the need arose and the part was there; a
-missing record is unknown, never zero. A successful call is not a valid answer, a failed answer
-does not say which part failed it, and a shell command alone is no reason for a tool.
+Read a part from the `solve.call` rows of solves under it (lane 13), over solves where the need
+arose and the part was there; a missing record is unknown, never zero, and a successful call is no
+valid answer.
 
-| Decision | The evidence for it |
+| Decision | Evidence |
 | --- | --- |
-| enrich a part | repeated work fits its purpose, and a richer result closes the gap |
-| add one | a recurring job has no adequate owner, and a compact interface helps |
-| consolidate | parts keep needing the same inputs, or force a hand-off that could be avoided |
-| describe | the capability is there, but its purpose, inputs or limits are unclear |
-| remove | it has no distinct purpose, and its work is done elsewhere |
-| keep | it saves useful work, serves a rare real need, or the shell already does |
+| enrich | repeated work fits its purpose and a richer result closes the gap |
+| add | a recurring job has no adequate owner |
+| consolidate | parts need the same inputs or force an avoidable hand-off |
+| describe | the capability is there but its purpose or limits are unclear |
+| remove | no distinct purpose; its work is done elsewhere |
+| keep | it saves work, serves a rare real need, or the shell already does |
 
-What a harness holds is the Builder's to choose (`AGENTS.md`, section 2, rule 3). The table reads
-what a Builder did, and it grounds a change to the Starter or to the account a Builder is handed,
-which waits for the operator's word ([run-improvement-campaign](../run-improvement-campaign/SKILL.md), Rules).
+The harness is the Builder's to choose (`AGENTS.md`, section 2); the table grounds a change to the
+Starter or to what a Builder is told, on the operator's word.
 
 ## The contract
 
-| What | Owner | What holds it |
+| What | Owner | Test |
 | --- | --- | --- |
-| what opens as a harness, and its digest | `src/harness/open.ts`, `openHarness` | `test/harness-tools.test.ts` |
-| the Starter, and the generated `HARNESS.md` a Builder is handed | `writeStarter`, `HARNESS_ACCOUNT` in `src/harness/starter.ts`; written by `src/builder/session.ts` | `test/starter.test.ts`: the worked harness opens as printed |
-| installed program names and their accounts | `installedPrograms`, `programsOf` in `src/harness/programs.ts` | `test/programs.test.ts` |
-| what a Builder is told | `src/builder/prompt.ts` | `test/builder.test.ts`, "what crosses to the Builder" |
+| what opens as a harness, its digest | `openHarness`, `src/harness/open.ts` | `test/harness-tools.test.ts` |
+| the Starter and generated `HARNESS.md` | `writeStarter`, `HARNESS_ACCOUNT`, `src/harness/starter.ts`; `src/builder/session.ts` | `test/starter.test.ts` |
+| installed programs | `installedPrograms`, `programsOf`, `src/harness/programs.ts` | `test/programs.test.ts` |
+| what a Builder is told | `src/builder/prompt.ts` | `test/builder.test.ts` |
 | what a solver is told | `src/solver/prompt.ts` | `test/solver-prompt.test.ts` |
-| what the Examiner and the Referee are told | `src/examiner/prompt.ts`, `src/referee/referee.ts` | `test/examiner.test.ts`, `test/review.test.ts` |
+| what the Examiner and Referee are told | `src/examiner/prompt.ts`, `src/referee/referee.ts` | `test/examiner.test.ts`, `test/review.test.ts` |
 
-`HARNESS.md` is generated in the Builder's home, not a repository file. Its four parts are
-`agent/tools-spec.json`, `.toolchain/`, `agent/BUILT_AGENTS.md` and `agent/tools.ts`. Read their
-purposes in `AGENTS.md`, section 3, and their shapes in `HARNESS_ACCOUNT` before changing them.
-`installedPrograms` lists executable names in the command's search directories, taking the first
-of each name. `programsOf` adds accounts from file heads without running the programs.
-
-For a change to this contract, follow `AGENTS.md` sections 2 and 8 for authority and the wall,
-section 12 for checks, and section 9 for what those checks prove. Read the parser, tool, wall or
-limit that carries an instruction before changing its wording.
+The four parts are in `AGENTS.md`, section 3, and their shapes in `HARNESS_ACCOUNT`; read the parser
+or tool that carries an instruction before rewording it.

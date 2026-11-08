@@ -1,119 +1,59 @@
-Read this for the evaluation question, reported factors and v1 terminology. This expands `AGENTS.md`
-section 1; the information boundary is in `wall.md`.
+Read this for the evaluation question and the four reported factors behind `AGENTS.md` section 1.
+The information boundary is in `wall.md`.
 
 ## 1. What Anabasis does
 
-One query names one technical domain. A campaign builds one **Built Harness** for it (a harness, for
-short): the guide and the programs a solving model uses to answer that domain's tasks. The
-**solver** is that model, and it only ever answers from inside a harness: a solve is the solver and
-one harness as one system. The campaign's setting fixes the solver, so two systems in a comparison
-differ only in their harness, and whatever one wins, its harness won. Every mechanism serves one
-question:
-
-> Is the new harness better than the reference harness, for this solver, on tasks neither was
-> built on?
-
-The wider aim is for a built system with a cheaper solver to match a bare system with a more
-expensive solver. A campaign fixes its solver and cannot establish that result. The separate
-`compare-systems` evaluation uses its held-out tasks.
-
-Code evaluates both harnesses on the same held-out tasks, using fresh solves and limits recorded
-before solving (section 7). Hidden checks decide validity, and the Referee reviews each rejection.
-Each task receives a weighted score for validity, objective quality and cost. A one-sided paired
-sign-flip test determines whether those scores support a **step**. The operator freezes the exam,
-sets the cap and provides blind labels. All campaign state is derived from one append-only log
-(section 5).
+Anabasis is a training loop whose learner is a harness and whose loss is measured by running a fixed
+solver on held-out tasks. The question, the tally and the test are in `AGENTS.md` sections 1 and 7.
 
 ### The four reported factors
 
-Anabasis is a training loop in which the thing trained is a harness and the loss is measured by
-running a fixed model. It needs a training signal that carries information, a held-out set the
-learner cannot see, an evaluation less noisy than the effect it seeks, correct labels, and a result
-worth its cost. The first, supply, is a condition of admission; the other four are reported: climb,
-honesty, verdicts and economy. Every session, pull request and run is judged against them, and a
-change that moves none says what it moves instead. Their recorded values live only in `docs/plan.md`,
-"Goal and the four factors".
+A useful loop needs a signal that carries information, an evaluation less noisy than the effect,
+correct labels and a result worth its cost. Supply is checked at admission, and the four factors are
+reported. Recorded values live only in `docs/plan.md`, "Goal and the four factors".
 
-**Supply, the condition before the four: is there gradient?** A comparison registers a difference
-only where one harness answers and the other does not, or, under a declared objective, answers
-better by it. A task the reference solves every time with no better answer on record, and a task
-nobody has solved, carry no signal; a scored set of them reads "no room" whatever the new harness is
-like. The informative tasks lie between (`informative`, `src/kernel/compare.ts`; section 7, "Room
-for improvement"). Here the solver stays fixed and the Examiner keeps the exam at its frontier
-(section 3). Supply is the number of informative tasks in a scored set. It is known only after the
-solves, so comparison admission holds the frontier, the held-out tasks the reference has not closed,
-to `comparisonFloor(level)` instead (section 6, "What refuses a move"). It binds first,
-since every other number is undefined without it, and is not reported, since passing it shows only
-that a difference could be shown.
+**Supply** is the gradient. A task registers a difference only where one harness answers and the
+other does not, or answers better by the objective (`informative`, `src/kernel/compare.ts`). Tasks
+the reference always closes, and tasks nobody solves, read "no room" whatever the candidate is.
+Informativeness is known only after solving, so admission counts the frontier instead
+(`comparisonFloor`). Meeting the floor shows only that a difference could be seen, so supply is not
+reported.
 
-**1. Climb: how much ability has accumulated?** The one quantity the system exists to move is the
-reference harness. A promotion is one step of descent: a harness that beats the reference on
-held-out tasks by more than chance allows, in one comparison on fresh solves. A climb is several
-within one campaign (`src/campaign/climb.ts`); promotions summed across campaigns are no climb. A
-draft the reference never answered at admission but whose author's answer passes (`task.feasible`)
-is held out like any other (`measured`, `src/examiner/write.ts`), since it is exactly the room a
-promotion leaves. That answer shows only that it passes the checks, and not that the public input
-suffices to derive it, so a held task nobody answers may be hard or underspecified until a person
-reads it. An older log's `ladder` tasks read as held out, and its ladder readings decide nothing
-(`lastReports`, `src/kernel/reports.ts`).
+**1. Climb** is the reference harness moving. A promotion is one step of descent, a climb several
+within one campaign (`src/campaign/climb.ts`). A draft the reference never answered but whose
+author's answer passes (`task.feasible`) is held out like any other (`measured`,
+`src/examiner/write.ts`), since that is the room a promotion leaves; the passing answer does not
+show the public input suffices, so a held task nobody answers may be underspecified until a person
+reads it. An older log's `ladder` tasks read as held out and its ladder readings decide nothing
+(`lastReports`, `src/kernel/reports.ts`). Improvement patience marks a possible plateau without
+proving that no step remains, so a campaign ended on budget, environment or `finished` reads
+"reached N promotions; further improvement unresolved".
 
-A small movement is read against the solver's measured variation before it is called a gain.
-Milestone: six confirmed promotions in one real campaign, then the same in a second domain. It is
-the operator's milestone for observation and no quota, rule or stop: no prompt, tool or row of the
-move table names a count of promotions, and the release cycle stops runs from outside
-(run-improvement-campaign). Improvement patience marks a possible plateau, no proof that no step is
-left. A campaign that ended before six on its budget, its environment or as `finished` reads
-"reached N promotions; further improvement unresolved"; one ended by improvement patience reads
-differently. Its false-promotion risk is reported over every comparison that could have promoted,
-since the opening's estimate covers one window of improvement patience at most.
+**2. Honesty** is the false-positive rate. The level is per comparison and nothing bounds a
+campaign's many attempts together, so no opening is refused on their sum. Each reading prints its
+own rate (`falseRate`, `src/campaign/comparison.ts`) and the opening prints it at its target
+(`sizeLines`, `src/kernel/size.ts`). The A/A beside each comparison measures the rate on the real
+solver, where a step is a false positive by construction. The climb sums the attempts' rates as an
+estimate and counts the A/A steps, leaving out an A/A too small to reach the level
+(`falsePromotion`, `incapable`).
 
-**2. Honesty: could the measured gains be chance or drift?** A test at the default level of 0.02 is designed
-to crown a winner between equal harnesses about one time in fifty, a claim until it is measured on the
-real solver, whose same harness fails a task once and passes it the next time. The measurement is
-the A/A comparison beside every comparison (section 7, "Beside the test"), where a step is a false
-positive by construction. Bar: no step in the ten A/A comparisons after the six on record, which
-still bounds the rate loosely. The level is per comparison: nothing holds a campaign's many attempts
-to it together, and no opening is refused on their sum. Each reading prints its own false rate
-(`falseRate`, `src/campaign/comparison.ts`) and the opening prints it at its target (`sizeLines`,
-`src/kernel/size.ts`); the climb sums the attempts' rates as an estimate and no bound, beside the
-A/A comparisons that read a step, counting only those able to reach the level and reporting the rest
-as too small (`falsePromotion`, `incapable`, `src/campaign/climb.ts`).
+**3. Verdicts** is label noise. Nobody has audited the check program against the field, and a check
+that rejects a right answer mislabels the task. The Referee filters this noise before a rejection
+counts; its evidence rules are in the head comment of `src/referee/referee.ts`, and a ruling without
+them is refused and logged. It is itself measured against blind hand labels (`tools/d2/settle.ts`,
+`src/referee/agreement.ts`): two rates, each kind's agreement, PABAK beside kappa, and each settled
+comparison reread with the labels (`swapped`), where a decision that flips means the packet was too
+small.
 
-**3. Verdicts: are the labels correct?** No one has audited the check program against the field, and
-a check that rejects a right answer is label noise: in v1, 36 of 47 rehearsal misses came from a
-faulty check or instrument. The Referee is the noise filter (`src/referee/referee.ts`, whose head
-comment holds its evidence rules; section 7, "Rejections"): it rules every rejection before it
-counts, after the host replays the checks, and a ruling without the evidence its kind requires is
-refused and logged. `earned` is a loss; `check-defect` and `unclear` set the task aside for both
-harnesses, so a broken check scores against nobody. The Referee is measured by agreement with a
-person labelling the same rejections blind (`tools/d2/settle.ts`, `src/referee/agreement.ts`):
-label against ruling as two rates, each kind's agreement and PABAK beside kappa, never kappa alone,
-and each settled comparison reread with the labels (`swapped`), where a decision that flips means
-its packet was too small. Bar: on at least thirty labels, catching three in four of the rejections a
-person calls a check defect, and voiding at most one in ten of those a person calls earned.
+**4. Economy** is cost per gain, read from the log at frozen list prices (`billOf`,
+`src/kernel/meter.ts`, the same meter the cap uses), with backend totals beside it (`costLine`).
 
-**4. Economy: what did each measured gain cost?** Statistical significance alone does not make a
-gain useful. Evaluate the climb achieved under the operator's cap, rather than money left
-unspent. The closing report derives dollars and hours per promotion from the log
-(`tools/d2/close.ts`, "Work and spend"). It bills each session's backend ledger at
-frozen list prices (`billOf`, `src/kernel/meter.ts`), as the cap bills each turn, and shows available backend totals
-alongside it (`costLine`, `src/kernel/meter.ts`). The report reads a fixed target of at most
-three promotion attempts per epoch after set-up (`BARS`, `worthOf` and `barLines`,
-`src/campaign/climb.ts`). This is a reporting target and refuses no action.
+Left out on purpose: the wall (a tested correctness property), practice results (training score,
+rule 1) and cost apart from climb.
 
-Left out on purpose: the wall, a correctness property the suite tests; practice results, a learner's
-score on its own training set (rule 1); and cost apart from its climb. The order reflects their
-dependencies: climb establishes a result, honesty and verdicts make it credible, and economy
-establishes its cost.
+### Older vocabulary
 
-### What changed from v1
-
-v1 is this repository's history before v2 took it over (`git show
-5bc9988:<path>`; `docs/transfer.md` keeps the account). It was published as a squashed history, so a
-v1 commit cited in `docs/transfer.md` is missing here. Much of `src/meta`, `src/wall`, `tools/loc`
-and `tools/oxlint` came from v1, so v1's wording survives in comments, and a comment citing
-"AGENTS.md rule N" means v1's differently numbered rules. v1's fixed task set, difficulty band,
-author's answer as credential, F2, submit barrier, automatic acceptance and promotion veto are
-retired. A **climb** is factor 1, an **epoch** the stretch of a campaign under one reference
-(`src/campaign/climb.ts`), the **level** the step test's (`--level`); a **cycle** and a **sweep**
-name the stored v1 run a pack comes from, and **bundle** its directory.
+v1 is the history before v2 (`git show 5bc9988:<path>`, `docs/transfer.md`). A comment citing
+"AGENTS.md rule N" in code inherited from v1 (`src/meta`, `src/wall`, `tools/loc`, `tools/oxlint`)
+means v1's numbering. An **epoch** is a stretch under one reference; a **cycle**, **sweep** and
+**bundle** name the stored v1 run a pack comes from.

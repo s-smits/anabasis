@@ -16,11 +16,18 @@
  * New on 5 November: no script of v1 or before compared answers. The nearest, `harness-task-facts.mjs`
  * of the fourth repository, compared public inputs. An answer may hold what a task hides, so this
  * prints counts only, and compares digests it never keeps.
+ *
+ * Under an objective each row also says on how many tasks a side's solves gave one measure, exactly
+ * and within the floor (`gapAgainst`, `compare.ts`), since an answer can differ in bytes where the
+ * measure the comparison reads does not. On 6 November a harness of v5's read 0 on the whole answer
+ * and 10 of 22 on the measure, so its 2 solves a task were fewer than 2 draws, and only a hand count
+ * said so.
  */
+import { gapAgainst, type Paired } from "#src/kernel/compare.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { lastReports, pairsReported } from "#src/kernel/reports.ts";
 import { type Judged, verdictsOf } from "#src/kernel/solves.ts";
-import { isString } from "#src/meta/json-shape.ts";
+import { isNumber, isString } from "#src/meta/json-shape.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { NO_TRACES, printRows } from "./folds.ts";
 
@@ -28,6 +35,27 @@ interface Repeats {
   same: number;
   of: number;
 }
+
+/** A side's tasks with a measure on every solve: how many repeat one exactly, and within the floor. */
+interface Measured {
+  exact: number;
+  near: number;
+  of: number;
+}
+
+/** How close two measures stand to read as one, past a float's own noise. */
+const EXACTLY = 1e-6;
+
+function tickMeasures(into: Measured, pair: Paired, side: "old" | "fresh"): void {
+  const measures = pair.objective?.[side].filter(isNumber) ?? [];
+  if (measures.length < 2 || measures.length !== pair[side].length) return;
+  into.of += 1;
+  if (Math.max(...measures) - Math.min(...measures) <= EXACTLY) into.exact += 1;
+  if (!gapAgainst(pair, side, [])) into.near += 1;
+}
+
+const measuredCount = ({ exact, near, of }: Measured) =>
+  `exactly on ${String(exact)} of ${String(of)} and within the floor on ${String(near)} of ${String(of)}`;
 
 /** One side's solves of one task, as digests, where each was valid and two or more handed one in. */
 function allValid(
@@ -57,7 +85,11 @@ export function answerRows(events: readonly LogEvent[]): string[] {
     const fresh: Repeats = { same: 0, of: 0 };
     const old: Repeats = { same: 0, of: 0 };
     const across: Repeats = { same: 0, of: 0 };
+    const freshMeasured: Measured = { exact: 0, near: 0, of: 0 };
+    const oldMeasured: Measured = { exact: 0, near: 0, of: 0 };
     for (const pair of pairsReported(events, report)) {
+      tickMeasures(freshMeasured, pair, "fresh");
+      tickMeasures(oldMeasured, pair, "old");
       const newer = allValid(pair.solves?.fresh, pair.fresh, verdicts);
       const older = allValid(pair.solves?.old, pair.old, verdicts);
       tick(fresh, newer);
@@ -66,8 +98,12 @@ export function answerRows(events: readonly LogEvent[]): string[] {
     }
     if (fresh.of === 0 && old.of === 0) return [];
     const reading = isString(report.data.reading) ? report.data.reading : "unread";
+    const objective =
+      freshMeasured.of === 0 && oldMeasured.of === 0
+        ? ""
+        : `; the objective repeated ${measuredCount(freshMeasured)} under the new harness, ${measuredCount(oldMeasured)} under the reference`;
     return [
-      `${report.session} ${reading}: one answer repeated on ${count(fresh)} tasks the new harness passed in every solve, ${count(old)} under the reference; both sides gave one answer on ${count(across)}`,
+      `${report.session} ${reading}: one answer repeated on ${count(fresh)} tasks the new harness passed in every solve, ${count(old)} under the reference; both sides gave one answer on ${count(across)}${objective}`,
     ];
   });
   return rows.length === 0 ? ["answers: no comparison tallied a task two sides passed"] : rows;

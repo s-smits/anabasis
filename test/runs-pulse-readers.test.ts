@@ -494,7 +494,7 @@ describe("a look that was cut", () => {
     keepNames(store, names);
     endPass(store, "finished");
     const state = join(made.root, "session.pulse.json");
-    const look = (...args: string[]) => made.runScript(CLI, ["pulse", "--once", ...args], extra);
+    const look = (...args: string[]) => made.runScript(CLI, ["pulse", ...args], extra);
     return { made, log, event, store, state, look };
   }
   const linesOf = (state: string, log: string) =>
@@ -509,7 +509,7 @@ describe("a look that was cut", () => {
     // A running pass holds the look in its wait, where the hook's kill finds it.
     writeFileSync(join(store, "pass.lock"), String(process.pid));
     const cut = capturedSpawn(
-      [capturedExecPath, join(import.meta.dir, "..", CLI), "pulse", "--once", "--state", state, "the-run"],
+      [capturedExecPath, join(import.meta.dir, "..", CLI), "pulse", "--state", state, "the-run"],
       {
         cwd: made.main,
         env: { ...made.env, ANA_HOSTS: "[]" },
@@ -597,7 +597,7 @@ describe("a look that was cut", () => {
       FAKE_FLEET: JSON.stringify({ [made.host.ssh]: { pulse } }),
     });
     const look = (env: Record<string, string>) =>
-      made.runScript(CLI, ["pulse", "--once", "--no-readers", "--state", state], env);
+      made.runScript(CLI, ["pulse", "--no-readers", "--state", state], env);
     const said = look(fleet("◆ reported step\nack 0123abcd"));
     expect(said.code).toBe(0);
     expect(said.out).toContain("── runner");

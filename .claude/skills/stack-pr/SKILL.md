@@ -1,86 +1,63 @@
 ---
 name: stack-pr
-description: "Put a change on an open stack of Anabasis pull requests, or start one: find the real top, keep local work while moving to it, expand the open pull request a change belongs to before opening a new one, shape commits that each pass alone, run the checks CI runs (by hand where the runners do not), publish through the checking pre-push hook, prove the stack with `bun run land -- <top> --sanitize`, write the body, repair your own children when a parent moves, consolidate the whole stack by subject (review in groups, fix in lanes, regroup, republish), and land a stack with `bun run land`. Use when asked to open, append to, stack, restack, consolidate or overhaul, rebase, hop to the latest head, sanitize or land a pull request, or when a push, a hook or a base refuses. v1's stack-hop and setup-pr in one."
+description: "Place a change on an open stack of Anabasis pull requests, or start one: find the true top, keep local work while moving to it, expand the open pull request a change belongs to before opening a new one, shape commits that each pass alone, run what CI runs, publish through the pre-push hook, prove the stack with `bun run land -- <top> --sanitize`, write the title and body, replay your own children when a parent moves, consolidate the stack by subject, and land it with `bun run land`. Use when asked to open, append to, stack, restack, consolidate or overhaul, rebase, hop to the latest head, sanitize or land a pull request, to title or describe one, or when a push, a hook or a base refuses."
 ---
 
 # Stack a pull request
 
-Open pull requests sit on stacks, each a chain based on `main` that lands alone, and one release
-cycle builds one stack (`AGENTS.md`, section 11). "The top" below is the end of that stack, or
-`origin/main` for the cycle's first change and for a stack the operator asks for. Several sessions
-write at once. This skill is the order of operations that keeps a
-change on the stack without losing local work, without touching another session's branch, and
-with every commit able to stand alone.
+Open pull requests form stacks: chains based on `main` that land as a unit, one stack a release
+cycle (`AGENTS.md`, section 11). "The top" is the end of that chain, or `origin/main` for a cycle's
+first change. Several sessions write at once; the order below places a change without losing local
+work or touching another session's branch.
 
 ## 1. Read the stack, every time
 
 ```sh
 git fetch origin --quiet
 bun .claude/skills/stack-pr/scripts/stack.ts                     # every edge, bottom first, and the top
-bun .claude/skills/stack-pr/scripts/stack.ts --branch <branch>   # one branch: what is stacked on it
+bun .claude/skills/stack-pr/scripts/stack.ts --branch <branch>   # what is stacked on one branch
 ```
 
-Each stack's top is the end of its chain. It is not the highest number: a side branch off the
-middle carries a higher one, and the script lists those apart.
+The top is the end of the chain, never the highest number (a side branch from the middle is listed
+apart). Other sessions move the stack within hours, so a reading is only a lead. Read it again
+immediately before `git worktree add`, before `gh pr create` and before any push that rewrites a
+branch.
 
-**The stack moves under you.** Another session can stack eight pull requests in one
-afternoon above a branch that was read as the top two hours before. Read the edges again
-immediately before `git worktree add`, before `gh pr create`, and before any push that rewrites a branch. A
-reading from the start of the task is a lead, not a fact.
+## 2. Decide where the change belongs
 
-## 2. Decide where the change goes
+- **Expand the pull request the change belongs to.** A change belongs to an open pull request when
+  it fixes, simplifies, completes or supersedes that pull request's own lines; a shared file is no
+  evidence. Compare the change with each diff (`git diff --name-only <base> <head>`). Where the
+  pull request has no children, fold the change into its commit and rewrite its title and body.
+  Where it has children, a rewrite would move them, so commit `fixup! <subject>` (or `amend!`) in a
+  pull request of your own on the top whose body opens "Absorbs into #N at the next
+  consolidation"; section 10 folds it down. Remove what the change makes dead in the same commit.
+- **Otherwise open a new pull request on the cycle's top**, whether or not it depends on what is
+  below. The cycle's file names the stack; failing that, it is the one `bun run follow` follows,
+  which holds the oldest open pull request. The first change after a release starts the stack on
+  `main`. A second stack on `main` starts only on the operator's word, lands alone, and leaves the
+  other to be replayed with `republish.ts --onto-main` (section 8). Never base on the middle of a
+  stack, and state the base in the body.
+- **Never change another session's pull request**: no commit, rebase or force push. Carry the fix
+  as a `fixup!` on the top, or tell its owner.
+- Skills and docs go on the stack too, with the `docs/transfer.md` row the change moves. Nothing
+  private (an account, a credential path, an address) becomes a pull request.
 
-- **First find the open pull request the change belongs to.** Read every open title, and compare
-  the files the change touches with each one's diff (`git diff --name-only <base> <head>`). A
-  change belongs to a pull request when it fixes, simplifies, completes or supersedes that pull
-  request's own code: it rewrites lines that pull request added, or makes one of its hunks dead.
-  Sharing a file is not enough, since half the stack touches `decide.ts` or `AGENTS.md`. For
-  example, of eight lanes stacked as new pull requests, #420 rewrote #403's reader, #423 capped
-  the concurrency #404 had added, and #427 superseded #417's spill. The other five were new
-  subjects, and right as new pull requests.
-- **A change that belongs to an open pull request expands it.** With no children (`stack.ts
-  --branch` names none), fold the change into that pull request's commit and rewrite its title and
-  body. With children, a rewrite moves every branch above it, so it takes new commits only: make
-  the change as `fixup! <the commit's subject>` (`amend!` where the message changes too) in a
-  pull request of your own on the top, whose body opens "Absorbs into #N at the next
-  consolidation". Section 10 folds it down and closes the carrier (`republish.ts --absorb`).
-  Delete the code the change makes dead in the same commit.
-- **A change that belongs to no open pull request: a new pull request on the cycle's top.** Its
-  base is the top branch of the stack the current release cycle builds, whether or not it builds on
-  an open pull request, and it holds that branch's head. The cycle's file names that stack; where
-  none does, it is the stack `bun run follow` follows, the one that holds the oldest open pull request. The cycle's first change, after
-  a release has landed, starts the stack on `main`. Any other stack of its own on `main` starts only
-  on the operator's word, for a change that has to land before the cycle's stack; it lands alone,
-  and once one of the two lands, `land` refuses the other until it is replayed onto the new `main`
-  (`republish.ts --onto-main <top>`, section 8).
-  Never base a change on the middle of a stack. Say which in the body.
-- **Another session's pull request is never yours to change.** No commit, no rebase, no force
-  push, whatever the fix. Carry the fix as a `fixup!` on the top, as above, or tell the owner.
-- **Skills go on the stack too**, and so does documentation that describes an open pull request,
-  with the row of `docs/transfer.md` that the change moves, in the same pull request.
-- **Work that names anything private never becomes a pull request**: which provider account a
-  run used, a credential's path, a private address.
+## 3. Create the worktree
 
-## 3. Make the tree
-
-One worktree per pull request, from the top, pinned by commit:
+One worktree per pull request, from the top, pinned by commit since the branch can move between
+fetch and checkout; then `bun install --frozen-lockfile` once:
 
 ```sh
 git worktree add -b claude/<topic> ../anabasis-<topic> <top-head-sha>
 ```
 
-Pin by commit because the branch can move between the fetch and the checkout. Run
-`bun install --frozen-lockfile` once in the new tree.
+Never branch in or switch a tree a run was launched from, since the run executes its source
+(`bun run runs pulse` names such trees).
 
-Never branch in, or switch, a worktree a run was launched from. A campaign's folder lives under
-that tree's `.ana/`, its receipt names that tree's commit, and a comparison continued from its
-log executes whatever source is there then. `bun run runs pulse` says which trees hold
-an open run.
+## 4. Move to the top without losing work
 
-## 4. Hop without losing work
-
-When the tree you are in fell behind and holds uncommitted work, bank it before anything else.
-Every modified and untracked file is a candidate, and a peer session may have written some.
+Save uncommitted work before anything else; a peer session may have written some of it:
 
 ```sh
 git status --short
@@ -89,349 +66,198 @@ git rev-parse HEAD > <scratchpad>/salvage/BASE
 # copy each untracked file to <scratchpad>/salvage/tree/<its relative path>
 ```
 
-Then make the new worktree at the top (step 3) and apply there with
-`git apply --3way <scratchpad>/salvage/work.patch`. Leave the old tree as it was until the new
-one holds the work and its checks pass. Do not use `git stash`: a stash is shared by every
-worktree of the repository, and another session can pop it.
-
-Sort each banked file before carrying it: already on the stack (compare with
-`git show <top>:<path>`, then drop it and say so), yours and unpublished (route it by step 2), or
-not yours (leave it where it is). Never discard a file because it looks accidental.
+Create the new worktree (section 3) and `git apply --3way <scratchpad>/salvage/work.patch` there.
+Leave the old tree as it is until the new one passes its checks. Never use `git stash` by hand:
+all worktrees share one stash, and another session can pop it. Each saved file is either on
+the stack already (`git show <top>:<path>`; drop it and say so), yours (route it by section 2), or
+not yours (leave it); never discard one because it looks accidental.
 
 ## 5. Shape the commits
 
-**Every commit passes alone.** A later session reads the history and copies its patterns, and a
-red commit followed by its repair teaches it to commit red. So a fix to an unpublished commit is
-folded into it (`git commit --fixup=<sha>`, then
-`GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <sha>~1`), and a history that went back and
-forth is regrouped into finished changes before its first push: one or two commits for a small
-pull request, five to ten for a large one, and beyond that it is several pull requests.
-
-To regroup without losing anything: `git branch park/<topic> HEAD`, `git reset --soft <base>`,
-commit the groups path by path with the owner before its consumers and each test in the commit
-whose behaviour it proves, then `git diff --quiet park/<topic> HEAD` must succeed.
-
-A subject line is an imperative sentence that states the finished change, as the log's are:
-"Remember Seatbelt support only when its files settled before the read". The body says what and
-why. It never narrates a revert.
-
-Keep the hooks enabled: `bun run hooks:install`, once per clone, and every worktree shares it.
-The pre-commit hook runs `bun run commit:check`, which refuses a reserved placeholder author email
-and scans staged additions for secrets. For staged JavaScript and TypeScript paths it checks
-format and lint against the working-tree bytes and prints an advisory slop report; where the
-hooks are not installed, run it by hand before each commit. Run `/simplify` over a source diff
-first: the repository's `.claude/skills/simplify`, with `bun run simplify` for the whole-tree
-scans. A whole-suite run rewrites
-`test/.test-timings.json`, which Git ignores.
-
-Keep the change small in total. Prefer deleting an owner to adding one, and when the pull
-request claims to simplify, give the net source lines in the body. Test growth is not the
-measure.
-
-## 6. Run what CI runs
-
-`.github/workflows/ci.yml` runs on two platforms, because the isolation has two mechanisms and a
-suite passing on one platform says nothing of the other. The UI's CI gate has a macOS runner of its
-own. CI runs by `workflow_dispatch` alone; neither a pull request push nor a merge into `main` starts a run.
-`bun run land -- <top> --merge` dispatches the top's run when none exists. After the root install,
-checks run despite earlier check failures; the UI build and tests both require its dependency
-install to pass.
-
-| job | steps |
-| --- | --- |
-| Darwin (macOS 15) | `bun install --frozen-lockfile`, `bun run ui:deps`, `bun run typecheck`, `bun run lint -- --strict`, `bun run format:check`, `bun run secrets`, `bun run test` |
-| Darwin UI (macOS 15) | `bun install --frozen-lockfile`, then separate steps for `bun run ui:deps`, `bun run ui:build` and `bun run test -- packages/ui/test` |
-| Linux (Ubuntu 24.04 VM) | install `bubblewrap`, `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`, `bun install --frozen-lockfile`, `bun run test`, `ANA_CLIMB=1 bun run test -- test/climb.test.ts` |
-
-`bun run gate` runs the two Darwin jobs' steps in one command, cheapest first; `-- --static` runs the
-tests one import from what `HEAD` changed in place of the suite, and leaves out the UI's browser
-test files unless `HEAD` changed `packages/ui` or its install, run or lint setup (`UI_SETUP` in
-`tools/runtime/gate.ts`). Unlike CI, the local CI gate stops at the first failed
-step. Judge every step by its exit code, never by its last lines.
-
-Where the runners do not run, each job is run by hand at the pushed head, and the body says
-where and with what counts. What that has cost so far:
-
-- **The suite needs a Git repository.** Use `git init`
-  and one commit in the copy, or a clone.
-- **The Linux job needs a VM, not a container**: bubblewrap makes user and mount namespaces.
-  It also needs `zip`. In a VM with little memory the linter's allocator aborts under strict
-  overcommit, and the suite then fails by the hundred; `sudo sysctl -w vm.overcommit_memory=1`.
-- **Stop the VM when the job is done.**
-- **While paid solves run on a host, run focused tests there and the whole suite elsewhere.** A
-  suite on every core pushes live solves into their walls, and the solves make the suite flaky.
-  Before reading a failure, write down the load and what else ran.
-
-A test that fails once is run again alone, several times, before it is called flaky or fixed,
-and a flaky test is fixed at its cause in a pull request of its own.
-
-## 7. Publish
-
-Push your own branch from its clean worktree, naming the explicit commit you intend to publish.
-A new branch needs no lease; a rewrite takes a lease on the remote head you last saw:
-
-```sh
-git push origin <sha>:refs/heads/<branch>
-git push --force-with-lease=refs/heads/<branch>:<old-sha> origin <sha>:refs/heads/<branch>
-```
-
-Over HTTPS, `git push origin HEAD:refs/heads/<branch>` lets the remote helper resolve `HEAD` again
-after the pre-push hook read it. A commit made in that tree while the checks ran can then go out
-unchecked. An explicit commit keeps the published head equal to the one the hook read.
-When committing and pushing in one shell command, chain them with `&&`. With `;`, a failed commit
-still pushes the previous head.
-
-Read a refusal and correct its cause within your authority. Pass `--no-verify` only where the
-operator says so, and never push to `main`. It skips the hook whole, so the pushed head shows no
-`mergeable` and the pull requests above it keep their green one until the next landing.
-
-A plain push runs `git diff --check` and the secret scan, which take seconds. `ANA_PUSH_VERIFY=1
-git push` also runs every other check, with the tests near each pushed head's own change in place
-of the suite, and `bun run land -- <top> --sanitize` proves every commit of the stack, the suite at
-its top. What a push adds is the commits along each
-pushed head's first parents that no remote-tracking ref of the clone holds; each gets
-`git diff --check`, and what each pushed head that no other pushed head holds adds gets the secret
-scan. Where the push asks and one of them changes more than `AGENTS.md`, `README.md`, `docs/` or a
-`.md` under `.claude/`, each such head gets `bun run gate -- --static` over a scratch checkout: the install, the
-UI's steps as far as they are due, the format check, the secret scan, typecheck, strict lint, and
-the test files one import away from what the head's own commit changed. `bun run land` reads that
-pass back and does not run it again. The working tree may hold anything. A
-history brought in through a merge's other parent is counted and left alone, and the merge is
-checked: 444 of v2's commits came into this repository that way, and v1's hook, which
-ran the CI gate on every commit new to the remote, could not pass one of them. To push another repository's
-history as a branch of its own, fetch it as a remote first, so that its commits are already held.
-
-**A pushed commit is unproved.** Its tests run when the stack is proved: `bun run land -- <top>
---sanitize` (section 9) gives every commit its static steps and nearby tests and the top the whole
-CI gate, the full suite among it, and posts each verdict. Run it when the stack is worth proving, such
-as after a restack or before asking for a merge; `--merge` runs the same proof again. A pass is
-remembered by content in the common Git directory, a whole or checks pass by the commit's tree and a
-static one by its tree and its parent's, so a push its lease refused or a restack that kept every
-tree is not run again, and after a failure the commits beneath the fix keep their passes. The key
-also holds the CI gate that ran and the Bun version, so either changing runs it again.
-`ANA_GATE_FRESH=1` ignores remembered passes.
-A failure ends on one line naming the commit and the step, with its log. The fix goes into the
-commit that brought it, and the push or the landing goes again:
+**Every commit passes alone.** Later sessions imitate the history, and a failure followed by its
+repair teaches them to commit failures. Fold a fix into the unpublished commit it repairs:
 
 ```sh
 git commit --fixup=<sha>
 GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <sha>~1
 ```
 
+Before the first push, regroup a history that went back and forth (one or two commits for a small
+pull request, five to ten for a large one): `git branch park/<topic> HEAD`, `git reset --soft
+<base>`, commit path by path with each owner before its consumers and each test with the behaviour
+it proves, then check that `git diff --quiet park/<topic> HEAD` succeeds.
+
+A subject names the finished change in a title's register (section 7); the body never narrates a
+revert. Install the hooks once per clone
+(`bun run hooks:install`); pre-commit runs `bun run commit:check`. Run `/simplify` over a source
+diff first, prefer removing an owner to adding one, and give net source lines for a simplification.
+
+## 6. Run what CI runs
+
+`.github/workflows/ci.yml` runs only when `bun run land -- <top> --merge` dispatches it (as
+`ci-fixes` after a run that failed only in tests: `tools/runtime/ci-runs.ts`). It covers two
+platforms because the wall has two mechanisms.
+
+| job | steps |
+| --- | --- |
+| Darwin (macOS 15) | `bun install --frozen-lockfile`, `bun run ui:deps`, `bun run typecheck`, `bun run lint -- --strict`, `bun run format:check`, `bun run secrets`, `bun run test` |
+| Darwin UI (macOS 15) | `bun install --frozen-lockfile`, `bun run ui:deps`, `bun run ui:build`, `bun run test -- packages/ui/test` |
+| Linux (Ubuntu 24.04 VM) | install `bubblewrap`, `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`, `bun install --frozen-lockfile`, `bun run test`, `ANA_CLIMB=1 bun run test -- test/climb.test.ts` |
+
+`bun run gate` runs both Darwin jobs here and stops at the first failure; `-- --static` runs only
+tests one import from what `HEAD` changed (UI browser tests only where `UI_SETUP`,
+`tools/runtime/gate.ts`, is touched). Judge each step by its exit code, and state where a job run by
+hand ran and its counts. The suite needs a Git repository; the Linux job needs a VM (Bubblewrap
+makes namespaces), `zip`, and on a small VM `sudo sysctl -w vm.overcommit_memory=1`. Beside paid
+solves run only focused tests. Rerun a failed test alone several times before calling it flaky or
+fixed, and fix a flaky test in its own pull request.
+
+## 7. Publish
+
+Push your own branch, naming the commit; a rewrite takes a lease on the head you last saw:
+
+```sh
+git push origin <sha>:refs/heads/<branch>
+git push --force-with-lease=refs/heads/<branch>:<old-sha> origin <sha>:refs/heads/<branch>
+```
+
+An explicit commit keeps the published head equal to the one the hook checked (over HTTPS, `HEAD`
+is resolved again after the hook). Chain commit and push with `&&`, never `;`. Fix a refusal at its
+cause. `--no-verify` only on the operator's word, and never push to `main`.
+
+A plain push runs `git diff --check` and the secret scan on what it adds; `ANA_PUSH_VERIFY=1 git
+push` adds `bun run gate -- --static` on each head that changes code, which `land` reuses.
+**A pushed commit is unproved** until `bun run land -- <top> --sanitize` (section 9) checks it.
+Passes are remembered by tree, gate and Bun version, so a restack that keeps trees reruns nothing;
+`ANA_GATE_FRESH=1` ignores them. Fold a fix into the failing commit (section 5) and land again.
+
 ```sh
 gh pr create --draft --base <parent branch> --head <branch> --title "<title>" --body-file <file> --label importance:I<n> --label <category>
 ```
 
-A pull request opens as a draft. `bun run land -- <top> --sanitize` moves each one to Ready for
-review as it posts `mergeable` success on its head, so a draft is one no landing has proved yet.
+A pull request opens as a draft; `--sanitize` marks it ready once its head posts `mergeable`. It
+carries exactly one importance label (`importance:I0` to `I3`, defined in `AGENTS.md` section 11)
+and at least one category, or `land` refuses the stack before any check
+(`gh pr edit <number> --add-label <label>`). Categories (`CATEGORIES`, `tools/runtime/land.ts`;
+`gh label list`): `exam`, `verdicts`, `supply`, `harness`, `comparison`, `climb`, `solve`,
+`economy`, `runs`, `log`, `investigation`, `landing`, `quality`, `docs`. A consolidation spends
+by importance (`references/consolidate.md`, "Spend by importance").
 
-Every pull request carries exactly one importance label, defined in the repository's labels:
-`importance:I0` blocks a release or further operation, `I1` protects comparison validity, prevents
-a serious run failure, or broadly simplifies the tree or the suite, `I2` is a bounded functional
-improvement, and `I3` is reporting, wording or convenience (AGENTS.md section 11 owns the
-definitions). The title carries no "Ix:" prefix; the label replaced it. `bun run land`
-refuses a stack in which any pull request has no importance label or more than one, or no category
-label, naming each, before it runs any checks, so `--sanitize` shows such a stack as not ready
-(`gh pr edit <number> --add-label <label>` repairs it). The categories are the subjects a pull request
-is filed under, mostly the investigation's lane groups: `exam`, `verdicts`, `supply`, `harness`,
-`comparison`, `climb`, `solve`, `economy`, `runs`, `log`, `investigation`, `landing`, `quality` and `docs` (`CATEGORIES`,
-`tools/runtime/land.ts`); `gh label list` gives what each holds, and a pull request may carry several. `stack.ts` ends each line in the label, and a
-consolidation spends its time by it: `I0` and `I1` through commit-r, `I3` folded
-(`references/consolidate.md`, "Spend by importance").
+### Title and body
 
-The operator's title is used word for word. Otherwise, name the changed behaviour in a short
-imperative sentence, such as "Let the host wait for Examiner admission results" or "Reuse CI gate
-results when unrelated tooling changes". Leave the full implementation sequence to the body.
+Write a short methods note for a colleague who has not read the conversation (`AGENTS.md`,
+section 13). A **title** is an imperative of at most about ten words naming
+the changed behaviour in the system's nouns: at most two changes joined by "and", and no rationale
+clause, colon, list, possessive chain or "Ix:" prefix. Prefer exact verbs (restore, preserve,
+report, correct, refuse, remove, define, apply) to conversational ones (let, say, drop, fix what).
+The operator's title is used word for word; a title a push made wrong is rewritten with the body.
 
-Write in the simple academic style of `AGENTS.md` section 13. Start with `Stacked on #<n>.` where
-applicable, then a paragraph stating the change, its mechanism and why it matters. Put a material
-limit there too. A reader should understand the change before encountering paths or function names.
+| Conversational | In this style |
+| --- | --- |
+| Drop pulse's --once, which has changed nothing since one look became the default | Remove the redundant pulse option --once |
+| Fix what the landing review confirmed: a lost pause, an overwritten file, a moving seal | Correct pause, follow and sealing defects found in landing review |
 
-Use as much structure as the change needs, usually **Problem and method** followed by
-**Validation and limits**. Separate **Observed problem**, **Method** or **Recorded evidence** when
-that makes a larger change easier to read. These are useful headings, not mandatory sections.
-Cover the following without repeating the opening:
+The **body** opens with `Stacked on #<n>.` where it applies, then one paragraph: the change, its
+mechanism, why it matters and any material limit. Then, usually under **Problem and method** and
+**Validation and limits** (headings are aids, not requirements):
 
-- The observed problem, with counts and their population where the log supplies them, then how
-  the change addresses it. Name the owner before its file or function.
-- Its relation to earlier work: among the last roughly 50 pull requests, name those it builds on,
-  fixes, retires or turns back, and confirm the relationship against the diffs. Include this in the
-  explanation or a Relation section where useful.
-- Where a reader changed, what replay now reports on existing logs. Distinguish a corrected report
-  from a change in the underlying campaign's performance.
-- Validation at the recorded commit: the commands, runner platform, passed, skipped and failed
-  counts, and any failure also present without the change. Separate test results, live observations
-  and retrospective estimates; name their baseline and any changed conditions. A check inherited
-  from an earlier description is labelled "previously reported" instead of attributed to the
-  rewriting session.
-- What remains untested or deliberately unchanged. Say when Linux, live behaviour or billing has
-  not been checked, rather than letting a passing local test imply it has.
+- the observed problem with counts and their population, and how the change answers it, owner
+  before file;
+- the recent pull requests it builds on, fixes, retires or reverses, checked against their diffs;
+- where a reader changed, what a replay now reports, apart from any change in performance;
+- validation at the recorded commit: commands, platform, passed, skipped and failed counts; tests,
+  live observations and estimates apart; an inherited check marked "previously reported";
+- what stays untested, naming Linux, live behaviour or billing where unchecked.
 
-Use ML framing when it makes the mechanism clearer: training exposure, evaluation conditions,
-solver variation or compute cost. Explain tooling changes directly when that framing adds nothing.
-A single simulation does not establish general accuracy, and repricing recorded turns estimates
-a saving without measuring it in a new campaign. Use tables for like-for-like comparisons and label
-estimated values in their column heading. Do not add authorship labels.
+Each claim names its level (`AGENTS.md`, section 9). ML framing (training exposure, evaluation
+conditions, solver variance, compute cost) is welcome where it clarifies; a repriced saving is an
+estimate. Tables for like-for-like comparisons; no run logs, long file lists or authorship labels.
+Rewrite the body after every push that changes the pull request.
 
-Examples of opening paragraphs:
-
-> This PR lets the Examiner wait for an admission result by ending its turn. The host resumes the
-> conversation when a result arrives, instead of immediately asking for more work and leaving the
-> model to wait through shell sleeps. The runtime behaviour is tested; the model's use of it still
-> needs live observation.
-
-> This PR uses a five-minute prompt cache for Solver and Referee sessions, and retains a one-hour
-> cache for Builder and Examiner sessions. The choice follows the gaps between recorded model turns:
-> shorter caches reduce write costs, while longer caches preserve context across slow tools and
-> evaluations. The cost estimates have not yet been confirmed in a live campaign.
-
-A choice of your own, such as a threshold, is said to be yours. Paste no run log and no long
-file list. After every push that changes the pull request, rewrite the body: a body that quotes
-a head, a commit count or a test count goes stale with each push.
+> This PR makes the Examiner wait for an admission result by ending its turn. The host resumes the
+> conversation when a result arrives, instead of asking for more work and leaving the model to wait
+> through shell sleeps. The runtime behaviour is tested; the model's use of it still needs live
+> observation.
 
 ## 8. When a parent moves
 
-A parent that gained commits leaves its children valid, since they still hold the old head as
-an ancestor, and the pull request shows them behind. A parent that was rewritten does not. For
-each of your own children, bottom-up:
+A parent that only gained commits leaves its children valid. A rewritten parent does not; replay
+each of your own children, bottom up:
 
 ```sh
 git rebase --onto <new parent head> <old parent head> <child branch>
 git merge-base --is-ancestor <new parent head> <child branch>    # must succeed
 ```
 
-Push every moved head in one `git push --atomic`, each with its own lease and explicit commit
-refspec (`<sha>:refs/heads/<branch>`). Then check each
-pull request lists only its own commits. A child that is another session's is that session's to
-replay: send its owner the exact `git rebase --onto` line and wait.
+Push every moved head in one `git push --atomic`, each with its own lease and
+`<sha>:refs/heads/<branch>`. Send another session's child the `git rebase --onto` line instead.
+Restacking the whole open stack takes the operator's word.
 
-Restacking the open stack as a whole is a separate operation and needs the operator's word. A
-hop to the top, or a new pull request, never authorises it: section 10 is that operation.
-
-**When what a stack stood on has landed**, its bottom is based on a merged branch, or misses
-`main`'s new head, and `land` refuses it. `stack.ts` says so in an `off main:` line, and so does
-the hourly follow's log. One command replays the whole chain onto `origin/main` with `git replay`
-(no worktree, no ref moved), checks that every commit came across under its subject, names each
-head, then unstacks, retargets, pushes every head under a lease and relinks the native stack:
+When the branch beneath the stack has landed, `land` refuses the stack and `stack.ts` prints an
+`off main:` line. One command replays the chain onto `origin/main` with `git replay`, checks every
+subject came across, retargets, pushes under leases and relinks the native stack; it restacks
+everything, so it takes the operator's word, and it refuses a chain that does not replay cleanly:
 
 ```sh
 bun .claude/skills/stack-pr/scripts/republish.ts --onto-main <top>        # show the plan
 bun .claude/skills/stack-pr/scripts/republish.ts --onto-main <top> --yes  # carry it out
 ```
 
-It is a restack of the whole stack, so it takes the operator's word. It refuses a chain that does
-not replay cleanly and names the `git rebase --onto` line to resolve by hand. On 6 November #632 to
-#653 stood on `claude/landing-fixes` after #646 merged; the repair by hand took an unstack, a base
-edit, a rebase in a scratch worktree, a map of 18 heads and a republish.
-
 ## 9. Land
 
-Merging is the operator's call. Nothing is tagged or versioned by a session unless asked. A stack
-lands through GitHub, so each pull request ends Merged; a local merge pushed to `main` leaves them
-open (98 of them at once in v1). The command is `tools/runtime/land.ts`:
+Merging is the operator's decision, and a session tags nothing unless asked. A stack lands through
+GitHub (`tools/runtime/land.ts`), so each pull request ends as Merged:
 
 ```sh
 bun run land -- <top>                 # prove it here; nothing is written to GitHub
 bun run land -- <top> --sanitize      # and post each commit's verdict as ana/commit
 bun run land -- <top> --merge         # and wait for ci.yml, post ana/stack-gate, and merge
-bun run land -- <pr> --auto --merge   # land the top above <pr>, and follow a new top stacked meanwhile
-bun run land -- --merge               # the same, for the stack that holds the oldest stacked pull request
-bun run land -- <top> --merge --alone # merge beside another chain on main, on the operator's word; replay that chain after
-bun run land -- <top> --merge --tag v0.9.0 # and cut that release at the merge, with the notes GitHub writes
+bun run land -- <pr> --auto --merge   # land the top above <pr>, following a new top stacked meanwhile
+bun run land -- --merge               # the same, for the stack holding the oldest stacked pull request
+bun run land -- <top> --merge --alone # merge beside another chain on main, on the operator's word
+bun run land -- <top> --merge --tag v0.9.0 # and cut that release at the merge
 ```
 
-GitHub enforces this. The repository allows merge commits only, with squash,
-rebase and auto-merge off. Ruleset 25824510 on the default branch, "main lands only through bun run
-land --merge", has no bypass actors. It refuses deleting `main` and any non-fast-forward push to it
-(`main` has been rewritten before), and it requires a pull request merged by the merge
-method with the status `ana/stack-gate`, which only `bun run land -- <top> --merge` posts. Read it
-with `gh api repos/s-smits/anabasis/rulesets/25824510`. One gap remains: a token with admin rights
-can post `ana/stack-gate` by hand.
+GitHub allows merge commits only, and ruleset 25824510 on `main`
+(`gh api repos/s-smits/anabasis/rulesets/25824510`) refuses non-fast-forward pushes and requires
+`ana/stack-gate`, which only `--merge` posts.
 
-`land` reads the chain of bases from the named pull request down to `main` and refuses a head that
-does not contain the one beneath it, or a bottom that does not contain `main`'s head: only then
-does the last merge leave `main` at exactly the top's tree. Then it proves every commit along the
-top's first parents above `main`, each over its own checkout: the static steps and nearby tests,
-and the whole CI gate, the full suite among it, on the top's head (`land.ts`, where it builds the
-proofs). A pass already recorded is not run again. `--jobs N` runs up to N static passes at once;
-the whole CI gate runs alone.
+`land` checks that each base contains the head beneath it down to `main`, so the last merge leaves
+`main` at the top's tree, then proves each commit on the top's first parents: static steps and
+nearby tests, and the whole gate on the top; recorded passes are reused except under `--merge`,
+which sets `ANA_GATE_FRESH=1` and proves every commit afresh, and `--jobs N` runs N static passes at
+once. **A passing proof is not a release**: a stack merges only once a fresh run at the top's head
+has reached two promotions on unchanged code (run-improvement-campaign, "A run proves the release");
+land the proved top by its number, never a newer top. On failure, fold the fix into the named
+commit, replay what is above (section 8), push together and land again. A runner that drops twice
+reads "gave no verdict"; land again.
 
-**A passing proof is not yet a release.** `land` says each commit passes. A stack merges only once
-a fresh run launched at the top's head has reached two promotions with its code unchanged.
-Land that proved top by its number, never a newer top stacked above it.
-run-improvement-campaign, step 10, "A run proves the release", owns what that run must show.
+`--merge` dispatches `ci.yml` where none ran, waits, and on failure says whether to fix a commit or
+`gh run rerun <id>`; then it posts `ana/stack-gate` and merges the native stack all or nothing,
+pinned to the checked head (a landing outside a native stack is refused with its `gh stack link`
+line). Test `land` only against a fake `gh` (`test/land.test.ts`).
 
-A failure names the commit and the pull request it sits on. Fold the fix into that commit, replay
-the pull requests above it (section 8), push them together, and land again: the commits below the
-fix keep their passes. A step whose runner dropped its connection runs once more; after a second
-drop the commit reads "gave no verdict", shows an error rather than a failure, and the only fix is
-to land again. A head pushed while the landing runs is read again and landed as it stands. A commit
-proved afresh turns its heads pending, so a red from an earlier landing clears as its fix is proved.
-
-`--merge` dispatches `ci.yml` on the top's head before the proof when no run is there, and waits
-for it after; a failed run is not dispatched again. The top's head carries a status `ci.yml`, linked
-to the run, pending until it passes, since a dispatched run shows on no pull request. A failed run
-brings its failed jobs and their log home beside the gate's logs, and the refusal says whether to
-fix a commit or rerun the run (`gh run rerun <id>`). It then reads every head again, posts
-`ana/stack-gate` on each, and merges the top through GitHub's asynchronous merge, pinned to its
-head checked by the CI gate, which merges the native stack beneath it all or nothing; the returned merge commit
-must have the top's tree. A landing of several pull requests outside a native stack is refused
-before the proof, with the `gh stack link` line that makes one. A refused merge sets
-`ana/stack-gate` back to pending on every head. An uncertain merge, or one that went into a merge
-queue, leaves the statuses in place and asks for the trunk to be read before another landing.
-`--tag vX.Y.Z` cuts that release at the merge commit with GitHub's generated notes, which the
-release notes below then replace; a tag origin already holds is refused before the proof. Test
-`land` against a fake `gh` only (`test/land.test.ts`); never against this repository.
-
-**Landing part of a stack.** A landing's members must be its native stack's, so divide the stack at
-the last pull request to land: `bun run split -- <pull request> --yes` makes two stacks and moves no
-branch, so every pass stands. Without `--yes` it prints what the copy after the merge would do. Land
-the lower one, then run `bun run split -- <pull request> --yes` again. That copies every commit above
-the merge onto it with only its parents changed, so each keeps its tree and its pass, pushes in one
-atomic step under leases and without the hook, moves the bases to the trunk and links the upper stack
-there. `land --sanitize` on its top then shows the passes on the new heads. `test/split.test.ts` runs
-against a fake `gh`; never try `split` on this repository without the operator's word.
+**Landing part of a stack.** `bun run split -- <pull request> --yes` cuts the native stack after
+the last pull request to land; once the lower part lands, the same command moves the upper commits
+onto the merge with their trees and passes intact. Run it only on the operator's word.
 
 ### Release notes, when the operator asks for the next version
 
-This step is optional: a landing takes `--tag vX.Y.Z` only when the operator asks to merge the next
-version. GitHub's generated notes are a placeholder, so save them in the scratchpad and replace them
-with `gh release edit vX.Y.Z --notes-file <file>`. Copy the shape of the last two or three releases
-(`gh release view <tag>`), and keep the text between 550 and 800 words; v0.9.0's first draft ran to
-1,435 and was cut by half. Open with at most three sentences: what the release changes, whether the
-minor moves and why (run-improvement-campaign step 10), and whether a fresh campaign has run on the
-release tree. Then one line: "Includes **N PRs from #a to #b**, merged at `<sha>`." Group the
-changes under three or four bold headers by subject, such as **Comparisons and task supply**,
-**Runs and hosts** and **Instructions and landing**, never one per pull request. Give each change
-that alters what a run measures a bullet of its own, and a group of smaller ones a short paragraph.
-A bullet leads with an imperative verb, says what changed instead of what, and ends with its pull
-requests in brackets. Bold the key counts, each with its denominator and axis ("**70 of 73 drafts
-refused**"). Keep one or two numbers a change and leave the rest to its pull request's body. Call a
-replay or a snapshot an estimate, and name a result unmeasured where no run shows it
-(`attribution-and-proof`). Keep every rule 3 fix and every finding carried to the next cycle,
-however short the text gets. Close with **Validation and limits**: one table with the columns
-Landing, Gate head, Tests passed / skipped / failed and Merge, the last linking the `ci.yml` run.
-Below it, at most three short paragraphs say how the proof ran, what the review found and what
-carries over, and what the cycle's stopped runs showed. Name no host, login or account ("the Linux
-runner", "a macOS runner"), and follow `AGENTS.md` section 13.
+Replace GitHub's generated notes (`gh release edit vX.Y.Z --notes-file <file>`) with 550 to 800
+words shaped like the last releases (`gh release view <tag>`): at most three opening sentences (what
+changed, whether the minor version moves and why, run-improvement-campaign, "A run proves the
+release", and whether a fresh campaign ran on the tree); "Includes **N PRs from #a to #b**, merged
+at `<sha>`."; three or four bold subject groups, a bullet each for changes to what a run measures,
+with one or two bold counts and their denominators and the pull requests in brackets; every rule 3
+fix and carried finding kept; and **Validation and limits**: one table (Landing, Gate head, Tests
+passed / skipped / failed, Merge linking the `ci.yml` run) and at most three short paragraphs. Name
+no host, login or account.
 
 ## 10. Consolidate the stack
 
-Consolidating turns a stack that grew one fix at a time, in the order the fixes were found, into a
-smaller stack structured by subject. It reviews the whole open stack, folds every fix into the commit it belongs to, makes
-related pull requests one, and publishes the result as one native stack. Every carrier whose body
-says "Absorbs into #N" is folded into #N and closed. It rewrites other
-sessions' pull requests, so it needs the operator's word (section 8). The procedure, with the
-reason for each rule, is `references/consolidate.md`: spend by importance (`I0` and `I1` rewritten
-surgically through commit-r, lowest on the stack; `I3` folded at the top); review in groups according
-to its importance table; restructure in one rebase; top-based lanes deliver `fixup!` and `amend!` deltas;
-assemble by cherry-pick and autosquash; check that the squashed top's tree equals the pre-squash
-tip and that every commit typechecks where it sits; regroup; publish; prove with
-`bun run land -- <top> --sanitize`.
-
-The publish step is one script, which refuses a stack whose bottom does not hold origin/main's
-head, pushes every moved head atomically with a lease each, closes the absorbed pull requests and
-relinks the native stack:
+Consolidation rewrites a stack grown fix by fix into a smaller one ordered by subject, folding
+every "Absorbs into #N" carrier into #N. It rewrites other sessions' pull requests, so it takes the
+operator's word. The procedure is `references/consolidate.md`, ending in:
 
 ```sh
 bun .claude/skills/stack-pr/scripts/republish.ts --head <pr>=<sha> ... [--absorb <pr>=<into>] ...
@@ -440,6 +266,5 @@ bun .claude/skills/stack-pr/scripts/republish.ts <the same> --yes [--no-verify]
 
 ## Report
 
-Say the edges you read and when, which open pull request the change expanded or why it is a new
-subject, where it sits, each commit with its subject,
-the checks with their counts and where they ran, and where each banked file went.
+The edges read and when, which pull request the change expanded or why it is new, where it sits,
+each commit's subject, the checks with counts and where they ran, and where each saved file went.

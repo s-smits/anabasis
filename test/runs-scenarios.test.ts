@@ -164,12 +164,12 @@ it("S3: view and fleet pulse explain a dead remote run using its newest bounded 
     "utf8",
   );
   expect(observation.length).toBeLessThan(3000);
-  const pulse = made.runScript(CLI, ["pulse", "--once", "--no-readers"], env);
+  const pulse = made.runScript(CLI, ["pulse", "--no-readers"], env);
   expect(pulse.code).toBe(0);
   expect(pulse.out).toContain("newest startup failure");
   expect(pulse.out).toContain("waiting for provider until 2099");
   // The same observer's next look has nothing new to say of a run that was already stopped.
-  const again = made.runScript(CLI, ["pulse", "--once", "--no-readers"], env);
+  const again = made.runScript(CLI, ["pulse", "--no-readers"], env);
   expect(again.code).toBe(0);
   expect(again.out).not.toContain("distant");
 });
@@ -406,7 +406,7 @@ it("S9: a laptop with no open run still pulses the campaign that lives on a peer
       },
     }),
   };
-  const result = made.runScript(CLI, ["pulse", "--once", "--no-readers"], env);
+  const result = made.runScript(CLI, ["pulse", "--no-readers"], env);
   writer.kill();
   expect(result.code).toBe(0);
   // A host with nothing to say prints no line of its own, this laptop included.

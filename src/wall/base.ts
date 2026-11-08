@@ -16,12 +16,11 @@
  * policy's name, by which a process probes each policy once (`walledBase`) and reads each one's
  * network reach once (`networkReach`).
  */
-import { homedir } from "../meta/os.ts";
 import { hashJsonBytes } from "../meta/json-runtime.ts";
 import { nodeRuntimeReadRoots } from "./linux-bwrap.ts";
 import { type OsIsolationRuntime, osIsolationSupport } from "./os-isolation.ts";
 import { covers } from "./seatbelt-path-guard.ts";
-import { canonicalRoots } from "./policy.ts";
+import { canonicalRoots, closedHome } from "./policy.ts";
 
 /** The profile a condition's `sandbox` names (`tools/d2/campaign.ts`). */
 export const HOST_SOLVE_ISOLATION_PROFILE_ID = "harness-host-solve-isolated";
@@ -62,11 +61,15 @@ export function solveIsolationPolicy(input: {
   if (!support.ok || support.mechanismDigest === null) {
     return { unsupported: support.reason ?? "the OS isolation mechanism is unavailable" };
   }
+  const home = closedHome();
+  if (home === undefined) {
+    return { unsupported: "HOME is a relative path, so the wall cannot name the home it closes" };
+  }
   const reads = canonicalRoots([
     input.repoRoot,
     ...(input.otherTrees ?? []),
     ...(input.packRoots ?? []),
-    homedir(),
+    home,
   ]);
   const writes = [...reads];
   const allowedReads = canonicalRoots([...nodeRuntimeReadRoots(), ...(input.readAllowRoots ?? [])]).filter(

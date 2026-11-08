@@ -27,21 +27,35 @@
  * Without `--yes` nothing moves. On a pull request still open, the same copy runs against a merge
  * commit made for the purpose, which no ref holds, so a split can be read before its merge.
  *
- * With `--yes` on a pull request still open, the native stack it is in becomes two: up to it on the
+ * With `--yes` on a pull request still open, its stack becomes two native stacks: up to it on the
  * trunk, and above it on its branch, each head and base as it was. No branch moves, so every pass stands.
  *
  * With `--yes` after the merge, every branch moves in one atomic push under a lease on the head GitHub
- * listed, a pull request still based on the merged branch moves to the trunk, and the native stack above
- * is linked again on the trunk. A commit already on the trunk's head copies to itself, so a second run
- * finishes what the first could not. The push skips the pre-push hook, since every tree was checked
- * before and a copy changes none (operator, 5 November); `land --sanitize` shows the passes on the new heads.
+ * listed, a pull request still based on the merged branch moves to the trunk, and the stack above is
+ * linked again on the trunk. The push skips the pre-push hook, since every tree was checked before and
+ * a copy changes none (operator, 5 November); `land --sanitize` shows the passes on the new heads.
+ *
+ * Both read the members of each native stack they link from the chain of bases rather than from the
+ * native stack they dissolve, so a second run finishes what the first could not: a commit already on
+ * the trunk's head copies to itself, and a stack unstacked before its link failed is linked. Until
+ * 9 November both read the old native stack, and a run cut short after its unstack left none to read.
  */
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { parseArgs, runtimeProcess } from "../../src/meta/process.ts";
 import { errorMessage } from "../../src/meta/runtime-values.ts";
 import { runSync, runTextSyncOrThrow } from "../../src/meta/subprocess.ts";
 import { git, gitSays, lines, short } from "./gate.ts";
-import { api, ghOrThrow, openPulls, STACK_MEMBERS, trunkOf } from "./pulls.ts";
+import {
+  api,
+  beneath,
+  chainAbove,
+  ghOrThrow,
+  openPulls,
+  type Pull,
+  STACK_MEMBERS,
+  stackHolding,
+  trunkOf,
+} from "./pulls.ts";
 
 /** The pull request a stack is split above, as `gh pr view --json` gives it. */
 interface Cut {
@@ -71,32 +85,31 @@ function copies(root: string, commits: readonly string[], from: string, onto: st
   return copied;
 }
 
-/** The open native stack `number` is in, and its open members bottom first, or null. */
-function nativeStack(root: string, number: number) {
-  const read = ghOrThrow(root, ["api", api(`stacks?pull_request=${String(number)}`), "--jq", STACK_MEMBERS]);
-  if (read === "") return null;
-  const [stack = "", members = ""] = read.split(" ");
-  return { stack, members: members.split(",") };
-}
-
-/** Makes `members` one native stack on `base`, bottom first; a lone pull request needs none. */
-function link(root: string, members: readonly string[], base: string): void {
+/** Makes `members` one native stack on `base`, bottom first, dissolving the native stack that holds
+ *  the bottom first; a lone pull request needs none. Each reads GitHub afresh and the members come
+ *  from the chain of bases, which no step here moves, so a run cut short is finished by the next. */
+function relink(root: string, members: readonly Pull[], base: string): void {
+  const [bottom] = members;
+  if (bottom === undefined) return;
+  const query = api(`stacks?pull_request=${String(bottom.number)}`);
+  const [stack = ""] = ghOrThrow(root, ["api", query, "--jq", STACK_MEMBERS]).split(" ");
+  if (stack !== "") ghOrThrow(root, ["stack", "unstack", stack]);
   if (members.length < 2) return;
-  ghOrThrow(root, ["stack", "link", "--base", base, ...members]);
-  console.log(`Linked ${members.map((member) => `#${member}`).join(" ")} on ${base}.`);
+  const numbers = members.map((pull) => String(pull.number));
+  ghOrThrow(root, ["stack", "link", "--base", base, ...numbers]);
+  console.log(`Linked ${numbers.map((number) => `#${number}`).join(" ")} on ${base}.`);
 }
 
-/** The native stack `number` is in as two, with it on top of the lower. No branch or base moves. */
-function divide(root: string, number: number, branch: string): void {
-  const native = nativeStack(root, number);
-  const at = native?.members.indexOf(String(number)) ?? -1;
-  const above = native?.members.slice(at + 1) ?? [];
-  if (native === null || at < 0 || above.length === 0) {
-    throw new Error(`no native stack holds pull requests above #${String(number)}.`);
+/** The stack `number` is in as two, with it on top of the lower. No branch or base moves. */
+function divide(root: string, number: number): void {
+  const open = openPulls(root);
+  const cut = open.find((pull) => pull.number === number);
+  const above = cut === undefined ? [] : chainAbove(open, cut);
+  if (cut === undefined || above.length === 0) {
+    throw new Error(`no open pull request is based on #${String(number)}'s head.`);
   }
-  ghOrThrow(root, ["stack", "unstack", native.stack]);
-  link(root, native.members.slice(0, at + 1), trunkOf(root));
-  link(root, above, branch);
+  relink(root, [...beneath(open, cut).toReversed(), cut], trunkOf(root));
+  relink(root, above, cut.headRefName);
 }
 
 /** Prints the copy, and with `yes` pushes it. A refused push throws Git's own text, the rejection of
@@ -110,7 +123,7 @@ function split(root: string, number: number, yes: boolean): void {
     ghOrThrow(root, ["pr", "view", String(number), "--json", "state,headRefName,headRefOid"]),
   );
   if (yes && state === "OPEN") {
-    divide(root, number, headRefName);
+    divide(root, number);
     return;
   }
   const merged = state === "MERGED";
@@ -146,7 +159,6 @@ function split(root: string, number: number, yes: boolean): void {
     console.log("Nothing moved without --yes.");
     return;
   }
-  const native = nativeStack(root, holding[0]?.number ?? number);
   git(root, [
     "push",
     "--no-verify",
@@ -156,14 +168,14 @@ function split(root: string, number: number, yes: boolean): void {
     ...moved.map(({ pull, to }) => `${to}:refs/heads/${pull.headRefName}`),
   ]);
   console.log(`Pushed ${String(moved.length)} branches.`);
-  for (const { pull } of moved.filter((each) => each.pull.baseRefName === headRefName)) {
+  const rebased = open.map((pull) =>
+    holding.includes(pull) && pull.baseRefName === headRefName ? { ...pull, baseRefName: trunk } : pull,
+  );
+  for (const pull of rebased.filter((each, at) => each !== open[at])) {
     ghOrThrow(root, ["pr", "edit", String(pull.number), "--base", trunk]);
     console.log(`#${String(pull.number)} is based on ${trunk}.`);
   }
-  if (native !== null) {
-    ghOrThrow(root, ["stack", "unstack", native.stack]);
-    link(root, native.members, trunk);
-  }
+  relink(root, stackHolding(rebased, holding[0]?.number ?? number) ?? [], trunk);
   console.log("bun run land -- <top> --sanitize shows the passes again on the new heads.");
 }
 

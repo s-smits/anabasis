@@ -88,7 +88,16 @@ function folder(name: string, run: string, iteration: boolean) {
   writeFileSync(report, "# Lane 1\n");
   write("synthesis.md", "notes");
   const step = (launched: string[] = []) => nextOf(dir, () => launched, root);
-  return { root, dir, cycle, write, ledger, step };
+  /** A manifest `file` whose one session owns lane `lane`'s report, written. */
+  const lone = (lane: number, file = `launch-${String(lane).padStart(2, "0")}.json`) => {
+    const owned = join(dir, "lanes", `${String(lane).padStart(2, "0")}-report.md`);
+    write(
+      file,
+      JSON.stringify({ sessions: [{ name: `lane_${String(lane)}`, task: "Read.", ownedPaths: [owned] }] }),
+    );
+    writeFileSync(owned, "# Lane\n");
+  };
+  return { root, dir, cycle, write, ledger, step, lone };
 }
 
 const table = (ids: string[], outcome = "x") =>
@@ -141,9 +150,13 @@ describe("the next step of an investigation", () => {
   });
 
   it("walks an iteration through its isolated lanes, each run's ledgers, the read across and a fork's carry", () => {
-    const { dir, cycle, write, ledger, step } = folder("iteration", "r", true);
+    const { dir, cycle, write, ledger, step, lone } = folder("iteration", "r", true);
     expect(step()[0]).toStartWith("step: isolated");
-    write("launch-04.json", JSON.stringify({ sessions: [] }));
+    // A manifest counts by the lanes its sessions own, never by its name: one named for lane 4 that
+    // holds lane 3 passes nothing, and lane 4 in the first manifest passes the gate.
+    lone(3, "launch-04.json");
+    expect(step()[0]).toStartWith("step: isolated");
+    lone(4, "launch.json");
     expect(step()[0]).toStartWith("step: predictions · r has no predictions-r.md");
     ledger("predictions-r.md", "# Predictions\n\nprose, not a table\n");
     expect(step()[0]).toStartWith("step: predictions · ");
@@ -195,8 +208,8 @@ describe("the next step of an investigation", () => {
   });
 
   it("reopens a row left unreached or pending once the log grows past its count, and keeps it while the log stands", () => {
-    const { dir, root, write, ledger } = folder("stale", "r", true);
-    write("launch-04.json", JSON.stringify({ sessions: [] }));
+    const { dir, root, ledger, lone } = folder("stale", "r", true);
+    lone(4);
     ledger("predictions-r.md", table(["P1", "P2", "P3"]));
     const resolved = `${table(["P1"], "held")}| P2 | unreached |\n| P3 | pending |\n`;
     const step = (events: number | null) =>
@@ -239,8 +252,8 @@ describe("the next step of an investigation", () => {
   });
 
   it("refuses to choose between two copies of one ledger", () => {
-    const { ledger, write, step } = folder("twice", "r", true);
-    write("launch-15.json", JSON.stringify({ sessions: [] }));
+    const { ledger, write, step, lone } = folder("twice", "r", true);
+    lone(15);
     ledger("predictions-r.md", table(["P1"]));
     write("predictions-r.md", table(["P1"]));
     expect(step()[0]).toContain("keep one");
@@ -252,12 +265,12 @@ describe("the next step of an investigation", () => {
   });
 
   it("asks a vetting over two runs to name an id they share once for each run", () => {
-    const { root, dir, write, ledger } = folder("shared-id", "a", true);
+    const { root, dir, write, ledger, lone } = folder("shared-id", "a", true);
     write(
       "investigation.json",
       JSON.stringify({ logs: ["/x/.ana/d2/a/log.jsonl", "/x/.ana/d2/b/log.jsonl"] }),
     );
-    write("launch-04.json", JSON.stringify({ sessions: [] }));
+    lone(4);
     for (const run of ["a", "b"]) {
       ledger(`predictions-${run}.md`, table(["P1", `Q${run}`]));
       ledger(`outcomes-${run}.md`, table(["P1", `Q${run}`], "held"));
@@ -346,8 +359,8 @@ describe("the next step of an investigation", () => {
     expect(forkOf("esp32-fresh-opus-forkedPR600-host")).toBe(600);
     expect(forkOf("esp32-fresh-opus-forkedPR60-host")).toBe(60);
     expect(forkOf("esp32-fresh-opus")).toBeNull();
-    const { write, ledger, step } = folder("parent", "p", true);
-    write("launch-04.json", JSON.stringify({ sessions: [] }));
+    const { write, ledger, step, lone } = folder("parent", "p", true);
+    lone(4);
     ledger("predictions-p.md", table(["P1"]));
     ledger("outcomes-p.md", table(["P1"], "falsified"));
     // A run that kept its opposed trade-offs in a still-missing file before 8 November has said them.

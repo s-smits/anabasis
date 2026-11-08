@@ -242,6 +242,19 @@ describe("the lanes verb", () => {
       },
     ]);
     expect(prompts()["03-prompt.md"]).toBe(built["03-prompt.md"]);
+    // A later build of an open lane gets one too: until 9 November it wrote over `launch.json`, and
+    // the sessions the first build had launched were owed by no manifest.
+    const later = Array.from({ length: 29 }, (_, index) => index + 1).find(
+      (number) => ![4, 15].includes(number) && !(`${String(number).padStart(2, "0")}-prompt.md` in prompts()),
+    );
+    const stemOf = String(later).padStart(2, "0");
+    lanesVerb("--lanes", String(later));
+    expect(manifest()).toEqual(first);
+    expect(
+      parseJsonAs<{ sessions: { name: string }[] }>(
+        readFileSync(join(out, `launch-${stemOf}.json`), "utf8"),
+      ).sessions.map(({ name }) => name),
+    ).toEqual([`lane_${stemOf}`]);
   });
 
   it("checks out no tree for a launch whose commit this repository does not hold", () => {

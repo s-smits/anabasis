@@ -55,13 +55,14 @@ under `.ana/wri/<date>-<campaign>/` on the central host.
 2. **Edit the shared instructions** (below). *Check:* no `##` section is blank and the hard rules
    remain.
 3. **Build the lanes.** `wri.ts lanes --out <dir> [--lanes 1-4,7] [--agents N]` writes
-   `<dir>/lanes/NN-prompt.md` and `<dir>/launch.json`. Without `--lanes` it opens every triggered lane
+   `<dir>/lanes/NN-prompt.md` and a manifest: `<dir>/launch.json` the first time, and
+   `launch-NN[-NN...].json` by the lanes it built every later time, which the verb names. Without `--lanes` it opens every triggered lane
    and the five standing lanes, and names, without building, each isolated lane whose trigger fired.
    `--agents N` packs whole labels into N sessions of similar summed `Importance:`, and the verb
    prints a suggested N (the most sessions whose lightest weighs at least half the heaviest). A prompt
-   built before is kept and left out of the new `launch.json`. *Check:* exit 0; the sessions this call
+   built before is kept and left out of the new manifest. *Check:* exit 0; the sessions this call
    built are the count to authorise, and if it built none, launch nothing.
-4. **Launch.** `launch.json` is a [codex-gpt-swarm](../codex-gpt-swarm/SKILL.md) manifest
+4. **Launch.** Each manifest is a [codex-gpt-swarm](../codex-gpt-swarm/SKILL.md) manifest
    (`gpt-sessions.ts --manifest <dir>/launch.json --output-dir <new dir> ...`, on the operator's
    model). A Claude session runs as the `wri-lane` agent type (`.claude/agents/wri-lane.md`,
    `subagent_type: "wri-lane"`), handed only its row's `task` line, all in one message. Its hook

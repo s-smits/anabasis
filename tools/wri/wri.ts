@@ -448,13 +448,14 @@ function lanes(): number {
   });
   // A lane reads campaign logs, which hold hidden values, so its sessions search nothing: a query
   // leaves the machine (`AGENTS.md`, section 5). Every other Codex launch searches by default.
-  // A lane that runs alone is built after the others have launched, so its manifest stands beside
-  // theirs: on 4 November building lane 19 alone wrote over buffer583's five grouped sessions.
-  const alone = built.length > 0 && built.every((lane) => lane.isolated);
-  const launch = join(
-    out,
-    alone ? `launch-${built.map((lane) => stem(lane.number)).join("-")}.json` : "launch.json",
-  );
+  // Every build after the first has a manifest of its own beside the first's, named by its lanes, so
+  // no session a manifest launched loses the manifest that owes its report: on 4 November building
+  // lane 19 alone wrote over buffer583's five grouped sessions, and until 9 November a later build of
+  // open lanes still wrote over `launch.json`.
+  const first = join(out, "launch.json");
+  const launch = existsSync(first)
+    ? join(out, `launch-${built.map((lane) => stem(lane.number)).join("-")}.json`)
+    : first;
   if (sessions.length > 0) {
     writeFileSync(
       launch,

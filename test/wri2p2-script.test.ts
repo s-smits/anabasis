@@ -2,7 +2,13 @@
 // folder, so a session or a timer takes the iteration one printed step at a time. Every gate is a
 // default a recorded reason passes (operator, 7 November), so each is walked owed, met and deviated.
 import { afterAll, describe, expect, it } from "bun:test";
-import { ledgerViews, nextOf, rowOf, triggerOf } from "#skills/run-improvement-campaign/scripts/wri2p2.ts";
+import {
+  ledgerViews,
+  lengthsIn,
+  nextOf,
+  rowOf,
+  triggerOf,
+} from "#skills/run-improvement-campaign/scripts/wri2p2.ts";
 import { forkOf, idsOf, outcomesOf, pullOf } from "#tools/wri/ledger.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
@@ -215,6 +221,21 @@ describe("the next step of an investigation", () => {
     expect(step(null)).toStartWith("step: vet");
     ledger("outcomes-r.md", `Log events at resolution: 121\n\n${table(["P1", "P2", "P3"], "held")}`);
     expect(step(400)).toStartWith("step: vet");
+  });
+
+  it("counts a run's log only once nothing writes it, so a live run's growth reopens no row", () => {
+    const tree = join(base, "lengths");
+    const path = join(tree, ".ana", "d2", "wri2p2-lengths", "log.jsonl");
+    mkdirSync(join(path, ".."), { recursive: true });
+    writeFileSync(
+      path,
+      `${[event(0, "campaign.opened"), event(1, "build.started")].map((each) => JSON.stringify(each)).join("\n")}\n`,
+    );
+    const run = { name: "wri2p2-lengths", tree, path, end: "comparison.reported" } as const;
+    const writer = { pid: 1, cwd: tree, args: ["bun", "tools/d2/harness-builder.ts", "--name", run.name] };
+    expect(lengthsIn([run], () => [writer])(run.name)).toBeNull();
+    expect(lengthsIn([run], () => [])(run.name)).toBe(2);
+    expect(lengthsIn([run], () => [])("another")).toBeNull();
   });
 
   it("refuses to choose between two copies of one ledger", () => {

@@ -57,6 +57,7 @@ import { runSync } from "#src/meta/subprocess.ts";
 import { stillRunning } from "#tools/runs/diagnosis.ts";
 import {
   type Run,
+  type Running,
   HERE,
   isCampaign,
   logEvents,
@@ -275,8 +276,8 @@ function runGates(where: Ledgers, run: string): Gate[] {
       const unsettled = predicted.filter((id) => !known.includes(outcomes.get(id) ?? ""));
       const stray = [...outcomes.keys()].filter((id) => !predicted.includes(id));
       const events = where.lengthOf(run);
-      // A row left unreached or pending reopens once the log grows past the count it was read at,
-      // since a run continued after its trigger may yet reach it.
+      // A row left unreached or pending reopens once the log of a run that has stopped grows past
+      // the count it was read at, since a run continued after its trigger may yet reach it.
       const stale = staleOf(text, events);
       const counted = countedOf(text);
       const record =
@@ -517,13 +518,20 @@ export function nextOf(
 const launchedFrom = (among: readonly Run[]) => (pull: number) =>
   among.filter((run) => isCampaign(run) && forkOf(run.name) === pull).map(({ name }) => name);
 
-/** How long each campaign `among` holds by a name is now, read once a name; null for one it does not hold. */
-function lengthsIn(among: readonly Run[]): Ledgers["lengthOf"] {
+/** How long each campaign `among` holds by a name is now, read once a name; null for one it does not
+ *  hold or that may still write its log (`stillRunning`), whose log grows on every look and so would
+ *  reopen its unreached and pending rows at each `next` (review of v0.10.2). */
+export function lengthsIn(
+  among: readonly Run[],
+  running: () => readonly Running[] = processes,
+): Ledgers["lengthOf"] {
   const lengths = new Map<string, number | null>();
+  let looked: readonly Running[] | undefined;
   return (name) => {
     if (!lengths.has(name)) {
       const run = among.find((each) => isCampaign(each) && each.name === name);
-      lengths.set(name, run === undefined ? null : logEvents(run.path).length);
+      looked ??= running();
+      lengths.set(name, run === undefined || stillRunning(run, looked) ? null : logEvents(run.path).length);
     }
     return lengths.get(name) ?? null;
   };

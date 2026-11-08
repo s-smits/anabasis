@@ -50,8 +50,8 @@ interface Promotion {
   readonly read: {
     readonly session: string;
     readonly tally: Tally;
-    /** Whether it read a step for the reference (`confirmed`, `epochsOf`). The comparison's own
-     *  reading is the starter's against the reference, so its no-step is this read's step. */
+    /** Whether its tally, turned so that the reference is the side ahead, reads a step at its
+     *  level (`confirmed`, `epochsOf`); the comparison's own reading is the starter's, never this. */
     readonly confirmed: boolean;
     /** The tally on the tasks written after the promotion. A peer whose tree predates it sends none. */
     readonly writtenAfter?: Tally;

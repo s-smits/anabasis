@@ -145,6 +145,22 @@ describe("pre-push", () => {
     expect(gatesRun(log)).toEqual([]);
   });
 
+  it("passes a file biome's configuration leaves unformatted, which biome echoes and exits 1 on", () => {
+    const config = join(work, "biome.json");
+    writeFileSync(config, '{"overrides":[{"includes":["**/vendor/**"],"formatter":{"enabled":false}}]}\n');
+    try {
+      const mktree = (rows: string) => execTextSync("git", ["mktree"], { cwd: work, stdin: rows }).trim();
+      const vendor = mktree(`100644 blob ${blob("export const copied = {a:1}\n")}\tcopied.ts\n`);
+      const tree = mktree(`${git("ls-tree", docs)}\n040000 tree ${vendor}\tvendor\n`);
+      const head = git("commit-tree", tree, "-p", docs, "-m", "vendor");
+      const result = push([update(head, docs)]);
+      expect(result.stderr).not.toContain("vendor/copied.ts");
+      expect(result.status).toBe(0);
+    } finally {
+      rmSync(config);
+    }
+  });
+
   it("names biome's own failure where it cannot format a file, rather than calling it misformatted", () => {
     const head = git(
       "commit-tree",

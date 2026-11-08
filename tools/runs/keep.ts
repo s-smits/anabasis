@@ -265,7 +265,14 @@ export function poolOf(file: string, env: Env): () => Promise<readonly string[]>
         .catch(() => ""),
     )?.[1];
   const follows = named().then((first) => first === env.ANA_LOGINS);
-  return async () => allowedLogins((await follows) ? { ...env, ANA_LOGINS: await named() } : env);
+  // A file it cannot read, or a line it no longer finds, keeps the last pool rather than widening
+  // it to every login `.env` holds.
+  let last = env.ANA_LOGINS;
+  return async () => {
+    if (!(await follows)) return allowedLogins(env);
+    last = (await named()) ?? last;
+    return allowedLogins({ ...env, ANA_LOGINS: last });
+  };
 }
 
 /** Keep `run` going on the logins `pool` gives until it ends on its own terms. */

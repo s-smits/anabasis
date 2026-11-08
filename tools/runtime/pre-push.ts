@@ -112,11 +112,13 @@ function unformatted(root: string, line: readonly string[], tips: readonly strin
         input,
       });
       const site = `${short(tip)}:${path}`;
+      // Biome echoes a file its configuration ignores, such as one under vendor/, and exits 1.
+      if (decodeOutput(input) === decodeOutput(output.stdout)) return [];
       if (output.exitCode !== 0) {
         const reason = decodeOutput(output.stderr).trim().split("\n").at(-1) ?? "";
         return [`${site} (biome exited ${output.exitCode}: ${reason.trim()})`];
       }
-      return decodeOutput(input) === decodeOutput(output.stdout) ? [] : [site];
+      return [site];
     });
   });
 }

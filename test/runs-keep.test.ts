@@ -387,6 +387,11 @@ describe("the pool a keeper started without --logins reads", () => {
     writeFileSync(file, "ANA_LOGINS=3 # narrowed\n");
     expect(await own()).toEqual(["3"]);
     expect(await carried()).toEqual(["3", "4"]);
+    // A file being rewritten, or gone, keeps the last pool instead of every login `.env` holds.
+    writeFileSync(file, "");
+    expect(await own()).toEqual(["3"]);
+    rmSync(file);
+    expect(await own()).toEqual(["3"]);
   });
 });
 

@@ -217,13 +217,15 @@ export function treeContent(dir: string) {
 /** Each tool tree's content by where it really is, with the stamp it was read under. */
 const TREES = new Map<string, { stamp: string; content: ReturnType<typeof treeContent> }>();
 
-/** What a tool tree is read under: a file in it added, removed, resized, rewritten or with its mode
- *  changed changes it. It is what the runner's own moved-files check trusts (`run.ts`, `treeStamp`).
- *  It holds each entry's change time with its modification time: `tar` and `cp -p` set the
- *  modification time back, so a stamp of size and modification time alone survived a rewrite of
- *  the same size under them, and a freeze reused the copy from before it. No process can set the change time back, and
- *  hashing the content, which the stamp stands in for, reads a tree of 316 MB. */
-export function toolTreeStamp(real: string): string {
+/** Whether a tree changed, links unfollowed: a file in it added, removed, resized, rewritten or with
+ *  its mode changed changes it. A tool tree is read under it, and a solve's harness is compared by
+ *  it for moved-files (`run.ts`). It holds each entry's change time with its modification time:
+ *  `tar` and `cp -p` set the modification time back, so a stamp of size and modification time alone
+ *  survived a rewrite of the same size under them, and a freeze reused the copy from before it. No
+ *  process can set the change time back, and hashing the content, which the stamp stands in for,
+ *  reads a tree of 316 MB. Until 9 November the solver kept a stamp of its own without the change
+ *  time, mode or inode, and a solve that rewrote a harness file so went unseen. */
+export function treeStamp(real: string): string {
   return hashJsonValue(
     pathsUnder(real).map((path) => {
       const stat = lstatSync(join(real, path));
@@ -239,7 +241,7 @@ export function toolTreeStamp(real: string): string {
  */
 function keptTreeContent(toolTree: string) {
   const real = realpathSync(toolTree);
-  const stamp = toolTreeStamp(real);
+  const stamp = treeStamp(real);
   const kept = TREES.get(real);
   if (kept?.stamp === stamp) return kept.content;
   const content = treeContent(real).filter(({ path }) => !BYTECODE.test(path));

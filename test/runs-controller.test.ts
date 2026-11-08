@@ -60,8 +60,8 @@ describe("remote controller lifecycle", () => {
     expect(missing.recorded().some((call) => call.tool === "ssh")).toBe(false);
   });
 
-  it("reclaims a dead or expired preparation lock and waits for a live holder to end", () => {
-    for (const kind of ["dead", "expired", "live"]) {
+  it("reclaims a preparation lock whose holder is gone, and waits for a live holder however old its lock", () => {
+    for (const kind of ["dead", "unnamed", "live", "live past the window"]) {
       const made = fixture();
       const lock = join(made.root, "git", "ana-code", `${made.commit}.lock`);
       mkdirSync(lock, { recursive: true });
@@ -69,20 +69,19 @@ describe("remote controller lifecycle", () => {
       // It touches `released` as it ends, so a run that waited for it finds the file: on 29 October
       // a 3 s bound on the other two kinds read 3.6 s at a load of 24.9 on 12 cores.
       const released = join(made.root, "released");
-      const holder =
-        kind === "live"
-          ? Bun.spawnSync(["sh", "-c", '(sleep 2; touch "$0") >/dev/null 2>&1 & echo $!', released])
-              .stdout.toString()
-              .trim()
-          : kind === "dead"
-            ? "99999999"
-            : String(process.pid);
-      writeFileSync(join(lock, "pid"), holder);
-      if (kind === "expired") utimesSync(lock, new Date(0), new Date(0));
+      const live = kind.startsWith("live");
+      const holder = live
+        ? Bun.spawnSync(["sh", "-c", '(sleep 2; touch "$0") >/dev/null 2>&1 & echo $!', released])
+            .stdout.toString()
+            .trim()
+        : "99999999";
+      // A lock that names no holder, left by a shell killed before it wrote one, lapses by its age.
+      if (kind !== "unnamed") writeFileSync(join(lock, "pid"), holder);
+      if (kind !== "live" && kind !== "dead") utimesSync(lock, new Date(0), new Date(0));
       const result = made.run(PREPARE, { FAKE_EXECUTE: "1" });
       expect(result.code).toBe(0);
       expect(existsSync(lock)).toBe(false);
-      expect(existsSync(released)).toBe(kind === "live");
+      expect(existsSync(released)).toBe(live);
     }
   });
 

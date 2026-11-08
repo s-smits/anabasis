@@ -15,7 +15,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runTextSyncOrThrow } from "../src/meta/subprocess.ts";
 import type { Run } from "../tools/runs/registry.ts";
-import { fit, newest, secondsOf, zip } from "../tools/runs/zip.ts";
+import { fit, momentOf, newest, secondsOf, zip } from "../tools/runs/zip.ts";
 
 const DIGEST = "ab".repeat(32);
 const LOG = [
@@ -168,20 +168,53 @@ describe("the runs zip", () => {
         end: "solve.finished",
       });
       const runs = [old, long, short, bare, seed, solve];
-      const names = (pick: Parameters<typeof newest>[1]) => newest(runs, pick).map((run) => run.name);
+      const open = { since: -Infinity, until: Infinity };
+      const names = (pick: Omit<Parameters<typeof newest>[1], "since" | "until"> & Partial<typeof open>) =>
+        newest(runs, { ...open, ...pick }).map((run) => run.name);
       expect(names({ latest: null, promotions: 0, seconds: 0 })).toEqual(["bare", "short", "long", "old"]);
       expect(names({ latest: 2, promotions: 1, seconds: 0 })).toEqual(["short", "long"]);
       expect(names({ latest: null, promotions: 1, seconds: secondsOf("2h") })).toEqual(["long", "old"]);
       expect(names({ latest: 1, promotions: 4, seconds: 0 })).toEqual([]);
       expect(
         newest([make("empty", "2026-11-08T00:00:00.000Z", "2026-11-08T00:00:00.000Z", 0)], {
+          ...open,
           latest: null,
           promotions: 0,
           seconds: 1,
         }),
       ).toEqual([]);
+      // A window keeps a run whose record overlaps it, so one that began before it still counts.
+      const any = { latest: null, promotions: 0, seconds: 0 };
+      expect(names({ ...any, since: Date.parse("2026-11-08T00:00:00Z") })).toEqual(["bare", "short", "long"]);
+      expect(names({ ...any, until: Date.parse("2026-11-07T00:00:00Z") })).toEqual(["old"]);
+      expect(
+        names({
+          ...any,
+          since: Date.parse("2026-11-08T12:15:00Z"),
+          until: Date.parse("2026-11-08T12:45:00Z"),
+        }),
+      ).toEqual(["bare", "short"]);
+      expect(names({ ...any, since: Date.parse("2026-11-09T00:00:00Z") })).toEqual([]);
     } finally {
       rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("reads a moment as a date, a time with a zone or how long ago, and refuses the rest", () => {
+    const now = Date.parse("2026-11-08T12:00:00Z");
+    expect([
+      momentOf("--since", "2026-11-06", now),
+      momentOf("--since", "2026-11-06T12:30Z", now),
+      momentOf("--since", "2026-11-06T12:30:15+01:00", now),
+      momentOf("--since", "36h", now),
+    ]).toEqual([
+      Date.parse("2026-11-06T00:00:00Z"),
+      Date.parse("2026-11-06T12:30:00Z"),
+      Date.parse("2026-11-06T11:30:15Z"),
+      Date.parse("2026-11-07T00:00:00Z"),
+    ]);
+    for (const text of ["yesterday", "2026-11-06T12:00", "11-06", "2026-13-45", "", "36"]) {
+      expect(() => momentOf("--until", text, now)).toThrow(/--until/);
     }
   });
 

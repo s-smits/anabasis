@@ -7,18 +7,21 @@ description: "Zip recorded Anabasis runs for handover at a chosen depth (--light
 
 ```sh
 bun run runs zip [<name> ...] --light|--medium|--verbose [--out <zip>] [--max-mb N] [--note <file>] [--from <host>]
-                 [--latest N] [--minPromotions N] [--minTime 2h]
+                 [--latest N] [--minPromotions N] [--minTime 2h] [--since WHEN] [--until WHEN]
 ```
 
 Names match by substring, as in `bun run runs pulse`, against campaigns (`.ana/d2/<name>/`), live
 solves (`.ana/live/<name>.jsonl`) and archived runs (`data/runs/<host>/<name>/`); no name takes
 every run. The command fetches matches from every configured host first and refuses if that fails.
 
-`--latest N`, `--minPromotions N` and `--minTime 2h` choose the runs instead of naming them:
-campaigns on any host, seeds and live solves left out, with at least that many `harness.promoted`
-events and at least that long from the first event to the last (`s`, `m`, `h` or `d`), the N whose
-last event is newest. Names given beside them narrow the candidates. Each record is read to choose
-and only the chosen come whole; it refuses when none passes. The default file is `latest20-<level>.zip`.
+`--latest N`, `--minPromotions N`, `--minTime 2h`, `--since WHEN` and `--until WHEN` choose the runs
+instead of naming them: campaigns on any host, seeds and live solves left out, with at least that
+many `harness.promoted` events and at least that long from the first event to the last (`s`, `m`,
+`h` or `d`), the N whose last event is newest. `--since` and `--until` keep the campaigns whose record overlaps that window
+(a run live during it counts although it began earlier); `WHEN` is a date (`2026-11-06`, UTC), a
+date with a time and a zone (`2026-11-06T12:00Z`) or how long ago (`36h`). Names given beside them
+narrow the candidates. Each record is read to choose and only the chosen come whole; it refuses when
+none passes. The default file is `latest20-<level>.zip`, or `picked-<level>.zip` without `--latest`.
 
 Where case-sensitive names cannot be copied here, zip on the run's machine with `--from <host>`
 (`bun --env-file=.env.runs run runs zip <name> --medium --from <host>`, no `--note`). Put the zip in

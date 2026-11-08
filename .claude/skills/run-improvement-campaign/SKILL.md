@@ -43,34 +43,39 @@ never copied.
 
 - `cycle.md`: the word, the threshold, the reviews and one log line per step, laid out as
   [references/cycle-ledger.md](references/cycle-ledger.md).
-- `Predictions.md`: written before the fork's `--yes`, since the first solve comes minutes after the
-  opening. It holds three tables:
+- Two files for each run, each the one owner of its fact. `predictions-<run>.md`, written before
+  that run's `--yes` (the first solve comes minutes after the opening), holds the rows it settles in
+  a table whose first column is `id`:
 
   ```text
   | id | PR | labels | lanes | group | claim, as a count | falsified by |
-  | id | claim, as a count | lanes | falsified by |            (cycle-wide: supply, climb, honesty)
-  | id | held, falsified, unreached or pending | event or count | time |   (Resolutions)
   ```
 
-  The first has one row for every pull request merged since the last cycle's fork
-  (`git log --merges <last fork>..<release>`), even one no run reads. Its lanes are its labels'
-  lanes (whole-run-investigation's `references/lanes.md`, "Labels"); needing another lane means the
-  label is wrong. Its group is `first` (code no run has run), `again` (run before under another
-  condition) or `off-run` (no seat reads it; settled by a landing, a reader or the launch).
-- Three files for each run: `predictions-<run>.md`, written before that run's `--yes`, holds the
-  rows it settles in a table whose first column is `id`; `outcomes-<run>.md` gives each of its ids,
+  The cycle's runs between them carry one row for every pull request merged since the last cycle's
+  fork (`git log --merges <last fork>..<release>`), even one no run reads, and the cycle-wide rows
+  on supply, climb and honesty. A row's lanes are its labels' lanes (whole-run-investigation's
+  `references/lanes.md`, "Labels"); needing another lane means the label is wrong. Its group is
+  `first` (code no run has run), `again` (run before under another condition) or `off-run` (no seat
+  reads it; settled by a landing, a reader or the launch). `outcomes-<run>.md` gives each of its ids,
   and no other, one outcome, `held`, `falsified`, `unreached`, or `pending` while a live run's event
   has not come, and records the log's length it was read at on a line of its own,
   `Log events at resolution: <n>`, which `next` prints; once the log grows past it, `next` reopens
-  every `unreached` or `pending` row, since a run continued after its trigger may yet reach them;
-  `still-missing-<run>.md` names every id not held and each problem no fix holds yet,
-  with where it is carried, and under `## Intentionally opposed` (at least one line; `none` counts)
-  what stays missing on purpose, as a trade-off from `AGENTS.md` section 1, a principle or the
-  operator's word, so that a gap left by design is not read as one forgotten. `Predictions.md` links
-  all three.
+  every `unreached` or `pending` row, since a run continued after its trigger may yet reach them.
+- What a run leaves undone and what it leaves out on purpose belong to the `plan.md` of the
+  iteration that read it: `## Not done` for each row the pull request does not carry, with where it
+  is carried, and `## Intentionally opposed` (at least one line; `none` counts) for what stays
+  missing on purpose, as a trade-off from `AGENTS.md` section 1, a principle or the operator's
+  word, so that a gap left by design is not read as one forgotten.
+- The views are derived and never written by hand:
+  `bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts ledger <dir>` prints, for a cycle's
+  or an investigation's folder, the cycle view (every prediction of its runs with its outcome, a
+  stale one marked) and each run's still-missing view (the ids it did not hold beside its plan's two
+  sections). Until 8 November a cycle's `Predictions.md` kept resolutions of its own and each run a
+  `still-missing-<run>.md` that restated the plan, so each fact had two owners (`AGENTS.md` rule 12);
+  those files stay as written and are still read, and no new one is written.
 
-A review that finds `Predictions.md` or a run's `predictions-<run>.md` missing writes it first, marked
-as written after launch with the run's solves at that moment.
+A review that finds a run's `predictions-<run>.md` missing writes it first, marked as written after
+launch with the run's solves at that moment.
 
 ### The iteration (WRI2P2)
 
@@ -91,14 +96,14 @@ a run with its step: `run`, `open` with its trigger, or the step its investigati
 
 1. **Trigger.** Whichever comes first: two promotions, twelve hours since the opening, a scored
    comparison that left no task untied, or an ending after a comparison. The trigger stops nothing.
-   Resolve the run's predictions into `outcomes-<run>.md` and write its `still-missing-<run>.md`.
+   Resolve the run's predictions into `outcomes-<run>.md`, with the log's length.
 2. **Investigate** with whole-run-investigation, opened by `wri2p2.ts open` with the other triggered
    runs of the same code and pack as equals. `open` reads live runs on a frozen copy
    (`wri.ts start --snapshot`) and writes `iteration.json` (`{ "opened": <ISO>, "runs": [<names>] }`),
    which the later gates require. A run is never stopped for its investigation; stopping is the
    operator's. Then follow `wri2p2.ts next <dir>` through the instructions, `lanes --agents 4` with
    one subagent a lane, the collection and the synthesis. Before the vetting, `next` waits until each
-   run has its three files, looking only in `*-cycle-*` folders and the investigation's own, and
+   run has its two files, looking only in `*-cycle-*` folders and the investigation's own, and
    refuses where two of them hold the same file.
 3. **Vet, read across domains, plan.** Vet each finding against the logs and the head (a fix may
    already be on the stack) as confirmed, plausible or refuted (whole-run-investigation, "Vetting"),
@@ -116,7 +121,7 @@ a run with its step: `run`, `open` with its trigger, or the step its investigati
    levers](references/levers.md) against the binding link, and give each lever the evidence selects
    a row, tuned or kept with one checkable sentence. `next` requires `plan.md` to name
    `cross-domain.md`, every confirmed `vet-<n>` (in a row or under `## Not done`) and at least three
-   lever ids such as `E1`. Ask the rows the operator must decide now, and implement around them.
+   lever ids such as `E1`, and to hold `## Intentionally opposed`. Ask the rows the operator must decide now, and implement around them.
 4. **Implement** the plan as one pull request on the top through [stack-pr](../stack-pr/SKILL.md),
    proved with `bun run land -- <top> --sanitize`, and name it in `plan.md` on its own line,
    `Pull request: #N`. A row whose label one of your own open pull requests carries goes there; a peer's
@@ -130,12 +135,12 @@ a run with its step: `run`, `open` with its trigger, or the step its investigati
 5. **Predict, then fork at that head** with `--as forkedPR<N>`, by which `next` finds the runs that
    measure it. Take each name from the dry run of `runs fresh` and write its
    `predictions-<run>.md` first, with a `## Carried` section naming each id the parent runs did not
-   hold, as `<parent run>:<id>`, and linking their `still-missing-<parent run>.md`. A slot an ended run
+   hold, as `<parent run>:<id>`. A slot an ended run
    frees goes to a fresh run at once, at the current top if no iteration needs measuring; idle
    capacity measures nothing.
 
 `next` walks these gates in order: `open`, `instruct`, `lanes`, `reports`, `isolated`, `synthesise`;
-for each run `predictions`, `outcomes`, `still-missing` and, for a fork, `carry`; then `vet`,
+for each run `predictions`, `outcomes` and, for a fork, `carry`; then `vet`,
 `across`, `plan`, `implement`, `launch`, `forks` and `done`. A folder without `iteration.json` takes
 the shared gates only. Every gate but `done` is a default rather than a wall: a row
 `| <step> | <reason> |` in the folder's `deviations.md` (the step, or `<step>:<run>`) passes it, and
@@ -298,8 +303,8 @@ tasks together.
    each commit and run both on the source's launch flags. That removes the exam as a confound, but
    each arm is a paid run on the operator's word and yields a lead, not a step. Render model-visible
    text whole and check it for duplicated facts.
-3. **Predict** in a ledger outside campaign folders, before the first solve: `Predictions.md` in a
-   cycle, and `bun tools/d2/checkpoint.ts <flags> --predict "<sentence>"` for a comparison by hand.
+3. **Predict** in a ledger outside campaign folders, before the first solve: a run's `predictions-<run>.md`
+   in a cycle, and `bun tools/d2/checkpoint.ts <flags> --predict "<sentence>"` for a comparison by hand.
    Use counts ("`contract.frozen` before `build.started`", "the first comparison unties at least six
    tasks", "the A/A reads no step"), including one row on the link and one on honesty.
 4. **Launch fresh** through [run-management](../run-management/SKILL.md) with `bun run runs fresh
@@ -337,8 +342,8 @@ firing in `cycle.md`.
 Every firing follows one protocol; what it reads and concludes between steps is the session's
 judgement.
 
-1. **Read the state**: `cycle.md`, `Predictions.md` with each run's files (write any that are
-   missing), and `wri2p2.ts` over the cycle's runs.
+1. **Read the state**: `cycle.md`, each run's files (write any that are missing) through
+   `wri2p2.ts ledger <cycle folder>`, and `wri2p2.ts` over the cycle's runs.
 2. **Resolve predictions** whose event landed or whose deadline passed, with the settling count and
    time; a live run's unmet row stays `pending`, and one that can no longer trigger is `unreached`. A
    written resolution stays, and a disagreeing recount adds a row; a falsified row opens a triage row.

@@ -70,9 +70,9 @@ No step starts until the check before it holds.
    shape across the system's record. *Check:* owner, count with denominator, logs read.
 10. **Pass the gate**: the eight questions of [backtrack](references/backtrack.md), one disposition a
     card, dropped cards listed with their reason.
-11. **Test forward, once.** A lead gets one prediction in the cycle's `Predictions.md` or the
-    measuring run's `predictions-<run>.md`, settled by a count in the system's own measure in its
-    `outcomes-<run>.md` (one that does not hold goes into `still-missing-<run>.md`, beside the
+11. **Test forward, once.** A lead gets one prediction in the measuring run's
+    `predictions-<run>.md`, settled by a count in the system's own measure in its `outcomes-<run>.md`
+    (one that does not hold shows in the run's derived still-missing view, beside its plan's
     "Intentionally opposed" trade-offs), then a fresh run (`AGENTS.md`, section 10, item 9). The
     benchmark is read last, on unburned tasks, with measure and margin fixed first. A second attempt
     is reported beside the first, and changes tested together get an ablation before any is credited.

@@ -182,12 +182,12 @@ heading drops that section on purpose.
 | Hard rules | the preset | the rules above |
 
 A lane told what to find finds it, so an earlier diagnosis is a hypothesis under the prior state,
-never a premise in the orientation. In a release cycle the prior state lists every row of the
-cycle's `Predictions.md` and each run's `predictions-<run>.md` (in `.ana/wri/<date>-cycle-<release>/`,
-run-improvement-campaign step 1) with its pull request, area labels ("Labels" in
-[the catalogue](references/lanes.md)), lanes, claim and falsifier, but not its resolution in
-`outcomes-<run>.md`, plus the parent iteration's `still-missing-<run>.md` ids and "Intentionally
-opposed" trade-offs. Step 3 opens every lane a row names with `--lanes`; lanes 4 and 15 get no row.
+never a premise in the orientation. In a release cycle the prior state lists every row of each
+run's `predictions-<run>.md` (in `.ana/wri/<date>-cycle-<release>/`, run-improvement-campaign step 1)
+with its pull request, area labels ("Labels" in [the catalogue](references/lanes.md)), lanes, claim
+and falsifier, but not its resolution in `outcomes-<run>.md`, plus the ids the parent iteration did
+not hold and its plan's "Intentionally opposed" trade-offs, as the still-missing view of
+`wri2p2.ts ledger <dir>` prints them. Step 3 opens every lane a row names with `--lanes`; lanes 4 and 15 get no row.
 
 ## Vetting
 
@@ -203,8 +203,9 @@ then treats it as research, in two acts kept apart:
 Vet every finding, first those that would change code or a decision, and write `<dir>/vetting.md`,
 one row a finding with its verdict and what was checked. Never report a triaged finding as vetted.
 
-**Backtrack the predictions first.** In a release cycle, `vetting.md` opens with one row for each row
-of `Predictions.md` and each id of every `predictions-<run>.md`, beside its `outcomes-<run>.md` row:
+**Backtrack the predictions first.** In a release cycle, `vetting.md` opens with one row for each id
+of every `predictions-<run>.md` (and of a cycle's `Predictions.md` written before 8 November), beside
+its `outcomes-<run>.md` row:
 
 - **Resolve it from the logs**: held, falsified or unreached, recounted from the events the row
   names. Lane reports and earlier resolutions are leads.
@@ -212,8 +213,8 @@ of `Predictions.md` and each id of every `predictions-<run>.md`, beside its `out
   section 9). A held row whose mechanism never ran is unreached.
 - **Treat a falsified row as a finding**: triage it to one owner (the code, the prediction's
   reasoning or the run's condition) and vet it; a confirmed one joins the cycle's plan.
-- **Carry an unreached row forward**: say why its trigger never came, and put it into the next
-  cycle's `Predictions.md` and the run's `still-missing-<run>.md`.
+- **Carry an unreached row forward**: say why its trigger never came; the next fork's
+  `predictions-<run>.md` carries it under `## Carried`, and the run's still-missing view shows it.
 
 *Check:* `vetting.md` holds as many prediction rows as the ledgers, counted held, falsified and
 unreached by area label.

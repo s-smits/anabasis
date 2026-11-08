@@ -2,7 +2,7 @@
 // folder, so a session or a timer takes the iteration one printed step at a time. Every gate is a
 // default a recorded reason passes (operator, 7 November), so each is walked owed, met and deviated.
 import { afterAll, describe, expect, it } from "bun:test";
-import { nextOf, rowOf, triggerOf } from "#skills/run-improvement-campaign/scripts/wri2p2.ts";
+import { ledgerViews, nextOf, rowOf, triggerOf } from "#skills/run-improvement-campaign/scripts/wri2p2.ts";
 import { forkOf, idsOf, outcomesOf, pullOf } from "#tools/wri/ledger.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
@@ -11,7 +11,8 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 
 const live = { name: "r", host: "here", live: true };
-const PLAN = "# Plan\n\nvet-1 in cross-domain.md, by E1, B2 and S1.\n\nPull request: #602\n";
+const PLAN =
+  "# Plan\n\nvet-1 in cross-domain.md, by E1, B2 and S1.\n\nPull request: #602\n\n## Intentionally opposed\n\n- none\n";
 const base = realpathSync(mkdtempSync(join(tmpdir(), "ana-wri2p2-")));
 afterAll(() => rmSync(base, { recursive: true, force: true }));
 
@@ -147,15 +148,7 @@ describe("the next step of an investigation", () => {
     expect(step()[0]).toContain("resolve P2");
     expect(step()[0]).toContain("P9 predicted nowhere");
     ledger("outcomes-r.md", `${table(["P1"], "held")}| P2 | pending |\n`);
-    expect(step()[0]).toStartWith("step: still-missing");
-    expect(step()[0]).toContain("name P2");
-    // A list with an empty section for what stays missing on purpose is not yet the file.
-    ledger(
-      "still-missing-r.md",
-      "# Still missing\n\n- P2\n\n## Intentionally opposed\n\n<!-- trade-offs -->\n",
-    );
-    expect(step()[0]).toStartWith("step: still-missing");
-    ledger("still-missing-r.md", "# Still missing\n\n- P2\n\n## Intentionally opposed\n\n- none\n");
+    // What the run still lacks is derived, so no file of it is owed.
     expect(step()[0]).toStartWith("step: vet · recount");
     write("vetting.md", "| # | finding | verdict |\n| --- | --- | --- |\n| 1 | P1 held | confirmed |\n");
     expect(step()[0]).toBe(
@@ -171,7 +164,12 @@ describe("the next step of an investigation", () => {
     write("plan.md", "# Plan\n\nrows by E1 and Z9\n");
     expect(step()[0]).toContain("name vet-1, cross-domain.md");
     expect(step()[0]).toContain("(1 named)");
-    write("plan.md", PLAN.replace("\n\nPull request: #602", ""));
+    // What the plan leaves out on purpose is its own section, and an empty one is not yet said.
+    write("plan.md", PLAN.replace("- none", "<!-- trade-offs -->"));
+    expect(step()[0]).toBe(
+      `step: plan · ${join(dir, "plan.md")}: add "## Intentionally opposed" with at least one line ("none" counts): what stays missing on purpose, each as a trade-off, what leaving it out buys, what it costs and why (a trade-off of AGENTS.md section 1, a principle or the operator's word)`,
+    );
+    write("plan.md", PLAN.replace("Pull request: #602\n\n", ""));
     expect(step()[0]).toStartWith("step: implement");
     write("plan.md", PLAN);
     expect(step()[0]).toStartWith("step: launch");
@@ -179,19 +177,13 @@ describe("the next step of an investigation", () => {
     const fork = "r-forkedPR602";
     expect(step([fork])[0]).toStartWith(`step: predictions · ${fork} has no`);
     // An id carried by a longer one's name is not carried: r:P20 is not r:P2.
-    writeFileSync(
-      join(cycle, `predictions-${fork}.md`),
-      `${table(["F1"])}\n## Carried\n\n- r:P20, still-missing-r.md\n`,
-    );
+    writeFileSync(join(cycle, `predictions-${fork}.md`), `${table(["F1"])}\n## Carried\n\n- r:P20\n`);
     expect(step([fork])[0]).toStartWith(`step: carry · the "## Carried" section of`);
     writeFileSync(join(cycle, `predictions-${fork}.md`), `${table(["F1"])}\n## Carried\n\n- r:P1\n`);
     expect(step([fork])[0]).toBe(
-      `step: carry · the "## Carried" section of ${join(cycle, `predictions-${fork}.md`)} names r:P2, still-missing-r.md: each id the iteration that made this fork did not hold, and its runs' still-missing files with their opposed trade-offs`,
+      `step: carry · the "## Carried" section of ${join(cycle, `predictions-${fork}.md`)} names r:P2: each id the iteration that made this fork did not hold`,
     );
-    writeFileSync(
-      join(cycle, `predictions-${fork}.md`),
-      `${table(["F1"])}\n## Carried\n\n- r:P2, from still-missing-r.md\n`,
-    );
+    writeFileSync(join(cycle, `predictions-${fork}.md`), `${table(["F1"])}\n## Carried\n\n- r:P2\n`);
     expect(step([fork])).toEqual([`step: done · #602 is measured by ${fork}`]);
   });
 
@@ -211,7 +203,7 @@ describe("the next step of an investigation", () => {
     expect(step(120)).toContain("resolve P1, P2, P3");
     expect(step(120)).toContain('record "Log events at resolution: 120"');
     ledger("outcomes-r.md", `Log events at resolution: 120\n\n${resolved}`);
-    expect(step(120)).toStartWith("step: still-missing");
+    expect(step(120)).toStartWith("step: vet");
     // The run went on: its unreached and pending rows are open again, and its held one is not.
     expect(step(121)).toBe(
       `step: outcomes · ${join(root, "2026-11-07-cycle-test", "outcomes-r.md")}: P2, P3 read unreached or pending at 120 events and the log holds 121 now: resolve them again, and record "Log events at resolution: 121" on its own line`,
@@ -219,9 +211,9 @@ describe("the next step of an investigation", () => {
     // A ledger that records no count was read at none, and a log this machine cannot read stales nothing.
     ledger("outcomes-r.md", resolved);
     expect(step(120)).toContain("P2, P3 read unreached or pending at no recorded count");
-    expect(step(null)).toStartWith("step: still-missing");
+    expect(step(null)).toStartWith("step: vet");
     ledger("outcomes-r.md", `Log events at resolution: 121\n\n${table(["P1", "P2", "P3"], "held")}`);
-    expect(step(400)).toStartWith("step: still-missing");
+    expect(step(400)).toStartWith("step: vet");
   });
 
   it("refuses to choose between two copies of one ledger", () => {
@@ -238,7 +230,7 @@ describe("the next step of an investigation", () => {
   });
 
   it("asks a vetting over two runs to name an id they share once for each run", () => {
-    const { root, dir, cycle, write, ledger } = folder("shared-id", "a", true);
+    const { root, dir, write, ledger } = folder("shared-id", "a", true);
     write(
       "investigation.json",
       JSON.stringify({ logs: ["/x/.ana/d2/a/log.jsonl", "/x/.ana/d2/b/log.jsonl"] }),
@@ -247,7 +239,6 @@ describe("the next step of an investigation", () => {
     for (const run of ["a", "b"]) {
       ledger(`predictions-${run}.md`, table(["P1", `Q${run}`]));
       ledger(`outcomes-${run}.md`, table(["P1", `Q${run}`], "held"));
-      writeFileSync(join(cycle, `still-missing-${run}.md`), "- none\n\n## Intentionally opposed\n\n- none\n");
     }
     const step = () => nextOf(dir, () => [], root);
     // One bare P1 cannot backtrack both runs' P1, while an id only one run holds may stay bare.
@@ -264,8 +255,8 @@ describe("the next step of an investigation", () => {
       "| step | reason |\n| --- | --- |\n| isolated | no trigger fired |\n| predictions:r | written before the marker |\n| done | never |\n",
     );
     const [first, ...passed] = step();
-    // With no predictions there is no outcome to owe, and what the run still lacks is owed as ever.
-    expect(first).toStartWith("step: still-missing");
+    // With no predictions there is no outcome to owe, so the vetting is next.
+    expect(first).toStartWith("step: vet · recount");
     expect(passed).toEqual([
       "deviated: isolated · no trigger fired",
       "deviated: predictions:r · written before the marker",
@@ -273,6 +264,49 @@ describe("the next step of an investigation", () => {
     // A row with no reason is no deviation.
     write("deviations.md", "| step | reason |\n| --- | --- |\n| isolated | |\n");
     expect(step()[0]).toStartWith("step: isolated");
+  });
+
+  it("derives the cycle view and each run's still-missing view from its two ledgers and its plan", () => {
+    const { root, dir, cycle, write, ledger } = folder("views", "r", true);
+    ledger("predictions-r.md", table(["P1", "P2", "P3"]));
+    ledger("outcomes-r.md", `Log events at resolution: 50\n\n${table(["P1"], "held")}| P2 | unreached |\n`);
+    write(
+      "plan.md",
+      "# Plan\n\n## Not done: the operator's decisions\n\n- engines for drafted exams\n\n## Intentionally opposed\n\n- the solve limits stay\n",
+    );
+    const views = (events: number | null) => ledgerViews(dir, root, () => events);
+    expect(views(50)).toEqual([
+      `# Ledger views of ${dir}`,
+      "",
+      "Derived from each run's predictions and outcomes and its iteration's plan: never write them by hand.",
+      "",
+      "| run | id | outcome |",
+      "| --- | --- | --- |",
+      "| r | P1 | held |",
+      "| r | P2 | unreached |",
+      "| r | P3 | unresolved |",
+      "",
+      "# Still missing: r",
+      "",
+      "## Not held",
+      "",
+      "- P2: unreached",
+      "- P3: unresolved",
+      "",
+      "## Not done",
+      "",
+      "- engines for drafted exams",
+      "",
+      "## Intentionally opposed",
+      "",
+      "- the solve limits stay",
+    ]);
+    // The log grew, so the unreached row reads stale in both views, and the held one does not.
+    expect(views(51)).toContain("| r | P2 | unreached, stale |");
+    expect(views(51)).toContain("- P2: unreached, stale");
+    expect(views(51)).toContain("| r | P1 | held |");
+    // A cycle's folder holds the same views, the plan read from the iteration that names the run.
+    expect(ledgerViews(cycle, root, () => 50).slice(4)).toEqual(views(50).slice(4));
   });
 
   it("reads a fork's parent by its whole number, so #60 never takes #600's runs", () => {
@@ -283,6 +317,7 @@ describe("the next step of an investigation", () => {
     write("launch-04.json", JSON.stringify({ sessions: [] }));
     ledger("predictions-p.md", table(["P1"]));
     ledger("outcomes-p.md", table(["P1"], "falsified"));
+    // A run that kept its opposed trade-offs in a still-missing file before 8 November has said them.
     ledger("still-missing-p.md", "- P1\n\n## Intentionally opposed\n\n- none\n");
     write("vetting.md", "| # | finding |\n| --- | --- |\n| 1 | P1 |\n");
     write("cross-domain.md", "rows");
@@ -291,7 +326,7 @@ describe("the next step of an investigation", () => {
     // The fork of #60 is no fork of this iteration, whose plan names #600, so it carries nothing from it.
     expect(step(["p-forkedPR60"])[0]).toStartWith("step: done");
     expect(step(["p-forkedPR600"])[0]).toStartWith("step: carry");
-    expect(step(["p-forkedPR600"])[0]).toContain("names p:P1, still-missing-p.md");
+    expect(step(["p-forkedPR600"])[0]).toContain("names p:P1:");
   });
 
   it("reads a ledger's ids from each id table's rows, past its header and rule, and no other table", () => {

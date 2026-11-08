@@ -24,8 +24,9 @@
  * `epochsOf`, and the investigations and ledgers that name it, so a run nobody investigated or
  * predicted shows as such.
  *
- * From 7 November each run keeps its own ledgers in a cycle folder (`predictions-<run>.md`,
- * `outcomes-<run>.md`, `still-missing-<run>.md`, read by `tools/wri/ledger.ts`), and an
+ * From 7 November each run keeps its own ledgers in a cycle folder (`predictions-<run>.md` and
+ * `outcomes-<run>.md`, read by `tools/wri/ledger.ts`, and until 8 November a hand-written
+ * `still-missing-<run>.md`; from then the plan says what is left out on purpose), and an
  * investigation's `plan.md` names its pull request as `Pull request: #N`, measured by the forks
  * named `...forkedPR<N>`. Until then nothing recorded across iterations whether each fix held, so a
  * last section rows each pull request with its forks, their outcomes, the predictions still
@@ -471,7 +472,7 @@ function perRunOf(root: string, dirs: readonly string[], run: string): PerRun {
   return { name: run, files, conflicts };
 }
 
-/** The items of a still-missing file's `## Intentionally opposed`: its list items, else its lines,
+/** The items of a plan's or an old still-missing file's `## Intentionally opposed`: its list items, else its lines,
  *  the line `none` counting as no item; null without the section. */
 function opposedOf(text: string): number | null {
   const lines = linesUnder(text, "Intentionally opposed")?.filter((line) => /^\S/u.test(line));
@@ -533,9 +534,16 @@ function pullRows(root: string, entries: readonly Entry[], known: readonly strin
       ];
       if (held.length === 0) return [...head, NO_FILES, NO_FILES, NO_FILES, NO_FILES];
       const outcomes = held.flatMap(({ files }) => [...outcomesOf(files.outcomes ?? "").values()]);
-      const opposed = held.map(({ files }) =>
-        files["still-missing"] === undefined ? null : opposedOf(files["still-missing"]),
-      );
+      // What a fork leaves out on purpose is the plan's of the iteration that read it; a
+      // `still-missing-<run>.md` written before 8 November held it instead.
+      const opposed = held.map(({ name, files }) => {
+        const plan = entries
+          .filter(({ campaigns }) => campaigns.includes(name))
+          .map(({ folder }) => textAt(join(root, folder, "plan.md")) ?? "")
+          .find((text) => linesUnder(text, "Intentionally opposed") !== null);
+        const text = files["still-missing"] ?? plan;
+        return text === undefined ? null : opposedOf(text);
+      });
       const unwritten = opposed.filter((count) => count === null).length;
       return [
         ...head,

@@ -1,10 +1,18 @@
 /**
- * The per-run ledgers of an iteration, read one way for every reader: `predictions-<run>.md`,
- * `outcomes-<run>.md` and `still-missing-<run>.md` in a cycle's folder, and the tables of an
- * investigation's own files. The operator asked on 7 November for each run's predictions and their
- * outcomes as a linked pair, with what the run still lacks and what it lacks on purpose
- * ("Intentionally opposed") beside them, so a loop of iterations can be read whole. Before that, a
- * cycle kept one `Predictions.md` and nothing showed whether a given run's rows were resolved.
+ * The per-run ledgers of an iteration, read one way for every reader: `predictions-<run>.md` and
+ * `outcomes-<run>.md` in a cycle's folder, and the tables of an investigation's own files. The
+ * operator asked on 7 November for each run's predictions and their outcomes as a linked pair, with
+ * what the run still lacks and what it lacks on purpose ("Intentionally opposed") beside them, so a
+ * loop of iterations can be read whole. Before that, a cycle kept one `Predictions.md` and nothing
+ * showed whether a given run's rows were resolved.
+ *
+ * Each fact has one hand-written owner: a prediction its `predictions-<run>.md`, its outcome its
+ * `outcomes-<run>.md`, and what stays undone or opposed the `plan.md` of the iteration that read the
+ * run. The cycle view and each run's still-missing view are derived here (`cycleViewOf`,
+ * `stillMissingOf`) and never written by hand. Until 8 November a cycle's `Predictions.md` kept
+ * resolutions beside the per-run outcomes, and `still-missing-<run>.md` restated the plan's
+ * `## Not done`, so each fact had two owners (`AGENTS.md` rule 12); a file of either kind written
+ * before then is still read, and none is rewritten.
  *
  * A table counts only where its header's first cell names it (`id` for a ledger), so a second
  * table, a heading or prose is never read as a prediction; comments and code fences are skipped,
@@ -18,6 +26,14 @@ export interface Parent {
   readonly name: string;
   readonly predictions: string;
   readonly outcomes: string;
+}
+
+/** One run's ledgers for the derived views: its two hand-written files and its iteration's plan. */
+interface RunLedgers extends Parent {
+  /** The `plan.md` of the iteration that read the run, or "" before one is written. */
+  readonly plan: string;
+  /** The run's log length now, or null where it cannot be read. */
+  readonly events: number | null;
 }
 
 /** The outcomes a prediction can have; `pending` only while its event has not come. */
@@ -72,7 +88,7 @@ export const outcomesOf = (text: string): Map<string, string> =>
   );
 
 /** The ids of a predictions ledger whose outcome in the outcomes ledger is not `held`. */
-export function unheldOf(predictions: string, outcomes: string): string[] {
+function unheldOf(predictions: string, outcomes: string): string[] {
   const outcome = outcomesOf(outcomes);
   return idsOf(predictions).filter((id) => outcome.get(id) !== "held");
 }
@@ -96,20 +112,70 @@ export function staleOf(outcomes: string, events: number | null): string[] {
     .map(([id]) => id);
 }
 
+/** The non-blank lines under every `## Not done` heading of a plan, whatever follows the words. */
+function notDoneOf(plan: string): string[] {
+  return stripped(plan)
+    .split("\n")
+    .filter((line) => /^## Not done\b/u.test(line))
+    .flatMap((line) => sectionOf(plan, line.slice(3).trim()) ?? []);
+}
+
+/** A prediction's outcome as the views print it: unresolved, stale, or its own word. */
+function shownOutcome(run: RunLedgers, id: string): string {
+  const outcome = outcomesOf(run.outcomes).get(id) ?? "";
+  if (!OUTCOMES.some((word) => word === outcome)) return "unresolved";
+  return staleOf(run.outcomes, run.events).includes(id) ? `${outcome}, stale` : outcome;
+}
+
+/** The cycle view: every prediction of every run with its outcome, as one table. */
+export function cycleViewOf(runs: readonly RunLedgers[]): string[] {
+  return [
+    "| run | id | outcome |",
+    "| --- | --- | --- |",
+    ...runs.flatMap((run) =>
+      idsOf(run.predictions).map((id) => `| ${run.name} | ${id} | ${shownOutcome(run, id)} |`),
+    ),
+  ];
+}
+
+/**
+ * The still-missing view of one run: each prediction it did not hold, with its outcome, then what
+ * its iteration's plan leaves undone (`## Not done`) and leaves out on purpose
+ * (`## Intentionally opposed`).
+ */
+export function stillMissingOf(run: RunLedgers): string[] {
+  const listed = (lines: readonly string[]) => (lines.length === 0 ? ["- none"] : lines);
+  const unheld = unheldOf(run.predictions, run.outcomes);
+  return [
+    `# Still missing: ${run.name}`,
+    "",
+    "## Not held",
+    "",
+    ...listed(unheld.map((id) => `- ${id}: ${shownOutcome(run, id)}`)),
+    "",
+    "## Not done",
+    "",
+    ...(run.plan === "" ? ["- no plan yet"] : listed(notDoneOf(run.plan))),
+    "",
+    "## Intentionally opposed",
+    "",
+    ...listed(sectionOf(run.plan, "Intentionally opposed") ?? []),
+  ];
+}
+
 /**
  * What a fork's `predictions` owes its parents in its `## Carried` section, and what that section
- * leaves out: each id a parent did not hold, as `<parent>:<id>`, and each parent's
- * `still-missing-<parent>.md`, whose opposed trade-offs it inherits. Matched as whole words, so
- * `r:P2` is not carried by `r:P20`.
+ * leaves out: each id a parent did not hold, as `<parent>:<id>`. Matched as whole words, so `r:P2`
+ * is not carried by `r:P20`. What a parent leaves out on purpose is its iteration's plan's, which
+ * the still-missing view reads, so the section owes no file.
  */
 export function carryOf(
   predictions: string,
   parents: readonly Parent[],
 ): { owed: string[]; missing: string[] } {
-  const owed = parents.flatMap(({ name, predictions: theirs, outcomes }) => [
-    ...unheldOf(theirs, outcomes).map((id) => `${name}:${id}`),
-    `still-missing-${name}.md`,
-  ]);
+  const owed = parents.flatMap(({ name, predictions: theirs, outcomes }) =>
+    unheldOf(theirs, outcomes).map((id) => `${name}:${id}`),
+  );
   const carried = (sectionOf(predictions, "Carried") ?? []).join("\n");
   return { owed, missing: owed.filter((token) => !names(carried, token)) };
 }

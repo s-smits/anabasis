@@ -163,6 +163,36 @@ comparison and every task the reference answers only sometimes.
 | X1 | Whether a harness built without a benchmark's tasks or grades scores higher on it than pi's starter (WorkBuddy-Bench Code), then how it stands against Harness² (`studies/harness2/README.md`) | Present in source (`studies/harness2/run.ts`); WorkBuddy's dry run resolves its job, no container has run it. The operator's later course, a JobBench parity test on 20 tasks of 65, is `docs/backlog/jobbench-scoring.md`; which course the outside row counts is the operator's (`docs/backlog/v1-bar.md`) | The operator's word on WorkBuddy-Bench's licence, then `run.ts check` of the starter in WorkBuddy's container and the domain fit, without a model; then the operator's word for the paid arms |
 | X2 | Whether buffer v065-a's later promotions carry over to fresh tasks selected against a third harness of its chain, or are patches against tasks chosen to beat the reference (`studies/transitivity/README.md`) | Exercised live: arms A and B ran at `87f0b07e`, P-A and P-B held, arm C not run ($46.32; `studies/runs/transitivity/`) | A second reading of f-1's pair on fresh solves, before the carry-over is claimed without qualification |
 
+## Predicted but missed
+
+Each prediction of a release cycle since v0.7.4 that was falsified or never reached, read from the
+cycles' per-run outcomes and, before 8 November, from their `Predictions.md` resolutions. A cycle
+view (`wri2p2.ts ledger <cycle folder>`) lists every prediction; this table keeps only the misses
+and the open row each bears on. An unreached row says nothing about its claim: the run ended or was
+stopped before the claim's condition arose.
+
+| Cycle | Prediction | PR | Domain | Factor | Count outcome | Plan row |
+| --- | --- | --- | --- | --- | --- | --- |
+| v0.7.4 | L1 | cycle-wide | job, buffer, truss | Supply | Unreached: 0 of 3 runs lived 14 hours, each stopped with 0 comparisons reported | none |
+| v0.7.4 | L2 | cycle-wide | job, buffer, truss | Climb | Unreached: 0 of 3 runs promoted, none lived 24 hours | none |
+| stacked | L2 | cycle-wide | job, buffer | Climb | Unreached: both stopped at 12 hours with 0 promotions; buffer's g-1 read no step at 18 won, 5 lost of 23 | none |
+| stacked | H1 | cycle-wide | job, buffer | Honesty | Unreached: no promoting reading in either run | none |
+| stacked | N2 | cycle-wide | job, buffer | none (host) | Unreached: the log records a load only when a wait begins (71 and 23 waits), so no count can show a start above the cores | none |
+| stacked | P467 | #467 | job, buffer | none (runs) | Unreached: the retire line it named was never read | none |
+| stacked | P471 | #471 | job, buffer | Supply | Unreached: no promotion in either run | none |
+| stacked | P472 | #472 | job, buffer | none (handover) | Falsified: 0 of 2 stopped runs left a handover; a stop writes none | none |
+| stacked | T1 | #497 | buffer | Supply | Unreached: stopped at 1 h 56 min with 0 comparisons started | none |
+| stacked | T2 | #497 | job | Supply | Unreached: stopped at 1 h 34 min with 0 comparisons started | none |
+| stacked | T3 | #497 | job, buffer | Supply | Unreached: neither run reached a first comparison or an ending before its stop | none |
+| stacked | U2 | #502 | buffer | Supply | Unreached: stopped about 3 hours in, before a first comparison | none |
+| stacked | U3 | #502 | job | Supply | Falsified: the contract froze 20 minutes after the opening; the drafted exam lacked the shape the prediction needed, so the defect was not exercised | none |
+| stacked | U4 | #502 | job, buffer | Supply | Unreached: both stopped before a first comparison | none |
+| stacked | V4 | #506 | truss | Supply | Unreached: the run it named was stopped in its first draft | none |
+| v0.10.0 | B2 | #668 | esp32 | Climb | Unreached: 1 promotion in 7 comparisons when stopped at 13.9 hours; the 36-hour deadline never came | F32 |
+| v0.10.0 | B2, carried | #668 | esp32 | Climb | Falsified in the fork at #687: 0 promotions, ended `no-room` at 2.5 hours, the reference valid on 33 of 33 scored tasks | F32 |
+| v0.10.0 | C1 | #687 | esp32 | Supply | Unreached: the draft declared no objective, so the stand-in sentence was not exercised | F66 |
+| v0.10.0 | C2 | #687 | esp32 | Supply, climb | Held on its count (validity untied 0 of 33 tallied tasks); its step clause unreached, since no step was read | F32 |
+
 ## Tuning
 
 | Setting | Stands | Open |

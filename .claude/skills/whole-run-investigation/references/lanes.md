@@ -64,8 +64,8 @@ to today's through the head comment of `tools/wri/catalogue.ts`.
 
 Every pull request carries an importance label and at least one area label, one for each area its
 files touch (`checkLabels`, `tools/runtime/land.ts`). A lane carries the label of the pull requests
-that change what it reads. A cycle's `Predictions.md` and each run's `predictions-<run>.md` give a
-row its pull request's labels and draw its lanes from them (run-improvement-campaign, step 1).
+that change what it reads. Each run's `predictions-<run>.md` gives a row its pull request's
+labels and draws its lanes from them (run-improvement-campaign, step 1).
 
 | point | lanes | label | a pull request carries it when it changes |
 | --- | --- | --- | --- |

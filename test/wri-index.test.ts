@@ -356,7 +356,7 @@ describe("the pull requests and their forks", () => {
   it("rows a pull request with its fork's outcomes, unresolved predictions, opposed items and carried ids", () => {
     const { text, rows } = index();
     expect(rowOfPull(text, "#60")).toBe(
-      `| #60 | \`2026-11-06-parent\` | \`${FORK}\` | held 1, falsified 0, unreached 0, pending 1 | ${FORK}:F3 | 2 | ${FORK}: 2 of 3 carried, missing ${PARENT}:N3 |`,
+      `| #60 | \`2026-11-06-parent\` | \`${FORK}\` | held 1, falsified 0, unreached 0, pending 1 | ${FORK}:F3 | 2 | ${FORK}: 1 of 2 carried, missing ${PARENT}:N3 |`,
     );
     expect(rows.pulls).toBe(5);
     expect(text).not.toContain("PER-RUN-SECRET");
@@ -375,6 +375,19 @@ describe("the pull requests and their forks", () => {
       .split("\n")
       .flatMap((line) => /^\| (#\d+) \|/u.exec(line)?.[1] ?? []);
     expect(order).toEqual(["#600", "#223", "#62", "#61", "#60"]);
+  });
+
+  it("counts what a fork leaves out on purpose from the plan of the iteration that read it", () => {
+    const later = "esp32-fresh-opus-forkedPR63-e";
+    folder("2026-11-08-later", {
+      "investigation.json": JSON.stringify({ logs: [`/w/.ana/d2/${later}/log.jsonl`] }),
+      "plan.md": "# Plan\n\n## Not done\n\n- a row\n\n## Intentionally opposed\n\n- one\n- two\n- three\n",
+    });
+    folder("2026-11-08-cycle-v102", { [`predictions-${later}.md`]: predictions(["E1"]) });
+    expect(rowOfPull(index().text, "#63")).toContain(`${later}:E1 | 3 |`);
+    // Without the section in its plan, the fork has said nothing of it.
+    folder("2026-11-08-later", { "plan.md": "# Plan\n\n## Not done\n\n- a row\n" });
+    expect(rowOfPull(index().text, "#63")).toContain(`${later}:E1 | 0; 1 without the section |`);
   });
 
   it("names a ledger two folders hold, counts `none` as no opposed item, and says when no parent kept files", () => {

@@ -127,6 +127,16 @@ export interface Split {
   readonly rest: Tally;
 }
 
+/**
+ * What the tasks written after a promotion read alone: a step for the reference, a step for the
+ * starter, no step, or too few untied tasks to read one at the level. They are the one origin no step
+ * selected, so a win there is not a margin chosen for its sign: the tasks that chose the harness won
+ * its promotion, and a task written before it and not chosen on has mostly been scored in a step that
+ * chose an earlier one. It decides nothing.
+ */
+export const UNSELECTED = ["a step", "a step for the starter", "no step", "too few"] as const;
+type Unselected = (typeof UNSELECTED)[number];
+
 /** One promotion's first starter comparison that tallied a task. */
 export interface StarterRead {
   readonly session: string;
@@ -140,8 +150,8 @@ export interface StarterRead {
   readonly origins: Readonly<Record<Origin, Split>>;
   /** The tally on each writer's tasks, in the order the writers first proposed one. */
   readonly authors: readonly { readonly session: string; readonly tally: Tally }[];
-  /** Whether the tasks that did not choose the harness read a step alone, under this tree's rule. */
-  readonly outside: boolean;
+  /** What the tasks written after the promotion read alone, under this tree's rule (`Unselected`). */
+  readonly after: Unselected;
   /** The harnesses and tasks, which a copy of the comparison shares. */
   readonly key: string;
 }
@@ -337,6 +347,14 @@ function byAuthor(writers: ReadonlyMap<string, string>, pairs: readonly Paired[]
   });
 }
 
+/** `ahead`, the reference's scores, read as `Unselected` at `level`. */
+function unselectedOf(ahead: readonly number[], level: number): Unselected {
+  const behind = ahead.map((one) => -one);
+  if (readsStep(ahead, level)) return "a step";
+  if (readsStep(behind, level)) return "a step for the starter";
+  return readsStep(ahead.map(Math.abs), level) ? "no step" : "too few";
+}
+
 /** Each starter read of `events`, oldest first. */
 export function starterReads(events: readonly LogEvent[]): StarterRead[] {
   const reports = lastReports(events);
@@ -378,8 +396,8 @@ export function starterReads(events: readonly LogEvent[]): StarterRead[] {
           [ORIGINS[2]]: splitOf(ORIGINS[2]),
         },
         authors: byAuthor(writers, pairs),
-        outside: readsStep(
-          pairs.filter(({ task }) => !chosen.has(task)).map((pair) => -differenceOf(pair)),
+        after: unselectedOf(
+          pairs.filter((pair) => originOf(pair) === ORIGINS[2]).map((pair) => -differenceOf(pair)),
           at,
         ),
         key: `${epoch.reference}|${fresh}|${pairs

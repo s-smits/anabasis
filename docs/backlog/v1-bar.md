@@ -24,8 +24,8 @@ the release cycle stays aimed at them?
    before any built rollout, and a Harness² sweep on the 12 added tasks, since its held-out arm
    exists on none of them (not yet costed).
 3. **What a confirmed promotion counts (the operator's).** Recommended: keep `confirmed` as the bar
-   and have each release state beside it how many reads are a step without the tasks that chose the
-   harness (`starter-reads.ts` already prints it). Changing `confirmed` itself makes six far
+   and have each release state beside it how many reads are a step on the tasks written after alone,
+   the one origin no step selected (`starter-reads.ts` prints it). Changing `confirmed` itself makes six far
    harder: 5 of 24 reads on record would count.
 4. **Honesty counts only the A/A comparisons able to read a step.** Wording, since an A/A too small
    to read one cannot fail: in the proof campaign 7 of 10 were too small. The fleet rate beside it

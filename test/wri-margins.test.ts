@@ -12,9 +12,9 @@ const triggered = (log: readonly LogEvent[], name: keyof typeof TRIGGERS) =>
     .map(({ detail }) => detail);
 
 describe("lane 28: whether the chain adds up against the starter", () => {
-  it("names each read's tally on tasks written after its promotion, the sums and the reads that step without the chosen tasks", () => {
+  it("names each read's tally on tasks written after its promotion, the sums and what those tasks read alone", () => {
     expect(triggered(chainLog("lost"), "CHAIN AGAINST THE STARTER")).toEqual([
-      "the reference's wins, losses and ties against the starter on tasks written after its promotion, oldest read first: g-2 0-3-0, g-4 0-3-0; summed 0-6-0, on tasks written before and not chosen on 0-0-0, on the tasks that chose the harness 14-0-0; 0 of 2 reads a step without the tasks that chose the harness",
+      "the reference's wins, losses and ties against the starter on tasks written after its promotion, oldest read first: g-2 0-3-0, g-4 0-3-0; summed 0-6-0, on tasks written before and not chosen on 0-0-0, on the tasks that chose the harness 14-0-0; on the tasks written after alone, 0 of 2 reads a step and 0 a step for the starter",
     ]);
   });
 

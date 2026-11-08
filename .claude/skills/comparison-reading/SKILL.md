@@ -48,7 +48,9 @@ bun .claude/skills/comparison-reading/scripts/starter-reads.ts <log.jsonl | camp
   the floor. A large gap can mean a strong candidate or a weak reference. Its output is exam-side.
 - `starter-reads.ts` asks what a confirmed promotion rests on. It splits each starter read into the
   tasks that selected the harness and those that did not (written before but undrawn, or after),
-  and says whether the latter read a step alone: generalisation rather than selection bias. `--all`
+  and says what the tasks written after read alone (a step, a step for the starter, no step, or too
+  few untied tasks to read one), the one origin no step selected: generalisation rather than
+  selection bias. `--all`
   sums the record, `--name` filters by a text such as a pack. The fold is `starterReads`
   (`src/campaign/climb.ts`).
 

@@ -6,7 +6,7 @@
  * the starter on tasks that did not choose any of them. A starter read mixes three kinds of task
  * (`starterReads`, `src/campaign/climb.ts`), and only the tasks written after the promotion are new
  * to the promoted harness; those are also written by an Examiner that reads the reference's outcomes
- * (`src/examiner/record.ts`), so they lean against the reference and not the starter. Summed over a
+ * (`src/examiner/record.ts`), so they may lean against the reference and not the starter. Summed over a
  * campaign's reads, a reference that loses more than it wins there is what lane 28 separates: margin
  * noise selected for, the Examiner's aim, or a worse harness.
  *
@@ -43,11 +43,11 @@ export function chainTrigger(log: Index): Trigger[] {
   const after = of(AFTER);
   if (after.losses <= after.wins) return [];
   const each = reads.map(({ session, origins }) => `${session} ${wlt(origins[AFTER].whole)}`);
-  const outside = reads.filter((read) => read.outside).length;
+  const alone = (reading: string) => reads.filter(({ after: read }) => read === reading).length;
   return [
     fired(
       "CHAIN AGAINST THE STARTER",
-      `the reference's wins, losses and ties against the starter on tasks written after its promotion, oldest read first: ${each.join(", ")}; summed ${wlt(after)}, on tasks written before and not chosen on ${wlt(of(BEFORE))}, on the tasks that chose the harness ${wlt(of(CHOSEN))}; ${share(outside, reads.length)} reads a step without the tasks that chose the harness`,
+      `the reference's wins, losses and ties against the starter on tasks written after its promotion, oldest read first: ${each.join(", ")}; summed ${wlt(after)}, on tasks written before and not chosen on ${wlt(of(BEFORE))}, on the tasks that chose the harness ${wlt(of(CHOSEN))}; on the tasks written after alone, ${share(alone("a step"), reads.length)} reads a step and ${String(alone("a step for the starter"))} a step for the starter`,
     ),
   ];
 }

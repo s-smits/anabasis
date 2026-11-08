@@ -9,7 +9,8 @@
  * the harness, which it is read on again; those written before the promotion and not drawn then; and
  * those written after it. Only the last two can say anything about tasks that did not choose it, and
  * the tally does not tell them apart. The middle group is no neutral one: on 6 November all 19 of its
- * tasks on record had been scored in a step that chose an earlier promotion. A read also has the
+ * tasks on record had been scored in a step that chose an earlier promotion. So each read also says
+ * what the tasks written after read alone, the one origin no step selected. A read also has the
  * reference on the old side, where the promoting comparison had it on the new, and on 5 November a
  * table printed with no sides was read backwards by two reviews. So each read names its sides, and
  * each origin gives its whole tally, its tasks on which validity differed, and the rest. `epochsOf`
@@ -28,7 +29,14 @@
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { campaignLogs, rehearsed } from "#skills/promotion-tuner/scripts/tree.ts";
-import { ORIGINS, type Origin, type Split, type StarterRead, starterReads } from "#src/campaign/climb.ts";
+import {
+  ORIGINS,
+  type Origin,
+  type Split,
+  type StarterRead,
+  starterReads,
+  UNSELECTED,
+} from "#src/campaign/climb.ts";
 import { calledBy, namesOf } from "#src/campaign/names.ts";
 import type { Tally } from "#src/kernel/compare.ts";
 import { read } from "#src/kernel/log.ts";
@@ -54,7 +62,7 @@ function originLine(origin: Origin, { whole, validity, rest }: Split): string {
 function readLines(each: StarterRead, called: (digest: string) => string): string[] {
   return [
     `${each.session}: reference ${called(each.reference)} on the old side, starter ${called(each.starter)} on the new; tallies are the reference's wins, losses and ties`,
-    `  stored ${wlt(each.stored)}, ${each.confirmed ? "a step, confirmed" : "no step"} at ${String(each.level)}; without the tasks that chose it, ${each.outside ? "a step" : "no step"}`,
+    `  stored ${wlt(each.stored)}, ${each.confirmed ? "a step, confirmed" : "no step"} at ${String(each.level)}; on the tasks written after alone, ${each.after}`,
     ...ORIGINS.map((origin) => originLine(origin, each.origins[origin])),
     ...each.authors.map(({ session, tally }) => `  written by ${session}: ${wlt(tally)}`),
   ];
@@ -71,7 +79,7 @@ function totalLines(reads: readonly StarterRead[]): string[] {
     };
   };
   return [
-    `${String(reads.length)} starter reads, ${String(reads.filter(({ confirmed }) => confirmed).length)} confirmed, ${String(reads.filter(({ outside }) => outside).length)} a step without the tasks that chose the harness`,
+    `${String(reads.length)} starter reads, ${String(reads.filter(({ confirmed }) => confirmed).length)} confirmed; on the tasks written after alone, ${UNSELECTED.map((one) => `${one} ${String(reads.filter(({ after }) => after === one).length)}`).join(", ")}`,
     ...ORIGINS.map((origin) =>
       originLine(origin, {
         whole: of(origin, "whole"),

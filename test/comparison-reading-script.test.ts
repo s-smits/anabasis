@@ -240,8 +240,41 @@ describe("a promotion's starter read, split by what its tasks had been through",
     expect(out).toContain("  written by x-2: 0-0-1\n");
   });
 
-  it("reads no step without the tasks that chose the harness, though the whole tally confirms it", () => {
-    expect(starterReads(log)[0]?.outside).toBe(false);
+  it("reads the tasks written after alone, too few to read a step though the whole tally confirms it", () => {
+    expect(starterReads(log)[0]?.after).toBe("too few");
+  });
+
+  /** A promotion on the seven chosen tasks, then a starter read of those, of `before` tasks written
+   *  before it and drawn only now, and of `after` tasks written after it, each with its outcomes. */
+  const readOf = (before: number, after: Readonly<Record<string, string>>) => {
+    const undrawn = Array.from({ length: before }, (_, nth) => `undrawn-${String(nth)}`);
+    const outcomes = {
+      ...Object.fromEntries([...chose, ...undrawn].map((task) => [task, "PP FF"])),
+      ...after,
+    };
+    return starterReads([
+      ...[...chose, ...undrawn].flatMap((task) => gate(task)),
+      ...comparison("g-1", [STARTER, NEW], Object.fromEntries(chose.map((task) => [task, "FF PP"])), {
+        reading: "step",
+        differences: scores(7, 0),
+      }),
+      { at: AT, kind: "harness.promoted", data: { harness: NEW, from: STARTER, rests: [] } },
+      ...Object.keys(after).flatMap((task) => gate(task, "x-1")),
+      ...comparison("g-2", [NEW, STARTER], outcomes, { reading: "step", differences: scores(7 + before, 0) }),
+    ])[0]?.after;
+  };
+  const six = (outcome: string) =>
+    Object.fromEntries(Array.from({ length: 6 }, (_, nth) => [`after-${String(nth)}`, outcome]));
+
+  it("reads a step on six tasks written after and won, and a step for the starter on six lost", () => {
+    expect(readOf(0, six("PP FF"))).toBe("a step");
+    expect(readOf(0, six("FF PP"))).toBe("a step for the starter");
+    expect(readOf(0, { ...six("PP FF"), lost: "FF PP", other: "FF PP" })).toBe("no step");
+  });
+
+  it("reads no step from six tasks written before the promotion and won, which leaving out the chosen tasks alone would", () => {
+    expect(readOf(6, {})).toBe("too few");
+    expect(readOf(6, { lost: "FF PP" })).toBe("too few");
   });
 
   it("finds no read before a starter comparison reports, and none in a log with no promotion", () => {

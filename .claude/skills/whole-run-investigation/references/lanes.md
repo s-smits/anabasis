@@ -337,8 +337,8 @@ SESSION` gives how often the reference answered each session's tasks, beside the
 before it. Read them in order with how instances changed (from `task.proposed`, quoting none), and
 beside lane 20's A/A, since high-variance tasks split evenly and add nothing. The Examiner aims at
 the reference: it reads the reference's outcomes and writes where the reference has not closed a
-task, so the tasks written after a promotion are an adversarial set for the reference and not for
-the starter, and a starter read on them leans against the reference (lane 28). Read the starter's
+task, so the tasks written after a promotion may be an adversarial set for the reference and not
+for the starter, and a starter read on them may lean against the reference (lane 28). Read the starter's
 outcomes on each session's tasks beside the reference's (`starter-reads.ts`, its line a writer, and
 each starter comparison's `valid`): a session whose tasks the starter answers as often as before
 while the reference falls is aimed at the reference, and one where both fall is harder. Never
@@ -512,12 +512,14 @@ UNCONFIRMED`, say whether the epoch is still open, another move displaced the co
 (`comparedOf`), or the starter held level. Then read each starter read split
 (`bun .claude/skills/comparison-reading/scripts/starter-reads.ts <log>`): by origin (the tasks that
 chose the harness, those written before and not chosen on, those written after), each with the
-tasks on which validity differed and the rest, and by writing session; and whether it is a step
-without the tasks that chose the harness (`outside`), since a confirmation that rests on them reads
-the promoting comparison again. The starter's own noise is the line `Starter against itself`
+tasks on which validity differed and the rest, and by writing session; and what the tasks written
+after read alone (`after`: a step, a step for the starter, no step or too few), since they are the
+one origin no step selected, and a confirmation that rests on the others reads the promoting
+comparisons again. The starter's own noise is the line `Starter against itself`
 (`barLines`, `src/campaign/climb.ts`), which splits the starter's solves in two as the A/A splits the
-reference's; a reference lead inside it says nothing. The tasks written after are aimed at the
-reference by the Examiner (lane 11), so a loss there is no plain regression; where losses there
+reference's; a reference lead inside it says nothing. The tasks written after are written by an
+Examiner that reads the reference's outcomes (lane 11), so a loss there may be its aim and not a
+plain regression; where losses there
 recur read by read, lane 28 owns the question. The decision: whether the starter's guide stays, whether tasks are
 replaced, and whether a promotion counts towards the milestone. Routes to `host`
 (`src/harness/starter.ts`; `tools/d2/campaign-actions.ts`, `comparedOf`), `operator`, and
@@ -584,8 +586,7 @@ Read this lane before saying a campaign improved a harness, in five parts kept a
 1. **The rule.** `PROMOTED` gives the harness, its parent, who promoted it (the table, or
    `tools/d2/promote.ts` with any `despite`) and its comparisons with tally, p, level and A/A; the
    A/A is evidence about variance, never a second threshold. Say whether lane 19 finds it confirmed,
-   and whether the confirmation survives without the tasks that chose the harness (`outside`,
-   `starter-reads.ts`); where every win is an objective margin, read lane 29 before calling the step
+   and what the tasks written after it read alone (`after`, `starter-reads.ts`); where every win is an objective margin, read lane 29 before calling the step
    an effect.
 2. **What the step measured.** `STARTER BARE` means the reference answered nothing on most tasks, so
    the step shows an engine beats none, not how good it is. Read lane 12's diff and lane 16's wins.

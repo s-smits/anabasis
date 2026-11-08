@@ -36,7 +36,11 @@
  *
  * Only the repository's worktrees are swept, so a separate clone is never read. Every host sweeps
  * its own originals with its own daily job, and this one then refreshes each configured host's
- * records through snapshots.ts. Without --yes it describes the sweep and changes nothing.
+ * records through snapshots.ts and brings every campaign no process writes there whole, so the
+ * central host holds each closed run in full and a zip of it fetches nothing. A host that does not
+ * answer is skipped with its copies as they were, and the next sweep asks it again, so a Mac asleep
+ * for a night or a week catches up when it answers; nothing here deletes an original. Without --yes
+ * it describes the sweep and changes nothing.
  */
 import { existsSync, lstatSync, mkdirSync, readdirSync, rmSync } from "#src/meta/filesystem.ts";
 import { gitMaybe, gitText, mainTree } from "#src/meta/git.ts";
@@ -272,8 +276,14 @@ export async function retire(args: readonly string[]): Promise<void> {
   retireUnused(sweep, archiveIdle(sweep));
   for (const host of hostsOf()) {
     try {
-      say(sweep, `${host.name}: its campaigns' records refreshed into ${archiveOf(sweep.main, host.name)}`);
-      if (sweep.yes) await syncRuns([], { from: host.name, depth: "record" });
+      say(
+        sweep,
+        `${host.name}: its campaigns' records, and those no process writes whole, into ${archiveOf(sweep.main, host.name)}`,
+      );
+      if (sweep.yes) {
+        await syncRuns([], { from: host.name, depth: "record" });
+        await syncRuns([], { from: host.name, depth: "whole", closed: true });
+      }
     } catch (error) {
       // One host that does not answer holds up no other.
       console.error(`${host.name}: ${errorMessage(error)}`);

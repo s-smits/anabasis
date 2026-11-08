@@ -38,7 +38,6 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import { availableParallelism, loadavg } from "../meta/os.ts";
 import { join } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
-import { hashJsonValue } from "../meta/stable-json.ts";
 import { type Sat, type SeatTool, sit } from "../agent/session.ts";
 import { claimRoot, type ReleaseRoot } from "../wall/seat-root.ts";
 import { type Desk, openDesk, type PublicResource, submitTool } from "../tools/answer.ts";
@@ -53,7 +52,7 @@ import {
   usedSeconds,
   walledBase,
 } from "../tools/command.ts";
-import { type Harness, harnessTools, openHarness, pathsUnder } from "../harness/open.ts";
+import { type Harness, harnessTools, openHarness, pathsUnder, treeStamp } from "../harness/open.ts";
 import { installedPrograms } from "../harness/programs.ts";
 import { firstTurn, NUDGE, type PublicTask, seedHome, systemPrompt } from "./prompt.ts";
 
@@ -502,23 +501,11 @@ export async function judge(request: SolveRequest, id: string, played: Played): 
   });
 }
 
-/** Each entry under `dir` by path, size and modification time, links unfollowed. */
-function entries(dir: string) {
-  return pathsUnder(dir).map((path) => {
-    const stat = lstatSync(join(dir, path));
-    return { path, size: stat.size, mtime: stat.mtimeMs };
-  });
-}
-
-/** What moved-files compares: a file added, removed, resized or rewritten changes it. */
-function treeStamp(dir: string): string {
-  return hashJsonValue(entries(dir));
-}
-
-/** The bytes under `dir`, or null when the walk fails, as it does when a file goes during it. */
+/** The bytes under `dir`, links unfollowed, or null when the walk fails, as it does when a file
+ *  goes during it. */
 function bytesUnder(dir: string): number | null {
   try {
-    return entries(dir).reduce((total, { size }) => total + size, 0);
+    return pathsUnder(dir).reduce((total, path) => total + lstatSync(join(dir, path)).size, 0);
   } catch {
     return null;
   }

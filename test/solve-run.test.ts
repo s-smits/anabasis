@@ -18,7 +18,16 @@ import type { Contract } from "../src/kernel/contract.ts";
 import { read } from "../src/kernel/log.ts";
 import { Cancellation, type Ending, SILENT_SECONDS } from "../src/kernel/solve.ts";
 import type { Verdict } from "../src/kernel/verify.ts";
-import { cpSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  cpSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
@@ -666,6 +675,26 @@ describe.skipIf(!walled)("a solve under the real wall", () => {
     const move: FauxResponseStep = () => {
       writeFileSync(join(harness, "agent", "planted.ts"), "export {};\n");
       return fauxAssistantMessage("Planted.");
+    };
+    const { request, finished } = setup([move, ...answer], { limits: { ...LIMITS, turns: 1 } });
+    harness = request.harness;
+    expect(await solve(request, noWait)).toEqual({ outcome: "pass" });
+    expect(finished().map(({ data }) => data.ending)).toEqual([
+      { outcome: "non-result", kind: "moved-files", reason: `${harness} changed during the solve` },
+      { outcome: "pass" },
+    ]);
+  }, 120_000);
+
+  it.concurrent("reruns a solve that rewrote a harness file under its old size and time", async () => {
+    // `cp -p` and `tar` put the modification time back, so the stamp holds each file's change time
+    // too, as a tool tree's does (`treeStamp`); until 9 November this rewrite went unseen.
+    let harness = "";
+    const move: FauxResponseStep = () => {
+      const guide = join(harness, "agent", "BUILT_AGENTS.md");
+      const { atime, mtime } = statSync(guide);
+      writeFileSync(guide, readFileSync(guide, "utf8").replace(/\S/, "#"));
+      utimesSync(guide, atime, mtime);
+      return fauxAssistantMessage("Rewritten.");
     };
     const { request, finished } = setup([move, ...answer], { limits: { ...LIMITS, turns: 1 } });
     harness = request.harness;

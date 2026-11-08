@@ -25,7 +25,7 @@
  * person reads as earned removes real limits from the count. The line is a report and changes no decision.
  */
 import type { LogEvent } from "../kernel/log.ts";
-import { isString } from "../meta/json-shape.ts";
+import { labelsIn, rulingsOf } from "../kernel/solves.ts";
 import type { Ruling } from "./referee.ts";
 
 /** The Referee's three rulings, which are a person's three labels too. */
@@ -66,18 +66,28 @@ interface Agreement {
   readonly pabak: number | null;
 }
 
-/** The last ruling the log holds for each labelled solve, set against its label. */
+/** A person's label of each rejected answer on record (`labelsIn`), where it is one of the rulings. */
+export function settledLabels(events: readonly LogEvent[]): Map<string, Ruling> {
+  return new Map(
+    [...labelsIn(events)].flatMap(([solve, label]) => {
+      const ruling = RULINGS.find((known) => known === label);
+      return ruling === undefined ? [] : [[solve, ruling] as const];
+    }),
+  );
+}
+
+/** The last ruling the log holds for each labelled solve (`rulingsOf`, the Referee's own), set
+ *  against its label. */
 export function agreement(events: readonly LogEvent[], labels: ReadonlyMap<string, Ruling>): Agreement {
   // SAFETY: both levels are built from RULINGS, so every Ruling key is present at each.
   const table = Object.fromEntries(
     RULINGS.map((label) => [label, Object.fromEntries(RULINGS.map((ruling) => [ruling, 0]))]),
   ) as Record<Ruling, Record<Ruling, number>>;
   const unruled: string[] = [];
+  const rulings = rulingsOf(events);
   for (const [solve, label] of labels) {
-    const found = events.findLast(({ kind, data }) => kind === "referee.finding" && data.solve === solve)
-      ?.data.ruling;
-    const ruling = RULINGS.find((known) => known === found);
-    if (!isString(found) || ruling === undefined) unruled.push(solve);
+    const ruling = RULINGS.find((known) => known === rulings.get(solve));
+    if (ruling === undefined) unruled.push(solve);
     else table[label][ruling] += 1;
   }
   const labelled = (kind: Ruling) => RULINGS.reduce((sum, ruling) => sum + table[kind][ruling], 0);

@@ -26,7 +26,7 @@ import { flipP, unsolved as noneAnswered } from "#src/kernel/compare.ts";
 import { lastReports, poolOf, pairsReported, referenceOf } from "#src/kernel/reports.ts";
 import { SEATS, type Traced, traced, traceKind, tracesIn } from "#src/kernel/trace.ts";
 import { spendOf } from "#src/kernel/meter.ts";
-import { type Judged, solvesIn, verdictsOf } from "#src/kernel/solves.ts";
+import { type Judged, solvesIn, standsOf, verdictsOf } from "#src/kernel/solves.ts";
 import { heldAtGate, taskSets } from "#src/kernel/task.ts";
 import { blockingOf, OBJECTIVE } from "#src/kernel/verify.ts";
 import type { Handover } from "#src/campaign/handover.ts";
@@ -124,7 +124,10 @@ export interface Index {
   /** Every model turn, tool call and compaction (`tracesIn`). */
   readonly traces: readonly Traced[];
   readonly verdicts: ReadonlyMap<string, Judged>;
+  /** Each Referee's last finding, by its solve. */
   readonly rulings: ReadonlyMap<string, JsonObject>;
+  /** What stands of each rejection: a person's label over the last ruling (`standsOf`, rule 8). */
+  readonly stands: ReadonlyMap<string, string | null>;
   readonly states: ReadonlyMap<string, string>;
   readonly builds: readonly Build[];
   readonly compared: readonly Compared[];
@@ -405,6 +408,7 @@ export function indexOf(events: readonly LogEvent[]): Index {
     traces,
     verdicts: verdictsOf(events),
     rulings: last("referee.finding"),
+    stands: standsOf(events),
     states,
     builds,
     compared: comparedOf(events, { solves, builds }),
@@ -510,7 +514,7 @@ export function instrumentTriggers(log: Index): Trigger[] {
   const checks = rows.filter((row) => row.id !== OBJECTIVE.id);
   const uncaught = checks.filter((row) => count(row.named) === 0 || count(row.caught) < count(row.named));
   const refused = refusals(log);
-  const rulingOf = (solve: Solve) => text(log.rulings.get(solve.id)?.ruling) || "unread";
+  const rulingOf = (solve: Solve) => log.stands.get(solve.id) ?? "unread";
   const ruled = countBy(refused, rulingOf);
   const defects = refused.filter((solve) => rulingOf(solve) === DEFECT);
   const defectChecks = countBy(defects, (solve) => text(log.rulings.get(solve.id)?.check));

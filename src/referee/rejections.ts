@@ -20,7 +20,7 @@
 import type { Regraded } from "../kernel/acceptance.ts";
 import { draw } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import { verdictsOf } from "../kernel/solves.ts";
+import { standsOf, verdictsOf } from "../kernel/solves.ts";
 import { blockingOf } from "../kernel/verify.ts";
 import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
@@ -112,19 +112,6 @@ export function labelled<Word extends string>(file: JsonValue, known: readonly W
   return { labels, open };
 }
 
-/** What stands of a refused answer, by its solve: a person's label where `labels` holds one, over
- *  the Referee's last ruling of the same solve, and nothing where nobody read it or a reading
- *  ruled nothing. */
-function standing(events: readonly LogEvent[], labels: ReadonlyMap<string, Ruling>) {
-  return (solve: string): Ruling | undefined =>
-    labels.get(solve) ??
-    RULINGS.find(
-      (known) =>
-        known ===
-        events.findLast(({ kind, data }) => kind === "referee.finding" && data.solve === solve)?.data.ruling,
-    );
-}
-
 /**
  * A repair read against what was ruled of the old checker's verdicts: `rows` are a log's answers
  * under the repaired checker (`regraded`), `labels` a person's, which stand over the Referee's
@@ -141,7 +128,11 @@ export function repairReading(
   events: readonly LogEvent[],
   labels: ReadonlyMap<string, Ruling>,
 ): RepairReading {
-  const ruled = standing(events, labels);
+  // What stands of a refused answer: a person's label where `labels` holds one, over what stands
+  // of it on record (`standsOf`), and nothing where nobody read it or a reading ruled nothing.
+  const stands = standsOf(events);
+  const ruled = (solve: string): Ruling | undefined =>
+    labels.get(solve) ?? RULINGS.find((known) => known === stands.get(solve));
   const refusedBefore = rows.filter(({ was }) => was.startsWith("fail "));
   const passing = refusedBefore.filter(({ now }) => now === "pass");
   const of = (ruling: Ruling | undefined) =>

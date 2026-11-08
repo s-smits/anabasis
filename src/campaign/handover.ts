@@ -34,7 +34,15 @@ import type { LogEvent } from "../kernel/log.ts";
 import { lastReports, latestBuilt, promoted } from "../kernel/reports.ts";
 import { ownedBy, traceKind } from "../kernel/trace.ts";
 import { billedAll, billedParts } from "../kernel/meter.ts";
-import { ended, passed, practiceRan, type Ran, rejectionAside, solvesIn } from "../kernel/solves.ts";
+import {
+  ended,
+  passed,
+  practiceRan,
+  type Ran,
+  rejectionAside,
+  rulingsOf,
+  solvesIn,
+} from "../kernel/solves.ts";
 import { heldAtGate, taskSets } from "../kernel/task.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { type Supply, supplyOf } from "./admission.ts";
@@ -255,13 +263,7 @@ function compared(events: readonly LogEvent[], id: string): Compared {
       : "unbilled" in report.scored
         ? testOf(scoresIn(report.scored))
         : report.scored;
-  const ruled = new Map(
-    events.flatMap(({ kind, data }) =>
-      kind === "referee.finding" && isString(data.solve) && own.has(data.solve)
-        ? [[data.solve, data.ruling] as const]
-        : [],
-    ),
-  );
+  const ruled = [...rulingsOf(events)].flatMap(([solve, ruling]) => (own.has(solve) ? [ruling] : []));
   return {
     step: "comparison",
     id,
@@ -278,9 +280,9 @@ function compared(events: readonly LogEvent[], id: string): Compared {
     points: report?.points ?? null,
     aside: report?.aside.length ?? 0,
     rulings: {
-      earned: [...ruled.values()].filter((ruling) => ruling === "earned").length,
-      "check-defect": [...ruled.values()].filter((ruling) => ruling === "check-defect").length,
-      unclear: [...ruled.values()].filter((ruling) => ruling === "unclear").length,
+      earned: ruled.filter((ruling) => ruling === "earned").length,
+      "check-defect": ruled.filter((ruling) => ruling === "check-defect").length,
+      unclear: ruled.filter((ruling) => ruling === "unclear").length,
     },
     billed: billedParts(events, id).comparison,
     // A comparison with no report has a start: a step is a start or a report.

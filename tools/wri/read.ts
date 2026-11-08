@@ -140,7 +140,7 @@ function practiceTriggers(log: Index, { build, changed, read, round }: Practised
   // the log's last event, which is not the same as a session cut short.
   const ended = finished === null ? "not finished by the log's last event" : text(finished.ended);
   const failed = round.practice.filter((solve) => solve.outcome === "fail");
-  const earned = failed.filter((fail) => log.rulings.get(fail.id)?.ruling === "earned").length;
+  const earned = failed.filter((fail) => log.stands.get(fail.id) === "earned").length;
   // A fail followed by a pass of the same task: under other bytes it may be the change answering
   // the fail, and under the same bytes it is the solver's variance and answers nothing.
   const laterPass = (fail: Solve, same: boolean) =>
@@ -433,9 +433,7 @@ function comparisonTriggers(log: Index): Trigger[] {
     const aside = new Set(strings(own.aside));
     const open = scoring.filter(
       (solve) =>
-        solve.kind === "rejected" &&
-        aside.has(solve.version) &&
-        log.rulings.get(solve.id)?.ruling !== "earned",
+        solve.kind === "rejected" && aside.has(solve.version) && log.stands.get(solve.id) !== "earned",
     );
     const underOld = open.filter((solve) => solve.harness === own.old).length;
     const level = count(last.level);

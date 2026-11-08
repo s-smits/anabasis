@@ -59,15 +59,7 @@
  *
  * It starts no solve and calls no model. Not run here: see `campaign.ts`.
  */
-import {
-  PASS_LABELS,
-  passesIn,
-  REPORTED,
-  settledLabels,
-  swapped,
-  toLabel,
-  UNSETTLED,
-} from "#src/campaign/comparison.ts";
+import { PASS_LABELS, passesIn, REPORTED, swapped, toLabel, UNSETTLED } from "#src/campaign/comparison.ts";
 import { settleReading } from "#src/campaign/round.ts";
 import { draw } from "#src/kernel/compare.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
@@ -81,7 +73,7 @@ import { asRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
-import { agreement, RULINGS, unclearReport } from "#src/referee/agreement.ts";
+import { agreement, RULINGS, settledLabels, unclearReport } from "#src/referee/agreement.ts";
 import { labelled } from "#src/referee/rejections.ts";
 import { openCampaign, packNamed } from "./campaign.ts";
 import { type Campaign, reportLines } from "./round.ts";

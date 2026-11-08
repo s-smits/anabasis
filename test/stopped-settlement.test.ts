@@ -25,7 +25,7 @@ import { asRecord, isString, type JsonObject, type JsonValue } from "../src/meta
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { agreement, clears } from "../src/referee/agreement.ts";
+import { agreement, clears, settledLabels } from "../src/referee/agreement.ts";
 import type { Ruling } from "../src/referee/referee.ts";
 import { labelLines, settleCommand } from "../tools/d2/settle.ts";
 import { safeguardTriggers } from "../tools/wri/climb.ts";
@@ -204,7 +204,7 @@ it("reviews a stopped draw with five short tasks and seventeen rejected answers 
     passes: Object.fromEntries(passes),
   });
   expect(taskStates(read(s.log)).get("t-7")).toBe("disputed");
-  const labels = comparison.settledLabels(read(s.log));
+  const labels = settledLabels(read(s.log));
   expect(labels.size).toBe(17);
   const measured = agreement(read(s.log), labels);
   expect(measured.table["check-defect"]["check-defect"]).toBe(14);

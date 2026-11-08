@@ -80,7 +80,7 @@ import { plural } from "../meta/text.ts";
 import { ending as endSession, openDesk, text, tool } from "../tools/answer.ts";
 import { CODING_TOOLS, codingTools, selectedCodingTools } from "../tools/coding.ts";
 import { type CommandWall, launchOn, type NetworkReach, networkReach } from "../tools/command.ts";
-import { type Harness, harnessTools, openHarness, pathsUnder, toolTreeStamp } from "../harness/open.ts";
+import { type Harness, harnessTools, openHarness, pathsUnder, treeStamp } from "../harness/open.ts";
 import { installedPrograms } from "../harness/programs.ts";
 import { systemPrompt } from "../solver/prompt.ts";
 import { clockText, solverTools } from "../solver/run.ts";
@@ -251,7 +251,7 @@ function keptTree(bench: Bench): string | null {
       `${HOME_TOOL_TREE} is a link, or lies outside your home: the programs are installed in the directory itself, which is copied whole when the harness is frozen`,
     );
   }
-  const stamp = toolTreeStamp(real);
+  const stamp = treeStamp(real);
   if (bench.tree?.stamp === stamp) return bench.tree.dir;
   if (bench.tree !== null) dropUnlinked(bench.request.states, bench.tree.dir);
   const dir = realpathSync(mkdtempSync(join(bench.request.states, "tree-")));

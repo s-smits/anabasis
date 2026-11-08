@@ -51,7 +51,7 @@ import type { Contract } from "../kernel/contract.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { billedParts, priceKey } from "../kernel/meter.ts";
 import type { Ending } from "../kernel/solve.ts";
-import type { Cap } from "../kernel/reports.ts";
+import { type Cap, CUT } from "../kernel/reports.ts";
 import { ownedBy } from "../kernel/trace.ts";
 import { ended as endedSolves, practiceRan, solvesIn } from "../kernel/solves.ts";
 import { taskStates } from "../kernel/task.ts";
@@ -233,10 +233,6 @@ export async function practised(request: SolveRequest): Promise<Practised> {
 
 /** How a session may end, the first that holds winning: `finish` over a limit that fell in the same turn. */
 const ENDINGS = ["finished", "killed", "wall", "crashed", "turns"] as const;
-
-function endedBy(by: Record<(typeof ENDINGS)[number], boolean>): Built["ended"] {
-  return ENDINGS.find((reason) => by[reason]) ?? "stopped";
-}
 
 /** Keep the state an interrupted session's own practice solve last ran on as a harness snapshot, once,
  *  where it changed the parent and its saved state opens. A cut harness is passed over
@@ -527,17 +523,16 @@ async function finishSession(bench: Bench, sat: Sat, clock: BuildClock, turns: n
       note: bench.note,
     });
   }
-  const ended =
-    bench.fatal === null
-      ? endedBy({
-          finished: bench.note !== null,
-          killed: request.kill?.aborted === true,
-          wall: clock.signal.aborted,
-          crashed: crash !== null,
-          turns: turns >= limits.turns,
-        })
-      : "crashed";
-  if (ended === "crashed" || ended === "killed") await keepPractised(log, request.id, request.states);
+  const by: Record<(typeof ENDINGS)[number], boolean> = {
+    finished: bench.note !== null,
+    killed: request.kill?.aborted === true,
+    wall: clock.signal.aborted,
+    crashed: crash !== null,
+    turns: turns >= limits.turns,
+  };
+  const ended: Built["ended"] =
+    bench.fatal === null ? (ENDINGS.find((reason) => by[reason]) ?? "stopped") : "crashed";
+  if (CUT.has(ended)) await keepPractised(log, request.id, request.states);
   // Kept before the session is recorded as ended, so a session on record as ended has its notes.
   keepMemory(bench.home, request.memory, request.id);
   append(log, BUILD_FINISHED, {
@@ -576,7 +571,7 @@ export function spent(events: readonly LogEvent[], id: string): string | null {
   if (ended === undefined) {
     return `session ${id} started and never finished; a round does not run a second session under one id`;
   }
-  return ended === "killed" || ended === "crashed"
+  return CUT.has(ended)
     ? `session ${id} ${ended === "killed" ? "was killed" : "crashed"}, so what it froze is not compared; a round under a new session id starts again`
     : null;
 }

@@ -68,7 +68,8 @@ import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { type Host, hostNamed, hostsOf, ownName } from "./host-config.ts";
 import { quoted, rsync, shellPath, sshScript, worktreesIn } from "./host-command.ts";
 import { verbOn } from "./hosts.ts";
-import { CAMPAIGNS, HERE, keepers, processes, readNamed, writers } from "./registry.ts";
+import { stillRunning } from "./diagnosis.ts";
+import { CAMPAIGNS, HERE, processes, readNamed } from "./registry.ts";
 import { syncRuns } from "./snapshots.ts";
 import { recordDegradations } from "./degradations.ts";
 import { continueRun, pause, said } from "./manage.ts";
@@ -286,7 +287,7 @@ export function copy(args: readonly string[]): void {
       `${name} is a copy of a campaign ${run.archived} holds: runs move takes one to another machine`,
     );
   }
-  if (writers(run, processes()).length > 0 || keepers(name).length > 0) {
+  if (stillRunning(run, processes())) {
     throw new Error(`${name} is being written or kept in ${run.tree}: pause it first`);
   }
   const from = dirname(run.path);

@@ -35,7 +35,6 @@ const read = (digest: string, session: string, confirmed = true) => ({
   digest,
   read: {
     session,
-    reading: "no-step",
     tally: { wins: 6, losses: 0, ties: 2 },
     confirmed,
   },
@@ -73,8 +72,9 @@ describe("the fold of one look", () => {
     expect(lines).toHaveLength(2);
     expect(lines[0]).toContain("promotion 1, harness aaaa");
     expect(lines[0]).not.toContain("wait");
-    expect(lines[1]).toContain("starter comparison g-3 after promotion 1 (aaaa) read no-step");
-    expect(lines[1]).toContain("won 6, lost 0, tied 2, not confirmed");
+    expect(lines[1]).toContain(
+      "starter comparison g-3 after promotion 1 (aaaa) read no step for the reference: won 6, lost 0, tied 2, not confirmed",
+    );
     // A peer whose tree predates the split sends no tally of it, and its line stands without one.
     expect(lines[1]).not.toContain("written after");
   });
@@ -239,6 +239,7 @@ describe("the verb over real logs", () => {
   }
   const STARTER = "s".repeat(64);
   const HARNESS = `abcd1234${"e".repeat(56)}`;
+  const SECOND = `cdef5678${"f".repeat(56)}`;
 
   it("leaves out a seed a rehearsal writes, and reads one a launch continued", () => {
     const { folder } = host();
@@ -282,10 +283,25 @@ describe("the verb over real logs", () => {
     // The first look recorded that this log has no writer, so that gap says nothing here.
     expect(lines).toHaveLength(3);
     expect(lines[0]).toStartWith("the-run (here): promotion 1, harness abcd1234");
-    expect(lines[1]).toContain("starter comparison g-2 after promotion 1 (abcd1234) read no-step");
-    expect(lines[1]).toContain("won 6, lost 0, tied 0, confirmed");
+    // The comparison read no-step, the starter not above the reference; the starter read is a step.
+    expect(lines[1]).toContain(
+      "starter comparison g-2 after promotion 1 (abcd1234) read a step for the reference: won 6, lost 0, tied 0, confirmed",
+    );
     expect(lines[2]).toBe("the-run (here): keeper: 2026-11-06T10:00:00.000Z move on login 3");
     expect(look().out).toBe("");
+    // The nearest hostile case: a starter read that reads no step for the reference either.
+    event("harness.promoted", { harness: SECOND });
+    event("comparison.reported", {
+      session: "g-4",
+      old: SECOND,
+      fresh: STARTER,
+      reading: "no-step",
+      level: 0.02,
+      scored: { differences: [-1, 1, -1, 1, 0, 0] },
+    });
+    expect(look().out).toContain(
+      "starter comparison g-4 after promotion 2 (cdef5678) read no step for the reference: won 2, lost 2, tied 2, not confirmed",
+    );
     event("campaign.ended", { ending: "budget" });
     expect(look().out).toBe("the-run (here): ended budget\n");
   });

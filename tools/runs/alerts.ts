@@ -49,8 +49,9 @@ interface Promotion {
   readonly digest: string;
   readonly read: {
     readonly session: string;
-    readonly reading: string;
     readonly tally: Tally;
+    /** Whether it read a step for the reference (`confirmed`, `epochsOf`). The comparison's own
+     *  reading is the starter's against the reference, so its no-step is this read's step. */
     readonly confirmed: boolean;
     /** The tally on the tasks written after the promotion. A peer whose tree predates it sends none. */
     readonly writtenAfter?: Tally;
@@ -107,7 +108,7 @@ function promotionsOf(events: readonly LogEvent[]): Promotion[] {
   const reads = starterReads(events);
   return epochsOf(events)
     .slice(1)
-    .map(({ reference, starter_read: session, starter_tally: tally, confirmed, comparisons }) => {
+    .map(({ reference, starter_read: session, starter_tally: tally, confirmed }) => {
       const after = reads.find((each) => each.session === session)?.origins["written after"].whole;
       return {
         digest: reference.slice(0, DIGEST_CHARS),
@@ -116,7 +117,6 @@ function promotionsOf(events: readonly LogEvent[]): Promotion[] {
             ? null
             : {
                 session,
-                reading: comparisons.findLast(({ id }) => id === session)?.reading ?? "",
                 tally,
                 confirmed: confirmed === true,
                 ...keyIfDefined("writtenAfter", after),
@@ -212,7 +212,7 @@ function climbLines(row: Row, seen: Seen): string[] {
     const after = read.writtenAfter;
     return [
       ...promoted,
-      `starter comparison ${read.session} after promotion ${nth} (${digest}) read ${read.reading}: the reference won ${String(wins)}, lost ${String(losses)}, tied ${String(ties)}, ${read.confirmed ? "confirmed" : "not confirmed"}${after === undefined ? "" : `; on tasks written after it won ${String(after.wins)}, lost ${String(after.losses)}, tied ${String(after.ties)}`}`,
+      `starter comparison ${read.session} after promotion ${nth} (${digest}) read ${read.confirmed ? "a step" : "no step"} for the reference: won ${String(wins)}, lost ${String(losses)}, tied ${String(ties)}, ${read.confirmed ? "confirmed" : "not confirmed"}${after === undefined ? "" : `; on tasks written after it won ${String(after.wins)}, lost ${String(after.losses)}, tied ${String(after.ties)}`}`,
     ];
   });
   const read = row.promotions.filter((one) => one.read !== null).length;

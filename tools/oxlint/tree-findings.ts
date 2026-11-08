@@ -26,6 +26,7 @@ import {
   READER_ROOTS,
 } from "../loc/source-policy.ts";
 import { copiedBlocks } from "./tree-copied-block.ts";
+import { crossedArguments } from "./tree-crossed-argument.ts";
 import { factsWithoutOwner } from "./tree-fact.ts";
 import { identitiesWithoutOwner } from "./tree-identity.ts";
 import { overwrittenKeys } from "./tree-overwritten-key.ts";
@@ -53,6 +54,7 @@ type TreeFindingKind =
   | "test-only-module"
   | "unread-forward"
   | "overwritten-key"
+  | "crossed-argument"
   | "stale-reference"
   | "filesystem-import-budget";
 
@@ -117,6 +119,8 @@ export const TREE_FINDING_ARGUMENTS: Readonly<Record<TreeFindingKind, string>> =
     'A re-export (`export { a } from "./owner.ts"`, or `export { a }` of an imported name) that no file imports from the forwarding module. Every caller reads the owner, so the forward is a second door kept in step for nobody. Delete it. A package `index` and a `node:` forward are skipped.',
   "overwritten-key":
     "A key a caller passes in the object it hands a function that spreads that parameter and then sets the same key itself, so the caller's value is never read. Delete the caller's key, or where the caller meant something the function ignores, make the function honour it. A key set before the spread, inside a conditional spread or read from the parameter anywhere in the function stays the caller's, and a parameter the function passes on whole is not read.",
+  "crossed-argument":
+    "A call into another file whose arguments are each named for another position's parameter of the callee, two swapped or three or more rotated (`copyTree(destinationPath, sourcePath)` against `copyTree(source, destination)`). The compiler accepts it where the types are assignable among them, and `ana/no-transposed-argument` sees only calls within one file. Fix whichever side is wrong: the arguments' order, a misnamed binding, or the declaration. A name matches a parameter when its words begin or end with the parameter's; one argument out of place is a coincidence and is not counted.",
   "stale-reference":
     "A backticked repository path in Markdown or a TypeScript comment that names no file or directory, or an `ANA_*` setting documented in a `.env*.example`, AGENTS.md or a SKILL.md that no code or script file spells. A reader who follows it finds nothing. Point a live description at where the thing lives now, or delete the sentence; in a record of what held at a time, cite the file at the last commit that held it, as `<sha>:path`. Not read: vendored trees and the documents of v1's record (docs/transfer.md, docs/v1.md, studies/). Not counted: a commit-qualified path, a placeholder or glob, a one-letter example name, a path Git ignores, and one that exists from a directory above the document.",
   "filesystem-import-budget":
@@ -234,6 +238,14 @@ export const TREE_FINDING_EXAMPLES: Readonly<
       after: '// the forward is deleted; callers keep their own import\nimport { roomOf } from "./room.ts";',
     },
   ],
+  "crossed-argument": [
+    {
+      before:
+        '// rounds.ts: export function roundDir(campaign: string, round: string): string\nimport { roundDir } from "./rounds.ts";\nexport const trail = (campaign: string, round: string) => join(roundDir(round, campaign), "trail.jsonl");',
+      after:
+        '// the arguments in the order roundDir declares\nimport { roundDir } from "./rounds.ts";\nexport const trail = (campaign: string, round: string) => join(roundDir(campaign, round), "trail.jsonl");',
+    },
+  ],
   "overwritten-key": [
     {
       before:
@@ -243,6 +255,10 @@ export const TREE_FINDING_EXAMPLES: Readonly<
     },
   ],
 };
+
+/** The files whose calls `crossed-argument` reads: every TypeScript file, tests included, since a
+ *  test calls the product as often as the product calls itself. */
+const CALLERS = /\.(?:ts|tsx|mts)$/u;
 
 /** Authored roots whose declarations are candidates, skill scripts included. */
 const OWNED_ROOTS = [...AUTHORED_ROOTS, ".claude"];
@@ -637,6 +653,9 @@ export function treeSites(): TreeSite[] {
     ...unreadModules(code, prose),
     ...unreadForwards(tree),
     ...overwrittenKeys(owned),
+    ...crossedArguments(
+      new Map([...files].filter(([path]) => CALLERS.test(path) && !path.startsWith("vendor/"))),
+    ),
     ...staleReferences(new Map([...files, ...prose])),
     ...filesystemBudget(tree),
   ]

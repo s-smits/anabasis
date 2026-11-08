@@ -9,8 +9,8 @@
  *
  * The wider spellings sit beside their nearest neighbour that is not a swap: a member read whose
  * property is the other parameter's name, a word-level match (`sourcePath` for `source`), a
- * method reached through `this` or an object literal, and a pair whose declared types differ but
- * compile either way. It reports zero sites on this tree and on seven trees from 12 October to 5
+ * method reached through `this` or an object literal, a constructor reached by `new`, three
+ * arguments rotated, and a pair whose declared types differ but compile either way. It reports zero sites on this tree and on seven trees from 12 October to 5
  * November, so the rule is registered for the shape it refuses to let in, and this file is the
  * only thing that proves it still reports at all.
  */
@@ -107,6 +107,36 @@ export function objectInOrder(base: string, target: string): string {
 export function decided(check: (task: string, answer: string) => string, task: string, answer: string): string {
   return check(task, answer); // ADMITTED a parameter's function is not the function declaring the parameter
 }
+class Route {
+  readonly path: string;
+  constructor(from: string, to: string) {
+    this.path = from + to;
+  }
+}
+export function reversedRoute(from: string, to: string): Route {
+  return new Route(to, from); // REPORT a constructor declares parameters too
+}
+export function route(from: string, to: string): Route {
+  return new Route(from, to); // ADMITTED this is the order the constructor declares
+}
+class Span {
+  constructor(
+    readonly start: number,
+    readonly end: number,
+  ) {}
+}
+export function inverted(range: { start: number; end: number }): Span {
+  return new Span(range.end, range.start); // REPORT parameter properties are named parameters
+}
+function place(row: string, column: string, layer: string): string {
+  return row + column + layer;
+}
+export function rotated(row: string, column: string, layer: string): string {
+  return place(column, layer, row); // REPORT three arguments rotated, each named for the next parameter
+}
+export function openChain(row: string, column: string, layer: string): string {
+  return place(column, layer, row + layer); // ADMITTED a chain that never closes is two coincidences
+}
 export function outerOrder(task: string, answer: string, check: (a: string, b: string) => string): string {
   return decided(check, answer, task); // REPORT the outer function's own parameters, crossed
 }
@@ -118,7 +148,7 @@ describe("ana/no-transposed-argument", () => {
 
   it("reports a crossed pair and nothing that merely resembles one", async () => {
     const expected = expectedLines(CALLS);
-    expect(expected).toHaveLength(9);
+    expect(expected).toHaveLength(12);
     expect(await reports("src/example.ts")).toStrictEqual(expected);
   });
 });

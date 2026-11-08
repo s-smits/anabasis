@@ -1,5 +1,6 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
+import { crossings } from "../shared/crossed.ts";
 
 /**
  * A call that passes two arguments the wrong way round, where the compiler cannot say so.
@@ -16,26 +17,33 @@ import type { RuleExample } from "../../rule-examples.ts";
  * `string`. Nothing else in the tree reports it: the types match, both bindings are read, and a
  * test written from the same misreading passes.
  *
- * Only a crossed pair is reported: the argument at each of two positions carries the name of the
- * other position's parameter and not its own. A name is a bare identifier or the property ending
- * a member read (`row.to`), and it matches a parameter when its words begin or end with the
- * parameter's words (`sourcePath` matches `source`), provided neither parameter's name matches
- * the other's. The declared types are not compared: a crossed pair that compiles has types the
- * compiler takes either way, which is the case the rule exists for. The callee is a function this
- * file declares, a `const` bound to a function, a method of the enclosing class called on `this`,
- * or a method of an object literal bound to a `const`.
+ * A call is reported where its arguments cross: each of two arguments named for the other's
+ * parameter, or three or more rotated so that each is named for the next one's (`crossings`,
+ * `tools/oxlint/ana/shared/crossed.ts`, which says when a name names a parameter). A name is a
+ * bare identifier or the property ending a member read (`row.to`), and it names a parameter when
+ * its words begin or end with the parameter's (`sourcePath` names `source`). The declared types are
+ * not compared: a crossing that compiles has types the compiler takes among the positions, which
+ * is the case the rule exists for. The callee is a function this file declares, a `const` bound to
+ * a function, a method of the enclosing class called on `this`, a method of an object literal
+ * bound to a `const`, or the constructor of a class this file declares, reached by `new`.
+ *
+ * An oxlint rule sees one file, and its plugin API offers no other module's declarations, so a
+ * call into another file is read by the whole-tree scan `tree/crossed-argument`
+ * (`tools/oxlint/tree-crossed-argument.ts`) with the same reading. On 8 November that scan resolved
+ * 9,989 calls into other files, with 7,742 argument pairs, and found no crossing.
  *
  * One argument that carries another parameter's name is a coincidence, and the rule does not
  * report it. Measured on 8 November across today's tree and seven trees from 12 October to 5
  * November, that shape gave 6 to 10 findings a tree, every one a correct call (`flag("name",
  * name)`, `addUsage(turn.usage, usage)`); requiring the caller to hold the displaced parameter's
- * name as well left only calls inside the callee itself. The crossed shape, with every widening
- * above, reported nothing on any of the eight trees: the defect is rare, and the rule is the
- * fence that keeps it so.
+ * name as well left only calls inside the callee itself. A chain of such pointers that never
+ * closes is the same coincidence twice. The crossed shape, with every widening above, reported
+ * nothing on any of the eight trees: the defect is rare, and the rule is the fence that keeps it
+ * so.
  *
  * The callee is resolved through scope analysis, because a parameter list is needed to compare
- * against and an imported one is not in view. A parameter that holds a function (`verify` in
- * `decided(verify, task, answer)`) is not resolved to the function that declares it.
+ * against. A parameter that holds a function (`verify` in `decided(verify, task, answer)`) is not
+ * resolved to the function that declares it.
  *
  * There is no fix. Swapping the two arguments back is mechanically available and wrong to apply:
  * the call may be right and the caller's two bindings misnamed, or the declaration's order may be
@@ -65,29 +73,19 @@ function argumentName(arg: ESTree.Node): string | null {
   return null;
 }
 
-/** The lower-case words of a camel-case or snake-case name. */
-function wordsOf(name: string): string[] {
-  return name
-    .replaceAll(/([a-z0-9])([A-Z])/gu, "$1 $2")
-    .replaceAll("_", " ")
-    .toLowerCase()
-    .split(" ")
-    .filter((word) => word !== "");
+/** The constructor of a class, where it declares one. */
+function constructorOf(body: ESTree.ClassBody): Callable | null {
+  for (const member of body.body) {
+    if (member.type === "MethodDefinition" && member.kind === "constructor") return member.value;
+  }
+  return null;
 }
 
-/** Whether a name's words begin or end with a parameter's words: `sourcePath` fits `source`. */
-function fits(name: string, parameter: string): boolean {
-  const have = wordsOf(name);
-  const want = wordsOf(parameter);
-  if (want.length === 0 || want.length > have.length) return false;
-  const offset = have.length - want.length;
-  return want.every((word, k) => have[k] === word) || want.every((word, k) => have[offset + k] === word);
-}
-
-/** Whether two arguments named `first` and `second` cross parameters named `left` and `right`. */
-function crossed(first: string, second: string, left: string, right: string): boolean {
-  if (fits(left, right) || fits(right, left)) return false;
-  return fits(first, right) && !fits(first, left) && fits(second, left) && !fits(second, right);
+/** A parameter's name: a plain one, one with a default, or a constructor's parameter property. */
+function parameterName(param: Callable["params"][number]): string | null {
+  const inner = param.type === "TSParameterProperty" ? param.parameter : param;
+  const target = inner.type === "AssignmentPattern" ? inner.left : inner;
+  return target.type === "Identifier" ? target.name : null;
 }
 
 /** The method `name` of the class whose body encloses `node`. */
@@ -114,7 +112,7 @@ export const noTransposedArgumentRule = defineRule({
   meta: {
     type: "problem",
     docs: {
-      description: "Disallow a call whose two arguments carry each other's parameter names.",
+      description: "Disallow a call whose arguments carry one another's parameter names.",
       examples: [
         {
           before:
@@ -132,7 +130,7 @@ export const noTransposedArgumentRule = defineRule({
     },
     messages: {
       transposed:
-        "`{{fn}}` receives `{{first}}` at its parameter `{{left}}` and `{{second}}` at `{{right}}`: each argument is named for the other parameter. The compiler accepts the swap because the two types are assignable either way.",
+        "`{{fn}}` receives {{given}}: each of these arguments is named for the parameter of another in the list. The compiler accepts the crossing because the types are assignable among them.",
     },
   },
   createOnce(context) {
@@ -150,6 +148,16 @@ export const noTransposedArgumentRule = defineRule({
       return isCallable(def.node.init) ? def.node.init : null;
     }
 
+    /** The constructor a `new` reaches, where this file declares the class. */
+    function boundConstructor(id: ESTree.Node): Callable | null {
+      const def = definitionOf(id);
+      if (def?.type === "ClassName" && def.node.type === "ClassDeclaration") {
+        return constructorOf(def.node.body);
+      }
+      if (def?.type !== "Variable" || def.node.type !== "VariableDeclarator") return null;
+      return def.node.init?.type === "ClassExpression" ? constructorOf(def.node.init.body) : null;
+    }
+
     /** The function a call reaches, where this file declares it, or null. */
     function calleeOf(callee: ESTree.Node): Callable | null {
       if (callee.type === "Identifier") return boundFunction(callee);
@@ -163,25 +171,26 @@ export const noTransposedArgumentRule = defineRule({
       return def.node.init?.type === "ObjectExpression" ? methodOfObject(def.node.init, name) : null;
     }
 
+    function check(node: ESTree.CallExpression | ESTree.NewExpression, callable: Callable | null): void {
+      if (callable === null || node.arguments.some((arg) => arg.type === "SpreadElement")) return;
+      const names = node.arguments.map(argumentName);
+      const params = callable.params.map(parameterName);
+      for (const crossing of crossings(names, params)) {
+        const given = crossing.map((i) => `\`${names[i] ?? ""}\` at \`${params[i] ?? ""}\``).join(", ");
+        context.report({
+          node,
+          messageId: "transposed",
+          data: { fn: context.sourceCode.getText(node.callee), given },
+        });
+      }
+    }
+
     return {
       CallExpression(node) {
-        if (node.arguments.some((arg) => arg.type === "SpreadElement")) return;
-        const callable = calleeOf(node.callee);
-        if (callable === null) return;
-        const params = callable.params.map((param) => {
-          const target = param.type === "AssignmentPattern" ? param.left : param;
-          return target.type === "Identifier" ? target.name : null;
-        });
-        const names = node.arguments.map(argumentName);
-        for (let i = 0; i < names.length; i += 1) {
-          for (let j = i + 1; j < names.length; j += 1) {
-            const [first, second, left, right] = [names[i], names[j], params[i], params[j]];
-            if (first == null || second == null || left == null || right == null) continue;
-            if (!crossed(first, second, left, right)) continue;
-            const fn = context.sourceCode.getText(node.callee);
-            context.report({ node, messageId: "transposed", data: { fn, first, second, left, right } });
-          }
-        }
+        check(node, calleeOf(node.callee));
+      },
+      NewExpression(node) {
+        if (node.callee.type === "Identifier") check(node, boundConstructor(node.callee));
       },
     };
   },

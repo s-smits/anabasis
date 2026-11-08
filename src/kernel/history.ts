@@ -3,7 +3,7 @@
  *
  * `task.ts` folds a task's proposal, its task admissions and its moves into a version's state, and refuses a
  * history that could not have happened. Its readers ask one thing more of a proposal than a state:
- * which tasks the log holds whole, since no pack holds an Examiner's or a carried one. Here it is
+ * which tasks the log holds whole, since no pack holds an Examiner's. Here it is
  * read once, for every reader.
  * The review of 20 October found an author's answer absent from Referee packets. Its answer and
  * passing solves have one reader here, by proposed version; the known valid answer remains `poolOf`'s fact.
@@ -18,20 +18,16 @@ import { hashJsonValue } from "../meta/stable-json.ts";
 import type { LogEvent } from "./log.ts";
 import type { Task } from "./verify.ts";
 
-/** A `task.proposed` event. A pack's task is proposed by its id and its family, carried from
- *  another checker's campaign or not. A task an Examiner session wrote is logged whole, here and in
- *  a campaign it is carried into, since no pack holds it. */
+/** A `task.proposed` event. A pack's task is proposed by its id and its family. A task an Examiner
+ *  session wrote is logged whole, since no pack holds it. */
 interface Proposal {
   readonly version: string;
   readonly taskId: string | null;
   /** The task's family, which a comparison tallies by (`compared`, `comparison.ts`); null where the
    *  proposal names none, as a pack's did until 12 October. */
   readonly family: string | null;
-  /** The Examiner session that wrote it; null for a pack's task and for a carried one. */
+  /** The Examiner session that wrote it; null for a pack's task. */
   readonly session: string | null;
-  /** The version a carried task had in the campaign it came from (`tools/c/carry.ts`); null for
-   *  any other. */
-  readonly carried: string | null;
   /** The task whole, where the proposal holds it. A proposal written between 4 and 5 November also
    *  holds its author's `claim` beside the task, which nothing reads any more (`write.ts`). */
   readonly task: Task | null;
@@ -55,7 +51,6 @@ export function proposalsOf(events: readonly LogEvent[]): Proposal[] {
         taskId: isString(data.taskId) ? data.taskId : null,
         family: isString(family) ? family : null,
         session: isString(data.session) ? data.session : null,
-        carried: isString(data.carried) ? data.carried : null,
         task:
           task !== null && isString(task.taskId) && isString(task.family)
             ? {
@@ -117,9 +112,8 @@ export function wrongPassesIn(events: readonly LogEvent[]): Set<string> {
   );
 }
 
-/** The tasks a log holds whole in a proposal: an Examiner's instances and the ones carried from
- *  another campaign, which no pack holds. Each is given once, as the last proposal of its id holds
- *  it. */
+/** The tasks a log holds whole in a proposal: an Examiner's instances, which no pack holds. Each is
+ *  given once, as the last proposal of its id holds it. */
 export function writtenTasks(events: readonly LogEvent[]): Task[] {
   return [
     ...new Map(

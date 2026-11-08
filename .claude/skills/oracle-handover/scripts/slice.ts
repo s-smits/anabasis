@@ -75,7 +75,6 @@ const SEAT_NAMES = {
   referee: "referee",
   solver: "solve",
   solve: "solve",
-  repair: "repair",
 } as const satisfies Record<string, Seat>;
 
 const SEAT_TITLES = {
@@ -84,7 +83,6 @@ const SEAT_TITLES = {
   draft: "Drafter",
   referee: "Referee",
   solve: "Solver",
-  repair: "Repair",
 } as const satisfies Record<Seat, string>;
 
 const SELECTOR = /^(?<what>[A-Za-z][\w.]*)(?::(?<id>[^{}]+))?(?:\{(?<items>[^{}]*)\})?$/u;

@@ -37,13 +37,10 @@ import { foldsEvent, taskStates } from "./task.ts";
 /** The kinds of event a log holds. A kind that no command writes any more stays in the list where a
  *  log may hold it, since a log is evidence and has to read; a kind no log holds is none.
  *  `comparison.started` fixes a comparison's terms before its first solve: the harnesses, the
- *  setting and the scored tasks (`src/campaign/round.ts`). `anchor.drawn`, `anchor.scored` and
- *  `exam.word` are written by no command since 9 October and are kinds still, so that a log
- *  written before then reads: the anchor's draw and its test, and the word an Examiner was told of
- *  a task. `solve.turn` and `solve.call` are a solve's trace, one per model turn and one per tool
- *  call, so the trace is in the log rather than in a file beside it. `condition.recorded` holds a
- *  condition under the id its solves name (`condition.ts`), so a comparison can be checked from
- *  the log alone. The four `build.*` kinds are a Builder session's: what it was given, its own
+ *  setting and the scored tasks (`src/campaign/round.ts`). `solve.turn` and `solve.call` are a
+ *  solve's trace, one per model turn and one per tool call, so the trace is in the log rather than
+ *  in a file beside it. `condition.recorded` holds a condition under the id its solves name
+ *  (`condition.ts`), so a comparison can be checked from the log alone. The four `build.*` kinds are a Builder session's: what it was given, its own
  *  turns and calls, and how it ended (`src/builder/session.ts`). `build.checkpoint` keeps a
  *  harness snapshot inside a live Builder conversation, before a comparison. `solve.compacted`,
  *  `build.compacted` and `exam.compacted` are a compaction in pi's own loop, and what its summary
@@ -72,10 +69,7 @@ import { foldsEvent, taskStates } from "./task.ts";
  *  operator's prompt (`src/examiner/draft.ts`), the same five as an Examiner session's, and
  *  `exam.drafted` holds the draft that stood, whole: its rules with their sources, its answer
  *  format, its check program's source, its example tasks and its control answers. A campaign opened from
- *  a prompt reads its exam from that event and from no file beside the log. The `repair.*` kinds
- *  were a session in which the Examiner repaired its own check program or its control answers between
- *  comparisons, retired on 13 October; they stay so that a log of before still reads, as
- *  `pass.labelled` does, a person's label of a pass, which the settled report holds since 12 October.
+ *  a prompt reads its exam from that event and from no file beside the log.
  *  `task.feasible` is a task an author's answer passed the checks on, under its own id once its task admission
  *  passed or in a `try_answer` after that, by version and never the answer, or one a stored pack's
  *  accepted answer passes today's checks on (`tools/d2/prepare.ts`), by version and sweep. An
@@ -109,16 +103,10 @@ const EVENT_KINDS = [
   "draft.compacted",
   "draft.finished",
   "exam.drafted",
-  "repair.started",
-  "repair.turn",
-  "repair.call",
-  "repair.compacted",
-  "repair.finished",
   "exam.started",
   "exam.turn",
   "exam.call",
   "exam.compacted",
-  "exam.word",
   "exam.finished",
   "task.proposed",
   "task.feasible",
@@ -139,10 +127,6 @@ const EVENT_KINDS = [
   "comparison.started",
   "comparison.reported",
   "stop.overridden",
-  "anchor.drawn",
-  "anchor.scored",
-  "pass.labelled",
-  "diagnosis.labelled",
 ] as const;
 
 export type EventKind = (typeof EVENT_KINDS)[number];

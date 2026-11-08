@@ -23,8 +23,7 @@
  *
  * It exits 1 when anything counts against the repair. That is a reading and no refusal: the log
  * stays the frozen checker's, the repaired one takes a campaign of its own (`accept.ts --freeze`),
- * and whether to open it is the operator's. `carry.ts` then takes the old campaign's tasks into it
- * with no solve.
+ * and whether to open it is the operator's.
  *
  * It needs the repaired pack and its tool tree on disk, and the Mac's verifier wall.
  */

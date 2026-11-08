@@ -33,9 +33,8 @@ import type { LogEvent } from "./log.ts";
 import { heldAtGate } from "./task.ts";
 
 /** Each seat whose trace the log holds, in the order a stopped run's open sessions are ended
- *  (`unfinished`, `src/kernel/reports.ts`). `repair` is a seat a log of before 11 October holds
- *  (`7f0add79:docs/simplify.md`). */
-export const SEATS = ["build", "exam", "draft", "repair", "referee", "solve"] as const;
+ *  (`unfinished`, `src/kernel/reports.ts`). */
+export const SEATS = ["build", "exam", "draft", "referee", "solve"] as const;
 export type Seat = (typeof SEATS)[number];
 
 /** The turns of one session or solve that one model other than its seat's answered (`degradations`). */
@@ -121,7 +120,6 @@ const WHOSE = {
   build: "session",
   exam: "session",
   draft: "session",
-  repair: "session",
   referee: "reader",
   solve: "solve",
 } as const satisfies Record<Seat, string>;
@@ -129,8 +127,7 @@ export const whose = (seat: Seat) => WHOSE[seat];
 
 /** Each kind of start whose turns and compactions are billed where no end is on record, with the
  *  field that names the session or the solve in all four events: a Builder's session, an
- *  Examiner's three kinds and a solve attempt. No session opens `repair.*` since 13 October; a log
- *  of before is billed whole. */
+ *  Examiner's two kinds, a Referee's reading and a solve attempt. */
 export const METERED = SEATS.map((of) => ({ of, id: whose(of) }));
 /** The kind seat `seat` logs part `part` under. */
 export const traceKind = (seat: Seat, part: Traced["part"]) => `${seat}.${part}` as const;

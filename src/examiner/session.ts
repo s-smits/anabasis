@@ -1,7 +1,6 @@
 /**
  * The Examiner's one session, in its two modes: it drafts an exam (`draft.ts`), or it writes tasks
- * (`write.ts`). Until 13 October a third mode repaired a check; no campaign opened one, and no seat
- * repairs a check (`AGENTS.md` rule 2). A log of before keeps its `repair.*` events.
+ * (`write.ts`). No seat repairs a check (`AGENTS.md` rule 2).
  *
  * A mode is what a session is told, the tools it works with and when its work is done (`Mode`);
  * everything else is one loop (`examining`) in the frame every seat's session has (`sit`,

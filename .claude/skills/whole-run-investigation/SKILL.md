@@ -164,7 +164,7 @@ them unless the primary deletes them.
   traces; a finding handed to a seat that writes the harness or the tasks is the leak lane 12 looks
   for.
 - **A `pack/` finding is a decision, never a patch.** It goes to the checker's owner, and a repair is
-  another campaign (`accept.ts --freeze`, `repaired.ts`, `tools/c/carry.ts`).
+  another campaign (`accept.ts --freeze`, `repaired.ts`).
 - **Verify every session's model from its transcript** before using its report.
 
 ## Editing the shared instructions

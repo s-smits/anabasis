@@ -84,13 +84,7 @@ import { campaignLogs, type Found, rehearsed } from "./tree.ts";
 const SINCE = "2026-10-01";
 /** The tool calls of solves and sessions, which no fold here reads; `draft.call` is read for what a
  *  drafting session cut short had metered (`unfinished`, `src/kernel/trace.ts`). */
-const CALLS: ReadonlySet<EventKind> = new Set([
-  "solve.call",
-  "exam.call",
-  "build.call",
-  "referee.call",
-  "repair.call",
-]);
+const CALLS: ReadonlySet<EventKind> = new Set(["solve.call", "exam.call", "build.call", "referee.call"]);
 const LAST = 20;
 const USAGE = `usage:
   bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/table.ts

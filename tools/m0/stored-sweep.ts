@@ -2,18 +2,12 @@
  * A v1 cycle sweep as its run left it on disk: `grades/<sweep>/grades.tsv` for the verdicts,
  * `runs/<sweep>/cNN/<task>/result.json` for the solve, and the case's `trace.json` for its turns.
  * The milestone tools test the new host on these stored solves, so no model session is needed.
- *
- * Dollars come two ways. Billed is what v1 recorded Claude Code reporting a turn cost. Metered is
- * this meter's, which charges cached input at the full price. v1's trace keeps each turn's input
- * with its cached part inside and no split, so billed cannot be recomputed from it; metered needs
- * no split, since it charges the classes alike.
  */
 import type { Api, Model, ThinkingLevel } from "@earendil-works/pi-ai";
 import { claudeExecutable, SWEEP_COMPACT_WINDOW } from "#src/agent/backends/claude.ts";
 import { type BackendOptions, backends } from "#src/agent/backends/models.ts";
 import type { Control } from "#src/kernel/acceptance.ts";
 import { type Contract, type Objective, objectiveLine } from "#src/kernel/contract.ts";
-import { billOf, freezePrices, type PriceTable } from "#src/kernel/meter.ts";
 import type { Ending } from "#src/kernel/solve.ts";
 import type { TaskPackage } from "#src/kernel/task.ts";
 import { applicableTruthChecks, readBrief, type Task, type Verdict } from "#src/kernel/verify.ts";
@@ -37,16 +31,10 @@ interface StoredSolve {
   readonly answerParses: boolean;
 }
 
-/** The fields of v1's `case-trace/v3` trace read here. A turn the wall cut is left `open`, with its
- *  token counts and cost null: Claude Code reports them only when a turn ends. */
-type StoredTurn =
-  | {
-      readonly status: "ended";
-      readonly inputTokens: number;
-      readonly outputTokens: number;
-      readonly costUsd: number;
-    }
-  | { readonly status: "open" };
+/** The field of v1's `case-trace/v3` trace read here: a turn the wall cut is left `open`. */
+interface StoredTurn {
+  readonly status: "ended" | "open";
+}
 
 interface StoredTrace {
   readonly turns: readonly StoredTurn[];
@@ -63,7 +51,6 @@ export interface Row extends StoredSolve {
   readonly expected: Verdict | null;
   /** How the solve ended, as this host types it. */
   readonly ending: Ending;
-  readonly turns: readonly StoredTurn[];
 }
 
 /** The parts of v1's `brief.json` read here. */
@@ -87,13 +74,6 @@ interface PackBrief {
 interface PackControls {
   readonly accept: readonly { taskId: string; artifact: JsonValue }[];
   readonly reject: readonly { taskId: string; artifact: JsonValue; expectedCheckId: string }[];
-}
-
-/** A row and its two dollar readings. */
-interface Priced {
-  readonly row: Row;
-  readonly billed: number;
-  readonly metered: number;
 }
 
 /** What v1 recorded of a stored solve's starting state (`built-runtime.json`). */
@@ -161,7 +141,6 @@ export function sweepRows(root: string, sweep: string): Row[] {
       solve,
       expected,
       ending: endingOf(stored, turns, kind, expected),
-      turns,
     });
   }
   return rows;
@@ -261,45 +240,6 @@ export function modelNamed(name: string): Model<Api> {
   const model = backends(sweepOptions()).getModel(provider, id.join("/"));
   if (model === undefined) throw new Error(`no backend serves ${name}`);
   return model;
-}
-
-/**
- * A stored solve's spend: its billed dollars, as v1 recorded them, and its metered ones. Null when a
- * turn never ended, since what it spent was never reported: that solve's cost is unknown, not zero.
- */
-function spend(row: Row, prices: PriceTable) {
-  const ended = row.turns.filter((turn) => turn.status === "ended");
-  if (ended.length < row.turns.length) return null;
-  const sum = (field: "inputTokens" | "outputTokens" | "costUsd") =>
-    ended.reduce((total, turn) => total + turn[field], 0);
-  const tokens = {
-    input: sum("inputTokens"),
-    cacheRead: 0,
-    cacheWrite: 0,
-    cacheWrite1h: 0,
-    output: sum("outputTokens"),
-  };
-  // v1's rows hold no cache classes, so every input token is billed at the input price: metered.
-  const metered = billOf(prices, { [`${row.provider}/${row.model}`]: { ...tokens, dollars: 0 } });
-  return { billed: sum("costUsd"), metered };
-}
-
-/** The rows with both dollar readings, and apart from them the rows whose cost was never reported. */
-export function pricedRows(rows: readonly Row[]) {
-  // The list prices of the models the rows ran.
-  const named = new Map(rows.map((row) => [`${row.provider}/${row.model}`, row]));
-  const prices = freezePrices([...named.values()].map(rowModel));
-  const priced: Priced[] = [];
-  const unpriced: Row[] = [];
-  for (const row of rows) {
-    const spent = spend(row, prices);
-    if (spent === null) {
-      unpriced.push(row);
-    } else {
-      priced.push({ row, ...spent });
-    }
-  }
-  return { priced, unpriced };
 }
 
 /** A v1 check program's pack: its brief, its tasks and their hidden values, and its controls. */

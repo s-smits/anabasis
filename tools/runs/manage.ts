@@ -89,15 +89,7 @@ export const WAIT_HOURS = "0.25";
 /** The events a pause waits for one more of, by the word that names it: `next` is the smallest step
  *  a run completes, a finished solve or a recorded tool call of any seat. */
 const AFTER = {
-  next: [
-    "solve.finished",
-    "build.call",
-    "draft.call",
-    "exam.call",
-    "referee.call",
-    "repair.call",
-    "solve.call",
-  ],
+  next: ["solve.finished", "build.call", "draft.call", "exam.call", "referee.call", "solve.call"],
   compacted: ["build.compacted"],
   reported: ["comparison.reported"],
   finished: ["build.finished"],

@@ -26,7 +26,6 @@ const SEATS = new Map([
   ["build", "Builder session"],
   ["exam", "Examiner session"],
   ["draft", "Exam draft"],
-  ["repair", "Exam repair"],
 ]);
 /** The kinds a line leaves out: what a solve's ending or the exam side already says. */
 const UNSAID: ReadonlySet<string> = new Set(["verdict", "condition.recorded", "referee.finding"]);

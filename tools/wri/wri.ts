@@ -41,8 +41,8 @@
  *   every report is there and valid.
  * - `synthesis` renders the synthesis session's prompt over the reports as they stand.
  * - `derive` runs every deterministic reader of one log over it (`READERS`, `tools/wri/derive.ts`)
- *   into the main worktree's `data/derived/<campaign>/`, one file a reader, replacing the folder
- *   whole where the log or the reading commit moved. It prints one line; `--verbose` prints every
+ *   into the main worktree's `data/derived/<campaign>@<path>/`, one folder a log path and one file
+ *   a reader, replacing the folder whole where the log or the reading commit moved. It prints one line; `--verbose` prints every
  *   file as well, for a session that wants to read them all. `--all` takes every campaign this
  *   machine reads (`readable`, `tools/runs/registry.ts`), which is how a job keeps them current.
  *   `start` derives its logs the same way, quietly, and names the folders in the instructions.
@@ -316,10 +316,14 @@ function frozen(logs: readonly string[], out: string): string[] {
 async function start(): Promise<number> {
   needed("log");
   const out = resolve(needed("out"));
+  // Every refusal before anything is written: a snapshot is a copy of the run's folder, and until
+  // 9 November a log named twice was refused only after it was made.
   if (existsSync(join(out, SHARED))) throw new Error(`${out} already holds ${SHARED}`);
+  if (new Set(resolvedLogs.map((log) => nameOf(log))).size < resolvedLogs.length) {
+    throw new Error("--log names a log twice");
+  }
   const logs = values.snapshot === true ? frozen(resolvedLogs, out) : resolvedLogs;
   refuseRunning(logs);
-  if (new Set(logs.map((log) => nameOf(log))).size < logs.length) throw new Error("--log names a log twice");
   mkdirSync(join(out, "lanes"), { recursive: true });
   const { done, line } = await derived(logs);
   // Each launch's tree first, so that the host line can name it.
@@ -346,17 +350,19 @@ async function start(): Promise<number> {
     `Every deterministic reader's output for each campaign, as the log stood at this start, is in its folder: ${done.map(({ dir }) => `\`${dir}/\``).join(", ")}, one \`<reader>.txt\` a reader (\`wri.ts derive\`). Read those files before running a reader yourself.`,
   ].join("\n");
   const template = readFileSync(join(REFERENCES, "shared-instructions.template.md"), "utf8");
-  // The author's comments stay in the copy: they say what each blank section is for.
-  writeFileSync(
-    join(out, SHARED),
-    template.replace("{campaigns}", () => campaigns),
-  );
   const text =
     logs.length === 1
       ? texts.join("")
       : texts.map((each, index) => `## ${nameOf(logs[index] ?? "")}\n\n${each}`).join("\n");
   writeFileSync(join(out, "overview.md"), text);
   writeFileSync(join(out, INVESTIGATION), `${JSON.stringify({ logs }, null, 2)}\n`);
+  // The shared instructions last, since a start refuses a folder that holds them: until 9 November
+  // they came first, and a start that failed after them left a folder no start or later verb could
+  // read. The author's comments stay in the copy: they say what each blank section is for.
+  writeFileSync(
+    join(out, SHARED),
+    template.replace("{campaigns}", () => campaigns),
+  );
   console.log(text);
   console.log(line);
   console.log(`wrote ${join(out, SHARED)}: write its three blank sections, then run lanes`);

@@ -11,7 +11,7 @@ and which owner each next change belongs to. It only reads and proposes; the hos
 every verdict, and `AGENTS.md` sections 1 to 8 own the rules it reads against.
 
 A deterministic fold of the log gives six rows (the identities every finding binds to) and a set of
-triggers. Each trigger opens one of twenty-seven lanes in [the catalogue](references/lanes.md), each
+triggers. Each trigger opens one of twenty-nine lanes in [the catalogue](references/lanes.md), each
 lane is one question answered by an independent session, one session merges the reports, and the
 primary vets the result.
 
@@ -122,10 +122,10 @@ the largest campaign. With a smaller budget, read groups in dependency order:
 
 1. **Verdicts (1 to 6)**, lane 3 first: until refusals read sound, a win may be a check refusing the
    parent's right answer.
-2. **Comparison (17 to 20)**, lane 18 first.
+2. **Comparison (17 to 20, 29)**, lane 18 first.
 3. **Harness (12 to 16)**, lane 12 first.
 4. **Supply (7 to 11), solve (24), economy (25), runs (26).**
-5. **Climb (21 to 23, 27)**: open it before anyone is told a campaign improved a harness. Lane 27
+5. **Climb (21 to 23, 27, 28)**: open it before anyone is told a campaign improved a harness. Lane 27
    runs from the start.
 
 In a release cycle, launch every lane at once and synthesise from the reports in hand within the
@@ -235,7 +235,7 @@ Then vet the synthesis's own findings:
 
 | file | owns |
 | --- | --- |
-| [references/lanes.md](references/lanes.md) | the stance, the owner table, the labels, rows A to F and lanes 1 to 27 |
+| [references/lanes.md](references/lanes.md) | the stance, the owner table, the labels, rows A to F and lanes 1 to 29 |
 | [references/from-v1.md](references/from-v1.md) | where each of v1's rows and lanes went |
 | [references/shared-instructions.template.md](references/shared-instructions.template.md) | the preset every open lane carries |
 | [references/synthesis.template.md](references/synthesis.template.md) | the synthesis session's prompt |

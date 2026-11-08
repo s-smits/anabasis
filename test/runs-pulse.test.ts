@@ -8,6 +8,7 @@ import { join } from "../src/meta/path.ts";
 import { leftOut, pulse as pulseOf } from "../tools/runs/pulse.ts";
 import { overview } from "../tools/wri/read.ts";
 import type { Run } from "../tools/runs/registry.ts";
+import { chainLog, objectiveLog } from "./helpers/starter-chain.ts";
 
 const round: Run = { name: "r1", tree: "/wt", path: "/wt/.ana/d2/r1/log.jsonl", end: "comparison.reported" };
 const START = Date.parse("2026-10-08T12:00:00Z");
@@ -262,6 +263,22 @@ describe("the runs pulse", () => {
     expect(look.said[2]).toMatch(/^◆ climb: PROMOTION UNCONFIRMED/);
     expect(look.status).toContain("1 promoted");
     expect(pulse(round, built, "open", undefined, START + 5 * 60_000).status).not.toContain("promoted");
+  });
+
+  it("says a chain that loses to the starter and an objective step inside its A/A as readings at a report", () => {
+    const said = (log: readonly LogEvent[]) =>
+      pulse(round, log, "open", { ...lookedAt(log.length - 1), triggers: {} }, START + 7 * 60_000).said;
+    expect(
+      said(chainLog("lost")).filter((line) =>
+        line.startsWith("◆ climb: CHAIN AGAINST THE STARTER (lane 28)"),
+      ),
+    ).toHaveLength(1);
+    expect(said(chainLog("won")).some((line) => line.includes("CHAIN AGAINST THE STARTER"))).toBe(false);
+    expect(
+      said(objectiveLog(0.05)).filter((line) =>
+        line.startsWith("◆ honesty: MARGINS INSIDE THE NOISE (lane 29)"),
+      ),
+    ).toHaveLength(1);
   });
 
   it("recognises a campaign ending while drafting and warns for an unfinished draft", () => {

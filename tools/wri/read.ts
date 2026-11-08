@@ -1,6 +1,6 @@
 /**
  * The deterministic read of one campaign's log for a whole-run investigation: six rows of
- * identities the primary reviewer settles, and the triggers that say which of the twenty-seven lanes of
+ * identities the primary reviewer settles, and the triggers that say which of the twenty-nine lanes of
  * `.claude/skills/whole-run-investigation/references/lanes.md` have something to read.
  *
  * v1's readers walked a campaign folder of some forty record kinds: claims, promotions, epochs,

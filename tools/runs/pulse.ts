@@ -159,6 +159,8 @@ const WATCHED = new Map<string, readonly [string, "alarm" | "reading"]>([
   ["GATE REFUSED", ["supply", "reading"]],
   ["OUTCOMES BY SESSION", ["supply", "reading"]],
   ["PROMOTION UNCONFIRMED", ["climb", "reading"]],
+  ["CHAIN AGAINST THE STARTER", ["climb", "reading"]],
+  ["MARGINS INSIDE THE NOISE", ["honesty", "reading"]],
   ["BROKEN AT END", ["climb", "alarm"]],
   ["STEP CARRIERS", ["climb", "reading"]],
   ["CHAIN", ["climb", "reading"]],

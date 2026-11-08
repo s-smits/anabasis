@@ -1,6 +1,6 @@
 # Whole-run investigation lanes
 
-The catalogue: six deterministic rows the primary settles itself, and twenty-seven lanes, each one
+The catalogue: six deterministic rows the primary settles itself, and twenty-nine lanes, each one
 question a paid session can be given. `tools/wri/catalogue.ts` parses this file, and
 `test/wri-catalogue.test.ts` holds it to `TRIGGERS` (`tools/wri/folds.ts`): each trigger the reader
 prints is named in the `Starts from` paragraph of the lane it starts.
@@ -73,8 +73,8 @@ labels and draws its lanes from them (run-improvement-campaign, step 1).
 | verdicts | 2–5 | `verdicts` | the Referee, set-asides, hand labels and `settle.ts` |
 | supply | 7, 9, 11 | `supply` | task writing and admission, release, room, what the Examiner is told |
 | climb | 12–16 | `harness` | the Builder's session, prompt, tools or practice, the harness contract, the wall to the Builder |
-| honesty | 8, 17, 18, 20 | `comparison` | a comparison's terms, pairing, scored set, tally, test, A/A, conditions |
-| climb | 19, 21–23, 27 | `climb` | the move table, moves, starter comparison, promotion, stop rule, endings, words |
+| honesty | 8, 17, 18, 20, 29 | `comparison` | a comparison's terms, pairing, scored set, tally, test, A/A, conditions |
+| climb | 19, 21–23, 27, 28 | `climb` | the move table, moves, starter comparison, promotion, stop rule, endings, words |
 | honesty | 24 | `solve` | a solve's run, backends, the wall, endings, non-results, slots and load |
 | economy | 25 | `economy` | billing, the meter, the budget, time readers |
 | honesty | 26 | `runs` | launching and moving runs, logins, hosts, receipts |
@@ -123,7 +123,7 @@ practice, and the reading of each comparison of its harness (named by session, `
 Examiner session: ending, proposals, and what stood. A move is recorded as it begins, so name every
 step still open at the log's end on its own line and judge closure by the step's own ending.
 
-## Lanes 1–27
+## Lanes 1–29
 
 ### The verdicts: the instrument, its review and its draft
 
@@ -335,8 +335,14 @@ Does anything move the Examiner towards tasks that separate harnesses, session o
 which inputs (`AGENTS.md` section 3, `src/examiner/record.ts`) each session received. `OUTCOMES BY
 SESSION` gives how often the reference answered each session's tasks, beside the reports opened
 before it. Read them in order with how instances changed (from `task.proposed`, quoting none), and
-beside lane 20's A/A, since high-variance tasks split evenly and add nothing. Never propose telling
-the Examiner a share, target or level. The decision: whether its inputs are revised. Routes to
+beside lane 20's A/A, since high-variance tasks split evenly and add nothing. The Examiner aims at
+the reference: it reads the reference's outcomes and writes where the reference has not closed a
+task, so the tasks written after a promotion are an adversarial set for the reference and not for
+the starter, and a starter read on them leans against the reference (lane 28). Read the starter's
+outcomes on each session's tasks beside the reference's (`starter-reads.ts`, its line a writer, and
+each starter comparison's `valid`): a session whose tasks the starter answers as often as before
+while the reference falls is aimed at the reference, and one where both fall is harder. Never
+propose telling the Examiner a share, target or level. The decision: whether its inputs are revised. Routes to
 `examiner-prompt` and `operator`.
 
 ### The harness
@@ -503,7 +509,16 @@ the previous release's on the same pack and setting; near 100% leaves no room. R
 guides keep or outgrow the starter's. A promotion is confirmed by its epoch's first starter
 comparison that tallied a task (`confirmed`, `src/campaign/climb.ts`). For each `PROMOTION
 UNCONFIRMED`, say whether the epoch is still open, another move displaced the comparison
-(`comparedOf`), or the starter held level. The decision: whether the starter's guide stays, whether tasks are
+(`comparedOf`), or the starter held level. Then read each starter read split
+(`bun .claude/skills/comparison-reading/scripts/starter-reads.ts <log>`): by origin (the tasks that
+chose the harness, those written before and not chosen on, those written after), each with the
+tasks on which validity differed and the rest, and by writing session; and whether it is a step
+without the tasks that chose the harness (`outside`), since a confirmation that rests on them reads
+the promoting comparison again. The starter's own noise is the line `Starter against itself`
+(`barLines`, `src/campaign/climb.ts`), which splits the starter's solves in two as the A/A splits the
+reference's; a reference lead inside it says nothing. The tasks written after are aimed at the
+reference by the Examiner (lane 11), so a loss there is no plain regression; where losses there
+recur read by read, lane 28 owns the question. The decision: whether the starter's guide stays, whether tasks are
 replaced, and whether a promotion counts towards the milestone. Routes to `host`
 (`src/harness/starter.ts`; `tools/d2/campaign-actions.ts`, `comparedOf`), `operator`, and
 `harness/guide` or `harness/tools` where a harness loses to the starter.
@@ -519,7 +534,9 @@ Starts from `FLIPS (lane 20)` and `REFERENCE AGAINST ITSELF (lane 20)`.
 How much of the tally is solver variance? A flip is a task one harness both answered validly and not
 under one condition. `REFERENCE AGAINST ITSELF` is the A/A: `compared` splits the reference's solves
 into two halves mirrored in time, and `readsStepEitherWay` tests it both ways at the level. Its
-untied share is the noise floor a comparison must exceed; an A/A step is reported and ends nothing.
+untied share is the noise floor a comparison must exceed, and its differences are the margins two
+solves of one harness reach by chance: a win by no more than the A/A's largest difference is inside
+the noise (lane 29). An A/A step is reported and ends nothing.
 For each step, count wins on tasks where the reference's halves disagree, and count flips per
 harness: fewer on the new side may be steadiness. The decision: how many solves a side a task needs. Routes
 to `operator`, and `environment` where flips cluster in high-load hours.
@@ -566,14 +583,20 @@ Read this lane before saying a campaign improved a harness, in five parts kept a
 
 1. **The rule.** `PROMOTED` gives the harness, its parent, who promoted it (the table, or
    `tools/d2/promote.ts` with any `despite`) and its comparisons with tally, p, level and A/A; the
-   A/A is evidence about variance, never a second threshold. Say whether lane 19 finds it confirmed.
+   A/A is evidence about variance, never a second threshold. Say whether lane 19 finds it confirmed,
+   and whether the confirmation survives without the tasks that chose the harness (`outside`,
+   `starter-reads.ts`); where every win is an objective margin, read lane 29 before calling the step
+   an effect.
 2. **What the step measured.** `STARTER BARE` means the reference answered nothing on most tasks, so
    the step shows an engine beats none, not how good it is. Read lane 12's diff and lane 16's wins.
 3. **What touched both sides.** `SHARED TEMPORARY FOLDER` counts solves naming paths under `/tmp` or
    `/var/tmp`: a lead, not proof of a read. Where a command succeeded, say which side it lifts.
 4. **The climb after.** From `AFTER THE PROMOTION`, read the reference's valid share and objective
    gap epoch by epoch: new tasks it already answers measure ties (lane 18); tasks no harness can
-   pass are false room (lane 9).
+   pass are false room (lane 9). Read the starter split epoch by epoch too, not only the valid
+   share: each control's tally on tasks first drawn after the promotion against before it, and
+   `starter-reads.ts` by origin. Where the reference wins the tasks that chose it and loses those
+   written since, read after read, the chain may not add up against the starter (lane 28).
 5. **The cost**, by role (lane 25).
 
 With several campaigns (lane 26 names their confounds), the section opens with `wri.ts climb`'s
@@ -748,3 +771,72 @@ domain gain or as promotions on easy tasks or the objective alone. Routes to `op
 `harness/guide` or `harness/tools` (grade 0 or 1), `examiner-prompt` (`src/examiner/prompt.ts`)
 where all scored tasks grade 2 or below, and `builder-prompt` (`src/builder/prompt.ts`) where
 soundness falls as promotions continue.
+
+### What the climb rests on
+
+**28. Whether the chain adds up against the starter.**
+
+Label: `climb`.
+Importance: 0.7.
+Marks: none.
+
+Starts from `CHAIN AGAINST THE STARTER (lane 28)`.
+
+Does a chain of promotions, each of which beat its parent, beat the starter on tasks that chose none
+of them? A starter read tallies three kinds of task (`starterReads`, `src/campaign/climb.ts`), and
+only those written after the promotion are new to the promoted harness. `CHAIN AGAINST THE STARTER`
+fires where, summed over two or more reads, the reference lost more of those than it won; it prints
+each read's tally on them, oldest first, the sums on the other two origins, and how many reads are a
+step without the tasks that chose the harness. Three causes give that count, and the lane keeps them
+apart, each with the count that would separate it:
+
+1. **Selection on margin noise.** A promotion is chosen on the tasks it won, so its margins there are
+   the largest of many draws and do not carry to fresh tasks. Set the margins of each promoting step
+   against its own A/A (lane 29) and of each starter read against `Starter against itself`
+   (`barLines`); where both sit inside the noise, a reversal on new tasks is what chance predicts.
+2. **The Examiner's aim.** The Examiner reads the reference's outcomes (`src/examiner/record.ts`) and
+   writes where the reference has not closed a task, so tasks written after a promotion are aimed at
+   the reference and not the starter (lane 11). Read the starter's own valid share and objective on
+   tasks written after against those written before, and by writing session (`starter-reads.ts`,
+   its line a writer): a starter that holds level while the reference falls is the aim, and both
+   falling is harder tasks. Say which reports each writing session held when it wrote (its
+   `exam.started` against the `comparison.reported` before it).
+3. **A worse harness.** What is left once the first two are counted: losses outside both sides' noise
+   on tasks the starter answers no better than before, with lane 27's soundness and lane 12's diff
+   for where the chain went wrong.
+
+Name any condition that moved between the reads (row C: setting, solver, host code, load), since a
+drift explains a trend as well as any cause above. Say how many tasks of each origin the reads held,
+since a sum over few is one draw. A neutral set, tasks written blind to both harnesses (another
+campaign's held-out set read with [compare-systems](../../compare-systems/SKILL.md)), would settle
+the first two against the third; it is paid, so propose it with its size and leave it to the
+operator. Never propose raising the gap floor (`ROOM`): it hides small margins on both sides alike
+and decides nothing about which cause holds. The decision: whether the campaign's promotions are
+reported as a climb, and whether a neutral comparison is asked for. Routes to `host`
+(`src/campaign/decide.ts`, `src/campaign/climb.ts`), `examiner-prompt` and `operator`.
+
+**29. What an objective-only step won by.**
+
+Label: `comparison`.
+Importance: 0.65.
+Marks: none.
+
+Starts from `MARGINS INSIDE THE NOISE (lane 29)`.
+
+Did each step whose untied tasks all tie on validity win by more than the reference's own spread?
+Such a step is carried by the objective alone, each win a margin between two valid answers
+(`pointsOf`, `src/kernel/compare.ts`). `MARGINS INSIDE THE NOISE` names each where more than half
+of the wins are no larger than the largest difference of that report's own A/A (`noise`), the
+reference read against itself under the same setting, and counts the objective-only steps whose A/A
+tied every task, which give no spread to read. For each step, read the wins' margins beside the A/A's
+distribution, not only its largest value; where the A/A tied, use the starter's split
+(`Starter against itself`) or another report's A/A of the same reference and say so. Then read what
+the carrying tasks share (lane 17): one family, one writing session, or one quantity whose
+measurement moves from solve to solve. Size the remedy as solves a side: from the A/A's spread and the
+margins won, how many solves of each task would bring a typical margin outside the noise
+(`comparison-reading`, `size.ts`), and what that costs at the campaign's price a solve. Never propose
+raising the gap floor (`ROOM`): it would hide these margins and the reference's alike, and the
+operator has ruled it out. The decision: whether these steps are reported as effects, and whether
+comparisons on objective-only tasks are enlarged or tasks written where validity can separate.
+Routes to `host` (`src/kernel/compare.ts`, the comparison's size), `examiner-prompt` (tasks on
+which validity can separate harnesses) and `operator`.

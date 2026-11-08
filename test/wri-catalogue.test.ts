@@ -1,4 +1,4 @@
-// The catalogue keeps its twenty-seven lanes numbered in order, each trigger starting the lane the
+// The catalogue keeps its twenty-nine lanes numbered in order, each trigger starting the lane the
 // reader names, and a session that holds the blind lane reads it first.
 import { describe, expect, it } from "bun:test";
 import { catalogueText, type Lane, lanesOf } from "../tools/wri/catalogue.ts";
@@ -7,9 +7,9 @@ import { CATEGORIES } from "../tools/runtime/land.ts";
 import { TRIGGERS } from "../tools/wri/folds.ts";
 
 describe("the lane catalogue", () => {
-  it("holds twenty-seven lanes, numbered in order", () => {
+  it("holds twenty-nine lanes, numbered in order", () => {
     expect(lanesOf(catalogueText()).map(({ number }) => number)).toEqual(
-      Array.from({ length: 27 }, (_, index) => index + 1),
+      Array.from({ length: 29 }, (_, index) => index + 1),
     );
   });
 

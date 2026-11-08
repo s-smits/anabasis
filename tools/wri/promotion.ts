@@ -43,6 +43,7 @@ import {
   text,
   type Trigger,
 } from "./folds.ts";
+import { chainTrigger, marginTrigger } from "./margins.ts";
 
 /** A promotion and the stretch of the log it governs: up to the next promotion or the log's end. */
 interface Epoch {
@@ -391,14 +392,17 @@ function sharedTmpTrigger(log: Index): Trigger[] {
   return lines.length > 0 ? [fired("SHARED TEMPORARY FOLDER", lines.join("; "))] : [];
 }
 
-/** Lane 22: every promotion the log holds, and the host's temporary folder wherever it is named. */
+/** Lane 22: every promotion the log holds, and the host's temporary folder wherever it is named;
+ *  beside them lane 19's confirmation, lane 17's carriers and lanes 28 and 29 (`margins.ts`). */
 export function promotionTriggers(log: Index): Trigger[] {
   const starter = log.compared.map(({ last }) => last.starter).find(isString) ?? "";
   const epochs = epochsOf(log.events);
   return [
     ...epochs.flatMap((epoch) => [...restTriggers(log, epoch), afterTrigger(log, epoch, starter)]),
     ...unconfirmedTrigger(log),
+    ...chainTrigger(log),
     ...carrierTrigger(log),
+    ...marginTrigger(log),
     ...sharedTmpTrigger(log),
   ];
 }

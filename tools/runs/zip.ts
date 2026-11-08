@@ -4,6 +4,7 @@
  *
  *   bun run runs zip [<name> ...] --light|--medium|--verbose [--out FILE] [--max-mb N] [--note FILE]
  *                    [--from HOST] [--latest N] [--minPromotions N] [--minTime 2h]
+ *                    [--since WHEN] [--until WHEN]
  *
  *   light    the log and each launch's receipt and output, each harness a session kept
  *            (`states/<digest>/`) and the brief
@@ -25,8 +26,11 @@
  * `--latest N`, `--minPromotions N` and `--minTime 2h` choose the runs instead of naming them
  * (`newest`): campaigns on any host, seeds and live solves left out, with at least that many
  * `harness.promoted` events and at least that long from the first event to the last (`s`, `m`, `h`
- * or `d`), the N whose last event is newest. Names given beside them narrow the candidates. The
- * choice is made on each campaign's record and only the chosen come whole (`pickedAcross`).
+ * or `d`), the N whose last event is newest. `--since` and `--until` keep the campaigns whose record
+ * overlaps that window, so a run live during it counts although it began earlier; a time is a date
+ * (`2026-11-06`, UTC), a date with a time and a zone (`2026-11-06T12:00Z`) or how long ago (`36h`).
+ * Names given beside them narrow the candidates. The choice is made on each campaign's record and
+ * only the chosen come whole (`pickedAcross`).
  *
  * Never held: installed packages, caches and built bundles, a link out of the run's folder, a file
  * named like a secret. A relative link inside it is held as a link, in the group of what it names:
@@ -69,7 +73,9 @@ import { readableAcross, syncRuns } from "./snapshots.ts";
 const LEVELS = ["light", "medium", "verbose"] as const;
 const CAMPAIGN_ENDED = "campaign.ended";
 const PROMOTED = "harness.promoted";
-const CHOOSING = ["latest", "minPromotions", "minTime"] as const;
+const CHOOSING = ["latest", "minPromotions", "minTime", "since", "until"] as const;
+const MOMENT = /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2}))?$/;
+const AGO = /^\d+(?:\.\d+)?[smhd]$/;
 const SECONDS = new Map([
   ["s", 1],
   ["m", 60],
@@ -78,7 +84,7 @@ const SECONDS = new Map([
 ]);
 type Level = (typeof LEVELS)[number];
 
-/** What `--latest`, `--minPromotions` and `--minTime` ask of a run. */
+/** What `--latest`, `--minPromotions`, `--minTime`, `--since` and `--until` ask of a run. */
 interface Choice {
   /** At most this many, the newest first; null for every run that passes. */
   readonly latest: number | null;
@@ -86,6 +92,10 @@ interface Choice {
   readonly promotions: number;
   /** At least this long from its first event to its last, in seconds. */
   readonly seconds: number;
+  /** Its last event is no earlier than this, in milliseconds since the epoch. */
+  readonly since: number;
+  /** Its first event is no later than this, in milliseconds since the epoch. */
+  readonly until: number;
 }
 
 /** A run folder's groups, the first match first, each with the level that starts to hold it. A
@@ -333,6 +343,18 @@ const countOf = (flag: string, text: string, least: number) => {
   return count;
 };
 
+/** A date, a date with a time and a zone, or how long ago (`36h`), as milliseconds since the epoch. */
+export function momentOf(flag: string, text: string, now = Date.now()): number {
+  if (AGO.test(text)) return now - secondsOf(text) * 1000;
+  const at = MOMENT.test(text) ? Date.parse(text) : Number.NaN;
+  if (Number.isNaN(at)) {
+    throw new TypeError(
+      `${flag} takes a date (2026-11-06), a time with a zone (2026-11-06T12:00Z) or how long ago (36h), not "${text}"`,
+    );
+  }
+  return at;
+}
+
 const timeOf = (event: LogEvent | undefined) => (event === undefined ? Number.NaN : Date.parse(event.at));
 
 /** The campaigns of `runs` that pass `choice`, the newest last event first. A seed or a live solve
@@ -344,15 +366,23 @@ export function newest(runs: readonly Run[], choice: Choice): Run[] {
     .map((run) => {
       const events = logEvents(run.path);
       const last = timeOf(events.at(-1));
+      const first = timeOf(events.at(0));
       return {
         run,
+        first,
         last,
         promotions: events.filter(({ kind }) => kind === PROMOTED).length,
-        seconds: (last - timeOf(events.at(0))) / 1000,
+        seconds: (last - first) / 1000,
       };
     });
   return read
-    .filter((one) => one.promotions >= choice.promotions && one.seconds >= choice.seconds)
+    .filter(
+      (one) =>
+        one.promotions >= choice.promotions &&
+        one.seconds >= choice.seconds &&
+        one.last >= choice.since &&
+        one.first <= choice.until,
+    )
     .toSorted((a, b) => b.last - a.last)
     .slice(0, choice.latest ?? undefined)
     .map((one) => one.run);
@@ -373,6 +403,8 @@ function choiceOf(values: Partial<Record<(typeof CHOOSING)[number], string>>) {
           promotions:
             values.minPromotions === undefined ? 0 : countOf("--minPromotions", values.minPromotions, 0),
           seconds: values.minTime === undefined ? 0 : secondsOf(values.minTime),
+          since: values.since === undefined ? -Infinity : momentOf("--since", values.since),
+          until: values.until === undefined ? Infinity : momentOf("--until", values.until),
         };
   return { choice, forwarded };
 }
@@ -381,7 +413,7 @@ function choiceOf(values: Partial<Record<(typeof CHOOSING)[number], string>>) {
  *  and only the chosen come whole, by exact name: asking for none would bring every campaign. */
 async function pickedAcross(names: readonly string[], choice: Choice): Promise<Run[]> {
   const chosen = newest(await readableAcross(names), choice).map((run) => run.name);
-  if (chosen.length === 0) throw new Error("no campaign passes --latest, --minPromotions and --minTime");
+  if (chosen.length === 0) throw new Error("no campaign passes the flags that choose runs");
   const refreshed = await syncRuns(chosen, { match: "exact", depth: "whole" });
   const held = new Map(
     readable()
@@ -407,13 +439,15 @@ export async function zipRuns(args: readonly string[]): Promise<void> {
       latest: { type: "string" },
       minPromotions: { type: "string" },
       minTime: { type: "string" },
+      since: { type: "string" },
+      until: { type: "string" },
     },
   });
   const levels = LEVELS.filter((level) => values[level]);
   const [level] = levels;
   if (level === undefined || levels.length > 1) {
     throw new Error(
-      "usage: bun run runs zip [<name> ...] --light|--medium|--verbose [--out FILE] [--max-mb N] [--note FILE] [--from HOST] [--latest N] [--minPromotions N] [--minTime 2h]",
+      "usage: bun run runs zip [<name> ...] --light|--medium|--verbose [--out FILE] [--max-mb N] [--note FILE] [--from HOST] [--latest N] [--minPromotions N] [--minTime 2h] [--since WHEN] [--until WHEN]",
     );
   }
   const megabytes = values["max-mb"];

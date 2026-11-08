@@ -28,7 +28,7 @@ first line, and the round trip through the linter mostly disappears.
 `--deny-warnings` and `--report-unused-disable-directives`, type-aware. `packages/ui` is linted
 once its own dependencies are installed (`bun run ui:deps`), under its own `tsconfig.json` and
 with no rule turned off for it; a whole-tree run without them leaves it out and says so. Two repository plugins ride along: `ana`
-(28 rules) and `anti-slop` (10 rules). Every enabled rule in `.oxlintrc.json` is an error.
+(29 rules) and `anti-slop` (13 rules). Every enabled rule in `.oxlintrc.json` is an error.
 
 - **Plugin findings fail the run only in strict mode**: `bun run lint -- --strict`,
   `ANA_LINT_STRICT=1`, or a clone with `git config ana.lintStrict true`. A plain run holds you to
@@ -191,6 +191,11 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
 - `no-inline-block-reducer`: a `.reduce` with an inline block body is a hidden loop. Write the
   `for…of`.
 
+**Calls**
+
+- `no-transposed-argument`: two same-typed arguments passed in the other order than the
+  parameters are named. Fix whichever side is wrong.
+
 **Repetition**
 
 - `no-repeated-string-literal` [fix]: six or more characters, four spellings in a file (ten in a
@@ -236,14 +241,17 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
   `satisfies`. An anonymous object type, a declared return type among them, is wide only through a
   member typed `any`, `unknown`, `object` or an open dictionary; one that states each member's type
   is a contract and passes.
+- `no-module-mocking`: inject through a real interface.
 - `no-object-parameters`: no parameter typed `object`.
 - `no-runtime-typeof`: the predicates of `src/meta/json-shape.ts`. `typeof x === "undefined"` is
   allowed.
 - `no-shape-in-symbol-names`: no name with the word "shape", "shapes" or "shaped" in it. An
   object-literal key that holds a literal (`{ shape: "object {joints}" }`, a count's label) spells
   data and is exempt; a key holding a computed value is not.
-- `no-unknown-returns`: no `unknown` going out as a return type, written or behind an alias.
+- `no-unknown-returns`, `no-unknown-type-aliases`: no `unknown` going out, as a return type or
+  behind an alias.
 - `no-unsafe-dictionary-type`: no `Record<string, unknown>` or `Record<string, any>`.
+- `no-widen-then-assert`: do not declare a value wide and assert it back.
 - `prefer-subpath-import` [fix]: the aliases of 12.1.
 - `require-safety-comment-for-type-assertion`: every `as T` except `as const` carries a comment
   directly before the assertion or its statement, stating the invariant you checked:

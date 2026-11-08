@@ -26,6 +26,7 @@ import { noRepeatedStringLiteralRule } from "./rules/no-repeated-string-literal.
 import { noSideEffectInPredicateRule } from "./rules/no-side-effect-in-predicate.ts";
 import { noTangledTernaryRule } from "./rules/no-tangled-ternary.ts";
 import { noThriceSpelledObjectRule } from "./rules/no-thrice-spelled-object.ts";
+import { noTransposedArgumentRule } from "./rules/no-transposed-argument.ts";
 import { preferConstConditionalRule } from "./rules/prefer-const-conditional.ts";
 import { preferFindOverLoopRule } from "./rules/prefer-find-over-loop.ts";
 import { declarationsBeforeTheFirstFunctionRule } from "./rules/declarations-before-the-first-function.ts";
@@ -92,6 +93,7 @@ const anaPlugin = eslintCompatPlugin({
     "no-single-use-const-chain": noSingleUseConstChainRule,
     "no-repeated-string-literal": noRepeatedStringLiteralRule,
     "no-thrice-spelled-object": noThriceSpelledObjectRule,
+    "no-transposed-argument": noTransposedArgumentRule,
     "no-tangled-ternary": noTangledTernaryRule,
     "declarations-before-the-first-function": declarationsBeforeTheFirstFunctionRule,
   },

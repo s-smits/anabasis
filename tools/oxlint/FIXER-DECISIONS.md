@@ -73,9 +73,9 @@ In each of these the missing piece is information the rule has no access to, and
 so in its own doc comment: `test/oxlint-rule-contract.test.ts` refuses a rule that neither declares
 `fixable` nor writes the words.
 
-- **The repair is a type** (6): `unproven-unknown-parameter`, `no-unknown-returns`,
-  `no-unsafe-dictionary-type`, `no-known-value-widening`, `no-chained-type-assertions`,
-  `no-runtime-typeof`. The `unknown` or the widening is exactly the work someone avoided; writing
+- **The repair is a type** (8): `unproven-unknown-parameter`, `no-unknown-returns`,
+  `no-unknown-type-aliases`, `no-unsafe-dictionary-type`, `no-known-value-widening`,
+  `no-widen-then-assert`, `no-chained-type-assertions`, `no-runtime-typeof`. The `unknown` or the widening is exactly the work someone avoided; writing
   it is the finding. A plugin rule does not read the checker.
 - **The repair is a name** (3): `no-thrice-spelled-object`, `no-shape-in-symbol-names`,
   `no-positional-boolean-parameter`. Which two words name the states, or what the extracted
@@ -87,12 +87,13 @@ so in its own doc comment: `test/oxlint-rule-contract.test.ts` refuses a rule th
   or an extraction, a mutating accumulator or a pipeline, one of the two exact waits or an admitted
   real clock, a render, a `key`, a handler or a subscription), and which one a site wants is the
   reading.
-- **The repair reaches other files** (4): `no-pass-through-wrapper`, `no-lifetime-outside-owner`,
-  `no-object-parameters`, `no-inline-slop-answer`. Deleting the wrapper means editing every caller;
-  moving a kill to its owner is two files; an owner-provided parameter type is a new contract at
-  every call; a disable comment's answer moves into a row of `not-slop.tsv`, under an id only a lint
+- **The repair reaches other files** (5): `no-pass-through-wrapper`, `no-lifetime-outside-owner`,
+  `no-module-mocking`, `no-object-parameters`, `no-inline-slop-answer`. Deleting the wrapper means
+  editing every caller; moving a kill to its owner is two files; an injected interface replaces
+  the mock in the code under test; an owner-provided parameter type is a new contract at every call; a disable comment's answer moves into a row of `not-slop.tsv`, under an id only a lint
   run computes. A per-file fixer cannot do any of them.
-- **The repair changes a semantic the rule can only ask about** (1): `no-hand-spelled-git`. A
+- **The repair changes a semantic the rule can only ask about** (2): `no-transposed-argument`
+  and `no-hand-spelled-git`. Which of two crossed arguments is wrong is the caller's to say. A
   hand-spelled git call has three owner answers (exact bytes, trimmed text, or null where "no" is
   an answer), and a call reading the exit status or passing `cwd` needs a reading of which it meant.
 

@@ -18,11 +18,29 @@ import { lintRules } from "./helpers/lint-rule.ts";
 
 // `vi` is left undeclared on purpose: the rule reads it as a global reference, and declaring it
 // here would give the binding a definition that is not an import and silence the rule.
+const MODULE_MOCKING = `
+vi.mock("./service.ts"); // REPORT module mock
+export const stub = vi.fn();
+`;
+
 /** This repository's own spelling: `mock.module` from `bun:test`, and a `module` on anything else. */
+const BUN_MODULE_MOCKING = `
+import { mock } from "bun:test";
+declare const other: { module: (path: string) => void };
+mock.module("./service.ts", () => ({})); // REPORT the bun:test spelling
+other.module("./service.ts"); // ADMITTED someone else's method
+export const spy = mock(() => 1);
+`;
+
 const RUNTIME_TYPEOF = `
 declare const value: unknown;
 export const narrowed = typeof value === "string"; // REPORT narrows a representation
 export const present = typeof value === "undefined";
+`;
+
+const UNKNOWN_ALIAS = `
+export type Payload = unknown; // REPORT hides unknown
+export type Parsed = { value: string };
 `;
 
 const EMPTY_OBJECT_SPREAD = `
@@ -87,6 +105,9 @@ export const ShapeBox = () => <div />; // REPORT a name chosen here
 describe("the remaining anti-slop rule boundaries", () => {
   it("reports only the marked lines in every fixture and scope", async () => {
     await lintRules("anti-slop", [
+      ["no-module-mocking", MODULE_MOCKING, 1],
+      ["no-module-mocking", BUN_MODULE_MOCKING, 1],
+      ["no-unknown-type-aliases", UNKNOWN_ALIAS, 1],
       ["no-runtime-typeof", RUNTIME_TYPEOF, 1],
       ["no-conditional-empty-object-spread", EMPTY_OBJECT_SPREAD, 1],
       ["no-chained-type-assertions", CHAINED_ASSERTIONS, 1],

@@ -11,7 +11,8 @@ import type { ESTree } from "@oxlint/plugins";
  * this. So the walk goes into a union and through parentheses and stops everywhere else.
  *
  * It reads syntax and follows no aliases, so a `type P = unknown` written into a union is not seen
- * here at all.
+ * here at all. `no-unknown-type-aliases` reports that declaration where it stands, which is the
+ * earlier place and the one where the repair belongs.
  *
  * The same three lines sit in `anti-slop/shared/function-parameters.ts`, in the tree copied from
  * upstream. Keeping a copy is what lets `unproven-unknown-parameter` stay off a tree that is

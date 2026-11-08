@@ -3,23 +3,25 @@ import { eslintCompatPlugin } from "@oxlint/plugins";
 import { noChainedTypeAssertionsRule } from "./rules/no-chained-type-assertions.ts";
 import { noConditionalEmptyObjectSpreadRule } from "./rules/no-conditional-empty-object-spread.ts";
 import { noKnownValueWideningRule } from "./rules/no-known-value-widening.ts";
+import { noModuleMockingRule } from "./rules/no-module-mocking.ts";
 import { noObjectParametersRule } from "./rules/no-object-parameters.ts";
 import { noRuntimeTypeofRule } from "./rules/no-runtime-typeof.ts";
 import { noForbiddenTermInSymbolNamesRule } from "./rules/no-shape-in-symbol-names.ts";
 import { noUnknownReturnsRule } from "./rules/no-unknown-returns.ts";
+import { noUnknownTypeAliasesRule } from "./rules/no-unknown-type-aliases.ts";
 import { noUnsafeDictionaryTypeRule } from "./rules/no-unsafe-dictionary-type.ts";
+import { noWidenThenAssertRule } from "./rules/no-widen-then-assert.ts";
 import { preferSubpathImportRule } from "./rules/prefer-subpath-import.ts";
 import { requireSafetyCommentForTypeAssertionRule } from "./rules/require-safety-comment-for-type-assertion.ts";
 
-/** The ten generic rules, about evidence rather than about this repository: a value whose
+/** The thirteen generic rules, about evidence rather than about this repository: a value whose
  *  type nobody established, an assertion with no stated reason, a dictionary whose contents are
  *  anyone's guess.
  *
  *  The tree is copied from dmmulroy/anti-slop at commit 13909c9, with the differences recorded in
  *  `THIRD_PARTY_NOTICES.md`: the plugin registers through `eslintCompatPlugin`, upstream's
  *  `no-unknown-parameters`, `require-readable-spacing`, `no-array-filter-map`, `no-reflect-apply`,
- *  `no-reflect-get`, `no-module-mocking`, `no-reduce-accumulator-copy`, `no-unknown-type-aliases`,
- *  `no-widen-then-assert` and Effect rules are left out, and
+ *  `no-reflect-get`, `no-reduce-accumulator-copy` and Effect rules are left out, and
  *  `rules/prefer-subpath-import.ts` and three of the shared modules are this repository's own.
  *  `ana/unproven-unknown-parameter` is what stands in for the omitted one, and says there why an
  *  exemption list of files was the wrong answer.
@@ -33,11 +35,14 @@ const antiSlopPlugin = eslintCompatPlugin({
     "no-chained-type-assertions": noChainedTypeAssertionsRule,
     "no-conditional-empty-object-spread": noConditionalEmptyObjectSpreadRule,
     "no-known-value-widening": noKnownValueWideningRule,
+    "no-module-mocking": noModuleMockingRule,
     "no-object-parameters": noObjectParametersRule,
     "no-runtime-typeof": noRuntimeTypeofRule,
     "no-unsafe-dictionary-type": noUnsafeDictionaryTypeRule,
     "no-shape-in-symbol-names": noForbiddenTermInSymbolNamesRule,
     "no-unknown-returns": noUnknownReturnsRule,
+    "no-unknown-type-aliases": noUnknownTypeAliasesRule,
+    "no-widen-then-assert": noWidenThenAssertRule,
     "prefer-subpath-import": preferSubpathImportRule,
     "require-safety-comment-for-type-assertion": requireSafetyCommentForTypeAssertionRule,
   },

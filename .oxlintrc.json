@@ -56,6 +56,7 @@
     "ana/no-single-use-const-chain": "error",
     "ana/no-tangled-ternary": "error",
     "ana/no-thrice-spelled-object": "error",
+    "ana/no-transposed-argument": "error",
     "ana/prefer-const-conditional": "error",
     "ana/prefer-find-over-loop": "error",
     "ana/prefer-key-if-defined": "error",
@@ -65,11 +66,14 @@
     "anti-slop/no-chained-type-assertions": "error",
     "anti-slop/no-conditional-empty-object-spread": "error",
     "anti-slop/no-known-value-widening": "error",
+    "anti-slop/no-module-mocking": "error",
     "anti-slop/no-object-parameters": "error",
     "anti-slop/no-runtime-typeof": "error",
     "anti-slop/no-shape-in-symbol-names": "error",
     "anti-slop/no-unknown-returns": "error",
+    "anti-slop/no-unknown-type-aliases": "error",
     "anti-slop/no-unsafe-dictionary-type": "error",
+    "anti-slop/no-widen-then-assert": "error",
     "anti-slop/prefer-subpath-import": [
       "error",
       {

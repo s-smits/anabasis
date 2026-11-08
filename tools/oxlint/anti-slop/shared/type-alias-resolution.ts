@@ -241,7 +241,7 @@ function aliasSubstitutions(
  * the arguments each use supplies.
  *
  * The matcher decides the leaves and the walk decides everything else, which is why the three
- * rules that use it — `no-unknown-returns`, `no-unsafe-dictionary-type`, `no-object-parameters` —
+ * rules that use it — `no-unknown-returns`, `no-unknown-type-aliases`, `no-object-parameters` —
  * differ only in what they recognise once they get there. Each one is handed the resolved type
  * and a `matches` callback, so it can recurse into a union or an array without knowing anything
  * about substitutions.

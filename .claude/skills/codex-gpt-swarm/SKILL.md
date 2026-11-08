@@ -97,8 +97,11 @@ At the end, drain again and read `summary.json` (an incomplete session's `failur
 carries a claim, read the session's own event log.
 
 A session completes when its last attempt exits 0 and writes a report (`settle`,
-`gpt-receipts.ts`), with `--retries` further attempts (default 1, at most 5). After rate limits, let
-the launch settle and rerun only what is missing under the recorded settings:
+`gpt-receipts.ts`), with `--retries` further attempts (default 1, at most 5). Where every session
+failed `rate-limit` at once and spent nothing, the Codex window itself is spent, often for days, so
+plan no further work on Codex until it resets and move what cannot wait to a Claude agent (for lanes,
+the `wri-lane` type). After scattered rate limits, let the launch settle and rerun only what is
+missing under the recorded settings:
 
 ```sh
 bun .claude/skills/codex-gpt-swarm/scripts/gpt-sessions.ts --retry <output dir> --max-active 4 --start-interval-ms 5000

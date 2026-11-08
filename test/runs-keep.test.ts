@@ -16,6 +16,7 @@ import {
   turnOf,
   turnsIn,
 } from "../tools/runs/keep.ts";
+import { stateOf } from "../tools/runs/state.ts";
 import { billsLogin, fiveHourWith, type Reading, room } from "../tools/runs/logins.ts";
 import { keepsItself, WAIT_HOURS } from "../tools/runs/manage.ts";
 import { type Receipt, writeReceipt } from "../tools/runs/receipt.ts";
@@ -40,6 +41,8 @@ const waited = (hours: number, reason = "provider") =>
 
 describe("the turn a keeper takes", () => {
   it("moves only a live provider wait past its bound and continues only interrupted runs", () => {
+    const turn = (events: readonly LogEvent[], writing: boolean, launched = 0) =>
+      turnOf(stateOf(events, { writing, kept: false }, NOW, launched), NOW, HOUR);
     for (const [events, status, expected] of [
       [[waited(2)], "open", "move"],
       [[waited(1)], "open", "watch"],
@@ -56,11 +59,14 @@ describe("the turn a keeper takes", () => {
       [[event("build.started", { session: "b-1" })], "closed", "continue"],
       [[event("campaign.ended", { ending: "environment" })], "closed", "continue"],
     ] as const) {
-      expect(turnOf(events, status, NOW, HOUR)).toBe(expected);
+      expect(turn(events, status === "open")).toBe(expected);
     }
     for (const ending of ["budget", "stop", "operator", "finished", "no-room"]) {
-      expect(turnOf([event("campaign.ended", { ending })], "closed", NOW, HOUR)).toBe("done");
+      expect(turn([event("campaign.ended", { ending })], false)).toBe("done");
     }
+    // A wait the launch before this one recorded is not this launch's to move: the keeper that just
+    // moved the run would move it again while its new process makes its first calls.
+    expect(turn([waited(2), event("exam.call", { session: "x-1" })], true, 1)).toBe("watch");
   });
 
   it("counts as work an answered model turn of any seat, and none of what a going-on into a failure writes", () => {
@@ -220,7 +226,7 @@ describe("a keeper's looks, scripted", () => {
     };
     const look = keeperOf("sample", async () => state.pool, WAIT_MS, {
       events: () => state.events,
-      open: () => state.open,
+      stands: (events, now) => stateOf(events, { writing: state.open, kept: false }, now),
       last: () => ({ login, flags }),
       fleet: () => Promise.resolve({ live: state.live, unasked: state.unasked }),
       read: (wanted) => {

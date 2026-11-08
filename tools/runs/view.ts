@@ -36,10 +36,10 @@ import { resolve } from "#src/meta/path.ts";
 import { plural } from "#src/meta/text.ts";
 import { PRACTICE } from "../d2/prepare.ts";
 import { COMPARISON_OPTIONS } from "../d2/round.ts";
-import { logEvents, processes, writers } from "./registry.ts";
+import { logEvents, processes } from "./registry.ts";
 import { readAcross } from "./snapshots.ts";
 import { lastLaunch } from "./receipt.ts";
-import { runReason } from "./diagnosis.ts";
+import { runReason, runState } from "./state.ts";
 
 /** The flags the table is asked with: the campaign command's, with the same names. */
 const VIEW_OPTIONS = {
@@ -205,7 +205,7 @@ export async function view(args: readonly string[]): Promise<void> {
   const launched = lastLaunch(run.path)?.commit.slice(0, 9) ?? "no receipt";
   console.log(`reader ${reader}; last launch ${launched}; the table below uses this checkout's code`);
   const events = logEvents(run.path);
-  for (const line of await runReason(run, events, writers(run, processes()).length > 0 ? "open" : "closed")) {
+  for (const line of await runReason(run, runState(run, events, processes()))) {
     console.log(line);
   }
   const campaign = campaignOf(events);

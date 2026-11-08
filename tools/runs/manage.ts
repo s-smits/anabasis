@@ -239,8 +239,9 @@ export async function start(
   return alive;
 }
 
-/** Leave a keeper of `run` on `logins` running by itself, its output in `keep.out` beside the log. */
-export function leaveKeeper(run: Run, logins: readonly string[], waitHours: string): void {
+/** Leave a keeper of `run` running by itself, its output in `keep.out` beside the log: on `logins`
+ *  where they were named, otherwise on the pool its host names at each move (`poolOf`, `keep.ts`). */
+export function leaveKeeper(run: Run, logins: readonly string[] | undefined, waitHours: string): void {
   const out = keptFile(run);
   const child = capturedSpawn(
     [
@@ -248,8 +249,7 @@ export function leaveKeeper(run: Run, logins: readonly string[], waitHours: stri
       join(import.meta.dir, "cli.ts"),
       "keep",
       run.name,
-      "--logins",
-      logins.join(","),
+      ...(logins === undefined ? [] : ["--logins", logins.join(",")]),
       "--wait-hours",
       waitHours,
       KEEPING,
@@ -286,7 +286,7 @@ async function startKept(
 ): Promise<void> {
   const running = await start(run, flags, login, at);
   if (running && keepsItself(runtimeProcess.env, login) && keepers(run.name).length === 0) {
-    leaveKeeper(run, allowedLogins(runtimeProcess.env), WAIT_HOURS);
+    leaveKeeper(run, undefined, WAIT_HOURS);
   }
 }
 

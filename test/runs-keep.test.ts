@@ -5,7 +5,16 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "../s
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { join } from "../src/meta/path.ts";
 import { seats } from "../tools/runs/fresh.ts";
-import { keeperActed, keeperOf, nextLogin, roomFor, type Turn, turnOf, turnsIn } from "../tools/runs/keep.ts";
+import {
+  keeperActed,
+  keeperOf,
+  nextLogin,
+  poolOf,
+  roomFor,
+  type Turn,
+  turnOf,
+  turnsIn,
+} from "../tools/runs/keep.ts";
 import { billsLogin, fiveHourWith, type Reading, room } from "../tools/runs/logins.ts";
 import { keepsItself, WAIT_HOURS } from "../tools/runs/manage.ts";
 import { type Receipt, writeReceipt } from "../tools/runs/receipt.ts";
@@ -201,13 +210,14 @@ describe("a keeper's looks, scripted", () => {
       events: log,
       open: true,
       readings: [read("3", 10), read("4", 10, 10, "allowed", 2)],
+      pool: ["2", "3", "4"],
       live: nobody,
       unasked: none,
       asked: 0,
       acted: [...none],
       said: [...none],
     };
-    const look = keeperOf("sample", ["2", "3", "4"], WAIT_MS, {
+    const look = keeperOf("sample", async () => state.pool, WAIT_MS, {
       events: () => state.events,
       open: () => state.open,
       last: () => ({ login, flags }),
@@ -237,6 +247,13 @@ describe("a keeper's looks, scripted", () => {
       expect(await look(NOW)).toBe(false);
       expect(state.acted).toEqual(["stop", "start 3"]);
     }
+  });
+
+  it("moves onto the pool as it stands at the move, not as it stood at the keeper's start", async () => {
+    const { state, look } = scripted();
+    state.pool = ["2", "4"];
+    expect(await look(NOW)).toBe(false);
+    expect(state.acted).toEqual(["stop", "start 4"]);
   });
 
   it("says a move, a wait and a barren run in lines the alerts read, and leaves a run's own ending to its log", async () => {
@@ -354,6 +371,21 @@ describe("a keeper's looks, scripted", () => {
     state.open = false;
     expect(await look(NOW)).toBe(true);
     expect(state.acted).toEqual([]);
+  });
+});
+
+describe("the pool a keeper started without --logins reads", () => {
+  it("follows an edit of its host's file where it started on that file's pool, and keeps a carried pool", async () => {
+    const { root } = fakeHosts();
+    fixtures.push(root);
+    const file = join(root, "pool.env.runs");
+    writeFileSync(file, 'ANA_HOSTS=[]\nANA_LOGINS="2,3"\n');
+    const own = poolOf(file, { ANA_LOGINS: "2,3" });
+    const carried = poolOf(file, { ANA_LOGINS: "3,4" });
+    expect(await own()).toEqual(["2", "3"]);
+    writeFileSync(file, "ANA_LOGINS=3 # narrowed\n");
+    expect(await own()).toEqual(["3"]);
+    expect(await carried()).toEqual(["3", "4"]);
   });
 });
 

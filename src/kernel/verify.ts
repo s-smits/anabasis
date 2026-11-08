@@ -102,9 +102,9 @@ interface PublicTask<PublicInput> {
 }
 
 export interface EvaluationRequest {
-  publicTask: PublicTask<unknown>;
-  artifact: unknown;
-  hidden: unknown;
+  publicTask: PublicTask<JsonValue>;
+  artifact: JsonValue;
+  hidden: JsonValue;
 }
 
 export const CHECK_PROGRAM_CONTRACT = "check-program/v1";
@@ -310,17 +310,11 @@ function checkPublicInputs(
   request: Pick<EvaluationRequest, "artifact" | "publicTask">,
 ): Pick<EvaluationRequest, "artifact" | "publicTask"> {
   return {
-    artifact: projectJsonPaths(
-      /* SAFETY: accepted artifact bytes are parsed JSON. */ request.artifact as JsonValue,
-      check.execution.artifactPaths,
-    ),
+    artifact: projectJsonPaths(request.artifact, check.execution.artifactPaths),
     publicTask: {
       taskId: request.publicTask.taskId,
       family: request.publicTask.family,
-      publicInput: projectJsonPaths(
-        /* SAFETY: the committed public task is parsed JSON. */ request.publicTask.publicInput as JsonValue,
-        check.execution.publicInputPaths,
-      ),
+      publicInput: projectJsonPaths(request.publicTask.publicInput, check.execution.publicInputPaths),
     },
   };
 }

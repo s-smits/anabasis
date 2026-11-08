@@ -257,7 +257,10 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
   object-literal key that holds a literal (`{ shape: "object {joints}" }`, a count's label) spells
   data and is exempt; a key holding a computed value is not.
 - `no-unknown-returns`, `no-unknown-type-aliases`: no `unknown` going out, as a return type or
-  behind an alias.
+  behind a name: an alias of `unknown`, `any` or an array, tuple, promise or map value of them, a
+  member of an exported interface or type literal, a public field of an exported class, a member of
+  a local type an export returns, or an exported type parameter's default. A local type an export
+  only takes in, a `Set<unknown>`, and a `cause` keep `unknown`.
 - `no-unsafe-dictionary-type`: no `Record<string, unknown>` or `Record<string, any>`.
 - `no-widen-then-assert`: do not widen a known value and assert it back. Wide is `unknown`, `any`,
   `object`, an open dictionary, `JsonValue` or `JsonObject`, reached by an annotation, an

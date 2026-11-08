@@ -20,7 +20,11 @@ whose licences require their notices to travel with the copies.
   imported name as an object target, a call to a local function whose declared return type
   erases each value it returns, and a JSON round trip of a known value, follows a `const` into
   the functions nested in its own, and reports an element read asserted present and a caught
-  value asserted to a type; and the plugin's code carries line-scoped lint suppressions.
+  value asserted to a type; `no-unknown-type-aliases` also reports an alias of `any` or of an
+  array, tuple, promise or map value of the top type, a member of an exported interface or type
+  literal, a public field of an exported class, a member of a module-local type an export hands
+  out, and an exported type parameter default; and the plugin's code carries line-scoped lint
+  suppressions.
 - Open upstream pull requests: #61 (qualified type and JSX member names are borrowed names), #58
   and #62 (an alias binds only its own parameters, and a finite nesting of one alias is not
   recursion) and #52 (a named class expression binds its name only inside itself, `any` is a

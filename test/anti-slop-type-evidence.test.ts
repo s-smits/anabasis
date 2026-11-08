@@ -425,6 +425,106 @@ export type Second = Pair<string, Pair<number, unknown>>; // REPORT the inner ar
 export type Plain = Maybe<Maybe<string>>; // ADMITTED nothing unknown
 `;
 
+/**
+ * The places a name hides \`unknown\` beyond an alias of it: an alias of \`any\`, of an array or tuple
+ * of the top type, an exported type's member, and an exported type parameter's default. Each
+ * stands beside the nearest shape that passes: a local interface, whose readers are in its file,
+ * a \`cause\`, a parameter of a function type, and a member whose type only names another type.
+ */
+const WIDER_UNKNOWN = `
+export type Anything = any; // REPORT any hides as unknown does
+export type Rows = unknown[]; // REPORT an array of unknown
+export type Frozen = readonly unknown[]; // REPORT a readonly array of unknown
+export type Listed = ReadonlyArray<unknown>; // REPORT the built-in spelling
+export type Pair = [label: string, value?: unknown]; // REPORT a tuple element
+export type Texts = readonly string[]; // ADMITTED an array of a stated type
+interface Array<T> { readonly item: T }
+export type Local = Array<unknown>; // ADMITTED Array here is the local interface
+export interface Request {
+  readonly id: string;
+  readonly artifact: unknown; // REPORT a member of an exported interface
+  readonly nested: {
+    readonly hidden: unknown; // REPORT a nested member
+  };
+  readonly cause?: unknown; // ADMITTED a cause stays unknown
+  readonly read: (input: unknown) => string; // ADMITTED an input of a function type
+  readonly typed: Typed<string>; // ADMITTED a member that names another type
+}
+export type Reply = { readonly body: Rows }; // REPORT a member through an alias
+interface Raw {
+  readonly command?: unknown; // ADMITTED a local shape its own file parses
+}
+export function commandOf(input: Raw): string | null { // ADMITTED a local shape an export only takes in
+  return typeof input.command === "string" ? input.command : null;
+}
+export interface Evidence<D = unknown> { // REPORT an exported default
+  readonly details?: D;
+}
+export interface Typed<D = string> { // ADMITTED a stated default
+  readonly details?: D;
+}
+type Hidden<D = unknown> = { readonly details?: D }; // ADMITTED not exported
+export type Uses = [Hidden, Evidence<string>, Typed];
+`;
+
+/**
+ * Where a module-local type leaves its module, a promise or a map hands out its value, and an
+ * exported class shows its fields. Each stands beside the nearest shape that passes: a set, asked
+ * only whether it holds a value; a local type an export takes in; a private field; a local
+ * class; and a reference to an exported type, which is judged where it is declared.
+ */
+const LEAKED_UNKNOWN = `
+interface Found {
+  readonly found: boolean;
+  readonly value: unknown; // REPORT an export's return type hands the local type out
+}
+export function resolve(root: string): Found {
+  return { found: root !== "", value: root };
+}
+interface Step {
+  readonly at: { readonly raw: unknown }; // REPORT a nested member, reached through another local
+}
+type Walk = { readonly steps: readonly Step[] };
+export const walk = (): Promise<Walk> => Promise.resolve({ steps: [] });
+type Seen = { readonly raw: unknown }; // ADMITTED only a local function returns it
+function seen(): Seen {
+  return { raw: null };
+}
+interface Read {
+  readonly raw: unknown; // ADMITTED an export only takes it in
+}
+export function read(input: Read): string {
+  return String(input.raw) + String(seen().raw);
+}
+export interface Shared {
+  readonly found: Found; // ADMITTED reported once, at the local member
+}
+export interface Pending {
+  readonly reply: Promise<unknown>; // REPORT a promise hands out unknown
+  readonly cached: ReadonlyMap<string, unknown>; // REPORT a map's value
+  readonly keys: Map<unknown, string>; // ADMITTED the key is only looked up
+  readonly seen: ReadonlySet<unknown>; // ADMITTED a set is asked only whether it holds a value
+}
+export class Store {
+  value: unknown; // REPORT a public field of an exported class
+  readonly cause: unknown = null; // ADMITTED a cause stays unknown
+  private raw: unknown; // ADMITTED a private field
+  #held: unknown; // ADMITTED a private name
+  constructor(value: unknown) {
+    this.value = value;
+    this.raw = value;
+    this.#held = value;
+  }
+  last(): Step | null { // ADMITTED reported once, at the local member
+    return this.#held === this.raw ? null : null;
+  }
+}
+class Local {
+  value: unknown = null; // ADMITTED a local class
+}
+export const made = new Local();
+`;
+
 // Recursion ends: each of these must finish and report nothing.
 const RECURSIVE_ALIASES = `
 type Loop<T> = Loop<T>;
@@ -462,6 +562,8 @@ describe("type evidence and resolution", () => {
       ["no-unknown-type-aliases", ALIAS_SCOPES, 3],
       ["no-unsafe-dictionary-type", KEY_AND_SCOPE_EDGES, 3],
       ["no-unknown-type-aliases", RECURSIVE_ALIASES, 0],
+      ["no-unknown-type-aliases", WIDER_UNKNOWN, 9],
+      ["no-unknown-type-aliases", LEAKED_UNKNOWN, 5],
       ["no-unknown-returns", RECURSIVE_ALIASES, 0],
     ]);
   });

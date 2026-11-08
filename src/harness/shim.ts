@@ -28,8 +28,9 @@ const TOOL_TEXT_LIMITS = { name: 128, label: 256, description: 4000, evidence: 6
 /** v1's brand, which the caller checks a factory's tools for. */
 export const DRAFT_TOOL = Symbol.for("anabasis/draft-tool/v1");
 
-/** A tool's result, as v1 typed it. */
-export interface Evidence<D = unknown> {
+/** A tool's result, as v1 typed it. `D` is the tool's own details type, which nothing here reads
+ *  before the tool's process serialises it, so each use names it instead of inheriting a default. */
+export interface Evidence<D> {
   text: string;
   details?: D;
   terminate?: boolean;
@@ -71,7 +72,7 @@ interface DraftTool {
   parameters: TSchema;
   executionMode?: "sequential" | "parallel";
   /** Checks the arguments against the declared schema, runs the tool, and checks its result. */
-  call: (params: unknown, signal: AbortSignal) => Promise<Evidence>;
+  call: (params: unknown, signal: AbortSignal) => Promise<Evidence<unknown>>;
 }
 
 /** v1's, with the task's own type inlined. */

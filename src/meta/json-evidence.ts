@@ -1,9 +1,9 @@
-import { isRecord } from "./json-shape.ts";
+import { isRecord, type JsonValue } from "./json-shape.ts";
 
 /** Resolve the closed JSON-path grammar shared by authoring checks and truth predicates. */
 interface ResolveJsonPathResult {
   found: boolean;
-  value: unknown;
+  value: JsonValue | undefined;
 }
 
 /** Split the rooted path once; a partial match is never a different valid path. A quoted key,
@@ -16,10 +16,10 @@ export function jsonPathTokens(path: string): string[] | null {
   return tokens.slice(1).map((token) => (/^\[['"]/.test(token) ? `.${token.slice(2, -2)}` : token));
 }
 
-export function resolveJsonPath(root: unknown, path: string): ResolveJsonPathResult {
+export function resolveJsonPath(root: JsonValue, path: string): ResolveJsonPathResult {
   const tokens = jsonPathTokens(path);
   if (tokens === null) return { found: false, value: undefined };
-  let value = root;
+  let value: JsonValue | undefined = root;
   for (const token of tokens) {
     if (token.startsWith("[") && Array.isArray(value) && Object.hasOwn(value, token.slice(1, -1))) {
       value = value[Number(token.slice(1, -1))];

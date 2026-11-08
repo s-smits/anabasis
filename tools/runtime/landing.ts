@@ -5,7 +5,14 @@
  * made `bun run land -- 661 --sanitize` prove all 49 commits from the bottom although the CI gate
  * that the passes record had not changed. Nothing here runs inside a pass.
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync } from "../../src/meta/filesystem.ts";
+import {
+  existsSync,
+  lstatSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  symlinkSync,
+} from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
 import { git, lines, type Proof, short } from "./gate.ts";
@@ -23,22 +30,29 @@ export async function holdAlone(
 ): Promise<() => void> {
   const [common = ""] = lines(git(root, ["rev-parse", "--path-format=absolute", "--git-common-dir"]));
   const lock = join(common, `ana-${who}.lock`);
-  const pidFile = join(lock, "pid");
   const release = () => rmSync(lock, { recursive: true, force: true });
   for (let looks = 0; ; looks += 1) {
     try {
-      mkdirSync(lock);
-      appendFileSync(pidFile, String(runtimeProcess.pid));
+      // The lock is a link whose target is its holder's pid, made in one step. Until 9 November it
+      // was a folder with the pid written into it after, so a lock read between the two named no
+      // holder, and every landing waited five looks before it could tell a dead one from a live one.
+      symlinkSync(String(runtimeProcess.pid), lock);
       return release;
     } catch (error) {
-      if (!existsSync(lock)) throw error;
+      if (lstatSync(lock, { throwIfNoEntry: false }) === undefined) throw error;
     }
-    const holder = existsSync(pidFile) ? Number(readFileSync(pidFile, "utf8")) : null;
+    const left = join(lock, "pid");
+    const holder =
+      lstatSync(lock, { throwIfNoEntry: false })?.isSymbolicLink() === true
+        ? Number(readlinkSync(lock))
+        : existsSync(left)
+          ? Number(readFileSync(left, "utf8"))
+          : null;
     try {
-      // A lock with no pid is one being taken, which lasts a moment; signal 0 reads whether its
-      // holder still runs, and throws where it does not.
-      if (holder !== null) runtimeProcess.kill(holder, 0);
-      else if (looks >= 5) throw new Error("a lock left without its pid");
+      // Signal 0 reads whether the holder still runs, and throws where it does not; a folder an
+      // older landing left without its pid names none.
+      if (holder === null) throw new Error("a lock left without its pid");
+      runtimeProcess.kill(holder, 0);
     } catch {
       release();
       continue;

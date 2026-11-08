@@ -243,15 +243,16 @@ export async function fetch(args: readonly string[]): Promise<void> {
   const { values, positionals } = parseArgs({
     args: [...args],
     allowPositionals: true,
-    options: { from: { type: "string" } },
+    options: { from: { type: "string" }, whole: { type: "boolean", default: false } },
   });
   const [name, ...rest] = positionals;
-  if (rest.length > 0) throw new Error("usage: bun run runs fetch [<name>] [--from <host>]");
+  if (rest.length > 0) throw new Error("usage: bun run runs fetch [<name>] [--from <host>] [--whole]");
   const from = keyIfDefined("from", values.from);
   // With no name, the records of every campaign the other hosts hold: the gather a timer runs.
+  // `--whole` brings their folders too, as the nightly pass does; a named campaign always comes whole.
   const copies = await syncRuns(name === undefined ? [] : [name], {
     ...from,
-    ...(name === undefined ? { depth: "record" } : { match: "exact" }),
+    ...(name === undefined ? { depth: values.whole ? "whole" : "record" } : { match: "exact" }),
   });
   if (copies.length === 0 && name !== undefined) {
     throw new Error(

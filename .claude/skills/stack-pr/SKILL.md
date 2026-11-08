@@ -229,8 +229,10 @@ sanitize (`ANA_GATE_FRESH=1` proves every commit afresh by hand), and `--jobs N`
 at once. **A passing proof is not a release**: a stack merges only once a fresh run at the top's head
 has reached two promotions on unchanged code (run-improvement-campaign, "A run proves the release");
 land the proved top by its number, never a newer top. On failure, fold the fix into the named
-commit, replay what is above (section 8), push together and land again. A runner that drops twice
-reads "gave no verdict"; land again.
+commit, replay what is above (section 8), push together and land again. A runner that twice says nothing
+of a commit (a dropped connection, no slot in time, a host that does not answer or lacks the disk)
+reads "gave no verdict"; land again. A landing that ends, however, leaves no status it posted
+pending: it turns each into an error.
 
 `--merge` dispatches `ci.yml` where none ran, waits, and on failure says whether to fix a commit or
 `gh run rerun <id>`; then it posts `ana/stack-gate` and merges the native stack all or nothing,

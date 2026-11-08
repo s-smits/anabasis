@@ -204,6 +204,11 @@ const described = (context: string): string[] =>
       );
     return match?.[2] === context ? [`${match[1]} ${match[3]}`] : [];
   });
+/** The commits whose last `context` status this landing posted is still pending. */
+const leftPending = (context: string): string[] => {
+  const last = new Map(statuses(context).map((row) => [row.split(" ")[1], row.split(" ")[0]]));
+  return [...last].flatMap(([sha, state]) => (state === "pending" ? [String(sha)] : []));
+};
 const writes = (): string[] =>
   logLines(ghLog).filter((line) => line.includes("-X") || line.startsWith("workflow"));
 const forgetPasses = (): void => rmSync(join(work, ".git", "ana-gate-passed"), { force: true });
@@ -281,6 +286,31 @@ describe("bun run land", () => {
     expect(logLines(ghLog).filter((line) => line.startsWith("pr list"))).toHaveLength(1);
   });
 
+  it("posts a verdict again over the same one GitHub showed before the landing turned it pending", () => {
+    expect(runLand(["12", "--sanitize"]).status).toBe(0);
+    const shown = join(fixture, "shown-green");
+    const rows = logLines(ghLog).flatMap((line) => {
+      const match = /\/statuses\/(\w+) -f state=(\w+) -f context=(\S+) -f description=(.+) --silent$/u.exec(
+        line,
+      );
+      return match === null ? [] : [[match[1], match[3], match[2], match[4]].join("\t")];
+    });
+    writeFileSync(shown, `${rows.join("\n")}\n`);
+    rmSync(ghLog, { force: true });
+    forgetPasses();
+    const again = runLand(["12", "--sanitize"], { ANA_FAKE_SHOWN: shown });
+    expect(again.status).toBe(0);
+    // Proved afresh, each commit reads pending and then its verdict, the one GitHub showed before.
+    expect(statuses("ana/commit").filter((row) => row.endsWith(upper))).toEqual([
+      `pending ${upper}`,
+      `success ${upper}`,
+    ]);
+    expect(statuses("mergeable").filter((row) => row.endsWith(upper))).toEqual([
+      `pending ${upper}`,
+      `success ${upper}`,
+    ]);
+  });
+
   it("with --auto lands a pull request stacked on the top during its proof, and merges the new top", () => {
     const next = join(fixture, "stacked-pulls");
     rmSync(`${next}.read`, { force: true });
@@ -350,29 +380,40 @@ describe("bun run land", () => {
     expect(statuses("ana/stack-gate")).toEqual([]);
   });
 
-  it("runs a step again where its runner dropped, and passes on the second run", () => {
-    const result = runLand(["12", "--sanitize"], { ANA_FAKE_DROP: `${upper} test` });
-    expect(result.status).toBe(0);
-    expect(logLines(gateLog).filter((line) => line === `${upper}\trun test`)).toHaveLength(2);
-    expect(statuses("ana/commit")).toContain(`success ${upper}`);
-  });
+  // The runner's exits that say nothing of the commit: a dropped connection, no slot in time, and a
+  // host that does not answer or lacks the disk (`tools/runtime/router/run.sh`).
+  for (const code of ["255", "75", "69"]) {
+    it(`runs a step again where its runner exited ${code}, and passes on the second run`, () => {
+      const result = runLand(["12", "--sanitize"], {
+        ANA_FAKE_DROP: `${upper} test`,
+        ANA_FAKE_DROP_CODE: code,
+      });
+      expect(result.status).toBe(0);
+      expect(logLines(gateLog).filter((line) => line === `${upper}\trun test`)).toHaveLength(2);
+      expect(statuses("ana/commit")).toContain(`success ${upper}`);
+    });
 
-  it("reads two drops as no verdict: an error status, no fix recipe, and land again", () => {
-    const result = runLand(["12", "--sanitize"], { ANA_FAKE_DROP: `${upper} test`, ANA_FAKE_DROPS: "2" });
-    expect(result.status).toBe(1);
-    const last = result.stderr.trimEnd().split("\n").at(-1) ?? "";
-    expect(last).toStartWith(
-      `land: ${short(upper)} GAVE NO VERDICT ON test: its runner dropped twice. Nothing was merged. Land again. Log: `,
-    );
-    expect(result.stderr).not.toContain("the fix belongs in");
-    expect(statuses("ana/commit")).toContain(`error ${upper}`);
-    expect(statuses("mergeable")).toEqual([
-      `pending ${lowerDocs}`,
-      `pending ${upper}`,
-      `success ${lowerDocs}`,
-      `error ${upper}`,
-    ]);
-  });
+    it(`reads two exits of ${code} as no verdict: an error status, no fix recipe, and land again`, () => {
+      const result = runLand(["12", "--sanitize"], {
+        ANA_FAKE_DROP: `${upper} test`,
+        ANA_FAKE_DROPS: "2",
+        ANA_FAKE_DROP_CODE: code,
+      });
+      expect(result.status).toBe(1);
+      const last = result.stderr.trimEnd().split("\n").at(-1) ?? "";
+      expect(last).toStartWith(
+        `land: ${short(upper)} GAVE NO VERDICT ON test: its runner said nothing of it twice. Nothing was merged. Land again. Log: `,
+      );
+      expect(result.stderr).not.toContain("the fix belongs in");
+      expect(statuses("ana/commit")).toContain(`error ${upper}`);
+      expect(statuses("mergeable")).toEqual([
+        `pending ${lowerDocs}`,
+        `pending ${upper}`,
+        `success ${lowerDocs}`,
+        `error ${upper}`,
+      ]);
+    });
+  }
 
   it("refuses a head that does not contain the pull request beneath it", () => {
     const result = runLand(["12"], { ANA_FAKE_PULLS: stack(beside) });
@@ -637,6 +678,18 @@ describe("bun run land", () => {
     }
   });
 
+  it("takes the status back from every head when GitHub's merge cannot be read as landed", () => {
+    const result = stackMerge("enqueued");
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("land: GitHub's merge of stack 7 went into the merge queue");
+    expect(statuses("ana/stack-gate")).toEqual([
+      `success ${lowerDocs}`,
+      `success ${upper}`,
+      `pending ${lowerDocs}`,
+      `pending ${upper}`,
+    ]);
+  });
+
   it("refuses a stack whose members are not the chain of bases, before any status is posted", () => {
     const result = runLand(["12", "--merge"], { ANA_FAKE_STACK: "7 13,12" });
     expect(result.status).toBe(1);
@@ -719,15 +772,18 @@ describe("bun run land", () => {
       "gh could not fetch the failed jobs' log: gh: Bad Gateway (HTTP 502)",
     );
   });
-  it("refuses to restore green when a parent moves off its child while the child is being proved", () => {
+  it("refuses to restore green when a parent moves off its child while the child is being proved, and leaves nothing pending", () => {
     const next = join(fixture, "moved-pulls");
+    rmSync(`${next}.read`, { force: true });
     writeFileSync(next, JSON.stringify([pull(11, "a", "main", beside), pull(12, "b", "a", upper)]));
     const result = runLand(["12", "--sanitize"], { ANA_FAKE_PULLS_NEXT: next });
     expect(statuses("mergeable")).toEqual([
       `pending ${lowerDocs}`,
       `pending ${upper}`,
       `success ${lowerDocs}`,
+      `error ${upper}`,
     ]);
+    expect(leftPending("ana/commit")).toEqual([]);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("does not contain #11's head");
   });
@@ -746,7 +802,6 @@ describe("bun run land", () => {
       `pending ${upper}`,
       `success ${lowerDocs}`,
       `success ${lowerMore}`,
-      `pending ${upper}`,
       `success ${upper}`,
     ]);
     expect(gatesRun(gateLog).filter((gate) => gate.startsWith(upper))).toEqual([`${upper} suite`]);
@@ -762,7 +817,10 @@ describe("bun run land", () => {
     expect(gates).not.toContain(`${upper} suite`);
     expect(gates.filter((gate) => gate.startsWith(upper))).toHaveLength(1);
     expect(gates.at(-1)).toBe(`${stacked} suite`);
-    expect(statuses("mergeable").at(-1)).toBe(`success ${stacked}`);
+    expect(statuses("mergeable").findLast((row) => row.endsWith(stacked))).toBe(`success ${stacked}`);
+    // The old head was left pending when the chain moved on, and the landing settles it as it ends.
+    expect(statuses("mergeable").at(-1)).toBe(`error ${upper}`);
+    expect(leftPending("mergeable")).toEqual([]);
   });
 
   it("reruns a failed ci.yml run's jobs where no runner took them, and merges once they pass", () => {

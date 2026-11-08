@@ -195,6 +195,35 @@ describe("the next step of an investigation", () => {
     expect(step([fork])).toEqual([`step: done · #602 is measured by ${fork}`]);
   });
 
+  it("reopens a row left unreached or pending once the log grows past its count, and keeps it while the log stands", () => {
+    const { dir, root, write, ledger } = folder("stale", "r", true);
+    write("launch-04.json", JSON.stringify({ sessions: [] }));
+    ledger("predictions-r.md", table(["P1", "P2", "P3"]));
+    const resolved = `${table(["P1"], "held")}| P2 | unreached |\n| P3 | pending |\n`;
+    const step = (events: number | null) =>
+      nextOf(
+        dir,
+        () => [],
+        root,
+        () => events,
+      )[0] ?? "";
+    // A resolution names the count to record beside it.
+    expect(step(120)).toContain("resolve P1, P2, P3");
+    expect(step(120)).toContain('record "Log events at resolution: 120"');
+    ledger("outcomes-r.md", `Log events at resolution: 120\n\n${resolved}`);
+    expect(step(120)).toStartWith("step: still-missing");
+    // The run went on: its unreached and pending rows are open again, and its held one is not.
+    expect(step(121)).toBe(
+      `step: outcomes · ${join(root, "2026-11-07-cycle-test", "outcomes-r.md")}: P2, P3 read unreached or pending at 120 events and the log holds 121 now: resolve them again, and record "Log events at resolution: 121" on its own line`,
+    );
+    // A ledger that records no count was read at none, and a log this machine cannot read stales nothing.
+    ledger("outcomes-r.md", resolved);
+    expect(step(120)).toContain("P2, P3 read unreached or pending at no recorded count");
+    expect(step(null)).toStartWith("step: still-missing");
+    ledger("outcomes-r.md", `Log events at resolution: 121\n\n${table(["P1", "P2", "P3"], "held")}`);
+    expect(step(400)).toStartWith("step: still-missing");
+  });
+
   it("refuses to choose between two copies of one ledger", () => {
     const { ledger, write, step } = folder("twice", "r", true);
     write("launch-15.json", JSON.stringify({ sessions: [] }));

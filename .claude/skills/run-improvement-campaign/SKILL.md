@@ -60,7 +60,10 @@ never copied.
 - Three files for each run: `predictions-<run>.md`, written before that run's `--yes`, holds the
   rows it settles in a table whose first column is `id`; `outcomes-<run>.md` gives each of its ids,
   and no other, one outcome, `held`, `falsified`, `unreached`, or `pending` while a live run's event
-  has not come; `still-missing-<run>.md` names every id not held and each problem no fix holds yet,
+  has not come, and records the log's length it was read at on a line of its own,
+  `Log events at resolution: <n>`, which `next` prints; once the log grows past it, `next` reopens
+  every `unreached` or `pending` row, since a run continued after its trigger may yet reach them;
+  `still-missing-<run>.md` names every id not held and each problem no fix holds yet,
   with where it is carried, and under `## Intentionally opposed` (at least one line; `none` counts)
   what stays missing on purpose, as a trade-off from `AGENTS.md` section 1, a principle or the
   operator's word, so that a gap left by design is not read as one forgotten. `Predictions.md` links

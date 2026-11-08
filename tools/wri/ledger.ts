@@ -23,6 +23,10 @@ export interface Parent {
 /** The outcomes a prediction can have; `pending` only while its event has not come. */
 export const OUTCOMES = ["held", "falsified", "unreached", "pending"] as const;
 
+/** The line an outcomes ledger records the run's log length on when its rows were resolved. */
+export const COUNTED_LINE = "Log events at resolution:";
+const COUNTED = /^Log events at resolution: (\d+)\.?$/mu;
+
 /** `text` without HTML comments and fenced code blocks. */
 const stripped = (text: string) =>
   text.replaceAll(/<!--[\s\S]*?-->/gu, "").replaceAll(/^```[\s\S]*?^```/gmu, "");
@@ -71,6 +75,25 @@ export const outcomesOf = (text: string): Map<string, string> =>
 export function unheldOf(predictions: string, outcomes: string): string[] {
   const outcome = outcomesOf(outcomes);
   return idsOf(predictions).filter((id) => outcome.get(id) !== "held");
+}
+
+/** The log's event count an outcomes ledger was resolved at, or null where it records none. */
+export function countedOf(outcomes: string): number | null {
+  const counted = COUNTED.exec(stripped(outcomes))?.[1];
+  return counted === undefined ? null : Number(counted);
+}
+
+/**
+ * The ids an outcomes ledger left `unreached` or `pending` while the run's log has grown past the
+ * count they were resolved at, so each is open again: a run continued after its trigger may yet
+ * reach them. A ledger that records no count was resolved at none. With `events` null, where the
+ * log cannot be read, nothing is called stale.
+ */
+export function staleOf(outcomes: string, events: number | null): string[] {
+  if (events === null || events <= (countedOf(outcomes) ?? 0)) return [];
+  return [...outcomesOf(outcomes)]
+    .filter(([, outcome]) => outcome === "unreached" || outcome === "pending")
+    .map(([id]) => id);
 }
 
 /**

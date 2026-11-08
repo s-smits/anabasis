@@ -65,6 +65,8 @@ import { INVESTIGATION, SHARED, SYNTHESIS, VETTING } from "#tools/wri/index.ts";
 import { blankSections } from "#tools/wri/investigation.ts";
 import {
   carryOf,
+  COUNTED_LINE,
+  countedOf,
   forkOf,
   idsOf,
   ledgerFiles,
@@ -75,6 +77,7 @@ import {
   pullOf,
   rowsOf,
   sectionOf,
+  staleOf,
   unheldOf,
 } from "#tools/wri/ledger.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
@@ -113,10 +116,12 @@ interface Row {
 /** One gate: its step, the run it reads or null, and the lines it prints while it is owed. */
 type Gate = readonly [step: string, run: string | null, owed: () => string[] | null];
 
-/** Where a run's ledgers are read: the cycles' folders under `root`, and the investigation `dir`. */
+/** Where a run's ledgers are read: the cycles' folders under `root`, and the investigation `dir`;
+ *  and how long each run's log is now, or null where this machine cannot read it. */
 interface Ledgers {
   readonly root: string;
   readonly dir: string;
+  readonly lengthOf: (run: string) => number | null;
 }
 
 /** The row of the run `seen` whose log holds `events`, read at `now`. */
@@ -257,13 +262,24 @@ function runGates(where: Ledgers, run: string): Gate[] {
     }),
     gate("outcomes", () => {
       const predicted = idsOf(read(predictions()));
-      const outcomes = outcomesOf(read(beside("outcomes")));
+      const text = read(beside("outcomes"));
+      const outcomes = outcomesOf(text);
       const known: readonly string[] = OUTCOMES;
       const unsettled = predicted.filter((id) => !known.includes(outcomes.get(id) ?? ""));
       const stray = [...outcomes.keys()].filter((id) => !predicted.includes(id));
+      const events = where.lengthOf(run);
+      // A row left unreached or pending reopens once the log grows past the count it was read at,
+      // since a run continued after its trigger may yet reach it.
+      const stale = staleOf(text, events);
+      const counted = countedOf(text);
+      const record =
+        events === null ? "" : `, and record "${COUNTED_LINE} ${String(events)}" on its own line`;
       const parts = [
         unsettled.length > 0
-          ? `resolve ${unsettled.join(", ")} from the log as ${OUTCOMES.join(", ")} (pending only while its event has not come), each with its count or event and the time`
+          ? `resolve ${unsettled.join(", ")} from the log as ${OUTCOMES.join(", ")} (pending only while its event has not come), each with its count or event and the time${record}`
+          : "",
+        stale.length > 0
+          ? `${stale.join(", ")} read unreached or pending at ${counted === null ? "no recorded count" : `${String(counted)} events`} and the log holds ${String(events)} now: resolve them again${record}`
           : "",
         stray.length > 0 ? `${stray.join(", ")} predicted nowhere in ${predictions()}` : "",
       ].filter((part) => part !== "");
@@ -312,15 +328,10 @@ function firstOwed(
 }
 
 /** The iteration's gates for the folder `dir`, in order; an unmarked folder takes the common ones. */
-function gatesOf(
-  dir: string,
-  root: string,
-  launchedAt: (pull: number) => string[],
-  passed: string[],
-): Gate[] {
+function gatesOf(where: Ledgers, launchedAt: (pull: number) => string[], passed: string[]): Gate[] {
+  const { root, dir } = where;
   const at = (file: string) => join(dir, file);
   const wri = (verb: string, more = "") => `  bun ${WRI} ${verb} --out ${dir}${more}`;
-  const where = { root, dir };
   const runs = runsOf(dir);
   const pull = () => pullOf(read(at("plan.md"))) ?? 0;
   const only = (gates: Gate[]): Gate[] => (existsSync(at(MARKER)) ? gates : []);
@@ -485,16 +496,34 @@ function planOwed(dir: string): string[] | null {
 }
 
 /** The step left in the investigation `dir`, as lines, given the runs launched at a pull request. */
-export function nextOf(dir: string, launchedAt: (pull: number) => string[], root = dirname(dir)): string[] {
+export function nextOf(
+  dir: string,
+  launchedAt: (pull: number) => string[],
+  root = dirname(dir),
+  lengthOf: Ledgers["lengthOf"] = () => null,
+): string[] {
   if (!existsSync(join(dir, INVESTIGATION))) return [`step: open · no investigation in ${dir}`];
   const passed: string[] = [];
-  const owed = firstOwed(gatesOf(dir, root, launchedAt, passed), deviationsOf(dir), passed) ?? [];
+  const owed =
+    firstOwed(gatesOf({ root, dir, lengthOf }, launchedAt, passed), deviationsOf(dir), passed) ?? [];
   return [...owed, ...passed];
 }
 
 /** Each campaign `among` holds that forks `pull`: `forkedPR60` is never a fork of #600. */
 const launchedFrom = (among: readonly Run[]) => (pull: number) =>
   among.filter((run) => isCampaign(run) && forkOf(run.name) === pull).map(({ name }) => name);
+
+/** How long each campaign `among` holds by a name is now, read once a name; null for one it does not hold. */
+function lengthsIn(among: readonly Run[]): Ledgers["lengthOf"] {
+  const lengths = new Map<string, number | null>();
+  return (name) => {
+    if (!lengths.has(name)) {
+      const run = among.find((each) => isCampaign(each) && each.name === name);
+      lengths.set(name, run === undefined ? null : logEvents(run.path).length);
+    }
+    return lengths.get(name) ?? null;
+  };
+}
 
 /** The folder every iteration's ledgers are read under: `.ana/wri/` of the main checkout. */
 const wriRoot = (repo: string) => join(mainTree(repo), ".ana", "wri");
@@ -530,7 +559,8 @@ function due(args: CommandArgs, repo: string, known: readonly Run[]): number {
     const trigger = triggerOf(row, limits);
     const opening =
       trigger === null ? ["step: run"] : [`step: open · ${trigger}`, `  bun ${SCRIPT} open ${row.name}`];
-    const step = folder === undefined ? opening : nextOf(folder.dir, launchedFrom(known), root);
+    const step =
+      folder === undefined ? opening : nextOf(folder.dir, launchedFrom(known), root, lengthsIn(known));
     const state = row.live ? "live" : `closed${row.ending === null ? "" : ` (${row.ending})`}`;
     console.log(
       `${row.name} · ${row.host} · ${state} · ${String(row.promotions)} promoted in ${String(row.compared)} compared · ${row.hours.toFixed(1)} h`,
@@ -572,7 +602,9 @@ async function main(args: CommandArgs): Promise<number> {
   if (verb === "next") {
     const dir = args.positionals[1];
     if (dir === undefined) args.die(USAGE);
-    for (const line of nextOf(resolve(dir), launchedFrom(readable(repo)), wriRoot(repo))) console.log(line);
+    const known = readable(repo);
+    const lines = nextOf(resolve(dir), launchedFrom(known), wriRoot(repo), lengthsIn(known));
+    for (const line of lines) console.log(line);
     return 0;
   }
   return due(args, repo, readable(repo));

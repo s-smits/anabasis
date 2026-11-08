@@ -25,17 +25,20 @@ const warned = new Set<string>();
  *  ("cannot lock ref") and one lock, which refused the losers until the wait below. */
 const preparing = new Map<string, Promise<Host | null>>();
 
-/** The shell function that says whether the lock folder `$1` is stale: older than a preparation
- *  may take, or held by a process that is gone. A preparation takes a stale lock of its own commit
- *  over, and `PRUNE` removes a controller behind one: on 22 October a preparation on the M1 left
- *  `c5e16d7f.lock`, which kept that controller from pruning for good. Any other holder is waited
- *  for: the fetch runs under the lock, since two fetches in one repository race on its refs. */
+/** The shell function that says whether the lock folder `$1` is stale, by the rule of `holder.ts`:
+ *  its holder's process is gone, however long it held; a lock that names no holder, left by a shell
+ *  killed before it wrote one, lapses after a preparation's time. It reads the pid alone, so a pid
+ *  the system has given to a later process holds the lock until that one ends too. A preparation
+ *  takes a stale lock of its own commit over, and `PRUNE` removes a controller behind one: on 22
+ *  October a preparation on a peer host left `c5e16d7f.lock`, which kept that controller from
+ *  pruning for good. Any other holder
+ *  is waited for: the fetch runs under the lock, since two fetches in one repository race on its
+ *  refs, and a cold install may outlast `PREPARE_MS`. */
 const STALE = `stale() {
-  stamp="$(stat -c %Y "$1" 2>/dev/null || stat -f %m "$1")"
-  test "$(($(date +%s) - stamp))" -le ${String(PREPARE_MS / 1000)} || return 0
   holder="$(cat "$1/pid" 2>/dev/null || true)"
-  case "$holder" in ''|*[!0-9]*) return 1;; esac
-  ! kill -0 "$holder" 2>/dev/null
+  case "$holder" in ''|*[!0-9]*) ;; *) ! kill -0 "$holder" 2>/dev/null; return;; esac
+  stamp="$(stat -c %Y "$1" 2>/dev/null || stat -f %m "$1")"
+  test "$(($(date +%s) - stamp))" -gt ${String(PREPARE_MS / 1000)}
 }`;
 
 /** Only old, idle controllers are disposable. Failure to inspect processes preserves them.

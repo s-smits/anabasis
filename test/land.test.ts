@@ -244,13 +244,13 @@ describe("bun run land", () => {
     expect(logLines(ghLog).some((line) => line.startsWith("run list"))).toBe(false);
   });
 
-  it("runs a merge's proof afresh over passes a sanitize would reuse", () => {
+  it("merges over the passes a sanitize left, running no gate again", () => {
     expect(runLand(["12", "--sanitize"]).status).toBe(0);
     rmSync(gateLog, { force: true });
     const landed = runLand(["12", "--merge"]);
     expect(landed.status).toBe(0);
-    expect(gatesRun(gateLog)).toEqual([`${lower} -`, `${lowerMore} test/owner.test.ts`, `${upper} suite`]);
-    expect(landed.stdout).not.toContain("passed earlier on these exact bytes");
+    expect(gatesRun(gateLog)).toEqual([]);
+    expect(landed.stdout).toContain("passed earlier on these exact bytes");
   });
 
   it("posts only the statuses GitHub does not show already, and reads the chain once over remembered passes", () => {

@@ -224,9 +224,9 @@ GitHub allows merge commits only, and ruleset 25824510 on `main`
 
 `land` checks that each base contains the head beneath it down to `main`, so the last merge leaves
 `main` at the top's tree, then proves each commit on the top's first parents: static steps and
-nearby tests, and the whole gate on the top; recorded passes are reused except under `--merge`,
-which sets `ANA_GATE_FRESH=1` and proves every commit afresh, and `--jobs N` runs N static passes at
-once. **A passing proof is not a release**: a stack merges only once a fresh run at the top's head
+nearby tests, and the whole gate on the top; recorded passes are reused, at a merge as at a
+sanitize (`ANA_GATE_FRESH=1` proves every commit afresh by hand), and `--jobs N` runs N static passes
+at once. **A passing proof is not a release**: a stack merges only once a fresh run at the top's head
 has reached two promotions on unchanged code (run-improvement-campaign, "A run proves the release");
 land the proved top by its number, never a newer top. On failure, fold the fix into the named
 commit, replay what is above (section 8), push together and land again. A runner that drops twice

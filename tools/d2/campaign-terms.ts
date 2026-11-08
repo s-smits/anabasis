@@ -201,8 +201,10 @@ function counted(count: number, what: string): void {
 }
 
 /**
- * What the campaign runs by: its record, or what this command names where that is another. A paid
- * campaign needs its total, and a rehearsal's is none.
+ * What the campaign runs by: its record, or what this command names where that is another, written
+ * again where they differ or a word asked for it. A paid campaign needs its total and a Referee, and
+ * a rehearsal's needs neither. A total the operator left as a word stands over the flag the command
+ * was started with, which is older (`word.ts`), and the newest of several words over the rest.
  */
 export function opened(
   log: string,
@@ -212,17 +214,16 @@ export function opened(
 ): Opening {
   const events = read(log);
   const was = openingOf(events);
+  const dollars = heard.at(-1)?.dollars ?? values.budget ?? was?.budget?.dollars;
   if (seats === "paid" && values.budget === undefined && was?.budget == null) {
     throw new Error(
       "name --budget, the dollars this campaign may bill in all: each move is held to what is left of it, and the campaign ends where less is left than one solve is held at",
     );
   }
-  /** A seat as this command names it, and as the record holds it where it names none. */
-  const seat = (name: (typeof SEATS)[number]): Seat | null => {
-    const [model, effort] = [values[name], values[`${name}-effort`]];
-    const kept = was?.seats[name] ?? null;
-    if (model === undefined) return kept === null || effort === undefined ? kept : { ...kept, effort };
-    return { model, effort: effort ?? kept?.effort ?? DEFAULTS.effort };
+  /** A seat as this command names it, and as the record holds it where the command names none. */
+  const seat = (model: string | undefined, effort: string | undefined, kept: Seat | null | undefined) => {
+    const named = model ?? kept?.model;
+    return named === undefined ? null : { model: named, effort: effort ?? kept?.effort ?? DEFAULTS.effort };
   };
   const prompt = promptOf(values, was);
   if (prompt === null && !packed(values)) {
@@ -230,10 +231,12 @@ export function opened(
       `name the campaign's pack with --root, --sweep, --cycle and --bundle, or give the prompt it opens from with --prompt: ${log} holds neither`,
     );
   }
-  const solver =
-    values.solver === undefined
-      ? (was?.solver ?? null)
-      : { model: values.solver, effort: values["solver-effort"] ?? was?.solver?.effort ?? DEFAULTS.effort };
+  // The recorded solver takes no effort from a command that does not name its model.
+  const solver = seat(
+    values.solver,
+    values.solver === undefined ? undefined : values["solver-effort"],
+    was?.solver,
+  );
   if (prompt !== null && solver === null) {
     throw new Error(
       "name --solver: a campaign that opens from a prompt has no stored cycle to take its solver from",
@@ -245,26 +248,23 @@ export function opened(
     );
   }
   const reserve = values.reserve ?? String(was?.budget?.reserve ?? DEFAULTS.reserve);
-  // A total the operator left as a word while the command ran stands over the flag it was
-  // started with, which is older (`word.ts`), and the newest of several words stands over the rest.
-  const newest = heard.at(-1);
-  const told = newest?.dollars == null ? values.budget : String(newest.dollars);
-  const dollars = told ?? (was?.budget == null ? undefined : String(was.budget.dollars));
+  // The level is pinned whether or not a command named it, to the one the campaign's comparisons
+  // began under, as the setting is held to its first solves (`firstRecord`): a tree whose default
+  // moved would otherwise change the test of a campaign run on from it.
+  const began = events.findLast(({ kind, data }) => kind === STARTED && isNumber(data.level))?.data.level;
   const named: Omit<Opening, "project"> = {
-    budget: dollars === undefined ? null : capRead(dollars, reserve),
+    budget: dollars === undefined ? null : capRead(String(dollars), reserve),
     patience: values.patience === undefined ? (was?.patience ?? PATIENCE) : Number(values.patience),
-    seats: { builder: seat("builder"), examiner: seat("examiner"), reviewer: seat("reviewer") },
+    seats: {
+      builder: seat(values.builder, values["builder-effort"], was?.seats.builder),
+      examiner: seat(values.examiner, values["examiner-effort"], was?.seats.examiner),
+      reviewer: seat(values.reviewer, values["reviewer-effort"], was?.seats.reviewer),
+    },
     attended: values.hitl ?? was?.attended ?? false,
     prompt,
     solver: prompt === null ? null : solver,
-    // Each term as this command names it, and as the record holds it where it names none. The
-    // level is pinned whether or not a command named it: until 10 October a campaign that named
-    // none read each comparison at the tree's default, so that a tree whose default moved from
-    // 0.10 to 0.20 (#175) changed the test of a campaign run on from it, and the stop rule then
-    // counted no-steps of two levels in one row. A campaign whose comparisons already ran at a
-    // level is held to that one, as the setting is held to its first solves (`firstRecord`).
     terms: {
-      level: values.level ?? pinned(events, was),
+      level: isNumber(began) ? String(began) : COMPARISON_OPTIONS.level.default,
       ...was?.terms,
       ...Object.fromEntries(
         TERMS.flatMap((term) => (values[term] === undefined ? [] : [[term, values[term]]])),
@@ -283,6 +283,7 @@ export function opened(
     counted(Number(cap), `--promotions ${cap}: the promotions before the campaign ends`);
   }
   const project = projectOf(log, values.project, was);
+  // Absent keys stay absent, so that a record from before each of them reads as written.
   const record: JsonObject = {
     project,
     budget: named.budget === null ? null : { ...named.budget },
@@ -291,19 +292,14 @@ export function opened(
       SEATS.map((each) => [each, named.seats[each] === null ? null : { ...named.seats[each] }]),
     ),
     ...keyIfDefined("attended", named.attended || undefined),
-    // A campaign over a stored pack records neither, as before a campaign could open from a prompt.
     ...keyIfDefined("prompt", named.prompt ?? undefined),
     ...keyIfDefined("solver", named.solver === null ? undefined : { ...named.solver }),
-    // A campaign whose commands named no term records none, as before the opening kept them.
-    ...keyIfDefined("terms", Object.keys(named.terms).length === 0 ? undefined : { ...named.terms }),
+    terms: { ...named.terms },
   };
-  // The record as it was written, less the words it answered and who led it (kept until 3 November):
-  // it is written again where what the campaign runs by is another, and where a word asked for it.
+  // The record as it was written, less the words it answered and who led it (until 3 November).
   const { answers: _heard, led: _led, ...kept } = events.findLast(({ kind }) => kind === OPENED)?.data ?? {};
   if (!values["dry-run"] && (heard.length > 0 || !sameJsonValue(kept, record))) {
-    // A campaign that opens from a prompt has no folder until now: one over a stored pack got
-    // its own when the pack was opened. The first live campaign from a prompt stopped here
-    // (2026-10-09), since the test that covered it had made the folder for another reason.
+    // A campaign that opens from a prompt has no folder until now.
     mkdirSync(dirname(log), { recursive: true });
     append(log, OPENED, {
       ...record,
@@ -356,19 +352,6 @@ export function nextId(events: readonly LogEvent[], prefix: string): string {
     return id !== "" && Number.isInteger(nth) ? [nth] : [];
   });
   return `${prefix}-${String(Math.max(0, ...taken) + 1)}`;
-}
-
-/**
- * The level a campaign reads its comparisons by where no command names one: the record's, else
- * the one its comparisons on record began under, else this tree's default, as a string, since a
- * term is a flag's value. Until 19 October a trigger was pinned beside it, and a campaign whose
- * comparisons began before 10 October's two-stage rule was refused the default.
- */
-function pinned(events: readonly LogEvent[], was: Opening | null): string {
-  const recorded = was?.terms.level;
-  if (isString(recorded)) return recorded;
-  const began = events.findLast(({ kind, data }) => kind === STARTED && isNumber(data.level))?.data.level;
-  return isNumber(began) ? String(began) : COMPARISON_OPTIONS.level.default;
 }
 
 /** The flags of a comparison that began, as its start holds them: it goes on under its own terms. */

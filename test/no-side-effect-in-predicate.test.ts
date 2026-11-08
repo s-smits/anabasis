@@ -1,11 +1,8 @@
 /**
  * The rule that reports a predicate building state while it answers.
  *
- * Its mutation test now lives in `shared/predicate-effect.ts`, because
- * `ana/prefer-some-over-filter-length` needs the same answer before it may rewrite a
- * `.filter().length` into a `.some()`. What is pinned here is the reach of that shared test from
- * this side: six names, a receiver required, and the three walks that are outside the rule on
- * purpose.
+ * What is pinned here is the reach of its mutation test: six names, a receiver required, and the
+ * three walks that are outside the rule on purpose.
  */
 import { describe, expect, it } from "bun:test";
 import { expectedLines, reportedLines } from "./helpers/oxlint-rule-fixture.ts";

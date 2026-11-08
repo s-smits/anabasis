@@ -2,15 +2,15 @@ import { describe, it } from "bun:test";
 import { lintRules } from "./helpers/lint-rule.ts";
 
 /**
- * Three anti-slop rules decide whether a type still carries evidence:
- * `no-unsafe-dictionary-type` (is the value contract real?), `no-widen-then-assert`
- * (was evidence discarded and recreated?) and `no-known-value-widening` (did a known
- * value flow into a broad target?). All three ask the same engine,
+ * Two anti-slop rules decide whether a type still carries evidence:
+ * `no-unsafe-dictionary-type` (is the value contract real?) and `no-known-value-widening`
+ * (did a known value flow into a broad target?). Both ask the same engine,
  * `anti-slop/shared/dictionary-types.ts`, to resolve a written type into what it
  * actually denotes: unwrap the transparent wrappers, substitute an alias's type
- * arguments, follow the alias, stop on a cycle.
+ * arguments, follow the alias, stop on a cycle. `no-unknown-returns` reads the alias
+ * scopes of the same resolution.
  *
- * So each rule is tested at its own boundary, where the three disagree on purpose,
+ * So each rule is tested at its own boundary, where they disagree on purpose,
  * and the shared engine once more where it must stop: on a cycle.
  *
  * Each fixture labels a declaration `// REPORT <why>` or `// ADMITTED <why>` and the
@@ -66,123 +66,6 @@ export function consumes(bag: Unknowns): number { return Object.keys(bag).length
 export type Fn = Record<string, () => void>; // ADMITTED a callable value contract
 export type Tuple = Record<string, [string, number]>; // ADMITTED a fixed tuple
 export type Recursive = Record<string, Recursive>; // ADMITTED recursion terminates without a verdict
-`.trimStart();
-
-// --- no-widen-then-assert ------------------------------------------------------
-
-const WIDEN_THEN_ASSERT = `
-type Money = { currency: string; minor: number };
-
-export function literalThroughUnknown(): string {
-	const raw: unknown = "eur";
-	return raw as string; // REPORT a literal widened to unknown and asserted back
-}
-
-export function objectThroughUnknown(): Money {
-	const raw: unknown = { currency: "eur", minor: 1 };
-	return raw as Money; // REPORT an object literal widened to unknown
-}
-
-export function objectThroughAny(): Money {
-	const raw: any = { currency: "eur", minor: 1 };
-	return raw as Money; // REPORT any erases exactly as much as unknown
-}
-
-export function throughObjectKeyword(): Money {
-	const raw: object = { currency: "eur", minor: 1 };
-	return raw as Money; // REPORT object widened to a definite object type
-}
-
-export function throughBroadRecord(): Money {
-	const raw: Record<string, unknown> = { currency: "eur", minor: 1 };
-	return raw as Money; // REPORT a broad record narrowed back to a real shape
-}
-
-export function throughReadonlyRecord(): Money {
-	const raw: Readonly<Record<string, unknown>> = { currency: "eur", minor: 1 };
-	return raw as Money; // REPORT Readonly does not change the erasure
-}
-
-export function throughIndexSignature(): Money {
-	const raw: { [key: string]: unknown } = { currency: "eur", minor: 1 };
-	return raw as Money; // REPORT the index-signature spelling of the same erasure
-}
-
-export function assertedInitializer(): Money {
-	const raw = { currency: "eur", minor: 1 } as unknown;
-	return raw as Money; // REPORT widened by the initializer assertion instead
-}
-
-export function throughOneHop(): string {
-	const first = "eur";
-	const raw: unknown = first;
-	return raw as string; // REPORT the evidence survives one const hop
-}
-
-export function arrayThroughUnknown(): string[] {
-	const raw: unknown = ["eur"];
-	return raw as string[]; // REPORT an array literal is known
-}
-
-export function callThroughUnknown(): Money {
-	const raw: unknown = new Map<string, number>();
-	return raw as Money; // REPORT a constructed value is known
-}
-
-export function parenthesized(): string {
-	const raw: (unknown) = ("eur");
-	return (raw) as string; // REPORT parentheses carry no erasure
-}
-
-export function narrowValueRecord(): Money {
-	const raw: Record<string, string | number> = { currency: "eur", minor: 1 };
-	return raw as Money; // REPORT an open dictionary erases the shape whatever its values are
-}
-
-export function parseOnce(input: string): Money {
-	return JSON.parse(input) as Money; // ADMITTED one parse at the boundary
-}
-
-export function fromParameter(raw: unknown): Money {
-	return raw as Money; // ADMITTED the caller owns the widening, not this function
-}
-
-export function noEvidence(): Money {
-	const raw: unknown = JSON.parse("{}");
-	return raw as Money; // ADMITTED the initializer proves nothing either
-}
-
-export function notNarrower(): unknown {
-	const raw: unknown = "eur";
-	return raw as any; // ADMITTED asserting one top type to another narrows nothing
-}
-
-export function assertedBeforeDeclaration(previous: unknown): string {
-	const earlier = previous as string; // ADMITTED the assertion precedes the widening
-	const raw: unknown = "eur";
-	return earlier + String(raw);
-}
-
-export function reassigned(flag: boolean): string {
-	let raw: unknown = "eur";
-	if (flag) raw = 1;
-	return raw as string; // ADMITTED a mutable binding has no single known value
-}
-
-export function acrossBoundaries(): () => string {
-	const raw: unknown = "eur";
-	return () => raw as string; // ADMITTED the assertion sits in a different function
-}
-
-export function recordToBroaderRecord(): Record<string, unknown> {
-	const raw: Record<string, unknown> = { currency: "eur" };
-	return raw as Record<string, unknown>; // ADMITTED asserting a broad type to itself
-}
-
-export function objectToNonObject(): string {
-	const raw: object = { currency: "eur" };
-	return raw as string; // ADMITTED a string is not a narrowing of object
-}
 `.trimStart();
 
 // --- no-known-value-widening ---------------------------------------------------
@@ -277,14 +160,14 @@ const ALIAS_SCOPES = `
 type T = User;
 type Body = T;
 type Outer<T> = Body;
-export type Unleaked = Outer<unknown>; // ADMITTED Body means User, whatever Outer is given
+export declare function unleaked(): Outer<unknown>; // ADMITTED Body means User, whatever Outer is given
 type Maybe<U> = U | undefined;
-export type Nested = Maybe<Maybe<unknown>>; // REPORT a finite nesting still ends in unknown
+export declare function nested(): Maybe<Maybe<unknown>>; // REPORT a finite nesting still ends in unknown
 type Identity<V> = V;
-export type Deep = Identity<Identity<Identity<unknown>>>; // REPORT three levels, still unknown
+export declare function deep(): Identity<Identity<Identity<unknown>>>; // REPORT three levels, still unknown
 type Pair<A, B> = A | B;
-export type Second = Pair<string, Pair<number, unknown>>; // REPORT the inner argument is unknown
-export type Plain = Maybe<Maybe<string>>; // ADMITTED nothing unknown
+export declare function second(): Pair<string, Pair<number, unknown>>; // REPORT the inner argument is unknown
+export declare function plain(): Maybe<Maybe<string>>; // ADMITTED nothing unknown
 `;
 
 // Recursion ends: each of these must finish and report nothing.
@@ -318,12 +201,10 @@ describe("type evidence and resolution", () => {
   it("reports only the marked lines in every fixture and scope", async () => {
     await lintRules("anti-slop", [
       ["no-unsafe-dictionary-type", DICTIONARY, 23],
-      ["no-widen-then-assert", WIDEN_THEN_ASSERT, 13],
       ["no-known-value-widening", KNOWN_VALUE_WIDENING, 17],
       ["no-unsafe-dictionary-type", CYCLIC, 0],
-      ["no-unknown-type-aliases", ALIAS_SCOPES, 3],
+      ["no-unknown-returns", ALIAS_SCOPES, 3],
       ["no-unsafe-dictionary-type", KEY_AND_SCOPE_EDGES, 3],
-      ["no-unknown-type-aliases", RECURSIVE_ALIASES, 0],
       ["no-unknown-returns", RECURSIVE_ALIASES, 0],
     ]);
   });

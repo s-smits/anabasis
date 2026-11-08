@@ -108,20 +108,6 @@ export function singleConst(
 }
 
 /**
- * The receiver and only argument of `<receiver>.<method>(<argument>)`, or null for anything else:
- * another method, a computed member, or any other number of arguments.
- */
-export function methodCall(
-  node: ESTree.Node,
-  method: string,
-): { receiver: ESTree.Expression; argument: ESTree.Argument } | null {
-  if (!isOneArgumentCall(node)) return null;
-  const { callee } = node;
-  if (!isNamedMember(callee) || identifierName(callee.property) !== method) return null;
-  return { receiver: callee.object, argument: node.arguments[0] };
-}
-
-/**
  * The parameters and body of a call's first argument when it is a function written in place, as a
  * callback or an executor is, or null when the first argument is anything else.
  */

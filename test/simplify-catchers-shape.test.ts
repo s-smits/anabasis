@@ -1,7 +1,6 @@
 /**
- * The simplify catchers that read the shape of a statement: two arms, a repeated literal, an
- * argument the callee already has, a temporary that renames, a wrapper that forwards, a `let`
- * decided on the next line, a boolean spelled over two returns, a chain that is a table, and a
+ * The simplify catchers that read the shape of a statement: two arms, a repeated literal, a
+ * temporary that renames, a wrapper that forwards, a `let` decided on the next line, and a
  * constant table built inside a function body.
  *
  * All of them gate as of 2026-09-20, so what a test has to pin is the boundary between the shape
@@ -106,31 +105,6 @@ export function asserted() {
   expect(one).toMatchObject({ kind: "case", verified: false, runId: "r3" }); // ADMITTED an expectation is read where it is written
   expect(two).toMatchObject({ kind: "case", verified: false, runId: "r3" });
   expect(three).toMatchObject({ kind: "case", verified: false, runId: "r3" });
-}
-`.trimStart();
-
-const CARRIED = `
-import { publish } from "./published.ts";
-declare const bundle: { rows: string[]; id: string; kind: string; note: string | null };
-function render(all: typeof bundle, rows: string[]): void {}
-function index(rows: string[], at: number): string { return rows[at] ?? ""; }
-function pick(all: typeof bundle, part: string): void {}
-function noted(all: typeof bundle, note: string): void {}
-export function passesBoth() {
-  render(bundle, bundle.rows); // REPORT the callee already holds bundle.rows
-}
-export function passesImported() {
-  publish(bundle, bundle.rows); // ADMITTED another file owns that signature, so this file cannot close it
-}
-export function passesComputed(at: number) {
-  index(bundle.rows, at); // ADMITTED a computed part is not a fixed part of the whole
-}
-export function passesVarying() {
-  pick(bundle, bundle.id); // ADMITTED another call passes a different part, so the parameter carries something
-  pick(bundle, bundle.kind);
-}
-export function passesNarrowed() {
-  if (bundle.note !== null) noted(bundle, bundle.note); // ADMITTED the caller narrowed it; the callee would redo that
 }
 `.trimStart();
 
@@ -262,79 +236,6 @@ export function elseIfChain() {
 }
 `.trimStart();
 
-const BOOLEANS = `
-declare const row: { verified: boolean; pass: boolean | null };
-export function spelledOut() {
-  if (row.verified && row.pass !== null) return true; // REPORT the condition over two statements
-  return false;
-}
-export function negated() {
-  if (row.verified) { // REPORT the same shape, answering the other way round
-    return false;
-  }
-  return true;
-}
-export function valued() {
-  if (row.verified) return row.pass; // ADMITTED the first return is not a boolean literal
-  return false;
-}
-export function guarded() {
-  if (!row.verified) return false;
-  if (row.pass === null) return false; // ADMITTED the last of a run of guards is not the condition
-  return true;
-}
-`.trimStart();
-
-const CHAINS = `
-declare const kind: string;
-declare const node: { kind: string; values: string[]; title: string };
-declare function exhaustive(value: string): never;
-export function weight(): number | null {
-  if (kind === "verified") return 1; // REPORT three branches over one name are a table
-  if (kind === "unaccepted") return 0;
-  if (kind === "non-result") return null;
-  return exhaustive(kind);
-}
-export function pair(): number {
-  if (kind === "verified") return 1; // ADMITTED two branches are a decision, not a set
-  if (kind === "unaccepted") return 0;
-  return -1;
-}
-export function mixed(): number {
-  if (kind === "verified") return 1;
-  if (kind.length === 0) return 0; // ADMITTED not one subject
-  if (kind === "non-result") return -1;
-  return -2;
-}
-export function open(): number {
-  if (kind === "verified") return 1; // ADMITTED a default not naming the subject: the set is open
-  if (kind === "unaccepted") return 0;
-  if (kind === "non-result") return -1;
-  return -2;
-}
-export function narrowing(): string {
-  if (node.kind === "closed") return node.values.join(","); // ADMITTED an arm reading the subject splits a union
-  if (node.kind === "text") return node.title;
-  if (node.kind === "empty") return "";
-  throw new Error(node.kind);
-}
-export function wrapped(): string {
-  if (kind === "verified") { // ADMITTED an arm over several lines makes a record of thunks
-    return ["structured", "output"].join("-");
-  }
-  if (kind === "unaccepted") return "u";
-  if (kind === "non-result") return "n";
-  throw new Error(kind);
-}
-export function prefix(): number {
-  if (kind === "verified") return 1; // ADMITTED part of a longer dispatch stays a chain
-  if (kind === "unaccepted") return 0;
-  if (kind === "non-result") return -1;
-  if (kind.startsWith("x")) return -2;
-  return -3;
-}
-`.trimStart();
-
 const INLINE_TABLES = `
 declare function use(value: unknown): void;
 
@@ -418,12 +319,9 @@ describe("the simplify catchers shape", () => {
     await lintRules("ana", [
       ["no-arms-differing-in-one-term", ARMS, 4],
       ["no-thrice-spelled-object", OBJECTS, 1],
-      ["no-argument-already-carried", CARRIED, 1],
       ["no-renaming-temporary", TEMPORARIES, 1],
       ["no-pass-through-wrapper", WRAPPERS, 2],
       ["prefer-const-conditional", CONDITIONALS, 2],
-      ["prefer-condition-over-boolean-returns", BOOLEANS, 2],
-      ["prefer-lookup-over-equality-chain", CHAINS, 1],
       ["no-inline-schema-literal", INLINE_TABLES, 3],
       ["no-inline-schema-literal", INLINE_TABLES, 0, "owner.test.ts"],
       ["no-tangled-ternary", TERNARIES, 3],

@@ -8,14 +8,11 @@ import { requireMetaRuntimeImportRule } from "./rules/require-meta-runtime-impor
 import { noSingleCallerHelperRule } from "./rules/no-single-caller-helper.ts";
 import { noSingleUseConstChainRule } from "./rules/no-single-use-const-chain.ts";
 import { noPositionalBooleanParameterRule } from "./rules/no-positional-boolean-parameter.ts";
-import { preferIncludesOverSomeEqualsRule } from "./rules/prefer-includes-over-some-equals.ts";
 import { preferKeyIfDefinedRule } from "./rules/prefer-key-if-defined.ts";
 import { noHandRolledErrorRenderRule } from "./rules/no-hand-rolled-error-render.ts";
-import { preferSomeOverFilterLengthRule } from "./rules/prefer-some-over-filter-length.ts";
 import { noInlineSlopAnswerRule } from "./rules/no-inline-slop-answer.ts";
 
 import { noAliasRestatingReturnRule } from "./rules/no-alias-restating-return.ts";
-import { noArgumentAlreadyCarriedRule } from "./rules/no-argument-already-carried.ts";
 import { noArmsDifferingInOneTermRule } from "./rules/no-arms-differing-in-one-term.ts";
 import { noDeepNestingRule } from "./rules/no-deep-nesting.ts";
 import { noHandRolledSleepRule } from "./rules/no-hand-rolled-sleep.ts";
@@ -29,13 +26,8 @@ import { noRepeatedStringLiteralRule } from "./rules/no-repeated-string-literal.
 import { noSideEffectInPredicateRule } from "./rules/no-side-effect-in-predicate.ts";
 import { noTangledTernaryRule } from "./rules/no-tangled-ternary.ts";
 import { noThriceSpelledObjectRule } from "./rules/no-thrice-spelled-object.ts";
-import { noTransposedArgumentRule } from "./rules/no-transposed-argument.ts";
-import { preferConditionOverBooleanReturnsRule } from "./rules/prefer-condition-over-boolean-returns.ts";
 import { preferConstConditionalRule } from "./rules/prefer-const-conditional.ts";
-import { preferEntriesOverKeysLookupRule } from "./rules/prefer-entries-over-keys-lookup.ts";
 import { preferFindOverLoopRule } from "./rules/prefer-find-over-loop.ts";
-import { preferFlatmapOverMapFilterRule } from "./rules/prefer-flatmap-over-map-filter.ts";
-import { preferLookupOverEqualityChainRule } from "./rules/prefer-lookup-over-equality-chain.ts";
 import { declarationsBeforeTheFirstFunctionRule } from "./rules/declarations-before-the-first-function.ts";
 
 /** The rules this repository owns. The anti-slop plugin beside it is copied from dmmulroy/anti-slop
@@ -80,22 +72,16 @@ const anaPlugin = eslintCompatPlugin({
     "require-meta-runtime-import": requireMetaRuntimeImportRule,
     "no-single-caller-helper": noSingleCallerHelperRule,
     "no-positional-boolean-parameter": noPositionalBooleanParameterRule,
-    "prefer-includes-over-some-equals": preferIncludesOverSomeEqualsRule,
     "prefer-key-if-defined": preferKeyIfDefinedRule,
     "no-hand-rolled-error-render": noHandRolledErrorRenderRule,
-    "prefer-some-over-filter-length": preferSomeOverFilterLengthRule,
     "no-alias-restating-return": noAliasRestatingReturnRule,
     "no-inline-block-reducer": noInlineBlockReducerRule,
     "no-inline-schema-literal": noInlineSchemaLiteralRule,
     "prefer-find-over-loop": preferFindOverLoopRule,
     "no-side-effect-in-predicate": noSideEffectInPredicateRule,
-    "prefer-flatmap-over-map-filter": preferFlatmapOverMapFilterRule,
-    "prefer-entries-over-keys-lookup": preferEntriesOverKeysLookupRule,
-    "prefer-condition-over-boolean-returns": preferConditionOverBooleanReturnsRule,
     "prefer-const-conditional": preferConstConditionalRule,
     "no-inline-slop-answer": noInlineSlopAnswerRule,
 
-    "no-argument-already-carried": noArgumentAlreadyCarriedRule,
     "no-arms-differing-in-one-term": noArmsDifferingInOneTermRule,
     "no-deep-nesting": noDeepNestingRule,
     "no-hand-rolled-sleep": noHandRolledSleepRule,
@@ -107,8 +93,6 @@ const anaPlugin = eslintCompatPlugin({
     "no-repeated-string-literal": noRepeatedStringLiteralRule,
     "no-thrice-spelled-object": noThriceSpelledObjectRule,
     "no-tangled-ternary": noTangledTernaryRule,
-    "no-transposed-argument": noTransposedArgumentRule,
-    "prefer-lookup-over-equality-chain": preferLookupOverEqualityChainRule,
     "declarations-before-the-first-function": declarationsBeforeTheFirstFunctionRule,
   },
 });

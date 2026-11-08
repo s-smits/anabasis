@@ -44,7 +44,7 @@ interface UnsafeDictionary {
   readonly unsafeValue: "any" | "empty-object" | "object" | "union" | "unknown";
 }
 
-export type WideningTargetKind =
+type WideningTargetKind =
   | "anonymous object"
   | "any"
   | "generic container"
@@ -110,16 +110,6 @@ const evidenceExpressions = new Set([
   "ObjectExpression",
   "TemplateLiteral",
   "UnaryExpression",
-]);
-
-/** The written types that denote an object at runtime without following anything. */
-const certainObjectTypes = new Set([
-  "TSArrayType",
-  "TSConstructorType",
-  "TSFunctionType",
-  "TSMappedType",
-  "TSObjectKeyword",
-  "TSTupleType",
 ]);
 
 export function createTypeEnvironment(
@@ -536,30 +526,4 @@ export function isKnownEvidenceExpression(expression: ESTree.Expression): boolea
   }
   if (current.type === "ObjectExpression") return hasKnownKeys(current);
   return evidenceExpressions.has(current.type);
-}
-
-// --- is this certainly an object? -----------------------------------------------
-
-/**
- * True when `type` certainly denotes an object at runtime, following aliases, interfaces
- * and the transparent wrappers. `no-widen-then-assert` asks this to tell a narrowing
- * (`object` back to a real shape) from a change of kind (`object` to `string`), which is a
- * different defect and not this rule's.
- */
-export function isCertainlyObjectType(type: ESTree.TSType, environment: TypeEnvironment): boolean {
-  let state = start(type);
-  for (;;) {
-    const unwrapped = unwrapTransparentType(state.type);
-    if (certainObjectTypes.has(unwrapped.type)) return true;
-    if (unwrapped.type === "TSTypeLiteral") return unwrapped.members.length > 0;
-    if (unwrapped.type === "TSIntersectionType") {
-      return unwrapped.types.every((member) => isCertainlyObjectType(member, environment));
-    }
-    if (unwrapped.type !== "TSTypeReference") return false;
-    const resolution = resolveReference(unwrapped, environment, state);
-    if (resolution.kind === "interface") return true;
-    if (resolution.kind === "builtin") return resolution.name === "Record";
-    if (resolution.kind !== "step") return false;
-    state = resolution.step;
-  }
 }

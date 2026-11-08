@@ -1,6 +1,5 @@
 import { defineRule, type ESTree, type Fix, type Fixer } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
-import { annotatedKind } from "../shared/annotated-kind.ts";
 import { holdsProse } from "../shared/masked.ts";
 import { asSubject, identifierName, onlyStatement, statementBelow } from "../shared/statements.ts";
 
@@ -91,6 +90,18 @@ function agrees(method: string, next: ESTree.Statement): boolean {
   }
   if (argument === undefined || argument === null) return true;
   return identifierName(argument) === "undefined";
+}
+
+/**
+ * What a binding's own annotation says it holds, read without types: `string`, or the name of the
+ * type reference it is annotated with (`ReadonlySet`, `MapIterator`), or null for anything else.
+ */
+function annotatedKind(node: ESTree.BindingIdentifier): string | null {
+  const type = node.typeAnnotation?.typeAnnotation;
+  if (type === undefined) return null;
+  if (type.type === "TSStringKeyword") return "string";
+  if (type.type !== "TSTypeReference" || type.typeName.type !== "Identifier") return null;
+  return type.typeName.name;
 }
 
 export const preferFindOverLoopRule = defineRule({

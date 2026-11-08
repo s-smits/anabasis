@@ -28,7 +28,7 @@ first line, and the round trip through the linter mostly disappears.
 `--deny-warnings` and `--report-unused-disable-directives`, type-aware. `packages/ui` is linted
 once its own dependencies are installed (`bun run ui:deps`), under its own `tsconfig.json` and
 with no rule turned off for it; a whole-tree run without them leaves it out and says so. Two repository plugins ride along: `ana`
-(36 rules) and `anti-slop` (14 rules). Every enabled rule in `.oxlintrc.json` is an error.
+(28 rules) and `anti-slop` (10 rules). Every enabled rule in `.oxlintrc.json` is an error.
 
 - **Plugin findings fail the run only in strict mode**: `bun run lint -- --strict`,
   `ANA_LINT_STRICT=1`, or a clone with `git config ana.lintStrict true`. A plain run holds you to
@@ -38,7 +38,7 @@ with no rule turned off for it; a whole-tree run without them leaves it out and 
   more (two assertions in `test/wri-read.test.ts`, `.toolchain` spelled five times in
   `src/builder/tools.ts`), fixed on 11 October. Add none, and say in your pull request that the
   strict run is clean.
-- Extra arguments go to Oxlint. Fourteen rules carry a fixer, marked [fix] below, which Oxlint's
+- Extra arguments go to Oxlint. Ten rules carry a fixer, marked [fix] below, which Oxlint's
   `--fix` applies; `tools/oxlint/FIXER-DECISIONS.md` says why the others report only.
 - After its findings, a run prints each plugin rule that fired once, with one or two pairs: a
   shape the rule reports and one that passes it and every other rule. A rule keeps its pairs in
@@ -178,30 +178,18 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
 
 - `no-arms-differing-in-one-term`: two arms that are the same text but for one value are one arm
   with the condition at that value.
-- `prefer-condition-over-boolean-returns` [fix]: `if (c) return true; return false;` is
-  `return c;`.
 - `prefer-const-conditional` [fix]: `let x; if (c) x = a; else x = b;` is `const x = c ? a : b`.
   A default followed by an override is `const w = o.w ?? D`.
-- `prefer-lookup-over-equality-chain`: three or more `if (x === "lit") return …` arms are a table,
-  `{…} as const satisfies Record<Kind, …>`.
 - `no-positional-boolean-parameter`: take a union of two string literals. Tests are exempt.
 - `no-side-effect-in-predicate`: no mutation inside a `filter`, `find`, `some` or `every`
   callback. Deduplicate with `new Map(rows.map((r) => [r.id, r]))`, or write the loop.
 
 **Arrays and loops**
 
-- `prefer-find-over-loop` [fix], `prefer-some-over-filter-length` [fix],
-  `prefer-includes-over-some-equals` [fix], `prefer-flatmap-over-map-filter`,
-  `prefer-entries-over-keys-lookup`: the rewrites of 12.3.
+- `prefer-find-over-loop` [fix]: the loop rewrite of 12.3. The other array rewrites there are
+  habits with no rule.
 - `no-inline-block-reducer`: a `.reduce` with an inline block body is a hidden loop. Write the
   `for…of`.
-
-**Calls**
-
-- `no-argument-already-carried` [fix]: `f(bundle, bundle.findings)` passes one value twice. Read
-  the part inside `f`.
-- `no-transposed-argument`: two same-typed arguments passed in the other order than the
-  parameters are named. Fix whichever side is wrong.
 
 **Repetition**
 
@@ -248,19 +236,14 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
   `satisfies`. An anonymous object type, a declared return type among them, is wide only through a
   member typed `any`, `unknown`, `object` or an open dictionary; one that states each member's type
   is a contract and passes.
-- `no-module-mocking`: inject through a real interface.
 - `no-object-parameters`: no parameter typed `object`.
-- `no-reduce-accumulator-copy`: no copy of the accumulator at every step. Mutate a local and
-  return it.
 - `no-runtime-typeof`: the predicates of `src/meta/json-shape.ts`. `typeof x === "undefined"` is
   allowed.
 - `no-shape-in-symbol-names`: no name with the word "shape", "shapes" or "shaped" in it. An
   object-literal key that holds a literal (`{ shape: "object {joints}" }`, a count's label) spells
   data and is exempt; a key holding a computed value is not.
-- `no-unknown-returns`, `no-unknown-type-aliases`: no `unknown` going out, as a return type or
-  behind an alias.
+- `no-unknown-returns`: no `unknown` going out as a return type, written or behind an alias.
 - `no-unsafe-dictionary-type`: no `Record<string, unknown>` or `Record<string, any>`.
-- `no-widen-then-assert`: do not declare a value wide and assert it back.
 - `prefer-subpath-import` [fix]: the aliases of 12.1.
 - `require-safety-comment-for-type-assertion`: every `as T` except `as const` carries a comment
   directly before the assertion or its statement, stating the invariant you checked:
@@ -299,7 +282,7 @@ Each pair has one spelling that satisfies both.
 | The pair | The spelling |
 | --- | --- |
 | Tangled ternary against negated condition | Name the inner ternary in a `const`. Do not invert the outer test |
-| Single-caller helper against thrice-spelled object or lookup chain | By count: at two uses inline, at three extract |
+| Single-caller helper against thrice-spelled object | By count: at two uses inline, at three extract |
 | Boolean parameter, `object` parameter and `max-params` | A string-literal union, or a named interface |
 | Key-if-defined, empty-object spread and `exactOptionalPropertyTypes` | `keyIfDefined`, `keyIfNotNull` or `keysIf` |
 | Strict-boolean against nullish-coalescing | `(n ?? 0) > 0`, with a `!== undefined` guard where later lines need the narrowing |

@@ -1,7 +1,6 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
 import { withoutProse } from "../shared/masked.ts";
-import { narrowedIn } from "../shared/narrowed.ts";
 import { statementBelow } from "../shared/statements.ts";
 
 /**
@@ -56,7 +55,7 @@ import { statementBelow } from "../shared/statements.ts";
  * guard is carrying the guard. `const key = options.apiKey` under `if (options.apiKey !==
  * undefined)` is `string`; `options.apiKey` inside the `env` callback two lines down is
  * `string | undefined` again. Three sites, one of them — `start.credential` under a guard on
- * `start.credential.token` — narrowed a level deeper than the binding, which the shared reader
+ * `start.credential.token` — narrowed a level deeper than the binding, which `narrowedIn`
  * admits on purpose: a missed narrowing is a finding a reader cannot act on.
  *
  * The report and the edit part at evaluation order. `const before = state.value;` then `return
@@ -76,6 +75,22 @@ const OPENS = new Map([
  *  than a proof, so it errs towards leaving the edit to the author. */
 function changedBefore(ahead: string): boolean {
   return /\+\+|--|\bdelete\b|\bawait\b|\byield\b|\)|(?<![=!<>])=(?![=>])/u.test(ahead);
+}
+
+/** Whether this text narrows a dotted path, or any dotted prefix of it but the root, in a
+ *  comparison, a `typeof` or an `instanceof`, which is how this tree narrows. */
+function narrowedIn(text: string, path: string): boolean {
+  const dots: number[] = [];
+  for (let at = path.indexOf(".", path.indexOf(".") + 1); at > 0; at = path.indexOf(".", at + 1)) {
+    dots.push(at);
+  }
+  return [path, ...dots.toReversed().map((at) => path.slice(0, at))].some((prefix) => {
+    const escaped = prefix.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`);
+    return (
+      new RegExp(`${escaped}\\b[^\\n]{0,40}?(?:===|!==|instanceof )`, "u").test(text) ||
+      text.includes(`typeof ${prefix}`)
+    );
+  });
 }
 
 export const noRenamingTemporaryRule = defineRule({

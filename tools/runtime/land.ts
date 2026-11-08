@@ -10,10 +10,9 @@
  * top costs only its new commits. Named without `--auto`, a landing stops at the pull request named,
  * and a pull request stacked above it stays open, moved onto the trunk once the merge goes
  * through; `bun run split` then replays the rest onto the merge with every pass kept. With no pull
- * request named, it
- * lands the stack that holds the oldest stacked pull request, its bottom on main with another above
- * it, and follows its top (`oldestStack`; operator, 27 October). It never follows into another
- * chain on main.
+ * request named, it lands the stack of two or more that holds the oldest open pull request, the one
+ * `bun run follow` moves the main checkout to (`firstStack`, `tools/runtime/pulls.ts`; operator,
+ * 27 October), and follows its top. It never follows into another chain on main.
  *
  * A plain push runs no step of the CI gate, and one with `ANA_PUSH_VERIFY=1` only the static steps
  * and nearby tests over the pushed head (`tools/runtime/pre-push.ts`), so a pushed commit is unproved
@@ -112,7 +111,10 @@ import { plural, textOr } from "../../src/meta/text.ts";
 import { CI_WORKFLOW, ciRun, failedFiles, FIXES, fixesFor } from "./ci-runs.ts";
 import { doubledLines } from "./doubled.ts";
 import {
+  chainAbove,
   api,
+  beneath,
+  firstStack,
   form,
   gh,
   ghOrThrow,
@@ -214,51 +216,24 @@ class Moved extends Refusal {}
 const say = (line: string): void => console.log(`land: ${line}`);
 const numbers = (pulls: readonly Pull[]): string => pulls.map((pull) => `#${String(pull.number)}`).join(", ");
 
-/** The top of the longest chain of open pull requests above `from`, each based on the head of the
- *  one beneath it; `from` itself where none is. Of two chains of one length the older wins. */
-function topAbove(open: readonly Pull[], from: Pull): Pull {
-  const chain = (pull: Pull, seen: readonly Pull[]): Pull[] => {
-    const above = open
-      .filter((child) => child.baseRefName === pull.headRefName && !seen.includes(child))
-      .toSorted((one, other) => one.number - other.number)
-      .map((child) => chain(child, [...seen, child]));
-    return [
-      pull,
-      ...above.reduce<Pull[]>((longest, each) => (each.length > longest.length ? each : longest), []),
-    ];
-  };
-  // A chain starts with `from`, so the fallback is never taken.
-  return chain(from, [from]).at(-1) ?? from;
+/** The top of the stack that holds the oldest open pull request (`firstStack`), which must be a
+ *  stack of two or more: a lone pull request is landed only by name. */
+function oldestStack(root: string): number {
+  const line = firstStack(openPulls(root));
+  if (line.length < 2) throw new Refusal("no stacked pull request is open. Name one to land.");
+  return line.at(-1)?.number ?? 0;
 }
 
-/** The top of the stack that holds the oldest stacked pull request: a bottom on the trunk with
- *  another pull request above it. */
-function oldestStack(root: string): number {
-  const open = openPulls(root);
-  const trunk = trunkOf(root);
-  const [bottom] = open
-    .filter(
-      (pull) => pull.baseRefName === trunk && open.some((above) => above.baseRefName === pull.headRefName),
-    )
-    .toSorted((one, other) => one.number - other.number);
-  if (bottom === undefined) {
-    throw new Refusal(`no stacked pull request is open on ${trunk}. Name one to land.`);
-  }
-  return topAbove(open, bottom).number;
-}
+/** The top of the longest chain above `from`, or `from` itself. */
+const topAbove = (open: readonly Pull[], from: Pull): Pull => chainAbove(open, from).at(-1) ?? from;
 
 /** The pull request named and every open one beneath it, bottom to top, read from GitHub. */
 function readLanding(root: string, target: number): Landing {
   const open = openPulls(root);
   const named = open.find((pull) => pull.number === target);
   if (named === undefined) throw new Refusal(`#${String(target)} is not an open pull request.`);
-  const pulls = [named];
-  const byHead = new Map(open.map((pull) => [pull.headRefName, pull]));
-  for (let below = byHead.get(named.baseRefName); below !== undefined && !pulls.includes(below); ) {
-    pulls.unshift(below);
-    below = byHead.get(below.baseRefName);
-  }
-  // `pulls` starts with the named pull request and only grows, so the fallback is never taken.
+  const pulls = [...beneath(open, named).toReversed(), named];
+  // `pulls` ends with the named pull request, so the fallback is never taken.
   const bottom = pulls[0] ?? named;
   const trunk = trunkOf(root);
   if (bottom.baseRefName !== trunk) {

@@ -356,12 +356,11 @@ describe.skipIf(realRsync === null)("which host runs a task", () => {
       for (const [host, load] of Object.entries(loads)) {
         writeFileSync(join(hostHome(host), "load"), `${load}\n`);
       }
-      for (const path of holds ? held : []) {
-        mkdirSync(path, { recursive: true });
-        writeFileSync(join(path, "pid"), `${String(runtimeProcess.pid)}\n`);
-      }
+      mkdirSync(queueOf("fake-mac"), { recursive: true });
+      // A slot is a link whose target is its holder's PID, made in one step.
+      for (const path of holds ? held : []) symlinkSync(String(runtimeProcess.pid), path);
       const picked = run(["test"]);
-      for (const path of holds ? held : []) rmSync(path, { recursive: true });
+      for (const path of holds ? held : []) rmSync(path);
       expect(picked.status, picked.stderr).toBe(0);
       expect(["fake-mac", "fake-linux"].filter(ran), picked.stderr).toEqual([expected]);
       expect(connections().filter((each) => each.host === "fake-peer")).toEqual([]);
@@ -668,6 +667,17 @@ describe.skipIf(realRsync === null)("the queue", () => {
         await child.exited;
       }
     }
+  });
+
+  it("frees a slot an older runner left without its holder's PID, as a task killed while taking it leaves", () => {
+    fresh();
+    mkdirSync(queue, { recursive: true });
+    for (const k of [1, 2]) mkdirSync(join(queue, `slot-${String(k)}`));
+    const result = run(["test"], { RUN_REMOTE: "m1", ANA_RUNNER_QUEUE_WAIT: "3" });
+    expect(result.status, result.stderr).toBe(0);
+    // The task freed the first slot it tried and took it; the other waits for the next reader.
+    expect(readdirSync(queue)).toEqual(["slot-2"]);
+    rmSync(join(queue, "slot-2"), { recursive: true });
   });
 });
 

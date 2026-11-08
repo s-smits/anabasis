@@ -13,7 +13,9 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readlinkSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -303,21 +305,34 @@ describe("one landing of a clone at a time", () => {
     execTextSync("git", ["init", "-q"], { cwd: clone });
     const lock = join(clone, ".git", "ana-land.lock");
     const mine = String(runtimeProcess.pid);
-    mkdirSync(lock);
-    writeFileSync(join(lock, "pid"), mine);
+    // The lock is a link whose target is its holder's pid.
+    symlinkSync(mine, lock);
     const said: string[] = [];
     const held = holdAlone(clone, "land", (line) => said.push(line), 20);
     const early = await Promise.race([held.then(() => "held"), Bun.sleep(200).then(() => "waiting")]);
     expect(early).toBe("waiting");
     expect(said).toEqual([`another land (pid ${mine}) is running in this clone; waiting for it to end`]);
     // Above any pid either system gives, so no process answers it.
-    writeFileSync(join(lock, "pid"), "4194399");
+    rmSync(lock);
+    symlinkSync("4194399", lock);
     const release = await held;
-    expect(readFileSync(join(lock, "pid"), "utf8")).toBe(mine);
+    expect(readlinkSync(lock)).toBe(mine);
     release();
     const again = await holdAlone(clone, "land", () => undefined, 20);
-    expect(readFileSync(join(lock, "pid"), "utf8")).toBe(mine);
+    expect(readlinkSync(lock)).toBe(mine);
     again();
+  });
+
+  it("takes over at once a lock an older landing left as a folder without its pid", async () => {
+    const clone = mkdtempSync(join(fixture, "alone-"));
+    execTextSync("git", ["init", "-q"], { cwd: clone });
+    const lock = join(clone, ".git", "ana-land.lock");
+    mkdirSync(lock);
+    const held = holdAlone(clone, "land", () => undefined, 20);
+    const early = await Promise.race([held.then(() => "held"), Bun.sleep(60).then(() => "waiting")]);
+    expect(early).toBe("held");
+    expect(readlinkSync(lock)).toBe(String(runtimeProcess.pid));
+    (await held)();
   });
 
   it("names each commit's pull request on the lines that name the commit", () => {

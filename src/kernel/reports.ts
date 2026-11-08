@@ -265,14 +265,15 @@ export function patienceOf(events: readonly LogEvent[]): number {
  * mirrored half, `halves`). None for a report that compared nothing, or before a solve named its
  * comparison. Its settled wrong passes count as that side's fails.
  *
- * With `sides` "fresh", the new side's harness is read against itself instead, its solves of each task
- * split into halves mirrored in time as the reference's A/A is (`noise`, `comparison.ts`): a fold
- * over solves already paid for, none where a side's solves do not split evenly.
+ * With `sides` "old" or "fresh", that side's harness is read against itself instead, its solves of
+ * each task split into halves mirrored in time: "old" is the reference's A/A as the report read it
+ * (`noise`, `comparison.ts`). A fold over solves already paid for, none where a side's solves do not
+ * split evenly; in an older `--noise` log only the reference's A/A, on its two mirrored halves.
  */
 export function pairsReported(
   events: readonly LogEvent[],
   report: Reported,
-  sides: "both" | "fresh" = "both",
+  sides: "both" | "old" | "fresh" = "both",
 ): Paired[] {
   const { session, index, data } = report;
   const { old, fresh, setting, solves } = data;
@@ -281,19 +282,21 @@ export function pairsReported(
     return [];
   }
   const begun = events.find(({ kind, data: start }) => kind === STARTED && start.session === session);
-  const itself = sides === "fresh";
-  if (itself && (begun?.data.noise === true || solves % 2 !== 0)) return [];
-  const halves = begun?.data.noise === true || itself ? ("mirrored" as const) : undefined;
+  const legacy = begun?.data.noise === true;
+  const split = sides !== "both" && !legacy;
+  if ((sides === "fresh" && legacy) || (split && solves % 2 !== 0)) return [];
+  const halves = legacy || split ? ("mirrored" as const) : undefined;
+  const itself = sides === "both" ? null : sides === "old" ? old : fresh;
   const pairing = {
-    old: itself ? fresh : old,
-    fresh,
+    old: itself ?? old,
+    fresh: itself ?? fresh,
     setting,
     comparison: session,
     objective: objectiveRuleIn(data),
     halves,
   };
   const wrong = wrongPasses(asRecord(asRecord(data.settled)?.passes) ?? {});
-  const each = itself ? solves / 2 : solves;
+  const each = split ? solves / 2 : solves;
   return pairsOf(failWrongPasses(events.slice(0, index + 1), wrong), versions, pairing, each).pairs;
 }
 

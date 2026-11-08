@@ -7,9 +7,10 @@ import { asRecord, type JsonObject } from "../../src/meta/json-shape.ts";
 import { keyIfDefined } from "../../src/meta/optional-key.ts";
 import { roundSolves } from "./logged-round.ts";
 
-/** What the reference and the new side measured on every valid answer, lower being better. */
+/** What the reference measured on its first and second valid answer of each task, and the new side
+ *  on every valid answer, lower being better. */
 interface Measures {
-  readonly old: number;
+  readonly old: readonly [number, number];
   readonly fresh: number;
 }
 
@@ -52,26 +53,29 @@ function tested(differences: readonly number[]): JsonObject {
 }
 
 /** Comparison `session` of `sides` on `outcomes` ("FF PP": the new side valid on both solves, the
- *  reference on neither), read `reading`, with its A/A's differences and, where `measures` is given,
- *  the objective each valid answer measured. */
+ *  reference on neither), read `reading`, and, where `measures` is given, the objective each valid
+ *  answer measured. */
 function compared(
   session: string,
   sides: readonly [string, string],
   outcomes: Readonly<Record<string, string>>,
-  read: { reading: string; noise?: readonly number[]; measures?: Measures },
+  read: { reading: string; measures?: Measures },
 ): LogEvent[] {
   const { events, terms } = roundSolves(session, sides, outcomes);
   const [old, fresh] = sides;
-  const { reading, noise, measures } = read;
+  const { reading, measures } = read;
   let side: keyof Measures = "old";
+  let nth = 0;
   const solved = events.flatMap((event) => {
     if (event.kind === "condition.recorded") {
       side = asRecord(event.data.condition)?.harness === fresh ? "fresh" : "old";
+      nth = 0;
     }
     const passed = event.kind === "solve.finished" && asRecord(event.data.ending)?.outcome === "pass";
-    return measures === undefined || !passed
-      ? [event]
-      : [event, at("verdict", { solve: event.data.solve ?? "", kind: "pass", objective: measures[side] })];
+    if (event.kind === "solve.finished") nth += 1;
+    if (measures === undefined || !passed) return [event];
+    const objective = side === "fresh" ? measures.fresh : measures.old[nth - 1];
+    return [event, at("verdict", { solve: event.data.solve ?? "", kind: "pass", objective: objective ?? 0 })];
   });
   const sign = (outcome: string) => (outcome === LOST ? 600 : outcome === WON ? -600 : 0);
   const differences = Object.values(outcomes).map((outcome) => (measures === undefined ? sign(outcome) : 15));
@@ -86,7 +90,7 @@ function compared(
       level: 0.02,
       reading,
       scored: tested(differences),
-      noise: noise === undefined ? null : tested(noise),
+      noise: null,
       ...keyIfDefined("objective", measures === undefined ? undefined : { direction: "lower" }),
       ...terms,
     }),
@@ -125,20 +129,23 @@ export function chainLog(later: "lost" | "won"): LogEvent[] {
 }
 
 /**
- * A step on six tasks every solve of both sides answered validly, the new side's answers better by
- * `margin` of the reference's, beside an A/A whose largest difference is 20 points: a margin of 0.05
- * scores 15 points a task. With `validity`, the reference misses one solve of the first task.
+ * A step on six tasks every solve of both sides answered validly, the new side measuring `1 - margin`
+ * against the reference's 1 and 0.93, so that its A/A, the reference's first solve of each task
+ * against its second, differs by 21 points a task: a margin of 0.05 scores 4 points a task, and 0.5
+ * scores 144. With `validity` "split", the reference misses one solve of the first task, which splits
+ * its validity in the comparison; with "flip", both sides miss their second solve of the last task,
+ * which ties it on validity in the comparison and splits it, at 600 points, in the A/A.
  */
-export function objectiveLog(margin: number, validity: "tied" | "split" = "tied"): LogEvent[] {
+export function objectiveLog(margin: number, validity: "tied" | "split" | "flip" = "tied"): LogEvent[] {
   const tasks = named("t", 6);
   const tied = spelled(tasks, "PP PP");
-  const outcomes = validity === "split" ? { ...tied, t0: "PF PP" } : tied;
+  const outcomes =
+    validity === "split" ? { ...tied, t0: "PF PP" } : validity === "flip" ? { ...tied, t5: "PF PF" } : tied;
   return [
     ...gated(tasks),
     ...compared("g-1", [STARTER, FIRST], outcomes, {
       reading: "step",
-      noise: [0, 20, -20, 0, 0, 0],
-      measures: { old: 1, fresh: 1 - margin },
+      measures: { old: [1, 0.93], fresh: 1 - margin },
     }),
   ];
 }

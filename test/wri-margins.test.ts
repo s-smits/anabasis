@@ -29,12 +29,20 @@ describe("lane 28: whether the chain adds up against the starter", () => {
 describe("lane 29: what an objective-only step won by", () => {
   it("names a step whose wins between valid answers are all within its A/A's largest difference", () => {
     expect(triggered(objectiveLog(0.05), "MARGINS INSIDE THE NOISE")).toEqual([
-      "g-1 won 6 of 6 by no more than its A/A's largest difference, 20 points",
+      "g-1 won 6 of 6 by no more than its A/A's largest difference where validity tied, 21 points",
     ]);
   });
 
   it("stays silent where the margins exceed the A/A, and where validity split a task", () => {
     expect(triggered(objectiveLog(0.5), "MARGINS INSIDE THE NOISE")).toEqual([]);
     expect(triggered(objectiveLog(0.05, "split"), "MARGINS INSIDE THE NOISE")).toEqual([]);
+  });
+
+  it("reads the A/A's ceiling only on tasks whose halves tied on validity", () => {
+    // One A/A task split on validity scores 600, above any margin; the others set the ceiling at 21.
+    expect(triggered(objectiveLog(0.05, "flip"), "MARGINS INSIDE THE NOISE")).toEqual([
+      "g-1 won 6 of 6 by no more than its A/A's largest difference where validity tied, 21 points",
+    ]);
+    expect(triggered(objectiveLog(0.5, "flip"), "MARGINS INSIDE THE NOISE")).toEqual([]);
   });
 });

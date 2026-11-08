@@ -33,7 +33,7 @@
 import { CRASHES } from "#src/campaign/decide.ts";
 import { crashedRun } from "#src/campaign/ground.ts";
 import { affords, flying, inFlight } from "#src/campaign/opening.ts";
-import { PAUSE, pauseWaitMs, pendingWords } from "#src/campaign/word.ts";
+import { paused } from "#src/campaign/word.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
@@ -92,15 +92,7 @@ function queued({ seated, loaded, host = seated === solved ? HOST : SCRIPTED }: 
   // A pause left before this process began was for the one it stopped.
   const began = read(log).length;
   const clock = host.now ?? Date.now;
-  // It holds a minute past `runs pause`'s wait, so the stop comes first: nothing else answers it, so
-  // a pause that died before its stop held the campaign for good (landing review, 7 November 2026).
-  const pausing = (wallSeconds: number, events = read(log)) =>
-    pendingWords(events).some(
-      ({ at, word }) =>
-        word === PAUSE &&
-        at >= began &&
-        clock() - Date.parse(events[at]?.at ?? "") < pauseWaitMs(wallSeconds) + 60_000,
-    );
+  const pausing = (wallSeconds: number) => paused(read(log), began, clock(), wallSeconds);
   return (campaign, given) => {
     const seats = seated(campaign, given);
     return {

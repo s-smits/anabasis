@@ -41,21 +41,12 @@ import type { EventKind, LogEvent } from "#src/kernel/log.ts";
 import { degradations, traceKind, tracesIn } from "#src/kernel/trace.ts";
 import { billedAll } from "#src/kernel/meter.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  statfsSync,
-  statSync,
-  writeFileSync,
-} from "#src/meta/filesystem.ts";
+import { existsSync, readFileSync, rmSync, statfsSync, statSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
-import { basename, dirname, join, resolve } from "#src/meta/path.ts";
+import { basename, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { mainTree } from "#src/meta/git.ts";
@@ -72,6 +63,7 @@ import {
   pastMilestone,
   pruneObservers,
   readersSaid,
+  remember,
   resultOf,
   type SaidOf,
   startPass,
@@ -614,21 +606,17 @@ async function look(
   };
 }
 
-/** Write a look's state whole, so a kill leaves the last one. */
-export function remember(state: string, text: string): void {
-  // A checkout no campaign ran in has no `.ana/`, as the Linux runner's had none on 20 October.
-  mkdirSync(dirname(state), { recursive: true });
-  writeFileSync(`${state}.tmp`, text);
-  renameSync(`${state}.tmp`, state);
-}
-
 /** A peer's first step on its caller's word: what it said last is read if the caller returned its
  *  token, so it is remembered; otherwise it is dropped, and this look says it again. */
 function settle(state: string, ack: string): void {
   const pending = `${state}.pending`;
   if (!existsSync(pending)) return;
-  const { token, memory } = parseJsonAs<{ token: string; memory: Memory }>(readFileSync(pending, "utf8"));
-  if (token === ack) remember(state, capturedJsonStringify(memory));
+  try {
+    const { token, memory } = parseJsonAs<{ token: string; memory: Memory }>(readFileSync(pending, "utf8"));
+    if (token === ack) remember(state, capturedJsonStringify(memory));
+  } catch {
+    // One a kill cut part way, as the write in place before 9 November could leave, is not read.
+  }
   rmSync(pending, { force: true });
 }
 
@@ -710,8 +698,7 @@ export async function watch(args: readonly string[]): Promise<void> {
     if (values.ack !== undefined && here.lines.length > 0) {
       // A peer's answer: what it would remember waits for its caller to return the last line.
       const token = sha256(`${String(Date.now())}\n${String(runtimeProcess.pid)}`).slice(0, 16);
-      mkdirSync(dirname(state), { recursive: true });
-      writeFileSync(`${state}.pending`, capturedJsonStringify({ token, memory: here.memory }));
+      remember(`${state}.pending`, capturedJsonStringify({ token, memory: here.memory }));
       console.log([...here.lines, `ack ${token}`].join("\n"));
     } else {
       if (here.lines.length > 0) {

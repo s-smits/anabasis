@@ -1,8 +1,8 @@
 import { eslintCompatPlugin } from "@oxlint/plugins";
 
-import { coAssignedFlagsRule } from "./rules/co-assigned-flags.ts";
-import { filesAsPhaseRule } from "./rules/files-as-phase.ts";
-import { mtimeAsLockRule } from "./rules/mtime-as-lock.ts";
+import { noCoupledFlagsRule } from "./rules/no-coupled-flags.ts";
+import { noMarkerFileStateRule } from "./rules/no-marker-file-state.ts";
+import { noAgeBasedLockRule } from "./rules/no-age-based-lock.ts";
 
 /**
  * The generic implicit-state rules: ones that infer their structure from the syntax and run on any
@@ -32,9 +32,9 @@ import { mtimeAsLockRule } from "./rules/mtime-as-lock.ts";
 const implicitStatePlugin = eslintCompatPlugin({
   meta: { name: "implicit-state" },
   rules: {
-    "co-assigned-flags": coAssignedFlagsRule,
-    "files-as-phase": filesAsPhaseRule,
-    "mtime-as-lock": mtimeAsLockRule,
+    "no-coupled-flags": noCoupledFlagsRule,
+    "no-marker-file-state": noMarkerFileStateRule,
+    "no-age-based-lock": noAgeBasedLockRule,
   },
 });
 

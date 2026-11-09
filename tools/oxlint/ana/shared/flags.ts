@@ -4,7 +4,7 @@ import { literalValue } from "./statements.ts";
 
 /**
  * Which annotations and parameters hold a flag, for `ana/no-positional-boolean-parameter` and
- * the rules `flag-count` and `flags-as-state` of `implicit-state-opinionated`. The reading of a
+ * the rules `max-boolean-fields` and `prefer-state-union` of `implicit-state-opinionated`. The reading of a
  * union and a default follows Foxglove's `no-boolean-parameters` (`THIRD_PARTY_NOTICES.md`), which asks the type checker for a type whose
  * parts are boolean beside `undefined`, `null` or `void`; a plugin rule never asks the checker, so
  * this reads the written annotation and the default instead.

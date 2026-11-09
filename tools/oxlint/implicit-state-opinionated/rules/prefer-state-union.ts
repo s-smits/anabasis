@@ -13,7 +13,7 @@ import {
 
 /**
  * Tier: opinionated. Booleans that are one state spelled as flags, found by what the code does
- * with them rather than by how many there are (`flag-count` counts them).
+ * with them rather than by how many there are (`max-boolean-fields` counts them).
  *
  * Reported, two shapes:
  *
@@ -66,7 +66,7 @@ function memberOf(node: ESTree.Node): Member | null {
   return null;
 }
 
-export const flagsAsStateRule = defineRule({
+export const preferStateUnionRule = defineRule({
   meta: {
     type: "suggestion",
     docs: {

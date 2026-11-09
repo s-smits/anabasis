@@ -1,5 +1,5 @@
 /**
- * `second-reader` (generic): a fact an exported function already returns, derived again by hand in
+ * `no-duplicate-derivation` (generic): a fact an exported function already returns, derived again by hand in
  * another file. `stillRunning(run, running)` returns `writers(run, running).length > 0 ||
  * keepers(run.name).length > 0`; a command that spells `writers(run, processes()).length > 0 ||
  * keepers(name).length > 0` itself is a second reader of whether a run lives, and drifts from the
@@ -19,7 +19,7 @@
  * An owner is an exported function whose returned value is the unit, behind parentheses or either
  * side of `??`. A unit counts only where it names at least two distinct fields or functions outside
  * its calls' arguments, besides the language's own (`length`, `has`, `includes` and kin); not where
- * every operand compares one subject with a literal, which `state-literal-spread` reads; not where
+ * every operand compares one subject with a literal, which `no-scattered-state-literals` reads; not where
  * a comparison or arithmetic has a literal or a constant on one side (`kind === "pass"`, `code ===
  * KEYS.D`), a one-field test; and not for `??`, which gives a default. A unit inside a larger
  * reported unit is not reported again. Reported: each spelling outside the owner's file, naming the
@@ -512,7 +512,7 @@ export function secondReaders(sources: ReadonlyMap<string, ts.SourceFile>): Tree
   return readings.map(({ one, owner }): TreeFinding => {
     const files = new Set((readers.get(owner) ?? []).map((row) => row.one.path)).size;
     return {
-      kind: "second-reader",
+      kind: "no-duplicate-derivation",
       path: one.path,
       line: one.line,
       detail: `\`${one.key}\` is derived by hand in ${String(files)} ${files === 1 ? "file" : "files"} besides \`${owner.owner ?? ""}\` in ${owner.path}, which already returns it`,

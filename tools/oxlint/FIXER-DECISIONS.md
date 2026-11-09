@@ -106,13 +106,13 @@ what is wrong and makes the call.
 
 ## The implicit-state rules: the repair is an owner
 
-`implicit-state` (`co-assigned-flags`, `files-as-phase`, `mtime-as-lock`)
+`implicit-state` (`no-coupled-flags`, `no-marker-file-state`, `no-age-based-lock`)
 reports and never fixes, and each rule says so in its head comment. Every finding asks for an
 owner of a state that has none: the union the flags stand for, the record of a process's phase,
 the holder of a lock. Which states exist and where their owner lives is a design the rule cannot
 read off the syntax, so no edit is correct by construction (condition 1 fails at once).
 
-`implicit-state-opinionated` (`flag-count`, `flags-as-state`, `name-encoded-state`) reports and never
+`implicit-state-opinionated` (`max-boolean-fields`, `prefer-state-union`, `no-state-in-names`) reports and never
 fixes for the same reason, and more plainly: its findings are stances a codebase may not hold.
 Which record field should carry a fact parsed from a name is a decision about the program's design.
 

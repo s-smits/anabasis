@@ -17,8 +17,10 @@
  * headers off a one-token Haiku call instead: the numbers the CLI shows, for one output token.
  *
  * The pool: a run moves to another login when one is spent, so demand is one rate, in % of one
- * login's week an hour, summed over the logins; the forecast spends it in five-minute steps for
- * the next 4 weeks from the login whose week resets soonest, each refilling to 100% at its reset.
+ * login's week an hour, summed over the logins with room left (a spent login's pace is runs that
+ * moved on, already in the pace of the login that took them); the forecast spends it in five-minute
+ * steps for the next 4 weeks from the login whose week resets soonest, each refilling to 100% at
+ * its reset.
  * Three paces: the week's, each login's share over its window so far (floored at 12 hours, so a
  * window minutes old does not extrapolate); the recent one, from the readings kept in the main
  * worktree's `.ana/logins-history.jsonl` (28 days): a login still in the window of a reading 2 to 24
@@ -570,7 +572,7 @@ function poolLines(
   now: number,
 ): string[] {
   const perDay = (rate: number) => `~${String(Math.round(rate * 24))}%/day`;
-  const weekRate = (week: Week) => weekPace(week, now);
+  const weekRate = (week: Week) => (week.pct >= 100 ? 0 : weekPace(week, now));
   // The oldest reading 2 to 24 hours back in the same window (`sameWindow`).
   const recents = weeks.map((week) => {
     const then = history.find(({ at, weeks: read }) => {
@@ -579,7 +581,7 @@ function poolLines(
     });
     const hours = then === undefined ? 0 : (now - then.at) / HOUR;
     const was = then?.weeks[week.login]?.pct ?? 0;
-    return then === undefined ? null : { rate: (week.pct - was) / hours, hours };
+    return then === undefined ? null : { rate: week.pct >= 100 ? 0 : (week.pct - was) / hours, hours };
   });
   const poolPace = weeks.reduce((sum, week) => sum + weekRate(week), 0);
   const lines = [

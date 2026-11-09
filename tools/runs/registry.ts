@@ -57,10 +57,12 @@ export const BUILDER = "tools/d2/harness-builder.ts";
 export const DRAFT = "tools/d1b/draft.ts";
 /** The file beside a log that says its campaign is a seed, and of what. */
 export const SEED_FILE = "seed.json";
+/** The command that runs one round of a campaign by hand. */
+export const ROUND = "tools/d2/round.ts";
 /** The commands that write a campaign's log by hand, each naming it with `--name`: a round, an
  *  Examiner session (read as closed while it ran, the first time one did: exam-1, 2026-10-08), a
  *  standalone comparison and a Builder session alone. */
-const BY_HAND = ["tools/d2/round.ts", EXAMINE, "tools/d2/checkpoint.ts", "tools/d2/session.ts", DRAFT];
+const BY_HAND = [ROUND, EXAMINE, "tools/d2/checkpoint.ts", "tools/d2/session.ts", DRAFT];
 /** This CLI, whose verbs start, read and stop runs; `rehearse` alone writes a log. */
 export const CLI = "tools/runs/cli.ts";
 const LIVE = "tools/m0/live-solve.ts";

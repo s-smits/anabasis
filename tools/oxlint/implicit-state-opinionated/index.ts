@@ -1,7 +1,6 @@
 import { eslintCompatPlugin } from "@oxlint/plugins";
 
 import { nameEncodedStateRule } from "./rules/name-encoded-state.ts";
-import { stateFileOverwriteRule } from "./rules/state-file-overwrite.ts";
 
 /**
  * The opinionated implicit-state rules: stances about where state may live, which hold in a
@@ -12,17 +11,16 @@ import { stateFileOverwriteRule } from "./rules/state-file-overwrite.ts";
  * - No meaning parsed from names (`name-encoded-state`). A name labels a record; a fact read back
  *   out of it has two owners, the namer and the parser, and a rename moves it silently. Contested
  *   where a name convention is the only interface (a branch scheme a CI system enforces).
- * - No state in a file each writer replaces (`state-file-overwrite`). State that outlives a process
- *   is an append-only log read as a fold. Contested where settings, caches and exported reports are
- *   rewritten whole on purpose.
  * - Every status literal comes from a declared owner (`unowned-state-literal`, a kind of the scan
  *   `tools/oxlint/tree-implicit-state.ts`, since it needs every file at once). A literal compared in
  *   several files with no union, enum or `as const` declaring it is a state nobody owns. Contested
  *   where literals are protocol strings another program defines.
  *
- * A fourth stance, that every multi-step operation moving files or remote refs keeps a progress
- * record or runs in an idempotent order, is not a rule: no syntax tells a step that can be repeated
- * from one that cannot, so it stays a review question.
+ * Two further stances are not rules, since no syntax tells the cases apart, and stay review
+ * questions: that state outliving a process is an append-only log rather than a file each writer
+ * replaces (a rewritten report, cache or output reads the same as a rewritten state, and on four
+ * repositories every such write found was the former), and that every multi-step operation moving
+ * files or remote refs keeps a progress record or runs in an idempotent order.
  *
  * The false findings these rules make on foreign repositories are what keeps them here rather than
  * in the generic tier. Every rule reports and none fixes, and each starts as a report.
@@ -31,7 +29,6 @@ const implicitStateOpinionatedPlugin = eslintCompatPlugin({
   meta: { name: "implicit-state-opinionated" },
   rules: {
     "name-encoded-state": nameEncodedStateRule,
-    "state-file-overwrite": stateFileOverwriteRule,
   },
 });
 

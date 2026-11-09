@@ -112,10 +112,9 @@ owner of a state that has none: the union the flags stand for, the record of a p
 the holder of a lock. Which states exist and where their owner lives is a design the rule cannot
 read off the syntax, so no edit is correct by construction (condition 1 fails at once).
 
-`implicit-state-opinionated` (`name-encoded-state`, `state-file-overwrite`) reports and never
+`implicit-state-opinionated` (`name-encoded-state`) reports and never
 fixes for the same reason, and more plainly: its findings are stances a codebase may not hold.
-Which record field should carry a fact parsed from a name, and whether a rewritten file becomes an
-event or a derived view of a log, are decisions about the program's design.
+Which record field should carry a fact parsed from a name is a decision about the program's design.
 
 ## A fixer's finding has no answer
 

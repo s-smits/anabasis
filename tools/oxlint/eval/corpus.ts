@@ -52,7 +52,6 @@ export const RULE_CLASSES = new Map<string, readonly Class[]>([
   ["files-as-phase", ["files-as-phase"]],
   ["mtime-as-lock", ["mtime-lock"]],
   ["name-encoded-state", ["name-encoded-state"]],
-  ["state-file-overwrite", ["overwritten-state-file"]],
   ["state-literal-spread", ["literal-spread"]],
   ["unowned-state-literal", ["literal-spread"]],
   // Groupings the scan reads as enumerations of kinds: its hits on a positive are state it set aside.

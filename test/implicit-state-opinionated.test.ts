@@ -1,10 +1,9 @@
 /**
  * The opinionated implicit-state tier: the plugin `implicit-state-opinionated`
- * (`name-encoded-state`, `state-file-overwrite`) and the cross-file kind `unowned-state-literal` of
- * `tools/oxlint/tree-implicit-state.ts`. Every fixture is a small foreign program, a preview
- * deployer and a job store, and each rule's nearest hostile case sits beside the shape it reports:
- * an extension capture, a predicate with no capture and a log line beside a parsed name; an append
- * and plain text beside a rewritten record; a declared union beside the same literals declared
+ * (`name-encoded-state`) and the cross-file kind `unowned-state-literal` of
+ * `tools/oxlint/tree-implicit-state.ts`. Every fixture is a small foreign program, and each rule's
+ * nearest hostile case sits beside the shape it reports: an extension capture, a predicate with no
+ * capture and a log line beside a parsed name; a declared union beside the same literals declared
  * nowhere.
  */
 import { describe, expect, it } from "bun:test";
@@ -41,29 +40,6 @@ export function whole(deploy: Deploy): string {
 }
 `;
 
-const WRITES = `import { appendFileSync, writeFileSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
-export interface Job { path: string; log: string; state: string }
-export function finish(job: Job): void {
-  writeFileSync(job.path, JSON.stringify({ ...job, state: "done" })); // REPORT state rewritten whole
-}
-export async function save(job: Job): Promise<void> {
-  await writeFile(job.path, \`\${JSON.stringify(job, null, 2)}\\n\`); // REPORT inside a template
-}
-export function record(job: Job): void {
-  appendFileSync(job.log, \`\${JSON.stringify({ kind: "finished" })}\\n\`); // ADMITTED an append
-}
-export function flagged(job: Job): void {
-  writeFileSync(job.log, \`\${JSON.stringify(job)}\\n\`, { flag: "a" }); // ADMITTED the append flag
-}
-export function note(job: Job): void {
-  writeFileSync(job.path, "plain text"); // ADMITTED text that is not serialised structure
-}
-export function send(stream: { write(text: string): void }, job: Job): void {
-  stream.write(JSON.stringify(job)); // ADMITTED a stream's write replaces no file
-}
-`;
-
 const BOARD = `export const done = (status: string): boolean => status === "closed" || status === "merged";\n`;
 const ISSUES = `export const shut = (issue: { status: string }): boolean =>
   issue.status === "closed" || issue.status === "merged";
@@ -81,11 +57,7 @@ const findings = (files: Record<string, string>, kind = "unowned-state-literal")
 
 describe("the opinionated implicit-state rules", () => {
   it("report only the marked lines", async () => {
-    await lintRules("implicit-state-opinionated", [
-      ["name-encoded-state", NAMES, 3, "src/deploy.ts"],
-      ["state-file-overwrite", WRITES, 2, "src/store.ts"],
-      ["state-file-overwrite", WRITES, 0, "src/store.test.ts"],
-    ]);
+    await lintRules("implicit-state-opinionated", [["name-encoded-state", NAMES, 3, "src/deploy.ts"]]);
   });
 });
 

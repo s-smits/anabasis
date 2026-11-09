@@ -74,7 +74,6 @@ const PERMISSIVE = {
       ],
     },
   ],
-  "implicit-state-opinionated/state-file-overwrite": "warn",
 } satisfies Record<string, JsonValue>;
 /** Rules a lint worktree may not register yet, each run only where its plugin's index names it. */
 const NEWER = [["implicit-state", "co-assigned-flags"]] as const;

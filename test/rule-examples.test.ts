@@ -4,7 +4,8 @@
  *
  * A pair is advice an agent copies, so each is linted rather than trusted. A `before` has to be
  * a shape its own rule reports, or the pair teaches nothing about the rule. An `after` has to
- * pass every rule of both plugins, under the options `.oxlintrc.json` gives them, or the pair
+ * pass every rule of every plugin, under the options `.oxlintrc.json` and the report-only
+ * `tools/oxlint/staged-rules.json` give them, or the pair
  * hands the reader a repair another rule then refuses. Both are linted in one oxlint run each,
  * every pair a file of its own under a folder that is its package root, so a pair's `path` climbs
  * to the root as it would in the tree, and the whole set costs two runs.
@@ -12,6 +13,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import config from "../.oxlintrc.json" with { type: "json" };
 import manifest from "../package.json" with { type: "json" };
+import staged from "../tools/oxlint/staged-rules.json" with { type: "json" };
 import { mkdirSync, mkdtempSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join, resolve } from "../src/meta/path.ts";
@@ -21,7 +23,7 @@ import { TREE_FINDING_EXAMPLES } from "../tools/oxlint/tree-findings.ts";
 import { execTextSync } from "./helpers/bun-spawn-sync.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
-const PLUGINS = ["ana", "anti-slop"];
+const PLUGINS = ["ana", "anti-slop", "implicit-state"];
 /** Where a pair is linted when it names no place of its own. */
 const DEFAULT_PATH = "src/example.ts";
 /** A pair is a glance, not a fixture. */
@@ -33,9 +35,11 @@ const TREES = Object.entries(TREE_FINDING_EXAMPLES).map(([kind, pairs]) => [`tre
 /** One `file:line:col: message [Error/plugin(rule)]` row of oxlint's unix format. */
 const ROW = /^(?<file>.+?):\d+:\d+: .* \[\w+\/(?<plugin>[\w-]+)\((?<rule>[\w-]+)\)\]$/u;
 
-/** The plugin rules every file is linted under, as the repository's own config sets them. */
+/** The plugin rules every file is linted under, as the repository's own configs set them. */
 const LEVELS = Object.fromEntries(
-  Object.entries(config.rules).filter(([rule]) => PLUGINS.some((plugin) => rule.startsWith(`${plugin}/`))),
+  Object.entries({ ...config.rules, ...staged.rules }).filter(([rule]) =>
+    PLUGINS.some((plugin) => rule.startsWith(`${plugin}/`)),
+  ),
 );
 
 /**

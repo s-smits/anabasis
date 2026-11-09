@@ -14,6 +14,7 @@ import type { Plugin, RuleDocs } from "@oxlint/plugins";
 import { isRecord, isString } from "../../src/meta/json-shape.ts";
 import anaPlugin from "./ana/index.ts";
 import antiSlopPlugin from "./anti-slop/index.ts";
+import implicitStatePlugin from "./implicit-state/index.ts";
 
 /**
  * One pair: `before` is the shape the rule reports and `after` the repair, each a few lines.
@@ -36,11 +37,12 @@ function examplesIn(docs: RuleDocs | undefined): RuleExample[] {
   });
 }
 
-/** Every rule of the two plugins, keyed as a finding names it (`ana/no-deep-nesting`), with its pairs. */
+/** Every rule of each plugin, keyed as a finding names it (`ana/no-deep-nesting`), with its pairs. */
 export function ruleExamples(): Map<string, RuleExample[]> {
   const plugins: readonly [string, Plugin][] = [
     ["ana", anaPlugin],
     ["anti-slop", antiSlopPlugin],
+    ["implicit-state", implicitStatePlugin],
   ];
   return new Map(
     plugins.flatMap(([name, plugin]) =>

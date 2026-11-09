@@ -8,6 +8,9 @@ type StatementLists = {
   SwitchCase: (node: ESTree.SwitchCase) => void;
 };
 
+/** What a literal node holds: a string, number, boolean, bigint, regular expression or null. */
+type LiteralValue = Extract<ESTree.Node, { type: "Literal" }>["value"];
+
 /**
  * Node types that bind tighter than a `.` after them, so their text can stand as a call's subject.
  * The tree has no parentheses, and `(a ?? b).filter(p)` read back as `a ?? b.filter(p)` is a
@@ -80,6 +83,27 @@ export function isNamedMember(
 /** The name an identifier spells, or null for any other node and for none. */
 export function identifierName(node: ESTree.Node | null | undefined): string | null {
   return node?.type === "Identifier" ? node.name : null;
+}
+
+/** The property a static member read names (`a.b` as `b`), or null for a computed or private one. */
+export function propertyName(node: ESTree.Node | null | undefined): string | null {
+  return node?.type === "MemberExpression" && !node.computed ? identifierName(node.property) : null;
+}
+
+/**
+ * The value a literal holds, or undefined for any other node and for none. A regular expression
+ * the runtime cannot build holds null too, so a test for the `null` literal reads `raw` instead.
+ */
+export function literalValue(node: ESTree.Node | null | undefined): LiteralValue | undefined {
+  return node?.type === "Literal" ? node.value : undefined;
+}
+
+/** The declaration a statement carries, past `export`. */
+export function declaredBy(statement: ESTree.Node): ESTree.Node {
+  const exported =
+    statement.type === "ExportNamedDeclaration" || statement.type === "ExportDefaultDeclaration";
+  if (!exported) return statement;
+  return statement.declaration ?? statement;
 }
 
 /** Whether a node is a `const` declaration. */

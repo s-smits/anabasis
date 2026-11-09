@@ -16,6 +16,7 @@ import { carriedBy, type Measures, pointsOf, testedSet } from "../../../../src/k
 import { passed, type Ran } from "../../../../src/kernel/solves.ts";
 import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
 import type { Move, MoveDetail, Outcome, Query, ScoredTask, Sensitivity, SolveRow, Tier } from "../models.ts";
+import { isRejection } from "../models.ts";
 import { Unanswerable, type Reading } from "./context.ts";
 import { type Log, practiceIn, proposalsIn, ranIn } from "./folds.ts";
 import { campaignAt } from "./logs.ts";
@@ -77,11 +78,7 @@ function scoredTasks(log: Log, move: ComparisonMove, tier: Tier): ScoredTask[] {
     carried: keyof Measures | null = null,
   ): ScoredTask => {
     const reasons = new Set(
-      [...old, ...fresh].flatMap((row) =>
-        row.ending?.outcome === "fail" && row.ending.kind === "rejected"
-          ? [rulingWithheld(log, row.id, task)]
-          : [],
-      ),
+      [...old, ...fresh].flatMap((row) => (isRejection(row) ? [rulingWithheld(log, row.id, task)] : [])),
     );
     return {
       task,

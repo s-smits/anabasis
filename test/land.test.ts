@@ -464,6 +464,24 @@ describe("bun run land", () => {
     expect(gatesRun(gateLog).at(-1)).toBe(`${moved} suite`);
   });
 
+  it("refuses an unlabelled landing that --sanitize would replay before force-pushing anything", () => {
+    git("checkout", "-q", "-b", "ua", lowerMore);
+    const rewritten = commit("README.md", "two, mended\n", "a docs");
+    git("branch", "ub", upper);
+    git("checkout", "-q", "b");
+    publish();
+    const result = runLand(["32", "--sanitize"], {
+      ANA_FAKE_PULLS: JSON.stringify([pull(31, "ua", "main", "@ua"), labelled(pull(32, "ub", "ua", "@ub"))]),
+      ANA_FAKE_PULLS_ORIGIN: origin,
+      ANA_FAKE_TIMELINE: `${rewritten}\n${lowerDocs}`,
+      ANA_FAKE_STACK: "8 31,32",
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("#32 carries no importance label");
+    expect(result.stdout).not.toContain("replaying what moved beneath");
+    expect(execTextSync("git", ["-C", origin, "rev-parse", "ub"]).trim()).toBe(upper);
+  });
+
   // #531 on 30 October 2026: based on the branch beneath #530 while its head held #530's.
   it("refuses a head that holds another open pull request's without standing on it", () => {
     const result = runLand(["14"], { ANA_FAKE_PULLS: stack(upper, pull(14, "c", "a", stacked)) });

@@ -310,6 +310,9 @@ export async function networkReach(
   if (known !== undefined && (now - known.at < UNREACHED_MS || (await known.probe) === "reached")) {
     return known.probe;
   }
+  // Callers that waited on the same stale reading share the one probe the first of them started.
+  const latest = REACH.get(key);
+  if (latest !== undefined && latest !== known) return latest.probe;
   const fresh = { at: now, probe: probe(wall) };
   REACH.set(key, fresh);
   return fresh.probe;

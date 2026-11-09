@@ -341,15 +341,21 @@ export function codeOf(tree: string) {
   };
 }
 
+/** The code this process runs (`codeOf`), kept by its first campaign opening. */
+let here: ReturnType<typeof codeOf> | undefined;
+
 /**
  * What a campaign's solves are recorded under (`src/kernel/condition.ts`): the condition of one
  * solve of a task under a harness by a solver, and the setting of every solve by that solver,
  * whatever its task and harness, as the id a comparison counts solves under. The code it runs
- * (`codeOf`) is read once: each tree is a walk of thousands of files, and none moves inside a run.
+ * (`codeOf`) is read once per process: a command opens its campaign again for each release and each
+ * Builder conversation, each tree is a walk of thousands of files, and a tree that moved between
+ * two openings would name code the process never ran.
  */
 function recordedUnder({ contract, tools, limits }: Standing) {
   const verifierTools = hashJsonValue(treeContent(tools));
-  const { runtime, host } = codeOf(REPO);
+  here ??= codeOf(REPO);
+  const { runtime, host } = here;
   /** What every solve by `by` runs under whatever its task and harness: its condition less those. */
   const settingOf = (by: Solver): Setting => ({
     contract: contractHash(contract),

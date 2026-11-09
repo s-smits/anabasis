@@ -84,7 +84,7 @@ import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import { capturedExecPath, capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { processGroupExists, terminateAndReapProcessGroupId } from "#src/meta/subprocess.ts";
-import { SEED_FILE } from "#tools/runs/registry.ts";
+import { ROUND, SEED_FILE } from "#tools/runs/registry.ts";
 import { seedCut } from "#tools/runs/seed.ts";
 import { loginEnv } from "#tools/runs/manage.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
@@ -721,7 +721,7 @@ async function prompt(args: CommandArgs, command: readonly string[]): Promise<nu
   // the writing prompt without "Trying the reference", which every campaign's session reads. The
   // tree's own seats are passed and never solve: the session below exits before its first turn.
   // SAFETY: as above.
-  const { solved } = (await import(join(tree, "tools/d2/round.ts"))) as { solved: typeof Solved };
+  const { solved } = (await import(join(tree, ROUND))) as { solved: typeof Solved };
   runtimeProcess.chdir(tree);
   const composed: Parameters<typeof ExamineCommand>[1] = (request, wall) => {
     const mode = writing(request, undefined, wall?.reference === undefined ? "unseen" : "in-home");

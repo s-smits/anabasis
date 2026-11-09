@@ -1,8 +1,14 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import type { RuleExample } from "../../rule-examples.ts";
-import { identifierName, literalValue, propertyName } from "../../ana/shared/statements.ts";
-import { calleeName, innermost, isTestPath, outermost } from "../../implicit-state/shared/syntax.ts";
+import { bindingName, identifierName, literalValue, propertyName } from "../../ana/shared/statements.ts";
+import {
+  calleeName,
+  enclosingFunction,
+  innermost,
+  isTestPath,
+  outermost,
+} from "../../implicit-state/shared/syntax.ts";
 
 /**
  * Tier: opinionated. The stance: no meaning is parsed out of a name. A preview deployment called
@@ -27,7 +33,11 @@ import { calleeName, innermost, isTestPath, outermost } from "../../implicit-sta
  * expression bound to a `const` of the same file counts as the literal.
  *
  * Not reported: a capture of a file's extension (`/\.(png|svg)$/`), which is the file system's
- * own field rather than a fact someone wrote into a name; a pattern that reads a URL query
+ * own field rather than a fact someone wrote into a name; a capture of a path's leading folders
+ * (`/^(.*\/)?[^/]+\.(dist-info|libs)\//`), with at most a group of fixed words beside it, which is
+ * path arithmetic over a tool's fixed layout; a segment destructured from a `split()`
+ * (`const [, name] = task.split("/")`), which takes apart an identifier the record already holds
+ * whole rather than labelling one; a pattern that reads a URL query
  * (`/\?worker&index=(\d+)/`, a literal `?` or a class holding one), since a query is a protocol
  * one program hands another, written to be parsed; a test of a name with no capture
  * (`/^seed-/.test(name)`, a predicate on the name's form), a capture over text that is not a name (a log line, a command's output), and
@@ -39,6 +49,14 @@ const NAME_CALLS = new Set(["basename", "dirname"]);
 const EXTENSION = /^[^(]*\\\.\((?!\?)[^()]*\)\$$/u;
 /** A pattern that matches a URL query: an escaped `?`, or a character class holding one. */
 const QUERY = /\\\?|\[[^\]]*\?[^\]]*\]/u;
+/** A pattern's leading capture of a path's folders, `^(.*\/)` with or without a `?`. */
+const FOLDER = /^\^\(\.\*\\?\/\)\??/u;
+/** A group of fixed alternative words, such as `(dist-info|libs)`. */
+const WORDS = /\((?:[-\w]+\|)+[-\w]+\)/gu;
+
+/** Whether a pattern captures only a path's leading folders, beside at most fixed words. */
+const isFolder = (pattern: string): boolean =>
+  FOLDER.test(pattern) && !captures(pattern.replace(FOLDER, "").replaceAll(WORDS, ""));
 
 /** Whether a pattern holds a capturing group: `(` unescaped, outside a class, and not `(?:`,
  *  a lookaround or `(?<=`; a named group `(?<x>` captures. */
@@ -135,6 +153,8 @@ export const noStateInNamesRule = defineRule({
     let subjects = new Set(SUBJECTS);
     const patterns = new Map<string, ESTree.RegExpLiteral>();
     const reads = new Map<string, ESTree.Node[]>();
+    /** Each name a `split()` was destructured into, with the functions that bound it so. */
+    const segments = new Map<string, (ESTree.Node | null)[]>();
     const calls: { call: ESTree.CallExpression; subject: ESTree.Node; pattern: ESTree.Node }[] = [];
 
     /** The regular expression literal an argument or receiver is, directly or through a `const`. */
@@ -149,6 +169,10 @@ export const noStateInNamesRule = defineRule({
 
     function isName(subject: ESTree.Node): boolean {
       const bare = innermost(subject);
+      const segment = identifierName(bare);
+      if (segment !== null && (segments.get(segment) ?? []).includes(enclosingFunction(bare))) {
+        return false;
+      }
       if (bare.type === "CallExpression") {
         return NAME_CALLS.has(calleeName(bare) ?? "");
       }
@@ -162,6 +186,7 @@ export const noStateInNamesRule = defineRule({
         subjects = new Set(Array.isArray(option) ? option.filter(isString) : SUBJECTS);
         patterns.clear();
         reads.clear();
+        segments.clear();
         calls.length = 0;
         return !isTestPath(context.filename);
       },
@@ -169,6 +194,16 @@ export const noStateInNamesRule = defineRule({
         const init = node.init === null ? null : innermost(node.init);
         if (node.id.type === "Identifier" && init?.type === "Literal" && "regex" in init) {
           patterns.set(node.id.name, init);
+        }
+        if (
+          node.id.type === "ArrayPattern" &&
+          init?.type === "CallExpression" &&
+          calleeName(init) === "split"
+        ) {
+          const bound = node.id.elements.flatMap((element) => bindingName(element) ?? []);
+          for (const name of bound) {
+            segments.set(name, [...(segments.get(name) ?? []), enclosingFunction(node)]);
+          }
         }
       },
       Identifier: (node) => {
@@ -195,7 +230,13 @@ export const noStateInNamesRule = defineRule({
         for (const { call, subject, pattern } of calls) {
           const literal = literalOf(pattern);
           const source = literal?.regex.pattern ?? "";
-          if (literal === null || !captures(source) || EXTENSION.test(source) || QUERY.test(source)) {
+          if (
+            literal === null ||
+            !captures(source) ||
+            EXTENSION.test(source) ||
+            QUERY.test(source) ||
+            isFolder(source)
+          ) {
             continue;
           }
           if (calleeName(call) === "match" && literal.regex.flags.includes("g")) {

@@ -54,7 +54,10 @@ export async function exportForClaudeCode(
       : toolTreeSearchDirs(harness.toolTree).map((dir) =>
           join(TOOLCHAIN, relative(harness.toolTree ?? "", dir)),
         );
-  if (harness.toolTree !== null) cpSync(harness.toolTree, join(part, TOOLCHAIN), { recursive: true });
+  // Relative links stay relative, where `cpSync` alone points each at the tree it copied from.
+  if (harness.toolTree !== null) {
+    cpSync(harness.toolTree, join(part, TOOLCHAIN), { recursive: true, verbatimSymlinks: true });
+  }
   const note = [
     "# How this harness reaches you",
     "",

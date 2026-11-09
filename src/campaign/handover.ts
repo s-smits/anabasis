@@ -30,6 +30,7 @@
  * The Referee triage of 20 October found unclear and unread practice rejections counted as failures.
  */
 import { type Measures, scoresIn, type Tally, testOf } from "../kernel/compare.ts";
+import { proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { lastReports, latestBuilt, promoted } from "../kernel/reports.ts";
 import { ownedBy, traceKind } from "../kernel/trace.ts";
@@ -320,8 +321,8 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
       const end = events[closed]?.data;
       // One `task.proposed` an instance the session took, and one task admission or refusal of it
       // (`src/examiner/write.ts`), so an open session is counted by its proposals and their admissions.
-      const proposals = window.flatMap((event) =>
-        event.kind === "task.proposed" && event.data.session === id ? [event.data.version] : [],
+      const proposals = proposalsOf(window).flatMap(({ session, version }) =>
+        session === id ? [version] : [],
       );
       const outcome = (held: boolean) =>
         proposals.filter((version) => admissions.get(version) === held).length;

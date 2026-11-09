@@ -29,6 +29,7 @@ import {
   type JsonValue,
 } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
+import { proposalsOf } from "./history.ts";
 import type { LogEvent } from "./log.ts";
 import { heldAtGate } from "./task.ts";
 
@@ -368,9 +369,7 @@ function cutCounts(events: readonly LogEvent[], of: "build" | "exam" | "draft", 
     return { tries: own.filter(({ data }) => data.isError !== true).length + (measuring ? 1 : 0) };
   }
   if (of === "build") return {};
-  const proposed = events.flatMap(({ kind, data }) =>
-    kind === "task.proposed" && data.session === id && isString(data.version) ? [data.version] : [],
-  );
+  const proposed = proposalsOf(events).flatMap(({ session, version }) => (session === id ? [version] : []));
   const gates = new Map(
     events.flatMap(({ kind, data }) =>
       kind === "task.gate" && isString(data.version)

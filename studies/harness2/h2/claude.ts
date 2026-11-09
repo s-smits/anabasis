@@ -60,6 +60,14 @@ export interface Reply {
   readonly workspace: string | null;
 }
 
+/**
+ * The subtype a rollout's log line gives a result the API ended in error, a usage or session limit
+ * or a provider failure, where `error_max_budget` and `error_max_turns` are the arm's own limits.
+ * Scoring reads it as a non-result (`rolloutLog`, `score.ts`), never as the arm's zero: until 9
+ * November such a rollout was tried again and then judged as a 0 (backlog item 8).
+ */
+export const REFUSED = "refused";
+
 /** The improver's reasoning effort (`_channels`, `effort="high"`). */
 const IMPROVER_EFFORT = "high";
 /** `config.SCRUB_ENV` less the auth names an improver keeps (`_CLAUDE_AUTH_ENV`). */
@@ -258,7 +266,10 @@ export function summarize(path: string): { turns: number; subtype: string; tools
   }
   return {
     turns: isNumber(result.num_turns) ? Math.trunc(result.num_turns) : 0,
-    subtype: pyStr(result.subtype),
+    subtype:
+      truthy(result.is_error) && ["success", "error_during_execution"].includes(pyStr(result.subtype))
+        ? REFUSED
+        : pyStr(result.subtype),
     tools,
     costUsd: isNumber(result.total_cost_usd) ? result.total_cost_usd : 0,
   };

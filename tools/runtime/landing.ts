@@ -16,38 +16,54 @@ import {
 import { join } from "../../src/meta/path.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
 import { git, lines, type Proof, short } from "./gate.ts";
-import type { Pull } from "./pulls.ts";
+import { beneath, chainAbove, openPulls, type Pull } from "./pulls.ts";
+
+/** What a holder says of itself in the lock, after its pid, and whether a newer one may end it. */
+interface Claim {
+  readonly note: string;
+  readonly over: (held: string) => boolean;
+}
+/** What a landing proves, by how much it writes; a landing that merges is never ended by another. */
+const KINDS = ["proving", "sanitizing", "merging"];
 
 /** Hold this clone's `who` alone until the returned release, waiting while another live one holds
  *  it. On 6 November two landings of one stack proved 795f3758c at once on two runners into one
  *  log, and the one whose flaky test failed posted red over a head the other had passed. The later
- *  landing now waits, then finds the earlier one's passes remembered. */
+ *  landing now waits, then finds the earlier one's passes remembered. Where `claim.over` reads the
+ *  holder's note as work the newer one covers, it ends the holder (SIGTERM) instead of waiting it
+ *  out: on 9 November `land -- 729 --sanitize` waited behind a landing of #726, beneath it on the
+ *  same chain, that had been proving for 1 hour 42 minutes. */
 export async function holdAlone(
   root: string,
   who: string,
   say: (line: string) => void,
   pauseMs = 15_000,
+  claim: Claim | null = null,
 ): Promise<() => void> {
   const [common = ""] = lines(git(root, ["rev-parse", "--path-format=absolute", "--git-common-dir"]));
   const lock = join(common, `ana-${who}.lock`);
   const release = () => rmSync(lock, { recursive: true, force: true });
+  let ended = 0;
   for (let looks = 0; ; looks += 1) {
     try {
-      // The lock is a link whose target is its holder's pid, made in one step. Until 9 November it
-      // was a folder with the pid written into it after, so a lock read between the two named no
-      // holder, and every landing waited five looks before it could tell a dead one from a live one.
-      symlinkSync(String(runtimeProcess.pid), lock);
+      // The lock is a link whose target is its holder's pid and note, made in one step. Until 9
+      // November it was a folder with the pid written into it after, so a lock read between the two
+      // named no holder, and every landing waited five looks before it could tell a dead one from a
+      // live one.
+      symlinkSync([runtimeProcess.pid, ...(claim === null ? [] : [claim.note])].join(" "), lock);
       return release;
     } catch (error) {
       if (lstatSync(lock, { throwIfNoEntry: false }) === undefined) throw error;
     }
     const left = join(lock, "pid");
-    const holder =
+    const [pid = "", ...note] = (
       lstatSync(lock, { throwIfNoEntry: false })?.isSymbolicLink() === true
-        ? Number(readlinkSync(lock))
+        ? readlinkSync(lock)
         : existsSync(left)
-          ? Number(readFileSync(left, "utf8"))
-          : null;
+          ? readFileSync(left, "utf8")
+          : ""
+    ).split(" ");
+    const holder = pid === "" ? null : Number(pid);
     try {
       // Signal 0 reads whether the holder still runs, and throws where it does not; a folder an
       // older landing left without its pid names none.
@@ -55,6 +71,16 @@ export async function holdAlone(
       runtimeProcess.kill(holder, 0);
     } catch {
       release();
+      continue;
+    }
+    const held = note.join(" ");
+    if (ended !== holder && held !== "" && claim?.over(held) === true) {
+      ended = holder;
+      say(
+        `another ${who} (pid ${String(holder)}, ${held}) covers less than this one; ending it, its passes kept`,
+      );
+      runtimeProcess.kill(holder, "SIGTERM");
+      await Bun.sleep(Math.min(pauseMs, 1000));
       continue;
     }
     if (looks % 20 === 0) {
@@ -86,4 +112,62 @@ export function sayingPulls(
         return number === undefined ? named : `${at}pr${String(number)} ${sha}`;
       }),
     );
+}
+
+/** The lock's note for a landing of `target` (`#<pull request> <kind>`, `+` after the number where
+ *  `--auto` may land above it), and which held landings it ends: one that does not merge or follow
+ *  the top, writes no more than it, and lands part of its chain, since every pass it made is
+ *  remembered and the newer landing reads the chain as it stands now. The chain is read only once a
+ *  holder is found. */
+export function claimOf(
+  root: string,
+  target: number,
+  mode: { readonly auto: boolean; readonly merge: boolean; readonly sanitize: boolean },
+): Claim {
+  const kind = mode.merge ? 2 : mode.sanitize ? 1 : 0;
+  let chain: string[] | null = null;
+  return {
+    note: `#${String(target)}${mode.auto ? "+" : ""} ${KINDS[kind] ?? ""}`,
+    over: (held) => {
+      const [number = "", what = ""] = held.split(" ");
+      const theirs = KINDS.indexOf(what);
+      if (theirs === -1 || theirs === 2 || theirs > kind || number.endsWith("+")) return false;
+      if (chain === null) {
+        const open = openPulls(root);
+        const named = open.find((pull) => pull.number === target);
+        const top = named !== undefined && mode.auto ? (chainAbove(open, named).at(-1) ?? named) : named;
+        chain =
+          top === undefined ? [] : [...beneath(open, top), top].map((pull) => `#${String(pull.number)}`);
+      }
+      return chain.includes(number);
+    },
+  };
+}
+
+/**
+ * A stop for a landing's proofs: `moved` is called every `ms` and its error, where it returns one,
+ * ends them, as SIGINT or SIGTERM does with an `Interrupted` error; each proof runs in a process group of its
+ * own, so it ends whole, and the landing starts again with every pass so far kept. Until 9 November a move was
+ * read only as the next proof started, so a whole gate over a stale top ran to its end.
+ */
+export function watching(ms: number, Interrupted: new (message: string) => Error, moved: () => Error | null) {
+  const stop = new AbortController();
+  const watch = setInterval(() => {
+    try {
+      const reason = moved();
+      if (reason !== null) stop.abort(reason);
+    } catch {
+      // A reading that failed says nothing; the next proof's start reads the chain again.
+    }
+  }, ms);
+  const halt = (): void =>
+    stop.abort(
+      new Interrupted("interrupted; every pass so far is recorded, so landing again starts from there."),
+    );
+  runtimeProcess.on("SIGINT", halt).on("SIGTERM", halt);
+  const end = (): void => {
+    clearInterval(watch);
+    runtimeProcess.off("SIGINT", halt).off("SIGTERM", halt);
+  };
+  return { signal: stop.signal, end };
 }

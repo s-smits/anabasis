@@ -44,7 +44,7 @@ import {
   rulingsOf,
   solvesIn,
 } from "../kernel/solves.ts";
-import { heldAtGate, taskSets } from "../kernel/task.ts";
+import { admissionsOf, taskSets } from "../kernel/task.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { type Supply, supplyOf } from "./admission.ts";
 import { reported, STARTED } from "./comparison.ts";
@@ -306,12 +306,7 @@ export function openSteps(steps: readonly Handover[]): string[] {
 export function campaignOf(events: readonly LogEvent[]): Campaign {
   const fails = practiceFails(events);
   const practised = practiceRan(events);
-  // Each version with a task admission, held or refused: a draft still awaiting admission is neither.
-  const admissions = new Map(
-    events.flatMap(({ kind, data }) =>
-      kind === "task.gate" ? [[data.version, heldAtGate(data.outcome)] as const] : [],
-    ),
-  );
+  const admissions = admissionsOf(events);
   const comparisons = new Set<string>();
   const steps = events.flatMap(({ kind, data }, index): Handover[] => {
     const id = data.session;

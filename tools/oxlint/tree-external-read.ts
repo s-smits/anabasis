@@ -20,7 +20,12 @@
  * which runs once per item. The two arms of an `if`, a ternary or a `switch`, and the code after an
  * `if` whose arm returns or throws, are alternatives, so they combine by the larger count. A read
  * inside `while` or `do` is polling, which wants a fresh answer each time, and one inside any other
- * function (a callback, a handler) runs later; neither is counted. Tests are not read.
+ * function (a callback, a handler) runs later; neither is counted. A statement that moves what is
+ * read splits a run of statements into two moments, whose reads of what it moved combine by the
+ * larger count: an awaited wait (`sleep`, `delay`, a `setTimeout` promise, or a call to a function
+ * that waits) moves everything, a signal to a process (`kill`, any signal but 0) moves the process
+ * table (`ps`, `pgrep`, `lsof`), and a write or removal moves the path it names. A re-read after
+ * one of these asks a later question on purpose. Tests are not read.
  */
 import * as ts from "typescript5";
 import type { TreeFinding } from "./tree-findings.ts";
@@ -43,12 +48,21 @@ interface Module {
 /** How often each keyed read happens on the worst path, and the lines that make it. */
 type Tally = Map<string, { count: number; lines: number[] }>;
 
+/** What a statement changes that a later read would see: time, the process table, files. */
+interface Moves {
+  waits: boolean;
+  signals: boolean;
+  paths: Set<string>;
+}
+
 /** The whole tree's call graph, the calls under way, and what each call already read. */
 interface Graph {
   modules: ReadonlyMap<string, Module>;
   open: Set<Callable>;
   /** Per function, per binding of its parameters, the keys one call reads. */
   memo: Map<Callable, Map<string, readonly string[]>>;
+  /** Per function, whether a call to it lets time pass or signals a process (`movesOf`). */
+  moving: Map<Callable, Moves>;
 }
 
 /** One evaluation's view: the module it reads in and what each local name is bound to. */
@@ -96,6 +110,23 @@ const ITERATIONS = new Set([
   "sort",
 ]);
 const DEPTH = 12;
+/** Calls that let time pass when awaited. */
+const WAITS = new Set(["sleep", "delay", "setTimeout", "wait"]);
+/** Calls that write or remove the path they are first handed. */
+const WRITES = new Set([
+  "writeFileSync",
+  "writeFile",
+  "appendFileSync",
+  "appendFile",
+  "rmSync",
+  "rm",
+  "unlinkSync",
+  "unlink",
+  "renameSync",
+  "rename",
+]);
+/** The keys of a process-table read, which a signal to a process changes. */
+const PROCESS_TABLE = /^run (?:ps|pgrep|lsof)\b/u;
 /** A word of an argv that is not spelled, kept in place so the words around it keep their order. */
 const UNKNOWN = "‹?›";
 /** Marks a read whose arguments change with each item of a loop, which the loop does not repeat. */
@@ -438,9 +469,84 @@ function leaves(node: ts.Statement): boolean {
   return last !== undefined && leaves(last);
 }
 
-/** A run of statements: an `if` whose arm leaves makes the rest the other arm. */
-function sequence(statements: readonly ts.Statement[], scope: Scope): Tally {
-  const total: Tally = new Map();
+/**
+ * What a node changes before a later read: whether it lets time pass (an awaited `sleep`, `delay`
+ * or `setTimeout`, or a call to a function that does), whether it signals a process (`kill` with
+ * any signal but 0), and which spelled paths it writes or removes. A function reached by its name
+ * passes on its waits and signals, not its paths, which its parameters spell.
+ */
+function movesOf(
+  node: ts.Node,
+  scope: Scope,
+  into: Moves = { waits: false, signals: false, paths: new Set() },
+): Moves {
+  if (ts.isAwaitExpression(node) && mentionsCall(node.expression, WAITS)) {
+    into.waits = true;
+  }
+  if (isCallable(node) && !perItem(node)) {
+    return into;
+  }
+  if (ts.isCallExpression(node)) {
+    const name = nameOf(node) ?? "";
+    const [first, signal] = node.arguments;
+    into.waits ||= name === "sleepSync";
+    into.signals ||= name === "kill" && signal?.getText() !== "0";
+    const path = WRITES.has(name) && first !== undefined ? spelled(first, scope) : null;
+    if (path !== null) into.paths.add(path);
+    const reached = calleeOf(node, scope);
+    if (reached !== null && scope.depth < DEPTH) {
+      const [fn, home] = reached;
+      const { moving } = scope.graph;
+      if (!moving.has(fn)) {
+        moving.set(fn, { waits: false, signals: false, paths: new Set() });
+        const local: Scope = {
+          ...scope,
+          module: home,
+          bound: new Map(),
+          locals: new Map(),
+          depth: scope.depth + 1,
+        };
+        moving.set(fn, movesOf(fn.body ?? fn, local));
+      }
+      into.waits ||= moving.get(fn)?.waits === true;
+      into.signals ||= moving.get(fn)?.signals === true;
+    }
+  }
+  ts.forEachChild(node, (child) => {
+    movesOf(child, scope, into);
+  });
+  return into;
+}
+
+/** Whether a call named in `names` is made anywhere under a node, callbacks included (`new
+ *  Promise((done) => setTimeout(done, ms))`). */
+function mentionsCall(node: ts.Node, names: ReadonlySet<string>): boolean {
+  if (ts.isCallExpression(node) && names.has(nameOf(node) ?? "")) {
+    return true;
+  }
+  return ts.forEachChild(node, (child) => mentionsCall(child, names) || undefined) === true;
+}
+
+/**
+ * The reads of a run before and after a statement that moves what they read, combined: a read the
+ * move refreshes (every read after a wait, the process table after a signal, a path after its
+ * write) is a reading of a later moment, so the two sides combine by the larger count.
+ */
+function across(before: Tally, after: Tally, moves: Moves): Tally {
+  const refreshed = (key: string): boolean =>
+    moves.waits ||
+    (moves.signals && PROCESS_TABLE.test(key)) ||
+    [...moves.paths].some((path) => key === `read ${path}` || key === `list ${path}`);
+  const kept: Tally = new Map([...after].filter(([key]) => !refreshed(key)));
+  const renewed: Tally = new Map([...after].filter(([key]) => refreshed(key)));
+  const unmoved: Tally = new Map([...before].filter(([key]) => !renewed.has(key)));
+  const both: Tally = new Map([...before].filter(([key]) => renewed.has(key)));
+  return add(add(unmoved, kept), larger(both, renewed));
+}
+
+/** A run of statements: an `if` whose arm leaves makes the rest the other arm, and a statement that
+ *  moves what is read splits the run into two moments. */
+function sequence(statements: readonly ts.Statement[], scope: Scope, total: Tally = new Map()): Tally {
   for (const [index, statement] of statements.entries()) {
     if (
       ts.isIfStatement(statement) &&
@@ -448,10 +554,14 @@ function sequence(statements: readonly ts.Statement[], scope: Scope): Tally {
       leaves(statement.thenStatement)
     ) {
       add(total, tallyOf(statement.expression, scope));
-      const rest = sequence(statements.slice(index + 1), scope);
-      return add(total, larger(tallyOf(statement.thenStatement, scope), rest));
+      const arm = add(new Map(total), tallyOf(statement.thenStatement, scope));
+      return larger(arm, sequence(statements.slice(index + 1), scope, new Map(total)));
     }
+    const moves = index < statements.length - 1 ? movesOf(statement, scope) : null;
     add(total, tallyOf(statement, scope));
+    if (moves !== null && (moves.waits || moves.signals || moves.paths.size > 0)) {
+      return across(total, sequence(statements.slice(index + 1), scope), moves);
+    }
   }
   return total;
 }
@@ -565,7 +675,7 @@ function rowsOf(path: string, name: string, tally: Tally): TreeFinding[] {
 export function repeatedExternalReads(parsed: ReadonlyMap<string, ts.SourceFile>): TreeFinding[] {
   const paths = new Set(parsed.keys());
   const modules = new Map([...parsed].map(([path, file]) => [path, moduleOf(path, file, paths)]));
-  const graph: Graph = { modules, open: new Set(), memo: new Map() };
+  const graph: Graph = { modules, open: new Set(), memo: new Map(), moving: new Map() };
   const rows: TreeFinding[] = [];
   for (const module of modules.values()) {
     if (TEST_PATH.test(module.path)) {

@@ -16,17 +16,23 @@
  * preparation's lapsed after five minutes though a cold install could take longer; and a fetch's
  * left its stage behind when it was killed. Taking a lock over is the one step two processes could
  * race at, so it runs under a `flock` of the folder, which closes with the process.
+ *
+ * A file a writer fills before renaming it into place names its writer by pid alone (`remember`'s
+ * `<file>.<pid>.tmp`, the model library's `.tmp.<pid>.<suffix>`), and is the writer's while that pid
+ * lives (`dropCutWrites`). Until 9 November both were removed by their age instead, so a download
+ * slower than ten minutes lost its part.
  */
 import {
   closeSync,
   lockExclusiveSync,
   openSync,
+  readdirSync,
   readlinkSync,
   rmSync,
   symlinkSync,
 } from "#src/meta/filesystem.ts";
 import { hostname } from "#src/meta/os.ts";
-import { dirname } from "#src/meta/path.ts";
+import { dirname, join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 
@@ -65,6 +71,16 @@ export function hold(file: string): boolean {
     return true;
   } finally {
     closeSync(guard);
+  }
+}
+
+/** Remove each file in `folder` (and below, with `deep`) whose name carries its writer's pid, the
+ *  first group of `named`, where no process of this host has that pid: a write a kill cut, which
+ *  no live writer still fills however slowly it writes. */
+export function dropCutWrites(folder: string, named: RegExp, { deep = false } = {}): void {
+  for (const name of readdirSync(folder, { recursive: deep, encoding: "utf8" })) {
+    const pid = named.exec(name)?.[1];
+    if (pid !== undefined && recordOf(Number(pid)) === "") rmSync(join(folder, name), { force: true });
   }
 }
 

@@ -52,7 +52,7 @@ import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
-import { held, hold, release } from "./holder.ts";
+import { dropCutWrites, held, hold, release } from "./holder.ts";
 
 /** How long a look waits for the pass. The hook kills a look at 40 s, a peer's answer is awaited for
  *  30 s, and a look has its own 2 to 4 s of reading besides. */
@@ -65,6 +65,8 @@ const PASS_MS = 30_000;
 const GAP_MS = 240_000;
 /** A store folder or an observer's files untouched this long go. */
 const STALE_MS = 7 * 24 * 60 * 60_000;
+/** What `remember` writes an observer's file through, named by its writer's pid. */
+const CUT_OBSERVER = /\.json(?:\.pending)?\.(\d+)\.tmp$/;
 const POLL_MS = 200;
 const LOCK = "pass.lock";
 const LAST = "pass.json";
@@ -491,15 +493,16 @@ export function alarmsMoved(store: string, log: string, before: SaidOf | undefin
     });
 }
 
-/** Drop the files of observers gone for a week, beside a peer's `--state`, with any a kill left half
- *  written. */
+/** Drop the files of observers gone for a week, beside a peer's `--state`, and each that `remember`
+ *  left half written when a kill took its writer. */
 export function pruneObservers(state: string, now = Date.now()): void {
   const folder = dirname(resolve(state));
   if (!existsSync(folder)) return;
   for (const entry of readdirSync(folder)) {
     const file = join(folder, entry);
-    if (/\.json(?:\.pending|\.d)?(?:\.\d+\.tmp)?$/.test(entry) && now - statSync(file).mtimeMs > STALE_MS) {
+    if (/\.json(?:\.pending|\.d)?$/.test(entry) && now - statSync(file).mtimeMs > STALE_MS) {
       rmSync(file, { recursive: true, force: true });
     }
   }
+  dropCutWrites(folder, CUT_OBSERVER);
 }

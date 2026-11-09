@@ -256,10 +256,10 @@ class WalledEnv implements ExecutionEnv {
 
   private async snapshot(
     path: string,
-    noFollow: boolean | undefined,
+    options: { noFollow?: boolean } | undefined,
     context: Context,
   ): Promise<Result<{ info: FileInfo; bytes: Buffer }, FileError>> {
-    const result = await this.file<Snapshot>("snapshot", path, [{ noFollow }], context);
+    const result = await this.file<Snapshot>("snapshot", path, [{ noFollow: options?.noFollow }], context);
     return result.ok
       ? { ok: true, value: { info: result.value.info, bytes: Buffer.from(result.value.bytes, "base64") } }
       : result;
@@ -295,7 +295,7 @@ class WalledEnv implements ExecutionEnv {
     options: { noFollow?: boolean } | undefined,
     context: Context,
   ): Promise<Result<BinaryReader, FileError>> {
-    const result = await this.snapshot(path, options?.noFollow, context);
+    const result = await this.snapshot(path, options, context);
     if (!result.ok) return result;
     const { info, bytes } = result.value;
     let closed = false;

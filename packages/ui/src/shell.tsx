@@ -162,7 +162,7 @@ export function Shell({
   campaigns: Live<CampaignList>;
   reading: Live<CampaignReading>;
 }) {
-  const [collapsed, setCollapsed] = useKept("sidebar.collapsed", false, true);
+  const [collapsed, setCollapsed] = useKept("sidebar.collapsed", false, "every-view");
   const { route, push } = navigation;
   const selection = selectionOf(campaigns.data, route);
   // The address names what is shown, in its one spelling (`spelling.ts`), once the list is read.

@@ -319,11 +319,11 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
       const proposals = proposalsOf(window).flatMap(({ session, version }) =>
         session === id ? [version] : [],
       );
-      const outcome = (held: boolean) =>
-        proposals.filter((version) => admissions.get(version) === held).length;
+      const outcome = (admission: "held" | "refused") =>
+        proposals.filter((version) => admissions.get(version) === (admission === "held")).length;
       const counts =
         end === undefined
-          ? { proposed: proposals.length, held: outcome(true), refused: outcome(false), billed }
+          ? { proposed: proposals.length, held: outcome("held"), refused: outcome("refused"), billed }
           : {
               proposed: count(end.proposed),
               held: listed(end.held),

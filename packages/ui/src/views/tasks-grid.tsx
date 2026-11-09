@@ -133,7 +133,6 @@ export function TaskGridView({ grid, onOpen }: { grid: TaskGrid; onOpen: (versio
   if (grid.rows.length === 0) {
     return <NoSignal title="No task yet">No task version has been proposed in this campaign</NoSignal>;
   }
-  const yesNo = (value: boolean) => (value ? "yes" : "no");
   // Each choice with the value a row holds for it, as the page's tables have them (`table.tsx`): a
   // choice offers what the search and the other choices leave, each with its count.
   const choices = [
@@ -150,7 +149,7 @@ export function TaskGridView({ grid, onOpen }: { grid: TaskGrid; onOpen: (versio
       every: "All tasks",
       value: label,
       set: setLabel,
-      of: (row: TaskRow) => yesNo(row.awaitingLabel),
+      of: (row: TaskRow) => (row.awaitingLabel ? "yes" : "no"),
       words: LABEL_WORDS,
     },
     {
@@ -158,7 +157,7 @@ export function TaskGridView({ grid, onOpen }: { grid: TaskGrid; onOpen: (versio
       every: "All tasks",
       value: exhausted,
       set: setExhausted,
-      of: (row: TaskRow) => yesNo(row.exhausted),
+      of: (row: TaskRow) => (row.exhausted ? "yes" : "no"),
       words: EXHAUSTED_WORDS,
     },
   ];

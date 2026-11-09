@@ -40,6 +40,7 @@ import {
   applicableTruthChecks,
   type Brief,
   decided,
+  decides,
   OBJECTIVE,
   objectiveOf,
   requiredToolsOf,
@@ -281,8 +282,7 @@ function acceptance(
   const checks = brief.truthChecks.map(({ id, execution }): CheckReading => {
     const seen = graded.filter(
       ({ task, verdict }) =>
-        (verdict.kind === "pass" || verdict.kind === "fail") &&
-        applicableTruthChecks(brief, task).some((check) => check.id === id),
+        decides(verdict) && applicableTruthChecks(brief, task).some((check) => check.id === id),
     );
     const refused = seen.filter(({ verdict }) => verdict.kind === "fail" && verdict.blocking.includes(id));
     const naming = runs.filter((run) => run.refusedBy === id);

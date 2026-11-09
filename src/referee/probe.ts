@@ -11,7 +11,7 @@
  */
 import { Type } from "typebox";
 import type { SeatTool } from "../agent/session.ts";
-import { blockingOf, type Task, type Verdict, type Verifier } from "../kernel/verify.ts";
+import { blockingOf, decides, type Task, type Verdict, type Verifier } from "../kernel/verify.ts";
 import { jsonPathTokens, resolveJsonPath } from "../meta/json-evidence.ts";
 import { capturedJsonParse, capturedJsonStringify, capturedStructuredClone } from "../meta/json-runtime.ts";
 import { isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
@@ -56,7 +56,6 @@ export type ProbeRow = {
 /** review-probe.ts:95-100: both sides decided, so the comparison carries information. A check that
  *  throws or times out settles with no blocking checks, which reads exactly like "nothing moved". */
 export function conclusive(row: ProbeRow): boolean {
-  const decides = (verdict: Verdict) => verdict.kind === "pass" || verdict.kind === "fail";
   return decides(row.original) && decides(row.changed);
 }
 

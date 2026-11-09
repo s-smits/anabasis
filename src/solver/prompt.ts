@@ -31,6 +31,7 @@ import { plural } from "../meta/text.ts";
 import type { NetworkReach } from "../tools/command.ts";
 import { ANSWER_FILE, ANSWER_FORMAT_FILE, type PublicResource } from "../tools/answer.ts";
 import { reserveSeconds } from "../tools/command.ts";
+import type { CODING_TOOLS } from "../tools/coding.ts";
 
 export interface PublicTask {
   readonly taskId: string;
@@ -64,18 +65,17 @@ const LISTED_PROGRAMS = 20;
 /** The coding rules retain the facts of the former prompt, selected with their tools. Since
  *  4 November 2026 the edit rules leave out what pi's edit description already states: an exact,
  *  unique, non-overlapping match, nearby changes merged, and no padding with unchanged regions. */
-const TOOL_RULES = new Map<string, readonly string[]>([
-  ["bash", ["Use bash for file operations like ls, rg, find"]],
-  ["read", ["Use read to examine files instead of cat or sed."]],
-  [
-    "edit",
-    [
+const TOOL_RULES = new Map<string, readonly string[]>(
+  Object.entries({
+    bash: ["Use bash for file operations like ls, rg, find"],
+    read: ["Use read to examine files instead of cat or sed."],
+    edit: [
       "Use edit for precise changes. When changing multiple separate locations in one file, use one edit call with multiple entries in edits[] instead of multiple edit calls; each edits[].oldText is matched against the original file, not after earlier edits are applied.",
       "Keep edits[].oldText as small as possible while still being unique in the file.",
     ],
-  ],
-  ["write", ["Use write only for new files or complete rewrites."]],
-]);
+    write: ["Use write only for new files or complete rewrites."],
+  } satisfies Record<(typeof CODING_TOOLS)[number], readonly string[]>),
+);
 
 /** What the solver must deliver and under what deadline, with where the requirements are. */
 function duty({ wallSeconds, limits, resources, guide }: Told): string {

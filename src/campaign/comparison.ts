@@ -363,8 +363,9 @@ function setsOf(
     proposalsOf(events).flatMap(({ version, family }) => (family === null ? [] : [[version, family]])),
   );
   const familyOf = (task: string) => named.get(task) ?? "unnamed";
-  const part = (retained: boolean) => pairs.filter(({ task }) => kept.has(task) === retained);
-  const tallied = { frontier: part(false), retained: part(true) };
+  const part = (set: "frontier" | "retained") =>
+    pairs.filter(({ task }) => kept.has(task) === (set === "retained"));
+  const tallied = { frontier: part("frontier"), retained: part("retained") };
   const setOf = (set: keyof typeof tallied): Entered => {
     const within = (task: string) => kept.has(task) === (set === "retained");
     // `of` names the task of each difference, as the report holds it.
@@ -658,7 +659,7 @@ export function toLabel(events: readonly LogEvent[], id: string): ToLabel {
   const found = asReported(events, id);
   const states = taskStates(found);
   const mine = rejections(found, fixed, NO_LABELS).filter(({ task }) => states.get(task) !== "disputed");
-  const pick = (aside: boolean) =>
-    mine.flatMap(({ solve, ruling }) => ((ruling !== EARNED) === aside ? [solve] : []));
-  return { aside: pick(true), others: pick(false) };
+  const pick = (set: "aside" | "others") =>
+    mine.flatMap(({ solve, ruling }) => ((ruling !== EARNED) === (set === "aside") ? [solve] : []));
+  return { aside: pick("aside"), others: pick("others") };
 }

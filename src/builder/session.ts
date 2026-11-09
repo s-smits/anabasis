@@ -409,8 +409,8 @@ async function converse(
   // say it. A session under a cap reads what its practice solves billed from the log. Every
   // session counts a turn before its tools run, so while they run its count holds the turn they
   // belong to. `usedLine` adds one to the completed-turn count it is given.
-  const used = (during = false): Used => ({
-    turns: turns.length - (during ? 1 : 0),
+  const used = (moment: "during-tools" | "between-turns" = "between-turns"): Used => ({
+    turns: turns.length - (moment === "during-tools" ? 1 : 0),
     seconds: clock.seconds(),
     practiceLeft: practiceLeft(bench, request.cap === undefined && campaign === undefined ? [] : read(log)),
     practised: bench.opened?.harness.digest ?? null,
@@ -423,7 +423,7 @@ async function converse(
   const footer = () => {
     if (told) return "";
     told = true;
-    return usedLine(used(true), limits);
+    return usedLine(used("during-tools"), limits);
   };
   const tools = [
     ...walled(bench),

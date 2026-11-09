@@ -32,12 +32,12 @@ import { unadmitted } from "../kernel/acceptance.ts";
 import { sweepOf } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { CUT, poolOf, roomOf } from "../kernel/reports.ts";
-import { heldAtGate, taskSets } from "../kernel/task.ts";
+import { taskSets } from "../kernel/task.ts";
 import { isNumber, isString } from "../meta/json-shape.ts";
 import { draftOf } from "../examiner/draft.ts";
 import { plural } from "../meta/text.ts";
 import { comparisonFloor } from "./admission.ts";
-import { epochsOf } from "./climb.ts";
+import { epochsOf, tasksByEpoch } from "./climb.ts";
 import { crashedRun, cutShort, groundOf, heldOut, type Plan } from "./ground.ts";
 import { type Decided, type Ending, short } from "./move.ts";
 import { pendingWords } from "./word.ts";
@@ -142,14 +142,9 @@ export function unpromoted(events: readonly LogEvent[], plan: Plan, harness: str
  *  all released after a promotion, whose draw then held none. */
 function heldAfter(events: readonly LogEvent[], after: number): number {
   const held = new Set(taskSets(events).held);
-  return events.filter(
-    ({ kind, data }, index) =>
-      index > after &&
-      kind === "task.gate" &&
-      heldAtGate(data.outcome) &&
-      isString(data.version) &&
-      held.has(data.version),
-  ).length;
+  return tasksByEpoch(events.slice(after + 1))
+    .flat()
+    .filter((version) => held.has(version)).length;
 }
 
 /** Whether tasks were held out after `reading` and enough are now held to start a comparison.

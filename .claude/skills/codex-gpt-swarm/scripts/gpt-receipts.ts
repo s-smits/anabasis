@@ -21,6 +21,8 @@ export interface SessionRecord {
   workdir: string;
   sandbox: string;
   ownedPaths: string[];
+  /** Absent in a launch recorded before 9 November. */
+  effort?: string | null;
   promptSha256: string;
 }
 

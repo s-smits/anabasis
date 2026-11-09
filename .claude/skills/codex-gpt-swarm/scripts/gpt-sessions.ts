@@ -62,6 +62,8 @@ export interface Session {
   workdir: string;
   sandbox: string;
   ownedPaths: string[];
+  /** The row's own reasoning effort, or null where the launch's `--reasoning-effort` holds. */
+  effort: string | null;
 }
 
 interface Policy {
@@ -134,7 +136,14 @@ const MANIFEST_FIELDS: ReadonlySet<string> = new Set([
   "search",
   "sessions",
 ]);
-const SESSION_FIELDS: ReadonlySet<string> = new Set(["name", "task", "workdir", "sandbox", "ownedPaths"]);
+const SESSION_FIELDS: ReadonlySet<string> = new Set([
+  "name",
+  "task",
+  "workdir",
+  "sandbox",
+  "ownedPaths",
+  "effort",
+]);
 const NAME = /^[a-z][a-z0-9_]{0,47}$/;
 const CODEX_CANDIDATES = ["/Applications/ChatGPT.app/Contents/Resources/codex", "/opt/homebrew/bin/codex"];
 const DEFAULT_START_INTERVAL_MS = 1000;
@@ -185,9 +194,10 @@ function sessionOf(manifest: JsonObject, raw: JsonValue, at: string, instruction
   if (row === null) throw new Error(`${at} must be an object`);
   const unsupported = Object.keys(row).filter((key) => !SESSION_FIELDS.has(key));
   if (unsupported.length > 0) throw new Error(`${at} has unsupported fields: ${unsupported.join(", ")}`);
-  const { name, task, sandbox = manifest.sandbox ?? READ_ONLY, ownedPaths = [] } = row;
+  const { name, task, sandbox = manifest.sandbox ?? READ_ONLY, ownedPaths = [], effort = null } = row;
   if (!isString(name) || !NAME.test(name)) throw new Error(`${at}.name must match ${NAME.source}`);
   if (!isString(task) || task.trim() === "") throw new Error(`${at}.task must be non-empty text`);
+  if (effort !== null && !isString(effort)) throw new Error(`${at}.effort must be text`);
   if (!isString(sandbox) || !SANDBOXES.has(sandbox)) {
     throw new Error(`${at}.sandbox must be read-only or workspace-write`);
   }
@@ -209,6 +219,7 @@ function sessionOf(manifest: JsonObject, raw: JsonValue, at: string, instruction
     workdir: realpathSync(workdir),
     sandbox,
     ownedPaths: paths,
+    effort,
   };
 }
 
@@ -332,7 +343,7 @@ function codexArgs(
     "--model",
     launch.model,
     "--config",
-    `model_reasoning_effort="${launch.reasoningEffort}"`,
+    `model_reasoning_effort="${session.effort ?? launch.reasoningEffort}"`,
     "--config",
     `service_tier="${launch.serviceTier}"`,
     ...(ownsAllItCanWrite(session) ? ["--skip-git-repo-check"] : []),
@@ -470,6 +481,13 @@ async function launchSessions(source: string, args: CommandArgs): Promise<number
   const manifest = asRecord(parseJsonAs<JsonValue>(readFileSync(source, "utf8")));
   if (manifest === null) throw new Error("--manifest must hold a JSON object");
   const sessions = sessionsOf(manifest);
+  // A row may set its own effort, as a whole-run investigation's heavier groups do (`--high`).
+  const efforts: readonly string[] = MODELS.get(condition.model)?.efforts ?? [];
+  for (const { name, effort } of sessions) {
+    if (effort !== null && !efforts.includes(effort)) {
+      throw new Error(`session ${name}: effort must be one of ${oneOf(efforts)} for ${condition.model}`);
+    }
+  }
   const { search = true } = manifest;
   if (!isBoolean(search)) throw new Error("search must be true or false");
   const policy = policyOf(args, sessions.length);
@@ -505,7 +523,9 @@ function recordedSession(outputDir: string, row: SessionRecord): Session {
   if (sha256(prompt) !== row.promptSha256) {
     throw new Error(`${promptPath} is absent or differs from the prompt launch.json records`);
   }
-  return { name: row.name, prompt, workdir: row.workdir, sandbox: row.sandbox, ownedPaths: row.ownedPaths };
+  // A launch recorded before 9 November names no effort a row; its launch's effort then holds.
+  const { name, workdir, sandbox, ownedPaths, effort = null } = row;
+  return { name, prompt, workdir, sandbox, ownedPaths, effort };
 }
 
 /** Run again only the sessions an earlier launch left without a completed result, under the model,

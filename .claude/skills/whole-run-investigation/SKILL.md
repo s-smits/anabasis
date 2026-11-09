@@ -54,7 +54,7 @@ under `.ana/wri/<date>-<campaign>/` on the central host.
    another tree (the receipt, not the digest, gives the commit). Settle rows A to F.
 2. **Edit the shared instructions** (below). *Check:* no `##` section is blank and the hard rules
    remain.
-3. **Build the lanes.** `wri.ts lanes --out <dir> [--lanes 1-4,7] [--agents N] [--regroup]` writes
+3. **Build the lanes.** `wri.ts lanes --out <dir> [--lanes 1-4,7] [--agents N] [--high K] [--regroup]` writes
    `<dir>/lanes/NN-prompt.md` and a manifest: `<dir>/launch.json` the first time, and
    `launch-NN[-NN...].json` by the lanes it built every later time, which the verb names. Without `--lanes` it opens every triggered lane
    and the seven standing lanes, and names, without building, each isolated lane whose trigger fired.
@@ -63,7 +63,10 @@ under `.ana/wri/<date>-<campaign>/` on the central host.
    `Importance:`, and the verb prints each session's weight. A prompt built before is kept and left
    out of the new manifest. When the operator changes the number of groups, stop the sessions still
    working and run `lanes --agents N --regroup`, which packs the lanes with no report yet into a new
-   manifest, their prompts unchanged. *Check:* exit 0; the sessions this call built are the count to
+   manifest, their prompts unchanged. `--high K` gives the K heaviest sessions `"effort": "high"`
+   and the rest `"medium"`, which the launcher takes over its `--reasoning-effort`: on Sol, give
+   high to the groups that carry the verdicts, the comparison and the climb, about a quarter to a
+   half of them (operator, 9 November). *Check:* exit 0; the sessions this call built are the count to
    authorise, and if it built none, launch nothing.
 4. **Launch.** Each manifest is a [codex-gpt-swarm](../codex-gpt-swarm/SKILL.md) manifest
    (`gpt-sessions.ts --manifest <dir>/launch.json --output-dir <new dir> ...`, on the operator's
@@ -90,7 +93,7 @@ source.
 | --- | --- | --- |
 | read | `read --log <log>` | nothing: rows, triggers and host line |
 | 1 | `start --log <log>[,<log>...] --out <dir> [--snapshot]` | `overview.md`, `shared-instructions.md`, `investigation.json` |
-| 3 | `lanes --out <dir> [--lanes 1-4,7] [--agents N] [--regroup]` | `lanes/NN-prompt.md`, `launch.json` |
+| 3 | `lanes --out <dir> [--lanes 1-4,7] [--agents N] [--high K] [--regroup]` | `lanes/NN-prompt.md`, `launch.json` |
 | 5 | `collect --out <dir>` | `reports.md` |
 | 6 | `synthesis --out <dir>` | `synthesis-prompt.md` |
 | lanes 1, 4 | `grade --log <log> [--bundle <pack>] --task <taskId> --answer <file>` | nothing: one verdict line (`--bundle` only for a stored pack) |

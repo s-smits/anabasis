@@ -23,6 +23,8 @@ import { containing } from "./helpers/matchers.ts";
 
 const shared =
   "## Orientation\n\nWhy the step.\n\n## Campaigns under review\n\nthe row\n\n## Hard rules\n\n- quote nothing\n";
+/** The investigation command every verb test runs. */
+const WRI = "tools/wri/wri.ts";
 const catalogue = catalogueText();
 const lanes = lanesOf(catalogue);
 const owners = ownersOf(catalogue);
@@ -193,7 +195,7 @@ describe("the lanes verb", () => {
   );
   const out = join(dir, "out");
   const lanesVerb = (...more: string[]) =>
-    execTextSync(capturedExecPath, ["tools/wri/wri.ts", "lanes", "--out", out, ...more], { cwd: REPO });
+    execTextSync(capturedExecPath, [WRI, "lanes", "--out", out, ...more], { cwd: REPO });
   const prompts = () =>
     Object.fromEntries(
       readdirSync(join(out, "lanes")).map((name) => [name, readFileSync(join(out, "lanes", name), "utf8")]),
@@ -211,7 +213,7 @@ describe("the lanes verb", () => {
       writeFileSync(copy, readFileSync(log, "utf8"));
       return copy;
     });
-    execTextSync(capturedExecPath, ["tools/wri/wri.ts", "start", "--log", copies.join(","), "--out", out], {
+    execTextSync(capturedExecPath, [WRI, "start", "--log", copies.join(","), "--out", out], {
       cwd: REPO,
     });
     const instructions = readFileSync(join(out, "shared-instructions.md"), "utf8");
@@ -268,7 +270,7 @@ describe("the lanes verb", () => {
     // A folder in the overview's place makes the start fail as it writes.
     mkdirSync(join(failed, "overview.md"), { recursive: true });
     const begin = () =>
-      execTextSync(capturedExecPath, ["tools/wri/wri.ts", "start", "--log", log, "--out", failed], {
+      execTextSync(capturedExecPath, [WRI, "start", "--log", log, "--out", failed], {
         cwd: REPO,
       });
     expect(begin).toThrow();
@@ -291,13 +293,9 @@ describe("the lanes verb", () => {
       cores: 4,
     };
     writeFileSync(join(dirname(gone), "launch-run-1.json"), JSON.stringify(receipt));
-    execTextSync(
-      capturedExecPath,
-      ["tools/wri/wri.ts", "start", "--log", gone, "--out", join(dir, "gone-out")],
-      {
-        cwd: REPO,
-      },
-    );
+    execTextSync(capturedExecPath, [WRI, "start", "--log", gone, "--out", join(dir, "gone-out")], {
+      cwd: REPO,
+    });
     const instructions = readFileSync(join(dir, "gone-out", "shared-instructions.md"), "utf8");
     expect(instructions).toContain("| gone |");
     expect(instructions).not.toContain("is checked out at");
@@ -305,11 +303,11 @@ describe("the lanes verb", () => {
 
   it("packs the lanes it builds into as many sessions as asked, each lane in exactly one", () => {
     const packed = join(dir, "packed");
-    execTextSync(capturedExecPath, ["tools/wri/wri.ts", "start", "--log", log, "--out", packed], {
+    execTextSync(capturedExecPath, [WRI, "start", "--log", log, "--out", packed], {
       cwd: REPO,
     });
     writeFileSync(join(packed, "shared-instructions.md"), shared);
-    execTextSync(capturedExecPath, ["tools/wri/wri.ts", "lanes", "--out", packed, "--agents", "2"], {
+    execTextSync(capturedExecPath, [WRI, "lanes", "--out", packed, "--agents", "2"], {
       cwd: REPO,
     });
     const { sessions } = parseJsonAs<{ sessions: { name: string; ownedPaths: string[] }[] }>(
@@ -323,14 +321,35 @@ describe("the lanes verb", () => {
     expect(new Set(sessions.map(({ name }) => name)).size).toBe(2);
   });
 
+  it("gives the heaviest sessions high effort and the rest medium where --high names how many", () => {
+    const at = join(dir, "efforts");
+    execTextSync(capturedExecPath, [WRI, "start", "--log", log, "--out", at], { cwd: REPO });
+    writeFileSync(join(at, "shared-instructions.md"), shared);
+    const printed = execTextSync(
+      capturedExecPath,
+      [WRI, "lanes", "--out", at, "--agents", "3", "--high", "1"],
+      { cwd: REPO },
+    );
+    const { sessions } = parseJsonAs<{ sessions: { name: string; effort: string }[] }>(
+      readFileSync(join(at, "launch.json"), "utf8"),
+    );
+    const weights = [...printed.matchAll(/weight ([\d.]+), (\w+) effort/gu)].map(([, weight, effort]) => [
+      Number(weight),
+      effort,
+    ]);
+    expect(sessions.map(({ effort }) => effort).toSorted()).toEqual(["high", "medium", "medium"]);
+    const [heaviest] = weights.toSorted(([one], [other]) => Number(other) - Number(one));
+    expect(heaviest?.[1]).toBe("high");
+  });
+
   const begun = (name: string) => {
     const at = join(dir, name);
-    execTextSync(capturedExecPath, ["tools/wri/wri.ts", "start", "--log", log, "--out", at], { cwd: REPO });
+    execTextSync(capturedExecPath, [WRI, "start", "--log", log, "--out", at], { cwd: REPO });
     writeFileSync(join(at, "shared-instructions.md"), shared);
     return at;
   };
   const verbAt = (at: string, ...more: string[]) =>
-    execTextSync(capturedExecPath, ["tools/wri/wri.ts", "lanes", "--out", at, ...more], { cwd: REPO });
+    execTextSync(capturedExecPath, [WRI, "lanes", "--out", at, ...more], { cwd: REPO });
 
   it("packs again only the built lanes with no report, and only with --regroup", () => {
     const at = begun("regrouped");

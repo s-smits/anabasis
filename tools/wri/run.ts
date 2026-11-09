@@ -11,6 +11,7 @@
  * from a prompt and is led by a Builder's conversation (`AGENTS.md`, sections 4 and 10), and until
  * then no lane read either.
  */
+import { ANSWERED, pendingWords } from "#src/campaign/word.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
@@ -19,25 +20,25 @@ import type { Receipt } from "../runs/receipt.ts";
 import { fired, type Index, share, tally, text, type Trigger } from "./folds.ts";
 
 /** Lane 23: endings the campaign went on from, and the operator's words with how many an event
- *  acted on. Until 5 November it also counted the moves a Builder made where the table named
- *  another (`MOVES ASKED`): the Builder is no longer told the table's move, so the count read
- *  bookkeeping: 13 of 16 jobstat comparisons, 9 where the table named a build (overhaul report 11). */
+ *  acted on, read as the host reads them (`pendingWords`). Until 5 November it also counted the
+ *  moves a Builder made where the table named another (`MOVES ASKED`): the Builder is no longer
+ *  told the table's move, so the count read bookkeeping: 13 of 16 jobstat comparisons, 9 where the
+ *  table named a build (overhaul report 11). */
 function moveTriggers(log: Index): Trigger[] {
   const last = log.events.length - 1;
   const endings = log.events.flatMap(({ kind, data }, index) =>
     kind === "campaign.ended" && index < last ? [`${text(data.ending)} at event ${String(index)}`] : [],
   );
-  const heard = new Set(log.events.flatMap(({ data }) => (Array.isArray(data.answers) ? data.answers : [])));
-  const words = log.events.flatMap(({ kind, data }, index) =>
-    kind === "campaign.word" ? [{ data, index }] : [],
-  );
+  const words = log.events.filter(({ kind }) => kind === "campaign.word");
+  // A pause is answered by its time, not by a move (`paused`), so only the other words are owed one.
+  const owed = words.filter(({ data }) => ANSWERED.some((each) => each === data.word)).length;
   return [
     ...(endings.length > 0 ? [fired("ENDED AND WENT ON", endings.join("; "))] : []),
     ...(words.length > 0
       ? [
           fired(
             "OPERATOR WORDS",
-            `${tally(countBy(words, ({ data }) => text(data.word)))}; ${share(words.filter(({ index }) => heard.has(index)).length, words.length)} acted on`,
+            `${tally(countBy(words, ({ data }) => text(data.word)))}; of the words a move answers, ${share(owed - pendingWords(log.events).length, owed)} acted on`,
           ),
         ]
       : []),

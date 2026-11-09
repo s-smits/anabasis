@@ -19,21 +19,14 @@
  * 0.3 s and 238 MB (5 November, the most prose in 238 logs).
  */
 import { sha256 } from "#src/meta/digest.ts";
-import {
-  appendFileSync,
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  statSync,
-} from "#src/meta/filesystem.ts";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { homedir } from "#src/meta/os.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
+import { dropCutWrites } from "#tools/runs/holder.ts";
 import { folderOf, storeOf } from "#tools/runs/pulse-readers.ts";
 
 /** Texts in, one vector out for each: tests inject one, a read loads the pinned model. */
@@ -52,8 +45,10 @@ const REVISION = "ea104dacec62c0de699686887e3f920caeb4f3e3";
  *  hub model's files at its main revision whatever revision is asked for, so offline it built a null
  *  tokenizer from a whole cache (`495c4cde2`), and a folder a cut download left is not a model. */
 const MODEL_FILES = ["config.json", "tokenizer.json", "tokenizer_config.json", "onnx/model.onnx"];
-/** A cut download leaves its part behind (`FileCache.put`), up to 133 MB a try. Older than any read. */
-const PART_MS = 10 * 60_000;
+/** A cut download leaves its part behind, up to 133 MB a try: `FileCache.put` (transformers.js
+ *  4.2.0) writes `<file>.tmp.<pid>.<suffix>` and renames it into place, so the part is its writer's
+ *  while that pid lives, a second process's download included. */
+export const CUT_PART = /\.tmp\.(\d+)\.[^/]*$/;
 
 const keyOf = (words: string) => sha256(words).slice(0, 32);
 const firstLine = (message: string) => (message.split("\n")[0] ?? "").slice(0, 200);
@@ -173,12 +168,7 @@ async function localModel(): Promise<Embed> {
   const folder = join(cache, MODEL, REVISION);
   env.cacheDir = cache;
   const whole = MODEL_FILES.every((name) => existsSync(join(folder, name)));
-  if (!whole && existsSync(folder)) {
-    for (const name of readdirSync(folder, { recursive: true, encoding: "utf8" })) {
-      const part = join(folder, name);
-      if (/\.tmp\.\d+\./.test(name) && Date.now() - statSync(part).mtimeMs > PART_MS) rmSync(part);
-    }
-  }
+  if (!whole && existsSync(folder)) dropCutWrites(folder, CUT_PART, { deep: true });
   const extract = await pipeline("feature-extraction", whole ? folder : MODEL, {
     dtype: "fp32",
     revision: REVISION,

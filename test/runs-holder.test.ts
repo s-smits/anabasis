@@ -4,17 +4,20 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import {
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   readlinkSync,
   rmSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { hostname, tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath, capturedSpawn } from "../src/meta/process.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
-import { held, hold, release } from "../tools/runs/holder.ts";
+import { dropCutWrites, held, hold, release } from "../tools/runs/holder.ts";
+import { CUT_PART } from "../tools/wri/embed.ts";
 
 const scratches: string[] = [];
 const scratch = (): string => {
@@ -132,4 +135,22 @@ describe("holder", () => {
     expect(said.filter((one) => one === "true")).toHaveLength(1);
     expect(said.filter((one) => one === "false")).toHaveLength(7);
   }, 30_000);
+
+  it("drops a cut download's part once its writer is gone, and keeps a slow live one's however old", async () => {
+    const folder = scratch();
+    mkdirSync(join(folder, "onnx"));
+    const dead = capturedSpawn(["true"]);
+    await dead.exited;
+    // The model library's name for a part, `FileCache.put`: `<file>.tmp.<pid>.<suffix>`.
+    const slow = join(folder, "onnx", `model.onnx.tmp.${String(process.pid)}.k3x9`);
+    const cut = join(folder, "onnx", `model.onnx.tmp.${String(dead.pid)}.a1b2`);
+    const kept = join(folder, "config.json");
+    const hourAgo = new Date(Date.now() - 60 * 60_000);
+    for (const file of [slow, cut, kept]) {
+      writeFileSync(file, "{}");
+      utimesSync(file, hourAgo, hourAgo);
+    }
+    dropCutWrites(folder, CUT_PART, { deep: true });
+    expect([slow, cut, kept].map(there)).toEqual([true, false, true]);
+  });
 });

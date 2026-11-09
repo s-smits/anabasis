@@ -635,13 +635,19 @@ describe("a look that was cut", () => {
     expect(parseJsonAs<{ pad: string }>(readFileSync(state, "utf8")).pad).toHaveLength(200_000);
   }, 60_000);
 
-  it("drops a gone observer's files with the half-written ones a kill left", () => {
+  it("drops a gone observer's files, and the half-written ones of a dead writer at any age", async () => {
     const folder = scratch();
-    for (const file of ["gone.json", "gone.json.pending.4242.tmp", "gone.json.4242.tmp", "notes.txt"]) {
+    const dead = capturedSpawn(["true"]);
+    await dead.exited;
+    const live = String(process.pid);
+    const cut = [`gone.json.pending.${String(dead.pid)}.tmp`, `gone.json.${String(dead.pid)}.tmp`];
+    for (const file of ["gone.json", ...cut, `slow.json.${live}.tmp`, "notes.txt"]) {
       writeFileSync(join(folder, file), "{}");
     }
+    pruneObservers(join(folder, "observer.json"));
+    expect(readdirSync(folder).toSorted()).toEqual(["gone.json", "notes.txt", `slow.json.${live}.tmp`]);
     pruneObservers(join(folder, "observer.json"), Date.now() + 8 * 24 * 60 * 60_000);
-    expect(readdirSync(folder)).toEqual(["notes.txt"]);
+    expect(readdirSync(folder).toSorted()).toEqual(["notes.txt", `slow.json.${live}.tmp`]);
   });
 
   it("returns each host's token, hides it, and keeps it for a host that gave no answer", () => {

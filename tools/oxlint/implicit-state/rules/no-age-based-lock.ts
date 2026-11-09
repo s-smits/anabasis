@@ -21,7 +21,11 @@ import { calleeName, enclosingFunction, innermost, isTestPath } from "../shared/
  * `fs.Stats` and `Bun.file().lastModified` name the field.
  *
  * Not reported: an age that only selects what a report shows or a cache keeps (`files.filter((f)
- * => now - statSync(f).mtimeMs < RECENT)`), since no holder loses anything by it; a file time
+ * => now - statSync(f).mtimeMs < RECENT)`), since no holder loses anything by it; a deletion by age
+ * of data nothing holds, in a function (and the functions around it) that names no holder: no
+ * lock, lease, holder, pid, reaper or temporary or part file in a name or a literal (`for (const
+ * dir of old) if (Date.now() - statSync(dir).mtimeMs > WEEK_MS) rmSync(dir)` is retention, as the
+ * pulse's week-old result folders are); a file time
  * compared with another timestamp and no difference (`stat.mtimeMs > lastRun`, which asks "newer
  * than", a cache question); an age printed rather than compared; and an elapsed time that reads no
  * file (`Date.now() - started > limit`). Tests are not read. There is no fix: the owner of the
@@ -45,6 +49,22 @@ const TAKEOVERS = new Set([
 const RELATIONS = new Set(["<", "<=", ">", ">="]);
 /** A name in the convention for a module constant, `STALE_MS`, or a member of one, `LIMITS.wall`. */
 const CONSTANT_NAME = /^[A-Z][A-Z0-9_]*$/u;
+/** The words a holder goes by, whole words of a name (`lockPath`, `PART_MS`) or of a literal
+ *  (`"pass.lock"`, `/\.tmp\.\d+\./`): where none is near an age, what it deletes has no holder. */
+const HOLDER_WORDS = new Set([
+  "lock",
+  "locks",
+  "lockfile",
+  "lease",
+  "holder",
+  "pid",
+  "reaper",
+  "mutex",
+  "tmp",
+  "temp",
+  "part",
+  "parts",
+]);
 
 /** Whether an expression reads a file's modification or change time. */
 function fileTime(node: ESTree.Node): boolean {
@@ -120,6 +140,26 @@ export const noAgeBasedLockRule = defineRule({
     const ages = new Map<ESTree.Node | null, ESTree.Node[]>();
     /** The functions of this file by the name they are bound to. */
     const named = new Map<string, ESTree.Node>();
+    /** Each function (or the module) whose own names or literals name a holder (`HOLDER_WORDS`). */
+    const holders = new Set<ESTree.Node | null>();
+    /** Note `node`'s function where the lowercase words of `text` (`tempDirPath`: temp, dir and
+     *  path) name a holder. */
+    const note = (node: ESTree.Node, text: string): void => {
+      const words = text
+        .replaceAll(/([a-z0-9])([A-Z])/gu, "$1 $2")
+        .toLowerCase()
+        .split(/[^a-z]+/u);
+      if (words.some((word) => HOLDER_WORDS.has(word))) holders.add(enclosingFunction(node));
+    };
+    /** Whether a holder is named in `fn` or a function around it, or in the module for an age outside
+     *  every function. */
+    const nearHolder = (fn: ESTree.Node | null): boolean => {
+      if (fn === null) return holders.has(null);
+      for (let at: ESTree.Node | null = fn; at !== null; at = enclosingFunction(at)) {
+        if (holders.has(at)) return true;
+      }
+      return false;
+    };
     /** Whether a function takes over: it calls a takeover, or a function of this file that does. */
     const takesOver = (fn: ESTree.Node | null, seen = new Set<ESTree.Node | null>()): boolean => {
       seen.add(fn);
@@ -134,7 +174,17 @@ export const noAgeBasedLockRule = defineRule({
         calls.clear();
         ages.clear();
         named.clear();
+        holders.clear();
         return !isTestPath(context.filename);
+      },
+      Identifier: (node) => {
+        note(node, node.name);
+      },
+      Literal: (node) => {
+        note(node, "regex" in node ? node.regex.pattern : String(node.value));
+      },
+      TemplateElement: (node) => {
+        note(node, node.value.raw);
       },
       FunctionDeclaration: (node) => {
         if (node.id !== null) named.set(node.id.name, node);
@@ -152,7 +202,7 @@ export const noAgeBasedLockRule = defineRule({
       },
       "Program:exit": () => {
         for (const [owner, found] of ages) {
-          if (!takesOver(owner)) continue;
+          if (!takesOver(owner) || !nearHolder(owner)) continue;
           for (const node of found) context.report({ node, messageId: "age" });
         }
       },

@@ -5,6 +5,7 @@ import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { join } from "../src/meta/path.ts";
 import { type AlertState, alertsOf, type HostRows, onAlerts, type Row } from "../tools/runs/alerts.ts";
+import type { RunState } from "../tools/runs/state.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
 const CLI = "tools/runs/cli.ts";
@@ -25,6 +26,17 @@ const row = (more: Partial<Row> = {}): Row => ({
   kept: [],
   ...more,
 });
+/** The row of a run that stands as `state`, as `rowOf` reads it. */
+const standingRow = (state: RunState, owed: boolean): Row => {
+  const writer = "kept" in state;
+  return row({
+    owed,
+    ending: state.kind === "ended" ? state.ending : null,
+    writer,
+    keeper: writer ? state.kept : state.kind === "kept",
+    quiet: state.kind === "quiet",
+  });
+};
 const heldAs = (rows: readonly Row[], more: readonly string[] = []): HostRows => ({
   rows,
   held: [...rows.map(({ name }) => name), ...more],
@@ -210,6 +222,73 @@ describe("the fold of one look", () => {
       { host: "here", said: heldAs([{ ...landed, writer: false, keeper: false }]) },
     ]);
     expect(midway.lines).toEqual([]);
+  });
+
+  it("says the same lines and remembers the same look for every pair of standings a run moves between", () => {
+    const wait = { for: "provider", until: 0 };
+    const standings: RunState[] = [
+      { kind: "live", kept: true },
+      { kind: "live", kept: false },
+      { kind: "waiting", kept: true, wait },
+      { kind: "waiting", kept: false, wait },
+      { kind: "quiet", kept: true, since: 0 },
+      { kind: "quiet", kept: false, since: 0 },
+      { kind: "kept" },
+      { kind: "ended", ending: "budget" },
+      { kind: "stopped" },
+    ];
+    const said = new Map([
+      ["quiet: no new event since 2026-11-06T10:00:00.000Z, and no login limit waited on", "Q"],
+      ["no writer process; its keeper lives", "K"],
+      ["ended budget", "E"],
+      ["no keeper", "N"],
+      ["no writer process and no keeper", "W"],
+      ["no writer process", "O"],
+    ]);
+    // Rows: the standing last seen; columns: the standing now, owed a keeper and then not.
+    const lines = [
+      "- - N - - - N - Q Q NQ Q K K E E W O",
+      "- - - - - - - - Q Q Q Q K K E E W O",
+      "- - N - - - N - Q Q NQ Q K K E E W O",
+      "- - - - - - - - Q Q Q Q K K E E W O",
+      "- - N - - - N - - - N - K K E E W O",
+      "- - - - - - - - - - - - K K E E W O",
+      "- - N - - - N - Q Q NQ Q - - E E W O",
+      "- - N - - - N - Q Q NQ Q K K - - W O",
+      "- - N - - - N - Q Q NQ Q K K E E - -",
+    ];
+    const keeper = "no writer process; its keeper lives";
+    // What the state file keeps of each standing now, owed a keeper and then not: ending, gap, quiet.
+    const kept = [
+      [null, null, false, null, null, false],
+      [null, "no keeper", false, null, null, false],
+      [null, null, false, null, null, false],
+      [null, "no keeper", false, null, null, false],
+      [null, null, true, null, null, true],
+      [null, "no keeper", true, null, null, true],
+      [null, keeper, false, null, keeper, false],
+      ["budget", null, false, "budget", null, false],
+      [null, "no writer process and no keeper", false, null, "no writer process", false],
+    ];
+    const told: string[] = [];
+    const remembered: (string | boolean | null)[][] = [];
+    for (const before of standings) {
+      const cells: string[] = [];
+      for (const [at, now] of standings.entries()) {
+        const seen: (string | boolean | null)[] = [];
+        for (const owed of [true, false]) {
+          const look = alertsOf(lookedAt(standingRow(before, owed)), here(standingRow(now, owed)));
+          const codes = look.lines.map((line) => said.get(line.replace("r (here): ", "")) ?? "?");
+          cells.push(codes.join("") || "-");
+          const { ending, gap, quiet } = look.next.runs.r ?? {};
+          seen.push(ending ?? null, gap ?? null, quiet ?? null);
+        }
+        remembered[at] = seen;
+      }
+      told.push(cells.join(" "));
+    }
+    expect(told).toEqual(lines);
+    expect(remembered).toEqual(kept);
   });
 
   it("says a run first seen with promotions in one line, since they may be its seed's", () => {

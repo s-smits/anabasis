@@ -62,6 +62,7 @@ type TreeFindingKind =
   | "enumeration-literal-spread"
   | "repeated-external-read"
   | "second-reader"
+  | "partial-mapping"
   | "filesystem-import-budget";
 
 export interface TreeFinding {
@@ -139,6 +140,8 @@ export const TREE_FINDING_ARGUMENTS: Readonly<Record<TreeFindingKind, string>> =
     "One function, or a module's top level, makes the same external read twice on one call path: the same command run, file read, directory listed or URL fetched, keyed by what it reads, with wrappers followed across files and their parameters substituted. Between the two reads the world may change, so the two answers can disagree and the code then holds two states of one fact. Read once where the paths join and pass the answer on. Branches count by the larger arm, a loop over items counts once per item, and a polling loop, a deferred callback and a memoising wrapper are not counted.",
   "second-reader":
     'A fact an exported function already returns (`isRunning(run, procs)` returns `writersOf(run, procs).length > 0 || keepersOf(run.name).length > 0`), derived again by hand in another file. The copy drifts from the owner the day the owner learns a new case. Call the owner. Two spellings are one fact when they read alike once locals are renamed, operands sorted and negations pushed through, and their calls take the same fields; one-field tests (`kind === "pass"`), groupings of one subject\'s literals and defaults (`??`) are not counted, and a fact nobody owns is not reported. A fold spelled again counts too: a `filter`, `find` or `flatMap` for one value of a discriminant (`kind === "referee.finding"`) that reads every field an exported function\'s scan for that value reads and returns.',
+  "partial-mapping":
+    "A lookup `Map` read with a computed key (`EXAMINED.get(ended)`) that maps most of a declared set and leaves the rest out, so a value it lacks reads as nothing, or whatever default the reader supplies, and nobody is told; or one that maps the whole set while no type holds it there, so a value added later goes the same way. Say which set it maps: build it from `Object.entries({ ... } satisfies Record<Ending, string>)`, and the compiler names every value it lacks. An object literal read with a typed key is held already, a table changed through `set` is an accumulator, and one that maps fewer than half its set is a selection; none of them is counted.",
   "filesystem-import-budget":
     "How many names a file imports from src/meta/filesystem.ts, above six. A register: the count stands, and a change adds at most one.",
 };
@@ -299,6 +302,14 @@ export const TREE_FINDING_EXAMPLES: Readonly<
       before:
         "// retire.ts, while runs.ts exports isRunning(run, procs), which returns this\nif (writersOf(run, listProcs()).length > 0 || keepersOf(run.name).length > 0) return;",
       after: "// retire.ts calls the owner\nif (isRunning(run, listProcs())) return;",
+    },
+  ],
+  "partial-mapping": [
+    {
+      before:
+        '// labels.ts, while job.ts exports state: "queued" | "running" | "done" | "failed" | "lost"\nconst SAID = new Map([["queued", "waits"], ["running", "runs"], ["done", "ended"], ["failed", "failed"]]);\nexport const said = (job: Job) => SAID.get(job.state);',
+      after:
+        '// the compiler holds every state\nconst SAID = new Map(\n  Object.entries({ queued: "waits", running: "runs", done: "ended", failed: "failed", lost: "was lost" } satisfies Record<Job["state"], string>),\n);\nexport const said = (job: Job) => SAID.get(job.state);',
     },
   ],
   "overwritten-key": [

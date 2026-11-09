@@ -45,6 +45,7 @@ export const DETECTOR_SOURCES = [
   "tools/oxlint/tree-external-read.ts",
   "tools/oxlint/tree-overwritten-key.ts",
   "tools/oxlint/tree-second-reader.ts",
+  "tools/oxlint/tree-partial-mapping.ts",
 ];
 
 /**
@@ -92,6 +93,7 @@ const COUNTS: readonly [string, RegExp][] = [
   ["state-literal-spread", /grouped by hand in (\d+) other files/u],
   ["repeated-external-read", /(\d+) times on one path/u],
   ["second-reader", /derived by hand in (\d+) files?/u],
+  ["partial-mapping", /leaves out (\d+)/u],
 ];
 
 /** The count or word a sweep reads off a hit's message, or null where its rule has none. */

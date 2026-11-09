@@ -1,6 +1,7 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
 import { asRecord, isBoolean, isNumber, type JsonValue } from "#src/meta/json-shape.ts";
+import { flagBinding, isFlagType } from "../../ana/shared/flags.ts";
 import { identifierName, literalValue } from "../../ana/shared/statements.ts";
 import { calleeName, isTestPath } from "../shared/syntax.ts";
 
@@ -40,25 +41,6 @@ const DECLARATION = /\.d\.[cm]?ts$/u;
 
 type FunctionLike = ESTree.Function | ESTree.ArrowFunctionExpression | ESTree.TSMethodSignature;
 
-/** Whether a type is `boolean`, `true` or `false`. */
-const flagType = (type: ESTree.TSType): boolean =>
-  type.type === "TSBooleanKeyword" ||
-  (type.type === "TSLiteralType" && isBoolean(literalValue(type.literal)));
-
-/** Whether a type annotation is a flag, alone or beside `undefined` or `null`. */
-function booleanType(type: ESTree.TSType | undefined): boolean {
-  if (type === undefined) {
-    return false;
-  }
-  if (type.type !== "TSUnionType") {
-    return flagType(type);
-  }
-  const rest = type.types.filter(
-    (member) => member.type !== "TSUndefinedKeyword" && member.type !== "TSNullKeyword",
-  );
-  return rest.length > 0 && rest.every(flagType);
-}
-
 /** The name a member declares, for the message. */
 function memberName(key: ESTree.Node): string {
   return identifierName(key) ?? "member";
@@ -69,7 +51,7 @@ function booleanSignatures(members: readonly ESTree.TSSignature[]): string[] {
   return members.flatMap((member) =>
     member.type === "TSPropertySignature" &&
     !member.optional &&
-    booleanType(member.typeAnnotation?.typeAnnotation)
+    isFlagType(member.typeAnnotation?.typeAnnotation)
       ? [memberName(member.key)]
       : [],
   );
@@ -82,7 +64,7 @@ function booleanFields(body: ESTree.ClassBody): string[] {
       return [];
     }
     const literal = isBoolean(literalValue(member.value));
-    return booleanType(member.typeAnnotation?.typeAnnotation) || literal ? [memberName(member.key)] : [];
+    return isFlagType(member.typeAnnotation?.typeAnnotation) || literal ? [memberName(member.key)] : [];
   });
 }
 
@@ -93,7 +75,7 @@ function booleanCell(call: ESTree.CallExpression): boolean {
   }
   const [initial] = call.arguments;
   const typed = call.typeArguments?.params[0];
-  return isBoolean(literalValue(initial)) || booleanType(typed);
+  return isBoolean(literalValue(initial)) || isFlagType(typed);
 }
 
 /** The name a `const [x, setX] = useState(…)` binds, or a placeholder. */
@@ -162,17 +144,7 @@ export const excessiveBoolsRule = defineRule({
       if (params === null) {
         return;
       }
-      const flags = node.params.filter((parameter) => {
-        const target = parameter.type === "AssignmentPattern" ? parameter.left : parameter;
-        if (
-          parameter.type === "AssignmentPattern" &&
-          parameter.right.type === "Literal" &&
-          isBoolean(parameter.right.value)
-        ) {
-          return true;
-        }
-        return "typeAnnotation" in target && booleanType(target.typeAnnotation?.typeAnnotation);
-      });
+      const flags = node.params.filter((parameter) => flagBinding(parameter) !== null);
       if (flags.length <= params) {
         return;
       }

@@ -41,6 +41,20 @@ export function takeOver(lock: string, holder: number): void {
   }
   if (Date.now() - statSync(lock).mtimeMs > STALE_MS) process.kill(holder); // REPORT a holder signalled on its age
 }
+export function sweepCut(folder: string, names: readonly string[]): void {
+  for (const name of names) {
+    const file = folder + "/" + name;
+    if (/\\.tmp\\.\\d+\\./.test(name) && Date.now() - statSync(file).mtimeMs > STALE_MS) rmSync(file); // REPORT a part its writer may still fill
+  }
+}
+export function dropOld(folders: readonly string[]): void {
+  for (const folder of folders) {
+    if (Date.now() - statSync(folder).mtimeMs > STALE_MS) rmSync(folder); // ADMITTED retention of what nothing holds
+  }
+}
+export function clearLocks(lockDir: string, files: readonly string[]): void {
+  files.forEach((file) => { if (Date.now() - statSync(file).mtimeMs > STALE_MS) rmSync(file); }); // REPORT a holder the function around it names
+}
 `;
 
 const MODES = `import { useState } from "react";
@@ -307,7 +321,7 @@ const findings = (kind: string, files: Record<string, string>): string[] =>
 describe("the implicit-state rules", () => {
   it("report only the marked lines", async () => {
     await lintRules("implicit-state", [
-      ["no-age-based-lock", LOCKS, 4, "src/locks.ts"],
+      ["no-age-based-lock", LOCKS, 6, "src/locks.ts"],
       ["no-marker-file-state", PHASES, 3, "src/phases.ts"],
       ["no-coupled-flags", MODES, 3, "src/modes.tsx"],
       ["no-coupled-flags", UNCOUNTED_MODES, 3, "src/shapes.ts"],

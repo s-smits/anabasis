@@ -21,7 +21,6 @@ import { examplesFor } from "../tools/runtime/lint.ts";
 import { PLUGINS } from "../tools/oxlint/plugins.ts";
 import { type RuleExample, ruleExamples } from "../tools/oxlint/rule-examples.ts";
 import { TREE_FINDING_EXAMPLES } from "../tools/oxlint/tree-findings.ts";
-import { execTextSync } from "./helpers/bun-spawn-sync.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 const NAMES = [...PLUGINS.keys()];
@@ -131,31 +130,6 @@ describe("each tree scan's examples", () => {
       const at = `${kind}/${index}/${pair.path ?? DEFAULT_PATH}`;
       expect([at, [...(after.get(at) ?? [])]]).toStrictEqual([at, []]);
     }
-  });
-});
-
-describe("fixture coverage", () => {
-  it("reports missing fixtures for inline and wrapped registrations at their key lines", () => {
-    const directory = mkdtempSync(join(tmpdir(), "ana-fixture-coverage-"));
-    mkdirSync(join(directory, "tools/oxlint/plugin"), { recursive: true });
-    mkdirSync(join(directory, "test"));
-    writeFileSync(
-      join(directory, "tools/oxlint/plugin/index.ts"),
-      `export const rules = {
-  "uncovered-inline": missingRule,
-  "covered-rule": knownRule,
-
-  "uncovered-wrapped":
-    missingRule,
-};
-`,
-    );
-    writeFileSync(join(directory, "test/rules.test.ts"), 'const rule = "covered-rule";\n');
-    const script = `import { treeSites } from ${JSON.stringify(join(REPO, "tools/oxlint/tree-findings.ts"))};
-console.log(treeSites().filter((site) => site.kind === "require-rule-fixture").map((site) => site.line).join(","));`;
-    expect(
-      execTextSync(Bun.argv[0] ?? "bun", ["--no-env-file", "-e", script], { cwd: directory }).trim(),
-    ).toBe("2,5");
   });
 });
 

@@ -1,6 +1,10 @@
 {
   "jsPlugins": [
     {
+      "name": "ana",
+      "specifier": "./ana/index.ts"
+    },
+    {
       "name": "implicit-state",
       "specifier": "./implicit-state/index.ts"
     },
@@ -14,6 +18,12 @@
   },
   "ignorePatterns": ["**/vendor/**", "**/node_modules/**", "**/*.d.ts"],
   "rules": {
+    "ana/no-positional-boolean-parameter": [
+      "warn",
+      {
+        "widen": ["flags", "bindings"]
+      }
+    ],
     "implicit-state/excessive-bools": "warn",
     "implicit-state/files-as-phase": "warn",
     "implicit-state/mtime-as-lock": "warn",

@@ -430,6 +430,9 @@ reports zero and says nothing.
 A rule that is a heuristic, or that still has sites in the tree, starts in
 `tools/oxlint/staged-rules.json` at `"warn"` instead: `bun run simplify` prints its sites and
 nothing gates on them. It moves to `.oxlintrc.json` as an error once no site of it stands.
+A gated rule can stage a wider reading the same way: `ana/no-positional-boolean-parameter`
+gates with its default and is staged with `widen: ["flags", "bindings"]`, Foxglove's further
+readings of a boolean parameter, until their sites are settled.
 
 ## 12.14 Implicit state
 

@@ -4,28 +4,30 @@ import { tmpdir } from "../../src/meta/os.ts";
 import { dirname, join, resolve } from "../../src/meta/path.ts";
 import { expectedLines } from "./oxlint-rule-fixture.ts";
 import { capturedExecPath } from "../../src/meta/process.ts";
+import type { JsonValue } from "../../src/meta/json-shape.ts";
 
-type RuleCase = readonly [rule: string, fixture: string, reports: number, at?: string];
+/** One rule over one fixture; `options` is the rule's option record, as a config would pass it. */
+type RuleCase = readonly [rule: string, fixture: string, reports: number, at?: string, options?: JsonValue];
 
 /** Run a rule table once, keeping each fixture's physical scope and complete line oracle. */
 export async function lintRules(plugin: string, cases: readonly RuleCase[]): Promise<string> {
   const repo = resolve(import.meta.dirname, "../..");
   const directory = mkdtempSync(join(tmpdir(), "ana-rule-table-"));
-  const staged = cases.map(([rule, fixture, reports, at = "fixture.ts"], index) => {
+  const staged = cases.map(([rule, fixture, reports, at = "fixture.ts", options], index) => {
     const path = `case-${String(index)}/${at}`;
     const file = join(directory, path);
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, fixture);
-    return { rule, fixture, reports, path, file };
+    return { rule, fixture, reports, path, file, options };
   });
   const config = join(directory, "oxlintrc.json");
   writeFileSync(
     config,
     JSON.stringify({
       jsPlugins: [{ name: plugin, specifier: join(repo, `tools/oxlint/${plugin}/index.ts`) }],
-      overrides: staged.map(({ rule, path }) => ({
+      overrides: staged.map(({ rule, path, options }) => ({
         files: [path],
-        rules: { [`${plugin}/${rule}`]: "error" },
+        rules: { [`${plugin}/${rule}`]: options === undefined ? "error" : ["error", options] },
       })),
     }),
   );

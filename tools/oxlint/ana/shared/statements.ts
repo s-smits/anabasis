@@ -90,6 +90,20 @@ export function propertyName(node: ESTree.Node | null | undefined): string | nul
   return node?.type === "MemberExpression" && !node.computed ? identifierName(node.property) : null;
 }
 
+/** The object of a member read (`a` in `a.b` and `a[b]`), or null for any other node. */
+export function memberObject(node: ESTree.Node | null | undefined): ESTree.Node | null {
+  return node?.type === "MemberExpression" ? node.object : null;
+}
+
+/** The plain `=` assignment a statement holds (`a = b;`, `a.b = c;`), or null for any other
+ *  statement, a compound operator among them. */
+export function plainAssignment(
+  statement: ESTree.Node | null | undefined,
+): ESTree.AssignmentExpression | null {
+  const expression = statement?.type === "ExpressionStatement" ? statement.expression : null;
+  return expression?.type === "AssignmentExpression" && expression.operator === "=" ? expression : null;
+}
+
 /**
  * The value a literal holds, or undefined for any other node and for none. A regular expression
  * the runtime cannot build holds null too, so a test for the `null` literal reads `raw` instead.

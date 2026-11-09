@@ -68,6 +68,70 @@ export function old(file: string, days: number): boolean {
 }
 `;
 
+const MODES = `import { useState } from "react";
+export function Loader() {
+  const [isLoading, setIsLoading] = useState(false);
+  const [isError, setIsError] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  async function load() {
+    setIsLoading(true); // REPORT three setters, at most one set each time
+    setIsError(false);
+    setIsSuccess(false);
+    try {
+      await fetch("/data");
+      setIsLoading(false);
+      setIsSuccess(true);
+      setIsError(false);
+    } catch {
+      setIsLoading(false);
+      setIsError(true);
+      setIsSuccess(false);
+    }
+  }
+  return [isLoading, isError, isSuccess, load];
+}
+export class Canvas {
+  state = { isResizing: false, isRotating: false, editingElement: null as string | null };
+  setState(next: Partial<Canvas["state"]>) {
+    this.state = { ...this.state, ...next };
+  }
+  resize() {
+    this.setState({ isResizing: true, isRotating: false, editingElement: null }); // REPORT a drawing tool's mode
+  }
+  rotate() {
+    this.setState({ isResizing: false, isRotating: true, editingElement: null });
+  }
+  edit(element: string) {
+    this.setState({ isResizing: false, isRotating: false, editingElement: element });
+  }
+  idle() {
+    this.setState({ isResizing: false, isRotating: false, editingElement: null });
+  }
+}
+export function build(run: (options: object) => void) {
+  run({ minify: true, sourcemap: false }); // ADMITTED options created whole are independent choices
+  run({ minify: false, sourcemap: true });
+  run({ minify: true, sourcemap: false });
+}
+export function track(point: { x: number; y: number }, setPoint: (next: object) => void) {
+  setPoint({ ...point, x: 1, y: 2 }); // ADMITTED both fields set together, no mode
+  setPoint({ ...point, x: 3, y: 0 });
+  setPoint({ ...point, x: 5, y: 8 });
+}
+export function clear(store: { open: boolean; dirty: boolean }) {
+  store.open = false; // ADMITTED a reset clears every field and shows no mode
+  store.dirty = false;
+}
+export function clearAgain(store: { open: boolean; dirty: boolean }) {
+  store.open = false;
+  store.dirty = false;
+}
+export function clearOnce(store: { open: boolean; dirty: boolean }) {
+  store.open = false;
+  store.dirty = false;
+}
+`;
+
 const PHASES = `import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 export function phaseOf(jobDir: string): string {
@@ -174,6 +238,9 @@ describe("the implicit-state rules", () => {
       ["excessive-bools", BOOLS, 4, "src/upload.tsx"],
       ["mtime-as-lock", LOCKS, 2, "src/locks.ts"],
       ["files-as-phase", PHASES, 2, "src/phases.ts"],
+      ["co-assigned-flags", MODES, 2, "src/modes.tsx"],
+      ["co-assigned-flags", MODES, 0, "src/four.tsx", { fields: 4 }],
+      ["co-assigned-flags", MODES, 0, "src/many.tsx", { writes: 5 }],
       ["excessive-bools", BOOLS, 0, "src/upload.test.tsx"],
     ]);
   });

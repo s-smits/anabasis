@@ -153,16 +153,16 @@ function rowOf(run: Run, running: readonly Running[], now: number): Row {
  * writes its seed, so `status` shows it, and on 6 November two reached the operator's notifications
  * as "first seen with 6 promotions" beside a real second promotion.
  */
-export const onAlerts = (run: Run, open: boolean, age: number): boolean =>
-  !unlaunchedSeed(run) && onStatus(run, open, age);
+export const onAlerts = (run: Run, writing: "open" | "closed", age: number): boolean =>
+  !unlaunchedSeed(run) && onStatus(run, writing, age);
 
 /** This machine's rows, and the name of every campaign its worktrees hold. */
 function rowsHere(now: number): HostRows {
   const running = processes();
   const held = runs().filter(isCampaign);
   const rows = held.flatMap((run) => {
-    const open = writers(run, running).length > 0;
-    return onAlerts(run, open, now - statSync(run.path).mtimeMs) ? [rowOf(run, running, now)] : [];
+    const writing = writers(run, running).length > 0 ? "open" : "closed";
+    return onAlerts(run, writing, now - statSync(run.path).mtimeMs) ? [rowOf(run, running, now)] : [];
   });
   return { rows, held: held.map(({ name }) => name) };
 }

@@ -92,9 +92,9 @@ describe("seatsIn", () => {
       `zsh -c ${seat}`,
       "bun .claude/skills/system-path-simulation/scripts/live-seat.ts read --seat x",
       "bun tools/d1b/examine.ts --name sim-b",
-    ];
+    ].map((row) => ({ args: row.split(" ") }));
     expect(seatsIn(table, "here")).toEqual([{ name: "sim-a", login: "3", host: "here" }]);
-    expect(seatsIn([seat.replace(" --login 3", "")], "here")).toEqual([
+    expect(seatsIn([{ args: seat.replace(" --login 3", "").split(" ") }], "here")).toEqual([
       { name: "sim-a", login: null, host: "here" },
     ]);
   });

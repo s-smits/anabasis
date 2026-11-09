@@ -718,8 +718,8 @@ export async function watch(args: readonly string[]): Promise<void> {
 }
 
 /** Whether `status` shows a run without `--all`, whose log last changed `age` ago. */
-export const onStatus = (run: Run, open: boolean, age: number): boolean =>
-  open || (!unlaunchedSeed(run) && age <= RECENT_MS);
+export const onStatus = (run: Run, writing: "open" | "closed", age: number): boolean =>
+  writing === "open" || (!unlaunchedSeed(run) && age <= RECENT_MS);
 
 /**
  * `bun run runs status`: one row a run, open or written in the last day, or every one with `--all`;
@@ -738,7 +738,7 @@ export async function runsStatus(args: readonly string[]): Promise<void> {
     const age = now - statSync(run.path).mtimeMs;
     // A seed no launch went on from is a rehearsal's copy, and its promotions are its source's, shown
     // while a process writes it (16 October: fork-ladder-buffer-opus was not shown).
-    if (!values.all && !onStatus(run, open, age)) {
+    if (!values.all && !onStatus(run, open ? "open" : "closed", age)) {
       if (!unlaunchedSeed(run)) quiet += 1;
       continue;
     }

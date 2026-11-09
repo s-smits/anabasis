@@ -14,6 +14,7 @@
 import { isNumber, isRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
+import { join } from "#src/meta/path.ts";
 import type { Hit } from "./detect.ts";
 
 const CLASSES = [
@@ -62,6 +63,11 @@ export const RULE_CLASSES = new Map<string, readonly Class[]>([
   ["co-assigned-flags", ["co-assigned-flags"]],
 ]);
 const SLACK = 2;
+
+/** The corpus files beside this one, read as one: the first corpus, then the foreign projects added after it. */
+export const CORPORA = ["implicit-state-corpus.jsonl", "implicit-state-corpus-foreign.jsonl"].map((name) =>
+  join(import.meta.dir, name),
+);
 
 export interface Range {
   file: string;

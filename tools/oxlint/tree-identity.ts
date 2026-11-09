@@ -175,6 +175,6 @@ export function identitiesWithoutOwner(files: ReadonlyMap<string, string>): Tree
     const owner =
       found.find((one) => one.owner !== null) ?? owners.find((one) => one.value.endsWith(`/${value}`));
     const detail = `\`${value}\` is spelled in ${count} files ${ownerClause(owner, value)}`;
-    return [{ kind: "identity-without-owner", path: anchor.path, line: anchor.line, detail }];
+    return [{ kind: "no-unowned-identity", path: anchor.path, line: anchor.line, detail }];
   });
 }

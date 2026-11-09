@@ -1,5 +1,5 @@
 /**
- * `tree/fact-without-owner` (`tools/oxlint/tree-fact.ts`): one fact about a value written out in
+ * `tree/no-unowned-fact` (`tools/oxlint/tree-fact.ts`): one fact about a value written out in
  * three or more production files. The recorded case is "what the checker measured of a valid
  * answer", spelled four ways in three files until `measureOf` owned it on 5 November 2026; the
  * hostile cases are the same fact in two files, a test of one field, and a test read beside a
@@ -42,7 +42,7 @@ describe("a fact without an owner", () => {
       "tools/wri/gate-era.ts": GATE_ERA,
     });
     expect(found.map((row) => [row.kind, row.path, row.line])).toStrictEqual([
-      ["fact-without-owner", "src/builder/tools.ts", 4],
+      ["no-unowned-fact", "src/builder/tools.ts", 4],
     ]);
     expect(
       spanned({

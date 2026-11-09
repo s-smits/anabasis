@@ -1,6 +1,6 @@
 /**
  * Which arguments of a call are each named for another position's parameter, read the same way by
- * the per-file rule `ana/no-transposed-argument` and the whole-tree scan `tree/crossed-argument`.
+ * the per-file rule `ana/no-transposed-argument` and the whole-tree scan `tree/no-transposed-argument`.
  *
  * An argument names a parameter when its words begin or end with the parameter's words
  * (`sourcePath` names `source`). An argument points at another position when it names that

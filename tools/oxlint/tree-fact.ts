@@ -7,7 +7,7 @@
  * checker.objective ?? null : null` and its variants, stood in src/kernel/compare.ts,
  * src/builder/tools.ts (twice) and tools/wri/gate-era.ts until commit 073acaa7c (5 November 2026)
  * gave it one owner, `measureOf` in src/kernel/solves.ts (now `objectiveOf` in
- * src/kernel/verify.ts, beside the type). `tree/copied-block` missed it: each copy was one
+ * src/kernel/verify.ts, beside the type). `tree/no-duplicate-block` missed it: each copy was one
  * expression, not consecutive statements, and the spellings differed.
  *
  * A unit is an outermost condition or derivation: a `?:`, `&&`, `||` or `??` expression whose
@@ -219,6 +219,6 @@ export function factsWithoutOwner(files: ReadonlyMap<string, string>): TreeFindi
     const owned = owner === undefined ? "" : `; \`${owner.owner ?? ""}\` in ${owner.path} already returns it`;
     const detail = `\`${fact}\` of one value, in ${count} files; also ${named.join(", ")}${rest}${owned}`;
     const places = sites.map(({ path, line, end }) => ({ path, line, end }));
-    return [{ kind: "fact-without-owner", path: first.path, line: first.line, detail, places }];
+    return [{ kind: "no-unowned-fact", path: first.path, line: first.line, detail, places }];
   });
 }

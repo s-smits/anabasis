@@ -155,7 +155,7 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
 
 **Structure**
 
-- `declarations-before-the-first-function` [fix]: imports, types, module constants, then
+- `require-declarations-first` [fix]: imports, types, module constants, then
   functions. A constant whose initialiser calls something or reads below stays where it is.
 - `no-inline-schema-literal`: a table of three or more constant entries built inside a function
   moves to module scope under a name. Tests are exempt.
@@ -200,8 +200,8 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
   an object literal's method or a class's constructor under `new`). A name is an identifier or
   the property ending a member read, and it matches when its words begin or end with the
   parameter's (`sourcePath` for `source`). One name out of place is not reported. A call into
-  another file is the tree scan `crossed-argument`'s, which `bun run simplify` prints. Fix
-  whichever side is wrong.
+  another file is the tree scan of the same name, `tree/no-transposed-argument`, which
+  `bun run simplify` prints. Fix whichever side is wrong.
 
 **Repetition**
 
@@ -211,7 +211,7 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
 
 **Types**
 
-- `unproven-unknown-parameter`: an `unknown` parameter is proved in the body, by a predicate, a
+- `no-unproven-unknown-parameter`: an `unknown` parameter is proved in the body, by a predicate, a
   narrowing guard or a hand-off to a prover (`is…`, `as…`, `assert…`, `parse…`, `errorMessage`).
   Passing it straight on proves nothing.
 
@@ -364,22 +364,22 @@ question, repair the true ones, and answer a false one in the ledger as `tree/<k
 
 | Kind | Repair |
 | --- | --- |
-| `orphan-module`, `test-only-module`, `test-only-export` | Delete the code with its test, or wire it into a live path |
-| `unread-field`, `unread-forward` | Delete it, with the branch that handled it |
-| `single-reader-export` | Move the one export into its one reader |
-| `copied-block` | One owner for the block |
-| `identity-without-owner` | One constant for the name |
-| `fact-without-owner` | One function for the fact, in the module that owns the value's type |
-| `superseded-schema-tag`, `compatibility-path` | Drop the old reader |
-| `rule-without-fixture` | Add the fixture |
-| `stale-reference` | Point a path at where the thing lives now, or cite it as `<sha>:path` in a record of its time; document only a setting some code reads |
+| `no-unused-module`, `no-test-only-module`, `no-test-only-export` | Delete the code with its test, or wire it into a live path |
+| `no-unused-field`, `no-unused-reexport` | Delete it, with the branch that handled it |
+| `no-single-reader-export` | Move the one export into its one reader |
+| `no-duplicate-block` | One owner for the block |
+| `no-unowned-identity` | One constant for the name |
+| `no-unowned-fact` | One function for the fact, in the module that owns the value's type |
+| `no-superseded-schema-tag`, `no-compatibility-path` | Drop the old reader |
+| `require-rule-fixture` | Add the fixture |
+| `no-stale-reference` | Point a path at where the thing lives now, or cite it as `<sha>:path` in a record of its time; document only a setting some code reads |
 | `state-literal-spread` | Name each grouping in the owner of the states (a predicate or a table) and call it |
 | `unowned-state-literal` | Declare the states once, with their groupings beside them (opinionated) |
 | `enumeration-literal-spread` | Name each grouping beside the set; it names kinds rather than states, so it is reported apart |
 | `repeated-external-read` | Read once where the call paths join and pass the answer on |
 | `second-reader` | Call the exported function that already returns the fact |
 | `partial-mapping` | Say which set a lookup `Map` maps (`satisfies Record<…>` on its entries) |
-| `filesystem-import-budget` | None. It is a register: a file keeps its count of `filesystem.ts` imports, and a change adds at most one |
+| `max-filesystem-imports` | None. It is a register: a file keeps its count of `filesystem.ts` imports, and a change adds at most one |
 
 ## 12.10 The size policy
 
@@ -415,7 +415,7 @@ never add a file to one, and never widen a glob to take in the file you are edit
   streams.
 - A lint rule's fixture marks every declaration `// REPORT <why>` or `// ADMITTED <why>`
   (`test/helpers/oxlint-rule-fixture.ts`), so one text states both halves of the rule.
-- A test that proves an export nothing else calls is what `tree/test-only-export` reports. Test
+- A test that proves an export nothing else calls is what `tree/no-test-only-export` reports. Test
   the live path.
 
 ## 12.13 Adding or changing a lint rule

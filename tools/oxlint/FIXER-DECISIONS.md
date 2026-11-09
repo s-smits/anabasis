@@ -38,7 +38,6 @@ All four, not three.
 
 | rule | the edit | why it is a fact |
 | --- | --- | --- |
-| `declarations-before-the-first-function` | moves type, interface and const declarations above the first function | order, not content; the declaration text is untouched |
 | `no-hand-rolled-error-render` | routes a caught value through `errorMessage` / `asError` | those two own the decision already |
 | `no-renaming-temporary` | substitutes the expression at the one read | a const read once and only renaming is the expression |
 | `no-repeated-string-literal` | names the repeat once, **in test files only** | see below; the source half is deliberately refused |
@@ -47,6 +46,7 @@ All four, not three.
 | `prefer-key-if-defined` | a run of `if (v !== undefined) o.k = v;` below `const o = {…}` becomes `...keyIfDefined("k", v)` inside the literal | `src/meta/optional-key.ts` already owns the fold; the value is a pure read, so moving it into the literal moves no evaluation |
 | `prefer-subpath-import` | `../../../../src/x.ts` becomes `#src/x.ts` | the alias is read off the nearest `package.json`, so it names the same file and a key it does not map is never written |
 | `require-captured-json-runtime` | imports `capturedJsonParse` and calls it | one owner, one name |
+| `require-declarations-first` | moves type, interface and const declarations above the first function | order, not content; the declaration text is untouched |
 | `require-meta-runtime-import` | moves a `node:` import onto the `src/meta` module that wraps it | a table of seven builtins with exactly one wrapper each; anything ambiguous is absent from it |
 
 `no-repeated-string-literal` fixes half of its own findings on purpose. In a test file the local
@@ -73,7 +73,7 @@ In each of these the missing piece is information the rule has no access to, and
 so in its own doc comment: `test/oxlint-rule-contract.test.ts` refuses a rule that neither declares
 `fixable` nor writes the words.
 
-- **The repair is a type** (8): `unproven-unknown-parameter`, `no-unknown-returns`,
+- **The repair is a type** (8): `no-unproven-unknown-parameter`, `no-unknown-returns`,
   `no-unknown-type-aliases`, `no-unsafe-dictionary-type`, `no-known-value-widening`,
   `no-widen-then-assert`, `no-chained-type-assertions`, `no-runtime-typeof`. The `unknown` or the widening is exactly the work someone avoided; writing
   it is the finding. A plugin rule does not read the checker.

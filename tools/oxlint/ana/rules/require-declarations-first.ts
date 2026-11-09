@@ -346,7 +346,7 @@ function named(inner: ESTree.Node): { node: ESTree.Node; name: string } {
   return id !== null && name !== null ? { node: id, name } : { node: inner, name: "the declaration" };
 }
 
-export const declarationsBeforeTheFirstFunctionRule = defineRule({
+export const requireDeclarationsFirstRule = defineRule({
   meta: {
     type: "suggestion",
     fixable: "code",

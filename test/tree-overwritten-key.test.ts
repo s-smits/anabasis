@@ -1,5 +1,5 @@
 /**
- * `tree/overwritten-key` (`tools/oxlint/tree-overwritten-key.ts`): a key a caller hands a function
+ * `tree/no-overwritten-key` (`tools/oxlint/tree-overwritten-key.ts`): a key a caller hands a function
  * that spreads it and then sets the same key. The recorded case is `tool()` and the
  * `executionMode: "sequential"` its callers kept passing until 5 November 2026; the hostile cases
  * are the keys that stay the caller's.

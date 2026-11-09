@@ -409,8 +409,8 @@ evaluation validity, prevents serious run failures or broadly simplifies the tre
 improvement; `I3` covers reporting, wording and convenience) and a category (`CATEGORIES`,
 `tools/runtime/land.ts`). Push only your authorised branch, with `--force-with-lease` when
 rewriting. Merging and restacking others' branches are the operator's; before `bun run land -- <top>
---merge`, three reviewer subagents read slices of the landing, and their confirmed findings go on
-the top before `--sanitize` runs again.
+--merge`, three reviewer subagents read the whole landing, each through one lens (stack-pr,
+section 9), and their confirmed findings go on the stack before `--sanitize` runs again.
 
 ### Commands that run the first time
 

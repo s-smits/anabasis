@@ -1,8 +1,11 @@
 /**
  * Scores the implicit-state detectors of a lint worktree against the labelled corpus.
  *
- *   bun tools/oxlint/eval/score.ts --detectors <lint worktree> --corpus <file>
+ *   bun tools/oxlint/eval/score.ts --detectors <lint worktree> [--corpus <file>]…
  *     [--repo <name>=<clone>]… [--tree <repo>@<commit>]… [--cache <dir>] [--sweep] [--unlabelled <n>] [--hits <file>] [--items]
+ *
+ * The corpus is every `--corpus` file read as one, by default `CORPORA`. A foreign repository with no `--repo` is cloned from
+ * `foreign.json`, whose heads are scored with the corpus's trees.
  *
  * Every tree the corpus names (and each `--tree`) is materialised once under the cache and every
  * rule and scan runs over it at its permissive setting; hits are cached by the tree and the
@@ -30,6 +33,7 @@ import { join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import {
+  CORPORA,
   type Item,
   type RuleScore,
   type TreeHits,
@@ -47,7 +51,7 @@ import {
   treesOf,
 } from "./corpus.ts";
 import { DETECTOR_SOURCES, type Hit, ruleHits, scanHits } from "./detect.ts";
-import { fullCommit, treeOf } from "./trees.ts";
+import { clonedRepo, foreignRepos, fullCommit, treeOf } from "./trees.ts";
 
 /** The precision a rule's recommended threshold must reach, by tier. */
 const FLOORS = { generic: 0.8, opinionated: 0.5 } as const;
@@ -261,7 +265,7 @@ async function main(): Promise<void> {
   const { values } = parseArgs({
     options: {
       detectors: { type: "string" },
-      corpus: { type: "string" },
+      corpus: { type: "string", multiple: true },
       repo: { type: "string", multiple: true },
       tree: { type: "string", multiple: true },
       cache: { type: "string" },
@@ -271,11 +275,9 @@ async function main(): Promise<void> {
       items: { type: "boolean" },
     },
   });
-  if (values.detectors === undefined || values.corpus === undefined) {
-    throw new Error("score.ts needs --detectors and --corpus");
-  }
+  if (values.detectors === undefined) throw new Error("score.ts needs --detectors");
   const detectors = resolve(values.detectors);
-  const corpus = resolve(values.corpus);
+  const corpora = values.corpus ?? CORPORA;
   const cache = resolve(values.cache ?? join(tmpdir(), "ana-implicit-state-eval"));
   mkdirSync(join(cache, "hits"), { recursive: true });
   const repos = new Map([["anabasis", gitText(runtimeProcess.cwd(), "rev-parse", "--show-toplevel")]]);
@@ -283,11 +285,18 @@ async function main(): Promise<void> {
     const [name = "", path = ""] = spec.split("=");
     repos.set(name, resolve(path));
   }
-  const items = parseCorpus(readFileSync(corpus, "utf8")).map((item) => ({
+  const foreign = foreignRepos();
+  for (const one of foreign) if (!repos.has(one.name)) repos.set(one.name, clonedRepo(one, cache));
+  const text = corpora.map((file) => readFileSync(resolve(file), "utf8")).join("\n");
+  const items = parseCorpus(text).map((item) => ({
     ...item,
     commit: fullCommit(repos.get(item.repo) ?? "", item.commit),
   }));
-  const keys = [...treesOf(items), ...(values.tree ?? []).map(treeKeyOf)];
+  const keys = [
+    ...treesOf(items),
+    ...foreign.map(({ name, head }) => ({ repo: name, commit: head })),
+    ...(values.tree ?? []).map(treeKeyOf),
+  ];
   const unique = [
     ...new Map(
       keys.map((key) => [

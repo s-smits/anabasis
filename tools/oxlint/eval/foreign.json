@@ -1,0 +1,17 @@
+[
+  {
+    "name": "changesets",
+    "url": "https://github.com/changesets/changesets.git",
+    "head": "2f6995d5bbd3b1572d7a6cd897d2229bfc1ce8c1"
+  },
+  {
+    "name": "excalidraw",
+    "url": "https://github.com/excalidraw/excalidraw.git",
+    "head": "701b901a0f1ba3d0b390d9cdf63d112e25abac4b"
+  },
+  {
+    "name": "vite",
+    "url": "https://github.com/vitejs/vite.git",
+    "head": "a579e352a66fbdce6a51d4e1f67006ccf4f91343"
+  }
+]

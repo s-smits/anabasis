@@ -2,7 +2,7 @@ import { defineRule, type ESTree } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
 import { isBoolean } from "#src/meta/json-shape.ts";
 import { isFlagType } from "../../ana/shared/flags.ts";
-import { identifierName, literalValue, propertyName } from "../../ana/shared/statements.ts";
+import { bindsName, identifierName, literalValue, propertyName } from "../../ana/shared/statements.ts";
 import {
   enclosingFunction,
   innermost,
@@ -135,7 +135,7 @@ export const preferStateUnionRule = defineRule({
 
     return {
       VariableDeclarator: (node) => {
-        if (node.id.type === "Identifier" && node.init !== null) bound.set(node.id.name, node.init);
+        if (bindsName(node)) bound.set(node.id.name, node.init);
       },
       ObjectExpression: (node) => {
         objects.push(node);

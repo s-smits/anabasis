@@ -156,19 +156,19 @@ function unitsOf(path: string, file: ts.SourceFile, into: Map<string, Place[]>):
 function contentOf(place: Place): { literals: string[]; data: number } {
   const literals: string[] = [];
   let [nodes, data] = [0, 0];
-  const walk = (node: ts.Node, inData: boolean): void => {
+  const walk = (node: ts.Node, within: "data" | "code"): void => {
     if (ts.isTypeNode(node) || ts.isTypeParameterDeclaration(node)) return;
-    [nodes, data] = [nodes + 1, data + (inData ? 1 : 0)];
+    [nodes, data] = [nodes + 1, data + (within === "data" ? 1 : 0)];
     if (ts.isStringLiteral(node) || ts.isNumericLiteral(node) || ts.isTemplateLiteralToken(node)) {
       literals.push(node.text);
       return;
     }
-    const inside = inData || ts.isObjectLiteralExpression(node) || ts.isArrayLiteralExpression(node);
+    const literal = ts.isObjectLiteralExpression(node) || ts.isArrayLiteralExpression(node);
     ts.forEachChild(node, (child) => {
-      walk(child, inside);
+      walk(child, literal ? "data" : within);
     });
   };
-  for (const statement of place.statements.slice(place.first, place.last + 1)) walk(statement, false);
+  for (const statement of place.statements.slice(place.first, place.last + 1)) walk(statement, "code");
   return { literals, data: data / Math.max(nodes, 1) };
 }
 

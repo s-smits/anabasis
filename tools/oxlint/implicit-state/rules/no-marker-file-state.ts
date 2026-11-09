@@ -1,6 +1,6 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
-import { declaredBy, identifierName, propertyName } from "../../ana/shared/statements.ts";
+import { bindsName, declaredBy, identifierName, propertyName } from "../../ana/shared/statements.ts";
 import {
   calleeName,
   decides,
@@ -239,9 +239,7 @@ export const noMarkerFileStateRule = defineRule({
         }
       },
       VariableDeclarator: (node) => {
-        if (node.id.type === "Identifier" && node.init !== null) {
-          bindings.set(node.id.name, node.init);
-        }
+        if (bindsName(node)) bindings.set(node.id.name, node.init);
       },
       "CallExpression:exit": (node) => {
         if (CHANGES.test(calleeName(node) ?? "")) {

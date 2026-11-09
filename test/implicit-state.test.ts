@@ -246,6 +246,24 @@ export function each(pids: readonly number[]): boolean[] {
 export function perItem(pids: readonly number[]): boolean[] {
   return pids.map((pid) => alive(pid));
 }
+async function settle(): Promise<void> {
+  await Bun.sleep(1000);
+}
+export async function afterWait(pid: number): Promise<boolean> {
+  const before = alive(pid);
+  await settle();
+  return before && alive(pid);
+}
+export function afterKill(pid: number): boolean {
+  if (!alive(pid)) return false;
+  process.kill(pid, "SIGTERM");
+  return alive(pid);
+}
+export function afterNote(pid: number): boolean {
+  const before = alive(pid);
+  writeFileSync("/tmp/note", "seen");
+  return before && alive(pid);
+}
 `;
 
 const findings = (kind: string, files: Record<string, string>): string[] =>
@@ -313,12 +331,16 @@ describe("state-literal-spread", () => {
 });
 
 describe("repeated-external-read", () => {
-  it("is reported where one path reads the same command twice through wrappers in another file", () => {
+  it("is reported where one path reads the same command twice through wrappers in another file, a write of another file between", () => {
     const rows = findings("repeated-external-read", { "src/procs.ts": PROCS, "src/runner.ts": RUNNER });
-    expect(rows).toEqual(["src/runner.ts:3 src/runner.ts:3", "src/runner.ts:16 src/runner.ts:16"]);
+    expect(rows).toEqual([
+      "src/runner.ts:3 src/runner.ts:3",
+      "src/runner.ts:16 src/runner.ts:16",
+      "src/runner.ts:35 src/runner.ts:35 src/runner.ts:37",
+    ]);
   });
 
-  it("is not reported for a polling loop, a memoised read, two branches that each read once or a read of each item", () => {
+  it("is not reported for a polling loop, a memoised read, two branches that each read once, a read of each item, or a re-read after a wait or a signal", () => {
     const rows = implicitStateFindings(
       new Map([
         ["src/procs.ts", PROCS],
@@ -330,5 +352,7 @@ describe("repeated-external-read", () => {
     expect(names).not.toContain("`remembered`");
     expect(names).not.toContain("`either`");
     expect(names).not.toContain("`perItem`");
+    expect(names).not.toContain("`afterWait`");
+    expect(names).not.toContain("`afterKill`");
   });
 });

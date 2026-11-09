@@ -294,7 +294,7 @@ async function describeTree(pid: number): Promise<number[]> {
   const rows = (await new Response(ps.stdout).text())
     .trim()
     .split("\n")
-    .map((line) => line.trim().split(/\s+/, 3));
+    .map((line) => line.trim().split(/\s+/));
   const parentOf = new Map(rows.map(([child, parent]) => [Number(child), Number(parent)]));
   const descendants = new Set<number>();
   for (let grew = true; grew; ) {
@@ -306,17 +306,10 @@ async function describeTree(pid: number): Promise<number[]> {
       }
     }
   }
-  const lines = (
-    await new Response(
-      Bun.spawn(["ps", "-o", "pid=,%cpu=,args=", "-p", [...descendants].join(",") || "0"], {
-        stdout: "pipe",
-        stderr: "ignore",
-      }).stdout,
-    ).text()
-  )
-    .trimEnd()
-    .split("\n")
-    .map((line) => boundText(line, 240).shown);
+  // The one reading's rows, less the parent column, so pid, share and command are of one moment.
+  const lines = rows
+    .filter(([child]) => descendants.has(Number(child)))
+    .map((row) => boundText(row.toSpliced(1, 1).join(" "), 240).shown);
   console.error(`idle-wall: descendants when the wall fired (pid, %cpu, command):\n${lines.join("\n")}`);
   return [...descendants];
 }
@@ -468,14 +461,14 @@ async function runWalled(command: string[], temporaryRoot: string, cwd: string):
   const relay = async (
     source: ReadableStream<Uint8Array>,
     sink: typeof Bun.stdout,
-    scan: boolean,
+    holds: "results" | "output",
   ): Promise<void> => {
     const writer = sink.writer();
     for await (const chunk of source) {
       state.lastOutputAt = performance.now();
       await writer.write(chunk);
       await writer.flush();
-      if (!scan) continue;
+      if (holds === "output") continue;
       // Bun prints "<path>:" on its own line, to stderr, then the file's results. With several
       // workers the whole block arrives when the file completes; a single worker streams it, so a
       // file counts as reported once a result line has followed its header.
@@ -486,7 +479,7 @@ async function runWalled(command: string[], temporaryRoot: string, cwd: string):
     await writer.end();
   };
   const ticker = startWall(child, state);
-  await Promise.all([relay(child.stdout, Bun.stdout, false), relay(child.stderr, Bun.stderr, true)]);
+  await Promise.all([relay(child.stdout, Bun.stdout, "output"), relay(child.stderr, Bun.stderr, "results")]);
   const exitCode = await child.exited;
   clearInterval(ticker);
   // Once the wall has fired, the group's own exit (130 after the interrupt, 137 after a kill) is not

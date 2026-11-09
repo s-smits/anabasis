@@ -124,12 +124,12 @@ export function sayingPulls(
 export function claimOf(
   root: string,
   target: number,
-  mode: { readonly auto: boolean; readonly merge: boolean; readonly sanitize: boolean },
+  mode: { readonly auto: boolean; readonly kind: string },
 ): Claim {
-  const kind = mode.merge ? 2 : mode.sanitize ? 1 : 0;
+  const kind = KINDS.indexOf(mode.kind);
   let chain: string[] | null = null;
   return {
-    note: `#${String(target)}${mode.auto ? "+" : ""} ${KINDS[kind] ?? ""}`,
+    note: `#${String(target)}${mode.auto ? "+" : ""} ${mode.kind}`,
     over: (held) => {
       const [number = "", what = ""] = held.split(" ");
       const theirs = KINDS.indexOf(what);

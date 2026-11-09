@@ -77,7 +77,7 @@ import { join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { openHarness } from "#src/harness/open.ts";
-import { keptAs, openCampaign, PROMOTED, packNamed } from "./campaign.ts";
+import { campaignLog, keptAs, openCampaign, PROMOTED, packNamed } from "./campaign.ts";
 import { type Seated, solved } from "./round.ts";
 import { recordedSetting, SETTING_OPTIONS, settingNamed } from "./setting.ts";
 
@@ -139,7 +139,7 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
     { earned: 0, defect: 0, unclear: 0 },
   );
   // Each comparison's last word on its packet (`settle.ts`): unsettled, or what settled it.
-  const packets = lastReports(events, true).map(({ data }) => data.settled);
+  const packets = lastReports(events, "all").map(({ data }) => data.settled);
   const settled = packets.map((each) => asRecord(each)).filter((each) => each !== null);
   const unsettled = packets.filter((each) => each === UNSETTLED).length;
   // What a person read of the answers that passed, drawn in each settled packet.
@@ -339,7 +339,9 @@ export async function closeCommand(args: readonly string[], seated: Seated = sol
   if (values.to === undefined) throw new Error("name --to, the folder the handover is written to");
   const to = resolve(values.to);
   const pack = packNamed(values, " and --to");
-  const campaign = await openCampaign(pack);
+  const trialLog = join(campaignLog(pack.name), "..", "handover", LOG_FILE);
+  const trial = values.solve === undefined ? {} : { trial: trialLog, ...settingNamed(values) };
+  const campaign = await openCampaign({ ...pack, ...trial });
   if (containsPath(to, campaign.repo) && !containsPath(to, harnessesOf(campaign.repo))) {
     throw new Error(
       `--to ${to} lies inside the repository, which holds the campaign's logs: a handover leaves it, or goes under ${harnessesOf(campaign.repo)}`,
@@ -387,13 +389,11 @@ export async function closeCommand(args: readonly string[], seated: Seated = sol
     if (task === undefined) throw new Error(`--solve ${id}: the campaign holds no task by that id`);
     return task;
   });
-  const trialLog = join(campaign.log, "..", "handover", LOG_FILE);
-  mkdirSync(join(campaign.log, "..", "handover"), { recursive: true });
-  const trial = await openCampaign({ ...pack, trial: trialLog, ...settingNamed(values) });
-  const { solve } = seated(trial, { builder: undefined, reference: PROMOTED });
+  mkdirSync(join(trialLog, ".."), { recursive: true });
+  const { solve } = seated(campaign, { builder: undefined, reference: PROMOTED });
   const outcomes: string[] = [];
   for (const task of asked) {
-    const { ending } = await solve(trial.pack(task), { dir: harness, digest: kept.digest }, undefined);
+    const { ending } = await solve(campaign.pack(task), { dir: harness, digest: kept.digest }, undefined);
     outcomes.push(ending.outcome);
     console.log(
       `solved task ${task.taskId} under harness ${short(kept.digest)} from ${harness}: ${ending.outcome}${"kind" in ending ? ` (${ending.kind})` : ""}, recorded in ${trialLog}`,

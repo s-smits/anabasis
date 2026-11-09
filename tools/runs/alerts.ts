@@ -30,7 +30,7 @@ import { plural } from "#src/meta/text.ts";
 import { asked } from "./hosts.ts";
 import { keeperActed } from "./keep.ts";
 import { keepsItself } from "./manage.ts";
-import { runState } from "./state.ts";
+import { type RunState, runState } from "./state.ts";
 import { onStatus } from "./pulse.ts";
 import { remember } from "./pulse-readers.ts";
 import { lastLaunch, unlaunchedSeed } from "./receipt.ts";
@@ -64,13 +64,10 @@ interface Promotion {
 export interface Row {
   readonly name: string;
   readonly promotions: readonly Promotion[];
-  readonly ending: string | null;
-  readonly writer: boolean;
-  readonly keeper: boolean;
+  /** Where the run stands (`runState`): written on, kept, ended or stopped. */
+  readonly state: RunState;
   /** Whether this run gets a keeper by itself (`keepsItself`): one that has nowhere to move does not. */
   readonly owed: boolean;
-  /** The pulse's reading of no new event, which counts a named reset as the run's last word. */
-  readonly quiet: boolean;
   readonly lastAt: string | null;
   /** What its keeper said it did, oldest first. */
   readonly kept: readonly string[];
@@ -131,18 +128,12 @@ function promotionsOf(events: readonly LogEvent[]): Promotion[] {
 function rowOf(run: Run, running: readonly Running[], now: number): Row {
   const events = logEvents(run.path);
   const last = events.at(-1);
-  const state = runState(run, events, running, now);
-  // A state written on carries whether a keeper lives beside the writer.
-  const writer = "kept" in state;
   const file = keptFile(run);
   return {
     name: run.name,
     promotions: promotionsOf(events),
-    ending: state.kind === "ended" ? state.ending : null,
-    writer,
-    keeper: writer ? state.kept : state.kind === "kept",
+    state: runState(run, events, running, now),
     owed: keepsItself(runtimeProcess.env, lastLaunch(run.path)?.login),
-    quiet: state.kind === "quiet",
     lastAt: last?.at ?? null,
     kept: existsSync(file) ? readFileSync(file, "utf8").split("\n").filter(keeperActed) : [],
   };
@@ -181,11 +172,18 @@ function answerOf(lines: readonly string[] | null): HostRows | null {
   }
 }
 
-/** What is wrong with a run that has not ended, in the words a line says it. */
-function gapOf({ ending, writer, keeper, owed }: Row): string | null {
-  if (ending !== null) return null;
-  if (writer) return owed && !keeper ? "no keeper" : null;
-  if (keeper) return "no writer process; its keeper lives";
+/** Whether a process writes the run's log: a state written on carries whether a keeper lives beside it. */
+const written = (state: RunState): state is Extract<RunState, { kept: boolean }> => "kept" in state;
+
+const endingOf = (state: RunState): string | null => (state.kind === "ended" ? state.ending : null);
+
+/** What is wrong with a run that has not ended, in the words a line says it. Each guard narrows the
+ *  state, and a kind added to `RunState` fails to compile at the last. */
+function gapOf({ state, owed }: Row): string | null {
+  if (written(state)) return owed && !state.kept ? "no keeper" : null;
+  if (state.kind === "ended") return null;
+  if (state.kind === "kept") return "no writer process; its keeper lives";
+  state.kind satisfies "stopped";
   return owed ? "no writer process and no keeper" : "no writer process";
 }
 
@@ -194,9 +192,9 @@ function seenOf(row: Row, host: string): Seen {
     host,
     promotions: row.promotions.length,
     reads: row.promotions.flatMap(({ read }) => (read === null ? [] : [read.session])),
-    ending: row.ending,
+    ending: endingOf(row.state),
     gap: gapOf(row),
-    quiet: row.quiet,
+    quiet: row.state.kind === "quiet",
     kept: row.kept.length,
   };
 }
@@ -234,16 +232,17 @@ function newsOf(row: Row, seen: Seen | undefined): string[] {
       ? []
       : [`first seen with ${plural(row.promotions.length, "promotion")}, the last ${last.digest}`];
   const gap = gapOf(row);
+  const ending = endingOf(row.state);
   return [
     ...(seen === undefined ? first : climbLines(row, seen)),
     ...row.kept
       .slice(seen?.kept ?? row.kept.length)
       .map((line) => `keeper: ${line.replace(`${row.name}: `, "")}`),
     ...(gap !== null && gap !== seen?.gap ? [gap] : []),
-    ...(row.quiet && seen?.quiet !== true
+    ...(row.state.kind === "quiet" && seen?.quiet !== true
       ? [`quiet: no new event since ${row.lastAt ?? "its start"}, and no login limit waited on`]
       : []),
-    ...(row.ending !== null && row.ending !== seen?.ending ? [`ended ${row.ending}`] : []),
+    ...(ending !== null && ending !== seen?.ending ? [`ended ${ending}`] : []),
   ];
 }
 
@@ -263,7 +262,7 @@ export function alertsOf(
   const current = new Map(
     heard
       .flatMap(({ host, said }) => said.rows.map((row) => ({ host, row })))
-      .toSorted((one, other) => Number(one.row.writer) - Number(other.row.writer))
+      .toSorted((one, other) => Number(written(one.row.state)) - Number(written(other.row.state)))
       .map((each) => [each.row.name, each]),
   );
   const lines: string[] = [];

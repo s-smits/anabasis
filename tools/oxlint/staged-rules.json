@@ -3,14 +3,6 @@
     {
       "name": "ana",
       "specifier": "./ana/index.ts"
-    },
-    {
-      "name": "implicit-state",
-      "specifier": "./implicit-state/index.ts"
-    },
-    {
-      "name": "implicit-state-opinionated",
-      "specifier": "./implicit-state-opinionated/index.ts"
     }
   ],
   "categories": {
@@ -23,12 +15,6 @@
       {
         "widen": ["flags", "bindings"]
       }
-    ],
-    "implicit-state/no-coupled-flags": "warn",
-    "implicit-state/no-marker-file-state": "warn",
-    "implicit-state/no-age-based-lock": "warn",
-    "implicit-state-opinionated/max-boolean-fields": "warn",
-    "implicit-state-opinionated/prefer-state-union": "warn",
-    "implicit-state-opinionated/no-state-in-names": "warn"
+    ]
   }
 }

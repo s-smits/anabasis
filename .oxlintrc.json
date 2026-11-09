@@ -12,6 +12,14 @@
     {
       "name": "ana",
       "specifier": "./tools/oxlint/ana/index.ts"
+    },
+    {
+      "name": "implicit-state",
+      "specifier": "./tools/oxlint/implicit-state/index.ts"
+    },
+    {
+      "name": "implicit-state-opinionated",
+      "specifier": "./tools/oxlint/implicit-state-opinionated/index.ts"
     }
   ],
   "overrides": [
@@ -266,6 +274,12 @@
     "eslint/valid-typeof": "error",
     "eslint/vars-on-top": "error",
     "eslint/yoda": "error",
+    "implicit-state/no-age-based-lock": "error",
+    "implicit-state/no-coupled-flags": "error",
+    "implicit-state/no-marker-file-state": "error",
+    "implicit-state-opinionated/max-boolean-fields": "error",
+    "implicit-state-opinionated/no-state-in-names": "error",
+    "implicit-state-opinionated/prefer-state-union": "error",
     "import/default": "error",
     "import/extensions": "error",
     "import/first": "error",

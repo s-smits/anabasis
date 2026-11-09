@@ -114,8 +114,13 @@ export const DOCUMENTATION = [
  *  a static pass's parent or the commit where a whole pass's tree left `origin/main`, which
  *  `bun run land` merges only once `ci.yml`'s `darwin-ui` job has run every UI file (`uiStep`):
  *
- *  - `packages/ui` itself, or what installs, runs and lints it (`UI_SETUP`): the whole UI CI gate, as
- *    where no base is known;
+ *  - `packages/ui` itself, or what `ui:gate` installs it from and runs it with (`UI_SETUP`): the
+ *    whole UI CI gate, as where no base is known. Until 10 November the list held the root's
+ *    compiler and lint settings and all of `tools/runtime` and `tools/oxlint`, none of which
+ *    `ui:gate` reads but the suite runner: 48 of one stack's 91 commits ran the browser files in
+ *    a static pass, 4 of them for a reason, and two landings stopped on browser timeouts at a
+ *    commit that changed stack scripts alone. This file only chooses the step, so a change to it
+ *    is no change to what `ui:gate` runs;
  *  - root source that a UI file imports at any depth: the UI's dependencies, its build, which
  *    typechecks it, and its test files within three imports of the change;
  *  - nothing the UI reads: no UI step.
@@ -130,14 +135,7 @@ export const DOCUMENTATION = [
  *  files, in 5 static passes of `bun run land` over commits that changed nothing under `packages/ui`. */
 const UI_PACKAGE = "packages/ui/package.json";
 export const UI_ROOT = "packages/ui";
-export const UI_SETUP = [
-  "package.json",
-  "bun.lock",
-  "tsconfig.json",
-  ".oxlintrc.json",
-  "tools/oxlint",
-  "tools/runtime",
-];
+export const UI_SETUP = ["package.json", "bun.lock", "tools/runtime/test-suite.ts"];
 const UI_TEST = /^packages\/ui\/test\/[^/]+\.test\.tsx?$/u;
 const BROWSER_FILE = /^packages\/ui\/test\/browser-[^/]+\.test\.ts$/u;
 /** What each file imports, read once per CI gate (`importsOf`). */
@@ -153,6 +151,9 @@ const FIRST = [
 const BESIDE = [
   ["typecheck", ["run", "typecheck"]],
   ["lint", ["run", "lint", "--", "--strict"]],
+  // The size rules are off in the lint because this script owns them (`rules-off.tsv`); until
+  // 10 November no step ran it, and a file of 802 lines stood for 64 commits of one stack.
+  ["source-policy", ["tools/loc/source-policy.ts"]],
 ] as const;
 export const TEST_FILE = /^test\/[^/]+\.test\.ts$/u;
 const GATE = join(import.meta.dir, "gate.ts");

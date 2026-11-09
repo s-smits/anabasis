@@ -28,6 +28,7 @@ const STATIC = [
   "run secrets",
   "run typecheck",
   "run lint -- --strict",
+  "tools/loc/source-policy.ts",
 ];
 // `gh` answers `pr list` with ANA_FAKE_PULLS, holds every commit, finds no status on one, and
 // writes every call it gets to a log.

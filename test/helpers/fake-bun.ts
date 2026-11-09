@@ -1,6 +1,7 @@
 /**
  * A `bun` for tests of the gate's callers: `.githooks/pre-push` and `bun run land`. It stands at
- * the gate's step boundary only. `bun install …` and `bun run …` are logged with the commit checked
+ * the gate's step boundary only. `bun install …`, `bun run …` and the size policy's script, which
+ * the gate runs by its path so that a commit from before any script named it has it, are logged with the commit checked
  * out where they ran, and pass unless ANA_FAKE_FAIL names that commit and script (`<sha> lint`);
  * ANA_FAKE_DROP names one the same way whose runner gives no verdict, exiting ANA_FAKE_DROP_CODE
  * (255, a dropped connection, unless set), the first ANA_FAKE_DROPS times (1 unless set);
@@ -21,7 +22,7 @@ import { capturedExecPath } from "../../src/meta/process.ts";
 
 const SCRIPT = String.raw`#!/bin/sh
 case "$1" in
-install | run) ;;
+install | run | tools/loc/source-policy.ts) ;;
 *) exec "$ANA_REAL_BUN" "$@" ;;
 esac
 commit=$(git rev-parse HEAD)

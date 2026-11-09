@@ -132,6 +132,7 @@ describe("proveCommits", () => {
       "run lint -- --strict",
       "run test -- test/owner.test.ts",
       "run typecheck",
+      "tools/loc/source-policy.ts",
     ]);
   });
 
@@ -172,6 +173,9 @@ describe("proveCommits", () => {
     ]);
     const imported = git("commit-tree", into(away, "src", src), "-p", away, "-m", "what the UI imports");
     const head = git("commit-tree", withFile(imported, "d.ts"), "-p", imported, "-m", "head");
+    // A root file the UI's gate does not run with, and one it installs from.
+    const config = git("commit-tree", withFile(away, "tsconfig.json"), "-p", away, "-m", "a config");
+    const lock = git("commit-tree", withFile(config, "bun.lock"), "-p", config, "-m", "the lockfile");
     // The UI's steps of a commit's gate, in their order: they run in turn, beside the other steps.
     const ran = (sha: string): string[] =>
       readFileSync(log, "utf8")
@@ -196,6 +200,10 @@ describe("proveCommits", () => {
       expect(ran(away)).toEqual(["run ui:deps"]);
       expect(ran(imported)).toEqual(near("deep.test.ts"));
       expect(ran(head)).toEqual(["run ui:deps", "run ui:gate"]);
+      // Only what the UI's gate installs from or runs with sends a static pass through all of it.
+      expect(prove([`${config}:static`, `${lock}:static`]).status).toBe(0);
+      expect(ran(config)).toEqual(["run ui:deps"]);
+      expect(ran(lock)).toEqual(["run ui:deps", "run ui:gate"]);
       // Main holding the UI: a whole pass over the same change runs the browser's file too.
       git("update-ref", "refs/remotes/origin/main", away);
       rmSync(log, { force: true });

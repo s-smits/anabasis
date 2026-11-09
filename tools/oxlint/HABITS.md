@@ -449,7 +449,7 @@ TypeScript tree; `bun tools/oxlint/tree-implicit-state.ts <root>` scans a foreig
 
 | Finding | Repair |
 | --- | --- |
-| `implicit-state/co-assigned-flags` | Fields of one state written together, at most one set each time: hold the mode in one discriminated field |
+| `implicit-state/co-assigned-flags` | Fields of one state written together, at most one set each time, computed by comparisons that cannot both hold, or written as opposite literals: hold the mode in one discriminated field |
 | `implicit-state/excessive-bools` | More than three required boolean members on one record, or boolean parameters on one function: name the states as a union |
 | `implicit-state/files-as-phase` | A phase read from which files exist in one folder: one record of the phase |
 | `implicit-state/mtime-as-lock` | A file's age against a constant as the holder's liveness: ask the holder (a pid, a lease, an exclusive open) |

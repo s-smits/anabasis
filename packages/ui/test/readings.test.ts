@@ -1,6 +1,7 @@
 // The server's readings of a real log: control readings, log integrity and the wall between tiers.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { read } from "../../../src/kernel/log.ts";
+import { poolOf } from "../../../src/kernel/reports.ts";
 import {
   appendFileSync,
   cpSync,
@@ -508,5 +509,31 @@ describe("programs kept with a harness", () => {
       [".toolchain/bin/count", "changed"],
       ["agent/BUILT_AGENTS.md", "changed"],
     ]);
+  });
+});
+
+describe("where each task and harness stands", () => {
+  test("places every held-out task in one place of the draw, as the pool partitions them", async () => {
+    const found = campaignsFound({ repo: fixture.root, trees: "directory" }).found.find(
+      ({ name }) => name === fixture.name,
+    );
+    if (found === undefined) throw new Error("the fixture campaign exists");
+    const pool = poolOf(read(found.path));
+    const { rows } = (await ask("tasks", { key: KEY }, "default")).answer;
+    const placed = (place: string) =>
+      rows.filter(({ draw }) => draw?.place === place).map(({ version }) => version);
+    const out = [...new Set([...pool.awaiting, ...pool.doubted])];
+    expect([placed("frontier"), placed("retained"), placed("out")].map((each) => each.toSorted())).toEqual(
+      [pool.frontier, pool.retained, out].map((each) => each.toSorted()),
+    );
+    // An exhausted task is retained, never out, and a task the pool does not hold has no place.
+    const exhausted = rows.filter(({ draw }) => draw?.place === "retained" && draw.exhausted);
+    expect(exhausted.map(({ version }) => version).toSorted()).toEqual(pool.exhausted.toSorted());
+    expect(exhausted.length).toBeGreaterThan(0);
+    expect(placed("out").length).toBeGreaterThan(0);
+    expect(rows.filter(({ state }) => state !== "held").every(({ draw }) => draw === null)).toBe(true);
+    const { harnesses } = (await ask("campaign", { key: KEY }, "default")).answer;
+    expect(harnesses.map(({ by }) => by).filter((by) => by === "starter")).toEqual(["starter"]);
+    expect(harnesses[0]?.by).toBe("starter");
   });
 });

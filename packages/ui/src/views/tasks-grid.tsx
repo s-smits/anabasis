@@ -1,6 +1,15 @@
 import { Button, NoSignal } from "../components/primitives.tsx";
 import { matchesTerms } from "../components/tool-call.tsx";
-import type { LeftOut, Outcome, Share, TaskCell, TaskGrid, TaskLeftOut, TaskRow } from "../models.ts";
+import type {
+  LeftOut,
+  Outcome,
+  Share,
+  TaskCell,
+  TaskGrid,
+  TaskDraw,
+  TaskLeftOut,
+  TaskRow,
+} from "../models.ts";
 import { shortHash } from "../models.ts";
 import { Choose } from "../components/picker.tsx";
 import { choiceCounts } from "../components/table.tsx";
@@ -23,6 +32,9 @@ import { OUTCOMES } from "./outcome.ts";
  * stay in place while the grid scrolls inside its card, so a campaign of twenty comparisons and
  * sixty tasks stays readable.
  */
+
+/** The word of a task out of the draw waiting for a person's label. */
+export const AWAITING = "waits for a label";
 
 const STATES = ["held", "released", "refused", "disputed"];
 const YES_NO = ["yes", "no"];
@@ -72,15 +84,16 @@ export function outcomeOf(outcome: Outcome): { readonly label: string; readonly 
   return OUTCOMES.find((each) => each.outcome === outcome) ?? { label: outcome, color: "var(--ana-faint)" };
 }
 
-/** What a task's row says under its id: its state and the two readings beside it. */
+/** The words of a task's place in the draw: why it is out, or that it is retained; none on the frontier. */
+export function drawWords(draw: TaskDraw | null): string[] {
+  if (draw === null || draw.place === "frontier") return [];
+  if (draw.place === "retained") return draw.exhausted ? ["exhausted", "retained"] : ["retained"];
+  return [...(draw.awaitingLabel ? [AWAITING] : []), ...(draw.doubted ? ["doubted"] : [])];
+}
+
+/** What a task's row says under its id: its state and its place in the draw. */
 function taskNote(row: TaskRow): string {
-  return [
-    row.state,
-    ...(row.awaitingLabel ? ["waits for a label"] : []),
-    ...(row.doubted ? ["doubted"] : []),
-    ...(row.exhausted ? ["exhausted"] : []),
-    ...(row.retained ? ["retained"] : []),
-  ].join(" · ");
+  return [row.state, ...drawWords(row.draw)].join(" · ");
 }
 
 function Cell({ cell, state }: { cell: TaskCell | TaskLeftOut | null; state: TaskRow["state"] }) {
@@ -149,7 +162,7 @@ export function TaskGridView({ grid, onOpen }: { grid: TaskGrid; onOpen: (versio
       every: "All tasks",
       value: label,
       set: setLabel,
-      of: (row: TaskRow) => (row.awaitingLabel ? "yes" : "no"),
+      of: (row: TaskRow) => (drawWords(row.draw).includes(AWAITING) ? "yes" : "no"),
       words: LABEL_WORDS,
     },
     {
@@ -157,7 +170,7 @@ export function TaskGridView({ grid, onOpen }: { grid: TaskGrid; onOpen: (versio
       every: "All tasks",
       value: exhausted,
       set: setExhausted,
-      of: (row: TaskRow) => (row.exhausted ? "yes" : "no"),
+      of: (row: TaskRow) => (drawWords(row.draw).includes("exhausted") ? "yes" : "no"),
       words: EXHAUSTED_WORDS,
     },
   ];

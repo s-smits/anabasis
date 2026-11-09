@@ -7,7 +7,7 @@ import type { Navigation } from "../route.ts";
 import { AnswerIssues, DetailHead, enter } from "./drill.tsx";
 import { time } from "./format.ts";
 import { SolveTable } from "./solve-rows.tsx";
-import { countsOf, leftOutWords, outcomeOf } from "./tasks-grid.tsx";
+import { AWAITING, countsOf, drawWords, leftOutWords, outcomeOf } from "./tasks-grid.tsx";
 
 /*
  * One task version: what each comparison came to on it, its text where the tier shows it, and its
@@ -41,7 +41,8 @@ export function TaskDetailView({
     const cell = cells[at];
     return cell === null || cell === undefined ? [] : [{ column, cell }];
   });
-  const awaiting: ReadonlySet<string> = new Set(row.awaitingLabel ? [row.version] : []);
+  const words = drawWords(row.draw);
+  const awaiting: ReadonlySet<string> = new Set(words.includes(AWAITING) ? [row.version] : []);
   const exam = detail.tier === "exam";
   return (
     <div className="ana-detail">
@@ -54,9 +55,13 @@ export function TaskDetailView({
         badges={
           <>
             <Badge tone={STATE_TONES[row.state]}>{row.state}</Badge>
-            {row.awaitingLabel ? <Badge tone="warn">waits for a label</Badge> : null}
-            {row.doubted ? <Badge tone="warn">doubted</Badge> : null}
-            {row.exhausted ? <Badge tone="neutral">exhausted</Badge> : null}
+            {words
+              .filter((word) => word !== "retained")
+              .map((word) => (
+                <Badge key={word} tone={word === "exhausted" ? "neutral" : "warn"}>
+                  {word}
+                </Badge>
+              ))}
           </>
         }
       >

@@ -28,6 +28,7 @@
     "implicit-state/excessive-bools": "warn",
     "implicit-state/files-as-phase": "warn",
     "implicit-state/mtime-as-lock": "warn",
+    "implicit-state-opinionated/flag-count": "warn",
     "implicit-state-opinionated/name-encoded-state": "warn"
   }
 }

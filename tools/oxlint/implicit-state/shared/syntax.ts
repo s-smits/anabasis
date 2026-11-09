@@ -1,6 +1,6 @@
 import type { ESTree } from "@oxlint/plugins";
 import { isString } from "#src/meta/json-shape.ts";
-import { literalValue, propertyName } from "../../ana/shared/statements.ts";
+import { identifierName, literalValue, propertyName } from "../../ana/shared/statements.ts";
 
 /**
  * The syntax both implicit-state plugins read: what a file is for, what a call is named, and where
@@ -126,4 +126,16 @@ function decidedBy(parent: ESTree.Node, at: ESTree.Node): boolean {
     return parent.body === at;
   }
   return parent.type === "ReturnStatement";
+}
+
+/** The values an object literal writes, by field name; a spread or a computed key writes none. */
+export function objectValues(object: ESTree.ObjectExpression): Map<string, ESTree.Node> {
+  const values = new Map<string, ESTree.Node>();
+  for (const property of object.properties) {
+    const name = property.type === "Property" && !property.computed ? identifierName(property.key) : null;
+    if (property.type === "Property" && name !== null) {
+      values.set(name, property.value);
+    }
+  }
+  return values;
 }

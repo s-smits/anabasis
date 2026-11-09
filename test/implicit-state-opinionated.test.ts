@@ -1,14 +1,54 @@
 /**
  * The opinionated implicit-state tier: the plugin `implicit-state-opinionated`
- * (`name-encoded-state`) and the cross-file kind `unowned-state-literal` of
+ * (`flag-count`, `name-encoded-state`) and the cross-file kind `unowned-state-literal` of
  * `tools/oxlint/tree-implicit-state.ts`. Every fixture is a small foreign program, and each rule's
- * nearest hostile case sits beside the shape it reports: an extension capture, a predicate with no
- * capture and a log line beside a parsed name; a declared union beside the same literals declared
- * nowhere.
+ * nearest hostile case sits beside the shape it reports: optional settings and two flags beside
+ * three required ones; an extension capture, a predicate with no capture and a log line beside a
+ * parsed name; a declared union beside the same literals declared nowhere.
  */
 import { describe, expect, it } from "bun:test";
 import { implicitStateFindings } from "../tools/oxlint/tree-implicit-state.ts";
 import { lintRules } from "./helpers/lint-rule.ts";
+
+const FLAGS = `import { useState } from "react";
+export interface Upload { // REPORT four required flags spell one state
+  pending: boolean;
+  sending: boolean;
+  sent: true | false;
+  failed: boolean | undefined;
+}
+export interface BuildOptions { // ADMITTED optional settings are independent choices
+  minify?: boolean;
+  sourcemap?: boolean;
+  watch?: boolean;
+  emptyOutDir?: boolean;
+}
+export interface Plugin { // ADMITTED two flags and two string unions
+  enforce: "pre" | "post";
+  apply: "serve" | "build";
+  dev: boolean;
+  ssr: boolean;
+}
+export class Dialog { // REPORT four boolean fields
+  open = false;
+  closing = false;
+  closed = true;
+  dragging: boolean = false;
+}
+export function Uploader() { // REPORT four boolean useState cells
+  const [isLoading, setLoading] = useState(false);
+  const [isError, setError] = useState(false);
+  const [isSuccess, setSuccess] = useState(false);
+  const [isIdle, setIdle] = useState<boolean>(true);
+  return [isLoading, isError, isSuccess, isIdle, setLoading, setError, setSuccess, setIdle];
+}
+export function draw(fill: boolean, stroke: boolean, shadow: boolean, dashed = false) { // REPORT four boolean parameters
+  return [fill, stroke, shadow, dashed];
+}
+export function line(fill: boolean, stroke: boolean, shadow: boolean) { // ADMITTED three is the limit
+  return [fill, stroke, shadow];
+}
+`;
 
 const NAMES = `import { basename } from "node:path";
 const PULL = /pr(\\d+)/u;
@@ -63,7 +103,11 @@ const findings = (files: Record<string, string>, kind = "unowned-state-literal")
 
 describe("the opinionated implicit-state rules", () => {
   it("report only the marked lines", async () => {
-    await lintRules("implicit-state-opinionated", [["name-encoded-state", NAMES, 3, "src/deploy.ts"]]);
+    await lintRules("implicit-state-opinionated", [
+      ["flag-count", FLAGS, 4, "src/upload.tsx"],
+      ["flag-count", FLAGS, 0, "src/upload.test.tsx"],
+      ["name-encoded-state", NAMES, 3, "src/deploy.ts"],
+    ]);
   });
 });
 

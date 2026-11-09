@@ -1,5 +1,5 @@
 import type { ESTree } from "@oxlint/plugins";
-import { bindsName, identifierName } from "./statements.ts";
+import { bindingName, bindsName } from "./statements.ts";
 
 /**
  * Whether a value handed to a function the file declares ends up at a named destination.
@@ -61,11 +61,6 @@ export function argumentOf(value: ESTree.Node): { call: ESTree.CallExpression; i
   return index === -1 ? null : { call, index };
 }
 
-function parameterName(parameter: ESTree.Node | undefined): string | null {
-  if (parameter?.type === "AssignmentPattern") return parameterName(parameter.left);
-  return identifierName(parameter);
-}
-
 /** Feed it every function declaration, declarator and call; ask it after the file has been read. */
 export function forwardingTracker() {
   const functions = new Map<string, Callable>();
@@ -79,7 +74,7 @@ export function forwardingTracker() {
   ): boolean {
     if (target(name)) return true;
     const fn = functions.get(name);
-    const parameter = parameterName(fn?.params[index]);
+    const parameter = bindingName(fn?.params[index]);
     if (fn === undefined || parameter === null || seen.has(name)) return false;
     seen.add(name);
     return calls.some(

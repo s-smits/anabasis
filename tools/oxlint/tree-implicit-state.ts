@@ -25,7 +25,7 @@
  * Not read: tests, declaration files, vendored and generated trees. `typeof x === "string"` is no
  * state. The scan is syntactic and leans to silence; it runs on any folder as
  * `bun tools/oxlint/tree-implicit-state.ts <root> [--json] [--readers <n>]`, which also prints
- * `repeated-external-read` (`tree-external-read.ts`) and `second-reader` (`tree-second-reader.ts`); `--json` prints one array of
+ * `repeated-external-read` (`tree-external-read.ts`), `second-reader` (`tree-second-reader.ts`) and `partial-mapping` (`tree-partial-mapping.ts`); `--json` prints one array of
  * `{rule, file, line, message}`, and `--readers` sets how many files must group a set by hand.
  */
 import * as ts from "typescript5";
@@ -35,6 +35,7 @@ import { runtimeProcess } from "../../src/meta/process.ts";
 import { repeatedExternalReads } from "./tree-external-read.ts";
 import type { TreeFinding } from "./tree-findings.ts";
 import { parsedSources } from "./tree-overwritten-key.ts";
+import { partialMappings } from "./tree-partial-mapping.ts";
 import { secondReaders } from "./tree-second-reader.ts";
 import { type LiteralSet, statefulSets } from "./tree-state-role.ts";
 
@@ -79,6 +80,9 @@ interface Census {
   /** Each named object type's properties typed by one string literal (`kind: "pass"`). */
   tagged: Map<string, ReadonlyMap<string, string>>;
   variants: Variants[];
+  /** The sets a file declares and does not export, or spells inline: a table that maps one whole
+   *  maps every value it is read with. */
+  local: Pick<Declared, "values" | "path">[];
 }
 
 const TEST_PATH = /(?:^|\/)(?:test|tests|__tests__|__mocks__|fixtures?)\/|\.(?:test|spec)\.[cm]?[jt]sx?$/u;
@@ -197,9 +201,9 @@ function discriminated(variants: Variants, tagged: Census["tagged"]): Declared[]
   });
 }
 
-/** The string literals of a union type, or null where a member is anything else but `null` or
- *  `undefined`. */
-function unionValues(node: ts.TypeNode): string[] | null {
+/** The string literals of a union type, or null where a member is anything else but `null`,
+ *  `undefined` or `(typeof LIST)[number]` over an `as const` list of the file (`lists`). */
+function unionValues(node: ts.TypeNode, lists: ReadonlyMap<string, readonly string[]>): string[] | null {
   if (!ts.isUnionTypeNode(node)) {
     return null;
   }
@@ -208,8 +212,14 @@ function unionValues(node: ts.TypeNode): string[] | null {
     const empty = ts.isLiteralTypeNode(member)
       ? member.literal.kind === ts.SyntaxKind.NullKeyword
       : member.kind === ts.SyntaxKind.UndefinedKeyword;
+    const listed =
+      ts.isIndexedAccessTypeNode(member) && ts.isParenthesizedTypeNode(member.objectType)
+        ? lists.get(member.objectType.type.getText().replace(/^typeof /u, ""))
+        : undefined;
     if (ts.isLiteralTypeNode(member) && ts.isStringLiteral(member.literal)) {
       values.push(member.literal.text);
+    } else if (listed !== undefined) {
+      values.push(...listed);
     } else if (!empty) {
       return null;
     }
@@ -270,21 +280,32 @@ function nameOf(node: ts.Node, file: ts.SourceFile): string {
 /** Every declared set of states in one file, and every string literal it types anywhere. */
 function declaredIn(path: string, file: ts.SourceFile, census: Census): Declared[] {
   const found: Declared[] = [];
+  const lists = new Map(
+    file.statements.flatMap((one) =>
+      ts.isVariableStatement(one)
+        ? one.declarationList.declarations.flatMap((declared) => {
+            const values = declared.initializer === undefined ? null : constValues(declared.initializer);
+            return values === null ? [] : [[declared.name.getText(file), values] as const];
+          })
+        : [],
+    ),
+  );
   const add = (node: ts.Node, values: readonly string[] | null): void => {
     for (const value of values ?? []) {
       census.typed.add(value);
     }
     const name = nameOf(node, file);
-    if (values !== null && new Set(values).size >= 2 && name !== INLINE && exported(node, file)) {
-      found.push({ name, values: new Set(values), path, line: lineOf(file, node) });
-    }
+    if (values === null || new Set(values).size < 2) return;
+    const set = { name, values: new Set(values), path, line: lineOf(file, node) };
+    if (name !== INLINE && exported(node, file)) found.push(set);
+    else census.local.push(set);
   };
   const visit = (node: ts.Node): void => {
     if (ts.isLiteralTypeNode(node) && ts.isStringLiteral(node.literal)) {
       census.typed.add(node.literal.text);
     }
     if (ts.isUnionTypeNode(node) && !ts.isUnionTypeNode(node.parent)) {
-      add(node, unionValues(node));
+      add(node, unionValues(node, lists));
     }
     noteTags(node, census, path, file);
     if (ts.isVariableDeclaration(node) && node.initializer !== undefined) {
@@ -435,12 +456,23 @@ function unownedLiterals(
   });
 }
 
-/** Every declared set of states grouped by hand in other files, over one set of parsed files. */
-function stateLiterals(sources: ReadonlyMap<string, ts.SourceFile>, readers = READER_FLOOR): TreeFinding[] {
-  const parsed = [...sources].filter(([path]) => !TEST_PATH.test(path));
-  const census: Census = { typed: new Set(), tagged: new Map(), variants: [] };
-  const declared = parsed.flatMap(([path, file]) => declaredIn(path, file, census));
+/** Every declared set of the files, and every string literal a type spells anywhere in them. */
+function censusOf(parsed: ReadonlyMap<string, ts.SourceFile>): Pick<Census, "typed" | "local"> & {
+  declared: Declared[];
+} {
+  const census: Census = { typed: new Set(), tagged: new Map(), variants: [], local: [] };
+  const declared = [...parsed].flatMap(([path, file]) => declaredIn(path, file, census));
   declared.push(...census.variants.flatMap((one) => discriminated(one, census.tagged)));
+  return { declared, typed: census.typed, local: census.local };
+}
+
+/** Every declared set of states grouped by hand in other files, over the files a census read. */
+function stateLiterals(
+  sources: ReadonlyMap<string, ts.SourceFile>,
+  { declared, typed }: ReturnType<typeof censusOf>,
+  readers: number,
+): TreeFinding[] {
+  const parsed = [...sources];
   const groupings = parsed.flatMap(([path, file]) => groupingsIn(path, file));
   const owned = new Map<Declared, Grouping[]>();
   for (const grouping of groupings) {
@@ -484,7 +516,7 @@ function stateLiterals(sources: ReadonlyMap<string, ts.SourceFile>, readers = RE
     };
     found.push({ row, set: { values: owner.values, subjects: groupedBy.map((one) => one.subject) } });
   }
-  found.push(...unownedLiterals(groupings, census.typed, readers));
+  found.push(...unownedLiterals(groupings, typed, readers));
   const stateful = statefulSets(
     new Map(parsed),
     found.map((one) => one.set),
@@ -512,7 +544,13 @@ export function implicitStateFindings(
 ): TreeFinding[] {
   const parsed = parsedSources(files);
   const owned = new Map([...parsed].filter(([path]) => !TEST_PATH.test(path)));
-  return [...stateLiterals(parsed, readers), ...repeatedExternalReads(parsed), ...secondReaders(owned)];
+  const sets = censusOf(owned);
+  return [
+    ...stateLiterals(owned, sets, readers),
+    ...repeatedExternalReads(parsed),
+    ...secondReaders(owned),
+    ...partialMappings(owned, sets.declared, sets.local),
+  ];
 }
 
 /** Every TypeScript file under a folder that the scan reads, by its path relative to the folder. */

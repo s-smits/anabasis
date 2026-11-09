@@ -105,6 +105,18 @@ export function clearOnce(store: { open: boolean; dirty: boolean }) {
   store.open = false;
   store.dirty = false;
 }
+export function nodes(flags: number, notes: string[]) {
+  return [
+    { ...(notes.length > 0 ? { notes } : {}), sync: (flags & 1) === 1, id: null }, // ADMITTED a spread of a fresh object updates no state
+    { ...(notes.length > 0 ? { notes } : {}), sync: false, id: flags },
+    { ...(notes.length > 0 ? { notes } : {}), sync: (flags & 2) === 2, id: null },
+  ];
+}
+export function reduce(view: { dragging: boolean; typing: boolean }, action: string) {
+  if (action === "drag") return { ...view, dragging: true, typing: false }; // REPORT a reducer's mode over the state it spreads
+  if (action === "type") return { ...view, dragging: false, typing: true };
+  return { ...view, dragging: false, typing: false };
+}
 `;
 
 const UNCOUNTED_MODES = `export class Tool {
@@ -272,7 +284,7 @@ describe("the implicit-state rules", () => {
     await lintRules("implicit-state", [
       ["mtime-as-lock", LOCKS, 4, "src/locks.ts"],
       ["files-as-phase", PHASES, 3, "src/phases.ts"],
-      ["co-assigned-flags", MODES, 2, "src/modes.tsx"],
+      ["co-assigned-flags", MODES, 3, "src/modes.tsx"],
       ["co-assigned-flags", UNCOUNTED_MODES, 3, "src/shapes.ts"],
       ["co-assigned-flags", MODES, 0, "src/four.tsx", { fields: 4 }],
       ["co-assigned-flags", MODES, 0, "src/many.tsx", { writes: 5 }],

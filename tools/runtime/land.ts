@@ -91,6 +91,10 @@
  * commits proved first, its old top's whole gate among them. `--jobs N` gates up to N commits at once; the
  * top's whole CI gate runs alone.
  *
+ * What moves behind a landing's back is followed: a moved parent is replayed first (`restack`), a
+ * move under a commit being proved stops the proofs (`watching`), and a newer landing ends a covered
+ * one (`claimOf`).
+ *
  * `ci.yml` is waited for in the open: the top's head carries a status of that name, pending while
  * the run goes and linked to it, since a dispatched run shows on no pull request, and on 28 October
  * a landing that reused a passed run read as one that merged without CI. A failed run brings its
@@ -139,7 +143,8 @@ import {
   proveCommits,
   short,
 } from "./gate.ts";
-import { holdAlone, sayingPulls } from "./landing.ts";
+import { claimOf, holdAlone, sayingPulls, watching } from "./landing.ts";
+import { movedFrom, movesOf, pushMoves, Unreplayable } from "./restack.ts";
 
 interface Landing {
   readonly trunk: string;
@@ -179,6 +184,8 @@ const CI_UNTAKEN = String.raw`[.jobs[] | select(.conclusion != "success")] | sel
 const CI_TAIL = 40;
 /** How many times a landing reads its chain again after a head moved, before it refuses. */
 const MOVES = 3;
+/** How often a landing reads its chain while commits are proved. */
+const WATCH_MS = Number(runtimeProcess.env.ANA_LAND_WATCH_MS) || 60_000;
 /** A stack's merge is queued on GitHub's side and read back until it ends; stack 160's took a
  *  second. ANA_CI_POLL_MS shortens the poll for the tests as for `ci.yml`. */
 const STACK_POLL_MS = Number(runtimeProcess.env.ANA_CI_POLL_MS) || 2000;
@@ -205,9 +212,6 @@ export const CATEGORIES = new Set([
 const USAGE =
   "usage: bun run land -- [<pull request>] [--auto] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]";
 const TAG = /^v\d+\.\d+\.\d+$/u;
-/** The one command that replays a stack onto the trunk once what it stood on has landed. */
-const REPLAY = (top: number): string =>
-  `replay the stack onto it with \`bun .claude/skills/stack-pr/scripts/republish.ts --onto-main ${String(top)} --yes\``;
 
 class Refusal extends Error {}
 /** A head moved while the landing was proved. Passes are remembered by tree, so landing again costs
@@ -240,7 +244,8 @@ function readLanding(root: string, target: number): Landing {
   if (bottom.baseRefName !== trunk) {
     throw new Refusal(
       `#${String(bottom.number)} (${bottom.headRefName}) is based on ${bottom.baseRefName}, which is neither ${trunk} ` +
-        `nor an open pull request's head. Where what it stood on has landed, ${REPLAY(target)}; otherwise base ` +
+        `nor an open pull request's head. Where what it stood on has landed, replay the stack onto it with ` +
+        `\`bun .claude/skills/stack-pr/scripts/republish.ts --onto-main ${String(target)} --yes\`; otherwise base ` +
         `it on what it stacks on, and land again.`,
     );
   }
@@ -286,12 +291,9 @@ function checkChain(root: string, landing: Landing): void {
   let below = { name: `${landing.trunk}'s head`, sha: landing.trunkSha };
   for (const pull of landing.pulls) {
     if (!gitSays(root, ["merge-base", "--is-ancestor", below.sha, pull.headRefOid])) {
-      const how =
-        pull === landing.pulls[0]
-          ? `${REPLAY(landing.top.number)} and land again`
-          : `Replay it and every pull request above it on what is beneath it, push them together, and land again`;
       throw new Refusal(
-        `#${String(pull.number)} (${pull.headRefName}) does not contain ${below.name} ${short(below.sha)}. ${how}.`,
+        `#${String(pull.number)} (${pull.headRefName}) does not contain ${below.name} ${short(below.sha)}; ` +
+          "--sanitize or --merge replays it.",
       );
     }
     below = { name: `#${String(pull.number)}'s head`, sha: pull.headRefOid };
@@ -505,13 +507,34 @@ function checkListed(root: string, target: number, landing: Landing): void {
 /** Refuses a proof whose chain has moved before a commit's proof starts or a success is published. */
 function checkCurrent(root: string, target: number, landing: Landing): void {
   const again = readLanding(root, target);
-  checkChain(root, again);
-  if (
-    again.pulls.map((pull) => pull.headRefOid).join(",") !==
-    landing.pulls.map((pull) => pull.headRefOid).join(",")
-  ) {
-    throw new Moved("a pull request's head moved while its commits were gated.");
+  if (movedFrom(again.open, landing.pulls) !== -1 || again.trunkSha !== landing.trunkSha) {
+    throw new Moved("a pull request's head or the trunk moved while its commits were gated.");
   }
+  checkChain(root, again);
+}
+
+/** `landing`, each pull request up to the stack top whose parent moved replayed onto it and pushed
+ *  (operator, 9 November: "restack everything that is sequentially on top of that again"), with
+ *  `--sanitize` or `--merge`; otherwise `checkChain` refuses a chain that needs it. */
+function restack(root: string, target: number, landing: Landing, mode: Mode): Landing {
+  if (!mode.merge && !mode.sanitize) return landing;
+  const above = chainAbove(landing.open, landing.top);
+  if (above.length > 0) git(root, ["fetch", "-q", "origin", ...above.map((pull) => pull.headRefOid)]);
+  let moves: ReturnType<typeof movesOf>;
+  try {
+    moves = movesOf(root, [...landing.pulls, ...above], landing.trunkSha);
+  } catch (error) {
+    if (!(error instanceof Unreplayable)) throw error;
+    throw new Refusal(`${error.message}, push it, and land again.`);
+  }
+  if (moves.length === 0) return landing;
+  const said = moves.map(
+    ({ pull, to }) => `#${String(pull.number)} ${short(pull.headRefOid)} -> ${short(to)}`,
+  );
+  say(`replaying what moved beneath: ${said.join(", ")}.`);
+  const refused = pushMoves(root, moves, say);
+  if (refused !== null) throw new Moved(`the restacked heads were not pushed (${refused}).`);
+  return readLanding(root, target);
 }
 
 /** Posts the required status on every head, then merges the top with the stack beneath it, and
@@ -602,10 +625,18 @@ function recipe(root: string, landing: Landing, commit: string): void {
 /** Whether a pull request was stacked on the landing's top since it was read. */
 const moved = (root: string, top: Pull): boolean => topAbove(openPulls(root), top).number !== top.number;
 
+/** What stops a landing's proofs where `open` shows a head moved at or beneath a commit `under` way. */
+function movedUnder(root: string, landing: Landing, under: readonly string[]): Moved | null {
+  const from = movedFrom(openPulls(root), landing.pulls);
+  const pull = landing.pulls[from];
+  if (pull === undefined || !under.some((commit) => holding(root, landing, commit) >= from)) return null;
+  return new Moved(`#${String(pull.number)} moved under a commit being proved.`);
+}
+
 /** Proves, and with `--merge` merges, the landing up to `target`; `moved` where `--auto` found a
  *  new top before the landing ended. */
 async function landTo(root: string, target: number, mode: Mode, board: Board): Promise<number | "moved"> {
-  const landing = readLanding(root, target);
+  const landing = restack(root, target, readLanding(root, target), mode);
   checkLabels(landing);
   checkChain(root, landing);
   const { top } = landing;
@@ -662,9 +693,17 @@ async function landTo(root: string, target: number, mode: Mode, board: Board): P
       green += 1;
     }
   };
+  const watch = watching(WATCH_MS, Refusal, () =>
+    movedUnder(
+      root,
+      landing,
+      [...proving].filter((commit) => !passed.has(commit)),
+    ),
+  );
   const failed = await proveCommits(root, proofs, {
     who: "land",
     jobs: mode.jobs,
+    stop: watch.signal,
     say: sayingPulls(proofs, landing.pulls, say),
     mark: (commit, state, description) => {
       if (state === "pending") {
@@ -683,7 +722,8 @@ async function landTo(root: string, target: number, mode: Mode, board: Board): P
       if (state === "success") passed.add(commit);
       greenUpTo();
     },
-  });
+  }).finally(watch.end);
+  if (watch.signal.aborted) throw watch.signal.reason;
   if (failed !== null) {
     const said = failed.verdict
       ? `fails ${failed.step} on its own`
@@ -743,8 +783,8 @@ async function main(argv: readonly string[]): Promise<number> {
     jobs,
     tag: values.tag ?? null,
   };
-  const alone = await holdAlone(root, "land", say);
   const board = statusBoard(root);
+  let alone = (): void => undefined;
   try {
     // A release the merge could not take is refused before anything is gated.
     // `--exit-code` exits 2 where origin holds no such ref; any other failure says nothing of the tag.
@@ -755,6 +795,7 @@ async function main(argv: readonly string[]): Promise<number> {
     if (tagged === 0) throw new Refusal(`${String(mode.tag)} is already a tag on origin.`);
     if (tagged !== 2) throw new Refusal(`origin could not be asked whether it holds ${String(mode.tag)}.`);
     let target = named ?? oldestStack(root);
+    alone = await holdAlone(root, "land", say, undefined, claimOf(root, target, mode));
     for (let moves = 0; ; ) {
       if (mode.auto) {
         const open = openPulls(root);

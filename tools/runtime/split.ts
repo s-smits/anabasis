@@ -56,6 +56,7 @@ import {
   stackHolding,
   trunkOf,
 } from "./pulls.ts";
+import { leasedPush } from "./restack.ts";
 
 /** The pull request a stack is split above, as `gh pr view --json` gives it. */
 interface Cut {
@@ -159,14 +160,7 @@ function split(root: string, number: number, yes: boolean): void {
     console.log("Nothing moved without --yes.");
     return;
   }
-  git(root, [
-    "push",
-    "--no-verify",
-    "--atomic",
-    ...moved.map(({ pull }) => `--force-with-lease=${pull.headRefName}:${pull.headRefOid}`),
-    "origin",
-    ...moved.map(({ pull, to }) => `${to}:refs/heads/${pull.headRefName}`),
-  ]);
+  git(root, leasedPush(moved, "no-verify"));
   console.log(`Pushed ${String(moved.length)} branches.`);
   const rebased = open.map((pull) =>
     holding.includes(pull) && pull.baseRefName === headRefName ? { ...pull, baseRefName: trunk } : pull,

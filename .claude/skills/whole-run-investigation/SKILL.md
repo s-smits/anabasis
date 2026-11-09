@@ -54,14 +54,17 @@ under `.ana/wri/<date>-<campaign>/` on the central host.
    another tree (the receipt, not the digest, gives the commit). Settle rows A to F.
 2. **Edit the shared instructions** (below). *Check:* no `##` section is blank and the hard rules
    remain.
-3. **Build the lanes.** `wri.ts lanes --out <dir> [--lanes 1-4,7] [--agents N]` writes
+3. **Build the lanes.** `wri.ts lanes --out <dir> [--lanes 1-4,7] [--agents N] [--regroup]` writes
    `<dir>/lanes/NN-prompt.md` and a manifest: `<dir>/launch.json` the first time, and
    `launch-NN[-NN...].json` by the lanes it built every later time, which the verb names. Without `--lanes` it opens every triggered lane
    and the seven standing lanes, and names, without building, each isolated lane whose trigger fired.
-   `--agents N` packs whole labels into N sessions of similar summed `Importance:`, and the verb
-   prints a suggested N (the most sessions whose lightest weighs at least half the heaviest). A prompt
-   built before is kept and left out of the new manifest. *Check:* exit 0; the sessions this call
-   built are the count to authorise, and if it built none, launch nothing.
+   The lanes go to `--agents N` sessions, 4 by default, each lane in exactly one; labels stay whole
+   unless the lightest session would weigh under three quarters of the heaviest by summed
+   `Importance:`, and the verb prints each session's weight. A prompt built before is kept and left
+   out of the new manifest. When the operator changes the number of groups, stop the sessions still
+   working and run `lanes --agents N --regroup`, which packs the lanes with no report yet into a new
+   manifest, their prompts unchanged. *Check:* exit 0; the sessions this call built are the count to
+   authorise, and if it built none, launch nothing.
 4. **Launch.** Each manifest is a [codex-gpt-swarm](../codex-gpt-swarm/SKILL.md) manifest
    (`gpt-sessions.ts --manifest <dir>/launch.json --output-dir <new dir> ...`, on the operator's
    model). A Claude session runs as the `wri-lane` agent type (`.claude/agents/wri-lane.md`,
@@ -87,7 +90,7 @@ source.
 | --- | --- | --- |
 | read | `read --log <log>` | nothing: rows, triggers and host line |
 | 1 | `start --log <log>[,<log>...] --out <dir> [--snapshot]` | `overview.md`, `shared-instructions.md`, `investigation.json` |
-| 3 | `lanes --out <dir> [--lanes 1-4,7] [--agents N]` | `lanes/NN-prompt.md`, `launch.json` |
+| 3 | `lanes --out <dir> [--lanes 1-4,7] [--agents N] [--regroup]` | `lanes/NN-prompt.md`, `launch.json` |
 | 5 | `collect --out <dir>` | `reports.md` |
 | 6 | `synthesis --out <dir>` | `synthesis-prompt.md` |
 | lanes 1, 4 | `grade --log <log> [--bundle <pack>] --task <taskId> --answer <file>` | nothing: one verdict line (`--bundle` only for a stored pack) |

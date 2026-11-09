@@ -284,6 +284,18 @@ export function afterNote(pid: number): boolean {
 }
 `;
 
+const GIT = `import { execFileSync } from "node:child_process";
+const git = (args: string[]): string => execFileSync("git", args, { encoding: "utf8" });
+export function commit(message: string): void {
+  git(["add", "."]);
+  git(["commit", "-m", message]);
+}
+export function head(): string {
+  const before = git(["rev-parse", "HEAD"]);
+  return before + git(["rev-parse", "HEAD"]);
+}
+`;
+
 const findings = (kind: string, files: Record<string, string>): string[] =>
   implicitStateFindings(new Map(Object.entries(files)))
     .filter((row) => row.kind === kind)
@@ -354,6 +366,12 @@ describe("repeated-external-read", () => {
       "src/runner.ts:3 src/runner.ts:3",
       "src/runner.ts:16 src/runner.ts:16",
       "src/runner.ts:35 src/runner.ts:35 src/runner.ts:37",
+    ]);
+  });
+
+  it("keys a wrapper's spawn by the argument list its caller passes, so two subcommands are two reads", () => {
+    expect(findings("repeated-external-read", { "src/git.ts": GIT })).toEqual([
+      "src/git.ts:8 src/git.ts:8 src/git.ts:9",
     ]);
   });
 

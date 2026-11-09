@@ -2,7 +2,7 @@
  * Lands a pull request, with every open one beneath it, on main, after proving each commit the
  * landing would publish where it sits.
  *
- *   bun run land -- [<pull request>] [--auto] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]
+ *   bun run land -- [<pull request>] [--auto] [--once] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]
  *
  * `--auto` follows the top: it lands the top of the longest chain above the pull request named, and
  * after the proof, and again after `ci.yml` before a merge, it reads the chain again and lands its
@@ -93,7 +93,8 @@
  *
  * What moves behind a landing's back is followed: a moved parent is replayed first (`restack`), a
  * move under a commit being proved stops the proofs (`watching`), and a newer landing ends a covered
- * one (`claimOf`).
+ * one (`claimOf`). Once it ends, it lands again each time the stack moves (`follow`), unless
+ * `--once` is named or it merges.
  *
  * `ci.yml` is waited for in the open: the top's head carries a status of that name, pending while
  * the run goes and linked to it, since a dispatched run shows on no pull request, and on 28 October
@@ -143,7 +144,7 @@ import {
   proveCommits,
   short,
 } from "./gate.ts";
-import { claimOf, holdAlone, sayingPulls, watching } from "./landing.ts";
+import { claimOf, follow, holdAlone, placesOf, sayingPulls, watching } from "./landing.ts";
 import { movedFrom, movesOf, pushMoves, Unreplayable } from "./restack.ts";
 
 interface Landing {
@@ -184,8 +185,6 @@ const CI_UNTAKEN = String.raw`[.jobs[] | select(.conclusion != "success")] | sel
 const CI_TAIL = 40;
 /** How many times a landing reads its chain again after a head moved, before it refuses. */
 const MOVES = 3;
-/** How often a landing reads its chain while commits are proved. */
-const WATCH_MS = Number(runtimeProcess.env.ANA_LAND_WATCH_MS) || 60_000;
 /** A stack's merge is queued on GitHub's side and read back until it ends; stack 160's took a
  *  second. ANA_CI_POLL_MS shortens the poll for the tests as for `ci.yml`. */
 const STACK_POLL_MS = Number(runtimeProcess.env.ANA_CI_POLL_MS) || 2000;
@@ -210,7 +209,7 @@ export const CATEGORIES = new Set([
   "docs",
 ]);
 const USAGE =
-  "usage: bun run land -- [<pull request>] [--auto] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]";
+  "usage: bun run land -- [<pull request>] [--auto] [--once] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]";
 const TAG = /^v\d+\.\d+\.\d+$/u;
 
 class Refusal extends Error {}
@@ -489,13 +488,6 @@ async function mergeStack(
   return { ended: "unsure", sha };
 }
 
-/** The open pull requests by number, base and head, which say whether any of them moved. */
-const placesOf = (pulls: readonly Pull[]): string =>
-  pulls
-    .map((pull) => `${String(pull.number)} ${pull.baseRefName} ${pull.headRefOid}`)
-    .toSorted()
-    .join("\n");
-
 /** `checkCurrent`, read in full only where GitHub's one list of open pull requests, about 0.8 s,
  *  differs from the landing's; the full reading adds the trunk's head, two fetches and the doubled
  *  lines, about 3 s. On 30 October a landing of 17 pull requests, every pass remembered, read the
@@ -693,7 +685,7 @@ async function landTo(root: string, target: number, mode: Mode, board: Board): P
       green += 1;
     }
   };
-  const watch = watching(WATCH_MS, Refusal, () =>
+  const watch = watching(Refusal, () =>
     movedUnder(
       root,
       landing,
@@ -756,6 +748,7 @@ async function main(argv: readonly string[]): Promise<number> {
       merge: { type: "boolean", default: false },
       sanitize: { type: "boolean", default: false },
       auto: { type: "boolean", default: false },
+      once: { type: "boolean", default: false },
       alone: { type: "boolean", default: false },
       jobs: { type: "string", default: "1" },
       tag: { type: "string" },
@@ -783,6 +776,12 @@ async function main(argv: readonly string[]): Promise<number> {
     jobs,
     tag: values.tag ?? null,
   };
+  const round = (): Promise<number> => landOnce(root, named, mode);
+  return values.once || mode.merge ? round() : follow(root, named, say, round);
+}
+
+/** One landing of `named`, or of the oldest stack, to its end; its exit status. */
+async function landOnce(root: string, named: number | null, mode: Mode): Promise<number> {
   const board = statusBoard(root);
   let alone = (): void => undefined;
   try {

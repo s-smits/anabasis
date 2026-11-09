@@ -40,7 +40,7 @@ const SEARCHED_FROM = 12;
 type Names = CampaignReading["names"];
 
 /** How the route names a card. */
-const routeName = (card: HarnessCard): string => (card.starter ? STARTER : (card.digest ?? STARTER));
+const routeName = (card: HarnessCard): string => (card.by === "starter" ? STARTER : (card.digest ?? STARTER));
 
 /** The selected card scrolled into its strip's view, sideways only: the page never moves for it. */
 function revealInStrip(button: HTMLButtonElement | null): void {
@@ -55,7 +55,8 @@ function revealInStrip(button: HTMLButtonElement | null): void {
 /** The card shown as selected: the route's, else the latest, else the last. */
 function selectedIndex(cards: readonly HarnessCard[], harness: string | null): number {
   const named = cards.findIndex(
-    (card) => (harness === STARTER && card.starter) || (card.digest !== null && card.digest === harness),
+    (card) =>
+      (harness === STARTER && card.by === "starter") || (card.digest !== null && card.digest === harness),
   );
   if (named !== -1) return named;
   const latest = cards.findIndex((card) => card.latest);
@@ -117,11 +118,12 @@ function Detail({
   of: Of;
   navigation: Navigation;
 }) {
-  const madeBy = card.starter
-    ? "pi's coding agent as released"
-    : card.imported
-      ? "imported"
-      : `Builder session ${card.session ?? "not recorded"}`;
+  const madeBy =
+    card.by === "starter"
+      ? "pi's coding agent as released"
+      : card.by === "imported"
+        ? "imported"
+        : `Builder session ${card.session ?? "not recorded"}`;
   const { digest, parent } = card;
   return (
     <div className="ana-harness-detail" id={PANEL_ID} aria-label="The selected harness">
@@ -136,7 +138,7 @@ function Detail({
           <dt>Made by</dt>
           <dd>{madeBy}</dd>
         </div>
-        {card.starter ? null : (
+        {card.by === "starter" ? null : (
           <div>
             <dt>Parent</dt>
             <dd>{parent === null ? "none recorded" : digestText(parent, names)}</dd>
@@ -202,8 +204,8 @@ function Detail({
 function Face({ card, names }: { card: HarnessCard; names: Names }) {
   const last = card.comparedIn.at(-1);
   const letter = card.digest === null ? undefined : names[card.digest];
-  const name = card.starter ? STARTER_NAME : (letter ?? short(card.digest ?? ""));
-  const uncompared = card.starter ? "the first reference" : `kept ${time(card.at)}`;
+  const name = card.by === "starter" ? STARTER_NAME : (letter ?? short(card.digest ?? ""));
+  const uncompared = card.by === "starter" ? "the first reference" : `kept ${time(card.at)}`;
   const roles = [
     card.reference ? (
       <Badge key="reference" tone="info">
@@ -211,7 +213,7 @@ function Face({ card, names }: { card: HarnessCard; names: Names }) {
       </Badge>
     ) : null,
     card.latest ? <Badge key="latest">latest</Badge> : null,
-    card.imported ? <Badge key="imported">imported</Badge> : null,
+    card.by === "imported" ? <Badge key="imported">imported</Badge> : null,
     card.broken === null ? null : (
       <Badge key="broken" tone="bad">
         does not open
@@ -221,10 +223,12 @@ function Face({ card, names }: { card: HarnessCard; names: Names }) {
   return (
     <>
       <span
-        className={letter === undefined && !card.starter ? "ana-harness-name is-digest" : "ana-harness-name"}
+        className={
+          letter === undefined && card.by !== "starter" ? "ana-harness-name is-digest" : "ana-harness-name"
+        }
       >
         {name}
-        {card.digest === null || (letter === undefined && !card.starter) ? null : (
+        {card.digest === null || (letter === undefined && card.by !== "starter") ? null : (
           <span className="ana-harness-hash">{short(card.digest)}</span>
         )}
       </span>

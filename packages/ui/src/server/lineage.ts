@@ -118,10 +118,9 @@ export const harnessesIn = once((log): HarnessCard[] => {
       parent: kept?.parent ?? null,
       session: kept?.session ?? null,
       at: kept?.at ?? null,
-      starter: kept === null,
+      by: kept === null ? "starter" : kept.by,
       reference: digest === null ? campaign.reference === null : digest === reference,
       latest: digest !== null && digest === campaign.latest,
-      imported: kept?.by === "imported",
       broken: isString(finished?.broken) ? finished.broken : null,
       practice: {
         passed: practised.filter((solve) => passed(solve) === true).length,

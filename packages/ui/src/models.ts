@@ -756,6 +756,11 @@ export const TOKEN_PARAMETER = "token";
  *  `.`, `_` and `-` (`isSafePathSegment`), so no project can be spelled so. */
 export const NO_PROJECT = "No project recorded";
 
+/** Whether a solve's answer was rejected by a check, the one ending a ruling is made of. */
+export function isRejection(row: SolveRow): boolean {
+  return row.ending?.outcome === "fail" && row.ending.kind === "rejected";
+}
+
 export function shortHash(value: string | null | undefined, length = 12): string {
   if (!hasText(value)) return "not recorded";
   return value.length <= length ? value : `${value.slice(0, length)}…`;

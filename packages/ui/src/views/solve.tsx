@@ -5,11 +5,11 @@ import { RecordView } from "../components/record.tsx";
 import { Trace } from "../components/trace.tsx";
 import { detailsOf, type Live, useSolve } from "../live.ts";
 import type { CampaignReading, SolveDetail } from "../models.ts";
-import { shortHash } from "../models.ts";
+import { isRejection, shortHash } from "../models.ts";
 import type { Navigation, RouteChange } from "../route.ts";
 import { AnswerIssues, DetailHead, EndingBadge, harnessLabel, Pending, sideLabel } from "./drill.tsx";
 import { money, seconds } from "./format.ts";
-import { isRejection, RulingBadge } from "./solve-rows.tsx";
+import { RulingBadge } from "./solve-rows.tsx";
 
 /*
  * One solve: what it was (its task, its side, its harness), how it ended, and its trace, the last

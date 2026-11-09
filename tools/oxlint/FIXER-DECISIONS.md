@@ -104,6 +104,14 @@ the same guessed interval, and the rule would have stopped asking about it.
 A report with no fixer is a working outcome and the majority outcome: the author is told exactly
 what is wrong and makes the call.
 
+## The implicit-state rules: the repair is an owner
+
+`implicit-state` (`excessive-bools`, `files-as-phase`, `mtime-as-lock`) reports and never fixes,
+and each rule says so in its head comment. Every finding asks for an owner of a state that has
+none: the union the flags stand for, the record of a process's phase, the holder of a lock. Which
+states exist and where their owner lives is a design the rule cannot read off the syntax, so no
+edit is correct by construction (condition 1 fails at once).
+
 ## A fixer's finding has no answer
 
 A report-only finding a reader judges wrong is answered once in `tools/oxlint/not-slop.tsv`, with

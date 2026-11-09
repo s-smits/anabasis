@@ -1,6 +1,7 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
 import { crossings } from "../shared/crossed.ts";
+import { identifierName, propertyName } from "../shared/statements.ts";
 
 /**
  * A call that passes two arguments the wrong way round, where the compiler cannot say so.
@@ -62,15 +63,6 @@ function isCallable(node: ESTree.Node | null | undefined): node is Callable {
 /** The written name of a property or method key, or null for a computed or literal one. */
 function keyName(key: ESTree.Node, computed: boolean): string | null {
   return !computed && key.type === "Identifier" ? key.name : null;
-}
-
-/** The name an argument carries: a bare identifier, or the property that ends a member read. */
-function argumentName(arg: ESTree.Node): string | null {
-  if (arg.type === "Identifier") return arg.name;
-  if (arg.type === "MemberExpression" && !arg.computed && arg.property.type === "Identifier") {
-    return arg.property.name;
-  }
-  return null;
 }
 
 /** The constructor of a class, where it declares one. */
@@ -173,7 +165,7 @@ export const noTransposedArgumentRule = defineRule({
 
     function check(node: ESTree.CallExpression | ESTree.NewExpression, callable: Callable | null): void {
       if (callable === null || node.arguments.some((arg) => arg.type === "SpreadElement")) return;
-      const names = node.arguments.map(argumentName);
+      const names = node.arguments.map((arg) => identifierName(arg) ?? propertyName(arg));
       const params = callable.params.map(parameterName);
       for (const crossing of crossings(names, params)) {
         const given = crossing.map((i) => `\`${names[i] ?? ""}\` at \`${params[i] ?? ""}\``).join(", ");

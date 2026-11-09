@@ -1,0 +1,17 @@
+{
+  "jsPlugins": [
+    {
+      "name": "implicit-state",
+      "specifier": "./implicit-state/index.ts"
+    }
+  ],
+  "categories": {
+    "correctness": "off"
+  },
+  "ignorePatterns": ["**/vendor/**", "**/node_modules/**", "**/*.d.ts"],
+  "rules": {
+    "implicit-state/excessive-bools": "warn",
+    "implicit-state/files-as-phase": "warn",
+    "implicit-state/mtime-as-lock": "warn"
+  }
+}

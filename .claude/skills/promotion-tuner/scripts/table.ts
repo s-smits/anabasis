@@ -27,8 +27,8 @@
  * What a group is. Runs are compared by what they ran on, never by the number of the pull request
  * that stacked their code: a stack's numbers mean nothing from one cycle to the next. A run's
  * **release** is the release tag before its first launch, `after v0.7.4` being the cycle that built
- * the next release (a campaign with no receipt is placed by its first event). Its **pack** is the
- * first word of its name, which `runs fresh` sets to the pack's, and its **setting** is the solver,
+ * the next release (a campaign with no receipt is placed by its first event). Its **pack** is read
+ * from its name by `packOf` (`tools/runs/registry.ts`), and its **setting** is the solver,
  * its effort and the solve limits of `campaign.setting`. Results are never compared across settings
  * (AGENTS.md section 9), so the default groups by all three; `--by release` pools them and says how
  * many settings it pooled. `--has` and `--holds` keep the runs whose every launch ran with a
@@ -78,6 +78,7 @@ import { errorMessage } from "#src/meta/runtime-values.ts";
 import { median } from "#src/meta/tally.ts";
 import { validityOf } from "#tools/d2/close.ts";
 import { ranWith, receipts } from "#tools/runs/receipt.ts";
+import { packOf } from "#tools/runs/registry.ts";
 import { overloadOf, waitedMs, waitsOf } from "#tools/wri/time.ts";
 import { campaignLogs, type Found, rehearsed } from "./tree.ts";
 
@@ -378,7 +379,7 @@ function runOf(
     name: found.name,
     host: found.archived ?? "here",
     release: tag === undefined ? `before ${tags[0]?.name ?? "the first release"}` : `after ${tag.name}`,
-    pack: found.name.split("-")[0] ?? found.name,
+    pack: packOf(found.name),
     setting: settingOf(events),
     cores: launch?.cores ?? null,
     ...machineOf(events),

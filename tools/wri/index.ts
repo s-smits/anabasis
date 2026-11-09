@@ -41,7 +41,7 @@ import { compareCodeUnits } from "#src/meta/stable-json.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural, textOr } from "#src/meta/text.ts";
 import { epochsOf } from "#src/campaign/climb.ts";
-import { isCampaign, logEvents, type Run } from "../runs/registry.ts";
+import { isCampaign, logEvents, packOf, type Run } from "../runs/registry.ts";
 import {
   forkOf,
   idsOf,
@@ -199,10 +199,6 @@ function campaignsOf(dir: string): string[] {
   return [...overview.matchAll(/^## (\S+)$/gmu)].flatMap(([, name]) => name ?? []);
 }
 
-/** A campaign's pack, from its name: what stands before `-fresh-`, else its first word. */
-const groupOf = (name: string): string =>
-  name.includes("-fresh-") ? name.slice(0, name.indexOf("-fresh-")) : (name.split("-")[0] ?? name);
-
 /** The merged findings by outcome: section 3's first table with an `outcome` column, by the first
  *  word of each row's outcome. */
 function findingsOf(synthesis: string): Counts | null {
@@ -323,7 +319,7 @@ function counted(counts: Counts | null, names?: readonly string[]): string {
 
 function campaignsText(campaigns: readonly string[]): string {
   if (campaigns.length === 0) return "none named";
-  const groups = Object.groupBy(campaigns, groupOf);
+  const groups = Object.groupBy(campaigns, packOf);
   return Object.entries(groups)
     .map(([group, names = []]) => {
       const shown = names.slice(0, NAMES_SHOWN).map((name) => `\`${name}\``);
@@ -359,7 +355,7 @@ function rowOf(entry: Entry): string {
 function groupsText(entries: readonly Entry[]): string {
   const byGroup = new Map<string, Entry[]>();
   for (const entry of entries.toReversed()) {
-    for (const group of new Set(entry.campaigns.map(groupOf))) {
+    for (const group of new Set(entry.campaigns.map(packOf))) {
       byGroup.set(group, [...(byGroup.get(group) ?? []), entry]);
     }
   }

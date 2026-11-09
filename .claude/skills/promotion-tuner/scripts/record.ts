@@ -18,6 +18,7 @@ import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
+import { packOf } from "#tools/runs/registry.ts";
 import { AT, campaignLogs, rehearsed } from "./tree.ts";
 
 /** One counted solve of one side. */
@@ -40,7 +41,7 @@ export interface Task {
 
 export interface Comparison {
   readonly campaign: string;
-  /** The first word of the campaign's name, as `table.ts` reads a pack. */
+  /** The campaign's pack, read from its name by `packOf`. */
   readonly pack: string;
   /** When the campaign opened, in milliseconds. */
   readonly opened: number;
@@ -169,7 +170,7 @@ export function comparisonsIn(name: string, events: readonly LogEvent[]): Compar
     return [
       {
         campaign: name,
-        pack: name.split("-")[0] ?? name,
+        pack: packOf(name),
         opened,
         session: report.session,
         kind: fresh === starter ? "starter" : "candidate",

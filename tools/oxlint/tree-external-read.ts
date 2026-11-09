@@ -89,6 +89,7 @@ const FILE_READS = new Set([
   "readJSONSync",
 ]);
 const LISTS = new Set(["readdirSync", "readdir"]);
+const OPTION_KEYS = new Set(["cwd", "input", "stdin", "env"]);
 const BODY_READS = new Set(["text", "json", "bytes", "arrayBuffer"]);
 const PATH_JOINS = new Set(["join", "resolve"]);
 const SPAWN_MODULE = /^(?:node:)?child_process$/u;
@@ -255,8 +256,9 @@ function nameOf(call: ts.CallExpression): string | null {
 function argvOf(call: ts.CallExpression, scope: Scope): string | null {
   const local = (node: ts.Expression | undefined): ts.Expression | undefined =>
     node !== undefined && ts.isIdentifier(node) ? (scope.locals.get(node.text) ?? node) : node;
-  const [first, second] = call.arguments.map(local);
+  const [first, second, third] = call.arguments.map(local);
   let argv: string | null = null;
+  let settings = first;
   if (first !== undefined && ts.isObjectLiteralExpression(first)) {
     const cmd = first.properties.find((one) => ts.isPropertyAssignment(one) && one.name.getText() === "cmd");
     argv = cmd !== undefined && ts.isPropertyAssignment(cmd) ? spelled(cmd.initializer, scope) : null;
@@ -271,8 +273,22 @@ function argvOf(call: ts.CallExpression, scope: Scope): string | null {
       (!ts.isArrayLiteralExpression(second) && /^exec(?:Sync)?$/u.test(nameOf(call) ?? ""));
     const rest = options ? "" : (spelled(second, scope) ?? UNKNOWN);
     argv = `${spelled(first, scope) ?? UNKNOWN} ${rest}`;
+    settings = options ? second : third;
   }
-  const words = (argv ?? "").split(/\s+/u).filter((word) => word !== "");
+  // The folder, input and environment a spawn's options set key it too; one not spelled leaves it unkeyed.
+  const set = (one: ts.ObjectLiteralElementLike): string => {
+    const value = ts.isPropertyAssignment(one) ? spelled(one.initializer, scope) : null;
+    return value === null || ts.isSpreadAssignment(one) ? UNKNOWN : `${one.name.getText()}=${value}`;
+  };
+  const optionWords =
+    settings === undefined
+      ? []
+      : ts.isObjectLiteralExpression(settings)
+        ? settings.properties
+            .filter((one) => ts.isSpreadAssignment(one) || OPTION_KEYS.has(one.name.getText()))
+            .map(set)
+        : [UNKNOWN];
+  const words = [...(argv ?? "").split(/\s+/u), ...optionWords].filter((word) => word !== "");
   const kept = words.filter((word, index) => {
     const previous = words[index - 1] ?? "";
     const short = (one: string): boolean => one.startsWith("-") && !one.startsWith("--");

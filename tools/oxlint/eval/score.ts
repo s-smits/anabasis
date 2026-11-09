@@ -16,14 +16,7 @@
  * setting. `--hits` writes every hit as JSON Lines for adjudication, and `--items` lists each item with the
  * rules that hit it. `anabasis` defaults to the repository the command runs in.
  */
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  statSync,
-  writeFileSync,
-} from "#src/meta/filesystem.ts";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { gitText } from "#src/meta/git.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
@@ -50,7 +43,7 @@ import {
   treeName,
   treesOf,
 } from "./corpus.ts";
-import { DETECTOR_SOURCES, type Hit, NAMES, ruleHits, scanHits, STATE_LITERALS, tierOf } from "./detect.ts";
+import { detectorFiles, type Hit, NAMES, ruleHits, scanHits, STATE_LITERALS, tierOf } from "./detect.ts";
 import { clonedRepo, foreignRepos, fullCommit, treeOf } from "./trees.ts";
 
 /** The precision a rule's recommended threshold must reach, by tier. */
@@ -60,17 +53,11 @@ const LITERAL_KINDS = new Set([STATE_LITERALS, "tree/no-scattered-enum-literals"
 /** The width of a rule or class column: the longest id, `implicit-state-opinionated/max-boolean-fields`. */
 const ID_WIDTH = 46;
 
-/** Every file under a detector source, by its bytes, so an edit in the lint worktree re-runs. */
+/** Every detector file, by its bytes, so an edit in the lint worktree re-runs. */
 function detectorDigest(detectors: string): string {
-  const files = (path: string): string[] =>
-    statSync(path).isDirectory() ? readdirSync(path).flatMap((name) => files(join(path, name))) : [path];
-  const paths = DETECTOR_SOURCES.map((one) => join(detectors, one))
-    .filter((one) => existsSync(one))
-    .flatMap(files);
   return sha256(
-    paths
-      .toSorted()
-      .map((path) => `${path}\n${readFileSync(path, "utf8")}`)
+    detectorFiles(detectors)
+      .map((path) => `${path}\n${readFileSync(join(detectors, path), "utf8")}`)
       .join("\n"),
   ).slice(0, 16);
 }

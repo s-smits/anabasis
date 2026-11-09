@@ -9,12 +9,13 @@
  * threshold from one run, and is exact for any rule whose threshold is "more than N of something
  * its message counts".
  */
-import { readdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { isFunction, isNumber, isRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
+import { importsOf } from "../../runtime/gate.ts";
 import { OXLINT_BINARY } from "../../runtime/lint.ts";
 import { TREE_RULE_PREFIX } from "../not-slop-ledger.ts";
 import { PLUGINS } from "../plugins.ts";
@@ -101,15 +102,23 @@ const OPINIONATED_KIND = `${TREE_RULE_PREFIX}no-unowned-state-literals`;
 export const tierOf = (rule: string): Tier =>
   rule.startsWith("implicit-state-opinionated/") || rule === OPINIONATED_KIND ? "opinionated" : "generic";
 
-/** The detector sources whose bytes key a cached result. */
-export const DETECTOR_SOURCES = [
+/** The detectors the eval runs: both plugins and the tree scans' entry. */
+const DETECTOR_SOURCES = [
   ...PLUGINS_RUN.map((name) => `tools/oxlint/${name}`),
   "tools/oxlint/tree-implicit-state.ts",
-  "tools/oxlint/tree-external-read.ts",
-  "tools/oxlint/tree-overwritten-key.ts",
-  "tools/oxlint/tree-second-reader.ts",
-  "tools/oxlint/tree-partial-mapping.ts",
 ];
+
+/** The files of `root` whose bytes key a cached result: every detector file and every file of the
+ *  repository it imports, followed through each import (`importsOf`). */
+export function detectorFiles(root: string): string[] {
+  const under = (path: string): string[] =>
+    statSync(join(root, path)).isDirectory()
+      ? readdirSync(join(root, path)).flatMap((name) => under(join(path, name)))
+      : [path];
+  const reached = new Set(DETECTOR_SOURCES.filter((one) => existsSync(join(root, one))).flatMap(under));
+  for (const file of reached) for (const next of importsOf(root, file)) reached.add(next);
+  return [...reached].toSorted();
+}
 
 /** The count or word a sweep reads off a hit's message, or null where its rule has none. */
 function strengthOf(rule: string, message: string): number | string | null {

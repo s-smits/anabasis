@@ -374,6 +374,7 @@ question, repair the true ones, and answer a false one in the ledger as `tree/<k
 | `rule-without-fixture` | Add the fixture |
 | `stale-reference` | Point a path at where the thing lives now, or cite it as `<sha>:path` in a record of its time; document only a setting some code reads |
 | `state-literal-spread` | Name each grouping in the owner of the states (a predicate or a table) and call it |
+| `unowned-state-literal` | Declare the states once, with their groupings beside them (opinionated) |
 | `repeated-external-read` | Read once where the call paths join and pass the answer on |
 | `filesystem-import-budget` | None. It is a register: a file keeps its count of `filesystem.ts` imports, and a change adds at most one |
 
@@ -448,3 +449,15 @@ runs on any TypeScript tree; `bun tools/oxlint/tree-implicit-state.ts <root>` sc
 | `implicit-state/mtime-as-lock` | A file's age against a constant as the holder's liveness: ask the holder (a pid, a lease, an exclusive open) |
 | `tree/state-literal-spread` | Name each grouping of a declared union in its owner |
 | `tree/repeated-external-read` | Read once where the call paths join |
+
+The opinionated tier, `implicit-state-opinionated`, holds the stances that are right for a
+codebase that keeps one log and a record beside each name and contested elsewhere; its head comment
+names each stance and where it is contested. It is a separate plugin so that another tree can take
+the generic tier alone, and its rules are opinionated because they report more wrongly on foreign
+repositories, not because they matter less here.
+
+| Finding | Repair |
+| --- | --- |
+| `implicit-state-opinionated/name-encoded-state` | A captured group of a pattern applied to a name and read back: keep the fact in a field of the record the name labels |
+| `implicit-state-opinionated/state-file-overwrite` | Serialised structure written over a file: append it as an event, or derive the file from the log |
+| `tree/unowned-state-literal` | The same word-like literals grouped by hand in two or more files and declared nowhere: declare the states once |

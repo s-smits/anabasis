@@ -35,6 +35,7 @@ import { compareCodeUnits } from "../../src/meta/stable-json.ts";
 import anaPlugin from "./ana/index.ts";
 import antiSlopPlugin from "./anti-slop/index.ts";
 import implicitStatePlugin from "./implicit-state/index.ts";
+import implicitStateOpinionatedPlugin from "./implicit-state-opinionated/index.ts";
 
 /** The ledger, relative to the repository root every reader runs from. */
 export const NOT_SLOP_LEDGER = "tools/oxlint/not-slop.tsv";
@@ -57,6 +58,7 @@ const RULE_PLUGINS = new Map([
   ["ana", anaPlugin.rules],
   ["anti-slop", antiSlopPlugin.rules],
   ["implicit-state", implicitStatePlugin.rules],
+  ["implicit-state-opinionated", implicitStateOpinionatedPlugin.rules],
 ]);
 
 /** The rule that keeps this ledger the only store for a slop answer: answering it here would

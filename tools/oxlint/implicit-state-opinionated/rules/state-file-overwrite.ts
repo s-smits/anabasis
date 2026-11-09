@@ -1,6 +1,6 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
-import { identifierName, literalValue } from "../../ana/shared/statements.ts";
+import { identifierName, literalValue, memberObject } from "../../ana/shared/statements.ts";
 import { calleeName, innermost, isTestPath } from "../../implicit-state/shared/syntax.ts";
 
 /**
@@ -75,8 +75,7 @@ function replacesFile(call: ESTree.CallExpression, name: string): boolean {
   if (name !== "write") {
     return true;
   }
-  const callee = call.callee;
-  return callee.type === "MemberExpression" && identifierName(callee.object) === "Bun";
+  return identifierName(memberObject(call.callee)) === "Bun";
 }
 
 export const stateFileOverwriteRule = defineRule({

@@ -1,6 +1,6 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
-import { declaredBy } from "../../ana/shared/statements.ts";
+import { declaredBy, memberObject } from "../../ana/shared/statements.ts";
 import { calleeName, innermost, isTestPath } from "../shared/syntax.ts";
 
 /**
@@ -43,7 +43,8 @@ function fileTime(node: ESTree.Node): boolean {
   if (name === "Number" && bare.arguments[0] !== undefined) {
     return fileTime(bare.arguments[0]);
   }
-  return name === "getTime" && bare.callee.type === "MemberExpression" && fileTime(bare.callee.object);
+  const object = memberObject(bare.callee);
+  return name === "getTime" && object !== null && fileTime(object);
 }
 
 /**

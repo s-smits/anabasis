@@ -1,5 +1,6 @@
 import { eslintCompatPlugin } from "@oxlint/plugins";
 
+import { coAssignedFlagsRule } from "./rules/co-assigned-flags.ts";
 import { excessiveBoolsRule } from "./rules/excessive-bools.ts";
 import { filesAsPhaseRule } from "./rules/files-as-phase.ts";
 import { mtimeAsLockRule } from "./rules/mtime-as-lock.ts";
@@ -9,7 +10,8 @@ import { mtimeAsLockRule } from "./rules/mtime-as-lock.ts";
  * TypeScript tree with few false findings.
  *
  * An implicit state machine is a state whose value has no one typed owner. It is spread instead
- * over several booleans that admit combinations nobody means, over string literals each reader
+ * over several booleans that admit combinations nobody means, over fields whose writers keep at
+ * most one of them set, over string literals each reader
  * spells by hand, over which files exist in a folder, over what a name encodes, or over how old a
  * timestamp is. Each reader then re-derives the state its own way, the readers drift apart, and a
  * transition that happens between two of them (a crash between two writes, a slow holder past a
@@ -31,6 +33,7 @@ import { mtimeAsLockRule } from "./rules/mtime-as-lock.ts";
 const implicitStatePlugin = eslintCompatPlugin({
   meta: { name: "implicit-state" },
   rules: {
+    "co-assigned-flags": coAssignedFlagsRule,
     "excessive-bools": excessiveBoolsRule,
     "files-as-phase": filesAsPhaseRule,
     "mtime-as-lock": mtimeAsLockRule,

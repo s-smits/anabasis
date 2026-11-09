@@ -1,7 +1,7 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
 import { holdsProse, withoutProse } from "../shared/masked.ts";
-import { everyStatementList, onlyStatement } from "../shared/statements.ts";
+import { everyStatementList, onlyStatement, plainAssignment } from "../shared/statements.ts";
 
 /**
  * A `let` declared with one value and immediately overwritten in one branch is a `const` and a
@@ -109,10 +109,8 @@ export const preferConstConditionalRule = defineRule({
   createOnce(context) {
     /** The plain `=` assignment a statement is, or null when it assigns nothing. */
     function assignment(node: ESTree.Statement | null): { name: string; right: ESTree.Expression } | null {
-      if (node?.type !== "ExpressionStatement") return null;
-      const { expression } = node;
-      if (expression.type !== "AssignmentExpression" || expression.operator !== "=") return null;
-      if (expression.left.type !== "Identifier") return null;
+      const expression = plainAssignment(node);
+      if (expression?.left.type !== "Identifier") return null;
       return { name: expression.left.name, right: expression.right };
     }
 

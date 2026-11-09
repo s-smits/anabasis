@@ -24,6 +24,7 @@
         "widen": ["flags", "bindings"]
       }
     ],
+    "implicit-state/co-assigned-flags": "warn",
     "implicit-state/excessive-bools": "warn",
     "implicit-state/files-as-phase": "warn",
     "implicit-state/mtime-as-lock": "warn",

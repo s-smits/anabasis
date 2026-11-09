@@ -10,7 +10,9 @@
  * `bundle.ts`), so the digest and origin a score is read beside are the same. Of its four parts:
  * - the guide becomes `CLAUDE.md`, under a note that says what of a campaign's solve is not here;
  * - `.toolchain/` is copied to `scripts/toolchain/`, and the note names its program directories in
- *   the order a solve's shell searches them (`toolTreeSearchDirs`, `src/wall/isolation.ts`);
+ *   the order a solve's shell searches them (`toolTreeSearchDirs`, `src/wall/isolation.ts`), as
+ *   facts: it puts nothing ahead of the machine's own programs, since the 9 November pilot's line
+ *   that did so hid the machine's openpyxl, docx and matplotlib behind the harness's Python;
  * - `agent/tools-spec.json` and `agent/tools.ts` are dropped: Claude Code has its own tools and no
  *   loader for a harness's, so the note names each declared tool as unavailable, and `export.json`
  *   lists both files.
@@ -72,7 +74,7 @@ export async function exportForClaudeCode(
       ? []
       : [
           "",
-          `Its programs are in \`${TOOLCHAIN}/\`. Call one by its path, or begin a command with \`export PATH="${searched.map((dir) => `$PWD/${dir}`).join(":")}:$PATH";\`.`,
+          `Its programs are in \`${TOOLCHAIN}/\`, in ${searched.map((dir) => `\`${dir}\``).join(", ")}, and nothing puts them on your PATH. This machine's own programs, its \`python3\` among them, are on it as usual, and may hold packages the harness's interpreter lacks, or the reverse.`,
         ]),
     "",
   ];

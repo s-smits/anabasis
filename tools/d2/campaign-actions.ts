@@ -200,6 +200,11 @@ function actionTool(context: CampaignContext, bench: Bench, move: ActionMove, ru
   });
 }
 
+/** Whether a promotion is on record with no comparison started since. */
+const uncompared = (events: readonly LogEvent[]) =>
+  events.findLastIndex(({ kind }) => kind === "harness.promoted") >
+  events.findLastIndex(({ kind }) => kind === "comparison.started");
+
 /** The same admission for a model's call and the Examiner session the host starts for it. */
 async function runAction(
   context: CampaignContext,
@@ -230,10 +235,9 @@ async function runAction(
   // new reference, so the starter comparison it owes reads every task written for it (`heldSince`):
   // in the rehearsal of 5 November a compare before that read a second harness on the old
   // reference's tasks, and a step there would have promoted twice on one epoch's tasks.
-  const events = read(context.log);
-  const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
-  const compared = events.findLastIndex(({ kind }) => kind === "comparison.started");
-  if (move === "compare" && writing != null && promotedAt > compared) await bench.within(() => writing.done);
+  if (move === "compare" && writing != null && uncompared(read(context.log))) {
+    await bench.within(() => writing.done);
+  }
   if (context.failed !== null) return text("The campaign has been stopped by the host.");
   const { turn, decided } = actionTurn(context);
   if (decided.move === "end") {
@@ -361,7 +365,7 @@ const examineAction =
     return {
       // The count is where the session stops, not a size it reaches: the esp32 run of 7 November
       // asked 12 to 22 in 18 sessions and 0 of 17 ended holding that many.
-      said: `Examiner session ${session} is writing tasks beside this conversation${tasks === undefined ? "" : `, and stops once it holds ${plural(Number(tasks), "task")}`}: edit, practise and compare meanwhile. As it holds tasks the host releases the practice owed since the last reading.`,
+      said: `Examiner session ${session} is writing tasks beside this conversation${tasks === undefined ? "" : `, and stops once it holds ${plural(Number(tasks), "task")}`}: edit and practise meanwhile${uncompared(turn.events) ? "; a compare waits for this session to end, so that the comparison owed since the promotion reads every task it writes" : ", and compare"}. As it holds tasks the host releases the practice owed since the last reading.`,
     };
   };
 

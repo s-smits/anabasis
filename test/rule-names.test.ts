@@ -3,7 +3,7 @@
  * (`tools/oxlint/plugins.ts`).
  *
  * A rule's file, its folder and its plugin's map are the one record of it; every other list of
- * rules either reads that record or is held to it here. Adding `flag-count` once took eight hand
+ * rules either reads that record or is held to it here. Adding one rule once took eight hand
  * edits, each a second spelling of one name that nothing checked against the first, so a renamed
  * or deleted rule could leave a config entry that silently configures nothing, or a ledger row
  * that answers nothing. Each case names what drifted.
@@ -21,23 +21,6 @@ const REPO = resolve(import.meta.dirname, "..");
 const OXLINT = join(REPO, "tools/oxlint");
 /** How every rule and scan kind is named, and what its prefix makes it (HABITS 12.13). */
 const RULE_NAME = /^(?<kind>no|prefer|require|max)-(?<subject>[a-z]+(?:-[a-z]+)*)$/u;
-
-/** Names two other lanes are still editing, renamed in the commit that lands them: delete each as
- *  it goes, and this list with the last. */
-const PENDING = new Set([
-  "implicit-state/co-assigned-flags",
-  "implicit-state/files-as-phase",
-  "implicit-state/mtime-as-lock",
-  "implicit-state-opinionated/flag-count",
-  "implicit-state-opinionated/flags-as-state",
-  "implicit-state-opinionated/name-encoded-state",
-  "tree/enumeration-literal-spread",
-  "tree/partial-mapping",
-  "tree/repeated-external-read",
-  "tree/second-reader",
-  "tree/state-literal-spread",
-  "tree/unowned-state-literal",
-]);
 
 /** The documents that list rules by name, prefixed or in a table. */
 const DOCUMENTS = [
@@ -63,8 +46,7 @@ const read = (path: string): string => readFileSync(join(REPO, path), "utf8");
 
 describe("the names of the lint rules", () => {
   it("names every rule and scan for what it rejects or asks for, by no-, prefer-, require- or max-", () => {
-    expect([...KNOWN].filter((id) => !RULE_NAME.test(nameOf(id)) && !PENDING.has(id))).toStrictEqual([]);
-    expect([...PENDING].filter((id) => !KNOWN.has(id) || RULE_NAME.test(nameOf(id)))).toStrictEqual([]);
+    expect([...KNOWN].filter((id) => !RULE_NAME.test(nameOf(id)))).toStrictEqual([]);
   });
 
   it("registers each rule file under its own name, in the plugin its folder names", () => {

@@ -24,11 +24,11 @@
         "widen": ["flags", "bindings"]
       }
     ],
-    "implicit-state/co-assigned-flags": "warn",
-    "implicit-state/files-as-phase": "warn",
-    "implicit-state/mtime-as-lock": "warn",
-    "implicit-state-opinionated/flag-count": "warn",
-    "implicit-state-opinionated/flags-as-state": "warn",
-    "implicit-state-opinionated/name-encoded-state": "warn"
+    "implicit-state/no-coupled-flags": "warn",
+    "implicit-state/no-marker-file-state": "warn",
+    "implicit-state/no-age-based-lock": "warn",
+    "implicit-state-opinionated/max-boolean-fields": "warn",
+    "implicit-state-opinionated/prefer-state-union": "warn",
+    "implicit-state-opinionated/no-state-in-names": "warn"
   }
 }

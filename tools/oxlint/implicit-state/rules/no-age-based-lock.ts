@@ -94,7 +94,7 @@ function age(node: ESTree.Node): boolean {
   return bare.type === "BinaryExpression" && bare.operator === "-" && fileTime(bare.right);
 }
 
-export const mtimeAsLockRule = defineRule({
+export const noAgeBasedLockRule = defineRule({
   meta: {
     type: "suggestion",
     docs: {

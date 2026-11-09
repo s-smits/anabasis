@@ -105,7 +105,7 @@ function readsCapture(call: ESTree.Node, bindings: ReadonlyMap<string, readonly 
   return (bindings.get(parent.id.name) ?? []).some((read) => readsCapture(read, new Map()));
 }
 
-export const nameEncodedStateRule = defineRule({
+export const noStateInNamesRule = defineRule({
   meta: {
     type: "suggestion",
     docs: {

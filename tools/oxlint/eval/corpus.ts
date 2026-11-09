@@ -15,24 +15,11 @@ import { isNumber, isRecord, isString, type JsonValue } from "#src/meta/json-sha
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { join } from "#src/meta/path.ts";
-import type { Hit } from "./detect.ts";
+import { TREE_RULE_PREFIX } from "../not-slop-ledger.ts";
+import { PLUGINS } from "../plugins.ts";
+import { TREE_FINDING_ARGUMENTS } from "../tree-findings.ts";
+import { BOOLEAN_FIELDS, type Hit, STATE_LITERALS } from "./detect.ts";
 
-const CLASSES = [
-  "literal-spread",
-  "boolean-phase",
-  "files-as-phase",
-  "mtime-lock",
-  "name-encoded-state",
-  "repeated-external-read",
-  "second-store",
-  "multi-step-no-progress",
-  "second-reader",
-  "partial-mapping",
-  "non-atomic-claim",
-  "overwritten-state-file",
-  "co-assigned-flags",
-] as const;
-export type Class = (typeof CLASSES)[number];
 const SOURCES = [
   "census",
   "lead",
@@ -46,23 +33,30 @@ const SOURCES = [
 type Source = (typeof SOURCES)[number];
 type Label = "positive" | "negative";
 
-/** The class each rule is meant to find; recall is read against these. */
-export const RULE_CLASSES = new Map<string, readonly Class[]>([
-  ["flag-count", ["boolean-phase"]],
-  ["flags-as-state", ["boolean-phase"]],
-  ["files-as-phase", ["files-as-phase"]],
-  ["mtime-as-lock", ["mtime-lock"]],
-  ["name-encoded-state", ["name-encoded-state"]],
-  ["state-literal-spread", ["literal-spread"]],
-  ["unowned-state-literal", ["literal-spread"]],
-  // Groupings the scan reads as enumerations of kinds: its hits on a positive are state it set aside.
-  ["enumeration-literal-spread", []],
-  // Both literal-spread outputs together, as the scan read them before it set enumerations apart.
-  ["literal-spread-any", ["literal-spread"]],
-  ["repeated-external-read", ["repeated-external-read"]],
-  ["co-assigned-flags", ["co-assigned-flags"]],
-  ["second-reader", ["second-reader"]],
-  ["partial-mapping", ["partial-mapping"]],
+/** Every rule as its findings name it, a whole-tree scan's kind under `tree/`. */
+const RULES = new Set([
+  ...[...PLUGINS].flatMap(([plugin, { rules }]) => Object.keys(rules).map((rule) => `${plugin}/${rule}`)),
+  ...Object.keys(TREE_FINDING_ARGUMENTS).map((kind) => `${TREE_RULE_PREFIX}${kind}`),
+]);
+/** Shapes the corpus labels that no rule is meant to find yet. */
+const UNRULED = new Set([
+  "second-store",
+  "multi-step-no-progress",
+  "non-atomic-claim",
+  "overwritten-state-file",
+]);
+/** Both literal-grouping outputs together, as the scan read them before it set enumerations apart. */
+export const ANY_LITERALS = "tree/no-scattered-literals";
+/**
+ * An item's class is the id of the rule meant to find it, and recall is read against it. These
+ * rules are meant to find another's class; every other rule finds its own, so no item is labelled
+ * `tree/no-scattered-enum-literals`, whose groupings the scan reads as enumerations of kinds, and
+ * its hits on a positive are state it set aside.
+ */
+const FINDS = new Map([
+  [BOOLEAN_FIELDS, "implicit-state-opinionated/prefer-state-union"],
+  ["tree/no-unowned-state-literals", STATE_LITERALS],
+  [ANY_LITERALS, STATE_LITERALS],
 ]);
 const SLACK = 2;
 
@@ -83,7 +77,7 @@ export interface Item extends Range {
   /** A mutant of the commit's tree that `mutate.ts` names; its ranges are the edits it makes. */
   mutant?: string;
   also: readonly Range[];
-  class: Class;
+  class: string;
   label: Label;
   verdict: string;
   source: Source;
@@ -132,16 +126,13 @@ function rangeOf(value: JsonValue | undefined): Range | null {
   return isNumber(start) && isNumber(end) && start <= end ? { file: value.file, lines: [start, end] } : null;
 }
 
-const member = <T extends string>(list: readonly T[], value: JsonValue | undefined): T | null =>
-  list.find((one) => one === value) ?? null;
-
 /** One corpus line as an item, or an error naming what is wrong with it. */
 function itemOf(row: JsonValue, at: number): Item | string {
   if (!isRecord(row)) return `line ${String(at)}: not an object`;
   const { id, repo, commit, verdict, mutant, pair } = row;
   const range = rangeOf(row);
-  const klass = member(CLASSES, row.class);
-  const source = member(SOURCES, row.source);
+  const klass = isString(row.class) && (RULES.has(row.class) || UNRULED.has(row.class)) ? row.class : null;
+  const source = SOURCES.find((one) => one === row.source) ?? null;
   const label = row.label === "positive" || row.label === "negative" ? row.label : null;
   if (!isString(id) || !isString(repo) || !isString(commit) || !isString(verdict) || range === null) {
     return `line ${String(at)}: needs id, repo, commit, file, lines [start, end] and verdict`;
@@ -211,7 +202,7 @@ const lands = (hit: Hit, ranges: readonly Range[]): boolean =>
     ),
   );
 
-const targets = (rule: string, item: Item): boolean => (RULE_CLASSES.get(rule) ?? []).includes(item.class);
+const targets = (rule: string, item: Item): boolean => (FINDS.get(rule) ?? rule) === item.class;
 
 /** Adds one tree's hits of one rule to its score. */
 function tally(score: RuleScore, own: readonly Item[], ruled: readonly Hit[], tree: TreeHits): void {
@@ -263,11 +254,13 @@ export function scoreRules(
     scores.set(rule, fresh);
     return fresh;
   };
-  for (const rule of RULE_CLASSES.keys()) scoreOf(rule);
+  // Scored whether or not they hit: each rule a labelled class names, and each in `FINDS`.
+  const scored = [...items.map((item) => item.class).filter((klass) => RULES.has(klass)), ...FINDS.keys()];
+  for (const rule of scored) scoreOf(rule);
   for (const tree of trees) {
     const own = items.filter((item) => treeName(item) === treeName(tree.key));
     const hits = tree.hits.filter(keep);
-    for (const rule of new Set([...RULE_CLASSES.keys(), ...hits.map((hit) => hit.rule)])) {
+    for (const rule of new Set([...scored, ...hits.map((hit) => hit.rule)])) {
       tally(
         scoreOf(rule),
         own,
@@ -283,9 +276,11 @@ export function scoreRules(
 export function scoreClasses(
   items: readonly Item[],
   trees: readonly TreeHits[],
-): Map<Class, { positives: number; caught: number; missed: Item[] }> {
-  const out = new Map<Class, { positives: number; caught: number; missed: Item[] }>();
-  for (const klass of CLASSES) out.set(klass, { positives: 0, caught: 0, missed: [] });
+): Map<string, { positives: number; caught: number; missed: Item[] }> {
+  const out = new Map<string, { positives: number; caught: number; missed: Item[] }>();
+  for (const klass of new Set(items.map((item) => item.class).toSorted())) {
+    out.set(klass, { positives: 0, caught: 0, missed: [] });
+  }
   for (const tree of trees) {
     for (const item of items.filter(
       (one) => one.label === "positive" && treeName(one) === treeName(tree.key),

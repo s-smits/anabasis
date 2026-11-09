@@ -1,5 +1,5 @@
 /**
- * `partial-mapping` (`tools/oxlint/tree-partial-mapping.ts`): a lookup `Map`, read with a computed
+ * `require-exhaustive-mapping` (`tools/oxlint/tree-partial-mapping.ts`): a lookup `Map`, read with a computed
  * key, that maps most of an exported set and leaves the rest out, or maps the whole set while no
  * type holds it there. The fixture is a small job runner. Beside the two reports sit their nearest
  * hostile cases: the same table held by `satisfies` or by an annotation, a table read only with
@@ -52,9 +52,9 @@ const rows = implicitStateFindings(
     ["src/labels.ts", LABELS],
     ["src/pick.ts", PICK],
   ]),
-).filter((row) => row.kind === "partial-mapping");
+).filter((row) => row.kind === "require-exhaustive-mapping");
 
-describe("partial-mapping", () => {
+describe("require-exhaustive-mapping", () => {
   it("is reported on a table that leaves part of its set out and on a Map nothing holds to its set", () => {
     expect(rows.map((row) => `${row.path}:${String(row.line)}`)).toEqual([
       "src/labels.ts:2",

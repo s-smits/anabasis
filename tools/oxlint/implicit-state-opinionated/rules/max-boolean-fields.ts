@@ -34,7 +34,7 @@ import { calleeName, isTestPath } from "../../implicit-state/shared/syntax.ts";
  * parameter list of three or more flags was a state spelled as flags in 4 of 8 labelled hits on
  * this repository, 3 of 5 on vite and 3 of 9 on excalidraw, since most records of flags elsewhere
  * hold independent options; at Clippy's four or more it was 1 of 5 here. So `max` defaults to 2.
- * The shapes (flags a class's methods move, a flag derived from two others) are `flags-as-state`.
+ * The shapes (flags a class's methods move, a flag derived from two others) are `prefer-state-union`.
  *
  * A member typed as one literal (`procedure: true`, `declare isNamespace: true`) is a brand or a
  * discriminant, and a `readonly` field given a literal (`readonly isCluster = false`) is a constant,
@@ -114,7 +114,7 @@ function threshold(option: JsonValue | undefined, fallback: number): number | nu
   return isNumber(option) ? option : fallback;
 }
 
-export const flagCountRule = defineRule({
+export const maxBooleanFieldsRule = defineRule({
   meta: {
     type: "suggestion",
     docs: {

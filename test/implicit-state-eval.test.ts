@@ -24,9 +24,11 @@ import { foreignRepos } from "../tools/oxlint/eval/trees.ts";
 import type { JsonValue } from "#src/meta/json-shape.ts";
 
 const COMMIT = "a".repeat(40);
+const LOCK = "implicit-state/no-age-based-lock";
+const PHASE = "implicit-state/no-marker-file-state";
 const LATER = "b".repeat(40);
 
-/** One corpus line: a positive mtime-lock item at lines 10 to 12, with `fields` laid over it. */
+/** One corpus line: a positive `LOCK` item at lines 10 to 12, with `fields` laid over it. */
 const row = (id: string, fields: Readonly<Partial<Record<string, JsonValue>>>): string =>
   capturedJsonStringify({
     id,
@@ -34,7 +36,7 @@ const row = (id: string, fields: Readonly<Partial<Record<string, JsonValue>>>): 
     commit: COMMIT,
     file: "src/a.ts",
     lines: [10, 12],
-    class: "mtime-lock",
+    class: LOCK,
     label: "positive",
     verdict: "A file's age decides whether its holder lives.",
     source: "synthetic",
@@ -57,7 +59,7 @@ const corpus: Item[] = parseCorpus(
   [
     row("lock", {}),
     row("age-filter", { lines: [40, 40], label: "negative" }),
-    row("phase-files", { lines: [70, 70], class: "files-as-phase", label: "negative" }),
+    row("phase-files", { lines: [70, 70], class: PHASE, label: "negative" }),
   ].join("\n"),
 );
 
@@ -81,9 +83,7 @@ describe("parseCorpus", () => {
 
 describe("scoreRules", () => {
   it("counts a hit on a positive as true and one on an own-class negative as false", () => {
-    const score = scoreRules(corpus, [tree([hit("mtime-as-lock", 11), hit("mtime-as-lock", 41)])]).get(
-      "mtime-as-lock",
-    );
+    const score = scoreRules(corpus, [tree([hit(LOCK, 11), hit(LOCK, 41)])]).get(LOCK);
     expect(
       score && [
         score.caught,
@@ -98,33 +98,33 @@ describe("scoreRules", () => {
   });
 
   it("leaves a hit on another class's negative unlabelled rather than false", () => {
-    const score = scoreRules(corpus, [tree([hit("mtime-as-lock", 70)])]).get("mtime-as-lock");
+    const score = scoreRules(corpus, [tree([hit(LOCK, 70)])]).get(LOCK);
     expect(score && [score.falsePositiveHits, score.unlabelled.length]).toEqual([0, 1]);
   });
 
   it("lists an unlabelled site once although two trees hold it", () => {
-    const later = tree([hit("mtime-as-lock", 200)], LATER);
-    const score = scoreRules(corpus, [tree([hit("mtime-as-lock", 200)]), later]).get("mtime-as-lock");
+    const later = tree([hit(LOCK, 200)], LATER);
+    const score = scoreRules(corpus, [tree([hit(LOCK, 200)]), later]).get(LOCK);
     expect(score?.unlabelled).toHaveLength(1);
   });
 
   it("matches a hit within two lines of an item and not three", () => {
-    const near = scoreRules(corpus, [tree([hit("mtime-as-lock", 14)])]).get("mtime-as-lock");
-    const far = scoreRules(corpus, [tree([hit("mtime-as-lock", 15)])]).get("mtime-as-lock");
+    const near = scoreRules(corpus, [tree([hit(LOCK, 14)])]).get(LOCK);
+    const far = scoreRules(corpus, [tree([hit(LOCK, 15)])]).get(LOCK);
     expect([near?.caught, far?.caught]).toEqual([1, 0]);
   });
 
   it("credits another rule's catch as other-class, not as recall", () => {
-    const score = scoreRules(corpus, [tree([hit("files-as-phase", 11)])]).get("files-as-phase");
+    const score = scoreRules(corpus, [tree([hit(PHASE, 11)])]).get(PHASE);
     expect(score && [score.caught, score.caughtOther, score.truePositiveHits]).toEqual([0, 1, 1]);
   });
 });
 
 describe("sweep and recommended", () => {
-  const hits = [hit("mtime-as-lock", 11, 5), hit("mtime-as-lock", 41, 2)];
+  const hits = [hit(LOCK, 11, 5), hit(LOCK, 41, 2)];
 
   it("drops the weaker false hit as the threshold rises", () => {
-    const rows = sweep("mtime-as-lock", corpus, [tree(hits)]);
+    const rows = sweep(LOCK, corpus, [tree(hits)]);
     expect(rows.map(({ at, score }) => [at, precisionOf(score)])).toEqual([
       [2, 0.5],
       [5, 1],
@@ -132,12 +132,10 @@ describe("sweep and recommended", () => {
   });
 
   it("takes the best recall that reaches the floor, or null", () => {
-    const rows = sweep("mtime-as-lock", corpus, [tree(hits)]);
+    const rows = sweep(LOCK, corpus, [tree(hits)]);
     expect(recommended(rows, 0.8)?.at).toBe(5);
     expect(recommended(rows, 0.4)?.at).toBe(5);
-    expect(
-      recommended(sweep("mtime-as-lock", corpus, [tree([hit("mtime-as-lock", 41, 2)])]), 0.8),
-    ).toBeNull();
+    expect(recommended(sweep(LOCK, corpus, [tree([hit(LOCK, 41, 2)])]), 0.8)).toBeNull();
   });
 });
 
@@ -158,11 +156,11 @@ describe("rulesOn", () => {
   it("names each rule that lands on an item once", () => {
     const [lock] = corpus;
     const hits = [
-      hit("mtime-as-lock", 10),
-      hit("mtime-as-lock", 12),
-      hit("files-as-phase", 11),
-      hit("excessive-bools", 90),
+      hit(LOCK, 10),
+      hit(LOCK, 12),
+      hit(PHASE, 11),
+      hit("implicit-state-opinionated/max-boolean-fields", 90),
     ];
-    expect(lock && rulesOn(lock, tree(hits)).toSorted()).toEqual(["files-as-phase", "mtime-as-lock"]);
+    expect(lock && rulesOn(lock, tree(hits)).toSorted()).toEqual([LOCK, PHASE]);
   });
 });

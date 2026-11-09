@@ -33,6 +33,7 @@ import { join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import {
+  ANY_LITERALS,
   CORPORA,
   type Item,
   type RuleScore,
@@ -42,7 +43,6 @@ import {
   precisionOf,
   recallOf,
   recommended,
-  RULE_CLASSES,
   rulesOn,
   scoreClasses,
   scoreRules,
@@ -50,12 +50,15 @@ import {
   treeName,
   treesOf,
 } from "./corpus.ts";
-import { DETECTOR_SOURCES, type Hit, ruleHits, scanHits } from "./detect.ts";
+import { DETECTOR_SOURCES, type Hit, NAMES, ruleHits, scanHits, STATE_LITERALS, tierOf } from "./detect.ts";
 import { clonedRepo, foreignRepos, fullCommit, treeOf } from "./trees.ts";
 
 /** The precision a rule's recommended threshold must reach, by tier. */
 const FLOORS = { generic: 0.8, opinionated: 0.5 } as const;
-const OPINIONATED = new Set(["flag-count", "flags-as-state", "name-encoded-state", "unowned-state-literal"]);
+/** The two literal-grouping kinds, scored together as `ANY_LITERALS` too. */
+const LITERAL_KINDS = new Set([STATE_LITERALS, "tree/no-scattered-enum-literals"]);
+/** The width of a rule or class column: the longest id, `implicit-state-opinionated/max-boolean-fields`. */
+const ID_WIDTH = 46;
 
 /** Every file under a detector source, by its bytes, so an edit in the lint worktree re-runs. */
 function detectorDigest(detectors: string): string {
@@ -112,16 +115,14 @@ async function hitsOf(
 }
 
 /**
- * The tree with each literal-spread hit also counted under `literal-spread-any`, the scan's output
+ * The tree with each literal-grouping hit also counted under `ANY_LITERALS`, the scan's output
  * before it sets enumerations apart from state, so both sides of that split are scored.
  */
 const withUnfiltered = (tree: TreeHits): TreeHits => ({
   ...tree,
   hits: [
     ...tree.hits,
-    ...tree.hits.flatMap((hit) =>
-      hit.rule.endsWith("-literal-spread") ? [{ ...hit, rule: "literal-spread-any" }] : [],
-    ),
+    ...tree.hits.flatMap((hit) => (LITERAL_KINDS.has(hit.rule) ? [{ ...hit, rule: ANY_LITERALS }] : [])),
   ],
 });
 
@@ -131,7 +132,7 @@ const groupOf = (key: TreeKey): string => (key.mutant === undefined ? key.repo :
 
 function ruleLine(score: RuleScore): string {
   const cells = [
-    score.rule.padEnd(24),
+    score.rule.padEnd(ID_WIDTH),
     `recall ${percent(recallOf(score))} (${String(score.caught)}/${String(score.positives)})`,
     `other-class ${String(score.caughtOther).padStart(2)}`,
     `negatives hit ${String(score.negativesHit).padStart(2)}`,
@@ -184,55 +185,55 @@ function classTable(items: readonly Item[], trees: readonly TreeHits[]): string[
         .filter(([, row]) => row.positives > 0)
         .map(
           ([klass, row]) =>
-            `  ${klass.padEnd(24)} caught ${String(row.caught).padStart(3)} of ${String(row.positives).padStart(3)}  ${percent(row.caught / row.positives)}`,
+            `  ${klass.padEnd(ID_WIDTH)} caught ${String(row.caught).padStart(3)} of ${String(row.positives).padStart(3)}  ${percent(row.caught / row.positives)}`,
         ),
     ]),
     "",
     "Positives no rule catches:",
     ...rows.flatMap(([, row]) =>
       row.missed.map(
-        (item) => `  ${item.class.padEnd(24)} ${item.id}  ${item.file}:${String(item.lines[0])}`,
+        (item) => `  ${item.class.padEnd(ID_WIDTH)} ${item.id}  ${item.file}:${String(item.lines[0])}`,
       ),
     ),
   ];
 }
 
 function sweepTables(items: readonly Item[], trees: readonly TreeHits[]): string[] {
-  return [...RULE_CLASSES.keys()].flatMap((rule) => {
-    const rows = sweep(rule, items, trees);
-    if (rows.length < 2) return [];
-    const floor = OPINIONATED.has(rule) ? FLOORS.opinionated : FLOORS.generic;
-    const best = recommended(rows, floor);
-    return [
-      "",
-      `Sweep of ${rule} (a hit counts at a threshold its strength reaches; floor ${String(floor)}):`,
-      ...rows.map(
-        ({ at, score }) =>
-          `  >= ${String(at).padStart(2)}  recall ${percent(recallOf(score))}  precision ${percent(precisionOf(score))}  hits ${String(score.truePositiveHits + score.falsePositiveHits + score.unlabelled.length)}  unlabelled ${String(score.unlabelled.length)}`,
-      ),
-      best === null ? "  no threshold reaches the floor" : `  recommended: >= ${String(best.at)}`,
-    ];
-  });
+  return [...new Set(trees.flatMap((tree) => tree.hits.map((hit) => hit.rule)))]
+    .toSorted()
+    .flatMap((rule) => {
+      const rows = sweep(rule, items, trees);
+      if (rows.length < 2) return [];
+      const floor = FLOORS[tierOf(rule)];
+      const best = recommended(rows, floor);
+      return [
+        "",
+        `Sweep of ${rule} (a hit counts at a threshold its strength reaches; floor ${String(floor)}):`,
+        ...rows.map(
+          ({ at, score }) =>
+            `  >= ${String(at).padStart(2)}  recall ${percent(recallOf(score))}  precision ${percent(precisionOf(score))}  hits ${String(score.truePositiveHits + score.falsePositiveHits + score.unlabelled.length)}  unlabelled ${String(score.unlabelled.length)}`,
+        ),
+        best === null ? "  no threshold reaches the floor" : `  recommended: >= ${String(best.at)}`,
+      ];
+    });
 }
 
-/** Per subject word of `name-encoded-state`, its labelled and unlabelled hits. */
+/** Per subject word of `no-state-in-names`, its labelled and unlabelled hits. */
 function wordTable(items: readonly Item[], trees: readonly TreeHits[]): string[] {
   const words = new Set(
-    trees.flatMap((tree) =>
-      tree.hits.filter((hit) => hit.rule === "name-encoded-state").map((hit) => String(hit.strength)),
-    ),
+    trees.flatMap((tree) => tree.hits.filter((hit) => hit.rule === NAMES).map((hit) => String(hit.strength))),
   );
   return words.size === 0
     ? []
     : [
         "",
-        "name-encoded-state by subject word:",
+        `${NAMES} by subject word:`,
         ...[...words].toSorted().map((word) => {
           const score = scoreRules(
             items,
             trees,
-            (hit) => hit.rule !== "name-encoded-state" || String(hit.strength) === word,
-          ).get("name-encoded-state");
+            (hit) => hit.rule !== NAMES || String(hit.strength) === word,
+          ).get(NAMES);
           return score === undefined
             ? ""
             : `  ${word.padEnd(8)} true ${String(score.truePositiveHits)}  false ${String(score.falsePositiveHits)}  unlabelled ${String(score.unlabelled.length)}`;
@@ -249,7 +250,7 @@ function itemTable(items: readonly Item[], trees: readonly TreeHits[]): string[]
       const tree = trees.find((one) => treeName(one.key) === treeName(item));
       const rules = tree === undefined ? [] : rulesOn(item, tree);
       return [
-        `  ${item.label === "positive" ? "+" : "-"} ${item.class.padEnd(24)} ${item.id.padEnd(36)} ${rules.join(", ") || "none"}`,
+        `  ${item.label === "positive" ? "+" : "-"} ${item.class.padEnd(ID_WIDTH)} ${item.id.padEnd(36)} ${rules.join(", ") || "none"}`,
       ];
     }),
   ];

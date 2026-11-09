@@ -1,5 +1,5 @@
 /**
- * `partial-mapping` (generic): a lookup `Map` keyed by most members of a declared set, read with a
+ * `require-exhaustive-mapping` (generic): a lookup `Map` keyed by most members of a declared set, read with a
  * key the code does not spell, and held by no type to that set. `const EXAMINED = new Map([
  * ["finished", …], ["supplied", …], ["crashed", …], ["killed", …]])`, read as
  * `EXAMINED.get(ended)`, maps four of the eight ways an Examiner session ends: a session that ended
@@ -129,7 +129,7 @@ export function partialMappings(
             : `maps all ${String(set.values.size)} values of \`${set.name}\` (${set.path}) and leaves out 0, but no type holds it there, so a value added to the set reads as nothing`;
         return [
           {
-            kind: "partial-mapping",
+            kind: "require-exhaustive-mapping",
             path,
             line: table.line,
             detail: `\`${table.name}\` ${said}; say which set it maps (\`satisfies Record<…>\` on its entries)`,

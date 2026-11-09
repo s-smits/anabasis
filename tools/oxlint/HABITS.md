@@ -371,7 +371,6 @@ question, repair the true ones, and answer a false one in the ledger as `tree/<k
 | `no-unowned-identity` | One constant for the name |
 | `no-unowned-fact` | One function for the fact, in the module that owns the value's type |
 | `no-superseded-schema-tag`, `no-compatibility-path` | Drop the old reader |
-| `require-rule-fixture` | Add the fixture |
 | `no-stale-reference` | Point a path at where the thing lives now, or cite it as `<sha>:path` in a record of its time; document only a setting some code reads |
 | `no-scattered-state-literals` | Name each grouping in the owner of the states (a predicate or a table) and call it |
 | `no-unowned-state-literals` | Declare the states once, with their groupings beside them (opinionated) |

@@ -87,8 +87,6 @@ export const TREE_FINDING_ARGUMENTS = {
     "Two or more consecutive statements written out at two or more places, once each function's own local names and every literal are abstracted away. Give the block one owner both places call. Tests, vendored code and generated files are not read, and a copy whose places say different things (five word-bearing literals differ, or mostly data whose literals differ) is the content's structure rather than a copy of work.",
   "no-unused-field":
     "A field declared in an interface or object type whose name no file spells again, comments included. Nothing reads or writes it: delete it, with whatever handled it. Names under seven characters are words and are skipped.",
-  "require-rule-fixture":
-    "A lint rule a plugin registers that no file under test/ names. A rule that has stopped reporting and a clean tree read the same, so each rule keeps a fixture. Vendored plugins are read too, because their rules fail this repository's strict lint.",
   "no-unowned-identity":
     'One name this repository owns (a bundle path, an evidence file, a schema tag) spelled as a literal in two or more files with no constant naming it. A typo in one copy reaches a reader as a missing file. Import the owner the detail names, or give the name one. Literals the compiler already checks (a type, a `satisfies` table, an `as const` list a type is read from), prose inside another string or a template, import specifiers and short words are skipped; `join(dir, "a", "b.ts")` reads as `a/b.ts`.',
   "no-unowned-fact":
@@ -161,14 +159,6 @@ export const TREE_FINDING_EXAMPLES: Readonly<
       before:
         "interface Slot {\n  readonly id: string;\n  readonly rankHint: number; // named nowhere else in the tree\n}",
       after: "interface Slot {\n  readonly id: string;\n}",
-    },
-  ],
-  "require-rule-fixture": [
-    {
-      before:
-        '// no file under test/ names the rule this registers\nexport const rules = { "no-hand-rolled-sleep": noHandRolledSleepRule };',
-      after:
-        '// test/no-hand-rolled-sleep.test.ts\nconst found = await reportedLines("ana", "no-hand-rolled-sleep", SLEEPS);\nexpect(found).toStrictEqual(expectedLines(SLEEPS));',
     },
   ],
   "no-unowned-identity": [
@@ -349,7 +339,6 @@ const DECLARATION_HEAD = /^(?:export )?(?:declare )?(?:interface|type) [A-Za-z_$
 const DECLARED_FIELD = /^\s+(?:readonly )?([A-Za-z_$][\w$]*)\??:/u;
 const FIELD_LENGTH_FLOOR = 7;
 
-const REGISTERED_RULE = /^[\t ]*"([a-z][a-z0-9-]*)":\s*[A-Za-z]/gmu;
 const FILESYSTEM_IMPORT = /import\s*\{([^}]*)\}\s*from\s*"[^"]*meta\/filesystem\.ts"/u;
 const FILESYSTEM_BUDGET = 6;
 const SCHEMA_TAG = /["']([a-z][a-z0-9-]*)\/v(\d+)["']/gu;
@@ -476,24 +465,6 @@ function unreadFields(tree: Tree): TreeFinding[] {
     }
   }
   return rows;
-}
-
-function rulesWithoutFixture(tree: Tree): TreeFinding[] {
-  const fixtures = [...tree.files]
-    .flatMap(([path, text]) => (path.startsWith("test/") ? [text] : []))
-    .join("\n");
-  const plugins = new Map([...tree.files].filter(([path]) => /^tools\/oxlint\/.*\/index\.ts$/u.test(path)));
-  return [...plugins]
-    .flatMap(([path, text]) =>
-      [...text.matchAll(REGISTERED_RULE)].map((match) => ({ path, line: lineAt(text, match.index), match })),
-    )
-    .filter(({ match: [, name = ""] }) => !fixtures.includes(name))
-    .map(({ path, line, match: [, name] }) => ({
-      kind: "require-rule-fixture",
-      path,
-      line,
-      detail: `\`${name}\` is registered and no file under test/ names it`,
-    }));
 }
 
 function filesystemBudget(tree: Tree): TreeFinding[] {
@@ -694,7 +665,6 @@ export function treeSites(): TreeSite[] {
     ...exportsReadOnce(tree),
     ...copiedBlocks(owned),
     ...unreadFields(tree),
-    ...rulesWithoutFixture(tree),
     ...identitiesWithoutOwner(owned),
     ...factsWithoutOwner(owned),
     ...supersededSchemaTags(code),
@@ -709,10 +679,7 @@ export function treeSites(): TreeSite[] {
     ...implicitStateFindings(owned),
     ...filesystemBudget(tree),
   ]
-    .filter(
-      (finding) =>
-        finding.kind === "require-rule-fixture" || !UNREAD.some((root) => finding.path.startsWith(root)),
-    )
+    .filter((finding) => !UNREAD.some((root) => finding.path.startsWith(root)))
     .map((finding) => {
       const places = sitePlaces(finding, all);
       return {

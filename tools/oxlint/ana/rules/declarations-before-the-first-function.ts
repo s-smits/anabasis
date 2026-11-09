@@ -1,6 +1,6 @@
 import { defineRule, type ESTree, type Scope, type SourceCode } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
-import { identifierName, isConstDeclaration, isNamedMember } from "../shared/statements.ts";
+import { declaredBy, identifierName, isConstDeclaration, isNamedMember } from "../shared/statements.ts";
 
 /**
  * Every type, interface and module constant at the front of the file, then the code.
@@ -100,14 +100,6 @@ interface Read {
   at: number;
   member: boolean;
   consumed: boolean;
-}
-
-/** The declaration a statement carries, past `export`. */
-function declaredBy(statement: ESTree.Node): ESTree.Node {
-  const exported =
-    statement.type === "ExportNamedDeclaration" || statement.type === "ExportDefaultDeclaration";
-  if (!exported) return statement;
-  return statement.declaration ?? statement;
 }
 
 /**

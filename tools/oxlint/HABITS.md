@@ -28,7 +28,9 @@ first line, and the round trip through the linter mostly disappears.
 `--deny-warnings` and `--report-unused-disable-directives`, type-aware. `packages/ui` is linted
 once its own dependencies are installed (`bun run ui:deps`), under its own `tsconfig.json` and
 with no rule turned off for it; a whole-tree run without them leaves it out and says so. Two repository plugins ride along: `ana`
-(29 rules) and `anti-slop` (13 rules). Every enabled rule in `.oxlintrc.json` is an error.
+(29 rules) and `anti-slop` (13 rules). Every enabled rule in `.oxlintrc.json` is an error. A
+third, `implicit-state` (12.14), reports only: its rules sit in `tools/oxlint/staged-rules.json`,
+which `bun run simplify` runs and no lint or hook gates on.
 
 - **Plugin findings fail the run only in strict mode**: `bun run lint -- --strict`,
   `ANA_LINT_STRICT=1`, or a clone with `git config ana.lintStrict true`. A plain run holds you to
@@ -371,6 +373,8 @@ question, repair the true ones, and answer a false one in the ledger as `tree/<k
 | `superseded-schema-tag`, `compatibility-path` | Drop the old reader |
 | `rule-without-fixture` | Add the fixture |
 | `stale-reference` | Point a path at where the thing lives now, or cite it as `<sha>:path` in a record of its time; document only a setting some code reads |
+| `state-literal-spread` | Name each grouping in the owner of the states (a predicate or a table) and call it |
+| `repeated-external-read` | Read once where the call paths join and pass the answer on |
 | `filesystem-import-budget` | None. It is a register: a file keeps its count of `filesystem.ts` imports, and a change adds at most one |
 
 ## 12.10 The size policy
@@ -421,3 +425,26 @@ spelling passes every other rule; a rule whose remedy another rule refuses ends 
 measurements go in its head comment and its commit. Measure through
 `bun run lint -c <one-rule config>`, never raw `oxlint`: a config without the type-aware option
 reports zero and says nothing.
+
+A rule that is a heuristic, or that still has sites in the tree, starts in
+`tools/oxlint/staged-rules.json` at `"warn"` instead: `bun run simplify` prints its sites and
+nothing gates on them. It moves to `.oxlintrc.json` as an error once no site of it stands.
+
+## 12.14 Implicit state
+
+An implicit state machine is a state with no one typed owner, spread over booleans, string
+literals each reader spells by hand, which files exist, what a name encodes or how old a file is.
+Readers re-derive it their own way and drift, and a transition between two of them (a crash
+between two writes, a slow holder past a threshold) lands in a state no branch expects. Give it
+one owner: a union, one record of a process's phase, the holder itself for a lock.
+
+The generic tier infers its structure from syntax alone, names no module of this repository, and
+runs on any TypeScript tree; `bun tools/oxlint/tree-implicit-state.ts <root>` scans a foreign one.
+
+| Finding | Repair |
+| --- | --- |
+| `implicit-state/excessive-bools` | More than three required boolean members on one record, or boolean parameters on one function: name the states as a union |
+| `implicit-state/files-as-phase` | A phase read from which files exist in one folder: one record of the phase |
+| `implicit-state/mtime-as-lock` | A file's age against a constant as the holder's liveness: ask the holder (a pid, a lease, an exclusive open) |
+| `tree/state-literal-spread` | Name each grouping of a declared union in its owner |
+| `tree/repeated-external-read` | Read once where the call paths join |

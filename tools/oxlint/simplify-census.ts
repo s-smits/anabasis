@@ -3,15 +3,23 @@
 // first, each argument printed once above its sites. Nothing here gates: a person reads a group,
 // decides it as a group, and fixes it in one go.
 //
-// Every per-file shape the census once staged now gates from `.oxlintrc.json` (since 20 September),
-// so the oxlint pass it ran under an empty rule set went on 27 October with the scans' rewrite.
+// It also runs the per-file rules that report and never gate, `staged-rules.json`, over the
+// authored roots: a rule starts there and moves to `.oxlintrc.json`, as an error, once no site of
+// it stands in the tree.
 
 import { runtimeProcess } from "../../src/meta/process.ts";
+import { runSync } from "../../src/meta/subprocess.ts";
+import { OXLINT_BINARY } from "../runtime/lint.ts";
 import { TREE_FINDING_ARGUMENTS, TREE_REGISTER_KINDS, treeFindings, type TreeSite } from "./tree-findings.ts";
 
 /** Sites listed under each shape before the rest are counted, unless `--all` is passed. */
 const DEFAULT_SITES = 8;
 const WRAP = 96;
+/** The staged rules' config, and the roots they read. */
+const STAGED = "tools/oxlint/staged-rules.json";
+const STAGED_ROOTS = ["src", "tools", "test", "packages", ".claude", "studies"];
+/** One `file:line:col: message [Warning/plugin(rule)]` row of oxlint's unix format. */
+const STAGED_ROW = /^(?<at>[^:]+:\d+):\d+: (?<message>.*) \[\w+\/(?<rule>[\w-]+\([\w-]+\))\]$/u;
 
 /** A message broken at spaces to the terminal width, each line indented. */
 function wrapped(text: string): string {
@@ -35,6 +43,21 @@ function section(kind: TreeSite["kind"], sites: readonly TreeSite[], limit: numb
   return ["", `tree/${kind}  (${count})`, wrapped(TREE_FINDING_ARGUMENTS[kind]), "", ...shown, ...rest].join(
     "\n",
   );
+}
+
+/** Each staged rule's sites in the tree, as `path:line  message`, by `plugin(rule)`. */
+function stagedSites(): Map<string, string[]> {
+  const oxlint = [runtimeProcess.execPath, "--no-env-file", OXLINT_BINARY];
+  const output = runSync([...oxlint, "-c", STAGED, "--format=unix", ...STAGED_ROOTS]).stdout;
+  const rows = new TextDecoder()
+    .decode(output)
+    .split("\n")
+    .flatMap((line) => {
+      const { at, message, rule } = STAGED_ROW.exec(line)?.groups ?? {};
+      return at === undefined || rule === undefined ? [] : [{ rule, site: `    ${at}  ${message ?? ""}` }];
+    });
+  const byRule = Map.groupBy(rows, (row) => row.rule);
+  return new Map([...byRule].map(([rule, under]) => [rule, under.map((row) => row.site).toSorted()]));
 }
 
 /** One row per shape: its count and the root directories its sites sit in. */
@@ -61,6 +84,7 @@ const groups = [...Map.groupBy(sites, (site) => site.kind)].toSorted(
 const listed = groups.filter(([kind]) => !TREE_REGISTER_KINDS.includes(kind));
 const registers = groups.filter(([kind]) => TREE_REGISTER_KINDS.includes(kind));
 const total = listed.reduce((count, [, under]) => count + under.length, 0);
+const staged = [...stagedSites()].filter(([rule]) => only === undefined || rule.includes(only));
 
 // `Bun.write` resolves once stdout has taken the whole string, where a stream's `write` returned
 // before the bytes left and the exit cut the tail of `--all`.
@@ -81,6 +105,18 @@ await Bun.write(
           "Standing registers, not counted above: each row is a current count, and its rule is about",
           "the change proposed against it, so the list does not empty.",
           ...registers.map(([kind, under]) => section(kind, under, limit)),
+        ]),
+    ...(staged.length === 0
+      ? []
+      : [
+          "",
+          `Staged rules (${STAGED}), reported until no site stands, then gated:`,
+          ...staged.flatMap(([rule, under]) => [
+            "",
+            `${rule}  (${under.length} ${under.length === 1 ? "site" : "sites"})`,
+            ...under.slice(0, limit),
+            ...(under.length > limit ? [`    … and ${under.length - limit} more`] : []),
+          ]),
         ]),
     "",
     limit === DEFAULT_SITES

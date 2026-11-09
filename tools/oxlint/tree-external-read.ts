@@ -253,16 +253,24 @@ function nameOf(call: ts.CallExpression): string | null {
  * word that is not spelled where it is kept leaves the read without a key.
  */
 function argvOf(call: ts.CallExpression, scope: Scope): string | null {
-  const [given, second] = call.arguments;
-  const first =
-    given !== undefined && ts.isIdentifier(given) ? (scope.locals.get(given.text) ?? given) : given;
+  const local = (node: ts.Expression | undefined): ts.Expression | undefined =>
+    node !== undefined && ts.isIdentifier(node) ? (scope.locals.get(node.text) ?? node) : node;
+  const [first, second] = call.arguments.map(local);
   let argv: string | null = null;
   if (first !== undefined && ts.isObjectLiteralExpression(first)) {
     const cmd = first.properties.find((one) => ts.isPropertyAssignment(one) && one.name.getText() === "cmd");
     argv = cmd !== undefined && ts.isPropertyAssignment(cmd) ? spelled(cmd.initializer, scope) : null;
   } else if (first !== undefined) {
-    const rest = second !== undefined && ts.isArrayLiteralExpression(second) ? spelled(second, scope) : "";
-    argv = `${spelled(first, scope) ?? UNKNOWN} ${rest ?? ""}`;
+    // After a program, the second argument is its argument list, which keys the read as the program
+    // does; after a whole argv it is options, and after a shell command line (`exec`, `execSync`)
+    // a name that is not a list is options too.
+    const options =
+      second === undefined ||
+      ts.isObjectLiteralExpression(second) ||
+      ts.isArrayLiteralExpression(first) ||
+      (!ts.isArrayLiteralExpression(second) && /^exec(?:Sync)?$/u.test(nameOf(call) ?? ""));
+    const rest = options ? "" : (spelled(second, scope) ?? UNKNOWN);
+    argv = `${spelled(first, scope) ?? UNKNOWN} ${rest}`;
   }
   const words = (argv ?? "").split(/\s+/u).filter((word) => word !== "");
   const kept = words.filter((word, index) => {

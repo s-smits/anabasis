@@ -64,6 +64,66 @@ export function Uploader() { // REPORT four boolean useState cells
   const [isIdle, setIdle] = useState<boolean>(true);
   return [isLoading, isError, isSuccess, isIdle, setLoading, setError, setSuccess, setIdle];
 }
+export interface Played { // ADMITTED each flag observed from its own source
+  timedOut: boolean;
+  turnsEnded: boolean;
+  moved: boolean;
+}
+export const played = (clock: AbortSignal, turns: number[], most: number, stamp: () => string, before: string): Played => ({
+  timedOut: clock.aborted,
+  turnsEnded: turns.length >= most,
+  moved: stamp() !== before,
+});
+export interface Lane { // ADMITTED tags read from one set, one key each
+  standing: boolean;
+  alone: boolean;
+  blind: boolean;
+}
+export const lane = (marks: Set<string>): Lane => ({
+  standing: marks.has("standing"),
+  alone: marks.has("alone"),
+  blind: marks.has("blind"),
+});
+export interface Stored { // ADMITTED the shape of a file another writer laid down
+  timedOut: boolean;
+  present: boolean;
+  parses: boolean;
+}
+export const stored = (text: string) => parseJsonAs<Stored>(text);
+export interface Cast { // ADMITTED the same, cast from a parse
+  timedOut: boolean;
+  present: boolean;
+  parses: boolean;
+}
+export const cast = (text: string) => JSON.parse(text) as Cast;
+export interface Loaded { // REPORT a generic call that parses nothing is no file's shape
+  timedOut: boolean;
+  present: boolean;
+  parses: boolean;
+}
+export const loaded = () => load<Loaded>();
+export interface Row { // REPORT flags projected from one state
+  writer: boolean;
+  keeper: boolean;
+  quiet: boolean;
+}
+export const row = (state: { kind: string; kept?: boolean }): Row => {
+  const writer = "kept" in state;
+  return { writer, keeper: writer ? state.kept === true : state.kind === "kept", quiet: state.kind === "quiet" };
+};
+export interface Phase { // REPORT built only from constants, which shows nothing
+  open: boolean;
+  closing: boolean;
+  closed: boolean;
+}
+export const opened = (): Phase => ({ open: true, closing: false, closed: false });
+export interface Mixed { // REPORT one literal apart, another from one value
+  ready: boolean;
+  busy: boolean;
+  done: boolean;
+}
+export const apart = (a: boolean, b: boolean, c: boolean): Mixed => ({ ready: a, busy: b, done: c });
+export const together = (phase: string): Mixed => ({ ready: phase === "ready", busy: phase === "busy", done: phase === "done" });
 export function draw(fill: boolean, stroke: boolean, shadow: boolean, dashed = false) { // REPORT four boolean parameters
   return [fill, stroke, shadow, dashed];
 }
@@ -187,7 +247,7 @@ const findings = (files: Record<string, string>, kind = "no-unowned-state-litera
 describe("the opinionated implicit-state rules", () => {
   it("report only the marked lines", async () => {
     await lintRules("implicit-state-opinionated", [
-      ["max-boolean-fields", FLAGS, 5, "src/upload.tsx"],
+      ["max-boolean-fields", FLAGS, 9, "src/upload.tsx"],
       ["max-boolean-fields", FLAGS, 0, "src/upload.test.tsx"],
       ["prefer-state-union", LIFECYCLES, 3, "src/lifecycle.ts"],
       ["prefer-state-union", LIFECYCLES, 0, "src/lifecycle.test.ts"],

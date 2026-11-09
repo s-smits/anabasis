@@ -2,7 +2,13 @@ import { defineRule, type ESTree } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
 import { importTracker } from "../shared/import-fix.ts";
 import { withoutProse } from "../shared/masked.ts";
-import { everyStatementList, identifierName, onlyStatement, singleConst } from "../shared/statements.ts";
+import {
+  everyStatementList,
+  identifierName,
+  onlyStatement,
+  plainAssignment,
+  singleConst,
+} from "../shared/statements.ts";
 
 /**
  * An object literal followed by `if (x !== undefined) o.k = x;` is one literal with the key
@@ -130,11 +136,9 @@ export const preferKeyIfDefinedRule = defineRule({
       if (node.type !== "IfStatement" || node.alternate !== null) return null;
       const test = guardTest(node.test);
       if (test === null || !isRead(test.guarded)) return null;
-      const statement = onlyStatement(node.consequent);
-      if (statement?.type !== "ExpressionStatement") return null;
+      const expression = plainAssignment(onlyStatement(node.consequent));
+      if (expression === null) return null;
       if (context.sourceCode.getCommentsInside(node).length > 0) return null;
-      const { expression } = statement;
-      if (expression.type !== "AssignmentExpression" || expression.operator !== "=") return null;
       const { left, right } = expression;
       if (left.type !== "MemberExpression" || left.computed || left.object.type !== "Identifier") return null;
       if (left.object.name !== name || left.property.type !== "Identifier") return null;

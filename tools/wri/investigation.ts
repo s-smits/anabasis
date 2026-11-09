@@ -18,6 +18,7 @@
  * defect one campaign held alone was read by the ten sessions of that campaign only. Now every
  * finding says on its `Seen in:` line which campaigns show it.
  */
+import { join } from "#src/meta/path.ts";
 import { plural } from "#src/meta/text.ts";
 import { type Lane, section } from "./catalogue.ts";
 import { TRIGGERS, type Trigger } from "./folds.ts";
@@ -71,6 +72,9 @@ const SEEN = "Seen in:";
 export function stem(lane: number): string {
   return String(lane).padStart(2, "0");
 }
+
+/** Where lane `lane`'s report is written in the investigation `out`, the one owner of its name. */
+export const reportPath = (out: string, lane: number) => join(out, "lanes", `${stem(lane)}-report.md`);
 
 /** `1-4,7` as the lane numbers it names. */
 export function numbersOf(spec: string): number[] {

@@ -104,6 +104,7 @@ import {
   numbersOf,
   reportIndex,
   reportOf,
+  reportPath,
   selected,
   sessionsOf,
   stem,
@@ -396,7 +397,6 @@ function climbText(logs: readonly string[]): string {
 }
 
 const promptPath = (out: string, lane: number) => join(out, "lanes", `${stem(lane)}-prompt.md`);
-const reportPath = (out: string, lane: number) => join(out, "lanes", `${stem(lane)}-report.md`);
 
 function lanes(): number {
   const { out, shared, campaigns } = opened();

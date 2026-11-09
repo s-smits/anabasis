@@ -1,6 +1,6 @@
 ---
 name: stack-pr
-description: "Place a change on an open stack of Anabasis pull requests, or start one: find the true top, keep local work while moving to it, expand the open pull request a change belongs to before opening a new one, shape commits that each pass alone, run what CI runs, publish through the pre-push hook, prove the stack with `bun run land -- <top> --sanitize`, write the title and body, replay your own children when a parent moves, consolidate the stack by subject, and land it with `bun run land`. Use when asked to open, append to, stack, restack, consolidate or overhaul, rebase, hop to the latest head, sanitize or land a pull request, to title or describe one, or when a push, a hook or a base refuses."
+description: "Place a change on an open stack of Anabasis pull requests, or start one: find the true top, keep local work while moving to it, expand the open pull request a change belongs to before opening a new one, shape commits that each pass alone, run what CI runs, publish through the pre-push hook, prove the stack with `bun run land -- <top> --sanitize`, write the title and body, replay your own children when a parent moves, consolidate the stack by subject (section 10 summarises it; consolidate-stack holds the procedure), and land it with `bun run land`. Use when asked to open, append to, stack, restack, consolidate or overhaul, rebase, hop to the latest head, sanitize or land a pull request, to title or describe one, or when a push, a hook or a base refuses."
 ---
 
 # Stack a pull request
@@ -141,7 +141,7 @@ and at least one category, or `land` refuses the stack before any check
 (`gh pr edit <number> --add-label <label>`). Categories (`CATEGORIES`, `tools/runtime/land.ts`;
 `gh label list`): `exam`, `verdicts`, `supply`, `harness`, `comparison`, `climb`, `solve`,
 `economy`, `runs`, `log`, `investigation`, `landing`, `quality`, `docs`. A consolidation spends
-by importance (`references/consolidate.md`, "Spend by importance").
+by importance ([consolidate-stack](../consolidate-stack/SKILL.md), step 5).
 
 ### Title and body
 
@@ -277,9 +277,21 @@ no host, login or account.
 
 ## 10. Consolidate the stack
 
-Consolidation rewrites a stack grown fix by fix into a smaller one ordered by subject, folding
-every "Absorbs into #N" carrier into #N. It rewrites other sessions' pull requests, so it takes the
-operator's word. The procedure is `references/consolidate.md`, ending in:
+Consolidation rewrites a stack grown fix by fix into fewer pull requests ordered by subject,
+folding every "Absorbs into #N" carrier into #N. It rewrites other sessions' pull requests, so it
+takes the operator's word, and it is a skill of its own,
+[consolidate-stack](../consolidate-stack/SKILL.md). In summary:
+
+1. read each pull request as the problem its body states, with its evidence, owner and what it
+   rests on;
+2. group by type (importance and kind), then by owner, and let dependencies set the order: a gate
+   above the sites it judges, an answer above its rule;
+3. rethink each group with [simplify](../simplify/SKILL.md)'s shapes until it is the least change
+   that answers every stated problem, measured before and after;
+4. trial the order on a scratch worktree (conflicts, ordered files such as the not-slop ledger,
+   tree equality, checks at each group head) before anything moves;
+5. review each group, restructure in one rebase, fix in lanes, assemble and check;
+6. make each group one pull request and publish with `republish.ts`.
 
 ```sh
 bun .claude/skills/stack-pr/scripts/republish.ts --head <pr>=<sha> ... [--absorb <pr>=<into>] ...

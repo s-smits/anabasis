@@ -18,12 +18,13 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "../src/meta/filesystem.ts
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join, resolve } from "../src/meta/path.ts";
 import { examplesFor } from "../tools/runtime/lint.ts";
+import { PLUGINS } from "../tools/oxlint/plugins.ts";
 import { type RuleExample, ruleExamples } from "../tools/oxlint/rule-examples.ts";
 import { TREE_FINDING_EXAMPLES } from "../tools/oxlint/tree-findings.ts";
 import { execTextSync } from "./helpers/bun-spawn-sync.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
-const PLUGINS = ["ana", "anti-slop", "implicit-state", "implicit-state-opinionated"];
+const NAMES = [...PLUGINS.keys()];
 /** Where a pair is linted when it names no place of its own. */
 const DEFAULT_PATH = "src/example.ts";
 /** A pair is a glance, not a fixture. */
@@ -38,7 +39,7 @@ const ROW = /^(?<file>.+?):\d+:\d+: .* \[\w+\/(?<plugin>[\w-]+)\((?<rule>[\w-]+)
 /** The plugin rules every file is linted under, as the repository's own configs set them. */
 const LEVELS = Object.fromEntries(
   Object.entries({ ...config.rules, ...staged.rules }).filter(([rule]) =>
-    PLUGINS.some((plugin) => rule.startsWith(`${plugin}/`)),
+    NAMES.some((plugin) => rule.startsWith(`${plugin}/`)),
   ),
 );
 
@@ -52,7 +53,7 @@ async function reportsIn(texts: ReadonlyMap<string, string>): Promise<Map<string
   writeFileSync(
     configPath,
     JSON.stringify({
-      jsPlugins: PLUGINS.map((name) => ({ name, specifier: join(REPO, `tools/oxlint/${name}/index.ts`) })),
+      jsPlugins: NAMES.map((name) => ({ name, specifier: join(REPO, `tools/oxlint/${name}/index.ts`) })),
       rules: LEVELS,
     }),
   );
@@ -82,7 +83,7 @@ async function reportsIn(texts: ReadonlyMap<string, string>): Promise<Map<string
   const reported = new Map<string, Set<string>>();
   for (const line of stdout.split("\n")) {
     const { file, plugin, rule } = ROW.exec(line)?.groups ?? {};
-    if (file === undefined || !PLUGINS.includes(plugin ?? "")) continue;
+    if (file === undefined || !NAMES.includes(plugin ?? "")) continue;
     const path = file.slice(directory.length + 1);
     reported.set(path, (reported.get(path) ?? new Set()).add(`${plugin ?? ""}/${rule ?? ""}`));
   }

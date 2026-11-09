@@ -32,10 +32,7 @@
 import { boundText } from "../../src/meta/bounded-text.ts";
 import { sha256 } from "../../src/meta/digest.ts";
 import { compareCodeUnits } from "../../src/meta/stable-json.ts";
-import anaPlugin from "./ana/index.ts";
-import antiSlopPlugin from "./anti-slop/index.ts";
-import implicitStatePlugin from "./implicit-state/index.ts";
-import implicitStateOpinionatedPlugin from "./implicit-state-opinionated/index.ts";
+import { PLUGINS } from "./plugins.ts";
 
 /** The ledger, relative to the repository root every reader runs from. */
 export const NOT_SLOP_LEDGER = "tools/oxlint/not-slop.tsv";
@@ -53,13 +50,6 @@ const REASON_WORDS = 3;
 const EXCERPT_BYTES = 100;
 
 const ID = /^[0-9a-f]{12}$/u;
-
-const RULE_PLUGINS = new Map([
-  ["ana", anaPlugin.rules],
-  ["anti-slop", antiSlopPlugin.rules],
-  ["implicit-state", implicitStatePlugin.rules],
-  ["implicit-state-opinionated", implicitStateOpinionatedPlugin.rules],
-]);
 
 /** The rule that keeps this ledger the only store for a slop answer: answering it here would
  *  reopen the other store. */
@@ -133,7 +123,7 @@ export function unanswerable(rule: string): string | null {
     return `${rule} keeps the ledger the only store for an answer; move the comment's answer into a row instead`;
   }
   const [plugin = "", name = ""] = rule.split("/");
-  const rules = RULE_PLUGINS.get(plugin);
+  const rules = PLUGINS.get(plugin)?.rules;
   if (rules === undefined) {
     return `${rule} is a core rule, not a heuristic: its exception is a fact about the code, written beside it as an oxlint-disable comment with the reason`;
   }

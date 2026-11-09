@@ -27,8 +27,8 @@ first line, and the round trip through the linter mostly disappears.
 `bun run lint` runs Oxlint over `src`, `tools`, `test`, `packages` and `.claude` with
 `--deny-warnings` and `--report-unused-disable-directives`, type-aware. `packages/ui` is linted
 once its own dependencies are installed (`bun run ui:deps`), under its own `tsconfig.json` and
-with no rule turned off for it; a whole-tree run without them leaves it out and says so. Two repository plugins ride along: `ana`
-(29 rules) and `anti-slop` (13 rules). Every enabled rule in `.oxlintrc.json` is an error. A
+with no rule turned off for it; a whole-tree run without them leaves it out and says so. Two repository plugins ride along,
+`ana` and `anti-slop`. Every enabled rule in `.oxlintrc.json` is an error. A
 third, `implicit-state` (12.14), reports only: its rules sit in `tools/oxlint/staged-rules.json`,
 which `bun run simplify` runs and no lint or hook gates on.
 
@@ -420,8 +420,16 @@ never add a file to one, and never widen a glob to take in the file you are edit
 
 ## 12.13 Adding or changing a lint rule
 
-A rule lives in `tools/oxlint/ana/rules/<name>.ts`, is registered in `tools/oxlint/ana/index.ts`
-and in `.oxlintrc.json` as `"error"`, and has a fixture test. Its head comment carries the
+A rule's name says what it rejects or asks for, as ESLint, typescript-eslint and anti-slop name
+theirs: `no-` for a pattern refused, `prefer-` or `require-` for the alternative asked for, and
+`max-` for a count, which takes ESLint's `{ max: number }` where it has an option. Name it no more
+specifically than the smell and never by its mechanism or tier; a whole-tree scan's kind follows
+the same pattern under `tree/`. The rule lives in `tools/oxlint/ana/rules/<name>.ts`, is
+registered under that name in `tools/oxlint/ana/index.ts` and in `.oxlintrc.json` as `"error"`,
+and has a fixture test; `tools/oxlint/plugins.ts` is the record every other list of rules reads,
+and `test/rule-names.test.ts` fails on a name off the pattern, a file and a registration that
+differ, a rule no config runs or no test names, and a config entry, ledger row or document that
+names a rule that does not exist. Its head comment carries the
 argument: the shape, its cost, what was measured and when, each exemption with the site that
 forced it, and whether it fixes and why. A rule enters only when, at every site it reports, some
 spelling passes every other rule; a rule whose remedy another rule refuses ends up switched off.

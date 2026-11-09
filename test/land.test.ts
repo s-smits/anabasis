@@ -185,21 +185,21 @@ const stack = (top = upper, ...more: ReturnType<typeof pull>[]): string =>
     ...more,
   ]);
 
+const landEnv = (env: Record<string, string>): Record<string, string | undefined> => ({
+  ...Bun.env,
+  ...fake,
+  ANA_GH_LOG: ghLog,
+  ANA_FAKE_PULLS: stack(),
+  ANA_FAKE_STACK: "7 11,12",
+  ANA_FAKE_STACK_END: "merged",
+  ANA_FAKE_STACK_UUID: "u1",
+  ANA_FAKE_STACK_SHA: upper,
+  ...env,
+});
+
+/** One landing, as a session runs it with `--once`; following its stack is proved on its own. */
 function runLand(args: readonly string[], env: Record<string, string> = {}) {
-  return spawnTextSync(capturedExecPath, [land, ...args], {
-    cwd: work,
-    env: {
-      ...Bun.env,
-      ...fake,
-      ANA_GH_LOG: ghLog,
-      ANA_FAKE_PULLS: stack(),
-      ANA_FAKE_STACK: "7 11,12",
-      ANA_FAKE_STACK_END: "merged",
-      ANA_FAKE_STACK_UUID: "u1",
-      ANA_FAKE_STACK_SHA: upper,
-      ...env,
-    },
-  });
+  return spawnTextSync(capturedExecPath, [land, ...args, "--once"], { cwd: work, env: landEnv(env) });
 }
 
 const statuses = (context: string): string[] =>
@@ -873,6 +873,39 @@ describe("bun run land", () => {
     expect(proved.slice(-3)).toEqual([upper, upper, stacked]);
     expect(leftPending(COMMIT)).toEqual([]);
   });
+
+  it("follows its stack once a landing ends, lands again when a head moves, and ends when the pull request closes", async () => {
+    const later = join(fixture, "followed-pulls");
+    rmSync(`${later}.read`, { force: true });
+    writeFileSync(later, JSON.stringify([pull(11, "a", "main", lowerDocs), pull(12, "b", "a", stacked)]));
+    const child = Bun.spawn([capturedExecPath, land, "12"], {
+      cwd: work,
+      env: landEnv({ ANA_FAKE_PULLS_LATER: later, ANA_LAND_WATCH_MS: "100" }),
+      stdout: "pipe",
+      stderr: "inherit",
+    });
+    const reader = child.stdout.getReader();
+    const decoder = new TextDecoder();
+    let out = "";
+    const readUntil = async (follows: number): Promise<void> => {
+      while (out.split("land: following:").length <= follows) {
+        const { value, done } = await reader.read();
+        if (done) return;
+        out += decoder.decode(value);
+      }
+    };
+    await readUntil(1);
+    writeFileSync(`${later}.read`, "");
+    await readUntil(2);
+    writeFileSync(later, JSON.stringify([pull(11, "a", "main", lowerDocs)]));
+    expect(await child.exited).toBe(0);
+    await readUntil(Infinity);
+    expect(out).toContain("#12 is no longer open; following ends.");
+    // The second landing proves only the moved head; `upper`'s pass is remembered.
+    const gates = gatesRun(gateLog);
+    expect(gates.filter((gate) => gate.startsWith(upper))).toHaveLength(1);
+    expect(gates.at(-1)).toBe(`${stacked} suite`);
+  }, 60_000);
 
   it("reads the chain again before each proof starts, so a head moved on proves its new commits and not the old head", () => {
     const next = join(fixture, "moved-pulls");

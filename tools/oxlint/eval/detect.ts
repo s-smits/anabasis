@@ -152,7 +152,8 @@ function hitOfDiagnostic(row: JsonValue): Hit | null {
 
 /** The per-file rules' hits over a tree, through the lint worktree's own Oxlint. */
 export function ruleHits(detectors: string, root: string, scratch: string): Hit[] {
-  const config = join(scratch, "implicit-state-eval.oxlintrc.json");
+  // One config a process: scorers of other lint worktrees may share the cache and run at once.
+  const config = join(scratch, `implicit-state-eval-${String(runtimeProcess.pid)}.oxlintrc.json`);
   writeFileSync(config, capturedJsonStringify(configOf(detectors)));
   const roots = ["."];
   if (readdirSync(root).includes(".claude")) roots.push(".claude");

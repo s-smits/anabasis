@@ -40,7 +40,8 @@
  *   `--regroup` the lanes built before whose report is not yet written are packed again with the
  *   new ones into a new manifest, their prompts unchanged, for a new `--agents N`; the caller must
  *   first stop every session still working on those prompts, since the new manifest starts them
- *   again. `lanes` creates `<out>/lanes` where it is missing.
+ *   again. With `--high K` the K heaviest sessions carry `"effort": "high"` and the rest `"medium"`,
+ *   which the launcher takes over its `--reasoning-effort`. `lanes` creates `<out>/lanes` where it is missing.
  * - `collect` holds every expected report to its shape and writes `reports.md`. It exits 1 until
  *   every report is there and valid.
  * - `synthesis` renders the synthesis session's prompt over the reports as they stand.
@@ -137,6 +138,7 @@ const { values, positionals } = parseArgs({
     root: { type: "string" },
     lanes: { type: "string" },
     agents: { type: "string" },
+    high: { type: "string" },
     regroup: { type: "boolean" },
     bundle: { type: "string" },
     task: { type: "string" },
@@ -448,6 +450,17 @@ function lanes(): number {
     );
   }
   const groups = sessionsOf(launched, count);
+  // `--high K` gives the K heaviest sessions high reasoning and the rest medium (operator, 9
+  // November: "medium or high based on complexity of the group"); without it the launch's effort holds.
+  const high = values.high === undefined ? null : Number(values.high);
+  if (high !== null && (!Number.isInteger(high) || high < 0 || high > groups.length)) {
+    throw new Error(`--high ${String(values.high)}: name a whole number from 0 to ${String(groups.length)}`);
+  }
+  const heaviest = new Set(
+    groups.toSorted((one, other) => weightOf(other) - weightOf(one)).slice(0, high ?? 0),
+  );
+  const effortOf = (group: (typeof groups)[number]) =>
+    high === null ? {} : { effort: heaviest.has(group) ? "high" : "medium" };
   const sessions = groups.map((group) => {
     const labels = [...new Set(group.map((lane) => lane.label))];
     // A label may be split across sessions, so a session's first lane keeps its name unique.
@@ -460,6 +473,7 @@ function lanes(): number {
           ? `Read ${prompts} and do exactly what it says.`
           : `Read ${prompts}, one at a time, and do exactly what each says: each lane writes its own report.`,
       ownedPaths: group.map((lane) => reportPath(out, lane.number)),
+      ...effortOf(group),
     };
   });
   // A lane reads campaign logs, which hold hidden values, so its sessions search nothing: a query
@@ -481,7 +495,7 @@ function lanes(): number {
   console.log(`${plural(built.length, "lane")} built: ${built.map((lane) => lane.number).join(", ")}`);
   for (const [index, group] of groups.entries()) {
     console.log(
-      `session ${sessions[index]?.name ?? ""}: lanes ${group.map((lane) => lane.number).join(", ")}, weight ${weightOf(group).toFixed(1)}`,
+      `session ${sessions[index]?.name ?? ""}: lanes ${group.map((lane) => lane.number).join(", ")}, weight ${weightOf(group).toFixed(1)}${high === null ? "" : `, ${effortOf(group).effort ?? ""} effort`}`,
     );
   }
   for (const lane of kept) console.log(`lane ${String(lane.number)}: built before, kept`);

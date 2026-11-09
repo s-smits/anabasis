@@ -161,4 +161,30 @@ describe("a launch", () => {
     expect(run("--manifest", path, "--output-dir", join(root, "quiet"), "--codex-bin", codex).code).toBe(0);
     expect(calls().find((call) => call.name === "quiet")?.args[0]).toBe("exec");
   });
+
+  it("runs a row at its own effort, the rest at the launch's, and refuses one the model lacks", () => {
+    const path = join(root, "efforts.json");
+    const sessions = [
+      { name: "deep", task: "d", effort: "high" },
+      { name: "plain", task: "p" },
+    ];
+    writeFileSync(path, capturedJsonStringify({ workdir, sessions }));
+    const sol = ["--codex-bin", codex, "--model", "gpt-6.1-sol", "--start-interval-ms", "0"];
+    expect(run("--manifest", path, "--output-dir", join(root, "efforts"), ...sol).code).toBe(0);
+    const effort = (name: string) =>
+      calls()
+        .find((call) => call.name === name)
+        ?.args.find((arg) => arg.startsWith("model_reasoning_effort"));
+    expect([effort("deep"), effort("plain")]).toStrictEqual([
+      'model_reasoning_effort="high"',
+      'model_reasoning_effort="medium"',
+    ]);
+    writeFileSync(
+      path,
+      capturedJsonStringify({ workdir, sessions: [{ name: "odd", task: "o", effort: "max" }] }),
+    );
+    const refused = run("--manifest", path, "--output-dir", join(root, "odd"), ...sol);
+    expect(refused.code).not.toBe(0);
+    expect(refused.stderr).toContain("session odd: effort must be one of");
+  });
 });

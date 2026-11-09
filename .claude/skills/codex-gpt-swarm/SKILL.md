@@ -30,7 +30,7 @@ With no model named, the batch policy decides:
 | 6 or more | `--model gpt-6-luna --reasoning-effort xhigh`, all in one launch |
 
 An explicit choice replaces the table; keep a named effort exactly (Luna named alone runs at `max`).
-One launch is one model at one effort. The count follows the unsettled questions, never split to
+One launch is one model, at one effort unless a row names its own. The count follows the unsettled questions, never split to
 reach a Luna batch. Always pass the flags: the launcher defaults to `gpt-6-luna` at `max`.
 
 | model (`MODELS`) | efforts | default |
@@ -69,8 +69,9 @@ Write the manifest with a file-writing tool:
 }
 ```
 
-A row takes only `name` (`^[a-z][a-z0-9_]{0,47}$`), a distinct `task`, `workdir`, `sandbox` and
-`ownedPaths` (required by `workspace-write`). Web search is on unless `"search": false`, which a
+A row takes only `name` (`^[a-z][a-z0-9_]{0,47}$`), a distinct `task`, `workdir`, `sandbox`,
+`ownedPaths` (required by `workspace-write`) and `effort`, which runs that row at another of the
+model's efforts than `--reasoning-effort` and is recorded in `launch.json` for `--retry`. Web search is on unless `"search": false`, which a
 session reading campaign logs needs; a searching session queries only public concepts and cites URLs.
 
 ## Launch

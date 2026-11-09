@@ -8,7 +8,7 @@ import { blockingOf } from "../../../../src/kernel/verify.ts";
 import { taskSets } from "../../../../src/kernel/task.ts";
 import { isNumber, isString } from "../../../../src/meta/json-shape.ts";
 import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
-import type { Query, SolveDetail } from "../models.ts";
+import { isRejection, type Query, type SolveDetail } from "../models.ts";
 import { type Reading, Unanswerable } from "./context.ts";
 import { practiceIn, solvedIn, verdictsIn } from "./folds.ts";
 import { campaignAt } from "./logs.ts";
@@ -42,7 +42,7 @@ export function solveAnswer(reading: Reading, query: Query<"solve">): SolveDetai
     issues,
     solve: row,
     heldOut: then.held.includes(row.task),
-    withheld: row.ending?.outcome === "fail" && row.ending.kind === "rejected" ? withheld : null,
+    withheld: isRejection(row) ? withheld : null,
     model: isString(solve.start.model) ? solve.start.model : null,
     effort: isString(solve.start.effort) ? solve.start.effort : null,
     load: isNumber(load) ? load : null,

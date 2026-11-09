@@ -147,8 +147,8 @@ export function clearOnce(store: { open: boolean; dirty: boolean }) {
 }
 `;
 
-const PHASES = `import { existsSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+const PHASES = `import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 export function phaseOf(jobDir: string): string {
   if (existsSync(join(jobDir, "done.json"))) return "done";
   return existsSync(join(jobDir, "started.json")) ? "running" : "queued"; // REPORT two files of one folder decide the phase
@@ -160,6 +160,15 @@ export function wrapped(jobDir: string): boolean {
 }
 export function ensure(jobDir: string): void {
   if (!existsSync(jobDir)) mkdirSync(jobDir); // ADMITTED a single guard
+}
+export function init(base: string, template: string): void {
+  if (existsSync(join(base, "config.json"))) return;
+  writeFileSync(join(base, "config.json"), "{}");
+  if (!existsSync(join(base, "README.md"))) copyFileSync(template, resolve(base, "README.md")); // ADMITTED create if missing converges on a rerun
+}
+export function vet(dir: string): string | null {
+  if (!existsSync(join(dir, "vetting.md"))) return "step: vet";
+  return existsSync(join(dir, "marker")) ? null : "step: mark"; // REPORT a negated check that writes nothing is still a phase
 }
 export function apart(jobDir: string, cacheDir: string): boolean {
   return existsSync(join(jobDir, "done.json")) && existsSync(join(cacheDir, "hit.json")); // ADMITTED two folders
@@ -252,7 +261,7 @@ describe("the implicit-state rules", () => {
     await lintRules("implicit-state", [
       ["excessive-bools", BOOLS, 4, "src/upload.tsx"],
       ["mtime-as-lock", LOCKS, 4, "src/locks.ts"],
-      ["files-as-phase", PHASES, 2, "src/phases.ts"],
+      ["files-as-phase", PHASES, 3, "src/phases.ts"],
       ["co-assigned-flags", MODES, 2, "src/modes.tsx"],
       ["co-assigned-flags", MODES, 0, "src/four.tsx", { fields: 4 }],
       ["co-assigned-flags", MODES, 0, "src/many.tsx", { writes: 5 }],

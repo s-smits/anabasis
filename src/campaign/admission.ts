@@ -52,7 +52,7 @@ import { type Cap, CUT, lastReports, patienceOf, poolOf, roomOf } from "../kerne
 import { practiceRan, rejectionAside } from "../kernel/solves.ts";
 import { sizeLines } from "../kernel/size.ts";
 import { taskSets } from "../kernel/task.ts";
-import { asRecord, isString, type JsonObject } from "../meta/json-shape.ts";
+import { asRecord, isString } from "../meta/json-shape.ts";
 
 /** What a log holds for the next comparison. */
 export interface Supply {
@@ -183,18 +183,19 @@ export function stopRule(events: readonly LogEvent[]) {
   const failed = practiceRan(events).filter(
     (solve) => solve.ending?.outcome === "fail" && !rejectionAside(events, solve),
   );
-  const whole = (data: JsonObject, changed: boolean) => data.changed === changed && !CUT.has(data.ended);
+  const whole = ({ kind, data }: LogEvent, harness: "changed" | "unchanged") =>
+    kind === "build.finished" && data.changed === (harness === "changed") && !CUT.has(data.ended);
   // The harnesses a whole session changed, or a live one froze as a snapshot.
   const built = new Set(
-    events.flatMap(({ kind, data }) =>
-      kind === "build.checkpoint" || (kind === "build.finished" && whole(data, true)) ? [data.harness] : [],
+    events.flatMap((event) =>
+      event.kind === "build.checkpoint" || whole(event, "changed") ? [event.data.harness] : [],
     ),
   );
   // The whole sessions that left their harness as it was after a practice solve of theirs failed.
-  const idle = events.flatMap(({ kind, data }, index) => {
-    if (kind !== "build.finished" || !whole(data, false)) return [];
+  const idle = events.flatMap((each, index) => {
+    if (!whole(each, "unchanged")) return [];
     const from = events.findLastIndex(
-      (began, at) => at < index && began.kind === "build.started" && began.data.session === data.session,
+      (began, at) => at < index && began.kind === "build.started" && began.data.session === each.data.session,
     );
     return failed.some(({ started }) => started > from && started < index) ? [{ index, step: false }] : [];
   });

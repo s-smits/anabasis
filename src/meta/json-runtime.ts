@@ -69,10 +69,8 @@ export function hashJsonBytes(value: unknown): string {
  *  themselves, so a replaced `JSON.stringify` or an added `Array.prototype.toJSON` would still
  *  change the bytes the transport writes. Freezing has to happen before the import, because
  *  afterwards the module it was meant to bound is already running. */
-export function lockJsonGlobals(freezeObjectPrototype = false): void {
-  const values: unknown[] = [Array, Array.prototype, JSON, Object];
-  if (freezeObjectPrototype) values.push(Object.prototype);
-  for (const value of values) freeze(value);
+export function lockJsonGlobals(): void {
+  for (const value of [Array, Array.prototype, JSON, Object]) freeze(value);
   for (const name of ["Array", "JSON", "Object"] as const) {
     defineProperty(globalThis, name, { value: globalThis[name], writable: false, configurable: false });
   }

@@ -331,17 +331,15 @@ async function examining(
       stops,
     });
     if (rested !== null) return rested;
-    const work = mode.done();
     const by = {
-      stands: work === "stands",
+      [mode.done() ?? "none"]: true,
       finished: said.note !== null,
-      supplied: work === "supplied",
       killed: request.kill?.aborted === true,
       wall: clock.signal.aborted,
       crashed: sat.crash !== null,
       turns: turns.length - from >= current.limits.turns,
     };
-    const ended = ENDINGS.find((reason) => by[reason]) ?? "stopped";
+    const ended = ENDINGS.find((reason) => by[reason] === true) ?? "stopped";
     // A later ask bills the conversation's bill beyond the asks before it, and no backend total.
     return closeAsk(ended, {
       crash: sat.crash,

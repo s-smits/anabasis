@@ -30,7 +30,7 @@ function factsOf(found: Found): { readonly read: boolean; readonly listing: List
   const stamp = stampOf(found);
   const was = listed.get(found.path);
   if (was !== undefined && stamp !== null && was.stamp === stamp) return { read: false, listing: was };
-  const { log, issues } = loaded(found, false);
+  const { log, issues } = loaded(found, "list");
   let listing: Listed;
   try {
     listing = { stamp, facts: log === null ? null : factsIn(log), issues };

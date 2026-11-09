@@ -209,6 +209,11 @@ export function blockingOf(verdict: Verdict | null | undefined): readonly string
   return verdict?.kind === "fail" ? verdict.blocking : [];
 }
 
+/** Whether the checks decided the answer, a pass or a fail, rather than ending faulty or as a non-result. */
+export function decides(verdict: Verdict): verdict is Extract<Verdict, { kind: "pass" | "fail" }> {
+  return verdict.kind === "pass" || verdict.kind === "fail";
+}
+
 /** A verdict in one line, a fail's checks in order, so that two verdicts can be set side by side. */
 export function spelled(verdict: Verdict): string {
   if (verdict.kind === "fail") return `fail ${[...verdict.blocking].toSorted().join(",")}`;

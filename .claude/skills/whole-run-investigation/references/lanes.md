@@ -1,6 +1,6 @@
 # Whole-run investigation lanes
 
-The catalogue: six deterministic rows the primary settles itself, and twenty-nine lanes, each one
+The catalogue: six deterministic rows the primary settles itself, and thirty-one lanes, each one
 question a paid session can be given. `tools/wri/catalogue.ts` parses this file, and
 `test/wri-catalogue.test.ts` holds it to `TRIGGERS` (`tools/wri/folds.ts`): each trigger the reader
 prints is named in the `Starts from` paragraph of the lane it starts.
@@ -33,10 +33,10 @@ and a pass establishes only what its check reads. Every row and lane applies six
 
 A trigger is the capitalised text before the first colon of a line `bun tools/wri/wri.ts read`
 prints, with its lane beside it. It says a lane has something to read, never what the answer is,
-so a lane that refutes its trigger has done its job. Lanes 1, 2, 18, 26 and 27 are standing: they
-open on every campaign, triggered or not. Lanes 4 and 15 are isolated: each runs alone, only on its
-trigger, and freezes its result before it reads anything that could lead it. Lane 27 grades blind,
-so it is read first in any session it shares.
+so a lane that refutes its trigger has done its job. Lanes 1, 2, 18, 26, 27, 30 and 31 are
+standing: they open on every campaign, triggered or not. Lanes 4 and 15 are isolated: each runs
+alone, only on its trigger, and freezes its result before it reads anything that could lead it.
+Lane 27 grades blind, so it is read first in any session it shares.
 
 No lane changes a verdict, a task's state or a reading. Its product is a finding with exactly one
 owner, the evidence it cites and the observation that would reverse it:
@@ -74,7 +74,7 @@ labels and draws its lanes from them (run-improvement-campaign, step 1).
 | supply | 7, 9, 11 | `supply` | task writing and admission, release, room, what the Examiner is told |
 | climb | 12–16 | `harness` | the Builder's session, prompt, tools or practice, the harness contract, the wall to the Builder |
 | honesty | 8, 17, 18, 20, 29 | `comparison` | a comparison's terms, pairing, scored set, tally, test, A/A, conditions |
-| climb | 19, 21–23, 27, 28 | `climb` | the move table, moves, starter comparison, promotion, stop rule, endings, words |
+| climb | 19, 21–23, 27, 28, 30, 31 | `climb` | the move table, moves, starter comparison, promotion, stop rule, endings, words |
 | honesty | 24 | `solve` | a solve's run, backends, the wall, endings, non-results, slots and load |
 | economy | 25 | `economy` | billing, the meter, the budget, time readers |
 | honesty | 26 | `runs` | launching and moving runs, logins, hosts, receipts |
@@ -123,7 +123,7 @@ practice, and the reading of each comparison of its harness (named by session, `
 Examiner session: ending, proposals, and what stood. A move is recorded as it begins, so name every
 step still open at the log's end on its own line and judge closure by the step's own ending.
 
-## Lanes 1–29
+## Lanes 1–31
 
 ### The verdicts: the instrument, its review and its draft
 
@@ -844,3 +844,82 @@ operator has ruled it out. The decision: whether these steps are reported as eff
 comparisons on objective-only tasks are enlarged or tasks written where validity can separate.
 Routes to `host` (`src/kernel/compare.ts`, the comparison's size), `examiner-prompt` (tasks on
 which validity can separate harnesses) and `operator`.
+
+**30. What a confirmation is made of.**
+
+Label: `climb`.
+Importance: 0.8.
+Marks: `standing`.
+
+Starts from every promotion that has a starter read, and is standing.
+
+Would the starter read have confirmed this promotion if nothing the harness learned carried to new
+tasks? A starter read tallies three kinds of task (`starterReads`, `src/campaign/climb.ts`), and
+`confirmed` tests them together (`againstStarter`, one `readsStep` over the whole tally): the tasks
+of the comparison that promoted the harness, on which it was selected, are in the same sum as the
+tasks written after it. Four parts, kept apart:
+
+1. **The composition.** For each read, the reference's won-lost-tied on each origin
+   (`starter-reads.ts`), and each origin's share of the summed margins, which no script prints (sum
+   `differenceOf` over the read's pairs, `pairsReported`, by origin). `starter-reads.ts` also says
+   what the tasks written after the promotion read alone at the read's level (`after`); list the
+   reads where it is not `a step` while `confirmed` holds.
+2. **The selection-only chance.** Keep the margins of the other two origins as recorded, and give
+   each task written after the promotion a fair sign at its recorded margin. Count the draws that
+   would still read `confirmed` at the level. That count is how often this read confirms by
+   selection alone. Show the draw's size and its count, not a single rate.
+3. **The fleet.** Across every read under review: reads confirmed, reads confirmed on the tasks
+   written after alone (`starter-reads.ts --all` prints both), and the number the selection-only
+   chance expects of the first. A confirmed count near that expectation says the flag does not yet
+   separate a transferable gain from none.
+4. **The measure.** For each confirmed read, say whether validity or the objective carried it
+   (`starter-reads.ts` splits each origin by whether validity differed; lane 29), since an
+   objective-only read rests on margins.
+
+Never propose a lower level or a higher gap floor (`ROOM`). Say how many reads the counts rest on,
+and that a read of few tasks is one draw. The decision: whether `confirmed` is reported as a
+transferred gain or as a read that selection alone could produce, and what the climb bar of
+`AGENTS.md` section 1 should count. Routes to `host` (`src/campaign/climb.ts`) and `operator` (the
+bar).
+
+**31. How many independent batches a read rests on.**
+
+Label: `climb`.
+Importance: 0.75.
+Marks: `standing`, `side-by-side`.
+
+Starts from every starter read, and is standing. Where several campaigns are under review it is
+given their climbs side by side.
+
+Is the unit of evidence a task or a batch of tasks? The tasks written after a promotion come from
+one or a few Examiner sessions, and tasks of one session share their writer's aim, families and
+difficulty, so their outcomes move together. Five parts:
+
+1. **The batches.** For each read, the number of writing sessions behind the tasks written after the
+   promotion and the reference's won-lost on each. `starter-reads.ts` gives one line a writer, but
+   over the whole read and not by origin, so name a session that wrote on both sides of the
+   promotion apart. A read with one session holds one draw of a batch.
+2. **What the count can show.** A sign test across k sessions reaches 0.02 only from k = 6 (one half
+   to the power of k). With one session, where neither harness is better and a session moves its
+   tasks' scores by as much as a task's own noise, a slice of about eleven tasks reads a step for the
+   reference about a quarter of the time, and one for the starter about as often; without that
+   session effect, each about one time in fifty (a simulation of 9 November over `flipP`, five
+   thousand draws). Give each read its k and the least p it could reach.
+3. **The campaign's slices.** Across a campaign, the after-slices that went to the reference, to the
+   starter and to neither, one count per promotion. Place the counts of the campaigns under review
+   side by side, and name the confounds that differ between them (lane 26: pack, host, commit,
+   seats, budget, terms) before saying a difference belongs to the domain.
+4. **The spread.** Whether the slices differ from one another by more than the tasks within a slice
+   would give by chance (the variance of the slice shares against the binomial at the pooled share).
+   Where they do, a pooled tally overstates its precision; say what the writing sessions held in
+   common (lane 28 gives the aim, lane 11 how each session's instances changed, lane 17 what a set
+   of tasks shares).
+5. **What would settle it.** How many separately written batches a campaign would need for a
+   campaign-level reading, and what a batch written blind to both harnesses costs
+   ([compare-systems](../../compare-systems/SKILL.md)); it is paid, so propose it with its size and
+   leave it to the operator.
+
+Never propose a higher gap floor (`ROOM`); it moves the noise to the next margin. The decision:
+whether each campaign's climb is reported with its batch counts beside the tallies, and whether a
+neutral comparison is asked for. Routes to `host` (`src/campaign/climb.ts`, the report),
+`examiner-prompt` (batches written where the reference has not closed) and `operator`.

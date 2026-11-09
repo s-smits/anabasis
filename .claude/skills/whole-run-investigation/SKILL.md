@@ -11,7 +11,7 @@ and which owner each next change belongs to. It only reads and proposes; the hos
 every verdict, and `AGENTS.md` sections 1 to 8 own the rules it reads against.
 
 A deterministic fold of the log gives six rows (the identities every finding binds to) and a set of
-triggers. Each trigger opens one of twenty-nine lanes in [the catalogue](references/lanes.md), each
+triggers. Each trigger opens one of thirty-one lanes in [the catalogue](references/lanes.md), each
 lane is one question answered by an independent session, one session merges the reports, and the
 primary vets the result.
 
@@ -57,7 +57,7 @@ under `.ana/wri/<date>-<campaign>/` on the central host.
 3. **Build the lanes.** `wri.ts lanes --out <dir> [--lanes 1-4,7] [--agents N]` writes
    `<dir>/lanes/NN-prompt.md` and a manifest: `<dir>/launch.json` the first time, and
    `launch-NN[-NN...].json` by the lanes it built every later time, which the verb names. Without `--lanes` it opens every triggered lane
-   and the five standing lanes, and names, without building, each isolated lane whose trigger fired.
+   and the seven standing lanes, and names, without building, each isolated lane whose trigger fired.
    `--agents N` packs whole labels into N sessions of similar summed `Importance:`, and the verb
    prints a suggested N (the most sessions whose lightest weighs at least half the heaviest). A prompt
    built before is kept and left out of the new manifest. *Check:* exit 0; the sessions this call
@@ -127,7 +127,7 @@ the largest campaign. With a smaller budget, read groups in dependency order:
 2. **Comparison (17 to 20, 29)**, lane 18 first.
 3. **Harness (12 to 16)**, lane 12 first.
 4. **Supply (7 to 11), solve (24), economy (25), runs (26).**
-5. **Climb (21 to 23, 27, 28)**: open it before anyone is told a campaign improved a harness. Lane 27
+5. **Climb (21 to 23, 27, 28, 30, 31)**: open it before anyone is told a campaign improved a harness. Lane 27
    runs from the start.
 
 In a release cycle, launch every lane at once and synthesise from the reports in hand within the
@@ -237,7 +237,7 @@ Then vet the synthesis's own findings:
 
 | file | owns |
 | --- | --- |
-| [references/lanes.md](references/lanes.md) | the stance, the owner table, the labels, rows A to F and lanes 1 to 29 |
+| [references/lanes.md](references/lanes.md) | the stance, the owner table, the labels, rows A to F and lanes 1 to 31 |
 | [references/from-v1.md](references/from-v1.md) | where each of v1's rows and lanes went |
 | [references/shared-instructions.template.md](references/shared-instructions.template.md) | the preset every open lane carries |
 | [references/synthesis.template.md](references/synthesis.template.md) | the synthesis session's prompt |

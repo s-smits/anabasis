@@ -245,7 +245,7 @@ describe("the lanes verb", () => {
     expect(prompts()["03-prompt.md"]).toBe(built["03-prompt.md"]);
     // A later build of an open lane gets one too: until 9 November it wrote over `launch.json`, and
     // the sessions the first build had launched were owed by no manifest.
-    const later = Array.from({ length: 29 }, (_, index) => index + 1).find(
+    const later = Array.from({ length: 31 }, (_, index) => index + 1).find(
       (number) => ![4, 15].includes(number) && !(`${String(number).padStart(2, "0")}-prompt.md` in prompts()),
     );
     const stemOf = String(later).padStart(2, "0");

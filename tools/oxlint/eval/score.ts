@@ -55,7 +55,7 @@ import { clonedRepo, foreignRepos, fullCommit, treeOf } from "./trees.ts";
 
 /** The precision a rule's recommended threshold must reach, by tier. */
 const FLOORS = { generic: 0.8, opinionated: 0.5 } as const;
-const OPINIONATED = new Set(["name-encoded-state", "state-file-overwrite", "unowned-state-literal"]);
+const OPINIONATED = new Set(["name-encoded-state", "unowned-state-literal"]);
 
 /** Every file under a detector source, by its bytes, so an edit in the lint worktree re-runs. */
 function detectorDigest(detectors: string): string {

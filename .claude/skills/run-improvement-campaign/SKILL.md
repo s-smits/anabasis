@@ -182,7 +182,7 @@ steps 2 to 4, with the isolated lanes 4 and 15 of
 [whole-run-investigation](../whole-run-investigation/SKILL.md) where called for.
 
 9. **Consolidate** the stack by subject before it lands: review in groups, fix confirmed findings,
-   regroup, publish, and prove with `bun run land -- <top> --sanitize` (stack-pr, section 10).
+   regroup, publish, and prove with `bun run land -- <top> --sanitize` (consolidate-stack).
 10. **Land and release** on the operator's word: `bun run land -- <top>` proves every commit, and
     `--merge --tag v<x.y.z>` waits for CI, merges and cuts the release; then rewrite the notes as
     stack-pr section 9 sets out. Where the proof fails, report the commit and step and do not land.

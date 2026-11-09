@@ -7,6 +7,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -31,6 +32,7 @@ import {
   notRead,
   passRunning,
   pastMilestone,
+  pruneObservers,
   readersSaid,
   resultOf,
   room,
@@ -602,6 +604,44 @@ describe("a look that was cut", () => {
     const hand = look("--no-readers", "--here", "--state", ".ana/pulse/hand.json", "the-run");
     expect(hand.out).not.toContain("ack ");
     expect(linesOf(join(made.main, ".ana", "pulse", "hand.json"), log)).toBe(3);
+  });
+
+  it("drops a peer's pending answer that a kill cut part way, and says its lines again", () => {
+    const { made, look } = host();
+    const state = join(made.main, ".ana", "pulse", "observer.json");
+    mkdirSync(dirname(state), { recursive: true });
+    writeFileSync(`${state}.pending`, '{"memory":{"logs":');
+    const here = ["--no-readers", "--here", "--state", ".ana/pulse/observer.json", "the-run"];
+    const after = look(...here, "--ack", "none");
+    expect(after.code).toBe(0);
+    expect(after.out).toContain("the-run");
+    expect(existsSync(state)).toBe(false);
+  });
+
+  it("keeps the state whole while several looks remember it at once", async () => {
+    const state = join(scratch(), "runs-pulse.json");
+    const pulse = JSON.stringify(join(import.meta.dir, "..", "tools", "runs", "pulse-readers.ts"));
+    const writers = Array.from({ length: 4 }, (_, one) =>
+      capturedSpawn(
+        [
+          capturedExecPath,
+          "-e",
+          `import { remember } from ${pulse}; const text = JSON.stringify({ writer: ${String(one)}, pad: "x".repeat(200_000) }); for (let i = 0; i < 100; i++) remember(${JSON.stringify(state)}, text);`,
+        ],
+        { stdout: "ignore", stderr: "ignore" },
+      ),
+    );
+    expect(await Promise.all(writers.map(async (one) => await one.exited))).toEqual([0, 0, 0, 0]);
+    expect(parseJsonAs<{ pad: string }>(readFileSync(state, "utf8")).pad).toHaveLength(200_000);
+  }, 60_000);
+
+  it("drops a gone observer's files with the half-written ones a kill left", () => {
+    const folder = scratch();
+    for (const file of ["gone.json", "gone.json.pending.4242.tmp", "gone.json.4242.tmp", "notes.txt"]) {
+      writeFileSync(join(folder, file), "{}");
+    }
+    pruneObservers(join(folder, "observer.json"), Date.now() + 8 * 24 * 60 * 60_000);
+    expect(readdirSync(folder)).toEqual(["notes.txt"]);
   });
 
   it("returns each host's token, hides it, and keeps it for a host that gave no answer", () => {

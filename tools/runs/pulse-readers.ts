@@ -160,8 +160,12 @@ function lastPass(store: string): PassEnding | null {
 const textOf = (store: string, log: string, reader: string) =>
   readFileSync(join(folderOf(store, log), `${reader}.txt`), "utf8");
 
-/** Written beside its place and renamed, so a look or a kill never finds half of it. */
-function written(file: string, text: string): void {
+/** Written beside its place and renamed, through a file of this process's own, so a reader, a kill
+ *  or a second writer never finds half of it: until 9 November a look's state went through one
+ *  shared file, and two looks renamed each other's half-written one into place. */
+export function remember(file: string, text: string): void {
+  // A checkout no campaign ran in has no `.ana/`, as the Linux runner's had none on 20 October.
+  mkdirSync(dirname(file), { recursive: true });
   const beside = `${file}.${String(runtimeProcess.pid)}.tmp`;
   writeFileSync(beside, text);
   renameSync(beside, file);
@@ -177,13 +181,13 @@ export function keepResult(
 ): void {
   const folder = folderOf(store, log);
   mkdirSync(folder, { recursive: true });
-  if (text !== null) written(join(folder, `${reader}.txt`), text);
-  written(join(folder, `${reader}.json`), capturedJsonStringify(result));
+  if (text !== null) remember(join(folder, `${reader}.txt`), text);
+  remember(join(folder, `${reader}.json`), capturedJsonStringify(result));
 }
 
 /** The readers a pass runs, kept for the looks, which read no helper. */
 export function keepNames(store: string, names: readonly string[]): void {
-  written(join(store, NAMES), capturedJsonStringify(names));
+  remember(join(store, NAMES), capturedJsonStringify(names));
 }
 
 function namesIn(store: string): readonly string[] {
@@ -198,7 +202,7 @@ export const room = (load = loadNow(), cores = availableParallelism()): boolean 
 /** Record how a pass ended, and drop the results of logs no look has moved for a week. */
 export function endPass(store: string, ended: PassEnding["ended"]): void {
   const ending: PassEnding = { at: Date.now(), ended };
-  written(join(store, LAST), capturedJsonStringify(ending));
+  remember(join(store, LAST), capturedJsonStringify(ending));
   for (const entry of readdirSync(store, { withFileTypes: true })) {
     const folder = join(store, entry.name);
     if (entry.isDirectory() && Date.now() - statSync(folder).mtimeMs > STALE_MS) {
@@ -487,13 +491,14 @@ export function alarmsMoved(store: string, log: string, before: SaidOf | undefin
     });
 }
 
-/** Drop the files of observers gone for a week, beside a peer's `--state`. */
+/** Drop the files of observers gone for a week, beside a peer's `--state`, with any a kill left half
+ *  written. */
 export function pruneObservers(state: string, now = Date.now()): void {
   const folder = dirname(resolve(state));
   if (!existsSync(folder)) return;
   for (const entry of readdirSync(folder)) {
     const file = join(folder, entry);
-    if (/\.json(?:\.pending|\.d)?$/.test(entry) && now - statSync(file).mtimeMs > STALE_MS) {
+    if (/\.json(?:\.pending|\.d)?(?:\.\d+\.tmp)?$/.test(entry) && now - statSync(file).mtimeMs > STALE_MS) {
       rmSync(file, { recursive: true, force: true });
     }
   }

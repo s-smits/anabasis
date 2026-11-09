@@ -65,7 +65,7 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 import { exportForClaudeCode } from "../shared/claude-export.ts";
-import { inGroup } from "./h2/claude.ts";
+import { inGroup, REFUSED } from "./h2/claude.ts";
 import { NAMESPACE } from "./h2/recursion.ts";
 import { envOf, jobBench, pilotClaude, SCRUB } from "./jobbench.ts";
 
@@ -146,7 +146,8 @@ const text = (value: JsonValue | undefined): string =>
 /**
  * The runner's own log of one label, as the pilot's `costs.py` and `walls.py` read it: the dollars
  * of every attempt in every log, and the newest log's start to its last attempt. `ran` is false
- * where no attempt of the newest log reached a `result`, which is a dead agent, never a zero.
+ * where no attempt of the newest log reached a `result` of the arm's own, which is a dead agent or
+ * a refused session (`REFUSED`), never a zero.
  */
 function rolloutLog(store: string, task: string, label: string) {
   const dir = join(store, ".harness2-logs");
@@ -181,7 +182,7 @@ function rolloutLog(store: string, task: string, label: string) {
   return {
     usd: attempts.flat().reduce((sum, attempt) => sum + attempt.usd, 0),
     attempts: last.length,
-    ran: last.some((attempt) => attempt.result !== "None"),
+    ran: last.some((attempt) => attempt.result !== "None" && attempt.result !== REFUSED),
     seconds,
   };
 }

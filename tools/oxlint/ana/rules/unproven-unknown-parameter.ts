@@ -208,9 +208,9 @@ export const unprovenUnknownParameterRule = defineRule({
       examples: [
         {
           before:
-            "function writeCompleted(path: string, value: unknown): void {\n  writeFileSync(path, capturedJsonStringify(value));\n}",
+            "function appendCompleted(path: string, value: unknown): void {\n  appendFileSync(path, capturedJsonStringify(value));\n}",
           after:
-            "function writeCompleted(path: string, value: JsonValue): void {\n  writeFileSync(path, capturedJsonStringify(value));\n}",
+            "function appendCompleted(path: string, value: JsonValue): void {\n  appendFileSync(path, capturedJsonStringify(value));\n}",
         },
         {
           before: "function taskIdOf(value: unknown): string {\n  return (value as Task).id;\n}",

@@ -86,6 +86,44 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## foxglove eslint-plugin
+
+- Source: https://github.com/foxglove/eslint-plugin, `rules/no-boolean-parameters.js` at commit
+  e381b5a, MIT.
+- Port: the readings of a flag it has and `ana/no-positional-boolean-parameter` lacked, in
+  `tools/oxlint/ana/shared/flags.ts` and that rule's `widen` option. Local changes: the type
+  checker's union parts become the written annotation (`boolean`, `true` or `false`, beside
+  `undefined`, `null` or `void`) and a default of `true` or `false`; the selectors become Oxlint
+  visitors for a `const` arrow or function expression, a `declare` function and an abstract
+  method, while a `TSFunctionType`, a callback's type, stays out; `allowLoneParameter` and both
+  suggestions (a string union of `"a" | "b"`, an options object) are not taken, and the rule keeps
+  its own exemptions for guards, gated callbacks and calls that pass the parameter's own name.
+  `implicit-state/excessive-bools` counts flag parameters through the same module.
+
+```text
+MIT License
+
+Copyright (c) Foxglove Technologies Inc
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## pi-claude-bridge
 
 - Source: https://github.com/elidickinson/pi-claude-bridge, 0.9.1 at commit e870bc89

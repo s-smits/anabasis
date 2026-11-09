@@ -49,6 +49,7 @@ type Label = "positive" | "negative";
 /** The class each rule is meant to find; recall is read against these. */
 export const RULE_CLASSES = new Map<string, readonly Class[]>([
   ["excessive-bools", ["boolean-phase"]],
+  ["flag-count", ["boolean-phase"]],
   ["files-as-phase", ["files-as-phase"]],
   ["mtime-as-lock", ["mtime-lock"]],
   ["name-encoded-state", ["name-encoded-state"]],

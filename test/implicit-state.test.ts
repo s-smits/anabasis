@@ -3,7 +3,8 @@
  * `files-as-phase`) and the two cross-file kinds of `tools/oxlint/tree-implicit-state.ts`
  * (`state-literal-spread`, `repeated-external-read`). Every fixture is a small foreign program, a
  * React form, an Express job runner with lock files, and each rule's nearest hostile case sits
- * beside the shape it reports: optional settings beside required flags, a "newer than" beside an
+ * beside the shape it reports: flags the same handlers move together beside a lifecycle, a default
+ * beside a derived flag, a "newer than" beside an
  * age, one guard beside a phase, an exhaustive switch beside a hand grouping, a polling loop and a
  * memoised read beside a repeated one.
  */
@@ -11,43 +12,64 @@ import { describe, expect, it } from "bun:test";
 import { implicitStateFindings } from "../tools/oxlint/tree-implicit-state.ts";
 import { lintRules } from "./helpers/lint-rule.ts";
 
-const BOOLS = `import { useState } from "react";
-export interface Upload { // REPORT four required flags spell one state
-  pending: boolean;
-  sending: boolean;
-  sent: true | false;
-  failed: boolean | undefined;
+const BOOLS = `export class Container { // REPORT a lifecycle: two flags moved by different methods
+  private started = false;
+  private closed: boolean = false;
+  constructor(private readonly name: string) {}
+  start(): void {
+    if (this.closed) throw new Error(this.name);
+    this.started = true;
+  }
+  close = (): void => {
+    this.closed = true;
+  };
 }
-export interface BuildOptions { // ADMITTED optional settings are independent choices
-  minify?: boolean;
-  sourcemap?: boolean;
-  watch?: boolean;
-  emptyOutDir?: boolean;
+export class Keys { // ADMITTED modifier keys the same handlers move together
+  shift = false;
+  alt = false;
+  down(event: { shiftKey: boolean; altKey: boolean }): void {
+    this.shift = event.shiftKey;
+    this.alt = event.altKey;
+  }
+  up(event: { shiftKey: boolean; altKey: boolean }): void {
+    this.shift = event.shiftKey;
+    this.alt = event.altKey;
+  }
 }
-export interface Plugin { // ADMITTED a string union is not a flag
-  enforce: "pre" | "post";
-  apply: "serve" | "build";
-  dev: boolean;
-  ssr: boolean;
-}
-export class Dialog { // REPORT four boolean fields
-  open = false;
+export class Environment { // ADMITTED configuration only the constructor sets, beside one moved flag
+  skipFsCheck: boolean;
+  watching = false;
   closing = false;
-  closed = true;
-  dragging: boolean = false;
+  constructor(skip: boolean) {
+    this.skipFsCheck = skip;
+    this.watching = !skip;
+  }
+  close(): void {
+    this.closing = true;
+  }
 }
-export function Uploader() { // REPORT four boolean useState cells
-  const [isLoading, setLoading] = useState(false);
-  const [isError, setError] = useState(false);
-  const [isSuccess, setSuccess] = useState(false);
-  const [isIdle, setIdle] = useState<boolean>(true);
-  return [isLoading, isError, isSuccess, isIdle, setLoading, setError, setSuccess, setIdle];
+export interface Element { // ADMITTED independent properties of a record are a type, not a phase
+  isDeleted: boolean;
+  locked: boolean;
+  frozen: boolean;
 }
-export function draw(fill: boolean, stroke: boolean, shadow: boolean, dashed = false) { // REPORT four boolean parameters
-  return [fill, stroke, shadow, dashed];
+export const isOver = (h: boolean, v: boolean): { either: boolean; horizontal: boolean; vertical: boolean } => { // REPORT a flag derived from two others
+  const either = h || v;
+  return { either, horizontal: h, vertical: v };
+};
+export function cut(code: number, signal: string | null) {
+  return { ok: code === 0, killed: signal !== null, failed: code !== 0 && signal !== null }; // ADMITTED derived from no field of the record
 }
-export function line(fill: boolean, stroke: boolean, shadow: boolean) { // ADMITTED three is the limit
-  return [fill, stroke, shadow];
+export function settle(code: number) {
+  const ok = code === 0;
+  const late = !ok;
+  return { ok, late, done: ok || late }; // REPORT derived through consts from two flags
+}
+export function label(title: string, name: string) {
+  return { title, name, shown: title || name }; // ADMITTED a default, not a flag
+}
+export function open(options: { minify: boolean; sourcemap: boolean }) {
+  return { minify: options.minify, sourcemap: options.sourcemap, watch: false }; // ADMITTED independent options
 }
 `;
 
@@ -310,14 +332,14 @@ const findings = (kind: string, files: Record<string, string>): string[] =>
 describe("the implicit-state rules", () => {
   it("report only the marked lines", async () => {
     await lintRules("implicit-state", [
-      ["excessive-bools", BOOLS, 4, "src/upload.tsx"],
+      ["excessive-bools", BOOLS, 3, "src/lifecycle.ts"],
       ["mtime-as-lock", LOCKS, 4, "src/locks.ts"],
       ["files-as-phase", PHASES, 3, "src/phases.ts"],
       ["co-assigned-flags", MODES, 2, "src/modes.tsx"],
       ["co-assigned-flags", UNCOUNTED_MODES, 3, "src/shapes.ts"],
       ["co-assigned-flags", MODES, 0, "src/four.tsx", { fields: 4 }],
       ["co-assigned-flags", MODES, 0, "src/many.tsx", { writes: 5 }],
-      ["excessive-bools", BOOLS, 0, "src/upload.test.tsx"],
+      ["excessive-bools", BOOLS, 0, "src/lifecycle.test.ts"],
     ]);
   });
 });

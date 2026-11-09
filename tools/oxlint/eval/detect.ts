@@ -47,14 +47,17 @@ export const DETECTOR_SOURCES = [
 ];
 
 /**
- * The permissive options each rule runs at. `excessive-bools` reports from two flags so a sweep can
+ * The permissive options each rule runs at, each rule run only where its plugin's index names it, so
+ * a lint worktree from before a rule still scores. `flag-count` reports from two flags so a sweep can
  * set its floor anywhere above; `name-encoded-state` reads every subject word its head comment
  * names, the three left out by default included, so the sweep can weigh each word.
  */
 const PERMISSIVE = {
-  "implicit-state/excessive-bools": ["warn", { max: 1, params: 1 }],
+  "implicit-state/co-assigned-flags": "warn",
+  "implicit-state/excessive-bools": "warn",
   "implicit-state/files-as-phase": "warn",
   "implicit-state/mtime-as-lock": "warn",
+  "implicit-state-opinionated/flag-count": ["warn", { max: 1, params: 1 }],
   "implicit-state-opinionated/name-encoded-state": [
     "warn",
     {
@@ -75,8 +78,6 @@ const PERMISSIVE = {
     },
   ],
 } satisfies Record<string, JsonValue>;
-/** Rules a lint worktree may not register yet, each run only where its plugin's index names it. */
-const NEWER = [["implicit-state", "co-assigned-flags"]] as const;
 const SKIPPED_DIRECTORY =
   /^(?:node_modules|dist|build|out|coverage|vendor|vendored|third[-_]party|generated)$/u;
 /** Dot folders a tree scan reads: this repository keeps skill scripts under `.claude`. */
@@ -86,7 +87,7 @@ const DECLARATION = /\.d\.[cm]?ts$/u;
 const OXLINT_CODE = /^(?<plugin>[\w-]+)\((?<rule>[\w-]+)\)$/u;
 /** A rule's count in its message: booleans held, parameters taken, readers, or times read. */
 const COUNTS: readonly [string, RegExp][] = [
-  ["excessive-bools", /(?:holds|takes) (\d+) boolean/u],
+  ["flag-count", /(?:holds|takes) (\d+) boolean/u],
   ["state-literal-spread", /grouped by hand in (\d+) other files/u],
   ["repeated-external-read", /(\d+) times on one path/u],
 ];
@@ -117,14 +118,14 @@ function configOf(detectors: string): JsonValue {
     ],
     categories: { correctness: "off" },
     ignorePatterns: ["**/node_modules/**", "**/vendor/**", "**/dist/**", "**/*.d.ts"],
-    rules: {
-      ...PERMISSIVE,
-      ...Object.fromEntries(
-        NEWER.filter(([plugin, rule]) =>
-          readFileSync(join(detectors, "tools/oxlint", plugin, "index.ts"), "utf8").includes(`"${rule}"`),
-        ).map(([plugin, rule]) => [`${plugin}/${rule}`, "warn"]),
-      ),
-    },
+    rules: Object.fromEntries(
+      Object.entries(PERMISSIVE).filter(([name]) => {
+        const [plugin = "", rule = ""] = name.split("/");
+        return readFileSync(join(detectors, "tools/oxlint", plugin, "index.ts"), "utf8").includes(
+          `"${rule}"`,
+        );
+      }),
+    ),
   };
 }
 

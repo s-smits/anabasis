@@ -147,6 +147,39 @@ export function clearOnce(store: { open: boolean; dirty: boolean }) {
 }
 `;
 
+const UNCOUNTED_MODES = `export class Tool {
+  setState(next: object) {
+    return next;
+  }
+  start(handle: string | null) {
+    this.setState({ // REPORT complementary comparisons of one handle
+      isResizing: handle !== null && handle !== "rotation",
+      isRotating: handle === "rotation",
+    });
+  }
+}
+export function kinds(kind: string, other: string) {
+  const one = { isFile: kind === "file", isDir: kind === "dir" }; // REPORT one subject equal to two literals
+  const two = { isFile: kind === "file", isLink: other === "link" }; // ADMITTED two subjects
+  const three = { ready: kind !== "", named: kind !== "anon" }; // ADMITTED both can hold
+  return [one, two, three];
+}
+export function origins(digest: string) {
+  return [
+    { digest, imported: false, frozen: false },
+    { digest, imported: true, frozen: false }, // REPORT opposite literals, never both set
+    { digest, imported: false, frozen: true },
+  ];
+}
+export function marks(digest: string) {
+  return [
+    { digest, open: true, dirty: false }, // ADMITTED both set in another object
+    { digest, open: false, dirty: true },
+    { digest, open: true, dirty: true },
+  ];
+}
+`;
+
 const PHASES = `import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 export function phaseOf(jobDir: string): string {
@@ -281,6 +314,7 @@ describe("the implicit-state rules", () => {
       ["mtime-as-lock", LOCKS, 4, "src/locks.ts"],
       ["files-as-phase", PHASES, 3, "src/phases.ts"],
       ["co-assigned-flags", MODES, 2, "src/modes.tsx"],
+      ["co-assigned-flags", UNCOUNTED_MODES, 3, "src/shapes.ts"],
       ["co-assigned-flags", MODES, 0, "src/four.tsx", { fields: 4 }],
       ["co-assigned-flags", MODES, 0, "src/many.tsx", { writes: 5 }],
       ["excessive-bools", BOOLS, 0, "src/upload.test.tsx"],

@@ -1,77 +1,15 @@
 /**
- * The generic implicit-state tier: the plugin `implicit-state` (`excessive-bools`, `mtime-as-lock`,
+ * The generic implicit-state tier: the plugin `implicit-state` (`co-assigned-flags`, `mtime-as-lock`,
  * `files-as-phase`) and the two cross-file kinds of `tools/oxlint/tree-implicit-state.ts`
  * (`state-literal-spread`, `repeated-external-read`). Every fixture is a small foreign program, a
  * React form, an Express job runner with lock files, and each rule's nearest hostile case sits
- * beside the shape it reports: flags the same handlers move together beside a lifecycle, a default
- * beside a derived flag, a "newer than" beside an
- * age, one guard beside a phase, an exhaustive switch beside a hand grouping, a polling loop and a
- * memoised read beside a repeated one.
+ * beside the shape it reports: a "newer than" beside an age, one guard beside a phase, an
+ * exhaustive switch beside a hand grouping, a polling loop and a memoised read beside a repeated
+ * one.
  */
 import { describe, expect, it } from "bun:test";
 import { implicitStateFindings } from "../tools/oxlint/tree-implicit-state.ts";
 import { lintRules } from "./helpers/lint-rule.ts";
-
-const BOOLS = `export class Container { // REPORT a lifecycle: two flags moved by different methods
-  private started = false;
-  private closed: boolean = false;
-  constructor(private readonly name: string) {}
-  start(): void {
-    if (this.closed) throw new Error(this.name);
-    this.started = true;
-  }
-  close = (): void => {
-    this.closed = true;
-  };
-}
-export class Keys { // ADMITTED modifier keys the same handlers move together
-  shift = false;
-  alt = false;
-  down(event: { shiftKey: boolean; altKey: boolean }): void {
-    this.shift = event.shiftKey;
-    this.alt = event.altKey;
-  }
-  up(event: { shiftKey: boolean; altKey: boolean }): void {
-    this.shift = event.shiftKey;
-    this.alt = event.altKey;
-  }
-}
-export class Environment { // ADMITTED configuration only the constructor sets, beside one moved flag
-  skipFsCheck: boolean;
-  watching = false;
-  closing = false;
-  constructor(skip: boolean) {
-    this.skipFsCheck = skip;
-    this.watching = !skip;
-  }
-  close(): void {
-    this.closing = true;
-  }
-}
-export interface Element { // ADMITTED independent properties of a record are a type, not a phase
-  isDeleted: boolean;
-  locked: boolean;
-  frozen: boolean;
-}
-export const isOver = (h: boolean, v: boolean): { either: boolean; horizontal: boolean; vertical: boolean } => { // REPORT a flag derived from two others
-  const either = h || v;
-  return { either, horizontal: h, vertical: v };
-};
-export function cut(code: number, signal: string | null) {
-  return { ok: code === 0, killed: signal !== null, failed: code !== 0 && signal !== null }; // ADMITTED derived from no field of the record
-}
-export function settle(code: number) {
-  const ok = code === 0;
-  const late = !ok;
-  return { ok, late, done: ok || late }; // REPORT derived through consts from two flags
-}
-export function label(title: string, name: string) {
-  return { title, name, shown: title || name }; // ADMITTED a default, not a flag
-}
-export function open(options: { minify: boolean; sourcemap: boolean }) {
-  return { minify: options.minify, sourcemap: options.sourcemap, watch: false }; // ADMITTED independent options
-}
-`;
 
 const LOCKS = `import { rmSync, statSync } from "node:fs";
 const STALE_MS = 60_000;
@@ -332,14 +270,12 @@ const findings = (kind: string, files: Record<string, string>): string[] =>
 describe("the implicit-state rules", () => {
   it("report only the marked lines", async () => {
     await lintRules("implicit-state", [
-      ["excessive-bools", BOOLS, 3, "src/lifecycle.ts"],
       ["mtime-as-lock", LOCKS, 4, "src/locks.ts"],
       ["files-as-phase", PHASES, 3, "src/phases.ts"],
       ["co-assigned-flags", MODES, 2, "src/modes.tsx"],
       ["co-assigned-flags", UNCOUNTED_MODES, 3, "src/shapes.ts"],
       ["co-assigned-flags", MODES, 0, "src/four.tsx", { fields: 4 }],
       ["co-assigned-flags", MODES, 0, "src/many.tsx", { writes: 5 }],
-      ["excessive-bools", BOOLS, 0, "src/lifecycle.test.ts"],
     ]);
   });
 });

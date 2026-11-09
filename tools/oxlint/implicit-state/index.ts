@@ -1,7 +1,6 @@
 import { eslintCompatPlugin } from "@oxlint/plugins";
 
 import { coAssignedFlagsRule } from "./rules/co-assigned-flags.ts";
-import { excessiveBoolsRule } from "./rules/excessive-bools.ts";
 import { filesAsPhaseRule } from "./rules/files-as-phase.ts";
 import { mtimeAsLockRule } from "./rules/mtime-as-lock.ts";
 
@@ -34,7 +33,6 @@ const implicitStatePlugin = eslintCompatPlugin({
   meta: { name: "implicit-state" },
   rules: {
     "co-assigned-flags": coAssignedFlagsRule,
-    "excessive-bools": excessiveBoolsRule,
     "files-as-phase": filesAsPhaseRule,
     "mtime-as-lock": mtimeAsLockRule,
   },

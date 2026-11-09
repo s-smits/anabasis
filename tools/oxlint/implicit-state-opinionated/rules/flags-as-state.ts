@@ -3,12 +3,17 @@ import type { RuleExample } from "../../rule-examples.ts";
 import { isBoolean } from "#src/meta/json-shape.ts";
 import { isFlagType } from "../../ana/shared/flags.ts";
 import { identifierName, literalValue, propertyName } from "../../ana/shared/statements.ts";
-import { enclosingFunction, innermost, isTestPath, objectValues, outermost } from "../shared/syntax.ts";
+import {
+  enclosingFunction,
+  innermost,
+  isTestPath,
+  objectValues,
+  outermost,
+} from "../../implicit-state/shared/syntax.ts";
 
 /**
- * Tier: generic. Booleans that are one state spelled as flags, found by what the code does with
- * them rather than by how many there are; the count, a stance that holds here and less elsewhere,
- * is `implicit-state-opinionated/flag-count`.
+ * Tier: opinionated. Booleans that are one state spelled as flags, found by what the code does
+ * with them rather than by how many there are (`flag-count` counts them).
  *
  * Reported, two shapes:
  *
@@ -29,6 +34,11 @@ import { enclosingFunction, innermost, isTestPath, objectValues, outermost } fro
  * Not reported: fields only the constructor sets (configuration), records of independent options
  * however many, and a value derived from another object's fields. Test and declaration files are
  * not read. There is no fix: which states the flags stand for is the change.
+ *
+ * The shapes do not reach the generic floor. Scored against both implicit-state corpora, 16 of 29
+ * labelled hits on nine foreign repositories were a state spelled as flags: a large class keeps
+ * unrelated latches (a warn-once flag, a lazy load, a restore guard) that its methods move at
+ * different times, which the syntax cannot tell from a lifecycle.
  */
 const DECLARATION = /\.d\.[cm]?ts$/u;
 const COMPARISON = new Set(["===", "!==", "==", "!=", "<", "<=", ">", ">=", "in", "instanceof"]);
@@ -56,7 +66,7 @@ function memberOf(node: ESTree.Node): Member | null {
   return null;
 }
 
-export const excessiveBoolsRule = defineRule({
+export const flagsAsStateRule = defineRule({
   meta: {
     type: "suggestion",
     docs: {

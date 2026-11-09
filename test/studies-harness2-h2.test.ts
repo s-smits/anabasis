@@ -21,7 +21,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
-import { callKey, type Claude } from "../studies/harness2/h2/claude.ts";
+import { callKey, REFUSED, summarize, type Claude } from "../studies/harness2/h2/claude.ts";
 import { Library } from "../studies/harness2/h2/library.ts";
 import { prompt, readSections, type Job } from "../studies/harness2/h2/prompts.ts";
 import { pyDumps, walkFiles } from "../studies/harness2/h2/py.ts";
@@ -231,4 +231,23 @@ describe.skipIf(!present)("Harness²'s k=1 JobBench path in TypeScript, against 
       treeDifferences(changed, join(RECORDED, tasks[0]?.replaceAll("/", "__") ?? "", "context", "inv1"), "x"),
     ).toEqual(["x/task.md: differs"]);
   }, 1_800_000);
+});
+
+describe("a rollout's result", () => {
+  const events = (result: Record<string, JsonValue>) => {
+    const path = join(root, `trajectory-${String(Math.random()).slice(2)}.jsonl`);
+    writeFileSync(
+      path,
+      `${JSON.stringify({ type: "system", subtype: "init" })}\n${JSON.stringify({ type: "result", ...result })}\n`,
+    );
+    return summarize(path).subtype;
+  };
+
+  it("is refused where the API ended the session, and keeps the arm's own limits and a success", () => {
+    expect(events({ subtype: "success", is_error: true, result: "limit reached" })).toBe(REFUSED);
+    expect(events({ subtype: "error_during_execution", is_error: true })).toBe(REFUSED);
+    expect(events({ subtype: "success", is_error: false })).toBe("success");
+    expect(events({ subtype: "error_max_turns", is_error: true })).toBe("error_max_turns");
+    expect(events({ subtype: "error_max_budget_usd", is_error: true })).toBe("error_max_budget_usd");
+  });
 });

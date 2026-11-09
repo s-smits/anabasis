@@ -105,6 +105,13 @@ export const campaignsIn = (dir: string, tree: string): Run[] =>
     .map((name) => campaignIn(dir, name, tree));
 /** Whether `run` is a campaign, as against a live solve. */
 export const isCampaign = (run: Run) => run.end === CAMPAIGN_END;
+/** A campaign's pack, from its name, the one place a stored campaign keeps it: what stands before
+ *  the first `-fresh-` of the `<pack>-fresh-<model>...` that `runs fresh` names, so a hyphenated
+ *  pack stays whole, else the name's first word, as campaigns named by hand were read. */
+export function packOf(name: string): string {
+  const fresh = name.indexOf("-fresh-");
+  return fresh > 0 ? name.slice(0, fresh) : (name.split("-")[0] ?? name);
+}
 /**
  * The script a process runs: Bun's first argument that is no option of its own, under `nice` where
  * `start` started it niced, and after `run` where it was named so. Until 20 October any argument

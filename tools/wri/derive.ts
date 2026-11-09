@@ -130,8 +130,8 @@ export const READERS: readonly Reader[] = [
 ];
 
 /** The list a pass or `derive` runs: `--no-embed` takes out the readers that load the model. */
-export const readersOf = (noEmbed: boolean): readonly Reader[] =>
-  noEmbed ? READERS.filter(({ embeds }) => embeds !== true) : READERS;
+export const readersOf = (flags: { readonly "no-embed"?: boolean | undefined }): readonly Reader[] =>
+  flags["no-embed"] === true ? READERS.filter(({ embeds }) => embeds !== true) : READERS;
 
 /** What `reader` says of `log`, with its ending and stderr added where it failed. `cut` is a reader
  *  its time limit ended, so what it would have said is unknown. */

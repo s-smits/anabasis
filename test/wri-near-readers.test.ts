@@ -337,7 +337,7 @@ describe("as readers of a pass", () => {
   });
 
   it("are left out by --no-embed, and no other reader is", () => {
-    const named = (noEmbed: boolean) => readersOf(noEmbed).map(({ name }) => name);
+    const named = (noEmbed: boolean) => readersOf({ "no-embed": noEmbed }).map(({ name }) => name);
     expect(named(false)).toEqual(READERS.map(({ name }) => name));
     expect(READERS.map(({ name }) => name).filter((name) => !named(true).includes(name))).toEqual([
       "restated",

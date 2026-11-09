@@ -87,7 +87,7 @@ import { writtenTasks } from "#src/kernel/history.ts";
 import { codeOf } from "../d2/campaign.ts";
 import { installAt } from "../runs/code.ts";
 import { receipts } from "../runs/receipt.ts";
-import { isCampaign, processes, readable } from "../runs/registry.ts";
+import { isCampaign, processes, readable, type Running } from "../runs/registry.ts";
 import { stillRunning } from "../runs/diagnosis.ts";
 import { snapshotCampaign } from "../runs/seed.ts";
 import { type Derived, derive, derivedLine, derivedOf, derivedText, readersOf } from "./derive.ts";
@@ -255,7 +255,7 @@ async function derived(logs: readonly string[]): Promise<{ done: Derived[]; line
   const root = derivedOf(REPO);
   const done: Derived[] = [];
   // One campaign at a time: the job that runs this shares its host with live campaigns.
-  const readers = readersOf(values["no-embed"] === true);
+  const readers = readersOf(values);
   for (const log of logs) {
     done.push(await derive(log, { root, repo: REPO, force: values.force === true, readers }));
   }
@@ -278,9 +278,8 @@ async function deriveStep(): Promise<number> {
 
 /** The logs among `logs` that a campaign may still write: a log the registry does not list has no
  *  campaign command writing it. */
-function liveOf(logs: readonly string[]): string[] {
+function liveOf(logs: readonly string[], running: readonly Running[]): string[] {
   const known = readable(REPO);
-  const running = processes();
   return logs.filter((log) => {
     const run = known.find(({ path }) => path === log);
     return run !== undefined && stillRunning(run, running);
@@ -292,8 +291,8 @@ function liveOf(logs: readonly string[]): string[] {
  * November: every lane reads one sheet, so no finding is about events that arrived after another
  * lane read the log. `start --snapshot` reads a frozen copy of each live one instead (4 November).
  */
-function refuseRunning(logs: readonly string[]): void {
-  const live = liveOf(logs);
+function refuseRunning(logs: readonly string[], running = processes()): void {
+  const live = liveOf(logs, running);
   if (live.length === 0) return;
   const names = live.map((log) => nameOf(log)).join(", ");
   throw new Error(
@@ -302,8 +301,8 @@ function refuseRunning(logs: readonly string[]): void {
 }
 
 /** Each log, a live one replaced by its frozen copy under `<out>/snapshot/<name>/` (`snapshotCampaign`). */
-function frozen(logs: readonly string[], out: string): string[] {
-  const live = new Set(liveOf(logs));
+function frozen(logs: readonly string[], out: string, running: readonly Running[]): string[] {
+  const live = new Set(liveOf(logs, running));
   return logs.map((log) => {
     if (!live.has(log)) return log;
     const to = join(out, "snapshot", nameOf(log));
@@ -322,8 +321,9 @@ async function start(): Promise<number> {
   if (new Set(resolvedLogs.map((log) => nameOf(log))).size < resolvedLogs.length) {
     throw new Error("--log names a log twice");
   }
-  const logs = values.snapshot === true ? frozen(resolvedLogs, out) : resolvedLogs;
-  refuseRunning(logs);
+  const running = processes();
+  const logs = values.snapshot === true ? frozen(resolvedLogs, out, running) : resolvedLogs;
+  refuseRunning(logs, running);
   mkdirSync(join(out, "lanes"), { recursive: true });
   const { done, line } = await derived(logs);
   // Each launch's tree first, so that the host line can name it.

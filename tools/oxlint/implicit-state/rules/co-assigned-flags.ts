@@ -23,7 +23,8 @@ import { innermost, isTestPath, objectValues, outermost, setterState } from "../
  *
  * A co-write is the fields of one state written in one place: an object handed to a setter
  * (`setState({ … })`, `this.setState({ … })`, or an updater returning one), an object that updates
- * another by spreading it (`{ ...state, … }`), or a run of statements that assigns fields of one
+ * a named value by spreading it (`{ ...state, … }`; a spread of a fresh object, `...(c ? { k } :
+ * {})`, updates nothing), or a run of statements that assigns fields of one
  * object (`tool.isResizing = true; tool.isRotating = false;`) or calls a function's `useState`
  * setters one after another. A field is set when it is written anything but `false`, `null` or
  * `undefined`. Fields of one state form a cluster when each pair of them is written together at
@@ -330,7 +331,10 @@ export const coAssignedFlagsRule = defineRule({
       ...everyStatementList(runs),
       ObjectExpression: (node) => {
         const spread = node.properties.find((property) => property.type === "SpreadElement");
-        const state = setterOf(node) ?? (spread === undefined ? null : text(spread.argument));
+        const named =
+          spread !== undefined &&
+          ["Identifier", "MemberExpression"].includes(innermost(spread.argument).type);
+        const state = setterOf(node) ?? (named ? text(spread.argument) : null);
         const values = objectValues(node);
         if (state !== null && values.size >= 2) {
           writes.push({ state, fields: settings(values), node });

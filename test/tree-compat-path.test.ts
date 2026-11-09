@@ -1,5 +1,5 @@
 /**
- * `tree/compatibility-path` (`tools/oxlint/tree-findings.ts`): a name that keeps a path for what
+ * `tree/no-compatibility-path` (`tools/oxlint/tree-findings.ts`): a name that keeps a path for what
  * an older version left behind, reported in the repository's own source, and read as written in a
  * test and in a vendored upstream, where pi's own legacy readers stood answered until 19 October.
  */

@@ -34,7 +34,6 @@
     }
   ],
   "rules": {
-    "ana/declarations-before-the-first-function": "error",
     "ana/no-alias-restating-return": "error",
     "ana/no-arms-differing-in-one-term": "error",
     "ana/no-deep-nesting": "error",
@@ -57,12 +56,13 @@
     "ana/no-tangled-ternary": "error",
     "ana/no-thrice-spelled-object": "error",
     "ana/no-transposed-argument": "error",
+    "ana/no-unproven-unknown-parameter": "error",
     "ana/prefer-const-conditional": "error",
     "ana/prefer-find-over-loop": "error",
     "ana/prefer-key-if-defined": "error",
     "ana/require-captured-json-runtime": "error",
+    "ana/require-declarations-first": "error",
     "ana/require-meta-runtime-import": "error",
-    "ana/unproven-unknown-parameter": "error",
     "anti-slop/no-chained-type-assertions": "error",
     "anti-slop/no-conditional-empty-object-spread": "error",
     "anti-slop/no-known-value-widening": "error",

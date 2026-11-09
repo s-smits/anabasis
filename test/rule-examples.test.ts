@@ -151,7 +151,7 @@ describe("fixture coverage", () => {
     );
     writeFileSync(join(directory, "test/rules.test.ts"), 'const rule = "covered-rule";\n');
     const script = `import { treeSites } from ${JSON.stringify(join(REPO, "tools/oxlint/tree-findings.ts"))};
-console.log(treeSites().filter((site) => site.kind === "rule-without-fixture").map((site) => site.line).join(","));`;
+console.log(treeSites().filter((site) => site.kind === "require-rule-fixture").map((site) => site.line).join(","));`;
     expect(
       execTextSync(Bun.argv[0] ?? "bun", ["--no-env-file", "-e", script], { cwd: directory }).trim(),
     ).toBe("2,5");

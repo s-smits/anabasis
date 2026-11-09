@@ -43,7 +43,7 @@ eslint/sort-keys	*	5340	off	Object keys follow the order a reader or a log line 
 import/consistent-type-specifier-style	*	485	staged	Staged at 485 sites for prefer-inline (836 for prefer-top-level): both forms are in use, and one form is a mechanical pass of its own.
 import/exports-last	*	1056	off	Each declaration is exported where it is defined, with the module's entry first, which a block of exports at the end would part from its code.
 import/group-exports	*	1593	off	Each declaration is exported where it is defined, which one grouped export statement would part from its code.
-import/max-dependencies	*	125	off	A file's import count is no measure the tree holds; `tree/filesystem-import-budget` budgets the one import list that is.
+import/max-dependencies	*	125	off	A file's import count is no measure the tree holds; `tree/max-filesystem-imports` budgets the one import list that is.
 import/no-anonymous-default-export	*	0	off	`import/no-default-export`, which is on, already reports every default export.
 import/no-named-export	*	1781	off	It opposes `import/no-default-export`, which is on.
 import/no-namespace	*	7	off	Its sites import the TypeScript compiler API as `ts` and two modules a test reaches through their namespace, which is the form both uses need.

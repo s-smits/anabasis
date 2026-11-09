@@ -93,7 +93,7 @@ function missingPaths(texts: ReadonlyMap<string, string>): TreeFinding[] {
     if (names.length === 0) return [];
     const list = names.map((name) => `\`${name}\``).join(", ");
     const detail = `${list} ${names.length === 1 ? "names" : "name"} nothing in this tree`;
-    return [{ kind: "stale-reference", path, line, detail }];
+    return [{ kind: "no-stale-reference", path, line, detail }];
   });
 }
 
@@ -107,7 +107,7 @@ function unreadSettings(texts: ReadonlyMap<string, string>): TreeFinding[] {
           const unread = [...new Set(line.match(SETTING))].filter((name) => !read.has(name));
           if (unread.length === 0) return [];
           const detail = `${unread.map((name) => `\`${name}\``).join(", ")} documented, and no code reads it`;
-          return [{ kind: "stale-reference", path, line: index + 1, detail }];
+          return [{ kind: "no-stale-reference", path, line: index + 1, detail }];
         })
       : [],
   );

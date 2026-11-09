@@ -12,7 +12,7 @@ import { isConstDeclaration, isNamedMember } from "../shared/statements.ts";
  *       if (strings.some((key) => !isString(row[key]))) return null;
  *
  * The operator's shape for a file is the declarations at the front and the work below, which
- * `declarations-before-the-first-function` asks of module scope. This asks the same of a function
+ * `require-declarations-first` asks of module scope. This asks the same of a function
  * body: a value that closes over nothing and never changes is a declaration, and its place is the
  * top of the file where a reader looking for the data finds it without reading the code around it.
  *

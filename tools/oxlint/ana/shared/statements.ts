@@ -33,7 +33,7 @@ const ATOMIC = new Set([
  * identical lines; the syntax-based scan reached the enclosing body, the single `const`, the
  * one-argument method call and the function argument in two rules each on 2026-09-22. The four
  * node facts below them (a member by its written name, an identifier's name, a `const` and a call
- * of one argument) stood in three to eleven files each until `tree/fact-without-owner` read them
+ * of one argument) stood in three to eleven files each until `tree/no-unowned-fact` read them
  * on 2026-11-05.
  */
 

@@ -199,7 +199,7 @@ function typePredicateName(node: AnyNode): string | null {
   return identifierName(annotation.parameterName);
 }
 
-export const unprovenUnknownParameterRule = defineRule({
+export const noUnprovenUnknownParameterRule = defineRule({
   meta: {
     type: "problem",
     docs: {

@@ -1,6 +1,6 @@
 import { eslintCompatPlugin } from "@oxlint/plugins";
 
-import { unprovenUnknownParameterRule } from "./rules/unproven-unknown-parameter.ts";
+import { noUnprovenUnknownParameterRule } from "./rules/no-unproven-unknown-parameter.ts";
 import { requireCapturedJsonRuntimeRule } from "./rules/require-captured-json-runtime.ts";
 import { noHandReadArgvRule } from "./rules/no-hand-read-argv.ts";
 import { noHandSpelledGitRule } from "./rules/no-hand-spelled-git.ts";
@@ -29,7 +29,7 @@ import { noThriceSpelledObjectRule } from "./rules/no-thrice-spelled-object.ts";
 import { noTransposedArgumentRule } from "./rules/no-transposed-argument.ts";
 import { preferConstConditionalRule } from "./rules/prefer-const-conditional.ts";
 import { preferFindOverLoopRule } from "./rules/prefer-find-over-loop.ts";
-import { declarationsBeforeTheFirstFunctionRule } from "./rules/declarations-before-the-first-function.ts";
+import { requireDeclarationsFirstRule } from "./rules/require-declarations-first.ts";
 
 /** The rules this repository owns. The anti-slop plugin beside it is copied from dmmulroy/anti-slop
  *  at a pinned commit, as its README asks, so a rule that has to answer an Anabasis question lives
@@ -66,7 +66,7 @@ import { declarationsBeforeTheFirstFunctionRule } from "./rules/declarations-bef
 const anaPlugin = eslintCompatPlugin({
   meta: { name: "ana" },
   rules: {
-    "unproven-unknown-parameter": unprovenUnknownParameterRule,
+    "no-unproven-unknown-parameter": noUnprovenUnknownParameterRule,
     "require-captured-json-runtime": requireCapturedJsonRuntimeRule,
     "no-hand-read-argv": noHandReadArgvRule,
     "no-hand-spelled-git": noHandSpelledGitRule,
@@ -95,7 +95,7 @@ const anaPlugin = eslintCompatPlugin({
     "no-thrice-spelled-object": noThriceSpelledObjectRule,
     "no-transposed-argument": noTransposedArgumentRule,
     "no-tangled-ternary": noTangledTernaryRule,
-    "declarations-before-the-first-function": declarationsBeforeTheFirstFunctionRule,
+    "require-declarations-first": requireDeclarationsFirstRule,
   },
 });
 

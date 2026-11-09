@@ -244,7 +244,7 @@ export function overwrittenKeys(files: ReadonlyMap<string, string>): TreeFinding
             const set = key === undefined ? undefined : wrapper.keys.get(key);
             if (set === undefined) continue;
             rows.push({
-              kind: "overwritten-key",
+              kind: "no-overwritten-key",
               path,
               line: file.getLineAndCharacterOfPosition(property.getStart(file)).line + 1,
               detail: `\`${key}\` is set again by \`${wrapper.name}\` (${wrapper.path}:${set}) after it spreads \`${wrapper.parameter}\`, so this value is never read`,

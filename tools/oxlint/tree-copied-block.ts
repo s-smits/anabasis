@@ -231,7 +231,7 @@ export function copiedBlocks(files: ReadonlyMap<string, string>): TreeFinding[] 
       .map((place) => `${place.path}:${place.line} in \`${place.host}\``);
     const rest = others.length > NAMED_PLACES ? ` and ${others.length - NAMED_PLACES} more` : "";
     rows.push({
-      kind: "copied-block",
+      kind: "no-duplicate-block",
       path: first.path,
       line: first.line,
       detail:

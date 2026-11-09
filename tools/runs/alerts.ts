@@ -31,7 +31,8 @@ import { asked } from "./hosts.ts";
 import { keeperActed } from "./keep.ts";
 import { keepsItself } from "./manage.ts";
 import { runState } from "./state.ts";
-import { onStatus, remember } from "./pulse.ts";
+import { onStatus } from "./pulse.ts";
+import { remember } from "./pulse-readers.ts";
 import { lastLaunch, unlaunchedSeed } from "./receipt.ts";
 import {
   HERE,

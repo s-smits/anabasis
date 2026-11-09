@@ -14,7 +14,7 @@ import type { LogEvent } from "../src/kernel/log.ts";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { join } from "../src/meta/path.ts";
+import { dirname, join } from "../src/meta/path.ts";
 
 const live = { name: "r", host: "here", live: true };
 const PLAN_FILE = "plan.md";
@@ -147,6 +147,30 @@ describe("the next step of an investigation", () => {
     const { write, step } = folder("unowned", "r", false);
     write("launch.json", JSON.stringify({ sessions: [{ name: "lane_02", task: "Read." }] }));
     expect(step()[0]).toStartWith("step: reports · 1 lane session(s)");
+  });
+
+  it("reads a folder that `open` left between its record and the start as owing the open, then as an iteration", () => {
+    const root = join(base, "crashed");
+    const dir = join(root, "2026-11-07-investigation");
+    mkdirSync(dir, { recursive: true });
+    // `open` writes the record first, so a crash before the start leaves it alone in the folder.
+    writeFileSync(join(dir, "iteration.json"), JSON.stringify({ opened: at(0), runs: ["r"] }));
+    expect(nextOf(dir, () => [], root)).toEqual([`step: open · no investigation in ${dir}`]);
+    // A second `open` starts into the same folder, which then takes the iteration's own gates.
+    const { step } = folder("crashed", "r", true);
+    expect(step()[0]).toStartWith("step: isolated");
+  });
+
+  it("passes the isolated gate on a lone lane's report in this folder only, never on one of that name elsewhere", () => {
+    const { write, step } = folder("lone-elsewhere", "r", true);
+    const elsewhere = join(base, "lone-elsewhere", "other", "lanes", "04-report.md");
+    mkdirSync(dirname(elsewhere), { recursive: true });
+    writeFileSync(elsewhere, "# Lane\n");
+    write(
+      "launch-04.json",
+      JSON.stringify({ sessions: [{ name: "lane_4", task: "Read.", ownedPaths: [elsewhere] }] }),
+    );
+    expect(step()[0]).toStartWith("step: isolated");
   });
 
   it("walks an iteration through its isolated lanes, each run's ledgers, the read across and a fork's carry", () => {

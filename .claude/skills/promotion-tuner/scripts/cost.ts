@@ -34,6 +34,7 @@ import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { backends } from "#src/agent/backends/models.ts";
 import { modelNamed, sweepOptions } from "#tools/m0/stored-sweep.ts";
+import { packOf } from "#tools/runs/registry.ts";
 import { LIVE_MS, printed } from "./table.ts";
 import { campaignLogs, rehearsed } from "./tree.ts";
 
@@ -159,7 +160,7 @@ function groupOf(run: Run, by: By): string {
   const part = {
     // Monday of the week it was launched in.
     week: `week of ${new Date(run.launched - ((new Date(run.launched).getUTCDay() + 6) % 7) * DAY_MS).toISOString().slice(0, 10)}`,
-    pack: run.name.split("-")[0] ?? "",
+    pack: packOf(run.name),
     setting: "",
     none: "",
   }[by];

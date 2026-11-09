@@ -34,7 +34,8 @@ import { innermost, isTestPath, objectValues, outermost, setterState } from "../
  *
  * Two shapes show a mode without that count. Two fields of one object computed by comparisons that
  * cannot both hold (`isResizing: tool !== "rotation"` beside `isRotating: tool === "rotation"`, or
- * `kind === "file"` beside `kind === "dir"`) are exclusive by construction, reported at that
+ * `kind === "file"` beside `kind === "dir"`, two distinct literals; `index === items.length - 1`
+ * beside `index === 0` can both hold) are exclusive by construction, reported at that
  * object. And two fields written as opposite literals in objects of one file (`{ imported: true,
  * frozen: false }` and `{ imported: false, frozen: true }`) and never both `true` are reported at
  * the first such object, where neither object is handed straight to a call.
@@ -64,6 +65,8 @@ interface Comparison {
   subject: string;
   against: string;
   equal: boolean;
+  /** Whether the value is a literal, so that two distinct ones cannot both equal the subject. */
+  literal: boolean;
 }
 
 /** An object created whole, with the fields it writes as `true` or `false`. */
@@ -99,7 +102,7 @@ function comparisonsOf(node: ESTree.Node, text: (node: ESTree.Node) => string): 
     return [];
   }
   const [subject, against] = bare.left.type === "Literal" ? [bare.right, bare.left] : [bare.left, bare.right];
-  return [{ subject: text(subject), against: text(against), equal }];
+  return [{ subject: text(subject), against: text(against), equal, literal: against.type === "Literal" }];
 }
 
 /** The first pair of fields whose values cannot both hold, with the subject they compare. */
@@ -111,12 +114,14 @@ function exclusivePair(
   for (const [index, [a, ofA]] of tests.entries()) {
     for (const [b, ofB] of tests.slice(index + 1)) {
       // Two comparisons of one subject exclude each other: `x === k` and `x !== k`, or `x === a`
-      // and `x === b` for two literals.
+      // and `x === b` for two literals; `x === items.length - 1` may equal `0`.
       const clash = ofA.find((one) =>
         ofB.some(
           (other) =>
             one.subject === other.subject &&
-            (one.against === other.against ? one.equal !== other.equal : one.equal && other.equal),
+            (one.against === other.against
+              ? one.equal !== other.equal
+              : one.equal && other.equal && one.literal && other.literal),
         ),
       );
       if (clash !== undefined) {

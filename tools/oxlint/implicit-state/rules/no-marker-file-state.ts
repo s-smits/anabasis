@@ -116,9 +116,11 @@ export const noMarkerFileStateRule = defineRule({
       if (bare.type !== "TemplateLiteral") {
         return null;
       }
-      const whole = text(bare);
+      // `${dir}/a` names the folder `dir`, as `join(dir, "a")` does.
+      const whole = text(bare).slice(1, -1);
       const cut = whole.lastIndexOf("/");
-      return cut <= 0 ? null : { folder: whole.slice(0, cut), file: whole.slice(cut + 1) };
+      const folder = whole.slice(0, cut).replace(/^\$\{([^{}]*)\}$/u, "$1");
+      return cut <= 0 ? null : { folder, file: whole.slice(cut + 1) };
     }
 
     /** A function of this file whose body only returns an existence check of its first parameter. */
@@ -203,7 +205,8 @@ export const noMarkerFileStateRule = defineRule({
       const owner = enclosingFunction(call) ?? context.sourceCode.ast;
       const folders = found.get(owner) ?? new Map<string, { files: Set<string>; at: ESTree.Node }>();
       const entry = folders.get(place.folder) ?? { files: new Set<string>(), at: call };
-      entry.files.add(place.file);
+      // A file is named bare however it is spelled: `"a"`, `"/a"` or the tail of a template.
+      entry.files.add(place.file.replaceAll(/^["'`]\/?|["'`]$/gu, ""));
       if (entry.files.size === 2) {
         entry.at = call;
       }
@@ -257,9 +260,7 @@ export const noMarkerFileStateRule = defineRule({
           for (const [folder, { files, at }] of folders) {
             // A phase is recorded by the process that reads it: files this module never writes or
             // removes are its input (a lockfile format, a candidate source), probed and not kept.
-            const kept = [...files].some((file) =>
-              changes.some((call) => call.includes(file.replaceAll(/^["'`]|["'`]$/gu, ""))),
-            );
+            const kept = [...files].some((file) => changes.some((call) => call.includes(file)));
             if (files.size < 2 || !kept) {
               continue;
             }

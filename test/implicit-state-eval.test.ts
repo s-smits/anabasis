@@ -7,6 +7,7 @@
 import { describe, expect, it } from "bun:test";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { readFileSync } from "#src/meta/filesystem.ts";
+import { resolve } from "#src/meta/path.ts";
 import {
   CORPORA,
   parseCorpus,
@@ -19,7 +20,7 @@ import {
   type Item,
   type TreeHits,
 } from "../tools/oxlint/eval/corpus.ts";
-import type { Hit } from "../tools/oxlint/eval/detect.ts";
+import { detectorFiles, type Hit } from "../tools/oxlint/eval/detect.ts";
 import { foreignRepos } from "../tools/oxlint/eval/trees.ts";
 import type { JsonValue } from "#src/meta/json-shape.ts";
 
@@ -162,5 +163,20 @@ describe("rulesOn", () => {
       hit("implicit-state-opinionated/max-boolean-fields", 90),
     ];
     expect(lock && rulesOn(lock, tree(hits)).toSorted()).toEqual([LOCK, PHASE]);
+  });
+});
+
+describe("detectorFiles", () => {
+  it("keys the cache by every file a detector imports, through each import, and by no file none does", () => {
+    const files = detectorFiles(resolve(import.meta.dirname, ".."));
+    const imported = [
+      "tools/oxlint/implicit-state/rules/no-coupled-flags.ts",
+      "tools/oxlint/ana/shared/flags.ts",
+      "tools/oxlint/ana/shared/statements.ts",
+      "tools/oxlint/tree-state-role.ts",
+      "tools/oxlint/tree-copied-block.ts",
+    ];
+    expect(imported.filter((file) => !files.includes(file))).toEqual([]);
+    expect(files.filter((file) => file.includes("node_modules") || file.includes("/eval/"))).toEqual([]);
   });
 });

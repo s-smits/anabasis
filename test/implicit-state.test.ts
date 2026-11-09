@@ -150,6 +150,9 @@ export function kinds(kind: string, other: string) {
   const three = { ready: kind !== "", named: kind !== "anon" }; // ADMITTED both can hold
   return [one, two, three];
 }
+export function ends(items: readonly string[]) {
+  return items.map((item, index) => ({ item, isFirst: index === 0, isLast: index === items.length - 1 })); // ADMITTED a computed value can equal the literal
+}
 export function origins(digest: string) {
   return [
     { digest, imported: false, frozen: false },
@@ -195,6 +198,13 @@ export function apart(jobDir: string, cacheDir: string): boolean {
 export function page(root: string, name: string): string | null {
   if (existsSync(join(root, name))) return name;
   return existsSync(join(root, \`\${name}.html\`)) ? \`\${name}.html\` : null; // ADMITTED alternatives of one lookup this file never writes
+}
+export function mixed(jobDir: string): string {
+  if (existsSync(join(jobDir, "done.json"))) return "done";
+  return existsSync(\`\${jobDir}/lock\`) ? "running" : "idle"; // REPORT a join and a template name one folder
+}
+export function twice(jobDir: string): boolean {
+  return existsSync(join(jobDir, "done.json")) && existsSync(\`\${jobDir}/done.json\`); // ADMITTED one file in two spellings
 }
 const writeRecord = (path: string): void => writeFileSync(path, "{}");
 export function start(jobDir: string): void {
@@ -310,6 +320,34 @@ export function head(): string {
 }
 `;
 
+const OPTIONS = `import { spawnSync } from "node:child_process";
+const ROOT = "/repo";
+export function heads(a: string, b: string): string {
+  const left = spawnSync("git", ["rev-parse", "HEAD"], { cwd: a, encoding: "utf8" }).stdout;
+  return left + spawnSync("git", ["rev-parse", "HEAD"], { cwd: b, encoding: "utf8" }).stdout;
+}
+export function compile(x: string, y: string): void {
+  spawnSync("python3", ["-c", "compile"], { input: x });
+  spawnSync("python3", ["-c", "compile"], { input: y });
+}
+export function rootTwice(): string {
+  const left = spawnSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, stdin: "ignore" }).stdout;
+  return left + spawnSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, stdin: "ignore" }).stdout;
+}
+function run(args: string[], options: { cwd?: string } = {}): string {
+  const { cwd } = options;
+  return spawnSync("git", args, { cwd, stdin: "ignore" }).stdout.toString();
+}
+export function sameRoot(root: string): string {
+  const first = run(["status"], { cwd: root });
+  return first + run(["status"], { cwd: root });
+}
+export function twoRoots(root: string): string {
+  const first = run(["status"], { cwd: root });
+  return first + run(["status"], { cwd: \`\${root}/sub\` });
+}
+`;
+
 const findings = (kind: string, files: Record<string, string>): string[] =>
   implicitStateFindings(new Map(Object.entries(files)))
     .filter((row) => row.kind === kind)
@@ -322,7 +360,7 @@ describe("the implicit-state rules", () => {
   it("report only the marked lines", async () => {
     await lintRules("implicit-state", [
       ["no-age-based-lock", LOCKS, 6, "src/locks.ts"],
-      ["no-marker-file-state", PHASES, 3, "src/phases.ts"],
+      ["no-marker-file-state", PHASES, 4, "src/phases.ts"],
       ["no-coupled-flags", MODES, 3, "src/modes.tsx"],
       ["no-coupled-flags", UNCOUNTED_MODES, 3, "src/shapes.ts"],
       ["no-coupled-flags", MODES, 0, "src/four.tsx", { fields: 4 }],
@@ -394,6 +432,12 @@ describe("no-repeated-external-read", () => {
   it("keys a wrapper's spawn by the argument list its caller passes, so two subcommands are two reads", () => {
     expect(findings("no-repeated-external-read", { "src/git.ts": GIT })).toEqual([
       "src/git.ts:8 src/git.ts:8 src/git.ts:9",
+    ]);
+  });
+
+  it("keys a spawn by the folder, input and environment its options set, and leaves one whose options it cannot spell unkeyed", () => {
+    expect(findings("no-repeated-external-read", { "src/options.ts": OPTIONS })).toEqual([
+      "src/options.ts:12 src/options.ts:12 src/options.ts:13",
     ]);
   });
 

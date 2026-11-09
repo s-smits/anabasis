@@ -628,20 +628,20 @@ function movedUnder(root: string, landing: Landing, under: readonly string[]): M
 /** Proves, and with `--merge` merges, the landing up to `target`; `moved` where `--auto` found a
  *  new top before the landing ended. */
 async function landTo(root: string, target: number, mode: Mode, board: Board): Promise<number | "moved"> {
-  const landing = restack(root, target, readLanding(root, target, openPulls(root)), mode);
-  checkLabels(landing);
+  // The refusals no replay can change come before it, so a refused landing force-pushes nothing.
+  const read = readLanding(root, target, openPulls(root));
+  checkLabels(read);
+  const [chain] = read.beside;
+  if (mode.kind === "merging" && !mode.alone && chain !== undefined) {
+    throw new Refusal(
+      `#${String(chain.number)} (${chain.headRefName}) starts another chain on ${read.trunk}, which this merge ` +
+        `would leave short of ${read.trunk}'s new head, so that every pull request on it has to be replayed. ` +
+        `Put ${numbers(read.pulls)} on that chain's top, land that chain first, or name --alone to merge it anyway.`,
+    );
+  }
+  const landing = restack(root, target, read, mode);
   checkChain(root, landing);
   const { top } = landing;
-  if (mode.kind === "merging") {
-    const [chain] = landing.beside;
-    if (!mode.alone && chain !== undefined) {
-      throw new Refusal(
-        `#${String(chain.number)} (${chain.headRefName}) starts another chain on ${landing.trunk}, which this merge ` +
-          `would leave short of ${landing.trunk}'s new head, so that every pull request on it has to be replayed. ` +
-          `Put ${numbers(landing.pulls)} on that chain's top, land that chain first, or name --alone to merge it anyway.`,
-      );
-    }
-  }
   stackOf(root, landing, mode.kind === "proving" ? "say" : "link");
   if (mode.kind === "merging") startCi(root, top);
   // Each landing head's own line, including a lower head reached through a merge's other parent.

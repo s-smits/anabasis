@@ -488,4 +488,25 @@ describe("a wall's network reach", () => {
       }
     },
   );
+
+  it.skipIf(!osIsolationSupport().ok)(
+    "starts one probe for callers that find the same unreached reading stale at once",
+    async () => {
+      const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-reach-")));
+      try {
+        await inSeat(repoRoot, async (wall) => {
+          let probes = 0;
+          const probe = async (): Promise<NetworkReach> => (probes++ === 0 ? "unreached" : "reached");
+          expect(await networkReach(wall, { now: 0, probe })).toBe("unreached");
+          const batch = await Promise.all(
+            [1, 2, 3, 4].map(() => networkReach(wall, { now: UNREACHED_MS, probe })),
+          );
+          expect(batch).toEqual(["reached", "reached", "reached", "reached"]);
+          expect(probes).toBe(2);
+        });
+      } finally {
+        rmSync(repoRoot, { recursive: true, force: true });
+      }
+    },
+  );
 });

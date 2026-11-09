@@ -1,7 +1,7 @@
 /**
  * The opinionated implicit-state tier: the plugin `implicit-state-opinionated`
- * (`flag-count`, `flags-as-state`, `name-encoded-state`) and the cross-file kind `unowned-state-literal` of
- * `tools/oxlint/tree-implicit-state.ts`. Every fixture is a small foreign program, and each rule's
+ * (`max-boolean-fields`, `prefer-state-union`, `no-state-in-names`) and the cross-file kind
+ * `no-unowned-state-literals` of `tools/oxlint/tree-implicit-state.ts`. Every fixture is a small foreign program, and each rule's
  * nearest hostile case sits beside the shape it reports: optional settings, brands and two flags
  * beside three required ones; flags the same handlers move together beside a lifecycle, a default
  * beside a derived flag; an extension capture, a predicate with no capture and a log line beside a
@@ -179,7 +179,7 @@ export function close(issue: { status: string }): void {
 const DECLARED = `export type IssueStatus = "open" | "closed" | "merged";\n`;
 const PLATFORM = `export const unix = (os: string): boolean => os === "linux" || os === "darwin";\n`;
 
-const findings = (files: Record<string, string>, kind = "unowned-state-literal"): string[] =>
+const findings = (files: Record<string, string>, kind = "no-unowned-state-literals"): string[] =>
   implicitStateFindings(new Map(Object.entries(files)))
     .filter((row) => row.kind === kind)
     .map((row) => `${row.path}:${row.line} ${(row.places ?? []).map((place) => place.path).join(" ")}`);
@@ -187,16 +187,16 @@ const findings = (files: Record<string, string>, kind = "unowned-state-literal")
 describe("the opinionated implicit-state rules", () => {
   it("report only the marked lines", async () => {
     await lintRules("implicit-state-opinionated", [
-      ["flag-count", FLAGS, 5, "src/upload.tsx"],
-      ["flag-count", FLAGS, 0, "src/upload.test.tsx"],
-      ["flags-as-state", LIFECYCLES, 3, "src/lifecycle.ts"],
-      ["flags-as-state", LIFECYCLES, 0, "src/lifecycle.test.ts"],
-      ["name-encoded-state", NAMES, 3, "src/deploy.ts"],
+      ["max-boolean-fields", FLAGS, 5, "src/upload.tsx"],
+      ["max-boolean-fields", FLAGS, 0, "src/upload.test.tsx"],
+      ["prefer-state-union", LIFECYCLES, 3, "src/lifecycle.ts"],
+      ["prefer-state-union", LIFECYCLES, 0, "src/lifecycle.test.ts"],
+      ["no-state-in-names", NAMES, 3, "src/deploy.ts"],
     ]);
   });
 });
 
-describe("unowned-state-literal", () => {
+describe("no-unowned-state-literals", () => {
   it("is reported where two files group the same literals that nothing declares", () => {
     expect(findings({ "src/board.ts": BOARD, "src/issues.ts": ISSUES })).toEqual([
       "src/board.ts:1 src/board.ts src/issues.ts",
@@ -214,7 +214,7 @@ describe("unowned-state-literal", () => {
     expect(
       findings(
         { "src/board.ts": BOARD, "src/issues.ts": ISSUES.replace(/export function close[^]*/u, "") },
-        "enumeration-literal-spread",
+        "no-scattered-enum-literals",
       ),
     ).toEqual(["src/board.ts:1 src/board.ts src/issues.ts"]);
     expect(findings({ "src/board.ts": BOARD, "test/issues.test.ts": ISSUES })).toEqual([]);

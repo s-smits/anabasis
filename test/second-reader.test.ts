@@ -1,5 +1,5 @@
 /**
- * `second-reader` (`tools/oxlint/tree-second-reader.ts`): a fact an exported function returns,
+ * `no-duplicate-derivation` (`tools/oxlint/tree-second-reader.ts`): a fact an exported function returns,
  * derived again by hand in another file. The fixture is a small foreign job runner. Beside the two
  * hand spellings it reports (one with other arguments, one negated) sit its nearest hostile cases:
  * the owner's own file, a caller of the owner, a test, a fact nobody owns, a one-field test, a
@@ -101,9 +101,9 @@ const rows = implicitStateFindings(
     ["src/audit.ts", AUDIT],
     ["test/retire.test.ts", TEST],
   ]),
-).filter((row) => row.kind === "second-reader");
+).filter((row) => row.kind === "no-duplicate-derivation");
 
-describe("second-reader", () => {
+describe("no-duplicate-derivation", () => {
   it("is reported where another file spells an owner's returned fact, with other arguments, negated or as a fold's scan", () => {
     expect(rows.map((row) => `${row.path}:${String(row.line)}`)).toEqual([
       "src/retire.ts:3",

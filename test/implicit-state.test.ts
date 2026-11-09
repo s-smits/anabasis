@@ -1,7 +1,7 @@
 /**
- * The generic implicit-state tier: the plugin `implicit-state` (`co-assigned-flags`, `mtime-as-lock`,
- * `files-as-phase`) and the two cross-file kinds of `tools/oxlint/tree-implicit-state.ts`
- * (`state-literal-spread`, `repeated-external-read`). Every fixture is a small foreign program, a
+ * The generic implicit-state tier: the plugin `implicit-state` (`no-coupled-flags`, `no-age-based-lock`,
+ * `no-marker-file-state`) and the two cross-file kinds of `tools/oxlint/tree-implicit-state.ts`
+ * (`no-scattered-state-literals`, `no-repeated-external-read`). Every fixture is a small foreign program, a
  * React form, an Express job runner with lock files, and each rule's nearest hostile case sits
  * beside the shape it reports: a "newer than" beside an age, one guard beside a phase, an
  * exhaustive switch beside a hand grouping, a polling loop and a memoised read beside a repeated
@@ -307,43 +307,43 @@ const findings = (kind: string, files: Record<string, string>): string[] =>
 describe("the implicit-state rules", () => {
   it("report only the marked lines", async () => {
     await lintRules("implicit-state", [
-      ["mtime-as-lock", LOCKS, 4, "src/locks.ts"],
-      ["files-as-phase", PHASES, 3, "src/phases.ts"],
-      ["co-assigned-flags", MODES, 3, "src/modes.tsx"],
-      ["co-assigned-flags", UNCOUNTED_MODES, 3, "src/shapes.ts"],
-      ["co-assigned-flags", MODES, 0, "src/four.tsx", { fields: 4 }],
-      ["co-assigned-flags", MODES, 0, "src/many.tsx", { writes: 5 }],
+      ["no-age-based-lock", LOCKS, 4, "src/locks.ts"],
+      ["no-marker-file-state", PHASES, 3, "src/phases.ts"],
+      ["no-coupled-flags", MODES, 3, "src/modes.tsx"],
+      ["no-coupled-flags", UNCOUNTED_MODES, 3, "src/shapes.ts"],
+      ["no-coupled-flags", MODES, 0, "src/four.tsx", { fields: 4 }],
+      ["no-coupled-flags", MODES, 0, "src/many.tsx", { writes: 5 }],
     ]);
   });
 });
 
-describe("state-literal-spread", () => {
+describe("no-scattered-state-literals", () => {
   const jobs = { "src/job.ts": OWNER, "src/a.ts": GROUPS, "src/b.ts": LISTED };
 
   it("is reported at the owner of states two other files group by hand and one writes", () => {
-    expect(findings("state-literal-spread", { ...jobs, "src/run.ts": RUNS })).toEqual([
+    expect(findings("no-scattered-state-literals", { ...jobs, "src/run.ts": RUNS })).toEqual([
       "src/job.ts:1 src/job.ts:1 src/a.ts:2 src/b.ts:2",
     ]);
   });
 
   it("counts a chain that spells the whole set, which a switch over it does not", () => {
     const whole = { "src/job.ts": OWNER, "src/a.ts": WHOLE, "src/b.ts": WHOLE, "src/run.ts": RUNS };
-    expect(findings("state-literal-spread", whole)).toEqual([
+    expect(findings("no-scattered-state-literals", whole)).toEqual([
       "src/job.ts:1 src/job.ts:1 src/a.ts:3 src/b.ts:3",
     ]);
   });
 
   it("reads a set no update writes, or one written into another place, as an enumeration", () => {
     const enumeration = ["src/job.ts:1 src/job.ts:1 src/a.ts:2 src/b.ts:2"];
-    expect(findings("state-literal-spread", jobs)).toEqual([]);
-    expect(findings("enumeration-literal-spread", jobs)).toEqual(enumeration);
-    expect(findings("enumeration-literal-spread", { ...jobs, "src/tag.ts": LABELS })).toEqual(enumeration);
+    expect(findings("no-scattered-state-literals", jobs)).toEqual([]);
+    expect(findings("no-scattered-enum-literals", jobs)).toEqual(enumeration);
+    expect(findings("no-scattered-enum-literals", { ...jobs, "src/tag.ts": LABELS })).toEqual(enumeration);
   });
 
   it("is not reported for one reader, an exhaustive switch, an unexported set or a test", () => {
     const local = OWNER.replace("export ", "");
     expect(
-      findings("state-literal-spread", {
+      findings("no-scattered-state-literals", {
         "src/job.ts": OWNER,
         "src/a.ts": GROUPS,
         "src/c.ts": COVERS,
@@ -351,17 +351,25 @@ describe("state-literal-spread", () => {
       }),
     ).toEqual([]);
     expect(
-      findings("state-literal-spread", { "src/job.ts": local, "src/a.ts": GROUPS, "src/b.ts": LISTED }),
+      findings("no-scattered-state-literals", {
+        "src/job.ts": local,
+        "src/a.ts": GROUPS,
+        "src/b.ts": LISTED,
+      }),
     ).toEqual([]);
     expect(
-      findings("state-literal-spread", { "src/job.ts": OWNER, "src/a.ts": GROUPS, "test/b.test.ts": LISTED }),
+      findings("no-scattered-state-literals", {
+        "src/job.ts": OWNER,
+        "src/a.ts": GROUPS,
+        "test/b.test.ts": LISTED,
+      }),
     ).toEqual([]);
   });
 });
 
-describe("repeated-external-read", () => {
+describe("no-repeated-external-read", () => {
   it("is reported where one path reads the same command twice through wrappers in another file, a write of another file between", () => {
-    const rows = findings("repeated-external-read", { "src/procs.ts": PROCS, "src/runner.ts": RUNNER });
+    const rows = findings("no-repeated-external-read", { "src/procs.ts": PROCS, "src/runner.ts": RUNNER });
     expect(rows).toEqual([
       "src/runner.ts:3 src/runner.ts:3",
       "src/runner.ts:16 src/runner.ts:16",
@@ -370,7 +378,7 @@ describe("repeated-external-read", () => {
   });
 
   it("keys a wrapper's spawn by the argument list its caller passes, so two subcommands are two reads", () => {
-    expect(findings("repeated-external-read", { "src/git.ts": GIT })).toEqual([
+    expect(findings("no-repeated-external-read", { "src/git.ts": GIT })).toEqual([
       "src/git.ts:8 src/git.ts:8 src/git.ts:9",
     ]);
   });

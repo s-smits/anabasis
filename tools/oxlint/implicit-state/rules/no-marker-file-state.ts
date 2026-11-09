@@ -49,7 +49,7 @@ interface Place {
   file: string;
 }
 
-export const filesAsPhaseRule = defineRule({
+export const noMarkerFileStateRule = defineRule({
   meta: {
     type: "suggestion",
     docs: {

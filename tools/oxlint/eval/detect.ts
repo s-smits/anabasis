@@ -16,6 +16,13 @@ import { join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 import { OXLINT_BINARY } from "../../runtime/lint.ts";
+import { TREE_RULE_PREFIX } from "../not-slop-ledger.ts";
+import { PLUGINS } from "../plugins.ts";
+
+/** The rule ids the eval's other files also read. */
+export const BOOLEAN_FIELDS = "implicit-state-opinionated/max-boolean-fields";
+export const STATE_LITERALS = "tree/no-scattered-state-literals";
+export const NAMES = "implicit-state-opinionated/no-state-in-names";
 
 export type Tier = "generic" | "opinionated";
 
@@ -26,6 +33,7 @@ export interface Place {
 }
 
 export interface Hit {
+  /** The rule's id, as its findings name it: `implicit-state/no-age-based-lock`, `tree/no-duplicate-derivation`. */
   rule: string;
   tier: Tier;
   file: string;
@@ -37,49 +45,37 @@ export interface Hit {
   strength: number | string | null;
 }
 
-/** The detector sources whose bytes key a cached result. */
-export const DETECTOR_SOURCES = [
-  "tools/oxlint/implicit-state",
-  "tools/oxlint/implicit-state-opinionated",
-  "tools/oxlint/tree-implicit-state.ts",
-  "tools/oxlint/tree-external-read.ts",
-  "tools/oxlint/tree-overwritten-key.ts",
-  "tools/oxlint/tree-second-reader.ts",
-  "tools/oxlint/tree-partial-mapping.ts",
-];
-
 /**
- * The permissive options each rule runs at, each rule run only where its plugin's index names it, so
- * a lint worktree from before a rule still scores. `flag-count` reports from two flags so a sweep can
- * set its floor anywhere above; `name-encoded-state` reads every subject word its head comment
- * names, the three left out by default included, so the sweep can weigh each word.
+ * The permissive options a rule runs at where `warn` alone is not its most permissive setting.
+ * `max-boolean-fields` reports from two flags so a sweep can set its floor anywhere above;
+ * `no-state-in-names` reads every subject word its head comment names, the three left out by default
+ * included, so the sweep can weigh each word.
  */
-const PERMISSIVE = {
-  "implicit-state/co-assigned-flags": "warn",
-  "implicit-state/files-as-phase": "warn",
-  "implicit-state/mtime-as-lock": "warn",
-  "implicit-state-opinionated/flag-count": ["warn", { max: 1, params: 1 }],
-  "implicit-state-opinionated/flags-as-state": "warn",
-  "implicit-state-opinionated/name-encoded-state": [
-    "warn",
-    {
-      subjects: [
-        "name",
-        "branch",
-        "ref",
-        "label",
-        "slug",
-        "title",
-        "file",
-        "dir",
-        "path",
-        "id",
-        "key",
-        "tag",
-      ],
-    },
+const PERMISSIVE = new Map<string, JsonValue>([
+  [BOOLEAN_FIELDS, ["warn", { max: 1, params: 1 }]],
+  [
+    NAMES,
+    [
+      "warn",
+      {
+        subjects: [
+          "name",
+          "branch",
+          "ref",
+          "label",
+          "slug",
+          "title",
+          "file",
+          "dir",
+          "path",
+          "id",
+          "key",
+          "tag",
+        ],
+      },
+    ],
   ],
-} satisfies Record<string, JsonValue>;
+]);
 const SKIPPED_DIRECTORY =
   /^(?:node_modules|dist|build|out|coverage|vendor|vendored|third[-_]party|generated)$/u;
 /** Dot folders a tree scan reads: this repository keeps skill scripts under `.claude`. */
@@ -89,18 +85,39 @@ const DECLARATION = /\.d\.[cm]?ts$/u;
 const OXLINT_CODE = /^(?<plugin>[\w-]+)\((?<rule>[\w-]+)\)$/u;
 /** A rule's count in its message: booleans held, parameters taken, readers, or times read. */
 const COUNTS: readonly [string, RegExp][] = [
-  ["flag-count", /(?:holds|takes) (\d+) boolean/u],
-  ["state-literal-spread", /grouped by hand in (\d+) other files/u],
-  ["repeated-external-read", /(\d+) times on one path/u],
-  ["second-reader", /derived by hand in (\d+) files?/u],
-  ["partial-mapping", /leaves out (\d+)/u],
+  [BOOLEAN_FIELDS, /(?:holds|takes) (\d+) boolean/u],
+  [STATE_LITERALS, /grouped by hand in (\d+) other files/u],
+  ["tree/no-repeated-external-read", /(\d+) times on one path/u],
+  ["tree/no-duplicate-derivation", /derived by hand in (\d+) files?/u],
+  ["tree/require-exhaustive-mapping", /leaves out (\d+)/u],
+];
+
+/** The plugins whose per-file rules the eval runs: both implicit-state tiers. */
+const PLUGINS_RUN = [...PLUGINS.keys()].filter((name) => name.startsWith("implicit-state"));
+/** The scan kind the opinionated tier holds beside its plugin. */
+const OPINIONATED_KIND = `${TREE_RULE_PREFIX}no-unowned-state-literals`;
+
+/** The tier a rule belongs to, which sets the precision floor its sweep must reach. */
+export const tierOf = (rule: string): Tier =>
+  rule.startsWith("implicit-state-opinionated/") || rule === OPINIONATED_KIND ? "opinionated" : "generic";
+
+/** The detector sources whose bytes key a cached result. */
+export const DETECTOR_SOURCES = [
+  ...PLUGINS_RUN.map((name) => `tools/oxlint/${name}`),
+  "tools/oxlint/tree-implicit-state.ts",
+  "tools/oxlint/tree-external-read.ts",
+  "tools/oxlint/tree-overwritten-key.ts",
+  "tools/oxlint/tree-second-reader.ts",
+  "tools/oxlint/tree-partial-mapping.ts",
 ];
 
 /** The count or word a sweep reads off a hit's message, or null where its rule has none. */
 function strengthOf(rule: string, message: string): number | string | null {
-  if (rule === "files-as-phase") return (/\(`[^)]*\)/u.exec(message)?.[0] ?? "").split("`, `").length;
-  if (rule === "repeated-external-read" && message.includes("once for each item")) return 2;
-  if (rule === "name-encoded-state") {
+  if (rule === "implicit-state/no-marker-file-state") {
+    return (/\(`[^)]*\)/u.exec(message)?.[0] ?? "").split("`, `").length;
+  }
+  if (rule === "tree/no-repeated-external-read" && message.includes("once for each item")) return 2;
+  if (rule === NAMES) {
     const subject = /^`(?<subject>[^`]+)`/u.exec(message)?.groups?.subject ?? "";
     const word = /(?<word>[A-Za-z]+)\W*$/u.exec(subject)?.groups?.word ?? "";
     return (word.split(/_|(?=[A-Z])/u).at(-1) ?? "").toLowerCase().replace(/s$/u, "");
@@ -110,24 +127,23 @@ function strengthOf(rule: string, message: string): number | string | null {
   return count === undefined ? null : Number(count);
 }
 
-/** The Oxlint config that loads both plugins from the lint worktree at their permissive options. */
+/**
+ * The Oxlint config that loads both plugins from the lint worktree with each rule at its permissive
+ * setting, each rule run only where its plugin's index names it, so a lint worktree from before a
+ * rule still scores.
+ */
 function configOf(detectors: string): JsonValue {
+  const index = (name: string): string => join(detectors, "tools/oxlint", name, "index.ts");
   return {
-    jsPlugins: [
-      { name: "implicit-state", specifier: join(detectors, "tools/oxlint/implicit-state/index.ts") },
-      {
-        name: "implicit-state-opinionated",
-        specifier: join(detectors, "tools/oxlint/implicit-state-opinionated/index.ts"),
-      },
-    ],
+    jsPlugins: PLUGINS_RUN.map((name) => ({ name, specifier: index(name) })),
     categories: { correctness: "off" },
     ignorePatterns: ["**/node_modules/**", "**/vendor/**", "**/dist/**", "**/*.d.ts"],
     rules: Object.fromEntries(
-      Object.entries(PERMISSIVE).filter(([name]) => {
-        const [plugin = "", rule = ""] = name.split("/");
-        return readFileSync(join(detectors, "tools/oxlint", plugin, "index.ts"), "utf8").includes(
-          `"${rule}"`,
-        );
+      PLUGINS_RUN.flatMap((name) => {
+        const registered = readFileSync(index(name), "utf8");
+        return Object.keys(PLUGINS.get(name)?.rules ?? {})
+          .filter((rule) => registered.includes(`"${rule}"`))
+          .map((rule) => [`${name}/${rule}`, PERMISSIVE.get(`${name}/${rule}`) ?? "warn"]);
       }),
     ),
   };
@@ -142,15 +158,15 @@ function hitOfDiagnostic(row: JsonValue): Hit | null {
   const span = isRecord(label) && isRecord(label.span) ? label.span : {};
   const line = isNumber(span.line) ? span.line : 0;
   const file = row.filename.replace(/^\.\//u, "");
-  const tier: Tier = plugin === "implicit-state" ? "generic" : "opinionated";
+  const id = `${plugin}/${rule}`;
   return {
-    rule,
-    tier,
+    rule: id,
+    tier: tierOf(id),
     file,
     line,
     places: [{ file, line }],
     message: row.message,
-    strength: strengthOf(rule, row.message),
+    strength: strengthOf(id, row.message),
   };
 }
 
@@ -206,14 +222,15 @@ function hitOfFinding(row: unknown): Hit | null {
     isRecord(one) && isString(one.path) && isNumber(one.line) ? [{ file: one.path, line: one.line }] : [],
   );
   const own = { file: row.path, line: row.line };
+  const id = `${TREE_RULE_PREFIX}${row.kind}`;
   return {
-    rule: row.kind,
-    tier: row.kind === "unowned-state-literal" ? "opinionated" : "generic",
+    rule: id,
+    tier: tierOf(id),
     file: row.path,
     line: row.line,
     places: [own, ...places],
     message: row.detail,
-    strength: strengthOf(row.kind, row.detail),
+    strength: strengthOf(id, row.detail),
   };
 }
 

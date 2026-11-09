@@ -109,17 +109,17 @@ export const TREE_FINDING_ARGUMENTS = {
     "A call into another file whose arguments are each named for another position's parameter of the callee, two swapped or three or more rotated (`copyTree(destinationPath, sourcePath)` against `copyTree(source, destination)`). The compiler accepts it where the types are assignable among them, and `ana/no-transposed-argument` sees only calls within one file. Fix whichever side is wrong: the arguments' order, a misnamed binding, or the declaration. A name matches a parameter when its words begin or end with the parameter's; one argument out of place is a coincidence and is not counted.",
   "no-stale-reference":
     "A backticked repository path in Markdown or a TypeScript comment that names no file or directory, or an `ANA_*` setting documented in a `.env*.example`, AGENTS.md or a SKILL.md that no code or script file spells. A reader who follows it finds nothing. Point a live description at where the thing lives now, or delete the sentence; in a record of what held at a time, cite the file at the last commit that held it, as `<sha>:path`. Not read: vendored trees and the documents of v1's record (docs/transfer.md, docs/v1.md, studies/). Not counted: a commit-qualified path, a placeholder or glob, a one-letter example name, a path Git ignores, and one that exists from a directory above the document.",
-  "state-literal-spread":
+  "no-scattered-state-literals":
     'A declared set of states (a union of string literals, an `as const` list, a string `enum`, a `Set`, or the tags of a discriminated union) whose values two or more other files group by hand: `s === "done" || s === "failed"`, an `includes` on a literal list, or `case` labels falling through in a switch that does not cover the set. Each grouping names a derived state ("ended") that only its reader knows, so the readers\' sets drift when a state is added. Give each grouping a name in the owner, a predicate or a table, and call it. An exhaustive switch maps every state and is not counted; a union typing a signature owns nothing.',
-  "unowned-state-literal":
+  "no-unowned-state-literals":
     'Opinionated: every status literal comes from a declared owner. The same word-like literals grouped by hand (`status === "open" || status === "closed"`) in two or more files, where no type, `as const`, `enum` or `Set` anywhere in the tree spells them. Nobody owns those states, so a typo in one copy is a state no other file reads. Declare the set once, with its grouping beside it, and import both. Contested where the literals are another program\'s protocol (`process.platform`, an error `code`).',
-  "enumeration-literal-spread":
+  "no-scattered-enum-literals":
     "A set the two literal kinds above would report, owned or not, of which no literal is ever written where a value changes: no assignment, setter or update spells one into a place typed by the set or named as its readers' subject (`tools/oxlint/tree-state-role.ts`). It names a kind, such as a file extension, an HTTP method or a direction, rather than a state. Grouping it by hand drifts all the same, so name each grouping beside the set where one exists; it is reported apart so that the two can be scored apart.",
-  "repeated-external-read":
+  "no-repeated-external-read":
     "One function, or a module's top level, makes the same external read twice on one call path: the same command run, file read, directory listed or URL fetched, keyed by what it reads, with wrappers followed across files and their parameters substituted. Between the two reads the world may change, so the two answers can disagree and the code then holds two states of one fact. Read once where the paths join and pass the answer on. Branches count by the larger arm, a loop over items counts once per item, and a polling loop, a deferred callback and a memoising wrapper are not counted.",
-  "second-reader":
+  "no-duplicate-derivation":
     'A fact an exported function already returns (`isRunning(run, procs)` returns `writersOf(run, procs).length > 0 || keepersOf(run.name).length > 0`), derived again by hand in another file. The copy drifts from the owner the day the owner learns a new case. Call the owner. Two spellings are one fact when they read alike once locals are renamed, operands sorted and negations pushed through, and their calls take the same fields; one-field tests (`kind === "pass"`), groupings of one subject\'s literals and defaults (`??`) are not counted, and a fact nobody owns is not reported. A fold spelled again counts too: a `filter`, `find` or `flatMap` for one value of a discriminant (`kind === "referee.finding"`) that reads every field an exported function\'s scan for that value reads and returns.',
-  "partial-mapping":
+  "require-exhaustive-mapping":
     "A lookup `Map` read with a computed key (`EXAMINED.get(ended)`) that maps most of a declared set and leaves the rest out, so a value it lacks reads as nothing, or whatever default the reader supplies, and nobody is told; or one that maps the whole set while no type holds it there, so a value added later goes the same way. Say which set it maps: build it from `Object.entries({ ... } satisfies Record<Ending, string>)`, and the compiler names every value it lacks. An object literal read with a typed key is held already, a table changed through `set` is an accumulator, and one that maps fewer than half its set is a selection; none of them is counted.",
   "max-filesystem-imports":
     "How many names a file imports from src/meta/filesystem.ts, above six. A register: the count stands, and a change adds at most one.",
@@ -244,7 +244,7 @@ export const TREE_FINDING_EXAMPLES: Readonly<
         '// the arguments in the order roundDir declares\nimport { roundDir } from "./rounds.ts";\nexport const trail = (campaign: string, round: string) => join(roundDir(campaign, round), "trail.jsonl");',
     },
   ],
-  "state-literal-spread": [
+  "no-scattered-state-literals": [
     {
       before:
         '// job.ts: export type JobState = "queued" | "running" | "done" | "failed";\n// a.ts and b.ts each group two of them by hand\nconst ended = job.state === "done" || job.state === "failed";',
@@ -252,7 +252,7 @@ export const TREE_FINDING_EXAMPLES: Readonly<
         '// job.ts owns the grouping, and each reader calls it\nimport { ended } from "./job.ts";\nexport const finished = jobs.filter(ended);',
     },
   ],
-  "unowned-state-literal": [
+  "no-unowned-state-literals": [
     {
       before:
         '// issues.ts and board.ts each spell the states, and nothing declares them\nconst done = issue.status === "closed" || issue.status === "merged";',
@@ -260,7 +260,7 @@ export const TREE_FINDING_EXAMPLES: Readonly<
         '// issue.ts declares the states and owns the grouping\nexport type IssueStatus = "open" | "closed" | "merged";\nexport const isDone = (status: IssueStatus): boolean => status !== "open";',
     },
   ],
-  "enumeration-literal-spread": [
+  "no-scattered-enum-literals": [
     {
       before:
         '// a.ts and b.ts each spell which methods read nothing\nif (request.method === "GET" || request.method === "HEAD") return serve(request);',
@@ -268,7 +268,7 @@ export const TREE_FINDING_EXAMPLES: Readonly<
         '// http.ts names the grouping once, and each reader calls it\nimport { isSafeMethod } from "./http.ts";\nif (isSafeMethod(request.method)) return serve(request);',
     },
   ],
-  "repeated-external-read": [
+  "no-repeated-external-read": [
     {
       before:
         '// lock.ts: holder() runs `ps -o pid` and so does alive(), both on one path\nif (alive(pid) && holder(pid) !== "") release(pid);',
@@ -276,14 +276,14 @@ export const TREE_FINDING_EXAMPLES: Readonly<
         '// the table is read once where the paths join and passed on\nconst table = processTable();\nif (alive(table, pid) && holder(table, pid) !== "") release(pid);',
     },
   ],
-  "second-reader": [
+  "no-duplicate-derivation": [
     {
       before:
         "// retire.ts, while runs.ts exports isRunning(run, procs), which returns this\nif (writersOf(run, listProcs()).length > 0 || keepersOf(run.name).length > 0) return;",
       after: "// retire.ts calls the owner\nif (isRunning(run, listProcs())) return;",
     },
   ],
-  "partial-mapping": [
+  "require-exhaustive-mapping": [
     {
       before:
         '// labels.ts, while job.ts exports state: "queued" | "running" | "done" | "failed" | "lost"\nconst SAID = new Map([["queued", "waits"], ["running", "runs"], ["done", "ended"], ["failed", "failed"]]);\nexport const said = (job: Job) => SAID.get(job.state);',

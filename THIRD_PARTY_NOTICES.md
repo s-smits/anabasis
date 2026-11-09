@@ -98,7 +98,7 @@ SOFTWARE.
   method, while a `TSFunctionType`, a callback's type, stays out; `allowLoneParameter` and both
   suggestions (a string union of `"a" | "b"`, an options object) are not taken, and the rule keeps
   its own exemptions for guards, gated callbacks and calls that pass the parameter's own name.
-  `implicit-state-opinionated/flag-count` counts flag parameters through the same module.
+  `implicit-state-opinionated/max-boolean-fields` counts flag parameters through the same module.
 
 ```text
 MIT License
@@ -191,7 +191,7 @@ SOFTWARE.
 - Source: https://github.com/rust-lang/rust-clippy, `clippy_lints/src/excessive_bools.rs` at
   commit 146674f (`struct_excessive_bools` and `fn_params_excessive_bools`), dual-licensed MIT or
   Apache-2.0; this port takes it under MIT.
-- Port: `tools/oxlint/implicit-state-opinionated/rules/flag-count.ts`, TypeScript over Oxlint's ESTree.
+- Port: `tools/oxlint/implicit-state-opinionated/rules/max-boolean-fields.ts`, TypeScript over Oxlint's ESTree.
   Local changes: a record is an interface, an object type literal or a class rather than a struct;
   a flag is a required member typed `boolean`, `true` or `false` (with `undefined` or `null`
   beside it) or a class field initialised to a boolean, where Clippy counts every `bool` field;
@@ -234,7 +234,7 @@ DEALINGS IN THE SOFTWARE.
 
 - Source: https://github.com/mitsuhiko/rust-excessive-bools-lint, `src/lib.rs` at commit 0f95d16,
   the lint Clippy's `excessive_bools` grew from.
-- Port: the same `tools/oxlint/implicit-state-opinionated/rules/flag-count.ts`, which follows Clippy's
+- Port: the same `tools/oxlint/implicit-state-opinionated/rules/max-boolean-fields.ts`, which follows Clippy's
   later form; from this original it keeps the argument that several booleans on one record are
   one state spelled as flags, and the advice to name the states instead.
 

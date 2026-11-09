@@ -3,7 +3,7 @@
  * hand in many files. An oxlint rule sees one file, so it cannot tell a union's owner from its
  * readers.
  *
- * `state-literal-spread` (generic). The scan infers each declared set of states from the syntax:
+ * `no-scattered-state-literals` (generic). The scan infers each declared set of states from the syntax:
  * a type alias or an inline union of two or more string literals, an `as const` array or object of
  * string literals, a string `enum`, and a `Set` of string literals. The file declaring it owns it.
  * A reader groups states when one condition compares one subject with two or more of them
@@ -15,7 +15,7 @@
  * smallest declared set holding all its literals; an exhaustive switch maps every state and does
  * not count. The remedy is a predicate or a table in the owner that each reader calls.
  *
- * `unowned-state-literal` (opinionated: every status literal comes from a declared owner). A
+ * `no-unowned-state-literals` (opinionated: every status literal comes from a declared owner). A
  * grouping of word-like literals that no type, `as const`, `enum` or `Set` in the tree spells,
  * written in two or more files (the same `--readers`). Nobody owns those states: a typo in one copy
  * is a state no other reads. Contested where the literals are another program's protocol
@@ -25,8 +25,10 @@
  * Not read: tests, declaration files, vendored and generated trees. `typeof x === "string"` is no
  * state. The scan is syntactic and leans to silence; it runs on any folder as
  * `bun tools/oxlint/tree-implicit-state.ts <root> [--json] [--readers <n>]`, which also prints
- * `repeated-external-read` (`tree-external-read.ts`), `second-reader` (`tree-second-reader.ts`) and `partial-mapping` (`tree-partial-mapping.ts`); `--json` prints one array of
- * `{rule, file, line, message}`, and `--readers` sets how many files must group a set by hand.
+ * `no-repeated-external-read` (`tree-external-read.ts`), `no-duplicate-derivation`
+ * (`tree-second-reader.ts`) and `require-exhaustive-mapping` (`tree-partial-mapping.ts`); `--json`
+ * prints one array of `{rule, file, line, message}`, and `--readers` sets how many files must
+ * group a set by hand.
  */
 import * as ts from "typescript5";
 import { readdirSync, readFileSync } from "../../src/meta/filesystem.ts";
@@ -446,7 +448,7 @@ function unownedLiterals(
       return [];
     }
     const row: TreeFinding = {
-      kind: "unowned-state-literal",
+      kind: "no-unowned-state-literals",
       path: first.path,
       line: first.line,
       detail: `${values} is compared by hand in ${readerFiles.size} files and no type, \`as const\`, enum or \`Set\` declares those states`,
@@ -508,7 +510,7 @@ function stateLiterals(
     }
     const sets = new Set(groupedBy.map((one) => quoted(one.values.toSorted())));
     const row: TreeFinding = {
-      kind: "state-literal-spread",
+      kind: "no-scattered-state-literals",
       path: owner.path,
       line: owner.line,
       detail: `\`${owner.name}\` (${quoted(owner.values)}) is grouped by hand in ${readerFiles.size} other files, as ${[...sets].join("; ")}: give each grouping a name in the owner and call it`,
@@ -526,7 +528,7 @@ function stateLiterals(
       ? row
       : {
           ...row,
-          kind: "enumeration-literal-spread",
+          kind: "no-scattered-enum-literals",
           detail: `an enumeration rather than a state, since no literal of it is written where a value changes: ${row.detail}`,
         },
   );

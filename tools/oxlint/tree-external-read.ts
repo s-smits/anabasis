@@ -1,5 +1,5 @@
 /**
- * `repeated-external-read` (generic): one call path makes the same external read twice. A command
+ * `no-repeated-external-read` (generic): one call path makes the same external read twice. A command
  * that asks the process table, a file or a URL in two places holds two answers to one question,
  * taken at two moments; a process that starts or ends between them, or a file rewritten between
  * them, makes the two halves of the command disagree about which state the world is in. Read once,
@@ -670,7 +670,7 @@ function rowsOf(path: string, name: string, tally: Tally): TreeFinding[] {
     const reads = under.map(([key]) => `\`${key.replace(PER_ITEM, "")}\``).join(" and ");
     const times = lines.length === 1 ? "once for each item of a loop" : `${count} times`;
     return {
-      kind: "repeated-external-read",
+      kind: "no-repeated-external-read",
       path,
       line: lines[0] ?? 0,
       detail: `${name} reads ${reads} ${times} on one path (line ${at}): read once where the paths join and pass the answer on`,

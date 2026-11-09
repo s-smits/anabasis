@@ -143,16 +143,16 @@ function practiceTriggers(log: Index, { build, changed, read, round }: Practised
   const earned = failed.filter((fail) => log.stands.get(fail.id) === "earned").length;
   // A fail followed by a pass of the same task: under other bytes it may be the change answering
   // the fail, and under the same bytes it is the solver's variance and answers nothing.
-  const laterPass = (fail: Solve, same: boolean) =>
+  const laterPass = (fail: Solve, bytes: "same" | "other") =>
     round.practice.some(
       (later) =>
         later.version === fail.version &&
         later.index > fail.index &&
         later.outcome === "pass" &&
-        (later.harness === fail.harness) === same,
+        (later.harness === fail.harness) === (bytes === "same"),
     );
-  const answered = failed.filter((fail) => laterPass(fail, false)).length;
-  const flipped = failed.filter((fail) => laterPass(fail, true)).length;
+  const answered = failed.filter((fail) => laterPass(fail, "other")).length;
+  const flipped = failed.filter((fail) => laterPass(fail, "same")).length;
   const exposed = round.exposed.size;
   // A task won in one comparison is no win of another's: recode's b-1 was measured twice. A win
   // on the objective or the bill counts as one on validity does: buffer-fresh-gpt-v071's one step,
@@ -523,7 +523,8 @@ function solveTriggers(log: Index, steps: readonly Handover[]): Trigger[] {
   // it apart: until 11 October it read buffer-225's running x-1, and the four solves buffer-main's
   // g-1 had in flight, as killed.
   const unended = steps.flatMap((step) => (step.step === "examiner" && step.ended === null ? [step] : []));
-  const ids = (cut: boolean) => unended.flatMap((step) => (step.cut === cut ? [step.id] : [])).join(", ");
+  const ids = (end: "cut" | "open") =>
+    unended.flatMap((step) => (step.cut === (end === "cut") ? [step.id] : [])).join(", ");
   const { cut, open } = unendedSolves(log);
   const solves = (many: number) => (many > 0 ? plural(many, "solve") : "");
   // The gate's cut of the room solves it no longer needed (until 1 November) is its design, not a kill.
@@ -558,7 +559,7 @@ function solveTriggers(log: Index, steps: readonly Handover[]): Trigger[] {
         ]
       : []),
     ...(cut + open > 0 ? [fired("SOLVE NEVER FINISHED", apart(solves(cut), solves(open)))] : []),
-    ...(unended.length > 0 ? [fired("EXAMINER NEVER FINISHED", apart(ids(true), ids(false)))] : []),
+    ...(unended.length > 0 ? [fired("EXAMINER NEVER FINISHED", apart(ids("cut"), ids("open")))] : []),
     ...(Object.keys(unjudged).length > 0 ? [fired("MISSES WITHOUT A VERDICT", tally(unjudged))] : []),
     ...(crashed.length > 0
       ? [fired("SESSION CRASHED", crashed.map((data) => text(data.session)).join(", "))]

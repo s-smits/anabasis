@@ -23,7 +23,7 @@ import { closeSync, openSync, readdirSync, readSync, statSync } from "#src/meta/
 import { gitText } from "#src/meta/git.ts";
 import { asRecord, isFunction, isString } from "#src/meta/json-shape.ts";
 import { join } from "#src/meta/path.ts";
-import { CAMPAIGNS, campaignsIn } from "#tools/runs/registry.ts";
+import { CAMPAIGNS, campaignsIn, type Run } from "#tools/runs/registry.ts";
 import { readableAcross } from "#tools/runs/snapshots.ts";
 
 /** What a reading of the reference against itself is made between (`Sides`, `compare.ts`). */
@@ -67,10 +67,7 @@ export interface Tree {
   billedBetween: (events: readonly LogEvent[], from: number, to: number) => number;
 }
 
-export interface Found {
-  readonly name: string;
-  readonly path: string;
-}
+export type Found = Pick<Run, "name" | "path" | "archived">;
 
 /** Bytes read from a log's end to find its last event's time without reading the whole file. */
 const TAIL = 65_536;

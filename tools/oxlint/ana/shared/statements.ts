@@ -10,6 +10,7 @@ type StatementLists = {
 
 /** What a literal node holds: a string, number, boolean, bigint, regular expression or null. */
 type LiteralValue = Extract<ESTree.Node, { type: "Literal" }>["value"];
+type NamedBinding = ESTree.VariableDeclarator & { id: ESTree.BindingIdentifier; init: ESTree.Expression };
 
 /**
  * Node types that bind tighter than a `.` after them, so their text can stand as a call's subject.
@@ -126,6 +127,10 @@ export function isConstDeclaration(
 ): node is ESTree.VariableDeclaration & { kind: "const" } {
   return node.type === "VariableDeclaration" && node.kind === "const";
 }
+
+/** Whether a declarator binds a plain name to a value (`const name = init`), not a pattern or a bare `let`. */
+export const bindsName = (node: ESTree.VariableDeclarator): node is NamedBinding =>
+  node.id.type === "Identifier" && node.init !== null;
 
 /** Whether a node is a call given exactly one argument. */
 export function isOneArgumentCall(

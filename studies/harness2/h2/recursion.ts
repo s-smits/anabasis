@@ -70,13 +70,12 @@ interface Stage {
   readonly label: string;
   readonly dim: "INV" | "DOM" | "AGG";
   readonly tree: Tree;
-  readonly keptBase: boolean;
-  readonly fellBack: boolean;
+  /** Whether the edit stood (`kept-base` where it changed nothing); the other two fall back to the base. */
+  readonly outcome: "edited" | "kept-base" | "fell-back" | "execution-failed";
   readonly error: string;
   readonly usd: number;
   readonly attempts: number;
   readonly notes: string;
-  readonly executionFailed: boolean;
 }
 
 interface Entry {
@@ -212,10 +211,9 @@ async function runStage(
     label: stage.label,
     dim: stage.dim,
     tree: stage.fallback,
-    keptBase: false,
-    fellBack: true,
+    outcome: "fell-back",
     notes: "",
-  };
+  } as const;
   let made: { root: string; text: string };
   try {
     const built = build(join(stage.contextDir, stage.label), bench.evidence, stage.task, inputs);
@@ -226,7 +224,6 @@ async function runStage(
       error: pySlice(`could not build evidence: ${described(error)}`, 0, 400),
       usd: 0,
       attempts: 0,
-      executionFailed: false,
     };
   }
   let error = "";
@@ -249,7 +246,7 @@ async function runStage(
       if (!(cause instanceof ProposerError)) throw cause;
       attempts += cause.attempts || STAGE_ATTEMPTS;
       usd += cause.costUsd;
-      return { ...base, error: pySlice(cause.message, 0, 400), usd, attempts, executionFailed: true };
+      return { ...base, error: pySlice(cause.message, 0, 400), usd, attempts, outcome: "execution-failed" };
     }
     usd += reply.costUsd;
     attempts += Math.max(1, reply.attempts);
@@ -260,17 +257,15 @@ async function runStage(
       return {
         ...base,
         tree: got.tree,
-        keptBase: got.keptBase,
-        fellBack: false,
+        outcome: got.keptBase ? "kept-base" : "edited",
         error: "",
         usd,
         attempts,
         notes: pyStrip(notes),
-        executionFailed: false,
       };
     }
   }
-  return { ...base, error: pySlice(error, 0, 400), usd, attempts, executionFailed: false };
+  return { ...base, error: pySlice(error, 0, 400), usd, attempts };
 }
 
 /** `_roll`: write a harness and roll it once; a dead rollout is recorded, never thrown. */
@@ -306,13 +301,15 @@ async function roll(
   }
 }
 
+const fellBack = ({ outcome }: Stage) => outcome === "fell-back" || outcome === "execution-failed";
+
 function stageRecord(stage: Stage): JsonObject {
   return {
     label: stage.label,
     dim: stage.dim,
-    fell_back: stage.fellBack,
-    kept_base: stage.keptBase,
-    execution_failed: stage.executionFailed,
+    fell_back: fellBack(stage),
+    kept_base: stage.outcome === "kept-base",
+    execution_failed: stage.outcome === "execution-failed",
     attempts: stage.attempts,
     usd: stage.usd,
     cached: false,
@@ -360,9 +357,9 @@ async function runParallel(
     task_id: task,
     k: 1,
     finals: ["agg1"],
-    ok: !stages.some((stage) => stage.executionFailed),
-    fell_back: stages.filter((stage) => stage.fellBack).map((stage) => stage.label),
-    kept_base: stages.filter((stage) => stage.keptBase).map((stage) => stage.label),
+    ok: !stages.some((stage) => stage.outcome === "execution-failed"),
+    fell_back: stages.filter(fellBack).map((stage) => stage.label),
+    kept_base: stages.filter((stage) => stage.outcome === "kept-base").map((stage) => stage.label),
     stages: stages.map((stage) => stageRecord(stage)),
     similarity: { n: 1, n_distinct: 1, mean_line_jaccard: 1 },
     ledger: ledgerOf(task, entries),
@@ -519,7 +516,7 @@ async function runMode(
 ): Promise<void> {
   const run = await runParallel(bench, task, base, workDir, library.contextDir());
   summary.modes.agg = run.record;
-  for (const stage of run.stages.filter((each) => each.executionFailed)) {
+  for (const stage of run.stages.filter((each) => each.outcome === "execution-failed")) {
     summary.errors.push(`agg: ${stage.label}: proposer execution failed: ${stage.error}`);
   }
   const selection = trivialSelection(bench, task, run.final, workDir);

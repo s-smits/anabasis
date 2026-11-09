@@ -1,5 +1,5 @@
 import type { ESTree } from "@oxlint/plugins";
-import { identifierName } from "./statements.ts";
+import { bindsName, identifierName } from "./statements.ts";
 
 /**
  * Whether a value handed to a function the file declares ends up at a named destination.
@@ -100,9 +100,7 @@ export function forwardingTracker() {
       if (node.id !== null) functions.set(node.id.name, node);
     },
     declareBinding(node: ESTree.VariableDeclarator): void {
-      if (node.id.type === "Identifier" && node.init !== null && isCallable(node.init)) {
-        functions.set(node.id.name, node.init);
-      }
+      if (bindsName(node) && isCallable(node.init)) functions.set(node.id.name, node.init);
     },
     call(node: ESTree.CallExpression): void {
       const callee = calleeName(node);

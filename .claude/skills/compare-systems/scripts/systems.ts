@@ -256,11 +256,11 @@ export function pairLines(
  *  side carries: it should read no step. */
 function itself(baseline: System, own: Map<string, Solved>, at: Parameters<typeof pairLines>[2]): string[] {
   if (at.solves < 2 || at.solves % 2 !== 0) return [];
-  const half = (keep: boolean) =>
+  const half = (solves: "out" | "in") =>
     new Map(
       [...own].map(([task, row]) => {
         const pick = <T>(values: readonly T[]) =>
-          values.slice(0, at.solves).filter((_, index) => (index % 4 === 0 || index % 4 === 3) === keep);
+          values.slice(0, at.solves).filter((_, index) => [0, 3].includes(index % 4) === (solves === "out"));
         return [
           task,
           {
@@ -276,7 +276,7 @@ function itself(baseline: System, own: Map<string, Solved>, at: Parameters<typeo
     );
   const named = (which: string) => ({ ...baseline, name: `${baseline.name} (${which} half)` });
   return [
-    ...pairLines([named("one"), half(true)], [named("other"), half(false)], { ...at, solves: at.solves / 2 }),
+    ...pairLines([named("one"), half("out")], [named("other"), half("in")], { ...at, solves: at.solves / 2 }),
     "",
   ];
 }

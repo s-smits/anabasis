@@ -376,7 +376,7 @@ function runOf(
   const noise = epochs[0]?.falsePromotion;
   return {
     name: found.name,
-    host: /\/data\/runs\/([^/]+)\//u.exec(found.path)?.[1] ?? "here",
+    host: found.archived ?? "here",
     release: tag === undefined ? `before ${tags[0]?.name ?? "the first release"}` : `after ${tag.name}`,
     pack: found.name.split("-")[0] ?? found.name,
     setting: settingOf(events),

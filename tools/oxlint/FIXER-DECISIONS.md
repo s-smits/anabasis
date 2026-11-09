@@ -1,7 +1,7 @@
 # Which rules fix, and which only report
 
-Thirty-eight rules are registered: twenty-eight `ana` and ten `anti-slop`, every one of them
-`error`. **Ten carry a fixer. Twenty-eight report and leave the repair to the author.**
+Every `ana` and `anti-slop` rule is registered at `error`. **Ten carry a fixer. The rest report
+and leave the repair to the author.**
 
 That split is not an accident of effort, and it is not a backlog. This file says what a fixer has
 to be true of before it ships, which rules pass that test, and which ones sit right on the edge and
@@ -67,7 +67,7 @@ writes one of these is reversing a decision, and should say so.
 | `no-conditional-empty-object-spread` | emit the field as `null` | absent or present-and-null is the contract, and the spread is where that decision was avoided |
 | `no-alias-restating-return` | write the alias's body as the annotation and delete the alias | not written yet rather than refused; the inline edit keeps the type, and no site has asked for it |
 
-## The rest: twenty-three where the rule does not hold the repair
+## The rest: where the rule does not hold the repair
 
 In each of these the missing piece is information the rule has no access to, and every one says
 so in its own doc comment: `test/oxlint-rule-contract.test.ts` refuses a rule that neither declares

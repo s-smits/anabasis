@@ -27,15 +27,15 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync, readdirSync } from "../src/meta/filesystem.ts";
 import { join, resolve } from "../src/meta/path.ts";
+import { PLUGINS } from "../tools/oxlint/plugins.ts";
 
 const repoRoot = resolve(import.meta.dirname, "..");
-const PLUGINS = ["ana", "anti-slop", "implicit-state", "implicit-state-opinionated"];
 const FIXABLE = /fixable: "code"/u;
 const REFUSES = /no fix/iu;
 const CARRIES = /\bfix: \(fixer/u;
 
 /** Every rule, as the plugin name, the rule name and the source that declares it. */
-const RULES = PLUGINS.flatMap((plugin) => {
+const RULES = [...PLUGINS.keys()].flatMap((plugin) => {
   const dir = join(repoRoot, "tools/oxlint", plugin, "rules");
   return readdirSync(dir)
     .filter((file) => file.endsWith(".ts"))

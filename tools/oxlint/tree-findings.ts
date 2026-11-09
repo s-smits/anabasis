@@ -41,29 +41,8 @@ import {
   TREE_RULE_PREFIX,
 } from "./not-slop-ledger.ts";
 
-type TreeFindingKind =
-  | "no-single-reader-export"
-  | "no-test-only-export"
-  | "no-duplicate-block"
-  | "no-unused-field"
-  | "require-rule-fixture"
-  | "no-unowned-identity"
-  | "no-unowned-fact"
-  | "no-superseded-schema-tag"
-  | "no-compatibility-path"
-  | "no-unused-module"
-  | "no-test-only-module"
-  | "no-unused-reexport"
-  | "no-overwritten-key"
-  | "no-transposed-argument"
-  | "no-stale-reference"
-  | "state-literal-spread"
-  | "unowned-state-literal"
-  | "enumeration-literal-spread"
-  | "repeated-external-read"
-  | "second-reader"
-  | "partial-mapping"
-  | "max-filesystem-imports";
+/** A scan's kind, declared once as a key of `TREE_FINDING_ARGUMENTS`. */
+type TreeFindingKind = keyof typeof TREE_FINDING_ARGUMENTS;
 
 export interface TreeFinding {
   kind: TreeFindingKind;
@@ -98,8 +77,8 @@ interface Tree {
  */
 export const TREE_REGISTER_KINDS: readonly TreeFindingKind[] = ["max-filesystem-imports"];
 
-/** Why each shape is a finding, printed once above its sites. */
-export const TREE_FINDING_ARGUMENTS: Readonly<Record<TreeFindingKind, string>> = {
+/** Why each shape is a finding, printed once above its sites, under the kind that names it. */
+export const TREE_FINDING_ARGUMENTS = {
   "no-single-reader-export":
     "A file of 10 to 60 lines whose one export, a function or class, is read by one other file in the same directory with room to hold it. Answering yes moves the code and deletes a file: 86 of 138 net-negative /simplify commits moved a helper into its single caller. A type or a constant stays beside the value it describes, and a reader near its size limit cannot take it.",
   "no-test-only-export":
@@ -144,7 +123,7 @@ export const TREE_FINDING_ARGUMENTS: Readonly<Record<TreeFindingKind, string>> =
     "A lookup `Map` read with a computed key (`EXAMINED.get(ended)`) that maps most of a declared set and leaves the rest out, so a value it lacks reads as nothing, or whatever default the reader supplies, and nobody is told; or one that maps the whole set while no type holds it there, so a value added later goes the same way. Say which set it maps: build it from `Object.entries({ ... } satisfies Record<Ending, string>)`, and the compiler names every value it lacks. An object literal read with a typed key is held already, a table changed through `set` is an accumulator, and one that maps fewer than half its set is a selection; none of them is counted.",
   "max-filesystem-imports":
     "How many names a file imports from src/meta/filesystem.ts, above six. A register: the count stands, and a change adds at most one.",
-};
+} as const;
 
 /**
  * One pair for each scan, shown once per kind after its sites (`rule-examples.ts` says why). A

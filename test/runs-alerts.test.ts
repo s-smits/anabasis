@@ -9,6 +9,8 @@ import type { RunState } from "../tools/runs/state.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
 const CLI = "tools/runs/cli.ts";
+const ENDED: RunState = { kind: "ended", ending: "budget" };
+const STOPPED: RunState = { kind: "stopped" };
 const folders: string[] = [];
 afterAll(() => {
   for (const root of folders) rmSync(root, { recursive: true, force: true });
@@ -17,26 +19,12 @@ afterAll(() => {
 const row = (more: Partial<Row> = {}): Row => ({
   name: "r",
   promotions: [],
-  ending: null,
-  writer: true,
-  keeper: true,
+  state: { kind: "live", kept: true },
   owed: true,
-  quiet: false,
   lastAt: "2026-11-06T10:00:00.000Z",
   kept: [],
   ...more,
 });
-/** The row of a run that stands as `state`, as `rowOf` reads it. */
-const standingRow = (state: RunState, owed: boolean): Row => {
-  const writer = "kept" in state;
-  return row({
-    owed,
-    ending: state.kind === "ended" ? state.ending : null,
-    writer,
-    keeper: writer ? state.kept : state.kind === "kept",
-    quiet: state.kind === "quiet",
-  });
-};
 const heldAs = (rows: readonly Row[], more: readonly string[] = []): HostRows => ({
   rows,
   held: [...rows.map(({ name }) => name), ...more],
@@ -58,8 +46,7 @@ describe("the fold of one look", () => {
   it("records the present on a first look, firing on no history, and says so in one line", () => {
     const old = row({
       promotions: [read("aaaa", "g-1"), read("bbbb", "g-2")],
-      ending: "budget",
-      writer: false,
+      state: ENDED,
     });
     const { lines, next } = alertsOf(null, here(old));
     expect(lines).toHaveLength(1);
@@ -134,24 +121,24 @@ describe("the fold of one look", () => {
   it("says each gap in a live run once, and none in a run owed no keeper or one that ended", () => {
     const start = lookedAt(row());
     const gaps = [
-      [{ keeper: false }, "no keeper"],
-      [{ writer: false }, "no writer process; its keeper lives"],
-      [{ writer: false, keeper: false }, "no writer process and no keeper"],
-      [{ writer: false, keeper: false, owed: false }, "no writer process"],
+      [{ state: { kind: "live", kept: false } }, "no keeper"],
+      [{ state: { kind: "kept" } }, "no writer process; its keeper lives"],
+      [{ state: STOPPED }, "no writer process and no keeper"],
+      [{ state: STOPPED, owed: false }, "no writer process"],
     ] as const;
     for (const [state, says] of gaps) {
       const once = alertsOf(start, here(row(state)));
       expect(once.lines).toEqual([`r (here): ${says}`]);
       expect(alertsOf(once.next, here(row(state))).lines).toEqual([]);
     }
-    expect(alertsOf(start, here(row({ keeper: false, owed: false }))).lines).toEqual([]);
-    expect(alertsOf(start, here(row({ writer: false, keeper: false, ending: "budget" }))).lines).toEqual([
-      "r (here): ended budget",
-    ]);
+    expect(alertsOf(start, here(row({ state: { kind: "live", kept: false }, owed: false }))).lines).toEqual(
+      [],
+    );
+    expect(alertsOf(start, here(row({ state: ENDED }))).lines).toEqual(["r (here): ended budget"]);
   });
 
   it("says a stall once, and again once the run has moved and stalled afresh", () => {
-    const stalled = row({ quiet: true });
+    const stalled = row({ state: { kind: "quiet", kept: true, since: 0 } });
     const first = alertsOf(lookedAt(row()), here(stalled));
     expect(first.lines).toHaveLength(1);
     expect(first.lines[0]).toContain("no new event since 2026-11-06T10:00:00.000Z");
@@ -191,15 +178,13 @@ describe("the fold of one look", () => {
     expect(gone.lines).toEqual(["r (here): left the registry with no ending seen"]);
     expect(gone.next.runs).toEqual({});
     expect(alertsOf(gone.next, here()).lines).toEqual([]);
-    const ended = alertsOf(lookedAt(row({ ending: "budget", writer: false })), here());
+    const ended = alertsOf(lookedAt(row({ state: ENDED })), here());
     expect(ended.lines).toEqual([]);
     expect(ended.next.runs).toEqual({});
   });
 
   it("keeps quiet of a run still held though the rows left it out, and it reads on when it returns", () => {
-    const dormant = alertsOf(lookedAt(row({ writer: false, keeper: false })), [
-      { host: "here", said: heldAs([], ["r"]) },
-    ]);
+    const dormant = alertsOf(lookedAt(row({ state: STOPPED })), [{ host: "here", said: heldAs([], ["r"]) }]);
     expect(dormant.lines).toEqual([]);
     const back = alertsOf(dormant.next, here(row({ promotions: [unread("aaaa")] })));
     expect(back.lines).toHaveLength(1);
@@ -219,7 +204,7 @@ describe("the fold of one look", () => {
     expect(moved.next.runs.r?.host).toBe("peer");
     const midway = alertsOf(start, [
       { host: "peer", said: heldAs([landed]) },
-      { host: "here", said: heldAs([{ ...landed, writer: false, keeper: false }]) },
+      { host: "here", said: heldAs([{ ...landed, state: STOPPED }]) },
     ]);
     expect(midway.lines).toEqual([]);
   });
@@ -277,7 +262,7 @@ describe("the fold of one look", () => {
       for (const [at, now] of standings.entries()) {
         const seen: (string | boolean | null)[] = [];
         for (const owed of [true, false]) {
-          const look = alertsOf(lookedAt(standingRow(before, owed)), here(standingRow(now, owed)));
+          const look = alertsOf(lookedAt(row({ state: before, owed })), here(row({ state: now, owed })));
           const codes = look.lines.map((line) => said.get(line.replace("r (here): ", "")) ?? "?");
           cells.push(codes.join("") || "-");
           const { ending, gap, quiet } = look.next.runs.r ?? {};

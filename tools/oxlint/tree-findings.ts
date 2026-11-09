@@ -61,6 +61,7 @@ type TreeFindingKind =
   | "unowned-state-literal"
   | "enumeration-literal-spread"
   | "repeated-external-read"
+  | "second-reader"
   | "filesystem-import-budget";
 
 export interface TreeFinding {
@@ -136,6 +137,8 @@ export const TREE_FINDING_ARGUMENTS: Readonly<Record<TreeFindingKind, string>> =
     "A set the two literal kinds above would report, owned or not, of which no literal is ever written where a value changes: no assignment, setter or update spells one into a place typed by the set or named as its readers' subject (`tools/oxlint/tree-state-role.ts`). It names a kind, such as a file extension, an HTTP method or a direction, rather than a state. Grouping it by hand drifts all the same, so name each grouping beside the set where one exists; it is reported apart so that the two can be scored apart.",
   "repeated-external-read":
     "One function, or a module's top level, makes the same external read twice on one call path: the same command run, file read, directory listed or URL fetched, keyed by what it reads, with wrappers followed across files and their parameters substituted. Between the two reads the world may change, so the two answers can disagree and the code then holds two states of one fact. Read once where the paths join and pass the answer on. Branches count by the larger arm, a loop over items counts once per item, and a polling loop, a deferred callback and a memoising wrapper are not counted.",
+  "second-reader":
+    'A fact an exported function already returns (`isRunning(run, procs)` returns `writersOf(run, procs).length > 0 || keepersOf(run.name).length > 0`), derived again by hand in another file. The copy drifts from the owner the day the owner learns a new case. Call the owner. Two spellings are one fact when they read alike once locals are renamed, operands sorted and negations pushed through, and their calls take the same fields; one-field tests (`kind === "pass"`), groupings of one subject\'s literals and defaults (`??`) are not counted, and a fact nobody owns is not reported. A fold spelled again counts too: a `filter`, `find` or `flatMap` for one value of a discriminant (`kind === "referee.finding"`) that reads every field an exported function\'s scan for that value reads and returns.',
   "filesystem-import-budget":
     "How many names a file imports from src/meta/filesystem.ts, above six. A register: the count stands, and a change adds at most one.",
 };
@@ -289,6 +292,13 @@ export const TREE_FINDING_EXAMPLES: Readonly<
         '// lock.ts: holder() runs `ps -o pid` and so does alive(), both on one path\nif (alive(pid) && holder(pid) !== "") release(pid);',
       after:
         '// the table is read once where the paths join and passed on\nconst table = processTable();\nif (alive(table, pid) && holder(table, pid) !== "") release(pid);',
+    },
+  ],
+  "second-reader": [
+    {
+      before:
+        "// retire.ts, while runs.ts exports isRunning(run, procs), which returns this\nif (writersOf(run, listProcs()).length > 0 || keepersOf(run.name).length > 0) return;",
+      after: "// retire.ts calls the owner\nif (isRunning(run, listProcs())) return;",
     },
   ],
   "overwritten-key": [

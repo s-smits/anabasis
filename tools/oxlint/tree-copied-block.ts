@@ -53,7 +53,7 @@ interface Place {
 }
 
 /** Every name a function binds for itself: parameters, locals, nested declarations, catch variables. */
-function boundNames(fn: ts.FunctionLikeDeclaration): Set<string> {
+export function boundNames(fn: ts.FunctionLikeDeclaration): Set<string> {
   const names = new Set<string>();
   const bind = (name: ts.BindingName): void => {
     if (ts.isIdentifier(name)) names.add(name.text);

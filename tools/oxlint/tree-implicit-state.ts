@@ -25,7 +25,7 @@
  * Not read: tests, declaration files, vendored and generated trees. `typeof x === "string"` is no
  * state. The scan is syntactic and leans to silence; it runs on any folder as
  * `bun tools/oxlint/tree-implicit-state.ts <root> [--json] [--readers <n>]`, which also prints
- * `repeated-external-read` (`tree-external-read.ts`); `--json` prints one array of
+ * `repeated-external-read` (`tree-external-read.ts`) and `second-reader` (`tree-second-reader.ts`); `--json` prints one array of
  * `{rule, file, line, message}`, and `--readers` sets how many files must group a set by hand.
  */
 import * as ts from "typescript5";
@@ -35,6 +35,7 @@ import { runtimeProcess } from "../../src/meta/process.ts";
 import { repeatedExternalReads } from "./tree-external-read.ts";
 import type { TreeFinding } from "./tree-findings.ts";
 import { parsedSources } from "./tree-overwritten-key.ts";
+import { secondReaders } from "./tree-second-reader.ts";
 import { type LiteralSet, statefulSets } from "./tree-state-role.ts";
 
 /** A declared set of states and the file that owns it. */
@@ -510,7 +511,8 @@ export function implicitStateFindings(
   readers = READER_FLOOR,
 ): TreeFinding[] {
   const parsed = parsedSources(files);
-  return [...stateLiterals(parsed, readers), ...repeatedExternalReads(parsed)];
+  const owned = new Map([...parsed].filter(([path]) => !TEST_PATH.test(path)));
+  return [...stateLiterals(parsed, readers), ...repeatedExternalReads(parsed), ...secondReaders(owned)];
 }
 
 /** Every TypeScript file under a folder that the scan reads, by its path relative to the folder. */

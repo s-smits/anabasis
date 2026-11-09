@@ -27,10 +27,10 @@ first line, and the round trip through the linter mostly disappears.
 `bun run lint` runs Oxlint over `src`, `tools`, `test`, `packages` and `.claude` with
 `--deny-warnings` and `--report-unused-disable-directives`, type-aware. `packages/ui` is linted
 once its own dependencies are installed (`bun run ui:deps`), under its own `tsconfig.json` and
-with no rule turned off for it; a whole-tree run without them leaves it out and says so. Two repository plugins ride along,
-`ana` and `anti-slop`. Every enabled rule in `.oxlintrc.json` is an error. A
-third, `implicit-state` (12.14), reports only: its rules sit in `tools/oxlint/staged-rules.json`,
-which `bun run simplify` runs and no lint or hook gates on.
+with no rule turned off for it; a whole-tree run without them leaves it out and says so. Four repository plugins ride along: `ana`,
+`anti-slop` and the two tiers of `implicit-state` (12.14). Every enabled rule in `.oxlintrc.json`
+is an error. A rule still being settled sits in `tools/oxlint/staged-rules.json` instead, which
+`bun run simplify` runs and no lint or hook gates on.
 
 - **Plugin findings fail the run only in strict mode**: `bun run lint -- --strict`,
   `ANA_LINT_STRICT=1`, or a clone with `git config ana.lintStrict true`. A plain run holds you to
@@ -451,6 +451,10 @@ literals each reader spells by hand, which files exist, what a name encodes or h
 Readers re-derive it their own way and drift, and a transition between two of them (a crash
 between two writes, a slow holder past a threshold) lands in a state no branch expects. Give it
 one owner: a union, one record of a process's phase, the holder itself for a lock.
+
+Both tiers gate as errors in `.oxlintrc.json` and, like `ana` and `anti-slop`, fail only a strict
+run. A site whose state has no other place to live, such as a ported serialisation format or a
+fact kept only in a name a person types, is answered in the not-slop ledger.
 
 The generic tier infers its structure from syntax, asking the compiler only whether a literal set
 is ever written where a value changes; it names no module of this repository and runs on any

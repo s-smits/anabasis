@@ -20,20 +20,25 @@ import { calleeName, innermost, isTestPath, outermost } from "../../implicit-sta
  * global `match` captures nothing) to a name, when a captured group is read: by index (`m[1]`,
  * `m?.[1]`), through `.groups`, or by destructuring. A name is an identifier or property whose
  * last word (`runName`, `run_name`, `run.name`, a plural) is one of the `subjects` option (by
- * default name, branch, ref, label, slug, title, file, dir or path), or a `basename()` or
- * `dirname()` call. `id`, `key` and `tag` are left out by default: on foreign repositories they
- * were mostly module ids carrying a query and markup tags, protocol text rather than names. A
- * regular expression bound to a `const` of the same file counts as the literal.
+ * default name, branch, ref, label, slug, title, dir or path), or a `basename()` or `dirname()`
+ * call. `file`, `id`, `key` and `tag` are left out by default: on foreign repositories they were
+ * mostly path arithmetic, module ids carrying a query and markup tags, protocol text rather than
+ * names (scored against the implicit-state corpus, `file` read 1 true hit to 4 false). A regular
+ * expression bound to a `const` of the same file counts as the literal.
  *
  * Not reported: a capture of a file's extension (`/\.(png|svg)$/`), which is the file system's
- * own field rather than a fact someone wrote into a name; a test of a name with no capture
+ * own field rather than a fact someone wrote into a name; a pattern that reads a URL query
+ * (`/\?worker&index=(\d+)/`, a literal `?` or a class holding one), since a query is a protocol
+ * one program hands another, written to be parsed; a test of a name with no capture
  * (`/^seed-/.test(name)`, a predicate on the name's form), a capture over text that is not a name (a log line, a command's output), and
  * tests. There is no fix: which record holds the fact is the change.
  */
-const SUBJECTS = ["name", "branch", "ref", "label", "slug", "title", "file", "dir", "path"];
+const SUBJECTS = ["name", "branch", "ref", "label", "slug", "title", "dir", "path"];
 const NAME_CALLS = new Set(["basename", "dirname"]);
 /** A pattern whose one capture is the extension at the end of a file name. */
 const EXTENSION = /^[^(]*\\\.\((?!\?)[^()]*\)\$$/u;
+/** A pattern that matches a URL query: an escaped `?`, or a character class holding one. */
+const QUERY = /\\\?|\[[^\]]*\?[^\]]*\]/u;
 
 /** Whether a pattern holds a capturing group: `(` unescaped, outside a class, and not `(?:`,
  *  a lookaround or `(?<=`; a named group `(?<x>` captures. */
@@ -189,7 +194,8 @@ export const nameEncodedStateRule = defineRule({
       "Program:exit": () => {
         for (const { call, subject, pattern } of calls) {
           const literal = literalOf(pattern);
-          if (literal === null || !captures(literal.regex.pattern) || EXTENSION.test(literal.regex.pattern)) {
+          const source = literal?.regex.pattern ?? "";
+          if (literal === null || !captures(source) || EXTENSION.test(source) || QUERY.test(source)) {
             continue;
           }
           if (calleeName(call) === "match" && literal.regex.flags.includes("g")) {

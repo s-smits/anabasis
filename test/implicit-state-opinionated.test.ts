@@ -35,6 +35,12 @@ export function codeOf(deploy: Deploy): string {
 export function numbers(deploy: Deploy): string[] {
   return deploy.name.match(/(\\d+)/gu) ?? []; // ADMITTED a global match captures nothing
 }
+export function proxied(deploy: Deploy): number {
+  return Number(/\\?html-proxy&index=(\\d+)/u.exec(deploy.name)?.[1]); // ADMITTED a URL query is a protocol written to be parsed
+}
+export function skipped(deploy: Deploy): string {
+  return /^([^/]+)\\//u.exec(deploy.file)?.[1] ?? ""; // ADMITTED a file path split is path arithmetic
+}
 export function whole(deploy: Deploy): string {
   return /pr(\\d+)/u.exec(deploy.name)?.[0] ?? ""; // ADMITTED the whole match is the name itself
 }

@@ -6,7 +6,9 @@
  */
 import { describe, expect, it } from "bun:test";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
+import { readFileSync } from "#src/meta/filesystem.ts";
 import {
+  CORPORA,
   parseCorpus,
   precisionOf,
   recallOf,
@@ -18,6 +20,7 @@ import {
   type TreeHits,
 } from "../tools/oxlint/eval/corpus.ts";
 import type { Hit } from "../tools/oxlint/eval/detect.ts";
+import { foreignRepos } from "../tools/oxlint/eval/trees.ts";
 import type { JsonValue } from "#src/meta/json-shape.ts";
 
 const COMMIT = "a".repeat(40);
@@ -135,6 +138,19 @@ describe("sweep and recommended", () => {
     expect(
       recommended(sweep("mtime-as-lock", corpus, [tree([hit("mtime-as-lock", 41, 2)])]), 0.8),
     ).toBeNull();
+  });
+});
+
+describe("the shipped corpus", () => {
+  it("parses as one and names only this repository or a foreign one recorded with its head", () => {
+    const items = parseCorpus(CORPORA.map((file) => readFileSync(file, "utf8")).join("\n"));
+    const foreign = new Map(foreignRepos().map((one) => [one.name, one.head]));
+    expect(
+      [...new Set(items.map((item) => item.repo))].filter(
+        (repo) => repo !== "anabasis" && !foreign.has(repo),
+      ),
+    ).toEqual([]);
+    expect([...foreign.values()].filter((head) => !/^[0-9a-f]{40}$/u.test(head))).toEqual([]);
   });
 });
 

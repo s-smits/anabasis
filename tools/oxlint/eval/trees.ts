@@ -3,10 +3,12 @@
  * is `git archive`d into its own folder, and a mutant is a copy of that folder with the mutant's
  * edits applied. Nothing is checked out in the repository itself, so its worktrees and branches
  * stay as they were. A folder holds a `.ready` marker once whole, so a killed run leaves a folder
- * the next run rebuilds rather than reads.
+ * the next run rebuilds rather than reads. A foreign repository the corpus names is recorded in
+ * `foreign.json` (its name, where it is cloned from and the head whose hits are judged) and cloned
+ * once, without blobs, under the cache, so the eval needs no clone passed by hand.
  */
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
-import { gitText } from "#src/meta/git.ts";
+import { gitMaybe, gitText } from "#src/meta/git.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isNumber, isRecord, isString } from "#src/meta/json-shape.ts";
 import { join } from "#src/meta/path.ts";
@@ -16,6 +18,14 @@ import { applyMutant } from "./mutate.ts";
 
 const READY = ".ready";
 const EDITED = ".edited.json";
+const FOREIGN = join(import.meta.dir, "foreign.json");
+
+/** A foreign repository the eval reads: where it is cloned from, and the head whose hits are judged. */
+interface Foreign {
+  name: string;
+  url: string;
+  head: string;
+}
 
 /** A materialised tree: its folder, and for a mutant the ranges its edits made. */
 export interface Tree {
@@ -26,6 +36,44 @@ export interface Tree {
 /** The full commit a name resolves to in a repository; throws where it resolves to none. */
 export function fullCommit(repo: string, commit: string): string {
   return gitText(repo, "rev-parse", "--verify", `${commit}^{commit}`);
+}
+
+/** The foreign repositories `foreign.json` records. */
+export function foreignRepos(): Foreign[] {
+  const rows = capturedJsonParse(readFileSync(FOREIGN, "utf8"));
+  return (Array.isArray(rows) ? rows : []).flatMap((row) =>
+    isRecord(row) && isString(row.name) && isString(row.url) && isString(row.head)
+      ? [{ name: row.name, url: row.url, head: row.head }]
+      : [],
+  );
+}
+
+/**
+ * A blobless clone of a foreign repository under the cache, made once and fetched again only when
+ * it lacks the recorded head; `git archive` fetches the blobs each tree needs.
+ */
+export function clonedRepo(foreign: Foreign, cache: string): string {
+  const root = join(cache, "clones", foreign.name);
+  if (!existsSync(join(root, READY))) {
+    rmSync(root, { recursive: true, force: true });
+    const clone = runSync([
+      "git",
+      "clone",
+      "--quiet",
+      "--filter=blob:none",
+      "--no-checkout",
+      foreign.url,
+      root,
+    ]);
+    if (clone.exitCode !== 0) {
+      throw new Error(`could not clone ${foreign.url}: ${new TextDecoder().decode(clone.stderr)}`);
+    }
+    writeFileSync(join(root, READY), foreign.url);
+  }
+  if (gitMaybe(root, "rev-parse", "--verify", `${foreign.head}^{commit}`) === null) {
+    runSync(["git", "-C", root, "fetch", "--quiet", "origin"]);
+  }
+  return root;
 }
 
 /** A repository's tree at a commit, archived into the cache once. */

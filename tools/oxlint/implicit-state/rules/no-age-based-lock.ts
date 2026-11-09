@@ -1,6 +1,6 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
-import { declaredBy, memberObject } from "../../ana/shared/statements.ts";
+import { declaredBy, isConstDeclaration, memberObject } from "../../ana/shared/statements.ts";
 import { calleeName, enclosingFunction, innermost, isTestPath } from "../shared/syntax.ts";
 
 /**
@@ -159,7 +159,7 @@ export const noAgeBasedLockRule = defineRule({
       Program: (program) => {
         for (const statement of program.body) {
           const declared = declaredBy(statement);
-          if (declared.type !== "VariableDeclaration" || declared.kind !== "const") {
+          if (!isConstDeclaration(declared)) {
             continue;
           }
           for (const { id, init } of declared.declarations) {

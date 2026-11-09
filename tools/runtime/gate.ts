@@ -207,10 +207,10 @@ export function diffFromParentSays(
   return gitSays(root, ["diff", ...flags, parentOf(root, commit), commit, "--", ...paths]);
 }
 
-/** A commit's first parent, or the empty tree for a root commit. */
+/** A commit's first parent, or for a root commit the empty tree (`git hash-object -t tree /dev/null`). */
 export function parentOf(root: string, commit: string): string {
   const parent = runSync(["git", "rev-parse", "-q", "--verify", `${commit}^1`], { cwd: root });
-  return zeroExitText(parent) ?? git(root, ["hash-object", "-t", "tree", "/dev/null"]);
+  return zeroExitText(parent) ?? "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 }
 
 /** The record's key for a pass, by content: the commit's tree, which holds the lockfile, and for a
@@ -314,13 +314,12 @@ export const reachingWall = (root: string, changed: ReadonlySet<string>): string
 export const testsNear = (root: string, changed: ReadonlySet<string>): string[] =>
   nearbyTests(root, changed, listed(root, "test", TEST_FILE), NEAR.root);
 
-/** The UI's test files near `changed` in `root`, at `NEAR.ui`, its browser files only where
- *  `browser` holds. */
-export const uiTestsNear = (root: string, changed: ReadonlySet<string>, browser: boolean): string[] =>
+/** The UI's test files near `changed` in `root`, at `NEAR.ui`, its browser files under `all` only. */
+export const uiTestsNear = (root: string, changed: ReadonlySet<string>, files: "all" | "no-browser") =>
   nearbyTests(
     root,
     changed,
-    listed(root, UI_ROOT, UI_TEST).filter((file) => browser || !BROWSER_FILE.test(file)),
+    listed(root, UI_ROOT, UI_TEST).filter((file) => files === "all" || !BROWSER_FILE.test(file)),
     NEAR.ui,
   );
 
@@ -346,20 +345,16 @@ function nearbyTests(
   return [...near].toSorted();
 }
 
-/** The UI's step of a pass, by the rule in `UI_PACKAGE`'s comment; its exit code. */
-async function uiStep(root: string, pass: Pass): Promise<number> {
-  const base =
-    pass === "static"
-      ? parentOf(root, "HEAD")
-      : zeroExitText(runSync(["git", "merge-base", "HEAD", "origin/main"], { cwd: root }));
-  const changed = base === null ? null : changedSince(root, base);
+/** The UI's step of a pass, by the rule in `UI_PACKAGE`'s comment, over what `changed` since `base`;
+ *  its exit code. */
+async function uiStep(root: string, pass: Pass, base: string | null, changed: ReadonlySet<string> | null) {
   if (
     changed === null ||
     [...changed].some((file) =>
       [UI_ROOT, ...UI_SETUP].some((path) => file === path || file.startsWith(`${path}/`)),
     )
   ) {
-    return step(root, "ui", ["run", "ui:gate"], true);
+    return step(root, "ui", ["run", "ui:gate"], "pipe");
   }
   const files = lines(git(root, ["ls-files", UI_ROOT])).filter((file) => /\.tsx?$/u.test(file));
   const read = new Set(files.flatMap((file) => [...within(root, file, Infinity)]));
@@ -367,23 +362,22 @@ async function uiStep(root: string, pass: Pass): Promise<number> {
     console.log(`gate: step ui skipped: nothing it reads changed since ${short(base ?? "")}`);
     return 0;
   }
-  const tests = uiTestsNear(root, changed, pass === "whole");
+  const tests = uiTestsNear(root, changed, pass === "whole" ? "all" : "no-browser");
   for (const args of [["run", "ui:build"], ...(tests.length > 0 ? [["run", "test", "--", ...tests]] : [])]) {
-    const code = await step(root, "ui", args, true);
+    const code = await step(root, "ui", args, "pipe");
     if (code !== 0) return code;
   }
   return 0;
 }
 
-/** One step, its output where the caller's goes, whole once it ends where it is `held`; its exit code.
+/** One step, its output where the caller's goes, whole once it ends where it is piped; its exit code.
  *  A step routed to a runner exits `NO_VERDICT` where the connection dropped, which says nothing
  *  about the commit, so it runs once more: on 28 October a dropped connection after 201 passing
  *  tests failed #502's landing. */
-async function step(root: string, name: string, args: readonly string[], held = false): Promise<number> {
-  const out = held ? "pipe" : "inherit";
+async function step(root: string, name: string, args: readonly string[], io: "pipe" | "inherit" = "inherit") {
   const run = async (): Promise<number> => {
-    const child = Bun.spawn(["bun", ...args], { cwd: root, stdout: out, stderr: out });
-    if (!held) return child.exited;
+    const child = Bun.spawn(["bun", ...args], { cwd: root, stdout: io, stderr: io });
+    if (io === "inherit") return child.exited;
     const [said, warned] = await Promise.all([
       new Response(child.stdout).text(),
       new Response(child.stderr).text(),
@@ -414,7 +408,13 @@ async function gate(argv: readonly string[]): Promise<number> {
     const code = await step(root, name, args);
     if (code !== 0) return code;
   }
-  const near = pass === "whole" ? [] : testsNear(root, changedSince(root, parentOf(root, "HEAD")));
+  // One reading of what changed serves the nearby tests and the UI's step.
+  const base =
+    pass === "static"
+      ? parentOf(root, "HEAD")
+      : zeroExitText(runSync(["git", "merge-base", "HEAD", "origin/main"], { cwd: root }));
+  const changed = base === null ? null : changedSince(root, base);
+  const near = pass === "whole" || changed === null ? [] : testsNear(root, changed);
   if (pass === "static" && near.length === 0) console.log("gate: no test file is near what HEAD changed.");
   // The strict lint reads whether the UI's dependencies are there as it starts, so they are
   // installed before the steps that run side by side (the release review of 3 November).
@@ -422,8 +422,8 @@ async function gate(argv: readonly string[]): Promise<number> {
   const installed = ui ? await step(root, "ui-deps", ["run", "ui:deps"]) : 0;
   if (installed !== 0) return installed;
   const codes = await Promise.all([
-    ui ? uiStep(root, pass) : 0,
-    ...BESIDE.map(([name, args]) => step(root, name, args, true)),
+    ui ? uiStep(root, pass, base, changed) : 0,
+    ...BESIDE.map(([name, args]) => step(root, name, args, "pipe")),
     pass === "whole" || near.length > 0
       ? step(root, "test", ["run", "test", ...(near.length > 0 ? ["--", ...near] : [])])
       : 0,

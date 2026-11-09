@@ -376,7 +376,7 @@ async function converse(
       ],
       context.held,
       // An Examiner session the table names is the host's to start as the conversation opens.
-      campaignTools(context, named.move === "examine"),
+      campaignTools(context, named.move === "examine" ? "starts-examiner" : "starts-nothing"),
     );
   } catch (error) {
     // A provider's limit or a crashed conversation is waited out, and the campaign goes on;

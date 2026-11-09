@@ -686,14 +686,14 @@ function campaignStatus(context: CampaignContext, bench: Bench): string {
 }
 
 /**
- * The campaign's tools and advice for one Builder conversation (`BuildRequest.campaign`). Where
- * `opens`, the host starts the Examiner session the table names as the conversation opens, as the
- * Builder's `examine` would: until 14 October a led campaign that opened short of tasks waited for
- * its Builder to ask, and until 16 October every later session did.
+ * The campaign's tools and advice for one Builder conversation (`BuildRequest.campaign`). Where its
+ * `opening` starts the Examiner, the host starts the session the table names as the conversation
+ * opens, as the Builder's `examine` would: until 14 October a led campaign that opened short of
+ * tasks waited for its Builder to ask, and until 16 October every later session did.
  */
 export function campaignTools(
   context: CampaignContext,
-  opens = false,
+  opening: "starts-examiner" | "starts-nothing" = "starts-nothing",
 ): NonNullable<BuildRequest["campaign"]> {
   return (bench) => {
     const examineRun = examineAction(context, bench);
@@ -714,7 +714,7 @@ export function campaignTools(
     });
     return {
       start: async () =>
-        opens
+        opening === "starts-examiner"
           ? textsOf((await runAction(context, bench, "examine", examineRun, undefined)).output ?? []).join(
               "\n",
             )

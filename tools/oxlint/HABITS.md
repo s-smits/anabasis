@@ -466,5 +466,4 @@ repositories, not because they matter less here.
 | Finding | Repair |
 | --- | --- |
 | `implicit-state-opinionated/name-encoded-state` | A captured group of a pattern applied to a name and read back: keep the fact in a field of the record the name labels |
-| `implicit-state-opinionated/state-file-overwrite` | Serialised structure written over a file: append it as an event, or derive the file from the log |
 | `tree/unowned-state-literal` | The same word-like literals grouped by hand in two or more files and declared nowhere: declare the states once |

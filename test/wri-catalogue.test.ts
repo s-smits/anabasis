@@ -1,4 +1,4 @@
-// The catalogue keeps its twenty-nine lanes numbered in order, each trigger starting the lane the
+// The catalogue keeps its thirty-one lanes numbered in order, each trigger starting the lane the
 // reader names, and a session that holds the blind lane reads it first.
 import { describe, expect, it } from "bun:test";
 import { catalogueText, type Lane, lanesOf } from "../tools/wri/catalogue.ts";
@@ -7,9 +7,9 @@ import { CATEGORIES } from "../tools/runtime/land.ts";
 import { TRIGGERS } from "../tools/wri/folds.ts";
 
 describe("the lane catalogue", () => {
-  it("holds twenty-nine lanes, numbered in order", () => {
+  it("holds thirty-one lanes, numbered in order", () => {
     expect(lanesOf(catalogueText()).map(({ number }) => number)).toEqual(
-      Array.from({ length: 29 }, (_, index) => index + 1),
+      Array.from({ length: 31 }, (_, index) => index + 1),
     );
   });
 
@@ -43,6 +43,15 @@ describe("the lane catalogue", () => {
       `### A section\n\n**1. A lane.**\n\n${label}Importance: 0.5.\nMarks: none.\n\nStarts from \`A (lane 1)\`.\n`;
     expect(lanesOf(lane("Label: `exam`.\n"))[0]?.label).toBe("exam");
     expect(() => lanesOf(lane(""))).toThrow("lane 1 has no label");
+    // The nearest hostile case for a lane added standing, with no trigger to name it: a label and
+    // marks but no importance line is named, and so is an importance outside 0 to 1.
+    const weighed = (importance: string) =>
+      `**30. A lane.**\n\nLabel: \`climb\`.\n${importance}Marks: \`standing\`.\n\nStarts from every read, and is standing.\n`;
+    expect(lanesOf(weighed("Importance: 0.8.\n"))[0]?.importance).toBe(0.8);
+    expect(() => lanesOf(weighed(""))).toThrow("lane 30 has no label or no importance line");
+    expect(() => lanesOf(weighed("Importance: 1.5.\n"))).toThrow(
+      "lane 30 has no label or no importance line",
+    );
   });
 
   // The sets each lane opened under while they were read from its `Starts from` prose, before the
@@ -51,10 +60,10 @@ describe("the lane catalogue", () => {
     const lanes = lanesOf(catalogueText());
     const marked = (flag: (lane: Lane) => boolean) =>
       lanes.filter((lane) => flag(lane)).map(({ number }) => number);
-    expect(marked(({ standing }) => standing)).toEqual([1, 2, 18, 26, 27]);
+    expect(marked(({ standing }) => standing)).toEqual([1, 2, 18, 26, 27, 30, 31]);
     expect(marked(({ isolated }) => isolated)).toEqual([4, 15]);
     expect(marked(({ blind }) => blind)).toEqual([27]);
-    expect(marked(({ sideBySide }) => sideBySide)).toEqual([22]);
+    expect(marked(({ sideBySide }) => sideBySide)).toEqual([22, 31]);
     for (const { body } of lanes) expect(body).not.toMatch(/^Marks:/mu);
   });
 

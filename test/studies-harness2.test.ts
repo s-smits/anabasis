@@ -341,7 +341,8 @@ describe("a harness written out for Claude Code", () => {
     expect(record.unavailable).toStrictEqual(["doubled"]);
     const guide = readFileSync(join(into, "CLAUDE.md"), "utf8");
     expect(guide).toContain("doubled. They are not available here");
-    expect(guide).toContain('export PATH="$PWD/scripts/toolchain/bin:$PATH"');
+    expect(guide).toContain("`scripts/toolchain/bin`, and nothing puts them on your PATH");
+    expect(guide).not.toContain("export PATH");
     expect(readFileSync(join(into, "scripts", "toolchain", "bin", "mark"), "utf8")).toContain("echo marked");
     expect(parseJsonAs<{ harness: string }>(readFileSync(join(into, "export.json"), "utf8")).harness).toBe(
       made.child,

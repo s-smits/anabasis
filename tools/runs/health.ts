@@ -79,12 +79,8 @@ function sizesHere(main: string, controllers: string): Record<string, number | n
   );
 }
 
-/** Attribute hot descendants to their campaign writer rather than guessing from a run name. */
-function busiestHere(): Health["busiest"] {
-  const running = processes();
-  const owners = new Map(
-    runs().flatMap((run) => writers(run, running).map((writer) => [writer.pid, run.name] as const)),
-  );
+/** The live runs, and the hottest processes by the writer they descend from, from one process table. */
+function processesHere(): Pick<Health, "live" | "busiest"> {
   const table = probe(["ps", "-axww", "-o", "pid=,ppid=,pcpu=,args="]);
   if (table === null) throw new Error("cannot inspect the busiest processes");
   const rows = table.split("\n").flatMap((line) => {
@@ -100,12 +96,16 @@ function busiestHere(): Health["busiest"] {
           },
         ];
   });
+  const running = processes(rows.map((row) => `${String(row.pid)} ${row.args.join(" ")}`));
+  const owners = new Map(
+    runs().flatMap((run) => writers(run, running).map((writer) => [writer.pid, run.name] as const)),
+  );
   for (const row of rows) {
-    const [seat] = seatsIn([row.args.join(" ")], "here");
+    const [seat] = seatsIn([row], "here");
     if (seat !== undefined) owners.set(row.pid, seat.name);
   }
   const parents = new Map(rows.map((row) => [row.pid, row.parent]));
-  return rows
+  const busiest = rows
     .toSorted((a, b) => b.cpu - a.cpu)
     .slice(0, 3)
     .map((row) => {
@@ -122,6 +122,7 @@ function busiestHere(): Health["busiest"] {
         run: owners.get(pid) ?? null,
       };
     });
+  return { live: liveHere("here", running), busiest };
 }
 
 function healthHere(): Health {
@@ -147,8 +148,7 @@ function healthHere(): Health {
       existsSync(join(runtimeProcess.cwd(), "node_modules")) &&
       (runtimeProcess.cwd() !== join(controllers, commit) ||
         existsSync(join(controllers, `${commit}.ready`))),
-    live: liveHere(),
-    busiest: busiestHere(),
+    ...processesHere(),
   };
 }
 

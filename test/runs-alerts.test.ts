@@ -250,13 +250,13 @@ describe("the verb over real logs", () => {
       end: "comparison.reported" as const,
       seed: true,
     };
-    expect(onAlerts(run, true, 0)).toBe(false);
-    expect(onAlerts({ ...run, seed: false }, true, 0)).toBe(true);
+    expect(onAlerts(run, "open", 0)).toBe(false);
+    expect(onAlerts({ ...run, seed: false }, "open", 0)).toBe(true);
     writeFileSync(join(folder, "launch-run-1.json"), JSON.stringify({ at: "2026-11-06T07:00:00.000Z" }));
     // Continued, it is read as any run: closed and written lately (a keeper between two starts), or not.
-    expect(onAlerts(run, true, 0)).toBe(true);
-    expect(onAlerts(run, false, 0)).toBe(onAlerts({ ...run, seed: false }, false, 0));
-    expect(onAlerts(run, false, 30 * 86_400_000)).toBe(false);
+    expect(onAlerts(run, "open", 0)).toBe(true);
+    expect(onAlerts(run, "closed", 0)).toBe(onAlerts({ ...run, seed: false }, "closed", 0));
+    expect(onAlerts(run, "closed", 30 * 86_400_000)).toBe(false);
   });
 
   it("reads a promotion and its starter comparison from a log, prints each once and exits 0", () => {

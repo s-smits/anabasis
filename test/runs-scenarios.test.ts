@@ -113,11 +113,10 @@ it("S1: one health command exposes a full disk and overloaded host without hidin
 it("S2: health identifies live campaigns, seats and the hot descendant that belongs to a run", () => {
   const made = fixture();
   campaign(made, "local", made.main);
+  // One table answers both the live runs and the busiest processes, so it alone is given.
   const table = {
-    "-axo pid=,args=": "42 bun tools/d2/harness-builder.ts --name local",
-    "-axo args=": "bun .claude/skills/system-path-simulation/scripts/live-seat.ts start --name simulated",
     "-axww -o pid=,ppid=,pcpu=,args=":
-      "43 42 90 engine-worker\n42 1 5 bun\n44 1 40 browser\n45 1 7 bun .claude/skills/system-path-simulation/scripts/live-seat.ts start --name simulated",
+      "43 42 90 engine-worker\n42 1 5 bun tools/d2/harness-builder.ts --name local\n44 1 40 browser\n45 1 7 bun .claude/skills/system-path-simulation/scripts/live-seat.ts start --name simulated",
   };
   const result = made.runScript(CLI, ["hosts", "--health"], {
     FAKE_HEALTH: JSON.stringify(HEALTH),

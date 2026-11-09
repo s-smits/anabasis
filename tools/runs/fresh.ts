@@ -146,8 +146,8 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
   const here = runtimeProcess.cwd();
   const model = modelOf(values.model);
   const seated = seats(model.id, values.effort ?? model.effort);
-  const billed = billsLogin([], [...seated, ...more]);
-  const codex = !billed && seatsCodex([...seated, ...more]);
+  const seatFlags = [...seated, ...more];
+  const bills = billsLogin([], seatFlags) ? "login" : seatsCodex(seatFlags) ? "codex" : "none";
   if (positionals.length > 1) {
     if (values.host !== undefined) throw new Error("a batch chooses its hosts automatically");
     return await batchFresh(
@@ -165,8 +165,7 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
         at: values.at,
         login: values.login,
         logins: values.logins,
-        billed,
-        codex,
+        bills,
         yes: values.yes,
       },
       (words) => fresh(words, read),
@@ -176,10 +175,10 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
   if (values.host !== undefined && values.host !== HERE) hostNamed(values.host);
   const fleet = await freshFleet();
   const login =
-    values.login !== undefined || billed
+    values.login !== undefined || bills === "login"
       ? await freshLogin(values.login, fleet, read, loginPool(values.logins))
       : undefined;
-  const payer = login ?? (codex ? CODEX : undefined);
+  const payer = login ?? (bills === "codex" ? CODEX : undefined);
   const host = await freshHost(pack, fleet, values.placed ? "here" : values.host, payer);
   const commit = publishedAt(here, values.at);
   if (host !== undefined) {

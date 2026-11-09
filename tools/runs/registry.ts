@@ -64,6 +64,7 @@ const BY_HAND = ["tools/d2/round.ts", EXAMINE, "tools/d2/checkpoint.ts", "tools/
 /** This CLI, whose verbs start, read and stop runs; `rehearse` alone writes a log. */
 export const CLI = "tools/runs/cli.ts";
 const LIVE = "tools/m0/live-solve.ts";
+export const SEAT = "system-path-simulation/scripts/live-seat.ts";
 /** The flag a keeper runs under once it has left the verb that started it (`keep.ts`). */
 export const KEEPING = "--here";
 const CAMPAIGN_END = "comparison.reported";
@@ -244,13 +245,13 @@ function cwdOf(pid: string): string {
   }
 }
 
-/** Every process that may write a run's log or keep one going, with the worktree it runs in: one
- *  table, so that `writers` and `keepers` read the same moment. */
-export function processes(): Running[] {
-  const table = runTextSyncOrThrow(["ps", "-axo", "pid=,args="]).split("\n");
+/** Every process that may write a run's log, keep one going or seat a simulation, with its worktree:
+ *  one table (a row of `ps` pids and arguments each), so `writers`, `keepers` and seats read one moment. */
+export function processes(table = runTextSyncOrThrow(["ps", "-axo", "pid=,args="]).split("\n")): Running[] {
   const found = table.flatMap((row) => {
     const [pid = "", ...args] = row.trim().split(/\s+/);
-    return writesCampaign(args) || runsAs(args, [LIVE]) || keeping(args) !== undefined ? [{ pid, args }] : [];
+    const kept = writesCampaign(args) || runsAs(args, [LIVE]) || keeping(args) !== undefined;
+    return kept || args.some((arg) => arg.endsWith(SEAT)) ? [{ pid, args }] : [];
   });
   if (found.length === 0) return [];
   // Linux names each cwd in /proc. Its lsof walks every descriptor up to the open-file limit Bun

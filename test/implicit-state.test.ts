@@ -66,6 +66,21 @@ export function expired(started: number, limit: number): boolean {
 export function old(file: string, days: number): boolean {
   return Date.now() - statSync(file).mtimeMs > days * 86_400_000; // ADMITTED a window the caller passes
 }
+export function recent(files: readonly string[]): string[] {
+  return files.filter((file) => Date.now() - statSync(file).mtimeMs < STALE_MS); // ADMITTED an age that only selects what a report shows
+}
+export function lapsed(lock: string): boolean {
+  return Date.now() - statSync(lock).mtimeMs > STALE_MS; // ADMITTED nothing is taken over on it
+}
+export function takeOver(lock: string, holder: number): void {
+  const release = (): void => rmSync(lock);
+  try {
+    if (statSync(lock).mtimeMs < Date.now() - STALE_MS) throw new Error("stale"); // REPORT through a release of this file
+  } catch {
+    release();
+  }
+  if (Date.now() - statSync(lock).mtimeMs > STALE_MS) process.kill(holder); // REPORT a holder signalled on its age
+}
 `;
 
 const MODES = `import { useState } from "react";
@@ -236,7 +251,7 @@ describe("the implicit-state rules", () => {
   it("report only the marked lines", async () => {
     await lintRules("implicit-state", [
       ["excessive-bools", BOOLS, 4, "src/upload.tsx"],
-      ["mtime-as-lock", LOCKS, 2, "src/locks.ts"],
+      ["mtime-as-lock", LOCKS, 4, "src/locks.ts"],
       ["files-as-phase", PHASES, 2, "src/phases.ts"],
       ["co-assigned-flags", MODES, 2, "src/modes.tsx"],
       ["co-assigned-flags", MODES, 0, "src/four.tsx", { fields: 4 }],

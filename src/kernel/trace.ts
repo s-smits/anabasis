@@ -31,7 +31,7 @@ import {
 import { plural } from "../meta/text.ts";
 import { proposalsOf } from "./history.ts";
 import type { LogEvent } from "./log.ts";
-import { heldAtGate } from "./task.ts";
+import { admissionsOf } from "./task.ts";
 
 /** Each seat whose trace the log holds, in the order a stopped run's open sessions are ended
  *  (`unfinished`, `src/kernel/reports.ts`). */
@@ -370,13 +370,7 @@ function cutCounts(events: readonly LogEvent[], of: "build" | "exam" | "draft", 
   }
   if (of === "build") return {};
   const proposed = proposalsOf(events).flatMap(({ session, version }) => (session === id ? [version] : []));
-  const gates = new Map(
-    events.flatMap(({ kind, data }) =>
-      kind === "task.gate" && isString(data.version)
-        ? [[data.version, heldAtGate(data.outcome)] as const]
-        : [],
-    ),
-  );
+  const gates = admissionsOf(events);
   return {
     proposed: proposed.length,
     held: proposed.filter((version) => gates.get(version) === true),

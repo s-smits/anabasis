@@ -250,6 +250,17 @@ export function heldAtGate(outcome: JsonValue | undefined): boolean {
   return outcome === "passed" || outcome === LADDER;
 }
 
+/** Each admitted task version, held (true) or refused (false) as its last `task.gate` reads. */
+export function admissionsOf(events: readonly LogEvent[]): Map<string, boolean> {
+  return new Map(
+    events.flatMap(({ kind, data }) =>
+      kind === "task.gate" && isString(data.version)
+        ? [[data.version, heldAtGate(data.outcome)] as const]
+        : [],
+    ),
+  );
+}
+
 /** A `task.gate` event on the task, or why the history may not log it. */
 function admit(task: Folded, data: JsonObject): string | null {
   if (data.gate !== ADMISSION_RECORD) return null;

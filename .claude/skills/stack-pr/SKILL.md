@@ -248,6 +248,25 @@ of a commit (a dropped connection, no slot in time, a host that does not answer 
 reads "gave no verdict"; land again. A landing that ends, however, leaves no status it posted
 pending: it turns each into an error.
 
+**The landing review.** Before `--merge`, three read-only reviewers each read the whole landing
+(`origin/main..<top>`) through one lens, rather than one slice each. A slice makes every reviewer
+learn every subject, and a defect class that spans pull requests, such as one fact read twice or a
+lock that two verbs take, falls between slices. Each reviewer gets the range, every pull request's
+stated problem and its lens, and never a conclusion. Each finding cites a file and line at the
+top's commit and the event, test or count that would settle it, and is reported as confirmed,
+plausible or refuted (`AGENTS.md`, section 11). Where the landing holds an `I0` or `I1`, one lens
+goes to another model family.
+
+| lens | the skills it reads from | what it runs and asks |
+| --- | --- | --- |
+| The measurement | design-and-seats, comparison-reading, campaign-mechanics, attribution-and-proof | `seat-view.ts --base origin/main` and each wall test it names; `bun run runs replay`, which must refuse no log a real run wrote (exit 0); does a change move what a seat reads, a reading, a term or default, or an old event's readability, and does each body claim no more than its rung |
+| The run's life | run-management, system-path-simulation, local-checks | what a kill, a stop, a login at its limit, two processes at once, a gathered copy of a live run or a moved checkout does to each changed verb, lock, pause, retire, fetch, follow or land; whether a refusal writes before its last check; a dry run or rehearsal of each changed path |
+| The owner and the shape | simplify, reduce-complexity, repository-practice, `tools/oxlint/HABITS.md` | `git complexity origin/main <top>` and rule 12 and 13 across the whole landing: a second reader of one fact, a guard for a state that cannot arrive, a patch on one instance, a test without its hostile case, a reader or UI page left behind a changed writer, and a "Not done" that is honest |
+
+The lenses follow the findings of the review of 4 November (`docs/backlog/v093-open-findings.md`),
+which fell into these three classes. Confirmed findings go on the pull request that owns them before
+`--sanitize` runs again; plausible ones go to the backlog with what would settle them.
+
 `--merge` dispatches `ci.yml` where none ran, waits, and on failure says whether to fix a commit or
 `gh run rerun <id>`; then it posts `ana/stack-gate` and merges the native stack all or nothing,
 pinned to the checked head. To open a pull request on the top, push its branch, open it with

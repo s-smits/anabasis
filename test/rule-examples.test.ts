@@ -23,7 +23,7 @@ import { TREE_FINDING_EXAMPLES } from "../tools/oxlint/tree-findings.ts";
 import { execTextSync } from "./helpers/bun-spawn-sync.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
-const PLUGINS = ["ana", "anti-slop", "implicit-state"];
+const PLUGINS = ["ana", "anti-slop", "implicit-state", "implicit-state-opinionated"];
 /** Where a pair is linted when it names no place of its own. */
 const DEFAULT_PATH = "src/example.ts";
 /** A pair is a glance, not a fixture. */

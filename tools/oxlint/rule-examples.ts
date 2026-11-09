@@ -15,6 +15,7 @@ import { isRecord, isString } from "../../src/meta/json-shape.ts";
 import anaPlugin from "./ana/index.ts";
 import antiSlopPlugin from "./anti-slop/index.ts";
 import implicitStatePlugin from "./implicit-state/index.ts";
+import implicitStateOpinionatedPlugin from "./implicit-state-opinionated/index.ts";
 
 /**
  * One pair: `before` is the shape the rule reports and `after` the repair, each a few lines.
@@ -43,6 +44,7 @@ export function ruleExamples(): Map<string, RuleExample[]> {
     ["ana", anaPlugin],
     ["anti-slop", antiSlopPlugin],
     ["implicit-state", implicitStatePlugin],
+    ["implicit-state-opinionated", implicitStateOpinionatedPlugin],
   ];
   return new Map(
     plugins.flatMap(([name, plugin]) =>

@@ -3,6 +3,10 @@
     {
       "name": "implicit-state",
       "specifier": "./implicit-state/index.ts"
+    },
+    {
+      "name": "implicit-state-opinionated",
+      "specifier": "./implicit-state-opinionated/index.ts"
     }
   ],
   "categories": {
@@ -12,6 +16,8 @@
   "rules": {
     "implicit-state/excessive-bools": "warn",
     "implicit-state/files-as-phase": "warn",
-    "implicit-state/mtime-as-lock": "warn"
+    "implicit-state/mtime-as-lock": "warn",
+    "implicit-state-opinionated/name-encoded-state": "warn",
+    "implicit-state-opinionated/state-file-overwrite": "warn"
   }
 }

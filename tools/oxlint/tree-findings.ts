@@ -58,6 +58,7 @@ type TreeFindingKind =
   | "crossed-argument"
   | "stale-reference"
   | "state-literal-spread"
+  | "unowned-state-literal"
   | "repeated-external-read"
   | "filesystem-import-budget";
 
@@ -128,6 +129,8 @@ export const TREE_FINDING_ARGUMENTS: Readonly<Record<TreeFindingKind, string>> =
     "A backticked repository path in Markdown or a TypeScript comment that names no file or directory, or an `ANA_*` setting documented in a `.env*.example`, AGENTS.md or a SKILL.md that no code or script file spells. A reader who follows it finds nothing. Point a live description at where the thing lives now, or delete the sentence; in a record of what held at a time, cite the file at the last commit that held it, as `<sha>:path`. Not read: vendored trees and the documents of v1's record (docs/transfer.md, docs/v1.md, studies/). Not counted: a commit-qualified path, a placeholder or glob, a one-letter example name, a path Git ignores, and one that exists from a directory above the document.",
   "state-literal-spread":
     'A declared set of states (a union of string literals, an `as const` list, a string `enum`, a `Set`, or the tags of a discriminated union) whose values two or more other files group by hand: `s === "done" || s === "failed"`, an `includes` on a literal list, or `case` labels falling through in a switch that does not cover the set. Each grouping names a derived state ("ended") that only its reader knows, so the readers\' sets drift when a state is added. Give each grouping a name in the owner, a predicate or a table, and call it. An exhaustive switch maps every state and is not counted; a union typing a signature owns nothing.',
+  "unowned-state-literal":
+    'Opinionated: every status literal comes from a declared owner. The same word-like literals grouped by hand (`status === "open" || status === "closed"`) in two or more files, where no type, `as const`, `enum` or `Set` anywhere in the tree spells them. Nobody owns those states, so a typo in one copy is a state no other file reads. Declare the set once, with its grouping beside it, and import both. Contested where the literals are another program\'s protocol (`process.platform`, an error `code`).',
   "repeated-external-read":
     "One function, or a module's top level, makes the same external read twice on one call path: the same command run, file read, directory listed or URL fetched, keyed by what it reads, with wrappers followed across files and their parameters substituted. Between the two reads the world may change, so the two answers can disagree and the code then holds two states of one fact. Read once where the paths join and pass the answer on. Branches count by the larger arm, a loop over items counts once per item, and a polling loop, a deferred callback and a memoising wrapper are not counted.",
   "filesystem-import-budget":
@@ -259,6 +262,14 @@ export const TREE_FINDING_EXAMPLES: Readonly<
         '// job.ts: export type JobState = "queued" | "running" | "done" | "failed";\n// a.ts and b.ts each group two of them by hand\nconst ended = job.state === "done" || job.state === "failed";',
       after:
         '// job.ts owns the grouping, and each reader calls it\nimport { ended } from "./job.ts";\nexport const finished = jobs.filter(ended);',
+    },
+  ],
+  "unowned-state-literal": [
+    {
+      before:
+        '// issues.ts and board.ts each spell the states, and nothing declares them\nconst done = issue.status === "closed" || issue.status === "merged";',
+      after:
+        '// issue.ts declares the states and owns the grouping\nexport type IssueStatus = "open" | "closed" | "merged";\nexport const isDone = (status: IssueStatus): boolean => status !== "open";',
     },
   ],
   "repeated-external-read": [

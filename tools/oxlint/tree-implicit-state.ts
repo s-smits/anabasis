@@ -15,6 +15,13 @@
  * smallest declared set holding all its literals; an exhaustive switch maps every state and does
  * not count. The remedy is a predicate or a table in the owner that each reader calls.
  *
+ * `unowned-state-literal` (opinionated: every status literal comes from a declared owner). A
+ * grouping of word-like literals that no type, `as const`, `enum` or `Set` in the tree spells,
+ * written in two or more files (the same `--readers`). Nobody owns those states: a typo in one copy
+ * is a state no other reads. Contested where the literals are another program's protocol
+ * (`process.platform`, an error `code`), which a tree that declares no type for them cannot tell
+ * apart.
+ *
  * Not read: tests, declaration files, vendored and generated trees. `typeof x === "string"` is no
  * state. The scan is syntactic and leans to silence; it runs on any folder as
  * `bun tools/oxlint/tree-implicit-state.ts <root> [--json] [--readers <n>]`, which also prints
@@ -59,6 +66,8 @@ interface Grouping {
 
 /** What the declarations of every file add up to before any reader is read. */
 interface Census {
+  /** Every string literal a type, `as const`, enum or `Set` spells anywhere in the tree. */
+  typed: Set<string>;
   /** Each named object type's properties typed by one string literal (`kind: "pass"`). */
   tagged: Map<string, ReadonlyMap<string, string>>;
   variants: Variants[];
@@ -73,6 +82,8 @@ const DECLARATION = /\.d\.[cm]?ts$/u;
 const READER_FLOOR = 2;
 /** The name of a union typing a return value or an argument: a signature, which owns no states. */
 const INLINE = "(inline)";
+/** A literal that reads as a state's name, not a message, a path or a pattern. */
+const WORD = /^[A-Za-z][\w-]*$/u;
 
 const lineOf = (file: ts.SourceFile, node: ts.Node): number =>
   file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1;
@@ -248,16 +259,22 @@ function nameOf(node: ts.Node, file: ts.SourceFile): string {
   return INLINE;
 }
 
-/** Every declared set of states in one file. */
+/** Every declared set of states in one file, and every string literal it types anywhere. */
 function declaredIn(path: string, file: ts.SourceFile, census: Census): Declared[] {
   const found: Declared[] = [];
   const add = (node: ts.Node, values: readonly string[] | null): void => {
+    for (const value of values ?? []) {
+      census.typed.add(value);
+    }
     const name = nameOf(node, file);
     if (values !== null && new Set(values).size >= 2 && name !== INLINE && exported(node, file)) {
       found.push({ name, values: new Set(values), path, line: lineOf(file, node) });
     }
   };
   const visit = (node: ts.Node): void => {
+    if (ts.isLiteralTypeNode(node) && ts.isStringLiteral(node.literal)) {
+      census.typed.add(node.literal.text);
+    }
     if (ts.isUnionTypeNode(node) && !ts.isUnionTypeNode(node.parent)) {
       add(node, unionValues(node));
     }
@@ -384,10 +401,37 @@ function groupingsIn(path: string, file: ts.SourceFile): Grouping[] {
 
 const quoted = (values: Iterable<string>): string => [...values].map((value) => `"${value}"`).join(" | ");
 
+/** Groupings of word-like literals that nothing in the tree types, written in `readers` files or more. */
+function unownedLiterals(
+  groupings: readonly Grouping[],
+  typed: ReadonlySet<string>,
+  readers: number,
+): TreeFinding[] {
+  const unowned = groupings.filter(
+    ({ values }) => values.every((value) => WORD.test(value)) && !values.some((value) => typed.has(value)),
+  );
+  return [...Map.groupBy(unowned, (one) => quoted(one.values.toSorted()))].flatMap(([values, under]) => {
+    const readerFiles = new Set(under.map((one) => one.path));
+    const [first] = under;
+    if (first === undefined || readerFiles.size < readers) {
+      return [];
+    }
+    return [
+      {
+        kind: "unowned-state-literal" as const,
+        path: first.path,
+        line: first.line,
+        detail: `${values} is compared by hand in ${readerFiles.size} files and no type, \`as const\`, enum or \`Set\` declares those states`,
+        places: under.map((one) => ({ path: one.path, line: one.line, end: one.line })),
+      },
+    ];
+  });
+}
+
 /** Every declared set of states grouped by hand in other files, over one set of parsed files. */
 function stateLiterals(sources: ReadonlyMap<string, ts.SourceFile>, readers = READER_FLOOR): TreeFinding[] {
   const parsed = [...sources].filter(([path]) => !TEST_PATH.test(path));
-  const census: Census = { tagged: new Map(), variants: [] };
+  const census: Census = { typed: new Set(), tagged: new Map(), variants: [] };
   const declared = parsed.flatMap(([path, file]) => declaredIn(path, file, census));
   declared.push(...census.variants.flatMap((one) => discriminated(one, census.tagged)));
   const groupings = parsed.flatMap(([path, file]) => groupingsIn(path, file));
@@ -429,7 +473,7 @@ function stateLiterals(sources: ReadonlyMap<string, ts.SourceFile>, readers = RE
       places: [owner, ...groupedBy].map((one) => ({ path: one.path, line: one.line, end: one.line })),
     });
   }
-  return rows;
+  return [...rows, ...unownedLiterals(groupings, census.typed, readers)];
 }
 
 /**

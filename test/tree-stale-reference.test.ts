@@ -1,5 +1,5 @@
 /**
- * `tree/stale-reference` (`tools/oxlint/tree-stale-reference.ts`): a backticked repository path in
+ * `tree/no-stale-reference` (`tools/oxlint/tree-stale-reference.ts`): a backticked repository path in
  * prose that names nothing in this tree, and a documented `ANA_*` setting that no code reads.
  * Each fixture is one file in a map, read against this checkout, where the kernel's log module
  * exists and no module named gone.ts does.

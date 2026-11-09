@@ -15,7 +15,7 @@ import type { ESTree } from "@oxlint/plugins";
  * earlier place and the one where the repair belongs.
  *
  * The same three lines sit in `anti-slop/shared/function-parameters.ts`, in the tree copied from
- * upstream. Keeping a copy is what lets `unproven-unknown-parameter` stay off a tree that is
+ * upstream. Keeping a copy is what lets `no-unproven-unknown-parameter` stay off a tree that is
  * re-copied. A union with an `unknown` member in a written type is Oxlint's
  * `typescript/no-redundant-type-constituents`, which replaced `ana/no-unknown-union` on 20 October.
  */

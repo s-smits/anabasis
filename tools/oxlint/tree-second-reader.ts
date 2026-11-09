@@ -37,7 +37,7 @@
  * rather than reading a fact, so it neither owns nor reads.
  *
  * No upstream detector exists for this shape: clone detectors (PMD CPD, jscpd) match token runs, not
- * one normalised expression, and `tree/fact-without-owner` (`tree-fact.ts`) reads only a literal
+ * one normalised expression, and `tree/no-unowned-fact` (`tree-fact.ts`) reads only a literal
  * test beside a field read in three files. A fact spelled alike in several files with no owner is
  * not reported: on the eval's trees that reading held about eighty sites a tree (geometry,
  * identifier joins) and caught one labelled second reader.

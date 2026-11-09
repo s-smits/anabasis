@@ -62,7 +62,7 @@ export function unionCause(cause: unknown | null): Error { return new Error("x",
 
 export function concrete(value: string | null): string { return value ?? ""; } // ADMITTED useful nullable contract
 
-// oxlint-disable-next-line ana/unproven-unknown-parameter -- proves nothing, on purpose
+// oxlint-disable-next-line ana/no-unproven-unknown-parameter -- proves nothing, on purpose
 export function excused(value: unknown): string { return String(value); } // ADMITTED a line disable names this rule
 `.trimStart();
 
@@ -104,11 +104,11 @@ export function computedCallee(value: unknown): boolean { return checks["isStrin
 export function aliasCarriesEveryOperand(first: unknown, second: unknown): string { const joined = [first, second].join(""); return isString2(joined) ? joined : ""; } // ADMITTED proving a derived local admits every operand it came from
 `.trimStart();
 
-describe("ana/unproven-unknown-parameter", () => {
+describe("ana/no-unproven-unknown-parameter", () => {
   it("reports only the marked lines in every fixture and scope", async () => {
     await lintRules("ana", [
-      ["unproven-unknown-parameter", PROVERS, 11],
-      ["unproven-unknown-parameter", GUARDS, 5],
+      ["no-unproven-unknown-parameter", PROVERS, 11],
+      ["no-unproven-unknown-parameter", GUARDS, 5],
     ]);
   });
 });

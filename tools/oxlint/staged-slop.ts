@@ -96,7 +96,7 @@ function report(touched: readonly TreeSite[], elsewhere: readonly TreeSite[]): s
 function examplesOf(sites: readonly TreeSite[]): string[] {
   const kinds = [...new Set(sites.map((site) => site.kind))];
   return kinds.flatMap((kind) =>
-    kind === "filesystem-import-budget" ? [] : renderedExamples(kind, TREE_FINDING_EXAMPLES[kind]),
+    kind === "max-filesystem-imports" ? [] : renderedExamples(kind, TREE_FINDING_EXAMPLES[kind]),
   );
 }
 

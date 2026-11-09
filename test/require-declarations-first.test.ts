@@ -20,7 +20,7 @@ import { describe, expect, it } from "bun:test";
 import { fixedSource } from "./helpers/oxlint-rule-fixture.ts";
 import { lintRules } from "./helpers/lint-rule.ts";
 
-const RULE = "declarations-before-the-first-function";
+const RULE = "require-declarations-first";
 const MIXED = `export function first(row: string): string {
   return row.trim();
 }
@@ -55,7 +55,7 @@ VALUES.add(2);
 export const SNAPSHOT = new Set(VALUES); // ADMITTED copies the contents after the write
 `;
 
-describe("ana/declarations-before-the-first-function", () => {
+describe("ana/require-declarations-first", () => {
   it("moves what is erased or provably fixed, and leaves an effect, a global read and state alone", async () => {
     await lintRules("ana", [
       [RULE, MIXED, 5],

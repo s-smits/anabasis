@@ -103,7 +103,7 @@ it is open. Moving a helper's body into three callers removes nothing.
 - A repair adds at most five production lines, one new function and no new module; a pure
   simplification nets zero production lines or fewer, unless the operator says otherwise.
 - A file keeps its count of names from `src/meta/filesystem.ts`, and a change adds at most one
-  (`filesystem-import-budget`, HABITS 12.9).
+  (`max-filesystem-imports`, HABITS 12.9).
 - Meet a ceiling with fewer branches, then a closure, then a function; never a sibling module
   (`copiedFileLimits` in `tools/loc/source-policy.json` stays empty). A `measure.py` branch count
   over 21 is a lead, never a refusal.

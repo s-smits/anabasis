@@ -29,7 +29,7 @@ import { identifierName, propertyName } from "../shared/statements.ts";
  * bound to a `const`, or the constructor of a class this file declares, reached by `new`.
  *
  * An oxlint rule sees one file, and its plugin API offers no other module's declarations, so a
- * call into another file is read by the whole-tree scan `tree/crossed-argument`
+ * call into another file is read by the whole-tree scan `tree/no-transposed-argument`
  * (`tools/oxlint/tree-crossed-argument.ts`) with the same reading. On 8 November that scan resolved
  * 9,989 calls into other files, with 7,742 argument pairs, and found no crossing.
  *

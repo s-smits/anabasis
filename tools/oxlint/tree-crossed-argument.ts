@@ -138,7 +138,7 @@ export function crossedArguments(files: ReadonlyMap<string, string>): TreeFindin
           for (const crossing of crossings(names, declared.params)) {
             const given = crossing.map((i) => `\`${names[i] ?? ""}\` at \`${declared.params[i] ?? ""}\``);
             rows.push({
-              kind: "crossed-argument",
+              kind: "no-transposed-argument",
               path,
               line: file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1,
               detail: `\`${node.expression.getText(file)}\` (${declared.path}:${declared.line}) receives ${given.join(", ")}: each argument is named for the parameter of another`,

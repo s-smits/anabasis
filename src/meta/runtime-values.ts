@@ -6,7 +6,7 @@ export type RuntimePlatform = typeof runtimeProcess.platform;
 export type RuntimeSignal = NonNullable<Bun.Subprocess["signalCode"]>;
 
 /** The `code` of a caught cause, when it carries one as a string. The parameter is the rule-exempt
- *  `cause`: `unproven-unknown-parameter` treats every other `unknown` as a proof obligation, and
+ *  `cause`: `no-unproven-unknown-parameter` treats every other `unknown` as a proof obligation, and
  *  this helper exists only at catch boundaries, over values the language itself types `unknown`. */
 export function errorCode(cause: unknown): string | undefined {
   return cause instanceof Error && "code" in cause && isString(cause.code) ? cause.code : undefined;

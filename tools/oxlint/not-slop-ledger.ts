@@ -68,7 +68,7 @@ const INLINE_ANSWER_RULE = "ana/no-inline-slop-answer";
 /** One answered site. */
 export interface Answer {
   id: string;
-  /** `ana/no-deep-nesting`, `anti-slop/no-runtime-typeof` or `tree/copied-block`. */
+  /** `ana/no-deep-nesting`, `anti-slop/no-runtime-typeof` or `tree/no-duplicate-block`. */
   rule: string;
   /** Every file the site spans, comma-separated, in the order the fingerprint read them. */
   path: string;

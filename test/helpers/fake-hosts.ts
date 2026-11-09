@@ -43,7 +43,7 @@ else if (script.includes("holds")) console.log((peer.holds ?? [process.env.FAKE_
 else if (script.includes("status") && script.includes("ANA_HOP")) console.log(peer.status ?? "no local runs");
 else console.log(process.env.FAKE_PREPARED);`,
   "rsync": `${RECORD}
-import { cpSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 const source = args.at(-2);
 const remote = source.includes(":");
@@ -51,7 +51,7 @@ const quoted = remote ? source.split(":").slice(1).join(":").slice(0,-1) : "";
 const from = remote ? quoted.slice(1,-1).replaceAll("'\\\\''", "'") : source;
 const target = args.at(-1);
 const into = target.includes(":") ? target.split(":").slice(1).join(":").replace(/\\/$/, "").slice(1,-1) + "/" : target;
-if (process.env.FAKE_TRANSFER_FAIL === "1") { writeFileSync(into + "log.jsonl", "partial"); process.exit(23); }
+if (process.env.FAKE_TRANSFER_FAIL === "1") { mkdirSync(into, {recursive: true}); writeFileSync(into + "log.jsonl", "partial"); process.exit(23); }
 const kept = args.filter((arg) => arg.startsWith("--include=/")).map((arg) => new RegExp("^" + arg.slice(11).replaceAll(".", "[.]").replaceAll("*", ".*") + "$"));
 cpSync(from, into, {recursive: true, verbatimSymlinks: true, filter: (file) => !args.includes("--exclude=/*") || resolve(file) === resolve(from) || (dirname(file) === resolve(from) && kept.some((name) => name.test(basename(file))))});`,
   "git": `${RECORD}

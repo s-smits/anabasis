@@ -1,6 +1,13 @@
 // Moving a campaign or a seed whole between hosts, with recovery paths after interrupted copies.
 import { afterAll, describe, expect, it } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { hostname } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { move } from "../tools/runs/move.ts";
@@ -143,7 +150,7 @@ describe("moving a campaign to another machine", () => {
 });
 
 describe("recovering interrupted moves", () => {
-  it("gives recovery paths after a failed copy and leaves both folders untouched on retry", () => {
+  it("refuses a destination holding more of the log than the source, giving recovery paths", () => {
     const made = seedMove();
     const failed = made.move(["--hold"], { FAKE_TRANSFER_FAIL: "1" });
     expect(failed.code).toBe(1);
@@ -156,6 +163,43 @@ describe("recovering interrupted moves", () => {
     expect(readFileSync(join(made.into, "log.jsonl"), "utf8")).toBe("partial");
     expect(existsSync(made.folder)).toBe(true);
     expect(made.recorded().filter(({ tool }) => tool === "rsync")).toHaveLength(1);
+  });
+
+  it("goes on with a move whose copy failed, from the worktree it left at the same commit", () => {
+    const made = seedMove();
+    const log = '{"kind":"campaign.word","at":"2026-11-09T00:00:00.000Z","data":{}}\n';
+    writeFileSync(join(made.folder, "log.jsonl"), log);
+    expect(made.move(["--hold"], { FAKE_TRANSFER_FAIL: "1" }).code).toBe(1);
+    expect(existsSync(made.folder)).toBe(true);
+    const retry = made.move(["--hold"]);
+    expect(retry.err).toBe("");
+    expect(retry.code).toBe(0);
+    expect(readFileSync(join(made.into, "log.jsonl"), "utf8")).toBe(log);
+    expect(readFileSync(join(made.into, "notes.txt"), "utf8")).toBe("keep the whole folder");
+    expect(existsSync(made.folder)).toBe(false);
+    expect(
+      made
+        .recorded()
+        .filter(
+          ({ tool, args }) =>
+            tool === "git" && args.includes("add") && args.includes(join(made.root, "anabasis-seed")),
+        ),
+    ).toHaveLength(1);
+  });
+
+  it("leaves no relay stage behind when a copy between two hosts fails", () => {
+    const made = seedMove();
+    const other = { ...made.host, name: "other", ssh: "fake-other" };
+    const temporary = join(made.root, "tmp");
+    mkdirSync(temporary);
+    const failed = made.move(
+      ["--hold", "--", "--project", "fixture"],
+      { ANA_HOSTS: JSON.stringify([made.host, other]), FAKE_TRANSFER_FAIL: "1", TMPDIR: temporary },
+      ["--from", made.host.name, "--to", other.name],
+    );
+    expect(failed.code).toBe(1);
+    expect(readdirSync(temporary).filter((entry) => entry.startsWith("ana-move-"))).toEqual([]);
+    expect(existsSync(made.folder)).toBe(true);
   });
 
   it("points a retry to the destination after the source has been set aside", () => {

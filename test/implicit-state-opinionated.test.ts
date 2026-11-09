@@ -227,6 +227,20 @@ export function skipped(deploy: Deploy): string {
 export function whole(deploy: Deploy): string {
   return /pr(\\d+)/u.exec(deploy.name)?.[0] ?? ""; // ADMITTED the whole match is the name itself
 }
+export function installRoot(path: string): string {
+  return /^(.*\\/)?[^/]+\\.(dist-info|libs)\\//u.exec(path)?.[1] ?? ""; // ADMITTED a path's folders beside a tool's fixed words
+}
+export function runRoot(path: string): string {
+  return /^(.*\\/)?run-(\\d+)\\//u.exec(path)?.[1] ?? ""; // REPORT a number in the name beside the folders
+}
+export function stepOf(task: string): number {
+  const [, name = ""] = task.split("/");
+  return Number(/^task(\\d+)$/u.exec(name)?.[1]); // ADMITTED a segment of an identifier split apart
+}
+export function laterOf(deploy: Deploy, names: (deploy: Deploy) => string[]): number {
+  const [name = ""] = names(deploy);
+  return Number(/^task(\\d+)$/u.exec(name)?.[1]); // REPORT a name destructured from no split
+}
 `;
 
 const BOARD = `export const done = (status: string): boolean => status === "closed" || status === "merged";\n`;
@@ -251,7 +265,7 @@ describe("the opinionated implicit-state rules", () => {
       ["max-boolean-fields", FLAGS, 0, "src/upload.test.tsx"],
       ["prefer-state-union", LIFECYCLES, 3, "src/lifecycle.ts"],
       ["prefer-state-union", LIFECYCLES, 0, "src/lifecycle.test.ts"],
-      ["no-state-in-names", NAMES, 3, "src/deploy.ts"],
+      ["no-state-in-names", NAMES, 5, "src/deploy.ts"],
     ]);
   });
 });

@@ -1,7 +1,7 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
 import { crossings } from "../shared/crossed.ts";
-import { identifierName, propertyName } from "../shared/statements.ts";
+import { bindingName, identifierName, propertyName } from "../shared/statements.ts";
 
 /**
  * A call that passes two arguments the wrong way round, where the compiler cannot say so.
@@ -75,9 +75,7 @@ function constructorOf(body: ESTree.ClassBody): Callable | null {
 
 /** A parameter's name: a plain one, one with a default, or a constructor's parameter property. */
 function parameterName(param: Callable["params"][number]): string | null {
-  const inner = param.type === "TSParameterProperty" ? param.parameter : param;
-  const target = inner.type === "AssignmentPattern" ? inner.left : inner;
-  return target.type === "Identifier" ? target.name : null;
+  return bindingName(param.type === "TSParameterProperty" ? param.parameter : param);
 }
 
 /** The method `name` of the class whose body encloses `node`. */

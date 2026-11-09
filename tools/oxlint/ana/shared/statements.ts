@@ -86,6 +86,11 @@ export function identifierName(node: ESTree.Node | null | undefined): string | n
   return node?.type === "Identifier" ? node.name : null;
 }
 
+/** The name a binding spells, through a default (`name = ""`), or null for a pattern. */
+export function bindingName(node: ESTree.Node | null | undefined): string | null {
+  return node?.type === "AssignmentPattern" ? bindingName(node.left) : identifierName(node);
+}
+
 /** The property a static member read names (`a.b` as `b`), or null for a computed or private one. */
 export function propertyName(node: ESTree.Node | null | undefined): string | null {
   return node?.type === "MemberExpression" && !node.computed ? identifierName(node.property) : null;

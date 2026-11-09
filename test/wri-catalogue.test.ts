@@ -2,7 +2,7 @@
 // reader names, and a session that holds the blind lane reads it first.
 import { describe, expect, it } from "bun:test";
 import { catalogueText, type Lane, lanesOf } from "../tools/wri/catalogue.ts";
-import { sessionsOf, suggestedSessions, weightOf } from "../tools/wri/investigation.ts";
+import { sessionsOf, weightOf } from "../tools/wri/investigation.ts";
 import { CATEGORIES } from "../tools/runtime/land.ts";
 import { TRIGGERS } from "../tools/wri/folds.ts";
 
@@ -81,36 +81,39 @@ describe("the lane catalogue", () => {
 
 describe("lanes packed into sessions", () => {
   const lanes = lanesOf(catalogueText());
-  const labels = new Set(lanes.filter(({ isolated }) => !isolated).map(({ label }) => label));
+  const openLanes = lanes.filter(({ isolated }) => !isolated);
+  const numbers = (sessions: readonly Lane[][]) =>
+    sessions
+      .flat()
+      .map(({ number }) => number)
+      .toSorted((one, other) => one - other);
 
-  it("keeps each label whole, every lane once, and the sessions within one label's weight of each other", () => {
-    for (const count of [1, 2, 3, 4, 6, 9, 12]) {
+  it("puts every lane in exactly one session, as many sessions as asked where the lanes allow", () => {
+    for (const count of [1, 2, 3, 4, 6, 9, 12, 40]) {
       const sessions = sessionsOf(lanes, count);
-      const open = sessions.filter((each) => each.some(({ isolated }) => !isolated));
-      expect(open).toHaveLength(Math.min(count, labels.size));
-      expect(
-        sessions
-          .flat()
-          .map(({ number }) => number)
-          .toSorted((one, other) => one - other),
-      ).toEqual(lanes.map(({ number }) => number));
-      for (const label of labels) {
-        expect(open.filter((each) => each.some((lane) => lane.label === label))).toHaveLength(1);
-      }
+      expect(numbers(sessions)).toEqual(lanes.map(({ number }) => number));
+      expect(sessions.filter((each) => each.some(({ isolated }) => !isolated))).toHaveLength(
+        Math.min(count, openLanes.length),
+      );
       for (const each of sessions.filter((one) => one.some(({ isolated }) => isolated))) {
         expect(each).toHaveLength(1);
       }
-      const weights = open.map(weightOf);
-      const heaviest = Math.max(
-        ...[...labels].map((label) =>
-          weightOf(lanes.filter((lane) => !lane.isolated && lane.label === label)),
-        ),
-      );
-      expect(Math.max(...weights) - Math.min(...weights)).toBeLessThanOrEqual(heaviest + 1e-9);
     }
   });
 
-  it("puts light labels together and leaves a heavy one alone", () => {
+  // Whole labels left the lightest of four sessions at 0.39 of the heaviest over the last 22 open
+  // lanes, where the climb label weighs 5.85 of 17.35, and at 0.746 over the first 22.
+  it("packs 22 lanes, or all the open ones, into four sessions, the lightest at least three quarters of the heaviest", () => {
+    for (const selection of [openLanes.slice(-22), openLanes.slice(0, 22), openLanes]) {
+      const sessions = sessionsOf(selection, 4);
+      expect(sessions).toHaveLength(4);
+      expect(numbers(sessions)).toEqual(selection.map(({ number }) => number));
+      const weights = sessions.map(weightOf);
+      expect(Math.min(...weights)).toBeGreaterThanOrEqual(0.75 * Math.max(...weights));
+    }
+  });
+
+  it("halves a heavy label only where whole labels leave the sessions uneven", () => {
     const [base] = lanes;
     if (base === undefined) throw new Error("the catalogue holds no lane");
     const made = (number: number, label: string, importance: number): Lane => ({
@@ -120,20 +123,20 @@ describe("lanes packed into sessions", () => {
       importance,
       isolated: false,
     });
-    const sessions = sessionsOf(
-      [
-        made(1, "heavy", 1),
-        made(2, "heavy", 1),
-        made(3, "heavy", 1),
-        made(4, "a", 0.2),
-        made(5, "b", 0.2),
-        made(6, "c", 0.2),
-      ],
-      2,
-    );
-    expect(sessions.map((each) => each.map(({ number }) => number))).toEqual([
-      [1, 2, 3],
-      [4, 5, 6],
+    const packed = (given: readonly Lane[]) =>
+      sessionsOf(given, 2).map((each) => each.map(({ number }) => number));
+    const light = [made(4, "a", 0.2), made(5, "b", 0.2), made(6, "c", 0.2)];
+    // Whole, the heavy label weighs 3 against 0.6; halved, 2 against 1.6.
+    expect(packed([made(1, "heavy", 1), made(2, "heavy", 1), made(3, "heavy", 1), ...light])).toEqual([
+      [1, 3],
+      [2, 4, 5, 6],
+    ]);
+    // Whole, 1 against 0.9 is even enough, so no label is split.
+    expect(
+      packed([made(1, "heavy", 0.5), made(2, "heavy", 0.5), made(4, "a", 0.5), made(5, "a", 0.4)]),
+    ).toEqual([
+      [1, 2],
+      [4, 5],
     ]);
   });
 
@@ -151,18 +154,6 @@ describe("lanes packed into sessions", () => {
         const rest = session.filter((each) => !each.blind).map(({ number }) => number);
         expect(rest).toEqual(rest.toSorted((one, other) => one - other));
       }
-    }
-  });
-
-  it("suggests the most sessions whose lightest weighs at least half the heaviest", () => {
-    const suggested = suggestedSessions(lanes);
-    const weights = (count: number) =>
-      sessionsOf(lanes, count)
-        .filter((each) => each.some(({ isolated }) => !isolated))
-        .map(weightOf);
-    expect(Math.min(...weights(suggested))).toBeGreaterThanOrEqual(Math.max(...weights(suggested)) / 2);
-    if (suggested < labels.size) {
-      expect(Math.min(...weights(suggested + 1))).toBeLessThan(Math.max(...weights(suggested + 1)) / 2);
     }
   });
 });

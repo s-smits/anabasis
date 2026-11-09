@@ -55,8 +55,8 @@ Cite evidence by event kind, solve id, the first eight characters of a digest, c
 never by a task's text, an answer, a hidden value or a passage of a trace.
 
 Each lane carries `Label:`, `Importance:` and `Marks:` lines, which no session is shown. The
-importance (0 to 1, only ratios matter) weighs a lane when `wri.ts lanes --agents N` packs whole
-labels into sessions. The marks (`standing`, `alone`, `blind` and `side-by-side`, or `none`) are
+importance (0 to 1, only ratios matter) weighs a lane when `wri.ts lanes` packs labels into
+sessions. The marks (`standing`, `alone`, `blind` and `side-by-side`, or `none`) are
 what the code reads of how a lane opens; a lane's prose says the same to its session. Then comes one paragraph beginning `Starts from`. Old lane numbers in earlier reports map
 to today's through the head comment of `tools/wri/catalogue.ts`.
 

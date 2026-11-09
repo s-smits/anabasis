@@ -32,6 +32,16 @@ const TESTS = new Set([
 /** Operators that compute a value from their operands rather than compare them. */
 const ARITHMETIC = new Set(["+", "-", "*"]);
 
+/** A setter's name: `setStatus`, `setState`, `setAppState`. */
+const SETTER = /^set([A-Z]\w*)$/u;
+
+/** The state a setter's name sets (`status` for `setStatus`, `appState` for `setAppState`), or
+ *  null for any other name. */
+export function setterState(name: string | null): string | null {
+  const word = SETTER.exec(name ?? "")?.[1];
+  return word === undefined ? null : `${word.charAt(0).toLowerCase()}${word.slice(1)}`;
+}
+
 /** Whether the file belongs to a test suite rather than to the product. */
 export function isTestPath(filename: string): boolean {
   return TEST_PATH.test(filename.replaceAll("\\", "/"));

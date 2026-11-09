@@ -33,8 +33,13 @@ import { calleeName, isTestPath } from "../../implicit-state/shared/syntax.ts";
  * The count is a stance rather than a shape. Scored against the implicit-state corpus, a record or
  * parameter list of three or more flags was a state spelled as flags in 4 of 8 labelled hits on
  * this repository, 3 of 5 on vite and 3 of 9 on excalidraw, since most records of flags elsewhere
- * hold independent options; at Clippy's four or more it was 1 of 5 here. So `max` defaults to 2. The shapes that hold on any repository (flags a class's methods move, a flag derived
- * from two others) are the generic `implicit-state/excessive-bools`.
+ * hold independent options; at Clippy's four or more it was 1 of 5 here. So `max` defaults to 2.
+ * The shapes (flags a class's methods move, a flag derived from two others) are `flags-as-state`.
+ *
+ * A member typed as one literal (`procedure: true`, `declare isNamespace: true`) is a brand or a
+ * discriminant, and a `readonly` field given a literal (`readonly isCluster = false`) is a constant,
+ * so neither counts. A `readonly` field the constructor computes (`this.isNamespace = name === "*"`)
+ * still does: two such projections of one value are the shape the count is for.
  *
  * Test files and declaration files (`.d.ts`, another package's interface described) are not read:
  * a fixture lists its flags beside each other on purpose.
@@ -52,12 +57,16 @@ function memberName(key: ESTree.Node): string {
   return identifierName(key) ?? "member";
 }
 
+/** Whether an annotation is a flag that can change: a brand or discriminant (`ready: true`) is not. */
+const changingFlag = (type: ESTree.TSType | undefined): boolean =>
+  type?.type !== "TSLiteralType" && isFlagType(type);
+
 /** The boolean members of an interface or a type literal, by name. */
 function booleanSignatures(members: readonly ESTree.TSSignature[]): string[] {
   return members.flatMap((member) =>
     member.type === "TSPropertySignature" &&
     !member.optional &&
-    isFlagType(member.typeAnnotation?.typeAnnotation)
+    changingFlag(member.typeAnnotation?.typeAnnotation)
       ? [memberName(member.key)]
       : [],
   );
@@ -70,7 +79,10 @@ function booleanFields(body: ESTree.ClassBody): string[] {
       return [];
     }
     const literal = isBoolean(literalValue(member.value));
-    return isFlagType(member.typeAnnotation?.typeAnnotation) || literal ? [memberName(member.key)] : [];
+    if (member.readonly === true && literal) {
+      return [];
+    }
+    return changingFlag(member.typeAnnotation?.typeAnnotation) || literal ? [memberName(member.key)] : [];
   });
 }
 

@@ -1,6 +1,7 @@
 import { eslintCompatPlugin } from "@oxlint/plugins";
 
 import { flagCountRule } from "./rules/flag-count.ts";
+import { flagsAsStateRule } from "./rules/flags-as-state.ts";
 import { nameEncodedStateRule } from "./rules/name-encoded-state.ts";
 
 /**
@@ -11,8 +12,10 @@ import { nameEncodedStateRule } from "./rules/name-encoded-state.ts";
  *
  * - No record of more than two flags (`flag-count`). Several booleans on one record are read as one
  *   state spelled as flags, whatever the code does with them. Contested where records of
- *   independent options are the norm, as in a build tool's configuration; the shapes that show a
- *   state on any tree are the generic `implicit-state/excessive-bools`.
+ *   independent options are the norm, as in a build tool's configuration.
+ * - No flags a class's methods move apart, and no flag derived from two others of one record
+ *   (`flags-as-state`): both read as a phase held as flags. Contested in large classes, whose
+ *   unrelated latches (a warn-once flag, a lazy load) move in different methods too.
  * - No meaning parsed from names (`name-encoded-state`). A name labels a record; a fact read back
  *   out of it has two owners, the namer and the parser, and a rename moves it silently. Contested
  *   where a name convention is the only interface (a branch scheme a CI system enforces).
@@ -34,6 +37,7 @@ const implicitStateOpinionatedPlugin = eslintCompatPlugin({
   meta: { name: "implicit-state-opinionated" },
   rules: {
     "flag-count": flagCountRule,
+    "flags-as-state": flagsAsStateRule,
     "name-encoded-state": nameEncodedStateRule,
   },
 });

@@ -54,10 +54,10 @@ export const DETECTOR_SOURCES = [
  */
 const PERMISSIVE = {
   "implicit-state/co-assigned-flags": "warn",
-  "implicit-state/excessive-bools": "warn",
   "implicit-state/files-as-phase": "warn",
   "implicit-state/mtime-as-lock": "warn",
   "implicit-state-opinionated/flag-count": ["warn", { max: 1, params: 1 }],
+  "implicit-state-opinionated/flags-as-state": "warn",
   "implicit-state-opinionated/name-encoded-state": [
     "warn",
     {

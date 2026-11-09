@@ -218,12 +218,17 @@ GitHub (`tools/runtime/land.ts`), so each pull request ends as Merged:
 ```sh
 bun run land -- <top>                 # prove it here; nothing is written to GitHub
 bun run land -- <top> --sanitize      # and post each commit's verdict as ana/commit
+bun run land -- <top> --sanitize --once # and end once it is proved, as a session waiting for it does
 bun run land -- <top> --merge         # and wait for ci.yml, post ana/stack-gate, and merge
 bun run land -- <pr> --auto --merge   # land the top above <pr>, following a new top stacked meanwhile
 bun run land -- --merge               # the same, for the stack holding the oldest stacked pull request
 bun run land -- <top> --merge --alone # merge beside another chain on main, on the operator's word
 bun run land -- <top> --merge --tag v0.9.0 # and cut that release at the merge
 ```
+
+Without `--once` a landing follows its stack: once it ends it lands again each time an open pull
+request moves, until the one named closes or Ctrl-C ends it; every pass is remembered, so a round
+costs only what moved. A `--merge` lands once. A session that waits for the verdict names `--once`.
 
 GitHub allows merge commits only, and ruleset 25824510 on `main`
 (`gh api repos/s-smits/anabasis/rulesets/25824510`) refuses non-fast-forward pushes and requires
@@ -246,7 +251,7 @@ pending: it turns each into an error.
 `--merge` dispatches `ci.yml` where none ran, waits, and on failure says whether to fix a commit or
 `gh run rerun <id>`; then it posts `ana/stack-gate` and merges the native stack all or nothing,
 pinned to the checked head. To open a pull request on the top, push its branch, open it with
-`gh pr create --draft --base <top's branch>`, and run `bun run land -- <new top> --sanitize`: before
+`gh pr create --draft --base <top's branch>`, and run `bun run land -- <new top> --sanitize --once`: before
 gating, `--sanitize` and `--merge` link the whole chain into the native stack where GitHub's stack
 holds only its lower part or none of it, and a plain `land` prints the `gh stack link` it would run.
 A stack in another order is refused with its `gh stack unstack` and link lines. Test `land` only

@@ -23,6 +23,8 @@ interface Claim {
   readonly note: string;
   readonly over: (held: string) => boolean;
 }
+/** How often a landing reads the open pull requests, while it proves commits and while it follows. */
+const WATCH_MS = Number(runtimeProcess.env.ANA_LAND_WATCH_MS) || 60_000;
 /** What a landing proves, by how much it writes; a landing that merges is never ended by another. */
 const KINDS = ["proving", "sanitizing", "merging"];
 
@@ -145,12 +147,12 @@ export function claimOf(
 }
 
 /**
- * A stop for a landing's proofs: `moved` is called every `ms` and its error, where it returns one,
+ * A stop for a landing's proofs: `moved` is called every `WATCH_MS` and its error, where it returns one,
  * ends them, as SIGINT or SIGTERM does with an `Interrupted` error; each proof runs in a process group of its
  * own, so it ends whole, and the landing starts again with every pass so far kept. Until 9 November a move was
  * read only as the next proof started, so a whole gate over a stale top ran to its end.
  */
-export function watching(ms: number, Interrupted: new (message: string) => Error, moved: () => Error | null) {
+export function watching(Interrupted: new (message: string) => Error, moved: () => Error | null) {
   const stop = new AbortController();
   const watch = setInterval(() => {
     try {
@@ -159,7 +161,7 @@ export function watching(ms: number, Interrupted: new (message: string) => Error
     } catch {
       // A reading that failed says nothing; the next proof's start reads the chain again.
     }
-  }, ms);
+  }, WATCH_MS);
   const halt = (): void =>
     stop.abort(
       new Interrupted("interrupted; every pass so far is recorded, so landing again starts from there."),
@@ -170,4 +172,60 @@ export function watching(ms: number, Interrupted: new (message: string) => Error
     runtimeProcess.off("SIGINT", halt).off("SIGTERM", halt);
   };
   return { signal: stop.signal, end };
+}
+
+/** The open pull requests by number, base and head, which say whether any of them moved. */
+export const placesOf = (pulls: readonly Pull[]): string =>
+  pulls
+    .map((pull) => `${String(pull.number)} ${pull.baseRefName} ${pull.headRefOid}`)
+    .toSorted()
+    .join("\n");
+
+/** The open pull requests, or null where GitHub did not answer. */
+function openOrNull(root: string): Pull[] | null {
+  try {
+    return openPulls(root);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Lands with `round`, then again each time an open pull request moves, opens or closes, read every
+ * `WATCH_MS`, until `target` is no longer open or SIGINT or SIGTERM ends it: `bun run land` follows
+ * its stack unless `--once` is named, and a `--merge` lands once (operator, 9 November: "make this a
+ * flag but set it"). A round costs only what moved, since every pass is remembered by tree; a round
+ * under way ends through `watching`, a wait at once.
+ */
+export async function follow(
+  root: string,
+  target: number | null,
+  say: (line: string) => void,
+  round: () => Promise<number>,
+): Promise<number> {
+  let ended = false;
+  let waiting = false;
+  const end = (): void => {
+    ended = true;
+    if (waiting) runtimeProcess.exit(130);
+  };
+  runtimeProcess.on("SIGINT", end).on("SIGTERM", end);
+  for (;;) {
+    // Read before the round, so a move while it lands brings another round.
+    const before = placesOf(openOrNull(root) ?? []);
+    const code = await round();
+    if (ended) return code;
+    say("following: landing again once a pull request moves; --once lands once, Ctrl-C ends.");
+    waiting = true;
+    let open: Pull[] | null = null;
+    while (open === null || placesOf(open) === before) {
+      await Bun.sleep(WATCH_MS);
+      open = openOrNull(root);
+    }
+    waiting = false;
+    if (target !== null && !open.some((pull) => pull.number === target)) {
+      say(`#${String(target)} is no longer open; following ends.`);
+      return code;
+    }
+  }
 }

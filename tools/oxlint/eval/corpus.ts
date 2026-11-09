@@ -62,6 +62,7 @@ export const RULE_CLASSES = new Map<string, readonly Class[]>([
   ["repeated-external-read", ["repeated-external-read"]],
   ["co-assigned-flags", ["co-assigned-flags"]],
   ["second-reader", ["second-reader"]],
+  ["partial-mapping", ["partial-mapping"]],
 ]);
 const SLACK = 2;
 

@@ -450,7 +450,7 @@ TypeScript tree; `bun tools/oxlint/tree-implicit-state.ts <root>` scans a foreig
 | Finding | Repair |
 | --- | --- |
 | `implicit-state/co-assigned-flags` | Fields of one state written together, at most one set each time, computed by comparisons that cannot both hold, or written as opposite literals: hold the mode in one discriminated field |
-| `implicit-state/excessive-bools` | More than three required boolean members on one record, or boolean parameters on one function: name the states as a union |
+| `implicit-state/excessive-bools` | Boolean fields a class's methods move at different times, or a flag derived from two others of one record: name the states as a union |
 | `implicit-state/files-as-phase` | A phase read from which files exist in one folder: one record of the phase |
 | `implicit-state/mtime-as-lock` | A file's age against a constant as the holder's liveness: ask the holder (a pid, a lease, an exclusive open) |
 | `tree/state-literal-spread` | Name each grouping of a declared union in its owner |
@@ -465,5 +465,6 @@ repositories, not because they matter less here.
 
 | Finding | Repair |
 | --- | --- |
+| `implicit-state-opinionated/flag-count` | More than two required boolean members on one record, or more than three boolean parameters on one function: name the states as a union |
 | `implicit-state-opinionated/name-encoded-state` | A captured group of a pattern applied to a name and read back: keep the fact in a field of the record the name labels |
 | `tree/unowned-state-literal` | The same word-like literals grouped by hand in two or more files and declared nowhere: declare the states once |

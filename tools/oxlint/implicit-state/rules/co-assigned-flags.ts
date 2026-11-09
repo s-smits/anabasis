@@ -9,7 +9,7 @@ import {
   plainAssignment,
   propertyName,
 } from "../../ana/shared/statements.ts";
-import { innermost, isTestPath, outermost, setterState } from "../shared/syntax.ts";
+import { innermost, isTestPath, objectValues, outermost, setterState } from "../shared/syntax.ts";
 
 /**
  * Tier: generic. Fields of one state that are written together, where each write sets at most one
@@ -84,18 +84,6 @@ function valueOf(node: ESTree.Node): Value {
     identifierName(node) === "undefined" ||
     (node.type === "UnaryExpression" && node.operator === "void");
   return cleared ? "clear" : "set";
-}
-
-/** The values an object literal writes, by field name; a spread or a computed key writes none. */
-function objectValues(object: ESTree.ObjectExpression): Map<string, ESTree.Node> {
-  const values = new Map<string, ESTree.Node>();
-  for (const property of object.properties) {
-    const name = property.type === "Property" && !property.computed ? identifierName(property.key) : null;
-    if (property.type === "Property" && name !== null) {
-      values.set(name, property.value);
-    }
-  }
-  return values;
 }
 
 /** The comparisons a condition joins with `&&`: `t && t !== "r"` makes one, `t !== "r"`. */

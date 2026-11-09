@@ -178,6 +178,19 @@ export function vet(dir: string): string | null {
 export function apart(jobDir: string, cacheDir: string): boolean {
   return existsSync(join(jobDir, "done.json")) && existsSync(join(cacheDir, "hit.json")); // ADMITTED two folders
 }
+export function page(root: string, name: string): string | null {
+  if (existsSync(join(root, name))) return name;
+  return existsSync(join(root, \`\${name}.html\`)) ? \`\${name}.html\` : null; // ADMITTED alternatives of one lookup this file never writes
+}
+const writeRecord = (path: string): void => writeFileSync(path, "{}");
+export function start(jobDir: string): void {
+  writeRecord(join(jobDir, "started.json"));
+  writeFileSync(\`\${jobDir}/lock\`, "");
+}
+export function mark(dir: string): void {
+  const path = join(dir, "marker");
+  writeFileSync(path, "");
+}
 `;
 
 const OWNER = `export type JobState = "queued" | "running" | "done" | "failed";\n`;

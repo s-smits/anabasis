@@ -64,7 +64,7 @@ import { keysIf } from "../../src/meta/optional-key.ts";
 import { availableParallelism, tmpdir } from "../../src/meta/os.ts";
 import { basename, dirname, isAbsolute, join, relative } from "../../src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "../../src/meta/process.ts";
-import { runSync, runTextSyncOrThrow, zeroExitText } from "../../src/meta/subprocess.ts";
+import { killProcessGroup, runSync, runTextSyncOrThrow, zeroExitText } from "../../src/meta/subprocess.ts";
 import type { StatusState } from "./pulls.ts";
 
 type Pass = "static" | "whole";
@@ -93,6 +93,10 @@ interface Prover {
   /** Told every verdict, recorded earlier or new, so land can post it as a status, and `pending` when
    *  a commit's proof starts, so a red left by an earlier landing clears once it is proved again. */
   readonly mark: (commit: string, state: StatusState, description: string) => void;
+  /** Ends every proof under way, each pass's whole process group, and starts none: land's, when a
+   *  head moved under a commit being proved or the landing was interrupted. A stopped pass is no
+   *  verdict and is recorded nowhere. */
+  readonly stop?: AbortSignal;
 }
 
 /** The documentation set. A commit changing nothing beyond it gets no static steps, and a push of
@@ -473,6 +477,26 @@ export const failedLine = (failure: Failure): string =>
     : `${short(failure.commit)} GAVE NO VERDICT ON ${failure.step}: its runner said nothing of it twice`;
 
 /**
+ * The checker that runs every pass, as one digest: this CI gate and the files its imports reach, read
+ * from the caller's checkout as it stands, since `GATE` runs from there over each target. Its
+ * steps run `bun run …` in the target's checkout (`step`), so the lint plugins and configs, the
+ * test wrapper, `package.json` and `bun.lock` they use are the target's, which its tree keys. Until
+ * 20 October the digest took every file of `tools/runtime` and `src/meta`, so a caller whose lint
+ * or `src/meta/git.ts` had changed proved again what an equal CI gate had passed: along the chain of
+ * #267 to #288 it took four values where the CI gate's own files took two, and the chain's bottom
+ * commits were proved three times.
+ */
+function checkerDigest(): string {
+  const top = join(import.meta.dir, "..", "..");
+  return sha256(
+    [...within(top, relative(top, GATE), Infinity)]
+      .toSorted()
+      .map((file) => `${file} ${sha256OfFile(join(top, file))}`)
+      .join("\n"),
+  ).slice(0, 16);
+}
+
+/**
  * Runs each commit's pass over a checkout of it, up to `jobs` at once, and returns the lowest
  * failure. The whole CI gate waits until every commit beneath it has passed. Nothing new starts after a
  * failure, since every commit above a fix changes id with it. Passes side by side share the cores:
@@ -486,28 +510,14 @@ export async function proveCommits(
   proofs: readonly Proof[],
   prover: Prover,
 ): Promise<Failure | null> {
-  const { who, say, mark } = prover;
+  const { who, say, mark, stop } = prover;
   const [common = "", logs = ""] = lines(
     git(root, ["rev-parse", "--path-format=absolute", "--git-common-dir", "--git-path", "ana-gate"]),
   );
   const record = join(common, "ana-gate-passed");
   mkdirSync(logs, { recursive: true });
   runSync(["find", logs, "-name", "*.log", "-mtime", `+${String(LOG_DAYS)}`, "-delete"]);
-  // The checker that runs every pass, as one digest: this CI gate and the files its imports reach, read
-  // from the caller's checkout as it stands, since `GATE` runs from there over each target. Its
-  // steps run `bun run …` in the target's checkout (`step`), so the lint plugins and configs, the
-  // test wrapper, `package.json` and `bun.lock` they use are the target's, which its tree keys. Until
-  // 20 October the digest took every file of `tools/runtime` and `src/meta`, so a caller whose lint
-  // or `src/meta/git.ts` had changed proved again what an equal CI gate had passed: along the chain of
-  // #267 to #288 it took four values where the CI gate's own files took two, and the chain's bottom
-  // commits were proved three times.
-  const top = join(import.meta.dir, "..", "..");
-  const checker = sha256(
-    [...within(top, relative(top, GATE), Infinity)]
-      .toSorted()
-      .map((file) => `${file} ${sha256OfFile(join(top, file))}`)
-      .join("\n"),
-  ).slice(0, 16);
+  const checker = checkerDigest();
   const remembered =
     runtimeProcess.env.ANA_GATE_FRESH === "1"
       ? ""
@@ -542,14 +552,23 @@ export async function proveCommits(
         ...runtimeProcess.env,
         ANA_TEST_BAIL: "1",
       },
+      // Its own group, so a stop reaches the steps and the runner's ssh beneath it.
+      detached: stop !== undefined,
       stdin: "ignore",
       stdout: fd,
       stderr: fd,
     });
+    const end = (): void => killProcessGroup(child, "SIGTERM");
+    stop?.addEventListener("abort", end, { once: true });
     const code = await child.exited;
+    stop?.removeEventListener("abort", end);
     clearInterval(pulsing);
     closeSync(fd);
     free.push(tree);
+    if (code !== 0 && stop?.aborted === true) {
+      say(`${at}: stopped.`);
+      return;
+    }
     if (code === 0) {
       appendFileSync(record, `${contentKey(root, commit, pass, checker)}\n`);
       mark(commit, "success", PROVED[pass]);
@@ -581,7 +600,7 @@ export async function proveCommits(
       }
       if (pass === "whole") await Promise.all(running);
       while (running.size >= prover.jobs) await Promise.race(running);
-      if (failures.length > 0) break;
+      if (failures.length > 0 || stop?.aborted === true) break;
       const task: Promise<void> = run(at, index, commit, pass).then(() => {
         running.delete(task);
       });

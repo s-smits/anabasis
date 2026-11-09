@@ -12,7 +12,8 @@
  * the kept one again, skipping the detaching and the push where origin holds every new head.
  *
  * `--onto-main` replays the open stack holding <pr> onto origin/main and names every head itself:
- * the repair once what the stack stood on has landed (`replayedHeads`).
+ * the repair once what the stack stood on has landed (`replayedHeads`). A parent rewritten within
+ * the stack `bun run land --sanitize` replays itself, without unstacking.
  *
  * Without `--yes` it shows each branch before and after, and every operation in order. With it,
  * it unstacks, retargets every survivor to main, pushes moved heads atomically with leases on the
@@ -37,9 +38,9 @@ import { gitMaybe, gitText } from "#src/meta/git.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
-import { errorMessage } from "#src/meta/runtime-values.ts";
 import { shellQuote } from "#src/wall/isolation.ts";
 import { short } from "#tools/runtime/gate.ts";
+import { formerHeadOnGitHub, leasedPush, restacked, Unreplayable } from "#tools/runtime/restack.ts";
 import {
   ghOrThrow,
   type NativeStack,
@@ -161,52 +162,19 @@ export function planConsolidation(
   };
 }
 
-/** The new head of every pull request on `line`, bottom to top: the chain replayed onto origin/main
- *  by `git replay`, which needs no worktree and moves no ref, from where it last met main (the
- *  merge of what it was stacked on), each head mapped to the replayed commit at its place. A chain
- *  that already holds origin/main keeps its heads. On 6 November #632 to #653 stood on a merged
- *  branch, and the fix took an unstack, a base edit, a rebase in a scratch worktree, a hand-built map
- *  of 18 heads and this script; `--onto-main` is that sequence. */
+/** The new head of every pull request on `line`, bottom to top, replayed onto origin/main
+ *  (`restacked`, `tools/runtime/restack.ts`). On 6 November #632 to #653 stood on a merged branch,
+ *  and the fix took an unstack, a base edit, a rebase in a scratch worktree, a hand-built map of 18
+ *  heads and this script; `--onto-main` is that sequence. */
 export function replayedHeads(root: string, line: readonly Pull[], trunkName: string): Map<number, string> {
-  const top = line.at(-1);
-  if (top === undefined) throw new CommandFailure("no open stack to replay");
+  if (line.length === 0) throw new CommandFailure("no open stack to replay");
   const trunk = gitText(root, "rev-parse", "--verify", trunkHead(trunkName));
-  if (holds(root, trunk, line[0]?.headRefOid ?? top.headRefOid)) {
-    return new Map(line.map((pull) => [pull.number, pull.headRefOid]));
-  }
-  const from = gitText(root, "merge-base", trunk, top.headRefOid);
-  const range = `${from}..${top.headRefOid}`;
-  let said: string;
   try {
-    said = gitText(root, "replay", "--ref-action=print", "--onto", trunk, "--ref", "refs/ana/replay", range);
-  } catch (cause) {
-    said = errorMessage(cause);
+    return restacked(root, line, trunk, formerHeadOnGitHub(root));
+  } catch (error) {
+    if (!(error instanceof Unreplayable)) throw error;
+    throw new CommandFailure(`${error.message}, then name the new heads with --head`);
   }
-  const replayed = /^update \S+ ([0-9a-f]{40})/m.exec(said)?.[1];
-  if (replayed === undefined) {
-    throw new CommandFailure(
-      `the chain up to ${named(top)} does not replay cleanly onto origin/${trunkName} at ${short(trunk)} (${said.trim()}): ` +
-        `resolve it with \`git rebase --onto origin/${trunkName} ${short(from)} <top>\`, then name the new heads with --head`,
-    );
-  }
-  const commits = (span: string) => gitText(root, "rev-list", "--reverse", span).split("\n").filter(Boolean);
-  const subjects = (span: string) => gitText(root, "log", "--reverse", "--format=%s", span);
-  const before = commits(range);
-  const after = commits(`${trunk}..${replayed}`);
-  if (subjects(range) !== subjects(`${trunk}..${replayed}`)) {
-    throw new CommandFailure(
-      `replaying ${range} dropped or changed commits (${String(before.length)} before, ` +
-        `${String(after.length)} after): replay it by hand and name the new heads with --head`,
-    );
-  }
-  return new Map(
-    line.map((pull) => {
-      const at = before.indexOf(pull.headRefOid);
-      const to = after[at];
-      if (to === undefined) throw new CommandFailure(`${named(pull)}'s head is not on the chain ${range}`);
-      return [pull.number, to];
-    }),
-  );
 }
 
 /** Where a republish keeps its plan from its first write until its last: between the retarget and
@@ -231,16 +199,7 @@ export function pushArgs(
   const moved = plan.moves.filter(
     (move) => move.to !== (at.get(move.pull.headRefName) ?? move.pull.headRefOid),
   );
-  if (moved.length === 0) return [];
-  const branch = (move: Move): string => `refs/heads/${move.pull.headRefName}`;
-  return [
-    "push",
-    "--atomic",
-    ...(verify === "no-verify" ? ["--no-verify"] : []),
-    ...moved.map((move) => `--force-with-lease=${branch(move)}:${move.pull.headRefOid}`),
-    "origin",
-    ...moved.map((move) => `${move.to}:${branch(move)}`),
-  ];
+  return moved.length === 0 ? [] : leasedPush(moved, verify);
 }
 
 /** Each branch before and after. The publisher below owns the operation order in both modes. */

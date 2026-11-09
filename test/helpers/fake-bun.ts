@@ -10,7 +10,8 @@
  * ANA_FAKE_TOGETHER=N holds each install until N have started, or about five seconds, and logs its
  * end, so gates run side by side overlap in the log and gates run one after another do not; the
  * install of ANA_FAKE_LATE's commit ends half a second later. ANA_FAKE_SUITE is printed by a test
- * step, which then takes two seconds, for a pulse to read. A test step also logs the workers it was
+ * step, which then takes two seconds, for a pulse to read; the whole suite first creates the file
+ * ANA_FAKE_SUITE_TOUCH names, so a fake `gh` can move a head while it runs. A test step also logs the workers it was
  * given and whether it stops at its first failure, `workers <sha> <ANA_TEST_WORKERS> <ANA_TEST_BAIL>`,
  * each empty for none.
  */
@@ -37,6 +38,7 @@ if [ "$1" = install ] && [ -n "$ANA_FAKE_TOGETHER" ]; then
 fi
 if [ "$1 $2" = "run test" ] && [ -n "$ANA_FAKE_SUITE" ]; then
   printf '%s\n' "$ANA_FAKE_SUITE"
+  [ "$*" != "run test" ] || [ -z "$ANA_FAKE_SUITE_TOUCH" ] || touch "$ANA_FAKE_SUITE_TOUCH"
   sleep 2
 fi
 drops=$ANA_FAKE_DROPS

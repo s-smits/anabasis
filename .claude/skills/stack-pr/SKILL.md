@@ -191,7 +191,14 @@ git merge-base --is-ancestor <new parent head> <child branch>    # must succeed
 
 Push every moved head in one `git push --atomic`, each with its own lease and
 `<sha>:refs/heads/<branch>`. Send another session's child the `git rebase --onto` line instead.
-Restacking the whole open stack takes the operator's word.
+
+`bun run land -- <top> --sanitize` (or `--merge`) does this for the whole chain, and for what is
+stacked above it: it replays each child from the newest parent head GitHub records that the child
+holds, pushes every moved head atomically under leases, says the rebase line for each, and proves
+the result. A child that does not replay cleanly is refused with the `git rebase --onto` line to run
+by hand. A head that moves while a landing proves commits stops it, and it starts again from the
+lowest pull request that moved, with every recorded pass kept. Restacking the whole open stack onto
+`main` takes the operator's word.
 
 When the branch beneath the stack has landed, `land` refuses the stack and `stack.ts` prints an
 `off main:` line. One command replays the chain onto `origin/main` with `git replay`, checks every
@@ -229,7 +236,9 @@ sanitize (`ANA_GATE_FRESH=1` proves every commit afresh by hand), and `--jobs N`
 at once. **A passing proof is not a release**: a stack merges only once a fresh run at the top's head
 has reached two promotions on unchanged code (run-improvement-campaign, "A run proves the release");
 land the proved top by its number, never a newer top. On failure, fold the fix into the named
-commit, replay what is above (section 8), push together and land again. A runner that twice says nothing
+commit, push it and land again with `--sanitize`, which replays what is above (section 8). A
+landing whose chain covers a live landing's in this clone ends that one, whose passes stay
+recorded, instead of waiting behind it; a `--merge` is never ended. A runner that twice says nothing
 of a commit (a dropped connection, no slot in time, a host that does not answer or lacks the disk)
 reads "gave no verdict"; land again. A landing that ends, however, leaves no status it posted
 pending: it turns each into an error.

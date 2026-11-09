@@ -1,9 +1,10 @@
 /**
  * The opinionated implicit-state tier: the plugin `implicit-state-opinionated`
- * (`flag-count`, `name-encoded-state`) and the cross-file kind `unowned-state-literal` of
+ * (`flag-count`, `flags-as-state`, `name-encoded-state`) and the cross-file kind `unowned-state-literal` of
  * `tools/oxlint/tree-implicit-state.ts`. Every fixture is a small foreign program, and each rule's
- * nearest hostile case sits beside the shape it reports: optional settings and two flags beside
- * three required ones; an extension capture, a predicate with no capture and a log line beside a
+ * nearest hostile case sits beside the shape it reports: optional settings, brands and two flags
+ * beside three required ones; flags the same handlers move together beside a lifecycle, a default
+ * beside a derived flag; an extension capture, a predicate with no capture and a log line beside a
  * parsed name; a declared union beside the same literals declared nowhere.
  */
 import { describe, expect, it } from "bun:test";
@@ -29,6 +30,27 @@ export interface Plugin { // ADMITTED two flags and two string unions
   dev: boolean;
   ssr: boolean;
 }
+export interface Procedure { // ADMITTED a brand typed as one literal is no flag
+  procedure: true;
+  query: boolean;
+  mutation: boolean;
+}
+export class Namespace { // ADMITTED fields that never move are no flags
+  declare isNamespace: true;
+  readonly isCluster = false;
+  readonly lazy: boolean = true;
+  deoptimized = false;
+}
+export class Declarator { // REPORT readonly and declared flags the constructor computes still count
+  readonly isUsing: boolean;
+  readonly isAwaitUsing: boolean;
+  declare isConst: boolean;
+  constructor(kind: string) {
+    this.isUsing = kind === "using";
+    this.isAwaitUsing = kind === "await using";
+    this.isConst = kind === "const";
+  }
+}
 export class Dialog { // REPORT four boolean fields
   open = false;
   closing = false;
@@ -47,6 +69,67 @@ export function draw(fill: boolean, stroke: boolean, shadow: boolean, dashed = f
 }
 export function line(fill: boolean, stroke: boolean, shadow: boolean) { // ADMITTED three is the limit
   return [fill, stroke, shadow];
+}
+`;
+
+const LIFECYCLES = `export class Container { // REPORT a lifecycle: two flags moved by different methods
+  private started = false;
+  private closed: boolean = false;
+  constructor(private readonly name: string) {}
+  start(): void {
+    if (this.closed) throw new Error(this.name);
+    this.started = true;
+  }
+  close = (): void => {
+    this.closed = true;
+  };
+}
+export class Keys { // ADMITTED modifier keys the same handlers move together
+  shift = false;
+  alt = false;
+  down(event: { shiftKey: boolean; altKey: boolean }): void {
+    this.shift = event.shiftKey;
+    this.alt = event.altKey;
+  }
+  up(event: { shiftKey: boolean; altKey: boolean }): void {
+    this.shift = event.shiftKey;
+    this.alt = event.altKey;
+  }
+}
+export class Environment { // ADMITTED configuration only the constructor sets, beside one moved flag
+  skipFsCheck: boolean;
+  watching = false;
+  closing = false;
+  constructor(skip: boolean) {
+    this.skipFsCheck = skip;
+    this.watching = !skip;
+  }
+  close(): void {
+    this.closing = true;
+  }
+}
+export interface Element { // ADMITTED independent properties of a record are a type, not a phase
+  isDeleted: boolean;
+  locked: boolean;
+  frozen: boolean;
+}
+export const isOver = (h: boolean, v: boolean): { either: boolean; horizontal: boolean; vertical: boolean } => { // REPORT a flag derived from two others
+  const either = h || v;
+  return { either, horizontal: h, vertical: v };
+};
+export function cut(code: number, signal: string | null) {
+  return { ok: code === 0, killed: signal !== null, failed: code !== 0 && signal !== null }; // ADMITTED derived from no field of the record
+}
+export function settle(code: number) {
+  const ok = code === 0;
+  const late = !ok;
+  return { ok, late, done: ok || late }; // REPORT derived through consts from two flags
+}
+export function label(title: string, name: string) {
+  return { title, name, shown: title || name }; // ADMITTED a default, not a flag
+}
+export function open(options: { minify: boolean; sourcemap: boolean }) {
+  return { minify: options.minify, sourcemap: options.sourcemap, watch: false }; // ADMITTED independent options
 }
 `;
 
@@ -104,8 +187,10 @@ const findings = (files: Record<string, string>, kind = "unowned-state-literal")
 describe("the opinionated implicit-state rules", () => {
   it("report only the marked lines", async () => {
     await lintRules("implicit-state-opinionated", [
-      ["flag-count", FLAGS, 4, "src/upload.tsx"],
+      ["flag-count", FLAGS, 5, "src/upload.tsx"],
       ["flag-count", FLAGS, 0, "src/upload.test.tsx"],
+      ["flags-as-state", LIFECYCLES, 3, "src/lifecycle.ts"],
+      ["flags-as-state", LIFECYCLES, 0, "src/lifecycle.test.ts"],
       ["name-encoded-state", NAMES, 3, "src/deploy.ts"],
     ]);
   });

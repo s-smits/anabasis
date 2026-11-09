@@ -44,6 +44,7 @@ export const DETECTOR_SOURCES = [
   "tools/oxlint/tree-implicit-state.ts",
   "tools/oxlint/tree-external-read.ts",
   "tools/oxlint/tree-overwritten-key.ts",
+  "tools/oxlint/tree-second-reader.ts",
 ];
 
 /**
@@ -90,6 +91,7 @@ const COUNTS: readonly [string, RegExp][] = [
   ["flag-count", /(?:holds|takes) (\d+) boolean/u],
   ["state-literal-spread", /grouped by hand in (\d+) other files/u],
   ["repeated-external-read", /(\d+) times on one path/u],
+  ["second-reader", /derived by hand in (\d+) files?/u],
 ];
 
 /** The count or word a sweep reads off a hit's message, or null where its rule has none. */

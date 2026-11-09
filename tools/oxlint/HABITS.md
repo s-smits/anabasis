@@ -377,6 +377,7 @@ question, repair the true ones, and answer a false one in the ledger as `tree/<k
 | `unowned-state-literal` | Declare the states once, with their groupings beside them (opinionated) |
 | `enumeration-literal-spread` | Name each grouping beside the set; it names kinds rather than states, so it is reported apart |
 | `repeated-external-read` | Read once where the call paths join and pass the answer on |
+| `second-reader` | Call the exported function that already returns the fact |
 | `filesystem-import-budget` | None. It is a register: a file keeps its count of `filesystem.ts` imports, and a change adds at most one |
 
 ## 12.10 The size policy
@@ -455,6 +456,7 @@ TypeScript tree; `bun tools/oxlint/tree-implicit-state.ts <root>` scans a foreig
 | `tree/state-literal-spread` | Name each grouping of a declared union in its owner |
 | `tree/enumeration-literal-spread` | The same, for a set no update ever writes (a method, an extension): reported apart |
 | `tree/repeated-external-read` | Read once where the call paths join |
+| `tree/second-reader` | A fact an exported function returns, spelled again by hand in another file: call the owner |
 
 The opinionated tier, `implicit-state-opinionated`, holds the stances that are right for a
 codebase that keeps one log and a record beside each name and contested elsewhere; its head comment

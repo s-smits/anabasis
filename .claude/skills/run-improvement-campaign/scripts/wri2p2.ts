@@ -47,7 +47,14 @@
  * after `investigate` was read by hand from the folder.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "#src/meta/filesystem.ts";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "#src/meta/filesystem.ts";
 import { mainTree } from "#src/meta/git.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
@@ -67,7 +74,7 @@ import {
 } from "#tools/runs/registry.ts";
 import { catalogueText, lanesOf } from "#tools/wri/catalogue.ts";
 import { INVESTIGATION, SHARED, SYNTHESIS, VETTING } from "#tools/wri/index.ts";
-import { blankSections } from "#tools/wri/investigation.ts";
+import { blankSections, reportPath } from "#tools/wri/investigation.ts";
 import {
   carryOf,
   COUNTED_LINE,
@@ -90,7 +97,7 @@ import type { LogEvent } from "#src/kernel/log.ts";
 
 /** The read across domains that the plan rests on beside the vetting. */
 const ACROSS = "cross-domain.md";
-/** The marker `open` writes: the folder is an iteration's, so its own gates apply. */
+/** The record `open` writes before the investigation: the folder is an iteration's, so its own gates apply. */
 const MARKER = "iteration.json";
 const PLAN = "plan.md";
 /** The gates a session passed on purpose, each with its reason. */
@@ -119,6 +126,8 @@ interface Row {
   readonly ending: string | null;
   readonly hours: number;
 }
+
+type Kind = "iteration" | "investigation";
 
 /** One gate: its step, the run it reads or null, and the lines it prints while it is owed. */
 type Gate = readonly [step: string, run: string | null, owed: () => string[] | null];
@@ -168,6 +177,9 @@ export function triggerOf(row: Row, limits: { promotions: number; hours: number 
 
 const read = (path: string) => (existsSync(path) ? readFileSync(path, "utf8") : "");
 
+/** Which gates the folder `dir` takes, read from its one record of that, `iteration.json`. */
+const kindOf = (dir: string): Kind => (existsSync(join(dir, MARKER)) ? "iteration" : "investigation");
+
 /** The campaigns the investigation `dir` reads, by name. */
 function runsOf(dir: string): string[] {
   // Before 21 October an investigation read one log, named `log`.
@@ -185,7 +197,7 @@ function investigations(root: string): { dir: string; names: string[] }[] {
     .map((entry) => join(root, entry))
     .map((dir) => ({
       dir,
-      iteration: Number(existsSync(join(dir, MARKER))),
+      iteration: Number(kindOf(dir) === "iteration"),
       at: statSync(join(dir, INVESTIGATION)).mtimeMs,
     }))
     .toSorted((one, other) => other.iteration - one.iteration || other.at - one.at)
@@ -332,7 +344,8 @@ function gatesOf(where: Ledgers, launchedAt: (pull: number) => string[], passed:
   const wri = (verb: string, more = "") => `  bun ${WRI} ${verb} --out ${dir}${more}`;
   const runs = runsOf(dir);
   const pull = () => pullOf(read(at(PLAN))) ?? 0;
-  const only = (gates: Gate[]): Gate[] => (existsSync(at(MARKER)) ? gates : []);
+  const kind = kindOf(dir);
+  const only = (gates: Gate[]): Gate[] => (kind === "iteration" ? gates : []);
   return [
     [
       "instruct",
@@ -363,11 +376,11 @@ function gatesOf(where: Ledgers, launchedAt: (pull: number) => string[], passed:
         "isolated",
         null,
         () =>
-          // A lane by the report its session owns (`wri.ts lanes`), whatever its manifest is named:
-          // until 9 November the gate read lane numbers from file names, and a lone lane built in
-          // the first manifest, `launch.json`, was owed for good.
+          // A lane by the report its session owns, at the path `wri.ts lanes` gave it, whatever its
+          // manifest is named: until 9 November the gate read lane numbers from file names, and a
+          // lone lane built in the first manifest, `launch.json`, was owed for good.
           sessionsIn(dir).some(({ ownedPaths = [] }) =>
-            ownedPaths.some((path) => LONE.includes(Number(/^(\d+)-report\.md$/u.exec(basename(path))?.[1]))),
+            ownedPaths.some((path) => LONE.some((lane) => path === reportPath(dir, lane))),
           )
             ? null
             : [
@@ -387,7 +400,7 @@ function gatesOf(where: Ledgers, launchedAt: (pull: number) => string[], passed:
             ],
     ],
     ...only(runs.flatMap((run) => runGates(where, run))),
-    ["vet", null, () => vetOwed(dir, root, runs)],
+    ["vet", null, () => vetOwed(dir, root, runs, kind)],
     ...only([
       [
         "across",
@@ -400,7 +413,7 @@ function gatesOf(where: Ledgers, launchedAt: (pull: number) => string[], passed:
               ],
       ],
     ]),
-    ["plan", null, () => planOwed(where, runs)],
+    ["plan", null, () => planOwed(where, runs, kind)],
     [
       "implement",
       null,
@@ -444,12 +457,12 @@ function gatesOf(where: Ledgers, launchedAt: (pull: number) => string[], passed:
  * The vetting's step: it exists, and in an iteration it has a row for each run's predictions. An id
  * two runs share must be named as `<run>:<id>`, since one bare mention cannot backtrack both.
  */
-function vetOwed(dir: string, root: string, runs: readonly string[]): string[] | null {
+function vetOwed(dir: string, root: string, runs: readonly string[], kind: Kind): string[] | null {
   const path = join(dir, VETTING);
   if (!existsSync(path)) {
     return [`step: vet · recount each finding of ${join(dir, SYNTHESIS)} into ${path}, predictions first`];
   }
-  if (!existsSync(join(dir, MARKER))) return null;
+  if (kind === "investigation") return null;
   const text = read(path);
   const ids = runs.map(
     (run) => [run, idsOf(read(ledgerOf(root, dir, `predictions-${run}.md`) ?? ""))] as const,
@@ -475,14 +488,14 @@ function vetOwed(dir: string, root: string, runs: readonly string[]): string[] |
  * iteration whose every run kept the section in a `still-missing-<run>.md`, as runs did until
  * 8 November, has said it there.
  */
-function planOwed({ root, dir }: Ledgers, runs: readonly string[]): string[] | null {
+function planOwed({ root, dir }: Ledgers, runs: readonly string[], kind: Kind): string[] | null {
   const path = join(dir, PLAN);
   if (!existsSync(path)) {
     return [
       `step: plan · repairs and tunings in ${path}, each lever of references/levers.md the run selects a row`,
     ];
   }
-  if (!existsSync(join(dir, MARKER))) return null;
+  if (kind === "investigation") return null;
   const text = read(path);
   const confirmed = rowsOf(read(join(dir, VETTING)), "#")
     .filter((cells) => cells.some((cell) => cell.toLowerCase().startsWith("confirmed")))
@@ -595,6 +608,13 @@ function open(args: CommandArgs, repo: string): number {
   const logs = runs.map((name) => readNamed(name, repo).path);
   const day = new Date().toISOString().slice(0, 10);
   const out = resolve(args.value("out") ?? join(wriRoot(repo), `${day}-${runs.join("+")}`));
+  // The record first, so a crash before the start reads `step: open` (until 9 November it came after,
+  // and a crash between left an iteration read as a plain investigation, skipping its own gates).
+  mkdirSync(out, { recursive: true });
+  writeFileSync(
+    join(out, MARKER),
+    `${JSON.stringify({ opened: new Date().toISOString(), runs }, null, 2)}\n`,
+  );
   const started = runSync(
     [capturedExecPath, WRI, "start", "--log", logs.join(","), "--out", out, "--snapshot"],
     {
@@ -604,10 +624,6 @@ function open(args: CommandArgs, repo: string): number {
   runtimeProcess.stdout.write(started.stdout);
   runtimeProcess.stderr.write(started.stderr);
   if (started.exitCode !== 0) return started.exitCode ?? 1;
-  writeFileSync(
-    join(out, MARKER),
-    `${JSON.stringify({ opened: new Date().toISOString(), runs }, null, 2)}\n`,
-  );
   for (const line of nextOf(out, () => [], wriRoot(repo))) console.log(line);
   return 0;
 }

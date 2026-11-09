@@ -94,6 +94,21 @@ export const ended = (state: JobState): boolean => state === "done" || state ===
 const LISTED = `import type { JobState } from "./job.ts";
 export const settled = (state: JobState): boolean => ["done", "failed"].includes(state);
 `;
+const WHOLE = `import type { JobState } from "./job.ts";
+export const known = (state: JobState): boolean =>
+  state === "queued" || state === "running" || state === "done" || state === "failed";
+`;
+/** A write the compiler types as \`JobState\` under another name than the readers compare. */
+const RUNS = `import type { JobState } from "./job.ts";
+export function finish(job: { phase: JobState }): void {
+  job.phase = "done";
+}
+`;
+/** A write of one of the literals into a place that is neither typed by the set nor so named. */
+const LABELS = `export function tag(entry: { label: string }): void {
+  entry.label = "done";
+}
+`;
 const COVERS = `import type { JobState } from "./job.ts";
 export function label(state: JobState): string {
   switch (state) {
@@ -165,16 +180,37 @@ describe("the implicit-state rules", () => {
 });
 
 describe("state-literal-spread", () => {
-  it("is reported at the owner of states two other files group by hand", () => {
-    expect(
-      findings("state-literal-spread", { "src/job.ts": OWNER, "src/a.ts": GROUPS, "src/b.ts": LISTED }),
-    ).toEqual(["src/job.ts:1 src/job.ts:1 src/a.ts:2 src/b.ts:2"]);
+  const jobs = { "src/job.ts": OWNER, "src/a.ts": GROUPS, "src/b.ts": LISTED };
+
+  it("is reported at the owner of states two other files group by hand and one writes", () => {
+    expect(findings("state-literal-spread", { ...jobs, "src/run.ts": RUNS })).toEqual([
+      "src/job.ts:1 src/job.ts:1 src/a.ts:2 src/b.ts:2",
+    ]);
+  });
+
+  it("counts a chain that spells the whole set, which a switch over it does not", () => {
+    const whole = { "src/job.ts": OWNER, "src/a.ts": WHOLE, "src/b.ts": WHOLE, "src/run.ts": RUNS };
+    expect(findings("state-literal-spread", whole)).toEqual([
+      "src/job.ts:1 src/job.ts:1 src/a.ts:3 src/b.ts:3",
+    ]);
+  });
+
+  it("reads a set no update writes, or one written into another place, as an enumeration", () => {
+    const enumeration = ["src/job.ts:1 src/job.ts:1 src/a.ts:2 src/b.ts:2"];
+    expect(findings("state-literal-spread", jobs)).toEqual([]);
+    expect(findings("enumeration-literal-spread", jobs)).toEqual(enumeration);
+    expect(findings("enumeration-literal-spread", { ...jobs, "src/tag.ts": LABELS })).toEqual(enumeration);
   });
 
   it("is not reported for one reader, an exhaustive switch, an unexported set or a test", () => {
     const local = OWNER.replace("export ", "");
     expect(
-      findings("state-literal-spread", { "src/job.ts": OWNER, "src/a.ts": GROUPS, "src/c.ts": COVERS }),
+      findings("state-literal-spread", {
+        "src/job.ts": OWNER,
+        "src/a.ts": GROUPS,
+        "src/c.ts": COVERS,
+        "src/run.ts": RUNS,
+      }),
     ).toEqual([]);
     expect(
       findings("state-literal-spread", { "src/job.ts": local, "src/a.ts": GROUPS, "src/b.ts": LISTED }),

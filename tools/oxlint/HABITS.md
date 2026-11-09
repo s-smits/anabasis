@@ -375,6 +375,7 @@ question, repair the true ones, and answer a false one in the ledger as `tree/<k
 | `stale-reference` | Point a path at where the thing lives now, or cite it as `<sha>:path` in a record of its time; document only a setting some code reads |
 | `state-literal-spread` | Name each grouping in the owner of the states (a predicate or a table) and call it |
 | `unowned-state-literal` | Declare the states once, with their groupings beside them (opinionated) |
+| `enumeration-literal-spread` | Name each grouping beside the set; it names kinds rather than states, so it is reported apart |
 | `repeated-external-read` | Read once where the call paths join and pass the answer on |
 | `filesystem-import-budget` | None. It is a register: a file keeps its count of `filesystem.ts` imports, and a change adds at most one |
 
@@ -442,8 +443,9 @@ Readers re-derive it their own way and drift, and a transition between two of th
 between two writes, a slow holder past a threshold) lands in a state no branch expects. Give it
 one owner: a union, one record of a process's phase, the holder itself for a lock.
 
-The generic tier infers its structure from syntax alone, names no module of this repository, and
-runs on any TypeScript tree; `bun tools/oxlint/tree-implicit-state.ts <root>` scans a foreign one.
+The generic tier infers its structure from syntax, asking the compiler only whether a literal set
+is ever written where a value changes; it names no module of this repository and runs on any
+TypeScript tree; `bun tools/oxlint/tree-implicit-state.ts <root>` scans a foreign one.
 
 | Finding | Repair |
 | --- | --- |
@@ -451,6 +453,7 @@ runs on any TypeScript tree; `bun tools/oxlint/tree-implicit-state.ts <root>` sc
 | `implicit-state/files-as-phase` | A phase read from which files exist in one folder: one record of the phase |
 | `implicit-state/mtime-as-lock` | A file's age against a constant as the holder's liveness: ask the holder (a pid, a lease, an exclusive open) |
 | `tree/state-literal-spread` | Name each grouping of a declared union in its owner |
+| `tree/enumeration-literal-spread` | The same, for a set no update ever writes (a method, an extension): reported apart |
 | `tree/repeated-external-read` | Read once where the call paths join |
 
 The opinionated tier, `implicit-state-opinionated`, holds the stances that are right for a

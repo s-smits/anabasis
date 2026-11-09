@@ -286,7 +286,7 @@ function referenceAnswers(events: readonly LogEvent[]): Map<string, Answered> {
   );
   const verdicts = verdictsOf(events);
   const answered = new Map<string, Answered>();
-  for (const report of lastReports(events, true)) {
+  for (const report of lastReports(events, "all")) {
     const side = report.data.fresh === reference ? "fresh" : report.data.old === reference ? "old" : null;
     for (const pair of pairsReported(events, report)) {
       const solves = side === null ? [] : (pair.solves?.[side] ?? []);

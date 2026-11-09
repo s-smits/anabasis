@@ -95,6 +95,7 @@ import {
   applicableTruthChecks,
   blockingOf,
   checkProgramFiles,
+  decides,
   readBrief,
   type Task,
   type Verdict,
@@ -213,7 +214,7 @@ function hostRuling(verdict: LoggedVerdict, replay: Verdict | null): RefereeFind
     return ruled("earned", null, `the answer does not follow the contract's format: ${verdict.fault}`);
   }
   if (replay === null) return null;
-  if (replay.kind === "faulty" || replay.kind === "non-result") {
+  if (!decides(replay)) {
     return ruled(null, null, `the replay reached no verdict: ${replay.reason}`);
   }
   const [moved] = [...new Set(verdict.blocking).symmetricDifference(new Set(blockingOf(replay)))].toSorted();

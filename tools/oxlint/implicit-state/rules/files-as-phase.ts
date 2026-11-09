@@ -1,6 +1,6 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
-import { declaredBy, propertyName } from "../../ana/shared/statements.ts";
+import { declaredBy, identifierName, propertyName } from "../../ana/shared/statements.ts";
 import {
   calleeName,
   decides,
@@ -27,16 +27,21 @@ import {
  * (`paths.lock`, `paths.report`), or a `const` this file binds to one of those.
  *
  * Not reported: a single guard (`if (!existsSync(dir)) mkdirSync(dir)`), checks of files in two
- * different folders, and one file checked twice. A check that only creates what is missing (`if
+ * different folders, one file checked twice, and files this module never writes, copies, makes or
+ * removes (a call naming one of them), which are input it probes, such as which lockfile a project
+ * has or which candidate source resolves, rather than a phase it records. A check that only creates what is missing (`if
  * (!existsSync(readme)) copyFileSync(template, readme)`) does not count towards the two, since a
  * rerun converges and the file's presence decides no phase. Tests are not read. There is no fix:
  * which record owns the phase is the change.
  */
 const EXISTS = new Set(["existsSync", "pathExists", "pathExistsSync"]);
 const JOINS = new Set(["join", "resolve"]);
-/** A call that brings a path into being: a write, a copy, a link or a folder made. */
-const CREATES =
-  /\b(?:writeFile|copyFile|cp|mkdir|symlink|link|outputFile|outputJson|writeJson|ensureDir|ensureFile)(?:Sync)?\(/u;
+/** Calls that bring a path into being: a write, a copy, a link or a folder made. */
+const MAKES = "writeFile|copyFile|cp|mkdir|symlink|link|outputFile|outputJson|writeJson|ensureDir|ensureFile";
+const CREATES = new RegExp(String.raw`\b(?:${MAKES})(?:Sync)?\(`, "u");
+/** Calls that change which paths exist: those, a removal, a rename, or any `write…` (`Bun.write`, a
+ *  module's own `writeCompleted`). */
+const CHANGES = new RegExp(`^(?:${MAKES}|rm|rmdir|unlink|rename|remove|move)(?:Sync)?$|^write`, "u");
 
 /** A folder and the file named in it, read off a path expression. */
 interface Place {
@@ -52,7 +57,7 @@ export const filesAsPhaseRule = defineRule({
       examples: [
         {
           before:
-            'export function phaseOf(dir: string) {\n  if (existsSync(join(dir, "done.json"))) return "done";\n  return existsSync(join(dir, "lock")) ? "running" : "idle";\n}',
+            'export const finish = (dir: string) => [writeFileSync(join(dir, "done.json"), ""), rmSync(join(dir, "lock"))];\nexport function phaseOf(dir: string) {\n  if (existsSync(join(dir, "done.json"))) return "done";\n  return existsSync(join(dir, "lock")) ? "running" : "idle";\n}',
           after:
             'export function phaseOf(dir: string): Phase {\n  return readState(join(dir, "state.json")).phase;\n}',
         },
@@ -67,6 +72,7 @@ export const filesAsPhaseRule = defineRule({
     const wrappers = new Set<string>();
     const bindings = new Map<string, ESTree.Expression>();
     const found = new Map<ESTree.Node, Map<string, { files: Set<string>; at: ESTree.Node }>>();
+    const changes: string[] = [];
 
     const text = (node: ESTree.Node): string => context.sourceCode.getText(node).replaceAll(/\s+/gu, "");
 
@@ -210,6 +216,7 @@ export const filesAsPhaseRule = defineRule({
         wrappers.clear();
         bindings.clear();
         found.clear();
+        changes.length = 0;
         return !isTestPath(context.filename);
       },
       // A wrapper may be declared below its first caller, so they are all read before any call.
@@ -237,6 +244,11 @@ export const filesAsPhaseRule = defineRule({
         }
       },
       "CallExpression:exit": (node) => {
+        if (CHANGES.test(calleeName(node) ?? "")) {
+          // A path bound a line above (`const path = join(dir, NAME)`) is read through its binding.
+          const bound = node.arguments.map((one) => bindings.get(identifierName(one) ?? ""));
+          changes.push([node, ...bound].map((one) => (one === undefined ? "" : text(one))).join(" "));
+        }
         const argument = existence(node);
         if (argument !== null) {
           record(node, argument);
@@ -245,7 +257,12 @@ export const filesAsPhaseRule = defineRule({
       "Program:exit": () => {
         for (const folders of found.values()) {
           for (const [folder, { files, at }] of folders) {
-            if (files.size < 2) {
+            // A phase is recorded by the process that reads it: files this module never writes or
+            // removes are its input (a lockfile format, a candidate source), probed and not kept.
+            const kept = [...files].some((file) =>
+              changes.some((call) => call.includes(file.replaceAll(/^["'`]|["'`]$/gu, ""))),
+            );
+            if (files.size < 2 || !kept) {
               continue;
             }
             const data = { folder, files: [...files].map((file) => `\`${file}\``).join(", ") };

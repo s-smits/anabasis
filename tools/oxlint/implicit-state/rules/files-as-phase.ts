@@ -1,7 +1,14 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
 import { declaredBy, propertyName } from "../../ana/shared/statements.ts";
-import { calleeName, decides, enclosingFunction, innermost, isTestPath } from "../shared/syntax.ts";
+import {
+  calleeName,
+  decides,
+  enclosingFunction,
+  innermost,
+  isTestPath,
+  outermost,
+} from "../shared/syntax.ts";
 
 /**
  * Tier: generic. One function decides which phase a process is in by which files exist in one
@@ -20,11 +27,16 @@ import { calleeName, decides, enclosingFunction, innermost, isTestPath } from ".
  * (`paths.lock`, `paths.report`), or a `const` this file binds to one of those.
  *
  * Not reported: a single guard (`if (!existsSync(dir)) mkdirSync(dir)`), checks of files in two
- * different folders, and one file checked twice. Tests are not read. There is no fix: which record
- * owns the phase is the change.
+ * different folders, and one file checked twice. A check that only creates what is missing (`if
+ * (!existsSync(readme)) copyFileSync(template, readme)`) does not count towards the two, since a
+ * rerun converges and the file's presence decides no phase. Tests are not read. There is no fix:
+ * which record owns the phase is the change.
  */
 const EXISTS = new Set(["existsSync", "pathExists", "pathExistsSync"]);
 const JOINS = new Set(["join", "resolve"]);
+/** A call that brings a path into being: a write, a copy, a link or a folder made. */
+const CREATES =
+  /\b(?:writeFile|copyFile|cp|mkdir|symlink|link|outputFile|outputJson|writeJson|ensureDir|ensureFile)(?:Sync)?\(/u;
 
 /** A folder and the file named in it, read off a path expression. */
 interface Place {
@@ -155,13 +167,31 @@ export const filesAsPhaseRule = defineRule({
       return (text(region).match(new RegExp(`[(,]${path}[),]`, "gu")) ?? []).length > 1;
     }
 
+    /**
+     * Whether the check is `if (!exists(p)) create(p)`: a negated test with no `else` whose arm
+     * writes, copies or makes a path in the same folder under the same name. Run again, it
+     * converges, so the file's presence is no phase. Read on the text, as `guardsItsOwnUse` is,
+     * since the arm may spell the path with another join (`join` against `resolve`).
+     */
+    function createsIfMissing(call: ESTree.CallExpression, place: Place): boolean {
+      const negation = outermost(call).parent;
+      const test =
+        negation?.type === "UnaryExpression" && negation.operator === "!" ? outermost(negation) : null;
+      const guard = test?.parent;
+      if (test === null || guard?.type !== "IfStatement" || guard.test !== test || guard.alternate !== null) {
+        return false;
+      }
+      const arm = text(guard.consequent);
+      return CREATES.test(arm) && arm.includes(place.file) && arm.includes(place.folder);
+    }
+
     function record(call: ESTree.CallExpression, argument: ESTree.Node): void {
       if (guardsItsOwnUse(call, argument)) {
         return;
       }
       const decided = decides(call) || call.parent?.type === "VariableDeclarator";
       const place = decided ? placeOf(argument) : null;
-      if (place === null) {
+      if (place === null || createsIfMissing(call, place)) {
         return;
       }
       const owner = enclosingFunction(call) ?? context.sourceCode.ast;

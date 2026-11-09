@@ -59,6 +59,7 @@ type TreeFindingKind =
   | "stale-reference"
   | "state-literal-spread"
   | "unowned-state-literal"
+  | "enumeration-literal-spread"
   | "repeated-external-read"
   | "filesystem-import-budget";
 
@@ -131,6 +132,8 @@ export const TREE_FINDING_ARGUMENTS: Readonly<Record<TreeFindingKind, string>> =
     'A declared set of states (a union of string literals, an `as const` list, a string `enum`, a `Set`, or the tags of a discriminated union) whose values two or more other files group by hand: `s === "done" || s === "failed"`, an `includes` on a literal list, or `case` labels falling through in a switch that does not cover the set. Each grouping names a derived state ("ended") that only its reader knows, so the readers\' sets drift when a state is added. Give each grouping a name in the owner, a predicate or a table, and call it. An exhaustive switch maps every state and is not counted; a union typing a signature owns nothing.',
   "unowned-state-literal":
     'Opinionated: every status literal comes from a declared owner. The same word-like literals grouped by hand (`status === "open" || status === "closed"`) in two or more files, where no type, `as const`, `enum` or `Set` anywhere in the tree spells them. Nobody owns those states, so a typo in one copy is a state no other file reads. Declare the set once, with its grouping beside it, and import both. Contested where the literals are another program\'s protocol (`process.platform`, an error `code`).',
+  "enumeration-literal-spread":
+    "A set the two literal kinds above would report, owned or not, of which no literal is ever written where a value changes: no assignment, setter or update spells one into a place typed by the set or named as its readers' subject (`tools/oxlint/tree-state-role.ts`). It names a kind, such as a file extension, an HTTP method or a direction, rather than a state. Grouping it by hand drifts all the same, so name each grouping beside the set where one exists; it is reported apart so that the two can be scored apart.",
   "repeated-external-read":
     "One function, or a module's top level, makes the same external read twice on one call path: the same command run, file read, directory listed or URL fetched, keyed by what it reads, with wrappers followed across files and their parameters substituted. Between the two reads the world may change, so the two answers can disagree and the code then holds two states of one fact. Read once where the paths join and pass the answer on. Branches count by the larger arm, a loop over items counts once per item, and a polling loop, a deferred callback and a memoising wrapper are not counted.",
   "filesystem-import-budget":
@@ -270,6 +273,14 @@ export const TREE_FINDING_EXAMPLES: Readonly<
         '// issues.ts and board.ts each spell the states, and nothing declares them\nconst done = issue.status === "closed" || issue.status === "merged";',
       after:
         '// issue.ts declares the states and owns the grouping\nexport type IssueStatus = "open" | "closed" | "merged";\nexport const isDone = (status: IssueStatus): boolean => status !== "open";',
+    },
+  ],
+  "enumeration-literal-spread": [
+    {
+      before:
+        '// a.ts and b.ts each spell which methods read nothing\nif (request.method === "GET" || request.method === "HEAD") return serve(request);',
+      after:
+        '// http.ts names the grouping once, and each reader calls it\nimport { isSafeMethod } from "./http.ts";\nif (isSafeMethod(request.method)) return serve(request);',
     },
   ],
   "repeated-external-read": [

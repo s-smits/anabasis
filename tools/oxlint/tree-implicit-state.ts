@@ -35,6 +35,7 @@ import { runtimeProcess } from "../../src/meta/process.ts";
 import { repeatedExternalReads } from "./tree-external-read.ts";
 import type { TreeFinding } from "./tree-findings.ts";
 import { parsedSources } from "./tree-overwritten-key.ts";
+import { type LiteralSet, statefulSets } from "./tree-state-role.ts";
 
 /** A declared set of states and the file that owns it. */
 interface Declared {
@@ -62,6 +63,12 @@ interface Grouping {
   line: number;
   /** For a switch, every literal its cases name, to tell an exhaustive one. */
   switchCovers?: ReadonlySet<string>;
+}
+
+/** A finding of the literal scan, with the set its role is read from. */
+interface Found {
+  row: TreeFinding;
+  set: LiteralSet;
 }
 
 /** What the declarations of every file add up to before any reader is read. */
@@ -406,7 +413,7 @@ function unownedLiterals(
   groupings: readonly Grouping[],
   typed: ReadonlySet<string>,
   readers: number,
-): TreeFinding[] {
+): Found[] {
   const unowned = groupings.filter(
     ({ values }) => values.every((value) => WORD.test(value)) && !values.some((value) => typed.has(value)),
   );
@@ -416,15 +423,14 @@ function unownedLiterals(
     if (first === undefined || readerFiles.size < readers) {
       return [];
     }
-    return [
-      {
-        kind: "unowned-state-literal" as const,
-        path: first.path,
-        line: first.line,
-        detail: `${values} is compared by hand in ${readerFiles.size} files and no type, \`as const\`, enum or \`Set\` declares those states`,
-        places: under.map((one) => ({ path: one.path, line: one.line, end: one.line })),
-      },
-    ];
+    const row: TreeFinding = {
+      kind: "unowned-state-literal",
+      path: first.path,
+      line: first.line,
+      detail: `${values} is compared by hand in ${readerFiles.size} files and no type, \`as const\`, enum or \`Set\` declares those states`,
+      places: under.map((one) => ({ path: one.path, line: one.line, end: one.line })),
+    };
+    return [{ row, set: { values: new Set(first.values), subjects: under.map((one) => one.subject) } }];
   });
 }
 
@@ -452,28 +458,45 @@ function stateLiterals(sources: ReadonlyMap<string, ts.SourceFile>, readers = RE
           Number(b.property !== undefined) - Number(a.property !== undefined) ||
           a.values.size - b.values.size,
       )[0];
-    const covers = grouping.switchCovers ?? new Set(grouping.values);
-    const exhaustive = owner !== undefined && [...owner.values].every((value) => covers.has(value));
+    // A switch that names every state maps them all. A chain or a list that spells a whole set is
+    // the grouping that set already names (`isLinear` beside `"arrow" | "line"`), so it counts.
+    const covers = grouping.switchCovers;
+    const exhaustive =
+      owner !== undefined && covers !== undefined && [...owner.values].every((value) => covers.has(value));
     if (owner !== undefined && !exhaustive) {
       owned.set(owner, [...(owned.get(owner) ?? []), grouping]);
     }
   }
-  const rows: TreeFinding[] = [];
+  const found: Found[] = [];
   for (const [owner, groupedBy] of owned) {
     const readerFiles = new Set(groupedBy.map((one) => one.path));
     if (readerFiles.size < readers) {
       continue;
     }
     const sets = new Set(groupedBy.map((one) => quoted(one.values.toSorted())));
-    rows.push({
+    const row: TreeFinding = {
       kind: "state-literal-spread",
       path: owner.path,
       line: owner.line,
       detail: `\`${owner.name}\` (${quoted(owner.values)}) is grouped by hand in ${readerFiles.size} other files, as ${[...sets].join("; ")}: give each grouping a name in the owner and call it`,
       places: [owner, ...groupedBy].map((one) => ({ path: one.path, line: one.line, end: one.line })),
-    });
+    };
+    found.push({ row, set: { values: owner.values, subjects: groupedBy.map((one) => one.subject) } });
   }
-  return [...rows, ...unownedLiterals(groupings, census.typed, readers)];
+  found.push(...unownedLiterals(groupings, census.typed, readers));
+  const stateful = statefulSets(
+    new Map(parsed),
+    found.map((one) => one.set),
+  );
+  return found.map(({ row }, index) =>
+    stateful[index] === true
+      ? row
+      : {
+          ...row,
+          kind: "enumeration-literal-spread",
+          detail: `an enumeration rather than a state, since no literal of it is written where a value changes: ${row.detail}`,
+        },
+  );
 }
 
 /**

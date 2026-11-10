@@ -530,6 +530,12 @@ describe("a campaign run by its log", () => {
     // two older tasks g-1's new harness answered fill the frontier, and are room too. From 30
     // October to 2 November it scored the new tasks alone, found no room and asked for tasks, and
     // the promotion it confirms was read only where the reference was weakest.
+    // One retained task for every three frontier ones, rounded up, as the Builder is told: three
+    // beside eight, where one for each whole three would allow two.
+    const { tasks, retained } = of(name, "comparison.started").at(-1) ?? {};
+    const [scored = 0, beside = 0] = [tasks, retained].map((set) => (Array.isArray(set) ? set.length : 0));
+    expect(beside).toBe(Math.ceil((scored - beside) / 3));
+    expect(beside).toBeGreaterThan(Math.floor((scored - beside) / 3));
     expect(of(name, "comparison.reported").at(-1)).toMatchObject({
       session: "g-2",
       reading: "no-step",

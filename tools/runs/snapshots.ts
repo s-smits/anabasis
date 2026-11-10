@@ -158,7 +158,7 @@ async function refresh(run: RemoteRun, into: string, host: Host, depth: Depth): 
   // A log only grows, so a record copy of the size the catalogue states has nothing to gain.
   const held = join(into, LOG_FILE);
   if (depth === "record" && run.bytes !== null && existsSync(held) && lstatSync(held).size === run.bytes) {
-    await keepObservation(into, { open: run.open, kept: run.kept, stderr: run.stderr });
+    keepObservation(into, { open: run.open, kept: run.kept, stderr: run.stderr });
     return held;
   }
   const lock = join(dirname(into), `.fetch-${run.name}.lock`);
@@ -197,7 +197,7 @@ async function refresh(run: RemoteRun, into: string, host: Host, depth: Depth): 
     const whole = join(stage, "whole-log");
     await Bun.write(whole, wholeLines(log));
     renameSync(whole, log);
-    await keepObservation(folder, { open: run.open, kept: run.kept, stderr: run.stderr });
+    keepObservation(folder, { open: run.open, kept: run.kept, stderr: run.stderr });
     // A record refresh keeps the artefacts a whole refresh fetched by moving only the record into
     // the copy, a file at a time, the log last. Copying the folder to keep them took 4.7 s of a
     // 5.8 s refresh of one live run on 30 October: 6,372 files, most of them its Examiner's home.

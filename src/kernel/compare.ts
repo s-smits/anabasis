@@ -79,10 +79,10 @@ interface Sides {
   readonly setting: string;
   /** The comparison's id: only a solve whose start names it is a solve of it. */
   readonly comparison: string;
-  /** Where the reference harness is read against itself, `mirrored`: its first sample of a task
-   *  is the first and last of each four of its solves in the order they started, and its other
-   *  solves are the second, the other side where the two harnesses are one: the one case in which
-   *  both sides may name the same harness. */
+  /** Where the reference harness is read against itself, `mirrored`: its first sample is the first
+   *  and last of each four of its solves in the order they started, counted on from one task to
+   *  the next where the two harnesses are one, and its other solves are the second, the other side
+   *  there: the one case in which both sides may name the same harness. */
   readonly halves?: "mirrored" | undefined;
   /** The objective two valid answers are compared by, where the comparison fixed one. */
   readonly objective?: ObjectiveRule | undefined;
@@ -412,7 +412,7 @@ export function pairsOf(
     .toSorted((a, b) => a.started - b.started);
   const disputed = versions.filter((task) => states.get(task) === "disputed");
   const short: string[] = [];
-  const pairs = versions.flatMap((task): Paired[] => {
+  const pairs = versions.flatMap((task, place): Paired[] => {
     if (disputed.includes(task)) return [];
     const state = states.get(task);
     if (!heldOut.has(task)) {
@@ -426,8 +426,13 @@ export function pairsOf(
     }
     const under = (harness: string) =>
       counted.filter((solve) => solve.under.task === task && solve.under.harness === harness);
-    // Where the reference is read against itself, its first sample and its second (`halves`).
-    const first = (at: number) => halves === undefined || at % 4 === 0 || at % 4 === 3;
+    // Where the reference is read against itself, its first sample and its second (`halves`). The
+    // mirror runs on from one task to the next, so that at one solve a half the earlier solve is
+    // the first sample on every other task: taken as the first on every task, the later sample
+    // lost 446 tasks and won 363 over the 234 such controls on record by 10 November (sign test,
+    // p 0.004), and exchanged on every other task it won 405 and lost 404.
+    const ran = old === fresh ? place * 2 * solves : 0;
+    const first = (at: number) => halves === undefined || (ran + at) % 4 === 0 || (ran + at) % 4 === 3;
     const reference = under(old);
     const own = reference.filter((_, at) => first(at));
     const other = reference.filter((_, at) => !first(at));

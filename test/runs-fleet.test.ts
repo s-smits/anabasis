@@ -279,6 +279,32 @@ describe("campaign snapshots", () => {
     expect(readFileSync(copied, "utf8")).toBe(whole);
   });
 
+  it("leaves out of a whole copy what a disk that folds case cannot hold apart, and says so", () => {
+    const remote = campaign();
+    const { made } = remote;
+    const files = [
+      "./log.jsonl",
+      "./w/t1.py",
+      "./w/T1.py",
+      "./terminfo/n/ncr",
+      "./terminfo/N/NCR",
+      "./a[1]",
+      "./A[1]",
+    ];
+    // An env value holds no NUL, so the fake ssh turns each line's end into the one `find` prints.
+    const copied = made.run(sync, { ...remote.env, FAKE_FILES: `${files.join("\n")}\n` });
+    expect(copied.code).toBe(0);
+    // The check runner may be Linux, whose disk holds both names of each pair.
+    const folds = existsSync(made.main.toUpperCase());
+    const transfer = made.recorded().find((call) => call.tool === "rsync");
+    expect(transfer?.args.filter((arg) => /^--exclude=\/./u.test(arg))).toEqual(
+      folds ? [String.raw`--exclude=/A\[1]`, "--exclude=/terminfo/N/NCR", "--exclude=/w/T1.py"] : [],
+    );
+    expect(copied.out.includes("distant: 3 paths named as another but for case stay on runner alone")).toBe(
+      folds,
+    );
+  });
+
   it("brings every other copy of a host where one copy fails, names it, and still fails the read", () => {
     const made = fixture();
     // One more campaign than a sync copies at once, the failing one first: until 10 November its

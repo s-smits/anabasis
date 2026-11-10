@@ -39,6 +39,7 @@ if (script.includes("--health")) console.log(JSON.stringify(peer.health ?? JSON.
 else if (script.includes("catalogue")) console.log(JSON.stringify((peer.catalogue ?? JSON.parse(process.env.FAKE_CATALOGUE ?? "[]")).map((run) => ({open:false,stderr:null,...run}))));
 else if (script.includes("active")) console.log(script.includes("--login") ? peer.loginPresent ?? process.env.FAKE_LOGIN_PRESENT ?? "true" : JSON.stringify(peer.active ?? JSON.parse(process.env.FAKE_ACTIVE ?? "[]")));
 else if (script.includes("pulse")) console.log(peer.pulse ?? "◆ reported step");
+else if (script.includes("find . ")) process.stdout.write((process.env.FAKE_FILES ?? "").replaceAll("\\n", "\\0"));
 else if (script.includes("holds")) console.log((peer.holds ?? [process.env.FAKE_HOLDS ?? ""]).join("\\n"));
 else if (script.includes("status") && script.includes("ANA_HOP")) console.log(peer.status ?? "no local runs");
 else console.log(process.env.FAKE_PREPARED);`,

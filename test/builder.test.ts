@@ -527,6 +527,30 @@ describe("a Builder session", () => {
     expect(opening).not.toContain("earlier session");
   });
 
+  it("says the re-served practice records stay under the harness it started from once a promotion moves the reference, and nothing before", async () => {
+    // 16 openings on record came after a promotion inside their session, and listed the records
+    // under the harness the conversation started from as though it were still the reference.
+    const s = await setup([call("read_opening", {}), call("promote", {}), call("read_opening", {}), finish]);
+    const promote = tool({
+      name: "promote",
+      description: "Promote another harness.",
+      parameters: Type.Object({}),
+      execute: async () => {
+        append(s.request.log, "harness.promoted", { harness: "f".repeat(64) });
+        return text("Promoted.");
+      },
+    });
+    await session({ ...s.request, campaign: () => ({ hook: () => "", tools: [promote] }) }, s, s.walled);
+    const [before, after] = s
+      .of(BUILD_CALL)
+      .flatMap(({ tool: name, text: told }) => (name === "read_opening" && isString(told) ? [told] : []));
+    const moved = "The reference harness has changed since this conversation began";
+    expect(before).not.toContain(moved);
+    expect(after).toContain(
+      `${moved}; the practice records above are still those under the harness you start from.`,
+    );
+  });
+
   it("sets aside unestablished practice rejections in results, traces and later records, and takes a check defect's task out of practice", async () => {
     for (const ruling of ["unclear", "check-defect", null, "absent", "crashed"] as const) {
       const s = await setup(

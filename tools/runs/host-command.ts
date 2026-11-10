@@ -20,9 +20,9 @@ export async function rsync(from: string, to: string, ...flags: readonly string[
  */
 export const sshCommand = (destination: string) => ["ssh", ...sshOptions(destination)].map(quoted).join(" ");
 
-/** The shell text that lists the worktrees of the repository `repo`, a shell word, the main first. */
-export const worktreesIn = (repo: string) =>
-  `git -C ${repo} worktree list --porcelain | sed -n 's/^worktree //p'`;
+/** `path` as rsync names it: as it is on this machine, where `host` is undefined, else on `host`. */
+export const sideOf = (host: Host | undefined, path: string) =>
+  host === undefined ? path : `${host.ssh}:${quoted(path)}`;
 
 export const quoted = (word: string) => `'${word.replaceAll("'", `'\\''`)}'`;
 

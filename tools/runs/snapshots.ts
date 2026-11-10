@@ -21,7 +21,7 @@ import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { asked } from "./hosts.ts";
 import { type Host, hostNamed, hostsOf } from "./host-config.ts";
-import { quoted, rsync, sshScript } from "./host-command.ts";
+import { quoted, rsync, sideOf, sshScript } from "./host-command.ts";
 import { runTextOrThrow } from "#src/meta/subprocess.ts";
 import { hold, release } from "./holder.ts";
 import {
@@ -184,7 +184,7 @@ async function refresh(run: RemoteRun, into: string, host: Host, depth: Depth): 
       );
     }
     await rsync(
-      `${host.ssh}:${quoted(dirname(run.path))}/`,
+      `${sideOf(host, dirname(run.path))}/`,
       `${folder}/`,
       ...reused,
       ...EXCLUDED,
@@ -234,13 +234,12 @@ export async function syncRuns(
   options: {
     readonly match?: "exact" | "part";
     readonly from?: string;
-    readonly repo?: string;
     readonly depth?: Depth;
     /** Only the campaigns no process writes, which a copy can hold whole without moving under it. */
     readonly closed?: boolean;
   } = {},
 ): Promise<string[]> {
-  const repo = options.repo ?? runtimeProcess.cwd();
+  const repo = runtimeProcess.cwd();
   const local = originals(repo);
   // Only the host named is asked: another host's catalogue would be read and then dropped.
   const selected = await asked(
@@ -303,9 +302,8 @@ export async function syncRuns(
 
 /** Resolve a path as given, or refresh a named campaign before reading its existing archive copy. */
 export async function readAcross(name: string, depth: Depth = "record"): Promise<Run> {
-  const repo = runtimeProcess.cwd();
-  const refreshed = await syncRuns([name], { match: "exact", repo, depth });
-  const run = readNamed(name, repo);
+  const refreshed = await syncRuns([name], { match: "exact", depth });
+  const run = readNamed(name);
   if (run.archived !== undefined && run.archived !== HERE && !refreshed.includes(run.path)) {
     throw new Error(`${name}: its host no longer lists the campaign; the old copy was left intact`);
   }

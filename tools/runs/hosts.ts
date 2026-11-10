@@ -28,7 +28,7 @@
  */
 import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { runCaptured } from "#src/meta/subprocess.ts";
-import { CARRIED, type Host, hostsOf, hostNamed, configuredRuntime } from "./host-config.ts";
+import { CARRIED, type Host, hostsOf, hostNamed, configuredRuntime, RUN_CAP } from "./host-config.ts";
 import { quoted, shellPath, sshScript, treeBun } from "./host-command.ts";
 import { readControllers } from "./code.ts";
 import { CLI, runs } from "./registry.ts";
@@ -58,7 +58,11 @@ interface Routes {
  */
 export function carriedTo(host: Host): Readonly<Record<string, string>> {
   const shared = CARRIED.map((key) => [key, runtimeProcess.env[key] ?? ""] as const);
-  const merged = { ...Object.fromEntries(shared), ...host.settings, ANA_RUN_CAP: String(host.capacity ?? 2) };
+  const merged = {
+    ...Object.fromEntries(shared),
+    ...host.settings,
+    ANA_RUN_CAP: String(host.capacity ?? RUN_CAP),
+  };
   const sent = Object.entries(merged).filter(([, value]) => value !== "");
   for (const [key, value] of sent) {
     if (scanText(key, value).length > 0) {
@@ -210,10 +214,7 @@ export async function askedScript(
 }
 
 /** The host that holds each of `names`, every host `ANA_HOSTS` lists asked at once. */
-export async function holders(
-  names: readonly string[],
-  here: ReadonlySet<string> = new Set(),
-): Promise<Map<string, Host>> {
+async function holders(names: readonly string[], here: ReadonlySet<string>): Promise<Map<string, Host>> {
   const held = new Map<string, Host>();
   if (names.length === 0) return held;
   for (const { host, lines } of await asked(["holds", ...names])) {

@@ -172,6 +172,47 @@ left plausible, and what is confirmed but sits in source a live run is proving.
     whole copy owes of a state's installed toolchain: leaving out the names rsync cannot write
     beside each other and saying so in the copy, or failing a copy only on a file a reader opens.
 
+### Found by the review of the consolidated stack
+
+The stack was regrouped into eight pull requests and read by three reviewers, one lens each. Their
+confirmed findings were mended in the pull requests that own them: the pulse and `due` now name
+the pause a live run owes rather than `open`, `openingOf` reads its waiter through `waiters`, a
+pause for a named point waits while a keeper holds the run between two starts, `waiters` finds a
+run named after its flags, `land latest` resolves its top once, four log-only investigation readers
+copy a peer's record rather than the whole run, and a usage answer of another shape reads as no
+spend. These are what they left.
+
+37. **An Examiner ask can bill nothing when the usage request fails after an earlier one read**
+    (plausible, `rest` in `src/examiner/session.ts:254`). Claude Code's count includes its
+    compactions and pi-durable's turn total does not, so an ask whose request times out after an
+    earlier ask read the higher count bills `Math.max(billed, total) - billed`, which is 0. The
+    conversation's end restores the total; until then the budget and `billedBetween` read low.
+    Settled by a fake CLI that answers the usage request once and then stays silent.
+38. **The `cap-short` refusal names a mean bill of every finished solve, held-out ones included**
+    (plausible, low, `src/campaign/admission.ts:282-304`), a finer fold than the remaining budget
+    section 1 lists. The wall tests pass because the fake runs bill every task alike. Settled by a
+    wall case whose held-out bills differ with the task the candidate won.
+39. **A step can be read and not promoted when a pause lands between the report and
+    `harness.promoted`** (plausible, `restsAfter` under `pauseAt`, `tools/runs/manage.ts`). Settled
+    by a replay of every log for a `comparison.reported` reading `step` with no
+    `harness.promoted` before the next `campaign.word`.
+40. **`holdAlone` can wait for good on a reused process id in a lock of the older format**
+    (plausible, `tools/runtime/landing.ts:32`), the same record row 31 names. Settled by a lock
+    file naming the pid of a live unrelated process.
+41. **The investigation readers keep their own fold of a solve's side** (confirmed, low:
+    `sidesOf`, `tools/wri/calls.ts:79`, and `sideOf`, `tools/wri/rejections.ts:72`, beside
+    `Solve.role` in `tools/wri/folds.ts`), and the two disagree on a solve whose harness the log
+    names twice. One reader through `role` would leave one answer.
+42. **Two pause commits sit in the comparison pull request**: "Refuse a pause point that joins
+    `next` to another" and "Refuse an unknown pause word in the dry form of pause and continue"
+    belong with the pause group by owner. They were left where they stand because moving them
+    moves every head between, and each passes alone where it sits.
+43. **The investigation group is large**: the lane readers and tools add about 6,200 lines, and
+    the owner lens judged that about 1,000 would answer the problems their body states. Shrinking
+    it changes what the lanes are given, so it waits for the operator's word.
+44. **`tools/runs/pulse.ts` holds 789 nonblank lines and `pulse()` 22 decision points**, past the
+    file's budget. Settled by splitting the readers each event runs from the look that prints them.
+
 ## History
 
 - 9 November 2026, the operator, on the stack before its release: a subagent "to tackle more of
@@ -196,3 +237,6 @@ left plausible, and what is confirmed but sits in source a live run is proving.
   and morning". The stack above the release was proved and then read by three reviewers, one lens
   each; rows 28 to 35 are what they left. Row 36 comes from that morning's read of the night's
   jobs.
+- 10 November 2026, the operator: "use PR Stack including consolidating protocol and merge towards
+  v0.10.4". The stack was regrouped by subject and reviewed through three lenses; rows 37 to 44 are
+  what that review left.

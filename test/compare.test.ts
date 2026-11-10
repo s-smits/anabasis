@@ -701,6 +701,29 @@ describe("the order of counted solves", () => {
     // half its own solves were mirrored around.
     expect(halves({ halves: "mirrored" })).toMatchObject({ old: [P, P], fresh: [P, F] });
   });
+
+  it("runs the mirror on over the tasks at one solve a half, so a drift from a task's first solve to its second falls on both samples", () => {
+    // On every task the reference's earlier solve is valid and its later one is not: a drift in
+    // time and nothing else. Taken as the first sample on every task it would read four losses.
+    const tasks = ["v1", "v2", "v3", "v4"];
+    const log = tasks.flatMap((task) => [
+      ...heldOut(task),
+      ...solve({ ...base, task }, "pass"),
+      ...solve({ ...base, task }, "fail"),
+      ...solve({ ...fresh, task }, "pass"),
+      ...solve({ ...fresh, task }, "pass"),
+    ]);
+    const itself = pairsOf(log, tasks, { ...sides, fresh: "old", halves: "mirrored" }, 1).pairs;
+    expect(itself.map((pair) => [pair.old, pair.fresh])).toEqual([
+      [[P], [F]],
+      [[F], [P]],
+      [[P], [F]],
+      [[F], [P]],
+    ]);
+    expect(scored(itself)).toMatchObject({ wins: 2, losses: 2 });
+    // Two a half hold the mirror within each task, as before; so does a pairing of two harnesses.
+    expect(pairsOf(log, tasks, sides, 2).pairs.map((pair) => pair.old)).toEqual(tasks.map(() => [P, F]));
+  });
 });
 
 describe("the comparison reading", () => {

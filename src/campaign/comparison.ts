@@ -455,8 +455,9 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
       ).pairs,
     );
   // The A/A (12 October, the plan's section 4b): where the reference's solves of a task are even,
-  // split into halves mirrored in time. At two a side, the default since 29 October, it is its
-  // first solve against its second, which reads the flip rate and a step between halves alike.
+  // split into halves mirrored in time. At two a side, the default since 29 October, it is one
+  // solve against the other, the earlier one first on every other task (`pairsOf`), which reads the
+  // flip rate and a step between halves alike.
   const mirroredOf = (halves: readonly Paired[]) => {
     const aa = scored(halves);
     return { ...aa, flips: flipsOf(halves), detectable: detectable(aa.differences, fixed.level) };

@@ -619,7 +619,8 @@ function standings(args: CommandArgs, repo: string, known: readonly Run[], parts
   return { shown, silent: all.length - shown.length, moved: chosen.length, days, now };
 }
 
-function due(args: CommandArgs, repo: string, known: readonly Run[]): number {
+/** The view with no verb: one row a run, each with its step. */
+function rows(args: CommandArgs, repo: string, known: readonly Run[]): number {
   const { shown, silent, moved, days } = standings(args, repo, known);
   for (const { row, step } of shown) {
     const state = row.live ? "live" : `closed${row.ending === null ? "" : ` (${row.ending})`}`;
@@ -723,7 +724,7 @@ export function unmeasured(repo: string, head: string, { row, commit }: Standing
   return `measures · ${row.name} · ${commit.slice(0, 9)} · ${reading}`;
 }
 
-function brief(args: CommandArgs, repo: string, known: readonly Run[]): number {
+function due(args: CommandArgs, repo: string, known: readonly Run[]): number {
   const { shown, days, now } = standings(args, repo, known, args.positionals.slice(1));
   const head = gitMaybe(repo, "rev-parse", "HEAD") ?? "HEAD";
   for (const line of dueLines(shown, changedAt, now, days)) console.log(line);
@@ -805,7 +806,7 @@ async function main(args: CommandArgs): Promise<number> {
     }
     return 0;
   }
-  return verb === "due" ? brief(args, repo, readable(repo)) : due(args, repo, readable(repo));
+  return verb === "due" ? due(args, repo, readable(repo)) : rows(args, repo, readable(repo));
 }
 
 if (import.meta.main) {

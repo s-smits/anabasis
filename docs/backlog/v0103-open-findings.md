@@ -66,6 +66,49 @@ Each is spelled by hand at three or more sites, and no scan reports it.
 A scan for rows 11 to 15 starts as a report in `tree-findings.ts` and gates only at zero sites
 (`tools/oxlint/HABITS.md`, 12.9).
 
+### Found after the release
+
+Two readers went over what v0.10.3 landed on 10 November 2026, one over `src/` and one over
+`tools/d2` and `tools/runs`. `--after next|<word>` was mended in the change that added these rows;
+the rest wait. "Read" means the row was checked against the source again before it was written
+here; "reported" means only its reader has seen it.
+
+17. **Kept runs hold each other's slot at the cap** (read, `liveHere`, `tools/runs/live.ts`;
+    `startRefusal`, `tools/runs/logins.ts`). A kept run between two starts counts as live, and a
+    keeper leaves out only its own run. Where a login keeps more ended runs than its cap, as after
+    a cap is lowered under them, each keeper finds the login full and none starts again. Let a
+    waiting run count only against the runs that sort after it, so the first of them start.
+    Hostile test: three kept runs with no writer on a login capped at two start two.
+18. **A solve's network line can change inside one comparison** (read, `networkReach`,
+    `src/tools/command.ts`, read by `src/solver/run.ts`). An unreached reading is probed again
+    after ten minutes, so the two sides' solves of one task can be told different things, and the
+    log records neither. With row 5 it changes what a solver is told, which is the operator's:
+    either a comparison's reach is fixed at its start, or `solve.started` records it.
+19. **A kept run's ending is not alerted** (read, `stateOf`, `tools/runs/state.ts`): with no writer
+    and a live keeper the state is `kept`, so `alerts` prints no `ended environment` line.
+20. **A resumed move starts in a tree nobody checked** (reported, `tools/runs/move.ts`): a
+    destination tree at the same commit is reused, and a change no commit names is refused only
+    after the source is paused and set aside. Ask `standing` of the tree before the pause.
+21. **A preparation lock no longer lapses while its process lives** (reported, `STALE`,
+    `tools/runs/code.ts`): a remote shell that outlives its killed ssh client holds the commit's
+    preparation on that host. Settled by whether such a shell survives on each host.
+22. **A lock's holder is named by text the locale and time zone change** (reported,
+    `tools/runs/holder.ts`): `ps -o lstart=` and the host's name, so two processes under different
+    settings each read the other's lock as free. Settled by the settings of the scheduled jobs.
+23. **A stop can miss a writer its keeper starts meanwhile** (reported, `tools/runs/stop.ts`): the
+    process table is read once, before the keeper ends.
+24. **A killed move's stage is used again** (reported, `tools/runs/move.ts`), with what the earlier
+    transfer left in it.
+25. **A rejection's standing has a second reader** (reported, `rejections`,
+    `src/campaign/comparison.ts`, beside `standsOf`), with the same answer on every log today.
+26. **The Examiner's faulted checks now read a ladder report's labels** (reported, `faultedOf`,
+    `src/examiner/record.ts`). Settled by whether any ladder report on record holds a label.
+27. **Why the reference's later solve of a task scores below its earlier one.** Over the 234
+    controls at two solves a side the later solve lost 446 tasks and won 363 (jobstat 189 and 126,
+    esp32 31 and 16, buffer 181 and 168). The control no longer reads it as a difference, and its
+    cause is unread: load when the solve started, the task's place in the queue, or the provider.
+    `tools/wri/time.ts` holds the slots and the load to read it from.
+
 ## History
 
 - 9 November 2026, the operator, on the stack before its release: a subagent "to tackle more of
@@ -74,3 +117,5 @@ A scan for rows 11 to 15 starts as a report in `tree-findings.ts` and gates only
 - 10 November 2026, the operator, on the release: "ignore normal protocls for this as i have a
   feeling the system has significantly improved here". Rows 1 to 5 were therefore left for after
   the release instead of holding it.
+- 10 November 2026, the operator, after the release: "review current PR stack and overhaul /
+  supersede where needed", and "triage with most recent runs to improve further". Rows 17 to 27.

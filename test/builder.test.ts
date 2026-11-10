@@ -779,6 +779,20 @@ describe("a Builder session", () => {
     expect(last.split(quantity)).toHaveLength(2);
   });
 
+  it("states the objective's quantity once in the opening, however long and whatever word it begins with", async () => {
+    // Quantities on record run from 157 to 337 characters, and each opening carried one twice.
+    const long = `the mean ${"weighted lateness of every job past its due time, ".repeat(6)}over all machines`;
+    expect(long.length).toBeGreaterThan(300);
+    for (const quantity of [long, "lower bound on the summed cost"]) {
+      const s = await setup([finish], [], false, CHECK, {
+        ...CONTRACT,
+        objective: { quantity, direction: "lower" },
+      });
+      await session(s.request, s, s.walled);
+      expect(s.sent[0]?.split(quantity)).toHaveLength(2);
+    }
+  });
+
   it("is told an author's better answer on a released task under an objective, and nothing of a held-out one's", async () => {
     // A harness that answers alike in every solve still leaves room where its author's answer is
     // better; until 4 November the Builder was told only its own measures and read that as none.

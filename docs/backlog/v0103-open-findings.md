@@ -2,9 +2,10 @@
 
 Status: rows 1, 2, 3, 17 and 19 are proved without a model, each by a hostile test that failed
 before its repair; the rest are planned. Each row was found by the landing review of 10 November
-2026 (three lenses over the stack of #721 to #748), by the second-reader pass that followed it, or
-by the review of the stack above the release (rows 28 to 35). Rows 1 to 27 were left as they are
-so that the release could land. Each says what would settle it.
+2026 (three lenses over the stack of #721 to #748), by the second-reader pass that followed it, by
+the review of the stack above the release (rows 28 to 35), or by a read of the night's jobs
+(row 36). Rows 1 to 27 were left as they are so that the release could land. Each says what would
+settle it.
 
 ## Intended changes
 
@@ -155,6 +156,22 @@ left plausible, and what is confirmed but sits in source a live run is proving.
     review, in its own words, because `src` could not move under the run proving it; one exported
     predicate would leave one reader.
 
+### Found by a read of the night's jobs
+
+36. **A whole copy of a run from the Linux host fails on two names that differ only in case**
+    (confirmed, `refresh` under `syncRuns`, `tools/runs/snapshots.ts`). A kept state's Python holds
+    terminfo entries such as `N/NCR260VT300WPP`, a link to `../n/ncr260vt300wpp`. On a volume that
+    folds case the link takes the place of the file it names and then points at itself, and every
+    later copy of that campaign stops there with "Too many levels of symbolic links". On 10
+    November 2026 that failed 3 of the nightly whole fetch's 118 copies, and a fourth died on an
+    assertion inside rsync that nobody has read yet; the retire before it exited 1 on the same
+    four. Of the 21 retire runs in its log 6 exited 1: two on this link, two on that assertion (one
+    of them the same night), two on the peer's own retire and one on a name two originals hold. A
+    job that fails for a standing reason shows no new one, and those copies lack whatever follows
+    the fault. Settled by deciding what a
+    whole copy owes of a state's installed toolchain: leaving out the names rsync cannot write
+    beside each other and saying so in the copy, or failing a copy only on a file a reader opens.
+
 ## History
 
 - 9 November 2026, the operator, on the stack before its release: a subagent "to tackle more of
@@ -177,4 +194,5 @@ left plausible, and what is confirmed but sits in source a live run is proving.
   window, the rows that change the run tools alone.
 - 10 November 2026, the operator, on that window: "you finish everything yourself the coming night
   and morning". The stack above the release was proved and then read by three reviewers, one lens
-  each; rows 28 to 35 are what they left.
+  each; rows 28 to 35 are what they left. Row 36 comes from that morning's read of the night's
+  jobs.

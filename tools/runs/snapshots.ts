@@ -21,7 +21,8 @@ import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { asked } from "./hosts.ts";
 import { type Host, hostNamed, hostsOf } from "./host-config.ts";
-import { quoted, rsync } from "./host-command.ts";
+import { quoted, rsync, sshScript } from "./host-command.ts";
+import { runTextOrThrow } from "#src/meta/subprocess.ts";
 import { hold, release } from "./holder.ts";
 import {
   archiveOf,
@@ -134,6 +135,22 @@ export function remoteRuns(lines: readonly string[] | null, host: Host): RemoteR
   });
 }
 
+/** The files of a remote folder that a disk which folds case cannot hold beside another named the
+ *  same but for case: all of each such group but its last in byte order, the most lower-case, to
+ *  which `terminfo`'s upper-case aliases link. Until 10 November 4 of 118 whole copies of the Linux
+ *  host failed every night: `N/NCR260VT300WPP`, a link to `../n/ncr260vt300wpp`, became a link to
+ *  itself here, and an Examiner's `w/t1.py` beside its `w/T1.py` aborted rsync. */
+async function caseTwins(host: Host, folder: string): Promise<string[]> {
+  const listed = await runTextOrThrow(sshScript(host, `cd ${quoted(folder)} && find . ! -type d -print0`));
+  const paths = listed
+    .split("\0")
+    .filter((path) => path.startsWith("./"))
+    .map((path) => path.slice(2))
+    .toSorted();
+  const last = new Map(paths.map((path) => [path.toLowerCase(), path]));
+  return paths.filter((path) => last.get(path.toLowerCase()) !== path);
+}
+
 /** Refresh one copy under its holder (`holder.ts`), which a fetch keeps however long it transfers and
  *  the next takes over once its process is gone. The stage sits beside the holder, so a fetch killed
  *  part way leaves it where the next one finds it: a copy set aside is put back, and the rest goes. */
@@ -157,11 +174,21 @@ async function refresh(run: RemoteRun, into: string, host: Host, depth: Depth): 
     rmSync(stage, { recursive: true, force: true });
     mkdirSync(folder, { recursive: true });
     const reused = existsSync(into) ? [`--link-dest=${into}`] : [];
+    const twins =
+      depth === "whole" && existsSync(dirname(into).toUpperCase())
+        ? await caseTwins(host, dirname(run.path))
+        : [];
+    if (twins.length > 0) {
+      console.log(
+        `${run.name}: ${String(twins.length)} paths named as another but for case stay on ${host.name} alone`,
+      );
+    }
     await rsync(
       `${host.ssh}:${quoted(dirname(run.path))}/`,
       `${folder}/`,
       ...reused,
       ...EXCLUDED,
+      ...twins.map((path) => `--exclude=/${path.replaceAll(/[*?[]/gu, String.raw`\$&`)}`),
       ...(depth === "record" ? RECORD : []),
     );
     const log = join(folder, LOG_FILE);

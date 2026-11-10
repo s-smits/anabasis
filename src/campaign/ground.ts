@@ -25,7 +25,7 @@ export interface Plan {
    *  where the caller holds no count, and nothing is released for one. */
   readonly practice: number | null;
   /** The size a comparison is asked for at, as its admission reads it. */
-  readonly wanted: Pick<Wanted, "target" | "level">;
+  readonly wanted: Pick<Wanted, "target" | "level" | "solves">;
   /** The operator's reason to go on past the stop rule, or null. */
   readonly pastStop: string | null;
   /** Whether the campaign opened from a prompt: its exam is then drafted, and no pack holds it. */
@@ -137,6 +137,14 @@ export function crashedRun(events: readonly LogEvent[]) {
   };
 }
 
+/** What comparison admission is asked for the plan's next comparison: its size, under what is left
+ *  of the campaign's total. */
+export const askedOf = (plan: Plan) => ({
+  ...plan.wanted,
+  cap: plan.left,
+  pastStop: plan.pastStop ?? undefined,
+});
+
 /**
  * What the table's rows are read from, for a log and its plan: the supply folded once, the codes
  * comparison admission would refuse the next comparison with, the comparisons, the harnesses in question, and
@@ -144,7 +152,6 @@ export function crashedRun(events: readonly LogEvent[]) {
  */
 export function groundOf(events: readonly LogEvent[], plan: Plan) {
   const supply = supplyOf(events);
-  const asked = { ...plan.wanted, pastStop: plan.pastStop ?? undefined };
   const all = comparisonsOf(events);
   const reports = all.filter((each): each is Reported => each.report !== null && each.reported !== null);
   const reference = referenceOf(events);
@@ -164,7 +171,7 @@ export function groundOf(events: readonly LogEvent[], plan: Plan) {
     plan,
     supply,
     /** The codes comparison admission would refuse the next comparison with (`refusals`). */
-    refused: new Set<string>(refusals(supply, asked).map(({ code }) => code)),
+    refused: new Set<string>(refusals(supply, askedOf(plan)).map(({ code }) => code)),
     /** Every comparison in the order it began, and those of them that reported. */
     all,
     reports,

@@ -47,8 +47,10 @@ side; the Builder sees only its practice solves (`practiceRan`, `src/kernel/solv
 Comparison admission (`admission`, `src/campaign/admission.ts`) is asked before a comparison's first
 event, whoever started it. It refuses, among others: no held-out task; fewer frontier tasks than a
 step needs at the level plus two, one for a task set aside and one for a tie (`held-short`,
-`comparisonFloor`); no `--cap`; an unread checker; and a stopped campaign without `--past-stop`
-(`stop.overridden`). Session admission (`admitSession`) asks for a cap, a read checker and the stop
+`comparisonFloor`); no `--cap`; an unread checker; a cap below what the comparison's test alone
+costs at the dollars a solve the log's finished solves billed (`cap-short`), on which the table ends
+the campaign on its budget where no comparison is open; and a stopped campaign without
+`--past-stop` (`stop.overridden`). Session admission (`admitSession`) asks for a cap, a read checker and the stop
 rule, and refuses a `--session` whose Builder started and did not end whole (`spent`,
 `src/builder/session.ts`). A move the log shows begun continues without asking, and a rehearsal is
 exempt by name. Refusals run in the order admission, terms, stop override, setting.

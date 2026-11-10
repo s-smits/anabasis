@@ -237,7 +237,8 @@ log.
 `bun tools/d2/harness-builder.ts` opens a campaign from a prompt or a stored pack and runs it
 unattended to one of seven endings: `budget`, `stop`, `exam`, `no-room`, `environment`, `operator`
 or `finished` (three Builder conversations in a row made no campaign move). Its budget is one total,
-and it ends once less than one solve's reserve is left. Each solve waits in the solve queue for the
+and it ends once less is left than one solve's reserve, or than the next comparison's test costs at
+what its solves billed. Each solve waits in the solve queue for the
 host's load, at most half an hour (`--loaded` skips it, `campaign.waited` records it). The operator
 steers it with `tools/d2/word.ts`, which no seat reads. The setting fixes the solver, its limits,
 `--target` and `--solves`; a conflicting value is refused. Practice is released from reference

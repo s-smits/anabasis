@@ -209,7 +209,8 @@ bun --env-file=<file> --env-file=.env.runs run runs hosts [--all]
 ```
 
 `usage` reads each login's windows from the provider (or rate-limit headers where refused), keeps a
-history in `.ana/logins-history.jsonl`, and forecasts when the pool runs out (`poolLines`). Each login
+history in `.ana/logins-history.jsonl`, and forecasts when the pool runs out by whichever of the
+model, the week pace and the per-run rate read the last held-out hours best (`modelLines`). Each login
 line shows `open` or `closed until <reset>` and its live runs out of the most it carries: the lower of
 its cap (`capOf`: its `N:most` in `ANA_LOGIN_RUNS`, else its subscription in `ANA_LOGIN_SUBS`, two
 for `max` or `pro100` and four for `ultra` or `pro200`, else the bare number) and the runs its week

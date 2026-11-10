@@ -50,7 +50,7 @@ describe("the usage model", () => {
   it("speaks only where it beats both older paces on the hours held out, from a sparse record too", () => {
     const now = atLocal(21);
     expect(assess(history(7, now - 72 * HOUR), now, perRunRate)).toBeNull();
-    expect(modelLines([], [], null, now, null)[0]).toContain("off");
+    expect(modelLines([], [], null, now, null).join("\n")).toContain("model off");
     const sparse = assess(
       history(7, now).filter((_, at) => at % 3 === 0),
       now,
@@ -68,6 +68,17 @@ describe("the usage model", () => {
     // It beats the per-run rate there, and the week pace alone keeps it silent.
     expect(blind?.error).toBeLessThan(blind?.run ?? 0);
     expect(blind?.model).toBeNull();
+    if (blind === null) {
+      throw new Error("no assessment");
+    }
+    // Silent, it leaves the one forecast to whichever older pace read the held-out hours better.
+    const weeks = [{ login: "1", pct: 50, reset: now + 48 * HOUR }];
+    const first = (read: typeof blind, rate: number | null) =>
+      modelLines(weeks, [], read, now, rate)[0]?.trim();
+    expect(first(blind, 0.15)?.startsWith(blind.week < blind.run ? "week pace" : "per run")).toBe(true);
+    const runsWon = { ...blind, run: blind.week / 2 };
+    expect(first(runsWon, 0.15)?.startsWith("per run")).toBe(true);
+    expect(first(runsWon, null)?.startsWith("week pace")).toBe(true);
   });
 
   it("reads the same with a burst of readings minutes after each hourly one", () => {

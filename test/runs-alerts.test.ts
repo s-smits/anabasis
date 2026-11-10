@@ -137,6 +137,18 @@ describe("the fold of one look", () => {
     expect(alertsOf(start, here(row({ state: ENDED }))).lines).toEqual(["r (here): ended budget"]);
   });
 
+  it("says an ending its keeper goes on past once, and again only once the run went on and ended afresh", () => {
+    const kept = row({ state: { kind: "kept", ending: "environment" } });
+    const first = alertsOf(lookedAt(row()), here(kept));
+    expect(first.lines).toEqual([
+      "r (here): no writer process; its keeper lives",
+      "r (here): ended environment",
+    ]);
+    expect(alertsOf(first.next, here(kept)).lines).toEqual([]);
+    const again = alertsOf(alertsOf(first.next, here(row())).next, here(kept));
+    expect(again.lines).toContain("r (here): ended environment");
+  });
+
   it("says a stall once, and again once the run has moved and stalled afresh", () => {
     const stalled = row({ state: { kind: "quiet", kept: true, since: 0 } });
     const first = alertsOf(lookedAt(row()), here(stalled));

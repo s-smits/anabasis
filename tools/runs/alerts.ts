@@ -193,7 +193,11 @@ function answerOf(lines: readonly string[] | null): HostRows | null {
 /** Whether a process writes the run's log: a state written on carries whether a keeper lives beside it. */
 const written = (state: RunState): state is Extract<RunState, { kept: boolean }> => "kept" in state;
 
-const endingOf = (state: RunState): string | null => (state.kind === "ended" ? state.ending : null);
+/** The ending a run's log ends on, whether its keeper goes on past it or not. */
+const endingOf = (state: RunState): string | null => {
+  if (state.kind === "kept") return state.ending ?? null;
+  return state.kind === "ended" ? state.ending : null;
+};
 
 /** What is wrong with a run that has not ended, in the words a line says it. Each guard narrows the
  *  state, and a kind added to `RunState` fails to compile at the last. */

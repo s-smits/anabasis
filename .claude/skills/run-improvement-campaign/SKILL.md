@@ -1,6 +1,6 @@
 ---
 name: run-improvement-campaign
-description: "Run the Anabasis improvement loop (the Super Loop) and its iterations and release cycle: fork fresh campaigns, read their milestones and resolve predictions; at a run's trigger (two promotions, twelve hours, or a comparison that left no task untied), investigate it on a snapshot (`scripts/wri2p2.ts`), implement the findings as one pull request on the top, and fork fresh runs at its head; land the release once a proof run at the top promotes twice. Each pass scores the five points, finds the link that holds the next promotion, fixes its owner, proves the path and predicts. Use when the operator asks to keep campaigns going, fork runs, work towards a release, run a pass or an hourly audit, read a promotion, investigate a campaign that is not promoting, or choose the next run. Owns the experiment and its evidence; AGENTS.md section 3 owns the operator's decisions."
+description: "Run the Anabasis improvement loop (the Super Loop) and its iterations and release cycle: fork fresh campaigns, read their milestones and resolve predictions; at a run's trigger (two promotions, twelve hours, or a comparison that left no task untied), pause it after its next comparison and investigate it (`scripts/wri2p2.ts`), implement the findings as one pull request on the top, and fork fresh runs at its head; land the release once a proof run at the top promotes twice. Each pass scores the five points, finds the link that holds the next promotion, fixes its owner, proves the path and predicts. Use when the operator asks to keep campaigns going, fork runs, work towards a release, run a pass or an hourly audit, read a promotion, investigate a campaign that is not promoting, or choose the next run. Owns the experiment and its evidence; AGENTS.md section 3 owns the operator's decisions."
 ---
 
 # Run improvement campaign (the Super Loop)
@@ -117,13 +117,22 @@ a session that wants every run's place at once; `due` prints the same reading in
 owed steps only, as a timer takes it.
 
 1. **Trigger.** Whichever comes first: two promotions, twelve hours since the opening, a scored
-   comparison that left no task untied, or an ending after a comparison. The trigger stops nothing.
-   Resolve the run's predictions into `outcomes-<run>.md`, with the log's length.
+   comparison that left no task untied, or an ending after a comparison. At a live run's trigger
+   `wri2p2.ts` prints `pause`: run its command (`runs pause <name> --after reported --yes`, with
+   nohup), which stops the run at the first point after its next comparison reports with no
+   comparison, Examiner session or draft open (operator, 10 November). The comparison's tally and
+   reading are one event written once every solve has finished, so nothing of it is lost; a step
+   the pause lands between its report and its promotion is promoted at the run's next move
+   (`decide`, "read a step, and was not promoted"). After two promotions that next comparison is
+   the starter read, so the pause also leaves the second promotion confirmable. While the pause
+   waits the step is `waits`, which `due` does not count. Resolve the run's predictions into
+   `outcomes-<run>.md`, with the log's length.
 2. **Investigate** with whole-run-investigation, opened by `wri2p2.ts open` with the other triggered
-   runs of the same code and pack as equals. `open` reads live runs on a frozen copy
-   (`wri.ts start --snapshot`) and writes `iteration.json` (`{ "opened": <ISO>, "runs": [<names>] }`),
-   which the later gates require. A run is never stopped for its investigation; stopping is the
-   operator's. Then follow `wri2p2.ts next <dir>` through the instructions, `lanes --agents 4` with
+   runs of the same code and pack as equals, once the run has stopped, so the synthesis reads the
+   comparison the pause waited for. `open` still reads a run left live on a frozen copy
+   (`wri.ts start --snapshot`), a deviation for a run the operator keeps going, and writes
+   `iteration.json` (`{ "opened": <ISO>, "runs": [<names>] }`), which the later gates require. Then
+   follow `wri2p2.ts next <dir>` through the instructions, `lanes --agents 4` with
    one subagent a lane, the collection and the synthesis. Before the vetting, `next` waits until each
    run has its two files, looking only in `*-cycle-*` folders and the investigation's own, and
    refuses where two of them hold the same file.
@@ -251,8 +260,9 @@ version").
 
 No run carries a cap. Each promotion alerts (`runs alerts`), and a run is paused on the operator's
 word only after that promotion's starter comparison reports, since an earlier pause leaves it
-unconfirmed for good (`AGENTS.md`, factor 1). Two promotions trigger an investigation and stop
-nothing; `--promotions N` remains available (run-management).
+unconfirmed for good (`AGENTS.md`, factor 1). Two promotions trigger the pause after the next
+comparison, which is that starter read, and the investigation after it; `--promotions N` remains
+available (run-management).
 
 ## Resume
 

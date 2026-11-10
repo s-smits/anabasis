@@ -8,6 +8,7 @@ import {
   lengthsIn,
   movedIn,
   nextOf,
+  openingOf,
   unmeasured,
 } from "#skills/run-improvement-campaign/scripts/wri2p2.ts";
 import { progressOf as rowOf, triggerOf } from "#tools/runs/said.ts";
@@ -106,6 +107,34 @@ function folder(name: string, run: string, iteration: boolean) {
 
 const table = (ids: string[], outcome = "x") =>
   `| id | outcome |\n| --- | --- |\n${ids.map((id) => `| ${id} | ${outcome} |`).join("\n")}\n`;
+
+describe("a run's step at its trigger", () => {
+  const row = { name: "r1", host: "here", live: true };
+  const pausing = (args: string[]) => [{ pid: 1, cwd: "/w", args }];
+
+  it("pauses a live run after its next comparison before its investigation opens", () => {
+    expect(openingOf(row, "2 promotions", [])).toEqual([
+      "step: pause · 2 promotions; the investigation opens once the run stops after its next comparison",
+      "  bun run runs pause r1 --after reported --yes",
+    ]);
+  });
+
+  it("waits while a pause of the run is armed, and opens once the run has stopped", () => {
+    const armed = pausing(["bun", "tools/runs/cli.ts", "pause", "r1", "--after", "reported", "--yes"]);
+    expect(openingOf(row, "2 promotions", armed)[0]).toStartWith("step: waits");
+    expect(openingOf(row, "2 promotions", pausing(["bun", "cli.ts", "pause", "r2"]))[0]).toStartWith(
+      "step: pause",
+    );
+    expect(openingOf({ ...row, live: false }, "2 promotions", armed)[0]).toBe("step: open · 2 promotions");
+    expect(openingOf(row, null, [])).toEqual(["step: run"]);
+  });
+
+  it("pauses a peer's run on its own host", () => {
+    expect(openingOf({ ...row, host: "peer" }, "12.0 h since its opening", [])[1]).toBe(
+      "  bun run runs on peer pause r1 --after reported --yes",
+    );
+  });
+});
 
 describe("the next step of an investigation", () => {
   it("walks the shared steps from the shared instructions to the fresh runs", () => {

@@ -271,7 +271,7 @@ export function builderMemoryBlock(workspace: string): string {
     .toArray();
   if (blocks.length === 0) return "";
   return [
-    "Historical notes, model-authored and possibly stale. You wrote these files in earlier sessions,",
+    "Historical notes, model-authored and possibly stale. You wrote these files, in this session or an earlier one,",
     'and they are in your home directory now; a "carried forward from <session>" marker inside a file',
     "names the session it came from. Nothing here is checked by the host. Everything below this block",
     "is current and overrides it.",

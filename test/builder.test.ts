@@ -486,7 +486,7 @@ describe("a Builder session", () => {
     await session(s.request, s, s.walled);
     // The notes block comes first in the opening message, ahead of the rules, under v1's header.
     expect(s.sent[0]).toContain(
-      String.raw`{"role":"user","content":"Historical notes, model-authored and possibly stale. You wrote these files in earlier sessions,`,
+      String.raw`{"role":"user","content":"Historical notes, model-authored and possibly stale. You wrote these files, in this session or an earlier one,`,
     );
     expect(s.sent[0]).toContain(String.raw`--- MEMORY.md ---\n<!-- carried forward from b-0,`);
     expect(s.sent[0]).toContain("The base is always odd.");
@@ -509,6 +509,22 @@ describe("a Builder session", () => {
     );
     expect(readFileSync(join(own, "SCRATCHPAD.md"), "utf8")).toContain("- try the base as a string");
     expect(readFileSync(join(own, "scratch", "gen.py"), "utf8")).toBe("print(6)\n");
+  });
+
+  it("re-serves a first session's own notes without dating them to an earlier session", async () => {
+    // The opening is served again inside one conversation: in six first sessions on record, 13
+    // such calls dated notes the session had just written to "earlier sessions".
+    const note = "A table of factors did not help.";
+    const s = await setup([
+      call(WRITE_FILE, { path: "MEMORY.md", content: `# Builder memory\n\n${note}\n` }),
+      call("read_opening", {}),
+      finish,
+    ]);
+    // Only a conversation a campaign leads rebuilds its opening when asked again.
+    await session({ ...s.request, campaign: () => ({ hook: () => "", tools: [] }) }, s, s.walled);
+    const opening = s.of(BUILD_CALL).find(({ tool: name }) => name === "read_opening")?.text;
+    expect(opening).toContain(note);
+    expect(opening).not.toContain("earlier session");
   });
 
   it("sets aside unestablished practice rejections in results, traces and later records, and takes a check defect's task out of practice", async () => {

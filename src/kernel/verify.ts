@@ -39,12 +39,7 @@ import {
 } from "../meta/filesystem.ts";
 import { sha256OfFile } from "../meta/digest.ts";
 import { jsonPathTokens } from "../meta/json-evidence.ts";
-import {
-  capturedJsonParse,
-  capturedJsonStringify,
-  capturedStructuredClone,
-  parseJsonAs,
-} from "../meta/json-runtime.ts";
+import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
 import { asRecord, isBoolean, isNumber, isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { dirname, join, resolve } from "../meta/path.ts";
 import { isSafePathSegment } from "../meta/path-segment.ts";
@@ -65,7 +60,11 @@ import type { Objective } from "./contract.ts";
 // vendor/correctness-model-bundle/evaluation-public-task.ts, and checkEvaluationRequest from
 // vendor/correctness-model-bundle/evaluate.ts. Departure: the five types they read are declared
 // here, cut to the fields those functions and the shape check read, in place of v1's brief, contract
-// and task-split modules, which did not come over.
+// and task-split modules, which did not come over. A second: `checkEvaluationRequest` returns its
+// projection without v1's `structuredClone`, which kept a check run in v1's own process from
+// reaching the caller's objects. Here the projection is written to the check child's stdin as JSON
+// in the same synchronous stretch of `runCheck`, and `task.ts` reads it only for its throw, so
+// nothing holds the projection long enough to share it with a writer.
 
 interface CheckExecution {
   families: "all" | string[];
@@ -335,7 +334,7 @@ export function checkEvaluationRequest(
   request: EvaluationRequest,
 ): EvaluationRequest {
   if (check.execution.hidden === "whole") {
-    return capturedStructuredClone({ ...checkPublicInputs(check, request), hidden: request.hidden });
+    return { ...checkPublicInputs(check, request), hidden: request.hidden };
   }
   const hidden =
     check.execution.hidden === "none"
@@ -349,10 +348,7 @@ export function checkEvaluationRequest(
   ) {
     throw new Error(`check-hidden-operand-missing: ${check.id}`);
   }
-  return capturedStructuredClone({
-    ...checkPublicInputs(check, request),
-    hidden,
-  });
+  return { ...checkPublicInputs(check, request), hidden };
 }
 
 /**

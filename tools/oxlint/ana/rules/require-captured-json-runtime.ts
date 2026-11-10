@@ -10,7 +10,6 @@ const CAPTURED = new Map([
     { binding: "capturedJsonParse", advice: ", or parseJsonAs<T> when the bytes have a declared contract" },
   ],
   ["JSON.stringify", { binding: "capturedJsonStringify", advice: "" }],
-  ["structuredClone", { binding: "capturedStructuredClone", advice: "" }],
 ]);
 
 /** The module that captures them, and so the one file that must reach the ambient global. */
@@ -18,11 +17,14 @@ const MODULE = "src/meta/json-runtime.ts";
 const OWNER = [MODULE];
 
 /**
- * `src/meta/json-runtime.ts` binds `JSON.parse`, `JSON.stringify` and `structuredClone` at load,
- * before any generated module has run. The controller loads Builder-authored and Built-authored
- * modules into its own process, and a module that replaces `JSON` afterwards changes what every
- * later reader sees: a case record, a claim digest, a submitted artifact. The captured binding is
- * the one that cannot be moved out from under a reader.
+ * `src/meta/json-runtime.ts` binds `JSON.parse` and `JSON.stringify` at load. v1's controller
+ * loaded Builder-authored modules into its own process, where a module that replaced `JSON` changed
+ * what every later reader saw, and the captured binding was the one it could not move. Here no host
+ * process imports a generated module: a harness's tools run in a walled process of their own, and
+ * the one generated import, a check program's in `src/kernel/check-child.ts`, follows
+ * `lockJsonGlobals`, which freezes `JSON` so that the ambient functions there are the captured ones.
+ * What the bindings give every caller now is their types: `JsonValue` from a parse in place of
+ * `any`, and `string | undefined` from a stringify that can answer `undefined`.
  *
  * The owner's own note records that this was swept by hand once, across 148 call sites. A sweep
  * holds until the next call site arrives, which is what this rule is for.

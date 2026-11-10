@@ -218,8 +218,7 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
 **Owners**
 
 - `no-hand-rolled-error-render` [fix]: `errorMessage(e)` and `asError(e)`.
-- `require-captured-json-runtime` [fix]: in `src`, no ambient `JSON.parse`, `JSON.stringify` or
-  `structuredClone`.
+- `require-captured-json-runtime` [fix]: in `src`, no ambient `JSON.parse` or `JSON.stringify`.
 - `require-meta-runtime-import` [fix]: no `node:` import outside `src/meta`. Seven have a wrapper
   there, and the fixer moves them: `node:fs`, `node:fs/promises`, `node:path`, `node:os`,
   `node:net`, `node:module` and `node:assert/strict`. Any other, `node:crypto` for one, is
@@ -331,7 +330,7 @@ Each runtime surface has one owner. Import from it; add a missing member beside 
 | Subprocesses | `subprocess.ts` | `runSync`, `runTextSyncOrThrow`, `killProcessGroup`, `terminateAndReapProcessGroupId` |
 | Host binaries | `host-tool.ts` | `hostTool("git")` |
 | Git | `git.ts` | `gitOutput`, `gitText`, `gitMaybe`, `worktrees` |
-| JSON in and out | `json-runtime.ts` | `capturedJsonParse`, `parseJsonAs<T>`, `capturedJsonStringify`, `capturedStructuredClone` |
+| JSON in and out | `json-runtime.ts` | `capturedJsonParse`, `parseJsonAs<T>`, `capturedJsonStringify` |
 | JSON types and predicates | `json-shape.ts` | `JsonValue`, `JsonObject`, `OpenRecord`, `isString`, `isNumber`, `isBoolean`, `isRecord`, `asRecord`, `isFunction` |
 | Canonical JSON and hashes | `stable-json.ts`, `digest.ts` | `stableJson`, `canonicalJson`, `sameJsonValue`, `hashJsonValue`, `compareCodeUnits`; `sha256`, `sha256OfFile` |
 | Caught values | `runtime-values.ts` | `errorMessage`, `asError`, `errorCode` |

@@ -78,7 +78,8 @@ describe("the turn a keeper takes", () => {
     }
     // A login's limit is waited out, so its process dies on the wait or ends on its environment.
     for (const events of [[waited(2)], [waited(2), event("campaign.ended", { ending: "environment" })]]) {
-      expect(kept(events)).toEqual({ kind: "kept" });
+      expect(kept(events).kind).toBe("kept");
+      expect(turnOf(kept(events), NOW, HOUR)).toBe("continue");
     }
   });
 

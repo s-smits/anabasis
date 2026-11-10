@@ -6,6 +6,7 @@
  * unruled: until then source triage found a campaign could omit its reviewer, and 81 rejections at
  * the gate's room solves of that time went unruled.
  */
+import { STARTED, startOf } from "#src/campaign/comparison.ts";
 import { shortOf } from "#src/campaign/decide.ts";
 import { cutShort, type Plan } from "#src/campaign/ground.ts";
 import type { Decided } from "#src/campaign/move.ts";
@@ -155,7 +156,6 @@ export const MOVED = "campaign.move";
  *  goal stays active across turns until its model calls it met, or blocked once the same blocker
  *  has held for three; a climb is never met, so three conversations without a move are its block. */
 export const IDLE = 3;
-const STARTED = "comparison.started";
 /** A model a backend serves, named where a rehearsal's script sits in the Examiner's seat: the
  *  command wants a name, and the script is what is asked. */
 const SCRIPTED = "claude/claude-opus-5-5";
@@ -350,7 +350,7 @@ export function nextId(events: readonly LogEvent[], prefix: string): string {
 
 /** The flags of a comparison that began, as its start holds them: it goes on under its own terms. */
 function termsOf(events: readonly LogEvent[], id: string): string[] {
-  const start = events.find(({ kind, data }) => kind === STARTED && data.session === id)?.data ?? {};
+  const start = startOf(events, id) ?? {};
   const cap = asRecord(start.cap);
   return [
     ...flag("level", isNumber(start.level) ? String(start.level) : undefined),

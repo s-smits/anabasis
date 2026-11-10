@@ -47,6 +47,7 @@ import {
 import { admissionsOf, taskSets } from "../kernel/task.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { type Supply, supplyOf } from "./admission.ts";
+import type { Ruling } from "../referee/referee.ts";
 import { reported, STARTED } from "./comparison.ts";
 
 /** A failed practice solve, and where it stands now by the task's later solves. */
@@ -127,7 +128,7 @@ interface Compared {
   /** The tasks set aside for a person's labels. */
   readonly aside: number;
   /** The Referee's last ruling of each of its rejected answers, by kind. */
-  readonly rulings: Readonly<Record<(typeof RULINGS)[number], number>>;
+  readonly rulings: Readonly<Record<Ruling, number>>;
   /** Its solves and their rulings, without the session a round ran before it. */
   readonly billed: number;
   /** It has no report, and the campaign went past it (`nextBound`). */
@@ -156,7 +157,6 @@ export interface Campaign {
 
 /** Passes running under a later harness that mark a fail repaired: one solve is weak evidence. */
 const REPAIRED_AFTER = 2;
-const RULINGS = ["earned", "check-defect", "unclear"] as const;
 /** The events that bound a step: a step's start or its end, and the campaign's end. */
 const BOUNDS: ReadonlySet<string> = new Set([
   "exam.started",
@@ -249,13 +249,10 @@ function practiceFails(events: readonly LogEvent[]): (PracticeFail & { readonly 
  *  holds reports and no starts, and such a comparison's terms are read from its report. */
 function compared(events: readonly LogEvent[], id: string): Compared {
   const report = reported(events, id);
-  const start =
-    events.find(({ kind, data }) => kind === STARTED && data.session === id)?.data ??
-    lastReports(events).find(({ session }) => session === id)?.data ??
-    {};
+  const began = events.findIndex(({ kind, data }) => kind === STARTED && data.session === id);
+  const start = events[began]?.data ?? lastReports(events).find(({ session }) => session === id)?.data ?? {};
   const solves = solvesIn(events).filter((solve) => solve.start.comparison === id);
   const own = new Set(solves.map((solve) => solve.id));
-  const began = events.findIndex(({ kind, data }) => kind === STARTED && data.session === id);
   const setting = events.findLast(({ kind }, index) => kind === "campaign.setting" && index < began)?.data;
   const told = setting === undefined ? asRecord(solves[0]?.start.limits)?.modelTurns : setting.modelTurns;
   const scored =

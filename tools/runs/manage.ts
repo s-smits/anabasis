@@ -131,10 +131,13 @@ export function loginEnv(env: Readonly<Record<string, string | undefined>>, logi
 
 const isWord = (word: string): word is keyof typeof AFTER => Object.hasOwn(AFTER, word);
 
-/** The kinds of event the words `after` names, or undefined where one of them names none. */
+/** The kinds of event the words `after` names, or undefined where one of them names none, or where
+ *  `next` is joined to another: it pauses at the next step, with its own word to the run and its own
+ *  rest, and every other point lies past it. */
 const kindsOf = (after: string): readonly string[] | undefined => {
   const words = after.split("|");
-  return words.every(isWord) ? words.flatMap((word) => AFTER[word]) : undefined;
+  const joined = words.length > 1 && words.includes("next");
+  return words.every(isWord) && !joined ? words.flatMap((word) => AFTER[word]) : undefined;
 };
 
 /** How many events of the kinds `after` names `events` holds. */
@@ -162,7 +165,7 @@ export function solvesMs(events: readonly LogEvent[]): number {
 async function pauseAt(run: Run, after: string): Promise<void> {
   const kinds = kindsOf(after);
   if (kinds === undefined) {
-    throw new Error(`--after takes ${Object.keys(AFTER).join(", ")}, or several joined by |`);
+    throw new Error(`--after takes ${Object.keys(AFTER).join(", ")}, or several but next joined by |`);
   }
   const events = logEvents(run.path);
   const base = countOf(events, after);

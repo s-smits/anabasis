@@ -51,6 +51,10 @@ describe("going on with a campaign", () => {
     // campaign run again opens a new one on its notes.
     expect(restsAfter(promoted, "reported", 0)).toBe(true);
     expect(restsAfter(promoted, "reported", 1)).toBe(false);
+    // `next` joined to another point names nothing: taken as that other point it would write no
+    // pause word and rest with a solve open.
+    expect(restsAfter(promoted, "reported|promoted", 0)).toBe(true);
+    expect(restsAfter(promoted, "next|reported", 0)).toBe(false);
     // An old ladder's reading left open is no comparison: no move goes on with it.
     const read = [...promoted, event("comparison.started", { session: "l-1", ladder: true })];
     expect(restsAfter(read, "reported", 0)).toBe(true);

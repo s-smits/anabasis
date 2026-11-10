@@ -6,6 +6,7 @@ import {
   dueLines,
   ledgerViews,
   lengthsIn,
+  movedIn,
   nextOf,
   rowOf,
   triggerOf,
@@ -515,6 +516,19 @@ describe("the short view a timer reads", () => {
     expect(lines).toHaveLength(2);
     expect(lines[0]).not.toContain("nothing owed");
     expect(lines.map((line) => /\d+(?= step| of them)/u.exec(line)?.[0])).toEqual(["1", "1"]);
+  });
+
+  it("reads the window from a log's last event, so a closed run that ended before it is left out and a live one stays", () => {
+    // The file's time is no part of the reading: a copy fetched again is a file written now.
+    const ended = standing("r-ended", false, null, ["step: open · closed"], 40);
+    const recent = standing("r-recent", false, null, ["step: open · closed"], 60);
+    const running = standing("r-live", true, null, ["step: run"], 40);
+    const names = (days: number) => movedIn([ended, recent, running], now, days).map(({ row }) => row.name);
+    expect(names(2)).toEqual(["r-recent", "r-live"]);
+    expect(names(3)).toEqual(["r-ended", "r-recent", "r-live"]);
+    // What is left out is owed nowhere, where before it was counted as owed for the days.
+    expect(dueLines(movedIn([ended], now, 2), changedAt, now)[0]).toContain("nothing owed");
+    expect(dueLines([ended], changedAt, now)[0]).toContain("1 step(s) owed");
   });
 });
 

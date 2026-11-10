@@ -103,6 +103,29 @@ describe("going on with a campaign", () => {
     }
   });
 
+  it("refuses in the dry form of pause and continue the word --yes would refuse, and says a known one", () => {
+    const made = fakeHosts();
+    fixtures.push(made.root);
+    const name = "dry";
+    const folder = join(made.main, ".ana", "d2", name);
+    mkdirSync(folder, { recursive: true });
+    append(join(folder, "log.jsonl"), "campaign.opened", { name });
+    const dry = (verb: "pause" | "continueRun", after: string) =>
+      made.run(
+        `import { ${verb} } from "REPOSITORY/tools/runs/manage.ts"; await ${verb}(${JSON.stringify([name, "--after", after, "--", "--budget", "5"])});`,
+      );
+    for (const verb of ["pause", "continueRun"] as const) {
+      const refused = dry(verb, "reported|toString");
+      expect(refused.code).not.toBe(0);
+      expect(refused.err).toContain("--after takes");
+      const told = dry(verb, "reported");
+      expect({ code: told.code, err: told.err }).toEqual({ code: 0, err: "" });
+      expect(told.out).toContain(
+        verb === "pause" ? "would be stopped after its next reported" : "would go on after its next reported",
+      );
+    }
+  });
+
   it("pauses at the next step only once no solve is open", () => {
     const solving = [
       event("solve.started", { solve: "s-1" }),

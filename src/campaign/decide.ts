@@ -311,7 +311,7 @@ function drafting(events: readonly LogEvent[]): Move {
 }
 
 function bound(ground: Ground): Move | null {
-  const { events, plan, refused, supply, read } = ground;
+  const { events, plan, refused, supply, read, all } = ground;
   const { left } = plan;
   if (left !== null && left.dollars < left.reserve) {
     return end(
@@ -341,8 +341,16 @@ function bound(ground: Ground): Move | null {
       `comparison ${read.id} stopped on its check defects: the check program needs its author before more is spent`,
     );
   }
-  return read?.report.reading === "not-scored" && read.report.capped === true
-    ? end("budget", `comparison ${read.id} was cut by its dollar cap before it tallied a task`)
+  if (read?.report.reading === "not-scored" && read.report.capped === true) {
+    return end("budget", `comparison ${read.id} was cut by its dollar cap before it tallied a task`);
+  }
+  // A comparison that began goes on under the cap it was admitted at; the next one is not paid for
+  // where what is left cannot cover its test, since it would be cut the same way.
+  return refused.has("cap-short") && all.every(({ report }) => report !== null)
+    ? end(
+        "budget",
+        `$${left?.dollars.toFixed(2) ?? ""} of the campaign's budget are left, below what the next comparison's test costs at what its finished solves billed each`,
+      )
     : null;
 }
 

@@ -32,6 +32,7 @@ const SETS: Supply = {
   released: 1,
   faults: 0,
   frozen: false,
+  billed: null,
   stop: GOING,
 };
 const WANTED: Wanted = {
@@ -207,6 +208,40 @@ describe("what the gate refuses, by its code", () => {
         .filter(({ kind }) => kind === "stop.overridden")
         .map(({ data }) => data),
     ).toEqual([{ session: "b-2", reason: "a new budget", checkpoints: 3, sinceStep: 3 }]);
+  });
+});
+
+describe("a cap below the comparison's test", () => {
+  const billed = (solve: string, dollars: number) => [
+    event("solve.started", { solve }),
+    event("solve.finished", { solve, billed: dollars, ending: { outcome: "pass" } }),
+  ];
+  const under = (dollars: number) => ({ ...WANTED, cap: { dollars, reserve: 10 } });
+
+  it("is refused at what the log's finished solves billed each, and the log is left as it was", () => {
+    // Six tasks at two solves a side are 24 solves, $72 at the $3 the two finished solves average.
+    const log = six([
+      READ,
+      ...billed("s-1", 2),
+      ...billed("s-2", 4),
+      event("solve.started", { solve: "s-3" }),
+    ]);
+    const supply = supplyOf(read(log));
+    expect(supply.billed).toBe(3);
+    expect(codes(supply, under(71.99))).toEqual(["cap-short"]);
+    const before = read(log).length;
+    expect(() => admitComparison(log, { ...ASKED, wanted: under(71.99) })).toThrow(Refused);
+    expect(read(log)).toHaveLength(before);
+  });
+
+  it("is admitted where solves bill under their reserve, and where no solve has finished", () => {
+    // The reserve of $10 holds 7 of the 24 solves, but at $3 a solve the cap covers them all: the
+    // note says what the reserve leaves open, and nothing is refused.
+    const log = six([READ, ...billed("s-1", 2), ...billed("s-2", 4)]);
+    expect(admitComparison(log, { ...ASKED, wanted: under(72) }).at(-1)).toContain("not-scored");
+    expect(codes(SETS, under(1))).toEqual([]);
+    // A session with no comparison after it scores nothing, and is asked no test's price.
+    expect(admitSession(log, { ...SESSION, wanted: { cap: under(1).cap } })).not.toHaveLength(0);
   });
 });
 

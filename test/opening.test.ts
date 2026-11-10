@@ -41,7 +41,7 @@ describe("what a campaign runs by", () => {
       patience: 6,
       unprepared: false,
       practice: null,
-      wanted: { target: 24, level: 0.1 },
+      wanted: { target: 24, level: 0.1, solves: 2 },
       pastStop: null,
       left: { dollars: 360, reserve: 10 },
       prompted: false,

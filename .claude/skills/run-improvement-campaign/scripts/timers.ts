@@ -117,7 +117,14 @@ export function timersIn(files: Iterable<Iterable<string>>, since = ""): Timer[]
     // timer, or that belongs to a firing's turn, is parsed.
     const named = line.includes('"CronCreate"') || line.includes('"scheduledTaskId"');
     if (!(named || turn !== null || (asked.size > 0 && line.includes('"tool_result"')))) return;
-    const row = asRecord(capturedJsonParse(line));
+    let parsed: JsonValue;
+    try {
+      parsed = capturedJsonParse(line);
+    } catch {
+      // A live session's transcript, or one half mirrored, can end in a line cut mid-write.
+      return;
+    }
+    const row = asRecord(parsed);
     if (row === null || !isString(row.uuid) || seen.has(row.uuid)) return;
     seen.add(row.uuid);
     const early = isString(row.timestamp) && Date.parse(row.timestamp) < from;

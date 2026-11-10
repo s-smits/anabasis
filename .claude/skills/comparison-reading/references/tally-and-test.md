@@ -43,6 +43,8 @@ the older ones; none of those promotes. `not-scored` covers both no task tallied
 cut short. Beside the test the report gives each side's validity alone (`valid`), the sets, the
 overlap with the pair's previous comparison and each measure's points. The A/A, the reference on
 halves of its own solves mirrored in time, is read either way at the level (`readsStepEitherWay`).
+At two solves a side a half is one solve, and the mirror runs on over the tasks: the earlier solve
+is the first sample on every other task (`pairsOf`).
 It should read no step, ends nothing, and feeds factor 2.
 
 ## The record

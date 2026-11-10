@@ -682,16 +682,16 @@ describe("a campaign against its bars", () => {
       old: string,
       fresh: string,
       each: number,
-      starter: readonly boolean[],
+      starter: (place: number) => readonly boolean[],
     ) => [
-      ...TASKS6.flatMap((task) => [
+      ...TASKS6.flatMap((task, place) => [
         ...solved(
           session,
           task,
           old,
           Array.from({ length: each }, () => true),
         ),
-        ...solved(session, task, fresh, starter),
+        ...solved(session, task, fresh, starter(place)),
       ]),
       event(REPORTED, {
         ...reported(session, old, fresh).data,
@@ -702,30 +702,38 @@ describe("a campaign against its bars", () => {
       }),
     ];
     const promoted = [reported("g-1", "S", "h1"), promotedTo("h1", "S"), ...TASKS6.flatMap(heldOut)];
-    // The starter passes its first solve of each task and fails its second: six untied tasks, all
-    // one way, which read a step for neither half one-sided and for one half either way.
-    expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 2, [true, false])])).toBe(
+    const [drifts, alike, once] = [() => [true, false], () => [true, true], () => [true]];
+    // One sample of the starter passes every task and the other fails it, the first sample being
+    // the earlier solve on every other task (`pairsOf`): six untied tasks, all one way, which read
+    // a step for neither half one-sided and for one half either way.
+    const apart = (place: number) => (place % 2 === 0 ? [true, false] : [false, true]);
+    expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 2, apart)])).toBe(
       "- Starter against itself: 1 starter comparison split the starter's own solves in two, 1 with enough untied tasks to read a step: 0 read one, 1 read one either way, and 0 tied every task. Reported only, and counted towards no bar.",
     );
+    // A starter that passes its first solve of every task and fails its second drifted in time, and
+    // its halves hold three such tasks each: no step either way.
+    expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 2, drifts)])).toContain(
+      "1 with enough untied tasks to read a step: 0 read one, 0 read one either way, and 0 tied every task.",
+    );
     // A starter that answers alike on every solve ties every task with itself.
-    expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 2, [true, true])])).toContain(
+    expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 2, alike)])).toContain(
       "1 starter comparison split the starter's own solves in two, 0 with enough untied tasks to read a step: 0 read one, 0 read one either way, and 1 tied every task.",
     );
     // One solve a side does not split, and a candidate's comparison is no starter comparison.
     const none =
       "- Starter against itself: no starter comparison split the starter's own solves in two. Reported only.";
-    expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 1, [true])])).toBe(none);
-    expect(starterLine([...promoted, ...compared("g-2", "h1", "h2", 2, [true, false])])).toBe(none);
+    expect(starterLine([...promoted, ...compared("g-2", "h1", "S", 1, once)])).toBe(none);
+    expect(starterLine([...promoted, ...compared("g-2", "h1", "h2", 2, drifts)])).toBe(none);
     // The reading the comparison reported is the reference's against the starter, untouched.
-    const log = [opened, ...promoted, ...compared("g-2", "h1", "S", 2, [true, false])];
+    const log = [opened, ...promoted, ...compared("g-2", "h1", "S", 2, drifts)];
     expect(epochsOf(log)[1]?.starter_tally).toEqual({ wins: 0, losses: 0, ties: 6 });
     // Where neither side varies, the starter's tie on every task is no measured zero, and the
     // repetition line names that comparison; where the starter varies, it names none.
     const repeats = (events: readonly LogEvent[]) => barLines([opened, ...events])[4];
-    expect(repeats([...promoted, ...compared("g-2", "h1", "S", 2, [true, true])])).toBe(
+    expect(repeats([...promoted, ...compared("g-2", "h1", "S", 2, alike)])).toBe(
       "- Repetition: in 1 comparison each side gave one validity in every solve of every task, and in 1 one measure as well (g-2), where no split of either side shows noise. Reported only.",
     );
-    expect(repeats([...promoted, ...compared("g-2", "h1", "S", 2, [true, false])])).toBe(
+    expect(repeats([...promoted, ...compared("g-2", "h1", "S", 2, drifts)])).toBe(
       "- Repetition: in 0 comparisons each side gave one validity in every solve of every task, and in 0 one measure as well. Reported only.",
     );
     // Validity is counted apart: a reference that passes every solve but measures 1 and 0.93 repeats

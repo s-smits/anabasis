@@ -7,12 +7,13 @@
  * than the rest; a folder whose log, and the commit that reads it, have not moved is left as it is.
  * A reader's code changed without a commit is not seen, so `--force` derives again.
  *
- * `READERS` is the one list of them, and `pass.ts` runs the same list a reader at a time for the
- * pulse (operator, 5 November: "ALL the scripts"). Its order is what a pass reads first: the rows
- * and triggers, then what a reader of a run asks soonest, and last `versions` and `chain`, which open
- * every kept harness beside a log and took 11 and 8 s on a log of 6,905 events against 1.5 s on one
- * of 51,590 (measured 5 November). A reader runs with no credential in its environment and with
- * `ANA_HOP=1`, under which it reaches no other host.
+ * `READERS` is the one list of them. `pass.ts` runs for the pulse those that name a moment (`at`),
+ * a reader at a time, on a log only once one of its moments lies past what it last read: a reader's
+ * answer matters at the event it answers, and on the largest closed log (96 MB, measured
+ * 10 November) the 27 readers without the embedding model took 277 s against a pass of 30 s. The rest
+ * are `derive`'s alone, among them `versions` and `chain`, which open every kept harness beside a log
+ * (87 and 169 s there) and come last. A reader runs with no credential in its environment and with `ANA_HOP=1`,
+ * under which it reaches no other host.
  *
  * The folders sit under the main worktree's `data/derived/`, which git ignores: the readers print
  * hidden values as the log holds them, so they stay on the exam side with the archive. A reader that
@@ -27,6 +28,7 @@ import {
   writeFileSync,
 } from "#src/meta/filesystem.ts";
 import { gitMaybe, mainTree } from "#src/meta/git.ts";
+import type { EventKind } from "#src/kernel/log.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
@@ -43,6 +45,10 @@ const MANIFEST = "manifest.json";
 /** Readers at once: the job that runs them shares its host with live campaigns. */
 const WIDTH = 4;
 const READER_MS = 180_000;
+const REPORTED = "comparison.reported";
+const PROMOTED = "harness.promoted";
+const ENDED = "campaign.ended";
+const EXAMINED = "exam.finished";
 
 export interface Reader {
   readonly name: string;
@@ -51,12 +57,17 @@ export interface Reader {
   /** The script and its arguments, from the repository's root, for a log's absolute path and the
    *  repository's. */
   readonly args: (log: string, repo: string) => readonly string[];
-  /** Whether it reads through the local embedding model. Its vectors outlast a cut, so a pass gives it
-   *  any time left, and `--no-embed` leaves it out. */
+  /** Whether it reads through the local embedding model, which `derive --no-embed` leaves out. */
   readonly embeds?: boolean;
   /** Whether it finds its campaign by name, so that it reads whichever log the registry gives that
    *  name (`readerOutput`). */
   readonly named?: boolean;
+  /** The events whose arrival makes its answer worth a look's lines; a reader without them runs in
+   *  `derive` only. */
+  readonly at?: readonly EventKind[];
+  /** The lines that answer a moment where its text names neither the moment's session nor its
+   *  harness. */
+  readonly gist?: RegExp;
 }
 
 export interface Derived {
@@ -80,6 +91,14 @@ const skillReader = (name: string, answers: string, script: string, ...flags: st
   logReader(name, answers, `${SKILLS}/${script}`, ...flags);
 
 /** A reader that names its campaign instead of its log, found as the registry finds it. */
+/** `reader`, run for the pulse too, once an event of `kinds` lies past what it last read; `gist`
+ *  as `Reader.gist` has it. */
+const at = (reader: Reader, kinds: readonly EventKind[], gist?: RegExp): Reader => ({
+  ...reader,
+  at: kinds,
+  ...keyIfDefined("gist", gist),
+});
+
 const namedReader = (
   name: string,
   answers: string,
@@ -96,105 +115,159 @@ const namedReader = (
 /** The readers that take one campaign and print what it holds, calling no paid model and writing
  *  nothing of the campaign's, the likeliest news first. Those marked `embeds` run a local model and
  *  keep their vectors in the reader store, and come after all but the three that open every kept harness,
- *  as a first read is the longest and their news the least likely. A script that needs more than a campaign
+ *  as a first read is the longest and their news the least likely. Each moment's readers (`at`) come
+ *  from what their text says of it; a `gist` stands where, on three closed logs of three domains
+ *  (10 November), naming the session or harness found none of the reader's lines: a summary row, a
+ *  table's own row. A script that needs more than a campaign
  *  to say anything, reads no run or writes elsewhere is left out, and `whole-run-investigation` names
  *  each. */
 export const READERS: readonly Reader[] = [
-  {
-    name: "rows",
-    answers: "rows A to F and every trigger with its detail (`wri.ts read`)",
-    args: (log) => ["tools/wri/wri.ts", "read", "--log", log],
-  },
-  skillReader(
-    "ending",
-    "why the campaign stopped, and the move and log line that ended it",
-    "campaign-mechanics/scripts/ending.ts",
+  at(
+    {
+      name: "rows",
+      answers: "rows A to F and every trigger with its detail (`wri.ts read`)",
+      args: (log) => ["tools/wri/wri.ts", "read", "--log", log],
+    },
+    [REPORTED, PROMOTED, EXAMINED, "build.finished", ENDED],
   ),
-  skillReader(
-    "readings",
-    "each comparison's terms, tally, p, wins to spare or losses short of a step, cap and A/A",
-    "comparison-reading/scripts/reading.ts",
+  at(
+    skillReader(
+      "ending",
+      "why the campaign stopped, and the move and log line that ended it",
+      "campaign-mechanics/scripts/ending.ts",
+    ),
+    ["build.finished", ENDED],
+    /^\d+ events, |patience: /,
   ),
-  skillReader(
-    "starter-reads",
-    "each starter comparison after a promotion, its tally split by where each task came from",
-    "comparison-reading/scripts/starter-reads.ts",
+  at(
+    skillReader(
+      "readings",
+      "each comparison's terms, tally, p, wins to spare or losses short of a step, cap and A/A",
+      "comparison-reading/scripts/reading.ts",
+    ),
+    [REPORTED],
+  ),
+  at(
+    skillReader(
+      "starter-reads",
+      "each starter comparison after a promotion, its tally split by where each task came from",
+      "comparison-reading/scripts/starter-reads.ts",
+    ),
+    [REPORTED],
+    /^\d+ starter reads?\b/,
   ),
   logReader(
     "degradations",
     "each session or solve a model other than the one asked for served",
     "tools/runs/degradations.ts",
   ),
-  {
-    name: "climb",
-    answers: "promotions, whether each was confirmed, and the comparisons between them",
-    args: (log) => ["tools/wri/wri.ts", "climb", "--log", log],
-  },
-  skillReader(
-    "gap",
-    "per comparison, how far each side's valid answers stand from the best answer on record",
-    "comparison-reading/scripts/gap.ts",
+  at(
+    {
+      name: "climb",
+      answers: "promotions, whether each was confirmed, and the comparisons between them",
+      args: (log) => ["tools/wri/wri.ts", "climb", "--log", log],
+    },
+    [PROMOTED],
+    /^\| (?!campaign |---)/,
   ),
-  namedReader(
-    "view",
-    "`runs view`: each session and comparison, the epochs, the five factors' lines, the table's move",
-    CLI,
-    ["view"],
+  at(
+    skillReader(
+      "gap",
+      "per comparison, how far each side's valid answers stand from the best answer on record",
+      "comparison-reading/scripts/gap.ts",
+    ),
+    [REPORTED],
   ),
-  namedReader(
-    "loop",
-    "the WRI2P2 step this run stands at and what it owes next",
-    `${SKILLS}/run-improvement-campaign/scripts/wri2p2.ts`,
-    [],
+  at(
+    namedReader(
+      "view",
+      "`runs view`: each session and comparison, the epochs, the five factors' lines, the table's move",
+      CLI,
+      ["view"],
+    ),
+    [ENDED],
+    /^(?!reader )\S+ /,
   ),
-  namedReader(
-    "source",
-    "each launch's commit, whether clean, load, Python, and the flags that differ between launches",
-    CLI,
-    ["source"],
+  at(
+    namedReader(
+      "loop",
+      "the WRI2P2 step this run stands at and what it owes next",
+      `${SKILLS}/run-improvement-campaign/scripts/wri2p2.ts`,
+      [],
+    ),
+    [PROMOTED, ENDED],
+    /^\S+ · /,
+  ),
+  at(
+    namedReader(
+      "source",
+      "each launch's commit, whether clean, load, Python, and the flags that differ between launches",
+      CLI,
+      ["source"],
+    ),
+    ["campaign.opened"],
+    /^run-\d+ /,
   ),
   namedReader("logged", "the log's counts as this tree's folds replay it, in one line", CLI, ["replay"]),
-  namedReader(
-    "cost",
-    "dollars recorded and repriced, a promotion and a confirmed promotion, on one meter",
-    `${TUNER}/cost.ts`,
-    ["--name"],
-    ["--format", "tsv"],
+  at(
+    namedReader(
+      "cost",
+      "dollars recorded and repriced, a promotion and a confirmed promotion, on one meter",
+      `${TUNER}/cost.ts`,
+      ["--name"],
+      ["--format", "tsv"],
+    ),
+    [PROMOTED, ENDED],
+    /^\S+\t\d{4}-\d\d-\d\d\t/,
   ),
-  namedReader(
-    "table",
-    "this run's row of the release table: setting, promotions, hours, dollars",
-    `${TUNER}/table.ts`,
-    ["--name"],
-    ["--rows", "runs", "--format", "tsv"],
+  at(
+    namedReader(
+      "table",
+      "this run's row of the release table: setting, promotions, hours, dollars",
+      `${TUNER}/table.ts`,
+      ["--name"],
+      ["--rows", "runs", "--format", "tsv"],
+    ),
+    [PROMOTED, ENDED],
+    /^(?!run\t)\S+\t/,
   ),
-  {
-    name: "replay",
-    answers: "each reading again under this tree's promotion rule, with and without the bill",
-    args: (log, repo) => [
-      `${TUNER}/replay.ts`,
-      "--tree",
-      repo,
-      "--logs",
-      dirname(dirname(log)),
-      "--name",
-      basename(dirname(log)),
-    ],
-  },
-  skillReader(
-    "conditions",
-    "solves by condition and setting, and whether each comparison's sides are comparable",
-    "campaign-mechanics/scripts/conditions.ts",
+  at(
+    {
+      name: "replay",
+      answers: "each reading again under this tree's promotion rule, with and without the bill",
+      args: (log, repo) => [
+        `${TUNER}/replay.ts`,
+        "--tree",
+        repo,
+        "--logs",
+        dirname(dirname(log)),
+        "--name",
+        basename(dirname(log)),
+      ],
+    },
+    [PROMOTED],
+  ),
+  at(
+    skillReader(
+      "conditions",
+      "solves by condition and setting, and whether each comparison's sides are comparable",
+      "campaign-mechanics/scripts/conditions.ts",
+    ),
+    ["comparison.started"],
   ),
   logReader(
     "tasks",
     "every scored task as its author wrote it and the comparisons that scored it, no outcome",
     "tools/wri/tasks.ts",
   ),
-  skillReader(
-    "draw",
-    "the held-out pool, the next comparison's draw, admission's floor, the smallest tallies that step",
-    "comparison-reading/scripts/draw.ts",
+  at(
+    skillReader(
+      "draw",
+      "the held-out pool, the next comparison's draw, admission's floor, the smallest tallies that step",
+      "comparison-reading/scripts/draw.ts",
+    ),
+    ["comparison.started", EXAMINED],
+    /^(held-out pool|next comparison|admission)/,
   ),
   skillReader(
     "builder-view",
@@ -206,25 +279,34 @@ export const READERS: readonly Reader[] = [
     "what the Examiner's next opening would be told",
     "design-and-seats/scripts/examiner-view.ts",
   ),
-  skillReader(
-    "ambition",
-    "hours, solves and dollars to the first comparison and promotion; each Examiner session's yield",
-    "examiner-complexity/scripts/ambition.ts",
+  at(
+    skillReader(
+      "ambition",
+      "hours, solves and dollars to the first comparison and promotion; each Examiner session's yield",
+      "examiner-complexity/scripts/ambition.ts",
+    ),
+    [EXAMINED],
   ),
   skillReader(
     "exams",
     "one row a session and task family: drafts, held, refused, no room, proved",
     "examiner-complexity/scripts/exams.ts",
   ),
-  skillReader(
-    "zone",
-    "per comparison, tasks the reference answers never, in some solves or always, and untied by what",
-    "examiner-complexity/scripts/zone.ts",
+  at(
+    skillReader(
+      "zone",
+      "per comparison, tasks the reference answers never, in some solves or always, and untied by what",
+      "examiner-complexity/scripts/zone.ts",
+    ),
+    [REPORTED],
   ),
-  logReader(
-    "answers",
-    "per comparison, tasks where a side's passes repeated one answer, and the objective's repeat spread",
-    "tools/wri/answers.ts",
+  at(
+    logReader(
+      "answers",
+      "per comparison, tasks where a side's passes repeated one answer, and the objective's repeat spread",
+      "tools/wri/answers.ts",
+    ),
+    [REPORTED],
   ),
   logReader(
     "waits",
@@ -338,7 +420,7 @@ export const READERS: readonly Reader[] = [
   ),
 ];
 
-/** The list a pass or `derive` runs: `--no-embed` takes out the readers that load the model. */
+/** The list `derive` runs: `--no-embed` takes out the readers that load the model. */
 export const readersOf = (flags: { readonly "no-embed"?: boolean | undefined }): readonly Reader[] =>
   flags["no-embed"] === true ? READERS.filter(({ embeds }) => embeds !== true) : READERS;
 

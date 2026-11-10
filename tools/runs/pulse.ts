@@ -19,13 +19,10 @@
  * when it ends. Since 22 October each look also polls every configured host once, with a cursor for
  * this observer, unless --here is named. A missing peer is a warning and exit 1. No local state path is sent to another machine.
  *
- * Since 5 November a look also says what the deterministic readers found in each run whose log moved
- * (`pulse-readers.ts`), which `--no-readers` leaves out, and the triggers come from their `rows`.
- * `--no-embed` keeps them and leaves out only those that load the local embedding model.
- * Until then a look took 2.1 s at the median and read the investigation only after an event that can
- * move a trigger (27% of the looks where a log grew, over 57 recorded logs): a pass now shares that
- * read between observers and bounds it, so the two of 358 alarms it said up to 29 minutes late are said
- * at the next look.
+ * A look also says, under each moment among its new events (a report, a promotion, a session's or a
+ * campaign's end), what the deterministic readers found of it (`pulse-readers.ts`), which
+ * `--no-readers` leaves out, and the triggers come from their `rows`. No reader of a moment loads the
+ * embedding model, so the look has no flag for it.
  *
  * Nothing a look read is lost to a kill, and the hook's `timeout 40` kills it whole. A look remembers
  * only after it has printed, so a kill before that says the same events again, and a look over ssh
@@ -57,18 +54,14 @@ import { hostsOf } from "./host-config.ts";
 import { lastLaunch, unlaunchedSeed } from "./receipt.ts";
 import { launchedIn, runReason, runState, stateOf } from "./state.ts";
 import {
-  type Alarm,
   alarmsMoved,
+  type Moment,
   PER_LOOK,
-  pastMilestone,
   pruneObservers,
   readersSaid,
   remember,
-  resultOf,
-  type SaidOf,
   startPass,
   storeOf,
-  triggerNameOf,
   withinDeadline,
 } from "./pulse-readers.ts";
 import {
@@ -90,14 +83,16 @@ interface Seen {
   readonly quiet: boolean;
   /** Each watched investigation trigger's detail at the last look that read them. */
   readonly triggers?: Readonly<Record<string, string>>;
-  /** The log's bytes at the last look, and at the last look that saw a milestone in its events. */
-  readonly size?: number;
-  readonly milestoneAt?: number;
-  /** What this observer has compared of each reader. */
-  readonly readers?: Readonly<Record<string, SaidOf>>;
-  /** Readers behind the log, which keep a closed run in the looks until they have read it. */
-  readonly owed?: boolean;
+  /** The log's bytes the `rows` reader had read at the last look that read its triggers. */
+  readonly rowsAt?: number;
+  /** The moments its readers have not read, which keep a closed run in the looks until they have. */
+  readonly moments?: readonly Moment[];
+  /** The hashes of the readers' lines this observer has said. */
+  readonly said?: readonly string[];
 }
+
+/** One of the investigation's triggers of a log. */
+type Alarm = NonNullable<ReturnType<typeof alarmsMoved>>["alarms"][number];
 
 /** One look at one run: its status line, what it says of the events since the last look, and what
  *  to remember of it. */
@@ -116,6 +111,15 @@ interface Memory {
   readonly freeGiB: number | null;
   readonly logs: Record<string, Seen>;
   readonly acks?: Readonly<Record<string, string>>;
+}
+
+/** A run a look reports, its events and its log's bytes once they were read. */
+interface Chosen {
+  readonly run: Run;
+  readonly open: boolean;
+  readonly before: Seen | undefined;
+  readonly events: readonly LogEvent[];
+  readonly size: number;
 }
 
 /** A closed run `status` shows without `--all`: one whose log changed this recently. */
@@ -492,50 +496,62 @@ export function pulse(
   };
 }
 
+/** `said` with each reader line placed under the line of the event it answers, where the look said
+ *  one, and the rest after them. */
+function underEvents(
+  said: readonly string[],
+  fresh: readonly LogEvent[],
+  placed: ReturnType<typeof readersSaid>["placed"],
+) {
+  const under = new Map<number, string[]>();
+  for (const { at, lines } of placed) {
+    const event = fresh[at];
+    const line = event === undefined ? null : (SAID[event.kind]?.(event.data) ?? null);
+    const index = line === null ? -1 : said.findIndex((one) => one === line || one.startsWith(`${line} (×`));
+    under.set(index, [...(under.get(index) ?? []), ...lines.map((one) => (index < 0 ? one : `  ${one}`))]);
+  }
+  return [...said.flatMap((line, index) => [line, ...(under.get(index) ?? [])]), ...(under.get(-1) ?? [])];
+}
+
 /** One run's look, with what the readers add to it where `store` is given. */
 function runLook(
-  { run, open, before }: { run: Run; open: boolean; before: Seen | undefined },
+  { run, open, before, events, size }: Chosen,
   { now, store, state, spare }: { now: number; store: string | null; state: string; spare: number },
 ) {
-  const size = statSync(run.path).size;
-  const events = logEvents(run.path);
+  if (store === null) {
+    const seen = pulse(run, events, open ? "open" : "closed", before, { now, alarms: () => null });
+    return { events, seen: seen.seen, status: seen.status, said: seen.said, readers: 0 };
+  }
   const fresh = events.slice(before?.lines ?? events.length);
-  const milestoneAt = fresh.some(isMilestone) ? size : before?.milestoneAt;
-  const rows = before?.readers?.rows;
+  const moved = alarmsMoved(store, run.path, before?.rowsAt);
+  // The rows read again only past a moment, so a move of theirs is a milestone.
   const seen = pulse(run, events, open ? "open" : "closed", before, {
     now,
-    ...(store === null
-      ? { alarms: () => null }
-      : {
-          alarms: () => alarmsMoved(store, run.path, rows),
-          milestone: pastMilestone(milestoneAt, rows?.size, resultOf(store, run.path, "rows")?.size ?? -1),
-        }),
+    alarms: () => moved?.alarms ?? null,
+    milestone: moved !== null,
   });
-  if (store === null) return { events, seen: seen.seen, status: seen.status, said: seen.said, readers: 0 };
   const read = readersSaid({
     store,
     log: run.path,
     size,
-    lastSize: before?.size,
-    before: before?.readers,
-    milestoneAt,
+    fresh,
+    owed: before?.moments,
+    said: before?.said,
     files: join(`${state}.d`, run.name),
     spare,
-    // A watched trigger's own lines say it, and repeat it only as its key moves (`keyOf`).
-    saidElsewhere: (reader, line) => reader === "rows" && WATCHED.has(triggerNameOf(line)),
+    watched: new Set(WATCHED.keys()),
   });
+  const said = [...underEvents(seen.said, fresh, read.placed), ...read.lines];
+  // Only these are kept, so a state from before 10 November drops what its readers compared.
+  const { lines, open: wasOpen, quiet, triggers } = seen.seen;
+  const rowsAt = moved?.size ?? before?.rowsAt;
+  const kept: Seen = { lines, open: wasOpen, quiet, ...keyIfDefined("triggers", triggers) };
   return {
     events,
     status: seen.status,
-    said: [...seen.said, ...read.said],
-    readers: read.said.length,
-    seen: {
-      ...seen.seen,
-      size,
-      ...keyIfDefined("milestoneAt", milestoneAt),
-      readers: read.seen,
-      owed: read.owed,
-    } satisfies Seen,
+    said,
+    readers: said.length - seen.said.length,
+    seen: { ...kept, ...keyIfDefined("rowsAt", rowsAt), moments: read.owed, said: read.said },
   };
 }
 
@@ -550,7 +566,7 @@ async function look(
   state: string,
   names: readonly string[],
   memory: Memory,
-  { store, noEmbed }: { readonly store: string | null; readonly noEmbed: boolean },
+  { store }: { readonly store: string | null },
 ): Promise<{ lines: string[]; memory: Memory }> {
   const running = processes();
   const all = runs().map((run) => ({
@@ -560,24 +576,29 @@ async function look(
   }));
   // Only a log the look reports is read: until 2 November every look parsed every run's whole log,
   // closed ones included, which was 0.55 s of a 2.5 s look on the Linux runner.
-  const chosen = all.filter(({ run, open, before }) =>
-    names.length > 0
-      ? names.some((name) => run.name.includes(name))
-      : open ||
-        before?.open === true ||
-        before?.owed === true ||
-        (before === undefined &&
-          !unlaunchedSeed(run) &&
-          Date.now() - statSync(run.path).mtimeMs < RECENT_MS &&
-          logEvents(run.path).at(-1)?.kind !== ENDED),
-  );
+  const chosen: Chosen[] = all
+    .filter(({ run, open, before }) =>
+      names.length > 0
+        ? names.some((name) => run.name.includes(name))
+        : open ||
+          before?.open === true ||
+          (before?.moments?.length ?? 0) > 0 ||
+          (before === undefined &&
+            !unlaunchedSeed(run) &&
+            Date.now() - statSync(run.path).mtimeMs < RECENT_MS &&
+            logEvents(run.path).at(-1)?.kind !== ENDED),
+    )
+    // The bytes are read after the events, so a moment's size covers it.
+    .map((each) => ({ ...each, events: logEvents(each.run.path), size: statSync(each.run.path).size }));
   if (store !== null) {
     const tree = resolve(import.meta.dir, "..", "..");
-    await startPass(
-      store,
-      chosen.map(({ run }) => run.path),
-      { tree, noEmbed },
-    );
+    const asks = chosen.map(({ run, before, events, size }) => ({
+      log: run.path,
+      size,
+      fresh: events.slice(before?.lines ?? events.length),
+      owed: before?.moments,
+    }));
+    await startPass(store, asks, { tree });
   }
   const now = Date.now();
   const disk = statfsSync(".");
@@ -661,7 +682,6 @@ export async function watch(args: readonly string[]): Promise<void> {
       here: { type: "boolean", default: false },
       ack: { type: "string" },
       "no-readers": { type: "boolean", default: false },
-      "no-embed": { type: "boolean", default: false },
     },
   });
   const cwd = runtimeProcess.cwd();
@@ -689,12 +709,11 @@ export async function watch(args: readonly string[]): Promise<void> {
           "--ack",
           memory.acks?.[host.name] ?? "none",
           ...(readers ? [] : ["--no-readers"]),
-          ...(values["no-embed"] ? ["--no-embed"] : []),
         ],
         [host],
       ),
     }));
-    const here = await look(state, names, memory, { store, noEmbed: values["no-embed"] });
+    const here = await look(state, names, memory, { store });
     if (values.ack !== undefined && here.lines.length > 0) {
       // A peer's answer: what it would remember waits for its caller to return the last line.
       const token = sha256(`${String(Date.now())}\n${String(runtimeProcess.pid)}`).slice(0, 16);

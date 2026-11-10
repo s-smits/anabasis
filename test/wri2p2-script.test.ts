@@ -497,6 +497,19 @@ describe("the short view a timer reads", () => {
     );
   });
 
+  it("counts and names the step that `nextOf` prints for a real folder, so a change of its wording shows", () => {
+    for (const iteration of [false, true]) {
+      const { dir, step } = folder(`due-${String(iteration)}`, "rx", iteration);
+      const printed = step();
+      const name = /^step: (\w+)/u.exec(printed.find((line) => line.startsWith("step: ")) ?? "")?.[1] ?? "";
+      // An owed step: neither the running nor the measured one, which the view leaves out.
+      expect(name).toMatch(/^(?!run$|done$)\w+$/u);
+      const lines = dueLines([{ ...standing("rx", false, dir, []), step: printed }], () => now, now);
+      expect(lines[0]).toContain("1 step(s) owed");
+      expect(lines[1]?.split(" · ").slice(0, 3)).toEqual([name, "0.0 h", "rx"]);
+    }
+  });
+
   it("never says nothing is owed while every owed step has stood for the days", () => {
     const lines = dueLines([standing("r1", false, "/wri/old", ["step: plan · x"])], changedAt, now);
     expect(lines).toHaveLength(2);

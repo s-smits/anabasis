@@ -8,6 +8,7 @@ import {
   lengthsIn,
   movedIn,
   nextOf,
+  openingOf,
   unmeasured,
 } from "#skills/run-improvement-campaign/scripts/wri2p2.ts";
 import { progressOf as rowOf, triggerOf } from "#tools/runs/said.ts";
@@ -106,6 +107,34 @@ function folder(name: string, run: string, iteration: boolean) {
 
 const table = (ids: string[], outcome = "x") =>
   `| id | outcome |\n| --- | --- |\n${ids.map((id) => `| ${id} | ${outcome} |`).join("\n")}\n`;
+
+describe("a run's step at its trigger", () => {
+  const row = { name: "r1", host: "here", live: true };
+  const pausing = (args: string[]) => [{ pid: 1, cwd: "/w", args }];
+
+  it("pauses a live run after its next comparison before its investigation opens", () => {
+    expect(openingOf(row, "2 promotions", [])).toEqual([
+      "step: pause · 2 promotions; the investigation opens once the run stops after its next comparison",
+      "  bun run runs pause r1 --after reported --yes",
+    ]);
+  });
+
+  it("waits while a pause of the run is armed, and opens once the run has stopped", () => {
+    const armed = pausing(["bun", "tools/runs/cli.ts", "pause", "r1", "--after", "reported", "--yes"]);
+    expect(openingOf(row, "2 promotions", armed)[0]).toStartWith("step: waits");
+    expect(openingOf(row, "2 promotions", pausing(["bun", "cli.ts", "pause", "r2"]))[0]).toStartWith(
+      "step: pause",
+    );
+    expect(openingOf({ ...row, live: false }, "2 promotions", armed)[0]).toBe("step: open · 2 promotions");
+    expect(openingOf(row, null, [])).toEqual(["step: run"]);
+  });
+
+  it("pauses a peer's run on its own host", () => {
+    expect(openingOf({ ...row, host: "peer" }, "12.0 h since its opening", [])[1]).toBe(
+      "  bun run runs on peer pause r1 --after reported --yes",
+    );
+  });
+});
 
 describe("the next step of an investigation", () => {
   it("walks the shared steps from the shared instructions to the fresh runs", () => {
@@ -458,7 +487,8 @@ describe("the short view a timer reads", () => {
         standing("r1", false, "/wri/a", ["deviated: lanes · by hand", "step: vet · vetting.md names no P2"]),
         standing("r2", false, "/wri/b", ["step: outcomes · resolve C1"]),
         standing("r3", false, "/wri/b", ["step: outcomes · resolve C1"]),
-        standing("r4", true, null, ["step: open · 2 promotions", "  bun wri2p2.ts open r4"]),
+        // A live run at its trigger owes its pause, and the line names the pause, never `open`.
+        standing("r4", true, null, openingOf({ name: "r4", host: "here", live: true }, "2 promotions", [])),
         standing("r5", false, null, ["step: open · closed (budget)"], 88),
       ],
       changedAt,
@@ -468,14 +498,16 @@ describe("the short view a timer reads", () => {
       "due at 2026-11-08T04:00Z · 4 step(s) owed, the oldest listed for 40.0 h · 1 run(s) live",
     );
     expect(lines.slice(1).map((line) => line.split(" · ").slice(0, 3).join(" · "))).toEqual([
-      "open · new · r4",
+      "pause · new · r4",
       "outcomes · 40.0 h · r2 and 1 more",
       "open · 12.0 h · r5",
       "vet · 3.0 h · r1",
     ]);
     // Each line ends in the command that prints its step whole.
     const commands = lines.slice(1, 3).map((line) => line.split(" · ").at(-1));
-    expect(commands).toEqual([`bun ${SCRIPT} open r4`, `bun ${SCRIPT} next /wri/b`]);
+    expect(commands).toEqual(["bun run runs pause r4 --after reported --yes", `bun ${SCRIPT} next /wri/b`]);
+    // A stopped run's step that carries no command line still opens.
+    expect(lines[3]?.split(" · ").at(-1)).toBe(`bun ${SCRIPT} open r5`);
   });
 
   it("only counts a step nobody has taken for the days, a closed run's unread trigger included", () => {

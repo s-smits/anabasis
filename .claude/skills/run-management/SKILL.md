@@ -275,7 +275,8 @@ A look's lines name the step a run has come to owe, each from one owner (`tools/
 exam's milestones in counts, what a comparison can read as it starts, a promotion with "a pause
 should wait for its starter comparison", each starter comparison under its report, `ready to pause`
 with its command at the second read, and once, when a campaign reaches it, `⚠ investigation due`
-with the command that opens one. A closed run's reason and a host that stops answering are said
+with the command that takes the step (`openingCommand`): a pause after the next comparison while
+the run lives, and the investigation's `open` once it has stopped. A closed run's reason and a host that stops answering are said
 when they turn, not at every look.
 
 `bun run runs alerts` is the cron watch: one stdout line per new promotion, starter comparison,

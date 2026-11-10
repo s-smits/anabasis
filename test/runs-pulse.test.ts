@@ -326,7 +326,9 @@ describe("the runs pulse", () => {
       event(1, "comparison.reported", { reading: "no-step", scored: { wins: 3, losses: 1 } }),
     ];
     const due = (said: readonly string[]) => said.filter((line) => line.includes("investigation due"));
-    const command = "bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts open r1";
+    // A live run is paused after its next comparison before its investigation opens; a stopped one opens.
+    const command = "bun run runs pause r1 --after reported --yes";
+    const opens = "bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts open r1";
     const waiting = { ...lookedAt(log.length), due: false };
     const early = pulse(round, log, "open", waiting, START + 2 * HOUR);
     expect(due(early.said)).toEqual([]);
@@ -346,7 +348,7 @@ describe("the runs pulse", () => {
     // A campaign nothing writes or keeps is due once it compared; one its keeper holds runs on.
     const closed = { now: START + 2 * HOUR, alarms: () => null };
     expect(due(pulseOf(round, log, "closed", waiting, closed).said)).toEqual([
-      `⚠ investigation due, closed: ${command}`,
+      `⚠ investigation due, closed: ${opens}`,
     ]);
     expect(due(pulseOf(round, log, "closed", waiting, { ...closed, live: true }).said)).toEqual([]);
   });

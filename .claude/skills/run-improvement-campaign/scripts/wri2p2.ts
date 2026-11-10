@@ -14,18 +14,25 @@
  * - With no verb it reads every campaign this machine reads whose log moved in the last `--days`
  *   (`readable`: the worktrees' and the copies the central host's ten-minute gather keeps of every
  *   peer's, live ones included, each with the liveness its host last reported) and prints one row a
- *   run and its step: `run` while no trigger fired, `open` once one did, or the investigation's next
- *   step once one reads it. The trigger is whichever comes first (operator, 4 November): the
- *   promotions, the hours since the opening, a scored comparison that left no task untied ("they
- *   likely won't promote so that's a bit ironic that we need to wait"), or an ending.
+ *   run and its step: `run` while no trigger fired, `pause` once one did on a live run, `open` once
+ *   the run has stopped, or the investigation's next step once one reads it. The trigger is
+ *   whichever comes first (operator, 4 November): the promotions, the hours since the opening, a
+ *   scored comparison that left no task untied ("they likely won't promote so that's a bit ironic
+ *   that we need to wait"), or an ending. At a live run's trigger the step is a pause at the first
+ *   clean point after its next comparison (`runs pause --after reported`, which waits for no session
+ *   to be open), and the investigation opens once the run has stopped, so its synthesis reads that
+ *   comparison (operator, 10 November: "pause it after next comparison (ensure the comparison pause
+ *   actually includes the synthesis of this)", "not directly after solves"). Until then a live run
+ *   was investigated on a frozen copy taken at the trigger, and the proof run of v0.11.0 promoted
+ *   once more and read two comparisons its synthesis never saw.
  * - `due` is the same reading as a timer takes it (`dueLines`): a head line with the count of steps
  *   owed and the oldest's hours, one line a step, and for each live run the count of files of the
  *   code a solve runs (`codeOf`, `tools/d2/campaign.ts`) that differ at the commit the command runs
  *   from, which it does not measure.
  * - `open` starts the investigation of one run, or of several as equals, under `.ana/wri/` of the
- *   main checkout, reading a frozen copy of each live one (`wri.ts start --snapshot`), and marks the
- *   folder an iteration (`iteration.json`): a run is never stopped for its iteration, since stopping
- *   one is the operator's.
+ *   main checkout, reading a frozen copy of any one still live (`wri.ts start --snapshot`), and marks
+ *   the folder an iteration (`iteration.json`). Opening a live run is a deviation from the `pause`
+ *   step, kept for a run the operator leaves running.
  * - `next` reads an investigation's folder and prints the one step left, as a list of gates in the
  *   iteration's order (`gatesOf`). Every folder passes the shared instructions, the lanes, the lane
  *   reports, the synthesis, the vetting, the plan, the pull request (`Pull request: #N` in
@@ -68,7 +75,14 @@ import { runSync } from "#src/meta/subprocess.ts";
 import { stillRunning } from "#tools/runs/diagnosis.ts";
 import { CODE_TREES } from "#tools/d2/campaign.ts";
 import { lastLaunch } from "#tools/runs/receipt.ts";
-import { DRIVER, type Progress, progressOf, TRIGGER_AT, triggerOf } from "#tools/runs/said.ts";
+import {
+  DRIVER,
+  openingCommand,
+  type Progress,
+  progressOf,
+  TRIGGER_AT,
+  triggerOf,
+} from "#tools/runs/said.ts";
 import {
   type Run,
   type Running,
@@ -537,6 +551,25 @@ export const movedIn = <S extends Pick<Standing, "row" | "last">>(
   days: number,
 ) => all.filter(({ row, last }) => row.live || now - last < days * 24 * HOUR_MS);
 
+/** The step of a run no investigation reads yet: `run` before its trigger; at the trigger of a live
+ *  run, a pause after its next comparison, or `waits` once a pause of it is armed here; and `open` once
+ *  it has stopped, so the investigation reads the comparison the pause waited for. */
+export function openingOf(
+  row: { readonly name: string; readonly host: string; readonly live: boolean },
+  trigger: string | null,
+  running: readonly Running[],
+): string[] {
+  if (trigger === null) return ["step: run"];
+  const command = `  ${openingCommand(row.name, row.live, row.host === HERE ? "" : `on ${row.host} `)}`;
+  if (!row.live) return [`step: open · ${trigger}`, command];
+  const armed = running.some(({ args }) => args.includes("pause") && args.includes(row.name));
+  if (armed) return [`step: waits · ${trigger}; its pause after the next comparison is armed`];
+  return [
+    `step: pause · ${trigger}; the investigation opens once the run stops after its next comparison`,
+    command,
+  ];
+}
+
 /** Where every campaign that moved in the last `--days` stands, and how many closed comparing nothing. */
 function standings(args: CommandArgs, repo: string, known: readonly Run[], parts = args.positionals) {
   const now = Date.now();
@@ -563,9 +596,7 @@ function standings(args: CommandArgs, repo: string, known: readonly Run[], parts
       now,
     );
     const folder = folders.find(({ names: seen }) => seen.includes(row.name));
-    const trigger = triggerOf(row, limits);
-    const opening =
-      trigger === null ? ["step: run"] : [`step: open · ${trigger}`, `  bun ${DRIVER} open ${row.name}`];
+    const opening = openingOf(row, triggerOf(row, limits), running);
     return {
       row,
       last: Date.parse(events.at(-1)?.at ?? ""),
@@ -611,15 +642,16 @@ export function dueLines(
 ): string[] {
   const owed = new Map<
     string,
-    { name: string; rest: string; dir: string | null; since: number | null; runs: string[] }
+    { name: string; rest: string; command: string; dir: string | null; since: number | null; runs: string[] }
   >();
   for (const { row, last, dir, step } of standing) {
     const { name = "", rest = "" } = step.map((line) => STEP.exec(line)?.groups).find(Boolean) ?? {};
-    if (name === "" || name === "run" || name === "done") continue;
+    if (name === "" || name === "run" || name === "waits" || name === "done") continue;
     const key = `${dir ?? row.name} ${name}`;
     const unread = row.live ? null : last;
     const since = dir === null ? unread : writtenAt(dir);
-    owed.set(key, { name, rest, dir, since, runs: [...(owed.get(key)?.runs ?? []), row.name] });
+    const command = step.find((line) => line.startsWith("  "))?.trim() ?? `bun ${DRIVER} open ${row.name}`;
+    owed.set(key, { name, rest, command, dir, since, runs: [...(owed.get(key)?.runs ?? []), row.name] });
   }
   const timed = [...owed.values()].map((each) => ({
     ...each,
@@ -636,9 +668,9 @@ export function dueLines(
     `due at ${new Date(now).toISOString().slice(0, 16)}Z · ${
       timed.length === 0 ? "nothing owed" : `${String(timed.length)} step(s) owed${listed}`
     } · ${String(live)} run(s) live`,
-    ...taken.map(({ name, rest, dir, runs: [first = "", ...others], hours }) => {
+    ...taken.map(({ name, rest, command, dir, runs: [first = "", ...others], hours }) => {
       const more = others.length > 0 ? ` and ${String(others.length)} more` : "";
-      const where = dir === null ? `${rest} · bun ${DRIVER} open ${first}` : `bun ${DRIVER} next ${dir}`;
+      const where = dir === null ? `${rest} · ${command}` : `bun ${DRIVER} next ${dir}`;
       return `${name} · ${hours === null ? "new" : `${hours.toFixed(1)} h`} · ${first}${more} · ${where}`;
     }),
     ...(left.length === 0

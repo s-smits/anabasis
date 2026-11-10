@@ -54,9 +54,9 @@ import { lastLaunch, unlaunchedSeed } from "./receipt.ts";
 import {
   climbAt,
   dollars,
-  DRIVER,
   ENDED,
   minutes,
+  openingCommand,
   progressOf,
   PROMOTED,
   promotionsOf,
@@ -466,7 +466,7 @@ export function pulse(
   const read = isCampaign(run) && run.seed !== true;
   const due = read ? triggerOf(progressOf({ live: live ?? open }, log, now)) : null;
   if (due !== null && before?.due === false) {
-    lines.push(`⚠ investigation due, ${due}: bun ${DRIVER} open ${run.name}`);
+    lines.push(`⚠ investigation due, ${due}: ${openingCommand(run.name, live ?? open)}`);
   }
   return {
     status: status(run, log, stand, open, now),

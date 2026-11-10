@@ -28,7 +28,7 @@ const DIGEST_CHARS = 8;
 /** Where a run owes its next step, which names an investigation and stops nothing: two promotions
  *  or twelve hours, and two starter comparisons read before a pause. */
 export const TRIGGER_AT = { promotions: 2, hours: 12 } as const;
-/** The loop's driver, whose `open` a look names where an investigation is due. */
+/** The loop's driver, whose `open` a look names where a stopped run's investigation is due. */
 export const DRIVER = ".claude/skills/run-improvement-campaign/scripts/wri2p2.ts";
 
 /** One promotion of a run, and its starter comparison once one tallied a task (`epochsOf`). */
@@ -323,3 +323,9 @@ export function triggerOf(
   if (!row.live && row.compared > 0) return `closed${row.ending === null ? "" : ` (${row.ending})`}`;
   return null;
 }
+
+/** The command that takes the step a trigger leaves owed on the run `name`: a live run pauses after
+ *  its next comparison, so that its investigation reads it, and a stopped one opens; `on` is the run
+ *  CLI's prefix that reaches the run's host. */
+export const openingCommand = (name: string, live: boolean, on = ""): string =>
+  live ? `bun run runs ${on}pause ${name} --after reported --yes` : `bun ${DRIVER} open ${name}`;

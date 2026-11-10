@@ -160,10 +160,11 @@ describe("what a cut leaves", () => {
         .split("\n")
         .filter(Boolean),
     ).toHaveLength(32);
-    // What the cut recorded is about the whole budget. A reader that resumes takes its turn anyway...
+    // What the cut recorded is about the whole budget, a few milliseconds either side of it. Under a
+    // budget one short of what it recorded, a reader that resumes takes its turn anyway...
     const [due] = queueOf(store, [log], [slow]);
     expect(due?.ms).toBeGreaterThanOrEqual(budgetMs - 100);
-    const room = { budgetMs, room: () => true, now: () => 100 };
+    const room = { budgetMs: (due?.ms ?? 0) - 1, room: () => true, now: () => 100 };
     const taken: string[] = [];
     await runQueue(due === undefined ? [] : [due], {
       ...room,

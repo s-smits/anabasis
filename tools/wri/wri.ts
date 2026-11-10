@@ -106,6 +106,7 @@ import {
   type Campaign,
   filled,
   lanePrompt,
+  movedTo,
   numbersOf,
   reportIndex,
   reportOf,
@@ -380,12 +381,17 @@ async function start(): Promise<number> {
 function opened(): Investigation {
   const out = resolve(needed("out"));
   const { logs } = parseJsonAs<{ logs: string[] }>(readFileSync(join(out, INVESTIGATION), "utf8"));
-  const campaigns = logs.map((log) => ({
-    name: nameOf(log, logs),
-    log,
-    overview: overview(read(log), receipts(log)),
-  }));
-  return { out, shared: readFileSync(join(out, SHARED), "utf8"), campaigns };
+  const campaigns = logs.map((stored) => {
+    const log = existsSync(stored) ? stored : movedTo(stored, readable(REPO).filter(isCampaign));
+    if (log !== stored) console.log(`${nameOf(stored, logs)}: its stored log is gone, read from ${log}`);
+    return { name: nameOf(stored, logs), log, overview: overview(read(log), receipts(log)) };
+  });
+  // The instructions name each log where `start` found it; a prompt built now names where it stands.
+  const shared = campaigns.reduce(
+    (text, { log }, index) => text.replaceAll(logs[index] ?? log, log),
+    readFileSync(join(out, SHARED), "utf8"),
+  );
+  return { out, shared, campaigns };
 }
 
 /** The campaigns in lane 22's columns, and the `/tmp` paths one named before another's solve ran

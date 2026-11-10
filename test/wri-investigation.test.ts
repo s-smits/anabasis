@@ -17,12 +17,14 @@ import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
 import { catalogueText, type Lane, lanesOf, ownersOf } from "../tools/wri/catalogue.ts";
-import { lanePrompt, reportIndex, reportOf } from "../tools/wri/investigation.ts";
+import { lanePrompt, movedTo, reportIndex, reportOf } from "../tools/wri/investigation.ts";
 import { execTextSync } from "./helpers/bun-spawn-sync.ts";
 import { containing } from "./helpers/matchers.ts";
 
 const shared =
   "## Orientation\n\nWhy the step.\n\n## Campaigns under review\n\nthe row\n\n## Hard rules\n\n- quote nothing\n";
+/** The file `start` writes last and `lanes` reads. */
+const INSTRUCTIONS = "shared-instructions.md";
 /** The investigation command every verb test runs. */
 const WRI = "tools/wri/wri.ts";
 const catalogue = catalogueText();
@@ -216,9 +218,9 @@ describe("the lanes verb", () => {
     execTextSync(capturedExecPath, [WRI, "start", "--log", copies.join(","), "--out", out], {
       cwd: REPO,
     });
-    const instructions = readFileSync(join(out, "shared-instructions.md"), "utf8");
+    const instructions = readFileSync(join(out, INSTRUCTIONS), "utf8");
     for (const name of ["twin@m1", "twin@linux"]) expect(instructions).toContain(`| ${name} |`);
-    writeFileSync(join(out, "shared-instructions.md"), shared);
+    writeFileSync(join(out, INSTRUCTIONS), shared);
     lanesVerb();
     const built = prompts();
     const first = manifest();
@@ -233,7 +235,7 @@ describe("the lanes verb", () => {
     expect(Object.keys(built)).toContain("03-prompt.md");
     expect(Object.keys(built)).not.toContain("04-prompt.md");
     for (const name of ["twin@m1", "twin@linux"]) expect(built["03-prompt.md"]).toContain(name);
-    writeFileSync(join(out, "shared-instructions.md"), shared.replace("Why the step.", "Another question."));
+    writeFileSync(join(out, INSTRUCTIONS), shared.replace("Why the step.", "Another question."));
     lanesVerb();
     expect(prompts()).toEqual(built);
     expect(manifest()).toEqual(first);
@@ -274,11 +276,11 @@ describe("the lanes verb", () => {
         cwd: REPO,
       });
     expect(begin).toThrow();
-    expect(existsSync(join(failed, "shared-instructions.md"))).toBe(false);
+    expect(existsSync(join(failed, INSTRUCTIONS))).toBe(false);
     rmSync(join(failed, "overview.md"), { recursive: true });
     begin();
     expect(existsSync(join(failed, "investigation.json"))).toBe(true);
-    expect(existsSync(join(failed, "shared-instructions.md"))).toBe(true);
+    expect(existsSync(join(failed, INSTRUCTIONS))).toBe(true);
   });
 
   it("checks out no tree for a launch whose commit this repository does not hold", () => {
@@ -296,7 +298,7 @@ describe("the lanes verb", () => {
     execTextSync(capturedExecPath, [WRI, "start", "--log", gone, "--out", join(dir, "gone-out")], {
       cwd: REPO,
     });
-    const instructions = readFileSync(join(dir, "gone-out", "shared-instructions.md"), "utf8");
+    const instructions = readFileSync(join(dir, "gone-out", INSTRUCTIONS), "utf8");
     expect(instructions).toContain("| gone |");
     expect(instructions).not.toContain("is checked out at");
   });
@@ -306,7 +308,7 @@ describe("the lanes verb", () => {
     execTextSync(capturedExecPath, [WRI, "start", "--log", log, "--out", packed], {
       cwd: REPO,
     });
-    writeFileSync(join(packed, "shared-instructions.md"), shared);
+    writeFileSync(join(packed, INSTRUCTIONS), shared);
     execTextSync(capturedExecPath, [WRI, "lanes", "--out", packed, "--agents", "2"], {
       cwd: REPO,
     });
@@ -321,10 +323,31 @@ describe("the lanes verb", () => {
     expect(new Set(sessions.map(({ name }) => name)).size).toBe(2);
   });
 
+  it("reads a stored log that moved from where its campaign stands, and refuses one no run holds instead of reading no event", () => {
+    const stored = "/trees/run/.ana/d2/retired-run/log.jsonl";
+    const held = [
+      { name: "other-run", path: "/archive/here/other-run/log.jsonl" },
+      { name: "retired-run", path: "/archive/here/retired-run/log.jsonl" },
+    ];
+    expect(movedTo(stored, held)).toBe("/archive/here/retired-run/log.jsonl");
+    expect(() => movedTo(stored, held.slice(0, 1))).toThrow("is gone");
+    // The verb: lane 4's trigger is in this log, and without the log the build would open no such lane.
+    const nowhere = join(dir, "ana-wri-held-by-no-run", "log.jsonl");
+    mkdirSync(dirname(nowhere), { recursive: true });
+    writeFileSync(nowhere, readFileSync(log, "utf8"));
+    const at = join(dir, "moved-out");
+    execTextSync(capturedExecPath, [WRI, "start", "--log", nowhere, "--out", at], { cwd: REPO });
+    writeFileSync(join(at, INSTRUCTIONS), shared);
+    rmSync(nowhere);
+    const build = () => execTextSync(capturedExecPath, [WRI, "lanes", "--out", at], { cwd: REPO });
+    expect(build).toThrow("no worktree or archive holds a campaign ana-wri-held-by-no-run");
+    expect(existsSync(join(at, "launch.json"))).toBe(false);
+  });
+
   it("gives the heaviest sessions high effort and the rest medium where --high names how many", () => {
     const at = join(dir, "efforts");
     execTextSync(capturedExecPath, [WRI, "start", "--log", log, "--out", at], { cwd: REPO });
-    writeFileSync(join(at, "shared-instructions.md"), shared);
+    writeFileSync(join(at, INSTRUCTIONS), shared);
     const printed = execTextSync(
       capturedExecPath,
       [WRI, "lanes", "--out", at, "--agents", "3", "--high", "1"],
@@ -345,7 +368,7 @@ describe("the lanes verb", () => {
   const begun = (name: string) => {
     const at = join(dir, name);
     execTextSync(capturedExecPath, [WRI, "start", "--log", log, "--out", at], { cwd: REPO });
-    writeFileSync(join(at, "shared-instructions.md"), shared);
+    writeFileSync(join(at, INSTRUCTIONS), shared);
     return at;
   };
   const verbAt = (at: string, ...more: string[]) =>

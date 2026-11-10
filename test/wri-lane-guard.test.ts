@@ -116,6 +116,25 @@ describe("the lane guard", () => {
     expect(refusalOf("Grep", { path: "/Users/x/anabasis/src" })).toBeNull();
   });
 
+  it("refuses the rejections command that logs verdicts by its folder, and lets the lane's reader of the same name run", () => {
+    for (const refused of [
+      "bun tools/c/rejections.ts --log /a/.ana/d2/r/log.jsonl",
+      "bun run tools/c/rejections.ts /a/.ana/d2/r/log.jsonl",
+      "cd tools/c && bun rejections.ts /a/.ana/d2/r/log.jsonl",
+      "cd tools/c && bun run rejections.ts /a/.ana/d2/r/log.jsonl",
+    ]) {
+      expect(bash(refused)).toBe("a command that logs verdicts");
+    }
+    for (const ok of [
+      "bun tools/wri/rejections.ts /a/.ana/d2/r/log.jsonl",
+      "bun run tools/wri/rejections.ts /a/.ana/d2/r/log.jsonl --solve s-1",
+      "cd tools/wri && bun rejections.ts /a/.ana/d2/r/log.jsonl",
+      "sed -n 120,135p tools/c/rejections.ts",
+    ]) {
+      expect(bash(ok)).toBeNull();
+    }
+  });
+
   it("reads the command a wrapper, a flag or a find runs, and the line after a here-string", () => {
     for (const ok of ["timeout 30 grep -rn solve src", "sed -n 1,40p tools/d2/word.ts"]) {
       expect(bash(ok)).toBeNull();
@@ -229,6 +248,50 @@ describe("the lane guard", () => {
     }
     expect(bash(`bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts next ${WRI}`)).toBeNull();
     expect(bash("bun tools/wri/wri.ts climb --log /a/.ana/d2/r/log.jsonl")).toBeNull();
+  });
+
+  it("reads a word inside quotes and substitutions whole, so a campaign's path runs only as the command", () => {
+    // The shapes of the lane refusals of 3 to 9 November that read nothing but a campaign's files.
+    for (const ok of [
+      `L=/a/.ana/d2/r/log.jsonl; for k in a b; do jq -c "select(.kind==\\"$k\\") | .data | keys" "$L" | head -2; done`,
+      `jq -c "select(.kind==\\"x\\")" < /a/data/runs/h/r/log.jsonl`,
+      `D=/a/.ana/d2/r/states; for t in t1 t2; do grep -nE "open\\\\(['\\"]/|os\\.environ" $D/$t/lib/*.py | sed "s|$D/||"; done`,
+      "S=/a/data/runs/h/r/states; diff <(sed -n 1,9p $S/t/lib/a.py) $S/t/lib/a.py",
+      "C=/a/.ana/d2/r/states; readlink $(ls -d $C/ab*)/.toolchain",
+      'ls -la /a/x | grep -- "-> ../$(basename /a/y)"',
+      "diff -rq /a/.ana/d2/r/states/x /a/.ana/d2/r/states/y | sed -E 's#/a/.ana/d2/r/states/##g'",
+      "for f in /a/.ana/d2/*/launch-run-*.json; do jq -r .at \"$f\"; done | sed -E 's#/a/.ana/d2/##'",
+      'awk \'{sub("/a/.ana/d2/", "")} 1\' /tmp/lane/x.txt',
+      "command -v python3.14",
+      "rg -n check /a/.ana/d2/r/states/h/.toolchain",
+    ]) {
+      expect(bash(ok)).toBeNull();
+    }
+    // The nearest refused cases: what runs, writes or names an env file inside the same shapes.
+    for (const [refused, why] of [
+      [
+        String.raw`jq "select(.k==\"x\")" /a/x; /a/.ana/d2/r/states/h/.toolchain/bin/check`,
+        "a program kept in a campaign",
+      ],
+      ["x=$(cat /tmp/f) /a/.ana/d2/r/states/h/.toolchain/bin/check", "a program kept in a campaign"],
+      ['echo "$(python3 -B /a/.ana/d2/r/states/h/.toolchain/run.py)"', "a program kept in a campaign"],
+      ["diff <(bash /a/.ana/d2/r/states/h/.toolchain/go.sh) /tmp/x", "a program kept in a campaign"],
+      [
+        String.raw`python3 -B -c "open(\"/a/.ana/d2/r/states/x\", \"w\")"`,
+        "an interpreter naming a campaign",
+      ],
+      ["python3 -B /tmp/lane/x.py /a/.ana/d2/r/log.jsonl", "an interpreter naming a campaign"],
+      ["sed 's#a#b#w /a/.ana/d2/r/out' /tmp/x", "an interpreter naming a campaign"],
+      ["sed -n '1e /a/.ana/d2/r/states/h/.toolchain/bin/check' /tmp/x", "an interpreter naming a campaign"],
+      ["awk '{print > \"/a/.ana/d2/r/out\"}' /tmp/x", "an interpreter naming a campaign"],
+      ["awk 'BEGIN {system(\"/a/.ana/d2/r/states/h/bin/x\")}'", "an interpreter naming a campaign"],
+      ['echo "$(echo x > /a/.ana/d2/r/log.jsonl)"', "a write under a campaign"],
+      ["command -v python3 > /a/.ana/d2/r/log.jsonl", "a write under a campaign"],
+      ['grep x "$(echo /a/.env)"', "an env file"],
+    ] as const) {
+      expect(bash(refused)).toBe(why);
+    }
+    expect(bash("command python3 /tmp/lane/x.py")).toContain("bytecode");
   });
 
   it("is the hook the agent type runs", () => {

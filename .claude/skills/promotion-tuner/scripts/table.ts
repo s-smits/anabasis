@@ -8,7 +8,13 @@
  *   bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/table.ts
  *     [--since <date>] [--name <part of a campaign>]... [--rows recent|groups|runs|promotions]
  *     [--last <n>] [--by release,pack,setting,host,none] [--has <text>]... [--holds <commit>]...
- *     [--format md|tsv]
+ *     [--format md|tsv] [--runs <dir>]
+ *
+ * `--runs <dir>` reads the campaigns under one folder (an archive such as `data/runs`, one host's
+ * folder of it, or a folder of worktrees) instead of every campaign the registry reaches across the
+ * hosts, so it needs no env file and runs under the lane guard, which refuses one: on 9 November a
+ * lane-19 session could not set a run's starter against the previous release's for that reason. A
+ * campaign two folders below `<dir>` is placed on the host its first folder names.
  *
  * The default view is `recent`: every run still going, whatever it has promoted, then the latest
  * `--last` (20) finished runs that got at least one promotion. A finished run that never promoted
@@ -72,6 +78,7 @@ import { campaignOf } from "#src/campaign/handover.ts";
 import { type EventKind, type LogEvent, read } from "#src/kernel/log.ts";
 import { billedBetween } from "#src/kernel/meter.ts";
 import { gitMaybe } from "#src/meta/git.ts";
+import { relative, sep } from "#src/meta/path.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
@@ -91,7 +98,7 @@ const USAGE = `usage:
   bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/table.ts
     [--since <date>] [--name <part of a campaign>]... [--rows recent|groups|runs|promotions]
     [--last <n>] [--by release,pack,setting,host,none] [--has <text>]... [--holds <commit>]...
-    [--format md|tsv]
+    [--format md|tsv] [--runs <dir>]
 
 --since   campaigns whose last event is at or after this date; ${SINCE} by default
 --name    these campaigns only, matched by part of the name (repeatable)
@@ -101,7 +108,8 @@ const USAGE = `usage:
 --by      what a group shares, as a comma list; release,pack,setting by default
 --has     only runs whose every launch ran with code that holds this text (repeatable)
 --holds   only runs whose every launch holds this commit (repeatable)
---format  md (default) or tsv`;
+--format  md (default) or tsv
+--runs    the campaigns under this folder only, read without the hosts' registry or an env file`;
 const OPTIONS = {
   since: "text",
   name: "list",
@@ -111,6 +119,7 @@ const OPTIONS = {
   has: "list",
   holds: "list",
   format: "text",
+  runs: "abs",
 } as const;
 const HOUR_MS = 3_600_000;
 const BY = ["release", "pack", "setting", "host", "none"] as const;
@@ -561,7 +570,15 @@ async function main(args: CommandArgs): Promise<number> {
   const tags = releasesOf(repo);
   const skipped: string[] = [];
   const runs: Run[] = [];
-  for (const found of await campaignLogs(null, [], since)) {
+  const home = args.value("runs");
+  const logs = await campaignLogs(home, [], since);
+  // Under `--runs`, a campaign's host is the folder it lies in where that lies in the given one
+  // (`data/runs/<host>/<name>/log.jsonl`), and this machine otherwise.
+  const placed = logs.map((each) => {
+    const parts = home === null ? [] : relative(home, each.path).split(sep);
+    return parts.length === 3 ? { ...each, archived: parts[0] ?? "here" } : each;
+  });
+  for (const found of placed) {
     if (names.length > 0 && !names.some((part) => found.name.includes(part))) continue;
     if (has.length + holds.length > 0 && !ranWith(found.path, repo, { has, holds })) continue;
     try {

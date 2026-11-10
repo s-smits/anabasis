@@ -64,6 +64,7 @@ import {
   TEST,
   text,
   type Trigger,
+  unprobedEarned,
 } from "./folds.ts";
 import { safeguardTriggers } from "./climb.ts";
 import { promotionTriggers, testedOf } from "./promotion.ts";
@@ -90,7 +91,7 @@ type PracticeCandidate = { readonly harness: string; readonly began: number } & 
 
 const FEW_CALLS = 3;
 /** The Builder tools that write one named file: pi's two, and the one tool sessions had before them. */
-const FILE_WRITERS: ReadonlySet<string> = new Set(["write", "edit", "write_file"]);
+export const FILE_WRITERS: ReadonlySet<string> = new Set(["write", "edit", "write_file"]);
 
 /** A Builder session as the lanes of its practice read it: the log's record of it, whether it changed
  *  the harness and to what, the harness its comparison was made against, and the solves of its round. */
@@ -211,7 +212,7 @@ function practiceTriggers(log: Index, { build, changed, read, round }: Practised
  * recorded (`testedOf`), and only another by this tree's score: on 22 October the score of weighted
  * measures listed as won a task the Linux fork of #306 tied and one it lost, both scored before it.
  */
-function wonOf(log: Index) {
+export function wonOf(log: Index) {
   return log.compared.map(({ session, at, last }) => {
     const pairs = pairsReported(log.events, { session, index: at, data: last });
     const tested = testedOf(last);
@@ -447,7 +448,9 @@ function comparisonTriggers(log: Index): Trigger[] {
       const key = `${solve.version} ${solve.harness}`;
       seen.set(key, (seen.get(key) ?? new Set()).add(String(solve.outcome === "pass")));
     }
-    const flips = [...seen.values()].filter((outcomes) => outcomes.size > 1).length;
+    const flips = [...seen]
+      .filter(([, outcomes]) => outcomes.size > 1)
+      .map(([key]) => key.endsWith(` ${text(own.old)}`));
     const noise = tallyOf(last.noise);
     return [
       ...(moved > 0
@@ -467,11 +470,11 @@ function comparisonTriggers(log: Index): Trigger[] {
           ]
         : []),
       ...testTriggers(session, last),
-      ...(flips > 0
+      ...(flips.length > 0
         ? [
             fired(
               "FLIPS",
-              `${session}: ${share(flips, seen.size)} task and harness pairs both passed and failed`,
+              `${session}: ${share(flips.length, seen.size)} task and harness pairs both passed and failed, ${String(flips.filter(Boolean).length)} under the reference harness and ${String(flips.filter((old) => !old).length)} under the other`,
             ),
           ]
         : []),
@@ -584,9 +587,7 @@ function reviewTriggers(log: Index): Trigger[] {
   const standing = [...waiting].filter((version) => !disputed.has(version)).length;
   const ends = [...log.of(BUILD_END), ...log.of(EXAM_END), ...log.of(REPORTED)];
   const faults = ends.reduce((sum, data) => sum + items(data.reviewFaults).length, 0);
-  const unprobed = [...log.rulings.values()].filter(
-    (data) => data.ruling === "earned" && items(data.probes).length === 0 && count(data.turns) > 0,
-  ).length;
+  const unprobed = [...log.rulings.values()].filter(unprobedEarned).length;
   return [
     ...(moved > 0 ? [fired("REPLAY MOVED THE VERDICT", plural(moved, "ruling"))] : []),
     ...(standing > 0

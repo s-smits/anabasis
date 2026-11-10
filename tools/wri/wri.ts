@@ -11,7 +11,9 @@
  *   bun tools/wri/wri.ts lanes --out .ana/wri/20261008-truss [--lanes 1-4,7] [--agents 3] [--regroup]
  *   bun tools/wri/wri.ts collect --out .ana/wri/20261008-truss
  *   bun tools/wri/wri.ts synthesis --out .ana/wri/20261008-truss
- *   bun tools/wri/wri.ts grade --log .ana/d2/truss/log.jsonl [--bundle <pack>] --task <taskId> --answer <file>
+ *   bun tools/wri/wri.ts grade --log .ana/d2/truss/log.jsonl [--bundle <pack>] --task <taskId> --answer <file> [--set <path>=<json>]...
+ *   bun tools/wri/wri.ts grade --log <log> [--bundle <pack>] --solve <id> [--set <path>=<json>]...
+ *   bun tools/wri/wri.ts grade --log <log> [--bundle <pack>] --answers <dir>
  *   bun tools/wri/wri.ts derive (--log <log>[,<log>...] | --all) [--verbose] [--force] [--no-embed]
  *   bun tools/wri/wri.ts index [--root <dir>] [--out <file>]
  *
@@ -58,47 +60,41 @@
  *   fourteen days, then each pull request a `plan.md` or a fork's `forkedPR<N>` names, with its forks'
  *   per-run ledgers read (`tools/wri/index.ts`). It prints each section's row count and how many
  *   folders it read whole, in part or not at all, and never the page, which holds hidden values.
- * - `grade` puts one answer to the campaign's own checker and prints the verdict in one line. It
- *   writes nothing and logs nothing. It needs the pack and its tool tree, and the Mac's verifier wall.
- *   An answer outside a drafted exam's answer format is refused first, as `judge` refuses a
- *   solver's, and no check reads it (`src/solver/run.ts`). The format is the draft's, which the
- *   campaign's contract holds (`packOpened`, `tools/d2/campaign.ts`). Until 20 October grade put
- *   every answer to the checks alone, and a lane of buffer-fresh-opus-forkedPR223_v0_5_4-r3's
- *   investigation, probing through it, read the evaluator's leniency on keys the format refuses as
- *   a gap of the exam, where the host refuses such an answer before any check: none of the
- *   campaign's 2,480 verdicts held a format fault. A stored pack's format is read from its sweep,
- *   which grade is not given, so its answers are put to the checks alone, and grade says so.
- *   A campaign over a stored pack names it with `--bundle`, and its checks stand beside the log; a
- *   campaign that drafted its exam names none, and its exam is read where the campaign staged it
- *   (`exams/<digest>/`, `tools/d2/exam.ts`). On 10 October t-10's lane 1 was given `<campaign>/checks`
- *   for a drafted exam and stopped on ENOENT.
+ * - `grade` puts answers to the campaign's own checker and prints each verdict in one line, with the
+ *   command that repeats it: one file against `--task`, the answer a solve's verdict holds (`--solve`,
+ *   beside the recorded verdict), either with fields replaced (`--set`, which refuses a path the answer
+ *   lacks and a change of JSON type), or every file of a folder (`--answers`) with each one's sha256
+ *   (`tools/wri/grade.ts`). It writes nothing and logs nothing.
  *
  * A log is named by its path or, since 15 October, by its campaign's whole name in any of the
  * repository's worktrees (`runNamed`). No verb starts a solve, a session
  * or a round, and none appends to a log.
  */
-import { draftOf } from "#src/examiner/draft.ts";
-import { answerFormatFault } from "#src/kernel/contract.ts";
 import { LOG_FILE, read } from "#src/kernel/log.ts";
-import { openVerifier, spelled } from "#src/kernel/verify.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
-import { capturedJsonParse, parseJsonAs } from "#src/meta/json-runtime.ts";
+import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { gitMaybe, gitText, mainTree } from "#src/meta/git.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
-import { writtenTasks } from "#src/kernel/history.ts";
 import { codeOf } from "../d2/campaign.ts";
 import { installAt } from "../runs/code.ts";
 import { receipts } from "../runs/receipt.ts";
 import { isCampaign, processes, readable, type Running } from "../runs/registry.ts";
 import { stillRunning } from "../runs/diagnosis.ts";
 import { snapshotCampaign } from "../runs/seed.ts";
-import { type Derived, derive, derivedLine, derivedOf, derivedText, readersOf } from "./derive.ts";
+import {
+  type Derived,
+  derive,
+  derivedLine,
+  derivedMap,
+  derivedOf,
+  derivedText,
+  folderOf,
+  readersOf,
+} from "./derive.ts";
 import { logAcross } from "../runs/snapshots.ts";
-import { stagedExamOf } from "../d2/exam.ts";
-import { readPack } from "../m0/stored-sweep.ts";
 import { catalogueText, lanesOf, ownersOf, REFERENCES } from "./catalogue.ts";
 import { climbTable, crossings } from "./climb.ts";
 import {
@@ -120,6 +116,7 @@ import { INVESTIGATION, investigationIndex, REPORTS, SHARED } from "./index.ts";
 import { overview, rendered } from "./read.ts";
 import { buildPackets, joinPackets } from "./packets.ts";
 import { gradesIn, HOURS, trajectoryText } from "./trajectory.ts";
+import { grade } from "./grade.ts";
 
 interface Investigation {
   readonly out: string;
@@ -144,6 +141,9 @@ const { values, positionals } = parseArgs({
     bundle: { type: "string" },
     task: { type: "string" },
     answer: { type: "string" },
+    solve: { type: "string" },
+    set: { type: "string", multiple: true },
+    answers: { type: "string" },
     all: { type: "boolean" },
     verbose: { type: "boolean" },
     force: { type: "boolean" },
@@ -176,7 +176,7 @@ function oneLog(): string {
   return log;
 }
 
-function needed(name: "log" | "out" | "bundle" | "task" | "answer"): string {
+function needed(name: "log" | "out"): string {
   const value = values[name];
   if (value === undefined) throw new Error(`name --${name}`);
   return value;
@@ -448,11 +448,14 @@ function lanes(): number {
     throw new Error(`--agents ${String(values.agents)}: name a whole number from 1`);
   }
   mkdirSync(join(out, "lanes"), { recursive: true });
+  // What `start` derived for each log, as the folders stand now.
+  const root = derivedOf(REPO);
+  const files = derivedMap(campaigns.map(({ name, log }) => ({ name, dir: folderOf(root, log) })));
   for (const lane of built) {
     const report = reportPath(out, lane.number);
     writeFileSync(
       promptPath(out, lane.number),
-      `${lanePrompt({ lane, shared, campaigns, catalogue, owners, report, climb })}\n`,
+      `${lanePrompt({ lane, shared, campaigns, catalogue, owners, report, climb, derived: files })}\n`,
     );
   }
   const groups = sessionsOf(launched, count);
@@ -566,45 +569,16 @@ function synthesis(): number {
   return 0;
 }
 
-async function grade(): Promise<number> {
-  const [log, taskId] = [oneLog(), needed("task")];
-  // The pack and the check program: the stored pack `--bundle` names, whose checks the campaign
-  // staged beside its log, or the exam the log drafted, where the campaign staged it.
-  const staged = values.bundle === undefined ? stagedExamOf(log) : null;
-  if (values.bundle === undefined && staged === null) {
-    throw new Error("name --bundle: the campaign drafted no exam of its own, so its pack is a stored one");
-  }
-  const { bundle, checks } = staged ?? { bundle: needed("bundle"), checks: join(dirname(log), "checks") };
-  // The tasks an Examiner wrote are in the log and in no pack.
-  const events = read(log);
-  const tasks = [...writtenTasks(events), ...readPack(bundle).tasks];
-  const task = tasks.find((each) => each.taskId === taskId);
-  if (task === undefined) throw new Error(`neither the log nor the pack holds task ${taskId}`);
-  const answer = capturedJsonParse(readFileSync(needed("answer"), "utf8"));
-  // The format first, as the host holds a solver's answer to it before any check reads it (`judge`).
-  const answerFormat = draftOf(events)?.answerFormat;
-  const fault = answerFormat === undefined ? null : answerFormatFault(answerFormat, answer);
-  if (fault !== null) {
-    console.log(`fail format: ${fault}`);
-    return 0;
-  }
-  if (answerFormat === undefined) {
-    console.error(
-      "the answer format of a stored pack is read from its sweep, which grade is not given: not held to it",
-    );
-  }
-  const verify = openVerifier({ checks, tools: join(bundle, ".toolchain"), packRoots: [bundle] });
-  console.log(spelled(await verify(task, answer)));
-  return 0;
-}
-
 async function main(): Promise<number> {
   const [verb] = positionals;
   if (verb === "read") {
     console.log(overviewText(oneLog()));
     return 0;
   }
-  if (verb === "grade") return grade();
+  if (verb === "grade") {
+    const { bundle, task, answer, solve, set = [], answers } = values;
+    return grade({ log: oneLog(), bundle, task, answer, solve, set, answers });
+  }
   if (verb === "derive") return deriveStep();
   if (verb === "index") {
     const checkout = mainTree(REPO);

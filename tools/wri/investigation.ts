@@ -60,13 +60,65 @@ interface PromptParts {
   readonly report: string;
   /** The campaigns' climbs side by side, for a lane that reads them; "" where one campaign is read. */
   readonly climb?: string;
+  /** What each derived file answers and how large it stands (`derivedMap`, `tools/wri/derive.ts`);
+   *  "" where no folder was derived. */
+  readonly derived?: string;
 }
 
 const CAMPAIGN_HEADING = "Campaigns under review";
 const RULES_HEADING = "Hard rules";
+const TOOLS_HEADING = "Tools a lane runs";
 const VERDICTS = ["finding", "no finding", "could not read", "omitted"] as const;
 const FIELDS = ["Observation:", "Cause:", "Owner:", "Reverses if:", "Decision:"] as const;
 const SEEN = "Seen in:";
+/**
+ * The derived file (`READERS`, `tools/wri/derive.ts`) that holds the rows a trigger counted, where one
+ * does. A trigger prints a count and at most a few ids, and the sessions of 3 to 10 November went
+ * from that line to a query of their own over the log for rows a file already held.
+ */
+export const ROWS = {
+  "REFUSALS BY CHECK": "checks",
+  "CONTROL COVERAGE": "checks",
+  "CHECKER READ WITH FAULTS": "checks",
+  "REFUSED UNREAD": "rejections",
+  "CHECK DEFECT RULED": "rejections",
+  "RULED UNCLEAR": "rejections",
+  "SET ASIDE AND UNSETTLED": "rejections",
+  "SETTLED BY HAND": "rejections",
+  "EARNED WITHOUT A PROBE": "rejections",
+  "EXAM DRAFTED": "drafted",
+  "SUPPLY THIN": "draw",
+  "GATE REFUSED": "exams",
+  "TIED TASKS": "pairs",
+  "TIES BETWEEN VALID ANSWERS": "pairs",
+  "MARGINS INSIDE THE NOISE": "pairs",
+  "REFERENCE AGAINST ITSELF": "pairs",
+  "OUTCOMES BY SESSION": "aim",
+  "HARNESS CHANGED": "versions",
+  "TOOLS EDITED": "versions",
+  "TOOLS CALLED": "calls",
+  "TOOL CALLS ERRED": "calls",
+  "NO PRACTICE": "practice",
+  "PRACTICE FAILS": "practice",
+  "FINAL BYTES NEVER PRACTISED": "practice",
+  "STEP CARRIERS": "scores",
+  "NOTHING SCORED": "readings",
+  "CUT BY ITS CAP": "readings",
+  "SET SHORT": "readings",
+  "PROMOTION UNCONFIRMED": "starter-reads",
+  "CHAIN AGAINST THE STARTER": "starter-reads",
+  CHAIN: "climb",
+  "AFTER THE PROMOTION": "epoch-spend",
+  "SPEND LED BY A ROLE": "epoch-spend",
+  "MISSES AT A LIMIT": "budget",
+  "HOST LOADED": "budget",
+  "LOAD MOVED": "budget",
+  "BUILDER COMPACTED": "compactions",
+  "SERVED ANOTHER MODEL": "degradations",
+  "HOST CODE MOVED": "source",
+  LAUNCHES: "launches",
+  "ENDED AND WENT ON": "launches",
+} satisfies Partial<Record<keyof typeof TRIGGERS, string>>;
 
 /** A lane's file stem: `07` for lane 7. */
 export function stem(lane: number): string {
@@ -271,6 +323,28 @@ function equalsSection(campaigns: readonly Campaign[]): string[] {
   ];
 }
 
+/**
+ * What an open lane can lean on, and that it may read past it. The operator, 10 November 2026: the
+ * helpers are to spare a session its plumbing without narrowing what it sees. The 265 lane
+ * transcripts mined that day show sessions rebuilding by hand what a derived file already held,
+ * since no prompt said what each file answers (`slice.ts` ran in none of the 107 sessions of 3 to
+ * 10 November), while the findings vetting confirmed often came from one trace or one state read
+ * whole, which no table prints. So the files and tools are named as counts already made, and the
+ * last paragraph says that the record behind them stays open.
+ */
+function counted(derived: string, catalogue: string): string[] {
+  const tools = section(catalogue, TOOLS_HEADING);
+  return [
+    "## What is already counted, and what is not",
+    [
+      "The derived files and the tools below call the host's own folds, the code that decided the run, so a count one of them prints is not yours to rebuild: cite it by file. Recount one only where you doubt the fold itself, and report a reader that miscounts as a finding whose owner is `host`.",
+      ...(derived.trim() === "" ? [] : [derived.trim()]),
+      ...(tools === "" ? [] : [`### ${TOOLS_HEADING}`, tools]),
+      "A table holds what its author thought to count. Every event in a log, every kept state, the check program and every source file are yours to read, and a query of your own is right wherever no file or tool answers: your lane's question says where to start, not where to stop. Where a count looks odd, or one solve does what no column names, open what lies behind it and read it whole, a trace from its first turn to its last. What you notice there and cannot place under your lane is still worth a line under `## Findings` or `## Not read`.",
+    ].join("\n\n"),
+  ];
+}
+
 /** The climb side by side, for the lane that reads it, or what to do where one campaign is read. */
 function climbSection(climb: string): string[] {
   return [
@@ -284,9 +358,14 @@ function climbSection(climb: string): string[] {
 /**
  * Which of the triggers a lane starts from fired, and on which campaign. The lane's body names every
  * one it can start from, and a session read a name there as a trigger the log had fired: buffer-a's
- * lane 14 on 11 October reported `NEVER CHECKED` false, which the reader had never fired.
+ * lane 14 on 11 October reported `NEVER CHECKED` false, which the reader had never fired. `rows`
+ * names the derived file behind a trigger (`ROWS`), and is empty for a lane handed no derived file.
  */
-function firedLine(lane: Lane, campaigns: readonly Campaign[]): string {
+function firedLine(
+  lane: Lane,
+  campaigns: readonly Campaign[],
+  rows: Readonly<Record<string, string>>,
+): string {
   const names = Object.entries(TRIGGERS).flatMap(([name, number]) => (number === lane.number ? [name] : []));
   const list = (each: readonly string[]) => each.map((name) => `\`${name}\``).join(", ");
   const on = campaigns.flatMap(({ name, overview: { triggers } }) => {
@@ -294,6 +373,12 @@ function firedLine(lane: Lane, campaigns: readonly Campaign[]): string {
     return fired.length === 0 ? [] : [{ name, fired }];
   });
   const quiet = names.filter((each) => !on.some(({ fired }) => fired.includes(each)));
+  // Only a trigger that fired has rows to point at.
+  const files = new Map<string, string[]>();
+  for (const name of names.filter((each) => !quiet.includes(each))) {
+    const file = rows[name];
+    if (file !== undefined) files.set(file, [...(files.get(file) ?? []), name]);
+  }
   const one = campaigns.length === 1;
   return [
     on.length === 0
@@ -302,6 +387,11 @@ function firedLine(lane: Lane, campaigns: readonly Campaign[]): string {
     ...(quiet.length === 0
       ? []
       : [`Not fired: ${list(quiet)}. Read each as the logs' silence on it, not as a lead.`]),
+    ...(files.size === 0
+      ? []
+      : [
+          `A trigger's line is a count; the rows it counted are in each campaign's derived folder: ${[...files].map(([file, of]) => `\`${file}.txt\` (${list(of)})`).join(", ")}.`,
+        ]),
   ].join(" ");
 }
 
@@ -314,6 +404,7 @@ export function lanePrompt({
   owners,
   report,
   climb = "",
+  derived = "",
 }: PromptParts): string {
   const clean = shared.replaceAll(/<!--[\s\S]*?-->\n?/g, "").trim();
   const own = ["## What the logs hold", holds(campaigns, (trigger) => trigger.lane === lane.number)];
@@ -331,13 +422,16 @@ export function lanePrompt({
           "## What the logs hold",
           "The rows are the primary reviewer's and are settled. A trigger says a lane has something to read and never what the answer is.",
           holds(campaigns, () => true),
+          ...counted(derived, catalogue),
         ];
   const what = campaigns.length === 1 ? "an Anabasis campaign" : "several Anabasis campaigns";
   return [
     `# Lane ${String(lane.number)}: ${lane.title}`,
     lane.isolated
       ? `You are one session of a whole-run investigation of ${what}. Your lane runs alone: you are given no other lane's report and you open none.`
-      : `You are one session of a whole-run investigation of ${what}. Other sessions read other lanes; you read yours.`,
+      : // A session given several lanes compared their prompts to find what differed: every lane 3
+        // session and 10 of 18 lane 1 sessions of 3 to 10 November.
+        `You are one session of a whole-run investigation of ${what}. Other sessions read other lanes; you read yours. Below its title, every open lane's prompt is the same down to \`## Your lane\`, so a session given several reads that part once.`,
     ...context,
     ...equalsSection(campaigns),
     "## Who holds which pen",
@@ -347,7 +441,8 @@ export function lanePrompt({
     "## Your lane",
     `**${String(lane.number)}. ${lane.title}.**`,
     lane.body,
-    firedLine(lane, campaigns),
+    // Only an open lane given the derived files is pointed at one.
+    firedLine(lane, campaigns, lane.isolated || lane.blind || derived.trim() === "" ? {} : ROWS),
     ...(lane.sideBySide ? climbSection(climb) : []),
     reporting(
       lane,

@@ -26,7 +26,7 @@ import { flipP, unsolved as noneAnswered } from "#src/kernel/compare.ts";
 import { lastReports, poolOf, pairsReported, referenceOf } from "#src/kernel/reports.ts";
 import { SEATS, type Traced, traced, traceKind, tracesIn } from "#src/kernel/trace.ts";
 import { spendOf } from "#src/kernel/meter.ts";
-import { type Judged, solvesIn, standsOf, verdictsOf } from "#src/kernel/solves.ts";
+import { examinerSessions, type Judged, solvesIn, standsOf, verdictsOf } from "#src/kernel/solves.ts";
 import { heldAtGate, taskSets } from "#src/kernel/task.ts";
 import { blockingOf, OBJECTIVE } from "#src/kernel/verify.ts";
 import type { Handover } from "#src/campaign/handover.ts";
@@ -35,6 +35,7 @@ import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#
 import { runtimeProcess } from "#src/meta/process.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
+import { programsOf } from "./programs.ts";
 
 export interface Trigger {
   readonly lane: number;
@@ -69,8 +70,8 @@ export interface Solve {
   readonly cancelledBy: string | null;
   readonly seconds: number;
   readonly calls: string[];
-  /** The program each of its `bash` calls ran first, past `cd` and assignments: a harness's
-   *  `.toolchain/bin` programs are reached on the shell's path, so they show only here. */
+  /** The programs its `bash` calls ran (`programsOf`, `programs.ts`): a harness's `.toolchain/bin`
+   *  programs are reached on the shell's path, so they show only here. */
   readonly programs: string[];
   errors: number;
   /** A limit its ending does not name, or null: "last turn" where the turns its end records are
@@ -80,6 +81,14 @@ export interface Solve {
   /** The model its condition asked for, and those its provider named as serving it, if any. */
   readonly model: string;
   readonly served: readonly string[];
+  /** The task its start names, and the turns, prompts and dollars its end records (null unfinished). */
+  readonly task: string;
+  readonly turns: number | null;
+  readonly prompts: number | null;
+  readonly billed: number | null;
+  /** Its place by the comparison it counted in, never the last to start: `old`, `new`, `both` (an A/A
+   *  control), `try` (an Examiner's), `practice`, or null where the log does not say. */
+  role: string | null;
 }
 
 /** One call of a Builder's tool, at its place in the log. */
@@ -149,15 +158,6 @@ export const BUILD_END = "build.finished";
 export const EXAM_START = "exam.started";
 export const EXAM_END = "exam.finished";
 export const REPORTED = "comparison.reported";
-/** Words that open a shell segment and run nothing themselves. */
-const SHELL_WORDS = new Set(["if", "then", "elif", "else", "fi", "while", "until", "do", "done", "esac"]);
-/** Words whose segment names no program: `cd` runs no harness's program, and a `for` or `case` head none. */
-const NO_PROGRAM = new Set(["cd", "for", "case", "select"]);
-/** A heredoc's body, kept to the rest of its first line, and never a here-string; and text in quotes. Both are data. */
-const HEREDOC = /(?<!<)<<-?\s*(['"]?)(\w+)\1([^\n]*)(?:\n(?:[^\n]*\n)*?[ \t]*\2[ \t]*(?=\n|$)|[\s\S]*$)/g;
-const QUOTED = /'[^']*'|"(?:[^"\\]|\\.)*"/g;
-/** What ends a shell segment: a line, a list or a pipe, a subshell or a substitution. */
-const SEGMENT = /\n|&&|\|\||\|&|(?<![<>&])&(?![>&])|[|;()`]/;
 
 /** Every trigger this reader can print, and the lane it starts. `lanes.md` names each one in the
  *  `Starts from` paragraph of that lane, and `test/wri-catalogue.test.ts` holds the two together. */
@@ -181,6 +181,7 @@ export const TRIGGERS = {
   "TASKS CARRIED": 1,
   "SUPPLY THIN": 7,
   "GATE REFUSED": 7,
+  "SCORED AFTER RELEASE": 7,
   "NO VALID ANSWER": 9,
   "AWAITING A LABEL": 9,
   "TIES BETWEEN VALID ANSWERS": 8,
@@ -275,22 +276,6 @@ export function tallyOf(tested: JsonValue | undefined) {
 export const items = (value: JsonValue | undefined): readonly JsonValue[] =>
   Array.isArray(value) ? value : [];
 export const strings = (value: JsonValue | undefined): string[] => items(value).filter(isString);
-/**
- * Every program one shell command names: each segment's first word that is no assignment and no shell
- * word, its path dropped. Until 5 November this read the first program of the first line alone, so
- * "through bash: none" could be said of a solve whose command ran a harness's programs on its later
- * lines or past a pipe (landing review of 5 November).
- */
-const commandWords = (command: string): string[] =>
-  command
-    .replaceAll(HEREDOC, "$3")
-    .replaceAll(QUOTED, "''")
-    .split(SEGMENT)
-    .flatMap((segment) => {
-      const parts = segment.trim().split(/\s+/);
-      const word = parts.find((part) => !/^\w+=/.test(part) && !SHELL_WORDS.has(part)) ?? "";
-      return /^[\w./+-]+$/.test(word) && !NO_PROGRAM.has(word) ? [word.replace(/^.*\//, "")] : [];
-    });
 
 /** Whether a solve measured its harness: a non-result is in no pair, and a rerun replaced it. A
  *  solver's flag is its side's own fail, as the comparison counts it. */
@@ -315,12 +300,23 @@ export function tally(counts: Readonly<Record<string, number>>): string {
   return named.map(([name, number]) => `${name} ${String(number)}`).join(", ") || "none";
 }
 
+/** Where a harness stands in a comparison's terms: old, new, or both sides of an A/A control. */
+function placeIn(own: JsonObject | undefined, harness: string | undefined): string | null {
+  if (own === undefined || harness === undefined) return null;
+  if (own.old === own.fresh) return own.old === harness ? "both" : null;
+  return harness === own.old ? "old" : harness === own.fresh ? "new" : null;
+}
+
 /** Each solve as the kernel reads it (`solvesIn`), with what it ran under and the calls it made. */
 function solvesOf(
   events: readonly LogEvent[],
   traces: readonly Traced[],
   conditions: ReadonlyMap<string, Condition>,
 ): Solve[] {
+  const begun = new Map(
+    events.flatMap(({ kind, data }) => (kind === "comparison.started" ? [[data.session, data]] : [])),
+  );
+  const tries = examinerSessions(events);
   const solves = new Map(
     solvesIn(events).map(({ id, started, condition: named, ending, start, end }): [string, Solve] => {
       const condition = conditions.get(named);
@@ -351,6 +347,13 @@ function solvesOf(
           limit: modelTurns !== null && count(end?.turns) === modelTurns ? "last turn" : null,
           model: condition?.model ?? "",
           served: items(end?.responseModels).filter(isString),
+          task: text(start.task),
+          turns: isNumber(end?.turns) ? end.turns : null,
+          prompts: isNumber(end?.prompts) ? end.prompts : null,
+          billed: isNumber(end?.billed) ? end.billed : null,
+          role:
+            placeIn(begun.get(start.comparison), condition?.harness) ??
+            (tries.has(start.comparison) ? "try" : null),
         },
       ];
     }),
@@ -359,7 +362,7 @@ function solvesOf(
     const solve = call.seat === "solve" ? solves.get(call.id) : undefined;
     if (solve === undefined || call.part !== "call") continue;
     solve.calls.push(call.tool);
-    if (call.tool === "bash") solve.programs.push(...commandWords(text(asRecord(call.args)?.command)));
+    if (call.tool === "bash") solve.programs.push(...programsOf(call).programs);
     solve.errors += call.isError ? 1 : 0;
   }
   return [...solves.values()];
@@ -401,6 +404,17 @@ export function indexOf(events: readonly LogEvent[]): Index {
   const traces = tracesIn(events);
   const solves = solvesOf(events, traces, conditions);
   const builds = buildsOf(events);
+  const compared = comparedOf(events, { solves, builds });
+  // A report before 2026-10-09 names no comparison in its solves' starts; the fold's window does.
+  for (const { own, scoring } of compared) {
+    for (const solve of scoring) solve.role ??= placeIn(own, solve.harness);
+  }
+  const practice = new Set(released);
+  for (const solve of solves) {
+    if (solve.role === null && solve.comparison === null && practice.has(solve.version)) {
+      solve.role = "practice";
+    }
+  }
   return {
     events,
     conditions,
@@ -411,7 +425,7 @@ export function indexOf(events: readonly LogEvent[]): Index {
     stands: standsOf(events),
     states,
     builds,
-    compared: comparedOf(events, { solves, builds }),
+    compared,
     held,
     released,
     of,
@@ -476,9 +490,20 @@ export function admittedCost(log: Index, steps: readonly Handover[]): string[] {
 }
 
 /** The answers some check refused: a format fault reached no check and is none. */
-function refusals(log: Index): Solve[] {
+export function refusals(log: Index): Solve[] {
   return log.solves.filter((solve) => blockingOf(log.verdicts.get(solve.id)?.checker).length > 0);
 }
+
+/** Each check's refusals among those answers, by its id: an answer several checks refused counts
+ *  under each, so the counts can sum past the answers (`REFUSALS BY CHECK`, `checks.ts`). */
+export function refusalsByCheck(log: Index): Record<string, number> {
+  const blocking = refusals(log).flatMap((solve) => blockingOf(log.verdicts.get(solve.id)?.checker));
+  return countBy(blocking, (check) => check);
+}
+
+/** A ruling of `earned` that took turns and cited no probe (`EARNED WITHOUT A PROBE`). */
+export const unprobedEarned = (data: JsonObject): boolean =>
+  data.ruling === "earned" && items(data.probes).length === 0 && count(data.turns) > 0;
 
 /** A Builder session's practice solves: the test-side solves of released tasks made in its own window
  *  of the log that name no comparison, as the kernel reads practice (`practiceRan`). Until 20 October
@@ -518,15 +543,14 @@ export function instrumentTriggers(log: Index): Trigger[] {
   const ruled = countBy(refused, rulingOf);
   const defects = refused.filter((solve) => rulingOf(solve) === DEFECT);
   const defectChecks = countBy(defects, (solve) => text(log.rulings.get(solve.id)?.check));
-  const blocking = refused.flatMap((solve) => blockingOf(log.verdicts.get(solve.id)?.checker));
-  const byCheck = countBy(blocking, (check) => check);
+  const byCheck = refusalsByCheck(log);
   // One check refusing most answers, and no other refusing as many: t-10's one refusal on 10
   // October was blocked by all four checks, and the first of four equal counts read as a fault
   // of one check's.
   const [top, next] = Object.entries(byCheck).toSorted(([, a], [, b]) => b - a);
   const lopsided =
     top !== undefined &&
-    new Set(blocking).size > 1 &&
+    Object.keys(byCheck).length > 1 &&
     top[1] > refused.length / 2 &&
     (next?.[1] ?? 0) < top[1];
   const carried = log.of("task.proposed").filter((data) => isString(data.carried)).length;
@@ -679,6 +703,14 @@ export function taskTriggers(log: Index): Trigger[] {
   // hold more numbered checks per task, which no command runs now and no trigger here reads.
   const admissions = log.of("task.gate").filter((data) => data.gate === 1 && written.has(text(data.version)));
   const passed = admissions.filter((data) => heldAtGate(data.outcome)).length;
+  // Each task `out` (released) a comparison started after its release named (`tasks` holds the retained).
+  const [out, late] = [new Set<string>(), new Set<string>()];
+  for (const { kind, data } of log.events) {
+    if (kind === "task.state" && data.state === "released") out.add(text(data.version));
+    const named = kind === "comparison.started" ? strings(data.tasks) : [];
+    for (const one of named.filter((task) => out.has(task))) late.add(one);
+  }
+  const lateSaid = `${share(late.size, out.size)} released tasks scored after their release:`;
   const reasons = countBy(
     admissions.filter((data) => data.outcome === "refused"),
     (data) => text(data.reason) || "unrecorded",
@@ -713,6 +745,7 @@ export function taskTriggers(log: Index): Trigger[] {
       ? [fired("SUPPLY THIN", `${share(passed, admissions.length)} decided tasks passed task admission`)]
       : []),
     ...(Object.keys(reasons).length > 0 ? [fired("GATE REFUSED", tally(reasons))] : []),
+    ...(late.size > 0 ? [fired("SCORED AFTER RELEASE", [lateSaid, ...[...late].map(short)].join(" "))] : []),
     ...(unanswered > 0
       ? [
           fired(

@@ -19,8 +19,10 @@ falsify each. An earlier diagnosis goes here as a hypothesis. Write "none" when 
 ## Already read by the primary
 
 <!-- AUTHOR: what you have already checked, one line each with its evidence (a count, a source line, a
-mechanism), so a lane builds on it or refutes it. Never the answer a lane should reach. Write
-"nothing" when you read nothing yet. -->
+mechanism), so a lane builds on it or refutes it. Never the answer a lane should reach. Then, apart
+and marked as unread, anything odd you saw and did not follow (an event out of order, a count that
+moved, a file larger than its neighbours), by where it is and never by what you think it means: a
+lane is free to follow it. Write "nothing" when you read nothing yet. -->
 
 ## Campaigns under review
 

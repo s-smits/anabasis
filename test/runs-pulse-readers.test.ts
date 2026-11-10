@@ -264,7 +264,7 @@ describe("a reader that was not read never reads as nothing new", () => {
 });
 
 describe("what a pass costs a host", () => {
-  const reader = (name: string) => ({ name, args: () => [] });
+  const reader = (name: string) => ({ name, answers: "", args: () => [] });
   const due = (name: string, ms = 0): Due => ({ log: "l", reader: reader(name), at: 0, ms });
 
   it("reads each log's rows first and then the oldest, and reuses a result whose log stands", () => {

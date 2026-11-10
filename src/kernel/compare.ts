@@ -272,7 +272,7 @@ export function gapAgainst(
 /** How much better `one` is than `other` by the objective, as a share of the larger magnitude:
  *  negative where it is worse, 0 where one is missing. The floor plays no part: this is the fact a
  *  floor is held to. */
-function gainOver(
+export function gainOver(
   rule: ObjectiveRule,
   one: number | null | undefined,
   other: number | null | undefined,

@@ -45,10 +45,12 @@ import { pathsUnder } from "#src/harness/open.ts";
 import { scoresIn, testOf } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { lastReports } from "#src/kernel/reports.ts";
+import { practiceRan } from "#src/kernel/solves.ts";
 import { AGENT_DIR, GUIDE_FILE, TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
-import { existsSync, lstatSync, readFileSync, realpathSync } from "#src/meta/filesystem.ts";
-import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
+import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync } from "#src/meta/filesystem.ts";
+import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
+import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 import { median } from "#src/meta/tally.ts";
 import { waitsOf } from "./time.ts";
 
@@ -58,10 +60,14 @@ const SILENCE = 30 * 60 * 1000;
 /** Path segments of what a harness installed rather than wrote. */
 const INSTALLED =
   /(^|\/)(python|site-packages|dist-packages|node_modules|\.?venv|vendor|include|__pycache__)(\/|$)/;
-/** A folder beside one of these holds an installed package set, so the whole of it was installed. */
-const INSTALL_MARK = /^(.*\/)?[^/]+\.(dist-info|egg-info|libs)\//;
+/** An installed package's metadata folder, and what follows its package's name in that folder's name. */
+const METADATA = /\.(?:dist-info|egg-info)$/;
+const PAST_NAME = /(?:-[^/]*)?\.(?:dist-info|egg-info)$/;
+/** A wheel's folder of bundled shared libraries, written whole by the installer. */
+const LIBS = /(^|\/)[^/]+\.libs\//;
 /** A program a harness wrote is shorter than this; an interpreter or a library's binary is not. */
 const WRITTEN_BYTES = 256 * 1024;
+const GUIDE_PATH = `${AGENT_DIR}${GUIDE_FILE}`;
 
 export type Grades = ReadonlyMap<string, number>;
 interface Weight {
@@ -242,33 +248,194 @@ export function trajectoryOf(name: string, events: readonly LogEvent[], grades: 
   };
 }
 
-/** The tool tree's files a harness wrote, given each file's path and size: not an installed folder,
- *  not a folder holding an installed package set, and not a binary-sized file. */
-export function ownPrograms(files: readonly { readonly path: string; readonly bytes: number }[]): string[] {
-  const roots = new Set(
+/** A path with its `.` and `..` segments resolved, as a `RECORD` line names one from its folder. */
+function resolved(path: string): string {
+  const kept: string[] = [];
+  for (const segment of path.split("/")) {
+    if (segment === "..") kept.pop();
+    else if (segment !== "." && segment !== "") kept.push(segment);
+  }
+  return kept.join("/");
+}
+
+/** The paths an installer wrote, from each package's metadata: the files its `RECORD` names (a CSV
+ *  whose first field is a path from the folder it installed into), or, where no record can be read,
+ *  the folders and modules its `top_level.txt` or its own name gives. */
+function installedBy(files: readonly { readonly path: string }[], recordOf: (path: string) => string | null) {
+  const paths = new Set<string>();
+  const folders = new Set<string>();
+  const marks = new Map(
     files.flatMap(({ path }) => {
-      const mark = INSTALL_MARK.exec(path);
-      return mark === null ? [] : [mark[1] ?? ""];
+      const segments = path.split("/");
+      const at = segments.findIndex(
+        (segment, place) => place < segments.length - 1 && METADATA.test(segment),
+      );
+      const folder = segments[at] ?? "";
+      const site = segments
+        .slice(0, at)
+        .map((segment) => `${segment}/`)
+        .join("");
+      return at === -1 ? [] : [[`${site}${folder}/`, { site, name: folder.replace(PAST_NAME, "") }] as const];
     }),
   );
+  for (const [meta, { site, name }] of marks) {
+    folders.add(meta);
+    const record = recordOf(`${meta}RECORD`) ?? recordOf(`${meta}installed-files.txt`);
+    const from = record !== null && meta.endsWith(".egg-info/") ? meta : site;
+    const named = record
+      ?.split("\n")
+      .map((line) =>
+        line.startsWith('"') ? line.slice(1, line.indexOf('"', 1)) : (line.split(",")[0] ?? ""),
+      );
+    if (named !== undefined) {
+      for (const each of named.filter((line) => line.trim() !== "")) paths.add(resolved(`${from}${each}`));
+      continue;
+    }
+    const tops = recordOf(`${meta}top_level.txt`)
+      ?.split("\n")
+      .filter((line) => line.trim() !== "") ?? [name];
+    for (const top of tops) {
+      folders.add(`${site}${top.trim()}/`);
+      paths.add(`${site}${top.trim()}.py`);
+    }
+  }
+  return { paths, folders: [...folders] };
+}
+
+/** The tool tree's files a harness wrote, given each file's path and size (`recordOf` reads a file
+ *  of the tree by its path, or gives null): not an installed folder (`INSTALLED`, a wheel's `.libs`),
+ *  not a file an installed package's metadata names, and not a binary-sized file. A harness's own
+ *  module beside installed packages stays: until 10 November one `.dist-info` dropped the whole folder
+ *  that held it, which hid a jobstat harness's own `pylib/statkit.py` behind thirteen packages. */
+export function ownPrograms(
+  files: readonly { readonly path: string; readonly bytes: number }[],
+  recordOf: (path: string) => string | null = () => null,
+): string[] {
+  const installed = installedBy(files, recordOf);
   return files
     .filter(
       ({ path, bytes }) =>
-        bytes <= WRITTEN_BYTES && !INSTALLED.test(path) && ![...roots].some((root) => path.startsWith(root)),
+        bytes <= WRITTEN_BYTES &&
+        !INSTALLED.test(path) &&
+        !LIBS.test(path) &&
+        !installed.paths.has(path) &&
+        !installed.folders.some((folder) => path.startsWith(folder)),
     )
     .map(({ path }) => path);
 }
 
-/** The programs a kept harness wrote, under the real root of its tool tree. */
+/** The programs a kept harness wrote, under the real root of its tool tree: its files, and each link
+ *  that names another file of the tree (`bin/pack-answer` to `check-answer`), listed by its own name. */
 export function ownFilesOf(state: string): { readonly root: string; readonly paths: readonly string[] } {
   const tree = join(state, TOOL_TREE_DIR);
   if (!existsSync(tree)) return { root: tree, paths: [] };
   const root = realpathSync(tree);
   const files = pathsUnder(root).flatMap((path) => {
     const stat = lstatSync(join(root, path));
-    return stat.isFile() ? [{ path, bytes: stat.size }] : [];
+    if (stat.isFile()) return [{ path, bytes: stat.size }];
+    const target =
+      stat.isSymbolicLink() && existsSync(join(root, path)) ? realpathSync(join(root, path)) : "";
+    return target.startsWith(`${root}/`) && lstatSync(target).isFile() ? [{ path, bytes: 0 }] : [];
   });
-  return { root, paths: ownPrograms(files) };
+  const recordOf = (path: string) =>
+    existsSync(join(root, path)) ? readFileSync(join(root, path), "utf8") : null;
+  return { root, paths: ownPrograms(files, recordOf) };
+}
+
+const unrecorded = (value: JsonValue | undefined): string => (isString(value) ? value : "unrecorded");
+
+/** The guide and the programs a kept harness wrote, by path (the guide as `guide`). Moved here from
+ *  `packets.ts` on 10 November so that `harness-versions.ts --lines` and `names.ts` read the one list
+ *  a blind packet reads. */
+export function writtenIn(state: string): Map<string, string> {
+  const { root, paths } = ownFilesOf(state);
+  const found = new Map(paths.map((path) => [path, join(root, path)]));
+  if (existsSync(join(state, GUIDE_PATH))) found.set("guide", join(state, GUIDE_PATH));
+  return found;
+}
+
+/** The unified diff of what a harness wrote, from `parent` (a state folder, or none) to `version`,
+ *  one context line a hunk, path by path in order; `filesOf` names the files read, by label. */
+export function diffOf(
+  parent: string,
+  version: string,
+  filesOf: (state: string) => ReadonlyMap<string, string> = writtenIn,
+): string[] {
+  const old = existsSync(parent) ? filesOf(parent) : new Map<string, string>();
+  const fresh = filesOf(version);
+  const link = (file: string | undefined) =>
+    file !== undefined && lstatSync(file).isSymbolicLink() ? `-> ${readlinkSync(file)}` : null;
+  return [...new Set([...old.keys(), ...fresh.keys()])].toSorted().flatMap((path) => {
+    const [before, after] = [link(old.get(path)), link(fresh.get(path))];
+    if (before !== null || after !== null) {
+      // A link reads as the name it points to, never as its target's text a second time.
+      if (before === after) return [];
+      return [
+        `--- parent/${path}`,
+        `+++ version/${path}`,
+        ...(before === null ? [] : [`-${before}`]),
+        ...(after === null ? [] : [`+${after}`]),
+      ];
+    }
+    const { stdout } = runSync([
+      "diff",
+      "-U1",
+      "--label",
+      `parent/${path}`,
+      "--label",
+      `version/${path}`,
+      old.get(path) ?? "/dev/null",
+      fresh.get(path) ?? "/dev/null",
+    ]);
+    const text = decodeOutput(stdout).trimEnd();
+    return text === "" ? [] : text.split("\n");
+  });
+}
+
+/** How the campaign came to hold `digest`, and the parent the log records for it: the one reader of
+ *  a version's parent, which `harness-versions.ts` and the lane 27 packets both call (moved from
+ *  `harness-versions.ts` on 10 November, when the packets read `harness.version` alone and gave a led
+ *  session's checkpoints the starter for a parent). */
+export function madeOf(events: readonly LogEvent[], digest: string, starter: string) {
+  const version = events.find(
+    ({ kind, data }) => kind === "harness.version" && data.version === digest,
+  )?.data;
+  if (isString(version?.parent)) {
+    const note = isString(version.note) ? `${version.note.split(/\s+/).length}-word note` : "no note";
+    return {
+      made: `session ${unrecorded(version.session)} from ${version.parent.slice(0, 8)}, ${note}`,
+      parent: version.parent,
+    };
+  }
+  const imported = events.find(
+    ({ kind, data }) => kind === "harness.imported" && data.harness === digest,
+  )?.data;
+  if (imported !== undefined) return { made: `imported from ${unrecorded(imported.from)}`, parent: null };
+  // A Builder that leads its campaign freezes a harness with `build.checkpoint` and no parent: its
+  // parent is the session's harness snapshot before it, or what the session began from. Until 27 October
+  // this read only `harness.version`, and every harness compared in a led campaign read as made by
+  // no record.
+  const at = events.findIndex(({ kind, data }) => kind === "build.checkpoint" && data.harness === digest);
+  const session = events[at]?.data.session;
+  const before = events.slice(0, Math.max(at, 0)).filter(({ data }) => data.session === session);
+  const parent =
+    before.findLast(({ kind }) => kind === "build.checkpoint")?.data.harness ??
+    before.findLast(({ kind }) => kind === "build.started")?.data.parent;
+  if (isString(parent)) {
+    return { made: `checkpoint of session ${unrecorded(session)} from ${parent.slice(0, 8)}`, parent };
+  }
+  // A led session practises states it never freezes: until 2 November each read as made by no
+  // record, 28 of them in seven campaigns (lane 15), though the log's practice solves name each.
+  if (digest === starter) {
+    return { made: "the Starter Built Harness as this checkout writes it", parent: null };
+  }
+  if (practiceRan(events).some(({ under }) => under.harness === digest)) {
+    return { made: "a state its Builder practised and never froze", parent: null };
+  }
+  return {
+    made: "no record of its making: a stored sweep's harness, a starter of another checkout, or a programs-of control",
+    parent: null,
+  };
 }
 
 /** A kept harness's weight from its state beside the log, or null where the copy keeps none. */

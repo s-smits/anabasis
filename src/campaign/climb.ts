@@ -138,6 +138,16 @@ export interface Split {
 export const UNSELECTED = ["a step", "a step for the starter", "no step", "too few"] as const;
 type Unselected = (typeof UNSELECTED)[number];
 
+/** One task of a starter read: where it came from, who wrote it, the reference's score against the
+ *  starter (`-differenceOf`, the sign the read's tally takes), and the pair the read rebuilt. */
+interface StarterRow {
+  readonly task: string;
+  readonly origin: Origin;
+  readonly writer: string;
+  readonly margin: number;
+  readonly pair: Paired;
+}
+
 /** One promotion's first starter comparison that tallied a task. */
 export interface StarterRead {
   readonly session: string;
@@ -153,6 +163,10 @@ export interface StarterRead {
   readonly authors: readonly { readonly session: string; readonly tally: Tally }[];
   /** What the tasks written after the promotion read alone, under this tree's rule (`Unselected`). */
   readonly after: Unselected;
+  /** Whether the report recorded the level the read is taken at; `level` reads 0 where not. */
+  readonly levelled: boolean;
+  /** Each scored task, in the report's order. */
+  readonly rows: readonly StarterRow[];
   /** The harnesses and tasks, which a copy of the comparison shares. */
   readonly key: string;
 }
@@ -349,7 +363,7 @@ function byAuthor(writers: ReadonlyMap<string, string>, pairs: readonly Paired[]
 }
 
 /** `ahead`, the reference's scores, read as `Unselected` at `level`. */
-function unselectedOf(ahead: readonly number[], level: number): Unselected {
+export function unselectedOf(ahead: readonly number[], level: number): Unselected {
   const behind = ahead.map((one) => -one);
   if (readsStep(ahead, level)) return "a step";
   if (readsStep(behind, level)) return "a step for the starter";
@@ -401,6 +415,14 @@ export function starterReads(events: readonly LogEvent[]): StarterRead[] {
           pairs.filter((pair) => originOf(pair) === ORIGINS[2]).map((pair) => -differenceOf(pair)),
           at,
         ),
+        levelled: isNumber(level),
+        rows: pairs.map((pair) => ({
+          task: pair.task,
+          origin: originOf(pair),
+          writer: writers.get(pair.task) ?? "the opening exam",
+          margin: -differenceOf(pair),
+          pair,
+        })),
         key: `${epoch.reference}|${fresh}|${pairs
           .map(({ task }) => task)
           .toSorted()

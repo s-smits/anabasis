@@ -96,13 +96,18 @@ source.
 | 3 | `lanes --out <dir> [--lanes 1-4,7] [--agents N] [--high K] [--regroup]` | `lanes/NN-prompt.md`, `launch.json` |
 | 5 | `collect --out <dir>` | `reports.md` |
 | 6 | `synthesis --out <dir>` | `synthesis-prompt.md` |
-| lanes 1, 4 | `grade --log <log> [--bundle <pack>] --task <taskId> --answer <file>` | nothing: one verdict line (`--bundle` only for a stored pack) |
+| lanes 1, 3, 4 | `grade --log <log> [--bundle <pack>] (--task <taskId> --answer <file> \| --solve <id> \| --answers <dir>) [--set <path>=<json>]...` | nothing: one verdict line an answer, the recorded verdict beside a regraded solve, and with `--set` the same answer with one field changed (`--bundle` only for a stored pack) |
 | any | `derive (--log <log>[,<log>...] \| --all) [--verbose] [--force] [--no-embed]` | `data/derived/<campaign>@<path>/` (one folder a log): one file a reader and `manifest.json` |
 
 ### The readers, derived
 
-About thirty deterministic readers each map one log to text (`READERS`, `tools/wri/derive.ts`;
-`bun run runs pulse` runs the same list). Left out are tools that read no run
+About forty-five deterministic readers each map one log to text (`READERS`, `tools/wri/derive.ts`;
+`bun run runs pulse` runs the same list), and each entry says in one line what its file holds. An
+open lane's prompt carries that list as a table, a campaign a column with each file's lines, beside
+the tools a lane runs with arguments (`## Tools a lane runs`, [the catalogue](references/lanes.md))
+and, under the lane's triggers, the file that holds the rows each fired trigger counted (`ROWS`,
+`tools/wri/investigation.ts`). The same section tells the lane that the record behind every table
+stays open to it. An isolated or blind lane is given none of this. Left out are tools that read no run
 (`comparison-reading/scripts/size.ts`, `examiner-complexity/scripts/rungs.ts`,
 `system-audit/scripts/recent.ts`), that need more than a campaign
 (`examiner-complexity/scripts/grades.ts`, `oracle-handover/scripts/slice.ts`, `tools/c/repaired.ts`,

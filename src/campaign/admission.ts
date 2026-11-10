@@ -142,13 +142,19 @@ const UNRELEASED = "no task is released: the Builder has nothing to practise on"
 const said = (rows: readonly (readonly [boolean, string])[]) =>
   rows.flatMap(([holds, text]) => (holds ? [text] : []));
 
+/** The mean dollars the finished solves `solves` billed, null where none carries a bill: the rate
+ *  admission prices a comparison's test at. */
+export function billedRate(solves: ReturnType<typeof ended>): number | null {
+  const bills = solves.flatMap(({ end }) => (isNumber(end.billed) ? [end.billed] : []));
+  return bills.length === 0 ? null : bills.reduce((sum, bill) => sum + bill, 0) / bills.length;
+}
+
 /** A log's supply for the next comparison. */
 export function supplyOf(events: readonly LogEvent[]): Supply {
   // The frontier a step is read on, the tasks waiting for a person's label, which `scoredSet`
   // leaves out, and the ones the reference closed in their last comparison, scored as retained.
   const { frontier, awaiting, exhausted } = poolOf(events);
   const reading = events.findLast(({ kind }) => kind === "checker.read")?.data.faults;
-  const bills = ended(solvesIn(events)).flatMap(({ end }) => (isNumber(end.billed) ? [end.billed] : []));
   return {
     held: frontier.length,
     awaiting: awaiting.length,
@@ -156,7 +162,7 @@ export function supplyOf(events: readonly LogEvent[]): Supply {
     released: taskSets(events).released.length,
     faults: Array.isArray(reading) ? reading.length : null,
     frozen: frozenChecker(events) !== null,
-    billed: bills.length === 0 ? null : bills.reduce((sum, bill) => sum + bill, 0) / bills.length,
+    billed: billedRate(ended(solvesIn(events))),
     stop: stopRule(events),
   };
 }

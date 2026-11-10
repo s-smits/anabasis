@@ -133,6 +133,7 @@ describe("what a cut leaves", () => {
     const count = join(root, "count");
     const reader = (name: string, embeds: boolean): Reader => ({
       name,
+      answers: "",
       embeds,
       args: (at) => [
         "test/helpers/vectors-slow.ts",

@@ -578,6 +578,15 @@ export function lengthsIn(
 /** The folder every iteration's ledgers are read under: `.ana/wri/` of the main checkout. */
 const wriRoot = (repo: string) => join(mainTree(repo), ".ana", "wri");
 
+/** The standings whose run is live or whose log's last event lies in the last `days`. A file's time
+ *  only says which logs to open: a fetch writes a run's copy again, and on 10 November 113 of the
+ *  119 archived logs written in two days held no event of those days, so 18 steps read as owed. */
+export const movedIn = <S extends Pick<Standing, "row" | "last">>(
+  all: readonly S[],
+  now: number,
+  days: number,
+) => all.filter(({ row, last }) => row.live || now - last < days * 24 * HOUR_MS);
+
 /** Where every campaign that moved in the last `--days` stands, and how many closed comparing nothing. */
 function standings(args: CommandArgs, repo: string, known: readonly Run[], parts = args.positionals) {
   const now = Date.now();
@@ -596,7 +605,7 @@ function standings(args: CommandArgs, repo: string, known: readonly Run[], parts
       (parts.length === 0 || parts.some((part) => run.name.includes(part))) &&
       now - statSync(run.path).mtimeMs < days * 24 * HOUR_MS,
   );
-  const all = chosen.map((run): Standing => {
+  const opened = chosen.map((run): Standing => {
     const events = logEvents(run.path);
     const row = rowOf(
       { name: run.name, host: run.archived ?? HERE, live: stillRunning(run, running) },
@@ -615,8 +624,9 @@ function standings(args: CommandArgs, repo: string, known: readonly Run[], parts
       step: folder === undefined ? opening : nextOf(folder.dir, launchedFrom(known), root, lengthsIn(known)),
     };
   });
+  const all = movedIn(opened, now, days);
   const shown = all.filter(({ row }) => row.live || row.compared > 0);
-  return { shown, silent: all.length - shown.length, moved: chosen.length, days, now };
+  return { shown, silent: all.length - shown.length, moved: all.length, days, now };
 }
 
 /** The view with no verb: one row a run, each with its step. */

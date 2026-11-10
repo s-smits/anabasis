@@ -24,6 +24,7 @@ import type {
 import { type Reading, Unanswerable } from "./context.ts";
 import { drawsIn, type Log, once, proposalsIn, ranIn, setsIn } from "./folds.ts";
 import { campaignAt } from "./logs.ts";
+import { ownSolves } from "./move.ts";
 import { barsIn, outcomeOf, pairsIn, shareOf } from "./moves.ts";
 import { examTier, solveRow } from "./trace.ts";
 
@@ -79,24 +80,10 @@ function cellOf(
     return leftOut === undefined ? null : { leftOut };
   }
   // A task set aside is in no pair: each side's share is of the comparison's own counted solves of
-  // it, in the order they started, as many as a side has.
+  // it, in the order they started, as many as a side has (`ownSolves`).
   const solves = fixedIn(log.events, id)?.solves ?? 0;
   const under = (harness: string) =>
-    shareOf(
-      ranIn(log)
-        .flatMap((solve) => {
-          const valid = passed(solve);
-          return solve.start.comparison === id &&
-            solve.under.task === version &&
-            solve.under.harness === harness &&
-            valid !== null
-            ? [{ valid, started: solve.started }]
-            : [];
-        })
-        .toSorted((one, other) => one.started - other.started)
-        .slice(0, solves)
-        .map(({ valid }) => valid),
-    );
+    shareOf(ownSolves(log, id, version, harness, solves).map((solve) => passed(solve) === true));
   return { outcome: "aside", old: under(bar.old), fresh: under(bar.fresh) };
 }
 

@@ -54,7 +54,7 @@ import {
   startRefusal,
 } from "./logins.ts";
 import type { Live } from "./live.ts";
-import { lastRun, leaveKeeper, rerun, start, WAIT_HOURS } from "./manage.ts";
+import { lastRun, leaveKeeper, rerun, said, start, WAIT_HOURS } from "./manage.ts";
 import { keepers, logEvents, processes, type Run, runNamed } from "./registry.ts";
 import { stop } from "./stop.ts";
 
@@ -150,11 +150,11 @@ export async function roomFor(
   }));
   const over = forecast.filter(({ at }) => at !== null && at >= 100).map(({ login }) => login);
   const unread = forecast.filter(({ at }) => at === null).map(({ login }) => login);
-  const said = [
+  const reasons = [
     ...(over.length === 0 ? [] : [`login ${over.join(", ")} would reach five hours with this run added`]),
     ...(unread.length === 0 ? [] : [`login ${unread.join(", ")} could not be read`]),
   ];
-  return { logins: room(readings, logins, new Set([...out, ...over, ...unread])), why: said.join("; ") };
+  return { logins: room(readings, logins, new Set([...out, ...over, ...unread])), why: reasons.join("; ") };
 }
 
 /** Whether a line of `keep.out` says this keeper moved or restarted its run, left it waiting or gave it
@@ -171,7 +171,7 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
   const spentUntil = new Map<string, number>();
   let barren = 0;
   let worked = -1;
-  let said = "";
+  let waitedOn = "";
   let askAt = 0;
   return async (now: number): Promise<boolean> => {
     const events = hands.events();
@@ -182,7 +182,7 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
       return true;
     }
     if (turn === "watch") {
-      said = "";
+      waitedOn = "";
       askAt = 0;
       return false;
     }
@@ -213,12 +213,12 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
       target === null ? null : startRefusal(hands.env, payerOf(target, flags), "here", await counted(), name);
     if (target === null || full !== null) {
       const reason = full ?? (why === "" ? "no login to go on with" : why);
-      if (reason !== said) hands.say(`${name}: ${reason}; left waiting`);
-      said = reason;
+      if (reason !== waitedOn) hands.say(`${name}: ${reason}; left waiting`);
+      waitedOn = reason;
       askAt = now + ASK_MS;
       return false;
     }
-    said = "";
+    waitedOn = "";
     askAt = 0;
     const turns = turnsIn(events);
     barren = turn === "continue" && turns === worked ? barren + 1 : 0;
@@ -318,10 +318,6 @@ export async function keep(args: readonly string[]): Promise<void> {
     return keepGoing(run, pool, Number(values["wait-hours"]) * HOUR);
   }
   if (keepers(name).length > 0) throw new Error(`${name} is kept already`);
-  if (!values.yes) {
-    return console.log(
-      `${name} in ${run.tree}: would be kept going on logins ${logins.join(", ")}; nothing is done without --yes`,
-    );
-  }
+  if (!values.yes) return said(run, `would be kept going on logins ${logins.join(", ")}`);
   leaveKeeper(run, named, values["wait-hours"]);
 }

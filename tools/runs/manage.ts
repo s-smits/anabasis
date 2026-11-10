@@ -63,7 +63,7 @@ import { lastLaunch, nextRun } from "./receipt.ts";
 import { payerOf } from "./live.ts";
 import { LIMITS } from "../d2/campaign.ts";
 import { recordedSetting } from "../d2/setting.ts";
-import { allowedLogins, roomToStart } from "./logins.ts";
+import { allowedLogins, type Env, NUMBERED, roomToStart, TOKEN, tokenOf } from "./logins.ts";
 import {
   BUILDER,
   campaignOf,
@@ -98,8 +98,6 @@ const AFTER = {
   examined: ["exam.finished"],
   finished: ["build.finished"],
 } as const;
-const TOKEN = "CLAUDE_CODE_OAUTH_TOKEN";
-const NUMBERED = new RegExp(`^${TOKEN}\\d+$`);
 /** The flags a run again does not repeat: its name, which the verb names, and its total. */
 const DROPPED = ["--name", "--budget"];
 const LOOK_MS = 30_000;
@@ -117,11 +115,11 @@ export function rerun(flags: readonly string[], budget: string | undefined): str
 }
 
 /** `env` less its numbered logins, and with `login`, where named, as its login. */
-export function loginEnv(env: Readonly<Record<string, string | undefined>>, login: string | undefined) {
+export function loginEnv(env: Env, login: string | undefined) {
   const kept = Object.fromEntries(Object.entries(env).filter(([key]) => !NUMBERED.test(key)));
   if (login === undefined) return kept;
-  const token = env[`${TOKEN}${login}`];
-  if (token === undefined || token === "") {
+  const token = tokenOf(env, login);
+  if (token === undefined) {
     throw new Error(
       `${TOKEN}${login} is not set: run the verb under bun --env-file=<the file that holds it>`,
     );
@@ -305,10 +303,7 @@ export function leaveKeeper(run: Run, logins: readonly string[] | undefined, wai
 /** Whether a run started on `login` gets a keeper by itself: it pays by a numbered login, another is
  *  allowed to go on with, and `ANA_KEEP=off` did not say otherwise. A run with no numbered login has
  *  nowhere to move, and goes on as it was started. */
-export function keepsItself(
-  env: Readonly<Record<string, string | undefined>>,
-  login: string | undefined,
-): boolean {
+export function keepsItself(env: Env, login: string | undefined): boolean {
   return env.ANA_KEEP !== "off" && login !== undefined && allowedLogins(env).some((other) => other !== login);
 }
 

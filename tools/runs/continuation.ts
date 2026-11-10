@@ -1,5 +1,6 @@
 /** A continuation that names another revision uses that revisions launcher (22 October 2026). */
 import { runtimeProcess } from "#src/meta/process.ts";
+import { hasText } from "#src/meta/text.ts";
 import type { Host } from "./host-config.ts";
 import { verbOn } from "./hosts.ts";
 import { preparedHost, publishedAt } from "./code.ts";
@@ -14,7 +15,7 @@ export async function continueOn(host: Host, args: readonly string[]): Promise<n
   if (at.length !== 1) throw new Error("name --at once");
   const joined = own[index]?.startsWith("--at=") === true;
   const revision = joined ? own[index]?.slice(5) : own[index + 1];
-  if (revision === undefined || revision === "" || revision.startsWith("--")) {
+  if (!hasText(revision) || revision.startsWith("--")) {
     throw new Error("name --at <commit>");
   }
   const commit = publishedAt(runtimeProcess.cwd(), revision);

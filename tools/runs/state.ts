@@ -4,6 +4,7 @@
  */
 import type { LogEvent } from "#src/kernel/log.ts";
 import { isNumber, isString } from "#src/meta/json-shape.ts";
+import { hasText } from "#src/meta/text.ts";
 import { type Life, lifeOf, observationOf, stderrTail } from "./diagnosis.ts";
 import { lastLaunch } from "./receipt.ts";
 import { HERE, type Run, type Running } from "./registry.ts";
@@ -111,5 +112,5 @@ export async function runReason(run: Run, state: RunState): Promise<string[]> {
       : `process gone without a campaign ending${state.kind === "kept" ? "; its keeper starts it again" : ""}`;
   const remote = run.archived !== undefined && run.archived !== HERE;
   const stderr = remote ? observationOf(run)?.stderr : await stderrTail(run.path);
-  return (stderr ?? "") === "" ? [said] : [said, `newest stderr:\n${String(stderr)}`];
+  return hasText(stderr) ? [said, `newest stderr:\n${stderr}`] : [said];
 }

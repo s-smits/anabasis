@@ -44,6 +44,7 @@ import {
   allowedLogins,
   atCap,
   billsLogin,
+  type Env,
   fiveHourWith,
   liveEverywhere,
   plainOnly,
@@ -58,7 +59,6 @@ import { keepers, logEvents, processes, type Run, runNamed } from "./registry.ts
 import { stop } from "./stop.ts";
 
 export type Turn = "watch" | "move" | "continue" | "done";
-type Env = Readonly<Record<string, string | undefined>>;
 
 /** What a keeper's look reads and does, which a test scripts. */
 interface Hands {

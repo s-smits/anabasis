@@ -49,6 +49,7 @@ import { dirname } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { runSync, zeroExitText } from "#src/meta/subprocess.ts";
+import { hasText, textOr } from "#src/meta/text.ts";
 import { looseFlagsOf } from "../d2/campaign-terms.ts";
 import { recordedSetting } from "../d2/setting.ts";
 import { asked } from "./hosts.ts";
@@ -99,7 +100,12 @@ interface Failed {
   readonly error: string;
 }
 
-const TOKEN = "CLAUDE_CODE_OAUTH_TOKEN";
+/** A process environment, as `runtimeProcess.env` holds it. */
+export type Env = Readonly<Record<string, string | undefined>>;
+
+export const TOKEN = "CLAUDE_CODE_OAUTH_TOKEN";
+/** A numbered login's key, with its number captured. */
+export const NUMBERED = new RegExp(`^${TOKEN}(\\d+)$`);
 /** The plain login's name among the logins `readLogins` is asked for: its key is `TOKEN` and nothing. */
 const PLAIN = "";
 const BASE = "https://api.anthropic.com";
@@ -143,27 +149,28 @@ const SUBS: Readonly<Record<"claude" | "codex", Readonly<Record<string, string>>
 /** Every login `env` holds, by its number. A key left empty holds none: a copied `.env.example`
  *  names `CLAUDE_CODE_OAUTH_TOKEN2=`, and until 5 November that made a login nobody can pay with, so
  *  `fresh` said no login had room. */
-function loginsIn(env: Readonly<Record<string, string | undefined>>): string[] {
+function loginsIn(env: Env): string[] {
   return Object.entries(env)
-    .flatMap(([key, value]) =>
-      value === undefined || value === "" ? [] : (new RegExp(`^${TOKEN}(\\d+)$`).exec(key)?.[1] ?? []),
-    )
+    .flatMap(([key, value]) => (hasText(value) ? (NUMBERED.exec(key)?.[1] ?? []) : []))
     .toSorted((one, other) => Number(one) - Number(other));
+}
+
+/** `login`'s credential in `env`, or undefined where it holds none or a blank one. */
+export function tokenOf(env: Env, login: string): string | undefined {
+  const token = env[`${TOKEN}${login}`];
+  return hasText(token) ? token : undefined;
 }
 
 /** The key to set where none of `allowed` holds one, or null where one does. Until 5 November this
  *  read as no login having room, which names a limit where the credential is what is missing. */
-export function noLogin(
-  env: Readonly<Record<string, string | undefined>>,
-  allowed: readonly string[],
-): string | null {
-  if (allowed.some((login) => (env[`${TOKEN}${login}`] ?? "") !== "")) return null;
+export function noLogin(env: Env, allowed: readonly string[]): string | null {
+  if (allowed.some((login) => tokenOf(env, login) !== undefined)) return null;
   const keys = allowed.length === 0 ? TOKEN : allowed.map((login) => `${TOKEN}${login}`).join(" or ");
   return `no login here: set ${keys} in the process environment, or in a file named with bun --env-file=<file>`;
 }
 
 /** The logins a run may take: those `ANA_LOGINS` names, or every login `env` holds. */
-export function allowedLogins(env: Readonly<Record<string, string | undefined>>): string[] {
+export function allowedLogins(env: Env): string[] {
   const named = env.ANA_LOGINS?.split(",")
     .map((login) => login.trim())
     .filter((login) => login !== "");
@@ -173,8 +180,8 @@ export function allowedLogins(env: Readonly<Record<string, string | undefined>>)
 /** Whether a run goes on the plain `CLAUDE_CODE_OAUTH_TOKEN` alone: no numbered login is allowed
  *  and the plain one is set, as on a machine with one Claude login. Until 28 October `fresh` and
  *  `keep` refused such a machine for want of a numbered login. */
-export function plainOnly(env: Readonly<Record<string, string | undefined>>): boolean {
-  return allowedLogins(env).length === 0 && (env[TOKEN] ?? "") !== "";
+export function plainOnly(env: Env): boolean {
+  return allowedLogins(env).length === 0 && hasText(env[TOKEN]);
 }
 
 /** Whether a run bills a Claude login: whether an effective seat is a `claude/` model. The last
@@ -191,10 +198,7 @@ export function billsLogin(events: readonly LogEvent[], flags: readonly string[]
 
 /** The subscription `ANA_LOGIN_SUBS` names for `login`, such as `N:ultra` or `codex:pro200`, and
  *  the runs it carries; null where it names none or one its provider does not offer. */
-function subOf(
-  env: Readonly<Record<string, string | undefined>>,
-  login: string,
-): { readonly sub: string; readonly runs: string } | null {
+function subOf(env: Env, login: string): { readonly sub: string; readonly runs: string } | null {
   const offered = SUBS[login === CODEX ? "codex" : "claude"];
   const entries = (env.ANA_LOGIN_SUBS ?? "").split(",").map((entry) => entry.trim().split(":"));
   const sub = entries.find(([who]) => who === login)?.[1];
@@ -207,7 +211,7 @@ function subOf(
  *  `null` where none names it. The Codex CLI's login takes no bare number, and one a machine
  *  without an entry or a subscription (operator, 29 October). Until 4 November no subscription
  *  was read, and each larger login took an `N:4` by hand. */
-export function capOf(env: Readonly<Record<string, string | undefined>>, login: string): string | null {
+export function capOf(env: Env, login: string): string | null {
   const entries = (env.ANA_LOGIN_RUNS ?? "").split(",").map((entry) => entry.trim().split(":"));
   const own =
     entries.find(([who, most]) => who === login && most !== undefined)?.[1] ?? subOf(env, login)?.runs;
@@ -217,11 +221,7 @@ export function capOf(env: Readonly<Record<string, string | undefined>>, login: 
 
 /** The logins of `allowed` that carry as many live runs across the fleet (`live`) as their cap,
  *  which takes no other run: neither a fresh one nor one a keeper moves. */
-export function atCap(
-  env: Readonly<Record<string, string | undefined>>,
-  allowed: readonly string[],
-  live: readonly Live[],
-): Set<string> {
+export function atCap(env: Env, allowed: readonly string[], live: readonly Live[]): Set<string> {
   return new Set(
     allowed.filter((login) => {
       const cap = login === CODEX ? null : capOf(env, login);
@@ -233,7 +233,7 @@ export function atCap(
 /** Why `host` takes no other run of `payer`, or null where it does: the Codex CLI's login is one a
  *  machine, so its cap from `ANA_LOGIN_RUNS` (`codex:1`) counts the runs on that machine alone. */
 export function fullOn(
-  env: Readonly<Record<string, string | undefined>>,
+  env: Env,
   payer: string | undefined,
   host: string,
   live: readonly Live[],
@@ -252,7 +252,7 @@ export function fullOn(
  *  cap of Codex runs. Until 29 October only `fresh` and `keep` held a login to its cap, and
  *  `continue` and `move` were counted by hand. */
 export function startRefusal(
-  env: Readonly<Record<string, string | undefined>>,
+  env: Env,
   payer: string | undefined,
   host: string,
   counted: { readonly live: readonly Live[]; readonly unasked: readonly string[] },
@@ -376,17 +376,14 @@ async function viaRateLimitHeaders(token: string, agent: string): Promise<Read |
 }
 
 /** Each of `wanted` read from `env`, by the first route that answers. */
-export async function readLogins(
-  wanted: readonly string[],
-  env: Readonly<Record<string, string | undefined>>,
-): Promise<Reading[]> {
+export async function readLogins(wanted: readonly string[], env: Env): Promise<Reading[]> {
   const version = zeroExitText(runSync(["claude", "--version"]))?.split(/\s+/)[0];
   // CodexBar's fallbackClaudeCodeVersion where no CLI answers.
-  const agent = `claude-code/${version === undefined || version === "" ? "2.1.0" : version}`;
+  const agent = `claude-code/${textOr(version, "2.1.0")}`;
   return Promise.all(
     wanted.map(async (login): Promise<Reading> => {
-      const token = env[`${TOKEN}${login}`];
-      if (token === undefined || token === "") {
+      const token = tokenOf(env, login);
+      if (token === undefined) {
         return { login, plain: false, error: `no ${TOKEN}${login} in the environment` };
       }
       const plain = env[TOKEN] === token;
@@ -572,7 +569,7 @@ export function activeLines(
   live: readonly Live[],
   allowed: readonly string[],
   unasked: readonly string[],
-  env: Readonly<Record<string, string | undefined>> = {},
+  env: Env = {},
 ): string[] {
   const named = [...new Set([...allowed, CODEX, ...live.flatMap(({ login }) => login ?? [])])];
   const lines = [...named, null].flatMap((login) => {
@@ -591,9 +588,7 @@ export function activeLines(
       `${head.padEnd(10)}${count}${sub === null ? "" : ` (${sub.sub})`}${on.length === 0 ? "" : `: ${on.join(", ")}`}`,
     ];
   });
-  return unasked.length === 0
-    ? lines
-    : [...lines, `not counted on ${unasked.join(", ")}: no answer to \`active\``];
+  return unasked.length === 0 ? lines : [...lines, uncounted(unasked)];
 }
 
 /** `bun run runs active [--here]`: the live runs on each login, on every host; with `--here` this

@@ -40,7 +40,7 @@ import { scanText } from "../secrets/rules.ts";
 import { quoted, shellOn } from "./host-command.ts";
 import { type Host, hostsOf, ownName } from "./host-config.ts";
 import { carriedTo, scriptOn } from "./hosts.ts";
-import { liveEverywhere } from "./logins.ts";
+import { type Env, liveEverywhere } from "./logins.ts";
 import { type HostPython, PYTHON_PROBE, pythonIn } from "./receipt.ts";
 import { HERE } from "./registry.ts";
 
@@ -378,7 +378,7 @@ function printPlan({ machine: { name, host }, facts, findings, notes }: Plan): v
   for (const note of notes) console.log(`  note: ${note}`);
 }
 
-const pinOf = (env: Readonly<Record<string, string | undefined>>): Pin | null => {
+const pinOf = (env: Env): Pin | null => {
   const version = env.ANA_PYTHON?.trim() ?? "";
   const packages = (env.ANA_PYTHON_PACKAGES ?? "").split(/[\s,]+/u).filter((one) => one !== "");
   if (version === "") {

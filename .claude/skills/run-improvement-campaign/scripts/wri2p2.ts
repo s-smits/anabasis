@@ -6,6 +6,7 @@
  * merges nothing.
  *
  *   bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts [<part> ...] [--promotions 2] [--hours 12] [--days 2]
+ *   bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts due [<part> ...] [--days 2]
  *   bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts open <name>[,<name>...] [--out <dir>]
  *   bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts next <dir>
  *   bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts ledger <dir>
@@ -17,6 +18,9 @@
  *   step once one reads it. The trigger is whichever comes first (operator, 4 November): the
  *   promotions, the hours since the opening, a scored comparison that left no task untied ("they
  *   likely won't promote so that's a bit ironic that we need to wait"), or an ending.
+ * - `due` is the same reading as a timer takes it (`dueLines`): a head line with the count of steps
+ *   owed and the oldest's hours, one line a step, and for each live run the count of files it runs
+ *   (`src`, `vendor`, `package.json`) that differ on this tree's head, which it does not measure.
  * - `open` starts the investigation of one run, or of several as equals, under `.ana/wri/` of the
  *   main checkout, reading a frozen copy of each live one (`wri.ts start --snapshot`), and marks the
  *   folder an iteration (`iteration.json`): a run is never stopped for its iteration, since stopping
@@ -55,7 +59,7 @@ import {
   statSync,
   writeFileSync,
 } from "#src/meta/filesystem.ts";
-import { mainTree } from "#src/meta/git.ts";
+import { gitMaybe, mainTree } from "#src/meta/git.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
@@ -104,10 +108,12 @@ const PLAN = "plan.md";
 const DEVIATIONS = "deviations.md";
 const LEVERS = join(import.meta.dir, "..", "references", "levers.md");
 const SCRIPT = ".claude/skills/run-improvement-campaign/scripts/wri2p2.ts";
-const USAGE = `usage: bun ${SCRIPT} [<part> ...] [--promotions 2] [--hours 12] [--days 2] | open <name>[,<name>] [--out <dir>] | next <dir> | ledger <dir>`;
+const USAGE = `usage: bun ${SCRIPT} [due] [<part> ...] [--promotions 2] [--hours 12] [--days 2] | open <name>[,<name>] [--out <dir>] | next <dir> | ledger <dir>`;
 const OPTIONS = { promotions: "int", hours: "int", days: "int", out: "abs" } as const;
 const HOUR_MS = 3_600_000;
 const WRI = "tools/wri/wri.ts";
+/** The first line of a step as `nextOf` prints it: its gate, then what the gate owes. */
+const STEP = /^step: (?<name>[a-z]+)(?: · (?<rest>.*))?$/u;
 const OPPOSED =
   '"## Intentionally opposed" with at least one line ("none" counts): what stays missing on purpose, each as a trade-off, what leaving it out buys, what it costs and why (a trade-off of AGENTS.md section 1, a principle or the operator\'s word)';
 
@@ -128,6 +134,17 @@ interface Row {
 }
 
 type Kind = "iteration" | "investigation";
+
+/** One run as the driver reads it: its row, its worktree where this machine holds it, the
+ *  investigation that reads it and the lines of its step. */
+interface Standing {
+  readonly row: Row;
+  /** When its log's last event was written. */
+  readonly last: number;
+  readonly tree: string | null;
+  readonly dir: string | null;
+  readonly step: readonly string[];
+}
 
 /** One gate: its step, the run it reads or null, and the lines it prints while it is owed. */
 type Gate = readonly [step: string, run: string | null, owed: () => string[] | null];
@@ -558,7 +575,8 @@ export function lengthsIn(
 /** The folder every iteration's ledgers are read under: `.ana/wri/` of the main checkout. */
 const wriRoot = (repo: string) => join(mainTree(repo), ".ana", "wri");
 
-function due(args: CommandArgs, repo: string, known: readonly Run[]): number {
+/** Where every campaign that moved in the last `--days` stands, and how many closed comparing nothing. */
+function standings(args: CommandArgs, repo: string, known: readonly Run[], parts = args.positionals) {
   const now = Date.now();
   const days = args.int("days") ?? 2;
   const limits = {
@@ -568,7 +586,6 @@ function due(args: CommandArgs, repo: string, known: readonly Run[]): number {
   const running = processes();
   const root = wriRoot(repo);
   const folders = investigations(root);
-  const parts = args.positionals;
   const chosen = known.filter(
     (run) =>
       isCampaign(run) &&
@@ -576,29 +593,129 @@ function due(args: CommandArgs, repo: string, known: readonly Run[]): number {
       (parts.length === 0 || parts.some((part) => run.name.includes(part))) &&
       now - statSync(run.path).mtimeMs < days * 24 * HOUR_MS,
   );
-  const rows = chosen.map((run) =>
-    rowOf(
+  const all = chosen.map((run): Standing => {
+    const events = logEvents(run.path);
+    const row = rowOf(
       { name: run.name, host: run.archived ?? HERE, live: stillRunning(run, running) },
-      logEvents(run.path),
+      events,
       now,
-    ),
-  );
-  const silent = rows.filter((row) => !row.live && row.compared === 0);
-  for (const row of rows.filter((each) => !silent.includes(each))) {
+    );
     const folder = folders.find(({ names: seen }) => seen.includes(row.name));
     const trigger = triggerOf(row, limits);
     const opening =
       trigger === null ? ["step: run"] : [`step: open · ${trigger}`, `  bun ${SCRIPT} open ${row.name}`];
-    const step =
-      folder === undefined ? opening : nextOf(folder.dir, launchedFrom(known), root, lengthsIn(known));
+    return {
+      row,
+      last: Date.parse(events.at(-1)?.at ?? ""),
+      tree: run.archived === undefined ? run.tree : null,
+      dir: folder?.dir ?? null,
+      step: folder === undefined ? opening : nextOf(folder.dir, launchedFrom(known), root, lengthsIn(known)),
+    };
+  });
+  const shown = all.filter(({ row }) => row.live || row.compared > 0);
+  return { shown, silent: all.length - shown.length, moved: chosen.length, days, now };
+}
+
+function due(args: CommandArgs, repo: string, known: readonly Run[]): number {
+  const { shown, silent, moved, days } = standings(args, repo, known);
+  for (const { row, step } of shown) {
     const state = row.live ? "live" : `closed${row.ending === null ? "" : ` (${row.ending})`}`;
     console.log(
       `${row.name} · ${row.host} · ${state} · ${String(row.promotions)} promoted in ${String(row.compared)} compared · ${row.hours.toFixed(1)} h`,
     );
     for (const line of step) console.log(`  ${line}`);
   }
-  if (silent.length > 0) console.log(`and ${String(silent.length)} closed run(s) that compared nothing`);
-  if (chosen.length === 0) console.log(`no campaign moved in the last ${String(days)} day(s)`);
+  if (silent > 0) console.log(`and ${String(silent)} closed run(s) that compared nothing`);
+  if (moved === 0) console.log(`no campaign moved in the last ${String(days)} day(s)`);
+  return 0;
+}
+
+/**
+ * The short view a timer reads instead of walking the folders: a head line, then one line for each
+ * step that is owed, a live run's unread trigger first and then the longest-standing, with the
+ * command that prints the step whole. Runs that share a folder's step share its line. A step is
+ * timed from the last write under its folder (`writtenAt`), a closed run's unread trigger from its
+ * last event, and one that has stood for `days` or more is only counted, since nobody is taking it:
+ * until 10 November the view with no verb listed such a folder's every owed lane at each look, and
+ * fourteen iterations stood at `plan` unseen.
+ */
+export function dueLines(
+  standing: readonly Pick<Standing, "row" | "last" | "dir" | "step">[],
+  writtenAt: (dir: string) => number,
+  now: number,
+  days = 2,
+): string[] {
+  const owed = new Map<
+    string,
+    { name: string; rest: string; dir: string | null; since: number | null; runs: string[] }
+  >();
+  for (const { row, last, dir, step } of standing) {
+    const { name = "", rest = "" } = step.map((line) => STEP.exec(line)?.groups).find(Boolean) ?? {};
+    if (name === "" || name === "run" || name === "done") continue;
+    const key = `${dir ?? row.name} ${name}`;
+    const unread = row.live ? null : last;
+    const since = dir === null ? unread : writtenAt(dir);
+    owed.set(key, { name, rest, dir, since, runs: [...(owed.get(key)?.runs ?? []), row.name] });
+  }
+  const timed = [...owed.values()].map((each) => ({
+    ...each,
+    hours: each.since === null ? null : (now - each.since) / HOUR_MS,
+  }));
+  const left = timed.filter(({ hours }) => hours !== null && hours >= days * 24);
+  const taken = timed
+    .filter((each) => !left.includes(each))
+    .toSorted((one, other) => (other.hours ?? Infinity) - (one.hours ?? Infinity));
+  const oldest = Math.max(0, ...taken.map(({ hours }) => hours ?? 0));
+  const live = standing.filter(({ row }) => row.live).length;
+  return [
+    `due at ${new Date(now).toISOString().slice(0, 16)}Z · ${
+      taken.length === 0
+        ? "nothing owed"
+        : `${String(taken.length)} step(s) owed, the oldest for ${oldest.toFixed(1)} h`
+    } · ${String(live)} run(s) live`,
+    ...taken.map(({ name, rest, dir, runs, hours }) => {
+      const more = runs.length > 1 ? ` and ${String(runs.length - 1)} more` : "";
+      const where =
+        dir === null ? `${rest} · bun ${SCRIPT} open ${runs.join(",")}` : `bun ${SCRIPT} next ${dir}`;
+      return `${name} · ${hours === null ? "new" : `${hours.toFixed(1)} h`} · ${runs[0] ?? ""}${more} · ${where}`;
+    }),
+    ...(left.length === 0
+      ? []
+      : [
+          `and ${String(left.length)} step(s) owed for ${String(days)} day(s) or more: take each or pass it with a row in its deviations.md`,
+        ]),
+  ];
+}
+
+/** When anything under the investigation `dir` or its lanes was last written. */
+function changedAt(dir: string): number {
+  const lanes = join(dir, "lanes");
+  const files = [dir, ...readdirSync(dir).map((entry) => join(dir, entry))];
+  const reports = existsSync(lanes) ? readdirSync(lanes).map((entry) => join(lanes, entry)) : [];
+  return Math.max(...[...files, ...reports].map((path) => statSync(path).mtimeMs));
+}
+
+/** What stands between a live run and the head of the tree `repo`: the files that decide what a run
+ *  runs (`src`, `vendor`, `package.json`) and differ there, which no run has yet measured. */
+function unmeasured(repo: string, { row, tree }: Standing): string {
+  const at = tree === null ? null : gitMaybe(tree, "rev-parse", "HEAD");
+  if (at === null) {
+    return `measures · ${row.name} · its tree is on ${row.host}: bun run runs source ${row.name}`;
+  }
+  // Files and not commits: a landing beneath replays a pull request onto new commits of one tree.
+  const moved = gitMaybe(repo, "diff", "--name-only", at, "HEAD", "--", "src", "vendor", "package.json");
+  const files = moved === null ? "an unknown number of" : String(moved.split("\n").filter(Boolean).length);
+  const head =
+    moved === ""
+      ? "this head changes nothing it runs"
+      : `${files} file(s) of src, vendor and package.json differ on this head, measured by no run until one is forked there`;
+  return `measures · ${row.name} · ${at.slice(0, 9)} · ${head}`;
+}
+
+function brief(args: CommandArgs, repo: string, known: readonly Run[]): number {
+  const { shown, days, now } = standings(args, repo, known, args.positionals.slice(1));
+  for (const line of dueLines(shown, changedAt, now, days)) console.log(line);
+  for (const each of shown.filter(({ row }) => row.live)) console.log(unmeasured(repo, each));
   return 0;
 }
 
@@ -676,7 +793,7 @@ async function main(args: CommandArgs): Promise<number> {
     }
     return 0;
   }
-  return due(args, repo, readable(repo));
+  return verb === "due" ? brief(args, repo, readable(repo)) : due(args, repo, readable(repo));
 }
 
 if (import.meta.main) {

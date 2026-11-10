@@ -50,7 +50,7 @@ import {
 } from "@earendil-works/pi-durable";
 import type { Context } from "@earendil-works/chord";
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
-import { CLAUDE_COMPACTED, claudeLedger } from "./backends/claude.ts";
+import { CLAUDE_COMPACTED, claudeLedger, claudeSpendNow } from "./backends/claude.ts";
 import { retryPolicy } from "./backends/models.ts";
 import { compactionPolicy, compactionTrace } from "./backends/compaction.ts";
 import { append } from "../kernel/log.ts";
@@ -109,6 +109,9 @@ export interface Seat {
   readonly onTool?: (phase: "start" | "end", callId: string, tool: string) => void;
   /** What ends the session from outside: its deadline, a kill, a bound. */
   readonly stops: readonly (AbortSignal | undefined)[];
+  /** Handed once the session opens: what it has spent so far by its backend's own count, compactions
+   *  and retries included, for a seat that bills part of a session before its end. */
+  readonly spending?: (now: () => Promise<Spent>) => void;
 }
 
 /** What a session left: whether one of its stops cut it; what threw out of its loop; its crash,
@@ -233,6 +236,13 @@ export async function sit(seat: Seat): Promise<Sat> {
     );
     harness.subscribeCommits(compactions.committed);
     harness.subscribeCommits(frame.committed);
+    const open = harness;
+    seat.spending?.(async () =>
+      meter.spent(
+        seat.turns,
+        (await claudeSpendNow(seat.id)) ?? durableSpend(await open.usage(BACKGROUND_CONTEXT)),
+      ),
+    );
     const conversation = await harness.root(BACKGROUND_CONTEXT, {
       agent: { model: { provider: seat.model.provider, modelId: seat.model.id }, thinkingLevel: seat.effort },
       init: async (tx, id) => {

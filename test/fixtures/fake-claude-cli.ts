@@ -3,19 +3,39 @@
 // SDK writes to it, in `$HOME/launch.jsonl`, answers each control request with an empty success, and
 // answers each prompt with the recorded stream in `$HOME/replay.jsonl`. HOME is the one place
 // it can find both, because the backend hands the CLI no other variable a test could set. It records
-// its cwd too.
-import { appendFileSync, readFileSync } from "node:fs";
+// its cwd too. Its nth `get_usage` request is answered with the nth line of `$HOME/usage.jsonl`, the
+// session's ledger at that moment, where a test wrote one: a line `{"error": "<why>"}` refuses it
+// and a line `{"silent": true}` leaves it unanswered.
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 /** A line the SDK wrote to the CLI. */
 interface Sent {
   type: string;
   request_id?: string;
+  request?: { subtype?: string };
 }
 
 const home = Bun.env.HOME ?? "";
 if (home === "") throw new Error("the fake Claude Code CLI needs HOME");
 const launch = join(home, "launch.jsonl");
+let usages = 0;
+
+/** The scripted answer to this launch's next usage request, an empty success where none is left,
+ *  or null where the script leaves it unanswered. */
+function usage(): { subtype: "success"; response: unknown } | { subtype: "error"; error: string } | null {
+  const script = join(home, "usage.jsonl");
+  const line = existsSync(script) ? readFileSync(script, "utf8").split("\n")[usages++] : undefined;
+  // SAFETY: a test's own script, one JSON object a line.
+  const read = JSON.parse(line === undefined || line.trim() === "" ? "{}" : line) as {
+    error?: string;
+    silent?: boolean;
+  };
+  if (read.silent === true) return null;
+  return read.error === undefined
+    ? { subtype: "success", response: read }
+    : { subtype: "error", error: read.error };
+}
 
 /** Each line names the launch that wrote it: one a test has ended may still be writing. */
 function record(entry: { stdin: Sent } | { argv: string[]; env: NodeJS.ProcessEnv; cwd: string }): void {
@@ -27,7 +47,10 @@ function answer(line: string): void {
   const message = JSON.parse(line) as Sent;
   record({ stdin: message });
   if (message.type === "control_request") {
-    const response = { subtype: "success", request_id: message.request_id, response: {} };
+    const answered =
+      message.request?.subtype === "get_usage" ? usage() : { subtype: "success", response: {} };
+    if (answered === null) return;
+    const response = { ...answered, request_id: message.request_id };
     process.stdout.write(`${JSON.stringify({ type: "control_response", response })}\n`);
   } else if (message.type === "user") {
     process.stdout.write(readFileSync(join(home, "replay.jsonl"), "utf8"));

@@ -741,6 +741,18 @@ describe("a campaign against its bars", () => {
     expect(barLines(objectiveLog(0.05))[4]).toBe(
       "- Repetition: in 1 comparison each side gave one validity in every solve of every task, and in 0 one measure as well. Reported only.",
     );
+    // One measure is one within the floor the score ties at, as the A/A reads it: two solves a
+    // float's last digits apart are no split (a buffer run's g-3 differed by at most 1.9e-9 on every
+    // task and was left unnamed, 10 November), and two solves 2% apart are a split.
+    const every = (measures: readonly [number, number]) =>
+      Object.fromEntries(["t0", "t1", "t2", "t3", "t4", "t5"].map((task) => [task, measures]));
+    const measured = (measures: readonly [number, number]) =>
+      /in (\d+) one measure as well/.exec(
+        barLines(objectiveLog(0.05, "tied", every(measures)))[4] ?? "",
+      )?.[1];
+    expect(measured([1, 1])).toBe("1");
+    expect(measured([1, 1 + 1e-9])).toBe("1");
+    expect(measured([1, 0.98])).toBe("0");
   });
 
   it("holds every epoch after set-up to the cost bar, an open one too, and set-up's to none", () => {

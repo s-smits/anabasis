@@ -1,6 +1,12 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
+import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { isTestFile } from "../shared/file-role.ts";
+import { flagBinding } from "../shared/flags.ts";
+import { identifierName } from "../shared/statements.ts";
+
+/** The function a parameter list belongs to: a declaration, an expression or an arrow. */
+type Owner = ESTree.Function | ESTree.ArrowFunctionExpression;
 
 /** `name()`, alone or as the one statement returned, run or held in a block. */
 function callsOnly(node: ESTree.Node, name: string): boolean {
@@ -28,9 +34,9 @@ function guardsCallOf(read: ESTree.Node, name: string): boolean {
  * A union of two string literals fixes that at the call site without moving anything:
  * `closeVerifierLifetime(lifetime, "failed")` against `"clean"`. The compiler still rejects every
  * other value, the argument still costs nothing, and `if (outcome === "failed")` reads as the
- * sentence it is. An options object would do the same job, which is why other languages reach for
- * keyword arguments here, but `anti-slop/no-object-parameters` refuses one and is right to: a bag
- * of optional fields hides the same question one level further in.
+ * sentence it is. An options object with one named field would do the same job, which is why other
+ * languages reach for keyword arguments here; the union is asked for because it costs the caller
+ * nothing and a bag of optional fields hides the same question one level further in.
  *
  * Only a declaration is reported. A callback's parameter type is written by whoever declared the
  * signature it satisfies, and renaming it there changes nothing for a reader.
@@ -57,6 +63,17 @@ function guardsCallOf(read: ESTree.Node, name: string): boolean {
  * `run(verbose: boolean, done: () => void)` logging on `verbose` and calling `done` regardless,
  * is still reported; the first form of this admission read only the parameter list and let it by.
  *
+ * `widen` reaches what Foxglove's `no-boolean-parameters` reads and this rule did not (the
+ * notice is in `THIRD_PARTY_NOTICES.md`). `"flags"` counts a flag spelled `true | false` or beside
+ * `undefined`, `null` or `void`, and a parameter defaulted to `true` or `false`, which reads as a
+ * bare `true` at the call site as surely as an annotated one. `"bindings"` reads a `const` bound
+ * to an arrow or a function expression, a `declare` function or overload, and an abstract method,
+ * each a declaration a caller in another file reads. Both are off by default, so the gate holds at
+ * what it held, and `tools/oxlint/staged-rules.json` reports their sites until none stands.
+ * Foxglove's `allowLoneParameter` is not taken, since the default reading reports a lone boolean
+ * as well. A formatter whose one argument is the data (`yesNo(value: boolean)`) reads well at its
+ * call sites, and a reader answers it through `bun run not-slop` rather than an option.
+ *
  * There is no fix. Which two words name the states is the whole point of the change.
  */
 export const noPositionalBooleanParameterRule = defineRule({
@@ -79,12 +96,21 @@ export const noPositionalBooleanParameterRule = defineRule({
         },
       ] satisfies RuleExample[],
     },
+    schema: [
+      {
+        type: "object",
+        properties: { widen: { type: "array", items: { enum: ["flags", "bindings"] } } },
+        additionalProperties: false,
+      },
+    ],
     messages: {
       opaqueAtCallSite:
         "`{{fn}}({{name}}: boolean)` reads as `{{fn}}(…, true)` at the call site, which names neither the parameter nor the state. Take a union of two string literals that say what the two states are.",
     },
   },
   createOnce(context) {
+    let widen: ReadonlySet<string> = new Set();
+
     /**
      * Whether every call this file can see passes an identifier of the parameter's own name at
      * that position, so the call site already reads as the declaration does. Null when the calls
@@ -126,7 +152,7 @@ export const noPositionalBooleanParameterRule = defineRule({
 
     /** Whether the parameter after this boolean takes a function, and every read of the boolean in
      *  `owner` is the condition that function runs under. */
-    function gatesNextFunction(owner: ESTree.Function, name: string, next: ESTree.Node | undefined) {
+    function gatesNextFunction(owner: Owner, name: string, next: ESTree.Node | undefined) {
       if (next?.type !== "Identifier") return false;
       if (next.typeAnnotation?.typeAnnotation.type !== "TSFunctionType") return false;
       const variable = context.sourceCode
@@ -136,23 +162,27 @@ export const noPositionalBooleanParameterRule = defineRule({
       return reads.length > 0 && reads.every((reference) => guardsCallOf(reference.identifier, next.name));
     }
 
-    function report(declaring: ESTree.Node | null, fn: string, owner: ESTree.Function): void {
+    function report(declaring: ESTree.Node | null, fn: string, owner: Owner): void {
       const parameters = owner.params;
       const returns = owner.returnType ?? null;
       // `asserts x` and `x is T` name a parameter TypeScript narrows on; it has to stay boolean.
       if (returns?.type === "TSTypeAnnotation" && returns.typeAnnotation.type === "TSTypePredicate") return;
       for (const [index, parameter] of parameters.entries()) {
-        // A destructured or defaulted parameter is a different shape; only a plain annotated
-        // binding is the one that turns into a bare `true` at the call site.
-        if (parameter.type !== "Identifier") continue;
-        const annotation = parameter.typeAnnotation?.typeAnnotation;
-        if (annotation?.type !== "TSBooleanKeyword") continue;
-        if (gatesNextFunction(owner, parameter.name, parameters[index + 1])) continue;
-        if (declaring !== null && namedAtEveryCall(declaring, fn, index, parameter.name)) continue;
+        // A destructured parameter is a different shape. By default only a binding annotated
+        // `boolean` is read; `widen: ["flags"]` reads every flag Foxglove's rule reads.
+        const plain =
+          parameter.type === "Identifier" &&
+          parameter.typeAnnotation?.typeAnnotation.type === "TSBooleanKeyword"
+            ? parameter
+            : null;
+        const binding = widen.has("flags") ? flagBinding(parameter) : plain;
+        if (binding === null) continue;
+        if (gatesNextFunction(owner, binding.name, parameters[index + 1])) continue;
+        if (declaring !== null && namedAtEveryCall(declaring, fn, index, binding.name)) continue;
         context.report({
           node: parameter,
           messageId: "opaqueAtCallSite",
-          data: { fn, name: parameter.name },
+          data: { fn, name: binding.name },
         });
       }
     }
@@ -160,7 +190,11 @@ export const noPositionalBooleanParameterRule = defineRule({
     return {
       // A test states both arguments beside each other and reads them together; the opacity this
       // rule is about is a caller in another file.
-      before: () => !isTestFile(context.filename),
+      before: () => {
+        const option = asRecord(context.options[0])?.widen;
+        widen = new Set(Array.isArray(option) ? option.filter(isString) : []);
+        return !isTestFile(context.filename);
+      },
 
       // An exported declaration arrives wrapped, so its own node is not the module-scope statement
       // and its callers are in other files: it never takes the call-site exemption.
@@ -174,6 +208,24 @@ export const noPositionalBooleanParameterRule = defineRule({
       MethodDefinition: (node) => {
         if (node.key.type !== "Identifier") return;
         report(null, node.key.name, node.value);
+      },
+      // `const close = (handle: string, failed: boolean) => …` declares as a function does; one
+      // inside an export list or another statement has callers this rule never sees.
+      VariableDeclarator: (node) => {
+        const { id, init } = node;
+        const callable = init?.type === "ArrowFunctionExpression" || init?.type === "FunctionExpression";
+        if (!widen.has("bindings") || id.type !== "Identifier" || !callable) return;
+        report(node.parent.parent?.type === "Program" ? node : null, id.name, init);
+      },
+      TSDeclareFunction: (node) => {
+        if (widen.has("bindings")) {
+          report(null, identifierName(node.id) ?? "this function", node);
+        }
+      },
+      TSAbstractMethodDefinition: (node) => {
+        if (widen.has("bindings")) {
+          report(null, identifierName(node.key) ?? "this method", node.value);
+        }
       },
     };
   },

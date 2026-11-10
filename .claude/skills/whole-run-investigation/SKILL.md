@@ -11,7 +11,7 @@ and which owner each next change belongs to. It only reads and proposes; the hos
 every verdict, and `AGENTS.md` sections 1 to 8 own the rules it reads against.
 
 A deterministic fold of the log gives six rows (the identities every finding binds to) and a set of
-triggers. Each trigger opens one of twenty-nine lanes in [the catalogue](references/lanes.md), each
+triggers. Each trigger opens one of thirty-one lanes in [the catalogue](references/lanes.md), each
 lane is one question answered by an independent session, one session merges the reports, and the
 primary vets the result.
 
@@ -54,14 +54,21 @@ under `.ana/wri/<date>-<campaign>/` on the central host.
    another tree (the receipt, not the digest, gives the commit). Settle rows A to F.
 2. **Edit the shared instructions** (below). *Check:* no `##` section is blank and the hard rules
    remain.
-3. **Build the lanes.** `wri.ts lanes --out <dir> [--lanes 1-4,7] [--agents N]` writes
-   `<dir>/lanes/NN-prompt.md` and `<dir>/launch.json`. Without `--lanes` it opens every triggered lane
-   and the five standing lanes, and names, without building, each isolated lane whose trigger fired.
-   `--agents N` packs whole labels into N sessions of similar summed `Importance:`, and the verb
-   prints a suggested N (the most sessions whose lightest weighs at least half the heaviest). A prompt
-   built before is kept and left out of the new `launch.json`. *Check:* exit 0; the sessions this call
-   built are the count to authorise, and if it built none, launch nothing.
-4. **Launch.** `launch.json` is a [codex-gpt-swarm](../codex-gpt-swarm/SKILL.md) manifest
+3. **Build the lanes.** `wri.ts lanes --out <dir> [--lanes 1-4,7] [--agents N] [--high K] [--regroup]` writes
+   `<dir>/lanes/NN-prompt.md` and a manifest: `<dir>/launch.json` the first time, and
+   `launch-NN[-NN...].json` by the lanes it built every later time, which the verb names. Without `--lanes` it opens every triggered lane
+   and the seven standing lanes, and names, without building, each isolated lane whose trigger fired.
+   The lanes go to `--agents N` sessions, 4 by default, each lane in exactly one; labels stay whole
+   unless the lightest session would weigh under three quarters of the heaviest by summed
+   `Importance:`, and the verb prints each session's weight. A prompt built before is kept and left
+   out of the new manifest. When the operator changes the number of groups, stop the sessions still
+   working and run `lanes --agents N --regroup`, which packs the lanes with no report yet into a new
+   manifest, their prompts unchanged. `--high K` gives the K heaviest sessions `"effort": "high"`
+   and the rest `"medium"`, which the launcher takes over its `--reasoning-effort`: on Sol, give
+   high to the groups that carry the verdicts, the comparison and the climb, about a quarter to a
+   half of them (operator, 9 November). *Check:* exit 0; the sessions this call built are the count to
+   authorise, and if it built none, launch nothing.
+4. **Launch.** Each manifest is a [codex-gpt-swarm](../codex-gpt-swarm/SKILL.md) manifest
    (`gpt-sessions.ts --manifest <dir>/launch.json --output-dir <new dir> ...`, on the operator's
    model). A Claude session runs as the `wri-lane` agent type (`.claude/agents/wri-lane.md`,
    `subagent_type: "wri-lane"`), handed only its row's `task` line, all in one message. Its hook
@@ -86,11 +93,11 @@ source.
 | --- | --- | --- |
 | read | `read --log <log>` | nothing: rows, triggers and host line |
 | 1 | `start --log <log>[,<log>...] --out <dir> [--snapshot]` | `overview.md`, `shared-instructions.md`, `investigation.json` |
-| 3 | `lanes --out <dir> [--lanes 1-4,7] [--agents N]` | `lanes/NN-prompt.md`, `launch.json` |
+| 3 | `lanes --out <dir> [--lanes 1-4,7] [--agents N] [--high K] [--regroup]` | `lanes/NN-prompt.md`, `launch.json` |
 | 5 | `collect --out <dir>` | `reports.md` |
 | 6 | `synthesis --out <dir>` | `synthesis-prompt.md` |
 | lanes 1, 4 | `grade --log <log> [--bundle <pack>] --task <taskId> --answer <file>` | nothing: one verdict line (`--bundle` only for a stored pack) |
-| any | `derive (--log <log>[,<log>...] \| --all) [--verbose] [--force] [--no-embed]` | `data/derived/<campaign>/`: one file a reader and `manifest.json` |
+| any | `derive (--log <log>[,<log>...] \| --all) [--verbose] [--force] [--no-embed]` | `data/derived/<campaign>@<path>/` (one folder a log): one file a reader and `manifest.json` |
 
 ### The readers, derived
 
@@ -103,8 +110,9 @@ About thirty deterministic readers each map one log to text (`READERS`, `tools/w
 `index` and `derive`, `wri2p2.ts open`, `tools/c/rejections.ts`, `tools/d2/close.ts`) or that call a
 paid model (`system-path-simulation/scripts/live-seat.ts` and `referee-seat.ts`,
 `compare-systems/scripts/systems.ts`).
-`derive` writes `data/derived/<campaign>/<reader>.txt` in the main worktree, rewriting a folder only
-when its log or commit moved, so each folder describes one moment of the log. It prints one line;
+`derive` writes `data/derived/<campaign>@<path>/<reader>.txt` in the main worktree, one folder a
+log path, so a snapshot and the live log never share one, rewriting a folder only when its log or
+commit moved, so each folder describes one moment of the log. It prints one line;
 `--verbose` prints every file, `--force` rederives after an uncommitted reader change, and
 `--no-embed` skips the readers on the local embedding model (`tools/wri/embed.ts`): `restated`, which
 groups Referee reasons at cosine 0.93, and `nearness`, which measures how alike tasks read, never
@@ -125,7 +133,7 @@ the largest campaign. With a smaller budget, read groups in dependency order:
 2. **Comparison (17 to 20, 29)**, lane 18 first.
 3. **Harness (12 to 16)**, lane 12 first.
 4. **Supply (7 to 11), solve (24), economy (25), runs (26).**
-5. **Climb (21 to 23, 27, 28)**: open it before anyone is told a campaign improved a harness. Lane 27
+5. **Climb (21 to 23, 27, 28, 30, 31)**: open it before anyone is told a campaign improved a harness. Lane 27
    runs from the start.
 
 In a release cycle, launch every lane at once and synthesise from the reports in hand within the
@@ -235,7 +243,7 @@ Then vet the synthesis's own findings:
 
 | file | owns |
 | --- | --- |
-| [references/lanes.md](references/lanes.md) | the stance, the owner table, the labels, rows A to F and lanes 1 to 29 |
+| [references/lanes.md](references/lanes.md) | the stance, the owner table, the labels, rows A to F and lanes 1 to 31 |
 | [references/from-v1.md](references/from-v1.md) | where each of v1's rows and lanes went |
 | [references/shared-instructions.template.md](references/shared-instructions.template.md) | the preset every open lane carries |
 | [references/synthesis.template.md](references/synthesis.template.md) | the synthesis session's prompt |

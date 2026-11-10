@@ -2,7 +2,7 @@
  * Move a campaign to another machine, and go on with it there on the login named.
  *
  *   bun --env-file=<credentials> --env-file=.env.runs run runs move <name> --to <host>
- *     [--from <host>] [--login N] [--after next|compacted|reported|finished] [--hold]
+ *     [--from <host>] [--login N] [--after <word>[|<word>...]] [--hold]
  *     [--yes] [-- <flags>]
  *
  * Each end is a host `ANA_HOSTS` lists or this machine, named by its own short host name or `here`
@@ -68,7 +68,8 @@ import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { type Host, hostNamed, hostsOf, ownName } from "./host-config.ts";
 import { quoted, rsync, shellPath, sshScript, worktreesIn } from "./host-command.ts";
 import { verbOn } from "./hosts.ts";
-import { CAMPAIGNS, HERE, keepers, processes, readNamed, writers } from "./registry.ts";
+import { stillRunning } from "./diagnosis.ts";
+import { CAMPAIGNS, HERE, processes, readNamed } from "./registry.ts";
 import { syncRuns } from "./snapshots.ts";
 import { recordDegradations } from "./degradations.ts";
 import { continueRun, pause, said } from "./manage.ts";
@@ -173,16 +174,29 @@ export async function move(args: readonly string[]): Promise<void> {
   const tree = join(dirname(to.repo), `anabasis-${name}`);
   const folder = (root: string) => join(root, CAMPAIGNS, name);
   const login = values.login === undefined ? [] : ["--login", values.login];
+  const size = (end: End, root: string) =>
+    Number(at(end, `cat ${quoted(join(folder(root), LOG_FILE))} 2>/dev/null | wc -c`));
   // Read before anything stops: a pause that a taken destination then refuses leaves the run stopped.
-  if (at(to, `test -e ${quoted(tree)} && echo taken; true`) === "taken") {
-    const recovery =
-      source === undefined
-        ? `no worktree on ${from.name} holds ${name}; inspect ${folder(tree)} on ${to.name}, then use runs continue ${name} there (with explicit flags after -- if no launch receipt exists); if incomplete, recover the source folder from .ana/moved/`
-        : `the source remains at ${folder(source)} on ${from.name}; preserve ${folder(tree)} outside ${tree}, remove the destination with git -C ${quoted(to.repo)} worktree remove ${quoted(tree)} on ${to.name}, then retry`;
-    throw new Error(`${tree} is there already on ${to.name}: ${recovery}; nothing was stopped or moved`);
+  const taken = at(
+    to,
+    `test -e ${quoted(tree)} && { git -C ${quoted(tree)} rev-parse HEAD 2>/dev/null || echo taken; }; true`,
+  );
+  if (source === undefined) {
+    throw new Error(
+      taken === ""
+        ? `no worktree ${from.name} holds a campaign ${name}`
+        : `${tree} is there already on ${to.name}: no worktree on ${from.name} holds ${name}; inspect ${folder(tree)} on ${to.name}, then use runs continue ${name} there (with explicit flags after -- if no launch receipt exists); if incomplete, recover the source folder from .ana/moved/; nothing was stopped or moved`,
+    );
   }
-  if (source === undefined) throw new Error(`no worktree ${from.name} holds a campaign ${name}`);
   const commit = at(from, `git -C ${quoted(source)} rev-parse HEAD`);
+  // A move cut between its worktree and setting the source aside left the destination at the same
+  // commit holding no more of the log than the source: the next one goes on from there.
+  const resumed = taken === commit && size(to, tree) <= size(from, source);
+  if (taken !== "" && !resumed) {
+    throw new Error(
+      `${tree} is there already on ${to.name}: the source remains at ${folder(source)} on ${from.name}; preserve ${folder(tree)} outside ${tree}, remove the destination with git -C ${quoted(to.repo)} worktree remove ${quoted(tree)} on ${to.name}, then retry; nothing was stopped or moved`,
+    );
+  }
   const kept = given.length > 0 ? given : await flagsAt(from, source, name);
   if (kept === null && !values.hold) {
     throw new Error(
@@ -191,7 +205,7 @@ export async function move(args: readonly string[]): Promise<void> {
   }
   const flags = given.length > 0 ? given : rehomed(kept ?? [], dirname(from.repo), dirname(to.repo));
   console.log(
-    `${name}: from ${source} (${from.name}) at ${commit.slice(0, 9)} to ${tree} (${to.name}), after its next ${values.after}`,
+    `${name}: from ${source} (${from.name}) at ${commit.slice(0, 9)} to ${tree} (${to.name})${resumed ? ", going on with the copy an earlier move left" : ""}, after its next ${values.after}`,
   );
   if (!values.yes) {
     console.log("nothing is done without --yes");
@@ -205,16 +219,17 @@ export async function move(args: readonly string[]): Promise<void> {
   const paused = ["pause", name, "--after", values.after, "--yes"];
   if (from.host === undefined) await pause(paused.slice(1));
   else if ((await verbOn(from.host, paused)) !== 0) throw new Error(`${name} did not pause at ${from.name}`);
-  at(
-    to,
-    `git -C ${quoted(to.repo)} worktree add -q --detach ${quoted(tree)} ${quoted(commit)} && mkdir -p ${quoted(folder(tree))}`,
-  );
-  // rsync takes one remote side, so a move between two hosts stages the folder here.
-  const stage = from.host && to.host ? join(tmpdir(), `ana-move-${crypto.randomUUID()}`) : undefined;
-  if (stage !== undefined) await rsync(`${side(from, folder(source))}/`, `${stage}/`);
-  await rsync(`${stage ?? side(from, folder(source))}/`, `${side(to, folder(tree))}/`);
-  if (stage !== undefined) rmSync(stage, { recursive: true, force: true });
-  const size = (end: End, root: string) => at(end, `wc -c < ${quoted(join(folder(root), LOG_FILE))}`);
+  const worktree = `git -C ${quoted(to.repo)} worktree add -q --detach ${quoted(tree)} ${quoted(commit)} && `;
+  at(to, `${resumed ? "" : worktree}mkdir -p ${quoted(folder(tree))}`);
+  // rsync takes one remote side, so a move between two hosts stages the folder here, under one name
+  // a campaign so that a stage a killed move left is taken up and removed by the next.
+  const stage = from.host && to.host ? join(tmpdir(), `ana-move-${name}`) : undefined;
+  try {
+    if (stage !== undefined) await rsync(`${side(from, folder(source))}/`, `${stage}/`);
+    await rsync(`${stage ?? side(from, folder(source))}/`, `${side(to, folder(tree))}/`);
+  } finally {
+    if (stage !== undefined) rmSync(stage, { recursive: true, force: true });
+  }
   if (size(from, source) !== size(to, tree)) {
     throw new Error(`the log did not arrive whole in ${folder(tree)}: ${folder(source)} is left as it was`);
   }
@@ -243,15 +258,16 @@ export async function fetch(args: readonly string[]): Promise<void> {
   const { values, positionals } = parseArgs({
     args: [...args],
     allowPositionals: true,
-    options: { from: { type: "string" } },
+    options: { from: { type: "string" }, whole: { type: "boolean", default: false } },
   });
   const [name, ...rest] = positionals;
-  if (rest.length > 0) throw new Error("usage: bun run runs fetch [<name>] [--from <host>]");
+  if (rest.length > 0) throw new Error("usage: bun run runs fetch [<name>] [--from <host>] [--whole]");
   const from = keyIfDefined("from", values.from);
   // With no name, the records of every campaign the other hosts hold: the gather a timer runs.
+  // `--whole` brings their folders too, as the nightly pass does; a named campaign always comes whole.
   const copies = await syncRuns(name === undefined ? [] : [name], {
     ...from,
-    ...(name === undefined ? { depth: "record" } : { match: "exact" }),
+    ...(name === undefined ? { depth: values.whole ? "whole" : "record" } : { match: "exact" }),
   });
   if (copies.length === 0 && name !== undefined) {
     throw new Error(
@@ -285,7 +301,7 @@ export function copy(args: readonly string[]): void {
       `${name} is a copy of a campaign ${run.archived} holds: runs move takes one to another machine`,
     );
   }
-  if (writers(run, processes()).length > 0 || keepers(name).length > 0) {
+  if (stillRunning(run, processes())) {
     throw new Error(`${name} is being written or kept in ${run.tree}: pause it first`);
   }
   const from = dirname(run.path);

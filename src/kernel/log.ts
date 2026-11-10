@@ -133,7 +133,7 @@ export type EventKind = (typeof EVENT_KINDS)[number];
 
 /** The file a campaign's log is, under the campaign's folder. The module that reads and appends
  *  the file owns its name, since five files that joined it onto a folder of their own were what
- *  `identity-without-owner` reported. */
+ *  `no-unowned-identity` reported. */
 export const LOG_FILE = "log.jsonl";
 
 const NEWLINE = 0x0a;

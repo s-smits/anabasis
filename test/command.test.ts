@@ -16,7 +16,15 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { basename, dirname, join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { type CommandWall, makeSeatDirs, runWalled, solveDirs } from "../src/tools/command.ts";
+import {
+  type CommandWall,
+  makeSeatDirs,
+  type NetworkReach,
+  networkReach,
+  runWalled,
+  solveDirs,
+  UNREACHED_MS,
+} from "../src/tools/command.ts";
 import { claimRoot } from "../src/wall/seat-root.ts";
 import { toolchainTemp } from "./helpers/toolchain-temp.ts";
 import { solveIsolationPolicy } from "../src/wall/base.ts";
@@ -452,5 +460,53 @@ console.log(JSON.stringify({ probe: process.argv.at(-1), said: process.env.TMPDI
       }
     },
     60_000,
+  );
+});
+
+describe("a wall's network reach", () => {
+  it.skipIf(!osIsolationSupport().ok)(
+    "probes again once an unreached reading is ten minutes old, and keeps a reached one",
+    async () => {
+      // Until 9 November one unreached probe stood for the process's life, so a provider's blip at a
+      // Builder session's opening told that whole 24-hour session it had no network.
+      const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-reach-")));
+      try {
+        await inSeat(repoRoot, async (wall) => {
+          const readings: NetworkReach[] = ["unreached", "reached", "unreached"];
+          let probes = 0;
+          const probe = async (): Promise<NetworkReach> => readings[probes++] ?? "unreached";
+          const at = (now: number) => networkReach(wall, { now, probe });
+          expect(await at(0)).toBe("unreached");
+          expect(await at(UNREACHED_MS - 1)).toBe("unreached");
+          expect(probes).toBe(1);
+          expect(await at(UNREACHED_MS)).toBe("reached");
+          expect(await at(10 * UNREACHED_MS)).toBe("reached");
+          expect(probes).toBe(2);
+        });
+      } finally {
+        rmSync(repoRoot, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.skipIf(!osIsolationSupport().ok)(
+    "starts one probe for callers that find the same unreached reading stale at once",
+    async () => {
+      const repoRoot = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-command-reach-")));
+      try {
+        await inSeat(repoRoot, async (wall) => {
+          let probes = 0;
+          const probe = async (): Promise<NetworkReach> => (probes++ === 0 ? "unreached" : "reached");
+          expect(await networkReach(wall, { now: 0, probe })).toBe("unreached");
+          const batch = await Promise.all(
+            [1, 2, 3, 4].map(() => networkReach(wall, { now: UNREACHED_MS, probe })),
+          );
+          expect(batch).toEqual(["reached", "reached", "reached", "reached"]);
+          expect(probes).toBe(2);
+        });
+      } finally {
+        rmSync(repoRoot, { recursive: true, force: true });
+      }
+    },
   );
 });

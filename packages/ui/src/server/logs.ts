@@ -222,8 +222,8 @@ export function stampOf(found: Found): string | null {
 }
 
 /** `found`'s log as it stands, read again only where its size or its time moved, and kept among
- *  the `KEEP` read last where `keep` (a detail endpoint), never kept for the list alone. */
-export function loaded(found: Found, keep = true): Loaded {
+ *  the `KEEP` read last for a detail endpoint, never kept for the list alone. */
+export function loaded(found: Found, use: "detail" | "list" = "detail"): Loaded {
   const source = sourceOf(found);
   let size: number;
   let mtimeMs: number;
@@ -234,7 +234,7 @@ export function loaded(found: Found, keep = true): Loaded {
   }
   const was = kept.get(found.path);
   if (was?.size === size && was.mtimeMs === mtimeMs) {
-    if (keep) {
+    if (use === "detail") {
       kept.delete(found.path);
       kept.set(found.path, was);
     }
@@ -259,7 +259,7 @@ export function loaded(found: Found, keep = true): Loaded {
     fresh = { log: null, issues: [{ level: "error", source, message: errorMessage(error) }] };
   }
   kept.delete(found.path);
-  if (keep) kept.set(found.path, { size, mtimeMs, loaded: fresh });
+  if (use === "detail") kept.set(found.path, { size, mtimeMs, loaded: fresh });
   for (const path of [...kept.keys()].slice(0, Math.max(0, kept.size - KEEP))) kept.delete(path);
   return fresh;
 }

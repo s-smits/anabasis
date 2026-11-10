@@ -15,10 +15,11 @@
  * prints whole; the tests stream theirs, which the pulse reads. A failed step no longer keeps the
  * rest from starting, so the gate ends once all have. The strict lint fails on everything a plain
  * one does, so it runs once. Every step fails in one spelling, `gate: step <name> failed (exit <n>)`, which the pre-push
- * hook and `bun run land` repeat without knowing each tool's wording. A step whose runner dropped
- * its connection (exit 255) runs once more, and a second drop reads `gave no verdict`: the landing
- * then marks the commit with an error rather than a failure and prints no fix, since nothing was
- * learnt about the commit (`NO_VERDICT`).
+ * hook and `bun run land` repeat without knowing each tool's wording. A step whose runner said
+ * nothing about the commit (a dropped connection, no slot in time, or a host that does not answer or
+ * lacks the disk; `NO_VERDICT`) runs once more, and a second such exit reads `gave no verdict`: the
+ * landing then marks the commit with an error rather than a failure and prints no fix, since nothing
+ * was learnt about the commit. Each exit is read once, by `verdictOf`.
  *
  * `--static` is what the pre-push hook runs over a pushed head where the push asks (`ANA_PUSH_VERIFY=1`,
  * `tools/runtime/pre-push.ts`), and
@@ -63,7 +64,8 @@ import { keysIf } from "../../src/meta/optional-key.ts";
 import { availableParallelism, tmpdir } from "../../src/meta/os.ts";
 import { basename, dirname, isAbsolute, join, relative } from "../../src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "../../src/meta/process.ts";
-import { runSync, runTextSyncOrThrow, zeroExitText } from "../../src/meta/subprocess.ts";
+import { killProcessGroup, runSync, runTextSyncOrThrow, zeroExitText } from "../../src/meta/subprocess.ts";
+import type { StatusState } from "./pulls.ts";
 
 type Pass = "static" | "whole";
 
@@ -90,11 +92,11 @@ interface Prover {
   readonly say: (line: string) => void;
   /** Told every verdict, recorded earlier or new, so land can post it as a status, and `pending` when
    *  a commit's proof starts, so a red left by an earlier landing clears once it is proved again. */
-  readonly mark: (
-    commit: string,
-    state: "pending" | "success" | "failure" | "error",
-    description: string,
-  ) => void;
+  readonly mark: (commit: string, state: StatusState, description: string) => void;
+  /** Ends every proof under way, each pass's whole process group, and starts none: land's, when a
+   *  head moved under a commit being proved or the landing was interrupted. A stopped pass is no
+   *  verdict and is recorded nowhere. */
+  readonly stop?: AbortSignal;
 }
 
 /** The documentation set. A commit changing nothing beyond it gets no static steps, and a push of
@@ -112,8 +114,13 @@ export const DOCUMENTATION = [
  *  a static pass's parent or the commit where a whole pass's tree left `origin/main`, which
  *  `bun run land` merges only once `ci.yml`'s `darwin-ui` job has run every UI file (`uiStep`):
  *
- *  - `packages/ui` itself, or what installs, runs and lints it (`UI_SETUP`): the whole UI CI gate, as
- *    where no base is known;
+ *  - `packages/ui` itself, or what `ui:gate` installs it from and runs it with (`UI_SETUP`): the
+ *    whole UI CI gate, as where no base is known. Until 10 November the list held the root's
+ *    compiler and lint settings and all of `tools/runtime` and `tools/oxlint`, none of which
+ *    `ui:gate` reads but the suite runner: 48 of one stack's 91 commits ran the browser files in
+ *    a static pass, 4 of them for a reason, and two landings stopped on browser timeouts at a
+ *    commit that changed stack scripts alone. This file only chooses the step, so a change to it
+ *    is no change to what `ui:gate` runs;
  *  - root source that a UI file imports at any depth: the UI's dependencies, its build, which
  *    typechecks it, and its test files within three imports of the change;
  *  - nothing the UI reads: no UI step.
@@ -128,14 +135,7 @@ export const DOCUMENTATION = [
  *  files, in 5 static passes of `bun run land` over commits that changed nothing under `packages/ui`. */
 const UI_PACKAGE = "packages/ui/package.json";
 export const UI_ROOT = "packages/ui";
-export const UI_SETUP = [
-  "package.json",
-  "bun.lock",
-  "tsconfig.json",
-  ".oxlintrc.json",
-  "tools/oxlint",
-  "tools/runtime",
-];
+export const UI_SETUP = ["package.json", "bun.lock", "tools/runtime/test-suite.ts"];
 const UI_TEST = /^packages\/ui\/test\/[^/]+\.test\.tsx?$/u;
 const BROWSER_FILE = /^packages\/ui\/test\/browser-[^/]+\.test\.ts$/u;
 /** What each file imports, read once per CI gate (`importsOf`). */
@@ -151,6 +151,9 @@ const FIRST = [
 const BESIDE = [
   ["typecheck", ["run", "typecheck"]],
   ["lint", ["run", "lint", "--", "--strict"]],
+  // The size rules are off in the lint because this script owns them (`rules-off.tsv`); until
+  // 10 November no step ran it, and a file of 802 lines stood for 64 commits of one stack.
+  ["source-policy", ["tools/loc/source-policy.ts"]],
 ] as const;
 export const TEST_FILE = /^test\/[^/]+\.test\.ts$/u;
 const GATE = join(import.meta.dir, "gate.ts");
@@ -173,9 +176,15 @@ const TEST_REPORT_LINES = 200;
 /** A pass keeps its output in a log and prints nothing for minutes, which reads like a hung push. */
 const PULSE_MS = (Number(runtimeProcess.env.ANA_GATE_PULSE_SECONDS) || 60) * 1000;
 const LOG_DAYS = 14;
-/** ssh's own exit for a dropped connection, which the check runner passes on as no verdict
- *  (`tools/runtime/router/run.sh`). */
-const NO_VERDICT = 255;
+/** The check runner's exits that say nothing about the commit (`tools/runtime/router/run.sh`): 255
+ *  where ssh dropped or the task left no status, 75 where no slot came free in time, and 69 where the
+ *  host does not answer or lacks the disk. Until 9 November only 255 counted, so a queue that timed
+ *  out failed the commit, and the landing printed a fix for a commit nothing had read. */
+const NO_VERDICT = new Set([255, 75, 69]);
+
+/** What an exit of a step, or of the gate over a commit, says about the commit. */
+const verdictOf = (code: number): "passed" | "failed" | "none" =>
+  code === 0 ? "passed" : NO_VERDICT.has(code) ? "none" : "failed";
 
 export const lines = (text: string): string[] => text.split("\n").filter((line) => line.length > 0);
 export const short = (sha: string): string => sha.slice(0, 9);
@@ -199,10 +208,10 @@ export function diffFromParentSays(
   return gitSays(root, ["diff", ...flags, parentOf(root, commit), commit, "--", ...paths]);
 }
 
-/** A commit's first parent, or the empty tree for a root commit. */
+/** A commit's first parent, or for a root commit the empty tree (`git hash-object -t tree /dev/null`). */
 export function parentOf(root: string, commit: string): string {
   const parent = runSync(["git", "rev-parse", "-q", "--verify", `${commit}^1`], { cwd: root });
-  return zeroExitText(parent) ?? git(root, ["hash-object", "-t", "tree", "/dev/null"]);
+  return zeroExitText(parent) ?? "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 }
 
 /** The record's key for a pass, by content: the commit's tree, which holds the lockfile, and for a
@@ -306,13 +315,12 @@ export const reachingWall = (root: string, changed: ReadonlySet<string>): string
 export const testsNear = (root: string, changed: ReadonlySet<string>): string[] =>
   nearbyTests(root, changed, listed(root, "test", TEST_FILE), NEAR.root);
 
-/** The UI's test files near `changed` in `root`, at `NEAR.ui`, its browser files only where
- *  `browser` holds. */
-export const uiTestsNear = (root: string, changed: ReadonlySet<string>, browser: boolean): string[] =>
+/** The UI's test files near `changed` in `root`, at `NEAR.ui`, its browser files under `all` only. */
+export const uiTestsNear = (root: string, changed: ReadonlySet<string>, files: "all" | "no-browser") =>
   nearbyTests(
     root,
     changed,
-    listed(root, UI_ROOT, UI_TEST).filter((file) => browser || !BROWSER_FILE.test(file)),
+    listed(root, UI_ROOT, UI_TEST).filter((file) => files === "all" || !BROWSER_FILE.test(file)),
     NEAR.ui,
   );
 
@@ -338,20 +346,16 @@ function nearbyTests(
   return [...near].toSorted();
 }
 
-/** The UI's step of a pass, by the rule in `UI_PACKAGE`'s comment; its exit code. */
-async function uiStep(root: string, pass: Pass): Promise<number> {
-  const base =
-    pass === "static"
-      ? parentOf(root, "HEAD")
-      : zeroExitText(runSync(["git", "merge-base", "HEAD", "origin/main"], { cwd: root }));
-  const changed = base === null ? null : changedSince(root, base);
+/** The UI's step of a pass, by the rule in `UI_PACKAGE`'s comment, over what `changed` since `base`;
+ *  its exit code. */
+async function uiStep(root: string, pass: Pass, base: string | null, changed: ReadonlySet<string> | null) {
   if (
     changed === null ||
     [...changed].some((file) =>
       [UI_ROOT, ...UI_SETUP].some((path) => file === path || file.startsWith(`${path}/`)),
     )
   ) {
-    return step(root, "ui", ["run", "ui:gate"], true);
+    return step(root, "ui", ["run", "ui:gate"], "pipe");
   }
   const files = lines(git(root, ["ls-files", UI_ROOT])).filter((file) => /\.tsx?$/u.test(file));
   const read = new Set(files.flatMap((file) => [...within(root, file, Infinity)]));
@@ -359,23 +363,22 @@ async function uiStep(root: string, pass: Pass): Promise<number> {
     console.log(`gate: step ui skipped: nothing it reads changed since ${short(base ?? "")}`);
     return 0;
   }
-  const tests = uiTestsNear(root, changed, pass === "whole");
+  const tests = uiTestsNear(root, changed, pass === "whole" ? "all" : "no-browser");
   for (const args of [["run", "ui:build"], ...(tests.length > 0 ? [["run", "test", "--", ...tests]] : [])]) {
-    const code = await step(root, "ui", args, true);
+    const code = await step(root, "ui", args, "pipe");
     if (code !== 0) return code;
   }
   return 0;
 }
 
-/** One step, its output where the caller's goes, whole once it ends where it is `held`; its exit code.
+/** One step, its output where the caller's goes, whole once it ends where it is piped; its exit code.
  *  A step routed to a runner exits `NO_VERDICT` where the connection dropped, which says nothing
  *  about the commit, so it runs once more: on 28 October a dropped connection after 201 passing
  *  tests failed #502's landing. */
-async function step(root: string, name: string, args: readonly string[], held = false): Promise<number> {
-  const out = held ? "pipe" : "inherit";
+async function step(root: string, name: string, args: readonly string[], io: "pipe" | "inherit" = "inherit") {
   const run = async (): Promise<number> => {
-    const child = Bun.spawn(["bun", ...args], { cwd: root, stdout: out, stderr: out });
-    if (!held) return child.exited;
+    const child = Bun.spawn(["bun", ...args], { cwd: root, stdout: io, stderr: io });
+    if (io === "inherit") return child.exited;
     const [said, warned] = await Promise.all([
       new Response(child.stdout).text(),
       new Response(child.stderr).text(),
@@ -385,9 +388,13 @@ async function step(root: string, name: string, args: readonly string[], held = 
     return child.exited;
   };
   let code = await run();
-  if (code === NO_VERDICT) code = await run();
-  if (code === NO_VERDICT) console.error(`gate: step ${name} gave no verdict (exit ${String(code)})`);
-  else if (code !== 0) console.error(`gate: step ${name} failed (exit ${String(code)})`);
+  if (verdictOf(code) === "none") code = await run();
+  const verdict = verdictOf(code);
+  if (verdict !== "passed") {
+    console.error(
+      `gate: step ${name} ${verdict === "none" ? "gave no verdict" : "failed"} (exit ${String(code)})`,
+    );
+  }
   return code;
 }
 
@@ -402,7 +409,13 @@ async function gate(argv: readonly string[]): Promise<number> {
     const code = await step(root, name, args);
     if (code !== 0) return code;
   }
-  const near = pass === "whole" ? [] : testsNear(root, changedSince(root, parentOf(root, "HEAD")));
+  // One reading of what changed serves the nearby tests and the UI's step.
+  const base =
+    pass === "static"
+      ? parentOf(root, "HEAD")
+      : zeroExitText(runSync(["git", "merge-base", "HEAD", "origin/main"], { cwd: root }));
+  const changed = base === null ? null : changedSince(root, base);
+  const near = pass === "whole" || changed === null ? [] : testsNear(root, changed);
   if (pass === "static" && near.length === 0) console.log("gate: no test file is near what HEAD changed.");
   // The strict lint reads whether the UI's dependencies are there as it starts, so they are
   // installed before the steps that run side by side (the release review of 3 November).
@@ -410,14 +423,14 @@ async function gate(argv: readonly string[]): Promise<number> {
   const installed = ui ? await step(root, "ui-deps", ["run", "ui:deps"]) : 0;
   if (installed !== 0) return installed;
   const codes = await Promise.all([
-    ui ? uiStep(root, pass) : 0,
-    ...BESIDE.map(([name, args]) => step(root, name, args, true)),
+    ui ? uiStep(root, pass, base, changed) : 0,
+    ...BESIDE.map(([name, args]) => step(root, name, args, "pipe")),
     pass === "whole" || near.length > 0
       ? step(root, "test", ["run", "test", ...(near.length > 0 ? ["--", ...near] : [])])
       : 0,
   ]);
   // A failure says more than a dropped runner, which says nothing about the commit.
-  return codes.find((code) => code !== 0 && code !== NO_VERDICT) ?? codes.find((code) => code !== 0) ?? 0;
+  return codes.find((code) => verdictOf(code) === "failed") ?? codes.find((code) => code !== 0) ?? 0;
 }
 
 /** What a pass's log says so far, for the pulse: tests passed and failed, and a rerun under way. */
@@ -462,7 +475,27 @@ function failedTests(output: readonly string[]): string[] {
 export const failedLine = (failure: Failure): string =>
   failure.verdict
     ? `${short(failure.commit)} FAILS ${failure.step} ON ITS OWN`
-    : `${short(failure.commit)} GAVE NO VERDICT ON ${failure.step}: its runner dropped twice`;
+    : `${short(failure.commit)} GAVE NO VERDICT ON ${failure.step}: its runner said nothing of it twice`;
+
+/**
+ * The checker that runs every pass, as one digest: this CI gate and the files its imports reach, read
+ * from the caller's checkout as it stands, since `GATE` runs from there over each target. Its
+ * steps run `bun run …` in the target's checkout (`step`), so the lint plugins and configs, the
+ * test wrapper, `package.json` and `bun.lock` they use are the target's, which its tree keys. Until
+ * 20 October the digest took every file of `tools/runtime` and `src/meta`, so a caller whose lint
+ * or `src/meta/git.ts` had changed proved again what an equal CI gate had passed: along the chain of
+ * #267 to #288 it took four values where the CI gate's own files took two, and the chain's bottom
+ * commits were proved three times.
+ */
+function checkerDigest(): string {
+  const top = join(import.meta.dir, "..", "..");
+  return sha256(
+    [...within(top, relative(top, GATE), Infinity)]
+      .toSorted()
+      .map((file) => `${file} ${sha256OfFile(join(top, file))}`)
+      .join("\n"),
+  ).slice(0, 16);
+}
 
 /**
  * Runs each commit's pass over a checkout of it, up to `jobs` at once, and returns the lowest
@@ -478,28 +511,14 @@ export async function proveCommits(
   proofs: readonly Proof[],
   prover: Prover,
 ): Promise<Failure | null> {
-  const { who, say, mark } = prover;
+  const { who, say, mark, stop } = prover;
   const [common = "", logs = ""] = lines(
     git(root, ["rev-parse", "--path-format=absolute", "--git-common-dir", "--git-path", "ana-gate"]),
   );
   const record = join(common, "ana-gate-passed");
   mkdirSync(logs, { recursive: true });
   runSync(["find", logs, "-name", "*.log", "-mtime", `+${String(LOG_DAYS)}`, "-delete"]);
-  // The checker that runs every pass, as one digest: this CI gate and the files its imports reach, read
-  // from the caller's checkout as it stands, since `GATE` runs from there over each target. Its
-  // steps run `bun run …` in the target's checkout (`step`), so the lint plugins and configs, the
-  // test wrapper, `package.json` and `bun.lock` they use are the target's, which its tree keys. Until
-  // 20 October the digest took every file of `tools/runtime` and `src/meta`, so a caller whose lint
-  // or `src/meta/git.ts` had changed proved again what an equal CI gate had passed: along the chain of
-  // #267 to #288 it took four values where the CI gate's own files took two, and the chain's bottom
-  // commits were proved three times.
-  const top = join(import.meta.dir, "..", "..");
-  const checker = sha256(
-    [...within(top, relative(top, GATE), Infinity)]
-      .toSorted()
-      .map((file) => `${file} ${sha256OfFile(join(top, file))}`)
-      .join("\n"),
-  ).slice(0, 16);
+  const checker = checkerDigest();
   const remembered =
     runtimeProcess.env.ANA_GATE_FRESH === "1"
       ? ""
@@ -534,26 +553,36 @@ export async function proveCommits(
         ...runtimeProcess.env,
         ANA_TEST_BAIL: "1",
       },
+      // Its own group, so a stop reaches the steps and the runner's ssh beneath it.
+      detached: stop !== undefined,
       stdin: "ignore",
       stdout: fd,
       stderr: fd,
     });
+    const end = (): void => killProcessGroup(child, "SIGTERM");
+    stop?.addEventListener("abort", end, { once: true });
     const code = await child.exited;
+    stop?.removeEventListener("abort", end);
     clearInterval(pulsing);
     closeSync(fd);
     free.push(tree);
+    if (code !== 0 && stop?.aborted === true) {
+      say(`${at}: stopped.`);
+      return;
+    }
     if (code === 0) {
       appendFileSync(record, `${contentKey(root, commit, pass, checker)}\n`);
       mark(commit, "success", PROVED[pass]);
       say(`${at}: passed.`);
       return;
     }
+    // The gate's exit says whether the commit failed; its log only names the step that said so.
     const output = lines(readFileSync(log, "utf8"));
+    const verdict = verdictOf(code) === "failed";
     const said = output.map((line) => /^gate: step (\S+) (failed|gave no verdict)/u.exec(line));
-    const [, failedStep = "the gate", verdict = "failed"] =
-      said.findLast((line) => line?.[2] === "failed") ?? said.findLast(Boolean) ?? [];
-    const state = verdict === "failed" ? "failure" : "error";
-    const failure = { commit, step: failedStep, log, verdict: state === "failure" };
+    const failedStep = said.findLast((line) => line !== null && (line[2] === "failed") === verdict)?.[1];
+    const state = verdict ? "failure" : "error";
+    const failure = { commit, step: failedStep ?? "the gate", log, verdict };
     failures.push({ index, ...failure });
     mark(commit, state, FAILED[state]);
     console.error([...failedTests(output), ...output.slice(-30)].join("\n"));
@@ -572,7 +601,7 @@ export async function proveCommits(
       }
       if (pass === "whole") await Promise.all(running);
       while (running.size >= prover.jobs) await Promise.race(running);
-      if (failures.length > 0) break;
+      if (failures.length > 0 || stop?.aborted === true) break;
       const task: Promise<void> = run(at, index, commit, pass).then(() => {
         running.delete(task);
       });

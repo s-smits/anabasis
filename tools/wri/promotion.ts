@@ -300,14 +300,14 @@ function afterTrigger(log: Index, { at, until, data }: Epoch, starter: string): 
         ? tasks.map((task, i) => ({ newer: (drawn.get(text(task)) ?? 0) > at, score: -(scores[i] ?? 0) }))
         : [];
     });
-    const said = (newer: boolean) => {
-      const scores = ages.filter((one) => one.newer === newer).map(({ score }) => score);
+    const said = (when: "after" | "before") => {
+      const scores = ages.filter((one) => one.newer === (when === "after")).map(({ score }) => score);
       const step = tallyOf({ unbilled: scores });
       return step === null || scores.length === 0
         ? "none"
         : `${String(step.wins)}-${String(step.losses)}-${String(step.ties)} p ${pSaid(step.p)}`;
     };
-    return `; for the reference on tasks first drawn after the promotion ${said(true)}, before it ${said(false)}`;
+    return `; for the reference on tasks first drawn after the promotion ${said("after")}, before it ${said("before")}`;
   };
   const read = ({ session, last }: Compared) => {
     const old = validOf(asRecord(last.valid)?.old);

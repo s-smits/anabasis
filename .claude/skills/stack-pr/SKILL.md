@@ -1,6 +1,6 @@
 ---
 name: stack-pr
-description: "Place a change on an open stack of Anabasis pull requests, or start one: find the true top, keep local work while moving to it, expand the open pull request a change belongs to before opening a new one, shape commits that each pass alone, run what CI runs, publish through the pre-push hook, prove the stack with `bun run land -- <top> --sanitize`, write the title and body, replay your own children when a parent moves, consolidate the stack by subject, and land it with `bun run land`. Use when asked to open, append to, stack, restack, consolidate or overhaul, rebase, hop to the latest head, sanitize or land a pull request, to title or describe one, or when a push, a hook or a base refuses."
+description: "Place a change on an open stack of Anabasis pull requests, or start one: find the true top, keep local work while moving to it, expand the open pull request a change belongs to before opening a new one, shape commits that each pass alone, run what CI runs, publish through the pre-push hook, prove the stack with `bun run land -- <top> --sanitize`, write the title and body, replay your own children when a parent moves, consolidate the stack by subject (section 10 summarises it; consolidate-stack holds the procedure), and land it with `bun run land`. Use when asked to open, append to, stack, restack, consolidate or overhaul, rebase, hop to the latest head, sanitize or land a pull request, to title or describe one, or when a push, a hook or a base refuses."
 ---
 
 # Stack a pull request
@@ -34,7 +34,7 @@ branch.
   consolidation"; section 10 folds it down. Remove what the change makes dead in the same commit.
 - **Otherwise open a new pull request on the cycle's top**, whether or not it depends on what is
   below. The cycle's file names the stack; failing that, it is the one `bun run follow` follows,
-  which holds the oldest open pull request. The first change after a release starts the stack on
+  the stack of two or more that holds the oldest open pull request. The first change after a release starts the stack on
   `main`. A second stack on `main` starts only on the operator's word, lands alone, and leaves the
   other to be replayed with `republish.ts --onto-main` (section 8). Never base on the middle of a
   stack, and state the base in the body.
@@ -141,7 +141,7 @@ and at least one category, or `land` refuses the stack before any check
 (`gh pr edit <number> --add-label <label>`). Categories (`CATEGORIES`, `tools/runtime/land.ts`;
 `gh label list`): `exam`, `verdicts`, `supply`, `harness`, `comparison`, `climb`, `solve`,
 `economy`, `runs`, `log`, `investigation`, `landing`, `quality`, `docs`. A consolidation spends
-by importance (`references/consolidate.md`, "Spend by importance").
+by importance ([consolidate-stack](../consolidate-stack/SKILL.md), step 5).
 
 ### Title and body
 
@@ -191,7 +191,14 @@ git merge-base --is-ancestor <new parent head> <child branch>    # must succeed
 
 Push every moved head in one `git push --atomic`, each with its own lease and
 `<sha>:refs/heads/<branch>`. Send another session's child the `git rebase --onto` line instead.
-Restacking the whole open stack takes the operator's word.
+
+`bun run land -- <top> --sanitize` (or `--merge`) does this for the whole chain, and for what is
+stacked above it: it replays each child from the newest parent head GitHub records that the child
+holds, pushes every moved head atomically under leases, says the rebase line for each, and proves
+the result. A child that does not replay cleanly is refused with the `git rebase --onto` line to run
+by hand. A head that moves while a landing proves commits stops it, and it starts again from the
+lowest pull request that moved, with every recorded pass kept. Restacking the whole open stack onto
+`main` takes the operator's word.
 
 When the branch beneath the stack has landed, `land` refuses the stack and `stack.ts` prints an
 `off main:` line. One command replays the chain onto `origin/main` with `git replay`, checks every
@@ -211,12 +218,17 @@ GitHub (`tools/runtime/land.ts`), so each pull request ends as Merged:
 ```sh
 bun run land -- <top>                 # prove it here; nothing is written to GitHub
 bun run land -- <top> --sanitize      # and post each commit's verdict as ana/commit
+bun run land -- <top> --sanitize --once # and end once it is proved, as a session waiting for it does
 bun run land -- <top> --merge         # and wait for ci.yml, post ana/stack-gate, and merge
 bun run land -- <pr> --auto --merge   # land the top above <pr>, following a new top stacked meanwhile
 bun run land -- --merge               # the same, for the stack holding the oldest stacked pull request
 bun run land -- <top> --merge --alone # merge beside another chain on main, on the operator's word
 bun run land -- <top> --merge --tag v0.9.0 # and cut that release at the merge
 ```
+
+Without `--once` a landing follows its stack: once it ends it lands again each time an open pull
+request moves, until the one named closes or Ctrl-C ends it; every pass is remembered, so a round
+costs only what moved. A `--merge` lands once. A session that waits for the verdict names `--once`.
 
 GitHub allows merge commits only, and ruleset 25824510 on `main`
 (`gh api repos/s-smits/anabasis/rulesets/25824510`) refuses non-fast-forward pushes and requires
@@ -229,13 +241,36 @@ sanitize (`ANA_GATE_FRESH=1` proves every commit afresh by hand), and `--jobs N`
 at once. **A passing proof is not a release**: a stack merges only once a fresh run at the top's head
 has reached two promotions on unchanged code (run-improvement-campaign, "A run proves the release");
 land the proved top by its number, never a newer top. On failure, fold the fix into the named
-commit, replay what is above (section 8), push together and land again. A runner that drops twice
-reads "gave no verdict"; land again.
+commit, push it and land again with `--sanitize`, which replays what is above (section 8). A
+landing whose chain covers a live landing's in this clone ends that one, whose passes stay
+recorded, instead of waiting behind it; a `--merge` is never ended. A runner that twice says nothing
+of a commit (a dropped connection, no slot in time, a host that does not answer or lacks the disk)
+reads "gave no verdict"; land again. A landing that ends, however, leaves no status it posted
+pending: it turns each into an error.
+
+**The landing review.** Before `--merge`, three read-only reviewers each read the whole landing
+(`origin/main..<top>`) through one lens, rather than one slice each. A slice makes every reviewer
+learn every subject, and a defect class that spans pull requests, such as one fact read twice or a
+lock that two verbs take, falls between slices. Each reviewer gets the range, every pull request's
+stated problem and its lens, and never a conclusion. Each finding cites a file and line at the
+top's commit and the event, test or count that would settle it, and is reported as confirmed,
+plausible or refuted (`AGENTS.md`, section 11). Where the landing holds an `I0` or `I1`, one lens
+goes to another model family.
+
+| lens | the skills it reads from | what it runs and asks |
+| --- | --- | --- |
+| The measurement | design-and-seats, comparison-reading, campaign-mechanics, attribution-and-proof | `seat-view.ts --base origin/main` and each wall test it names; `bun run runs replay`, which must refuse no log a real run wrote (exit 0); does a change move what a seat reads, a reading, a term or default, or an old event's readability, and does each body claim no more than its rung |
+| The run's life | run-management, system-path-simulation, local-checks | what a kill, a stop, a login at its limit, two processes at once, a gathered copy of a live run or a moved checkout does to each changed verb, lock, pause, retire, fetch, follow or land; whether a refusal writes before its last check; a dry run or rehearsal of each changed path |
+| The owner and the shape | simplify, reduce-complexity, repository-practice, `tools/oxlint/HABITS.md` | `git complexity origin/main <top>` and rule 12 and 13 across the whole landing: a second reader of one fact, a guard for a state that cannot arrive, a patch on one instance, a test without its hostile case, a reader or UI page left behind a changed writer, and a "Not done" that is honest |
+
+The lenses follow the findings of the review of 4 November (`docs/backlog/v093-open-findings.md`),
+which fell into these three classes. Confirmed findings go on the pull request that owns them before
+`--sanitize` runs again; plausible ones go to the backlog with what would settle them.
 
 `--merge` dispatches `ci.yml` where none ran, waits, and on failure says whether to fix a commit or
 `gh run rerun <id>`; then it posts `ana/stack-gate` and merges the native stack all or nothing,
 pinned to the checked head. To open a pull request on the top, push its branch, open it with
-`gh pr create --draft --base <top's branch>`, and run `bun run land -- <new top> --sanitize`: before
+`gh pr create --draft --base <top's branch>`, and run `bun run land -- <new top> --sanitize --once`: before
 gating, `--sanitize` and `--merge` link the whole chain into the native stack where GitHub's stack
 holds only its lower part or none of it, and a plain `land` prints the `gh stack link` it would run.
 A stack in another order is refused with its `gh stack unstack` and link lines. Test `land` only
@@ -243,7 +278,9 @@ against a fake `gh` (`test/land.test.ts`).
 
 **Landing part of a stack.** `bun run split -- <pull request> --yes` cuts the native stack after
 the last pull request to land; once the lower part lands, the same command moves the upper commits
-onto the merge with their trees and passes intact. Run it only on the operator's word.
+onto the merge with their trees and passes intact, so each upper pull request takes a new head and
+its old one can stand on no remote branch, which `runs fresh --at` refuses; read a fork's commit
+from `gh pr view <n> --json headRefOid` at the launch. Run it only on the operator's word.
 
 ### Release notes, when the operator asks for the next version
 
@@ -259,9 +296,21 @@ no host, login or account.
 
 ## 10. Consolidate the stack
 
-Consolidation rewrites a stack grown fix by fix into a smaller one ordered by subject, folding
-every "Absorbs into #N" carrier into #N. It rewrites other sessions' pull requests, so it takes the
-operator's word. The procedure is `references/consolidate.md`, ending in:
+Consolidation rewrites a stack grown fix by fix into fewer pull requests ordered by subject,
+folding every "Absorbs into #N" carrier into #N. It rewrites other sessions' pull requests, so it
+takes the operator's word, and it is a skill of its own,
+[consolidate-stack](../consolidate-stack/SKILL.md). In summary:
+
+1. read each pull request as the problem its body states, with its evidence, owner and what it
+   rests on;
+2. group by type (importance and kind), then by owner, and let dependencies set the order: a gate
+   above the sites it judges, an answer above its rule;
+3. rethink each group with [simplify](../simplify/SKILL.md)'s shapes until it is the least change
+   that answers every stated problem, measured before and after;
+4. trial the order on a scratch worktree (conflicts, ordered files such as the not-slop ledger,
+   tree equality, checks at each group head) before anything moves;
+5. review each group, restructure in one rebase, fix in lanes, assemble and check;
+6. make each group one pull request and publish with `republish.ts`.
 
 ```sh
 bun .claude/skills/stack-pr/scripts/republish.ts --head <pr>=<sha> ... [--absorb <pr>=<into>] ...

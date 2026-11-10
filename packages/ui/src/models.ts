@@ -278,12 +278,12 @@ export interface HarnessCard {
   readonly session: string | null;
   /** When it was kept: its session's end, or its import. Null for the starter. */
   readonly at: string | null;
-  /** Each may hold together: the latest can be the reference. */
-  readonly starter: boolean;
+  /** Where it came from: the starter, a Builder session's end, a conversation's freeze for a
+   *  comparison before its session ended, or `harness.imported`. */
+  readonly by: "starter" | "session" | "frozen" | "imported";
+  /** The two may hold together, and with any origin: the latest can be the reference. */
   readonly reference: boolean;
   readonly latest: boolean;
-  /** Kept by `harness.imported`, not by a session. */
-  readonly imported: boolean;
   /** Why it does not open, as its session's end says (`build.finished.broken`). */
   readonly broken: string | null;
   /** Its practice solves (`practiceRan`): the valid ones and all that ended with a pass or a fail. */
@@ -559,17 +559,19 @@ export interface TaskRow {
   readonly version: string;
   readonly id: string | null;
   readonly state: TaskState;
-  /** Three readings beside the state (`poolOf`): waiting for a person's label; out of the draw
-   *  while a rejection of the reference's that set it aside stands unearned (doubted); and
-   *  answered by the reference in every solve of its last reading. */
-  readonly awaitingLabel: boolean;
-  readonly doubted: boolean;
-  readonly exhausted: boolean;
-  /** Whether a comparison scores it in its retained set (`poolOf`): every exhausted task is, since
-   *  16 October. */
-  readonly retained: boolean;
+  /** Its one place in the next comparison's draw (`poolOf`); null for a task not held out. */
+  readonly draw: TaskDraw | null;
   readonly proposedAt: string | null;
 }
+
+/** A held-out task's place in the draw (`poolOf`), each held task in one: on the frontier; in the
+ *  retained set, which holds every exhausted task (answered by the reference in every solve of its
+ *  last readings) since 16 October; or out of the draw, waiting for a person's label, doubted
+ *  (a rejection of the reference's that set it aside stands unearned), or both. */
+export type TaskDraw =
+  | { readonly place: "frontier" }
+  | { readonly place: "retained"; readonly exhausted: boolean }
+  | { readonly place: "out"; readonly awaitingLabel: boolean; readonly doubted: boolean };
 
 /** What a comparison came to on one task, with each side's valid answers over its solves. */
 export interface TaskCell {
@@ -755,6 +757,11 @@ export const TOKEN_PARAMETER = "token";
 /** Where a campaign stands whose opening names no project. A project is an id of letters, digits,
  *  `.`, `_` and `-` (`isSafePathSegment`), so no project can be spelled so. */
 export const NO_PROJECT = "No project recorded";
+
+/** Whether a solve's answer was rejected by a check, the one ending a ruling is made of. */
+export function isRejection(row: SolveRow): boolean {
+  return row.ending?.outcome === "fail" && row.ending.kind === "rejected";
+}
 
 export function shortHash(value: string | null | undefined, length = 12): string {
   if (!hasText(value)) return "not recorded";

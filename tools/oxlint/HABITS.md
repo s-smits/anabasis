@@ -27,8 +27,10 @@ first line, and the round trip through the linter mostly disappears.
 `bun run lint` runs Oxlint over `src`, `tools`, `test`, `packages` and `.claude` with
 `--deny-warnings` and `--report-unused-disable-directives`, type-aware. `packages/ui` is linted
 once its own dependencies are installed (`bun run ui:deps`), under its own `tsconfig.json` and
-with no rule turned off for it; a whole-tree run without them leaves it out and says so. Two repository plugins ride along: `ana`
-(29 rules) and `anti-slop` (13 rules). Every enabled rule in `.oxlintrc.json` is an error.
+with no rule turned off for it; a whole-tree run without them leaves it out and says so. Four repository plugins ride along: `ana`,
+`anti-slop` and the two tiers of `implicit-state` (12.14). Every enabled rule in `.oxlintrc.json`
+is an error. A rule still being settled sits in `tools/oxlint/staged-rules.json` instead, which
+`bun run simplify` runs and no lint or hook gates on.
 
 - **Plugin findings fail the run only in strict mode**: `bun run lint -- --strict`,
   `ANA_LINT_STRICT=1`, or a clone with `git config ana.lintStrict true`. A plain run holds you to
@@ -153,7 +155,7 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
 
 **Structure**
 
-- `declarations-before-the-first-function` [fix]: imports, types, module constants, then
+- `require-declarations-first` [fix]: imports, types, module constants, then
   functions. A constant whose initialiser calls something or reads below stays where it is.
 - `no-inline-schema-literal`: a table of three or more constant entries built inside a function
   moves to module scope under a name. Tests are exempt.
@@ -198,8 +200,8 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
   an object literal's method or a class's constructor under `new`). A name is an identifier or
   the property ending a member read, and it matches when its words begin or end with the
   parameter's (`sourcePath` for `source`). One name out of place is not reported. A call into
-  another file is the tree scan `crossed-argument`'s, which `bun run simplify` prints. Fix
-  whichever side is wrong.
+  another file is the tree scan of the same name, `tree/no-transposed-argument`, which
+  `bun run simplify` prints. Fix whichever side is wrong.
 
 **Repetition**
 
@@ -209,7 +211,7 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
 
 **Types**
 
-- `unproven-unknown-parameter`: an `unknown` parameter is proved in the body, by a predicate, a
+- `no-unproven-unknown-parameter`: an `unknown` parameter is proved in the body, by a predicate, a
   narrowing guard or a hand-off to a prover (`is…`, `as…`, `assert…`, `parse…`, `errorMessage`).
   Passing it straight on proves nothing.
 
@@ -362,16 +364,21 @@ question, repair the true ones, and answer a false one in the ledger as `tree/<k
 
 | Kind | Repair |
 | --- | --- |
-| `orphan-module`, `test-only-module`, `test-only-export` | Delete the code with its test, or wire it into a live path |
-| `unread-field`, `unread-forward` | Delete it, with the branch that handled it |
-| `single-reader-export` | Move the one export into its one reader |
-| `copied-block` | One owner for the block |
-| `identity-without-owner` | One constant for the name |
-| `fact-without-owner` | One function for the fact, in the module that owns the value's type |
-| `superseded-schema-tag`, `compatibility-path` | Drop the old reader |
-| `rule-without-fixture` | Add the fixture |
-| `stale-reference` | Point a path at where the thing lives now, or cite it as `<sha>:path` in a record of its time; document only a setting some code reads |
-| `filesystem-import-budget` | None. It is a register: a file keeps its count of `filesystem.ts` imports, and a change adds at most one |
+| `no-unused-module`, `no-test-only-module`, `no-test-only-export` | Delete the code with its test, or wire it into a live path |
+| `no-unused-field`, `no-unused-reexport` | Delete it, with the branch that handled it |
+| `no-single-reader-export` | Move the one export into its one reader |
+| `no-duplicate-block` | One owner for the block |
+| `no-unowned-identity` | One constant for the name |
+| `no-unowned-fact` | One function for the fact, in the module that owns the value's type |
+| `no-superseded-schema-tag`, `no-compatibility-path` | Drop the old reader |
+| `no-stale-reference` | Point a path at where the thing lives now, or cite it as `<sha>:path` in a record of its time; document only a setting some code reads |
+| `no-scattered-state-literals` | Name each grouping in the owner of the states (a predicate or a table) and call it |
+| `no-unowned-state-literals` | Declare the states once, with their groupings beside them (opinionated) |
+| `no-scattered-enum-literals` | Name each grouping beside the set; it names kinds rather than states, so it is reported apart |
+| `no-repeated-external-read` | Read once where the call paths join and pass the answer on |
+| `no-duplicate-derivation` | Call the exported function that already returns the fact |
+| `require-exhaustive-mapping` | Say which set a lookup `Map` maps (`satisfies Record<…>` on its entries) |
+| `max-filesystem-imports` | None. It is a register: a file keeps its count of `filesystem.ts` imports, and a change adds at most one |
 
 ## 12.10 The size policy
 
@@ -407,13 +414,21 @@ never add a file to one, and never widen a glob to take in the file you are edit
   streams.
 - A lint rule's fixture marks every declaration `// REPORT <why>` or `// ADMITTED <why>`
   (`test/helpers/oxlint-rule-fixture.ts`), so one text states both halves of the rule.
-- A test that proves an export nothing else calls is what `tree/test-only-export` reports. Test
+- A test that proves an export nothing else calls is what `tree/no-test-only-export` reports. Test
   the live path.
 
 ## 12.13 Adding or changing a lint rule
 
-A rule lives in `tools/oxlint/ana/rules/<name>.ts`, is registered in `tools/oxlint/ana/index.ts`
-and in `.oxlintrc.json` as `"error"`, and has a fixture test. Its head comment carries the
+A rule's name says what it rejects or asks for, as ESLint, typescript-eslint and anti-slop name
+theirs: `no-` for a pattern refused, `prefer-` or `require-` for the alternative asked for, and
+`max-` for a count, which takes ESLint's `{ max: number }` where it has an option. Name it no more
+specifically than the smell and never by its mechanism or tier; a whole-tree scan's kind follows
+the same pattern under `tree/`. The rule lives in `tools/oxlint/ana/rules/<name>.ts`, is
+registered under that name in `tools/oxlint/ana/index.ts` and in `.oxlintrc.json` as `"error"`,
+and has a fixture test; `tools/oxlint/plugins.ts` is the record every other list of rules reads,
+and `test/rule-names.test.ts` fails on a name off the pattern, a file and a registration that
+differ, a rule no config runs or no test names, and a config entry, ledger row or document that
+names a rule that does not exist. Its head comment carries the
 argument: the shape, its cost, what was measured and when, each exemption with the site that
 forced it, and whether it fixes and why. A rule enters only when, at every site it reports, some
 spelling passes every other rule; a rule whose remedy another rule refuses ends up switched off.
@@ -421,3 +436,50 @@ spelling passes every other rule; a rule whose remedy another rule refuses ends 
 measurements go in its head comment and its commit. Measure through
 `bun run lint -c <one-rule config>`, never raw `oxlint`: a config without the type-aware option
 reports zero and says nothing.
+
+A rule that is a heuristic, or that still has sites in the tree, starts in
+`tools/oxlint/staged-rules.json` at `"warn"` instead: `bun run simplify` prints its sites and
+nothing gates on them. It moves to `.oxlintrc.json` as an error once no site of it stands.
+A gated rule can stage a wider reading the same way: `ana/no-positional-boolean-parameter`
+gates with its default and is staged with `widen: ["flags", "bindings"]`, Foxglove's further
+readings of a boolean parameter, until their sites are settled.
+
+## 12.14 Implicit state
+
+An implicit state machine is a state with no one typed owner, spread over booleans, string
+literals each reader spells by hand, which files exist, what a name encodes or how old a file is.
+Readers re-derive it their own way and drift, and a transition between two of them (a crash
+between two writes, a slow holder past a threshold) lands in a state no branch expects. Give it
+one owner: a union, one record of a process's phase, the holder itself for a lock.
+
+Both tiers gate as errors in `.oxlintrc.json` and, like `ana` and `anti-slop`, fail only a strict
+run. A site whose state has no other place to live, such as a ported serialisation format or a
+fact kept only in a name a person types, is answered in the not-slop ledger.
+
+The generic tier infers its structure from syntax, asking the compiler only whether a literal set
+is ever written where a value changes; it names no module of this repository and runs on any
+TypeScript tree; `bun tools/oxlint/tree-implicit-state.ts <root>` scans a foreign one.
+
+| Finding | Repair |
+| --- | --- |
+| `implicit-state/no-coupled-flags` | Fields of one state written together, at most one set each time, computed by comparisons that cannot both hold, or written as opposite literals: hold the mode in one discriminated field |
+| `implicit-state/no-marker-file-state` | A phase read from which files exist in one folder: one record of the phase |
+| `implicit-state/no-age-based-lock` | A file's age against a constant as the holder's liveness: ask the holder (a pid, a lease, an exclusive open) |
+| `tree/no-scattered-state-literals` | Name each grouping of a declared union in its owner |
+| `tree/no-scattered-enum-literals` | The same, for a set no update ever writes (a method, an extension): reported apart |
+| `tree/no-repeated-external-read` | Read once where the call paths join |
+| `tree/no-duplicate-derivation` | A fact an exported function returns, spelled again by hand in another file: call the owner |
+| `tree/require-exhaustive-mapping` | A lookup `Map` that leaves part of a declared set out, or maps all of it with no type holding it there |
+
+The opinionated tier, `implicit-state-opinionated`, holds the stances that are right for a
+codebase that keeps one log and a record beside each name and contested elsewhere; its head comment
+names each stance and where it is contested. It is a separate plugin so that another tree can take
+the generic tier alone, and its rules are opinionated because they report more wrongly on foreign
+repositories, not because they matter less here.
+
+| Finding | Repair |
+| --- | --- |
+| `implicit-state-opinionated/max-boolean-fields` | More than two required boolean members on one record, or more than three boolean parameters on one function: name the states as a union |
+| `implicit-state-opinionated/prefer-state-union` | Boolean fields a class's methods move at different times, or a flag derived from two others of one record: name the states as a union |
+| `implicit-state-opinionated/no-state-in-names` | A captured group of a pattern applied to a name and read back: keep the fact in a field of the record the name labels |
+| `tree/no-unowned-state-literals` | The same word-like literals grouped by hand in two or more files and declared nowhere: declare the states once |

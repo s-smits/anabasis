@@ -51,11 +51,12 @@ import {
   type Standing,
 } from "../kernel/reports.ts";
 import { spreadOf } from "../kernel/size.ts";
-import { solvesIn, verdictsOf } from "../kernel/solves.ts";
-import { heldAtGate, taskStates } from "../kernel/task.ts";
+import { solvesIn, standsOf, verdictsOf } from "../kernel/solves.ts";
+import { taskStates } from "../kernel/task.ts";
 import { objectiveOf, type Task } from "../kernel/verify.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { plural } from "../meta/text.ts";
+import { tasksByEpoch } from "../campaign/climb.ts";
 
 /** The reference harness's valid answers to a task in the last comparison that tallied it: the
  *  turns each took and, where the contract declares an objective, what each measured. */
@@ -186,22 +187,19 @@ function clausesOf(
   ];
 }
 
-/** The checks a ruling found at fault on an answer to each task, by its id: what stands of a solve's
- *  rejection, a person's label over its last `referee.finding`, the Referee's or the host's (rule 8),
- *  where that is `check-defect`. `rulingsOf` gives a solve's ruling alone, and the task and the check
- *  are the finding's, so the finding is read here. Its reason is not told. */
+/** The checks a ruling found at fault on an answer to each task, by its id: where what stands of a
+ *  solve's rejection (`standsOf`, rule 8) is `check-defect`, the task and the check its last
+ *  `referee.finding` names, the Referee's or the host's. Its reason is not told. */
 function faultedOf(events: readonly LogEvent[]): Map<string, Set<string>> {
   const last = new Map(
     events.flatMap(({ kind, data }) =>
       kind === "referee.finding" && isString(data.solve) ? [[data.solve, data]] : [],
     ),
   );
-  const labels = new Map(
-    lastReports(events).flatMap(({ data }) => Object.entries(asRecord(asRecord(data.settled)?.labels) ?? {})),
-  );
+  const stands = standsOf(events);
   const faulted = new Map<string, Set<string>>();
-  for (const [solve, { ruling, task, check }] of last) {
-    if ((labels.get(solve) ?? ruling) !== "check-defect" || !isString(task) || !isString(check)) continue;
+  for (const [solve, { task, check }] of last) {
+    if (stands.get(solve) !== "check-defect" || !isString(task) || !isString(check)) continue;
     faulted.set(task, new Set([...(faulted.get(task) ?? []), check]));
   }
   return faulted;
@@ -271,11 +269,7 @@ function stoodLine(
 function promotedLine(events: readonly LogEvent[], since: number, listed: readonly string[]): string | null {
   const promotion = events[since];
   if (promotion === undefined) return null;
-  const under = new Set(
-    events
-      .slice(since)
-      .flatMap(({ kind, data }) => (kind === "task.gate" && heldAtGate(data.outcome) ? [data.version] : [])),
-  );
+  const under = new Set(tasksByEpoch(events.slice(since)).flat());
   const before = listed.filter((version) => !under.has(version)).length;
   const rests = promotion.data.rests;
   const on = Array.isArray(rests) ? asRecord(rests[0])?.comparison : undefined;
@@ -292,7 +286,7 @@ function referenceAnswers(events: readonly LogEvent[]): Map<string, Answered> {
   );
   const verdicts = verdictsOf(events);
   const answered = new Map<string, Answered>();
-  for (const report of lastReports(events, true)) {
+  for (const report of lastReports(events, "all")) {
     const side = report.data.fresh === reference ? "fresh" : report.data.old === reference ? "old" : null;
     for (const pair of pairsReported(events, report)) {
       const solves = side === null ? [] : (pair.solves?.[side] ?? []);

@@ -126,23 +126,31 @@ the launch.
 
 ```sh
 bun --env-file=<file> run runs continue <name> [--at <commit>] [--login N] [--budget N] [--after <event>] --yes [-- <flags>]
-bun run runs pause <name> [--after next|compacted|reported|finished] --yes
+bun run runs pause <name> [--after <word>[|<word>...]] --yes
 ```
 
 `continue` reruns a stopped campaign in its worktree on the flags of its last receipt, less `--name`
-and `--budget` (the log holds the total; `--budget` names another); flags after `--` replace them.
+and `--budget` (the log holds the total; `--budget` names another); flags after `--` replace them
+all, so adding one, such as `--promotions N`, means repeating the kept ones, which `continue`
+without `--yes` prints.
 It refuses as `launch` does, refuses `--at` another commit while a comparison is open
 (`openComparisons`), since that comparison needs its own code, and refuses a login at its fleet cap,
 a second GPT run on one machine, or a fleet it cannot count (`startRefusal`). A measured run continues
 at its opening commit; a fix is measured by a fresh run.
 
-`pause` waits for one more `build.compacted`, `comparison.reported` or `build.finished` at a point
-with no comparison, Examiner session or draft open, then stops the run. A pause cuts the Builder's
+`pause` waits for one more event its word names at a point with no comparison, Examiner session or
+draft open, then stops the run. The words are `compacted` (`build.compacted`), `reported`
+(`comparison.reported`), `promoted` (`harness.promoted`), `examined` (`exam.finished`) and
+`finished` (`build.finished`); words joined by `|`, as `reported|promoted`, wait for the first of
+their events. A pause right after `promoted` leaves that promotion's starter comparison unread. A pause cuts the Builder's
 conversation, so the continued campaign opens a new one on its notes. `continue --after <event>`
 pauses and continues, which moves a run to another login or commit cleanly. `--after next`, the
 default, drains the run to save credit: no further solve starts, and it stops at the next finished
 solve or tool call, or a minute past the solve limit. Sessions spend until then; `runs stop` frees a
-login at once.
+login at once. Its pause word (`campaign.word`, `PAUSE`) is in the log once written and holds every
+new solve of the running process for the solve limit and two minutes, so a pause or `continue
+--after next` interrupted after it leaves the run idle that long; only a restarted process ignores
+it, so arm the command once the decision is made.
 
 A word (`tools/d2/word.ts --name <name>`) acts at the next move boundary and reaches no seat:
 `--stop "<why>"` ends the campaign `operator`; `--budget N` sets its total; `--tasks "<why>"` asks for
@@ -166,7 +174,9 @@ minute (`turnOf`). On a provider wait longer than `--wait-hours`, it stops the r
 on the login with room whose week resets soonest and whose five hours are forecast to last
 (`fiveHourWith`); a login at 100% or unreadable is not taken. Where the process died without an
 ending, or ended `environment`, it continues on the same login if that is ready and under its cap
-(`atCap`), otherwise on one with room. Any other ending is the campaign's own, and the keeper leaves.
+(`atCap`), otherwise on one with room. Any other ending is the campaign's own, and the keeper leaves;
+a `budget` ending, even inside a comparison, is one no login can finish, and only a raised total
+(`continue --budget N`, the operator's dollar cap) goes on with it.
 A run with no `claude/` seat restarts after a death but sits out provider waits. Three continues in a
 row without an answered model turn end the keeper. Restarts stay at the worktree's commit; output
 goes to `keep.out`, and `runs stop <name> --yes` ends run and keeper both.

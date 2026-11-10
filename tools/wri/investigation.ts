@@ -18,6 +18,7 @@
  * defect one campaign held alone was read by the ten sessions of that campaign only. Now every
  * finding says on its `Seen in:` line which campaigns show it.
  */
+import { join } from "#src/meta/path.ts";
 import { plural } from "#src/meta/text.ts";
 import { type Lane, section } from "./catalogue.ts";
 import { TRIGGERS, type Trigger } from "./folds.ts";
@@ -72,6 +73,9 @@ export function stem(lane: number): string {
   return String(lane).padStart(2, "0");
 }
 
+/** Where lane `lane`'s report is written in the investigation `out`, the one owner of its name. */
+export const reportPath = (out: string, lane: number) => join(out, "lanes", `${stem(lane)}-report.md`);
+
 /** `1-4,7` as the lane numbers it names. */
 export function numbersOf(spec: string): number[] {
   return spec.split(",").flatMap((part) => {
@@ -116,47 +120,52 @@ export function selected(
 
 /** The sum of the lanes' importance. */
 export const weightOf = (lanes: readonly Lane[]) => lanes.reduce((sum, lane) => sum + lane.importance, 0);
+const heavierFirst = (one: readonly Lane[], other: readonly Lane[]) => weightOf(other) - weightOf(one);
 
 /**
- * Lanes packed into at most `count` sessions by label, a label never split. Each label, heaviest
- * first by the sum of its lanes' importance, joins the lightest session so far, so the sessions'
- * weights land near one another rather than equal. An isolated lane is a session of its own. The
- * operator asked for this on 1 November: four sessions of about eight lanes instead of one a lane.
- * Within a session the lanes run in number order, a blind lane first: on 7 November the blind
- * grading lane, read after three lanes of its session, said its grades were not blind.
+ * Groups of lanes packed into `count` sessions, or one a lane where there are fewer: each group,
+ * heaviest first by the sum of its lanes' importance, joins the lightest session so far. The
+ * groups start as whole labels, and while the sessions are fewer than they could be or the lightest
+ * weighs under three quarters of the heaviest, the heaviest group of several lanes is halved,
+ * alternating its lanes by importance (operator, 9 November: about four groups of roughly equal
+ * weight, every lane in exactly one; on 1 November a label was never split, and the climb label,
+ * a third of the catalogue's weight, left the lightest of four sessions over its 29 open lanes at
+ * 0.64 of the heaviest).
+ */
+function packed(groups: readonly Lane[][], count: number): Lane[][] {
+  const sessions = Array.from({ length: Math.min(count, groups.length) }, (): Lane[] => []);
+  for (const group of groups.toSorted(heavierFirst)) {
+    sessions
+      .reduce((lightest, each) => (weightOf(each) < weightOf(lightest) ? each : lightest))
+      .push(...group);
+  }
+  const weights = sessions.map(weightOf);
+  const even =
+    sessions.length === Math.min(count, groups.flat().length) &&
+    Math.min(...weights) >= 0.75 * Math.max(...weights);
+  const [heavy] = groups.filter((group) => group.length > 1).toSorted(heavierFirst);
+  if (even || heavy === undefined) return sessions;
+  const split = heavy.toSorted((one, other) => other.importance - one.importance);
+  const half = (parity: number) => split.filter((_, index) => index % 2 === parity);
+  return packed([...groups.filter((group) => group !== heavy), half(0), half(1)], count);
+}
+
+/**
+ * Lanes packed into sessions (`packed`), an isolated lane a session of its own. Within a session
+ * the lanes run in number order, a blind lane first: on 7 November the blind grading lane, read
+ * after three lanes of its session, said its grades were not blind.
  */
 export function sessionsOf(lanes: readonly Lane[], count: number): Lane[][] {
   const open = lanes.filter((lane) => !lane.isolated);
-  const labels = [...new Set(open.map((lane) => lane.label))]
-    .map((label) => open.filter((lane) => lane.label === label))
-    .toSorted((one, other) => weightOf(other) - weightOf(one));
-  const sessions: Lane[][] = Array.from({ length: Math.min(count, labels.length) }, () => []);
-  for (const label of labels) {
-    sessions
-      .reduce((lightest, each) => (weightOf(each) < weightOf(lightest) ? each : lightest))
-      .push(...label);
-  }
+  const labels = [...new Set(open.map((lane) => lane.label))].map((label) =>
+    open.filter((lane) => lane.label === label),
+  );
   return [
-    ...sessions.map((each) =>
+    ...packed(labels, count).map((each) =>
       each.toSorted((one, other) => Number(other.blind) - Number(one.blind) || one.number - other.number),
     ),
     ...lanes.filter((lane) => lane.isolated).map((lane) => [lane]),
   ];
-}
-
-/**
- * The most sessions the open lanes fill where the lightest weighs at least half the heaviest, so a
- * label of little importance joins another instead of taking a session to itself (operator,
- * 1 November). It is advice printed beside the build; the operator names the count.
- */
-export function suggestedSessions(lanes: readonly Lane[]): number {
-  const open = lanes.filter((lane) => !lane.isolated);
-  const labels = new Set(open.map((lane) => lane.label)).size;
-  const even = (count: number) => {
-    const weights = sessionsOf(open, count).map(weightOf);
-    return Math.min(...weights) >= Math.max(...weights) / 2;
-  };
-  return Array.from({ length: labels }, (_, index) => labels - index).find(even) ?? 1;
 }
 
 /** The `## ` sections of the shared instructions an author left blank. A comment is no text. */

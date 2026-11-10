@@ -27,6 +27,7 @@
  * one line at the log's end, which a local filesystem keeps whole.
  */
 import { openingOf } from "#src/campaign/opening.ts";
+import { ANSWERED, type Answered } from "#src/campaign/word.ts";
 import { append, read } from "#src/kernel/log.ts";
 import { existsSync } from "#src/meta/filesystem.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
@@ -41,11 +42,12 @@ const OPTIONS = {
 } as const;
 
 /** `bun tools/d2/word.ts`. Returns the word it left. */
-export function wordCommand(args: readonly string[]): string {
+export function wordCommand(args: readonly string[]): Answered {
   const { values } = parseArgs({ args: [...args], options: OPTIONS });
   const { name, stop, tasks, budget } = values;
-  const given = [stop, tasks, budget].filter((each) => each !== undefined).length;
-  if (name === undefined || given !== 1) {
+  // One flag a kind of word, each named by the kind it leaves (`ANSWERED`).
+  const [word, ...more] = ANSWERED.filter((kind) => values[kind] !== undefined);
+  if (name === undefined || word === undefined || more.length > 0) {
     throw new Error('name --name and one word: --stop "<why>", --tasks "<why>" or --budget <dollars>');
   }
   const log = campaignLog(name);
@@ -58,11 +60,6 @@ export function wordCommand(args: readonly string[]): string {
   if (dollars !== undefined && (!Number.isFinite(dollars) || dollars <= 0)) {
     throw new Error(`--budget ${String(budget)}: the campaign's total is a number of dollars above nothing`);
   }
-  const word =
-    [
-      ["stop", stop],
-      ["tasks", tasks],
-    ].find(([, why]) => why !== undefined)?.[0] ?? "budget";
   append(log, "campaign.word", {
     word,
     ...keyIfDefined("why", (stop ?? tasks)?.trim()),

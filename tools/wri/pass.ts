@@ -144,7 +144,7 @@ async function main(): Promise<void> {
   if (store === "" || values.budget === undefined) throw new Error("name --store and --budget");
   await passOver(store, logs, {
     budgetMs: Number(values.budget),
-    readers: readersOf(values["no-embed"]),
+    readers: readersOf(values),
   });
 }
 

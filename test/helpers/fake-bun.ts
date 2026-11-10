@@ -1,16 +1,18 @@
 /**
  * A `bun` for tests of the gate's callers: `.githooks/pre-push` and `bun run land`. It stands at
- * the gate's step boundary only. `bun install …` and `bun run …` are logged with the commit checked
+ * the gate's step boundary only. `bun install …`, `bun run …` and the size policy's script, which
+ * the gate runs by its path so that a commit from before any script named it has it, are logged with the commit checked
  * out where they ran, and pass unless ANA_FAKE_FAIL names that commit and script (`<sha> lint`);
- * ANA_FAKE_DROP names one the same way whose runner drops, exiting 255, the first ANA_FAKE_DROPS
- * times (1 unless set);
+ * ANA_FAKE_DROP names one the same way whose runner gives no verdict, exiting ANA_FAKE_DROP_CODE
+ * (255, a dropped connection, unless set), the first ANA_FAKE_DROPS times (1 unless set);
  * anything else, a `.ts` entry point such as `tools/runtime/gate.ts`, runs on the real Bun, so the
  * hook, the landing and the gate's own choice of steps and nearby tests are the real ones.
  *
  * ANA_FAKE_TOGETHER=N holds each install until N have started, or about five seconds, and logs its
  * end, so gates run side by side overlap in the log and gates run one after another do not; the
  * install of ANA_FAKE_LATE's commit ends half a second later. ANA_FAKE_SUITE is printed by a test
- * step, which then takes two seconds, for a pulse to read. A test step also logs the workers it was
+ * step, which then takes two seconds, for a pulse to read; the whole suite first creates the file
+ * ANA_FAKE_SUITE_TOUCH names, so a fake `gh` can move a head while it runs. A test step also logs the workers it was
  * given and whether it stops at its first failure, `workers <sha> <ANA_TEST_WORKERS> <ANA_TEST_BAIL>`,
  * each empty for none.
  */
@@ -20,7 +22,7 @@ import { capturedExecPath } from "../../src/meta/process.ts";
 
 const SCRIPT = String.raw`#!/bin/sh
 case "$1" in
-install | run) ;;
+install | run | tools/loc/source-policy.ts) ;;
 *) exec "$ANA_REAL_BUN" "$@" ;;
 esac
 commit=$(git rev-parse HEAD)
@@ -37,13 +39,16 @@ if [ "$1" = install ] && [ -n "$ANA_FAKE_TOGETHER" ]; then
 fi
 if [ "$1 $2" = "run test" ] && [ -n "$ANA_FAKE_SUITE" ]; then
   printf '%s\n' "$ANA_FAKE_SUITE"
+  [ "$*" != "run test" ] || [ -z "$ANA_FAKE_SUITE_TOUCH" ] || touch "$ANA_FAKE_SUITE_TOUCH"
   sleep 2
 fi
 drops=$ANA_FAKE_DROPS
 [ -n "$drops" ] || drops=1
 if [ "$commit $2" = "$ANA_FAKE_DROP" ] && [ "$(grep -c "^dropped.$commit" "$ANA_FAKE_LOG")" -lt "$drops" ]; then
   printf 'dropped\t%s\n' "$commit" >> "$ANA_FAKE_LOG"
-  exit 255
+  code=$ANA_FAKE_DROP_CODE
+  [ -n "$code" ] || code=255
+  exit "$code"
 fi
 if [ "$commit $2" = "$ANA_FAKE_FAIL" ]; then
   echo "fake: $2 failed on $commit"

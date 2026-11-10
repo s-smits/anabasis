@@ -21,14 +21,7 @@
  * once beside the list rather than after it: a cold list took 4.4 s that day, and the newest
  * campaign is known only once the list is read.
  */
-import {
-  type Dispatch,
-  type SetStateAction,
-  useCallback,
-  useMemo,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import type { CampaignReading } from "./models.ts";
 import { TOKEN_PARAMETER } from "./models.ts";
 import { keysIf } from "../../../src/meta/optional-key.ts";
@@ -144,14 +137,14 @@ export function kept(key: string, value: string | null): string | null {
 /** `useState` that a reload keeps. Until 31 October a refresh, a hot reload or the way back to a
  *  view put every sort, search and choice back to its default (operator). The value is kept in this
  *  tab's session storage under `key` and the campaign and pane the URL named as the component
- *  mounted, so another pane or campaign starts afresh; `wide` keeps one value for every view.
+ *  mounted, so another pane or campaign starts afresh; `"every-view"` keeps one value for every view.
  *  Closed storage keeps nothing. */
-export function useKept<T>(key: string, initial: T, wide = false): [T, Dispatch<SetStateAction<T>>] {
+export function useKept<T>(key: string, initial: T, scope: "view" | "every-view" = "view") {
   const [stored] = useState(() => {
     try {
       const query = new URLSearchParams(window.location.search);
       for (const each of OVER_VIEW) query.delete(each);
-      return `ana.view.${wide ? "" : query.toString()}.${key}`;
+      return `ana.view.${scope === "every-view" ? "" : query.toString()}.${key}`;
     } catch {
       return null;
     }
@@ -171,7 +164,7 @@ export function useKept<T>(key: string, initial: T, wide = false): [T, Dispatch<
   } catch {
     // Closed or full storage keeps nothing, and the view still works.
   }
-  return [value, setValue];
+  return [value, setValue] as const;
 }
 
 /** The route a query string names. An unknown pane reads as the Campaign pane, and a move or an

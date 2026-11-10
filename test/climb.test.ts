@@ -38,6 +38,7 @@ import type { Seats } from "../tools/d2/campaign-terms.ts";
 import { harnessBuilder } from "../tools/d2/harness-builder.ts";
 import { fixtureTasks, layOutPack, scriptedModel } from "./helpers/fixture-pack.ts";
 import { present } from "./helpers/matchers.ts";
+import { objectiveLog } from "./helpers/starter-chain.ts";
 
 const REPO = resolve(import.meta.dir, "..");
 const REPORTED = "comparison.reported" as const;
@@ -718,6 +719,20 @@ describe("a campaign against its bars", () => {
     // The reading the comparison reported is the reference's against the starter, untouched.
     const log = [opened, ...promoted, ...compared("g-2", "h1", "S", 2, [true, false])];
     expect(epochsOf(log)[1]?.starter_tally).toEqual({ wins: 0, losses: 0, ties: 6 });
+    // Where neither side varies, the starter's tie on every task is no measured zero, and the
+    // repetition line names that comparison; where the starter varies, it names none.
+    const repeats = (events: readonly LogEvent[]) => barLines([opened, ...events])[4];
+    expect(repeats([...promoted, ...compared("g-2", "h1", "S", 2, [true, true])])).toBe(
+      "- Repetition: in 1 comparison each side gave one validity in every solve of every task, and in 1 one measure as well (g-2), where no split of either side shows noise. Reported only.",
+    );
+    expect(repeats([...promoted, ...compared("g-2", "h1", "S", 2, [true, false])])).toBe(
+      "- Repetition: in 0 comparisons each side gave one validity in every solve of every task, and in 0 one measure as well. Reported only.",
+    );
+    // Validity is counted apart: a reference that passes every solve but measures 1 and 0.93 repeats
+    // its validity and not its measure.
+    expect(barLines(objectiveLog(0.05))[4]).toBe(
+      "- Repetition: in 1 comparison each side gave one validity in every solve of every task, and in 0 one measure as well. Reported only.",
+    );
   });
 
   it("holds every epoch after set-up to the cost bar, an open one too, and set-up's to none", () => {

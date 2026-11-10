@@ -30,12 +30,21 @@
  * The Referee triage of 20 October found unclear and unread practice rejections counted as failures.
  */
 import { type Measures, scoresIn, type Tally, testOf } from "../kernel/compare.ts";
+import { proposalsOf } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { lastReports, latestBuilt, promoted } from "../kernel/reports.ts";
 import { ownedBy, traceKind } from "../kernel/trace.ts";
 import { billedAll, billedParts } from "../kernel/meter.ts";
-import { ended, passed, practiceRan, type Ran, rejectionAside, solvesIn } from "../kernel/solves.ts";
-import { heldAtGate, taskSets } from "../kernel/task.ts";
+import {
+  ended,
+  passed,
+  practiceRan,
+  type Ran,
+  rejectionAside,
+  rulingsOf,
+  solvesIn,
+} from "../kernel/solves.ts";
+import { admissionsOf, taskSets } from "../kernel/task.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { type Supply, supplyOf } from "./admission.ts";
 import { reported, STARTED } from "./comparison.ts";
@@ -255,13 +264,7 @@ function compared(events: readonly LogEvent[], id: string): Compared {
       : "unbilled" in report.scored
         ? testOf(scoresIn(report.scored))
         : report.scored;
-  const ruled = new Map(
-    events.flatMap(({ kind, data }) =>
-      kind === "referee.finding" && isString(data.solve) && own.has(data.solve)
-        ? [[data.solve, data.ruling] as const]
-        : [],
-    ),
-  );
+  const ruled = [...rulingsOf(events)].flatMap(([solve, ruling]) => (own.has(solve) ? [ruling] : []));
   return {
     step: "comparison",
     id,
@@ -278,9 +281,9 @@ function compared(events: readonly LogEvent[], id: string): Compared {
     points: report?.points ?? null,
     aside: report?.aside.length ?? 0,
     rulings: {
-      earned: [...ruled.values()].filter((ruling) => ruling === "earned").length,
-      "check-defect": [...ruled.values()].filter((ruling) => ruling === "check-defect").length,
-      unclear: [...ruled.values()].filter((ruling) => ruling === "unclear").length,
+      earned: ruled.filter((ruling) => ruling === "earned").length,
+      "check-defect": ruled.filter((ruling) => ruling === "check-defect").length,
+      unclear: ruled.filter((ruling) => ruling === "unclear").length,
     },
     billed: billedParts(events, id).comparison,
     // A comparison with no report has a start: a step is a start or a report.
@@ -303,12 +306,7 @@ export function openSteps(steps: readonly Handover[]): string[] {
 export function campaignOf(events: readonly LogEvent[]): Campaign {
   const fails = practiceFails(events);
   const practised = practiceRan(events);
-  // Each version with a task admission, held or refused: a draft still awaiting admission is neither.
-  const admissions = new Map(
-    events.flatMap(({ kind, data }) =>
-      kind === "task.gate" ? [[data.version, heldAtGate(data.outcome)] as const] : [],
-    ),
-  );
+  const admissions = admissionsOf(events);
   const comparisons = new Set<string>();
   const steps = events.flatMap(({ kind, data }, index): Handover[] => {
     const id = data.session;
@@ -318,14 +316,14 @@ export function campaignOf(events: readonly LogEvent[]): Campaign {
       const end = events[closed]?.data;
       // One `task.proposed` an instance the session took, and one task admission or refusal of it
       // (`src/examiner/write.ts`), so an open session is counted by its proposals and their admissions.
-      const proposals = window.flatMap((event) =>
-        event.kind === "task.proposed" && event.data.session === id ? [event.data.version] : [],
+      const proposals = proposalsOf(window).flatMap(({ session, version }) =>
+        session === id ? [version] : [],
       );
-      const outcome = (held: boolean) =>
-        proposals.filter((version) => admissions.get(version) === held).length;
+      const outcome = (admission: "held" | "refused") =>
+        proposals.filter((version) => admissions.get(version) === (admission === "held")).length;
       const counts =
         end === undefined
-          ? { proposed: proposals.length, held: outcome(true), refused: outcome(false), billed }
+          ? { proposed: proposals.length, held: outcome("held"), refused: outcome("refused"), billed }
           : {
               proposed: count(end.proposed),
               held: listed(end.held),

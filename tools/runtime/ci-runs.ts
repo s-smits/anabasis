@@ -175,7 +175,7 @@ function nearOn(
   git(root, ["worktree", "add", "-q", "--detach", tree, sha]);
   try {
     return {
-      near: [...testsNear(tree, changed), ...uiTestsNear(tree, changed, true)],
+      near: [...testsNear(tree, changed), ...uiTestsNear(tree, changed, "all")],
       wall: reachingWall(tree, changed),
     };
   } finally {

@@ -30,17 +30,19 @@ import { plural } from "#src/meta/text.ts";
 import { asked } from "./hosts.ts";
 import { keeperActed } from "./keep.ts";
 import { keepsItself } from "./manage.ts";
-import { onStatus, pulse, remember } from "./pulse.ts";
-import { lastLaunch } from "./receipt.ts";
+import { type RunState, runState } from "./state.ts";
+import { onStatus } from "./pulse.ts";
+import { remember } from "./pulse-readers.ts";
+import { lastLaunch, unlaunchedSeed } from "./receipt.ts";
 import {
   HERE,
   isCampaign,
-  keepers,
   keptFile,
   logEvents,
   processes,
   type Run,
   runs,
+  type Running,
   writers,
 } from "./registry.ts";
 
@@ -62,13 +64,10 @@ interface Promotion {
 export interface Row {
   readonly name: string;
   readonly promotions: readonly Promotion[];
-  readonly ending: string | null;
-  readonly writer: boolean;
-  readonly keeper: boolean;
+  /** Where the run stands (`runState`): written on, kept, ended or stopped. */
+  readonly state: RunState;
   /** Whether this run gets a keeper by itself (`keepsItself`): one that has nowhere to move does not. */
   readonly owed: boolean;
-  /** The pulse's reading of no new event, which counts a named reset as the run's last word. */
-  readonly quiet: boolean;
   readonly lastAt: string | null;
   /** What its keeper said it did, oldest first. */
   readonly kept: readonly string[];
@@ -125,20 +124,16 @@ function promotionsOf(events: readonly LogEvent[]): Promotion[] {
     });
 }
 
-/** The row of `run`, whose log is read at `now`. */
-function rowOf(run: Run, open: boolean, now: number): Row {
+/** The row of `run`, whose log is read at `now` among the processes `running`. */
+function rowOf(run: Run, running: readonly Running[], now: number): Row {
   const events = logEvents(run.path);
   const last = events.at(-1);
-  const look = pulse(run, events, open ? "open" : "closed", undefined, { now, alarms: () => null });
   const file = keptFile(run);
   return {
     name: run.name,
     promotions: promotionsOf(events),
-    ending: last?.kind === "campaign.ended" && isString(last.data.ending) ? last.data.ending : null,
-    writer: open,
-    keeper: keepers(run.name).length > 0,
+    state: runState(run, events, running, now),
     owed: keepsItself(runtimeProcess.env, lastLaunch(run.path)?.login),
-    quiet: look.seen.quiet,
     lastAt: last?.at ?? null,
     kept: existsSync(file) ? readFileSync(file, "utf8").split("\n").filter(keeperActed) : [],
   };
@@ -149,16 +144,16 @@ function rowOf(run: Run, open: boolean, now: number): Row {
  * writes its seed, so `status` shows it, and on 6 November two reached the operator's notifications
  * as "first seen with 6 promotions" beside a real second promotion.
  */
-export const onAlerts = (run: Run, open: boolean, age: number): boolean =>
-  (run.seed !== true || lastLaunch(run.path) !== undefined) && onStatus(run, open, age);
+export const onAlerts = (run: Run, writing: "open" | "closed", age: number): boolean =>
+  !unlaunchedSeed(run) && onStatus(run, writing, age);
 
 /** This machine's rows, and the name of every campaign its worktrees hold. */
 function rowsHere(now: number): HostRows {
   const running = processes();
   const held = runs().filter(isCampaign);
   const rows = held.flatMap((run) => {
-    const open = writers(run, running).length > 0;
-    return onAlerts(run, open, now - statSync(run.path).mtimeMs) ? [rowOf(run, open, now)] : [];
+    const writing = writers(run, running).length > 0 ? "open" : "closed";
+    return onAlerts(run, writing, now - statSync(run.path).mtimeMs) ? [rowOf(run, running, now)] : [];
   });
   return { rows, held: held.map(({ name }) => name) };
 }
@@ -177,11 +172,18 @@ function answerOf(lines: readonly string[] | null): HostRows | null {
   }
 }
 
-/** What is wrong with a run that has not ended, in the words a line says it. */
-function gapOf({ ending, writer, keeper, owed }: Row): string | null {
-  if (ending !== null) return null;
-  if (writer) return owed && !keeper ? "no keeper" : null;
-  if (keeper) return "no writer process; its keeper lives";
+/** Whether a process writes the run's log: a state written on carries whether a keeper lives beside it. */
+const written = (state: RunState): state is Extract<RunState, { kept: boolean }> => "kept" in state;
+
+const endingOf = (state: RunState): string | null => (state.kind === "ended" ? state.ending : null);
+
+/** What is wrong with a run that has not ended, in the words a line says it. Each guard narrows the
+ *  state, and a kind added to `RunState` fails to compile at the last. */
+function gapOf({ state, owed }: Row): string | null {
+  if (written(state)) return owed && !state.kept ? "no keeper" : null;
+  if (state.kind === "ended") return null;
+  if (state.kind === "kept") return "no writer process; its keeper lives";
+  state.kind satisfies "stopped";
   return owed ? "no writer process and no keeper" : "no writer process";
 }
 
@@ -190,9 +192,9 @@ function seenOf(row: Row, host: string): Seen {
     host,
     promotions: row.promotions.length,
     reads: row.promotions.flatMap(({ read }) => (read === null ? [] : [read.session])),
-    ending: row.ending,
+    ending: endingOf(row.state),
     gap: gapOf(row),
-    quiet: row.quiet,
+    quiet: row.state.kind === "quiet",
     kept: row.kept.length,
   };
 }
@@ -230,16 +232,17 @@ function newsOf(row: Row, seen: Seen | undefined): string[] {
       ? []
       : [`first seen with ${plural(row.promotions.length, "promotion")}, the last ${last.digest}`];
   const gap = gapOf(row);
+  const ending = endingOf(row.state);
   return [
     ...(seen === undefined ? first : climbLines(row, seen)),
     ...row.kept
       .slice(seen?.kept ?? row.kept.length)
       .map((line) => `keeper: ${line.replace(`${row.name}: `, "")}`),
     ...(gap !== null && gap !== seen?.gap ? [gap] : []),
-    ...(row.quiet && seen?.quiet !== true
+    ...(row.state.kind === "quiet" && seen?.quiet !== true
       ? [`quiet: no new event since ${row.lastAt ?? "its start"}, and no login limit waited on`]
       : []),
-    ...(row.ending !== null && row.ending !== seen?.ending ? [`ended ${row.ending}`] : []),
+    ...(ending !== null && ending !== seen?.ending ? [`ended ${ending}`] : []),
   ];
 }
 
@@ -259,7 +262,7 @@ export function alertsOf(
   const current = new Map(
     heard
       .flatMap(({ host, said }) => said.rows.map((row) => ({ host, row })))
-      .toSorted((one, other) => Number(one.row.writer) - Number(other.row.writer))
+      .toSorted((one, other) => Number(written(one.row.state)) - Number(written(other.row.state)))
       .map((each) => [each.row.name, each]),
   );
   const lines: string[] = [];

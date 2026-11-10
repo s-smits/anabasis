@@ -8,7 +8,7 @@
  *   bun tools/wri/wri.ts packets --log <log>,<log>[,...] --out <dir> [--graders 2]
  *   bun tools/wri/wri.ts packets --out <dir> --join
  *   bun tools/wri/wri.ts start --log .ana/d2/truss/log.jsonl[,<log>,<log>] --out .ana/wri/20261008-truss [--snapshot]
- *   bun tools/wri/wri.ts lanes --out .ana/wri/20261008-truss [--lanes 1-4,7] [--agents 3]
+ *   bun tools/wri/wri.ts lanes --out .ana/wri/20261008-truss [--lanes 1-4,7] [--agents 3] [--regroup]
  *   bun tools/wri/wri.ts collect --out .ana/wri/20261008-truss
  *   bun tools/wri/wri.ts synthesis --out .ana/wri/20261008-truss
  *   bun tools/wri/wri.ts grade --log .ana/d2/truss/log.jsonl [--bundle <pack>] --task <taskId> --answer <file>
@@ -32,17 +32,22 @@
  *   `<out>/snapshot/<name>/` (`snapshotCampaign`, `tools/runs/seed.ts`), and every later verb reads
  *   that copy.
  * - `lanes` builds one prompt per lane, and `launch.json`, the manifest codex-gpt-swarm's launcher
- *   reads: one session a lane it built, or with `--agents N` the lanes packed by label into N
- *   sessions, a label never split and the sessions near one another in importance, and each
- *   isolated lane a session of its own. With no `--lanes` it opens the lanes a trigger
+ *   reads: the lanes it built packed into `--agents N` sessions (4 by default, one a lane where
+ *   fewer), each lane in exactly one, a label kept whole unless the lightest session would weigh
+ *   under three quarters of the heaviest, and each isolated lane a session of its own. With no `--lanes` it opens the lanes a trigger
  *   started and the standing ones; an isolated lane is built only when named. A prompt built before
- *   is kept and launched again by nobody: `launch.json` holds only what this call built.
+ *   is kept and launched again by nobody: `launch.json` holds only what this call built. With
+ *   `--regroup` the lanes built before whose report is not yet written are packed again with the
+ *   new ones into a new manifest, their prompts unchanged, for a new `--agents N`; the caller must
+ *   first stop every session still working on those prompts, since the new manifest starts them
+ *   again. With `--high K` the K heaviest sessions carry `"effort": "high"` and the rest `"medium"`,
+ *   which the launcher takes over its `--reasoning-effort`. `lanes` creates `<out>/lanes` where it is missing.
  * - `collect` holds every expected report to its shape and writes `reports.md`. It exits 1 until
  *   every report is there and valid.
  * - `synthesis` renders the synthesis session's prompt over the reports as they stand.
  * - `derive` runs every deterministic reader of one log over it (`READERS`, `tools/wri/derive.ts`)
- *   into the main worktree's `data/derived/<campaign>/`, one file a reader, replacing the folder
- *   whole where the log or the reading commit moved. It prints one line; `--verbose` prints every
+ *   into the main worktree's `data/derived/<campaign>@<path>/`, one folder a log path and one file
+ *   a reader, replacing the folder whole where the log or the reading commit moved. It prints one line; `--verbose` prints every
  *   file as well, for a session that wants to read them all. `--all` takes every campaign this
  *   machine reads (`readable`, `tools/runs/registry.ts`), which is how a job keeps them current.
  *   `start` derives its logs the same way, quietly, and names the folders in the instructions.
@@ -87,7 +92,7 @@ import { writtenTasks } from "#src/kernel/history.ts";
 import { codeOf } from "../d2/campaign.ts";
 import { installAt } from "../runs/code.ts";
 import { receipts } from "../runs/receipt.ts";
-import { isCampaign, processes, readable } from "../runs/registry.ts";
+import { isCampaign, processes, readable, type Running } from "../runs/registry.ts";
 import { stillRunning } from "../runs/diagnosis.ts";
 import { snapshotCampaign } from "../runs/seed.ts";
 import { type Derived, derive, derivedLine, derivedOf, derivedText, readersOf } from "./derive.ts";
@@ -104,10 +109,10 @@ import {
   numbersOf,
   reportIndex,
   reportOf,
+  reportPath,
   selected,
   sessionsOf,
   stem,
-  suggestedSessions,
   weightOf,
 } from "./investigation.ts";
 import { INVESTIGATION, investigationIndex, REPORTS, SHARED } from "./index.ts";
@@ -133,6 +138,8 @@ const { values, positionals } = parseArgs({
     root: { type: "string" },
     lanes: { type: "string" },
     agents: { type: "string" },
+    high: { type: "string" },
+    regroup: { type: "boolean" },
     bundle: { type: "string" },
     task: { type: "string" },
     answer: { type: "string" },
@@ -255,7 +262,7 @@ async function derived(logs: readonly string[]): Promise<{ done: Derived[]; line
   const root = derivedOf(REPO);
   const done: Derived[] = [];
   // One campaign at a time: the job that runs this shares its host with live campaigns.
-  const readers = readersOf(values["no-embed"] === true);
+  const readers = readersOf(values);
   for (const log of logs) {
     done.push(await derive(log, { root, repo: REPO, force: values.force === true, readers }));
   }
@@ -278,9 +285,8 @@ async function deriveStep(): Promise<number> {
 
 /** The logs among `logs` that a campaign may still write: a log the registry does not list has no
  *  campaign command writing it. */
-function liveOf(logs: readonly string[]): string[] {
+function liveOf(logs: readonly string[], running: readonly Running[]): string[] {
   const known = readable(REPO);
-  const running = processes();
   return logs.filter((log) => {
     const run = known.find(({ path }) => path === log);
     return run !== undefined && stillRunning(run, running);
@@ -292,8 +298,8 @@ function liveOf(logs: readonly string[]): string[] {
  * November: every lane reads one sheet, so no finding is about events that arrived after another
  * lane read the log. `start --snapshot` reads a frozen copy of each live one instead (4 November).
  */
-function refuseRunning(logs: readonly string[]): void {
-  const live = liveOf(logs);
+function refuseRunning(logs: readonly string[], running = processes()): void {
+  const live = liveOf(logs, running);
   if (live.length === 0) return;
   const names = live.map((log) => nameOf(log)).join(", ");
   throw new Error(
@@ -302,8 +308,8 @@ function refuseRunning(logs: readonly string[]): void {
 }
 
 /** Each log, a live one replaced by its frozen copy under `<out>/snapshot/<name>/` (`snapshotCampaign`). */
-function frozen(logs: readonly string[], out: string): string[] {
-  const live = new Set(liveOf(logs));
+function frozen(logs: readonly string[], out: string, running: readonly Running[]): string[] {
+  const live = new Set(liveOf(logs, running));
   return logs.map((log) => {
     if (!live.has(log)) return log;
     const to = join(out, "snapshot", nameOf(log));
@@ -316,10 +322,15 @@ function frozen(logs: readonly string[], out: string): string[] {
 async function start(): Promise<number> {
   needed("log");
   const out = resolve(needed("out"));
+  // Every refusal before anything is written: a snapshot is a copy of the run's folder, and until
+  // 9 November a log named twice was refused only after it was made.
   if (existsSync(join(out, SHARED))) throw new Error(`${out} already holds ${SHARED}`);
-  const logs = values.snapshot === true ? frozen(resolvedLogs, out) : resolvedLogs;
-  refuseRunning(logs);
-  if (new Set(logs.map((log) => nameOf(log))).size < logs.length) throw new Error("--log names a log twice");
+  if (new Set(resolvedLogs.map((log) => nameOf(log))).size < resolvedLogs.length) {
+    throw new Error("--log names a log twice");
+  }
+  const running = processes();
+  const logs = values.snapshot === true ? frozen(resolvedLogs, out, running) : resolvedLogs;
+  refuseRunning(logs, running);
   mkdirSync(join(out, "lanes"), { recursive: true });
   const { done, line } = await derived(logs);
   // Each launch's tree first, so that the host line can name it.
@@ -346,17 +357,19 @@ async function start(): Promise<number> {
     `Every deterministic reader's output for each campaign, as the log stood at this start, is in its folder: ${done.map(({ dir }) => `\`${dir}/\``).join(", ")}, one \`<reader>.txt\` a reader (\`wri.ts derive\`). Read those files before running a reader yourself.`,
   ].join("\n");
   const template = readFileSync(join(REFERENCES, "shared-instructions.template.md"), "utf8");
-  // The author's comments stay in the copy: they say what each blank section is for.
-  writeFileSync(
-    join(out, SHARED),
-    template.replace("{campaigns}", () => campaigns),
-  );
   const text =
     logs.length === 1
       ? texts.join("")
       : texts.map((each, index) => `## ${nameOf(logs[index] ?? "")}\n\n${each}`).join("\n");
   writeFileSync(join(out, "overview.md"), text);
   writeFileSync(join(out, INVESTIGATION), `${JSON.stringify({ logs }, null, 2)}\n`);
+  // The shared instructions last, since a start refuses a folder that holds them: until 9 November
+  // they came first, and a start that failed after them left a folder no start or later verb could
+  // read. The author's comments stay in the copy: they say what each blank section is for.
+  writeFileSync(
+    join(out, SHARED),
+    template.replace("{campaigns}", () => campaigns),
+  );
   console.log(text);
   console.log(line);
   console.log(`wrote ${join(out, SHARED)}: write its three blank sections, then run lanes`);
@@ -390,7 +403,6 @@ function climbText(logs: readonly string[]): string {
 }
 
 const promptPath = (out: string, lane: number) => join(out, "lanes", `${stem(lane)}-prompt.md`);
-const reportPath = (out: string, lane: number) => join(out, "lanes", `${stem(lane)}-report.md`);
 
 function lanes(): number {
   const { out, shared, campaigns } = opened();
@@ -408,20 +420,28 @@ function lanes(): number {
   );
   // A prompt already built is kept: a report may have been written against it, and `collect` reads
   // the report and never the prompt, so a rebuilt one would change under it unseen. v1 kept an
-  // earlier read's lanes (9762afb0) and bound a report to its prompt's bytes (23bdedb8).
+  // earlier read's lanes (9762afb0) and bound a report to its prompt's bytes (23bdedb8). With
+  // `--regroup` a kept prompt with no report yet is launched again, its bytes untouched: on 9 November
+  // the operator changed the number of groups after a build, and regrouping took a sibling folder.
   const asked = [...open, ...isolated];
-  const kept = asked.filter((lane) => existsSync(promptPath(out, lane.number)));
-  const built = asked.filter((lane) => !kept.includes(lane));
-  // With `--agents N` the lanes built go to that many sessions of `launch.json`, whole labels
-  // packed by importance (`sessionsOf`), each session reading its prompts in turn and writing their
-  // reports itself; without it each lane is a session. Nothing kept is in it, so its count is the
-  // spend (SKILL.md, step 3) and no session is started twice against one prompt. Until 15 October
-  // each launch turned a Markdown list into this by hand, and until 1 November it held one session
-  // a lane, which the operator asked to set by the number of subagents instead.
-  const count = values.agents === undefined ? null : Number(values.agents);
-  if (count !== null && (!Number.isInteger(count) || count < 1)) {
+  const kept = asked.filter(
+    (lane) =>
+      existsSync(promptPath(out, lane.number)) &&
+      (values.regroup !== true || existsSync(reportPath(out, lane.number))),
+  );
+  const launched = asked.filter((lane) => !kept.includes(lane));
+  const built = launched.filter((lane) => !existsSync(promptPath(out, lane.number)));
+  // The lanes launched go to `--agents N` sessions of `launch.json`, four by default, packed by
+  // importance (`sessionsOf`), each session reading its prompts in turn and writing their reports
+  // itself. Nothing kept is in it, so its count is the spend (SKILL.md, step 3) and no session is
+  // started twice against one prompt, where a regroup's caller stopped the old ones. Until 15
+  // October each launch turned a Markdown list into this by hand, until 1 November it held one
+  // session a lane, and until 9 November that stayed the default without `--agents`.
+  const count = Number(values.agents ?? 4);
+  if (!Number.isInteger(count) || count < 1) {
     throw new Error(`--agents ${String(values.agents)}: name a whole number from 1`);
   }
+  mkdirSync(join(out, "lanes"), { recursive: true });
   for (const lane of built) {
     const report = reportPath(out, lane.number);
     writeFileSync(
@@ -429,32 +449,43 @@ function lanes(): number {
       `${lanePrompt({ lane, shared, campaigns, catalogue, owners, report, climb })}\n`,
     );
   }
-  const groups = count === null ? built.map((lane) => [lane]) : sessionsOf(built, count);
+  const groups = sessionsOf(launched, count);
+  // `--high K` gives the K heaviest sessions high reasoning and the rest medium (operator, 9
+  // November: "medium or high based on complexity of the group"); without it the launch's effort holds.
+  const high = values.high === undefined ? null : Number(values.high);
+  if (high !== null && (!Number.isInteger(high) || high < 0 || high > groups.length)) {
+    throw new Error(`--high ${String(values.high)}: name a whole number from 0 to ${String(groups.length)}`);
+  }
+  const heaviest = new Set(
+    groups.toSorted((one, other) => weightOf(other) - weightOf(one)).slice(0, high ?? 0),
+  );
+  const effortOf = (group: (typeof groups)[number]) =>
+    high === null ? {} : { effort: heaviest.has(group) ? "high" : "medium" };
   const sessions = groups.map((group) => {
     const labels = [...new Set(group.map((lane) => lane.label))];
-    const [first] = group;
+    // A label may be split across sessions, so a session's first lane keeps its name unique.
+    const lead = stem(Math.min(...group.map((lane) => lane.number)));
     const prompts = group.map((lane) => `\`${promptPath(out, lane.number)}\``).join(", then ");
     return {
-      name:
-        group.length === 1 && first !== undefined
-          ? `lane_${stem(first.number)}`
-          : labels.join("_").slice(0, 48),
+      name: group.length === 1 ? `lane_${lead}` : `${labels.join("_").slice(0, 44)}_${lead}`,
       task:
         group.length === 1
           ? `Read ${prompts} and do exactly what it says.`
           : `Read ${prompts}, one at a time, and do exactly what each says: each lane writes its own report.`,
       ownedPaths: group.map((lane) => reportPath(out, lane.number)),
+      ...effortOf(group),
     };
   });
   // A lane reads campaign logs, which hold hidden values, so its sessions search nothing: a query
   // leaves the machine (`AGENTS.md`, section 5). Every other Codex launch searches by default.
-  // A lane that runs alone is built after the others have launched, so its manifest stands beside
-  // theirs: on 4 November building lane 19 alone wrote over buffer583's five grouped sessions.
-  const alone = built.length > 0 && built.every((lane) => lane.isolated);
-  const launch = join(
-    out,
-    alone ? `launch-${built.map((lane) => stem(lane.number)).join("-")}.json` : "launch.json",
-  );
+  // Every build after the first has a manifest of its own beside the first's, named by its lanes, so
+  // no session a manifest launched loses the manifest that owes its report: on 4 November building
+  // lane 19 alone wrote over buffer583's five grouped sessions, and until 9 November a later build of
+  // open lanes still wrote over `launch.json`.
+  const first = join(out, "launch.json");
+  const launch = existsSync(first)
+    ? join(out, `launch-${launched.map((lane) => stem(lane.number)).join("-")}.json`)
+    : first;
   if (sessions.length > 0) {
     writeFileSync(
       launch,
@@ -462,20 +493,9 @@ function lanes(): number {
     );
   }
   console.log(`${plural(built.length, "lane")} built: ${built.map((lane) => lane.number).join(", ")}`);
-  for (const [index, group] of (count === null ? [] : groups).entries()) {
+  for (const [index, group] of groups.entries()) {
     console.log(
-      `session ${sessions[index]?.name ?? ""}: lanes ${group.map((lane) => lane.number).join(", ")}, weight ${weightOf(group).toFixed(1)}`,
-    );
-  }
-  const packed = groups.filter((group) => group.some((lane) => !lane.isolated)).length;
-  if (count !== null && packed < count) {
-    console.log(
-      `${plural(packed, "session")} of open lanes, not ${String(count)}: a label is never split; without --agents each lane is a session`,
-    );
-  }
-  if (built.some((lane) => !lane.isolated)) {
-    console.log(
-      `suggested: --agents ${String(suggestedSessions(built))}, the most sessions whose lightest weighs at least half the heaviest`,
+      `session ${sessions[index]?.name ?? ""}: lanes ${group.map((lane) => lane.number).join(", ")}, weight ${weightOf(group).toFixed(1)}${high === null ? "" : `, ${effortOf(group).effort ?? ""} effort`}`,
     );
   }
   for (const lane of kept) console.log(`lane ${String(lane.number)}: built before, kept`);

@@ -10,10 +10,15 @@
  * not see.
  *
  * `close(handle, true)` names neither the parameter nor the state, and the two call sites that
- * pass it the wrong way round read exactly like the two that pass it right. An options object
- * would answer this in another language; `anti-slop/no-object-parameters` refuses one here, so
- * the remedy the message names is the union, and the fixture keeps one to prove the rule is
- * satisfied by it.
+ * pass it the wrong way round read exactly like the two that pass it right. Keyword arguments
+ * answer this in another language; the remedy the message names is the union, which costs the
+ * caller nothing, and the fixture keeps one to prove the rule is satisfied by it.
+ *
+ * `widen` takes what Foxglove's `no-boolean-parameters` reads beyond the default: under `flags`, a
+ * flag beside `undefined` or spelled `true | false`, and a parameter defaulted to a boolean; under
+ * `bindings`, a `const` arrow, a `declare` function and an abstract method. The widened fixture
+ * keeps the nearest hostile cases: a callback written inline, a string union beside `undefined`,
+ * a number default and a `declare` guard.
  *
  * A boolean followed by a function parameter is the condition that function runs under when
  * every read of it guards a call of that function: `keysIf(files.size > 0, () => …)` is an `if`
@@ -97,8 +102,37 @@ export function sentence(handle: string, everyBattery: boolean) { // REPORT expo
 }
 `.trimStart();
 
+const WIDENED = `
+export function maybe(handle: string, failed: boolean | undefined) { // REPORT beside undefined
+  return failed === true ? handle : "";
+}
+export function literal(handle: string, failed: true | false) { // REPORT spelled as its two literals
+  return failed ? handle : "";
+}
+export function defaulted(handle: string, failed = false) { // REPORT a default reads as true at the call site
+  return failed ? handle : "";
+}
+export const closeAll = (handle: string, failed: boolean) => (failed ? handle : ""); // REPORT a const arrow declares
+export declare function drop(handle: string, force: boolean): void; // REPORT a declare function is a contract
+export abstract class Sink {
+  abstract flush(handle: string, force: boolean): void; // REPORT an abstract method is a contract
+}
+export function mode(handle: string, kind: "full" | "quick" | undefined) { // ADMITTED a union of states
+  return kind === "full" ? handle : "";
+}
+export function limit(handle: string, retries = 3) { // ADMITTED a number default
+  return retries > 0 ? handle : "";
+}
+export declare function isSet(value: unknown, strict: boolean): value is string; // ADMITTED a guard narrows on it
+export const names = ["a", "b"].filter((name, index) => index > 0 && name !== ""); // ADMITTED an inline callback
+`.trimStart();
+
 describe("ana/no-positional-boolean-parameter", () => {
   it("reports only the marked lines in every fixture and scope", async () => {
-    await lintRules("ana", [["no-positional-boolean-parameter", PARAMETERS, 10, "src/example.ts"]]);
+    await lintRules("ana", [
+      ["no-positional-boolean-parameter", PARAMETERS, 10, "src/example.ts"],
+      ["no-positional-boolean-parameter", WIDENED, 0, "src/narrow.ts"],
+      ["no-positional-boolean-parameter", WIDENED, 6, "src/wide.ts", { widen: ["flags", "bindings"] }],
+    ]);
   });
 });

@@ -12,6 +12,14 @@
     {
       "name": "ana",
       "specifier": "./tools/oxlint/ana/index.ts"
+    },
+    {
+      "name": "implicit-state",
+      "specifier": "./tools/oxlint/implicit-state/index.ts"
+    },
+    {
+      "name": "implicit-state-opinionated",
+      "specifier": "./tools/oxlint/implicit-state-opinionated/index.ts"
     }
   ],
   "overrides": [
@@ -34,7 +42,6 @@
     }
   ],
   "rules": {
-    "ana/declarations-before-the-first-function": "error",
     "ana/no-alias-restating-return": "error",
     "ana/no-arms-differing-in-one-term": "error",
     "ana/no-deep-nesting": "error",
@@ -57,12 +64,13 @@
     "ana/no-tangled-ternary": "error",
     "ana/no-thrice-spelled-object": "error",
     "ana/no-transposed-argument": "error",
+    "ana/no-unproven-unknown-parameter": "error",
     "ana/prefer-const-conditional": "error",
     "ana/prefer-find-over-loop": "error",
     "ana/prefer-key-if-defined": "error",
     "ana/require-captured-json-runtime": "error",
+    "ana/require-declarations-first": "error",
     "ana/require-meta-runtime-import": "error",
-    "ana/unproven-unknown-parameter": "error",
     "anti-slop/no-chained-type-assertions": "error",
     "anti-slop/no-conditional-empty-object-spread": "error",
     "anti-slop/no-known-value-widening": "error",
@@ -266,6 +274,12 @@
     "eslint/valid-typeof": "error",
     "eslint/vars-on-top": "error",
     "eslint/yoda": "error",
+    "implicit-state/no-age-based-lock": "error",
+    "implicit-state/no-coupled-flags": "error",
+    "implicit-state/no-marker-file-state": "error",
+    "implicit-state-opinionated/max-boolean-fields": "error",
+    "implicit-state-opinionated/no-state-in-names": "error",
+    "implicit-state-opinionated/prefer-state-union": "error",
     "import/default": "error",
     "import/extensions": "error",
     "import/first": "error",

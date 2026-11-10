@@ -392,6 +392,20 @@ describe("a campaign run by its live Builder", () => {
     expect(read(log)).toHaveLength(2);
   });
 
+  // The two budget readers between moves (`harness-builder.ts`, `campaign-actions.ts`) hand the
+  // pending totals to `opened`, which answers them. Read inside `opened` from the log alone, a word
+  // would lose to the `--budget` the command was started with, which is older.
+  it("takes an operator's total over the --budget the command was started with, and answers it once", () => {
+    const log = join(root, "terms", "budget", LOG_FILE);
+    const flags = flagsOf(["--root", root, "--name", "terms", "--project", PROJECT, "--budget", "300"]);
+    expect(opened(log, flags, "scripted").budget?.dollars).toBe(300);
+    append(log, "campaign.word", { word: "budget", dollars: 50 });
+    const totals = pendingWords(read(log));
+    expect(opened(log, flags, "scripted", totals).budget?.dollars).toBe(50);
+    expect(read(log).at(-1)).toMatchObject({ kind: OPENED, data: { budget: { dollars: 50 }, answers: [1] } });
+    expect(pendingWords(read(log))).toEqual([]);
+  });
+
   it("starts the campaign's first Examiner session as the conversation opens, where the table names one", async () => {
     layOutPack(root, bundle, TASKS, FIXTURE);
     const name = `${STEM}-first-examiner`;
@@ -1308,6 +1322,66 @@ describe("a campaign tool where the table names more than the action", () => {
     const started = events.findIndex(({ kind }, at) => at > promotedAt && kind === COMPARED);
     expect(written).toBeGreaterThan(promotedAt);
     expect(started).toBeGreaterThan(written);
+  });
+
+  it("tells the Builder at examine whether a compare will wait for the session, as the compare then does", async () => {
+    layOutPack(root, bundle, MANY, FIXTURE);
+    const name = `${STEM}-examine-says`;
+    // The session the promotion starts holds nothing, so no release ends the Builder's wait before
+    // the session does; each later one writes for a second and a half, long enough to read a
+    // compare beside it.
+    let sessions = 0;
+    const slow: NonNullable<Seats["examine"]> = (request) => {
+      sessions += 1;
+      const steps: readonly Step[] =
+        sessions === 1
+          ? [FINISH_IDLE]
+          : [
+              {
+                wait: async () => {
+                  await Bun.sleep(1500);
+                  return proposing(6);
+                },
+              },
+              FINISH_IDLE,
+            ];
+      return examine({ ...request, ...scripted(steps) });
+    };
+    const seats: Seats = {
+      seated: builderScript(passing(), [
+        CHANGE_GUIDE,
+        ["compare", {}],
+        ["wait", {}],
+        // A promotion with no comparison since: the compare below waits for this session.
+        ["examine", {}],
+        CHANGE_AGAIN,
+        ["compare", {}],
+        // A comparison has started since the promotion: the compare below goes on beside it.
+        ["examine", {}],
+        ["compare", {}],
+        ["finish", { note: "Read." }],
+        ["finish", { note: "Read." }],
+      ]),
+      examine: slow,
+    };
+    await harnessBuilder([...seeded(name), ...FLAGS, "--moves", "12"], seats);
+    const events = logOf(name);
+    const index = (kind: string, session: string) =>
+      events.findIndex((event) => event.kind === kind && event.data.session === session);
+    const told = said(name, "examine").flatMap((text) => {
+      const session = /^Examiner session (\S+) is writing tasks/u.exec(text)?.[1];
+      return session === undefined ? [] : [{ text, session }];
+    });
+    expect(told).toHaveLength(2);
+    const [waits, offers] = told;
+    // What the next comparison started on, against when the session it was told about ended.
+    const nextCompare = (session: string) =>
+      events.findIndex((event, at) => at > index(EXAM_STARTED, session) && event.kind === COMPARED);
+    expect(waits?.text).toContain("a compare waits for this session to end");
+    expect(nextCompare(waits?.session ?? "")).toBeGreaterThan(index("exam.finished", waits?.session ?? ""));
+    expect(offers?.text).toContain("edit and practise meanwhile, and compare.");
+    expect(offers?.text).not.toContain("a compare waits");
+    expect(nextCompare(offers?.session ?? "")).toBeLessThan(index("exam.finished", offers?.session ?? ""));
   });
 
   it("reads a changed harness/ at the Builder's compare once the epoch's starter comparison has tallied, though tasks were held since", async () => {

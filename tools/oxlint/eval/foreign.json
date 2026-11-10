@@ -1,0 +1,47 @@
+[
+  {
+    "name": "changesets",
+    "url": "https://github.com/changesets/changesets.git",
+    "head": "2f6995d5bbd3b1572d7a6cd897d2229bfc1ce8c1"
+  },
+  {
+    "name": "excalidraw",
+    "url": "https://github.com/excalidraw/excalidraw.git",
+    "head": "701b901a0f1ba3d0b390d9cdf63d112e25abac4b"
+  },
+  {
+    "name": "vite",
+    "url": "https://github.com/vitejs/vite.git",
+    "head": "a579e352a66fbdce6a51d4e1f67006ccf4f91343"
+  },
+  {
+    "name": "tldraw",
+    "url": "https://github.com/tldraw/tldraw.git",
+    "head": "69f43954f15a171b3a6edb45134d27b71560de02"
+  },
+  {
+    "name": "hono",
+    "url": "https://github.com/honojs/hono.git",
+    "head": "61f7c59e50244ab4d2dd83c151928cf7ea448510"
+  },
+  {
+    "name": "pnpm",
+    "url": "https://github.com/pnpm/pnpm.git",
+    "head": "a0192007c81c9940c4877f2637f5343140bbcd61"
+  },
+  {
+    "name": "rollup",
+    "url": "https://github.com/rollup/rollup.git",
+    "head": "f92bf715d8dbc7fed9239855d11721f7045ccb0d"
+  },
+  {
+    "name": "trpc",
+    "url": "https://github.com/trpc/trpc.git",
+    "head": "8f4826679aa737dd84b1b26040a4c417a8bb7dfc"
+  },
+  {
+    "name": "bullmq",
+    "url": "https://github.com/taskforcesh/bullmq.git",
+    "head": "b18b6ddd3d4e6fe2d8a14d09fb733aea159a5de4"
+  }
+]

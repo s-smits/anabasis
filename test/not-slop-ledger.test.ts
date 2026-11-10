@@ -59,13 +59,15 @@ describe("a site's id", () => {
   const second = { path: "src/b.ts", text: "const kept = rows.filter(Boolean);" };
 
   it("ignores order and spacing, but changes when the second place changes", () => {
-    expect(siteId("tree/copied-block", [second, first])).toBe(siteId("tree/copied-block", [first, second]));
-    expect(siteId("tree/copied-block", [{ ...first, text: `  ${first.text}\n` }, second])).toBe(
-      siteId("tree/copied-block", [first, second]),
+    expect(siteId("tree/no-duplicate-block", [second, first])).toBe(
+      siteId("tree/no-duplicate-block", [first, second]),
+    );
+    expect(siteId("tree/no-duplicate-block", [{ ...first, text: `  ${first.text}\n` }, second])).toBe(
+      siteId("tree/no-duplicate-block", [first, second]),
     );
     const edited = { ...second, text: "const kept = rows.filter(isString);" };
-    expect(siteId("tree/copied-block", [first, edited])).not.toBe(
-      siteId("tree/copied-block", [first, second]),
+    expect(siteId("tree/no-duplicate-block", [first, edited])).not.toBe(
+      siteId("tree/no-duplicate-block", [first, second]),
     );
   });
 });
@@ -109,7 +111,7 @@ describe("the ledger's rows", () => {
       ["ana/no-such-rule", true],
       ["ana/no-inline-slop-answer", true],
       ["anti-slop/no-runtime-typeof", false],
-      ["tree/copied-block", false],
+      ["tree/no-duplicate-block", false],
     ] as const) {
       expect(unanswerable(rule) !== null, rule).toBe(refused);
     }

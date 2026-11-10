@@ -45,14 +45,25 @@ wall_seconds="${ANA_RUNNER_WALL:-3600}"
 
 alive() { [[ "$1" =~ ^[1-9][0-9]*$ ]] && kill -0 "$1" 2>/dev/null; }
 
+# holder <path>: the PID a slot or a ticket names. Each is a link whose target is its holder's PID,
+# made in one step, so none is ever seen without it. Until 9 November a slot was a folder with the
+# PID written into it after, and a task killed between the two left the slot held for good; a
+# folder or file an older run.sh left is still read, and one without a PID holds nothing.
+holder() {
+  if [[ -L "$1" ]]; then
+    readlink "$1"
+  elif [[ -d "$1" ]]; then
+    cat "$1/pid" 2>/dev/null || true
+  else
+    cat "$1" 2>/dev/null || true
+  fi
+}
+
 # taken_here <host>: the slots this machine's tasks hold on <host>, and the tasks waiting for one.
-# A slot just made has no PID yet and counts as held.
 taken_here() {
-  local path pid taken=0
+  local path taken=0
   for path in "${TMPDIR:-/tmp}/ana-runner/$1"/slot-* "${TMPDIR:-/tmp}/ana-runner/$1"/wait.*; do
-    [[ -e "$path" ]] || continue
-    if [[ -d "$path" ]]; then pid="$(cat "$path/pid" 2>/dev/null || true)"; else pid="$(cat "$path" 2>/dev/null || true)"; fi
-    if [[ -z "$pid" ]] || alive "$pid"; then taken=$((taken + 1)); fi
+    if alive "$(holder "$path")"; then taken=$((taken + 1)); fi
   done
   printf '%s' "$taken"
 }
@@ -174,8 +185,8 @@ fi
 on_host() { ssh "${ssh_options[@]}" "$host" "$@"; }
 
 # The queue. A waiter's ticket names its PID; it takes a slot only when no live ticket is older,
-# and a slot is a folder whose creation is the lock, with its holder's PID inside. A ticket or a
-# slot whose PID is gone is removed by whoever reads it. Only the oldest waiter tries the slots,
+# and a slot is a link whose creation is the lock and whose target is its holder's PID (`holder`). A
+# ticket or a slot whose PID is gone is removed by whoever reads it. Only the oldest waiter tries the slots,
 # once a second, so no two waiters race for one.
 queue_dir="${TMPDIR:-/tmp}/ana-runner/${host:-local}"
 held_slot=""
@@ -183,30 +194,27 @@ ticket=""
 
 release_queue() {
   [[ -z "$ticket" ]] || rm -f "$ticket"
-  [[ -z "$held_slot" ]] || rm -rf "$queue_dir/slot-$held_slot"
+  [[ -z "$held_slot" ]] || rm -f "$queue_dir/slot-$held_slot"
 }
 
 tickets_ahead() {
-  local path pid ahead=0
+  local path ahead=0
   while IFS= read -r path; do
     [[ "$path" != "$ticket" ]] || break
-    pid="$(cat "$path" 2>/dev/null || true)"
-    if alive "$pid"; then ahead=$((ahead + 1)); else rm -f "$path"; fi
+    if alive "$(holder "$path")"; then ahead=$((ahead + 1)); else rm -f "$path"; fi
   done < <(ls -1tr "$queue_dir"/wait.* 2>/dev/null)
   printf '%s' "$ahead"
 }
 
 take_slot() {
-  local k holder
+  local k path
   for ((k = 1; k <= slots; k++)); do
-    if [[ -d "$queue_dir/slot-$k" ]]; then
-      # A slot just made has no PID yet; only a slot whose PID is written and dead is free.
-      holder="$(cat "$queue_dir/slot-$k/pid" 2>/dev/null || true)"
-      [[ -n "$holder" ]] && ! alive "$holder" || continue
-      rm -rf "$queue_dir/slot-$k"
+    path="$queue_dir/slot-$k"
+    if [[ -L "$path" || -e "$path" ]]; then
+      alive "$(holder "$path")" && continue
+      rm -rf "$path"
     fi
-    if mkdir "$queue_dir/slot-$k" 2>/dev/null; then
-      printf '%s\n' "$$" >"$queue_dir/slot-$k/pid"
+    if ln -s "$$" "$path" 2>/dev/null; then
       held_slot="$k"
       return 0
     fi
@@ -218,7 +226,8 @@ queue_enter() {
   local waited next_status=15 limit="${ANA_RUNNER_QUEUE_WAIT:-2400}"
   mkdir -p "$queue_dir"
   ticket="$queue_dir/wait.$$"
-  printf '%s\n' "$$" >"$ticket"
+  rm -f "$ticket"
+  ln -s "$$" "$ticket"
   trap release_queue EXIT
   trap 'exit 130' HUP INT TERM
   SECONDS=0

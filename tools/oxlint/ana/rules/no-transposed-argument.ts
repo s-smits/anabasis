@@ -1,6 +1,7 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
 import { crossings } from "../shared/crossed.ts";
+import { bindingName, identifierName, propertyName } from "../shared/statements.ts";
 
 /**
  * A call that passes two arguments the wrong way round, where the compiler cannot say so.
@@ -28,7 +29,7 @@ import { crossings } from "../shared/crossed.ts";
  * bound to a `const`, or the constructor of a class this file declares, reached by `new`.
  *
  * An oxlint rule sees one file, and its plugin API offers no other module's declarations, so a
- * call into another file is read by the whole-tree scan `tree/crossed-argument`
+ * call into another file is read by the whole-tree scan `tree/no-transposed-argument`
  * (`tools/oxlint/tree-crossed-argument.ts`) with the same reading. On 8 November that scan resolved
  * 9,989 calls into other files, with 7,742 argument pairs, and found no crossing.
  *
@@ -64,15 +65,6 @@ function keyName(key: ESTree.Node, computed: boolean): string | null {
   return !computed && key.type === "Identifier" ? key.name : null;
 }
 
-/** The name an argument carries: a bare identifier, or the property that ends a member read. */
-function argumentName(arg: ESTree.Node): string | null {
-  if (arg.type === "Identifier") return arg.name;
-  if (arg.type === "MemberExpression" && !arg.computed && arg.property.type === "Identifier") {
-    return arg.property.name;
-  }
-  return null;
-}
-
 /** The constructor of a class, where it declares one. */
 function constructorOf(body: ESTree.ClassBody): Callable | null {
   for (const member of body.body) {
@@ -83,9 +75,7 @@ function constructorOf(body: ESTree.ClassBody): Callable | null {
 
 /** A parameter's name: a plain one, one with a default, or a constructor's parameter property. */
 function parameterName(param: Callable["params"][number]): string | null {
-  const inner = param.type === "TSParameterProperty" ? param.parameter : param;
-  const target = inner.type === "AssignmentPattern" ? inner.left : inner;
-  return target.type === "Identifier" ? target.name : null;
+  return bindingName(param.type === "TSParameterProperty" ? param.parameter : param);
 }
 
 /** The method `name` of the class whose body encloses `node`. */
@@ -173,7 +163,7 @@ export const noTransposedArgumentRule = defineRule({
 
     function check(node: ESTree.CallExpression | ESTree.NewExpression, callable: Callable | null): void {
       if (callable === null || node.arguments.some((arg) => arg.type === "SpreadElement")) return;
-      const names = node.arguments.map(argumentName);
+      const names = node.arguments.map((arg) => identifierName(arg) ?? propertyName(arg));
       const params = callable.params.map(parameterName);
       for (const crossing of crossings(names, params)) {
         const given = crossing.map((i) => `\`${names[i] ?? ""}\` at \`${params[i] ?? ""}\``).join(", ");

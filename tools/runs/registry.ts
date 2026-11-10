@@ -57,13 +57,16 @@ export const BUILDER = "tools/d2/harness-builder.ts";
 export const DRAFT = "tools/d1b/draft.ts";
 /** The file beside a log that says its campaign is a seed, and of what. */
 export const SEED_FILE = "seed.json";
+/** The command that runs one round of a campaign by hand. */
+export const ROUND = "tools/d2/round.ts";
 /** The commands that write a campaign's log by hand, each naming it with `--name`: a round, an
  *  Examiner session (read as closed while it ran, the first time one did: exam-1, 2026-10-08), a
  *  standalone comparison and a Builder session alone. */
-const BY_HAND = ["tools/d2/round.ts", EXAMINE, "tools/d2/checkpoint.ts", "tools/d2/session.ts", DRAFT];
+const BY_HAND = [ROUND, EXAMINE, "tools/d2/checkpoint.ts", "tools/d2/session.ts", DRAFT];
 /** This CLI, whose verbs start, read and stop runs; `rehearse` alone writes a log. */
 export const CLI = "tools/runs/cli.ts";
 const LIVE = "tools/m0/live-solve.ts";
+export const SEAT = "system-path-simulation/scripts/live-seat.ts";
 /** The flag a keeper runs under once it has left the verb that started it (`keep.ts`). */
 export const KEEPING = "--here";
 const CAMPAIGN_END = "comparison.reported";
@@ -102,6 +105,13 @@ export const campaignsIn = (dir: string, tree: string): Run[] =>
     .map((name) => campaignIn(dir, name, tree));
 /** Whether `run` is a campaign, as against a live solve. */
 export const isCampaign = (run: Run) => run.end === CAMPAIGN_END;
+/** A campaign's pack, from its name, the one place a stored campaign keeps it: what stands before
+ *  the first `-fresh-` of the `<pack>-fresh-<model>...` that `runs fresh` names, so a hyphenated
+ *  pack stays whole, else the name's first word, as campaigns named by hand were read. */
+export function packOf(name: string): string {
+  const fresh = name.indexOf("-fresh-");
+  return fresh > 0 ? name.slice(0, fresh) : (name.split("-")[0] ?? name);
+}
 /**
  * The script a process runs: Bun's first argument that is no option of its own, under `nice` where
  * `start` started it niced, and after `run` where it was named so. Until 20 October any argument
@@ -244,12 +254,13 @@ function cwdOf(pid: string): string {
   }
 }
 
-/** Every process that may write a run's log, with the worktree it runs in. */
-export function processes(): Running[] {
-  const table = runTextSyncOrThrow(["ps", "-axo", "pid=,args="]).split("\n");
+/** Every process that may write a run's log, keep one going or seat a simulation, with its worktree:
+ *  one table (a row of `ps` pids and arguments each), so `writers`, `keepers` and seats read one moment. */
+export function processes(table = runTextSyncOrThrow(["ps", "-axo", "pid=,args="]).split("\n")): Running[] {
   const found = table.flatMap((row) => {
     const [pid = "", ...args] = row.trim().split(/\s+/);
-    return writesCampaign(args) || runsAs(args, [LIVE]) ? [{ pid, args }] : [];
+    const kept = writesCampaign(args) || runsAs(args, [LIVE]) || keeping(args) !== undefined;
+    return kept || args.some((arg) => arg.endsWith(SEAT)) ? [{ pid, args }] : [];
   });
   if (found.length === 0) return [];
   // Linux names each cwd in /proc. Its lsof walks every descriptor up to the open-file limit Bun
@@ -301,16 +312,12 @@ export function openComparisons(events: readonly LogEvent[]): string[] {
 /** The file beside `run`'s log that holds its keeper's output. */
 export const keptFile = (run: Run) => join(dirname(run.path), "keep.out");
 
-/** The processes that keep campaign `name` going (`keep.ts`), but this one. */
-export function keepers(name: string): number[] {
-  return runTextSyncOrThrow(["ps", "-axo", "pid=,args="])
-    .split("\n")
-    .flatMap((row) => {
-      const [pid = "", ...args] = row.trim().split(/\s+/);
-      const at = args.indexOf("keep");
-      return runsAs(args, [CLI]) && at !== -1 && args[at + 1] === name && args.includes(KEEPING)
-        ? [Number(pid)]
-        : [];
-    })
-    .filter((pid) => pid !== runtimeProcess.pid);
+/** The campaign a `runs keep` process keeps going (`keep.ts`), or undefined for any other process. */
+function keeping(args: readonly string[]): string | undefined {
+  const at = args.indexOf("keep");
+  return runsAs(args, [CLI]) && at !== -1 && args.includes(KEEPING) ? args[at + 1] : undefined;
 }
+
+/** The processes in `running` that keep campaign `name` going, but this one. */
+export const keepers = (name: string, running: readonly Running[] = processes()): number[] =>
+  running.flatMap(({ pid, args }) => (keeping(args) === name && pid !== runtimeProcess.pid ? [pid] : []));

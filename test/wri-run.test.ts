@@ -44,6 +44,21 @@ describe("the endings and words (lane 23)", () => {
     expect(fired(moves, "MOVES ASKED")).toBeUndefined();
   });
 
+  it("counts a pause apart from the words a move answers, as the host reads which were answered", () => {
+    const words = logged(
+      ["campaign.word", { word: "pause" }],
+      ["campaign.word", { word: "stop", why: "" }],
+      ["campaign.ended", { ending: "operator", answers: [1] }],
+      ["campaign.word", { word: "tasks", why: "" }],
+    );
+    expect(fired(words, "OPERATOR WORDS")).toBe(
+      "pause 1, stop 1, tasks 1; of the words a move answers, 1 of 2 acted on",
+    );
+    expect(fired(words.slice(0, 1), "OPERATOR WORDS")).toBe(
+      "pause 1; of the words a move answers, 0 of 0 acted on",
+    );
+  });
+
   it("names an ending the log goes on after, and leaves the last event's ending alone", () => {
     const ended = logged(
       ["campaign.ended", { ending: "budget" }],

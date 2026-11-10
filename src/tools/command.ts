@@ -89,7 +89,7 @@ const WALL_TEST_LIMITS = { shellDefaultSeconds: 20, shellMaxSeconds: 20 };
 
 /**
  * Whether a package index is reached from inside the wall: `reached` where a command run as a
- * solver's fetched one when this process first asked, `unreached` where it did not. A prompt that
+ * solver's fetched one, `unreached` where it did not. A prompt that
  * said "commands have network access" whatever the host did was false on the Linux host of
  * 10 October, where the wall's commands had an empty environment and no resolver: 0 of 143 solves
  * of one campaign installed anything, and 26 of the 34 that ran out of turns had spent one on a pip
@@ -97,9 +97,12 @@ const WALL_TEST_LIMITS = { shellDefaultSeconds: 20, shellMaxSeconds: 20 };
  * probe found.
  */
 export type NetworkReach = "reached" | "unreached";
-/** The reach of each policy this process has probed, by its hash: once a process, and the promise
- *  so that solves that start together wait on one probe. */
-const REACH = new Map<string, Promise<NetworkReach>>();
+/** How long an `unreached` reading stands before the next asker probes again. A reached one stands
+ *  for the process's life. */
+export const UNREACHED_MS = 10 * 60_000;
+/** The reach of each policy this process has probed, by its hash, with when the probe began: the
+ *  promise, so that solves that start together wait on one probe. */
+const REACH = new Map<string, { readonly at: number; readonly probe: Promise<NetworkReach> }>();
 const REACH_MARK = "ANA-NETWORK-REACHED";
 /** The index pip reads; curl first, and the resolver pip itself uses where curl is not on the host. */
 const REACH_COMMAND = `(curl -fsS -m 10 -o /dev/null https://pypi.org/simple/pip/ 2>/dev/null || python3 -c 'import urllib.request; urllib.request.urlopen("https://pypi.org/simple/pip/", timeout=10)' 2>/dev/null) && echo ${REACH_MARK}`;
@@ -282,24 +285,37 @@ export async function probeWall(
   }
 }
 
-/** The reach of the wall `wall` stands for, probed once a process (`NetworkReach`). A probe that
- *  fails to run reads as unreached. */
-export function networkReach(wall: CommandWall): Promise<NetworkReach> {
+/** Whether a command run on `wall` fetched the package index. A probe that fails to run reads as
+ *  unreached. */
+async function probeReach(wall: CommandWall): Promise<NetworkReach> {
+  let out = "";
+  await runWalled(wall, REACH_COMMAND, {
+    onData: (data) => {
+      out += data.toString();
+    },
+    timeout: 30,
+  }).catch(() => undefined);
+  return out.includes(REACH_MARK) ? "reached" : "unreached";
+}
+
+/** The reach of the wall `wall` stands for (`NetworkReach`), as this process last probed it at
+ *  `now`: a reached reading stands, and an unreached one is probed again once `UNREACHED_MS` old.
+ *  Until 9 November one unreached probe stood for the process's life, a Builder session's 24 hours. */
+export async function networkReach(
+  wall: CommandWall,
+  { now = Date.now(), probe = probeReach }: { now?: number; probe?: typeof probeReach } = {},
+): Promise<NetworkReach> {
   const key = wall.base.policyHash;
   const known = REACH.get(key);
-  if (known !== undefined) return known;
-  const probe = (async (): Promise<NetworkReach> => {
-    let out = "";
-    await runWalled(wall, REACH_COMMAND, {
-      onData: (data) => {
-        out += data.toString();
-      },
-      timeout: 30,
-    });
-    return out.includes(REACH_MARK) ? "reached" : "unreached";
-  })().catch((): NetworkReach => "unreached");
-  REACH.set(key, probe);
-  return probe;
+  if (known !== undefined && (now - known.at < UNREACHED_MS || (await known.probe) === "reached")) {
+    return known.probe;
+  }
+  // Callers that waited on the same stale reading share the one probe the first of them started.
+  const latest = REACH.get(key);
+  if (latest !== undefined && latest !== known) return latest.probe;
+  const fresh = { at: now, probe: probe(wall) };
+  REACH.set(key, fresh);
+  return fresh.probe;
 }
 
 /**

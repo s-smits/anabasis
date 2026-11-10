@@ -10,10 +10,9 @@
  * `after` that no rule of either plugin reports, so an example cannot teach a shape another rule
  * then refuses.
  */
-import type { Plugin, RuleDocs } from "@oxlint/plugins";
+import type { RuleDocs } from "@oxlint/plugins";
 import { isRecord, isString } from "../../src/meta/json-shape.ts";
-import anaPlugin from "./ana/index.ts";
-import antiSlopPlugin from "./anti-slop/index.ts";
+import { PLUGINS } from "./plugins.ts";
 
 /**
  * One pair: `before` is the shape the rule reports and `after` the repair, each a few lines.
@@ -36,14 +35,10 @@ function examplesIn(docs: RuleDocs | undefined): RuleExample[] {
   });
 }
 
-/** Every rule of the two plugins, keyed as a finding names it (`ana/no-deep-nesting`), with its pairs. */
+/** Every rule of each plugin, keyed as a finding names it (`ana/no-deep-nesting`), with its pairs. */
 export function ruleExamples(): Map<string, RuleExample[]> {
-  const plugins: readonly [string, Plugin][] = [
-    ["ana", anaPlugin],
-    ["anti-slop", antiSlopPlugin],
-  ];
   return new Map(
-    plugins.flatMap(([name, plugin]) =>
+    [...PLUGINS].flatMap(([name, plugin]) =>
       Object.entries(plugin.rules).map(([rule, { meta }]) => [`${name}/${rule}`, examplesIn(meta?.docs)]),
     ),
   );

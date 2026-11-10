@@ -4,6 +4,7 @@ import { type Column as TableColumn, Table } from "../components/table.tsx";
 import {
   type CampaignReading,
   type SolveRow,
+  isRejection,
   shortHash,
   type Tier,
   type Tone,
@@ -39,11 +40,6 @@ export function RulingBadge({ ruling }: { ruling: Ruling }) {
 /** The label of a ruling kind, as the rulings by kind are counted. */
 export function rulingLabel(ruling: Ruling): string {
   return RULINGS[ruling].label;
-}
-
-/** Whether a solve's answer was rejected by a check, the one ending a ruling is made of. */
-export function isRejection(row: SolveRow): boolean {
-  return row.ending?.outcome === "fail" && row.ending.kind === "rejected";
 }
 
 /** What a rejection's ruling cell says in `tier`, with `withheld` as why its ruling is held back

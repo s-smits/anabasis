@@ -38,7 +38,7 @@ import {
 import { failWrongPasses, wrongPasses, wrongPassesIn } from "./history.ts";
 import type { LogEvent } from "./log.ts";
 import { providerFailed, windowEnded } from "./solve.ts";
-import { passed, ranUnder, rejected, rulingsOf } from "./solves.ts";
+import { passed, ranUnder, rejected, standsOf } from "./solves.ts";
 import { RUNS, spreadOf } from "./size.ts";
 import { taskSets } from "./task.ts";
 import { tracesIn } from "./trace.ts";
@@ -81,10 +81,9 @@ interface TalliedIn {
   readonly fresh: readonly boolean[];
   /** The side the campaign's reference harness stood on, or null where it was neither. */
   readonly reference: "old" | "fresh" | null;
-  /** Whether a limit cut a solve of the task in this comparison short (`taskRecords`). */
-  readonly cut: boolean;
-  /** Whether one of the reference harness's own solves of it did: all its author hears (rule 4). */
-  readonly referenceCut: boolean;
+  /** Whose solve of the task a limit cut short in this comparison (`taskRecords`): one of the reference
+   *  harness's own, which is all its author hears (rule 4), only another harness's, or none. */
+  readonly cut: "reference" | "other" | "none";
   /** The side that won the task in this comparison's tally (`tally`), or null for a tie. */
   readonly won: "old" | "fresh" | null;
   /** The measure that carried the win (`carriedBy`), null for a tie. */
@@ -106,13 +105,12 @@ interface TaskRecord {
   readonly held: boolean;
   /** The last event at which a person kept it held (`task.state`), or -1. */
   keptAt: number;
-  /** A known valid answer independent of the other harness: an author's answer, a room solve,
-   *  or a valid solve of a harness that is or was the reference. The practice allowance and the
-   *  wait for a person read only this evidence. */
-  independentValidAnswer: boolean;
-  /** A solve's valid answer on record, or `task.feasible` records a passing author answer, or its
-   *  an earlier log's gate records that a reference solve under `try_task` gave a valid answer, which reveals no answer. */
-  knownValidAnswer: boolean;
+  /** The valid answer on record. `independent` is one known apart from the other harness: an
+   *  author's answer (`task.feasible`), an earlier log's gate recording that a reference solve under
+   *  `try_task` gave one, which reveals no answer, or a valid solve of a harness that is or was the
+   *  reference; the practice allowance and the wait for a person read only this evidence. `known` is
+   *  a valid solve of another harness alone. */
+  validAnswer: "independent" | "known" | "none";
   /** The best measure by the objective of an author's answer on record (`task.feasible`), or null
    *  where none carries one (`informative`, `compare.ts`; 19 October). */
   best: number | null;
@@ -146,7 +144,8 @@ export const PATIENCE = 6;
  *  investigation reads every one as a miss at a limit (`tools/wri/time.ts`); the pool reads all but
  *  one as a cut whose answer is not known (`taskRecords`). */
 export const AT_A_LIMIT: ReadonlySet<unknown> = new Set(["wall-ended", "turns-ended", "context-ended"]);
-/** How a Builder session ends when it was cut and left half a session's work. */
+/** How a session of any seat ends when it was cut and left half its work: the provider or host
+ *  crashed it, or a stop killed it. */
 export const CUT: ReadonlySet<unknown> = new Set(["killed", "crashed"]);
 const REPORTED = "comparison.reported";
 const PROMOTED = "harness.promoted";
@@ -163,13 +162,13 @@ export function capHolds({ dollars, reserve }: Cap): boolean {
  * Each comparison's last report in a log, in the order the comparisons first reported. A log of
  * 14 to 16 October may hold readings of the ladder (`ladder`), the starter against a new reference
  * after a promotion on tasks held apart, retired on 16 October: they are no step, no starter comparison and
- * no room, and only `all` reads them, for what they found of the reference's solves of tasks now
+ * no room, and only `"all"` reads them, for what they found of the reference's solves of tasks now
  * held out (`taskRecords`) and for the sessions they name.
  */
-export function lastReports(events: readonly LogEvent[], all = false): Reported[] {
+export function lastReports(events: readonly LogEvent[], read: "all" | "current" = "current"): Reported[] {
   const found = new Map<string, Reported>();
   for (const [index, { kind, data }] of events.entries()) {
-    if (kind !== REPORTED || !isString(data.session) || (data.ladder === true && !all)) continue;
+    if (kind !== REPORTED || !isString(data.session) || (data.ladder === true && read !== "all")) continue;
     // A map keeps the place of a key's first entry, which is the comparison's first report.
     found.set(data.session, { session: data.session, index: found.get(data.session)?.index ?? index, data });
   }
@@ -330,8 +329,7 @@ function taskRecords(events: readonly LogEvent[]) {
       version,
       held: held.has(version),
       keptAt: -1,
-      independentValidAnswer: false,
-      knownValidAnswer: false,
+      validAnswer: "none",
       best: null,
       tallied: [],
       asideAt: -1,
@@ -346,8 +344,7 @@ function taskRecords(events: readonly LogEvent[]) {
     if (kind === "task.state" && data.state === "held") of(data.version).keptAt = index;
     const tried = kind === "task.gate" ? asRecord(data.reference)?.valid : undefined;
     if (kind === "task.feasible" || (isNumber(tried) && tried > 0)) {
-      of(data.version).knownValidAnswer = true;
-      of(data.version).independentValidAnswer = true;
+      of(data.version).validAnswer = "independent";
     }
     const { measure, direction } = asRecord(data.objective) ?? {};
     if (kind !== "task.feasible" || !isNumber(measure)) continue;
@@ -395,8 +392,9 @@ function taskRecords(events: readonly LogEvent[]) {
     const interrupted = windowEnded(last) || providerFailed(last);
     const budgeted = kind === "turns-ended" && isNumber(limits.modelTurns) && !interrupted;
     if (passed(solve) === true && !wrong.has(solve.id)) {
-      of(task).knownValidAnswer = true;
-      if (references.has(harness)) of(task).independentValidAnswer = true;
+      const record = of(task);
+      record.validAnswer =
+        references.has(harness) || record.validAnswer === "independent" ? "independent" : "known";
     }
     if (isString(comparison) && AT_A_LIMIT.has(kind) && !budgeted) cut.add(cutIn(comparison, task, harness));
     if (isString(comparison) && rejected(solve.ending)) {
@@ -422,9 +420,9 @@ function tallyReports(
   { cut, rejectedIn }: { cut: ReadonlySet<string>; rejectedIn: ReadonlyMap<string, readonly string[]> },
 ): void {
   const reference = referenceOf(events);
-  const rulings = rulingsOf(events);
+  const stands = standsOf(events);
   let order = 0;
-  for (const report of lastReports(events, true)) {
+  for (const report of lastReports(events, "all")) {
     const { index, session, data } = report;
     const side = data.fresh === reference ? "fresh" : data.old === reference ? "old" : null;
     for (const pair of pairsReported(events, report)) {
@@ -432,6 +430,7 @@ function tallyReports(
       const cutOn = (harness: unknown): boolean =>
         isString(harness) && cut.has(cutIn(session, task, harness));
       const score = differenceOf(pair);
+      const referenceCut = side !== null && cutOn(data[side]);
       order += 1;
       of(task).tallied.push({
         index,
@@ -439,19 +438,13 @@ function tallyReports(
         old,
         fresh,
         reference: side,
-        cut: cutOn(data.old) || cutOn(data.fresh),
-        referenceCut: side !== null && cutOn(data[side]),
+        cut: referenceCut ? "reference" : cutOn(data.old) || cutOn(data.fresh) ? "other" : "none",
         won: score > 0 ? "fresh" : score < 0 ? "old" : null,
         by: carriedBy(pointsOf(pair)),
         // An objective gap under the floor decides no pair, so it leaves no room.
         room: side !== null && gapAgainst(pair, side, [of(task).best]),
       });
     }
-    const labels = asRecord(asRecord(data.settled)?.labels);
-    const standing = (solve: string) => {
-      const label = labels?.[solve];
-      return isString(label) ? label : rulings.get(solve);
-    };
     for (const task of Array.isArray(data.aside) ? data.aside.filter(isString) : []) {
       order += 1;
       const record = of(task);
@@ -459,7 +452,7 @@ function tallyReports(
       record.asideOrder = Math.min(record.asideOrder, order);
       const harness = side === null ? undefined : data[side];
       const own = isString(harness) ? (rejectedIn.get(cutIn(session, task, harness)) ?? []) : [];
-      if (own.some((solve) => standing(solve) !== "earned")) record.doubtedAt = index;
+      if (own.some((solve) => stands.get(solve) !== "earned")) record.doubtedAt = index;
     }
   }
 }
@@ -579,13 +572,15 @@ function tallyReports(
 export function poolOf(events: readonly LogEvent[]) {
   const { records, held } = taskRecords(events);
   const heldRecords = records.filter((record) => record.held);
-  const awaiting = placed(heldRecords, ({ independentValidAnswer, keptAt, tallied }) =>
-    runOf(tallied.filter(({ index, cut }) => !independentValidAnswer && index >= keptAt && !cut)),
+  const awaiting = placed(heldRecords, ({ validAnswer, keptAt, tallied }) =>
+    runOf(
+      tallied.filter(({ index, cut }) => validAnswer !== "independent" && index >= keptAt && cut === "none"),
+    ),
   );
   // Easy: the newest `RUNS.easy` readings in a row valid in every solve of the reference, with no
   // room by the objective.
   const spent = placed(heldRecords, ({ tallied }) => {
-    const readings = tallied.filter(({ reference, referenceCut }) => reference !== null && !referenceCut);
+    const readings = tallied.filter(({ reference, cut }) => reference !== null && cut !== "reference");
     const open = readings.findLastIndex((reading) => spreadOf(ownOf(reading)) !== "every" || reading.room);
     return readings.length - 1 - open >= RUNS.easy ? readings.at(-1)?.order : undefined;
   });
@@ -597,7 +592,7 @@ export function poolOf(events: readonly LogEvent[]) {
   const before = new Set(taskSets(events.slice(0, Math.max(0, promotedAt))).held);
   const reference = referenceOf(events);
   const stood = new Set(
-    lastReports(events, true).flatMap(({ data }) =>
+    lastReports(events, "all").flatMap(({ data }) =>
       (data.old === reference || data.fresh === reference) && Array.isArray(data.versions)
         ? data.versions.filter(isString)
         : [],
@@ -613,12 +608,12 @@ export function poolOf(events: readonly LogEvent[]) {
   const practiceOut = new Set([
     ...spent,
     ...doubted,
-    ...placed(heldRecords, ({ independentValidAnswer, keptAt, tallied }) =>
-      independentValidAnswer
+    ...placed(heldRecords, ({ validAnswer, keptAt, tallied }) =>
+      validAnswer === "independent"
         ? undefined
         : runOf(
             tallied.filter(
-              ({ reference: side, index, referenceCut }) => side !== null && index >= keptAt && !referenceCut,
+              ({ reference: side, index, cut }) => side !== null && index >= keptAt && cut !== "reference",
             ),
           ),
     ),
@@ -639,7 +634,7 @@ export function poolOf(events: readonly LogEvent[]) {
     exhausted,
     retained,
     feasible: new Set(
-      records.flatMap(({ version, knownValidAnswer }) => (knownValidAnswer ? [version] : [])),
+      records.flatMap(({ version, validAnswer }) => (validAnswer === "none" ? [] : [version])),
     ),
     bests: new Map(records.flatMap(({ version, best }) => (best === null ? [] : [[version, best] as const]))),
     outcomes: new Map(records.toSorted((one, other) => first(one) - first(other)).flatMap(outcomeOf)),

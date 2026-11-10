@@ -12,9 +12,9 @@ interface BatchOptions {
   readonly at: string;
   readonly login: string | undefined;
   readonly logins: string | undefined;
-  readonly billed: boolean;
-  /** Whether a seat goes through the Codex CLI's login, which pays where no Claude login does. */
-  readonly codex: boolean;
+  /** Who a launch bills: a numbered login, or the Codex CLI's login where a seat goes through it and
+   *  no numbered login pays, or none. */
+  readonly bills: "login" | "codex" | "none";
   readonly yes: boolean;
 }
 interface Planned {
@@ -33,9 +33,9 @@ export async function batchFresh(
   const fleet: Live[] = await freshFleet();
   const allowed = loginPool(options.logins);
   const readings =
-    options.billed && options.login === undefined ? await read(allowed, runtimeProcess.env) : [];
+    options.bills === "login" && options.login === undefined ? await read(allowed, runtimeProcess.env) : [];
   const chooseLogin = () =>
-    options.billed || options.login !== undefined
+    options.bills === "login" || options.login !== undefined
       ? freshLogin(options.login, fleet, async () => readings, allowed)
       : Promise.resolve(undefined);
   const first = await chooseLogin();
@@ -43,7 +43,7 @@ export async function batchFresh(
   const plan: Planned[] = [];
   for (const [index, pack] of packs.entries()) {
     const login = index === 0 ? first : await chooseLogin();
-    const payer = login ?? (options.codex ? CODEX : undefined);
+    const payer = login ?? (options.bills === "codex" ? CODEX : undefined);
     const host = await placeFresh(pack, fleet, choices, payer);
     plan.push({ pack, host, login });
     fleet.push({ name: `planned-${String(index)}`, host: host?.name ?? "here", login: payer ?? null });

@@ -363,8 +363,9 @@ function setsOf(
     proposalsOf(events).flatMap(({ version, family }) => (family === null ? [] : [[version, family]])),
   );
   const familyOf = (task: string) => named.get(task) ?? "unnamed";
-  const part = (retained: boolean) => pairs.filter(({ task }) => kept.has(task) === retained);
-  const tallied = { frontier: part(false), retained: part(true) };
+  const part = (set: "frontier" | "retained") =>
+    pairs.filter(({ task }) => kept.has(task) === (set === "retained"));
+  const tallied = { frontier: part("frontier"), retained: part("retained") };
   const setOf = (set: keyof typeof tallied): Entered => {
     const within = (task: string) => kept.has(task) === (set === "retained");
     // `of` names the task of each difference, as the report holds it.
@@ -658,24 +659,7 @@ export function toLabel(events: readonly LogEvent[], id: string): ToLabel {
   const found = asReported(events, id);
   const states = taskStates(found);
   const mine = rejections(found, fixed, NO_LABELS).filter(({ task }) => states.get(task) !== "disputed");
-  const pick = (aside: boolean) =>
-    mine.flatMap(({ solve, ruling }) => ((ruling !== EARNED) === aside ? [solve] : []));
-  return { aside: pick(true), others: pick(false) };
-}
-
-/** A person's label of each rejected answer, by its solve, over every settled packet of the log:
- *  what stands over the Referee's ruling of the same rejection wherever one is read
- *  (`tools/d2/settle.ts`, `tools/c/repaired.ts`). */
-export function settledLabels(events: readonly LogEvent[]): Map<string, Ruling> {
-  const ids = new Set(
-    events.flatMap(({ kind, data }) => (kind === REPORTED && isString(data.session) ? [data.session] : [])),
-  );
-  return new Map(
-    [...ids].flatMap((id) => {
-      const settled = reported(events, id)?.settled;
-      return settled === undefined || settled === null || settled === UNSETTLED
-        ? []
-        : Object.entries(settled.labels);
-    }),
-  );
+  const pick = (set: "aside" | "others") =>
+    mine.flatMap(({ solve, ruling }) => ((ruling !== EARNED) === (set === "aside") ? [solve] : []));
+  return { aside: pick("aside"), others: pick("others") };
 }

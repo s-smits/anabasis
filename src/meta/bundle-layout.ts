@@ -4,7 +4,7 @@
  *
  * Spelled inline, these names fall two or three to a file, below `no-repeated-string-literal`'s
  * four-per-file floor. `tree-identity`, which reports a name spelled in more than one file as
- * `identity-without-owner`, is the scan that reads across files instead, and this module is the
+ * `no-unowned-identity`, is the scan that reads across files instead, and this module is the
  * owner it asks for.
  *
  * Two names here are bare, with no half in front of them, because their readers join them onto a

@@ -1,7 +1,7 @@
 # Which rules fix, and which only report
 
-Thirty-eight rules are registered: twenty-eight `ana` and ten `anti-slop`, every one of them
-`error`. **Ten carry a fixer. Twenty-eight report and leave the repair to the author.**
+Every `ana` and `anti-slop` rule is registered at `error`. **Ten carry a fixer. The rest report
+and leave the repair to the author.**
 
 That split is not an accident of effort, and it is not a backlog. This file says what a fixer has
 to be true of before it ships, which rules pass that test, and which ones sit right on the edge and
@@ -38,7 +38,6 @@ All four, not three.
 
 | rule | the edit | why it is a fact |
 | --- | --- | --- |
-| `declarations-before-the-first-function` | moves type, interface and const declarations above the first function | order, not content; the declaration text is untouched |
 | `no-hand-rolled-error-render` | routes a caught value through `errorMessage` / `asError` | those two own the decision already |
 | `no-renaming-temporary` | substitutes the expression at the one read | a const read once and only renaming is the expression |
 | `no-repeated-string-literal` | names the repeat once, **in test files only** | see below; the source half is deliberately refused |
@@ -47,6 +46,7 @@ All four, not three.
 | `prefer-key-if-defined` | a run of `if (v !== undefined) o.k = v;` below `const o = {…}` becomes `...keyIfDefined("k", v)` inside the literal | `src/meta/optional-key.ts` already owns the fold; the value is a pure read, so moving it into the literal moves no evaluation |
 | `prefer-subpath-import` | `../../../../src/x.ts` becomes `#src/x.ts` | the alias is read off the nearest `package.json`, so it names the same file and a key it does not map is never written |
 | `require-captured-json-runtime` | imports `capturedJsonParse` and calls it | one owner, one name |
+| `require-declarations-first` | moves type, interface and const declarations above the first function | order, not content; the declaration text is untouched |
 | `require-meta-runtime-import` | moves a `node:` import onto the `src/meta` module that wraps it | a table of seven builtins with exactly one wrapper each; anything ambiguous is absent from it |
 
 `no-repeated-string-literal` fixes half of its own findings on purpose. In a test file the local
@@ -67,13 +67,13 @@ writes one of these is reversing a decision, and should say so.
 | `no-conditional-empty-object-spread` | emit the field as `null` | absent or present-and-null is the contract, and the spread is where that decision was avoided |
 | `no-alias-restating-return` | write the alias's body as the annotation and delete the alias | not written yet rather than refused; the inline edit keeps the type, and no site has asked for it |
 
-## The rest: twenty-three where the rule does not hold the repair
+## The rest: where the rule does not hold the repair
 
 In each of these the missing piece is information the rule has no access to, and every one says
 so in its own doc comment: `test/oxlint-rule-contract.test.ts` refuses a rule that neither declares
 `fixable` nor writes the words.
 
-- **The repair is a type** (8): `unproven-unknown-parameter`, `no-unknown-returns`,
+- **The repair is a type** (8): `no-unproven-unknown-parameter`, `no-unknown-returns`,
   `no-unknown-type-aliases`, `no-unsafe-dictionary-type`, `no-known-value-widening`,
   `no-widen-then-assert`, `no-chained-type-assertions`, `no-runtime-typeof`. The `unknown` or the widening is exactly the work someone avoided; writing
   it is the finding. A plugin rule does not read the checker.
@@ -103,6 +103,18 @@ the same guessed interval, and the rule would have stopped asking about it.
 
 A report with no fixer is a working outcome and the majority outcome: the author is told exactly
 what is wrong and makes the call.
+
+## The implicit-state rules: the repair is an owner
+
+`implicit-state` (`no-coupled-flags`, `no-marker-file-state`, `no-age-based-lock`)
+reports and never fixes, and each rule says so in its head comment. Every finding asks for an
+owner of a state that has none: the union the flags stand for, the record of a process's phase,
+the holder of a lock. Which states exist and where their owner lives is a design the rule cannot
+read off the syntax, so no edit is correct by construction (condition 1 fails at once).
+
+`implicit-state-opinionated` (`max-boolean-fields`, `prefer-state-union`, `no-state-in-names`) reports and never
+fixes for the same reason, and more plainly: its findings are stances a codebase may not hold.
+Which record field should carry a fact parsed from a name is a decision about the program's design.
 
 ## A fixer's finding has no answer
 

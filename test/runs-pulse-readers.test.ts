@@ -7,6 +7,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -15,7 +16,7 @@ import {
 } from "../src/meta/filesystem.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
-import { tmpdir } from "../src/meta/os.ts";
+import { hostname, tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { capturedExecPath, capturedSpawn } from "../src/meta/process.ts";
 import { type CommandWall, solveDirs, walledBase } from "../src/tools/command.ts";
@@ -31,6 +32,7 @@ import {
   notRead,
   passRunning,
   pastMilestone,
+  pruneObservers,
   readersSaid,
   resultOf,
   room,
@@ -356,7 +358,21 @@ describe("what a pass costs a host", () => {
     expect(passRunning(store)).toBe(false);
   }, 60_000);
 
-  it("lets one pass hold a host, and frees the lock of one that died", async () => {
+  it("waits for a live pass of an older tree, which holds its lock as a file naming its pid", async () => {
+    const store = join(scratch(), "store");
+    mkdirSync(store);
+    writeFileSync(join(store, "pass.lock"), String(process.pid));
+    expect(passRunning(store)).toBe(true);
+    expect(takeLock(store)).toBe(false);
+    const gone = capturedSpawn(["true"]);
+    await gone.exited;
+    writeFileSync(join(store, "pass.lock"), String(gone.pid));
+    expect(passRunning(store)).toBe(false);
+    expect(takeLock(store)).toBe(true);
+    dropLock(store);
+  });
+
+  it("lets one pass hold a host however long it reads, and frees the lock of one that died", async () => {
     const store = join(scratch(), "store");
     expect(takeLock(store)).toBe(true);
     expect(takeLock(store)).toBe(false);
@@ -365,12 +381,13 @@ describe("what a pass costs a host", () => {
     expect(passRunning(store)).toBe(false);
     const gone = capturedSpawn(["true"]);
     await gone.exited;
-    writeFileSync(join(store, "pass.lock"), String(gone.pid));
+    writeFileSync(
+      join(store, "pass.lock"),
+      JSON.stringify({ pid: gone.pid, host: hostname(), at: Date.now() }),
+    );
     expect(passRunning(store)).toBe(false);
     expect(takeLock(store)).toBe(true);
     dropLock(store);
-    writeFileSync(join(store, "pass.lock"), String(process.pid));
-    expect(passRunning(store, Date.now() + 120_000)).toBe(false);
   });
 
   /** A tree whose `tools/wri/pass.ts` stands in for the real one, recording each start. */
@@ -507,7 +524,7 @@ describe("a look that was cut", () => {
     event("comparison.reported", { reading: "no-step" });
     const before = readFileSync(state, "utf8");
     // A running pass holds the look in its wait, where the hook's kill finds it.
-    writeFileSync(join(store, "pass.lock"), String(process.pid));
+    expect(takeLock(store)).toBe(true);
     const cut = capturedSpawn(
       [capturedExecPath, join(import.meta.dir, "..", CLI), "pulse", "--state", state, "the-run"],
       {
@@ -587,6 +604,50 @@ describe("a look that was cut", () => {
     const hand = look("--no-readers", "--here", "--state", ".ana/pulse/hand.json", "the-run");
     expect(hand.out).not.toContain("ack ");
     expect(linesOf(join(made.main, ".ana", "pulse", "hand.json"), log)).toBe(3);
+  });
+
+  it("drops a peer's pending answer that a kill cut part way, and says its lines again", () => {
+    const { made, look } = host();
+    const state = join(made.main, ".ana", "pulse", "observer.json");
+    mkdirSync(dirname(state), { recursive: true });
+    writeFileSync(`${state}.pending`, '{"memory":{"logs":');
+    const here = ["--no-readers", "--here", "--state", ".ana/pulse/observer.json", "the-run"];
+    const after = look(...here, "--ack", "none");
+    expect(after.code).toBe(0);
+    expect(after.out).toContain("the-run");
+    expect(existsSync(state)).toBe(false);
+  });
+
+  it("keeps the state whole while several looks remember it at once", async () => {
+    const state = join(scratch(), "runs-pulse.json");
+    const pulse = JSON.stringify(join(import.meta.dir, "..", "tools", "runs", "pulse-readers.ts"));
+    const writers = Array.from({ length: 4 }, (_, one) =>
+      capturedSpawn(
+        [
+          capturedExecPath,
+          "-e",
+          `import { remember } from ${pulse}; const text = JSON.stringify({ writer: ${String(one)}, pad: "x".repeat(200_000) }); for (let i = 0; i < 100; i++) remember(${JSON.stringify(state)}, text);`,
+        ],
+        { stdout: "ignore", stderr: "ignore" },
+      ),
+    );
+    expect(await Promise.all(writers.map(async (one) => await one.exited))).toEqual([0, 0, 0, 0]);
+    expect(parseJsonAs<{ pad: string }>(readFileSync(state, "utf8")).pad).toHaveLength(200_000);
+  }, 60_000);
+
+  it("drops a gone observer's files, and the half-written ones of a dead writer at any age", async () => {
+    const folder = scratch();
+    const dead = capturedSpawn(["true"]);
+    await dead.exited;
+    const live = String(process.pid);
+    const cut = [`gone.json.pending.${String(dead.pid)}.tmp`, `gone.json.${String(dead.pid)}.tmp`];
+    for (const file of ["gone.json", ...cut, `slow.json.${live}.tmp`, "notes.txt"]) {
+      writeFileSync(join(folder, file), "{}");
+    }
+    pruneObservers(join(folder, "observer.json"));
+    expect(readdirSync(folder).toSorted()).toEqual(["gone.json", "notes.txt", `slow.json.${live}.tmp`]);
+    pruneObservers(join(folder, "observer.json"), Date.now() + 8 * 24 * 60 * 60_000);
+    expect(readdirSync(folder).toSorted()).toEqual(["notes.txt", `slow.json.${live}.tmp`]);
   });
 
   it("returns each host's token, hides it, and keeps it for a host that gave no answer", () => {

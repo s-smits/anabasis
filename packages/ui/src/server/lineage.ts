@@ -29,9 +29,9 @@ interface Kept {
   readonly session: string | null;
   readonly at: string | null;
   readonly index: number;
-  readonly imported: boolean;
-  /** Frozen by its session's conversation for a comparison, before the session ended. */
-  readonly frozen: boolean;
+  /** Left by its session's end, frozen by its conversation for a comparison before the session
+   *  ended, or imported by the operator. */
+  readonly by: "session" | "frozen" | "imported";
 }
 
 /** Every promotion, oldest first: a divider between the bars. */
@@ -75,23 +75,20 @@ function keptIn(log: Log): Kept[] {
             session: move.id,
             at: move.endedAt,
             index: endOf(log, move),
-            imported: false,
-            frozen: false,
+            by: "session",
           },
         ]
       : [],
   );
   const imported = events.flatMap(({ kind, data, at }, index): Kept[] =>
     kind === "harness.imported" && isString(data.harness)
-      ? [{ digest: data.harness, parent: null, session: null, at, index, imported: true, frozen: false }]
+      ? [{ digest: data.harness, parent: null, session: null, at, index, by: "imported" }]
       : [],
   );
   const frozen = events.flatMap(({ kind, data, at }, index): Kept[] => {
     if (kind !== "build.checkpoint" || !isString(data.harness) || !isString(data.session)) return [];
     const parent = sessions.find((move) => move.id === data.session)?.parent ?? null;
-    return [
-      { digest: data.harness, parent, session: data.session, at, index, imported: false, frozen: true },
-    ];
+    return [{ digest: data.harness, parent, session: data.session, at, index, by: "frozen" }];
   });
   const first = new Map<string, Kept>();
   for (const each of [...built, ...frozen, ...imported].toSorted((one, other) => one.index - other.index)) {
@@ -112,7 +109,7 @@ export const harnessesIn = once((log): HarnessCard[] => {
       (solve) => practice.has(solve.id) && solve.under.harness === digest && passed(solve) !== null,
     );
     const finished =
-      kept?.session == null || kept.frozen
+      kept?.session == null || kept.by === "frozen"
         ? undefined
         : log.events.findLast(({ kind, data }) => kind === "build.finished" && data.session === kept.session)
             ?.data;
@@ -121,10 +118,9 @@ export const harnessesIn = once((log): HarnessCard[] => {
       parent: kept?.parent ?? null,
       session: kept?.session ?? null,
       at: kept?.at ?? null,
-      starter: kept === null,
+      by: kept === null ? "starter" : kept.by,
       reference: digest === null ? campaign.reference === null : digest === reference,
       latest: digest !== null && digest === campaign.latest,
-      imported: kept?.imported === true,
       broken: isString(finished?.broken) ? finished.broken : null,
       practice: {
         passed: practised.filter((solve) => passed(solve) === true).length,

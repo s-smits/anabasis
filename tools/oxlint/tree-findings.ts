@@ -29,6 +29,7 @@ import { copiedBlocks } from "./tree-copied-block.ts";
 import { crossedArguments } from "./tree-crossed-argument.ts";
 import { factsWithoutOwner } from "./tree-fact.ts";
 import { identitiesWithoutOwner } from "./tree-identity.ts";
+import { implicitStateFindings } from "./tree-implicit-state.ts";
 import { overwrittenKeys } from "./tree-overwritten-key.ts";
 import { envExamples, staleReferences } from "./tree-stale-reference.ts";
 import {
@@ -40,23 +41,8 @@ import {
   TREE_RULE_PREFIX,
 } from "./not-slop-ledger.ts";
 
-type TreeFindingKind =
-  | "single-reader-export"
-  | "test-only-export"
-  | "copied-block"
-  | "unread-field"
-  | "rule-without-fixture"
-  | "identity-without-owner"
-  | "fact-without-owner"
-  | "superseded-schema-tag"
-  | "compatibility-path"
-  | "orphan-module"
-  | "test-only-module"
-  | "unread-forward"
-  | "overwritten-key"
-  | "crossed-argument"
-  | "stale-reference"
-  | "filesystem-import-budget";
+/** A scan's kind, declared once as a key of `TREE_FINDING_ARGUMENTS`. */
+type TreeFindingKind = keyof typeof TREE_FINDING_ARGUMENTS;
 
 export interface TreeFinding {
   kind: TreeFindingKind;
@@ -89,52 +75,62 @@ interface Tree {
  * about the delta (a file keeps its count, and a change adds at most one), so its rows never reach
  * zero and are counted apart.
  */
-export const TREE_REGISTER_KINDS: readonly TreeFindingKind[] = ["filesystem-import-budget"];
+export const TREE_REGISTER_KINDS: readonly TreeFindingKind[] = ["max-filesystem-imports"];
 
-/** Why each shape is a finding, printed once above its sites. */
-export const TREE_FINDING_ARGUMENTS: Readonly<Record<TreeFindingKind, string>> = {
-  "single-reader-export":
+/** Why each shape is a finding, printed once above its sites, under the kind that names it. */
+export const TREE_FINDING_ARGUMENTS = {
+  "no-single-reader-export":
     "A file of 10 to 60 lines whose one export, a function or class, is read by one other file in the same directory with room to hold it. Answering yes moves the code and deletes a file: 86 of 138 net-negative /simplify commits moved a helper into its single caller. A type or a constant stays beside the value it describes, and a reader near its size limit cannot take it.",
-  "test-only-export":
+  "no-test-only-export":
     "An exported function or class that only a test reads and that its own module never calls. Nothing in the product runs it, so its test proves nothing about a live path. Delete both, or find the caller that was meant to exist; where it wraps a function the product does call, point the test at that function. A unit the module itself calls, exported so a test can name it, is not counted.",
-  "copied-block":
+  "no-duplicate-block":
     "Two or more consecutive statements written out at two or more places, once each function's own local names and every literal are abstracted away. Give the block one owner both places call. Tests, vendored code and generated files are not read, and a copy whose places say different things (five word-bearing literals differ, or mostly data whose literals differ) is the content's structure rather than a copy of work.",
-  "unread-field":
+  "no-unused-field":
     "A field declared in an interface or object type whose name no file spells again, comments included. Nothing reads or writes it: delete it, with whatever handled it. Names under seven characters are words and are skipped.",
-  "rule-without-fixture":
-    "A lint rule a plugin registers that no file under test/ names. A rule that has stopped reporting and a clean tree read the same, so each rule keeps a fixture. Vendored plugins are read too, because their rules fail this repository's strict lint.",
-  "identity-without-owner":
+  "no-unowned-identity":
     'One name this repository owns (a bundle path, an evidence file, a schema tag) spelled as a literal in two or more files with no constant naming it. A typo in one copy reaches a reader as a missing file. Import the owner the detail names, or give the name one. Literals the compiler already checks (a type, a `satisfies` table, an `as const` list a type is read from), prose inside another string or a template, import specifiers and short words are skipped; `join(dir, "a", "b.ts")` reads as `a/b.ts`.',
-  "fact-without-owner":
+  "no-unowned-fact":
     "One fact about a value, a field tested against a literal and read with another field of the same value (`checker.kind === \"pass\"` with `checker.objective`), written out as an expression in three or more production files. Give it one function in the module that owns the value's type and call it at every place; where the detail names a function that already returns it, call that one (rule 12). Local names, `?.`, `!`, `as`, either equality and a comparison with `undefined` or `null` read alike. A value's own `id` and a comparison with a value of the code's own are no part of a fact, and tests, vendored and generated files are not read.",
-  "superseded-schema-tag":
+  "no-superseded-schema-tag":
     "A `name/vN` tag spelled in a file while another file spells a later version of it. One version is written, so the reader of the older one is a compatibility path: drop it.",
-  "compatibility-path":
+  "no-compatibility-path":
     "A name carrying `legacy` in authored, non-test code: a reader or branch kept for what an older version left behind. This repository keeps none (HABITS 12.3): a reader that meets an older version refuses it.",
-  "orphan-module":
+  "no-unused-module":
     "A module no file imports, spawns or names: not an import, a package script, a hook, a workflow or a SKILL.md line. Delete it, or name it where it runs.",
-  "test-only-module":
+  "no-test-only-module":
     "A module only tests import or name. The product never reaches it, so its tests prove a path nobody takes. Delete it with its tests, or import it where the product needs it.",
-  "unread-forward":
+  "no-unused-reexport":
     'A re-export (`export { a } from "./owner.ts"`, or `export { a }` of an imported name) that no file imports from the forwarding module. Every caller reads the owner, so the forward is a second door kept in step for nobody. Delete it. A package `index` and a `node:` forward are skipped.',
-  "overwritten-key":
+  "no-overwritten-key":
     "A key a caller passes in the object it hands a function that spreads that parameter and then sets the same key itself, so the caller's value is never read. Delete the caller's key, or where the caller meant something the function ignores, make the function honour it. A key set before the spread, inside a conditional spread or read from the parameter anywhere in the function stays the caller's, and a parameter the function passes on whole is not read.",
-  "crossed-argument":
+  "no-transposed-argument":
     "A call into another file whose arguments are each named for another position's parameter of the callee, two swapped or three or more rotated (`copyTree(destinationPath, sourcePath)` against `copyTree(source, destination)`). The compiler accepts it where the types are assignable among them, and `ana/no-transposed-argument` sees only calls within one file. Fix whichever side is wrong: the arguments' order, a misnamed binding, or the declaration. A name matches a parameter when its words begin or end with the parameter's; one argument out of place is a coincidence and is not counted.",
-  "stale-reference":
+  "no-stale-reference":
     "A backticked repository path in Markdown or a TypeScript comment that names no file or directory, or an `ANA_*` setting documented in a `.env*.example`, AGENTS.md or a SKILL.md that no code or script file spells. A reader who follows it finds nothing. Point a live description at where the thing lives now, or delete the sentence; in a record of what held at a time, cite the file at the last commit that held it, as `<sha>:path`. Not read: vendored trees and the documents of v1's record (docs/transfer.md, docs/v1.md, studies/). Not counted: a commit-qualified path, a placeholder or glob, a one-letter example name, a path Git ignores, and one that exists from a directory above the document.",
-  "filesystem-import-budget":
+  "no-scattered-state-literals":
+    'A declared set of states (a union of string literals, an `as const` list, a string `enum`, a `Set`, or the tags of a discriminated union) whose values two or more other files group by hand: `s === "done" || s === "failed"`, an `includes` on a literal list, or `case` labels falling through in a switch that does not cover the set. Each grouping names a derived state ("ended") that only its reader knows, so the readers\' sets drift when a state is added. Give each grouping a name in the owner, a predicate or a table, and call it. An exhaustive switch maps every state and is not counted; a union typing a signature owns nothing.',
+  "no-unowned-state-literals":
+    'Opinionated: every status literal comes from a declared owner. The same word-like literals grouped by hand (`status === "open" || status === "closed"`) in two or more files, where no type, `as const`, `enum` or `Set` anywhere in the tree spells them. Nobody owns those states, so a typo in one copy is a state no other file reads. Declare the set once, with its grouping beside it, and import both. Contested where the literals are another program\'s protocol (`process.platform`, an error `code`).',
+  "no-scattered-enum-literals":
+    "A set the two literal kinds above would report, owned or not, of which no literal is ever written where a value changes: no assignment, setter or update spells one into a place typed by the set or named as its readers' subject (`tools/oxlint/tree-state-role.ts`). It names a kind, such as a file extension, an HTTP method or a direction, rather than a state. Grouping it by hand drifts all the same, so name each grouping beside the set where one exists; it is reported apart so that the two can be scored apart.",
+  "no-repeated-external-read":
+    "One function, or a module's top level, makes the same external read twice on one call path: the same command run, file read, directory listed or URL fetched, keyed by what it reads, with wrappers followed across files and their parameters substituted. Between the two reads the world may change, so the two answers can disagree and the code then holds two states of one fact. Read once where the paths join and pass the answer on. Branches count by the larger arm, a loop over items counts once per item, and a polling loop, a deferred callback and a memoising wrapper are not counted.",
+  "no-duplicate-derivation":
+    'A fact an exported function already returns (`isRunning(run, procs)` returns `writersOf(run, procs).length > 0 || keepersOf(run.name).length > 0`), derived again by hand in another file. The copy drifts from the owner the day the owner learns a new case. Call the owner. Two spellings are one fact when they read alike once locals are renamed, operands sorted and negations pushed through, and their calls take the same fields; one-field tests (`kind === "pass"`), groupings of one subject\'s literals and defaults (`??`) are not counted, and a fact nobody owns is not reported. A fold spelled again counts too: a `filter`, `find` or `flatMap` for one value of a discriminant (`kind === "referee.finding"`) that reads every field an exported function\'s scan for that value reads and returns.',
+  "require-exhaustive-mapping":
+    "A lookup `Map` read with a computed key (`EXAMINED.get(ended)`) that maps most of a declared set and leaves the rest out, so a value it lacks reads as nothing, or whatever default the reader supplies, and nobody is told; or one that maps the whole set while no type holds it there, so a value added later goes the same way. Say which set it maps: build it from `Object.entries({ ... } satisfies Record<Ending, string>)`, and the compiler names every value it lacks. An object literal read with a typed key is held already, a table changed through `set` is an accumulator, and one that maps fewer than half its set is a selection; none of them is counted.",
+  "max-filesystem-imports":
     "How many names a file imports from src/meta/filesystem.ts, above six. A register: the count stands, and a change adds at most one.",
-};
+} as const;
 
 /**
  * One pair for each scan, shown once per kind after its sites (`rule-examples.ts` says why). A
  * scan reads the whole tree, so a pair names the files it spans in a comment. A register keeps none.
  */
 export const TREE_FINDING_EXAMPLES: Readonly<
-  Record<Exclude<TreeFindingKind, "filesystem-import-budget">, readonly RuleExample[]>
+  Record<Exclude<TreeFindingKind, "max-filesystem-imports">, readonly RuleExample[]>
 > = {
-  "single-reader-export": [
+  "no-single-reader-export": [
     {
       before:
         "// slots.ts: its one export, read only by plan.ts beside it\nexport function slotOf(row: Row): Slot {\n  return row.slot ?? DEFAULT_SLOT;\n}",
@@ -142,7 +138,7 @@ export const TREE_FINDING_EXAMPLES: Readonly<
         "// plan.ts holds it, and slots.ts is deleted\nfunction slotOf(row: Row): Slot {\n  return row.slot ?? DEFAULT_SLOT;\n}",
     },
   ],
-  "test-only-export": [
+  "no-test-only-export": [
     {
       before:
         "// read by test/plan.test.ts alone; plan.ts never calls it\nexport function rankOf(row: Row): number {\n  return row.rank;\n}",
@@ -150,7 +146,7 @@ export const TREE_FINDING_EXAMPLES: Readonly<
         "// deleted with its test, or called where the product needs it\nexport function ranked(rows: readonly Row[]): number[] {\n  return rows.map((row) => row.rank);\n}",
     },
   ],
-  "copied-block": [
+  "no-duplicate-block": [
     {
       before:
         '// the same three statements in a.ts and in b.ts\nconst text = await Bun.file(path).text();\nconst rows = text.split("\\n").filter(Boolean);\nreturn rows.map((row) => parseRow(row));',
@@ -158,22 +154,14 @@ export const TREE_FINDING_EXAMPLES: Readonly<
         '// one owner both files call\nexport async function rowsAt(path: string): Promise<Row[]> {\n  const text = await Bun.file(path).text();\n  return text.split("\\n").filter(Boolean).map(parseRow);\n}',
     },
   ],
-  "unread-field": [
+  "no-unused-field": [
     {
       before:
         "interface Slot {\n  readonly id: string;\n  readonly rankHint: number; // named nowhere else in the tree\n}",
       after: "interface Slot {\n  readonly id: string;\n}",
     },
   ],
-  "rule-without-fixture": [
-    {
-      before:
-        '// no file under test/ names the rule this registers\nexport const rules = { "no-hand-rolled-sleep": noHandRolledSleepRule };',
-      after:
-        '// test/no-hand-rolled-sleep.test.ts\nconst found = await reportedLines("ana", "no-hand-rolled-sleep", SLEEPS);\nexpect(found).toStrictEqual(expectedLines(SLEEPS));',
-    },
-  ],
-  "identity-without-owner": [
+  "no-unowned-identity": [
     {
       before:
         '// tools/runs/view.ts, and the same literal in tools/runs/zip.ts\nconst verdicts = join(folder, "verdicts.jsonl");',
@@ -181,7 +169,7 @@ export const TREE_FINDING_EXAMPLES: Readonly<
         '// both import the owner\nimport { VERDICTS_FILE } from "../../src/kernel/log.ts";\nconst verdicts = join(folder, VERDICTS_FILE);',
     },
   ],
-  "fact-without-owner": [
+  "no-unowned-fact": [
     {
       before:
         '// the same test and read in compare.ts, tools.ts and gate-era.ts\nconst measure = checker?.kind === "pass" ? (checker.objective ?? null) : null;',
@@ -189,14 +177,14 @@ export const TREE_FINDING_EXAMPLES: Readonly<
         '// verify.ts, which declares Verdict, owns it, and each place calls it\nexport function objectiveOf(verdict: Verdict | null | undefined): number | null {\n  return verdict?.kind === "pass" ? (verdict.objective ?? null) : null;\n}',
     },
   ],
-  "superseded-schema-tag": [
+  "no-superseded-schema-tag": [
     {
       before:
         '// another file writes trace-row/v2\nconst current = row.schema === "trace-row/v1" || row.schema === TRACE_ROW;',
       after: "// nothing writes v1 any more, so nothing reads it\nconst current = row.schema === TRACE_ROW;",
     },
   ],
-  "compatibility-path": [
+  "no-compatibility-path": [
     {
       // `\u006c` spells the l of legacy, so the scan does not report this file for its own example.
       before:
@@ -204,14 +192,14 @@ export const TREE_FINDING_EXAMPLES: Readonly<
       after: "// one version is written, so one is read\nexport const read = rows.map(parseRow);",
     },
   ],
-  "orphan-module": [
+  "no-unused-module": [
     {
       before:
         "// tools/old/replay.ts: no import, script, hook or SKILL.md line names it\nexport async function replay(): Promise<void> {\n  await run(REPLAY);\n}",
       after: '// deleted, or named where it runs, in package.json\n// "replay": "bun tools/old/replay.ts"',
     },
   ],
-  "test-only-module": [
+  "no-test-only-module": [
     {
       before:
         "// src/solve/degeneracy.ts: two tests import it, and no solve path does\nexport function degenerate(schema: Schema): boolean {\n  return schema.fields.length === 0;\n}",
@@ -219,7 +207,7 @@ export const TREE_FINDING_EXAMPLES: Readonly<
         '// deleted with its tests, or imported where a solve reads it\nimport { degenerate } from "./degeneracy.ts";\nif (degenerate(schema)) throw new Error("the schema names no field");',
     },
   ],
-  "stale-reference": [
+  "no-stale-reference": [
     {
       before: "// Measured on `src/run/admission.ts`, which v2 did not copy.\nexport const FLOOR = 8;",
       after: "// Measured on `5bc9988:src/run/admission.ts`, which v2 did not copy.\nexport const FLOOR = 8;",
@@ -231,14 +219,14 @@ export const TREE_FINDING_EXAMPLES: Readonly<
         '// the example documents what code reads, and the line is deleted\nexport const SETTINGS = ["\u0041NA_HOSTS"];',
     },
   ],
-  "unread-forward": [
+  "no-unused-reexport": [
     {
       before:
         '// reports.ts forwards a name every caller imports from room.ts itself\nexport { roomOf } from "./room.ts";',
       after: '// the forward is deleted; callers keep their own import\nimport { roomOf } from "./room.ts";',
     },
   ],
-  "crossed-argument": [
+  "no-transposed-argument": [
     {
       before:
         '// rounds.ts: export function roundDir(campaign: string, round: string): string\nimport { roundDir } from "./rounds.ts";\nexport const trail = (campaign: string, round: string) => join(roundDir(round, campaign), "trail.jsonl");',
@@ -246,7 +234,54 @@ export const TREE_FINDING_EXAMPLES: Readonly<
         '// the arguments in the order roundDir declares\nimport { roundDir } from "./rounds.ts";\nexport const trail = (campaign: string, round: string) => join(roundDir(campaign, round), "trail.jsonl");',
     },
   ],
-  "overwritten-key": [
+  "no-scattered-state-literals": [
+    {
+      before:
+        '// job.ts: export type JobState = "queued" | "running" | "done" | "failed";\n// a.ts and b.ts each group two of them by hand\nconst ended = job.state === "done" || job.state === "failed";',
+      after:
+        '// job.ts owns the grouping, and each reader calls it\nimport { ended } from "./job.ts";\nexport const finished = jobs.filter(ended);',
+    },
+  ],
+  "no-unowned-state-literals": [
+    {
+      before:
+        '// issues.ts and board.ts each spell the states, and nothing declares them\nconst done = issue.status === "closed" || issue.status === "merged";',
+      after:
+        '// issue.ts declares the states and owns the grouping\nexport type IssueStatus = "open" | "closed" | "merged";\nexport const isDone = (status: IssueStatus): boolean => status !== "open";',
+    },
+  ],
+  "no-scattered-enum-literals": [
+    {
+      before:
+        '// a.ts and b.ts each spell which methods read nothing\nif (request.method === "GET" || request.method === "HEAD") return serve(request);',
+      after:
+        '// http.ts names the grouping once, and each reader calls it\nimport { isSafeMethod } from "./http.ts";\nif (isSafeMethod(request.method)) return serve(request);',
+    },
+  ],
+  "no-repeated-external-read": [
+    {
+      before:
+        '// lock.ts: holder() runs `ps -o pid` and so does alive(), both on one path\nif (alive(pid) && holder(pid) !== "") release(pid);',
+      after:
+        '// the table is read once where the paths join and passed on\nconst table = processTable();\nif (alive(table, pid) && holder(table, pid) !== "") release(pid);',
+    },
+  ],
+  "no-duplicate-derivation": [
+    {
+      before:
+        "// retire.ts, while runs.ts exports isRunning(run, procs), which returns this\nif (writersOf(run, listProcs()).length > 0 || keepersOf(run.name).length > 0) return;",
+      after: "// retire.ts calls the owner\nif (isRunning(run, listProcs())) return;",
+    },
+  ],
+  "require-exhaustive-mapping": [
+    {
+      before:
+        '// labels.ts, while job.ts exports state: "queued" | "running" | "done" | "failed" | "lost"\nconst SAID = new Map([["queued", "waits"], ["running", "runs"], ["done", "ended"], ["failed", "failed"]]);\nexport const said = (job: Job) => SAID.get(job.state);',
+      after:
+        '// the compiler holds every state\nconst SAID = new Map(\n  Object.entries({ queued: "waits", running: "runs", done: "ended", failed: "failed", lost: "was lost" } satisfies Record<Job["state"], string>),\n);\nexport const said = (job: Job) => SAID.get(job.state);',
+    },
+  ],
+  "no-overwritten-key": [
     {
       before:
         '// answer.ts: tool() returns defineTool({ ...definition, executionMode: "sequential" })\nexport const listTool = tool({ name: "list", executionMode: "sequential", execute });',
@@ -256,7 +291,7 @@ export const TREE_FINDING_EXAMPLES: Readonly<
   ],
 };
 
-/** The files whose calls `crossed-argument` reads: every TypeScript file, tests included, since a
+/** The files whose calls `tree/no-transposed-argument` reads: every TypeScript file, tests included, since a
  *  test calls the product as often as the product calls itself. */
 const CALLERS = /\.(?:ts|tsx|mts)$/u;
 
@@ -304,7 +339,6 @@ const DECLARATION_HEAD = /^(?:export )?(?:declare )?(?:interface|type) [A-Za-z_$
 const DECLARED_FIELD = /^\s+(?:readonly )?([A-Za-z_$][\w$]*)\??:/u;
 const FIELD_LENGTH_FLOOR = 7;
 
-const REGISTERED_RULE = /^[\t ]*"([a-z][a-z0-9-]*)":\s*[A-Za-z]/gmu;
 const FILESYSTEM_IMPORT = /import\s*\{([^}]*)\}\s*from\s*"[^"]*meta\/filesystem\.ts"/u;
 const FILESYSTEM_BUDGET = 6;
 const SCHEMA_TAG = /["']([a-z][a-z0-9-]*)\/v(\d+)["']/gu;
@@ -392,10 +426,14 @@ function exportsReadOnce(tree: Tree): TreeFinding[] {
     const own = (tree.owned.get(home.path) ?? "").match(IDENTIFIER)?.filter((word) => word === name).length;
     if ((own ?? 0) > 1) continue;
     if (isTest(reader)) {
-      rows.push({ kind: "test-only-export", ...home, detail: `\`${name}\` is exported only for ${reader}` });
+      rows.push({
+        kind: "no-test-only-export",
+        ...home,
+        detail: `\`${name}\` is exported only for ${reader}`,
+      });
     } else if (movesInto(home.path, reader, tree)) {
       rows.push({
-        kind: "single-reader-export",
+        kind: "no-single-reader-export",
         ...home,
         detail: `\`${name}\` is read by one file, ${reader}`,
       });
@@ -419,7 +457,7 @@ function unreadFields(tree: Tree): TreeFinding[] {
       inside = inside ? !line.startsWith("}") : DECLARATION_HEAD.test(line);
       if (name === undefined || name.length < FIELD_LENGTH_FLOOR || counts.get(name) !== 1) continue;
       rows.push({
-        kind: "unread-field",
+        kind: "no-unused-field",
         path,
         line: index + 1,
         detail: `\`${name}\` is declared and never spelled again`,
@@ -429,31 +467,13 @@ function unreadFields(tree: Tree): TreeFinding[] {
   return rows;
 }
 
-function rulesWithoutFixture(tree: Tree): TreeFinding[] {
-  const fixtures = [...tree.files]
-    .flatMap(([path, text]) => (path.startsWith("test/") ? [text] : []))
-    .join("\n");
-  const plugins = new Map([...tree.files].filter(([path]) => /^tools\/oxlint\/.*\/index\.ts$/u.test(path)));
-  return [...plugins]
-    .flatMap(([path, text]) =>
-      [...text.matchAll(REGISTERED_RULE)].map((match) => ({ path, line: lineAt(text, match.index), match })),
-    )
-    .filter(({ match: [, name = ""] }) => !fixtures.includes(name))
-    .map(({ path, line, match: [, name] }) => ({
-      kind: "rule-without-fixture",
-      path,
-      line,
-      detail: `\`${name}\` is registered and no file under test/ names it`,
-    }));
-}
-
 function filesystemBudget(tree: Tree): TreeFinding[] {
   return [...tree.owned].flatMap(([path, text]): TreeFinding[] => {
     const match = FILESYSTEM_IMPORT.exec(text);
     const names = (match?.[1] ?? "").split(",").filter((name) => name.trim() !== "").length;
     if (match === null || names <= FILESYSTEM_BUDGET) return [];
     const detail = `${names} names imported, over the budget of ${FILESYSTEM_BUDGET}`;
-    return [{ kind: "filesystem-import-budget", path, line: lineAt(text, match.index), detail }];
+    return [{ kind: "max-filesystem-imports", path, line: lineAt(text, match.index), detail }];
   });
 }
 
@@ -485,7 +505,7 @@ function supersededSchemaTags(code: ReadonlyMap<string, string>): TreeFinding[] 
     const versions = [...new Set([first, ...rest].map((tag) => tag.version))].toSorted((a, b) => a - b);
     const spelled = versions.map((version) => `\`${top.name}/v${version}\``).join(", ");
     const detail = `${spelled} still spelled here after \`${top.name}/v${top.version}\` in ${top.path}:${top.line}`;
-    return [{ kind: "superseded-schema-tag", path: first.path, line: first.line, detail }];
+    return [{ kind: "no-superseded-schema-tag", path: first.path, line: first.line, detail }];
   });
 }
 
@@ -502,7 +522,7 @@ export function compatibilityPaths(code: ReadonlyMap<string, string>): TreeFindi
   return [...Map.groupBy(spelled, (one) => one.path)].map(([path, names]): TreeFinding => {
     const list = [...new Set(names.map(({ match: [name] }) => `\`${name}\``))].join(", ");
     return {
-      kind: "compatibility-path",
+      kind: "no-compatibility-path",
       path,
       line: names[0]?.line ?? 0,
       detail: `names a legacy path: ${list}`,
@@ -555,10 +575,10 @@ export function unreadModules(
   return [...readers].flatMap(([path, { production, tests }]): TreeFinding[] => {
     if (production > 0) return [];
     if (tests === 0) {
-      return [{ kind: "orphan-module", path, line: 0, detail: "no file imports, spawns or names it" }];
+      return [{ kind: "no-unused-module", path, line: 0, detail: "no file imports, spawns or names it" }];
     }
     const detail = `read by ${tests === 1 ? "one test file" : `${tests} test files`} and nothing else`;
-    return [{ kind: "test-only-module", path, line: 0, detail }];
+    return [{ kind: "no-test-only-module", path, line: 0, detail }];
   });
 }
 
@@ -602,7 +622,7 @@ function unreadForwards(tree: Tree): TreeFinding[] {
       const line = lineAt(text, match.index);
       const [verb, them] = unread.length === 1 ? ["is", "it"] : ["are", "them"];
       rows.push({
-        kind: "unread-forward",
+        kind: "no-unused-reexport",
         path,
         line,
         detail: `${unread.join(", ")} ${verb} re-exported here and no file imports ${them} from this module`,
@@ -645,7 +665,6 @@ export function treeSites(): TreeSite[] {
     ...exportsReadOnce(tree),
     ...copiedBlocks(owned),
     ...unreadFields(tree),
-    ...rulesWithoutFixture(tree),
     ...identitiesWithoutOwner(owned),
     ...factsWithoutOwner(owned),
     ...supersededSchemaTags(code),
@@ -657,12 +676,10 @@ export function treeSites(): TreeSite[] {
       new Map([...files].filter(([path]) => CALLERS.test(path) && !path.startsWith("vendor/"))),
     ),
     ...staleReferences(new Map([...files, ...prose])),
+    ...implicitStateFindings(owned),
     ...filesystemBudget(tree),
   ]
-    .filter(
-      (finding) =>
-        finding.kind === "rule-without-fixture" || !UNREAD.some((root) => finding.path.startsWith(root)),
-    )
+    .filter((finding) => !UNREAD.some((root) => finding.path.startsWith(root)))
     .map((finding) => {
       const places = sitePlaces(finding, all);
       return {

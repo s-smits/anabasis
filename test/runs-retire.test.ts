@@ -151,10 +151,14 @@ describe("retiring", () => {
     campaign(main, "sim-old", 2);
     campaign(main, "sim-young", 0);
     campaign(main, "sim-filed", 2, join(archive, "sim-filed"));
-    for (const folder of ["sim-old", "sim-young"].map((name) => join(main, ".ana", "d2", name))) {
+    // A seed copies no launch receipt (`seed.ts`).
+    for (const folder of [
+      ...["sim-old", "sim-young"].map((name) => join(main, ".ana", "d2", name)),
+      join(archive, "sim-filed"),
+    ]) {
       writeFileSync(join(folder, "seed.json"), "{}");
+      rmSync(join(folder, "launch-run-1.json"));
     }
-    writeFileSync(join(archive, "sim-filed", "seed.json"), "{}");
     const gone = archiveIdle(sweep(0, true));
     expect(gone).toContain(join(main, ".ana", "d2", "sim-old", "log.jsonl"));
     expect(
@@ -166,5 +170,17 @@ describe("retiring", () => {
         join(archive, "old"),
       ].map((path) => existsSync(path)),
     ).toEqual([false, false, false, true, true]);
+  });
+
+  it("archives a seed a launch went on from, since its log holds paid moves of its own", () => {
+    campaign(main, "sim-launched", 2);
+    const folder = join(main, ".ana", "d2", "sim-launched");
+    writeFileSync(join(folder, "seed.json"), "{}");
+    writeFileSync(join(folder, "launch-run-1.json"), JSON.stringify({ at: "2026-11-01T00:00:00Z" }));
+    archiveIdle(sweep(0, true));
+    expect([existsSync(folder), existsSync(join(archive, "sim-launched", "log.jsonl"))]).toEqual([
+      false,
+      true,
+    ]);
   });
 });

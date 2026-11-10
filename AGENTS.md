@@ -99,6 +99,15 @@ Each change names the factor it moves. Recorded values live in `docs/plan.md`.
 - **A strict gate against a capable model**: a refusal guesses the comparison and can end a campaign
   with nothing compared; refuse only what makes a reading dishonest or a spend certainly wasted, and
   give the rest to the seat as a note.
+- **The objective against the habits it leaves unpaid**: once validity saturates, the objective
+  decides every promotion, so a harness learns only what the checks and the objective reward; a
+  habit no check holds, such as a section's content, is no lever until one does.
+- **An outside benchmark against fitting the query to it**: a benchmark reads transfer, never a
+  step. A query that names the benchmark's tasks or professions fits the exam to its scoring set, so
+  the query keeps the domain's own scope and the benchmark's other tasks are reported apart.
+- **A tuned query against its origin**: a query adapted from another system's prompt is bounded
+  against that origin, counted in words, rather than against its last version, so that drift does
+  not accumulate.
 
 ### Two sides and one wall
 
@@ -400,8 +409,8 @@ evaluation validity, prevents serious run failures or broadly simplifies the tre
 improvement; `I3` covers reporting, wording and convenience) and a category (`CATEGORIES`,
 `tools/runtime/land.ts`). Push only your authorised branch, with `--force-with-lease` when
 rewriting. Merging and restacking others' branches are the operator's; before `bun run land -- <top>
---merge`, three reviewer subagents read slices of the landing, and their confirmed findings go on
-the top before `--sanitize` runs again.
+--merge`, three reviewer subagents read the whole landing, each through one lens (stack-pr,
+section 9), and their confirmed findings go on the stack before `--sanitize` runs again.
 
 ### Commands that run the first time
 

@@ -5,9 +5,12 @@ import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { join } from "../src/meta/path.ts";
 import { type AlertState, alertsOf, type HostRows, onAlerts, type Row } from "../tools/runs/alerts.ts";
+import type { RunState } from "../tools/runs/state.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
 const CLI = "tools/runs/cli.ts";
+const ENDED: RunState = { kind: "ended", ending: "budget" };
+const STOPPED: RunState = { kind: "stopped" };
 const folders: string[] = [];
 afterAll(() => {
   for (const root of folders) rmSync(root, { recursive: true, force: true });
@@ -16,11 +19,8 @@ afterAll(() => {
 const row = (more: Partial<Row> = {}): Row => ({
   name: "r",
   promotions: [],
-  ending: null,
-  writer: true,
-  keeper: true,
+  state: { kind: "live", kept: true },
   owed: true,
-  quiet: false,
   lastAt: "2026-11-06T10:00:00.000Z",
   kept: [],
   ...more,
@@ -46,8 +46,7 @@ describe("the fold of one look", () => {
   it("records the present on a first look, firing on no history, and says so in one line", () => {
     const old = row({
       promotions: [read("aaaa", "g-1"), read("bbbb", "g-2")],
-      ending: "budget",
-      writer: false,
+      state: ENDED,
     });
     const { lines, next } = alertsOf(null, here(old));
     expect(lines).toHaveLength(1);
@@ -122,24 +121,24 @@ describe("the fold of one look", () => {
   it("says each gap in a live run once, and none in a run owed no keeper or one that ended", () => {
     const start = lookedAt(row());
     const gaps = [
-      [{ keeper: false }, "no keeper"],
-      [{ writer: false }, "no writer process; its keeper lives"],
-      [{ writer: false, keeper: false }, "no writer process and no keeper"],
-      [{ writer: false, keeper: false, owed: false }, "no writer process"],
+      [{ state: { kind: "live", kept: false } }, "no keeper"],
+      [{ state: { kind: "kept" } }, "no writer process; its keeper lives"],
+      [{ state: STOPPED }, "no writer process and no keeper"],
+      [{ state: STOPPED, owed: false }, "no writer process"],
     ] as const;
     for (const [state, says] of gaps) {
       const once = alertsOf(start, here(row(state)));
       expect(once.lines).toEqual([`r (here): ${says}`]);
       expect(alertsOf(once.next, here(row(state))).lines).toEqual([]);
     }
-    expect(alertsOf(start, here(row({ keeper: false, owed: false }))).lines).toEqual([]);
-    expect(alertsOf(start, here(row({ writer: false, keeper: false, ending: "budget" }))).lines).toEqual([
-      "r (here): ended budget",
-    ]);
+    expect(alertsOf(start, here(row({ state: { kind: "live", kept: false }, owed: false }))).lines).toEqual(
+      [],
+    );
+    expect(alertsOf(start, here(row({ state: ENDED }))).lines).toEqual(["r (here): ended budget"]);
   });
 
   it("says a stall once, and again once the run has moved and stalled afresh", () => {
-    const stalled = row({ quiet: true });
+    const stalled = row({ state: { kind: "quiet", kept: true, since: 0 } });
     const first = alertsOf(lookedAt(row()), here(stalled));
     expect(first.lines).toHaveLength(1);
     expect(first.lines[0]).toContain("no new event since 2026-11-06T10:00:00.000Z");
@@ -179,15 +178,13 @@ describe("the fold of one look", () => {
     expect(gone.lines).toEqual(["r (here): left the registry with no ending seen"]);
     expect(gone.next.runs).toEqual({});
     expect(alertsOf(gone.next, here()).lines).toEqual([]);
-    const ended = alertsOf(lookedAt(row({ ending: "budget", writer: false })), here());
+    const ended = alertsOf(lookedAt(row({ state: ENDED })), here());
     expect(ended.lines).toEqual([]);
     expect(ended.next.runs).toEqual({});
   });
 
   it("keeps quiet of a run still held though the rows left it out, and it reads on when it returns", () => {
-    const dormant = alertsOf(lookedAt(row({ writer: false, keeper: false })), [
-      { host: "here", said: heldAs([], ["r"]) },
-    ]);
+    const dormant = alertsOf(lookedAt(row({ state: STOPPED })), [{ host: "here", said: heldAs([], ["r"]) }]);
     expect(dormant.lines).toEqual([]);
     const back = alertsOf(dormant.next, here(row({ promotions: [unread("aaaa")] })));
     expect(back.lines).toHaveLength(1);
@@ -207,9 +204,76 @@ describe("the fold of one look", () => {
     expect(moved.next.runs.r?.host).toBe("peer");
     const midway = alertsOf(start, [
       { host: "peer", said: heldAs([landed]) },
-      { host: "here", said: heldAs([{ ...landed, writer: false, keeper: false }]) },
+      { host: "here", said: heldAs([{ ...landed, state: STOPPED }]) },
     ]);
     expect(midway.lines).toEqual([]);
+  });
+
+  it("says the same lines and remembers the same look for every pair of standings a run moves between", () => {
+    const wait = { for: "provider", until: 0 };
+    const standings: RunState[] = [
+      { kind: "live", kept: true },
+      { kind: "live", kept: false },
+      { kind: "waiting", kept: true, wait },
+      { kind: "waiting", kept: false, wait },
+      { kind: "quiet", kept: true, since: 0 },
+      { kind: "quiet", kept: false, since: 0 },
+      { kind: "kept" },
+      { kind: "ended", ending: "budget" },
+      { kind: "stopped" },
+    ];
+    const said = new Map([
+      ["quiet: no new event since 2026-11-06T10:00:00.000Z, and no login limit waited on", "Q"],
+      ["no writer process; its keeper lives", "K"],
+      ["ended budget", "E"],
+      ["no keeper", "N"],
+      ["no writer process and no keeper", "W"],
+      ["no writer process", "O"],
+    ]);
+    // Rows: the standing last seen; columns: the standing now, owed a keeper and then not.
+    const lines = [
+      "- - N - - - N - Q Q NQ Q K K E E W O",
+      "- - - - - - - - Q Q Q Q K K E E W O",
+      "- - N - - - N - Q Q NQ Q K K E E W O",
+      "- - - - - - - - Q Q Q Q K K E E W O",
+      "- - N - - - N - - - N - K K E E W O",
+      "- - - - - - - - - - - - K K E E W O",
+      "- - N - - - N - Q Q NQ Q - - E E W O",
+      "- - N - - - N - Q Q NQ Q K K - - W O",
+      "- - N - - - N - Q Q NQ Q K K E E - -",
+    ];
+    const keeper = "no writer process; its keeper lives";
+    // What the state file keeps of each standing now, owed a keeper and then not: ending, gap, quiet.
+    const kept = [
+      [null, null, false, null, null, false],
+      [null, "no keeper", false, null, null, false],
+      [null, null, false, null, null, false],
+      [null, "no keeper", false, null, null, false],
+      [null, null, true, null, null, true],
+      [null, "no keeper", true, null, null, true],
+      [null, keeper, false, null, keeper, false],
+      ["budget", null, false, "budget", null, false],
+      [null, "no writer process and no keeper", false, null, "no writer process", false],
+    ];
+    const told: string[] = [];
+    const remembered: (string | boolean | null)[][] = [];
+    for (const before of standings) {
+      const cells: string[] = [];
+      for (const [at, now] of standings.entries()) {
+        const seen: (string | boolean | null)[] = [];
+        for (const owed of [true, false]) {
+          const look = alertsOf(lookedAt(row({ state: before, owed })), here(row({ state: now, owed })));
+          const codes = look.lines.map((line) => said.get(line.replace("r (here): ", "")) ?? "?");
+          cells.push(codes.join("") || "-");
+          const { ending, gap, quiet } = look.next.runs.r ?? {};
+          seen.push(ending ?? null, gap ?? null, quiet ?? null);
+        }
+        remembered[at] = seen;
+      }
+      told.push(cells.join(" "));
+    }
+    expect(told).toEqual(lines);
+    expect(remembered).toEqual(kept);
   });
 
   it("says a run first seen with promotions in one line, since they may be its seed's", () => {
@@ -250,11 +314,13 @@ describe("the verb over real logs", () => {
       end: "comparison.reported" as const,
       seed: true,
     };
-    expect(onAlerts(run, true, 0)).toBe(false);
-    expect(onAlerts({ ...run, seed: false }, true, 0)).toBe(true);
+    expect(onAlerts(run, "open", 0)).toBe(false);
+    expect(onAlerts({ ...run, seed: false }, "open", 0)).toBe(true);
     writeFileSync(join(folder, "launch-run-1.json"), JSON.stringify({ at: "2026-11-06T07:00:00.000Z" }));
-    expect(onAlerts(run, true, 0)).toBe(true);
-    expect(onAlerts(run, false, 0)).toBe(false);
+    // Continued, it is read as any run: closed and written lately (a keeper between two starts), or not.
+    expect(onAlerts(run, "open", 0)).toBe(true);
+    expect(onAlerts(run, "closed", 0)).toBe(onAlerts({ ...run, seed: false }, "closed", 0));
+    expect(onAlerts(run, "closed", 30 * 86_400_000)).toBe(false);
   });
 
   it("reads a promotion and its starter comparison from a log, prints each once and exits 0", () => {

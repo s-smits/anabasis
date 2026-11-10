@@ -22,17 +22,7 @@ import type {
   TaskRow,
 } from "../models.ts";
 import { type Reading, Unanswerable } from "./context.ts";
-import {
-  awaitingIn,
-  doubtedIn,
-  exhaustedIn,
-  type Log,
-  once,
-  proposalsIn,
-  ranIn,
-  retainedIn,
-  setsIn,
-} from "./folds.ts";
+import { drawsIn, type Log, once, proposalsIn, ranIn, setsIn } from "./folds.ts";
 import { campaignAt } from "./logs.ts";
 import { barsIn, outcomeOf, pairsIn, shareOf } from "./moves.ts";
 import { examTier, solveRow } from "./trace.ts";
@@ -55,10 +45,7 @@ const rowsIn = once((log): TaskRow[] => {
     version,
     id: taskId,
     state: states.get(version) ?? "held",
-    awaitingLabel: awaitingIn(log).has(version),
-    doubted: doubtedIn(log).has(version),
-    exhausted: exhaustedIn(log).has(version),
-    retained: retainedIn(log).has(version),
+    draw: drawsIn(log).get(version) ?? null,
     proposedAt: proposed.get(version) ?? null,
   }));
 });

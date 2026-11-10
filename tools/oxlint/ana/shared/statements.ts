@@ -8,6 +8,10 @@ type StatementLists = {
   SwitchCase: (node: ESTree.SwitchCase) => void;
 };
 
+/** What a literal node holds: a string, number, boolean, bigint, regular expression or null. */
+type LiteralValue = Extract<ESTree.Node, { type: "Literal" }>["value"];
+type NamedBinding = ESTree.VariableDeclarator & { id: ESTree.BindingIdentifier; init: ESTree.Expression };
+
 /**
  * Node types that bind tighter than a `.` after them, so their text can stand as a call's subject.
  * The tree has no parentheses, and `(a ?? b).filter(p)` read back as `a ?? b.filter(p)` is a
@@ -30,7 +34,7 @@ const ATOMIC = new Set([
  * identical lines; the syntax-based scan reached the enclosing body, the single `const`, the
  * one-argument method call and the function argument in two rules each on 2026-09-22. The four
  * node facts below them (a member by its written name, an identifier's name, a `const` and a call
- * of one argument) stood in three to eleven files each until `tree/fact-without-owner` read them
+ * of one argument) stood in three to eleven files each until `tree/no-unowned-fact` read them
  * on 2026-11-05.
  */
 
@@ -82,12 +86,56 @@ export function identifierName(node: ESTree.Node | null | undefined): string | n
   return node?.type === "Identifier" ? node.name : null;
 }
 
+/** The name a binding spells, through a default (`name = ""`), or null for a pattern. */
+export function bindingName(node: ESTree.Node | null | undefined): string | null {
+  return node?.type === "AssignmentPattern" ? bindingName(node.left) : identifierName(node);
+}
+
+/** The property a static member read names (`a.b` as `b`), or null for a computed or private one. */
+export function propertyName(node: ESTree.Node | null | undefined): string | null {
+  return node?.type === "MemberExpression" && !node.computed ? identifierName(node.property) : null;
+}
+
+/** The object of a member read (`a` in `a.b` and `a[b]`), or null for any other node. */
+export function memberObject(node: ESTree.Node | null | undefined): ESTree.Node | null {
+  return node?.type === "MemberExpression" ? node.object : null;
+}
+
+/** The plain `=` assignment a statement holds (`a = b;`, `a.b = c;`), or null for any other
+ *  statement, a compound operator among them. */
+export function plainAssignment(
+  statement: ESTree.Node | null | undefined,
+): ESTree.AssignmentExpression | null {
+  const expression = statement?.type === "ExpressionStatement" ? statement.expression : null;
+  return expression?.type === "AssignmentExpression" && expression.operator === "=" ? expression : null;
+}
+
+/**
+ * The value a literal holds, or undefined for any other node and for none. A regular expression
+ * the runtime cannot build holds null too, so a test for the `null` literal reads `raw` instead.
+ */
+export function literalValue(node: ESTree.Node | null | undefined): LiteralValue | undefined {
+  return node?.type === "Literal" ? node.value : undefined;
+}
+
+/** The declaration a statement carries, past `export`. */
+export function declaredBy(statement: ESTree.Node): ESTree.Node {
+  const exported =
+    statement.type === "ExportNamedDeclaration" || statement.type === "ExportDefaultDeclaration";
+  if (!exported) return statement;
+  return statement.declaration ?? statement;
+}
+
 /** Whether a node is a `const` declaration. */
 export function isConstDeclaration(
   node: ESTree.Node,
 ): node is ESTree.VariableDeclaration & { kind: "const" } {
   return node.type === "VariableDeclaration" && node.kind === "const";
 }
+
+/** Whether a declarator binds a plain name to a value (`const name = init`), not a pattern or a bare `let`. */
+export const bindsName = (node: ESTree.VariableDeclarator): node is NamedBinding =>
+  node.id.type === "Identifier" && node.init !== null;
 
 /** Whether a node is a call given exactly one argument. */
 export function isOneArgumentCall(

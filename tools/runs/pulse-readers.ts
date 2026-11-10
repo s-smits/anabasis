@@ -52,7 +52,7 @@ import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
-import { errorCode } from "#src/meta/runtime-values.ts";
+import { dropCutWrites, held, hold, release } from "./holder.ts";
 
 /** How long a look waits for the pass. The hook kills a look at 40 s, a peer's answer is awaited for
  *  30 s, and a look has its own 2 to 4 s of reading besides. */
@@ -65,6 +65,8 @@ const PASS_MS = 30_000;
 const GAP_MS = 240_000;
 /** A store folder or an observer's files untouched this long go. */
 const STALE_MS = 7 * 24 * 60 * 60_000;
+/** What `remember` writes an observer's file through, named by its writer's pid. */
+const CUT_OBSERVER = /\.json(?:\.pending)?\.(\d+)\.tmp$/;
 const POLL_MS = 200;
 const LOCK = "pass.lock";
 const LAST = "pass.json";
@@ -160,8 +162,12 @@ function lastPass(store: string): PassEnding | null {
 const textOf = (store: string, log: string, reader: string) =>
   readFileSync(join(folderOf(store, log), `${reader}.txt`), "utf8");
 
-/** Written beside its place and renamed, so a look or a kill never finds half of it. */
-function written(file: string, text: string): void {
+/** Written beside its place and renamed, through a file of this process's own, so a reader, a kill
+ *  or a second writer never finds half of it: until 9 November a look's state went through one
+ *  shared file, and two looks renamed each other's half-written one into place. */
+export function remember(file: string, text: string): void {
+  // A checkout no campaign ran in has no `.ana/`, as the Linux runner's had none on 20 October.
+  mkdirSync(dirname(file), { recursive: true });
   const beside = `${file}.${String(runtimeProcess.pid)}.tmp`;
   writeFileSync(beside, text);
   renameSync(beside, file);
@@ -177,13 +183,13 @@ export function keepResult(
 ): void {
   const folder = folderOf(store, log);
   mkdirSync(folder, { recursive: true });
-  if (text !== null) written(join(folder, `${reader}.txt`), text);
-  written(join(folder, `${reader}.json`), capturedJsonStringify(result));
+  if (text !== null) remember(join(folder, `${reader}.txt`), text);
+  remember(join(folder, `${reader}.json`), capturedJsonStringify(result));
 }
 
 /** The readers a pass runs, kept for the looks, which read no helper. */
 export function keepNames(store: string, names: readonly string[]): void {
-  written(join(store, NAMES), capturedJsonStringify(names));
+  remember(join(store, NAMES), capturedJsonStringify(names));
 }
 
 function namesIn(store: string): readonly string[] {
@@ -198,7 +204,7 @@ export const room = (load = loadNow(), cores = availableParallelism()): boolean 
 /** Record how a pass ended, and drop the results of logs no look has moved for a week. */
 export function endPass(store: string, ended: PassEnding["ended"]): void {
   const ending: PassEnding = { at: Date.now(), ended };
-  written(join(store, LAST), capturedJsonStringify(ending));
+  remember(join(store, LAST), capturedJsonStringify(ending));
   for (const entry of readdirSync(store, { withFileTypes: true })) {
     const folder = join(store, entry.name);
     if (entry.isDirectory() && Date.now() - statSync(folder).mtimeMs > STALE_MS) {
@@ -207,39 +213,32 @@ export function endPass(store: string, ended: PassEnding["ended"]): void {
   }
 }
 
-function alive(pid: number): boolean {
+/** Whether a lock of the old format, a file holding the pid of a pass from a tree before 9 November,
+ *  holds as that tree read it: its pass lives and took it within two `PASS_MS`. Every session's hook
+ *  runs the pulse from its own tree against one store, so old and new passes meet; this serves the
+ *  switch from the old format and can go once no tree older than this commit runs the pulse. */
+function heldOfOld(lock: string): boolean {
   try {
-    runtimeProcess.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return errorCode(error) !== "ESRCH";
+    const { mtimeMs } = statSync(lock);
+    runtimeProcess.kill(Number(readFileSync(lock, "utf8")), 0);
+    return Date.now() - mtimeMs <= 2 * PASS_MS;
+  } catch {
+    return false;
   }
 }
 
-/** Whether a pass holds the host's lock. One that died, or far outlived its limit, holds nothing. */
-export function passRunning(store: string, now = Date.now()): boolean {
-  const lock = join(store, LOCK);
-  if (!existsSync(lock)) return false;
-  if (alive(Number(readFileSync(lock, "utf8"))) && now - statSync(lock).mtimeMs <= 2 * PASS_MS) return true;
-  rmSync(lock, { force: true });
-  return false;
-}
+/** Whether a pass holds the host's lock: one held while its process lives, however long it reads. */
+export const passRunning = (store: string): boolean =>
+  held(join(store, LOCK)) || heldOfOld(join(store, LOCK));
 
 /** The host's lock, for one pass however many looks started one. */
 export function takeLock(store: string): boolean {
   mkdirSync(store, { recursive: true });
-  if (passRunning(store)) return false;
-  try {
-    writeFileSync(join(store, LOCK), String(runtimeProcess.pid), { flag: "wx" });
-    return true;
-  } catch (error) {
-    if (errorCode(error) === "EEXIST") return false;
-    throw error;
-  }
+  return !heldOfOld(join(store, LOCK)) && hold(join(store, LOCK));
 }
 
 export const dropLock = (store: string): void => {
-  rmSync(join(store, LOCK), { force: true });
+  release(join(store, LOCK));
 };
 
 /** What `ask` answers within `ms`, and null after that. The timer goes with the answer, since one left
@@ -494,7 +493,8 @@ export function alarmsMoved(store: string, log: string, before: SaidOf | undefin
     });
 }
 
-/** Drop the files of observers gone for a week, beside a peer's `--state`. */
+/** Drop the files of observers gone for a week, beside a peer's `--state`, and each that `remember`
+ *  left half written when a kill took its writer. */
 export function pruneObservers(state: string, now = Date.now()): void {
   const folder = dirname(resolve(state));
   if (!existsSync(folder)) return;
@@ -504,4 +504,5 @@ export function pruneObservers(state: string, now = Date.now()): void {
       rmSync(file, { recursive: true, force: true });
     }
   }
+  dropCutWrites(folder, CUT_OBSERVER);
 }

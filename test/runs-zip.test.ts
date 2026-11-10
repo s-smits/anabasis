@@ -15,7 +15,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { runTextSyncOrThrow } from "../src/meta/subprocess.ts";
 import type { Run } from "../tools/runs/registry.ts";
-import { fit, zip } from "../tools/runs/zip.ts";
+import { fit, momentOf, newest, secondsOf, zip } from "../tools/runs/zip.ts";
 
 const DIGEST = "ab".repeat(32);
 const LOG = [
@@ -138,5 +138,88 @@ describe("the runs zip", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  it("picks the newest campaigns with enough promotions and enough time, and no seed or live solve", () => {
+    const root = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-runs-pick-test-")));
+    try {
+      const make = (name: string, from: string, to: string, promotions: number, rest: Partial<Run> = {}) => {
+        const events = [
+          { at: from, kind: "build.started", data: {} },
+          ...Array.from({ length: promotions }, () => ({
+            at: from,
+            kind: "harness.promoted",
+            // A task's text that names the kind is no promotion: only the event's own kind counts.
+            data: { note: "harness.promoted" },
+          })),
+          { at: to, kind: "build.turn", data: { text: "harness.promoted" } },
+        ];
+        const path = join(root, name, "log.jsonl");
+        mkdirSync(dirname(path), { recursive: true });
+        writeFileSync(path, `${events.map((event) => JSON.stringify(event)).join("\n")}\n{"at":`);
+        return { name, tree: root, path, end: "comparison.reported", ...rest } satisfies Run;
+      };
+      const old = make("old", "2026-11-01T00:00:00.000Z", "2026-11-01T05:00:00.000Z", 3);
+      const long = make("long", "2026-11-08T08:00:00.000Z", "2026-11-08T12:00:00.000Z", 1);
+      const short = make("short", "2026-11-08T11:00:00.000Z", "2026-11-08T12:30:00.000Z", 2);
+      const bare = make("bare", "2026-11-08T06:00:00.000Z", "2026-11-08T13:00:00.000Z", 0);
+      const seed = make("seed", "2026-11-08T06:00:00.000Z", "2026-11-08T14:00:00.000Z", 2, { seed: true });
+      const solve = make("solve", "2026-11-08T06:00:00.000Z", "2026-11-08T14:00:00.000Z", 2, {
+        end: "solve.finished",
+      });
+      const runs = [old, long, short, bare, seed, solve];
+      const open = { since: -Infinity, until: Infinity };
+      const names = (pick: Omit<Parameters<typeof newest>[1], "since" | "until"> & Partial<typeof open>) =>
+        newest(runs, { ...open, ...pick }).map((run) => run.name);
+      expect(names({ latest: null, promotions: 0, seconds: 0 })).toEqual(["bare", "short", "long", "old"]);
+      expect(names({ latest: 2, promotions: 1, seconds: 0 })).toEqual(["short", "long"]);
+      expect(names({ latest: null, promotions: 1, seconds: secondsOf("2h") })).toEqual(["long", "old"]);
+      expect(names({ latest: 1, promotions: 4, seconds: 0 })).toEqual([]);
+      expect(
+        newest([make("empty", "2026-11-08T00:00:00.000Z", "2026-11-08T00:00:00.000Z", 0)], {
+          ...open,
+          latest: null,
+          promotions: 0,
+          seconds: 1,
+        }),
+      ).toEqual([]);
+      // A window keeps a run whose record overlaps it, so one that began before it still counts.
+      const any = { latest: null, promotions: 0, seconds: 0 };
+      expect(names({ ...any, since: Date.parse("2026-11-08T00:00:00Z") })).toEqual(["bare", "short", "long"]);
+      expect(names({ ...any, until: Date.parse("2026-11-07T00:00:00Z") })).toEqual(["old"]);
+      expect(
+        names({
+          ...any,
+          since: Date.parse("2026-11-08T12:15:00Z"),
+          until: Date.parse("2026-11-08T12:45:00Z"),
+        }),
+      ).toEqual(["bare", "short"]);
+      expect(names({ ...any, since: Date.parse("2026-11-09T00:00:00Z") })).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("reads a moment as a date, a time with a zone or how long ago, and refuses the rest", () => {
+    const now = Date.parse("2026-11-08T12:00:00Z");
+    expect([
+      momentOf("--since", "2026-11-06", now),
+      momentOf("--since", "2026-11-06T12:30Z", now),
+      momentOf("--since", "2026-11-06T12:30:15+01:00", now),
+      momentOf("--since", "36h", now),
+    ]).toEqual([
+      Date.parse("2026-11-06T00:00:00Z"),
+      Date.parse("2026-11-06T12:30:00Z"),
+      Date.parse("2026-11-06T11:30:15Z"),
+      Date.parse("2026-11-07T00:00:00Z"),
+    ]);
+    for (const text of ["yesterday", "2026-11-06T12:00", "11-06", "2026-13-45", "", "36"]) {
+      expect(() => momentOf("--until", text, now)).toThrow(/--until/);
+    }
+  });
+
+  it("reads a duration as a number and one unit, and refuses the rest", () => {
+    expect(["2h", "90m", "45s", "1.5d"].map(secondsOf)).toEqual([7200, 5400, 45, 129_600]);
+    for (const text of ["2", "h", "2 h", "-2h", "2w", ""]) expect(() => secondsOf(text)).toThrow(/--minTime/);
   });
 });

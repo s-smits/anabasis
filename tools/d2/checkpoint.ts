@@ -125,7 +125,7 @@ export async function checkpointCommand(
   const own = () => {
     if (old.digest === fresh.digest) {
       throw new Error(
-        `--reference ${values.reference} and --new ${values.new} name one harness, ${old.digest}: there is nothing to compare${values.new === "latest" ? " until a Builder session has left a harness (tools/d2/round.ts)" : ""}. A harness is read against itself beside every comparison`,
+        `--reference ${values.reference} and --new ${values.new} name one harness, ${old.digest}: there is nothing to compare${values.new === "latest" ? " until a Builder session has left a harness" : ""}. A harness is read against itself beside every comparison`,
       );
     }
     refuseTerms(request, { log: campaign.log, id, practised: new Set() });

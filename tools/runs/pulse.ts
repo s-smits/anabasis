@@ -41,21 +41,12 @@ import type { EventKind, LogEvent } from "#src/kernel/log.ts";
 import { degradations, traceKind, tracesIn } from "#src/kernel/trace.ts";
 import { billedAll } from "#src/kernel/meter.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  statfsSync,
-  statSync,
-  writeFileSync,
-} from "#src/meta/filesystem.ts";
+import { existsSync, readFileSync, rmSync, statfsSync, statSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
-import { basename, dirname, join, resolve } from "#src/meta/path.ts";
+import { basename, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { mainTree } from "#src/meta/git.ts";
@@ -63,8 +54,8 @@ import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import { asked, hosts } from "./hosts.ts";
 import { hostsOf } from "./host-config.ts";
-import { lastLaunch } from "./receipt.ts";
-import { runReason } from "./diagnosis.ts";
+import { lastLaunch, unlaunchedSeed } from "./receipt.ts";
+import { launchedIn, runReason, runState, stateOf } from "./state.ts";
 import {
   type Alarm,
   alarmsMoved,
@@ -72,6 +63,7 @@ import {
   pastMilestone,
   pruneObservers,
   readersSaid,
+  remember,
   resultOf,
   type SaidOf,
   startPass,
@@ -126,7 +118,6 @@ interface Memory {
   readonly acks?: Readonly<Record<string, string>>;
 }
 
-const QUIET_MS = 20 * 60_000;
 /** A closed run `status` shows without `--all`: one whose log changed this recently. */
 const HOUR_MS = 60 * 60_000;
 const DAY_MS = 24 * HOUR_MS;
@@ -384,10 +375,7 @@ function triggersSaid(
  */
 function standing(run: Run, log: readonly LogEvent[]) {
   const solves = solvesIn(log);
-  const kept = lastLaunch(run.path);
-  const launched =
-    kept === undefined ? 0 : log.findIndex((event) => Date.parse(event.at) >= Date.parse(kept.at));
-  const begun = launched === -1 ? log.length : launched;
+  const begun = launchedIn(run, log);
   const opened = log.findLastIndex(({ kind }) => STARTS.has(kind));
   const solved = log.findLastIndex(({ kind }) => kind === "solve.started");
   const start = Math.max(0, opened);
@@ -397,13 +385,8 @@ function standing(run: Run, log: readonly LogEvent[]) {
   const led = log.some(({ kind }) => kind === "campaign.opened");
   const end: EventKind = led ? ENDED : log[start]?.kind === "exam.started" ? "exam.finished" : run.end;
   const running = solves.filter(({ finished, started }) => finished === null && started >= begun).length;
-  const until = log
-    .slice(begun)
-    .findLast(({ kind, data }) => kind === "campaign.waited" && isString(data.until))?.data.until;
-  const last = log.at(-1);
-  const since = Math.max(Date.parse(last?.at ?? ""), isString(until) ? Date.parse(until) : 0);
-  const ended = last?.kind === ENDED || (running === 0 && count(work, end) > 0);
-  return { solves, start, work, end, running, since, ended };
+  const ended = log.at(-1)?.kind === ENDED || (running === 0 && count(work, end) > 0);
+  return { solves, start, work, end, running, begun, ended };
 }
 
 /** Where a run stands: reported, closed, inside a Builder or Examiner session, or solving. A report
@@ -485,8 +468,9 @@ export function pulse(
     const which = [...new Set(others.map((row) => `${row.served} for ${row.asked}`))];
     lines.push(`⚠ ${plural(served, "turn")} served by another model: ${which.join("; ")}`);
   }
-  const quiet = open && log.length > 0 && now - stand.since > QUIET_MS;
-  if (quiet && before?.quiet !== true) lines.push(`⚠ quiet for ${minutes(now - stand.since)}`);
+  const state = stateOf(log, { writing: open, kept: false }, now, stand.begun);
+  const quiet = log.length > 0 && state.kind === "quiet";
+  if (quiet && before?.quiet !== true) lines.push(`⚠ quiet for ${minutes(now - state.since)}`);
   if (!quiet && before?.quiet === true) lines.push("· not quiet any more");
   if (before?.open === true && !open && !stand.ended) lines.push(`⚠ the process is gone before ${stand.end}`);
   const triggers = triggersSaid(before, { milestone: milestone ?? fresh.some(isMilestone), found: alarms() });
@@ -583,7 +567,7 @@ async function look(
         before?.open === true ||
         before?.owed === true ||
         (before === undefined &&
-          run.seed !== true &&
+          !unlaunchedSeed(run) &&
           Date.now() - statSync(run.path).mtimeMs < RECENT_MS &&
           logEvents(run.path).at(-1)?.kind !== ENDED),
   );
@@ -607,11 +591,11 @@ async function look(
   const said: string[] = [];
   let spare = PER_LOOK;
   for (const each of chosen) {
-    const { run, open, before } = each;
+    const { run, before } = each;
     const one = runLook(each, { now, store, state, spare });
     spare -= one.readers;
     if (before === undefined || one.said.length > 0) {
-      const reasons = await runReason(run, one.events, open ? "open" : "closed");
+      const reasons = await runReason(run, runState(run, one.events, running, now));
       said.push(one.status, ...[...one.said, ...reasons].map((line) => `  ${line}`));
     }
     logs[run.path] = one.seen;
@@ -622,21 +606,17 @@ async function look(
   };
 }
 
-/** Write a look's state whole, so a kill leaves the last one. */
-export function remember(state: string, text: string): void {
-  // A checkout no campaign ran in has no `.ana/`, as the Linux runner's had none on 20 October.
-  mkdirSync(dirname(state), { recursive: true });
-  writeFileSync(`${state}.tmp`, text);
-  renameSync(`${state}.tmp`, state);
-}
-
 /** A peer's first step on its caller's word: what it said last is read if the caller returned its
  *  token, so it is remembered; otherwise it is dropped, and this look says it again. */
 function settle(state: string, ack: string): void {
   const pending = `${state}.pending`;
   if (!existsSync(pending)) return;
-  const { token, memory } = parseJsonAs<{ token: string; memory: Memory }>(readFileSync(pending, "utf8"));
-  if (token === ack) remember(state, capturedJsonStringify(memory));
+  try {
+    const { token, memory } = parseJsonAs<{ token: string; memory: Memory }>(readFileSync(pending, "utf8"));
+    if (token === ack) remember(state, capturedJsonStringify(memory));
+  } catch {
+    // One a kill cut part way, as the write in place before 9 November could leave, is not read.
+  }
   rmSync(pending, { force: true });
 }
 
@@ -718,8 +698,7 @@ export async function watch(args: readonly string[]): Promise<void> {
     if (values.ack !== undefined && here.lines.length > 0) {
       // A peer's answer: what it would remember waits for its caller to return the last line.
       const token = sha256(`${String(Date.now())}\n${String(runtimeProcess.pid)}`).slice(0, 16);
-      mkdirSync(dirname(state), { recursive: true });
-      writeFileSync(`${state}.pending`, capturedJsonStringify({ token, memory: here.memory }));
+      remember(`${state}.pending`, capturedJsonStringify({ token, memory: here.memory }));
       console.log([...here.lines, `ack ${token}`].join("\n"));
     } else {
       if (here.lines.length > 0) {
@@ -739,8 +718,8 @@ export async function watch(args: readonly string[]): Promise<void> {
 }
 
 /** Whether `status` shows a run without `--all`, whose log last changed `age` ago. */
-export const onStatus = (run: Run, open: boolean, age: number): boolean =>
-  open || (run.seed !== true && age <= RECENT_MS);
+export const onStatus = (run: Run, writing: "open" | "closed", age: number): boolean =>
+  writing === "open" || (!unlaunchedSeed(run) && age <= RECENT_MS);
 
 /**
  * `bun run runs status`: one row a run, open or written in the last day, or every one with `--all`;
@@ -757,10 +736,10 @@ export async function runsStatus(args: readonly string[]): Promise<void> {
   for (const run of runs()) {
     const open = writers(run, running).length > 0;
     const age = now - statSync(run.path).mtimeMs;
-    // A seed no process writes is a rehearsal's copy, and its promotions are its source's; one a
-    // process writes was continued as a run (16 October: fork-ladder-buffer-opus was not shown).
-    if (!values.all && !onStatus(run, open, age)) {
-      if (run.seed !== true) quiet += 1;
+    // A seed no launch went on from is a rehearsal's copy, and its promotions are its source's, shown
+    // while a process writes it (16 October: fork-ladder-buffer-opus was not shown).
+    if (!values.all && !onStatus(run, open ? "open" : "closed", age)) {
+      if (!unlaunchedSeed(run)) quiet += 1;
       continue;
     }
     const log = logEvents(run.path);
@@ -785,7 +764,7 @@ export async function runsStatus(args: readonly string[]): Promise<void> {
   }
   console.log(`${plural(promoted, "promotion")} in ${plural(compared, "comparison")} over the runs shown`);
   // This machine's own: a host's copy is said by that host's `status`, as its rows are.
-  const archive = archived().filter((run) => run.archived === HERE && run.seed !== true);
+  const archive = archived().filter((run) => run.archived === HERE && !unlaunchedSeed(run));
   const newest = archive
     .map((run) => ({ run, at: statSync(run.path).mtimeMs }))
     .toSorted((one, other) => other.at - one.at)

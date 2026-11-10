@@ -50,7 +50,7 @@ function campaign(made: ReturnType<typeof fixture>, name: string, tree = join(ma
   const folder = join(tree, ".ana", "d2", name);
   mkdirSync(folder, { recursive: true });
   const log = join(folder, "log.jsonl");
-  append(log, "campaign.waited", { for: "provider", until: "2099-01-01T00:00:00.000Z", ms: 60_000 });
+  // A launch writes its receipt before its first event.
   writeReceipt(log, "run-1", {
     at: new Date().toISOString(),
     pid: 42,
@@ -61,6 +61,7 @@ function campaign(made: ReturnType<typeof fixture>, name: string, tree = join(ma
     load: 0,
     cores: 2,
   });
+  append(log, "campaign.waited", { for: "provider", until: "2099-01-01T00:00:00.000Z", ms: 60_000 });
   return { folder, log, tree };
 }
 
@@ -112,11 +113,10 @@ it("S1: one health command exposes a full disk and overloaded host without hidin
 it("S2: health identifies live campaigns, seats and the hot descendant that belongs to a run", () => {
   const made = fixture();
   campaign(made, "local", made.main);
+  // One table answers both the live runs and the busiest processes, so it alone is given.
   const table = {
-    "-axo pid=,args=": "42 bun tools/d2/harness-builder.ts --name local",
-    "-axo args=": "bun .claude/skills/system-path-simulation/scripts/live-seat.ts start --name simulated",
     "-axww -o pid=,ppid=,pcpu=,args=":
-      "43 42 90 engine-worker\n42 1 5 bun\n44 1 40 browser\n45 1 7 bun .claude/skills/system-path-simulation/scripts/live-seat.ts start --name simulated",
+      "43 42 90 engine-worker\n42 1 5 bun tools/d2/harness-builder.ts --name local\n44 1 40 browser\n45 1 7 bun .claude/skills/system-path-simulation/scripts/live-seat.ts start --name simulated",
   };
   const result = made.runScript(CLI, ["hosts", "--health"], {
     FAKE_HEALTH: JSON.stringify(HEALTH),
@@ -132,7 +132,7 @@ it("S2: health identifies live campaigns, seats and the hot descendant that belo
   expect(made.recorded().some((call) => call.tool === "pkill")).toBe(false);
 });
 
-it("S3: view and fleet pulse explain a dead remote run using its newest bounded stderr and reset", () => {
+it("S3: view and fleet pulse explain a dead remote run using its newest bounded stderr, and no wait it left", () => {
   const made = fixture();
   const remote = campaign(made, "distant");
   writeFileSync(join(remote.folder, "launch-old.err"), "old failure");
@@ -150,13 +150,11 @@ it("S3: view and fleet pulse explain a dead remote run using its newest bounded 
   };
   const view = made.runScript(CLI, ["view", "distant"], env);
   expect(view.code).toBe(0);
-  for (const text of [
-    "process gone without a campaign ending",
-    "newest startup failure",
-    "waiting for provider until 2099",
-  ]) {
+  for (const text of ["process gone without a campaign ending", "newest startup failure"]) {
     expect(view.out).toContain(text);
   }
+  // Nothing waits in a run whose process is gone, whatever wait its log last recorded.
+  expect(view.out).not.toContain("waiting for provider");
   expect(view.out).not.toContain("old failure");
   expect(view.out).not.toContain("do not follow this link");
   const observation = readFileSync(
@@ -167,7 +165,6 @@ it("S3: view and fleet pulse explain a dead remote run using its newest bounded 
   const pulse = made.runScript(CLI, ["pulse", "--no-readers"], env);
   expect(pulse.code).toBe(0);
   expect(pulse.out).toContain("newest startup failure");
-  expect(pulse.out).toContain("waiting for provider until 2099");
   // The same observer's next look has nothing new to say of a run that was already stopped.
   const again = made.runScript(CLI, ["pulse", "--no-readers"], env);
   expect(again.code).toBe(0);
@@ -192,7 +189,7 @@ it("S4: fresh prepares the selected host at the requested published commit witho
   expect(calls.some((call) => call.args.includes("checkout"))).toBe(false);
 });
 
-it("a quiet live run explains its load wait while an ended run ignores stale stderr", () => {
+it("a quiet live run says since when, not a load wait that is over, while an ended run ignores stale stderr", () => {
   const made = fixture();
   const remote = campaign(made, "distant");
   const waited = append(remote.log, "campaign.waited", { load: 9, cores: 4, ms: 60_000 });
@@ -204,7 +201,8 @@ it("a quiet live run explains its load wait while an ended run ignores stale std
   };
   const quiet = made.runScript(CLI, ["view", "distant"], env);
   expect(quiet.code).toBe(0);
-  expect(quiet.out).toContain("waiting for load 9 on 4 cores");
+  expect(quiet.out).toContain("quiet since 1970-01-01T00:00:00.000Z");
+  expect(quiet.out).not.toContain("waiting for");
   expect(quiet.out).toContain("quiet stderr");
   expect(quiet.out).not.toContain("process gone");
   append(remote.log, "campaign.ended", { ending: "finished", why: "fixture" });
@@ -525,4 +523,32 @@ it("S12: one stop locates names on both peers and refuses ambiguous originals be
   expect(
     made.recorded().filter((call) => call.tool === "ssh" && call.args.at(-1)?.includes("stop") === true),
   ).toHaveLength(2);
+});
+
+it("a stop ends a run's keeper before its writer, so the keeper cannot start it again between the two", async () => {
+  const made = fixture();
+  campaign(made, "local", made.main);
+  const order = join(made.root, "order");
+  // Each stands in for its process and says when it is ended.
+  const role = (name: string) =>
+    Bun.spawn(["sh", "-c", `trap 'echo ${name} >> "$0"; exit 0' TERM; while :; do sleep 0.05; done`, order], {
+      cwd: made.main,
+      detached: true,
+      stderr: "ignore",
+    });
+  const writer = role("writer");
+  const keeper = role("keeper");
+  await Bun.sleep(200);
+  const table = {
+    "-axo pid=,args=": `${String(writer.pid)} bun tools/d2/harness-builder.ts --name local\n${String(keeper.pid)} bun ${made.main}/tools/runs/cli.ts keep local --here`,
+    "-axo pid=,ppid=": `${String(writer.pid)} 1\n${String(keeper.pid)} 1`,
+  };
+  const result = made.runScript(CLI, ["stop", "local", "--yes"], {
+    FAKE_PS_TABLE: JSON.stringify(table),
+    FAKE_CWDS: `p${String(writer.pid)}\nn${made.main}\np${String(keeper.pid)}\nn${made.main}`,
+  });
+  writer.kill("SIGKILL");
+  keeper.kill("SIGKILL");
+  expect({ code: result.code, err: result.err }).toEqual({ code: 0, err: "" });
+  expect(readFileSync(order, "utf8").split("\n").filter(Boolean)).toEqual(["keeper", "writer"]);
 });

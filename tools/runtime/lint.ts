@@ -21,12 +21,13 @@
  * that no longer names a finding fails the run, as an unused disable comment does: an answer that
  * outlives its site is debt, and a later site with the same text would inherit it unread.
  *
- * The two repository plugins are optional. `anti-slop` and `ana`, whose rules are the `/simplify`
- * catchers, run every time, but their findings and the ledger that answers them fail the run only
- * under `--strict` or `ANA_LINT_STRICT=1`. Without it a contributor is held to oxlint's own rules
- * and told how many optional findings there are. A clone that sets `git config ana.lintStrict true`
- * is strict by default: the key lives in that clone's `.git/config`, which its worktrees share and
- * no push publishes, so a maintainer's checkout keeps the CI gate a fresh clone does not have.
+ * The repository plugins are optional. `anti-slop`, `ana` and the two `implicit-state` tiers,
+ * whose rules are the `/simplify` catchers, run every time, but their findings and the ledger that
+ * answers them fail the run only under `--strict` or `ANA_LINT_STRICT=1`. Without it a contributor
+ * is held to oxlint's own rules and told how many optional findings there are. A clone that sets
+ * `git config ana.lintStrict true` is strict by default: the key lives in that clone's
+ * `.git/config`, which its worktrees share and no push publishes, so a maintainer's checkout keeps
+ * the CI gate a fresh clone does not have.
  */
 import { existsSync } from "../../src/meta/filesystem.ts";
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
@@ -41,6 +42,7 @@ import {
   TREE_RULE_PREFIX,
   unanswerable,
 } from "../oxlint/not-slop-ledger.ts";
+import { PLUGINS } from "../oxlint/plugins.ts";
 import { renderedExamples, ruleExamples } from "../oxlint/rule-examples.ts";
 import { TREE_REGISTER_KINDS, treeSites } from "../oxlint/tree-findings.ts";
 
@@ -52,8 +54,8 @@ const ROOT = new URL("../..", import.meta.url).pathname;
 /** The linter itself, relative to the repository root every caller spawns it from. */
 export const OXLINT_BINARY = "node_modules/oxlint/bin/oxlint";
 
-/** The plugins whose findings fail only a strict run. */
-const OPTIONAL_PLUGINS = new Set(["anti-slop", "ana"]);
+/** The plugins whose findings fail only a strict run: every repository plugin. */
+const OPTIONAL_PLUGINS = new Set(PLUGINS.keys());
 /** The rule list of a disable comment, up to its `--` description or the end of the comment. */
 const DISABLE_RULES = /(?:oxlint|eslint)-disable(?:-next-line|-line)?\b(.*?)(?:--|\*\/|$)/su;
 

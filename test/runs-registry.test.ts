@@ -5,7 +5,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { capturedSpawn, runtimeProcess } from "../src/meta/process.ts";
 import { join } from "../src/meta/path.ts";
 import { nextRun, receipts } from "../tools/runs/receipt.ts";
-import { BUILDER, processes, type Run, runNamed, writers } from "../tools/runs/registry.ts";
+import { BUILDER, packOf, processes, type Run, runNamed, writers } from "../tools/runs/registry.ts";
 
 const root = mkdtempSync(join(tmpdir(), "ana-runs-registry-test-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -31,6 +31,15 @@ describe("a run's name", () => {
     expect(runNamed("r1", listed)).toBe(round);
     expect(() => runNamed("r", listed)).toThrow("no campaign log is named r in");
     expect(() => runNamed("r2", listed)).toThrow("r2 names a campaign in /wt and in /other");
+  });
+
+  it("reads its pack whole before the first `-fresh-`, and a name without one by its first word", () => {
+    expect(packOf("jobstat-anabasis-v5-fresh-opus-host")).toBe("jobstat-anabasis-v5");
+    expect(packOf("jobstat-fresh-opus-host")).toBe("jobstat");
+    // A suffix that holds `-fresh-` again leaves the pack as it was.
+    expect(packOf("kernel-cyber2-fresh-opus-re-fresh-x-host")).toBe("kernel-cyber2");
+    expect(packOf("buffer-control-r2")).toBe("buffer");
+    expect(packOf("seating")).toBe("seating");
   });
 });
 

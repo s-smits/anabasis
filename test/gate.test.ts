@@ -13,7 +13,9 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readlinkSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -62,6 +64,8 @@ const proofs = Bun.argv.slice(2).map((pair) => {
 const failed = await proveCommits(process.cwd(), proofs, {
   who: "land",
   jobs: Number(process.env.DRIVER_JOBS ?? "1"),
+  // As land stops its proofs once a head moved under one, or on a signal.
+  stop: process.env.DRIVER_STOP_MS ? AbortSignal.timeout(Number(process.env.DRIVER_STOP_MS)) : undefined,
   say: (line) => console.error("prove: " + line),
   // As land's mark throws Moved once a head moved under the proof.
   mark: (commit, state) => {
@@ -128,6 +132,7 @@ describe("proveCommits", () => {
       "run lint -- --strict",
       "run test -- test/owner.test.ts",
       "run typecheck",
+      "tools/loc/source-policy.ts",
     ]);
   });
 
@@ -168,6 +173,9 @@ describe("proveCommits", () => {
     ]);
     const imported = git("commit-tree", into(away, "src", src), "-p", away, "-m", "what the UI imports");
     const head = git("commit-tree", withFile(imported, "d.ts"), "-p", imported, "-m", "head");
+    // A root file the UI's gate does not run with, and one it installs from.
+    const config = git("commit-tree", withFile(away, "tsconfig.json"), "-p", away, "-m", "a config");
+    const lock = git("commit-tree", withFile(config, "bun.lock"), "-p", config, "-m", "the lockfile");
     // The UI's steps of a commit's gate, in their order: they run in turn, beside the other steps.
     const ran = (sha: string): string[] =>
       readFileSync(log, "utf8")
@@ -192,6 +200,10 @@ describe("proveCommits", () => {
       expect(ran(away)).toEqual(["run ui:deps"]);
       expect(ran(imported)).toEqual(near("deep.test.ts"));
       expect(ran(head)).toEqual(["run ui:deps", "run ui:gate"]);
+      // Only what the UI's gate installs from or runs with sends a static pass through all of it.
+      expect(prove([`${config}:static`, `${lock}:static`]).status).toBe(0);
+      expect(ran(config)).toEqual(["run ui:deps"]);
+      expect(ran(lock)).toEqual(["run ui:deps", "run ui:gate"]);
       // Main holding the UI: a whole pass over the same change runs the browser's file too.
       git("update-ref", "refs/remotes/origin/main", away);
       rmSync(log, { force: true });
@@ -268,6 +280,17 @@ describe("proveCommits", () => {
     expect(result.stderr).toContain("later output 39");
   });
 
+  it("ends a pass under way when stopped, records nothing of it and starts no other", () => {
+    // The test step takes two seconds, so the stop lands while the static pass of `source` runs.
+    const result = prove(landing, { ANA_FAKE_SUITE: "(pass) one", DRIVER_STOP_MS: "1200" });
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain(`${short(source)}: stopped.`);
+    expect(gatesRun(log).map((gate) => gate.split(" ")[0])).toEqual([source]);
+    expect(prove(landing).status).toBe(0);
+    const proved = gatesRun(log).map((gate) => gate.split(" ")[0]);
+    expect(proved, "the stopped pass is proved again").toEqual([source, source, second]);
+  });
+
   // The wrapper prints its lines in colour, so the recorded shape begins with an escape.
   const red = "\u001B[0m\u001B[31m";
   const pulses = [
@@ -303,21 +326,68 @@ describe("one landing of a clone at a time", () => {
     execTextSync("git", ["init", "-q"], { cwd: clone });
     const lock = join(clone, ".git", "ana-land.lock");
     const mine = String(runtimeProcess.pid);
-    mkdirSync(lock);
-    writeFileSync(join(lock, "pid"), mine);
+    // The lock is a link whose target is its holder's pid.
+    symlinkSync(mine, lock);
     const said: string[] = [];
     const held = holdAlone(clone, "land", (line) => said.push(line), 20);
     const early = await Promise.race([held.then(() => "held"), Bun.sleep(200).then(() => "waiting")]);
     expect(early).toBe("waiting");
     expect(said).toEqual([`another land (pid ${mine}) is running in this clone; waiting for it to end`]);
     // Above any pid either system gives, so no process answers it.
-    writeFileSync(join(lock, "pid"), "4194399");
+    rmSync(lock);
+    symlinkSync("4194399", lock);
     const release = await held;
-    expect(readFileSync(join(lock, "pid"), "utf8")).toBe(mine);
+    expect(readlinkSync(lock)).toBe(mine);
     release();
     const again = await holdAlone(clone, "land", () => undefined, 20);
-    expect(readFileSync(join(lock, "pid"), "utf8")).toBe(mine);
+    expect(readlinkSync(lock)).toBe(mine);
     again();
+  });
+
+  it("ends a live holder whose note it covers, and waits out one it does not", async () => {
+    const held = (): { clone: string; lock: string; holder: Bun.Subprocess } => {
+      const clone = mkdtempSync(join(fixture, "alone-"));
+      execTextSync("git", ["init", "-q"], { cwd: clone });
+      const lock = join(clone, ".git", "ana-land.lock");
+      const holder = Bun.spawn(["sleep", "30"]);
+      symlinkSync(`${String(holder.pid)} #5 sanitizing`, lock);
+      return { clone, lock, holder };
+    };
+    const over = (note: string): boolean => note === "#5 sanitizing";
+    const apart = held();
+    const waiting = holdAlone(apart.clone, "land", () => undefined, 20, {
+      note: "#4 sanitizing",
+      over: () => false,
+    });
+    const early = await Promise.race([waiting.then(() => "held"), Bun.sleep(200).then(() => "waiting")]);
+    expect(early, "a holder outside its claim is waited for").toBe("waiting");
+    expect(apart.holder.killed).toBe(false);
+    apart.holder.kill();
+    (await waiting)();
+
+    const { clone, lock, holder } = held();
+    const said: string[] = [];
+    const release = await holdAlone(clone, "land", (line) => said.push(line), 20, {
+      note: "#6 sanitizing",
+      over,
+    });
+    await holder.exited;
+    expect(holder.signalCode).toBe("SIGTERM");
+    expect(said.join("\n")).toContain(`pid ${String(holder.pid)}, #5 sanitizing`);
+    expect(readlinkSync(lock)).toBe(`${String(runtimeProcess.pid)} #6 sanitizing`);
+    release();
+  });
+
+  it("takes over at once a lock an older landing left as a folder without its pid", async () => {
+    const clone = mkdtempSync(join(fixture, "alone-"));
+    execTextSync("git", ["init", "-q"], { cwd: clone });
+    const lock = join(clone, ".git", "ana-land.lock");
+    mkdirSync(lock);
+    const held = holdAlone(clone, "land", () => undefined, 20);
+    const early = await Promise.race([held.then(() => "held"), Bun.sleep(60).then(() => "waiting")]);
+    expect(early).toBe("held");
+    expect(readlinkSync(lock)).toBe(String(runtimeProcess.pid));
+    (await held)();
   });
 
   it("names each commit's pull request on the lines that name the commit", () => {

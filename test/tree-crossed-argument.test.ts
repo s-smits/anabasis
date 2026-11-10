@@ -1,5 +1,5 @@
 /**
- * `tree/crossed-argument` (`tools/oxlint/tree-crossed-argument.ts`): a call into another file whose
+ * `tree/no-transposed-argument` (`tools/oxlint/tree-crossed-argument.ts`): a call into another file whose
  * arguments are named for one another's parameters. Each shape it reads (a named, aliased or
  * namespace import, `new` of an imported class, a method of an imported object literal, three
  * arguments rotated) sits beside its nearest case that is not a crossing.

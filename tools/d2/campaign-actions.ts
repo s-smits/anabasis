@@ -41,7 +41,7 @@ import { seedKept } from "#src/builder/kept.ts";
 import { type BuildRequest, layPractice } from "#src/builder/session.ts";
 import { type Bench, endingWith, snapshot, waitTool } from "#src/builder/tools.ts";
 import { pendingWords } from "#src/campaign/word.ts";
-import { conversing, examine } from "#src/examiner/session.ts";
+import { conversing, type Examined, examine } from "#src/examiner/session.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import { latestBuilt, patienceOf, promoted as lastPromoted } from "#src/kernel/reports.ts";
 import { billedParts } from "#src/kernel/meter.ts";
@@ -123,14 +123,22 @@ export interface CampaignContext {
 /** The code a move carries where the Builder chose it, and the table names another. */
 const LED = "led";
 const CHOSE = "the Builder's own move in its campaign conversation";
-/** How an Examiner session ended, as the Builder is told it: `supplied` is the host having the
- *  tasks it asked for, which is a whole session as `finished` is. */
-const EXAMINED = new Map([
-  ["finished", "ended whole"],
-  ["supplied", "ended whole"],
-  ["crashed", "crashed"],
-  ["killed", "was stopped"],
-]);
+/** How an Examiner session ended, as the Builder is told it, one line for each ending the session
+ *  can record: `supplied` is the host having the tasks it asked for, which is a whole session as
+ *  `finished` is. Until 9 November the map held four, and a session that ended `stopped` would
+ *  have been told as one that ended at its limits. */
+const EXAMINED = new Map(
+  Object.entries({
+    stands: "ended whole",
+    finished: "ended whole",
+    supplied: "ended whole",
+    crashed: "crashed",
+    killed: "was stopped",
+    stopped: "was stopped",
+    wall: "ended at its limits",
+    turns: "ended at its limits",
+  } satisfies Record<Examined["ended"], string>),
+);
 
 /** What the operator is told where a step waits for their promotion under `--hitl`. */
 export const awaitsOperator = (name: string, harness: string): string =>
@@ -192,6 +200,11 @@ function actionTool(context: CampaignContext, bench: Bench, move: ActionMove, ru
   });
 }
 
+/** Whether a promotion is on record with no comparison started since. */
+const uncompared = (events: readonly LogEvent[]) =>
+  events.findLastIndex(({ kind }) => kind === "harness.promoted") >
+  events.findLastIndex(({ kind }) => kind === "comparison.started");
+
 /** The same admission for a model's call and the Examiner session the host starts for it. */
 async function runAction(
   context: CampaignContext,
@@ -222,10 +235,9 @@ async function runAction(
   // new reference, so the starter comparison it owes reads every task written for it (`heldSince`):
   // in the rehearsal of 5 November a compare before that read a second harness on the old
   // reference's tasks, and a step there would have promoted twice on one epoch's tasks.
-  const events = read(context.log);
-  const promotedAt = events.findLastIndex(({ kind }) => kind === "harness.promoted");
-  const compared = events.findLastIndex(({ kind }) => kind === "comparison.started");
-  if (move === "compare" && writing != null && promotedAt > compared) await bench.within(() => writing.done);
+  if (move === "compare" && writing != null && uncompared(read(context.log))) {
+    await bench.within(() => writing.done);
+  }
   if (context.failed !== null) return text("The campaign has been stopped by the host.");
   const { turn, decided } = actionTurn(context);
   if (decided.move === "end") {
@@ -353,7 +365,7 @@ const examineAction =
     return {
       // The count is where the session stops, not a size it reaches: the esp32 run of 7 November
       // asked 12 to 22 in 18 sessions and 0 of 17 ended holding that many.
-      said: `Examiner session ${session} is writing tasks beside this conversation${tasks === undefined ? "" : `, and stops once it holds ${plural(Number(tasks), "task")}`}: edit, practise and compare meanwhile. As it holds tasks the host releases the practice owed since the last reading.`,
+      said: `Examiner session ${session} is writing tasks beside this conversation${tasks === undefined ? "" : `, and stops once it holds ${plural(Number(tasks), "task")}`}: edit and practise meanwhile${uncompared(turn.events) ? "; a compare waits for this session to end, so that the comparison owed since the promotion reads every task it writes" : ", and compare"}. As it holds tasks the host releases the practice owed since the last reading.`,
     };
   };
 
@@ -678,14 +690,14 @@ function campaignStatus(context: CampaignContext, bench: Bench): string {
 }
 
 /**
- * The campaign's tools and advice for one Builder conversation (`BuildRequest.campaign`). Where
- * `opens`, the host starts the Examiner session the table names as the conversation opens, as the
- * Builder's `examine` would: until 14 October a led campaign that opened short of tasks waited for
- * its Builder to ask, and until 16 October every later session did.
+ * The campaign's tools and advice for one Builder conversation (`BuildRequest.campaign`). Where its
+ * `opening` starts the Examiner, the host starts the session the table names as the conversation
+ * opens, as the Builder's `examine` would: until 14 October a led campaign that opened short of
+ * tasks waited for its Builder to ask, and until 16 October every later session did.
  */
 export function campaignTools(
   context: CampaignContext,
-  opens = false,
+  opening: "starts-examiner" | "starts-nothing" = "starts-nothing",
 ): NonNullable<BuildRequest["campaign"]> {
   return (bench) => {
     const examineRun = examineAction(context, bench);
@@ -706,7 +718,7 @@ export function campaignTools(
     });
     return {
       start: async () =>
-        opens
+        opening === "starts-examiner"
           ? textsOf((await runAction(context, bench, "examine", examineRun, undefined)).output ?? []).join(
               "\n",
             )

@@ -30,6 +30,7 @@ import { gitMaybe, mainTree } from "#src/meta/git.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
+import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";
 import { pooled } from "#src/meta/pool.ts";
 import { capturedExecPath, runtimeProcess } from "#src/meta/process.ts";
@@ -129,8 +130,8 @@ export const READERS: readonly Reader[] = [
 ];
 
 /** The list a pass or `derive` runs: `--no-embed` takes out the readers that load the model. */
-export const readersOf = (noEmbed: boolean): readonly Reader[] =>
-  noEmbed ? READERS.filter(({ embeds }) => embeds !== true) : READERS;
+export const readersOf = (flags: { readonly "no-embed"?: boolean | undefined }): readonly Reader[] =>
+  flags["no-embed"] === true ? READERS.filter(({ embeds }) => embeds !== true) : READERS;
 
 /** What `reader` says of `log`, with its ending and stderr added where it failed. `cut` is a reader
  *  its time limit ended, so what it would have said is unknown. */
@@ -163,9 +164,11 @@ function kept(dir: string): { stamp: string; failed: string[] } | null {
   return isString(manifest?.stamp) ? { stamp: manifest.stamp, failed } : null;
 }
 
-/** The readers' output for the log at `log`, in `<root>/<campaign>/`, one `<reader>.txt` each and a
- *  `manifest.json`. The folder is written beside its place and renamed into it, so a reader of it
- *  never finds half of one derivation and half of another. */
+/** The readers' output for the log at `log`, in `<root>/<campaign>@<path>/`, one `<reader>.txt`
+ *  each and a `manifest.json`, `<path>` the head of the hash of the log's path. The folder is written
+ *  beside its place and renamed into it, so a reader of it never finds half of one derivation and
+ *  half of another. A live log, its snapshot and a host's copy share the campaign's name, so the
+ *  name alone is no key: until 9 November they shared one folder, and each replaced the other's. */
 export async function derive(
   log: string,
   {
@@ -176,7 +179,7 @@ export async function derive(
   }: { root: string; repo: string; force?: boolean; readers?: readonly Reader[] },
 ): Promise<Derived> {
   const name = basename(dirname(log));
-  const dir = join(root, name);
+  const dir = join(root, `${name}@${hashJsonValue(log).slice(0, 12)}`);
   // What the folder is derived from: the log by its path, size and time, the commit reading it, and
   // which readers, so a folder written under `--no-embed` does not stand in for a whole one.
   const { size, lastModified } = Bun.file(log);
@@ -189,7 +192,7 @@ export async function derive(
   ]);
   const before = kept(dir);
   if (!force && before?.stamp === stamp) return { name, dir, ran: false, failed: before.failed };
-  const work = join(root, `.${name}.${String(runtimeProcess.pid)}`);
+  const work = join(root, `.${basename(dir)}.${String(runtimeProcess.pid)}`);
   rmSync(work, { recursive: true, force: true });
   mkdirSync(work, { recursive: true });
   const endings = await pooled(readers, WIDTH, async (reader) => {

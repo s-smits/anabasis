@@ -112,9 +112,11 @@ describe("optional lint findings", () => {
     filename: "fixture.ts",
   });
 
-  it("takes the two repository plugins' findings and unused comments that name only their rules", () => {
+  it("takes the repository plugins' findings and unused comments that name only their rules", () => {
     expect(optionalFinding(coded("anti-slop(no-chained-type-assertions)"), bytes)).toBe(true);
     expect(optionalFinding(coded("ana(no-deep-nesting)"), bytes)).toBe(true);
+    expect(optionalFinding(coded("implicit-state(no-coupled-flags)"), bytes)).toBe(true);
+    expect(optionalFinding(coded("implicit-state-opinionated(no-state-in-names)"), bytes)).toBe(true);
     expect(
       optionalFinding(
         unused("// oxlint-disable-next-line anti-slop/no-chained-type-assertions -- why a/b"),

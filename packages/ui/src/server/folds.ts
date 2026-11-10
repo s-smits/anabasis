@@ -18,6 +18,7 @@ import { practiceRan, ranUnder, solvesIn, verdictsOf } from "../../../../src/ker
 import { taskSets } from "../../../../src/kernel/task.ts";
 import { tracesIn } from "../../../../src/kernel/trace.ts";
 import { countBy } from "../../../../src/meta/tally.ts";
+import type { TaskDraw } from "../models.ts";
 
 /** One log as it was read: the unit every fold below is kept for. */
 export interface Log {
@@ -59,9 +60,21 @@ export const callsIn = once(({ events }) =>
  *  `src/campaign/admission.ts`). */
 const poolIn = once(({ events }) => poolOf(events));
 export const awaitingIn = once((log) => new Set(poolIn(log).awaiting));
-export const exhaustedIn = once((log) => new Set(poolIn(log).exhausted));
 export const doubtedIn = once((log) => new Set(poolIn(log).doubted));
-export const retainedIn = once((log) => new Set(poolIn(log).retained));
+/** Each held-out task's one place in the draw, by version: the pool's out, retained and frontier
+ *  lists partition the held set, and a task not held out has none. */
+export const drawsIn = once((log): ReadonlyMap<string, TaskDraw> => {
+  const { frontier, retained, exhausted } = poolIn(log);
+  const [awaiting, doubted, spent] = [awaitingIn(log), doubtedIn(log), new Set(exhausted)];
+  return new Map<string, TaskDraw>([
+    ...frontier.map((task) => [task, { place: "frontier" }] as const),
+    ...retained.map((task) => [task, { place: "retained", exhausted: spent.has(task) }] as const),
+    ...[...awaiting, ...doubted].map(
+      (task) =>
+        [task, { place: "out", awaitingLabel: awaiting.has(task), doubted: doubted.has(task) }] as const,
+    ),
+  ]);
+});
 export const stopIn = once(({ events }) => stopRule(events));
 export const openingIn = once(({ events }) => openingOf(events));
 export const proposalsIn = once(({ events }) => proposalsOf(events));

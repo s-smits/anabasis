@@ -28,7 +28,8 @@ case "$*" in
 "repo view"*) echo main ;;
 "pr list"*) printf '%s\\n' "$ANA_FAKE_OPEN" ;;
 "pr edit"*) if [ -n "$ANA_FAKE_EDIT_REFUSED" ]; then echo "edit refused" >&2; exit 1; fi ;;
-"api"*) printf '%s\\n' "$ANA_FAKE_STACK" ;;
+"stack link"*) if [ -n "$ANA_FAKE_LINK_REFUSED" ]; then echo "link refused" >&2; exit 1; fi ;;
+"api"*) grep -q '^stack unstack' "$ANA_GH_LOG" || printf '%s\\n' "$ANA_FAKE_STACK" ;;
 esac
 `,
 );
@@ -243,8 +244,11 @@ describe("splitting a stack above a merged pull request", () => {
     unmoved("one");
   });
 
-  it("divides an open pull request's native stack in two and moves no branch or base", () => {
-    const result = run(["1", "--yes"], "OPEN", chain(), { ANA_FAKE_STACK: "9 5,1,2,3" });
+  /** The open stack #5, #1 (the cut), #2, #3, as GitHub lists open pull requests. */
+  const whole = () => [pull(5, "five", "main"), pull(1, "cut", "five"), ...chain()];
+
+  it("divides an open pull request's stack in two and moves no branch or base", () => {
+    const result = run(["1", "--yes"], "OPEN", whole(), { ANA_FAKE_STACK: "9 5,1,2,3" });
     expect(result.status).toBe(0);
     expect(stackCalls()).toEqual([
       "stack unstack 9",
@@ -256,17 +260,35 @@ describe("splitting a stack above a merged pull request", () => {
     unmoved("two");
   });
 
+  it("finishes a division cut short after its unstack from the chain of bases", () => {
+    const first = run(["1", "--yes"], "OPEN", whole(), {
+      ANA_FAKE_STACK: "9 5,1,2,3",
+      ANA_FAKE_LINK_REFUSED: "1",
+    });
+    expect(first.status).toBe(1);
+    const second = run(["1", "--yes"], "OPEN", whole(), { ANA_FAKE_STACK: "9 5,1,2,3" });
+    expect(second.status).toBe(0);
+    expect(stackCalls()).toEqual([
+      "stack unstack 9",
+      "stack link --base main 5 1",
+      "stack link --base main 5 1",
+      "stack link --base cut 2 3",
+    ]);
+  });
+
   it("links neither part of one pull request, which no stack needs", () => {
-    const result = run(["1", "--yes"], "OPEN", chain(), { ANA_FAKE_STACK: "9 1,2" });
+    const one = [pull(1, "cut", "main"), pull(2, "one", "cut")];
+    const result = run(["1", "--yes"], "OPEN", one, { ANA_FAKE_STACK: "9 1,2" });
     expect(result.status).toBe(0);
     expect(stackCalls()).toEqual(["stack unstack 9"]);
   });
 
-  it("dissolves no stack where nothing stands above the pull request, or where it is in none", () => {
-    for (const stack of ["9 2,3,1", "9 2,3", ""]) {
-      const result = run(["1", "--yes"], "OPEN", chain(), { ANA_FAKE_STACK: stack });
+  it("dissolves no stack where nothing stands above the pull request, or where it is not open", () => {
+    const aside = pull(4, "beside", "main");
+    for (const open of [[pull(1, "cut", "main")], [pull(1, "cut", "main"), aside], chain()]) {
+      const result = run(["1", "--yes"], "OPEN", open, { ANA_FAKE_STACK: "9 1,2,3" });
       expect(result.status).toBe(1);
-      expect(result.stderr).toContain("no native stack holds pull requests above #1");
+      expect(result.stderr).toContain("no open pull request is based on #1");
     }
     expect(stackCalls()).toEqual([]);
   });
@@ -278,6 +300,21 @@ describe("splitting a stack above a merged pull request", () => {
     expect(baseEdits()).toEqual(["pr edit 2 --base main"]);
     expect(stackCalls()).toEqual(["stack unstack 9", "stack link --base main 2 3"]);
     expect(atOrigin("merge-base", "--is-ancestor", "main", "two")).toBe("");
+  });
+
+  it("links the stack above on a second run where the first stopped after its unstack", () => {
+    mergeCut();
+    const extra = { ANA_FAKE_STACK: "9 2,3" };
+    expect(run(["1", "--yes"], "MERGED", chain(), { ...extra, ANA_FAKE_LINK_REFUSED: "1" }).status).toBe(1);
+    old = { ...old, one: atOrigin("rev-parse", "one"), two: atOrigin("rev-parse", "two") };
+    expect(run(["1", "--yes"], "MERGED", [pull(2, "one", "main"), pull(3, "two", "one")], extra).status).toBe(
+      0,
+    );
+    expect(stackCalls()).toEqual([
+      "stack unstack 9",
+      "stack link --base main 2 3",
+      "stack link --base main 2 3",
+    ]);
   });
 
   it("leaves the native stack as it is without --yes", () => {

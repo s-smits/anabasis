@@ -33,6 +33,7 @@
 import { plural } from "../meta/text.ts";
 import type { Campaign, Handover, PracticeFail } from "../campaign/handover.ts";
 import { short } from "../campaign/move.ts";
+import type { Built } from "./session.ts";
 
 /** A comparison's reading as a Builder is told it. A reading that tallied nothing has none. The
  *  last two are readings a comparison made before 11 October, which an older log holds. */
@@ -46,14 +47,16 @@ const READ = new Map([
 ]);
 
 /** How a Builder session ended, in a Builder's words (`endedBy`, `session.ts`). */
-const ENDED = new Map([
-  ["finished", "ended at its finish"],
-  ["wall", "ended at its time limit"],
-  ["turns", "ended at its turn limit"],
-  ["crashed", "crashed: its conversation was lost to a provider or host error"],
-  ["killed", "was killed"],
-  ["stopped", "was stopped as the campaign's run ended"],
-]);
+const ENDED = new Map<string, string>(
+  Object.entries({
+    finished: "ended at its finish",
+    wall: "ended at its time limit",
+    turns: "ended at its turn limit",
+    crashed: "crashed: its conversation was lost to a provider or host error",
+    killed: "was killed",
+    stopped: "was stopped as the campaign's run ended",
+  } satisfies Record<Built["ended"], string>),
+);
 
 /** Where a fail stands, in a Builder's words. */
 function stands({ standing, under }: PracticeFail): string {

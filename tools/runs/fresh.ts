@@ -207,7 +207,7 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
       "--",
       ...more,
     ];
-    runtimeProcess.exitCode = await verbOn(preparedHost(host, commit), forwarded);
+    runtimeProcess.exitCode = await verbOn(await preparedHost(host, commit), forwarded);
     return;
   }
   await startFresh(pack, {

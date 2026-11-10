@@ -21,5 +21,5 @@ export async function continueOn(host: Host, args: readonly string[]): Promise<n
   const forwarded = own.filter((_, n) => n !== index && (joined || n !== index + 1));
   const command = [...forwarded, "--at", commit, ...(boundary === -1 ? [] : args.slice(boundary))];
   console.log(`${host.name}: prepare a detached controller at ${commit.slice(0, 9)} before continuing`);
-  return await verbOn(own.includes("--yes") ? preparedHost(host, commit) : host, command);
+  return await verbOn(own.includes("--yes") ? await preparedHost(host, commit) : host, command);
 }

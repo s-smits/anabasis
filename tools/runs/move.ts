@@ -213,7 +213,7 @@ export async function move(args: readonly string[]): Promise<void> {
   // Counted before the pause too: the destination's caps must take the run, less the run itself.
   await roomToStart(payerOf(values.login, flags), to.host?.name ?? "here", name);
   // Prepare before the pause: a missing commit or failed install must leave the source running.
-  const controller = to.host === undefined ? undefined : preparedHost(to.host, commit);
+  const controller = to.host === undefined ? undefined : await preparedHost(to.host, commit);
   if (to.host === undefined) publishedAt(to.repo, commit);
   const paused = ["pause", name, "--after", values.after, "--yes"];
   if (from.host === undefined) await pause(paused.slice(1));

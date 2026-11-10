@@ -2,7 +2,7 @@
  * Lands a pull request, with every open one beneath it, on main, after proving each commit the
  * landing would publish where it sits.
  *
- *   bun run land -- [<pull request>] [--auto] [--once] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]
+ *   bun run land -- [<pull request> | latest] [--auto] [--once] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]
  *
  * `--auto` follows the top: it lands the top of the longest chain above the pull request named, and
  * after the proof, and again after `ci.yml` before a merge, it reads the chain again and lands its
@@ -11,8 +11,8 @@
  * and a pull request stacked above it stays open, moved onto the trunk once the merge goes
  * through; `bun run split` then replays the rest onto the merge with every pass kept. With no pull
  * request named, it lands the stack of two or more that holds the oldest open pull request, the one
- * `bun run follow` moves the main checkout to (`firstStack`, `tools/runtime/pulls.ts`; operator,
- * 27 October), and follows its top. It never follows into another chain on main.
+ * `bun run follow` moves the main checkout to (`firstStack`, `pulls.ts`; operator, 27 October), and
+ * follows its top; `latest` follows the highest-numbered top. It never follows into another chain.
  *
  * A plain push runs no step of the CI gate, and one with `ANA_PUSH_VERIFY=1` only the static steps
  * and nearby tests over the pushed head (`tools/runtime/pre-push.ts`), so a pushed commit is unproved
@@ -33,15 +33,11 @@
  * rest is gated, and failure on the head that holds a failed
  * commit and on each above it. It posts pending only where a commit is proved afresh, on that commit
  * and on each head from the one holding it up, and turns any it leaves pending into an error as it
- * ends, so a red an earlier landing left clears once its fix
- * is being proved: the pre-push hook marks the heads above a pushed one pending, and until 28 October a rerun set every
- * proved head back to pending before its remembered passes turned it green again, so an unchanged
- * stack read as reset. A check belongs
- * to its commit, so a push leaves the new head without it and the pull request reads unproved again
- * (the pre-push hook marks the heads above it pending); a label would outlive the head it was
- * earned on (the operator, 27 October). That is how a stack shows it is ready. A pull request opens as a
- * draft, and the same success moves a draft to Ready for review, so a draft is one no landing has
- * proved yet (the operator, 27 October). `--merge` posts the same, and
+ * ends, so a red an earlier landing left clears once its fix is being proved. A check belongs to its
+ * commit, so a push leaves the new head without it and the pull request reads unproved again (the
+ * pre-push hook marks the heads above it pending); a label would outlive the head it was earned on
+ * (the operator, 27 October). A pull request opens as a draft, and the same success moves a draft
+ * to Ready for review, so a draft is one no landing has proved yet. `--merge` posts the same, and
  * also wants `ci.yml` passed on the top's head, since only it proves the Linux isolation on a clean
  * runner. No pull request push starts that run (since 19 October, `ci.yml`); when none exists and
  * `ci.yml` takes `workflow_dispatch`, `--merge` dispatches one before gating, so it runs meanwhile,
@@ -59,10 +55,8 @@
  * native stack, its members up to the top the chain of bases. Before anything is gated, `--sanitize`
  * and `--merge` run `gh stack link` over the whole chain where the stack holds only its lower part
  * or several are in none, so a pull request opened on the top joins at its first landing; without a
- * flag the link is only said, and a stack in another order is refused (`stackOf`). Until 21
- * October a chain outside a stack was merged one pull request at a time, each retargeted to main
- * first; every landing since 14 October went through a stack. A merge that does not go through sets
- * the status of every head back to pending.
+ * flag the link is only said, and a stack in another order is refused (`stackOf`). A merge that
+ * does not go through sets the status of every head back to pending.
  *
  * A merge is refused before anything is gated where another open chain starts on main, a pull
  * request based there with another above it: the merge would leave that chain short of main's new
@@ -122,6 +116,7 @@ import {
   beneath,
   firstStack,
   form,
+  latestTop,
   gh,
   ghOrThrow,
   MERGEABLE_CONTEXT,
@@ -209,7 +204,7 @@ export const CATEGORIES = new Set([
   "docs",
 ]);
 const USAGE =
-  "usage: bun run land -- [<pull request>] [--auto] [--once] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]";
+  "usage: bun run land -- [<pull request> | latest] [--auto] [--once] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]";
 const TAG = /^v\d+\.\d+\.\d+$/u;
 
 class Refusal extends Error {}
@@ -755,7 +750,8 @@ async function main(argv: readonly string[]): Promise<number> {
     },
     allowPositionals: true,
   });
-  const named = positionals[0] === undefined ? null : Number(positionals[0]);
+  const latest = positionals[0] === "latest";
+  const named = positionals[0] === undefined || latest ? null : Number(positionals[0]);
   const jobs = Number(values.jobs);
   if (
     (named !== null && (!Number.isInteger(named) || named <= 0)) ||
@@ -775,12 +771,18 @@ async function main(argv: readonly string[]): Promise<number> {
     jobs,
     tag: values.tag ?? null,
   };
-  const round = (): Promise<number> => landOnce(root, named, mode);
-  return values.once || mode.kind === "merging" ? round() : follow(root, named, say, round);
+  // `latest` is resolved once, so a follow keeps to that chain instead of another chain's newer top.
+  const top = latest ? latestTop(openPulls(root)) : named;
+  if (top === 0) {
+    console.error("land: no pull request is open. Nothing was merged.");
+    return 1;
+  }
+  const round = (): Promise<number> => landOnce(root, () => top ?? oldestStack(root), mode);
+  return values.once || mode.kind === "merging" ? round() : follow(root, top, say, round);
 }
 
-/** One landing of `named`, or of the oldest stack, to its end; its exit status. */
-async function landOnce(root: string, named: number | null, mode: Mode): Promise<number> {
+/** One landing of the pull request `first` names, or of a new top above it, to its end; its exit status. */
+async function landOnce(root: string, first: () => number, mode: Mode): Promise<number> {
   const board = statusBoard(root);
   let alone = (): void => undefined;
   try {
@@ -792,7 +794,7 @@ async function landOnce(root: string, named: number | null, mode: Mode): Promise
         : runSync(["git", "ls-remote", "--exit-code", "--tags", "origin", mode.tag], { cwd: root }).exitCode;
     if (tagged === 0) throw new Refusal(`${String(mode.tag)} is already a tag on origin.`);
     if (tagged !== 2) throw new Refusal(`origin could not be asked whether it holds ${String(mode.tag)}.`);
-    let target = named ?? oldestStack(root);
+    let target = first();
     alone = await holdAlone(root, "land", say, undefined, claimOf(root, target, mode));
     for (let moves = 0; ; ) {
       if (mode.auto) {

@@ -353,6 +353,26 @@ describe("bun run land", () => {
     expect(result.stdout).toContain("#11, #12 onto main");
   });
 
+  it("with latest named lands the open stack whose top has the highest number, up to its top", () => {
+    const result = runLand(["latest", "--sanitize"], {
+      ANA_FAKE_PULLS: JSON.stringify([
+        pull(9, "beside", "main", beside),
+        pull(11, "a", "main", lowerDocs),
+        pull(12, "b", "a", upper),
+        pull(16, "tests", "main", testsTop),
+      ]),
+      ANA_FAKE_STACK: "8 16",
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("#16 onto main");
+  });
+
+  it("with latest named and no pull request open refuses before it takes the landing", () => {
+    const result = runLand(["latest", "--sanitize"], { ANA_FAKE_PULLS: "[]" });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("no pull request is open");
+  });
+
   it("proves every landing head and turns the stack green when a lower head is a merge's second parent", () => {
     const result = runLand(["12", "--sanitize"], {
       ANA_FAKE_PULLS: JSON.stringify([pull(11, "a", "main", lowerDocs), pull(12, "merged", "a", merged)]),

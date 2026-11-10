@@ -19,9 +19,9 @@
  *   promotions, the hours since the opening, a scored comparison that left no task untied ("they
  *   likely won't promote so that's a bit ironic that we need to wait"), or an ending.
  * - `due` is the same reading as a timer takes it (`dueLines`): a head line with the count of steps
- *   owed and the oldest's hours, one line a step, and for each live run the count of files it runs
- *   (`src`, `vendor`, `package.json`) that differ at the commit the command runs from, which it
- *   does not measure.
+ *   owed and the oldest's hours, one line a step, and for each live run the count of files of the
+ *   code a solve runs (`codeOf`, `tools/d2/campaign.ts`) that differ at the commit the command runs
+ *   from, which it does not measure.
  * - `open` starts the investigation of one run, or of several as equals, under `.ana/wri/` of the
  *   main checkout, reading a frozen copy of each live one (`wri.ts start --snapshot`), and marks the
  *   folder an iteration (`iteration.json`): a run is never stopped for its iteration, since stopping
@@ -67,6 +67,7 @@ import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "#src/meta/process.ts";
 import { runSync } from "#src/meta/subprocess.ts";
 import { stillRunning } from "#tools/runs/diagnosis.ts";
+import { CODE_TREES } from "#tools/d2/campaign.ts";
 import { lastLaunch } from "#tools/runs/receipt.ts";
 import {
   type Run,
@@ -703,21 +704,22 @@ function changedAt(dir: string): number {
   );
 }
 
-/** What stands between a live run and the commit `head` of the tree `repo`: the files that decide what
- *  a run runs and differ there, which no run has yet measured. The run's commit is its last launch's
- *  receipt, which a gathered copy carries beside its log. */
-function unmeasured(repo: string, head: string, { row, commit }: Standing): string {
+/** What stands between a live run and the commit `head` of the tree `repo`: the files of the code a
+ *  solve runs (`codeOf`'s trees, `package.json` and `bun.lock`) that differ there, which no run has
+ *  yet measured. The run's commit is its last launch's receipt, which a gathered copy carries beside
+ *  its log. */
+export function unmeasured(repo: string, head: string, { row, commit }: Standing): string {
   if (commit === null) return `measures · ${row.name} · no launch receipt names its commit`;
-  // Files and not commits: a landing beneath replays a pull request onto new commits of one tree. The
-  // paths are those of `hostOf` in `tools/wri/wri.ts`, a script that parses its arguments on import.
-  const moved = gitMaybe(repo, "diff", "--name-only", commit, head, "--", "src", "vendor", "package.json");
+  // Files and not commits: a landing beneath replays a pull request onto new commits of one tree.
+  const paths = [...CODE_TREES, "package.json", "bun.lock"];
+  const moved = gitMaybe(repo, "diff", "--name-only", commit, head, "--", ...paths);
   const files = moved?.split("\n").filter(Boolean).length ?? 0;
   const reading =
     moved === null
       ? `its diff against ${head.slice(0, 9)} could not be read`
       : files === 0
         ? `${head.slice(0, 9)}, the commit this command runs from, changes nothing it runs`
-        : `${String(files)} file(s) of src, vendor and package.json differ at ${head.slice(0, 9)}, the commit this command runs from, measured by no run until one is forked there`;
+        : `${String(files)} file(s) of the code a solve runs differ at ${head.slice(0, 9)}, the commit this command runs from, measured by no run until one is forked there`;
   return `measures · ${row.name} · ${commit.slice(0, 9)} · ${reading}`;
 }
 

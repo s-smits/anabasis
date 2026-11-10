@@ -186,10 +186,12 @@ each pull request stacks on the one before. Nothing in an iteration is merged; t
    heads. Tag `run/<name>/1` at the commit and push it.
 3. **Read** with `wri2p2.ts` at every review and milestone, resolving each prediction the hour its
    event lands. A defect seen live goes into the plan; the run is not stopped to fix it. When the
-   stack moves while runs are live, each `measures` line of `wri2p2.ts due` counts the files of
-   `src`, `vendor` and `package.json` that differ between a live run's commit and the commit the
-   command runs from, none of which is measured until a run is forked there. So stack what no run runs (tools, tests, skills) as it is ready, gather what a run
-   does run into the iteration's one pull request, and fork at its head before stacking the next.
+   stack moves while runs are live, each `measures` line of `wri2p2.ts due` counts the files of the
+   code a solve runs (`codeOf`, `tools/d2/campaign.ts`: `src`, `vendor`, the campaign commands under
+   `tools/d2`, `tools/c` and `tools/d1b`, and the packages) that differ between a live run's commit
+   and the commit the command runs from, none of which is measured until a run is forked there. So
+   stack what no run runs (other tools, tests, skills) as it is ready, gather what a run does run
+   into the iteration's one pull request, and fork at its head before stacking the next.
 
 ### The improvement window
 
@@ -220,7 +222,7 @@ climbs. Every stack, a patch that changes nothing a seat reads included, lands o
 campaign launched at the top's head has reached two promotions under four conditions:
 
 - **One commit throughout.** Every launch in `bun run runs source <name>` names the head, or a commit
-  whose `src`, `vendor` and `package.json` match it, each with a clean tree, and `wri.ts read` row C
+  whose code a solve runs (`codeOf`) matches it, each with a clean tree, and `wri.ts read` row C
   names one host code.
 - **The mechanisms ran.** Each pull request that changes a run's conditions shows its event in the
   log (`AGENTS.md`, section 9); one whose trigger never came is named unmeasured in the notes.

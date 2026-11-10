@@ -108,6 +108,19 @@ describe("what a session's timers did", () => {
     expect(firing("bun run runs status 2>> /tmp/err")).toMatchObject({ changed: 0 });
   });
 
+  it("passes over a line cut mid-write, as a live or half-mirrored transcript can end, and counts the rest", () => {
+    const cut = says("Nothing due, and a reply cut off before it closed.").slice(0, 40);
+    const read = timerLines(
+      timersIn([[...create("c7", "cdcdcdcd", "11 * * * *", true), fired("cdcdcdcd"), cut]]),
+    );
+    expect(read[0]?.split(" · ").slice(0, 4)).toEqual([
+      "cdcdcdcd",
+      "11 * * * *",
+      "recurring",
+      "1 fired, 0 changed, 1 quiet",
+    ]);
+  });
+
   it("prints the timers that fired, the busiest first, and the totals with their shares", () => {
     expect(timerLines(timersIn([transcript]))).toEqual([
       "aaaaaaaa · 13 * * * * · recurring · 3 fired, 1 changed, 1 quiet · watch aaaaaaaa",

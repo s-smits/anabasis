@@ -88,8 +88,8 @@ describe("what a change owes", () => {
     expect(seats?.files).toStrictEqual(["src/builder/prompt.ts"]);
     expect(seats?.said).toContain("test/builder.test.ts");
     const setup = repository();
-    write(setup, { "tsconfig.json": "{}\n" });
-    expect(owedOf(setup, changeOf(setup, { base: "HEAD" })).ui).toStrictEqual(["tsconfig.json"]);
+    write(setup, { "bun.lock": "{}\n", "tsconfig.json": "{}\n" });
+    expect(owedOf(setup, changeOf(setup, { base: "HEAD" })).ui).toStrictEqual(["bun.lock"]);
   });
 
   it("reports a changed file one line over the ceiling and not one at it", () => {

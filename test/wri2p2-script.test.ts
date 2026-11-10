@@ -18,6 +18,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 
 const live = { name: "r", host: "here", live: true };
+const SCRIPT = ".claude/skills/run-improvement-campaign/scripts/wri2p2.ts";
 const PLAN_FILE = "plan.md";
 const PLAN =
   "# Plan\n\nvet-1 in cross-domain.md, by E1, B2 and S1.\n\nPull request: #602\n\n## Intentionally opposed\n\n- none\n";
@@ -461,17 +462,18 @@ describe("the short view a timer reads", () => {
       changedAt,
       now,
     );
-    expect(lines[0]).toBe("due at 2026-11-08T04:00Z · 4 step(s) owed, the oldest for 40.0 h · 1 run(s) live");
+    expect(lines[0]).toBe(
+      "due at 2026-11-08T04:00Z · 4 step(s) owed, the oldest listed for 40.0 h · 1 run(s) live",
+    );
     expect(lines.slice(1).map((line) => line.split(" · ").slice(0, 3).join(" · "))).toEqual([
       "open · new · r4",
       "outcomes · 40.0 h · r2 and 1 more",
       "open · 12.0 h · r5",
       "vet · 3.0 h · r1",
     ]);
-    expect(lines[1]).toEndWith(
-      "2 promotions · bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts open r4",
-    );
-    expect(lines[2]).toEndWith("wri2p2.ts next /wri/b");
+    // Each line ends in the command that prints its step whole.
+    const commands = lines.slice(1, 3).map((line) => line.split(" · ").at(-1));
+    expect(commands).toEqual([`bun ${SCRIPT} open r4`, `bun ${SCRIPT} next /wri/b`]);
   });
 
   it("only counts a step nobody has taken for the days, a closed run's unread trigger included", () => {
@@ -484,12 +486,19 @@ describe("the short view a timer reads", () => {
       changedAt,
       now,
     );
-    expect(lines).toHaveLength(3);
-    expect(lines[0]).toContain("1 step(s) owed, the oldest for 3.0 h · 0 run(s) live");
-    expect(lines[2]).toStartWith("and 2 step(s) owed for 2 day(s) or more");
+    // Three owed in all, one listed, and the two older than the days counted on the last line.
+    expect(lines.map((line) => /\d+(?= step| of them)/u.exec(line)?.[0])).toEqual(["3", undefined, "2"]);
+    expect(lines[1]?.split(" · ").slice(0, 3)).toEqual(["plan", "3.0 h", "r3"]);
     // The same steps are all listed once the window is widened to hold them.
     expect(dueLines([standing("r1", false, "/wri/old", ["step: plan · x"])], changedAt, now, 5)).toHaveLength(
       2,
     );
+  });
+
+  it("never says nothing is owed while every owed step has stood for the days", () => {
+    const lines = dueLines([standing("r1", false, "/wri/old", ["step: plan · x"])], changedAt, now);
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).not.toContain("nothing owed");
+    expect(lines.map((line) => /\d+(?= step| of them)/u.exec(line)?.[0])).toEqual(["1", "1"]);
   });
 });

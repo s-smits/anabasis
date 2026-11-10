@@ -11,7 +11,9 @@
  * that moves a run, a pull request or an investigation, or started an agent or a timer (`CHANGE`,
  * `ACTS`); it was **quiet** where it changed nothing and its last message was shorter than 400
  * characters. The split is a reading of the turn's tool calls and so an estimate, never a record: a
- * command longer than its first line can hide a write.
+ * single `>` redirect, `sed -i`, `mv` and `trash` are not matched, so their firings can read quiet.
+ * A timer is listed where it fired or was made from `--since` on; its creation is read from any time,
+ * and one whose creation is not in the transcripts is of kind unknown, in neither total.
  *
  * The cycle ledgers asked every firing to say whether it was useful and when it should have fired.
  * Over 389 rows in nine ledgers up to 10 November 2026, 68 said the first and none the second, while
@@ -19,7 +21,7 @@
  * A session copied between logins repeats its past, so each line counts once, by its `uuid`.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import { closeSync, openSync, readdirSync, readSync, statSync } from "#src/meta/filesystem.ts";
+import { closeSync, openSync, readdirSync, readSync, realpathSync, statSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { type JsonObject, type JsonValue, asRecord, isString } from "#src/meta/json-shape.ts";
 import { join } from "#src/meta/path.ts";
@@ -30,7 +32,7 @@ const CHUNK = 1 << 20;
 const QUIET_CHARS = 400;
 /** A shell command that moves a run, a pull request, an investigation or a file. */
 const CHANGE =
-  /runs (?:on \S+ )?(?:fresh|pause|stop|continue|move|keep|retire)\b|git (?:commit|push)|gh pr (?:create|edit|merge|ready|comment)|land -- |wri2p2\.ts open|wri\.ts (?:start|lanes|collect|synthesis)|nohup|>>|tee -a/u;
+  /runs (?:on \S+ )?(?:fresh|pause|stop|continue|move|keep|retire)\b|git (?:commit|push)|gh pr (?:create|edit|merge|ready|comment)|land -- |wri2p2\.ts open|wri\.ts (?:start|lanes|collect|synthesis)|nohup|(?<!\d)>>|tee -a/u;
 /** The tools whose call is itself a change. */
 const ACTS = new Set([
   "Edit",
@@ -48,7 +50,8 @@ const MADE = /Scheduled (?<kind>recurring job|one-shot task) (?<id>[0-9a-f]{8})/
 export interface Timer {
   readonly id: string;
   readonly cron: string;
-  readonly recurring: boolean;
+  /** Null where the transcripts hold no creation of it. */
+  readonly recurring: boolean | null;
   readonly prompt: string;
   readonly firings: number;
   readonly changed: number;
@@ -82,13 +85,19 @@ function textOf(value: JsonValue | undefined): string {
     .join(" ");
 }
 
-/** Every timer the transcript `lines` made or fired from `since` on, in the order first seen. */
-export function timersIn(lines: Iterable<string>, since = ""): Timer[] {
+/**
+ * Every timer made or fired from `since` on in the transcripts `files`, each given as its lines, in
+ * the order first seen. A creation is read from any time, so that a timer made before `since` keeps
+ * its kind, and a firing's turn ends at the next prompt or at the end of its file.
+ */
+export function timersIn(files: Iterable<Iterable<string>>, since = ""): Timer[] {
+  const from = since === "" ? -Infinity : Date.parse(since);
   const seen = new Set<string>();
   const asked = new Map<string, JsonObject>();
   const timers = new Map<string, Timer>();
+  const madeSince = new Set<string>();
   const timer = (id: string): Timer =>
-    timers.get(id) ?? { id, cron: "?", recurring: false, prompt: "", firings: 0, changed: 0, quiet: 0 };
+    timers.get(id) ?? { id, cron: "?", recurring: null, prompt: "", firings: 0, changed: 0, quiet: 0 };
   let turn: Turn | null = null;
   const close = () => {
     if (turn === null) return;
@@ -103,15 +112,15 @@ export function timersIn(lines: Iterable<string>, since = ""): Timer[] {
     });
     turn = null;
   };
-  for (const line of lines) {
+  const take = (line: string): void => {
     // A transcript line is often megabytes of one tool's output, so only a line that can name a
     // timer, or that belongs to a firing's turn, is parsed.
     const named = line.includes('"CronCreate"') || line.includes('"scheduledTaskId"');
-    if (!(named || turn !== null || (asked.size > 0 && line.includes('"tool_result"')))) continue;
+    if (!(named || turn !== null || (asked.size > 0 && line.includes('"tool_result"')))) return;
     const row = asRecord(capturedJsonParse(line));
-    if (row === null || !isString(row.uuid) || seen.has(row.uuid)) continue;
+    if (row === null || !isString(row.uuid) || seen.has(row.uuid)) return;
     seen.add(row.uuid);
-    if (isString(row.timestamp) && row.timestamp < since) continue;
+    const early = isString(row.timestamp) && Date.parse(row.timestamp) < from;
     const parts = partsOf(row);
     if (row.type === "user") {
       const results = parts.filter((part) => part.type === "tool_result");
@@ -119,6 +128,7 @@ export function timersIn(lines: Iterable<string>, since = ""): Timer[] {
         const input = isString(part.tool_use_id) ? asked.get(part.tool_use_id) : undefined;
         const made = MADE.exec(textOf(part.content))?.groups;
         if (input === undefined || made?.id === undefined) continue;
+        if (!early) madeSince.add(made.id);
         timers.set(made.id, {
           ...timer(made.id),
           cron: isString(input.cron) ? input.cron : "?",
@@ -126,10 +136,11 @@ export function timersIn(lines: Iterable<string>, since = ""): Timer[] {
           prompt: isString(input.prompt) ? input.prompt : "",
         });
       }
-      if (results.length > 0) continue;
+      if (results.length > 0) return;
       close();
-      if (isString(row.scheduledTaskId)) turn = { id: row.scheduledTaskId, changed: false, said: 0 };
-      continue;
+      const id = early ? undefined : row.scheduledTaskId;
+      if (isString(id)) turn = { id, changed: false, said: 0 };
+      return;
     }
     for (const part of parts) {
       const input = asRecord(part.input) ?? {};
@@ -140,9 +151,12 @@ export function timersIn(lines: Iterable<string>, since = ""): Timer[] {
       const command = isString(input.command) ? input.command : "";
       turn.changed ||= ACTS.has(part.name) || (part.name === "Bash" && CHANGE.test(command));
     }
+  };
+  for (const file of files) {
+    for (const line of file) take(line);
+    close();
   }
-  close();
-  return [...timers.values()];
+  return [...timers.values()].filter(({ id, firings }) => firings > 0 || madeSince.has(id));
 }
 
 const share = (part: number, whole: number) =>
@@ -163,7 +177,7 @@ export function timerLines(timers: readonly Timer[]): string[] {
       .toSorted((one, other) => other.firings - one.firings)
       .map(
         ({ id, cron, recurring, prompt, firings, changed, quiet }) =>
-          `${id} · ${cron} · ${recurring ? "recurring" : "once"} · ${String(firings)} fired, ${String(changed)} changed, ${String(quiet)} quiet · ${prompt.replaceAll(/\s+/gu, " ").slice(0, 60)}`,
+          `${id} · ${cron} · ${recurring === null ? "unknown" : recurring ? "recurring" : "once"} · ${String(firings)} fired, ${String(changed)} changed, ${String(quiet)} quiet · ${prompt.replaceAll(/\s+/gu, " ").slice(0, 60)}`,
       ),
     total("recurring"),
     total("one-shot"),
@@ -188,24 +202,37 @@ function* linesOf(path: string): Generator<string> {
   if (rest !== "") yield rest;
 }
 
-/** The transcripts `path` names: itself, or every `.jsonl` beneath it. */
-function transcripts(path: string): string[] {
-  if (!statSync(path).isDirectory()) return path.endsWith(".jsonl") ? [path] : [];
-  return readdirSync(path).flatMap((entry) => transcripts(join(path, entry)));
+/** The transcripts `path` names: itself, or every `.jsonl` beneath it. A link is followed, but a
+ *  folder already walked (by its real path) is not walked again, and an entry that cannot be read,
+ *  such as a broken link, is passed over. */
+function transcripts(path: string, walked: Set<string>): string[] {
+  let real: string;
+  let folder: boolean;
+  try {
+    real = realpathSync(path);
+    folder = statSync(real).isDirectory();
+  } catch {
+    return [];
+  }
+  if (!folder) return path.endsWith(".jsonl") ? [path] : [];
+  if (walked.has(real)) return [];
+  walked.add(real);
+  return readdirSync(real).flatMap((entry) => transcripts(join(real, entry), walked));
 }
 
 if (import.meta.main) {
   await runCommand(
     { name: "timers", usage: USAGE, options: { since: "text" }, positionals: [1, 64] },
     (args: CommandArgs) => {
-      const files = args.positionals.flatMap(transcripts);
+      const walked = new Set<string>();
+      const files = args.positionals.flatMap((path) => transcripts(path, walked));
       if (files.length === 0) args.die(`no transcript under ${args.positionals.join(", ")}`);
       const since = args.value("since") ?? "";
-      const lines = (function* all() {
-        for (const file of files) yield* linesOf(file);
-      })();
-      console.log(`timers in ${String(files.length)} transcript(s)${since === "" ? "" : ` since ${since}`}`);
-      for (const line of timerLines(timersIn(lines, since))) console.log(line);
+      const from = Date.parse(since);
+      if (since !== "" && Number.isNaN(from)) args.die(`--since ${since} is not a time`);
+      const after = since === "" ? "" : ` since ${new Date(from).toISOString()}`;
+      console.log(`timers in ${String(files.length)} transcript(s)${after}`);
+      for (const line of timerLines(timersIn(files.map(linesOf), since))) console.log(line);
     },
   );
 }

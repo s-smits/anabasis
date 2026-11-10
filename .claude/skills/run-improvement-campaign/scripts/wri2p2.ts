@@ -20,7 +20,8 @@
  *   likely won't promote so that's a bit ironic that we need to wait"), or an ending.
  * - `due` is the same reading as a timer takes it (`dueLines`): a head line with the count of steps
  *   owed and the oldest's hours, one line a step, and for each live run the count of files it runs
- *   (`src`, `vendor`, `package.json`) that differ on this tree's head, which it does not measure.
+ *   (`src`, `vendor`, `package.json`) that differ at the commit the command runs from, which it
+ *   does not measure.
  * - `open` starts the investigation of one run, or of several as equals, under `.ana/wri/` of the
  *   main checkout, reading a frozen copy of each live one (`wri.ts start --snapshot`), and marks the
  *   folder an iteration (`iteration.json`): a run is never stopped for its iteration, since stopping
@@ -66,6 +67,7 @@ import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "#src/meta/process.ts";
 import { runSync } from "#src/meta/subprocess.ts";
 import { stillRunning } from "#tools/runs/diagnosis.ts";
+import { lastLaunch } from "#tools/runs/receipt.ts";
 import {
   type Run,
   type Running,
@@ -135,13 +137,13 @@ interface Row {
 
 type Kind = "iteration" | "investigation";
 
-/** One run as the driver reads it: its row, its worktree where this machine holds it, the
+/** One run as the driver reads it: its row, the commit its last launch's receipt names, the
  *  investigation that reads it and the lines of its step. */
 interface Standing {
   readonly row: Row;
   /** When its log's last event was written. */
   readonly last: number;
-  readonly tree: string | null;
+  readonly commit: string | null;
   readonly dir: string | null;
   readonly step: readonly string[];
 }
@@ -607,7 +609,7 @@ function standings(args: CommandArgs, repo: string, known: readonly Run[], parts
     return {
       row,
       last: Date.parse(events.at(-1)?.at ?? ""),
-      tree: run.archived === undefined ? run.tree : null,
+      commit: lastLaunch(run.path)?.commit ?? null,
       dir: folder?.dir ?? null,
       step: folder === undefined ? opening : nextOf(folder.dir, launchedFrom(known), root, lengthsIn(known)),
     };
@@ -666,56 +668,64 @@ export function dueLines(
     .filter((each) => !left.includes(each))
     .toSorted((one, other) => (other.hours ?? Infinity) - (one.hours ?? Infinity));
   const oldest = Math.max(0, ...taken.map(({ hours }) => hours ?? 0));
+  const listed = taken.length === 0 ? "" : `, the oldest listed for ${oldest.toFixed(1)} h`;
   const live = standing.filter(({ row }) => row.live).length;
   return [
     `due at ${new Date(now).toISOString().slice(0, 16)}Z · ${
-      taken.length === 0
-        ? "nothing owed"
-        : `${String(taken.length)} step(s) owed, the oldest for ${oldest.toFixed(1)} h`
+      timed.length === 0 ? "nothing owed" : `${String(timed.length)} step(s) owed${listed}`
     } · ${String(live)} run(s) live`,
-    ...taken.map(({ name, rest, dir, runs, hours }) => {
-      const more = runs.length > 1 ? ` and ${String(runs.length - 1)} more` : "";
-      const where =
-        dir === null ? `${rest} · bun ${SCRIPT} open ${runs.join(",")}` : `bun ${SCRIPT} next ${dir}`;
-      return `${name} · ${hours === null ? "new" : `${hours.toFixed(1)} h`} · ${runs[0] ?? ""}${more} · ${where}`;
+    ...taken.map(({ name, rest, dir, runs: [first = "", ...others], hours }) => {
+      const more = others.length > 0 ? ` and ${String(others.length)} more` : "";
+      const where = dir === null ? `${rest} · bun ${SCRIPT} open ${first}` : `bun ${SCRIPT} next ${dir}`;
+      return `${name} · ${hours === null ? "new" : `${hours.toFixed(1)} h`} · ${first}${more} · ${where}`;
     }),
     ...(left.length === 0
       ? []
       : [
-          `and ${String(left.length)} step(s) owed for ${String(days)} day(s) or more: take each or pass it with a row in its deviations.md`,
+          `and ${String(left.length)} of them owed for ${String(days)} day(s) or more: take each or pass it with a row in its deviations.md`,
         ]),
   ];
 }
 
-/** When anything under the investigation `dir` or its lanes was last written. */
+/** When anything under the investigation `dir` or its lanes was last written; an entry that cannot
+ *  be read, such as a broken link, is passed over. */
 function changedAt(dir: string): number {
-  const lanes = join(dir, "lanes");
-  const files = [dir, ...readdirSync(dir).map((entry) => join(dir, entry))];
-  const reports = existsSync(lanes) ? readdirSync(lanes).map((entry) => join(lanes, entry)) : [];
-  return Math.max(...[...files, ...reports].map((path) => statSync(path).mtimeMs));
+  const entries = (folder: string) =>
+    existsSync(folder) ? readdirSync(folder).map((entry) => join(folder, entry)) : [];
+  return Math.max(
+    ...[dir, ...entries(dir), ...entries(join(dir, "lanes"))].flatMap((path) => {
+      try {
+        return [statSync(path).mtimeMs];
+      } catch {
+        return [];
+      }
+    }),
+  );
 }
 
-/** What stands between a live run and the head of the tree `repo`: the files that decide what a run
- *  runs (`src`, `vendor`, `package.json`) and differ there, which no run has yet measured. */
-function unmeasured(repo: string, { row, tree }: Standing): string {
-  const at = tree === null ? null : gitMaybe(tree, "rev-parse", "HEAD");
-  if (at === null) {
-    return `measures · ${row.name} · its tree is on ${row.host}: bun run runs source ${row.name}`;
-  }
-  // Files and not commits: a landing beneath replays a pull request onto new commits of one tree.
-  const moved = gitMaybe(repo, "diff", "--name-only", at, "HEAD", "--", "src", "vendor", "package.json");
-  const files = moved === null ? "an unknown number of" : String(moved.split("\n").filter(Boolean).length);
-  const head =
-    moved === ""
-      ? "this head changes nothing it runs"
-      : `${files} file(s) of src, vendor and package.json differ on this head, measured by no run until one is forked there`;
-  return `measures · ${row.name} · ${at.slice(0, 9)} · ${head}`;
+/** What stands between a live run and the commit `head` of the tree `repo`: the files that decide what
+ *  a run runs and differ there, which no run has yet measured. The run's commit is its last launch's
+ *  receipt, which a gathered copy carries beside its log. */
+function unmeasured(repo: string, head: string, { row, commit }: Standing): string {
+  if (commit === null) return `measures · ${row.name} · no launch receipt names its commit`;
+  // Files and not commits: a landing beneath replays a pull request onto new commits of one tree. The
+  // paths are those of `hostOf` in `tools/wri/wri.ts`, a script that parses its arguments on import.
+  const moved = gitMaybe(repo, "diff", "--name-only", commit, head, "--", "src", "vendor", "package.json");
+  const files = moved?.split("\n").filter(Boolean).length ?? 0;
+  const reading =
+    moved === null
+      ? `its diff against ${head.slice(0, 9)} could not be read`
+      : files === 0
+        ? `${head.slice(0, 9)}, the commit this command runs from, changes nothing it runs`
+        : `${String(files)} file(s) of src, vendor and package.json differ at ${head.slice(0, 9)}, the commit this command runs from, measured by no run until one is forked there`;
+  return `measures · ${row.name} · ${commit.slice(0, 9)} · ${reading}`;
 }
 
 function brief(args: CommandArgs, repo: string, known: readonly Run[]): number {
   const { shown, days, now } = standings(args, repo, known, args.positionals.slice(1));
+  const head = gitMaybe(repo, "rev-parse", "HEAD") ?? "HEAD";
   for (const line of dueLines(shown, changedAt, now, days)) console.log(line);
-  for (const each of shown.filter(({ row }) => row.live)) console.log(unmeasured(repo, each));
+  for (const each of shown.filter(({ row }) => row.live)) console.log(unmeasured(repo, head, each));
   return 0;
 }
 

@@ -36,7 +36,7 @@ campaign; `copy <name> --to <worktree>` brings one back.
 | `fetch [<name>] [--from <host>]` | copies a peer's campaign, or every peer's records, into the archive | `move.ts` |
 | `retire [--days 1] [--yes]` | archives idle campaigns, deletes seeds and stale worktrees, refreshes peers' records | `retire.ts` |
 | `on <host> <verb ...>`, `hosts [--all] [--health]` | a verb on another host; each host's status or health | `hosts.ts` |
-| `pulse [<part> ...] [--every 290] [--state <file>] [--no-readers] [--no-embed]` | what each run gained since the last look | `pulse.ts` |
+| `pulse [<part> ...] [--every 290] [--state <file>] [--no-readers]` | what each run gained since the last look | `pulse.ts` |
 | `alerts [--state <file>]` | the same for cron, one line per new event | `alerts.ts` |
 | `view <name>` | one campaign as its log reads, and the table's next move | `view.ts` |
 | `source <name> [--holds <c>]...` | each launch's commit and tree, and whether it holds a fix | `receipt.ts` |
@@ -276,14 +276,16 @@ reading it as a live run's advice. `pulse --here` polls this machine only. Neith
 keeper move, missing process, ending or stall, nothing otherwise, and exit 0. It prints the `runs
 pause` command once two promotions are read against the starter, and never runs it.
 
-Each look also runs the deterministic readers (`READERS`, `tools/wri/derive.ts`) over every run whose
-log moved, and prints `◆ <reader>: <line>` for news (at most 3 a reader, 12 a run, 30 a look), with
-the full text in a named folder. One low-priority pass a host (`tools/wri/pass.ts`) does the reading,
-at most 30 s every 4 minutes and only with a core free, so under load readers are shed and said to
-be; `⚠ not read since the last look: <readers>; <why>` repeats until they catch up. `--no-readers`
-skips them, and `--no-embed` skips the two that load a local embedding model. Results lie in
-`.ana/pulse/readers/` and hold hidden values, so no seat can read them
-(`test/runs-pulse-readers.test.ts`, `test/wri-vectors.test.ts`).
+Each look also says, under each moment among a run's new events (a report, a promotion, an
+Examiner's or Builder's end, a campaign's opening or ending), what the deterministic readers that
+name that moment (`at`, `READERS`, `tools/wri/derive.ts`) found of it: `◆ <reader>: <line>` for each
+line naming its session or harness, or its `gist` where none does (at most 3 a reader, 12 a run, 30
+a look), with the full text in a named folder. One low-priority pass a host (`tools/wri/pass.ts`)
+runs a reader only once one of its moments lies past what it read, at most 30 s every 4 minutes and
+only with a core free; a look whose new events hold no moment starts none. A moment not yet read is
+named once (`⚠ not read yet: <readers> of <moment>; <why>`) and its lines come at the look that
+finds them. `--no-readers` skips them. Results lie in `.ana/pulse/moments/` and hold hidden values,
+so no seat can read them (`test/runs-pulse-readers.test.ts`).
 
 ## Stop
 

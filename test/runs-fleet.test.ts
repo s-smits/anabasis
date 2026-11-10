@@ -604,24 +604,7 @@ describe("the daily retire's host step", () => {
 });
 
 describe("the fleet pulse", () => {
-  it("asks a peer for --no-embed only where the look was given it", () => {
-    const remoteOf = (...flags: readonly string[]) => {
-      const made = fixture();
-      const state = join(made.root, "state.json");
-      const asked = JSON.stringify(["--no-readers", ...flags, "--state", state]);
-      made.run(`import { watch } from "REPOSITORY/tools/runs/pulse.ts"; await watch(${asked});`);
-      return (
-        made
-          .recorded()
-          .findLast((call) => call.tool === "ssh")
-          ?.args.at(-1) ?? ""
-      );
-    };
-    expect(remoteOf("--no-embed")).toContain("--no-embed");
-    expect(remoteOf()).not.toContain("--no-embed");
-  });
-
-  it("polls each host once and keeps a local state path out of remote commands", () => {
+  it("polls each host once, without the readers it was told to leave out, and keeps a local state path out of remote commands", () => {
     const made = fixture();
     const state = join(made.root, "state.json");
     const command = `import { watch } from "REPOSITORY/tools/runs/pulse.ts"; await watch(["--no-readers", "--state", ${JSON.stringify(state)}]);`;
@@ -635,6 +618,7 @@ describe("the fleet pulse", () => {
         ?.args.at(-1) ?? "";
     expect(remote).not.toContain(state);
     expect(remote).toContain("--here");
+    expect(remote).toContain("--no-readers");
     const failed = made.run(command, { FAKE_OFFLINE: "1" });
     expect(failed.code).toBe(1);
     expect(failed.out).toContain("pulse unavailable");

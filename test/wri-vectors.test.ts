@@ -26,7 +26,7 @@ import { claimRoot } from "../src/wall/seat-root.ts";
 import { folderOf, resultOf } from "../tools/runs/pulse-readers.ts";
 import { importsOf, lines } from "../tools/runtime/gate.ts";
 import type { Reader } from "../tools/wri/derive.ts";
-import { passOver, queueOf, runQueue } from "../tools/wri/pass.ts";
+import { passOver } from "../tools/wri/pass.ts";
 import { type Embed, vectorLines } from "../tools/wri/embed.ts";
 import { fakeEmbed } from "./helpers/fake-embed.ts";
 
@@ -131,10 +131,11 @@ describe("what a cut leaves", () => {
     const log = logOf(wordsOf(60));
     const store = join(root, "store");
     const count = join(root, "count");
-    const reader = (name: string, embeds: boolean): Reader => ({
-      name,
+    const slow: Reader = {
+      name: "slow",
       answers: "",
-      embeds,
+      embeds: true,
+      at: ["build.turn"],
       args: (at) => [
         "test/helpers/vectors-slow.ts",
         at,
@@ -145,8 +146,7 @@ describe("what a cut leaves", () => {
         "--hang-after",
         "2",
       ],
-    });
-    const slow = reader("slow", true);
+    };
     // Long enough for a loaded host to reach the hang: the helper hangs, so the whole budget is spent.
     const budgetMs = 8000;
     await passOver(store, [log], { budgetMs, roomNow: () => true, readers: [slow] });
@@ -161,28 +161,6 @@ describe("what a cut leaves", () => {
         .split("\n")
         .filter(Boolean),
     ).toHaveLength(32);
-    // What the cut recorded is about the whole budget, a few milliseconds either side of it. Under a
-    // budget one short of what it recorded, a reader that resumes takes its turn anyway...
-    const [due] = queueOf(store, [log], [slow]);
-    expect(due?.ms).toBeGreaterThanOrEqual(budgetMs - 100);
-    const room = { budgetMs: (due?.ms ?? 0) - 1, room: () => true, now: () => 100 };
-    const taken: string[] = [];
-    await runQueue(due === undefined ? [] : [due], {
-      ...room,
-      read: async ({ reader: { name } }) => {
-        taken.push(name);
-      },
-    });
-    expect(taken).toEqual(["slow"]);
-    // ...where one that does not would wait for a budget it can never have.
-    const refused: string[] = [];
-    await runQueue(due === undefined ? [] : [{ ...due, reader: reader("plain", false) }], {
-      ...room,
-      read: async ({ reader: { name } }) => {
-        refused.push(name);
-      },
-    });
-    expect(refused).toEqual([]);
     await passOver(store, [log], { budgetMs: 60_000, roomNow: () => true, readers: [slow] });
     expect(resultOf(store, log, "slow")).toMatchObject({ ok: true, size: Bun.file(log).size });
     const all = readFileSync(count, "utf8").trim().split("\n").map(Number);

@@ -1,60 +1,68 @@
 /**
- * One pass of the deterministic readers over the logs a look names, for `tools/runs/pulse-readers.ts`,
- * which starts it by this command, since production imports no helper. It calls no paid model, writes
- * no event and decides nothing: each reader's output goes to the host's store, for every observer of
- * the host to read.
+ * One pass of the readers that name a moment over the logs a look names, for
+ * `tools/runs/pulse-readers.ts`, which starts it by this command, since production imports no helper.
+ * It calls no paid model, writes no event and decides nothing: each reader's output goes to the host's
+ * store, for every observer of the host to read.
  *
- *   bun tools/wri/pass.ts --store <dir> --budget <ms> [--no-embed] <log> [<log> ...]
+ *   bun tools/wri/pass.ts --store <dir> --budget <ms> <log> [<log> ...]
  *
- * It runs one reader at a time: the rows of each log first, up to half its budget, and then whichever
- * result is oldest, so logs that take more than one pass come round and none starves. A reader whose
- * last run would not fit what is left waits for a later pass, one the limit cuts keeps its last
- * result, and the pass stops where the load leaves no room. A reader that goes on from what a cut left
- * (`embeds`) takes any time that is left: a cut records the time it had, about the whole budget, which
- * would never fit again, and a first read's time says nothing of the reads after it. A second pass that
- * finds the lock held leaves at once, which is what settles several looks that started one at one moment.
+ * A reader runs on a log only where an event of one of its kinds (`at`, `derive.ts`) lies in the
+ * bytes past what it last read, found by a scan of those bytes for the kind's text instead of a parse:
+ * the largest closed log is 96 MB, which a parse would read at every pass. It takes the logs as given
+ * and each log's due readers in the list's order, one reader at a time. A reader whose last run would
+ * not fit what is left waits for a later pass, one the limit cuts keeps its last result, and the pass
+ * stops where the load leaves no room. A second pass that finds the lock held leaves at once, which is
+ * what settles several looks that started one at one moment.
  */
-import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
-import { statSync } from "#src/meta/filesystem.ts";
+import { closeSync, openSync, readSync, statSync } from "#src/meta/filesystem.ts";
 import { resolve } from "#src/meta/path.ts";
-import {
-  dropLock,
-  endPass,
-  keepNames,
-  keepResult,
-  type PassEnding,
-  resultOf,
-  room,
-  takeLock,
-} from "#tools/runs/pulse-readers.ts";
-import { READERS, type Reader, readerOutput, readersOf } from "./derive.ts";
+import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { endPass, keepReaders, keepResult, resultOf, room, underLock } from "#tools/runs/pulse-readers.ts";
+import { READERS, type Reader, readerOutput } from "./derive.ts";
 
-/** The reader whose triggers the look says itself. */
-const HEAD = "rows";
+type Ended = Parameters<typeof endPass>[1];
 
-/** One reader on one log that the log has moved past. */
+/** One reader on one log that a moment has moved past. */
 export interface Due {
   readonly log: string;
   readonly reader: Reader;
-  /** When it last ran and how long that took, 0 where it never has. */
-  readonly at: number;
+  /** How long it last took, 0 where it never ran. */
   readonly ms: number;
 }
 
-/** What `readers` owe on `logs`, the most valuable first: the head reader of each log, then the
- *  oldest result, and among those never read the order of `readers`. */
-export function queueOf(store: string, logs: readonly string[], readers: readonly Reader[]): Due[] {
-  const due = logs.flatMap((log) => {
+/** The bytes of `log` from `from` to `to`. */
+function bytesOf(log: string, from: number, to: number): Buffer {
+  const bytes = Buffer.alloc(Math.max(0, to - from));
+  const handle = openSync(log, "r");
+  try {
+    readSync(handle, bytes, 0, bytes.length, from);
+  } finally {
+    closeSync(handle);
+  }
+  return bytes;
+}
+
+/** What `readers` owe on `logs`: on each log in turn, the readers with a moment past what they read,
+ *  in the list's order. The scan starts where the reader that has read least stopped. */
+export function dueOf(store: string, logs: readonly string[], readers: readonly Reader[]): Due[] {
+  const timed = readers.filter(({ at }) => at !== undefined);
+  return logs.flatMap((log) => {
+    const read = timed.map((reader) => ({ reader, kept: resultOf(store, log, reader.name) }));
+    const from = Math.max(0, Math.min(...read.map(({ kept }) => kept?.size ?? 0)));
     const { size } = statSync(log);
-    return readers.flatMap((reader, rank) => {
-      const kept = resultOf(store, log, reader.name);
-      if (kept?.size === size) return [];
-      return [
-        { log, reader, rank, at: kept?.at ?? 0, ms: kept?.ms ?? 0, head: reader.name === HEAD ? 0 : 1 },
-      ];
+    if (read.length === 0 || from >= size) return [];
+    const bytes = bytesOf(log, from, size);
+    const last = new Map<string, number>();
+    const lastOf = (kind: string) => {
+      if (!last.has(kind)) last.set(kind, bytes.lastIndexOf(`"kind":"${kind}"`));
+      return last.get(kind) ?? -1;
+    };
+    return read.flatMap(({ reader, kept }) => {
+      const past = Math.max(0, kept?.size ?? 0);
+      const due = reader.at?.some((kind) => lastOf(kind) >= 0 && from + lastOf(kind) >= past) === true;
+      return due ? [{ log, reader, ms: kept?.ms ?? 0 }] : [];
     });
   });
-  return due.toSorted((one, other) => one.head - other.head || one.at - other.at || one.rank - other.rank);
 }
 
 /** Run `queue` until it is done, the budget is spent or the load leaves no room. */
@@ -66,15 +74,14 @@ export async function runQueue(
     readonly now: () => number;
     readonly read: (due: Due, timeoutMs: number) => Promise<void>;
   },
-): Promise<PassEnding["ended"]> {
+): Promise<Ended> {
   const started = ways.now();
-  let ended: PassEnding["ended"] = "finished";
+  let ended: Ended = "finished";
   for (const due of queue) {
     const spent = ways.now() - started;
     if (spent >= ways.budgetMs) return "budget";
     const left = ways.budgetMs - spent;
-    const fits = due.reader.embeds === true || due.ms <= left;
-    if (!fits || (due.reader.name === HEAD && spent >= ways.budgetMs / 2)) {
+    if (due.ms > left) {
       ended = "budget";
       continue;
     }
@@ -85,7 +92,7 @@ export async function runQueue(
 }
 
 /** Read one log with one reader and keep what it said. A reader its limit cut read nothing, so its
- *  last result stands and only its turn moves: it goes to the back of the queue. */
+ *  last result stands and only its time moves. */
 async function readInto(store: string, repo: string, { log, reader }: Due, timeoutMs: number): Promise<void> {
   const started = performance.now();
   const { size } = statSync(log);
@@ -110,14 +117,10 @@ export async function passOver(
     readonly readers?: readonly Reader[];
   },
 ): Promise<void> {
-  if (!takeLock(store)) return;
   const repo = resolve(import.meta.dir, "..", "..");
-  try {
-    keepNames(
-      store,
-      readers.map(({ name }) => name),
-    );
-    const ended = await runQueue(queueOf(store, logs, readers), {
+  await underLock(store, async () => {
+    keepReaders(store, readers);
+    const ended = await runQueue(dueOf(store, logs, readers), {
       budgetMs,
       room: roomNow,
       now: () => performance.now(),
@@ -125,27 +128,18 @@ export async function passOver(
       read: (due, timeoutMs) => readInto(store, repo, due, Math.ceil(timeoutMs)),
     });
     endPass(store, ended);
-  } finally {
-    dropLock(store);
-  }
+  });
 }
 
 async function main(): Promise<void> {
   const { values, positionals: logs } = parseArgs({
     args: runtimeProcess.argv.slice(2),
     allowPositionals: true,
-    options: {
-      store: { type: "string" },
-      budget: { type: "string" },
-      "no-embed": { type: "boolean", default: false },
-    },
+    options: { store: { type: "string" }, budget: { type: "string" } },
   });
   const store = values.store ?? "";
   if (store === "" || values.budget === undefined) throw new Error("name --store and --budget");
-  await passOver(store, logs, {
-    budgetMs: Number(values.budget),
-    readers: readersOf(values),
-  });
+  await passOver(store, logs, { budgetMs: Number(values.budget) });
 }
 
 if (import.meta.main) await main();

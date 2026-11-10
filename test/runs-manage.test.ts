@@ -189,6 +189,33 @@ describe("going on with a campaign", () => {
       keeper.kill();
     }
   });
+
+  it("refuses a second waiter on one run, which could start again a run the first had stopped", () => {
+    const made = fakeHosts();
+    fixtures.push(made.root);
+    const folder = join(made.main, ".ana", "d2", "waited");
+    mkdirSync(folder, { recursive: true });
+    append(join(folder, "log.jsonl"), "campaign.ended", { ending: "environment" });
+    const pauseOf = (row: string) =>
+      made.run(
+        'import { pause } from "REPOSITORY/tools/runs/manage.ts"; await pause(["waited", "--after", "compacted", "--yes"]);',
+        { FAKE_PS: row },
+      );
+    const waiting = `99999 ${capturedExecPath} tools/runs/cli.ts pause waited --after reported --yes`;
+    const refused = pauseOf(waiting);
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain("already waits to stop in process 99999");
+    // Another run's waiter, or a continue that waits for nothing, leaves this pause free.
+    for (const row of [
+      waiting.replace("waited", "other"),
+      `99999 ${capturedExecPath} tools/runs/cli.ts continue waited --login 1 --yes`,
+    ]) {
+      expect(pauseOf(row)).toMatchObject({ code: 0, err: "" });
+    }
+    expect(
+      pauseOf(`99999 ${capturedExecPath} tools/runs/cli.ts continue waited --after compacted --yes`).code,
+    ).toBe(1);
+  });
 });
 
 describe("starting a campaign", () => {

@@ -259,7 +259,8 @@ function cwdOf(pid: string): string {
 export function processes(table = runTextSyncOrThrow(["ps", "-axo", "pid=,args="]).split("\n")): Running[] {
   const found = table.flatMap((row) => {
     const [pid = "", ...args] = row.trim().split(/\s+/);
-    const kept = writesCampaign(args) || runsAs(args, [LIVE]) || keeping(args) !== undefined;
+    // Every verb of this CLI, so that a keeper and a pause waiting on a run are seen beside its writers.
+    const kept = writesCampaign(args) || runsAs(args, [LIVE, CLI]);
     return kept || args.some((arg) => arg.endsWith(SEAT)) ? [{ pid, args }] : [];
   });
   if (found.length === 0) return [];
@@ -312,12 +313,20 @@ export function openComparisons(events: readonly LogEvent[]): string[] {
 /** The file beside `run`'s log that holds its keeper's output. */
 export const keptFile = (run: Run) => join(dirname(run.path), "keep.out");
 
-/** The campaign a `runs keep` process keeps going (`keep.ts`), or undefined for any other process. */
-function keeping(args: readonly string[]): string | undefined {
-  const at = args.indexOf("keep");
-  return runsAs(args, [CLI]) && at !== -1 && args.includes(KEEPING) ? args[at + 1] : undefined;
-}
+/** The processes in `running`, but this one, that wait to stop campaign `name`: a `runs pause`, or a
+ *  `runs continue --after`, which starts the run again once it has stopped. */
+export const waiters = (name: string, running: readonly Running[] = processes()): number[] =>
+  running.flatMap(({ pid, args }) => {
+    const after = args.some((arg) => arg === "--after" || arg.startsWith("--after="));
+    const at = args.findIndex((arg) => arg === "pause" || (after && arg === "continue"));
+    const waits = runsAs(args, [CLI]) && at !== -1 && args[at + 1] === name;
+    return waits && pid !== runtimeProcess.pid ? [pid] : [];
+  });
 
-/** The processes in `running` that keep campaign `name` going, but this one. */
+/** The processes in `running`, but this one, that keep campaign `name` going (`runs keep`, `keep.ts`). */
 export const keepers = (name: string, running: readonly Running[] = processes()): number[] =>
-  running.flatMap(({ pid, args }) => (keeping(args) === name && pid !== runtimeProcess.pid ? [pid] : []));
+  running.flatMap(({ pid, args }) => {
+    const at = args.indexOf("keep");
+    const kept = runsAs(args, [CLI]) && at !== -1 && args.includes(KEEPING) && args[at + 1] === name;
+    return kept && pid !== runtimeProcess.pid ? [pid] : [];
+  });

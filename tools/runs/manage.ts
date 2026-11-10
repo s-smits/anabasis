@@ -78,6 +78,7 @@ import {
   type Run,
   runNamed,
   standing,
+  waiters,
   writers,
 } from "./registry.ts";
 import { stop } from "./stop.ts";
@@ -173,6 +174,11 @@ function kindsNamed(after: string): readonly string[] {
 
 async function pauseAt(run: Run, after: string): Promise<void> {
   const kinds = kindsNamed(after);
+  // One waiter a run: a `continue --after` would start again a run another's pause had stopped.
+  const waiting = waiters(run.name);
+  if (waiting.length > 0) {
+    throw new Error(`${run.name} already waits to stop in process ${waiting.join(", ")}`);
+  }
   const events = logEvents(run.path);
   const base = countOf(events, after);
   const allowed = solvesMs(events);

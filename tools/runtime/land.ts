@@ -2,7 +2,7 @@
  * Lands a pull request, with every open one beneath it, on main, after proving each commit the
  * landing would publish where it sits.
  *
- *   bun run land -- [<pull request>] [--auto] [--once] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]
+ *   bun run land -- [<pull request> | latest] [--auto] [--once] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]
  *
  * `--auto` follows the top: it lands the top of the longest chain above the pull request named, and
  * after the proof, and again after `ci.yml` before a merge, it reads the chain again and lands its
@@ -11,8 +11,8 @@
  * and a pull request stacked above it stays open, moved onto the trunk once the merge goes
  * through; `bun run split` then replays the rest onto the merge with every pass kept. With no pull
  * request named, it lands the stack of two or more that holds the oldest open pull request, the one
- * `bun run follow` moves the main checkout to (`firstStack`, `tools/runtime/pulls.ts`; operator,
- * 27 October), and follows its top. It never follows into another chain on main.
+ * `bun run follow` moves the main checkout to (`firstStack`, `pulls.ts`; operator, 27 October), and
+ * follows its top; `latest` follows the highest-numbered top. It never follows into another chain.
  *
  * A plain push runs no step of the CI gate, and one with `ANA_PUSH_VERIFY=1` only the static steps
  * and nearby tests over the pushed head (`tools/runtime/pre-push.ts`), so a pushed commit is unproved
@@ -122,6 +122,7 @@ import {
   beneath,
   firstStack,
   form,
+  latestTop,
   gh,
   ghOrThrow,
   MERGEABLE_CONTEXT,
@@ -209,7 +210,7 @@ export const CATEGORIES = new Set([
   "docs",
 ]);
 const USAGE =
-  "usage: bun run land -- [<pull request>] [--auto] [--once] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]";
+  "usage: bun run land -- [<pull request> | latest] [--auto] [--once] [--sanitize | --merge [--alone] [--tag vX.Y.Z]] [--jobs N]";
 const TAG = /^v\d+\.\d+\.\d+$/u;
 
 class Refusal extends Error {}
@@ -755,7 +756,8 @@ async function main(argv: readonly string[]): Promise<number> {
     },
     allowPositionals: true,
   });
-  const named = positionals[0] === undefined ? null : Number(positionals[0]);
+  const latest = positionals[0] === "latest";
+  const named = positionals[0] === undefined || latest ? null : Number(positionals[0]);
   const jobs = Number(values.jobs);
   if (
     (named !== null && (!Number.isInteger(named) || named <= 0)) ||
@@ -775,12 +777,13 @@ async function main(argv: readonly string[]): Promise<number> {
     jobs,
     tag: values.tag ?? null,
   };
-  const round = (): Promise<number> => landOnce(root, named, mode);
+  const pick = latest ? (at: string) => latestTop(openPulls(at)) : oldestStack;
+  const round = (): Promise<number> => landOnce(root, () => named ?? pick(root), mode);
   return values.once || mode.kind === "merging" ? round() : follow(root, named, say, round);
 }
 
-/** One landing of `named`, or of the oldest stack, to its end; its exit status. */
-async function landOnce(root: string, named: number | null, mode: Mode): Promise<number> {
+/** One landing of the pull request `first` names, or of a new top above it, to its end; its exit status. */
+async function landOnce(root: string, first: () => number, mode: Mode): Promise<number> {
   const board = statusBoard(root);
   let alone = (): void => undefined;
   try {
@@ -792,7 +795,7 @@ async function landOnce(root: string, named: number | null, mode: Mode): Promise
         : runSync(["git", "ls-remote", "--exit-code", "--tags", "origin", mode.tag], { cwd: root }).exitCode;
     if (tagged === 0) throw new Refusal(`${String(mode.tag)} is already a tag on origin.`);
     if (tagged !== 2) throw new Refusal(`origin could not be asked whether it holds ${String(mode.tag)}.`);
-    let target = named ?? oldestStack(root);
+    let target = first();
     alone = await holdAlone(root, "land", say, undefined, claimOf(root, target, mode));
     for (let moves = 0; ; ) {
       if (mode.auto) {

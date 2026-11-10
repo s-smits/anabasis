@@ -222,6 +222,7 @@ bun run land -- <top> --sanitize --once # and end once it is proved, as a sessio
 bun run land -- <top> --merge         # and wait for ci.yml, post ana/stack-gate, and merge
 bun run land -- <pr> --auto --merge   # land the top above <pr>, following a new top stacked meanwhile
 bun run land -- --merge               # the same, for the stack holding the oldest stacked pull request
+bun run land -- latest --sanitize     # prove the highest-numbered top of the open stacks, following it
 bun run land -- <top> --merge --alone # merge beside another chain on main, on the operator's word
 bun run land -- <top> --merge --tag v0.9.0 # and cut that release at the merge
 ```

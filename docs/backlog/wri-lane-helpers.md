@@ -48,8 +48,13 @@ defective stay the lane's question.
 
 - A lane handed a table may stop at the table. The test is the one `wri-free-lanes.md` names: a
   pair of investigations of one run, compared on findings confirmed in vetting.
-- Each reader in `READERS` runs for every live campaign at every pulse, so the list's cost grows
-  with it. The fifteen added here took 0.2 to 3.4 seconds each on logs of 22,000 to 52,000 events,
+- Each reader in `READERS` runs in every `derive` pass over a log that moved, so that pass's cost
+  grows with the list. The pulse runs only a reader that names a moment (`at`), once an event of
+  that kind lies past what it last read: of the fifteen added here, `drafted` at the contract's
+  freeze, `budget` and `rejections` at a report and `names` at a promotion, each of which has a
+  line of that moment on a closed log of two domains. Of the other eleven, `aim` and `epoch-spend`
+  repeat there what `ambition` and `cost` already say, and nine print a block or a table over the
+  whole log; all stay `derive`'s alone. The fifteen took 0.2 to 3.4 seconds each on logs of 22,000 to 52,000 events,
   as each was timed alone; `table-timeline.ts` (24 to 53 seconds) and `harness-versions.ts --chain`
   (29 seconds on 22 kept versions) stay tools for that reason. Every reader but the two on the
   embedding model, derived once for two archived logs on one machine, took 5.9 and 34.6 seconds

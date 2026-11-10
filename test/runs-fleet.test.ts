@@ -622,6 +622,14 @@ describe("the fleet pulse", () => {
     const failed = made.run(command, { FAKE_OFFLINE: "1" });
     expect(failed.code).toBe(1);
     expect(failed.out).toContain("pulse unavailable");
+    // A host that stays silent is said at the look that found it so, and at the one that reaches it again.
+    const still = made.run(command, { FAKE_OFFLINE: "1" });
+    expect(still.code).toBe(0);
+    expect(still.out).not.toContain("pulse unavailable");
+    const back = made.run(command);
+    expect(back.code).toBe(0);
+    expect(back.out).toContain("answers again");
+    expect(made.run(command).out).not.toContain("answers again");
     const local = fixture();
     expect(
       local.run(

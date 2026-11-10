@@ -272,18 +272,27 @@ its ending (read its launch `.err`). `view` prints the campaign and, last, the m
 (`decide`), which the Builder may decline; it uses this checkout's code, so check the receipt before
 reading it as a live run's advice. `pulse --here` polls this machine only. Neither starts a run.
 
+A look's lines name the step a run has come to owe, each from one owner (`tools/runs/said.ts`): the
+exam's milestones in counts, what a comparison can read as it starts, a promotion with "a pause
+should wait for its starter comparison", each starter comparison under its report, `ready to pause`
+with its command at the second read, and once, when a campaign reaches it, `⚠ investigation due`
+with the command that opens one. A closed run's reason and a host that stops answering are said
+when they turn, not at every look.
+
 `bun run runs alerts` is the cron watch: one stdout line per new promotion, starter comparison,
 keeper move, missing process, ending or stall, nothing otherwise, and exit 0. It prints the `runs
 pause` command once two promotions are read against the starter, and never runs it.
 
-Each look also says, under each moment among a run's new events (a report, a promotion, an
-Examiner's or Builder's end, a campaign's opening or ending), what the deterministic readers that
+Each look also says, under each moment among a run's new events (the contract's freeze, a
+comparison's start, a report, a promotion, an Examiner's or Builder's end, a campaign's opening or
+ending), what the deterministic readers that
 name that moment (`at`, `READERS`, `tools/wri/derive.ts`) found of it: `◆ <reader>: <line>` for each
 line naming its session or harness, or its `gist` where none does (at most 3 a reader, 12 a run, 30
 a look), with the full text in a named folder. One low-priority pass a host (`tools/wri/pass.ts`)
 runs a reader only once one of its moments lies past what it read, at most 30 s every 4 minutes and
 only with a core free; a look whose new events hold no moment starts none. A moment not yet read is
-named once (`⚠ not read yet: <readers> of <moment>; <why>`) and its lines come at the look that
+named once (`· not read yet: <readers> of <moment>; <why>`, `⚠` where the last pass failed) and its
+lines come at the look that
 finds them. `--no-readers` skips them. Results lie in `.ana/pulse/moments/` and hold hidden values,
 so no seat can read them (`test/runs-pulse-readers.test.ts`).
 

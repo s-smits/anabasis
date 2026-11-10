@@ -17,13 +17,9 @@
  * a run leaves the state only once a host that answered no longer holds it. A first look, or one
  * after a state file that cannot be read, records the present and fires on no history.
  */
-import { epochsOf, starterReads } from "#src/campaign/climb.ts";
-import type { Tally } from "#src/kernel/compare.ts";
-import type { LogEvent } from "#src/kernel/log.ts";
 import { existsSync, readFileSync, statSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isBoolean, isNumber, isString } from "#src/meta/json-shape.ts";
-import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
@@ -34,6 +30,7 @@ import { type RunState, runState } from "./state.ts";
 import { onStatus } from "./pulse.ts";
 import { remember } from "./pulse-readers.ts";
 import { lastLaunch, unlaunchedSeed } from "./receipt.ts";
+import { climbed, type Promotion, promotionsOf } from "./said.ts";
 import {
   HERE,
   isCampaign,
@@ -45,20 +42,6 @@ import {
   type Running,
   writers,
 } from "./registry.ts";
-
-/** One promotion of a run, and its starter comparison once one tallied a task (`epochsOf`). */
-interface Promotion {
-  readonly digest: string;
-  readonly read: {
-    readonly session: string;
-    readonly tally: Tally;
-    /** Whether its tally, turned so that the reference is the side ahead, reads a step at its
-     *  level (`confirmed`, `epochsOf`); the comparison's own reading is the starter's, never this. */
-    readonly confirmed: boolean;
-    /** The tally on the tasks written after the promotion. A peer whose tree predates it sends none. */
-    readonly writtenAfter?: Tally;
-  } | null;
-}
 
 /** One run as the host that holds it reads it now. */
 export interface Row {
@@ -97,32 +80,8 @@ export interface AlertState {
   readonly runs: Readonly<Record<string, Seen>>;
 }
 
-/** Starter comparisons read that make a run ready to pause, the threshold of `wri2p2.ts`. */
-const READY_AT = 2;
-const DIGEST_CHARS = 8;
 /** The file's last look, where no `--state` names another. */
 const STATE = join(".ana", "runs-alerts.json");
-
-function promotionsOf(events: readonly LogEvent[]): Promotion[] {
-  const reads = starterReads(events);
-  return epochsOf(events)
-    .slice(1)
-    .map(({ reference, starter_read: session, starter_tally: tally, confirmed }) => {
-      const after = reads.find((each) => each.session === session)?.origins["written after"].whole;
-      return {
-        digest: reference.slice(0, DIGEST_CHARS),
-        read:
-          session === null || tally === null
-            ? null
-            : {
-                session,
-                tally,
-                confirmed: confirmed === true,
-                ...keyIfDefined("writtenAfter", after),
-              },
-      };
-    });
-}
 
 /** The row of `run`, whose log is read at `now` among the processes `running`. */
 function rowOf(run: Run, running: readonly Running[], now: number): Row {
@@ -221,30 +180,6 @@ function seenOf(row: Row, host: string): Seen {
   };
 }
 
-/** What a run's promotions and starter comparisons add to what `seen` remembers. */
-function climbLines(row: Row, seen: Seen): string[] {
-  const lines = row.promotions.flatMap(({ digest, read }, at) => {
-    const nth = String(at + 1);
-    const promoted =
-      at < seen.promotions
-        ? []
-        : [
-            `promotion ${nth}, harness ${digest}${read === null ? "; a pause should wait for its starter comparison, or it stays unconfirmed for good" : ""}`,
-          ];
-    if (read === null || seen.reads.includes(read.session)) return promoted;
-    const { wins, losses, ties } = read.tally;
-    const after = read.writtenAfter;
-    return [
-      ...promoted,
-      `starter comparison ${read.session} after promotion ${nth} (${digest}) read ${read.confirmed ? "a step" : "no step"} for the reference: won ${String(wins)}, lost ${String(losses)}, tied ${String(ties)}, ${read.confirmed ? "confirmed" : "not confirmed"}${after === undefined ? "" : `; on tasks written after it won ${String(after.wins)}, lost ${String(after.losses)}, tied ${String(after.ties)}`}`,
-    ];
-  });
-  const read = row.promotions.filter((one) => one.read !== null).length;
-  return seen.reads.length < READY_AT && read >= READY_AT
-    ? [...lines, `ready to pause, ${String(read)} promotions read: bun run runs pause ${row.name} --yes`]
-    : lines;
-}
-
 /** The lines `row` earns since `seen`, each to be headed by the run's name. A run first seen says its
  *  promotions in one line, since its log may hold a seed's or a run's from before this state. */
 function newsOf(row: Row, seen: Seen | undefined): string[] {
@@ -256,7 +191,7 @@ function newsOf(row: Row, seen: Seen | undefined): string[] {
   const gap = gapOf(row);
   const ending = endingOf(row.state);
   return [
-    ...(seen === undefined ? first : climbLines(row, seen)),
+    ...(seen === undefined ? first : climbed(row, seen).map(({ line }) => line)),
     ...row.kept
       .slice(seen?.kept ?? row.kept.length)
       .map((line) => `keeper: ${line.replace(`${row.name}: `, "")}`),

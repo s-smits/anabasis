@@ -62,13 +62,13 @@ import {
 } from "#src/meta/filesystem.ts";
 import { gitMaybe, mainTree } from "#src/meta/git.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
-import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "#src/meta/process.ts";
 import { runSync } from "#src/meta/subprocess.ts";
 import { stillRunning } from "#tools/runs/diagnosis.ts";
 import { CODE_TREES } from "#tools/d2/campaign.ts";
 import { lastLaunch } from "#tools/runs/receipt.ts";
+import { DRIVER, type Progress, progressOf, TRIGGER_AT, triggerOf } from "#tools/runs/said.ts";
 import {
   type Run,
   type Running,
@@ -100,7 +100,6 @@ import {
   staleOf,
   stillMissingOf,
 } from "#tools/wri/ledger.ts";
-import type { LogEvent } from "#src/kernel/log.ts";
 
 /** The read across domains that the plan rests on beside the vetting. */
 const ACROSS = "cross-domain.md";
@@ -110,8 +109,7 @@ const PLAN = "plan.md";
 /** The gates a session passed on purpose, each with its reason. */
 const DEVIATIONS = "deviations.md";
 const LEVERS = join(import.meta.dir, "..", "references", "levers.md");
-const SCRIPT = ".claude/skills/run-improvement-campaign/scripts/wri2p2.ts";
-const USAGE = `usage: bun ${SCRIPT} [due] [<part> ...] [--promotions 2] [--hours 12] [--days 2] | open <name>[,<name>] [--out <dir>] | next <dir> | ledger <dir>`;
+const USAGE = `usage: bun ${DRIVER} [due] [<part> ...] [--promotions 2] [--hours 12] [--days 2] | open <name>[,<name>] [--out <dir>] | next <dir> | ledger <dir>`;
 const OPTIONS = { promotions: "int", hours: "int", days: "int", out: "abs" } as const;
 const HOUR_MS = 3_600_000;
 const WRI = "tools/wri/wri.ts";
@@ -120,21 +118,8 @@ const STEP = /^step: (?<name>[a-z]+)(?: · (?<rest>.*))?$/u;
 const OPPOSED =
   '"## Intentionally opposed" with at least one line ("none" counts): what stays missing on purpose, each as a trade-off, what leaving it out buys, what it costs and why (a trade-off of AGENTS.md section 1, a principle or the operator\'s word)';
 
-/** The trigger's defaults, which name an investigation and stop nothing: two promotions or twelve hours. */
-const LIMITS = { promotions: 2, hours: 12 } as const;
-
 /** One run as its log reads. */
-interface Row {
-  readonly name: string;
-  readonly host: string;
-  readonly live: boolean;
-  readonly promotions: number;
-  readonly compared: number;
-  /** Whether a scored comparison reported every task tied. */
-  readonly allTied: boolean;
-  readonly ending: string | null;
-  readonly hours: number;
-}
+type Row = Progress & { readonly name: string; readonly host: string };
 
 type Kind = "iteration" | "investigation";
 
@@ -158,41 +143,6 @@ interface Ledgers {
   readonly root: string;
   readonly dir: string;
   readonly lengthOf: (run: string) => number | null;
-}
-
-/** The row of the run `seen` whose log holds `events`, read at `now`. */
-export function rowOf(
-  seen: { readonly name: string; readonly host: string; readonly live: boolean },
-  events: readonly LogEvent[],
-  now: number,
-): Row {
-  const { live } = seen;
-  const last = events.at(-1);
-  const opened = Date.parse(events[0]?.at ?? "");
-  const reported = events.filter(({ kind }) => kind === "comparison.reported");
-  return {
-    ...seen,
-    promotions: events.filter(({ kind }) => kind === "harness.promoted").length,
-    compared: reported.length,
-    // A comparison that scored nothing tested nothing, so its empty tally is no tie.
-    allTied: reported.some(({ data }) => {
-      const scored = asRecord(data.scored);
-      return data.reading !== "not-scored" && scored?.wins === 0 && scored.losses === 0;
-    }),
-    ending: last?.kind === "campaign.ended" && isString(last.data.ending) ? last.data.ending : null,
-    // A live run is timed to now: one in a long wait writes nothing, and its clock still runs.
-    hours: Number.isNaN(opened) ? 0 : ((live ? now : Date.parse(last?.at ?? "")) - opened) / HOUR_MS,
-  };
-}
-
-/** Why the iteration opens on `row` now, or null while it runs on. */
-export function triggerOf(row: Row, limits: { promotions: number; hours: number } = LIMITS): string | null {
-  if (row.promotions >= limits.promotions) return `${String(row.promotions)} promotions`;
-  if (row.allTied) return "a comparison left no task untied";
-  if (row.hours >= limits.hours) return `${row.hours.toFixed(1)} h since its opening`;
-  // A run that ended before any comparison measured nothing an iteration could read.
-  if (!row.live && row.compared > 0) return `closed${row.ending === null ? "" : ` (${row.ending})`}`;
-  return null;
 }
 
 const read = (path: string) => (existsSync(path) ? readFileSync(path, "utf8") : "");
@@ -592,8 +542,8 @@ function standings(args: CommandArgs, repo: string, known: readonly Run[], parts
   const now = Date.now();
   const days = args.int("days") ?? 2;
   const limits = {
-    promotions: args.int("promotions") ?? LIMITS.promotions,
-    hours: args.int("hours") ?? LIMITS.hours,
+    promotions: args.int("promotions") ?? TRIGGER_AT.promotions,
+    hours: args.int("hours") ?? TRIGGER_AT.hours,
   };
   const running = processes();
   const root = wriRoot(repo);
@@ -607,7 +557,7 @@ function standings(args: CommandArgs, repo: string, known: readonly Run[], parts
   );
   const opened = chosen.map((run): Standing => {
     const events = logEvents(run.path);
-    const row = rowOf(
+    const row = progressOf(
       { name: run.name, host: run.archived ?? HERE, live: stillRunning(run, running) },
       events,
       now,
@@ -615,7 +565,7 @@ function standings(args: CommandArgs, repo: string, known: readonly Run[], parts
     const folder = folders.find(({ names: seen }) => seen.includes(row.name));
     const trigger = triggerOf(row, limits);
     const opening =
-      trigger === null ? ["step: run"] : [`step: open · ${trigger}`, `  bun ${SCRIPT} open ${row.name}`];
+      trigger === null ? ["step: run"] : [`step: open · ${trigger}`, `  bun ${DRIVER} open ${row.name}`];
     return {
       row,
       last: Date.parse(events.at(-1)?.at ?? ""),
@@ -688,7 +638,7 @@ export function dueLines(
     } · ${String(live)} run(s) live`,
     ...taken.map(({ name, rest, dir, runs: [first = "", ...others], hours }) => {
       const more = others.length > 0 ? ` and ${String(others.length)} more` : "";
-      const where = dir === null ? `${rest} · bun ${SCRIPT} open ${first}` : `bun ${SCRIPT} next ${dir}`;
+      const where = dir === null ? `${rest} · bun ${DRIVER} open ${first}` : `bun ${DRIVER} next ${dir}`;
       return `${name} · ${hours === null ? "new" : `${hours.toFixed(1)} h`} · ${first}${more} · ${where}`;
     }),
     ...(left.length === 0

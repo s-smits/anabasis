@@ -1,4 +1,4 @@
-// The runs pulse reports ended processes, promotions and campaign endings.
+// What a look says of each new event of a run, and the step that event leaves owed.
 import { afterAll, describe, expect, it } from "bun:test";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
@@ -11,9 +11,15 @@ import type { Run } from "../tools/runs/registry.ts";
 import { chainLog, objectiveLog } from "./helpers/starter-chain.ts";
 
 const round: Run = { name: "r1", tree: "/wt", path: "/wt/.ana/d2/r1/log.jsonl", end: "comparison.reported" };
+/** A run the investigation's trigger is never read on: one solve, which climbs nothing. */
+const lone: Run = { ...round, end: "solve.finished" };
 const START = Date.parse("2026-10-08T12:00:00Z");
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+/** A minute after every event of the chain's fixture, so that no look reads it as quiet. */
+const CHAINED = Date.parse("2026-10-30T00:01:00Z");
 const event = (minute: number, kind: EventKind, data: JsonObject): LogEvent => ({
-  at: new Date(START + minute * 60_000).toISOString(),
+  at: new Date(START + minute * MINUTE).toISOString(),
   kind,
   data,
 });
@@ -29,15 +35,18 @@ const pulse = (
   before: Parameters<typeof pulseOf>[3],
   now: number,
 ) => pulseOf(run, log, process, before, { now, alarms: () => overview(log).triggers });
+/** The index of the `nth` event of `kind` in `log`. */
+const nthOf = (log: readonly LogEvent[], kind: EventKind, nth: number) =>
+  log.flatMap((each, index) => (each.kind === kind ? [index] : []))[nth] ?? -1;
 
 describe("the runs pulse", () => {
   it("reports missing processes and each session's own ending", () => {
-    const gone = pulse(round, built, "closed", lookedAt(built.length), START + 5 * 60_000);
+    const gone = pulse(round, built, "closed", lookedAt(built.length), START + 5 * MINUTE);
     expect(gone.status).toMatch(/^r1\s+closed/);
     expect(gone.said).toHaveLength(1);
     expect(gone.said[0]).toMatch(/^⚠.*comparison[.]reported/);
     const reported = [...built, event(5, "comparison.reported", { reading: "held" })];
-    const done = pulse(round, reported, "closed", lookedAt(built.length), START + 6 * 60_000);
+    const done = pulse(round, reported, "closed", lookedAt(built.length), START + 6 * MINUTE);
     expect(done.status).toMatch(/^r1\s+closed.*held/);
     expect(done.said).toHaveLength(1);
     expect(done.said[0]).toMatch(/^◆.*held/);
@@ -46,15 +55,14 @@ describe("the runs pulse", () => {
     expect(pulse(round, examining, "closed", seen, START).said[0]).toMatch(/^⚠.*exam[.]finished/);
     const examined = [...examining, event(7, "exam.finished", { session: "x-1", ended: "finished" })];
     const finished = pulse(round, examined, "closed", seen, START).said;
-    expect(finished).toHaveLength(1);
-    expect(finished[0]).toMatch(/^◆.*x-1/);
+    expect(finished).toEqual(["◆ exam x-1 ended"]);
     const waited = [
       ...examined,
       event(8, "campaign.waited", { task: "t-1", load: 40, cores: 12, ms: 60_000 }),
       event(9, "campaign.waited", { for: "provider", until: "2026-10-15T21:00:00.000Z", ms: 7_200_000 }),
       event(10, "campaign.ended", { ending: "finished", why: "3 conversations in a row made no move" }),
     ];
-    const said = pulse(round, waited, "closed", lookedAt(examined.length), START + 11 * 60_000).said;
+    const said = pulse(round, waited, "closed", lookedAt(examined.length), START + 11 * MINUTE).said;
     expect(said).toHaveLength(2);
     for (const fact of ["⚠", "120m", "provider", "2026-10-15T21:00:00.000Z"]) expect(said[0]).toContain(fact);
     for (const fact of ["◆", "finished", "3 conversations in a row made no move"]) {
@@ -85,10 +93,10 @@ describe("the runs pulse", () => {
     const waited = (ms: number, load: number) =>
       event(1, "campaign.waited", { task: "t-1", load, cores: 4, ms });
     const log = [...built, waited(60_000, 5), waited(20 * 60_000, 6.5), waited(30 * 60_000, 7)];
-    expect(pulse(round, log, "open", lookedAt(1), START + 2 * 60_000).said).toEqual([
+    expect(pulse(round, log, "open", lookedAt(1), START + 2 * MINUTE).said).toEqual([
       "⚠ 2 solves waited over 15m for the load, the longest 30m at load 7.0 on 4 cores",
     ]);
-    expect(pulse(round, log.slice(0, 2), "open", lookedAt(1), START + 2 * 60_000).said).toEqual([]);
+    expect(pulse(round, log.slice(0, 2), "open", lookedAt(1), START + 2 * MINUTE).said).toEqual([]);
   });
 
   it("reads a campaign the Builder leads as done only at its ending", () => {
@@ -98,10 +106,10 @@ describe("the runs pulse", () => {
       event(2, "exam.finished", { session: "x-1", ended: "finished" }),
     ];
     const seen = lookedAt(examined.length);
-    const gone = pulse(round, examined, "closed", seen, START + 3 * 60_000).said;
+    const gone = pulse(round, examined, "closed", seen, START + 3 * MINUTE).said;
     expect(gone).toEqual(["⚠ the process is gone before campaign.ended"]);
     const ended = [...examined, event(3, "campaign.ended", { ending: "budget", why: "spent" })];
-    expect(pulse(round, ended, "closed", seen, START + 4 * 60_000).said).toEqual([
+    expect(pulse(round, ended, "closed", seen, START + 4 * MINUTE).said).toEqual([
       "◆ the campaign ended budget: spent",
     ]);
   });
@@ -117,9 +125,9 @@ describe("the runs pulse", () => {
       turn(3, "solve.turn", { solve: "s-1" }, "claude-opus-5-5-20261001"),
       turn(4, "referee.turn", { reader: "r-1" }, "claude-sonnet-5-5"),
     ];
-    const said = pulse(round, log, "open", lookedAt(2), START + 5 * 60_000).said;
+    const said = pulse(round, log, "open", lookedAt(2), START + 5 * MINUTE).said;
     expect(said).toEqual(["⚠ 2 turns served by another model: claude-opus-5 for claude/claude-opus-5-5"]);
-    expect(pulse(round, log, "open", lookedAt(4), START + 5 * 60_000).said).toEqual([]);
+    expect(pulse(round, log, "open", lookedAt(4), START + 5 * MINUTE).said).toEqual([]);
   });
 
   it("reads a solve and a wait of a process gone before the last launch as over", () => {
@@ -127,7 +135,7 @@ describe("the runs pulse", () => {
     afterAll(() => rmSync(root, { recursive: true, force: true }));
     const continued: Run = { ...round, tree: root, path: join(root, "r1", "log.jsonl") };
     mkdirSync(join(root, "r1"));
-    const relaunched = new Date(START + 3 * 60_000).toISOString();
+    const relaunched = new Date(START + 3 * MINUTE).toISOString();
     writeFileSync(join(root, "r1", "launch-run-2.json"), JSON.stringify({ at: relaunched }));
     const log = [
       ...built,
@@ -136,7 +144,7 @@ describe("the runs pulse", () => {
       event(3, "build.finished", { session: "r1-b", ended: "killed" }),
       event(3, "build.started", { session: "r1-b2" }),
     ];
-    const later = START + 25 * 60_000;
+    const later = START + 25 * MINUTE;
     const now = pulse(continued, log, "open", lookedAt(log.length), later);
     expect(now.status).toContain("1 unfinished");
     expect(now.status).not.toContain("running");
@@ -215,15 +223,15 @@ describe("the runs pulse", () => {
     const crashed = (minute: number, session: string) =>
       event(minute, "exam.finished", { session, ended: "crashed" });
     const first = [...built, crashed(1, "x-1")];
-    const baseline = pulse(round, first, "open", undefined, START + 2 * 60_000);
+    const baseline = pulse(round, first, "open", undefined, START + 2 * MINUTE);
     expect(baseline.said).toEqual([]);
     const second = [...first, crashed(2, "x-2")];
-    const moved = pulse(round, second, "open", baseline.seen, START + 3 * 60_000);
+    const moved = pulse(round, second, "open", baseline.seen, START + 3 * MINUTE);
     expect(moved.said.filter((line) => line.includes("SESSION CRASHED"))).toEqual([
       "⚠ economy: SESSION CRASHED (lane 24): x-1, x-2",
     ]);
     const solved = [...second, event(3, "solve.started", { solve: "s-1", task: "t-1" })];
-    const again = pulse(round, solved, "open", moved.seen, START + 4 * 60_000);
+    const again = pulse(round, solved, "open", moved.seen, START + 4 * MINUTE);
     expect(again.said.some((line) => line.includes("SESSION CRASHED"))).toBe(false);
   });
 
@@ -234,17 +242,17 @@ describe("the runs pulse", () => {
     ];
     const moved = (said: readonly string[]) => said.filter((line) => line.includes("SCORED SET MOVED"));
     const one = [...built, ...compared(1, "g-1")];
-    const first = pulse(round, one, "open", undefined, START + 3 * 60_000);
+    const first = pulse(round, one, "open", undefined, START + 3 * MINUTE);
     const two = [...one, ...compared(3, "g-2")];
-    const second = pulse(round, two, "open", first.seen, START + 5 * 60_000);
+    const second = pulse(round, two, "open", first.seen, START + 5 * MINUTE);
     expect(moved(second.said)).toEqual([
       "⚠ honesty: SCORED SET MOVED (lane 5): g-2: 1 of 2 tasks it began with are not in its tally",
     ]);
     const grown = [...two, event(5, "build.started", { session: "b-2" })];
-    expect(moved(pulse(round, grown, "open", second.seen, START + 6 * 60_000).said)).toEqual([]);
+    expect(moved(pulse(round, grown, "open", second.seen, START + 6 * MINUTE).said)).toEqual([]);
   });
 
-  it("announces and counts promotions only where recorded", () => {
+  it("says a promotion once in the climb's own line, counts it in the status, and leaves the unconfirmed trigger to that line", () => {
     const promoted = [
       ...built,
       event(5, "comparison.reported", { reading: "step" }),
@@ -255,19 +263,169 @@ describe("the runs pulse", () => {
       promoted,
       "open",
       { ...lookedAt(built.length), triggers: {} },
-      START + 7 * 60_000,
+      START + 7 * MINUTE,
     );
-    expect(look.said).toHaveLength(3);
-    expect(look.said[0]).toMatch(/^◆.*step/);
-    expect(look.said[1]).toMatch(/^◆.*0a1b2c3d/);
-    expect(look.said[2]).toMatch(/^◆ climb: PROMOTION UNCONFIRMED/);
-    expect(look.status).toContain("1 promoted");
-    expect(pulse(round, built, "open", undefined, START + 5 * 60_000).status).not.toContain("promoted");
+    expect(look.said).toEqual([
+      "◆ reported step",
+      "◆ promotion 1, harness 0a1b2c3d; a pause should wait for its starter comparison, or it stays unconfirmed for good",
+    ]);
+    expect(look.status).toContain("1 promoted, 0 confirmed");
+    expect(pulse(round, promoted, "open", look.seen, START + 8 * MINUTE).said).toEqual([]);
+    expect(pulse(round, built, "open", undefined, START + 5 * MINUTE).status).not.toContain("promoted");
+  });
+
+  it("says a starter comparison under its report, and ready to pause with its command at the second read and not the first", () => {
+    const log = chainLog("won");
+    const said = (from: number, to: number) =>
+      pulse(round, log.slice(0, to), "open", lookedAt(from), CHAINED).said;
+    const first = nthOf(log, "harness.promoted", 0);
+    expect(said(first, first + 1)).toEqual([
+      "◆ promotion 1, harness bbbbbbbb; a pause should wait for its starter comparison, or it stays unconfirmed for good",
+    ]);
+    const read = nthOf(log, "comparison.reported", 1);
+    const one = said(read, read + 1);
+    expect(one).toHaveLength(2);
+    expect(one[0]).toContain("reported no-step");
+    // Seven tasks won again and three written since lost: no step for the reference, so one to look at.
+    expect(one[1]).toStartWith(
+      "  ⚠ starter comparison g-2 after promotion 1 (bbbbbbbb) read no step for the reference: won 7, lost 3, tied 0, not confirmed",
+    );
+    const second = said(log.length - 1, log.length);
+    expect(second).toHaveLength(3);
+    expect(second[1]).toStartWith(
+      "  ◆ starter comparison g-4 after promotion 2 (cccccccc) read a step for the reference: won 10, lost 0, tied 0, confirmed",
+    );
+    expect(second[2]).toBe("  ⚠ ready to pause, 2 promotions read: bun run runs pause r1 --yes");
+    // One look over the whole climb says each line once and in the log's order.
+    const whole = said(first, log.length);
+    const order = [
+      "promotion 1,",
+      "comparison g-2 after",
+      "promotion 2,",
+      "comparison g-4 after",
+      "ready to pause",
+    ];
+    const found = order.map((part) => whole.findIndex((line) => line.includes(part)));
+    expect(found).toEqual(found.toSorted((a, b) => a - b));
+    expect(found).not.toContain(-1);
+    expect(whole.filter((line) => line.includes("ready to pause"))).toHaveLength(1);
+    const whole2 = pulse(round, log, "open", lookedAt(log.length), CHAINED);
+    expect(whole2.said).toEqual([]);
+    expect(whole2.status).toContain("2 promoted, 1 confirmed");
+    // The nearest hostile case: a second read that confirms nothing is still a second read.
+    const lost = chainLog("lost");
+    const unconfirmed = pulse(round, lost, "open", lookedAt(lost.length - 1), CHAINED);
+    expect(unconfirmed.said[1]).toMatch(/^ {2}⚠ starter comparison g-4 after promotion 2 .*, not confirmed/);
+    expect(unconfirmed.said[2]).toContain("ready to pause, 2 promotions read");
+    expect(unconfirmed.status).toContain("2 promoted, 0 confirmed");
+  });
+
+  it("says the investigation's trigger once when it turns, with its command, and never for a lone solve, a seed or a state that never read it", () => {
+    const log = [
+      event(0, "campaign.opened", { project: "p" }),
+      event(1, "comparison.reported", { reading: "no-step", scored: { wins: 3, losses: 1 } }),
+    ];
+    const due = (said: readonly string[]) => said.filter((line) => line.includes("investigation due"));
+    const command = "bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts open r1";
+    const waiting = { ...lookedAt(log.length), due: false };
+    const early = pulse(round, log, "open", waiting, START + 2 * HOUR);
+    expect(due(early.said)).toEqual([]);
+    expect(early.seen.due).toBe(false);
+    const late = pulse(round, log, "open", early.seen, START + 13 * HOUR);
+    expect(due(late.said)).toEqual([`⚠ investigation due, 13.0 h since its opening: ${command}`]);
+    // Its hours grow at every look, and it is said at the one that found it due.
+    expect(due(pulse(round, log, "open", late.seen, START + 14 * HOUR).said)).toEqual([]);
+    // A first look and a state from before the trigger was read only remember it.
+    for (const before of [undefined, lookedAt(log.length)]) {
+      const remembered = pulse(round, log, "open", before, START + 13 * HOUR);
+      expect(due(remembered.said)).toEqual([]);
+      expect(remembered.seen.due).toBe(true);
+    }
+    expect(due(pulse(lone, log, "open", waiting, START + 13 * HOUR).said)).toEqual([]);
+    expect(due(pulse({ ...round, seed: true }, log, "open", waiting, START + 13 * HOUR).said)).toEqual([]);
+    // A campaign nothing writes or keeps is due once it compared; one its keeper holds runs on.
+    const closed = { now: START + 2 * HOUR, alarms: () => null };
+    expect(due(pulseOf(round, log, "closed", waiting, closed).said)).toEqual([
+      `⚠ investigation due, closed: ${command}`,
+    ]);
+    expect(due(pulseOf(round, log, "closed", waiting, { ...closed, live: true }).said)).toEqual([]);
+  });
+
+  it("says the exam's milestones in counts, warns of a checker read or a freeze with a fault, and carries no text of the exam", () => {
+    const HIDDEN = "a-hidden-value";
+    const drafted = event(1, "exam.drafted", {
+      session: "d-1",
+      draft: {
+        checks: [{ id: HIDDEN }, { id: HIDDEN }, { id: HIDDEN }],
+        tasks: [{ text: HIDDEN }, { text: HIDDEN }],
+        rules: [{ text: HIDDEN }],
+        scope: HIDDEN,
+      },
+    });
+    const read = (faults: string[]) =>
+      event(2, "checker.read", {
+        checks: HIDDEN,
+        contract: HIDDEN,
+        controls: 24,
+        stored: 0,
+        rows: [{ id: HIDDEN }, { id: HIDDEN }, { id: HIDDEN }],
+        historicalRows: [],
+        doNothing: { answer: { value: HIDDEN }, tasks: 5, rejected: 5 },
+        admitted: [HIDDEN],
+        faults,
+      });
+    const frozen = (extra: JsonObject) =>
+      event(3, "contract.frozen", { checks: HIDDEN, contract: HIDDEN, admitted: [HIDDEN], ...extra });
+    const examined = event(4, "exam.finished", {
+      session: "x-1",
+      ended: "finished",
+      seconds: 720,
+      billed: 3.4,
+      held: ["v1", "v2", "v3"],
+      proposed: 5,
+      refused: [{ reason: HIDDEN }, { reason: HIDDEN }],
+      note: HIDDEN,
+    });
+    const said = (log: readonly LogEvent[]) =>
+      pulse(round, log, "open", lookedAt(1), START + 5 * MINUTE).said;
+    const sound = said([...built, drafted, read([]), frozen({}), examined]);
+    expect(sound).toEqual([
+      "◆ the exam is drafted: 3 checks, 2 tasks",
+      "◆ the checker read: 3 checks, 1 admitted, 24 controls, the do-nothing answer rejected on 5 of 5 tasks",
+      "◆ the contract is frozen, 1 check admitted",
+      "◆ exam x-1 ended in 12m, $3.40: held 3 of 5 proposed, 2 refused",
+    ]);
+    const faulty = said([...built, read([HIDDEN, HIDDEN]), frozen({ despite: HIDDEN, faults: 2 })]);
+    expect(faulty).toEqual([
+      "⚠ the checker read with 2 faults: 3 checks, 1 admitted, 24 controls, the do-nothing answer rejected on 5 of 5 tasks",
+      "⚠ the contract is frozen despite 2 faults, 1 check admitted",
+    ]);
+    expect([...sound, ...faulty].join("\n")).not.toContain(HIDDEN);
+  });
+
+  it("says at a comparison's start what it can read: its solves a side and the results that clear its level", () => {
+    const tasks = Array.from({ length: 24 }, (_, nth) => `v-${String(nth)}`);
+    const terms = { session: "g-3", old: "a", fresh: "b", starter: "s", level: 0.02, solves: 2, tasks };
+    const said = (data: JsonObject) =>
+      pulse(round, [...built, event(1, "comparison.started", data)], "open", lookedAt(1), START + 2 * MINUTE)
+        .said;
+    expect(said({ ...terms, retained: tasks.slice(0, 3) })).toEqual([
+      "· comparison g-3 started, 2 solves a side, 3 tasks retained: 24 held-out tasks can be scored; at --level 0.02 the smallest results that read a step are 6-0, 8-1, 10-2, each task won or lost by as many pairs",
+    ]);
+    expect(said({ ...terms, fresh: "s", retained: [] })[0]).toStartWith(
+      "· comparison g-3 started against the starter, 2 solves a side: 24 held-out tasks",
+    );
+    // Fewer tasks than a step takes: a comparison that cannot read one is one to look at.
+    expect(said({ ...terms, tasks: tasks.slice(0, 4), retained: [] })[0]).toMatch(
+      /^⚠ comparison g-3 started, 2 solves a side: 4 held-out tasks.*cannot read a step$/,
+    );
+    // A start from before its terms were logged says only that it began.
+    expect(said({ session: "g-1", tasks: ["v-1"] })).toEqual(["· comparison g-1 started"]);
   });
 
   it("says a chain that loses to the starter and an objective step inside its A/A as readings at a report", () => {
     const said = (log: readonly LogEvent[]) =>
-      pulse(round, log, "open", { ...lookedAt(log.length - 1), triggers: {} }, START + 7 * 60_000).said;
+      pulse(round, log, "open", { ...lookedAt(log.length - 1), triggers: {} }, START + 7 * MINUTE).said;
     expect(
       said(chainLog("lost")).filter((line) =>
         line.startsWith("◆ climb: CHAIN AGAINST THE STARTER (lane 28)"),
@@ -290,10 +448,10 @@ describe("the runs pulse", () => {
       ...drafting,
       event(2, "campaign.ended", { ending: "environment", why: "the provider failed" }),
     ];
-    const said = pulse(round, ended, "closed", lookedAt(2), START + 3 * 60_000).said;
+    const said = pulse(round, ended, "closed", lookedAt(2), START + 3 * MINUTE).said;
     expect(said).toHaveLength(1);
     for (const fact of ["◆", "environment", "the provider failed"]) expect(said[0]).toContain(fact);
-    const gone = pulse(round, drafting, "closed", lookedAt(2), START + 3 * 60_000).said;
+    const gone = pulse(round, drafting, "closed", lookedAt(2), START + 3 * MINUTE).said;
     expect(gone).toHaveLength(1);
     expect(gone[0]).toMatch(/^⚠.*campaign[.]ended/);
   });

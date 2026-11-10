@@ -77,6 +77,9 @@ const PER_READER = 3;
 const PER_RUN = 12;
 export const PER_LOOK = 30;
 
+/** How the one reason for an unread moment that is something to look at begins. */
+const FAILED = "the last pass failed";
+
 /** What the store holds of one reader on one log. `size` is the log's bytes it read, -1 where none
  *  finished, and `at` when it last ran. */
 interface ReaderResult {
@@ -144,7 +147,9 @@ const TRIGGER_LINE = /^([A-Z][A-Z0-9 -]*[A-Z0-9]) \(lane (\d+)\): (.*)$/;
 
 export const storeOf = (cwd: string): string => join(mainTree(cwd), ".ana", "pulse", "moments");
 export const folderOf = (store: string, log: string) => join(store, sha256(log).slice(0, 16));
-const short = (line: string) => line.replaceAll(/\s+/g, " ").trim().slice(0, 160);
+/** A reader's line with its columns one space apart, cut at 200 characters: a rejection's row under
+ *  a campaign name of 53 runs to 167, and its last column says whether the task is set aside. */
+const short = (line: string) => line.replaceAll(/\s+/g, " ").trim().slice(0, 200);
 const loadNow = () => loadavg()[0] ?? 0;
 /** A stored file's JSON, `null` where there is none. */
 const jsonIn = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : "null");
@@ -342,7 +347,7 @@ function whyNot(store: string): string {
   const last = lastPass(store);
   const standing = existsSync(errors) && statSync(errors).mtimeMs > (last?.at ?? 0);
   const failed = standing ? readFileSync(errors, "utf8").trim().split("\n").at(-1) : "";
-  if (failed !== undefined && failed !== "") return `the last pass failed: ${short(failed)}`;
+  if (failed !== undefined && failed !== "") return `${FAILED}: ${short(failed)}`;
   if (held(join(store, LOCK))) return "a pass is still reading, and what it finishes comes to the next look";
   // The load before the rest: with room a look starts a pass, so one that started none had none.
   if (!room()) return `shed for the load, ${loadNow().toFixed(1)} of ${String(availableParallelism())} cores`;
@@ -454,13 +459,18 @@ export function readersSaid(asked: ReadersAsked) {
   const missing = named.map(
     (moment) => `${moment.left === undefined ? "the readers" : moment.left.join(", ")} of ${labelOf(moment)}`,
   );
+  // A moment waiting for its pass is routine, and a pass that failed is the one reason to look:
+  // until 10 November every unread moment warned, at each report of every run on every host.
+  const why = missing.length > 0 ? whyNot(store) : "";
   const lines = [
     ...late,
     ...(over.length > 0 ? [`◆ ${String(over.length)} more lines, of ${withheld}`] : []),
     ...(shown.some(({ line }) => line.startsWith("◆"))
       ? [`◆ the readers' full text: ${resolve(files)}`]
       : []),
-    ...(missing.length > 0 ? [`⚠ not read yet: ${missing.join(", ")}; ${whyNot(store)}`] : []),
+    ...(missing.length > 0
+      ? [`${why.startsWith(FAILED) ? "⚠" : "·"} not read yet: ${missing.join(", ")}; ${why}`]
+      : []),
   ];
   const remembered = [...(asked.said ?? []), ...shown.map(({ hash }) => hash)].slice(-SAID_KEPT);
   return { placed, lines, owed, said: remembered };

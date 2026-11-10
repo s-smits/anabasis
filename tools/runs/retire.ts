@@ -43,7 +43,7 @@
  * it describes the sweep and changes nothing.
  */
 import { existsSync, lstatSync, mkdirSync, readdirSync, rmSync } from "#src/meta/filesystem.ts";
-import { gitMaybe, gitText, mainTree } from "#src/meta/git.ts";
+import { gitMaybe, gitText, mainTree, type Worktree as Tree, worktreeList } from "#src/meta/git.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
@@ -61,13 +61,6 @@ export interface Sweep {
   readonly days: number;
   readonly now: number;
   readonly yes: boolean;
-}
-
-/** A worktree as git lists it: its path, its commit and its branch, where it has each. */
-interface Tree {
-  readonly path: string;
-  readonly head: string | null;
-  readonly branch: string | null;
 }
 
 const DAY_MS = 86_400_000;
@@ -117,24 +110,6 @@ export function archiveIdle(sweep: Sweep): Set<string> {
     runTextSyncOrThrow(["mv", from, to]);
   }
   return moved;
-}
-
-/** Every worktree with its commit and branch, from one listing; the main one first. */
-function treesOf(main: string): Tree[] {
-  return gitText(main, "worktree", "list", "--porcelain")
-    .split("\n\n")
-    .map((block) => {
-      const field = (key: string) =>
-        block
-          .split("\n")
-          .find((line) => line.startsWith(`${key} `))
-          ?.slice(key.length + 1) ?? null;
-      return {
-        path: field("worktree") ?? "",
-        head: field("HEAD"),
-        branch: field("branch")?.slice(11) ?? null,
-      };
-    });
 }
 
 /** Every process's command line and working directory, read at once: a tree any names is in use. */
@@ -232,7 +207,7 @@ function idleBranches(sweep: Sweep, trees: readonly Tree[]): { name: string; tip
 /** Every worktree but the main one, and every local branch no worktree holds, that nothing has used
  *  for `TREE_DAYS`, deleted, their commits kept reachable where nothing else holds them. */
 export function retireUnused(sweep: Sweep, archiving: ReadonlySet<string>): void {
-  const [first, ...others] = treesOf(sweep.main);
+  const [first, ...others] = worktreeList(sweep.main);
   const doomed = idleTrees(sweep, others, archiving);
   const staying = [first, ...others.filter((tree) => !doomed.includes(tree))].flatMap((tree) => tree ?? []);
   keepCommits(
@@ -249,7 +224,7 @@ export function retireUnused(sweep: Sweep, archiving: ReadonlySet<string>): void
     rmSync(tree.path, { recursive: true, force: true });
   }
   if (sweep.yes) gitText(sweep.main, "worktree", "prune");
-  const left = sweep.yes ? treesOf(sweep.main) : staying;
+  const left = sweep.yes ? worktreeList(sweep.main) : staying;
   const branches = idleBranches(sweep, left);
   const names = branches.map((each) => each.name);
   keepCommits(

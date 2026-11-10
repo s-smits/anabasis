@@ -45,7 +45,7 @@ const which = (rows: readonly Degradation[]) =>
   [...new Set(rows.map(({ asked, served }) => `${served} for ${asked}`))].join("; ");
 
 /** The record's text for `rows`, a header and a line a row; empty where no row is. */
-export function recordOf(rows: readonly Degradation[]): string {
+function recordOf(rows: readonly Degradation[]): string {
   if (rows.length === 0) return "";
   return [COLUMNS.join("\t"), ...rows.map((row) => COLUMNS.map((column) => String(row[column])).join("\t"))]
     .map((line) => `${line}\n`)

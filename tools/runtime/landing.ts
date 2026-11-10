@@ -5,20 +5,14 @@
  * made `bun run land -- 661 --sanitize` prove all 49 commits from the bottom although the CI gate
  * that the passes record had not changed. Nothing here runs inside a pass.
  */
-import {
-  existsSync,
-  lstatSync,
-  readFileSync,
-  readlinkSync,
-  rmSync,
-  symlinkSync,
-} from "../../src/meta/filesystem.ts";
+import { lstatSync, rmSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
+import { hold, holderOf, recordIn, release } from "../runs/holder.ts";
 import { git, lines, type Proof, short } from "./gate.ts";
 import { beneath, chainAbove, openPulls, type Pull } from "./pulls.ts";
 
-/** What a holder says of itself in the lock, after its pid, and whether a newer one may end it. */
+/** What a holder says of itself in the lock, after its record, and whether a newer one may end it. */
 interface Claim {
   readonly note: string;
   readonly over: (held: string) => boolean;
@@ -44,38 +38,24 @@ export async function holdAlone(
 ): Promise<() => void> {
   const [common = ""] = lines(git(root, ["rev-parse", "--path-format=absolute", "--git-common-dir"]));
   const lock = join(common, `ana-${who}.lock`);
-  const release = () => rmSync(lock, { recursive: true, force: true });
   let ended = 0;
   for (let looks = 0; ; looks += 1) {
-    try {
-      // The lock is a link whose target is its holder's pid and note, made in one step. Until 9
-      // November it was a folder with the pid written into it after, so a lock read between the two
-      // named no holder, and every landing waited five looks before it could tell a dead one from a
-      // live one.
-      symlinkSync([runtimeProcess.pid, ...(claim === null ? [] : [claim.note])].join(" "), lock);
-      return release;
-    } catch (error) {
-      if (lstatSync(lock, { throwIfNoEntry: false }) === undefined) throw error;
+    // The run CLI's lock (`holder.ts`): a holder is a live process of this host with the start its
+    // record names, and a dead one's lock is taken over under a `flock` of the folder, so of two
+    // landings that find it dead one takes it and the other waits. A folder is an older landing's
+    // lock, which named its holder by pid alone.
+    if (lstatSync(lock, { throwIfNoEntry: false })?.isDirectory() === true) {
+      rmSync(lock, { recursive: true, force: true });
     }
-    const left = join(lock, "pid");
-    const [pid = "", ...note] = (
-      lstatSync(lock, { throwIfNoEntry: false })?.isSymbolicLink() === true
-        ? readlinkSync(lock)
-        : existsSync(left)
-          ? readFileSync(left, "utf8")
-          : ""
-    ).split(" ");
-    const holder = pid === "" ? null : Number(pid);
-    try {
-      // Signal 0 reads whether the holder still runs, and throws where it does not; a folder an
-      // older landing left without its pid names none.
-      if (holder === null) throw new Error("a lock left without its pid");
-      runtimeProcess.kill(holder, 0);
-    } catch {
-      release();
-      continue;
-    }
-    const held = note.join(" ");
+    // A landing without this lock writes its pid alone or `<pid> #<n> <kind>`; while that pid
+    // answers signal 0 it is waited for and never ended, since a bare pid may name a later process.
+    // The clause goes once no open branch writes that record.
+    const older = Number(/^(\d+)(?: #|$)/u.exec(recordIn(lock))?.[1]);
+    const live = older > 0 && answers(older);
+    if (!live && hold(lock, claim?.note)) return () => release(lock);
+    const found = live ? { pid: older, note: "" } : holderOf(lock);
+    if (found === null) continue;
+    const { pid: holder, note: held } = found;
     if (ended !== holder && held !== "" && claim?.over(held) === true) {
       ended = holder;
       say(
@@ -89,6 +69,16 @@ export async function holdAlone(
       say(`another ${who} (pid ${String(holder)}) is running in this clone; waiting for it to end`);
     }
     await Bun.sleep(pauseMs);
+  }
+}
+
+/** Whether a process has `pid`: signal 0 sends nothing and throws where none does. */
+function answers(pid: number): boolean {
+  try {
+    runtimeProcess.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
   }
 }
 

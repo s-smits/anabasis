@@ -35,7 +35,7 @@ import { basename, dirname, join } from "#src/meta/path.ts";
 import { pooled } from "#src/meta/pool.ts";
 import { capturedExecPath, runtimeProcess } from "#src/meta/process.ts";
 import { runCaptured } from "#src/meta/subprocess.ts";
-import { CLI } from "#tools/runs/registry.ts";
+import { CLI, readNamed } from "#tools/runs/registry.ts";
 
 const SKILLS = ".claude/skills";
 const TUNER = `${SKILLS}/promotion-tuner/scripts`;
@@ -54,6 +54,9 @@ export interface Reader {
   /** Whether it reads through the local embedding model. Its vectors outlast a cut, so a pass gives it
    *  any time left, and `--no-embed` leaves it out. */
   readonly embeds?: boolean;
+  /** Whether it finds its campaign by name, so that it reads whichever log the registry gives that
+   *  name (`readerOutput`). */
+  readonly named?: boolean;
 }
 
 export interface Derived {
@@ -87,6 +90,7 @@ const namedReader = (
   name,
   answers,
   args: (log: string) => [script, ...before, basename(dirname(log)), ...after],
+  named: true,
 });
 
 /** The readers that take one campaign and print what it holds, calling no paid model and writing
@@ -244,7 +248,7 @@ export const READERS: readonly Reader[] = [
   ),
   logReader(
     "pairs",
-    "one row a task a comparison: solves, diff, A/A stored and rebuilt, ratio to best, tie kind",
+    "a row a task a comparison: solves, diff, A/A, ratio to best, tie kind; tallies by writer and family",
     "tools/wri/pairs.ts",
   ),
   logReader(
@@ -338,14 +342,33 @@ export const READERS: readonly Reader[] = [
 export const readersOf = (flags: { readonly "no-embed"?: boolean | undefined }): readonly Reader[] =>
   flags["no-embed"] === true ? READERS.filter(({ embeds }) => embeds !== true) : READERS;
 
+/** The log the registry gives the campaign `name`, or null where it names none or several. */
+function namedLog(name: string, repo: string): string | null {
+  try {
+    return readNamed(name, repo).path;
+  } catch {
+    return null;
+  }
+}
+
 /** What `reader` says of `log`, with its ending and stderr added where it failed. `cut` is a reader
- *  its time limit ended, so what it would have said is unknown. */
+ *  its time limit ended, so what it would have said is unknown. A reader that finds its campaign by
+ *  name is not run on a log the name does not find, a snapshot or a second copy: on 10 November six
+ *  files of a snapshot's folder described the live log, 294 events on, under the snapshot's name. */
 export async function readerOutput(
   reader: Reader,
   log: string,
   repo: string,
   timeout: number,
 ): Promise<{ text: string; ok: boolean; cut: boolean }> {
+  if (reader.named === true) {
+    const name = basename(dirname(log));
+    const found = namedLog(name, repo);
+    if (found !== log) {
+      const text = `not read: ${reader.name} finds a campaign by its name, and ${name} names ${found ?? "no one campaign here"}, not ${log}\n`;
+      return { text, ok: true, cut: false };
+    }
+  }
   const { PATH, HOME } = runtimeProcess.env;
   const ran = await runCaptured([capturedExecPath, ...reader.args(log, repo)], {
     cwd: repo,

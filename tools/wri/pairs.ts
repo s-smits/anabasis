@@ -179,15 +179,13 @@ function endingOf(solve: Counted | undefined): string {
 
 /** The columns a row gives every task: where it was written and what part it took. */
 function placeOf(context: Context, part: string, task: string): string[] {
+  return [context.session, context.read, part, task.slice(0, 8), ...originOf(context, task)];
+}
+
+/** The session that wrote a task and the task's family. */
+function originOf(context: Context, task: string): [string, string] {
   const writer = context.writers.get(task);
-  return [
-    context.session,
-    context.read,
-    part,
-    task.slice(0, 8),
-    writer?.session ?? "not recorded",
-    writer?.family ?? NONE,
-  ];
+  return [writer?.session ?? "not recorded", writer?.family ?? NONE];
 }
 
 /** The row of a tallied task. */
@@ -270,16 +268,45 @@ function samplesSaid(pairs: readonly Paired[]): string {
 function winsAgainstNoise(context: Context, pairs: readonly Paired[]): string {
   const counts = { inside: 0, level: 0, outside: 0, none: 0 };
   for (const pair of pairs) {
-    const [win, aa] = [differenceOf(pair), context.aa.get(pair.task)];
-    if (win <= 0) continue;
-    if (aa === undefined) counts.none += 1;
-    else {
-      const noise = Math.abs(differenceOf(aa));
-      counts[win < noise ? "inside" : win === noise ? "level" : "outside"] += 1;
-    }
+    const stands = againstNoise(context, pair);
+    if (stands !== null) counts[stands] += 1;
   }
   const { inside, level, outside, none } = counts;
   return `== ${context.session} wins of the new side against their own task's rebuilt A/A: inside ${String(inside)}, level ${String(level)}, outside ${String(outside)}, no A/A ${String(none)}`;
+}
+
+/** Where a win of the new side stands against its own task's rebuilt A/A; null for a pair it did
+ *  not win. */
+function againstNoise(context: Context, pair: Paired): "inside" | "level" | "outside" | "none" | null {
+  const [win, aa] = [differenceOf(pair), context.aa.get(pair.task)];
+  if (win <= 0) return null;
+  if (aa === undefined) return "none";
+  const noise = Math.abs(differenceOf(aa));
+  return win < noise ? "inside" : win === noise ? "level" : "outside";
+}
+
+/**
+ * One comparison's tally by the session that wrote each task, or by its family: the new side's
+ * won, lost and tied, its summed `diff`, and its wins outside their task's A/A, the largest group
+ * first. Both lane sessions of 10 November grouped the rows by hand for this, one several times
+ * and one with two count errors; `starter-reads.ts` splits a starter read by origin alone.
+ */
+function groupsSaid(context: Context, pairs: readonly Paired[], by: "writer" | "family"): string {
+  const groups = new Map<string, Paired[]>();
+  for (const pair of pairs) {
+    const key = originOf(context, pair.task)[by === "writer" ? 0 : 1];
+    groups.set(key, [...(groups.get(key) ?? []), pair]);
+  }
+  const said = [...groups]
+    .toSorted(([, one], [, other]) => other.length - one.length)
+    .map(([key, some]) => {
+      const diffs = some.map((pair) => differenceOf(pair));
+      const count = (sign: number) => String(diffs.filter((diff) => Math.sign(diff) === sign).length);
+      const net = diffs.reduce((sum, diff) => sum + diff, 0);
+      const outside = some.filter((pair) => againstNoise(context, pair) === "outside").length;
+      return `${key} ${count(1)}-${count(-1)}-${count(0)}, diff ${net > 0 ? "+" : ""}${String(net)}, ${String(outside)} outside`;
+    });
+  return `== ${context.session} by ${by} (won-lost-tied of the new side, summed diff, wins outside their task's A/A): ${said.join("; ")}`;
 }
 
 /** The summary line of one comparison's tallied pairs. */
@@ -384,6 +411,8 @@ function comparisonRows(
     ...apart,
     ...loose,
     winsAgainstNoise(context, pairs),
+    groupsSaid(context, pairs, "writer"),
+    groupsSaid(context, pairs, "family"),
     summaryOf(context, report.data, pairs, untallied),
   ];
 }

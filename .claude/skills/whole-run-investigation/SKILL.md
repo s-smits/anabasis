@@ -55,7 +55,9 @@ under `.ana/wri/<date>-<campaign>/` on the central host.
 2. **Edit the shared instructions** (below). *Check:* no `##` section is blank and the hard rules
    remain.
 3. **Build the lanes.** `wri.ts lanes --out <dir> [--lanes 1-4,7] [--agents N] [--high K] [--regroup]` writes
-   `<dir>/lanes/NN-prompt.md` and a manifest: `<dir>/launch.json` the first time, and
+   `<dir>/lanes/NN-prompt.md`, the one file every open lane shares (`<dir>/lanes/shared-<hash>.md`:
+   the shared instructions, the rows and triggers, what is already counted and the report's form,
+   read once a session) and a manifest: `<dir>/launch.json` the first time, and
    `launch-NN[-NN...].json` by the lanes it built every later time, which the verb names. Without `--lanes` it opens every triggered lane
    and the seven standing lanes, and names, without building, each isolated lane whose trigger fired.
    The lanes go to `--agents N` sessions, 4 by default, each lane in exactly one; labels stay whole
@@ -75,7 +77,9 @@ under `.ana/wri/<date>-<campaign>/` on the central host.
    (`tools/wri/lane-guard.ts`) enforces the hard rules in code. Where the Agent tool lists no
    `wri-lane`, open a session in a worktree at the stack's top; never use `general-purpose`.
    *Check:* each transcript's model, and that each lane ran as `wri-lane`.
-5. **Collect.** `wri.ts collect --out <dir>` checks each report's shape and writes `<dir>/reports.md`.
+5. **Collect.** `wri.ts collect --out <dir>` checks each report's shape and writes `<dir>/reports.md`,
+   which ends, where the prior state holds a prediction table, with each prediction as the lanes
+   resolved it and the lanes that owed a line and wrote none.
    Read lane 3, then decide lane 4; read lanes 10 and 12, then decide lane 15. Build an isolated lane
    with `wri.ts lanes --out <dir> --lanes 4` (or `15`), launch it alone from its own
    `launch-NN.json`, and collect again. *Check:* `collect` exits 0 (1 while a report is missing or
@@ -93,7 +97,7 @@ source.
 | --- | --- | --- |
 | read | `read --log <log>` | nothing: rows, triggers and host line |
 | 1 | `start --log <log>[,<log>...] --out <dir> [--snapshot]` | `overview.md`, `shared-instructions.md`, `investigation.json` |
-| 3 | `lanes --out <dir> [--lanes 1-4,7] [--agents N] [--high K] [--regroup]` | `lanes/NN-prompt.md`, `launch.json` |
+| 3 | `lanes --out <dir> [--lanes 1-4,7] [--agents N] [--high K] [--regroup]` | `lanes/NN-prompt.md`, `lanes/shared-<hash>.md`, `launch.json` |
 | 5 | `collect --out <dir>` | `reports.md` |
 | 6 | `synthesis --out <dir>` | `synthesis-prompt.md` |
 | lanes 1, 3, 4 | `grade --log <log> [--bundle <pack>] (--task <taskId> --answer <file> \| --solve <id> \| --answers <dir>) [--set <path>=<json>]...` | nothing: one verdict line an answer, the recorded verdict beside a regraded solve, and with `--set` the same answer with one field changed (`--bundle` only for a stored pack) |
@@ -101,13 +105,16 @@ source.
 
 ### The readers, derived
 
-About forty-five deterministic readers each map one log to text (`READERS`, `tools/wri/derive.ts`;
-`bun run runs pulse` runs the same list), and each entry says in one line what its file holds. An
-open lane's prompt carries that list as a table, a campaign a column with each file's lines, beside
-the tools a lane runs with arguments (`## Tools a lane runs`, [the catalogue](references/lanes.md))
-and, under the lane's triggers, the file that holds the rows each fired trigger counted (`ROWS`,
-`tools/wri/investigation.ts`). The same section tells the lane that the record behind every table
-stays open to it. An isolated or blind lane is given none of this. Left out are tools that read no run
+Deterministic readers each map one log to text (`READERS`, `tools/wri/derive.ts`, 44 of them on
+10 November; `bun run runs pulse` runs the same list), and each entry says in one line what its file
+holds. The file the open lanes share carries that list as a table, a campaign a column with each
+file's lines, beside the tools a lane runs with arguments (`## Tools a lane runs`,
+[the catalogue](references/lanes.md)), and a lane's own prompt names, under its triggers, the file
+that holds the rows each fired trigger counted (`ROWS`, `tools/wri/investigation.ts`). The same
+section tells the lane that the record behind every table stays open to it. An isolated or blind
+lane is given none of this. A reader that finds its campaign by name (`view`, `loop`, `source`,
+`logged`, `cost`, `table`) is not run on a snapshot or a second copy, whose name finds another log;
+its file says so in one line. Left out are tools that read no run
 (`comparison-reading/scripts/size.ts`, `examiner-complexity/scripts/rungs.ts`,
 `system-audit/scripts/recent.ts`), that need more than a campaign
 (`examiner-complexity/scripts/grades.ts`, `oracle-handover/scripts/slice.ts`, `tools/c/repaired.ts`,
@@ -131,7 +138,10 @@ investigations; lane 1 of the later one joins them.
 
 More campaigns lengthen sessions without adding any. Where the operator names no N, take 2 sessions
 for a small run (no promotion, a few hours), 8 for 3 or more promotions and 4 to 6 between, sized by
-the largest campaign. With a smaller budget, read groups in dependency order:
+the largest campaign, and keep a session to about eight lanes: on 10 November two sessions of 12 and
+14 lanes each ran out of context and were compacted, and the one that read every lane before writing
+any report kept 6 of the 14 findings a five-session reading of the same log held, against 15 of 23
+in the one that wrote each report before the next lane. With a smaller budget, read groups in dependency order:
 
 1. **Verdicts (1 to 6)**, lane 3 first: until refusals read sound, a win may be a check refusing the
    parent's right answer.
@@ -147,8 +157,10 @@ trigger, except an isolated one.
 
 ### Report checks
 
-`reportOf` accepts `finding`, `no finding`, `could not read` and `omitted`, and checks the lane
-heading, equal counts of `Observation:`, `Cause:`, `Owner:`, `Reverses if:` and `Decision:` lines,
+`reportOf` accepts `finding`, `no finding`, `could not read` and `omitted` (a report still at the
+`Verdict: pending` it opened with is unfinished), and checks the lane heading, a
+`Prediction <id>: held | falsified | unreached` line for each row of the prior state's table that
+names the lane, equal counts of `Observation:`, `Cause:`, `Owner:`, `Reverses if:` and `Decision:` lines,
 findings only under `finding`, and a catalogue owner. It checks no evidence, so read the `## Checked`
 section behind each `no finding`. An open lane may follow a problem past its question or mark itself
 `omitted` with a reason; an isolated lane never does.
@@ -164,7 +176,8 @@ them unless the primary deletes them.
   prompt, trace passage or reviewer prose. Cite event kinds, ids, digests, counts, paths and lines.
 - **Never write under a campaign's folder, and never append to a log.**
 - **Start no solve, session, round or check run**, except `wri.ts grade` where a lane names it.
-- **Open the report early and append findings as they hold.**
+- **Open the report with its heading and `Verdict: pending` before reading for the lane**, and
+  append findings as they hold, one lane at a time.
 - **Stay independent**: no lane opens another's prompt or report.
 - **Read source in the tree the campaign's row names**, and say when it is not the tree that ran.
 
@@ -182,8 +195,10 @@ them unless the primary deletes them.
 
 ## Editing the shared instructions
 
-`<dir>/shared-instructions.md` goes whole into every open lane and the synthesis; an isolated lane
-gets only its campaign and hard-rule sections. A blank `##` section refuses `lanes`, and deleting a
+`<dir>/shared-instructions.md` goes whole into the file the open lanes share and into the synthesis;
+an isolated lane gets only its campaign and hard-rule sections. A table of the prior state whose
+header has an `id` and a `lanes` column is read as predictions: each lane a row names is handed that
+row in its own prompt and owes it a line. A blank `##` section refuses `lanes`, and deleting a
 heading drops that section on purpose.
 
 | section | written by | holds |

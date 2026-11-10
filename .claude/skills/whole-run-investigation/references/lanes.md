@@ -62,15 +62,15 @@ to today's through the head comment of `tools/wri/catalogue.ts`.
 
 ## Tools a lane runs
 
-Each runs from the checkout as `bun <path> ...`, reads only, and takes a log by path. An open lane's
-prompt carries this section beside the list of derived files; an isolated or blind lane is given the
+Each runs from the checkout as `bun <path> ...`, reads only, and takes a log by path. The file the
+open lanes share carries this section beside the list of derived files; an isolated or blind lane is given the
 tools its own text names.
 
 | question | command |
 | --- | --- |
-| Which event kinds does a log hold, with which fields and on which lines? | `tools/wri/log.ts kinds --log <log>` |
-| Which events of one or several kinds, in log order, filtered or counted by a field? | `tools/wri/log.ts events --log <log> --kind <kind>[,<kind>...] [--fields a,b.c] [--where f=v\|f!=v\|f~prefix\|f>n\|f>=n\|f<n\|f<=n]... [--count-by f] [--full]` (a row whose bounded field is absent or no number is left out and counted in the header) |
-| Every solve with its comparison, side, harness, task family, ending, turns, seconds, share of its deadline, load and bill, filtered or counted by a column? | `tools/wri/log.ts solves --log <log> [--comparison <id>] [--role old\|new\|both\|try\|practice] [--where column<op>value]... [--count-by column]` |
+| Which event kinds does a log hold, with which fields and on which lines? | `tools/wri/log.ts kinds --log <log> [--kind <kind>[,<kind>...]]` |
+| Which events of one or several kinds, in log order, filtered or counted by a field? | `tools/wri/log.ts events --log <log> --kind <kind>[,<kind>...] [--fields a,b.c] [--where f=v\|f!=v\|f~prefix\|f>n\|f>=n\|f<n\|f<=n]... [--count-by f[,g]] [--full]` (a row whose bounded field is absent or no number is left out and counted in the header) |
+| Every solve with its comparison, side, harness, task family, ending, turns, seconds, share of its deadline, load and bill, filtered or counted by a column? | `tools/wri/log.ts solves --log <log> [--comparison <id>] [--role old\|new\|both\|try\|practice] [--where column<op>value]... [--count-by column[,column]]` |
 | What did one seat say and call, turn by turn? | `.claude/skills/oracle-handover/scripts/slice.ts <log> 'Solver:<id>'` (also `'Builder:b-2{1-3}'`, `'Builder:b-1[compare,wait,practice]'` for those tools' turns only, `'Examiner:...'`, an event kind; `--count '<phrase>'` counts a phrase in each served result, `--whole` lifts the cut) |
 | One rejected solve: its refusing checks, the ruling, each probe and any label? | `tools/wri/rejections.ts <log> --solve <id>` |
 | One task's public input whole, every task's structure without values, or the blind grading rows? | `tools/wri/tasks.ts <log> --task <id>`, `--shape`, `--rows` |
@@ -82,7 +82,7 @@ tools its own text names.
 | How did the ending stand at one line or time? | `.claude/skills/campaign-mechanics/scripts/ending.ts <log> --at <line \| ISO time>` |
 | Which archived campaigns were drafted from the same prompt? | `tools/wri/drafted.ts <log> --siblings` |
 | The release table from an archive of runs, with no env file? | `.claude/skills/promotion-tuner/scripts/table.ts --runs <dir>` |
-| Would the host's verifier pass this answer, or a recorded one with one field changed? | `tools/wri/wri.ts grade --log <log> (--task <taskId> --answer <file> \| --solve <id>) [--set <path>=<json>]...`, only where a lane names it |
+| Would the host's verifier pass this answer, or a recorded one with one field changed? | `tools/wri/wri.ts grade --log <log> (--task <taskId> --answer <file> \| --solve <id>) [--set <path>=<json>]...` (a path as `cohort.x` or `$.cohort.x`), only where a lane names it |
 
 A script of the lane's own lives in its temporary directory and never in a campaign's folder. The
 lane guard passes `jq` over a log, a Bun script given the log's path (`bun <tmp>/x.ts <log>`) and a
@@ -409,7 +409,7 @@ Starts from `HARNESS CHANGED (lane 12)`, `BROKEN AT END (lane 12)`,
 `PRACTISED TASK MEASURED (lane 12)`.
 
 What moved between parent and child, and are the measured bytes the ones the Builder described?
-Diff the kept states under `states/` part by part (`harness-versions.ts --diff` of
+Diff the kept states under `states/` part by part (`.claude/skills/harness-audit/scripts/harness-versions.ts <log> --diff <digest>` of
 [harness-audit](../../harness-audit/SKILL.md); the first parent is the Starter) and describe each
 change by kind and size, quoting no line. Compare it with the note in `harness.version`, or the turns
 of a led conversation's `build.checkpoint`. Where the final state did not open, the round measured
@@ -807,8 +807,8 @@ nothing about how hard the scored tasks were or whether an expert would keep the
 reading any result, writing each grade as it settles:
 
 1. Read `chain.txt` from the derived folder: each kept version, its parent, parts and what moved,
-   with no result (`harness-versions.ts --blind`).
-2. Read the moved lines (`harness-versions.ts <log> --chain --lines`, or `--diff <digest> --lines`
+   with no result (`bun .claude/skills/harness-audit/scripts/harness-versions.ts <log> --blind`).
+2. Read the moved lines (the same script with `<log> --chain --lines`, or `--diff <digest> --lines`
    for one version: each against its parent, with no outcome;
    [harness-audit](../../harness-audit/SKILL.md)) and grade soundness. A version the copy does not
    keep (`versions.txt`) goes under `## Not read`, ungraded; refreshing the copy is the primary's.
@@ -926,13 +926,15 @@ the rest. It counts the wins on tasks whose A/A tied, which clear only a zero di
 other objective-only steps most of whose wins were of that kind, which give no spread to read. For
 each step, read the wins' margins beside the A/A's distribution (`pairs.txt` gives each task's
 margin beside its stored and rebuilt A/A, the A/A's quantiles, the reading on first and on second
-solves alone, and the count of wins inside, level with and outside their own task's A/A;
+solves alone, the count of wins inside, level with and outside their own task's A/A, and each
+comparison's tally by writing session and by family, with each group's wins outside that A/A;
 `answers.txt` the repeated measures); where the A/A tied, use the starter's split
 (`Starter against itself`) or another report's A/A of the same reference and say so. Then read what
 the carrying tasks share (lane 17): one family, one writing session, or one quantity whose
 measurement moves from solve to solve. Size the remedy as solves a side: from the A/A's spread and the
 margins won, how many solves of each task would bring a typical margin outside the noise
-(`comparison-reading/scripts/size.ts --scores <s,s,...>`, which takes scores and reads no log), and
+(`.claude/skills/comparison-reading/scripts/size.ts --scores <s,s,...>`, which takes each task's
+score as `pairs.txt` prints it under `diff`, all in that one unit, and reads no log), and
 what that costs at the campaign's price a solve. Never propose
 raising the gap floor (`ROOM`): it would hide these margins and the reference's alike, and the
 operator has ruled it out. The decision: whether these steps are reported as effects, and whether

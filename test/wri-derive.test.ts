@@ -93,6 +93,31 @@ describe("deriving a campaign's readers", () => {
     expect(derivedText([done], [SIZE])).toContain("## camp · size\n\n27");
   });
 
+  it("runs no reader that finds a campaign by name on a log the name does not find", async () => {
+    // The repository holds no campaign named `camp`, as it holds another log for a snapshot's name.
+    const ran = { name: "ran", answers: "a reader of the log it is handed", args: SIZE.args };
+    const done = await derive(log, {
+      root,
+      repo: REPO,
+      readers: [{ ...ran, name: "byname", named: true }, ran],
+    });
+    expect(done.failed).toEqual([]);
+    const said = readFileSync(join(done.dir, "byname.txt"), "utf8");
+    expect(said).toStartWith(
+      "not read: byname finds a campaign by its name, and camp names no one campaign here",
+    );
+    expect(said).toContain(log);
+    expect(readFileSync(join(done.dir, "ran.txt"), "utf8").trim()).toBe("27");
+    expect(READERS.filter(({ named }) => named === true).map(({ name }) => name)).toEqual([
+      "view",
+      "loop",
+      "source",
+      "logged",
+      "cost",
+      "table",
+    ]);
+  });
+
   it("names only scripts the tree holds", () => {
     expect(
       READERS.map(({ args }) => args("log", REPO)[0] ?? "").filter(

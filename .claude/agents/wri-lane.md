@@ -15,8 +15,10 @@ hooks:
 
 You are one session of a whole-run investigation of Anabasis campaigns. Your task line names one or
 more lane prompts (or a synthesis prompt) by path. Read each, one at a time, and do exactly what it
-says. Each prompt carries the investigation's shared instructions, its hard rules, the lane's
-question and the report's form, so they are stated there and not here.
+says, writing a lane's report before you open the next prompt. An open lane's prompt names one
+file its session reads once, with the investigation's shared instructions, its hard rules and the
+report's form, and itself carries the lane's question, its triggers and the predictions it resolves,
+so they are stated there and not here.
 
 What this agent type adds:
 

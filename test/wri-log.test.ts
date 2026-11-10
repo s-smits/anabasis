@@ -45,6 +45,12 @@ describe("log.ts kinds", () => {
     expect(rows).toContain("  seconds null|number, lines 1-3");
     expect(rows).toContain("  tokens object, in 1 of 2, line 3");
     expect(rows.join("\n")).not.toContain("q7-hidden");
+    // One kind asked for is the only one printed.
+    const one = kindRows(
+      [event("solve.finished", { solve: "s-1" }), event("campaign.move", {})],
+      new Set(["campaign.move"]),
+    );
+    expect(one.slice(1)).toEqual(["campaign.move 1, line 2"]);
   });
 });
 
@@ -124,6 +130,12 @@ describe("log.ts events", () => {
     expect(eventRows(events, { ...query, where: ["kind=fail"], countBy: "blocking" }).slice(1)).toStrictEqual(
       ["1 -", '1 ["c-1"]'],
     );
+    // Two fields count each pair of values, never the first field alone.
+    expect(eventRows(events, { ...query, countBy: "kind,blocking" }).slice(1)).toStrictEqual([
+      "1 pass []",
+      "1 fail -",
+      '1 fail ["c-1"]',
+    ]);
     expect(eventRows(events, { ...query, where: ["note~xxx"], fields: ["solve"] })).toHaveLength(2);
     expect(eventRows(events, { ...query, where: ["kind!=fail"], fields: ["solve"] })).toHaveLength(2);
   });

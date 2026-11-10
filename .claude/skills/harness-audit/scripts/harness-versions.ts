@@ -110,7 +110,8 @@ interface Parts {
 export interface Version {
   readonly digest: string;
   readonly kept: boolean;
-  /** `as kept`, the digest it opens as instead, or why it does not open; null where not kept. */
+  /** `as kept`, the digest it opens as instead, or why it does not open; null where not kept, and
+   *  where the caller asked for no list (`versionsOf`). */
   readonly opens: string | null;
   readonly made: string;
   readonly parent: string | null;
@@ -123,6 +124,7 @@ export interface Version {
   readonly promoted: readonly string[];
   readonly sessions: readonly string[];
   readonly compared: readonly string[];
+  /** Null where `opens` is. */
   readonly parts: Parts | null;
 }
 
@@ -246,8 +248,14 @@ function turnsOf(events: readonly LogEvent[], digest: string): string | null {
 }
 
 /** Every harness the log names or the states folder keeps: in the order the log first names them,
- *  the starter first, then any state the log never names. */
-export async function versionsOf(keeping: Keeping): Promise<Version[]> {
+ *  the starter first, then any state the log never names. Only the list reads how a state opens and
+ *  what its parts hold, and opening one digests its whole tree (25 s of every call on 34 states of
+ *  3.4 GB, 10 November), so a diff or a chain asks for the versions `named` and reads neither. */
+export async function versionsOf(
+  keeping: Keeping,
+  detail: "opened" | "named" = "opened",
+): Promise<Version[]> {
+  const whole = detail === "opened";
   const events = read(keeping.log);
   const { steps, reference, latest } = campaignOf(events);
   const starter = await starterDigest();
@@ -263,12 +271,14 @@ export async function versionsOf(keeping: Keeping): Promise<Version[]> {
     digests.map(async (digest): Promise<Version> => {
       const dir = join(keeping.states, digest);
       const kept = states.includes(digest);
-      const opens = kept
-        ? await openHarness(dir).then(
-            (harness) => (harness.digest === digest ? "as kept" : `as ${short(harness.digest)}, not as kept`),
-            (error: unknown) => `refused: ${errorMessage(error)}`,
-          )
-        : null;
+      const opens =
+        kept && whole
+          ? await openHarness(dir).then(
+              (harness) =>
+                harness.digest === digest ? "as kept" : `as ${short(harness.digest)}, not as kept`,
+              (error: unknown) => `refused: ${errorMessage(error)}`,
+            )
+          : null;
       return {
         digest,
         kept,
@@ -284,7 +294,7 @@ export async function versionsOf(keeping: Keeping): Promise<Version[]> {
           kind === "harness.promoted" && data.harness === digest ? [at] : [],
         ),
         ...measured(steps, digest),
-        parts: kept ? await partsOf(dir) : null,
+        parts: kept && whole ? await partsOf(dir) : null,
       };
     }),
   );
@@ -482,7 +492,8 @@ async function main(args: CommandArgs): Promise<number> {
   const log = await logAcross(args.positionals[0] ?? args.die(USAGE));
   if (!existsSync(log)) args.die(`${log} does not exist`);
   const keeping = { log, states: join(dirname(log), "states") };
-  const versions = await versionsOf(keeping);
+  const listing = !args.flag("chain") && args.value("diff") === null;
+  const versions = await versionsOf(keeping, listing ? "opened" : "named");
   if (args.flag("files") && args.flag("lines")) args.die("--files and --lines are two depths; name one");
   const depth: Depth = args.flag("lines") ? "lines" : args.flag("files") ? "files" : "counts";
   if (args.flag("chain")) {

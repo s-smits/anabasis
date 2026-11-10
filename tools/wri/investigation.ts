@@ -3,8 +3,13 @@
  * prompt each session is given, and whether a report has the shape the synthesis can use. Nothing
  * here touches a file; `tools/wri/wri.ts` does the reading and the writing.
  *
- * An open lane's prompt carries the shared instructions, the overview, the catalogue's stance, the
- * lane and the reporting rules. An isolated lane's carries the campaigns' rows, the hard rules, the
+ * What every open lane shares (the shared instructions, the overview, what is already counted, the
+ * catalogue's stance and the report's form) is one file a session reads once (`sharedPrompt`), and
+ * an open lane's prompt carries its question, its own triggers whole, the predictions that name it
+ * and where its report goes. Until 10 November each prompt carried the shared part too: of one
+ * prompt's 60 thousand characters 56 thousand were shared, 20 thousand of those the solve ids of one
+ * lane's triggers, and two sessions given 12 and 14 such prompts both compacted before their last
+ * lanes. An isolated lane's prompt stands alone and carries the campaigns' rows, the hard rules, the
  * deterministic rows, its own triggers, the lane and the reporting rules: it is told neither the
  * operator's question nor what any other lane was started by, because it freezes its result before
  * it reads anything that could lead it. A blind lane's carries the campaigns' rows and the hard rules
@@ -46,29 +51,54 @@ export interface Report {
   readonly faults: readonly string[];
   readonly verdict: string | null;
   readonly findings: number;
+  /** How the report resolves each prediction it names, by id. */
+  readonly resolved: Readonly<Record<string, Resolution>>;
 }
 
-interface PromptParts {
-  readonly lane: Lane;
+interface SharedParts {
   /** The shared instructions as the primary edited them. */
   readonly shared: string;
   readonly campaigns: readonly Campaign[];
   /** The whole catalogue, for its stance and its owner table. */
   readonly catalogue: string;
   readonly owners: readonly string[];
-  /** Where the session writes its report. */
-  readonly report: string;
-  /** The campaigns' climbs side by side, for a lane that reads them; "" where one campaign is read. */
-  readonly climb?: string;
   /** What each derived file answers and how large it stands (`derivedMap`, `tools/wri/derive.ts`);
    *  "" where no folder was derived. */
   readonly derived?: string;
+}
+
+interface PromptParts extends SharedParts {
+  readonly lane: Lane;
+  /** Where the session writes its report. */
+  readonly report: string;
+  /** Where the part every open lane shares is written (`sharedPrompt`). */
+  readonly common: string;
+  /** The campaigns' climbs side by side, for a lane that reads them; "" where one campaign is read. */
+  readonly climb?: string;
 }
 
 const CAMPAIGN_HEADING = "Campaigns under review";
 const RULES_HEADING = "Hard rules";
 const TOOLS_HEADING = "Tools a lane runs";
 const VERDICTS = ["finding", "no finding", "could not read", "omitted"] as const;
+/** A row of the prediction table the prior state holds, and the lanes it names. */
+interface Prediction {
+  readonly id: string;
+  readonly lanes: readonly number[];
+  /** The table's header line and this row's, as the primary wrote them. */
+  readonly head: string;
+  readonly row: string;
+}
+
+/** What a report's second line says until its lane is read; `reportOf` holds it as unfinished. */
+const PENDING = "pending";
+const RESOLUTIONS = ["held", "falsified", "unreached"] as const;
+type Resolution = (typeof RESOLUTIONS)[number];
+const PREDICTION = "Prediction";
+/** A trigger's detail past this many characters is cut in the part every lane reads, and stands
+ *  whole in its own lane's prompt: seven `WINS` lines of lane 16 were 20 of the 56 thousand
+ *  characters each lane's prompt shared on 10 November. */
+const DETAIL = 300;
 const FIELDS = ["Observation:", "Cause:", "Owner:", "Reverses if:", "Decision:"] as const;
 const SEEN = "Seen in:";
 /**
@@ -241,66 +271,148 @@ export function blankSections(shared: string): string[] {
   );
 }
 
-function reporting(lane: Lane, report: string, owners: readonly string[], names: readonly string[]): string {
-  const several = names.length > 1;
-  return [
-    "## Your report",
-    "",
-    `Write your report to \`${report}\`. Write its first two lines before you read anything, and append each finding as it settles, so a session that is stopped still leaves its work.`,
-    "",
-    "```",
-    `# Lane ${String(lane.number)}: ${lane.title}`,
-    `Verdict: <${VERDICTS.join(" | ")}>, then one sentence`,
-    "",
-    "## Findings",
-    "",
-    "### <one line naming the finding>",
-    "Observation: what the log or the bytes show, cited by event kind, solve id, the first eight characters of a version or digest, check id and count",
-    "Cause: what you infer from it, apart from the observation",
-    "Owner: exactly one owner",
-    "Reverses if: the observation that would reverse the finding",
-    "Decision: what it changes for the operator",
-    ...(several
-      ? [`${SEEN} ${names.map((name) => `${name} <shows | absent | cannot show>`).join(", ")}`]
-      : []),
-    "",
-    "## Checked",
-    "With a verdict of no finding, which leaves Findings empty: what you checked and found sound, in sentences without the five fields",
-    "",
-    "## Not read",
-    "What you could not read, and why.",
-    "```",
-    "",
-    ...(lane.isolated
-      ? []
-      : [
-          // The operator, 3 November 2026: a session should follow a problem where it leads and
-          // write only the lanes that matter for these runs (`docs/backlog/wri-free-lanes.md`).
-          "Where this lane's evidence leads past its question, follow it, and write what you find here with the same fields. Where this lane matters less for these campaigns, at the point their logs have reached, than the other lanes your session was given, you may leave it unread: write only the heading and `Verdict: omitted`, then one sentence why (its question does not arise here, the primary's section already settles it, or another of your lanes covers it).",
-          "",
-        ]),
-    `Each of the ${several ? "six" : "five"} fields starts a line of its own, as above: the collector counts them by the line's first word, and a finding written as one paragraph is refused (abl175-new's lane 11, 13 October).`,
-    "",
-    `An owner is one of: ${owners.map((owner) => `\`${owner}\``).join(", ")}. Name the file beside \`host\` and a prompt owner.`,
-    "",
-    "You read and you report. Write no file but your report, and scratch in a temporary directory of your own, never under the campaign's folder or the checkout. Start no solve, no session, no round and no check run; `wri.ts grade` is the one exception, and only where your lane names it. Reply with the report's path and one line per finding.",
-  ].join("\n");
+/**
+ * The rows of every table of the shared instructions whose header names an `id` and a `lanes`
+ * column: the predictions a release cycle lists under the prior state, each with the lanes that
+ * recount it. On 10 November the table went whole into every prompt and was owed by none: of the 42
+ * pairs of a lane and a prediction naming it, five sessions' reports named 14 and two sessions' 13,
+ * and both sessions said afterwards that they had not read the table as work.
+ */
+function predictionsOf(shared: string): Prediction[] {
+  const cellsOf = (line: string) =>
+    line
+      .split("|")
+      .slice(1, -1)
+      .map((cell) => cell.trim());
+  const found: Prediction[] = [];
+  let head: { line: string; id: number; lanes: number } | null = null;
+  for (const line of shared.replaceAll(/<!--[\s\S]*?-->/g, "").split("\n")) {
+    const cells = line.startsWith("|") ? cellsOf(line) : null;
+    if (cells === null || head === null) {
+      const [id, lanes] = [cells?.indexOf("id") ?? -1, cells?.indexOf("lanes") ?? -1];
+      head = id >= 0 && lanes >= 0 ? { line, id, lanes } : null;
+      continue;
+    }
+    const id = cells[head.id] ?? "";
+    // The rule under the header names no prediction.
+    if (id === "" || /^[-: ]+$/u.test(id)) continue;
+    const lanes = (cells[head.lanes] ?? "").split(",").map(Number);
+    found.push({ id, lanes: lanes.filter((lane) => lane > 0), head: head.line, row: line });
+  }
+  return found;
 }
 
-/** Each campaign's rows and the triggers `pick` keeps, under its name where several are read. */
-function holds(campaigns: readonly Campaign[], pick: (trigger: Trigger) => boolean): string {
+/** The predictions `lane` resolves: none for a lane that freezes or grades before it reads a result. */
+const owedBy = (lane: Lane, shared: string) =>
+  lane.isolated || lane.blind ? [] : predictionsOf(shared).filter(({ lanes }) => lanes.includes(lane.number));
+
+/** The predictions section of a lane's prompt, or nothing where no row names the lane. */
+function predicting(owed: readonly Prediction[]): string[] {
+  const [first] = owed;
+  if (first === undefined) return [];
+  return [
+    "## Predictions this lane resolves",
+    `The prior state names this lane on the ${owed.length === 1 ? "row" : "rows"} below. Recount each from the log, whatever else the lane finds, and give each one line under \`## Predictions\` in your report: \`${PREDICTION} <id>: <${RESOLUTIONS.join(" | ")}>\`, then the count that settles it. A row whose trigger never came is unreached; the collector refuses a report that leaves a row out.`,
+    [first.head, first.head.replaceAll(/[^|]+/g, " --- "), ...owed.map(({ row }) => row)].join("\n"),
+  ];
+}
+
+/** Where a lane's report goes and how it opens. A report's second line was to be its verdict from
+ *  the start, so sessions wrote one they did not hold yet ("provisional", 4 November) or said
+ *  afterwards that the early line could not be honest (10 November). */
+function opening(lane: Lane, report: string): string[] {
+  return [
+    "## Your report",
+    `Write your report to \`${report}\`. Before you read anything for this lane, open it with the two lines below; then replace the second and append each finding as it settles, so a session that is stopped still leaves its work.`,
+    ["```", `# Lane ${String(lane.number)}: ${lane.title}`, `Verdict: ${PENDING}`, "```"].join("\n"),
+  ];
+}
+
+/** A finished report's form under `heading`, its first line, and the rules its collector holds it
+ *  to; an open lane's adds what only it may do and owes. */
+function form(
+  heading: string,
+  owners: readonly string[],
+  names: readonly string[],
+  lane: "open" | "alone",
+): string[] {
+  const several = names.length > 1;
+  const open = lane === "open";
+  return [
+    [
+      "```",
+      heading,
+      `Verdict: <${VERDICTS.join(" | ")}>, then one sentence`,
+      "",
+      "## Findings",
+      "",
+      "### <one line naming the finding>",
+      "Observation: what the log or the bytes show, cited by event kind, solve id, the first eight characters of a version or digest, check id and count",
+      "Cause: what you infer from it, apart from the observation",
+      "Owner: exactly one owner",
+      "Reverses if: the observation that would reverse the finding",
+      "Decision: what it changes for the operator",
+      ...(several
+        ? [`${SEEN} ${names.map((name) => `${name} <shows | absent | cannot show>`).join(", ")}`]
+        : []),
+      "",
+      "## Checked",
+      "With a verdict of no finding, which leaves Findings empty: what you checked and found sound, in sentences without the five fields",
+      "",
+      ...(open
+        ? [
+            "## Predictions",
+            `${PREDICTION} <id>: <${RESOLUTIONS.join(" | ")}>, then the count that settles it; a line for each row the lane's prompt hands it, and no section where it hands none`,
+            "",
+          ]
+        : []),
+      "## Not read",
+      "What you could not read, and why.",
+      "```",
+    ].join("\n"),
+    ...(open
+      ? [
+          // The operator, 3 November 2026: a session should follow a problem where it leads and
+          // write only the lanes that matter for these runs (`docs/backlog/wri-free-lanes.md`).
+          "Where a lane's evidence leads past its question, follow it, and write what you find in that lane's report with the same fields. Where a lane matters less for these campaigns, at the point their logs have reached, than the other lanes your session was given, you may leave it unread: write only the heading and `Verdict: omitted`, then one sentence why (its question does not arise here, the primary's section already settles it, or another of your lanes covers it).",
+        ]
+      : []),
+    `Each of the ${several ? "six" : "five"} fields starts a line of its own, as above: the collector counts them by the line's first word, and a finding written as one paragraph is refused (abl175-new's lane 11, 13 October).`,
+    `An owner is one of: ${owners.map((owner) => `\`${owner}\``).join(", ")}. Name the file beside \`host\` and a prompt owner.`,
+    "You read and you report. Write no file but your report, and scratch in a temporary directory of your own, never under the campaign's folder or the checkout. Start no solve, no session, no round and no check run; `wri.ts grade` is the one exception, and only where your lane names it. Reply with the report's path and one line per finding.",
+  ];
+}
+
+/** Each campaign's triggers that `pick` keeps, under its rows unless `rows` is false and under its
+ *  name where several are read; "" where no trigger is kept and no row asked for. `cut` shortens a
+ *  long trigger line (`DETAIL`). */
+function holds(
+  campaigns: readonly Campaign[],
+  pick: (trigger: Trigger) => boolean,
+  { rows: withRows = true, cut = false } = {},
+): string {
   return campaigns
-    .map(({ name, log, overview: { rows, triggers } }) => {
+    .flatMap(({ name, log, overview: { rows, triggers } }) => {
+      const fired = triggers.filter(pick).map(({ name: trigger, lane, detail }) => {
+        const said =
+          cut && detail.length > DETAIL
+            ? `${detail.slice(0, DETAIL)} [cut at ${String(DETAIL)} of ${String(detail.length)} characters; whole in lane ${String(lane)}'s prompt]`
+            : detail;
+        return `${trigger} (lane ${String(lane)}): ${said}`;
+      });
+      if (!withRows && fired.length === 0) return [];
       const block = [
         "```",
-        ...rows.flatMap((row) => [`${row.id}. ${row.title}`, ...row.lines.map((line) => `   ${line}`)]),
-        "",
-        ...triggers
-          .filter(pick)
-          .map((trigger) => `${trigger.name} (lane ${String(trigger.lane)}): ${trigger.detail}`),
+        ...(withRows
+          ? [
+              ...rows.flatMap((row) => [`${row.id}. ${row.title}`, ...row.lines.map((line) => `   ${line}`)]),
+              "",
+            ]
+          : []),
+        ...fired,
         "```",
       ].join("\n");
-      return campaigns.length === 1 ? block : `### ${name}\n\nLog: \`${log}\`\n\n${block}`;
+      return [campaigns.length === 1 ? block : `### ${name}\n\nLog: \`${log}\`\n\n${block}`];
     })
     .join("\n\n");
 }
@@ -383,7 +495,7 @@ function firedLine(
   return [
     on.length === 0
       ? `None of these triggers fired on ${one ? "this campaign" : "any campaign under review"}: the lane is open because its question stands whenever a harness was compared.`
-      : `Fired ${on.map(({ name, fired }) => `on ${one ? "this campaign" : `\`${name}\``}: ${list(fired)}`).join("; ")}, as "What the logs hold" prints them.`,
+      : `Fired ${on.map(({ name, fired }) => `on ${one ? "this campaign" : `\`${name}\``}: ${list(fired)}`).join("; ")}.`,
     ...(quiet.length === 0
       ? []
       : [`Not fired: ${list(quiet)}. Read each as the logs' silence on it, not as a lead.`]),
@@ -395,7 +507,35 @@ function firedLine(
   ].join(" ");
 }
 
-/** One lane's prompt. */
+const sessionOf = (campaigns: readonly Campaign[]) =>
+  `You are one session of a whole-run investigation of ${campaigns.length === 1 ? "an Anabasis campaign" : "several Anabasis campaigns"}.`;
+
+/** The part every open lane shares, which a session reads once: the shared instructions, the
+ *  overview with long trigger lines cut, what is already counted, the catalogue's stance and the
+ *  report's form. */
+export function sharedPrompt({ shared, campaigns, catalogue, owners, derived = "" }: SharedParts): string {
+  const names = campaigns.map(({ name }) => name);
+  return [
+    "# What every open lane of this investigation shares",
+    `${sessionOf(campaigns)} Other sessions read other lanes; you read yours. This file is the same for every open lane: read it whole once, before your first open lane, and not again.`,
+    shared.replaceAll(/<!--[\s\S]*?-->\n?/g, "").trim(),
+    "## What the logs hold",
+    "The rows are the primary reviewer's and are settled. A trigger says a lane has something to read and never what the answer is. A long trigger line is cut here and stands whole in its own lane's prompt.",
+    holds(campaigns, () => true, { cut: true }),
+    ...counted(derived, catalogue),
+    ...equalsSection(campaigns),
+    "## Who holds which pen",
+    section(catalogue, "Who holds which pen"),
+    "## How the catalogue is read",
+    section(catalogue, "How the catalogue is read"),
+    "## Every lane's report",
+    "Each lane's prompt says where its report goes and gives its first two lines. Once the lane is read, the report has this form:",
+    ...form("# Lane <number>: <the lane's title>", owners, names, "open"),
+  ].join("\n\n");
+}
+
+/** One lane's prompt: whole for a lane that runs alone or grades blind, and for an open lane its own
+ *  part, which names the shared one at `common`. */
 export function lanePrompt({
   lane,
   shared,
@@ -403,67 +543,71 @@ export function lanePrompt({
   catalogue,
   owners,
   report,
+  common,
   climb = "",
   derived = "",
 }: PromptParts): string {
+  const alone = lane.isolated || lane.blind;
   const clean = shared.replaceAll(/<!--[\s\S]*?-->\n?/g, "").trim();
-  const own = ["## What the logs hold", holds(campaigns, (trigger) => trigger.lane === lane.number)];
-  const context =
-    lane.isolated || lane.blind
+  const mine = (trigger: Trigger) => trigger.lane === lane.number;
+  const fired = alone ? "" : holds(campaigns, mine, { rows: false });
+  const names = campaigns.map(({ name }) => name);
+  return [
+    `# Lane ${String(lane.number)}: ${lane.title}`,
+    ...(alone
       ? [
+          lane.isolated
+            ? `${sessionOf(campaigns)} Your lane runs alone: you are given no other lane's report and you open none.`
+            : `${sessionOf(campaigns)} Other sessions read other lanes; you read yours.`,
           `## ${CAMPAIGN_HEADING}`,
           section(clean, CAMPAIGN_HEADING),
           `## ${RULES_HEADING}`,
           section(clean, RULES_HEADING),
-          ...(lane.blind ? [] : own),
+          ...(lane.blind ? [] : ["## What the logs hold", holds(campaigns, mine)]),
+          ...equalsSection(campaigns),
+          "## Who holds which pen",
+          section(catalogue, "Who holds which pen"),
+          "## How the catalogue is read",
+          section(catalogue, "How the catalogue is read"),
         ]
       : [
-          clean,
-          "## What the logs hold",
-          "The rows are the primary reviewer's and are settled. A trigger says a lane has something to read and never what the answer is.",
-          holds(campaigns, () => true),
-          ...counted(derived, catalogue),
-        ];
-  const what = campaigns.length === 1 ? "an Anabasis campaign" : "several Anabasis campaigns";
-  return [
-    `# Lane ${String(lane.number)}: ${lane.title}`,
-    lane.isolated
-      ? `You are one session of a whole-run investigation of ${what}. Your lane runs alone: you are given no other lane's report and you open none.`
-      : // A session given several lanes compared their prompts to find what differed: every lane 3
-        // session and 10 of 18 lane 1 sessions of 3 to 10 November.
-        `You are one session of a whole-run investigation of ${what}. Other sessions read other lanes; you read yours. Below its title, every open lane's prompt is the same down to \`## Your lane\`, so a session given several reads that part once.`,
-    ...context,
-    ...equalsSection(campaigns),
-    "## Who holds which pen",
-    section(catalogue, "Who holds which pen"),
-    "## How the catalogue is read",
-    section(catalogue, "How the catalogue is read"),
+          `${sessionOf(campaigns)} What every open lane shares (the question, the campaigns, the hard rules, what is already counted and the report's form) is in \`${common}\`: read it whole once in your session, before your first open lane, and not again. Everything below is this lane's alone.`,
+        ]),
     "## Your lane",
     `**${String(lane.number)}. ${lane.title}.**`,
     lane.body,
     // Only an open lane given the derived files is pointed at one.
-    firedLine(lane, campaigns, lane.isolated || lane.blind || derived.trim() === "" ? {} : ROWS),
+    firedLine(lane, campaigns, alone || derived.trim() === "" ? {} : ROWS),
+    ...(fired === "" ? [] : ["### What fired for this lane, whole", fired]),
     ...(lane.sideBySide ? climbSection(climb) : []),
-    reporting(
-      lane,
-      report,
-      owners,
-      campaigns.map(({ name }) => name),
-    ),
+    ...opening(lane, report),
+    ...(alone
+      ? [
+          "Once the lane is read, the report has this form:",
+          ...form(`# Lane ${String(lane.number)}: ${lane.title}`, owners, names, "alone"),
+        ]
+      : [
+          ...predicting(owedBy(lane, shared)),
+          "The report's form, its owners and what a lane may leave unread are in the shared file.",
+        ]),
   ].join("\n\n");
 }
 
 /**
  * Whether a report has the shape the synthesis reads. `text` is null where no file stands. Where
  * several campaigns are read, `names` lists them, and each finding's `Seen in:` line names them all.
+ * A lane that read its question owes a line for each prediction of `shared` that names it.
  */
 export function reportOf(
   lane: Lane,
   text: string | null,
   owners: readonly string[],
   names: readonly string[],
+  shared = "",
 ): Report {
-  if (text === null) return { lane: lane.number, state: "missing", faults: [], verdict: null, findings: 0 };
+  if (text === null) {
+    return { lane: lane.number, state: "missing", faults: [], verdict: null, findings: 0, resolved: {} };
+  }
   const lines = text.split("\n");
   const said =
     lines
@@ -471,6 +615,19 @@ export function reportOf(
       ?.slice("Verdict:".length)
       .trim() ?? "";
   const verdict = VERDICTS.find((each) => said.startsWith(each)) ?? null;
+  const unfinished = said.startsWith(PENDING) ? PENDING : ["provisional"].find((word) => said.includes(word));
+  const resolved: Record<string, Resolution> = {};
+  for (const line of lines) {
+    const [id, how = ""] = line.startsWith(`${PREDICTION} `)
+      ? line.slice(PREDICTION.length + 1).split(/: */u)
+      : [];
+    const resolution = RESOLUTIONS.find((each) => how.startsWith(each));
+    if (id !== undefined && resolution !== undefined) resolved[id] = resolution;
+  }
+  const unresolved =
+    verdict === "finding" || verdict === "no finding"
+      ? owedBy(lane, shared).flatMap(({ id }) => (id in resolved ? [] : [id]))
+      : [];
   const fields = names.length > 1 ? [...FIELDS, SEEN] : FIELDS;
   const counts = fields.map((field) => lines.filter((line) => line.startsWith(field)).length);
   const [findings = 0] = counts;
@@ -494,7 +651,7 @@ export function reportOf(
     ...(lines[0]?.startsWith(`# Lane ${String(lane.number)}:`) === true
       ? []
       : ["the first line does not name the lane"]),
-    ...(verdict === null ? [`no verdict among: ${VERDICTS.join(", ")}`] : []),
+    ...(verdict === null && unfinished === undefined ? [`no verdict among: ${VERDICTS.join(", ")}`] : []),
     ...(counts.some((count) => count !== findings)
       ? [
           `the findings are uneven: ${fields.map((field, index) => `${field} ${String(counts[index])}`).join(", ")}`,
@@ -504,9 +661,14 @@ export function reportOf(
     // An isolated lane is a session of its own with one lane, so it has no other lane to weigh
     // against and may not leave its lane unread (release review, 3 November).
     ...(verdict === "omitted" && lane.isolated ? ["an isolated lane may not be omitted"] : []),
-    // A session writes its report early, as the hard rules ask; on 4 November buffer583's lane 32
-    // stood as "could not read, provisional" and `collect` read it as a final verdict.
-    ...(said.includes("provisional") ? ["the verdict is provisional: the session is still writing"] : []),
+    // A session opens its report before it reads, as the hard rules ask; on 4 November buffer583's
+    // lane 32 stood as "could not read, provisional" and `collect` read it as a final verdict.
+    ...(unfinished === undefined ? [] : [`the verdict is ${unfinished}: the session is still writing`]),
+    ...(unresolved.length > 0
+      ? [
+          `no \`${PREDICTION} <id>: ${RESOLUTIONS.join(" | ")}\` line for ${unresolved.join(", ")}, which the prior state hands this lane`,
+        ]
+      : []),
     // Recode's lane 15 on 10 October said no finding over two written findings, and was accepted.
     ...((verdict === "no finding" || verdict === "omitted") && findings > 0
       ? [`the verdict is ${verdict} and the report writes ${plural(findings, "finding")}`]
@@ -516,27 +678,44 @@ export function reportOf(
       : []),
     ...(unseen.length > 0 && names.length > 1 ? [`a ${SEEN} line leaves out ${unseen.join(", ")}`] : []),
   ];
-  return { lane: lane.number, state: faults.length === 0 ? "ok" : "invalid", faults, verdict, findings };
+  const state = faults.length === 0 ? "ok" : "invalid";
+  return { lane: lane.number, state, faults, verdict, findings, resolved };
 }
 
 /**
  * The report index the synthesis is given, one line per lane. A lane a session left out while its
- * trigger fired on one of the `campaigns` says so, since that is the lane most likely missed.
+ * trigger fired on one of the `campaigns` says so, since that is the lane most likely missed. Under
+ * it, where the prior state of `shared` lists predictions, how the lanes resolved each and which
+ * lane it names gave no line: where the primary's backtracking starts, with two lanes that disagree
+ * side by side.
  */
 export function reportIndex(
   reports: readonly Report[],
   pathOf: (lane: number) => string,
   campaigns: readonly Campaign[],
+  shared = "",
 ): string {
   const fired = new Set(campaigns.flatMap(({ overview }) => overview.triggers.map(({ lane }) => lane)));
-  return reports
-    .map(({ lane, state, verdict, findings, faults }) => {
-      const trigger = fired.has(lane) ? " although its trigger fired" : "";
-      const read = verdict === "omitted" ? `omitted${trigger}` : verdict;
-      const tail = state === "ok" ? `${read ?? ""}, ${plural(findings, "finding")}` : faults.join("; ");
-      return `- lane ${String(lane)}: ${state}${tail === "" ? "" : `, ${tail}`}, at \`${pathOf(lane)}\``;
-    })
-    .join("\n");
+  const lanes = reports.map(({ lane, state, verdict, findings, faults }) => {
+    const trigger = fired.has(lane) ? " although its trigger fired" : "";
+    const read = verdict === "omitted" ? `omitted${trigger}` : verdict;
+    const tail = state === "ok" ? `${read ?? ""}, ${plural(findings, "finding")}` : faults.join("; ");
+    return `- lane ${String(lane)}: ${state}${tail === "" ? "" : `, ${tail}`}, at \`${pathOf(lane)}\``;
+  });
+  const predictions = predictionsOf(shared).map(({ id, lanes: named }) => {
+    const said = RESOLUTIONS.flatMap((how) => {
+      const by = reports.filter(({ resolved }) => resolved[id] === how).map(({ lane }) => lane);
+      return by.length === 0 ? [] : [`${how} by lane ${by.join(", ")}`];
+    });
+    const silent = named.filter((lane) => !reports.some((each) => each.lane === lane && id in each.resolved));
+    return `- ${id}: ${[...said, ...(silent.length === 0 ? [] : [`no line from lane ${silent.join(", ")}`])].join("; ")}`;
+  });
+  return [
+    ...lanes,
+    ...(predictions.length === 0
+      ? []
+      : ["", "Each prediction, as the lanes resolved it:", "", ...predictions]),
+  ].join("\n");
 }
 
 /** A template with its `{name}` slots filled and its comments dropped. An unfilled slot is named. */

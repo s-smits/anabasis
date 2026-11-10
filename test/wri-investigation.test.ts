@@ -18,7 +18,14 @@ import { dirname, join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
 import { catalogueText, type Lane, lanesOf, ownersOf } from "../tools/wri/catalogue.ts";
 import { READERS } from "../tools/wri/derive.ts";
-import { lanePrompt, movedTo, ROWS, reportIndex, reportOf } from "../tools/wri/investigation.ts";
+import {
+  lanePrompt,
+  movedTo,
+  ROWS,
+  reportIndex,
+  reportOf,
+  sharedPrompt,
+} from "../tools/wri/investigation.ts";
 import { execTextSync } from "./helpers/bun-spawn-sync.ts";
 import { containing } from "./helpers/matchers.ts";
 
@@ -61,7 +68,7 @@ describe("an investigation's lanes", () => {
     },
   ];
 
-  const parts = { shared, campaigns: two, catalogue, owners, report: "/r/04.md" };
+  const parts = { shared, campaigns: two, catalogue, owners, report: "/r/04.md", common: "/r/shared.md" };
 
   it("gives the lane that reads the climb side by side the table, or says one campaign is read, and no other lane either", () => {
     expect(lane(22).sideBySide).toBe(true);
@@ -74,16 +81,17 @@ describe("an investigation's lanes", () => {
   });
 
   it("gives every lane every campaign as an equal, with each trigger under the campaign it fired on", () => {
+    const every = sharedPrompt(parts);
+    expect(every).toContain("### buffer-a");
+    expect(every).toContain("### buffer-b");
+    expect(every).toContain("2 campaigns as equals: `buffer-a`, `buffer-b`");
+    expect(every).toContain(
+      "Seen in: buffer-a <shows | absent | cannot show>, buffer-b <shows | absent | cannot show>",
+    );
     const open = lanePrompt({ ...parts, lane: lane(3) });
-    expect(open).toContain("### buffer-a");
-    expect(open).toContain("### buffer-b");
-    expect(open).toContain("2 campaigns as equals: `buffer-a`, `buffer-b`");
     expect(open).toContain("Fired on `buffer-a`: `REFUSED UNREAD`");
     expect(open).toContain("on `buffer-b`: `CHECK DEFECT RULED`");
     expect(open).toContain("Not fired: `RULED UNCLEAR`");
-    expect(open).toContain(
-      "Seen in: buffer-a <shows | absent | cannot show>, buffer-b <shows | absent | cannot show>",
-    );
     // An isolated lane reads both campaigns too, and of each only its own triggers.
     const isolated = lanePrompt({ ...parts, lane: lane(4), report: "/r/04.md" });
     expect(isolated).toContain("### buffer-b");
@@ -102,30 +110,97 @@ describe("an investigation's lanes", () => {
     expect(blind).toContain("quote nothing");
     expect(blind).toContain("the row");
     // One campaign is read as before, with no section on the others and no Seen in line.
-    const alone = lanePrompt({ ...parts, campaigns: one, lane: lane(3) });
+    const alone = sharedPrompt({ ...parts, campaigns: one });
     expect(alone).not.toContain("as equals");
     expect(alone).not.toContain("Seen in:");
   });
 
-  it("tells an open lane what is already counted and that the record stays open, and an isolated or blind lane neither", () => {
-    const open = lanePrompt({ ...parts, lane: lane(3), derived: "DERIVED_CANARY" });
-    const tools = "tools/wri/log.ts kinds --log <log>";
-    // The heading itself: the opening sentence names it in backticks.
-    const own = "\n## Your lane\n";
-    expect(catalogue).toContain(tools);
-    expect(open).toContain("DERIVED_CANARY");
-    expect(open).toContain(tools);
-    expect(open).toContain("where to start, not where to stop");
-    // The section sits in the part every open lane shares, above the lane's own question.
-    expect(open.indexOf("DERIVED_CANARY")).toBeLessThan(open.indexOf(own));
-    expect(open.split(own)[0]?.split("\n").slice(1)).toEqual(
-      lanePrompt({ ...parts, lane: lane(7), derived: "DERIVED_CANARY" })
-        .split(own)[0]
-        ?.split("\n")
-        .slice(1),
+  it("keeps what every open lane shares in one file, and gives a lane its own triggers whole", () => {
+    const long = "x".repeat(900);
+    const fired = [
+      {
+        name: "buffer-a",
+        log: "/a/log.jsonl",
+        overview: { rows, triggers: [{ lane: 3, name: "REFUSED UNREAD" as const, detail: long }] },
+      },
+    ];
+    const every = sharedPrompt({ ...parts, campaigns: fired });
+    // The shared file holds the question, the rows and every trigger, a long one cut.
+    expect(every).toContain("Why the step.");
+    expect(every).toContain("A. campaign and log");
+    expect(every).toContain(`REFUSED UNREAD (lane 3): ${"x".repeat(300)} [cut at 300 of 900 characters`);
+    expect(every).not.toContain(long);
+    // The lane's own prompt names that file, holds its trigger whole and repeats nothing shared.
+    const open = lanePrompt({ ...parts, campaigns: fired, lane: lane(3) });
+    expect(open).toContain("`/r/shared.md`: read it whole once");
+    expect(open).toContain(`REFUSED UNREAD (lane 3): ${long}`);
+    expect(open).not.toContain("Why the step.");
+    expect(open).not.toContain("A. campaign and log");
+    expect(open).not.toContain("Who holds which pen");
+    // A lane no trigger fired for prints no block, and an alone lane names no shared file.
+    expect(lanePrompt({ ...parts, campaigns: fired, lane: lane(7) })).not.toContain(
+      "What fired for this lane",
     );
+    for (const alone of [lane(4), lane(15), lane(27)]) {
+      const prompt = lanePrompt({ ...parts, lane: alone });
+      expect(prompt).not.toContain("/r/shared.md");
+      expect(prompt).toContain("Who holds which pen");
+    }
+  });
+
+  it("hands a lane the predictions that name it, holds its report to a line for each, and lists how the lanes resolved them", () => {
+    const table = [
+      "| id | cause | lanes | claim | falsified by |",
+      "| --- | --- | --- | --- | --- |",
+      "| A1 | #1 | 3, 7 | CLAIM_ONE | one that does |",
+      "| B2 | none | 7, 27, 4 | CLAIM_TWO | a step by validity |",
+    ].join("\n");
+    const predicting = `${shared}\n## The moved variable and prior state\n\nbefore\n\n${table}\n\nafter\n\n| id | other |\n| --- | --- |\n| Z9 | no lanes column |\n`;
+    const open = lanePrompt({ ...parts, shared: predicting, lane: lane(3) });
+    expect(open).toContain("## Predictions this lane resolves");
+    expect(open).toContain("CLAIM_ONE");
+    expect(open).not.toContain("CLAIM_TWO");
+    // A lane no row names is handed no section; a lane that freezes or grades first never is.
+    expect(lanePrompt({ ...parts, shared: predicting, lane: lane(8) })).not.toContain(
+      "Predictions this lane",
+    );
+    for (const alone of [lane(4), lane(27)]) {
+      expect(lanePrompt({ ...parts, shared: predicting, lane: alone })).not.toContain("CLAIM_TWO");
+    }
+    const head = "# Lane 7: x\nVerdict: no finding, the supply held.\n## Checked\nthe draw\n";
+    const of = (text: string, number = 7) => reportOf(lane(number), text, owners, ["buffer-a"], predicting);
+    expect(of(head).faults).toEqual([
+      "no `Prediction <id>: held | falsified | unreached` line for A1, B2, which the prior state hands this lane",
+    ]);
+    // A line that names no resolution resolves nothing.
+    expect(of(`${head}## Predictions\nPrediction A1: held, 0 of 7\nPrediction B2: likely\n`).faults).toEqual([
+      "no `Prediction <id>: held | falsified | unreached` line for B2, which the prior state hands this lane",
+    ]);
+    const seven = of(
+      `${head}## Predictions\nPrediction A1: held, 0 of 7\nPrediction B2: unreached, no step\n`,
+    );
+    expect(seven).toMatchObject({ state: "ok", resolved: { A1: "held", B2: "unreached" } });
+    // A lane left unread owes none, and neither does one the rule keeps from the table.
+    expect(of("# Lane 7: x\nVerdict: omitted, lane 11 covers it.\n").faults).toEqual([]);
+    expect(of("# Lane 4: x\nVerdict: no finding, sound.\n", 4).faults).toEqual([]);
+    const three = of(`${head.replace("Lane 7", "Lane 3")}Prediction A1: falsified, 2 of 7\n`, 3);
+    const index = reportIndex([three, seven], (number) => `/r/${String(number)}.md`, one, predicting);
+    expect(index).toContain("- A1: held by lane 7; falsified by lane 3");
+    expect(index).toContain("- B2: unreached by lane 7; no line from lane 27, 4");
+    expect(index).not.toContain("Z9");
+    // With no table, the index is the lanes' lines alone.
+    expect(reportIndex([three], (number) => `/r/${String(number)}.md`, one)).not.toContain("prediction");
+  });
+
+  it("tells an open lane what is already counted and that the record stays open, and an isolated or blind lane neither", () => {
+    const every = sharedPrompt({ ...parts, derived: "DERIVED_CANARY" });
+    const tools = "tools/wri/log.ts kinds --log <log>";
+    expect(catalogue).toContain(tools);
+    expect(every).toContain("DERIVED_CANARY");
+    expect(every).toContain(tools);
+    expect(every).toContain("where to start, not where to stop");
     // With no folder derived, the tools and the freedom are still said.
-    expect(lanePrompt({ ...parts, lane: lane(3) })).toContain("where to start, not where to stop");
+    expect(sharedPrompt(parts)).toContain("where to start, not where to stop");
     // Lanes 4 and 15 freeze a result first and lane 27 grades blind: a list of every reader's file,
     // readings among them, is what each is kept from.
     for (const alone of [lane(4), lane(15), lane(27)]) {
@@ -182,7 +257,7 @@ describe("an investigation's lanes", () => {
   });
 
   it("lets a session leave an open lane omitted with its reason, never an isolated one, and names one whose trigger fired", () => {
-    expect(lanePrompt({ ...parts, lane: lane(3) })).toContain("Verdict: omitted");
+    expect(sharedPrompt(parts)).toContain("Verdict: omitted");
     expect(lanePrompt({ ...parts, lane: lane(4), report: "/r/04.md" })).not.toContain("Verdict: omitted");
     const omitted =
       "# Lane 3: False rejection among fails\nVerdict: omitted, lane 7 of this session covers it.\n";
@@ -209,6 +284,19 @@ describe("an investigation's lanes", () => {
       state: "invalid",
       faults: ["the verdict is provisional: the session is still writing"],
     });
+    // The two lines every prompt has a session write before it reads are no verdict either, while a
+    // final sentence may use the word.
+    for (const prompt of [
+      lanePrompt({ ...parts, lane: lane(26) }),
+      lanePrompt({ ...parts, lane: lane(4) }),
+    ]) {
+      expect(prompt).toContain("Verdict: pending\n```");
+    }
+    expect(reportOf(lane(26), "# Lane 26: x\nVerdict: pending\n", owners, ["buffer-a"]).faults).toEqual([
+      "the verdict is pending: the session is still writing",
+    ]);
+    const waits = final.replace("the receipts are gone", "a label is pending");
+    expect(reportOf(lane(26), waits, owners, ["buffer-a"]).faults).toEqual([]);
   });
 });
 
@@ -271,12 +359,19 @@ describe("the lanes verb", () => {
     expect(first.sessions).toHaveLength(4);
     expect(first.sessions.flatMap(({ ownedPaths }) => ownedPaths).toSorted()).toEqual(
       Object.keys(built)
+        .filter((name) => name.endsWith("-prompt.md"))
         .map((name) => join(out, "lanes", name.replace("-prompt", "-report")))
         .toSorted(),
     );
     expect(Object.keys(built)).toContain("03-prompt.md");
     expect(Object.keys(built)).not.toContain("04-prompt.md");
-    for (const name of ["twin@m1", "twin@linux"]) expect(built["03-prompt.md"]).toContain(name);
+    // One file holds what the open lanes share, and each of their prompts names it.
+    const commons = () => Object.keys(prompts()).filter((name) => name.startsWith("shared-"));
+    const [common = ""] = commons();
+    expect(commons()).toHaveLength(1);
+    for (const name of ["twin@m1", "twin@linux", "Why the step."]) expect(built[common]).toContain(name);
+    expect(built["03-prompt.md"]).toContain(join(out, "lanes", common));
+    expect(built["03-prompt.md"]).not.toContain("Why the step.");
     writeFileSync(join(out, INSTRUCTIONS), shared.replace("Why the step.", "Another question."));
     lanesVerb();
     expect(prompts()).toEqual(built);
@@ -307,6 +402,13 @@ describe("the lanes verb", () => {
         readFileSync(join(out, `launch-${stemOf}.json`), "utf8"),
       ).sessions.map(({ name }) => name),
     ).toEqual([`lane_${stemOf}`]);
+    // It was built under the edited instructions, so it names a shared file of its own beside the
+    // first, which the earlier prompts still point at unchanged.
+    const newer = commons().find((name) => name !== common) ?? "";
+    expect(commons()).toHaveLength(2);
+    expect(prompts()[newer]).toContain("Another question.");
+    expect(prompts()[`${stemOf}-prompt.md`]).toContain(join(out, "lanes", newer));
+    expect(prompts()[common]).toBe(built[common]);
   });
 
   it("writes the shared instructions last, so a start that failed can be run again", () => {

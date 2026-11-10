@@ -197,6 +197,20 @@ describe("pairs", () => {
     expect(line(pairRows(odd))).toContain("inside 0, level 0, outside 0, no A/A 1");
   });
 
+  it("tallies each comparison by the session that wrote a task and by its family, a win inside its A/A not counted outside", () => {
+    // a wins inside its A/A and b outside it, c ties and d loses; d alone is an opening task.
+    const events = comparison({ a: "PF PP", b: "FF PP", c: "PF PF", d: "PP FF" }).map((one) =>
+      one.kind === "task.proposed" && one.data.version === "d"
+        ? { ...one, data: { version: "d", taskId: "d" } }
+        : one,
+    );
+    const line = (by: string) => pairRows(events).find((row) => row.includes(` by ${by} (`)) ?? "";
+    expect(line("writer")).toContain(
+      "e-1 2-0-1, diff +900, 1 outside; the opening exam 0-1-0, diff -600, 0 outside",
+    );
+    expect(line("family")).toContain("fam 2-0-1, diff +900, 1 outside; - 0-1-0, diff -600, 0 outside");
+  });
+
   it("tallies the first solves apart from the second as a description, never as a reading", () => {
     const outcomes = Object.fromEntries(
       Array.from({ length: 7 }, (_, at) => [`t${String(at)}`, "FF PF"] as const),

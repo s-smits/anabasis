@@ -77,6 +77,7 @@ import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { gitMaybe, gitText, mainTree } from "#src/meta/git.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { plural } from "#src/meta/text.ts";
 import { codeOf } from "../d2/campaign.ts";
 import { installAt } from "../runs/code.ts";
@@ -109,6 +110,7 @@ import {
   reportPath,
   selected,
   sessionsOf,
+  sharedPrompt,
   stem,
   weightOf,
 } from "./investigation.ts";
@@ -451,12 +453,15 @@ function lanes(): number {
   // What `start` derived for each log, as the folders stand now.
   const root = derivedOf(REPO);
   const files = derivedMap(campaigns.map(({ name, log }) => ({ name, dir: folderOf(root, log) })));
+  // What every open lane shares is one file, named by its bytes: a later build under edited
+  // instructions writes another beside it, and no prompt built before points at text that moved.
+  const parts = { shared, campaigns, catalogue, owners, derived: files };
+  const every = `${sharedPrompt(parts)}\n`;
+  const common = join(out, "lanes", `shared-${hashJsonValue(every).slice(0, 8)}.md`);
+  if (built.some((lane) => !lane.isolated && !lane.blind)) writeFileSync(common, every);
   for (const lane of built) {
     const report = reportPath(out, lane.number);
-    writeFileSync(
-      promptPath(out, lane.number),
-      `${lanePrompt({ lane, shared, campaigns, catalogue, owners, report, climb, derived: files })}\n`,
-    );
+    writeFileSync(promptPath(out, lane.number), `${lanePrompt({ ...parts, lane, report, climb, common })}\n`);
   }
   const groups = sessionsOf(launched, count);
   // `--high K` gives the K heaviest sessions high reasoning and the rest medium (operator, 9
@@ -480,7 +485,8 @@ function lanes(): number {
       task:
         group.length === 1
           ? `Read ${prompts} and do exactly what it says.`
-          : `Read ${prompts}, one at a time, and do exactly what each says: each lane writes its own report.`,
+          : // One lane at a time: the skill's "Sizing" gives what reading them together lost.
+            `Read ${prompts}, one at a time, and do exactly what each says: read a lane's evidence and write its report before you open the next prompt.`,
       ownedPaths: group.map((lane) => reportPath(out, lane.number)),
       ...effortOf(group),
     };
@@ -521,7 +527,7 @@ function lanes(): number {
   return 0;
 }
 
-function collected({ out, campaigns }: Investigation) {
+function collected({ out, campaigns, shared }: Investigation) {
   const catalogue = catalogueText();
   const owners = ownersOf(catalogue);
   return lanesOf(catalogue)
@@ -529,14 +535,15 @@ function collected({ out, campaigns }: Investigation) {
     .map((lane) => {
       const path = reportPath(out, lane.number);
       const names = campaigns.map(({ name }) => name);
-      return reportOf(lane, existsSync(path) ? readFileSync(path, "utf8") : null, owners, names);
+      return reportOf(lane, existsSync(path) ? readFileSync(path, "utf8") : null, owners, names, shared);
     });
 }
 
 function collect(): number {
   const investigation = opened();
   const reports = collected(investigation);
-  const index = reportIndex(reports, (lane) => reportPath(investigation.out, lane), investigation.campaigns);
+  const { out, campaigns, shared } = investigation;
+  const index = reportIndex(reports, (lane) => reportPath(out, lane), campaigns, shared);
   writeFileSync(join(investigation.out, REPORTS), `# Reports\n\n${index}\n`);
   console.log(index);
   const open = reports.filter(({ state }) => state !== "ok").length;
@@ -559,7 +566,7 @@ function synthesis(): number {
       out,
       synthesis: join(out, "synthesis.md"),
       overview: readFileSync(join(out, "overview.md"), "utf8").trim(),
-      reports: reportIndex(reports, (lane) => reportPath(out, lane), investigation.campaigns),
+      reports: reportIndex(reports, (lane) => reportPath(out, lane), investigation.campaigns, shared),
       sharedInstructions: shared.replaceAll(/<!--[\s\S]*?-->\n?/g, "").trim(),
     }),
   );

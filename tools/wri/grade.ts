@@ -11,8 +11,8 @@
  * - `--solve` grades the answer the log's last verdict of that solve holds (`verdictsOf`), against the
  *   task that verdict names, and prints the recorded verdict beside the new one, so a moved checker
  *   or tool tree shows as the two differing.
- * - `--set` replaces one existing field of that answer first, by a rooted path as a probe names one
- *   (`$.items[2].limit`), with a JSON value. It refuses a path the answer does not hold and a value of
+ * - `--set` replaces one existing field of that answer first, by a path as a probe names one
+ *   (`$.items[2].limit`, or `items[2].limit`), with a JSON value. It refuses a path the answer does not hold and a value of
  *   another JSON type than the field's, so no field is added or retyped unseen, and prints each
  *   change back. Several `--set`s are one change, as a Referee's coupled probe is.
  * - `--answers` grades every `.json` file of a folder in name order, each against the task its name
@@ -93,7 +93,9 @@ export function withSet(answer: JsonValue, sets: readonly string[]): { answer: J
   let changed = answer;
   const said = sets.map((each) => {
     const at = each.indexOf("=");
-    const path = at === -1 ? each : each.slice(0, at);
+    const given = at === -1 ? each : each.slice(0, at);
+    // A lane names a field as it reads it (`cohort.x`); a probe roots it (`$.cohort.x`).
+    const path = given.startsWith("$") ? given : `$.${given}`;
     const held = resolveJsonPath(changed, path);
     if (at === -1 || !held.found) throw new Error(`--set ${each}: ${path} is no field of the answer`);
     let value: JsonValue;

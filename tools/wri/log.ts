@@ -1,9 +1,9 @@
 /**
  * The one query tool a lane runs over a campaign's log, in four verbs with fixed flags:
  *
- *   bun tools/wri/log.ts kinds --log <log>
- *   bun tools/wri/log.ts events --log <log> --kind <kind>[,<kind>...] [--fields a,b.c] [--where f=v|f!=v|f~prefix|f>n|f>=n|f<n|f<=n]... [--count-by f] [--full]
- *   bun tools/wri/log.ts solves --log <log> [--comparison <id>] [--role old|new|both|try|practice] [--where column<op>value]... [--count-by column]
+ *   bun tools/wri/log.ts kinds --log <log> [--kind <kind>[,<kind>...]]
+ *   bun tools/wri/log.ts events --log <log> --kind <kind>[,<kind>...] [--fields a,b.c] [--where f=v|f!=v|f~prefix|f>n|f>=n|f<n|f<=n]... [--count-by f[,g]] [--full]
+ *   bun tools/wri/log.ts solves --log <log> [--comparison <id>] [--role old|new|both|try|practice] [--where column<op>value]... [--count-by column[,column]]
  *   bun tools/wri/log.ts trace --log <log> <solve or session id>
  *
  * `kinds` gives each event kind's count and lines, and each `data` key with its JSON types and the
@@ -129,7 +129,7 @@ function span(lines: readonly number[]): string {
 }
 
 /** Each kind and each of its `data` keys: the types each held and the lines it stood on. */
-export function kindRows(events: readonly LogEvent[]): string[] {
+export function kindRows(events: readonly LogEvent[], only?: ReadonlySet<string>): string[] {
   const kinds = new Map<string, KindHeld>();
   for (const [index, { kind, data }] of events.entries()) {
     const entry: KindHeld = kinds.get(kind) ?? { lines: [], keys: new Map() };
@@ -146,6 +146,7 @@ export function kindRows(events: readonly LogEvent[]): string[] {
     "kinds: each event kind's count and lines, then each data key's JSON types, how many events hold it and on which lines; no value is printed",
   ];
   for (const [kind, { lines, keys }] of [...kinds].toSorted(([one], [other]) => one.localeCompare(other))) {
+    if (only !== undefined && !only.has(kind)) continue;
     rows.push(`${kind} ${String(lines.length)}, ${span(lines)}`);
     for (const [key, { types, lines: on }] of [...keys].toSorted(([one], [other]) =>
       one.localeCompare(other),
@@ -218,7 +219,12 @@ export function eventRows(events: readonly LogEvent[], query: EventQuery): strin
   );
   if (query.countBy !== undefined) {
     const by = query.countBy;
-    const counts = countBy(chosen, ({ event }) => cell(fieldOf(event.data, by), query.full));
+    const counts = countBy(chosen, ({ event }) =>
+      by
+        .split(",")
+        .map((field) => cell(fieldOf(event.data, field), query.full))
+        .join(" "),
+    );
     return [
       `events: ${String(chosen.length)} ${query.kind}${filters}, counted by ${by}`,
       ...Object.entries(counts)
@@ -292,10 +298,12 @@ export function solveRows(events: readonly LogEvent[], only: SolveQuery): string
   const { chosen, filters } = filtered(records, (record) => record, only.where ?? []);
   const by = only.countBy;
   if (by !== undefined) {
-    if (!SOLVE_COLUMNS.some((column) => column === by)) {
-      throw new Error(`--count-by ${by}: name a column, one of ${SOLVE_COLUMNS.join(", ")}`);
+    const columns = by.split(",");
+    const unknown = columns.find((each) => !SOLVE_COLUMNS.some((column) => column === each));
+    if (unknown !== undefined) {
+      throw new Error(`--count-by ${unknown}: name a column, one of ${SOLVE_COLUMNS.join(", ")}`);
     }
-    const counts = countBy(chosen, (record) => solveCell(record, by));
+    const counts = countBy(chosen, (record) => columns.map((column) => solveCell(record, column)).join(" "));
     return [
       `solves: ${String(chosen.length)}${filters}, counted by ${by}`,
       ...Object.entries(counts)
@@ -366,7 +374,9 @@ function main(argv: readonly string[]): string[] {
   const log = logPath(values.log);
   if (!existsSync(log)) throw new Error(`${log}: no log`);
   const events = read(log);
-  if (verb === "kinds") return kindRows(events);
+  if (verb === "kinds") {
+    return kindRows(events, values.kind === undefined ? undefined : new Set(values.kind.split(",")));
+  }
   if (verb === "solves") {
     return solveRows(events, {
       comparison: values.comparison,

@@ -29,6 +29,11 @@ describe("withSet", () => {
 
   it("refuses a path the answer does not hold, so a typo adds no field", () => {
     expect(() => withSet(answer, ["$.reagents[1].mm=3"])).toThrow("no field of the answer");
+    // A path without its root names the same field, and a wrong one is refused as before.
+    expect(withSet(answer, ["reagents[1].mM=3.25"]).answer).toEqual(
+      withSet(answer, ["$.reagents[1].mM=3.25"]).answer,
+    );
+    expect(() => withSet(answer, ["reagents[1].mm=3"])).toThrow("$.reagents[1].mm is no field of the answer");
     expect(() => withSet(answer, ["$.reagents[2].mM=3"])).toThrow("no field of the answer");
     expect(() => withSet(answer, ["$.note"])).toThrow("no field of the answer");
   });

@@ -42,7 +42,8 @@ left `launch-<session>.json`): flags, commit and load. Read all of them; write t
   directory is inside one. Scratch goes in a temporary directory of your own.
 - Start no solve, Builder or Examiner session, round or check run. `wri.ts grade` is the one
   exception, where your lane names it; it writes nothing.
-- Write your report as soon as you have its first two lines, and append as you go.
+- Open each lane's report with its heading and `Verdict: pending` before you read for that lane,
+  then replace that line and append as you go. Take your lanes one at a time.
 - For `no finding`, leave `## Findings` empty and say under `## Checked` what you checked and found
   sound, in sentences without `Observation:`, `Cause:`, `Owner:`, `Reverses if:` or `Decision:` lines.
 - Open no other lane's prompt or report and no synthesis of this investigation.

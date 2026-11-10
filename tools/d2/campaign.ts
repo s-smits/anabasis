@@ -186,6 +186,9 @@ export const FOLLOWED = "ana-followed";
 const PACK_FLAGS = 4;
 /** The agent runtime's packages, pinned in `package.json`; the SDK pins the Claude Code binary. */
 const RUNTIME = ["@anthropic-ai/claude-agent-sdk", "@earendil-works/pi-ai", "@earendil-works/pi-durable"];
+/** The trees of the host's code a solve runs (`codeOf`), beside the production packages that
+ *  `package.json` and `bun.lock` resolve. */
+export const CODE_TREES = ["src", "vendor", "tools/d2", "tools/c", "tools/d1b"] as const;
 
 /**
  * The repository's other worktrees, which every wall of this command denies with the one it runs
@@ -293,9 +296,8 @@ function packOpened(dir: string, log: string, args: CampaignArgs) {
 
 /**
  * The code a solve runs, as its condition records it (`src/kernel/condition.ts`): the agent
- * runtime's pins by name with the Bun that runs this command, and the host's `src`, `vendor`,
- * `tools/d2`, `tools/c` and `tools/d1b` as they stand with every production package its lockfile
- * resolves. Until 12 October the host was the two source trees alone, and a package such as
+ * runtime's pins by name with the Bun that runs this command, and the host's `CODE_TREES` as they
+ * stand with every production package its lockfile resolves. Until 12 October the host was the two source trees alone, and a package such as
  * `typebox`, which builds the solver's bash
  * schema, could change under one setting id (the stack review at 658a933b, finding 6). Until 24
  * October the Bun was left out, though the verifier runs every check under it: one campaign read
@@ -328,7 +330,7 @@ export function codeOf(tree: string) {
     }
   };
   visit([], named(asRecord(resolved?.workspaces)?.[""]));
-  const trees = ["src", "vendor", "tools/d2", "tools/c", "tools/d1b"].map((part) => {
+  const trees = CODE_TREES.map((part) => {
     const dir = join(tree, part);
     return existsSync(dir) ? treeContent(dir) : null;
   });

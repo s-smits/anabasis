@@ -9,10 +9,12 @@ import {
   nextOf,
   rowOf,
   triggerOf,
+  unmeasured,
 } from "#skills/run-improvement-campaign/scripts/wri2p2.ts";
 import { forkOf, idsOf, outcomesOf, pullOf } from "#tools/wri/ledger.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { gitText } from "../src/meta/git.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
@@ -500,5 +502,40 @@ describe("the short view a timer reads", () => {
     expect(lines).toHaveLength(2);
     expect(lines[0]).not.toContain("nothing owed");
     expect(lines.map((line) => /\d+(?= step| of them)/u.exec(line)?.[0])).toEqual(["1", "1"]);
+  });
+});
+
+describe("what a live run does not measure", () => {
+  it("counts a change to a campaign command beside the source, and none to a test or a skill", () => {
+    const repo = join(base, "measures");
+    const put = (path: string, text: string) => {
+      mkdirSync(dirname(join(repo, path)), { recursive: true });
+      writeFileSync(join(repo, path), text);
+    };
+    const commit = () => {
+      gitText(repo, "add", "-A");
+      gitText(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "c");
+      return gitText(repo, "rev-parse", "HEAD");
+    };
+    mkdirSync(repo, { recursive: true });
+    gitText(repo, "init", "-q");
+    for (const path of ["src/a.ts", "tools/d2/b.ts", "test/c.test.ts", ".claude/skills/s/SKILL.md"]) {
+      put(path, "one\n");
+    }
+    const from = commit();
+    put("test/c.test.ts", "two\n");
+    put(".claude/skills/s/SKILL.md", "two\n");
+    const unrun = commit();
+    put("tools/d2/b.ts", "two\n");
+    const run = commit();
+    const standing = {
+      row: rowOf(live, [event(0, "campaign.opened")], OPENED),
+      last: OPENED,
+      commit: from,
+      dir: null,
+      step: [],
+    };
+    expect(unmeasured(repo, unrun, standing)).toContain("changes nothing it runs");
+    expect(unmeasured(repo, run, standing)).toContain("1 file(s) of the code a solve runs differ");
   });
 });

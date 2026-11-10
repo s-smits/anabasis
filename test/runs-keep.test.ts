@@ -361,6 +361,24 @@ describe("a keeper's looks, scripted", () => {
     expect(uncounted.state.asked).toBe(0);
   });
 
+  it("goes on with a kept run on its own login where it is first by name of more kept runs than the cap", async () => {
+    const kept = (name: string) => ({ name, login: "2", host: "here", unwritten: true as const });
+    const acted = async (live: { name: string; login: string; host: string; unwritten?: true }[]) => {
+      const { state, look } = scripted();
+      state.open = false;
+      state.otherKeeper = true;
+      state.pool = ["2"];
+      state.live = live;
+      await look(NOW);
+      return state.acted;
+    };
+    expect(await acted(["sample", "t", "u"].map(kept))).toEqual(["start 2"]);
+    expect(await acted(["r", "s", "sample"].map(kept))).toEqual([]);
+    expect(
+      await acted([kept("sample"), ...["t", "u"].map((name) => ({ name, login: "2", host: "m1" }))]),
+    ).toEqual([]);
+  });
+
   it("does not take the login it moved off again until its limit resets, and then may", async () => {
     const { state, look } = scripted();
     state.readings = [read("2", 10), read("3", 100)];

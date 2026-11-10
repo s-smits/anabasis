@@ -59,7 +59,7 @@ import { looseFlagsOf } from "../d2/campaign-terms.ts";
 import { recordedSetting } from "../d2/setting.ts";
 import { asked } from "./hosts.ts";
 import { hostsOf } from "./host-config.ts";
-import { CODEX, type Live, liveHere, liveOf } from "./live.ts";
+import { CODEX, countedAgainst, type Live, liveHere, liveOf } from "./live.ts";
 import {
   closedResets,
   historyFile,
@@ -259,9 +259,9 @@ export function fullOn(
 
 /** Why a run that `payer` pays may not start on `host` beside the runs in `live`, less one named
  *  `name` (the run itself, live where it is moved from), or null where it may: a host that went
- *  uncounted, a login at its cap across the fleet, or a machine at its cap of Codex runs. Until
- *  29 October only `fresh` and `keep` held a login to its cap, and `continue` and `move` were
- *  counted by hand. */
+ *  uncounted, a login at its cap across the fleet (counting `countedAgainst` it), or a machine at its
+ *  cap of Codex runs. Until 29 October only `fresh` and `keep` held a login to its cap, and
+ *  `continue` and `move` were counted by hand. */
 export function startRefusal(
   env: Readonly<Record<string, string | undefined>>,
   payer: string | undefined,
@@ -271,7 +271,7 @@ export function startRefusal(
 ): string | null {
   if (payer === undefined) return null;
   if (counted.unasked.length > 0) return uncounted(counted.unasked);
-  const others = counted.live.filter((run) => run.name !== name);
+  const others = countedAgainst(counted.live, name);
   return atCap(env, [payer], others).size > 0
     ? `login ${payer} is at its live-run cap across the fleet (ANA_LOGIN_RUNS, ANA_LOGIN_SUBS)`
     : fullOn(env, payer, host, others);

@@ -207,10 +207,7 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
         ({ why } = found);
         return found.logins;
       },
-      async (login) => {
-        const { live, unasked } = await counted();
-        return unasked.length > 0 || atCap(hands.env, [login], live).size > 0;
-      },
+      async (login) => startRefusal(hands.env, payerOf(login, flags), "here", await counted(), name) !== null,
     );
     const full =
       target === null ? null : startRefusal(hands.env, payerOf(target, flags), "here", await counted(), name);

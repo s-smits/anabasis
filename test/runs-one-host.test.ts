@@ -14,6 +14,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "../src/meta/subprocess.ts";
+import { treeFault } from "../tools/d2/campaign.ts";
 import { allowedLogins, plainOnly } from "../tools/runs/logins.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
@@ -166,7 +167,9 @@ describe("a clone with no hosts", () => {
       { cwd: clone, env: scrubbed },
     );
     expect(exitCode).toBe(1);
-    expect(decodeOutput(stderr)).toContain("a real run here is refused");
+    // The command runs this tree's source, so the refusal is this tree's: a clone's main worktree
+    // owes it, and the gate's scratch worktree of a commit does not.
+    expect(decodeOutput(stderr).includes("a real run here is refused")).toBe(treeFault(REPO) !== null);
     expect(decodeOutput(stderr)).toContain("--env-file=<file>");
     expect(sshAttempts()).toBe(false);
   });

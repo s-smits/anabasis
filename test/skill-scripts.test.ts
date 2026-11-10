@@ -7,7 +7,7 @@ import { bundle } from "#skills/oracle-handover/scripts/bundle.ts";
 import { declarationLines, sanitised, sectionLines } from "#skills/oracle-handover/scripts/document.ts";
 import { groupsOf, parseSelector, pick, slice } from "#skills/oracle-handover/scripts/slice.ts";
 import { follow, hazards, targetOf } from "#skills/stack-pr/scripts/follow.ts";
-import { pairLines } from "#skills/compare-systems/scripts/systems.ts";
+import { itself, pairLines } from "#skills/compare-systems/scripts/systems.ts";
 import { censusOf, newsOf } from "#skills/system-path-simulation/scripts/live-seat.ts";
 import {
   keptRepublish,
@@ -1019,5 +1019,13 @@ describe("compare-systems reads a candidate against the baseline as a comparison
       const lines = pairLines([system(baseline), old], [system(candidate), fresh], at).join("\n");
       for (const fact of facts) expect(lines).toContain(fact);
     }
+  });
+
+  it("runs the A/A's mirror on from task to task, so a later solve that is always better reads balanced", () => {
+    const later = new Map(
+      [...solvedAs(true, false)].slice(0, 4).map(([task, row]) => [task, { ...row, valid: [false, true] }]),
+    );
+    const lines = itself(system("a"), later, at).join("\n");
+    expect(lines).toContain("a (other half) won 2, lost 2, tied 0");
   });
 });

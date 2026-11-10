@@ -112,8 +112,9 @@ bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts next <dir>
 
 It reads the central host's gathered copies of every host's runs, needing no ssh or env file, writes
 only an investigation's files, and stops, launches and merges nothing. With no verb it prints one row
-a run with its step: `run`, `open` with its trigger, or the step its investigation has reached;
-`due` prints the same reading in a few lines, as a timer takes it.
+a run with its step: `run`, `open` with its trigger, or the step its investigation has reached, for
+a session that wants every run's place at once; `due` prints the same reading in a few lines, the
+owed steps only, as a timer takes it.
 
 1. **Trigger.** Whichever comes first: two promotions, twelve hours since the opening, a scored
    comparison that left no task untied, or an ending after a comparison. The trigger stops nothing.

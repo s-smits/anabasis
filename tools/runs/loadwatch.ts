@@ -21,7 +21,7 @@
 import { capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { killProcessGroup } from "#src/meta/subprocess.ts";
 import { hostsOf, ownName } from "./host-config.ts";
-import { sshScript } from "./host-command.ts";
+import { shellOn } from "./host-command.ts";
 
 interface Sample {
   readonly cores: number;
@@ -172,15 +172,14 @@ export async function loadwatch(args: readonly string[]): Promise<void> {
     "@W@",
     String(Math.max(1, Math.round(seconds))),
   );
-  const watched: Watched[] = [
-    { label: ownName(), argv: ["/bin/sh", "-c", script], state: "connecting", child: null },
-    ...hostsOf().map((host) => ({
-      label: host.name,
-      argv: sshScript(host, script),
-      state: "connecting" as const,
+  const watched = [undefined, ...hostsOf()].map(
+    (host): Watched => ({
+      label: host?.name ?? ownName(),
+      argv: shellOn(host, script),
+      state: "connecting",
       child: null,
-    })),
-  ];
+    }),
+  );
   const intervalMs = seconds * 1000;
   if (values.once) {
     await Promise.all(watched.map((each) => stream(each, intervalMs, "first")));

@@ -44,3 +44,8 @@ export const treeBun = (configured: string) =>
 export function sshScript(host: Host, script: string): string[] {
   return ["ssh", ...sshOptions(host.ssh), host.ssh, `exec "$SHELL" -lc ${quoted(script)}`];
 }
+
+/** The command that runs the shell text `script` on this machine where `host` is undefined, else on
+ *  `host` (`sshScript`). */
+export const shellOn = (host: Host | undefined, script: string): string[] =>
+  host === undefined ? ["/bin/sh", "-c", script] : sshScript(host, script);

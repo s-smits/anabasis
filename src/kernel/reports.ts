@@ -318,7 +318,7 @@ function runOf(runs: readonly TalliedIn[]): number | undefined {
 
 /** Every task a log holds a state, a solve or a report of, each as `TaskRecord` reads it, and the
  *  held-out ones in the order they were held out. */
-function taskRecords(events: readonly LogEvent[]) {
+export function taskRecords(events: readonly LogEvent[]) {
   const heldOut = taskSets(events).held;
   const held = new Set(heldOut);
   const records = new Map<string, TaskRecord>();

@@ -17,7 +17,8 @@ import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join, resolve } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
 import { catalogueText, type Lane, lanesOf, ownersOf } from "../tools/wri/catalogue.ts";
-import { lanePrompt, movedTo, reportIndex, reportOf } from "../tools/wri/investigation.ts";
+import { READERS } from "../tools/wri/derive.ts";
+import { lanePrompt, movedTo, ROWS, reportIndex, reportOf } from "../tools/wri/investigation.ts";
 import { execTextSync } from "./helpers/bun-spawn-sync.ts";
 import { containing } from "./helpers/matchers.ts";
 
@@ -104,6 +105,47 @@ describe("an investigation's lanes", () => {
     const alone = lanePrompt({ ...parts, campaigns: one, lane: lane(3) });
     expect(alone).not.toContain("as equals");
     expect(alone).not.toContain("Seen in:");
+  });
+
+  it("tells an open lane what is already counted and that the record stays open, and an isolated or blind lane neither", () => {
+    const open = lanePrompt({ ...parts, lane: lane(3), derived: "DERIVED_CANARY" });
+    const tools = "tools/wri/log.ts kinds --log <log>";
+    // The heading itself: the opening sentence names it in backticks.
+    const own = "\n## Your lane\n";
+    expect(catalogue).toContain(tools);
+    expect(open).toContain("DERIVED_CANARY");
+    expect(open).toContain(tools);
+    expect(open).toContain("where to start, not where to stop");
+    // The section sits in the part every open lane shares, above the lane's own question.
+    expect(open.indexOf("DERIVED_CANARY")).toBeLessThan(open.indexOf(own));
+    expect(open.split(own)[0]?.split("\n").slice(1)).toEqual(
+      lanePrompt({ ...parts, lane: lane(7), derived: "DERIVED_CANARY" })
+        .split(own)[0]
+        ?.split("\n")
+        .slice(1),
+    );
+    // With no folder derived, the tools and the freedom are still said.
+    expect(lanePrompt({ ...parts, lane: lane(3) })).toContain("where to start, not where to stop");
+    // Lanes 4 and 15 freeze a result first and lane 27 grades blind: a list of every reader's file,
+    // readings among them, is what each is kept from.
+    for (const alone of [lane(4), lane(15), lane(27)]) {
+      const prompt = lanePrompt({ ...parts, lane: alone, report: "/r/x.md", derived: "DERIVED_CANARY" });
+      expect(prompt).not.toContain("DERIVED_CANARY");
+      expect(prompt).not.toContain(tools);
+      expect(prompt).not.toContain("where to start, not where to stop");
+    }
+  });
+
+  it("names the derived file behind each trigger that fired, to an open lane given the files", () => {
+    const pointer = "the rows it counted are in each campaign's derived folder";
+    const open = lanePrompt({ ...parts, lane: lane(3), derived: "DERIVED_CANARY" });
+    // Both fired triggers share one file; the one that did not fire has no rows to point at.
+    expect(open).toContain(`${pointer}: \`rejections.txt\` (\`REFUSED UNREAD\`, \`CHECK DEFECT RULED\`).`);
+    // No folder was derived, so no file is named; an isolated lane is handed none.
+    expect(lanePrompt({ ...parts, lane: lane(3) })).not.toContain(pointer);
+    expect(lanePrompt({ ...parts, lane: lane(4), derived: "DERIVED_CANARY" })).not.toContain(pointer); // Every pointer names a reader the derived folder holds a file of.
+    const readers = new Set(READERS.map(({ name }) => name));
+    expect(Object.values(ROWS).filter((file) => !readers.has(file))).toEqual([]);
   });
 
   it("holds each finding of several campaigns to a Seen in line that names every one", () => {

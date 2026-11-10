@@ -76,7 +76,7 @@ export interface Walls {
 }
 
 /** Where the reference harness lies in a task-writing session's home. */
-const REFERENCE_HOME = "reference-harness";
+export const REFERENCE_HOME = "reference-harness";
 
 /** Where an Examiner session's shell runs: a root of its own, as a Builder's. A drafting
  *  session's id (`d-N`) and a task-writing one's (`x-N`) never meet. */

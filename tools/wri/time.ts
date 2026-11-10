@@ -461,9 +461,11 @@ export function costTriggers(log: Index): Trigger[] {
     .map((index) => ({ index, gap: (times[index] ?? 0) - (times[index - 1] ?? 0) }))
     .toSorted((a, b) => b.gap - a.gap);
   const spans = spansOf(log);
-  const named = gaps
-    .slice(0, SILENCES_NAMED)
-    .map(({ index, gap }) => `${(gap / MINUTE_MS).toFixed(1)} min ${causeOf(log, spans, index, gap)}`);
+  const named = gaps.slice(0, SILENCES_NAMED).map(
+    // The log's lines either side, from 1 as `sed -n` counts: 11 of 13 lane 25 sessions to 10 November found them again.
+    ({ index, gap }) =>
+      `${(gap / MINUTE_MS).toFixed(1)} min ${causeOf(log, spans, index, gap)} (lines ${String(index)}-${String(index + 1)})`,
+  );
   const spend = spendOf(log.events);
   const total = spend.reduce((sum, [, dollars]) => sum + dollars, 0);
   const [[leader, most] = ["", 0]] = spend;

@@ -19,6 +19,13 @@
  * off, a shell write under `.ana/wri/` reaches only what the Write tool may, and every `.env*` file
  * but a committed `*.example` is closed. It stays a list of protected roots, never a reader of what
  * a program does.
+ *
+ * On 10 November an escaped quote inside double quotes, the words after a substitution's `)`, a `sed`
+ * or `awk` program that only matched a campaign's path and `command -v python3` were refused as reads
+ * of a campaign. Replayed over the 11,853 Bash commands of lane sessions from 3 to 10 November, run
+ * from the checkout, the guard as it stood refused 2,079 and now refuses 2,014: 71 read-only commands
+ * pass that did not (47 read as a kept program, 22 as an interpreter naming a campaign, 2 as Python),
+ * and 6 Python commands without `-B`, which a misread quote had hidden, are refused that were not.
  */
 import { realpathSync } from "../../src/meta/filesystem.ts";
 import { capturedJsonParse } from "../../src/meta/json-runtime.ts";
@@ -75,6 +82,12 @@ const CAMPAIGN = new Set([
   "checkpoint.ts",
   "republish.ts",
 ]);
+
+/**
+ * `tools/c/rejections.ts` appends `verdict` events to a campaign's log and writes label packets, so it
+ * is matched by its folder: a name alone would also refuse the read-only `tools/wri/rejections.ts`.
+ */
+const LOGS_VERDICTS = "/tools/c/rejections.ts";
 
 /** The verbs of the run CLI that change a run's life, and the investigation's steps the primary owns. */
 const LIFE = new Set([
@@ -139,6 +152,36 @@ const DIR_FLAGS = new Set(["-C", "--cwd", "--directory", "--chdir", "--work-tree
 /** The flags whose value is inline code, for `bun`, `sed`, `perl` and `ruby`. */
 const CODE_FLAGS = new Set(["-e", "--eval", "-p", "--print", "-E"]);
 
+/** The characters a backslash escapes inside double quotes; before any other it stands for itself. */
+const ESCAPED = new Set(['"', "\\", "$", "`", "\n"]);
+
+/** A `sed` command that writes or runs what follows it: `w`, `W`, `e`, or an `s` command's `w` flag. */
+const SED_ACTS = /(?:^|[^A-Za-z0-9])[gpiIMm0-9]*[wWe](?:\s+|$)([^;\n}]*)/gu;
+
+/** What passes instead of a refused call, from the allowed cases of `test/wri-lane-guard.test.ts`: a lane
+ *  retried one refused call five times over on 8 November. */
+const INSTEAD = new Map([
+  [
+    "a command run inside a campaign",
+    "name its files by absolute path from outside it, which any reader may",
+  ],
+  [
+    "an interpreter naming a campaign",
+    "pass a campaign's file on standard input (`python3 -B x.py < <file>`), or read it with `jq`, `grep` or `sed -n`",
+  ],
+  [
+    "a program kept in a campaign",
+    "read its source by path with `cat`, `grep` or `sed -n`; it runs only in a solve",
+  ],
+  [
+    "a command that logs verdicts",
+    "read each rejection with `bun tools/wri/rejections.ts <log>`, which writes nothing",
+  ],
+  ["a write under a campaign", "write scratch under a temporary directory of the lane's own"],
+  ["a write to the primary's files", "write scratch under a temporary directory of the lane's own"],
+  ["a write outside the lane's report", "write scratch under a temporary directory of the lane's own"],
+]);
+
 /**
  * The simple commands a shell line runs, each as its words, with every heredoc's body dropped and
  * quotes removed: until 4 November 2026 the guard matched patterns against the whole text, and in a
@@ -159,27 +202,57 @@ function commandsOf(line: string): string[][] {
   }
   const text = kept.join("\n");
   const commands: string[][] = [[]];
+  // What a substitution runs is read as commands of its own, after the line's, and stands in its
+  // word as `$()`: until 10 November its `)` began a command, so a path after it was read as a program.
+  const inner: string[][] = [];
   let word: string | null = null;
   const flush = () => {
     if (word !== null) commands.at(-1)?.push(word);
     word = null;
   };
+  /** Reads a double-quoted part from `from` and returns where its closing quote stands. */
+  const quoted = (from: number) => {
+    let at = from;
+    word ??= "";
+    for (; at < text.length && text.charAt(at) !== '"'; at += 1) {
+      const inside = text.charAt(at);
+      if (inside === "$" && text.charAt(at + 1) === "(") at = substitute(at + 2);
+      else if (inside === "\\" && ESCAPED.has(text.charAt(at + 1))) {
+        word += text.charAt(at + 1);
+        at += 1;
+      } else word += inside;
+    }
+    return at;
+  };
+  const substitute = (from: number) => {
+    const close = closing(text, from);
+    inner.push(...commandsOf(text.slice(from, close)));
+    word = `${word ?? ""}$()`;
+    return close;
+  };
   for (let at = 0; at < text.length; at += 1) {
     const char = text.charAt(at);
-    if (char === "'" || char === '"') {
+    const next = text.charAt(at + 1);
+    if (char === "'") {
       const close = text.indexOf(char, at + 1);
       word = (word ?? "") + text.slice(at + 1, close === -1 ? undefined : close);
       at = close === -1 ? text.length : close;
+    } else if (char === '"') {
+      // An escaped quote stays inside the word: until 10 November it closed it, and a `jq` filter's
+      // `\"` turned the log path after it into a command, which 9 lane refusals of 3 to 9 November read.
+      at = quoted(at + 1);
     } else if (char === "\\") {
-      word = (word ?? "") + text.charAt(at + 1);
+      word = (word ?? "") + next;
       at += 1;
+    } else if ((char === "$" || char === "<" || char === ">") && next === "(") {
+      at = substitute(at + 2);
     } else if (char === ">") {
       flush();
       // `>&2` and `2>&1` move a stream and name no file.
       if (text.charAt(at + 1) === ">") at += 1;
       if (text.charAt(at + 1) === "&") at += 2;
       else commands.at(-1)?.push(">");
-    } else if (/[\s;&|()`]/u.test(char) || (char === "$" && text.charAt(at + 1) === "(")) {
+    } else if (/[\s;&|()`]/u.test(char)) {
       flush();
       if (char !== " " && char !== "\t") commands.push([]);
     } else {
@@ -187,7 +260,37 @@ function commandsOf(line: string): string[][] {
     }
   }
   flush();
-  return commands.filter((words) => words.length > 0);
+  return [...commands, ...inner].filter((words) => words.length > 0);
+}
+
+/** Where the parenthesis opened just before `from` closes, past quotes and nested pairs. */
+function closing(text: string, from: number): number {
+  let depth = 1;
+  for (let at = from; at < text.length; at += 1) {
+    const char = text.charAt(at);
+    if (char === "\\") at += 1;
+    else if (char === "'") {
+      const close = text.indexOf("'", at + 1);
+      at = close === -1 ? text.length : close;
+    } else if (char === '"') at = quoteEnd(text, at + 1);
+    else if (char === "(") depth += 1;
+    else if (char === ")") {
+      depth -= 1;
+      if (depth === 0) return at;
+    }
+  }
+  return text.length;
+}
+
+/** Where a double-quoted word opened just before `from` closes. */
+function quoteEnd(text: string, from: number): number {
+  for (let at = from; at < text.length; at += 1) {
+    const char = text.charAt(at);
+    if (char === "\\") at += 1;
+    else if (char === '"') return at;
+    else if (char === "$" && text.charAt(at + 1) === "(") at = closing(text, at + 2);
+  }
+  return text.length;
 }
 
 /** A word as the path it names from where the line stands, with `~` as the home folder. */
@@ -257,7 +360,11 @@ function runRefusal(
           (tool !== "bun" && /[\s{}()"';]/u.test(word)),
       );
   const reads = interpreter || ["bun", "sed", "awk", "gawk"].includes(tool);
-  if (reads && named.some((word) => NAMES_CAMPAIGN.test(word) || (interpreter && kept(word)))) {
+  const acts = (word: string) => interpreter || tool === "bun" || actsOn(tool, word);
+  if (
+    reads &&
+    named.some((word) => (NAMES_CAMPAIGN.test(word) && acts(word)) || (interpreter && kept(word)))
+  ) {
     return "an interpreter naming a campaign";
   }
   if (!PYTHON.test(tool)) return null;
@@ -268,6 +375,17 @@ function runRefusal(
     (scope.known.get("PYTHONDONTWRITEBYTECODE") ?? "") !== "" ||
     flags.some((word) => /^-[A-Za-z]*B/u.test(word));
   return off ? null : "Python with its bytecode on (pass -B or set PYTHONDONTWRITEBYTECODE=1 on the line)";
+}
+
+/**
+ * Whether a `sed` or `awk` program writes to or runs a campaign's path, rather than only matching it:
+ * sed's writing commands, and awk's `>`, `|` or `system(`. Until 10 November any campaign path in
+ * the program was refused, and 5 lane refusals of 3 to 9 November were a `sed` that cut a campaign's
+ * folder out of a listing.
+ */
+function actsOn(tool: string, program: string): boolean {
+  if (tool !== "sed") return /[>|]|system\s*\(/u.test(program);
+  return [...program.matchAll(SED_ACTS)].some(([, target = ""]) => NAMES_CAMPAIGN.test(` ${target}`));
 }
 
 /** Why one simple command's writes are refused, from the paths the shell and the tool's flags name. */
@@ -324,8 +442,12 @@ function commandRefusal(words: readonly string[], scope: Scope): string | null {
   const head = args.findIndex(
     (word) => !/^\w+=/u.test(word) && !WRAPPERS.has(basename(word)) && !/^-|^\d+[smhd]?$/u.test(word),
   );
-  // Assignments alone run no program, but a redirect beside them still writes.
-  if (head === -1) return writesRefusal(words, "", [], scope.cwd);
+  // Assignments alone run no program, nor does `command -v` (or `-V`), which names where one is; a
+  // redirect beside either still writes.
+  const names = args
+    .slice(0, head)
+    .some((word, at) => word === "command" && /^-[vV]$/u.test(args[at + 1] ?? ""));
+  if (head === -1 || names) return writesRefusal(words, "", [], scope.cwd);
   const [name = "", ...rest] = args.slice(head);
   const plain = rest.filter((word) => !word.startsWith("-"));
   const tool = basename(name);
@@ -347,6 +469,9 @@ function commandRefusal(words: readonly string[], scope: Scope): string | null {
   if (tool === "bun") {
     // A flag's value, as `--cwd <dir>`, may stand before the script, so every plain word is read.
     if (plain.some((word) => CAMPAIGN.has(basename(word)))) return "a campaign command";
+    if (plain.some((word) => pathOf(word, scope.cwd).endsWith(LOGS_VERDICTS))) {
+      return "a command that logs verdicts";
+    }
     if (plain.some((word) => word.includes("compare-systems") || basename(word) === "gpt-sessions.ts")) {
       return "a paid session";
     }
@@ -422,8 +547,9 @@ if (import.meta.main) {
   const cwd = isRecord(call) && isString(call.cwd) ? call.cwd : runtimeProcess.cwd();
   const why = isRecord(call) && isString(call.tool_name) ? refusalOf(call.tool_name, input, cwd) : null;
   if (why !== null) {
+    const instead = INSTEAD.get(why);
     console.error(
-      `wri-lane refuses ${why}: a lane reads, and writes its own report only (whole-run-investigation, "Hard rules"). Say in the report what this call would have settled.`,
+      `wri-lane refuses ${why}: a lane reads, and writes its own report only (whole-run-investigation, "Hard rules").${instead === undefined ? "" : ` What passes: ${instead}.`} Say in the report what this call would have settled.`,
     );
     runtimeProcess.exitCode = 2;
   }

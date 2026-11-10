@@ -164,6 +164,18 @@ describe("the whole-run investigation's reader", () => {
     expect(triggers.map(({ name }) => name)).not.toContain("FINAL BYTES NEVER PRACTISED");
     const flips = triggers.find(({ name }) => name === "FLIPS")?.detail;
     expect(flips).toContain("b-1: 1 of 8 task and harness pairs");
+    // The flip is the new harness's, and a pass beside the reference's late solve is the reference's:
+    // lane 20 reads each side's noise apart, and a count that put both under one side hid whose it was.
+    expect(flips).toContain("0 under the reference harness and 1 under the other");
+    const sided = overview([
+      ...events.slice(0, done),
+      ...flagged,
+      ...ended("f4", "v3", "hp", "pass", { comparison: "b-1" }),
+      ...events.slice(at),
+    ]);
+    expect(sided.triggers.find(({ name }) => name === "FLIPS")?.detail).toContain(
+      "2 of 8 task and harness pairs both passed and failed, 1 under the reference harness and 1 under the other",
+    );
     // Practice of the measured bytes after their comparison began says nothing of what it read.
     const afterwards = overview([...events.slice(0, done), ...flagged, ...events.slice(at), ...practised]);
     expect(afterwards.triggers.map(({ name }) => name)).toContain("FINAL BYTES NEVER PRACTISED");

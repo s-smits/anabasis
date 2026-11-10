@@ -463,9 +463,11 @@ describe("the source a campaign's launches ran", () => {
     expect(lines).toStrictEqual([
       `b-1  2026-10-09T13:00:00.000Z  ${first.slice(0, 9)}  clean  load 3.2 on 8 cores  bun unknown`,
       "  published on no remote branch",
+      "  flags --cap",
       `  does not hold ${second.slice(0, 9)}`,
       `g1  2026-10-09T14:00:00.000Z  ${second.slice(0, 9)}  with uncommitted changes  load 3.2 on 8 cores  bun 1.4.3`,
       "  published on no remote branch",
+      "  same login; flags as before",
       `  holds ${second.slice(0, 9)}`,
     ]);
     expect(lines.join("\n")).not.toContain("x.env");

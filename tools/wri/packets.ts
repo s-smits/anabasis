@@ -21,22 +21,18 @@
  */
 import type { LogEvent } from "#src/kernel/log.ts";
 import { passed, solvesIn } from "#src/kernel/solves.ts";
-import { AGENT_DIR, GUIDE_FILE } from "#src/meta/bundle-layout.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { asRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
-import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 import { catalogueText, lanesOf } from "./catalogue.ts";
-import { scoredTasks } from "./tasks.ts";
-import { ownFilesOf, weightOf } from "./trajectory.ts";
+import { scoredTasks, VALUE_BYTES } from "./tasks.ts";
+import { diffOf, madeOf, weightOf } from "./trajectory.ts";
 
-const VALUE_BYTES = 1500;
 const DIFF_LINES = 3000;
 const ANCHORS = 6;
 /** The grade from which a task the Starter answers every time is regraded: specialist work (lane 27). */
 const HIGH = 5;
-const GUIDE = `${AGENT_DIR}${GUIDE_FILE}`;
 
 export interface Campaign {
   readonly name: string;
@@ -92,39 +88,9 @@ function tasksOf({ events }: Campaign, label: string): Packed[] {
   });
 }
 
-/** The guide and the programs a kept harness wrote, by path. */
-function writtenIn(state: string): Map<string, string> {
-  const { root, paths } = ownFilesOf(state);
-  const found = new Map(paths.map((path) => [path, join(root, path)]));
-  if (existsSync(join(state, GUIDE))) found.set("guide", join(state, GUIDE));
-  return found;
-}
-
-function diffOf(parent: string, version: string): string[] {
-  const old = existsSync(parent) ? writtenIn(parent) : new Map<string, string>();
-  const fresh = writtenIn(version);
-  return [...new Set([...old.keys(), ...fresh.keys()])].toSorted().flatMap((path) => {
-    const { stdout } = runSync([
-      "diff",
-      "-U1",
-      "--label",
-      `parent/${path}`,
-      "--label",
-      `version/${path}`,
-      old.get(path) ?? "/dev/null",
-      fresh.get(path) ?? "/dev/null",
-    ]);
-    const text = decodeOutput(stdout).trimEnd();
-    return text === "" ? [] : text.split("\n");
-  });
-}
-
 function versionsOf({ log, events }: Campaign, label: string): Packed[] {
   const started = events.filter(({ kind }) => kind === "comparison.started");
   const starter = started[0]?.data.starter;
-  const parents = new Map(
-    events.flatMap(({ kind, data }) => (kind === "harness.version" ? [[data.version, data.parent]] : [])),
-  );
   const states = join(dirname(log), "states");
   const fresh = [...new Set(started.map(({ data }) => data.fresh))].filter(
     (digest): digest is string => isString(digest) && digest !== starter,
@@ -132,7 +98,7 @@ function versionsOf({ log, events }: Campaign, label: string): Packed[] {
   return fresh.flatMap((digest) => {
     const state = join(states, digest);
     if (!existsSync(state)) return [];
-    const parent = parents.get(digest) ?? starter;
+    const parent = madeOf(events, digest, isString(starter) ? starter : "").parent ?? starter;
     const named = isString(parent) ? parent : "none";
     const lines = diffOf(join(states, named), state);
     const weight = weightOf(state);

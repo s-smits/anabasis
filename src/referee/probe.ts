@@ -82,7 +82,7 @@ function movedChecks(original: Verdict, changed: Verdict): string[] {
 }
 
 /** A copy with an existing field or parent replaced; `$` replaces a scalar answer alone. */
-function withReplacedField(answer: JsonValue, path: string, value: JsonValue): JsonValue {
+export function withReplacedField(answer: JsonValue, path: string, value: JsonValue): JsonValue {
   const keys = jsonPathTokens(path)?.map((token) =>
     token.startsWith("[") ? token.slice(1, -1) : token.slice(1),
   );

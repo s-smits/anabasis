@@ -40,7 +40,7 @@ import {
 } from "#src/kernel/compare.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { LOG_FILE, read } from "#src/kernel/log.ts";
-import { ended, passed, ranUnder, rejectionAside, verdictsOf } from "#src/kernel/solves.ts";
+import { ended, passed, ranUnder, rejectionAside, rulingsOf, verdictsOf } from "#src/kernel/solves.ts";
 import { taskSets } from "#src/kernel/task.ts";
 import { billedAll } from "#src/kernel/meter.ts";
 import { existsSync, mkdirSync } from "#src/meta/filesystem.ts";
@@ -316,7 +316,7 @@ async function solveAll(opened: readonly Opened[], { source, seed, tasks, solves
   await Promise.all(Array.from({ length: source.limits.concurrency }, work));
   const unruled = opened.flatMap(({ system, log, reviewers }) => {
     const own = existsSync(log) ? read(log) : [];
-    const found = new Set(own.flatMap(({ kind, data }) => (kind === "referee.finding" ? [data.solve] : [])));
+    const found = rulingsOf(own);
     return ended(ranUnder(own)).flatMap((solve) =>
       solve.ending?.kind === "rejected" && !found.has(solve.id) ? [{ system, reviewers, solve }] : [],
     );

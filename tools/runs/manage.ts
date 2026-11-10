@@ -162,11 +162,17 @@ export function solvesMs(events: readonly LogEvent[]): number {
   return pauseWaitMs((recordedSetting(events)?.minutes ?? LIMITS.wallSeconds / 60) * 60);
 }
 
-async function pauseAt(run: Run, after: string): Promise<void> {
+/** The kinds `after` names, refused where `kindsOf` reads none, so the dry form refuses as `--yes` does. */
+function kindsNamed(after: string): readonly string[] {
   const kinds = kindsOf(after);
   if (kinds === undefined) {
     throw new Error(`--after takes ${Object.keys(AFTER).join(", ")}, or several but next joined by |`);
   }
+  return kinds;
+}
+
+async function pauseAt(run: Run, after: string): Promise<void> {
+  const kinds = kindsNamed(after);
   const events = logEvents(run.path);
   const base = countOf(events, after);
   const allowed = solvesMs(events);
@@ -364,6 +370,7 @@ export async function continueRun(args: readonly string[]): Promise<void> {
       "usage: bun run runs continue <name> [--at <commit>] [--login N] [--budget N] [--after <event>] [--yes] [-- <flags>]",
     );
   }
+  if (values.after !== undefined) kindsNamed(values.after);
   const run = runNamed(name);
   // Flags after `--` stand for the kept ones: a pack's path where the campaign was copied to
   // another host is that host's.
@@ -402,8 +409,9 @@ export async function pause(args: readonly string[]): Promise<void> {
   if (name === undefined) {
     throw new Error("usage: bun run runs pause <name> [--after <word>[|<word>...]] [--yes]");
   }
-  const run = runNamed(name);
   const after = values.after ?? "next";
+  kindsNamed(after);
+  const run = runNamed(name);
   if (!values.yes) return said(run, `would be stopped after its next ${after === "next" ? "step" : after}`);
   await pauseAt(run, after);
 }

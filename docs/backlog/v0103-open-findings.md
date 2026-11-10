@@ -1,26 +1,29 @@
 # Findings left open at v0.10.3
 
-Status: planned. Each row was found by the landing review of 10 November 2026 (three lenses over
-the stack of #721 to #748) or by the second-reader pass that followed it, and was left as it is so
-that the release could land. Each says what would settle it.
+Status: rows 1, 2, 3, 17 and 19 are proved without a model, each by a hostile test that failed
+before its repair; the rest are planned. Each row was found by the landing review of 10 November
+2026 (three lenses over the stack of #721 to #748) or by the second-reader pass that followed it,
+and was left as it is so that the release could land. Each says what would settle it.
 
 ## Intended changes
 
 ### The landing and the run CLI
 
-1. **Two processes can take a dead landing's lock** (confirmed by reading, `holdAlone`,
-   `tools/runtime/landing.ts`). Two takers that both find the holder dead each remove its lock and
-   write their own. Give `hold` (`tools/runs/holder.ts`) a note and let `held` accept the holder's
-   own prefix, so the takeover is one rename. Hostile tests: two takers on one dead holder leave one
-   holder, and a live pid with another start time reads as dead.
-2. **A cut investigation snapshot cannot be started again** (confirmed, `frozen`,
-   `tools/wri/wri.ts`). A `start --snapshot` that is killed leaves a partial copy, and the next
-   start refuses the folder. Remove the target before `snapshotCampaign` copies into it; the test
-   needs `liveOf` to take its known runs as an argument.
-3. **An alerts look crashes on a peer that answers from an older tree** (seen live on 10 November,
-   `written`, `tools/runs/alerts.ts`). While the caller's commit was on no remote branch, the peers
-   answered at its published ancestor with rows that held no state, and the look threw instead of
-   reporting. Name the host as answering from an older tree and read the hosts that did answer.
+1. **Two processes can take a dead landing's lock**: mended. `holdAlone`
+   (`tools/runtime/landing.ts`) holds its clone through `hold` (`tools/runs/holder.ts`), so of
+   eight takers on one dead holder one holds and seven wait, and a live pid with another start
+   reads as gone and is sent nothing. Left: the clause that waits for a live landing holding the
+   older record (a pid alone, or a pid and a note) goes once no open branch writes it, and the
+   landing's lock now shares row 22.
+2. **A cut investigation snapshot cannot be started again**: mended. `snapshotCampaign`
+   (`tools/runs/seed.ts`) removes what its target holds before it copies, and refuses a target
+   that holds the campaign or lies inside it. Left: two starts of one investigation folder at
+   once, where the second removes the copy the first still reads; a start refuses the folder only
+   once its shared instructions are written.
+3. **An alerts look crashes on a peer that answers from an older tree**: mended. `answerOf`
+   (`tools/runs/alerts.ts`) reads a row only where it holds every part the fold reads, and a host
+   whose answer this tree cannot read is a host down for the look, said once. Left: a host that
+   goes from silent to unreadable without answering between is not named a second time.
 4. **`fetch --whole` copies live runs whole** while the daily retire leaves them out (confirmed).
    Decide which of the two is meant, since a whole copy of a live run is stale within the hour.
 5. **The prompts say network reach was read "when this process started"** (confirmed, the solver's,
@@ -73,19 +76,18 @@ Two readers went over what v0.10.3 landed on 10 November 2026, one over `src/` a
 the rest wait. "Read" means the row was checked against the source again before it was written
 here; "reported" means only its reader has seen it.
 
-17. **Kept runs hold each other's slot at the cap** (read, `liveHere`, `tools/runs/live.ts`;
-    `startRefusal`, `tools/runs/logins.ts`). A kept run between two starts counts as live, and a
-    keeper leaves out only its own run. Where a login keeps more ended runs than its cap, as after
-    a cap is lowered under them, each keeper finds the login full and none starts again. Let a
-    waiting run count only against the runs that sort after it, so the first of them start.
-    Hostile test: three kept runs with no writer on a login capped at two start two.
+17. **Kept runs hold each other's slot at the cap**: mended. A kept run between two starts is
+    marked `unwritten` (`liveHere`, `tools/runs/live.ts`) and counts only against the runs
+    `countedAgainst` gives it, so of three kept runs on a login capped at two the first two by
+    name start; a fresh start still counts every kept run. Left: a keeper that moves its run to
+    another login counts every kept run there, with no order (`roomFor`, `tools/runs/keep.ts`).
 18. **A solve's network line can change inside one comparison** (read, `networkReach`,
     `src/tools/command.ts`, read by `src/solver/run.ts`). An unreached reading is probed again
     after ten minutes, so the two sides' solves of one task can be told different things, and the
     log records neither. With row 5 it changes what a solver is told, which is the operator's:
     either a comparison's reach is fixed at its start, or `solve.started` records it.
-19. **A kept run's ending is not alerted** (read, `stateOf`, `tools/runs/state.ts`): with no writer
-    and a live keeper the state is `kept`, so `alerts` prints no `ended environment` line.
+19. **A kept run's ending is not alerted**: mended. The `kept` state names the environment's
+    ending where the log ends on one (`stateOf`, `tools/runs/state.ts`), and `alerts` says it once.
 20. **A resumed move starts in a tree nobody checked** (reported, `tools/runs/move.ts`): a
     destination tree at the same commit is reused, and a change no commit names is refused only
     after the source is paused and set aside. Ask `standing` of the tree before the pause.
@@ -119,3 +121,13 @@ here; "reported" means only its reader has seen it.
   the release instead of holding it.
 - 10 November 2026, the operator, after the release: "review current PR stack and overhaul /
   supersede where needed", and "triage with most recent runs to improve further". Rows 17 to 27.
+- 10 November 2026, the operator, on the rows left for their word: "Regarding waiting on me, reach
+  time philosophy and fill those in yourself. Stein philosophy." Decided from it, each with what
+  would overturn it: row 17 is mended inside `startRefusal`; row 18 records the reach each solve
+  was told in `solve.started` and fixes nothing else until one task's two sides record different
+  reach; row 5 loses its clause with the next change to a seat's prompt and not before, since a
+  prompt change alone ends comparing runs across it. Rows 5 and 18 still take the operator's word
+  where they change what a seat is told.
+- 10 November 2026, the operator, after the release: "set up full protocol" for ten hours, to
+  "ensure everything works well in this system". Rows 1, 2, 3, 17 and 19 were mended in that
+  window, the rows that change the run tools alone.

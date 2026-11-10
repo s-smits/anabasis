@@ -18,7 +18,7 @@
  * defect one campaign held alone was read by the ten sessions of that campaign only. Now every
  * finding says on its `Seen in:` line which campaigns show it.
  */
-import { join } from "#src/meta/path.ts";
+import { basename, dirname, join } from "#src/meta/path.ts";
 import { plural } from "#src/meta/text.ts";
 import { type Lane, section } from "./catalogue.ts";
 import { TRIGGERS, type Trigger } from "./folds.ts";
@@ -85,6 +85,19 @@ export function numbersOf(spec: string): number[] {
     }
     return Array.from({ length: to - from + 1 }, (_, index) => from + index);
   });
+}
+
+/** Where the campaign of a stored log that is gone stands now, among the runs a reader reads: `retire`
+ *  moves a closed run into the archive, and a log read at its old path is an empty history. On 10
+ *  November 23 of 58 investigations named such a log (43 of 190), so `lanes` refused an isolated lane
+ *  as untriggered and `collect` and `synthesis` read a campaign with no trigger. */
+export function movedTo(log: string, held: readonly { name: string; path: string }[]): string {
+  const name = basename(dirname(log));
+  const run = held.find((each) => each.name === name);
+  if (run === undefined) {
+    throw new Error(`${log} is gone, and no worktree or archive holds a campaign ${name}`);
+  }
+  return run.path;
 }
 
 /**

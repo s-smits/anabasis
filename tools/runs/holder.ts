@@ -4,7 +4,8 @@
  * process is gone or its pid names a later process. The record is written once, as a link, so a
  * reader at any instant reads it whole or not at all. The pulse's pass and a fetch of one copy each
  * take one (`pulse-readers.ts`, `snapshots.ts`), and a controller's preparation follows the rule in
- * shell (`code.ts`).
+ * shell (`code.ts`). A landing holds its clone the same way (`holdAlone`, `landing.ts`), with a note
+ * after the record that says what it lands.
  *
  * Only processes of the host that keeps the folder take these locks, so a record that names another
  * host came with a copied folder and holds nothing. A process that holds a lock is refused it again
@@ -45,7 +46,7 @@ function recordOf(pid: number): string {
 }
 
 /** The record `file` holds, or "" where it is no link. */
-function recordIn(file: string): string {
+export function recordIn(file: string): string {
   try {
     return readlinkSync(file);
   } catch {
@@ -53,21 +54,28 @@ function recordIn(file: string): string {
   }
 }
 
-/** Whether a live process holds `file`: the one its record names, still with that start. */
-export function held(file: string): boolean {
+/** The live process that holds `file` and the note it wrote after its record, or null where none
+ *  does: the record must name a process of this host still with that start. */
+export function holderOf(file: string): { readonly pid: number; readonly note: string } | null {
   const record = recordIn(file);
-  return record !== "" && record === recordOf(Number.parseInt(record, 10));
+  const pid = Number.parseInt(record, 10);
+  const live = record === "" ? "" : recordOf(pid);
+  if (live === "" || (record !== live && !record.startsWith(`${live} `))) return null;
+  return { pid, note: record.slice(live.length + 1) };
 }
 
+/** Whether a live process holds `file`. */
+export const held = (file: string): boolean => holderOf(file) !== null;
+
 /** Take `file`, in a folder that exists, for this process where no live process holds it, and say
- *  whether it did. */
-export function hold(file: string): boolean {
+ *  whether it did. A `note` follows the record, for whoever finds the lock held. */
+export function hold(file: string, note = ""): boolean {
   const guard = openSync(dirname(file), "r");
   try {
     lockExclusiveSync(guard);
     if (held(file)) return false;
     rmSync(file, { force: true });
-    symlinkSync(recordOf(runtimeProcess.pid), file);
+    symlinkSync([recordOf(runtimeProcess.pid), ...(note === "" ? [] : [note])].join(" "), file);
     return true;
   } finally {
     closeSync(guard);

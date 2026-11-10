@@ -5,7 +5,7 @@
  * made `bun run land -- 661 --sanitize` prove all 49 commits from the bottom although the CI gate
  * that the passes record had not changed. Nothing here runs inside a pass.
  */
-import { lstatSync, rmSync } from "../../src/meta/filesystem.ts";
+import { existsSync, lstatSync, readFileSync, rmSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
 import { hold, holderOf, recordIn, release } from "../runs/holder.ts";
@@ -42,16 +42,19 @@ export async function holdAlone(
   for (let looks = 0; ; looks += 1) {
     // The run CLI's lock (`holder.ts`): a holder is a live process of this host with the start its
     // record names, and a dead one's lock is taken over under a `flock` of the folder, so of two
-    // landings that find it dead one takes it and the other waits. A folder is an older landing's
-    // lock, which named its holder by pid alone.
-    if (lstatSync(lock, { throwIfNoEntry: false })?.isDirectory() === true) {
+    // landings that find it dead one takes it and the other waits.
+    // A landing without this lock writes its pid alone or `<pid> #<n> <kind>`, as a link or, until
+    // 9 November, into `<lock>/pid` of a folder (a link's record names no file, so only a folder
+    // has one). While that pid answers signal 0 it is waited for and never ended, since a bare pid
+    // may name a later process; a folder naming no live pid is removed. The clause goes once no
+    // open branch writes that record.
+    const left = join(lock, "pid");
+    const record = existsSync(left) ? readFileSync(left, "utf8") : recordIn(lock);
+    const older = Number(/^(\d+)(?: #|$)/u.exec(record)?.[1]);
+    const live = older > 0 && answers(older);
+    if (!live && lstatSync(lock, { throwIfNoEntry: false })?.isDirectory() === true) {
       rmSync(lock, { recursive: true, force: true });
     }
-    // A landing without this lock writes its pid alone or `<pid> #<n> <kind>`; while that pid
-    // answers signal 0 it is waited for and never ended, since a bare pid may name a later process.
-    // The clause goes once no open branch writes that record.
-    const older = Number(/^(\d+)(?: #|$)/u.exec(recordIn(lock))?.[1]);
-    const live = older > 0 && answers(older);
     if (!live && hold(lock, claim?.note)) return () => release(lock);
     const found = live ? { pid: older, note: "" } : holderOf(lock);
     if (found === null) continue;

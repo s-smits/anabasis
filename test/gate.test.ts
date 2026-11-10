@@ -458,15 +458,35 @@ describe("one landing of a clone at a time", () => {
     (await held)();
   });
 
-  it("takes over at once a lock an older landing left as a folder without its pid", async () => {
+  it("takes over at once a folder lock an older landing left without its pid or naming a dead one", async () => {
+    for (const pid of [null, "4194399"]) {
+      const clone = mkdtempSync(join(fixture, "alone-"));
+      execTextSync("git", ["init", "-q"], { cwd: clone });
+      const lock = join(clone, ".git", "ana-land.lock");
+      mkdirSync(lock);
+      if (pid !== null) writeFileSync(join(lock, "pid"), pid);
+      const held = holdAlone(clone, "land", () => undefined, 20);
+      const early = await Promise.race([held.then(() => "held"), Bun.sleep(60).then(() => "waiting")]);
+      expect(early, `a folder whose pid is ${String(pid)}`).toBe("held");
+      expect(readlinkSync(lock)).toBe(recordOf(runtimeProcess.pid));
+      (await held)();
+    }
+  });
+
+  it("waits for a live landing that holds a folder lock, ends nothing, and takes the lock once it is gone", async () => {
     const clone = mkdtempSync(join(fixture, "alone-"));
     execTextSync("git", ["init", "-q"], { cwd: clone });
     const lock = join(clone, ".git", "ana-land.lock");
+    const older = Bun.spawn(["sleep", "30"]);
     mkdirSync(lock);
-    const held = holdAlone(clone, "land", () => undefined, 20);
-    const early = await Promise.race([held.then(() => "held"), Bun.sleep(60).then(() => "waiting")]);
-    expect(early).toBe("held");
-    expect(readlinkSync(lock)).toBe(recordOf(runtimeProcess.pid));
+    writeFileSync(join(lock, "pid"), `${String(older.pid)} #5 sanitizing`);
+    const held = holdAlone(clone, "land", () => undefined, 20, { note: "#6 sanitizing", over: () => true });
+    const early = await Promise.race([held.then(() => "held"), Bun.sleep(300).then(() => "waiting")]);
+    expect(early).toBe("waiting");
+    expect(older.signalCode).toBe(null);
+    expect(readFileSync(join(lock, "pid"), "utf8")).toBe(`${String(older.pid)} #5 sanitizing`);
+    older.kill();
+    await older.exited;
     (await held)();
   });
 

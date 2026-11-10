@@ -135,7 +135,9 @@ export const DOCUMENTATION = [
  *  files, in 5 static passes of `bun run land` over commits that changed nothing under `packages/ui`. */
 const UI_PACKAGE = "packages/ui/package.json";
 export const UI_ROOT = "packages/ui";
-export const UI_SETUP = ["package.json", "bun.lock", "tools/runtime/test-suite.ts"];
+/** The test runner every pass goes through, so a change to it proves nothing narrower than the whole run. */
+export const TEST_SUITE = "tools/runtime/test-suite.ts";
+export const UI_SETUP = ["package.json", "bun.lock", TEST_SUITE];
 const UI_TEST = /^packages\/ui\/test\/[^/]+\.test\.tsx?$/u;
 const BROWSER_FILE = /^packages\/ui\/test\/browser-[^/]+\.test\.ts$/u;
 /** What each file imports, read once per CI gate (`importsOf`). */

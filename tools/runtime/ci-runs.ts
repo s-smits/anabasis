@@ -27,7 +27,17 @@
 import { mkdtempSync, realpathSync, rmSync } from "../../src/meta/filesystem.ts";
 import { tmpdir } from "../../src/meta/os.ts";
 import { join } from "../../src/meta/path.ts";
-import { git, gitSays, lines, reachingWall, short, testsNear, UI_ROOT, uiTestsNear } from "./gate.ts";
+import {
+  git,
+  gitSays,
+  lines,
+  reachingWall,
+  short,
+  TEST_SUITE,
+  testsNear,
+  UI_ROOT,
+  uiTestsNear,
+} from "./gate.ts";
 import { gh, type Pull } from "./pulls.ts";
 
 export const CI_WORKFLOW = "ci.yml";
@@ -49,7 +59,7 @@ const FULL = [
   `${UI_ROOT}/bun.lock`,
   `${UI_ROOT}/bunfig.toml`,
   `${UI_ROOT}/tsconfig.json`,
-  "tools/runtime/test-suite.ts",
+  TEST_SUITE,
   "src/wall/",
 ];
 /** A test file's header in Bun's output, as `gh run view --log-failed` prints it after the job, the

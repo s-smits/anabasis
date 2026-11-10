@@ -247,7 +247,8 @@ leaves at least the comparison floor of frontier tasks (`practiceDue`).
 
 **What refuses a move**: comparison admission (`src/campaign/admission.ts`), session admission and
 the stop rule, which only `--past-stop "<why>"` passes. A command writes nothing before its last
-refusal, so a refused move leaves the log as it was.
+refusal, so a refused move leaves the log as it was, but for the harness the Builder's `compare`
+froze to ask for it (`build.checkpoint`), which the table then names as not yet compared.
 
 **Defaults**: 24 scored tasks; 2 solves a side (`SIZE`); level 0.02; improvement and supply patience of 6; gap floor 1%
 (`ROOM`); a stop after more than 3 tasks with a check defect; a reserve of 3 dollars a solve; a

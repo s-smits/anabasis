@@ -13,7 +13,7 @@ import { Type } from "typebox";
 import type { SeatTool } from "../agent/session.ts";
 import { blockingOf, decides, type Task, type Verdict, type Verifier } from "../kernel/verify.ts";
 import { jsonPathTokens, resolveJsonPath } from "../meta/json-evidence.ts";
-import { capturedJsonParse, capturedJsonStringify, capturedStructuredClone } from "../meta/json-runtime.ts";
+import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.ts";
 import { isRecord, isString, type JsonObject, type JsonValue } from "../meta/json-shape.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { plural } from "../meta/text.ts";
@@ -92,9 +92,9 @@ export function withReplacedField(answer: JsonValue, path: string, value: JsonVa
   const leaf = keys.pop();
   if (leaf === undefined) {
     if (isRecord(answer) || Array.isArray(answer)) throw new Error("only a scalar root can be replaced");
-    return capturedStructuredClone(value);
+    return structuredClone(value);
   }
-  const copy: JsonValue = capturedStructuredClone(answer);
+  const copy: JsonValue = structuredClone(answer);
   // SAFETY: the path resolves in `answer`, so each step of its clone is an array or a record holding
   // the next key, and an array takes its position as a string key too.
   const parent = keys.reduce((at, key) => at[key] as JsonObject, copy as JsonObject);

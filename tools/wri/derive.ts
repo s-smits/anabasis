@@ -118,7 +118,10 @@ const namedReader = (
  *  as a first read is the longest and their news the least likely. Each moment's readers (`at`) come
  *  from what their text says of it; a `gist` stands where, on three closed logs of three domains
  *  (10 November), naming the session or harness found none of the reader's lines: a summary row, a
- *  table's own row. A script that needs more than a campaign
+ *  table's own row. A reader whose text is a block or a table over the whole log (a check's row, a
+ *  pair's, a compaction, a launch, a sequence of calls) has no line of one moment and names none,
+ *  so only `derive` runs it, as it does `aim` and `epoch-spend`, whose lines of a moment repeat
+ *  what `ambition` and `cost` say there. A script that needs more than a campaign
  *  to say anything, reads no run or writes elsewhere is left out, and `whole-run-investigation` names
  *  each. */
 export const READERS: readonly Reader[] = [
@@ -147,14 +150,10 @@ export const READERS: readonly Reader[] = [
     ),
     [REPORTED],
   ),
-  at(
-    skillReader(
-      "starter-reads",
-      "each starter comparison after a promotion, its tally split by where each task came from",
-      "comparison-reading/scripts/starter-reads.ts",
-    ),
-    [REPORTED],
-    /^\d+ starter reads?\b/,
+  skillReader(
+    "starter-reads",
+    "each starter comparison after a promotion, its tally split by where each task came from",
+    "comparison-reading/scripts/starter-reads.ts",
   ),
   logReader(
     "degradations",
@@ -323,20 +322,26 @@ export const READERS: readonly Reader[] = [
     "one row a check: rating, rules, controls, refusals by side and asker, whether it stands",
     "tools/wri/checks.ts",
   ),
-  logReader(
-    "rejections",
-    "one row a rejected solve: the refusing checks, the ruling and its probes, a label, what stands",
-    "tools/wri/rejections.ts",
+  at(
+    logReader(
+      "rejections",
+      "one row a rejected solve: the refusing checks, the ruling and its probes, a label, what stands",
+      "tools/wri/rejections.ts",
+    ),
+    [REPORTED],
   ),
   logReader(
     "pairs",
     "a row a task a comparison: solves, diff, A/A, ratio to best, tie kind; tallies by writer and family",
     "tools/wri/pairs.ts",
   ),
-  logReader(
-    "budget",
-    "each comparison side's endings, turns and seconds against the bound, long calls, queue, load",
-    "tools/wri/budget.ts",
+  at(
+    logReader(
+      "budget",
+      "each comparison side's endings, turns and seconds against the bound, long calls, queue, load",
+      "tools/wri/budget.ts",
+    ),
+    [REPORTED],
   ),
   logReader(
     "compactions",
@@ -358,10 +363,14 @@ export const READERS: readonly Reader[] = [
     "what each Examiner session could read and wrote, and each side's measures against the author's best",
     "tools/wri/aim.ts",
   ),
-  logReader(
-    "drafted",
-    "how the exam was drafted: each draft and its faults, the standing draft's counts, admitted checks",
-    "tools/wri/drafted.ts",
+  at(
+    logReader(
+      "drafted",
+      "how the exam was drafted: each draft and its faults, the standing draft's counts, admitted checks",
+      "tools/wri/drafted.ts",
+    ),
+    ["contract.frozen"],
+    /^(standing draft|shape faults|checks:)/,
   ),
   skillReader(
     "wakes",
@@ -402,10 +411,13 @@ export const READERS: readonly Reader[] = [
     ),
     embeds: true,
   },
-  logReader(
-    "names",
-    "where a kept harness's own files name a task id, prefix, family or rare identifier",
-    "tools/wri/names.ts",
+  at(
+    logReader(
+      "names",
+      "where a kept harness's own files name a task id, prefix, family or rare identifier",
+      "tools/wri/names.ts",
+    ),
+    [PROMOTED],
   ),
   skillReader(
     "versions",

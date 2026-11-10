@@ -101,8 +101,13 @@ and 21 of the 23 lane prompts are 2,400 to 6,800, the other two 14,000 and 23,00
 - A lane handed a table may stop at the table. One pair of investigations of one run has been read
   (above); it cannot tell the helpers' effect on findings from that of longer sessions, and a
   second pair with sessions of about eight lanes and the split prompt has not been run.
-- Each reader in `READERS` runs for every live campaign at every pulse, so the list's cost grows
-  with it. The fifteen added here took 0.2 to 3.4 seconds each on logs of 22,000 to 52,000 events,
+- Each reader in `READERS` runs in every `derive` pass over a log that moved, so that pass's cost
+  grows with the list. The pulse runs only a reader that names a moment (`at`), once an event of
+  that kind lies past what it last read: of the fifteen added here, `drafted` at the contract's
+  freeze, `budget` and `rejections` at a report and `names` at a promotion, each of which has a
+  line of that moment on a closed log of two domains. Of the other eleven, `aim` and `epoch-spend`
+  repeat there what `ambition` and `cost` already say, and nine print a block or a table over the
+  whole log; all stay `derive`'s alone. The fifteen took 0.2 to 3.4 seconds each on logs of 22,000 to 52,000 events,
   as each was timed alone; `table-timeline.ts` (24 to 53 seconds) and `harness-versions.ts --chain`
   (29 seconds on 22 kept versions) stay tools for that reason. Every reader but the two on the
   embedding model, derived once for two archived logs on one machine, took 5.9 and 34.6 seconds

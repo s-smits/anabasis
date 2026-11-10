@@ -8,10 +8,9 @@ import {
   lengthsIn,
   movedIn,
   nextOf,
-  rowOf,
-  triggerOf,
   unmeasured,
 } from "#skills/run-improvement-campaign/scripts/wri2p2.ts";
+import { progressOf as rowOf, triggerOf } from "#tools/runs/said.ts";
 import { forkOf, idsOf, outcomesOf, pullOf } from "#tools/wri/ledger.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";

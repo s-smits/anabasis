@@ -178,6 +178,17 @@ describe("what a reader says of a moment", () => {
     expect(kept.filter((line) => line.startsWith("◆ rows:"))).toEqual(["◆ rows: g-2 own row"]);
   });
 
+  it("says a row whole where it fits 200 characters with its columns one space apart, and cuts a longer one there", () => {
+    const { store, log, look } = world([{ name: "rejections", at: [REPORTED] }]);
+    // A rejection's row under a campaign name of 53 characters: 167 once its columns close up, and
+    // its last column says whether the task is set aside.
+    const row = ["s".repeat(67), "x-2-016", "g-2", "c".repeat(83), "yes"].join("\t  ");
+    keepResult(store, log, "rejections", result(100), `${row}\n${"g-2 ".repeat(60)}\n`);
+    const said = allOf(look({ fresh: [eventOf(REPORTED, { session: "g-2" })] }));
+    expect(said).toContain(`◆ rejections: ${"s".repeat(67)} x-2-016 g-2 ${"c".repeat(83)} yes`);
+    expect(said).toContain(`◆ rejections: ${"g-2 ".repeat(50)}`);
+  });
+
   it("says a failed reader once a failure, with its last line", () => {
     const { store, log, look } = world([{ name: "gap", at: [REPORTED] }]);
     const failing = (why: string) => `\n-- gap ended with exit 1\n-- stderr\n${why}\n`;
@@ -203,7 +214,7 @@ describe("a moment its readers have not read never reads as nothing new", () => 
     endPass(store, "finished");
     const first = look({ fresh: [eventOf(REPORTED, { session: "g-2" })] });
     expect(allOf(first)).toContain("◆ gap: g-2 gap row");
-    expect(first.lines.at(-1)).toMatch(/^⚠ not read yet: rows of comparison\.reported g-2; /);
+    expect(first.lines.at(-1)).toMatch(/^· not read yet: rows of comparison\.reported g-2; /);
     expect(first.owed).toMatchObject([{ kind: REPORTED, session: "g-2", size: 100, left: ["rows"] }]);
     const still = look({ size: 120, owed: first.owed, said: first.said });
     expect(allOf(still)).toEqual([]);
@@ -233,10 +244,12 @@ describe("a moment its readers have not read never reads as nothing new", () => 
     endPass(store, "finished");
     await Bun.sleep(5);
     writeFileSync(join(store, "pass.err"), "a trace\nthe runtime's last line\n");
-    expect(why()).toContain("the last pass failed: the runtime's last line");
+    // A failed pass is the one reason for an unread moment that is something to look at.
+    expect(why()).toMatch(/^⚠ not read yet: .*the last pass failed: the runtime's last line/);
     await Bun.sleep(5);
     endPass(store, "budget");
     expect(why()).not.toContain("the last pass failed");
+    expect(why()).toStartWith("· not read yet: ");
   });
 
   it("names the readers as a whole where no pass has finished on this host", () => {
@@ -255,7 +268,7 @@ describe("a moment its readers have not read never reads as nothing new", () => 
     // A loaded host starts no pass, and the look names the load first.
     expect(said.lines).toHaveLength(1);
     expect(said.lines[0]).toMatch(
-      /^⚠ not read yet: the readers of comparison\.reported g-2; (no pass has finished on this host|shed for the load, )/,
+      /^· not read yet: the readers of comparison\.reported g-2; (no pass has finished on this host|shed for the load, )/,
     );
     expect(said.owed).toHaveLength(1);
   });
@@ -559,7 +572,7 @@ describe("a look that was cut", () => {
     await holding;
     const next = look("--state", state, "the-run");
     expect(next.out).toContain("reported no-step");
-    expect(next.out).toContain("⚠ not read yet: rows of comparison.reported;");
+    expect(next.out).toContain("· not read yet: rows of comparison.reported;");
     expect(linesOf(state, log)).toBe(2);
     expect(look("--state", state, "the-run").out).not.toContain("reported no-step");
   });
@@ -578,7 +591,7 @@ describe("a look that was cut", () => {
     endPass(store, "finished");
     event(REPORTED, { reading: "no-step", session: "g-1" });
     expect(look("--state", state, "the-run").out).toContain(
-      "⚠ not read yet: rows of comparison.reported g-1;",
+      "· not read yet: rows of comparison.reported g-1;",
     );
     expect(look("--state", state).out).toBe("");
     keepResult(store, log, "rows", result(statSync(log).size), "g-1 rows row\n");

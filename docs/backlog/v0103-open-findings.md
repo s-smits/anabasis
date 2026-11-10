@@ -2,8 +2,9 @@
 
 Status: rows 1, 2, 3, 17 and 19 are proved without a model, each by a hostile test that failed
 before its repair; the rest are planned. Each row was found by the landing review of 10 November
-2026 (three lenses over the stack of #721 to #748) or by the second-reader pass that followed it,
-and was left as it is so that the release could land. Each says what would settle it.
+2026 (three lenses over the stack of #721 to #748), by the second-reader pass that followed it, or
+by the review of the stack above the release (rows 28 to 35). Rows 1 to 27 were left as they are
+so that the release could land. Each says what would settle it.
 
 ## Intended changes
 
@@ -111,6 +112,49 @@ here; "reported" means only its reader has seen it.
     cause is unread: load when the solve started, the task's place in the queue, or the provider.
     `tools/wri/time.ts` holds the slots and the load to read it from.
 
+### Found by the review of the stack above the release
+
+Three readers went over the five pull requests stacked on the release on 10 November 2026, one lens
+each. What they confirmed was mended on the pull request that owns it; these rows are what they
+left plausible, and what is confirmed but sits in source a live run is proving.
+
+28. **The `cap-short` refusal is a forecast worded as a bound** (plausible, `refusals`,
+    `src/campaign/admission.ts`). Its price is the test's solves at the mean bill of every finished
+    solve in the log, so a comparison whose solves bill below that mean is refused although its cap
+    might have paid for it, and the text says it "would be cut short". Over the 438 comparisons on
+    record that read, none would have been refused. Settled by a replay that gives, for each
+    comparison whose cap sat within a quarter of its price, what it billed against that price. The
+    text reaches the Builder, so a rewording is read in paired rounds of seats.
+29. **No test shows the Builder the `cap-short` refusal's own text** (plausible). Where the cap is
+    short the table ends the campaign on its budget before the Builder's next `compare`, and the
+    wall test of that case holds every Builder message equal across two campaigns that differ in
+    the won task. The refusal's text, which carries a dollar rate folded from every finished
+    solve's bill, reaches a Builder only at a `compare` while an earlier comparison is unreported,
+    which no fixture sets up beside a cap.
+30. **The table guards a remaining budget that cannot be missing** (read, `decide`,
+    `src/campaign/decide.ts`): under `cap-short` the cap is the plan's remaining budget, so the
+    fallback for none is never taken, and "no comparison open" is spelled in two ways in one file.
+31. **Two landings can both hold a clone while trees are mixed** (reported,
+    `tools/runtime/landing.ts` with `tools/runs/holder.ts`). An older landing's record is read
+    outside the `flock`, and a landing from a tree of 9 November takes none, so it can replace a
+    dead holder's record between that read and `hold`, which then reads the older record as
+    nobody's. The window is milliseconds and closes once no open branch writes the older record;
+    reading that record inside `holderOf` would put the decision under the `flock`.
+32. **An alerts look names a peer on an older tree once and then says nothing** (reported,
+    `tools/runs/alerts.ts`), for as long as the peer lags, so its promotions, starter reads and
+    endings reach neither the log nor a pause watcher. Settled by how many looks a day one host
+    stays unread; a line every so many looks would bound the silence.
+33. **"ended environment" is printed for a run its keeper goes on with** (reported,
+    `tools/runs/alerts.ts`), the line a run that ended for good prints, and a second such ending
+    between two looks is not said. Settled by whether any reader of the alerts log takes `ended`
+    as final.
+34. **The alerts look checks a peer's row by a hand copy of its shape** (reported, `readsRow`,
+    `tools/runs/alerts.ts`): a field the fold starts to read later is not added there by itself.
+35. **compare-systems spells the A/A's halves beside `pairsOf`** (read,
+    `.claude/skills/compare-systems/scripts/systems.ts`). It follows the same mirror since this
+    review, in its own words, because `src` could not move under the run proving it; one exported
+    predicate would leave one reader.
+
 ## History
 
 - 9 November 2026, the operator, on the stack before its release: a subagent "to tackle more of
@@ -131,3 +175,6 @@ here; "reported" means only its reader has seen it.
 - 10 November 2026, the operator, after the release: "set up full protocol" for ten hours, to
   "ensure everything works well in this system". Rows 1, 2, 3, 17 and 19 were mended in that
   window, the rows that change the run tools alone.
+- 10 November 2026, the operator, on that window: "you finish everything yourself the coming night
+  and morning". The stack above the release was proved and then read by three reviewers, one lens
+  each; rows 28 to 35 are what they left.

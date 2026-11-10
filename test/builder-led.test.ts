@@ -1432,7 +1432,9 @@ describe("a campaign tool where the table names more than the action", () => {
     name: string,
     ties: Readonly<Record<string, readonly (number | string)[]>>,
     flags: readonly string[] = FLAGS,
+    ended: { readonly ending: string; readonly why?: string } = { ending: "finished" },
   ): Promise<string> => {
+    const whole = ended.ending === "finished";
     const answering = passing();
     const seen = new Map<string, string[]>();
     const nth = (comparison: string, task: string) => {
@@ -1467,16 +1469,18 @@ describe("a campaign tool where the table names more than the action", () => {
         ["finish", { note: "Read two harnesses." }],
       ]),
     };
-    expect(await harnessBuilder([...seeded(name), ...flags], seats)).toMatchObject({ ending: "finished" });
+    expect(await harnessBuilder([...seeded(name), ...flags], seats)).toMatchObject(ended);
     expect(of(name, REPORTED).map(({ scored }) => scored)).toMatchObject(
-      ["g-1", "g-2"].map((comparison) => ({ wins: 2, losses: 0, ties: ties[comparison]?.length })),
+      ["g-1", "g-2"]
+        .slice(0, whole ? 2 : 1)
+        .map((comparison) => ({ wins: 2, losses: 0, ties: ties[comparison]?.length })),
     );
     // The campaign's facts end each campaign tool's result once, and no other tool's.
     const facts = of(name, CALLED).map(({ tool, text }) => ({
       campaign: tool === "compare" || tool === "campaign_status",
       count: isString(text) ? text.split("Campaign facts:").length - 1 : 0,
     }));
-    expect(facts.length).toBeGreaterThan(4);
+    expect(facts.length).toBeGreaterThan(whole ? 4 : 1);
     for (const { campaign, count } of facts) expect(count).toBe(campaign ? 1 : 0);
     return (
       of(name, CALLED)
@@ -1504,6 +1508,30 @@ describe("a campaign tool where the table names more than the action", () => {
     expect(moved).toBe(same);
     expect(same).toContain("2 won, 0 lost, 3 tied");
     expect(same).toContain("Comparison g-2 took 0 minutes and billed");
+  });
+
+  it("tells the Builder the same whichever held-out task was won where the cap is short of the next test", async () => {
+    layOutPack(root, bundle, MANY, FIXTURE);
+    // What is left after g-1 is below the price of g-2's test at what the campaign's solves billed
+    // each, a rate read from every finished solve's bill, so `cap-short` holds and the campaign ends
+    // on its budget before a second comparison. Its refusal's own text, which carries that rate,
+    // then reaches no Builder message: the table's ending comes before the Builder's next compare.
+    const flags = [...FLAGS, "--budget", "0.96", "--reserve", "0.01"];
+    const ended = { ending: "budget", why: containing("below what the next comparison's test costs") };
+    const same = await everythingRead(
+      `${STEM}-cap-one`,
+      { "g-1": [0, 1, 2], "g-2": [0, 1, 2] },
+      flags,
+      ended,
+    );
+    const moved = await everythingRead(
+      `${STEM}-cap-two`,
+      { "g-1": [1, 2, 3], "g-2": [2, 3, 4] },
+      flags,
+      ended,
+    );
+    expect(moved).toBe(same);
+    expect(same).toContain("2 won, 0 lost, 3 tied");
   });
 
   it("tells the Builder the same whichever held-out task was won where the frontier falls below the target", async () => {

@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { normalizeContext } from "@earendil-works/pi-ai";
 import { conversing } from "../src/examiner/session.ts";
 import { examinerDirs } from "../src/examiner/shell.ts";
-import { type LogEvent, read } from "../src/kernel/log.ts";
+import { LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
 import type { TaskPackage } from "../src/kernel/task.ts";
 import type { Ending } from "../src/kernel/solve.ts";
 import {
@@ -54,7 +54,7 @@ afterAll(() => {
 function campaignAt(name: string, lines: readonly string[], tail = ""): string {
   const folder = join(root, name);
   mkdirSync(folder, { recursive: true });
-  writeFileSync(join(folder, "log.jsonl"), `${lines.join("\n")}${lines.length > 0 ? "\n" : ""}${tail}`);
+  writeFileSync(join(folder, LOG_FILE), `${lines.join("\n")}${lines.length > 0 ? "\n" : ""}${tail}`);
   return folder;
 }
 
@@ -78,7 +78,7 @@ describe("a seed", () => {
     const to = join(root, "seeded");
     const made = seedCampaign(from, to, { before: "x-1" });
     expect(made).toMatchObject({ from, events: 3, of: 5, before: "x-1", sets: { held: [], released: [] } });
-    expect(read(join(to, "log.jsonl")).map(({ kind }) => kind)).toEqual([
+    expect(read(join(to, LOG_FILE)).map(({ kind }) => kind)).toEqual([
       "task.proposed",
       "build.started",
       "build.finished",
@@ -96,20 +96,37 @@ describe("a seed", () => {
       examinerHome: false,
     });
     expect(existsSync(join(to, "launch-b-1.json"))).toBe(false);
-    expect(readFileSync(join(from, "log.jsonl"), "utf8").endsWith('{"at":"2026')).toBe(true);
+    expect(readFileSync(join(from, LOG_FILE), "utf8").endsWith('{"at":"2026')).toBe(true);
   });
 
   it("freezes a live campaign for an investigation: every whole event, the receipts, the source as it was", () => {
-    const before = readFileSync(join(from, "log.jsonl"), "utf8");
+    const before = readFileSync(join(from, LOG_FILE), "utf8");
     const to = join(root, "frozen");
     expect(snapshotCampaign(from, to)).toMatchObject({ from, events: 5, of: 5, before: null });
     // The torn tail is an append in flight, which no reader may take for an event.
-    expect(read(join(to, "log.jsonl"))).toHaveLength(5);
+    expect(read(join(to, LOG_FILE))).toHaveLength(5);
     expect(readFileSync(join(to, "launch-b-1.json"), "utf8")).toBe("{}");
     expect(readFileSync(join(to, "memory", "b-2", "MEMORY.md"), "utf8")).toBe("notes of b-2\n");
-    expect(readFileSync(join(from, "log.jsonl"), "utf8")).toBe(before);
-    // A second snapshot under the same name is refused rather than mixed with the first.
-    expect(() => snapshotCampaign(from, to)).toThrow("is there already");
+    expect(readFileSync(join(from, LOG_FILE), "utf8")).toBe(before);
+  });
+
+  it("takes a snapshot that a killed start cut short again whole, instead of refusing its folder", () => {
+    const to = join(root, "cut");
+    mkdirSync(join(to, "states"), { recursive: true });
+    writeFileSync(join(to, LOG_FILE), `${LINES[0] ?? ""}\n`);
+    writeFileSync(join(to, "states", "stray.md"), "left by the cut copy\n");
+    expect(snapshotCampaign(from, to)).toMatchObject({ from, events: 5, of: 5 });
+    expect(read(join(to, LOG_FILE))).toHaveLength(5);
+    expect(existsSync(join(to, "states", "stray.md"))).toBe(false);
+  });
+
+  it("refuses a snapshot folder that holds the campaign or lies inside it, and leaves the campaign whole", () => {
+    const before = readFileSync(join(from, LOG_FILE), "utf8");
+    expect(() => snapshotCampaign(from, from)).toThrow("holds the campaign");
+    expect(() => snapshotCampaign(from, dirname(from))).toThrow("holds the campaign");
+    expect(() => snapshotCampaign(from, join(from, "snapshot", "source"))).toThrow("holds the campaign");
+    expect(readFileSync(join(from, LOG_FILE), "utf8")).toBe(before);
+    expect(existsSync(join(from, "launch-b-1.json"))).toBe(true);
   });
 
   it("cuts before a drafting session as before any other session", () => {
@@ -161,7 +178,7 @@ describe("a seed", () => {
 
 describe("a replay", () => {
   it("says what this tree's readers make of a log, and refuses one they do not read", () => {
-    const at = (name: string, lines: readonly string[]) => join(campaignAt(name, lines), "log.jsonl");
+    const at = (name: string, lines: readonly string[]) => join(campaignAt(name, lines), LOG_FILE);
     const gates = [1, 2, 3, 4].map((gate) =>
       line("task.gate", { version: "v1", gate, outcome: "passed", controls: "d" }),
     );
@@ -235,7 +252,7 @@ const SCRIPT = { held: sidesOf("fail:pass"), starter: "fail" } as const;
 
 /** A campaign over `folder` whose solves end as `ending`, and each solve's first scripted call. */
 function campaignOver(folder: string, ending?: Ending) {
-  const log = join(folder, "log.jsonl");
+  const log = join(folder, LOG_FILE);
   const calls: unknown[] = [];
   /** The comparison each solve was made for, as the seat handed it on. */
   const named: unknown[] = [];

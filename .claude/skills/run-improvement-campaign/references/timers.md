@@ -16,7 +16,7 @@ names.
 | milestone | the prediction that names the event | one event in one log, or one deadline | that row's outcome | the prediction's own row | it fires once |
 | open decisions | the session that runs the cycle | the open decisions of `cycle.md` and the plan | a routine doubt decided, or a row put to the operator | a decision written with what would overturn it | two firings in a row write nothing new |
 | morning read | the session that runs the cycle | the nightly local jobs' outcome and last exit, the hosts' disks, the stack against `main` | a finding in the backlog, or a row for the operator | a failure found that no line had announced | a local job writes these as lines the driver reads |
-| handover | the operator's agreed time | the five points, the stack, the loop's own measures | what the next session or the operator takes up | the handover section in `cycle.md` | it fires once |
+| handover | the operator's agreed time | the five points, the stack, the loop's own measures ([cycle-ledger.md](cycle-ledger.md)) | what the next session or the operator takes up | the handover section in `cycle.md` | it fires once |
 
 No row reads a run's log on a schedule: the pulse and `runs alerts` report a run's events as they
 land, with no model. Where a firing finds itself doing what a command could (counting live runs,
@@ -49,7 +49,8 @@ bun .claude/skills/run-improvement-campaign/scripts/timers.ts <transcript.jsonl 
 ```
 
 It prints one line a timer (id, schedule, firings, changed, quiet) and the totals for recurring and
-one-shot timers. The split is read from each firing's tool calls and is an estimate. Read it with
-three questions. Which recurring timer is mostly quiet, and what condition was it polling? Which
+one-shot timers. The split is read from each firing's tool calls and is an estimate. A recurring
+timer whose firings are mostly quiet reads a condition: move the condition into `due` or a local
+job, or retire the timer. Read the output with three questions. Which recurring timer is mostly quiet, and what condition was it polling? Which
 change did a firing make that an event had already announced, so that two owners read one fact?
 Which step in `cycle.md` waited for a firing that came late, and what would have announced it?

@@ -62,7 +62,7 @@ describe("what a session's timers did", () => {
   ];
 
   it("counts each timer's firings by whether the turn changed anything or ended in a line", () => {
-    const [hourly, once, never] = timersIn(transcript);
+    const [hourly, once, never] = timersIn([transcript]);
     expect(hourly).toMatchObject({ id: "aaaaaaaa", cron: "13 * * * *", recurring: true });
     expect(hourly).toMatchObject({ firings: 3, changed: 1, quiet: 1 });
     expect(once).toMatchObject({ id: "bbbbbbbb", recurring: false, firings: 1, changed: 1, quiet: 0 });
@@ -70,12 +70,46 @@ describe("what a session's timers did", () => {
   });
 
   it("counts a line once where a copied session repeats it, and nothing from before the time asked for", () => {
-    expect(timersIn([...transcript, ...transcript])[0]).toMatchObject({ firings: 3 });
-    expect(timersIn(transcript, "2026-11-10")).toEqual([]);
+    expect(timersIn([transcript, transcript])[0]).toMatchObject({ firings: 3 });
+    expect(timersIn([transcript], "2026-11-10")).toEqual([]);
+  });
+
+  it("keeps the kind of a timer made before the time asked for, read with its offset", () => {
+    const later = line("user", "the timer's prompt", {
+      scheduledTaskId: "dddddddd",
+      timestamp: "2026-11-09T13:00:00.000Z",
+    });
+    // 13:30 at +01:00 is 12:30Z: after the creation at 12:00Z and before the firing at 13:00Z.
+    const [made] = timersIn(
+      [[...create("c4", "dddddddd", "0 */2 * * *", true), later]],
+      "2026-11-09T13:30+01:00",
+    );
+    expect(made).toMatchObject({ id: "dddddddd", recurring: true, cron: "0 */2 * * *", firings: 1 });
+  });
+
+  it("reads a timer whose creation is absent as of unknown kind, in neither total", () => {
+    const lines = timerLines(timersIn([[fired("eeeeeeee"), says("Nothing due.")]]));
+    expect(lines[0]?.split(" · ").slice(0, 3)).toEqual(["eeeeeeee", "?", "unknown"]);
+    expect(lines.slice(1).map((each) => /(\d+) firing/u.exec(each)?.[1])).toEqual(["0", "0"]);
+  });
+
+  it("ends a firing at the end of its file, so the next file's work is not credited to it", () => {
+    const first = [...create("c5", "ffffffff", "5 * * * *", true), fired("ffffffff"), says("Nothing due.")];
+    const second = [
+      line("assistant", [{ type: "tool_use", id: "x", name: "Edit", input: { file_path: "/y" } }]),
+    ];
+    expect(timersIn([first, second])[0]).toMatchObject({ firings: 1, changed: 0, quiet: 1 });
+  });
+
+  it("reads an append to a file as a change and an append of errors as none", () => {
+    const firing = (command: string) =>
+      timersIn([[...create("c6", "abababab", "9 * * * *", true), fired("abababab"), bash(command)]])[0];
+    expect(firing("echo row >> cycle.md")).toMatchObject({ changed: 1 });
+    expect(firing("bun run runs status 2>> /tmp/err")).toMatchObject({ changed: 0 });
   });
 
   it("prints the timers that fired, the busiest first, and the totals with their shares", () => {
-    expect(timerLines(timersIn(transcript))).toEqual([
+    expect(timerLines(timersIn([transcript]))).toEqual([
       "aaaaaaaa · 13 * * * * · recurring · 3 fired, 1 changed, 1 quiet · watch aaaaaaaa",
       "bbbbbbbb · 7 12 10 11 * · once · 1 fired, 1 changed, 0 quiet · watch bbbbbbbb",
       "recurring: 2 timer(s), 1 never fired · 3 firing(s), 1 changed (33%), 1 quiet (33%)",

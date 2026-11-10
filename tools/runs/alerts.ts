@@ -158,15 +158,33 @@ function rowsHere(now: number): HostRows {
   return { rows, held: held.map(({ name }) => name) };
 }
 
-/** A host's answer, or null for one that gave none a look can read. */
+/** Whether `value` is a promotion as this tree reads one (`Promotion`). */
+function readsPromotion(value: unknown): boolean {
+  const promotion = asRecord(value);
+  const read = asRecord(promotion?.read);
+  const readable = promotion?.read === null || (isString(read?.session) && asRecord(read?.tally) !== null);
+  return isString(promotion?.digest) && readable;
+}
+
+/** Whether `value` is a row as this tree reads one (`Row`). */
+function readsRow(value: unknown): boolean {
+  const row = asRecord(value);
+  return (
+    isString(row?.name) &&
+    isString(asRecord(row?.state)?.kind) &&
+    Array.isArray(row?.kept) &&
+    Array.isArray(row?.promotions) &&
+    row.promotions.every(readsPromotion)
+  );
+}
+
+/** A host's answer, or null for one that gave none a look can read: a peer on an older tree sends
+ *  rows that lack a part, such as `state`, and reads as a host down. */
 function answerOf(lines: readonly string[] | null): HostRows | null {
   if (lines === null) return null;
   try {
     const answer = parseJsonAs<HostRows>(lines.join("\n"));
-    const whole = answer.rows.every(
-      ({ name, promotions, kept }) => isString(name) && Array.isArray(promotions) && Array.isArray(kept),
-    );
-    return whole && Array.isArray(answer.held) ? answer : null;
+    return answer.rows.every(readsRow) && Array.isArray(answer.held) ? answer : null;
   } catch {
     return null;
   }
@@ -269,7 +287,7 @@ export function alertsOf(
   const next: Record<string, Seen> = {};
   for (const host of down) {
     if (before !== null && !before.down.includes(host)) {
-      lines.push(`${host}: did not answer; its runs stay as last seen`);
+      lines.push(`${host}: gave no answer this tree reads; its runs stay as last seen`);
     }
   }
   for (const [name, seen] of Object.entries(before?.runs ?? {})) {
@@ -287,7 +305,7 @@ export function alertsOf(
     next[name] = seenOf(row, host);
   }
   if (before === null) {
-    const silent = down.length === 0 ? "" : `; ${down.join(", ")} did not answer`;
+    const silent = down.length === 0 ? "" : `; ${down.join(", ")} gave no answer this tree reads`;
     lines.push(
       `first look: recorded ${plural(current.size, "run")} on ${plural(heard.length, "host")}, and each later look prints what is new${silent}`,
     );

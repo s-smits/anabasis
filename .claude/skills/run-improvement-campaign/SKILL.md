@@ -16,6 +16,26 @@ Only a fresh campaign is evidence of climb (`AGENTS.md`, section 10, item 9); se
 continuations at another commit prove paths only. No gain is bought with honesty: a looser level, a
 reused solve, a leaked held-out task or a target given to the Examiner establishes nothing.
 
+## What to do when
+
+Four things are fixed: the iteration's order, with a gate passed only by its step or a row in
+`deviations.md`; a prediction on record before a fork's `--yes`; the operator's decisions
+(`AGENTS.md`, section 3) and the words `cycle.md` records; and that a fix counts only once a fresh
+run forked at its head has read it. Everything else is the session's judgement: which lane, lever or
+reading, and how far to go in one sitting. Read the script first and decide after it.
+
+| When | Read first | Then |
+| --- | --- | --- |
+| starting, resuming or woken with nothing named | `wri2p2.ts due`, then `cycle.md` | the live run's trigger it lists, else the longest-standing step; `next <dir>` prints it whole |
+| a report, promotion, starter read or ending lands | `runs view <name>`; comparison-reading's `starter-reads.ts` after a promotion | "Milestones"; resolve that run's predictions with the log's length; at a trigger, `wri2p2.ts open` |
+| a slot is free | `runs active`, `runs usage`, the cycle's `run-queue.md` | the first entry marked `ready: yes`: its `predictions-<run>.md`, the dry run, then `runs fresh` |
+| lanes are out, or a synthesis is written | `wri2p2.ts next <dir>`, `wri2p2.ts ledger <dir>` | the iteration's steps 2 and 3 |
+| a fix is ready | stack-pr's `stack.ts`, repository-practice's `preflight.ts` | step 4, its before-and-after, then step 5 |
+| the stack moves while runs are live | the `measures` lines of `wri2p2.ts due`, `runs source <name>` | "The running window", step 3 |
+| a run bills while its milestone stays put | `runs pulse <name>`, `wri.ts read --log <log>` | "A stall", then "The walk" |
+| a step has stood for a day, or two sessions hold one step | the hours `due` prints; the rows of `cycle.md` | take it, pass it in `deviations.md`, or name its one holder in `cycle.md` |
+| a handover is due, or a timer fires with nothing to do | `timers.ts <the session's transcripts>` | "Timers": retire or retime it; then the five points |
+
 ## The release cycle
 
 A cycle runs on the operator's word for it ("work towards 0.6.4"). That word covers the cycle's runs,
@@ -43,6 +63,9 @@ never copied.
 
 - `cycle.md`: the word, the threshold, the reviews and one log line per step, laid out as
   [references/cycle-ledger.md](references/cycle-ledger.md).
+- `run-queue.md`: the runs to launch next, in order, each with `ready: yes` or `ready: no` and the
+  gate that moves it to yes on evidence in the ledger. A timer launches only an entry marked ready
+  and never marks one.
 - Two files for each run, each the one owner of its fact. `predictions-<run>.md`, written before
   that run's `--yes` (the first solve comes minutes after the opening), holds the rows it settles in
   a table whose first column is `id`:
@@ -86,6 +109,7 @@ command:
 
 ```sh
 bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts [<part> ...] [--promotions 2] [--hours 12] [--days 2]
+bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts due [<part> ...] [--days 2]
 bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts open <name>[,<name>] [--out <dir>]
 bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts next <dir>
 ```
@@ -93,6 +117,9 @@ bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts next <dir>
 It reads the central host's gathered copies of every host's runs, needing no ssh or env file, writes
 only an investigation's files, and stops, launches and merges nothing. With no verb it prints one row
 a run with its step: `run`, `open` with its trigger, or the step its investigation has reached.
+`due` is the same reading in a few lines: how many steps are owed and for how long the oldest has
+stood, one line a step with the command that prints it whole, a count of the steps nobody has taken
+for `--days`, and a `measures` line for each live run.
 
 1. **Trigger.** Whichever comes first: two promotions, twelve hours since the opening, a scored
    comparison that left no task untied, or an ending after a comparison. The trigger stops nothing.
@@ -164,7 +191,11 @@ each pull request stacks on the one before. Nothing in an iteration is merged; t
    launches once a login frees a slot: a landing beneath replays the pull requests above it onto new
    heads. Tag `run/<name>/1` at the commit and push it.
 3. **Read** with `wri2p2.ts` at every review and milestone, resolving each prediction the hour its
-   event lands. A defect seen live goes into the plan; the run is not stopped to fix it.
+   event lands. A defect seen live goes into the plan; the run is not stopped to fix it. A live run
+   measures its own commit alone: each `measures` line of `wri2p2.ts due` counts the files of `src`,
+   `vendor` and `package.json` that differ on the head, and none of them is measured until a run is
+   forked there. So stack what no run runs (tools, tests, skills) as it is ready, gather what a run
+   does run into the iteration's one pull request, and fork at its head before stacking the next.
 
 ### The improvement window
 
@@ -351,39 +382,57 @@ tasks together.
 
 ## Timers
 
-Timers arrange this procedure and add no scheduler. Keep each timer, its authority and one row per
-firing in `cycle.md`.
+A timer wakes a model for a judgement. Whether anything is due is a condition, and code reads it
+with no model: the anti-stall hook's pulse and `runs alerts` (a local job runs it) report each
+report, promotion, starter read, ending and stall as it lands, a subagent's ending wakes its
+session, and `wri2p2.ts due` prints each step owed with the hours it has stood. So no timer polls a
+run or a folder, and none repeats a fact one of these reports. Keep each timer with its id, schedule
+and authority in `cycle.md`; [references/timers.md](references/timers.md) holds each timer's map and
+what its prompt carries.
 
 Every firing follows one protocol; what it reads and concludes between steps is the session's
 judgement.
 
-1. **Read the state**: `cycle.md`, each run's files (write any that are missing) through
-   `wri2p2.ts ledger <cycle folder>`, and `wri2p2.ts` over the cycle's runs.
-2. **Resolve predictions** whose event landed or whose deadline passed, with the settling count and
-   time; a live run's unmet row stays `pending`, and one that can no longer trigger is `unreached`. A
-   written resolution stays, and a disagreeing recount adds a row; a falsified row opens a triage row.
-3. **Act**: take the step `wri2p2.ts` names, within recorded authority, and read any milestone that
-   landed. Keep one triage list (problem, link, event, status), ranked by first failed link and then
-   by how many runs show it.
-4. **Re-arm**: set a one-shot at the next event a log predicts (for a comparison, scored tasks ×
-   solves a side × 2 × median solve minutes ÷ concurrent solves), and once every forked run has
-   opened, one at the latest opening plus each time-bound prediction. Delete replaced timers by id.
-5. **Log** one Firings row: time with UTC offset, findings, rows resolved, whether the firing was
-   useful and when it should have fired, and timer changes. Speak to the operator only when a
-   milestone landed, a run stalled or ended, or a prediction resolved.
+1. **Read the state**: the clock (`date -u`), `wri2p2.ts due`, then in `cycle.md` the authority, the
+   queue and which session holds a step. Where nothing is owed and no slot is free, answer in one
+   line and write nothing.
+2. **Take one step** within recorded authority: the trigger or step `due` lists first that no other
+   session holds, a free slot's fork, or a landed milestone. Resolve the predictions whose event
+   landed or whose deadline passed, with the settling count and time; a live run's unmet row stays
+   `pending`, and one that can no longer trigger is `unreached`. A written resolution stays, and a
+   disagreeing recount adds a row; a falsified row opens a row in the one triage list (problem,
+   link, event, status), ranked by first failed link and then by how many runs show it.
+3. **Chain or rest**: where `due` still lists a step this session can take, set a one-shot ten
+   minutes on that carries the same prompt; otherwise one at the next event a log predicts (for a
+   comparison, scored tasks × solves a side × 2 × median solve minutes ÷ concurrent solves). Delete
+   replaced timers by id.
+4. **Log** one row where something changed: the time the clock gave, what moved, the rows resolved
+   and the timer changes. Speak to the operator only when a milestone landed, a run stalled or
+   ended, or a prediction resolved.
 
-| Timer | When | Its action |
+| Timer | When | It wakes the session to |
 | --- | --- | --- |
-| pulse | every 290 s: one Monitor on `bun run runs pulse --every 290 --state <file>` | on a milestone, ending or stall line, the protocol: a triggered run starts an iteration, a freed slot gets a fresh run at the top |
+| none: the pulse and the alerts | as an event lands; the pulse every 290 s through the hook, or where a session has none, one Monitor on `bun run runs pulse --every 290 --state <file>` | read that milestone and follow the protocol: a triggered run starts an iteration, a freed slot gets the queue's next ready run |
+| driver | recurring, every two hours, with its ten-minute chain while steps are owed | the protocol, for a step no event announces |
 | milestone | one-shot at a predicted event or deadline | that milestone or row |
-| cycle review | one-shot at the latest opening plus twelve hours, and the last stop plus twelve hours | the step `wri2p2.ts` names; at the window's end, what is proved and left |
-| handover | one-shot at the agreed time | five points, changes, open decisions, which timers were useful |
+| open decisions | recurring, every four hours | decide the routine doubts, each with what would overturn it, and list for the operator those section 3 reserves |
+| morning read | recurring, once a day after the nightly local jobs | read what changes once a night and no job reports: those jobs' outcome and last exit, the hosts' disks, where the stack stands on `main` |
+| handover | one-shot at the agreed time | the five points, changes, open decisions and the loop's own measures |
 
-The pulse is the one recurring watch; re-arm its Monitor at each expiry, and never let a one-off
-wait stand in for it. A `CronCreate` timer lives only in its session, fires only while it is idle,
-and expires after seven days if recurring, so write each prompt to stand alone after compaction:
-absolute paths, ledger files, rows, runs, authority and "follow the firing protocol of
-run-improvement-campaign's Timers".
+At a handover the timers are counted instead of asked:
+`bun .claude/skills/run-improvement-campaign/scripts/timers.ts <the session's transcripts>` prints
+each timer's firings, those that changed something and those that ended quiet. A recurring timer
+whose firings are mostly quiet reads a condition: move the condition into `due` or a local job, or
+retire the timer. The handover also gives the loop's own measures: the hours from each trigger's
+event to its fork's `campaign.opened`, the predictions on a fix that held in the next fresh run out
+of those written, and the files each live run does not measure.
+
+The pulse is the one recurring watch of a run, and a one-off wait never stands in for it. A
+`Monitor` expires within half an hour and each re-arm is a model turn, so it serves a bounded wait.
+A `CronCreate` timer lives only in its session, fires only while it is idle, and expires after seven
+days if recurring, so each prompt stands alone after compaction: absolute paths, the ledger, the
+authority in the operator's words with its date, the day to create it again, and "follow the firing
+protocol of run-improvement-campaign's Timers".
 
 ## Which skill each step uses
 

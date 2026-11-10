@@ -3,6 +3,7 @@
 // default a recorded reason passes (operator, 7 November), so each is walked owed, met and deviated.
 import { afterAll, describe, expect, it } from "bun:test";
 import {
+  dueLines,
   ledgerViews,
   lengthsIn,
   nextOf,
@@ -417,5 +418,78 @@ describe("the next step of an investigation", () => {
   it("reads the pull request only from its own line, not from a number cited in the prose", () => {
     expect(pullOf("Fixed on #602, after #601's round.\n")).toBeNull();
     expect(pullOf("# Plan\n\nPull request: #603\n")).toBe(603);
+  });
+});
+
+describe("the short view a timer reads", () => {
+  const now = OPENED + 100 * 3_600_000;
+  const standing = (name: string, isLive: boolean, dir: string | null, step: string[], last = 99) => ({
+    row: rowOf({ name, host: "here", live: isLive }, [event(0, "campaign.opened")], now),
+    last: OPENED + last * 3_600_000,
+    dir,
+    step,
+  });
+  // Each folder was last written this many hours after the opening.
+  const written = new Map([
+    ["/wri/a", 97],
+    ["/wri/b", 60],
+    ["/wri/old", 10],
+  ]);
+  const changedAt = (dir: string) => OPENED + (written.get(dir) ?? 0) * 3_600_000;
+
+  it("says nothing is owed while every run runs on or is measured, and counts the live ones", () => {
+    const lines = dueLines(
+      [
+        standing("r1", true, null, ["step: run"]),
+        standing("r2", false, "/wri/a", ["step: done · #7 is measured by r2-forkedPR7"]),
+      ],
+      changedAt,
+      now,
+    );
+    expect(lines).toEqual(["due at 2026-11-08T04:00Z · nothing owed · 1 run(s) live"]);
+  });
+
+  it("lists a live run's trigger first, then the longest-standing step, one line a folder's step", () => {
+    const lines = dueLines(
+      [
+        standing("r1", false, "/wri/a", ["deviated: lanes · by hand", "step: vet · vetting.md names no P2"]),
+        standing("r2", false, "/wri/b", ["step: outcomes · resolve C1"]),
+        standing("r3", false, "/wri/b", ["step: outcomes · resolve C1"]),
+        standing("r4", true, null, ["step: open · 2 promotions", "  bun wri2p2.ts open r4"]),
+        standing("r5", false, null, ["step: open · closed (budget)"], 88),
+      ],
+      changedAt,
+      now,
+    );
+    expect(lines[0]).toBe("due at 2026-11-08T04:00Z · 4 step(s) owed, the oldest for 40.0 h · 1 run(s) live");
+    expect(lines.slice(1).map((line) => line.split(" · ").slice(0, 3).join(" · "))).toEqual([
+      "open · new · r4",
+      "outcomes · 40.0 h · r2 and 1 more",
+      "open · 12.0 h · r5",
+      "vet · 3.0 h · r1",
+    ]);
+    expect(lines[1]).toEndWith(
+      "2 promotions · bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts open r4",
+    );
+    expect(lines[2]).toEndWith("wri2p2.ts next /wri/b");
+  });
+
+  it("only counts a step nobody has taken for the days, a closed run's unread trigger included", () => {
+    const lines = dueLines(
+      [
+        standing("r1", false, "/wri/old", ["step: plan · plan.md is missing"]),
+        standing("r2", false, null, ["step: open · closed"], 40),
+        standing("r3", false, "/wri/a", ["step: plan · plan.md is missing"]),
+      ],
+      changedAt,
+      now,
+    );
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toContain("1 step(s) owed, the oldest for 3.0 h · 0 run(s) live");
+    expect(lines[2]).toStartWith("and 2 step(s) owed for 2 day(s) or more");
+    // The same steps are all listed once the window is widened to hold them.
+    expect(dueLines([standing("r1", false, "/wri/old", ["step: plan · x"])], changedAt, now, 5)).toHaveLength(
+      2,
+    );
   });
 });

@@ -5,7 +5,7 @@ import { looseFlagsOf } from "../d2/campaign-terms.ts";
 import { keysIf } from "#src/meta/optional-key.ts";
 import { lastLaunch } from "./receipt.ts";
 import { lifeOf } from "./diagnosis.ts";
-import { processes, runs, SEAT } from "./registry.ts";
+import { flagOf, processes, runs, SEAT } from "./registry.ts";
 
 export interface Live {
   readonly name: string;
@@ -39,7 +39,7 @@ export const payerOf = (login: string | undefined, flags: readonly string[]): st
 export function seatsIn(table: readonly { readonly args: readonly string[] }[], host: string): Live[] {
   const seats = table.flatMap(({ args }) => {
     const own = args.slice(0, args.includes("--") ? args.indexOf("--") : args.length);
-    const flag = (name: string) => (own.includes(name) ? (own[own.indexOf(name) + 1] ?? null) : null);
+    const flag = (name: string) => flagOf(own, name) ?? null;
     const name = flag("--name");
     return own.some((arg) => arg.endsWith(SEAT)) && own.includes("start") && name !== null
       ? [{ name, login: flag("--login"), host }]

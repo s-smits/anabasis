@@ -5,7 +5,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { capturedSpawn, runtimeProcess } from "../src/meta/process.ts";
 import { join } from "../src/meta/path.ts";
 import { nextRun, receipts } from "../tools/runs/receipt.ts";
-import { BUILDER, packOf, processes, type Run, runNamed, writers } from "../tools/runs/registry.ts";
+import { BUILDER, flagOf, packOf, processes, type Run, runNamed, writers } from "../tools/runs/registry.ts";
 
 const root = mkdtempSync(join(tmpdir(), "ana-runs-registry-test-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -71,6 +71,15 @@ describe("a run's writers", () => {
     expect(writers(round, running).map(({ pid }) => pid)).toEqual([1, 2, 6, 12, 14, 15, 16, 19]);
     const solve: Run = { ...round, name: "r1-c01-opus-1234", end: "solve.finished" };
     expect(writers(solve, running).map(({ pid }) => pid)).toEqual([5]);
+  });
+
+  it("reads a flag in both forms, and an absent flag as absent rather than as the first word", () => {
+    expect(flagOf(["bun", "x.ts", "--name", "r1"], "--name")).toBe("r1");
+    expect(flagOf(["bun", "x.ts", "--name=r1"], "--name")).toBe("r1");
+    expect(flagOf(["bun", "x.ts", "--names", "r1"], "--name")).toBeUndefined();
+    // Until 10 November a campaign command with no --name read as writing the run named `bun`.
+    const unnamed = [{ pid: 1, cwd: "/wt", args: ["bun", "tools/d2/harness-builder.ts", "--unattended"] }];
+    expect(writers({ ...round, name: "bun" }, unnamed)).toEqual([]);
   });
 });
 

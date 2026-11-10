@@ -35,12 +35,14 @@ import { releaseRoot } from "#src/wall/seat-root.ts";
 import {
   BUILDER,
   DRAFT,
+  flagOf,
   keepers,
   logEvents,
   processes,
   type Run,
   runNamed,
   type Running,
+  runsAs,
   writers,
 } from "./registry.ts";
 import { seedCut } from "./seed.ts";
@@ -87,15 +89,13 @@ export function leftOpen(run: Pick<Run, "path" | "seed">): (SolveDirs & { build?
  *  session is the stopped process's own, by its flags, since a log's last session may be another
  *  run's. Both campaigns stopped by signal on 10 October lost a session that was running. */
 function after(run: Run, ran: readonly string[]): string {
-  const ranAs = (tool: string) => ran.some((arg) => arg.endsWith(tool));
-  if (ranAs(EXAMINE) || ranAs(DRAFT)) {
+  if (runsAs(ran, [EXAMINE, DRAFT])) {
     return "An Examiner session's id names one session: the next takes another --session";
   }
-  if (ranAs(BUILDER)) {
+  if (runsAs(ran, [BUILDER])) {
     return "A campaign goes on from its log under the same name, and the session it was inside has spent its id";
   }
-  const at = ran.indexOf("--session");
-  const session = at === -1 ? undefined : ran[at + 1];
+  const session = flagOf(ran, "--session");
   return (
     (session === undefined ? null : spent(logEvents(run.path), session)) ??
     "A round or a standalone comparison goes on from it when started again under the same id"

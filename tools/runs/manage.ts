@@ -78,6 +78,7 @@ import {
   type Run,
   runNamed,
   standing,
+  waiters,
   writers,
 } from "./registry.ts";
 import { stop } from "./stop.ts";
@@ -173,6 +174,11 @@ function kindsNamed(after: string): readonly string[] {
 
 async function pauseAt(run: Run, after: string): Promise<void> {
   const kinds = kindsNamed(after);
+  // One waiter a run: a `continue --after` would start again a run another's pause had stopped.
+  const waiting = waiters(run.name);
+  if (waiting.length > 0) {
+    throw new Error(`${run.name} already waits to stop in process ${waiting.join(", ")}`);
+  }
   const events = logEvents(run.path);
   const base = countOf(events, after);
   const allowed = solvesMs(events);
@@ -187,7 +193,11 @@ async function pauseAt(run: Run, after: string): Promise<void> {
   const patience = Date.now() + allowed;
   // A log runs to tens of megabytes, and one that did not grow says what it said.
   let size = -1;
-  while (writers(run, processes()).length > 0) {
+  // A kept run between two starts, at a login's limit, still owes the point a word names: its keeper
+  // starts it again, and a stop now would read a comparison it never wrote.
+  const waits = () =>
+    writers(run, processes()).length > 0 || (after !== "next" && keepers(run.name).length > 0);
+  while (waits()) {
     const grown = statSync(run.path).size;
     // Past its patience nothing need have moved: a held solve records nothing.
     const late = after === "next" && Date.now() > patience;

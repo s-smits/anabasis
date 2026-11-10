@@ -4,7 +4,7 @@ import { append, type EventKind, type LogEvent } from "../src/kernel/log.ts";
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { join } from "../src/meta/path.ts";
-import { capturedExecPath, capturedSpawn } from "../src/meta/process.ts";
+import { capturedExecPath, capturedSpawn, runtimeProcess } from "../src/meta/process.ts";
 import { LIMITS } from "../tools/d2/campaign.ts";
 import { loginEnv, restsAfter, solvesMs } from "../tools/runs/manage.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
@@ -178,7 +178,7 @@ describe("going on with a campaign", () => {
     const row = `${String(keeper.pid)} ${capturedExecPath} tools/runs/cli.ts keep ${name} --here`;
     try {
       const paused = made.run(
-        `import { pause } from "REPOSITORY/tools/runs/manage.ts"; await pause(["${name}", "--after", "finished", "--yes"]);`,
+        `import { pause } from "REPOSITORY/tools/runs/manage.ts"; await pause(["${name}", "--yes"]);`,
         { FAKE_PS: row },
       );
       expect({ code: paused.code, err: paused.err }).toEqual({ code: 0, err: "" });
@@ -188,6 +188,53 @@ describe("going on with a campaign", () => {
     } finally {
       keeper.kill();
     }
+  });
+
+  it("waits for a named point while a keeper holds a run between two starts, instead of stopping it early", () => {
+    const made = fakeHosts();
+    fixtures.push(made.root);
+    const folder = join(made.main, ".ana", "d2", "between");
+    mkdirSync(folder, { recursive: true });
+    append(join(folder, "log.jsonl"), "campaign.ended", { ending: "environment" });
+    const row = `${String(runtimeProcess.pid)} ${capturedExecPath} tools/runs/cli.ts keep between --here`;
+    // The keeper is this test's own process, so the pause must still be waiting when the race ends.
+    const raced = made.run(
+      'import { pause } from "REPOSITORY/tools/runs/manage.ts"; const at = await Promise.race([pause(["between", "--after", "reported", "--yes"]).then(() => "stopped"), Bun.sleep(1500).then(() => "waits")]); console.log(at); process.exit(0);',
+      { FAKE_PS: row },
+    );
+    expect(raced.out.trim().split("\n").at(-1)).toBe("waits");
+  });
+
+  it("refuses a second waiter on one run, which could start again a run the first had stopped", () => {
+    const made = fakeHosts();
+    fixtures.push(made.root);
+    const folder = join(made.main, ".ana", "d2", "waited");
+    mkdirSync(folder, { recursive: true });
+    append(join(folder, "log.jsonl"), "campaign.ended", { ending: "environment" });
+    const pauseOf = (row: string) =>
+      made.run(
+        'import { pause } from "REPOSITORY/tools/runs/manage.ts"; await pause(["waited", "--after", "compacted", "--yes"]);',
+        { FAKE_PS: row },
+      );
+    const waiting = `99999 ${capturedExecPath} tools/runs/cli.ts pause waited --after reported --yes`;
+    const refused = pauseOf(waiting);
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain("already waits to stop in process 99999");
+    // The name may follow the flags, as `parseArgs` takes it.
+    const flagFirst = pauseOf(
+      `99999 ${capturedExecPath} tools/runs/cli.ts pause --after reported waited --yes`,
+    );
+    expect(flagFirst.err).toContain("already waits to stop in process 99999");
+    // Another run's waiter, or a continue that waits for nothing, leaves this pause free.
+    for (const row of [
+      waiting.replace("waited", "other"),
+      `99999 ${capturedExecPath} tools/runs/cli.ts continue waited --login 1 --yes`,
+    ]) {
+      expect(pauseOf(row)).toMatchObject({ code: 0, err: "" });
+    }
+    expect(
+      pauseOf(`99999 ${capturedExecPath} tools/runs/cli.ts continue waited --after compacted --yes`).code,
+    ).toBe(1);
   });
 });
 

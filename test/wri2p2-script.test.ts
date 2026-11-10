@@ -122,6 +122,12 @@ describe("a run's step at its trigger", () => {
   it("waits while a pause of the run is armed, and opens once the run has stopped", () => {
     const armed = pausing(["bun", "tools/runs/cli.ts", "pause", "r1", "--after", "reported", "--yes"]);
     expect(openingOf(row, "2 promotions", armed)[0]).toStartWith("step: waits");
+    // A `continue --after` stops the run too, so it is the pause's waiter as well (`waiters`).
+    const continuing = pausing(["bun", "tools/runs/cli.ts", "continue", "r1", "--after", "compacted"]);
+    expect(openingOf(row, "2 promotions", continuing)[0]).toStartWith("step: waits");
+    expect(
+      openingOf(row, "2 promotions", pausing(["bun", "tools/runs/cli.ts", "continue", "r1"]))[0],
+    ).toStartWith("step: pause");
     expect(openingOf(row, "2 promotions", pausing(["bun", "cli.ts", "pause", "r2"]))[0]).toStartWith(
       "step: pause",
     );

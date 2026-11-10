@@ -92,6 +92,7 @@ import {
   processes,
   readable,
   readNamed,
+  waiters,
 } from "#tools/runs/registry.ts";
 import { catalogueText, lanesOf } from "#tools/wri/catalogue.ts";
 import { INVESTIGATION, SHARED, SYNTHESIS, VETTING } from "#tools/wri/index.ts";
@@ -562,8 +563,9 @@ export function openingOf(
   if (trigger === null) return ["step: run"];
   const command = `  ${openingCommand(row.name, row.live, row.host === HERE ? "" : `on ${row.host} `)}`;
   if (!row.live) return [`step: open · ${trigger}`, command];
-  const armed = running.some(({ args }) => args.includes("pause") && args.includes(row.name));
-  if (armed) return [`step: waits · ${trigger}; its pause after the next comparison is armed`];
+  if (waiters(row.name, running).length > 0) {
+    return [`step: waits · ${trigger}; its pause after the next comparison is armed`];
+  }
   return [
     `step: pause · ${trigger}; the investigation opens once the run stops after its next comparison`,
     command,

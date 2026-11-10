@@ -35,8 +35,9 @@
  * check, ruled at fault on 10 answers, then refused.
  *
  * Reference measurements are told by epoch: on 16 October a session after a promotion read the
- * starter's admission counts as the new reference's. Nothing here names a harness, a check or a
- * target, and no count carries a band or a number to reach (the operator's decision of 11 October).
+ * starter's admission counts as the new reference's. Nothing here names a harness or a target, no
+ * check but one a ruling found at fault, and no count carries a band or a number to reach (the
+ * operator's decision of 11 October).
  */
 import { scoresIn } from "../kernel/compare.ts";
 import { proposalsOf } from "../kernel/history.ts";

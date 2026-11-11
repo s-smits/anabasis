@@ -18,8 +18,11 @@
  * refused, renaming the denied directory itself is refused, and renaming its parent succeeds and
  * returns the canary at exit 0. These rules refuse that last rename.
  *
- * The hole belongs to the allow-by-default posture the command wall needs, so that a command
- * reaches the network and the host's programs (`isolation.ts`).
+ * The command wall refuses a write outside the seat's root, which closes most of that hole, and
+ * these rules close the rest: a command may also write in a folder named as `mktemp` names one in
+ * the per-user temporary directory (`userTempRules`), so a denied root lying in such a folder, as a
+ * rehearsal's or a test's repository does, has an ancestor the command can rename. With the rules
+ * left out, `test/solve-sandbox.test.ts`'s rename returned the canary (11 November).
  *
  * Two deliberate departures from upstream:
  * - No `(with message ...)` log tag. Upstream tags its rules so a log stream can attribute

@@ -44,13 +44,8 @@ interface ParsedCliArgs {
  * The throw after `exit` is unreachable in a real process and is what makes the type `never`
  * without asserting it; a test that stubs `runtimeProcess.exit` reaches it and gets an error rather
  * than a function that quietly returned.
- *
- * `ExitWith` is exported because the annotation at each call site is load-bearing: TypeScript
- * narrows control flow through a call returning `never` only when the callee is a function
- * declaration or a const with an explicit type, so `const die: ExitWith = exitWith("x")` is what lets
- * `single.get("x") ?? die("--x is required")` read as `string`.
  */
-export type ExitWith = (message: string, code?: number) => never;
+type ExitWith = (message: string, code?: number) => never;
 
 interface Collected {
   single: Map<string, string>;
@@ -65,9 +60,9 @@ interface Collected {
 type OptionKind = "text" | "abs" | "int" | "flag" | "list";
 
 /** What a command's `run` returns: its exit code, or nothing for exit 0. */
-export type CommandResult = number | undefined | void;
+type CommandResult = number | undefined | void;
 
-export interface CommandSpec {
+interface CommandSpec {
   name: string;
   /** Printed whole for `--help`, and named after a refused argument. */
   usage: string;
@@ -86,7 +81,7 @@ export interface CommandArgs {
   flag: (name: string) => boolean;
   list: (name: string) => readonly string[];
 }
-export class CliArgumentError extends Error {}
+class CliArgumentError extends Error {}
 
 function quoted(name: string): string {
   return capturedJsonStringify(`--${name}`);
@@ -183,43 +178,6 @@ export function parseOrDie(
 }
 
 /**
- * A subcommand in front of its own options: `thread-state summary <file> --json`. The first token
- * selects the spec the rest is parsed against, so an option one command takes is refused on a
- * command that does not.
- */
-export function parseCommandOrDie(
-  die: ExitWith,
-  commands: Readonly<Record<string, CliOptionSpec>>,
-  argv: readonly string[] = Bun.argv.slice(2),
-): ParsedCliArgs & { command: string } {
-  const [command = "", ...rest] = argv;
-  const spec = Object.hasOwn(commands, command) ? commands[command] : undefined;
-  if (spec === undefined) {
-    die(`expected one of ${Object.keys(commands).join(", ")}, got ${capturedJsonStringify(command)}`);
-  }
-  return { command, ...parseOrDie(die, spec, rest) };
-}
-
-/** Refuse a relative path option through the script's own `die`, and return it resolved. */
-export function absoluteOption(die: ExitWith): (option: string, value: string) => string {
-  return (option, value) => {
-    if (!isAbsolute(value)) die(`--${option} must be an absolute path, got ${capturedJsonStringify(value)}`);
-    return resolve(value);
-  };
-}
-
-export function requiredOption(
-  die: ExitWith,
-  single: ReadonlyMap<string, string>,
-): (option: string) => string {
-  return (option) => {
-    const value = single.get(option);
-    if (value === undefined || value === "") die(`--${option} is required`);
-    return value;
-  };
-}
-
-/**
  * A run that ended with its own exit code and one line, as a validator's verdict does: the command
  * worked and the answer was no. Anything else a command throws exits 1 with the error's message.
  */
@@ -256,8 +214,9 @@ function commandArgs(spec: CommandSpec, parsed: ParsedCliArgs, die: ExitWith): C
   const value = (name: string): string | null => {
     const kind = kindOf(name, "text", "abs", "int");
     const raw = parsed.single.get(name);
-    if (raw === undefined) return null;
-    return kind === "abs" ? absoluteOption(die)(name, raw) : raw;
+    if (raw === undefined || kind !== "abs") return raw ?? null;
+    if (!isAbsolute(raw)) die(`--${name} must be an absolute path, got ${capturedJsonStringify(raw)}`);
+    return resolve(raw);
   };
   return {
     die,

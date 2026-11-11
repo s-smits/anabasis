@@ -1,5 +1,5 @@
 /**
- * The sign draws of a starter read (`tools/wri/selection.ts`), the per-task rows
+ * The sign draws of a starter read (comparison-reading's `selection.ts`), the per-task rows
  * `starterReads` gives, and what `starter-reads.ts` prints of them. Invented data only.
  */
 import { describe, expect, it } from "bun:test";
@@ -14,7 +14,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath } from "../src/meta/process.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
-import { stepCount } from "../tools/wri/selection.ts";
+import { stepCount } from "#skills/comparison-reading/scripts/selection.ts";
 import { roundSolves } from "./helpers/logged-round.ts";
 
 const STARTER = "a".repeat(64);

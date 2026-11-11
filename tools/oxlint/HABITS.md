@@ -349,7 +349,7 @@ campaign under `.ana/d2/<name>` (15 October):
 
 | Rule | It names | Here |
 | --- | --- | --- |
-| `no-hand-read-argv` | `.claude/skills/main/cli.ts` | Present. A skill script declares a `runCommand` spec, or passes its arguments to `parseOrDie` or `parseCommandOrDie`. The commands under `tools/` are outside the rule and parse with `parseArgs` from `#src/meta/process.ts` |
+| `no-hand-read-argv` | `.claude/skills/main/cli.ts` | Present. A skill script declares a `runCommand` spec, or passes its arguments to `parseOrDie`. The commands under `tools/` are outside the rule and parse with `parseArgs` from `#src/meta/process.ts` |
 | `no-hand-spelled-git` | `src/meta/git.ts` (`gitOutput`, `gitText`, `gitMaybe`), from skills, `src`, `tools/runs` and `tools/d2` | Present. Until 15 October the owner was `e3dfa9eb8:.claude/skills/main/git.ts`, which production cannot import, and `tools/runs` and `tools/d2` spelled git at five sites. The landing and gate commands of `tools/runtime`, and tests, are outside the rule: they read exit codes and feed input |
 | `no-lifetime-outside-owner` | `stageCommandIsolation` (`src/wall/isolation.ts`), `killProcessGroup` and `terminateAndReapProcessGroupId` (`src/meta/subprocess.ts`) | Present. The owner and its reader are the two files the rule exempts |
 

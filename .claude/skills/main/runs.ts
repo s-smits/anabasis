@@ -56,6 +56,7 @@ import { median } from "#src/meta/tally.ts";
 import { validityOf } from "#tools/d2/close.ts";
 import { ranWith, receipts } from "#tools/runs/receipt.ts";
 import { packOf } from "#tools/runs/registry.ts";
+import { summed } from "#tools/wri/folds.ts";
 import { overloadOf, waitedMs, waitsOf } from "#tools/wri/time.ts";
 import { campaignLogs, type Found, rehearsed } from "./logs.ts";
 import { MISSING } from "./print.ts";
@@ -217,11 +218,9 @@ function tallyOf(events: readonly LogEvent[], index: number): string {
 function heldOf(events: readonly LogEvent[]): Pick<Run, "reads" | "after" | "compared"> {
   const reads = starterReads(events);
   const starter = reads[0]?.starter;
-  const sum = (key: keyof Tally) =>
-    reads.reduce((all, { origins }) => all + origins[ORIGINS[2]].whole[key], 0);
   return {
     reads: reads.length,
-    after: { wins: sum("wins"), losses: sum("losses"), ties: sum("ties") },
+    after: summed(reads.map(({ origins }) => origins[ORIGINS[2]].whole)),
     compared: comparisonsOf(events).filter(
       ({ report, old, fresh }) => report !== null && fresh !== old && fresh !== starter,
     ).length,

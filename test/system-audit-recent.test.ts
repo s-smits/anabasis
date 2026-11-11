@@ -3,7 +3,8 @@
  * campaigns by their last event, read from a log's tail. These tests read temporary logs only.
  */
 import { afterAll, describe, expect, it } from "bun:test";
-import { lastAt, snapshotOf } from "#skills/system-audit/scripts/recent.ts";
+import { lastAt } from "#skills/main/logs.ts";
+import { snapshotOf } from "#skills/system-audit/scripts/recent.ts";
 import { sha256 } from "../src/meta/digest.ts";
 import { mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { capturedJsonStringify } from "../src/meta/json-runtime.ts";

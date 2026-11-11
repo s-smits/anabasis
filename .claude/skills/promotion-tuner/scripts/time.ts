@@ -14,11 +14,11 @@
 import type { LogEvent } from "#src/kernel/log.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
 import { isString } from "#src/meta/json-shape.ts";
+import { dollars } from "#tools/runs/said.ts";
 import { spansOf, unionMs } from "#tools/wri/time.ts";
 import type { Tree } from "./tree.ts";
 
 const hours = (ms: number) => (ms / HOUR_MS).toFixed(1);
-const dollars = (value: number) => `$${value.toFixed(2)}`;
 
 /**
  * The dollars each part billed between two events, and the tree's own sum over them. Each part is

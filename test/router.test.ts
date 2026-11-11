@@ -289,7 +289,7 @@ describe("the router on the command line", () => {
     rmSync(join(home, "bun.log"), { force: true });
     const result = spawnTextSync(shim, args, {
       cwd,
-      env: { ...env, TMPDIR: scratch, RUN_REMOTE: "0" },
+      env: { ...env, TMPDIR: scratch, RUN_REMOTE: "here" },
       timeout: 30_000,
     });
     expect(result.status, result.stderr).toBe(0);
@@ -342,7 +342,7 @@ describe.skipIf(realRsync === null)("which host runs a task", () => {
   const ran = (host: string): boolean =>
     calls(hostHome(host)).some((call) => call.args?.startsWith("run test") === true);
 
-  it("gives an unnamed task to the first host that is not busy by load or by this machine's slots, and never asks a host without checks", () => {
+  it("gives a task under RUN_REMOTE=any to the first host that is not busy by load or by this machine's slots, and never asks a host without checks", () => {
     const held = [1, 2].map((k) => join(queueOf("fake-mac"), `slot-${String(k)}`));
     const cases: [Record<string, string>, boolean, string, string[]][] = [
       [{ "fake-mac": "9.50 8" }, false, "fake-linux", ["fake-mac", "9.50", "8"]],
@@ -359,7 +359,7 @@ describe.skipIf(realRsync === null)("which host runs a task", () => {
       mkdirSync(queueOf("fake-mac"), { recursive: true });
       // A slot is a link whose target is its holder's PID, made in one step.
       for (const path of holds ? held : []) symlinkSync(String(runtimeProcess.pid), path);
-      const picked = run(["test"]);
+      const picked = run(["test"], { RUN_REMOTE: "any" });
       for (const path of holds ? held : []) rmSync(path);
       expect(picked.status, picked.stderr).toBe(0);
       expect(["fake-mac", "fake-linux"].filter(ran), picked.stderr).toEqual([expected]);
@@ -368,25 +368,71 @@ describe.skipIf(realRsync === null)("which host runs a task", () => {
     }
   });
 
-  it("takes a host by its place, name or ssh destination, and refuses one without checks or not listed", () => {
-    for (const choice of ["2", "zbook", "fake-linux"]) {
+  it("takes a host by its name or ssh destination, and refuses a place in the list, a host without checks or one not listed, naming the hosts that take checks", () => {
+    for (const choice of ["zbook", "fake-linux"]) {
       fresh();
       expect(run(["test"], { RUN_REMOTE: choice }).status).toBe(0);
       expect(["fake-mac", "fake-linux"].filter(ran), choice).toEqual(["fake-linux"]);
     }
-    for (const choice of ["peer", "9"]) {
+    for (const choice of ["1", "2", "peer", "9", "elsewhere"]) {
       fresh();
-      expect(run(["test"], { RUN_REMOTE: choice }).status, choice).toBe(2);
+      const refused = run(["test"], { RUN_REMOTE: choice });
+      expect(refused.status, choice).toBe(2);
+      expect(refused.stderr, choice).toContain(`RUN_REMOTE=${choice} names no host`);
+      expect(refused.stderr, choice).toContain("here, any or one of: m1, zbook");
       expect(connections()).toEqual([]);
+      expect(calls(home)).toEqual([]);
     }
   });
 
-  it("runs here where no host sets checks, and refuses a list it cannot read or one from an older hosts.js", () => {
+  it("runs a task here when RUN_REMOTE is unset, empty, here or 0, asking no host and no host lister although a host with checks would answer", () => {
+    const lister = join(runnerDir, "hosts.js");
+    const current = readFileSync(lister, "utf8");
+    const listed = join(root, "lister-ran");
+    for (const listing of ["real", "marked"]) {
+      if (listing === "marked") {
+        writeFileSync(
+          lister,
+          `require("node:fs").writeFileSync(${JSON.stringify(listed)}, "");\nprocess.exit(1);\n`,
+        );
+      }
+      try {
+        for (const choice of [undefined, "", "here", "0"]) {
+          fresh();
+          const local = run(["test"], { RUN_REMOTE: choice });
+          expect(local.status, `${listing} ${String(choice)}: ${local.stderr}`).toBe(0);
+          expect(lastCall(home), String(choice)).toMatchObject({
+            args: "run test",
+            bun: pinned,
+            active: "1",
+          });
+          expect(connections()).toEqual([]);
+          expect(existsSync(listed)).toBe(false);
+        }
+        if (listing === "marked") {
+          // The marking lister does mark where it is asked, so its absence above is a fact.
+          expect(run(["test"], { RUN_REMOTE: "any" }).status).toBe(2);
+          expect(existsSync(listed)).toBe(true);
+        }
+      } finally {
+        writeFileSync(lister, current);
+      }
+    }
     fresh();
-    expect(run(["test"], { ANA_HOSTS: JSON.stringify([PEER]) }).status).toBe(0);
+    expect(run(["test"], { RUN_REMOTE: "any" }).status).toBe(0);
+    expect(["fake-mac", "fake-linux"].filter(ran)).toEqual(["fake-mac"]);
+    expect(calls(home)).toEqual([]);
+  });
+
+  it("runs RUN_REMOTE=any here where no host sets checks, and refuses a list it cannot read or one from an older hosts.js", () => {
+    fresh();
+    expect(run(["test"], { RUN_REMOTE: "any", ANA_HOSTS: JSON.stringify([PEER]) }).status).toBe(0);
     expect(connections()).toEqual([]);
     expect(lastCall(home)).toMatchObject({ args: "run test", active: "1" });
-    expect(run(["test"], { ANA_HOSTS: "not a list" }).status).toBe(2);
+    const none = run(["test"], { RUN_REMOTE: "m1", ANA_HOSTS: JSON.stringify([PEER]) });
+    expect(none.status).toBe(2);
+    expect(none.stderr).toContain("ANA_HOSTS sets checks for no host");
+    expect(run(["test"], { RUN_REMOTE: "any", ANA_HOSTS: "not a list" }).status).toBe(2);
     const lister = join(runnerDir, "hosts.js");
     const current = readFileSync(lister, "utf8");
     writeFileSync(lister, 'console.log("m1 fake-mac 2");\n');
@@ -690,7 +736,7 @@ describe("this machine", () => {
     expect(stderr).not.toContain("ANA_HOSTS");
   });
 
-  it("runs RUN_REMOTE=0 here on the pinned Bun, reaps an orphaned test worker and spares an orphan that names the checkout", async () => {
+  it("runs RUN_REMOTE=here on the pinned Bun, reaps an orphaned test worker and spares an orphan that names the checkout", async () => {
     const token = source;
     const orphan = (argv0: string): number =>
       Number(
@@ -718,7 +764,7 @@ esac
     try {
       await waitFor(() => parentOf(worker) === "1", 5);
       fresh();
-      const local = run(["test"], { RUN_REMOTE: "0", PATH: `${filtered}:${env.PATH ?? ""}` });
+      const local = run(["test"], { RUN_REMOTE: "here", PATH: `${filtered}:${env.PATH ?? ""}` });
       expect(lastCall(home)).toMatchObject({ bun: pinned, active: "1" });
       expect(connections()).toEqual([]);
       expect(local.stderr).toContain(String(worker));
@@ -739,10 +785,10 @@ esac
   it("ends a task at its deadline and returns at once from one that ends before it", () => {
     const hung = join(root, "hung");
     const started = performance.now();
-    expect(run(["test", `hold:${hung}`], { RUN_REMOTE: "0", ANA_RUNNER_WALL: "1" }).status).not.toBe(0);
+    expect(run(["test", `hold:${hung}`], { RUN_REMOTE: "here", ANA_RUNNER_WALL: "1" }).status).not.toBe(0);
     expect(performance.now() - started).toBeLessThan(4000);
     const quick = performance.now();
-    expect(run(["test", "exit:4"], { RUN_REMOTE: "0", ANA_RUNNER_WALL: "30" }).status).toBe(4);
+    expect(run(["test", "exit:4"], { RUN_REMOTE: "here", ANA_RUNNER_WALL: "30" }).status).toBe(4);
     expect(performance.now() - quick).toBeLessThan(3000);
     expect(readdirSync(queueOf("local"))).toEqual([]);
   });

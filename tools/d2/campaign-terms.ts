@@ -25,7 +25,8 @@ import { parseArgs } from "#src/meta/process.ts";
 import { sameJsonValue } from "#src/meta/stable-json.ts";
 import { PACK_OPTIONS, projectOf } from "./campaign.ts";
 import type { Host } from "./host.ts";
-import { PRACTICE, type prepareCommand } from "./prepare.ts";
+import { PRACTICE, prepareCommand } from "./prepare.ts";
+import { promoteCommand } from "./promote.ts";
 import { type Campaign, COMPARISON_OPTIONS, capRead, SESSION_OPTIONS, type Seated, solved } from "./round.ts";
 import { SETTING_OPTIONS } from "./setting.ts";
 
@@ -158,6 +159,35 @@ const SCRIPTED = "claude/claude-opus-5-5";
 
 export const flag = (name: string, value: string | undefined): string[] =>
   value === undefined ? [] : [`--${name}`, value];
+
+/** Record a move as it begins (`campaign.move`) with the row that chose it, its reason and what names it
+ *  in the log, so that a move that throws is on record with the reason it was made for. */
+export const moved = (
+  log: string,
+  { move, code, why }: Pick<Decided, "move" | "code" | "why">,
+  named: JsonObject = {},
+) => append(log, MOVED, { move, code, why, ...named });
+
+/** Release practice under the campaign's terms, so what it prints of a comparison's size is the campaign's. */
+export const prepared = (
+  { seats, values }: Pick<Turn, "seats" | "values">,
+  practice: string | undefined,
+  heldBack?: Parameters<typeof prepareCommand>[1],
+): Promise<number> =>
+  (seats.prepare ?? prepareCommand)(
+    [...packOf(values), ...flag("practice", practice), ...flag("level", values.level)],
+    heldBack,
+  );
+
+/** Make the promotion `owed` names, between conversations (`make`) and as the reading that names it reports. */
+export async function promoteMade(
+  log: string,
+  name: string | undefined,
+  owed: Extract<Decided, { move: "promote" }>,
+): Promise<void> {
+  moved(log, owed, { harness: owed.harness });
+  await promoteCommand([...flag("name", name), "--harness", owed.harness, "--yes"]);
+}
 
 export function flagsOf(args: readonly string[]) {
   return parseArgs({ args: [...args], options: OPTIONS, allowNegative: true }).values;

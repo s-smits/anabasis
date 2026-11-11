@@ -60,12 +60,14 @@ import { keptAs, openCampaign, PROMOTED, packNamed } from "./campaign.ts";
 import {
   comparisonOf,
   examinerRun,
-  flag,
   idleOf,
   MOVED,
+  moved,
   nextId,
   opened,
   packOf,
+  prepared,
+  promoteMade,
   type Seats,
   type Turn,
   turnOf,
@@ -73,8 +75,6 @@ import {
 } from "./campaign-terms.ts";
 import { checkpointCommand } from "./checkpoint.ts";
 import { waitCrashed } from "./host.ts";
-import { prepareCommand } from "./prepare.ts";
-import { promoteCommand } from "./promote.ts";
 import { type Campaign, type Seated, solved } from "./round.ts";
 
 /** The two moves a live Builder makes by a tool, each under the tool's name. */
@@ -254,12 +254,7 @@ async function runAction(
   const begin = (made: JsonObject) => {
     begun = read(context.log).length + 1;
     context.used += 1;
-    append(context.log, MOVED, {
-      move,
-      code: named ? decided.code : LED,
-      why: named ? decided.why : CHOSE,
-      ...made,
-    });
+    moved(context.log, { move, code: named ? decided.code : LED, why: named ? decided.why : CHOSE }, made);
   };
   const { host } = context.seats;
   // The conversation's deadline clock stops while the action runs, a wait for the provider included.
@@ -400,21 +395,14 @@ export async function releaseOwed(context: CampaignContext, cause: string, bench
   const before = taskSets(turn.events).released.length;
   const due = practiceDue(turn.events, turn.plan.practice, turn.plan.wanted.level);
   if (due === null) return false;
-  // The campaign's terms, so what it prints of a comparison's size is the campaign's.
-  const prepare = context.seats.prepare ?? prepareCommand;
-  const result = await prepare(
-    [...packOf(context.values), "--practice", String(due.to), ...flag("level", context.values.level)],
-    comparing,
-  );
-  if (result !== 0) throw new Error("the practice release was refused");
+  if ((await prepared(context, String(due.to), comparing)) !== 0) {
+    throw new Error("the practice release was refused");
+  }
   if (bench !== undefined) await refreshCampaign(context, bench);
   if (taskSets(read(context.log)).released.length === before) return false;
   context.used += 1;
-  append(context.log, MOVED, {
-    move: "prepare",
-    code: "practice",
-    why: `${due.said}, and ${cause}: the host releases the practice owed`,
-  });
+  const why = `${due.said}, and ${cause}: the host releases the practice owed`;
+  moved(context.log, { move: "prepare", code: "practice", why });
   return true;
 }
 
@@ -555,13 +543,7 @@ async function promoteOwed(context: CampaignContext, bench: Bench): Promise<stri
   const owed = actionTurn(context).decided;
   if (owed.move !== "promote" || context.used >= context.maxMoves) return [];
   context.used += 1;
-  append(context.log, MOVED, {
-    move: "promote",
-    code: owed.code,
-    why: owed.why,
-    harness: owed.harness,
-  });
-  await promoteCommand(["--name", context.values.name ?? "", "--harness", owed.harness, "--yes"]);
+  await promoteMade(context.log, context.values.name, owed);
   await refreshCampaign(context, bench);
   return [
     `Harness ${short(owed.harness)} read a step against the reference, and the host has made it the campaign's reference.`,

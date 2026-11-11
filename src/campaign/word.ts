@@ -37,12 +37,19 @@ export interface Word {
  *  `wallSeconds` finish: their limit and a minute to end and be recorded. */
 export const pauseWaitMs = (wallSeconds: number): number => wallSeconds * 1000 + 60_000;
 
+/** The newest pause left at or after `since`, the place in the log the reading process began at,
+ *  since one left before was for a process that is gone. The alerts read it to say a stopped run
+ *  was paused. */
+export const pauseSince = (events: readonly LogEvent[], since: number): LogEvent | undefined =>
+  events.findLast(
+    ({ kind, data }, place) => place >= since && kind === "campaign.word" && data.word === PAUSE,
+  );
+
 /**
- * Whether a pause holds a campaign's solves at `now`: one was left at or after `since`, the place
- * in the log the reading process began at, since one left before was for the process it stopped;
- * and less than its wait and a minute have passed, so `runs pause`'s stop comes first. Nothing
- * else answers a pause, so one that died before its stop would otherwise hold the campaign for good
- * (landing review, 7 November 2026).
+ * Whether a pause holds a campaign's solves at `now`: one was left since the reading process began
+ * (`pauseSince`), and less than its wait and a minute have passed, so `runs pause`'s stop comes
+ * first. Nothing else answers a pause, so one that died before its stop would otherwise hold the
+ * campaign for good (landing review, 7 November 2026).
  */
 export function paused(
   events: readonly LogEvent[],
@@ -50,13 +57,8 @@ export function paused(
   now: number,
   wallSeconds: number,
 ): boolean {
-  return events.some(
-    ({ at, kind, data }, place) =>
-      place >= since &&
-      kind === "campaign.word" &&
-      data.word === PAUSE &&
-      now - Date.parse(at) < pauseWaitMs(wallSeconds) + 60_000,
-  );
+  const left = pauseSince(events, since);
+  return left !== undefined && now - Date.parse(left.at) < pauseWaitMs(wallSeconds) + 60_000;
 }
 
 /**

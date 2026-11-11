@@ -31,7 +31,8 @@ import type { TreeFinding } from "./tree-findings.ts";
 const SKIPPED_PATH =
   /(?:^|\/)(?:test|tests|__tests__|fixtures?|__mocks__)\/|\.(?:test|spec)\.|(?:^|\/)(?:vendor|vendored|third[-_]party|migrations?|examples?)\/|(?:^|[/._-])legacy[._-][^/]*$/iu;
 /** A file's opening comment when nobody edits it by hand, or it is kept as its upstream wrote it. */
-const OPTED_OUT = /@ts-nocheck|@generated\b|\bauto-?generated\b|\bdo not edit\b|^\/\/\s*vendored from\s+\S/iu;
+export const OPTED_OUT =
+  /@ts-nocheck|@generated\b|\bauto-?generated\b|\bdo not edit\b|^\/\/\s*vendored from\s+\S/iu;
 const WORDY = /\p{L}{3}/u;
 const TOKEN_FLOOR = 64;
 const LINE_FLOOR = 3;

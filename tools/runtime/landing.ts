@@ -7,7 +7,7 @@
  */
 import { existsSync, lstatSync, readFileSync, rmSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
-import { runtimeProcess } from "../../src/meta/process.ts";
+import { processAnswers, runtimeProcess } from "../../src/meta/process.ts";
 import { hold, holderOf, recordIn, release } from "../runs/holder.ts";
 import { git, lines, type Proof, short } from "./gate.ts";
 import { beneath, chainAbove, openPulls, type Pull } from "./pulls.ts";
@@ -51,7 +51,7 @@ export async function holdAlone(
     const left = join(lock, "pid");
     const record = existsSync(left) ? readFileSync(left, "utf8") : recordIn(lock);
     const older = Number(/^(\d+)(?: #|$)/u.exec(record)?.[1]);
-    const live = older > 0 && answers(older);
+    const live = older > 0 && processAnswers(older);
     if (!live && lstatSync(lock, { throwIfNoEntry: false })?.isDirectory() === true) {
       rmSync(lock, { recursive: true, force: true });
     }
@@ -72,16 +72,6 @@ export async function holdAlone(
       say(`another ${who} (pid ${String(holder)}) is running in this clone; waiting for it to end`);
     }
     await Bun.sleep(pauseMs);
-  }
-}
-
-/** Whether a process has `pid`: signal 0 sends nothing and throws where none does. */
-function answers(pid: number): boolean {
-  try {
-    runtimeProcess.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
   }
 }
 

@@ -51,7 +51,7 @@ import { boundText } from "../../src/meta/bounded-text.ts";
 import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync } from "../../src/meta/filesystem.ts";
 import { availableParallelism, loadavg, tmpdir } from "../../src/meta/os.ts";
 import { join, resolve } from "../../src/meta/path.ts";
-import { runtimeProcess } from "../../src/meta/process.ts";
+import { processAnswers, runtimeProcess } from "../../src/meta/process.ts";
 import { compareCodeUnits } from "../../src/meta/stable-json.ts";
 import {
   decodeOutput,
@@ -319,15 +319,7 @@ async function describeTree(pid: number): Promise<number[]> {
  *  wedged worker the wall has killed: it stays in `waitpid` indefinitely, holding a generated-tools
  *  worker from a suite root that no longer exists. */
 async function killStrays(pids: number[]): Promise<void> {
-  const alive = (pid: number): boolean => {
-    try {
-      runtimeProcess.kill(pid, 0);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-  const strays = pids.filter(alive);
+  const strays = pids.filter(processAnswers);
   for (const pid of strays) {
     try {
       runtimeProcess.kill(pid, "SIGKILL");
@@ -335,13 +327,13 @@ async function killStrays(pids: number[]): Promise<void> {
       // the stray may have exited between the scan and the kill
     }
   }
-  for (let elapsed = 0; elapsed < 500 && strays.some(alive); elapsed += 10) await Bun.sleep(10);
+  for (let elapsed = 0; elapsed < 500 && strays.some(processAnswers); elapsed += 10) await Bun.sleep(10);
   if (strays.length > 0) {
     console.error(
       `idle-wall: ended ${String(strays.length)} descendant(s) outside the group: ${strays.join(", ")}`,
     );
   }
-  const survivors = strays.filter(alive);
+  const survivors = strays.filter(processAnswers);
   if (survivors.length > 0) console.error(`idle-wall: descendants survived SIGKILL: ${survivors.join(", ")}`);
 }
 

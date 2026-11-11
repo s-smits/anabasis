@@ -4,6 +4,16 @@
  */
 export const runtimeProcess = globalThis.process;
 
+/** Whether a process has `pid`: signal 0 sends nothing and throws where none does. */
+export function processAnswers(pid: number): boolean {
+  try {
+    runtimeProcess.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Argument parsing for the repository's own command entrypoints; Bun 1.4 has no equivalent. */
 export { parseArgs, type ParseArgsOptionsConfig } from "node:util";
 

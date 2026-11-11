@@ -42,6 +42,7 @@ import {
   tallyOf,
   text,
   type Trigger,
+  wlt,
 } from "./folds.ts";
 import { spareOf } from "./clearance.ts";
 import { chainTrigger, marginTrigger } from "./margins.ts";
@@ -78,8 +79,7 @@ export function testSaid(tested: JsonValue | undefined): string {
   const record = asRecord(tested);
   const step = tallyOf(tested);
   if (record === null || step === null) return "not scored";
-  const said = ({ wins, losses, ties, p }: typeof step) =>
-    `${String(wins)}-${String(losses)}-${String(ties)} p ${pSaid(p)}`;
+  const said = (read: typeof step) => `${wlt(read)} p ${pSaid(read.p)}`;
   const billed = said({
     wins: count(record.wins),
     losses: count(record.losses),
@@ -304,9 +304,7 @@ function afterTrigger(log: Index, { at, until, data }: Epoch, starter: string): 
     const said = (when: "after" | "before") => {
       const scores = ages.filter((one) => one.newer === (when === "after")).map(({ score }) => score);
       const step = tallyOf({ unbilled: scores });
-      return step === null || scores.length === 0
-        ? "none"
-        : `${String(step.wins)}-${String(step.losses)}-${String(step.ties)} p ${pSaid(step.p)}`;
+      return step === null || scores.length === 0 ? "none" : `${wlt(step)} p ${pSaid(step.p)}`;
     };
     return `; for the reference on tasks first drawn after the promotion ${said("after")}, before it ${said("before")}`;
   };
@@ -419,10 +417,7 @@ function carrierTrigger(log: Index): Trigger[] {
     if (text(last.reading) !== "step" || unbilled.length === 0) return [];
     const spare = spareOf(unbilled, count(last.level));
     const retained = testOf(scoresIn(last.retained));
-    const lost =
-      retained.losses > retained.wins
-        ? `, its retained tasks ${String(retained.wins)}-${String(retained.losses)}-${String(retained.ties)}`
-        : "";
+    const lost = retained.losses > retained.wins ? `, its retained tasks ${wlt(retained)}` : "";
     return [
       `${session} won ${share(unbilled.filter((one) => one > 0).length, unbilled.filter((one) => one !== 0).length)} untied, ${spare === 0 ? "none" : String(spare)} to spare${lost}`,
     ];
@@ -442,7 +437,7 @@ function unconfirmedTrigger(log: Index): Trigger[] {
     const read =
       against === null
         ? "no starter comparison reported"
-        : `against the starter ${String(against.wins)}-${String(against.losses)}-${String(against.ties)} without the bill, no step`;
+        : `against the starter ${wlt(against)} without the bill, no step`;
     return [`${short(reference)} in epoch ${String(nth)}, ${to === null ? "open" : "closed"}: ${read}`];
   });
   return lines.length > 0

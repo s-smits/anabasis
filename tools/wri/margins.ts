@@ -21,11 +21,9 @@
 import { ORIGINS, type Origin, starterReads } from "#src/campaign/climb.ts";
 import { differenceOf, pointsOf, type Tally } from "#src/kernel/compare.ts";
 import { lastReports, pairsReported } from "#src/kernel/reports.ts";
-import { fired, type Index, share, type Trigger } from "./folds.ts";
+import { fired, type Index, share, type Trigger, wlt } from "./folds.ts";
 
 const [CHOSEN, BEFORE, AFTER] = ORIGINS;
-
-const wlt = ({ wins, losses, ties }: Tally) => `${String(wins)}-${String(losses)}-${String(ties)}`;
 
 /** `tallies` summed. */
 function summed(tallies: readonly Tally[]): Tally {

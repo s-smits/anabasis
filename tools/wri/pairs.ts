@@ -3,7 +3,7 @@
  * side's solves did, the task's score and what carried it, the reference against itself as its
  * report stored it and as this tree rebuilds it, the new side against itself, and of a tie, its kind.
  *
- *   bun tools/wri/pairs.ts <log>
+ *   bun tools/wri/wri.ts reader pairs --log <log>
  *
  * Lanes 9, 17, 18, 20 and 29 read a comparison task by task. Between 3 and 10 November 11 of 17
  * lane-9 sessions built this table by hand (`ties.py`, `tiecost.py`, `rep.py`), 4 of 4 lane-29
@@ -47,13 +47,12 @@ import {
   unsolved,
 } from "#src/kernel/compare.ts";
 import { proposalsOf } from "#src/kernel/history.ts";
-import { type LogEvent, read } from "#src/kernel/log.ts";
+import type { LogEvent } from "#src/kernel/log.ts";
 import { lastReports, pairsReported, poolOf, type Reported } from "#src/kernel/reports.ts";
 import { ended, passed, type Ran, ranUnder } from "#src/kernel/solves.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { median } from "#src/meta/tally.ts";
-import { NO_TRACES, printRows } from "./folds.ts";
 
 /** The kind of a tied task, by its solves. */
 type TieKind = "both-invalid" | "exact-repeat" | "within-room" | "both-valid" | "cancelling";
@@ -488,5 +487,3 @@ export function sideGap(
     unread,
   };
 }
-
-if (import.meta.main) printRows("pairs", (log) => pairRows(read(log, NO_TRACES)));

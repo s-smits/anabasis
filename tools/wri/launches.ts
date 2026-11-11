@@ -5,7 +5,7 @@
  * open where the stretch ends, the sessions and solves that ended `killed`, the size of its `.out`
  * and `.err`, and the hours from its last event to the next launch.
  *
- *   bun tools/wri/launches.ts <log>
+ *   bun tools/wri/wri.ts reader launches --log <log>
  *
  * For lanes 23 and 26, and 22 where a run stopped after a promotion. A stop by hand writes no
  * `campaign.ended` and no `campaign.word`, only `killed` endings, so between 3 and 10 November 4 of
@@ -29,8 +29,7 @@ import { isString } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { plural } from "#src/meta/text.ts";
 import { type Receipt, receipts } from "#tools/runs/receipt.ts";
-import { logEvents, openComparisons } from "#tools/runs/registry.ts";
-import { printRows } from "./folds.ts";
+import { openComparisons } from "#tools/runs/registry.ts";
 
 type Launch = Receipt & { readonly session: string };
 
@@ -132,5 +131,3 @@ export function launchLines(log: string, events: readonly LogEvent[]): string[] 
     }),
   ];
 }
-
-if (import.meta.main) printRows("launches", (log) => launchLines(log, logEvents(log)));

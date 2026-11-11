@@ -307,7 +307,7 @@ const clock = (at: string) => `${at.slice(11, 16)}Z`;
  * every path. Where another campaign's solve named it first it is a scratch name two solvers both
  * chose (`/tmp/m.py`), harmless unless they ran at once, and those are counted.
  */
-export function crossings(campaigns: readonly Campaign[]): Crossed {
+function crossings(campaigns: readonly Campaign[]): Crossed {
   const named = campaigns.map(namedIn);
   const left = new Map<string, string[]>();
   const scratch = { paths: new Set<string>(), solves: new Set<string>() };
@@ -337,4 +337,17 @@ export function crossings(campaigns: readonly Campaign[]): Crossed {
     left: [...left].map(([solve, paths]) => `${solve}: ${paths.join(", ")}`),
     scratch: `${String(scratch.paths.size)} scratch paths named by solves of two campaigns, in ${String(scratch.solves.size)} solves`,
   };
+}
+
+/** The campaigns in lane 22's columns, and the `/tmp` paths one named before another's solve ran
+ *  them. */
+export function climbText(campaigns: readonly Campaign[]): string {
+  const { left, scratch } = crossings(campaigns);
+  return [
+    "### The climb, side by side",
+    climbTable(campaigns),
+    "### Solves that named what another campaign's session left under `/tmp`",
+    left.length > 0 ? left.map((line) => `- ${line}`).join("\n") : "None.",
+    `And ${scratch}.`,
+  ].join("\n\n");
 }

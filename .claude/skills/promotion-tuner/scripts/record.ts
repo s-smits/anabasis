@@ -21,7 +21,7 @@ import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { packOf } from "#tools/runs/registry.ts";
-import { AT, campaignLogs, rehearsed } from "#skills/main/logs.ts";
+import { campaignLogs, rehearsed } from "#skills/main/logs.ts";
 
 /** One counted solve of one side. */
 export interface Solve {
@@ -61,6 +61,8 @@ export interface Comparison {
   readonly after: { readonly promoted: readonly string[]; readonly readings: number };
 }
 
+/** How a log's first line opens, before its event's time. */
+const AT = '{"at":"';
 /** Kinds no score reads and the largest logs are mostly made of. */
 const UNREAD: ReadonlySet<EventKind> = new Set<EventKind>([
   "solve.call",

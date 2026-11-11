@@ -13,36 +13,33 @@
  * `faux/script` (`rehearsed`, which a caller asks once it has read the log).
  */
 import type { LogEvent } from "#src/kernel/log.ts";
-import { closeSync, openSync, readdirSync, readSync, statSync } from "#src/meta/filesystem.ts";
+import { closeSync, fstatSync, openSync, readdirSync, readSync, statSync } from "#src/meta/filesystem.ts";
+import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { join } from "#src/meta/path.ts";
-import { CAMPAIGNS, campaignsIn, type Run } from "#tools/runs/registry.ts";
+import { CAMPAIGNS, campaignsIn, type Run, wholeLines } from "#tools/runs/registry.ts";
 import { readableAcross } from "#tools/runs/snapshots.ts";
 
 export type Found = Pick<Run, "name" | "path" | "archived">;
 
-/** Bytes read from a log's end to find its last event's time without reading the whole file. */
+/** Enough of a log's end to hold its last whole event; a longer one is read whole. */
 const TAIL = 65_536;
 const LEFT_OUT = ["sim-", "rh-", "test-"] as const;
-export const AT = '{"at":"';
 
-/** The time of a log's last event, read from its end; null where the end holds no whole event. */
-function lastAt(path: string): string | null {
-  const size = statSync(path).size;
-  const length = Math.min(size, TAIL);
-  const buffer = Buffer.alloc(length);
+/** When the last whole event of the log at `path` was appended, read from its tail, or from the
+ *  whole log where one event is longer than the tail; empty for a log with no whole event. */
+export function lastAt(path: string): string {
   const fd = openSync(path, "r");
   try {
-    readSync(fd, buffer, 0, length, size - length);
+    const start = Math.max(0, fstatSync(fd).size - TAIL);
+    const buffer = Buffer.alloc(TAIL);
+    const tail = buffer.subarray(0, readSync(fd, buffer, 0, TAIL, start)).toString("utf8");
+    const lines = (start > 0 && tail.split("\n").length > 2 ? tail : wholeLines(path)).split("\n");
+    const last = lines.at(-2);
+    return last === undefined || last === "" ? "" : parseJsonAs<LogEvent>(last).at;
   } finally {
     closeSync(fd);
   }
-  // The first line of the tail may be cut; a cut that starts as an event does starts one.
-  const last = buffer
-    .toString("utf8")
-    .split("\n")
-    .findLast((line) => line.startsWith(AT));
-  return last?.slice(AT.length, AT.length + 24) ?? null;
 }
 
 /** Every campaign log under `home`, one a name, the largest where copies exist; seeds and the
@@ -83,9 +80,7 @@ export async function campaignLogs(
             !LEFT_OUT.some((prefix) => run.name.startsWith(prefix)),
         )
       : everyLog(home, names);
-  return all.filter(({ name, path }) =>
-    names.length > 0 ? names.includes(name) : (lastAt(path) ?? "") >= since,
-  );
+  return all.filter(({ name, path }) => (names.length > 0 ? names.includes(name) : lastAt(path) >= since));
 }
 
 /** Whether a log is a rehearsal's: a seat or its solver is `faux/script`. */

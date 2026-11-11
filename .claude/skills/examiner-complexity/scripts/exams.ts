@@ -31,8 +31,9 @@ import { proposalsOf } from "#src/kernel/history.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { basename, dirname } from "#src/meta/path.ts";
-import { logOf, referenceAt, STARTS } from "#skills/examiner-complexity/scripts/ambition.ts";
+import { referenceAt, STARTS } from "#skills/examiner-complexity/scripts/ambition.ts";
 import { runCommand } from "#skills/main/cli.ts";
+import { logAcross } from "#tools/runs/snapshots.ts";
 
 /** What the gate measured on one draft (`task.gate`), read from the reference's own counts rather
  *  than from the prose it wrote the Examiner, so this reader needs no production change. */
@@ -191,14 +192,17 @@ export function csvLines(campaign: string, rows: readonly DraftRow[]): string[] 
 
 if (import.meta.main) {
   const usage = "exams.ts [--every] <log or campaign folder>...";
-  await runCommand({ name: "exams", usage, options: { every: "flag" }, positionals: [1, 100] }, (args) => {
-    const keep = args.flag("every") ? "every" : "grouped";
-    console.log(["campaign", ...COLUMNS].join(","));
-    for (const path of args.positionals.map(logOf)) {
-      const events = read(path);
-      for (const line of csvLines(basename(dirname(path)), draftRows(events, keep))) {
-        console.log(line);
+  await runCommand(
+    { name: "exams", usage, options: { every: "flag" }, positionals: [1, 100] },
+    async (args) => {
+      const keep = args.flag("every") ? "every" : "grouped";
+      console.log(["campaign", ...COLUMNS].join(","));
+      for (const path of await Promise.all(args.positionals.map((named) => logAcross(named)))) {
+        const events = read(path);
+        for (const line of csvLines(basename(dirname(path)), draftRows(events, keep))) {
+          console.log(line);
+        }
       }
-    }
-  });
+    },
+  );
 }

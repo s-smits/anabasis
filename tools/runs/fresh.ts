@@ -22,6 +22,10 @@
  * here ends with this machine's own name (`ownName`), so from 28 October every name says where it
  * runs; until then only a peer's did, and the operator asked that the machines be named alike.
  * `launch` leaves the run its keeper on the machine it runs on, unless `ANA_KEEP=off` (`keepsItself`).
+ * Several packs are planned as one (`plan`): each pack's login and host are reserved in the counts
+ * before the next is placed, the whole plan is printed, and nothing launches while a login it takes
+ * is missing from its host. Until 11 November a batch planned, then called this verb again once a
+ * pack, which read the fleet and the logins a second time.
  *
  * Until 16 October each fresh launch was typed by hand: a worktree, a prompt file, eight seat
  * flags and a name, and one launch that left out `--login` ended on its environment.
@@ -43,26 +47,52 @@ import { gitText, mainTree } from "#src/meta/git.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
-import { hostNamed, ownName } from "./host-config.ts";
+import { type Host, hostNamed, ownName } from "./host-config.ts";
 import { verbOn } from "./hosts.ts";
 import { preparedHost, publishedAt } from "./code.ts";
-import { freshFleet, freshHost, freshLogin, loginPool, loginPresent } from "./placement.ts";
+import {
+  freshFleet,
+  freshHost,
+  freshHosts,
+  freshLogin,
+  loginPool,
+  loginPresent,
+  placeFresh,
+} from "./placement.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 import { launch } from "./manage.ts";
 import { everyRun, HERE, harnessesOf, Misused, ownArgs } from "./registry.ts";
-import { batchFresh } from "./batch.ts";
-import { CODEX, seatsCodex } from "./live.ts";
+import { payerOf } from "./live.ts";
 import { billsLogin, readLogins } from "./logins.ts";
 
-interface FreshStart {
-  readonly model: ReturnType<typeof modelOf>;
-  readonly seated: readonly string[];
-  readonly suffix: string | undefined;
-  readonly budget: string;
-  readonly more: readonly string[];
+interface Planning {
+  readonly login?: string;
+  readonly logins?: string;
+  /** The host the operator or a placing caller named, or undefined where placement chooses. */
+  readonly named: string | undefined;
+  /** The four seats' flags and those after `--`, which say who pays. */
+  readonly flags: readonly string[];
+  readonly read: typeof readLogins;
+}
+
+interface Planned {
+  readonly pack: string;
+  readonly host: Host | undefined;
   readonly login: string | undefined;
-  readonly commit: string;
+}
+
+/** What a planned pack launches with: the verb's own values, the seats' flags and the commit. */
+interface Start {
+  readonly model: string;
+  readonly label: string;
+  readonly seated: readonly string[];
+  readonly effort?: string;
+  readonly budget: string;
+  readonly as?: string;
+  readonly placed: boolean;
   readonly yes: boolean;
+  readonly more: readonly string[];
+  readonly commit: string;
 }
 
 /** The operator's named conditions: a model and its efforts a seat, as the operator ran them. */
@@ -131,8 +161,7 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
       yes: { type: "boolean", default: false },
     },
   });
-  const [pack] = positionals;
-  if (pack === undefined) {
+  if (positionals.length === 0) {
     throw new Misused();
   }
   if (
@@ -144,84 +173,116 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
   const here = runtimeProcess.cwd();
   const model = modelOf(values.model);
   const seated = seats(model.id, values.effort ?? model.effort);
-  const seatFlags = [...seated, ...more];
-  const bills = billsLogin([], seatFlags) ? "login" : seatsCodex(seatFlags) ? "codex" : "none";
-  if (positionals.length > 1) {
-    if (values.host !== undefined) throw new Error("a batch chooses its hosts automatically");
-    return await batchFresh(
-      positionals,
-      {
-        flags: [
-          "--model",
-          values.model,
-          "--budget",
-          values.budget,
-          ...(values.as === undefined ? [] : ["--as", values.as]),
-          ...(values.effort === undefined ? [] : ["--effort", values.effort]),
-        ],
-        more,
-        at: values.at,
-        login: values.login,
-        logins: values.logins,
-        bills,
-        yes: values.yes,
-      },
-      (words) => fresh(words, read),
-      read,
-    );
+  if (positionals.length > 1 && values.host !== undefined) {
+    throw new Error("a batch chooses its hosts automatically");
   }
   if (values.host !== undefined && values.host !== HERE) hostNamed(values.host);
-  const fleet = await freshFleet();
-  const login =
-    values.login !== undefined || bills === "login"
-      ? await freshLogin(values.login, fleet, read, loginPool(values.logins))
-      : undefined;
-  const payer = login ?? (bills === "codex" ? CODEX : undefined);
-  const host = await freshHost(pack, fleet, values.placed ? "here" : values.host, payer);
+  const named = values.placed ? HERE : values.host;
+  const planned = await plan(positionals, { ...values, named, flags: [...seated, ...more], read });
+  if (planned.length > 1 && !(await announced(planned, values.yes))) return;
   const commit = publishedAt(here, values.at);
-  if (host !== undefined) {
-    console.log(`${host.name}: prepare a detached controller at ${commit.slice(0, 9)}, then fresh ${pack}`);
-    if (!values.yes) return console.log("nothing is launched without --yes");
-    if (login !== undefined && !(await loginPresent(host, login))) {
-      console.error(`login ${login} must be carried to ${host.name} first`);
-      runtimeProcess.exitCode = 1;
-      return;
+  for (const item of planned) {
+    try {
+      await startPlanned(item, { ...values, label: model.label, seated, more, commit });
+    } finally {
+      runtimeProcess.chdir(here);
     }
-    const forwarded = [
-      "fresh",
-      pack,
-      "--at",
-      commit,
-      "--model",
-      values.model,
-      "--budget",
-      values.budget,
-      "--as",
-      values.as === undefined ? host.name : `${values.as}-${host.name}`,
-      "--placed",
-      ...(values.effort === undefined ? [] : ["--effort", values.effort]),
-      ...(login === undefined ? [] : ["--login", login]),
-      "--yes",
-      "--",
-      ...more,
-    ];
-    runtimeProcess.exitCode = await verbOn(await preparedHost(host, commit), forwarded);
-    return;
+    if (planned.length > 1 && Number(runtimeProcess.exitCode ?? 0) !== 0) {
+      throw new Error(`${item.pack} did not launch; remaining packs were not started`);
+    }
   }
-  await startFresh(pack, {
-    model,
-    seated,
-    suffix: values.placed ? values.as : [values.as, ownName()].filter((part) => part !== undefined).join("-"),
-    budget: values.budget,
-    more,
-    login,
-    commit,
-    yes: values.yes,
-  });
 }
 
-/** Make and launch the local worktree after fleet admission. */
-async function startFresh(pack: string, options: FreshStart): Promise<void> {
+/** Every pack's host and login, each reserved in the counts before the next is placed, so that a
+ *  batch reads the fleet, the hosts' catalogues and the logins' windows once. */
+async function plan(packs: readonly string[], o: Planning): Promise<Planned[]> {
+  const fleet = [...(await freshFleet())];
+  const allowed = loginPool(o.logins);
+  let readings: ReturnType<typeof readLogins> | undefined;
+  const once: typeof readLogins = (wanted, env) => (readings ??= o.read(wanted, env));
+  let choices: Awaited<ReturnType<typeof freshHosts>> | undefined;
+  const planned: Planned[] = [];
+  for (const [index, pack] of packs.entries()) {
+    const login =
+      o.login !== undefined || billsLogin([], o.flags)
+        ? await freshLogin(o.login, fleet, once, allowed)
+        : undefined;
+    const payer = payerOf(login, o.flags);
+    choices ??= o.named === undefined ? await freshHosts() : [];
+    const host =
+      o.named === undefined
+        ? await placeFresh(pack, fleet, choices, payer)
+        : freshHost(pack, fleet, o.named, payer);
+    planned.push({ pack, host, login });
+    fleet.push({ name: `planned-${String(index)}`, host: host?.name ?? HERE, login: payer ?? null });
+    choices = choices.map((choice) =>
+      choice.host === host ? { ...choice, projects: [...choice.projects, `${pack}-fresh`] } : choice,
+    );
+  }
+  return planned;
+}
+
+/** Whether `host` holds `login`, saying so in the line the hourly fork reads where it does not. */
+async function carried(host: Host, login: string): Promise<boolean> {
+  if (await loginPresent(host, login)) return true;
+  console.error(`login ${login} must be carried to ${host.name} first`);
+  runtimeProcess.exitCode = 1;
+  return false;
+}
+
+/** Print a batch's whole plan, and whether it may launch: with `--yes`, and with every login it takes
+ *  already on the host it goes to, so that a missing one stops every launch. */
+async function announced(planned: readonly Planned[], yes: boolean): Promise<boolean> {
+  console.log("fresh batch plan");
+  for (const [index, { pack, host, login }] of planned.entries()) {
+    const paid = login === undefined ? "" : `; login ${login}`;
+    console.log(`${String(index + 1)}. ${pack} -> ${host?.name ?? HERE}${paid}`);
+  }
+  const pairs = new Map(
+    planned.flatMap(({ host, login }) =>
+      host === undefined || login === undefined ? [] : [[`${host.name}:${login}`, { host, login }] as const],
+    ),
+  );
+  let present = true;
+  for (const { host, login } of pairs.values()) present = (await carried(host, login)) && present;
+  if (!present) return false;
+  if (!yes) console.log("nothing is launched without --yes");
+  return yes;
+}
+
+/** Launch one planned pack: here in a worktree of its own, or on its host through a controller
+ *  prepared at the commit, whose own `fresh` is told `--placed`. */
+async function startPlanned({ pack, host, login }: Planned, start: Start): Promise<void> {
+  if (host === undefined) return await startFresh(pack, login, start);
+  console.log(
+    `${host.name}: prepare a detached controller at ${start.commit.slice(0, 9)}, then fresh ${pack}`,
+  );
+  if (!start.yes) return console.log("nothing is launched without --yes");
+  if (login !== undefined && !(await carried(host, login))) return;
+  const forwarded = [
+    "fresh",
+    pack,
+    "--at",
+    start.commit,
+    "--model",
+    start.model,
+    "--budget",
+    start.budget,
+    "--as",
+    start.as === undefined ? host.name : `${start.as}-${host.name}`,
+    "--placed",
+    ...(start.effort === undefined ? [] : ["--effort", start.effort]),
+    ...(login === undefined ? [] : ["--login", login]),
+    "--yes",
+    "--",
+    ...start.more,
+  ];
+  runtimeProcess.exitCode = await verbOn(await preparedHost(host, start.commit), forwarded);
+}
+
+/** Make and launch the local worktree after fleet admission. A run placed here by this machine ends
+ *  with its own name; one a caller placed here carries the caller's suffix. */
+async function startFresh(pack: string, login: string | undefined, start: Start): Promise<void> {
   const here = runtimeProcess.cwd();
   const beside = dirname(mainTree(here));
   const prompt = join(
@@ -230,12 +291,10 @@ async function startFresh(pack: string, options: FreshStart): Promise<void> {
   );
   if (!existsSync(prompt)) throw new Error(`no ${prompt}: a pack's prompt is the operator's to write there`);
   const held = new Set(everyRun().map((run) => run.name));
-  const base = [
-    pack,
-    "fresh",
-    options.model.label,
-    ...(options.suffix === undefined ? [] : [options.suffix]),
-  ].join("-");
+  const suffix = start.placed
+    ? start.as
+    : [start.as, ownName()].filter((part) => part !== undefined).join("-");
+  const base = [pack, "fresh", start.label, ...(suffix === undefined ? [] : [suffix])].join("-");
   const name = freeName(base, (one) => held.has(one) || existsSync(join(beside, `anabasis-${one}`)));
   if (!isSafePathSegment(name)) throw new Error("the campaign name exceeds the path-segment limit");
   const tree = join(beside, `anabasis-${name}`);
@@ -245,25 +304,19 @@ async function startFresh(pack: string, options: FreshStart): Promise<void> {
     "--prompt-file",
     prompt,
     "--budget",
-    options.budget,
+    start.budget,
     "--handover",
     harnessesOf(here, name),
-    ...options.seated,
-    ...options.more,
+    ...start.seated,
+    ...start.more,
   ];
-  if (!options.yes) {
+  if (!start.yes) {
     console.log(
-      `would make ${tree} at ${options.commit.slice(0, 9)} and launch ${name} on ${flags.join(" ")}; nothing is done without --yes`,
+      `would make ${tree} at ${start.commit.slice(0, 9)} and launch ${name} on ${flags.join(" ")}; nothing is done without --yes`,
     );
     return;
   }
-  gitText(here, "worktree", "add", "-q", "--detach", tree, options.commit);
+  gitText(here, "worktree", "add", "-q", "--detach", tree, start.commit);
   runtimeProcess.chdir(tree);
-  await launch([
-    name,
-    ...(options.login === undefined ? [] : ["--login", options.login]),
-    "--yes",
-    "--",
-    ...flags,
-  ]);
+  await launch([name, ...(login === undefined ? [] : ["--login", login]), "--yes", "--", ...flags]);
 }

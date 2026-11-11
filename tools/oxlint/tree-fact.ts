@@ -24,12 +24,12 @@
  * vendored and generated files are not read, and only src/ and tools/ count as production.
  */
 import * as ts from "typescript5";
+import { OPTED_OUT } from "./tree-copied-block.ts";
 import type { TreeFinding } from "./tree-findings.ts";
 
 const PRODUCTION = /^(?:src|tools)\//u;
 const SKIPPED_PATH =
   /(?:^|\/)(?:test|tests|__tests__|fixtures?|__mocks__)\/|\.(?:test|spec)\.|(?:^|\/)(?:vendor|vendored|third[-_]party|migrations?|examples?)\//iu;
-const OPTED_OUT = /@ts-nocheck|@generated\b|\bauto-?generated\b|\bdo not edit\b|^\/\/\s*vendored from\s+\S/iu;
 /** Distinct files a fact must stand in before it is a finding. */
 const FILE_FLOOR = 3;
 /** Places a detail names before it counts the rest. */

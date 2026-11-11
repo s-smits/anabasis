@@ -19,12 +19,13 @@
  * Split from `read.ts`, which stands near the size policy's ceiling, as `time.ts` and `folds.ts`
  * were. Nothing here reads a file beside the log.
  */
-import { epochsOf as epochsRead } from "#src/campaign/climb.ts";
+import { epochsOf as epochsRead, ORIGINS, type Origin, starterReads } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";
-import { flipP, scoresIn, testOf } from "#src/kernel/compare.ts";
+import { differenceOf, flipP, pointsOf, scoresIn, testOf } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import type { Call, Seat } from "#src/kernel/trace.ts";
 import { billedBetween } from "#src/kernel/meter.ts";
+import { lastReports, pairsReported } from "#src/kernel/reports.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy, median } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
@@ -38,6 +39,7 @@ import {
   measured,
   practiceOf,
   share,
+  summed,
   tally,
   tallyOf,
   text,
@@ -45,7 +47,6 @@ import {
   wlt,
 } from "./folds.ts";
 import { spareOf } from "./clearance.ts";
-import { chainTrigger, marginTrigger } from "./margins.ts";
 
 /** A promotion and the stretch of the log it governs: up to the next promotion or the log's end. */
 interface Epoch {
@@ -54,6 +55,7 @@ interface Epoch {
   readonly data: JsonObject;
 }
 
+const [CHOSEN, BEFORE, AFTER] = ORIGINS;
 /** The units a budget on record may name (`folds.ts`). */
 const UNITS = ["turns", "prompts", "cpu", "seconds"] as const;
 /** The share of tasks a reference answers on none of its solves above which a step is read as an
@@ -396,7 +398,7 @@ function sharedTmpTrigger(log: Index): Trigger[] {
 }
 
 /** Lane 22: every promotion the log holds, and the host's temporary folder wherever it is named;
- *  beside them lane 19's confirmation, lane 17's carriers and lanes 28 and 29 (`margins.ts`). */
+ *  beside them lane 19's confirmation, lane 17's carriers and lanes 28 and 29 (`chainTrigger`, `marginTrigger`). */
 export function promotionTriggers(log: Index): Trigger[] {
   const starter = log.compared.map(({ last }) => last.starter).find(isString) ?? "";
   const epochs = epochsOf(log.events);
@@ -459,4 +461,69 @@ function unconfirmedTrigger(log: Index): Trigger[] {
         ),
       ]
     : [];
+}
+
+/** `CHAIN AGAINST THE STARTER` (lane 28): two or more starter reads whose tasks written after their
+ *  promotions the reference lost more often than it won, summed over the reads. Each promotion is
+ *  read against its parent, so a chain of them can each win and still fail to beat the starter on
+ *  tasks that chose none of them. A starter read mixes three kinds of task (`starterReads`), and only
+ *  those written after the promotion are new to the promoted harness; they are also written by an
+ *  Examiner that reads the reference's outcomes (`src/examiner/record.ts`), so they may lean against
+ *  the reference and not the starter. A reference that loses more than it wins there is margin noise
+ *  selected for, the Examiner's aim, or a worse harness, which this separates and does not decide. */
+function chainTrigger(log: Index): Trigger[] {
+  const reads = starterReads(log.events);
+  if (reads.length < 2) return [];
+  const of = (origin: Origin) => summed(reads.map(({ origins }) => origins[origin].whole));
+  const after = of(AFTER);
+  if (after.losses <= after.wins) return [];
+  const each = reads.map(({ session, origins }) => `${session} ${wlt(origins[AFTER].whole)}`);
+  const alone = (reading: string) => reads.filter(({ after: read }) => read === reading).length;
+  return [
+    fired(
+      "CHAIN AGAINST THE STARTER",
+      `the reference's wins, losses and ties against the starter on tasks written after its promotion, oldest read first: ${each.join(", ")}; summed ${wlt(after)}, on tasks written before and not chosen on ${wlt(of(BEFORE))}, on the tasks that chose the harness ${wlt(of(CHOSEN))}; on the tasks written after alone, ${share(alone("a step"), reads.length)} reads a step and ${String(alone("a step for the starter"))} a step for the starter`,
+    ),
+  ];
+}
+
+/** `MARGINS INSIDE THE NOISE` (lane 29): a step whose untied tasks all tie on validity is carried by the
+ *  objective alone, each win a margin between two valid answers. Each side read against itself under
+ *  the same setting, rebuilt from its solves (`pairsReported`), gives on a task whose halves tied on
+ *  validity the margin two solves of one harness reach by chance; a task a side's halves split on
+ *  validity scores up to 600 points, which no win between valid answers reaches (`WEIGHTS`), so it
+ *  sets no ceiling. Scores are read under this tree's rule (`differenceOf`). It fires on each step whose untied tasks all tie on validity and more
+ *  than half of whose wins are no larger than the wider of the two sides' own differences on the
+ *  same task, each side read against itself where its halves tied on validity. A win on a task both
+ *  sides repeated exactly is the difference of two repeated answers, where no split of either side
+ *  shows noise (`repeatLine`, `src/campaign/climb.ts`), and is not counted inside: until
+ *  11 November a win where the A/A alone tied was told as clear of a zero difference only, and 62 of
+ *  the 121 objective-only steps on record fired on that count, in 61 of them on tasks the new side
+ *  repeated exactly too. The new side's own difference bounds a win as the reference's does, which
+ *  the reference's alone left out. */
+function marginTrigger(log: Index): Trigger[] {
+  const lines = lastReports(log.events).flatMap((report) => {
+    if (report.data.reading !== "step") return [];
+    const unequal = pairsReported(log.events, report).filter((pair) => differenceOf(pair) !== 0);
+    if (unequal.length === 0 || unequal.some((pair) => pointsOf(pair).validity !== 0)) return [];
+    const own = (side: "old" | "fresh") =>
+      new Map(
+        pairsReported(log.events, report, side)
+          .filter((pair) => pointsOf(pair).validity === 0)
+          .map((pair) => [pair.task, Math.abs(differenceOf(pair))]),
+      );
+    const [reference, candidate] = [own("old"), own("fresh")];
+    if (reference.size === 0) return [];
+    const wins = unequal.filter((pair) => differenceOf(pair) > 0);
+    const inside = wins.filter(
+      (pair) =>
+        differenceOf(pair) <= Math.max(reference.get(pair.task) ?? -1, candidate.get(pair.task) ?? -1),
+    ).length;
+    return inside * 2 > wins.length
+      ? [
+          `${report.session} won ${share(inside, wins.length)} by no more than the wider of the two sides' own differences on the same task where validity tied`,
+        ]
+      : [];
+  });
+  return lines.length > 0 ? [fired("MARGINS INSIDE THE NOISE", lines.join("; "))] : [];
 }

@@ -37,7 +37,8 @@ import { errorMessage } from "#src/meta/runtime-values.ts";
 import { median } from "#src/meta/tally.ts";
 import { selfTerms } from "./record.ts";
 import { epochLines } from "./time.ts";
-import { type Found, type Points, type Tree, campaignLogs, loadTree, rehearsed } from "./tree.ts";
+import { type Found, campaignLogs, rehearsed } from "#skills/main/logs.ts";
+import { type Points, type Tree, loadTree } from "./tree.ts";
 
 const USAGE = `usage:
   bun .claude/skills/promotion-tuner/scripts/replay.ts --tree <worktree>

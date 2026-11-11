@@ -48,6 +48,7 @@ import {
   type JsonValue,
 } from "#src/meta/json-shape.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
+import { percent } from "#tools/wri/budget.ts";
 import { equalMost, equalNeed, shortOf, spareOf } from "#tools/wri/clearance.ts";
 import { wlt } from "#tools/wri/folds.ts";
 
@@ -267,11 +268,6 @@ export function rowsOf(events: readonly LogEvent[], level: number | null, only: 
 /** A p to four places. */
 function pOf(p: number): string {
   return p < 0.0001 ? p.toExponential(1) : p.toFixed(4);
-}
-
-/** A share in whole percent, or none. */
-function percent(share: number | null): string {
-  return share === null ? "none" : `${String(Math.round(100 * share))}%`;
 }
 
 /** What the tree's rule says beside the recorded reading. */

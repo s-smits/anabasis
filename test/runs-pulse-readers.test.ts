@@ -624,6 +624,13 @@ describe("a look that was cut", () => {
     process.kill(-watching.pid, "SIGTERM");
     await watching.exited;
     expect(early).toBe("still looking");
+    // A wait that is no number of seconds above 0 is refused before the first look, not looped on.
+    for (const wait of ["0", "-5", "soon"]) {
+      const refused = start("--every", wait, "the-run");
+      const code = await Promise.race([refused.exited, Bun.sleep(20_000).then(() => "still looking")]);
+      if (code === "still looking") process.kill(-refused.pid, "SIGTERM");
+      expect(code).toBe(1);
+    }
   });
 
   it("keeps a peer's look from counting as read until its caller returns the token", () => {

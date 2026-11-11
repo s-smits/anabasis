@@ -46,18 +46,14 @@
  */
 import { admitComparison } from "#src/campaign/admission.ts";
 import type { Report } from "#src/campaign/comparison.ts";
-import { type CheckpointRequest, checkpoint, refuseTerms, scoredSet } from "#src/campaign/round.ts";
-import { contractHash } from "#src/kernel/contract.ts";
-import { read } from "#src/kernel/log.ts";
+import { type CheckpointRequest, checkpoint, refuseTerms } from "#src/campaign/round.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { keptAs, PACK_OPTIONS, packNamed, starter, stayAwake } from "./campaign.ts";
+import { keptAs, PACK_OPTIONS, packNamed, stayAwake } from "./campaign.ts";
 import {
   campaignFor,
-  predictionNamed,
   COMPARISON_OPTIONS,
-  objectiveNamed,
-  packaged,
+  comparedOn,
   reviewersNamed,
   type Seated,
   solved,
@@ -89,7 +85,6 @@ export async function checkpointCommand(
   if (id === undefined) throw new Error("name --id, the id the comparison takes in the log");
   if (kill?.aborted === true) throw new Error(`comparison ${id} was stopped before it began`);
   const { cap, setting, campaign } = await campaignFor(values, pack, seated);
-  const packageOf = packaged(campaign);
   const old = await keptAs(campaign, "--reference", values.reference);
   const fresh = await keptAs(campaign, "--new", values.new);
   const reviewers = reviewersNamed(campaign, values);
@@ -99,22 +94,7 @@ export async function checkpointCommand(
     id,
     old,
     fresh,
-    starter: await starter(campaign),
-    ...scoredSet(read(campaign.log), setting.target, contractHash(campaign.contract)),
-    solves: setting.solves,
-    level: Number(values.level),
-    objective: objectiveNamed(campaign),
-    defects: Number(values.defects),
-    cap,
-    prediction: predictionNamed(values.predict),
-    concurrency: setting.named.limits.concurrency,
-    solve: (version, harness, comparison, signal) =>
-      seats.solve(packageOf(version), harness, signal, comparison),
-    setting: seats.setting,
-    referee:
-      reviewers === null
-        ? undefined
-        : (solve, version, signal) => reviewers.referee(solve, packageOf(version), signal),
+    ...(await comparedOn({ campaign, setting, cap }, values, seats, reviewers)),
     ...keyIfDefined("kill", kill),
   };
   const own = () => {

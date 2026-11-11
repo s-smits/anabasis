@@ -40,7 +40,7 @@ import { taskSets } from "#src/kernel/task.ts";
 import { codeOf } from "../d2/campaign.ts";
 import { treeAt } from "./code.ts";
 import { receipts } from "./receipt.ts";
-import { CAMPAIGNS, logEvents, Misused, SEED_FILE } from "./registry.ts";
+import { CAMPAIGNS, logEvents, Misused, SEED_FILE, wholeLines } from "./registry.ts";
 import { logAcross } from "./snapshots.ts";
 
 const SESSION_STARTS = new Set<unknown>(["build.started", "exam.started", "draft.started"]);
@@ -78,12 +78,11 @@ function keptLines(lines: readonly string[], cut: Cut): number {
 export const seedCut = (folder: string): number =>
   parseJsonAs<{ events: number }>(readFileSync(join(folder, SEED_FILE), "utf8")).events;
 
-/** The whole lines of the log in `from`: a run still writing may have a torn last line, which is no
- *  event yet. */
+/** The whole lines of the log in `from`. */
 function linesOf(from: string): string[] {
   const source = join(from, LOG_FILE);
   if (!existsSync(source)) throw new Error(`${from} holds no ${LOG_FILE}: name a campaign's folder`);
-  return readFileSync(source, "utf8").split("\n").slice(0, -1);
+  return wholeLines(source).split("\n").slice(0, -1);
 }
 
 /**

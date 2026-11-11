@@ -18,6 +18,7 @@
  * after a state file that cannot be read, records the present and fires on no history.
  */
 import { type Static, Type } from "typebox";
+import { pauseSince } from "#src/campaign/word.ts";
 import { existsSync, readFileSync, statSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { join } from "#src/meta/path.ts";
@@ -26,12 +27,13 @@ import { plural } from "#src/meta/text.ts";
 import { asked, answerOf } from "./hosts.ts";
 import { keeperActed } from "./keep.ts";
 import { keepsItself } from "./manage.ts";
-import { type RunState, runState } from "./state.ts";
+import { launchedIn, type RunState, runState } from "./state.ts";
 import { onStatus } from "./pulse.ts";
 import { remember } from "./pulse-readers.ts";
 import { lastLaunch, unlaunchedSeed } from "./receipt.ts";
 import { climbed, type Promotion, promotionsOf } from "./said.ts";
 import {
+  archived,
   HERE,
   isCampaign,
   keptFile,
@@ -54,6 +56,8 @@ export interface Row {
   readonly lastAt: string | null;
   /** What its keeper said it did, oldest first. */
   readonly kept: readonly string[];
+  /** Whether its current launch was left a pause (`pauseSince`); a peer on an older tree sends none. */
+  readonly paused?: boolean;
 }
 
 /** What a host answered: its rows, and every campaign it holds, which the rows leave out once they are
@@ -61,6 +65,9 @@ export interface Row {
 export interface HostRows {
   readonly rows: readonly Row[];
   readonly held: readonly string[];
+  /** The campaigns `runs retire` moved into this host's own archive; a peer on an older tree sends
+   *  none. A run that left the registry for it has not vanished. */
+  readonly retired?: readonly string[];
 }
 
 /** What one host answered a look, null for one that gave no answer the look can read. */
@@ -106,6 +113,7 @@ const HOST_ROWS = Type.Object({
     ),
   ),
   held: Type.Array(Type.String()),
+  retired: Type.Optional(Type.Array(Type.String())),
 });
 
 /** The row of `run`, whose log is read at `now` among the processes `running`. */
@@ -120,6 +128,7 @@ function rowOf(run: Run, running: readonly Running[], now: number): Row {
     owed: keepsItself(runtimeProcess.env, lastLaunch(run.path)?.login),
     lastAt: last?.at ?? null,
     kept: existsSync(file) ? readFileSync(file, "utf8").split("\n").filter(keeperActed) : [],
+    paused: pauseSince(events, launchedIn(run, events)) !== undefined,
   };
 }
 
@@ -139,7 +148,8 @@ function rowsHere(now: number): HostRows {
     const writing = writers(run, running).length > 0 ? "open" : "closed";
     return onAlerts(run, writing, now - statSync(run.path).mtimeMs) ? [rowOf(run, running, now)] : [];
   });
-  return { rows, held: held.map(({ name }) => name) };
+  const retired = archived().flatMap((run) => (run.archived === HERE ? [run.name] : []));
+  return { rows, held: held.map(({ name }) => name), retired };
 }
 
 /** Whether a process writes the run's log: a state written on carries whether a keeper lives beside it. */
@@ -153,11 +163,12 @@ const endingOf = (state: RunState): string | null => {
 
 /** What is wrong with a run that has not ended, in the words a line says it. Each guard narrows the
  *  state, and a kind added to `RunState` fails to compile at the last. */
-function gapOf({ state, owed }: Row): string | null {
+function gapOf({ state, owed, paused }: Row): string | null {
   if (written(state)) return owed && !state.kept ? "no keeper" : null;
   if (state.kind === "ended") return null;
   if (state.kind === "kept") return "no writer process; its keeper lives";
   state.kind satisfies "stopped";
+  if (paused === true) return "paused";
   return owed ? "no writer process and no keeper" : "no writer process";
 }
 
@@ -211,6 +222,7 @@ export function alertsOf(
   const heard = answers.flatMap(({ host, said }) => (said === null ? [] : [{ host, said }]));
   const answered = new Set(heard.map(({ host }) => host));
   const held = new Set(heard.flatMap(({ said }) => said.held));
+  const retired = new Set(heard.flatMap(({ said }) => said.retired ?? []));
   // A name two hosts or two worktrees hold is the one with a writer, as a run mid-move is.
   const current = new Map(
     heard
@@ -229,7 +241,7 @@ export function alertsOf(
     if (current.has(name)) continue;
     if (held.has(name) || !answered.has(seen.host)) {
       next[name] = seen;
-    } else if (seen.ending === null) {
+    } else if (seen.ending === null && !retired.has(name)) {
       lines.push(`${name} (${seen.host}): left the registry with no ending seen`);
     }
   }

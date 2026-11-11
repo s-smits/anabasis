@@ -84,6 +84,8 @@ export interface HostPython {
 const RECEIPT = /^launch-(.+)\.json$/;
 /** The refs `source` names of one commit before it counts the rest. */
 const SHOWN = 3;
+/** A flag value longer than this is a sentence, such as a prompt, and `source` names it only. */
+const SHOWN_CHARS = 40;
 
 /** Where `--has` looks: the code a run executes, and none of the documents that name a mechanism
  *  before it is built. */
@@ -131,6 +133,46 @@ export function pythonIn(said: string): HostPython | null {
   } catch {
     return null;
   }
+}
+
+/** A launch's flags by name, each with its value or `true` for one that takes none. */
+function flagsOf({ flags }: Receipt): Map<string, string | true> {
+  const named = new Map<string, string | true>();
+  for (const [at, word] of flags.entries()) {
+    if (!word.startsWith("-")) continue;
+    const [name = word, inline] = word.split(/=(.*)/su);
+    const next = flags[at + 1];
+    named.set(name, inline ?? (next === undefined || next.startsWith("-") ? true : next));
+  }
+  return named;
+}
+
+/** A flag's value as `source` may print it: never a path, an env file's name, a login or a text
+ *  longer than a word or two, such as a prompt. */
+function shown(name: string, value: string | true): string {
+  if (value === true) return "";
+  const hidden = /env|login/u.test(name) || /[/~\\\s]|^\./u.test(value) || value.length > SHOWN_CHARS;
+  return hidden ? " (not shown)" : ` ${value}`;
+}
+
+/**
+ * The line `source` says of how a launch's flags and login differ from the launch before it, or the
+ * first launch's flag names. Until 10 November it printed no flag, and 12 of 13 lane 26 sessions read
+ * the receipts by hand for them, five dropping the env file's path with `jq` first.
+ */
+function flagLines(launch: Receipt, before: Receipt | undefined): string[] {
+  const now = flagsOf(launch);
+  if (before === undefined) return [`  flags ${[...now.keys()].join(" ") || "none"}`];
+  const was = flagsOf(before);
+  const moved = [
+    ...[...now].flatMap(([name, value]) => {
+      if (!was.has(name)) return [`added ${name}${shown(name, value)}`];
+      return was.get(name) === value ? [] : [`${name}${shown(name, value) || " now bare"} (changed)`];
+    }),
+    ...[...was.keys()].filter((name) => !now.has(name)).map((name) => `dropped ${name}`),
+  ];
+  const login = launch.login === before.login ? "same login" : "login changed";
+  return [`  ${login}; flags ${moved.length === 0 ? "as before" : moved.join(", ")}`];
 }
 
 /** The line `source` says of a launch's Python: its packages by count and short digest, enough to
@@ -185,7 +227,7 @@ export function sources(log: string, repo: string, fixes: readonly string[]): st
   if (launches.length === 0) {
     return ["no launch receipt: every round here was started by hand, and its commit is on no record"];
   }
-  return launches.flatMap((launch) => {
+  return launches.flatMap((launch, at) => {
     // The remote branches and the tags that hold the commit: where an outside reader can open it,
     // and a tag `run/<name>/<n>` (run-management) keeps it after its branch is rewritten. None for a
     // commit never pushed, and for one this repository does not hold.
@@ -199,6 +241,7 @@ export function sources(log: string, repo: string, fixes: readonly string[]): st
     return [
       `${launch.session}  ${launch.at}  ${launch.commit.slice(0, 9)}  ${launch.dirty ? "with uncommitted changes" : "clean"}  load ${launch.load.toFixed(1)} on ${String(launch.cores)} cores  bun ${launch.bun ?? "unknown"}`,
       `  published ${published}`,
+      ...flagLines(launch, launches[at - 1]),
       ...pythonLines(launch),
       // Whether the commit holds the fix among its ancestors: false for a fix it does not hold and
       // for either commit unknown here, which is why a restacked fix is asked for by its replayed

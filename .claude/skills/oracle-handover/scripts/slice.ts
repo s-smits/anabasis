@@ -8,11 +8,18 @@
  * A selector names a seat or an event kind, optionally a session, and optionally which items:
  *
  *   Builder                 the Builder's sessions, one row each (one session: its turns, one row each)
+ *   Builder:b-1[compare,wait] the turns of b-1 that called compare or wait, with those calls alone
  *   HarnessBuilder{4-7}     the Builder's 4th to 7th turns, each with every tool call it made
  *   Builder:b-2{1,3,10-}    turns 1, 3 and 10 to the last of session b-2
  *   Examiner:x-1{~2}        the last two turns of Examiner session x-1
  *   Solver:mw1kj2l9-1-1{1-3} the first three turns of the solve whose id ends so
  *   comparison.reported{~1} the last `comparison.reported` event, whole
+ *
+ * A `[tool,...]` list after the session keeps the calls to those tools and the turns that made them,
+ * and refuses a tool the chosen calls never used, naming those they did. `--count <phrase>` prints,
+ * in place of text, how often the phrase stands in each chosen call's result (an event kind: in each
+ * event's data), which settles a count of a phrase in served text without a jq filter: 27 such counts
+ * were written by hand in 14 of 18 lane-2 sessions between 3 and 10 November, none through this script.
  *
  * Seats are Builder (or HarnessBuilder, build), Examiner (exam), Drafter (draft), Referee,
  * Solver (solve) and Repair. A model turn and the calls it asked for are one group, so `{4}` is
@@ -37,6 +44,7 @@ import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { type Call, type Seat, type Turn, tracesIn } from "#src/kernel/trace.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
+import { keyIfDefined, keyIfNotNull } from "#src/meta/optional-key.ts";
 import { basename, dirname } from "#src/meta/path.ts";
 import { plural } from "#src/meta/text.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
@@ -57,11 +65,15 @@ interface Selector {
   readonly id: string | null;
   /** The items asked for as written, or null for the overview. */
   readonly items: string | null;
+  /** The tools whose calls are kept, where a `[...]` list names them. */
+  readonly tools?: readonly string[];
 }
 
 interface Shown {
   readonly whole: boolean;
   readonly maxChars: number;
+  /** A phrase whose occurrences are counted in place of the text. */
+  readonly count?: string;
 }
 
 const SEAT_NAMES = {
@@ -85,7 +97,8 @@ const SEAT_TITLES = {
   solve: "Solver",
 } as const satisfies Record<Seat, string>;
 
-const SELECTOR = /^(?<what>[A-Za-z][\w.]*)(?::(?<id>[^{}]+))?(?:\{(?<items>[^{}]*)\})?$/u;
+const SELECTOR =
+  /^(?<what>[A-Za-z][\w.]*)(?::(?<id>[^{}[\]]+))?(?:\[(?<tools>[^[\]]*)\])?(?:\{(?<items>[^{}]*)\})?$/u;
 export const DEFAULT_MAX_CHARS = 6000;
 
 /** Read selector `text`, refusing a seat or an item list it cannot name. */
@@ -93,7 +106,7 @@ export function parseSelector(text: string): Selector {
   const groups = SELECTOR.exec(text.trim())?.groups;
   const what = groups?.what;
   if (what === undefined) {
-    throw new CommandFailure(`${text}: a selector is <seat or kind>[:<session>][{<items>}]`);
+    throw new CommandFailure(`${text}: a selector is <seat or kind>[:<session>][[<tool>,...]][{<items>}]`);
   }
   const seat = Object.entries(SEAT_NAMES).find(([name]) => name === what.toLowerCase())?.[1] ?? null;
   if (seat === null && !what.includes(".")) {
@@ -104,11 +117,16 @@ export function parseSelector(text: string): Selector {
   if (seat === null && groups?.id !== undefined) {
     throw new CommandFailure(`${text}: an event kind takes no session; choose its items instead`);
   }
+  const tools = groups?.tools?.split(",").map((tool) => tool.trim());
+  if (tools !== undefined && (seat === null || tools.includes(""))) {
+    throw new CommandFailure(`${text}: a [tool,...] list follows a seat and names each tool`);
+  }
   return {
     seat,
     kind: seat === null ? what : null,
     id: groups?.id?.trim() ?? null,
     items: groups?.items ?? null,
+    ...keyIfDefined("tools", tools),
   };
 }
 
@@ -262,6 +280,15 @@ function overview(groups: readonly Group[], selector: Selector): string {
 function eventsMarkdown(events: readonly LogEvent[], selector: Selector, shown: Shown): string {
   const own = events.filter((event) => event.kind === selector.kind);
   if (own.length === 0) return `_The log holds no \`${String(selector.kind)}\` event._`;
+  const phrase = shown.count;
+  if (phrase !== undefined) {
+    const chosen = selector.items === null ? own.map((_, at) => at) : pick(selector.items, own.length);
+    const rows = chosen.map((at) => {
+      const data = capturedJsonStringify(own[at]?.data ?? {});
+      return `- ${String(selector.kind)} ${String(at + 1)} of ${String(own.length)}: ${String(occurrences(data, phrase))}`;
+    });
+    return [`"${phrase}" in each chosen event's data, as JSON:`, ...rows].join("\n");
+  }
   if (selector.items === null) {
     const rows = own.map(
       (event, at) =>
@@ -283,17 +310,57 @@ function eventsMarkdown(events: readonly LogEvent[], selector: Selector, shown: 
     .join("\n\n");
 }
 
+/** How often `phrase` stands in `text`, counting from the end of each occurrence. */
+const occurrences = (text: string, phrase: string): number => text.split(phrase).length - 1;
+
+/** One line a call: its session, turn and tool, and how often `phrase` stands in its result. */
+function countRows(groups: readonly Group[], phrase: string): string {
+  const calls = groups.flatMap(({ calls: each }) => each);
+  const found = calls.map((call) => occurrences(call.text, phrase));
+  const head = `"${phrase}" in each chosen call's result: ${String(found.filter((count) => count > 0).length)} of ${plural(calls.length, "call")} hold it, ${String(found.reduce((sum, count) => sum + count, 0))} times in all`;
+  const rows = calls.map(
+    (call, at) => `- ${call.id} turn ${String(call.turn ?? "?")} ${call.tool}: ${String(found[at] ?? 0)}`,
+  );
+  return [head, ...rows].join("\n");
+}
+
+/** The groups whose calls include one to `tools`, each keeping those calls alone; a tool none of
+ *  `groups` called is refused with the tools they did call, as a seat nothing names is. */
+function withTools(groups: readonly Group[], tools: readonly string[] | undefined): Group[] {
+  if (tools === undefined) return [...groups];
+  const used = new Set(groups.flatMap(({ calls }) => calls.map(({ tool }) => tool)));
+  const missing = tools.filter((tool) => !used.has(tool));
+  if (missing.length > 0) {
+    throw new CommandFailure(
+      `${missing.join(", ")}: no chosen call used it; they called ${[...used].toSorted().join(", ") || "no tool"}`,
+    );
+  }
+  return groups.flatMap((group) => {
+    const calls = group.calls.filter(({ tool }) => tools.includes(tool));
+    return calls.length === 0 ? [] : [{ ...group, calls }];
+  });
+}
+
 /** The markdown selector `text` chooses from `events`. */
 export function slice(events: readonly LogEvent[], text: string, shown: Shown): string {
   const selector = parseSelector(text);
   if (selector.seat === null) return eventsMarkdown(events, selector, shown);
-  const groups = groupsOf(events, selector.seat, selector.id);
+  const all = groupsOf(events, selector.seat, selector.id);
   const of = selector.id === null ? "" : ` of ${selector.id}`;
-  if (groups.length === 0) return `_The log holds no ${SEAT_TITLES[selector.seat]} turn${of}._`;
-  if (selector.items === null) return overview(groups, selector);
+  if (all.length === 0) return `_The log holds no ${SEAT_TITLES[selector.seat]} turn${of}._`;
+  const groups = withTools(all, selector.tools);
+  if (selector.items === null) {
+    return shown.count === undefined ? overview(groups, selector) : countRows(groups, shown.count);
+  }
   const chosen = pick(selector.items, groups.length);
   if (chosen.length === 0) {
     return `_The ${SEAT_TITLES[selector.seat]}${of} took ${plural(groups.length, "turn")}; \`{${selector.items}}\` names none._`;
+  }
+  if (shown.count !== undefined) {
+    return countRows(
+      chosen.flatMap((at) => groups.slice(at, at + 1)),
+      shown.count,
+    );
   }
   return chosen
     .flatMap((at) => {
@@ -317,16 +384,25 @@ if (import.meta.main) {
   await runCommand(
     {
       name: "slice",
-      usage: "slice.ts <run | log | folder> <selector>... [--whole] [--max-chars 6000]",
-      options: { whole: "flag", "max-chars": "int" },
+      usage: [
+        "What a seat read and said at a turn: the text of a tool's result (read_opening, compare, wait,",
+        "practice), a turn's words, an event whole, or how often a phrase stands in each result.",
+        "",
+        "slice.ts <run | log | folder> <selector>... [--whole] [--max-chars 6000] [--count <phrase>]",
+        "  selector: <seat or kind>[:<session>][[<tool>,...]][{<items>}], as Builder:b-1[read_opening]{~1}",
+      ].join("\n"),
+      options: { whole: "flag", "max-chars": "int", count: "text" },
       positionals: [2, 64],
     },
     async (args: CommandArgs) => {
       const [named = "", ...selectors] = args.positionals;
+      const count = args.value("count");
+      if (count === "") args.die("--count takes a phrase of at least one character");
       console.log(
         await sliceRun(named, selectors, {
           whole: args.flag("whole"),
           maxChars: args.int("max-chars") ?? DEFAULT_MAX_CHARS,
+          ...keyIfNotNull("count", count),
         }),
       );
     },

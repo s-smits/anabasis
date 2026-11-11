@@ -492,7 +492,10 @@ const compareTool = (context: CampaignContext, bench: Bench): SeatTool =>
     if ("refused" in named) return named;
     const { session, args } = comparisonOf(named.move, turn);
     // The working copy as it is frozen for this comparison, kept inside the live conversation: a
-    // conversation cut later leaves it the latest harness all the same (`latestBuilt`).
+    // conversation cut later leaves it the latest harness all the same (`latestBuilt`). It is
+    // written before admission on purpose: the state is kept by then, and after a refusal the
+    // table names it as not yet compared (4 refused compares in four runs to 10 November, each
+    // superseded by the session's next checkpoint).
     if (named.froze !== undefined) {
       append(context.log, "build.checkpoint", { session: bench.request.id, harness: named.froze });
     }

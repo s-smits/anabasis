@@ -18,6 +18,10 @@
  *   times, read 1 at 69 of 72 recorded starts by 16 October and refused none (`untied-short`):
  *   it went, as `7f0add79:docs/simplify.md` C1 had planned;
  * - `unread`: a checker `tools/c/accept.ts` has never read;
+ * - `cap-short`: a cap below what the comparison's test alone costs at the dollars a solve the
+ *   log's finished solves billed. A comparison its cap cuts short reads `not-scored` and ends the
+ *   campaign on its budget, so the solves it made bought nothing. A log with no finished solve
+ *   refuses none: there the reserve is the only rate, and solves bill well under it;
  * - `stopped`: a campaign the improvement patience has stopped: as many moves in a row as it
  *   allows could have shown a gain and showed none (`stopRule`, `7f0add79:docs/plan.md`, row F48). The
  *   operator may go on past it by saying why (`--past-stop`), and the reason is logged.
@@ -49,10 +53,10 @@ import { frozenChecker } from "../kernel/acceptance.ts";
 import { sweepOf } from "../kernel/compare.ts";
 import { append, type LogEvent, read } from "../kernel/log.ts";
 import { type Cap, CUT, lastReports, patienceOf, poolOf, roomOf } from "../kernel/reports.ts";
-import { practiceRan, rejectionAside } from "../kernel/solves.ts";
+import { ended, practiceRan, rejectionAside, solvesIn } from "../kernel/solves.ts";
 import { sizeLines } from "../kernel/size.ts";
 import { taskSets } from "../kernel/task.ts";
-import { asRecord, isString } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 
 /** What a log holds for the next comparison. */
 export interface Supply {
@@ -67,6 +71,9 @@ export interface Supply {
    *  reading, and whether the operator has frozen the checker. */
   readonly faults: number | null;
   readonly frozen: boolean;
+  /** The mean dollars the log's finished solves billed, null where none carries a bill: the rate
+   *  a comparison's test is priced at (`cap-short`). */
+  readonly billed: number | null;
   /** The improvement patience over the comparisons on record (`stopRule`). */
   readonly stop: ReturnType<typeof stopRule>;
 }
@@ -88,8 +95,9 @@ export interface Wanted {
   readonly unrecorded?: string | undefined;
 }
 
-/** What the supply's own refusals are read at: a comparison's size, and a reason to go on. */
-type Sized = Pick<Wanted, "target" | "level" | "pastStop">;
+/** What the supply's own refusals are read at: a comparison's size, the cap it is paid under, and
+ *  a reason to go on. */
+type Sized = Pick<Wanted, "target" | "level" | "solves" | "cap" | "pastStop">;
 
 /** What a Builder session with no comparison after it asks for: its cap, and the practice solves
  *  its limits allow. */
@@ -134,6 +142,13 @@ const UNRELEASED = "no task is released: the Builder has nothing to practise on"
 const said = (rows: readonly (readonly [boolean, string])[]) =>
   rows.flatMap(([holds, text]) => (holds ? [text] : []));
 
+/** The mean dollars the finished solves `solves` billed, null where none carries a bill: the rate
+ *  admission prices a comparison's test at. */
+export function billedRate(solves: ReturnType<typeof ended>): number | null {
+  const bills = solves.flatMap(({ end }) => (isNumber(end.billed) ? [end.billed] : []));
+  return bills.length === 0 ? null : bills.reduce((sum, bill) => sum + bill, 0) / bills.length;
+}
+
 /** A log's supply for the next comparison. */
 export function supplyOf(events: readonly LogEvent[]): Supply {
   // The frontier a step is read on, the tasks waiting for a person's label, which `scoredSet`
@@ -147,6 +162,7 @@ export function supplyOf(events: readonly LogEvent[]): Supply {
     released: taskSets(events).released.length,
     faults: Array.isArray(reading) ? reading.length : null,
     frozen: frozenChecker(events) !== null,
+    billed: billedRate(ended(solvesIn(events))),
     stop: stopRule(events),
   };
 }
@@ -228,11 +244,12 @@ export function comparisonFloor(level: number): number {
 
 /** The numbers a comparison's size is read from on a supply: the tasks it would score, and the
  *  admission floor at its level. */
-function sized(supply: Supply, wanted: Pick<Wanted, "target" | "level">) {
+function sized(supply: Supply, wanted: Pick<Wanted, "target" | "level" | "solves">) {
   const scored = Math.min(wanted.target, supply.held);
   // Reserve the margin before a round pays for solves that may tie or be set aside.
   const least = comparisonFloor(wanted.level);
-  return { scored, least };
+  // The comparison's test alone: both harnesses, on every scored task.
+  return { scored, least, test: 2 * scored * wanted.solves };
 }
 
 /** What the plan's stop rule says of a start: the refusal where the campaign is stopped and no
@@ -257,8 +274,12 @@ function stopped({ stop }: Supply, pastStop: string | undefined) {
  * write tasks (`decide.ts`).
  */
 export function refusals(supply: Supply, wanted: Sized) {
-  const { scored, least } = sized(supply, wanted);
+  const { scored, least, test } = sized(supply, wanted);
+  const { cap } = wanted;
   const [size = ""] = sizeLines(scored, wanted.level);
+  // What the test costs where its solves bill as the log's have. Retries and retained tasks only
+  // add to it, so a cap below it is cut short whatever the comparison meets.
+  const price = supply.billed === null ? null : test * supply.billed;
   const more = `An Examiner session writes more held-out tasks (examine, or ${EXAMINE} by hand)`;
   const stop = stopped(supply, wanted.pastStop);
   const rows = [
@@ -277,6 +298,11 @@ export function refusals(supply: Supply, wanted: Sized) {
       supply.faults === null,
       `${UNREAD}. A comparison on an unread checker pays for rejections nobody can attribute`,
     ],
+    [
+      "cap-short",
+      cap !== null && price !== null && cap.dollars < price,
+      `the cap of $${String(cap?.dollars.toFixed(2))} is below the $${String(price?.toFixed(2))} the comparison's test alone costs, ${String(test)} solves at what this campaign's finished solves billed each: it would be cut short and read not-scored`,
+    ],
     ["stopped", stop.refuses, stop.why],
   ] as const;
   return rows.flatMap(([code, holds, why]) => (holds ? [{ code, why }] : []));
@@ -293,10 +319,8 @@ function faulty(supply: Supply): readonly [boolean, string] {
 /** Whether a comparison should start on this supply: the command's two refusals, then the
  *  supply's, and what its reader should know when it does. */
 function admission(supply: Supply, wanted: Wanted): Admission {
-  const { scored, least } = sized(supply, wanted);
+  const { scored, least, test } = sized(supply, wanted);
   const { cap, pastStop, unrecorded } = wanted;
-  // The comparison's test alone: both harnesses, on every scored task.
-  const test = 2 * scored * wanted.solves;
   const afforded = cap === null ? test : Math.floor(cap.dollars / cap.reserve);
   return {
     refusals: [

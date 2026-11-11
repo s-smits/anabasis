@@ -4,7 +4,12 @@ import { isString, type JsonValue } from "./json-shape.ts";
 const freeze = Object.freeze.bind(Object);
 const defineProperty = Object.defineProperty.bind(Object);
 
-/** Native JSON and clone references captured before generated modules can replace shared globals. */
+/**
+ * Native JSON references taken at load. No host process imports a generated module: a harness's
+ * tools run in a walled process of their own (`CALLER`, `src/harness/open.ts`), and a check program
+ * runs in the check child, which calls `lockJsonGlobals` below before its one generated import, so
+ * there the ambient `JSON` is these same functions. The bindings carry the honest types below.
+ */
 const nativeJsonParse = JSON.parse.bind(JSON);
 /**
  * Typed `JsonValue` rather than the native `any`. Parsing bytes proves the result is JSON and
@@ -23,7 +28,6 @@ export const capturedJsonStringify: <T>(
   replacer?: null,
   space?: string | number,
 ) => undefined extends T ? string | undefined : string = JSON.stringify.bind(JSON);
-export const capturedStructuredClone = globalThis.structuredClone;
 
 /** A value a model sent as JSON, decoded where it arrived as JSON text: a tool's argument the
  *  provider passed as the string `"null"` where the same call elsewhere passed null (an Examiner's
@@ -44,9 +48,6 @@ export function decodedJsonText(value: JsonValue): JsonValue {
  * the same thing in one place. It remains a declaration about whoever wrote those bytes and not a
  * check on them: this owner narrows `any` and can observe no mismatch. A reader that must refuse
  * damaged bytes validates them itself, as `read` in src/kernel/log.ts does when it refuses a line.
- *
- * The captured binding is used rather than the ambient one, so a generated module that replaces
- * `JSON` after load does not change what the controller reads.
  */
 // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- `T` is the caller's declared contract, narrowed once here for every reader of a log or a pack
 export function parseJsonAs<T>(text: string): T {

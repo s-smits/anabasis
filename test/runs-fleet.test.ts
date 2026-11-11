@@ -279,6 +279,32 @@ describe("campaign snapshots", () => {
     expect(readFileSync(copied, "utf8")).toBe(whole);
   });
 
+  it("leaves out of a whole copy what a disk that folds case cannot hold apart, and says so", () => {
+    const remote = campaign();
+    const { made } = remote;
+    const files = [
+      "./log.jsonl",
+      "./w/t1.py",
+      "./w/T1.py",
+      "./terminfo/n/ncr",
+      "./terminfo/N/NCR",
+      "./a[1]",
+      "./A[1]",
+    ];
+    // An env value holds no NUL, so the fake ssh turns each line's end into the one `find` prints.
+    const copied = made.run(sync, { ...remote.env, FAKE_FILES: `${files.join("\n")}\n` });
+    expect(copied.code).toBe(0);
+    // The check runner may be Linux, whose disk holds both names of each pair.
+    const folds = existsSync(made.main.toUpperCase());
+    const transfer = made.recorded().find((call) => call.tool === "rsync");
+    expect(transfer?.args.filter((arg) => /^--exclude=\/./u.test(arg))).toEqual(
+      folds ? [String.raw`--exclude=/A\[1]`, "--exclude=/terminfo/N/NCR", "--exclude=/w/T1.py"] : [],
+    );
+    expect(copied.out.includes("distant: 3 paths named as another but for case stay on runner alone")).toBe(
+      folds,
+    );
+  });
+
   it("brings every other copy of a host where one copy fails, names it, and still fails the read", () => {
     const made = fixture();
     // One more campaign than a sync copies at once, the failing one first: until 10 November its
@@ -578,24 +604,7 @@ describe("the daily retire's host step", () => {
 });
 
 describe("the fleet pulse", () => {
-  it("asks a peer for --no-embed only where the look was given it", () => {
-    const remoteOf = (...flags: readonly string[]) => {
-      const made = fixture();
-      const state = join(made.root, "state.json");
-      const asked = JSON.stringify(["--no-readers", ...flags, "--state", state]);
-      made.run(`import { watch } from "REPOSITORY/tools/runs/pulse.ts"; await watch(${asked});`);
-      return (
-        made
-          .recorded()
-          .findLast((call) => call.tool === "ssh")
-          ?.args.at(-1) ?? ""
-      );
-    };
-    expect(remoteOf("--no-embed")).toContain("--no-embed");
-    expect(remoteOf()).not.toContain("--no-embed");
-  });
-
-  it("polls each host once and keeps a local state path out of remote commands", () => {
+  it("polls each host once, without the readers it was told to leave out, and keeps a local state path out of remote commands", () => {
     const made = fixture();
     const state = join(made.root, "state.json");
     const command = `import { watch } from "REPOSITORY/tools/runs/pulse.ts"; await watch(["--no-readers", "--state", ${JSON.stringify(state)}]);`;
@@ -609,9 +618,18 @@ describe("the fleet pulse", () => {
         ?.args.at(-1) ?? "";
     expect(remote).not.toContain(state);
     expect(remote).toContain("--here");
+    expect(remote).toContain("--no-readers");
     const failed = made.run(command, { FAKE_OFFLINE: "1" });
     expect(failed.code).toBe(1);
     expect(failed.out).toContain("pulse unavailable");
+    // A host that stays silent is said at the look that found it so, and at the one that reaches it again.
+    const still = made.run(command, { FAKE_OFFLINE: "1" });
+    expect(still.code).toBe(0);
+    expect(still.out).not.toContain("pulse unavailable");
+    const back = made.run(command);
+    expect(back.code).toBe(0);
+    expect(back.out).toContain("answers again");
+    expect(made.run(command).out).not.toContain("answers again");
     const local = fixture();
     expect(
       local.run(

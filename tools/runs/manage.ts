@@ -78,6 +78,7 @@ import {
   type Run,
   runNamed,
   standing,
+  waiters,
   writers,
 } from "./registry.ts";
 import { stop } from "./stop.ts";
@@ -131,10 +132,13 @@ export function loginEnv(env: Readonly<Record<string, string | undefined>>, logi
 
 const isWord = (word: string): word is keyof typeof AFTER => Object.hasOwn(AFTER, word);
 
-/** The kinds of event the words `after` names, or undefined where one of them names none. */
+/** The kinds of event the words `after` names, or undefined where one of them names none, or where
+ *  `next` is joined to another: it pauses at the next step, with its own word to the run and its own
+ *  rest, and every other point lies past it. */
 const kindsOf = (after: string): readonly string[] | undefined => {
   const words = after.split("|");
-  return words.every(isWord) ? words.flatMap((word) => AFTER[word]) : undefined;
+  const joined = words.length > 1 && words.includes("next");
+  return words.every(isWord) && !joined ? words.flatMap((word) => AFTER[word]) : undefined;
 };
 
 /** How many events of the kinds `after` names `events` holds. */
@@ -159,10 +163,21 @@ export function solvesMs(events: readonly LogEvent[]): number {
   return pauseWaitMs((recordedSetting(events)?.minutes ?? LIMITS.wallSeconds / 60) * 60);
 }
 
-async function pauseAt(run: Run, after: string): Promise<void> {
+/** The kinds `after` names, refused where `kindsOf` reads none, so the dry form refuses as `--yes` does. */
+function kindsNamed(after: string): readonly string[] {
   const kinds = kindsOf(after);
   if (kinds === undefined) {
-    throw new Error(`--after takes ${Object.keys(AFTER).join(", ")}, or several joined by |`);
+    throw new Error(`--after takes ${Object.keys(AFTER).join(", ")}, or several but next joined by |`);
+  }
+  return kinds;
+}
+
+async function pauseAt(run: Run, after: string): Promise<void> {
+  const kinds = kindsNamed(after);
+  // One waiter a run: a `continue --after` would start again a run another's pause had stopped.
+  const waiting = waiters(run.name);
+  if (waiting.length > 0) {
+    throw new Error(`${run.name} already waits to stop in process ${waiting.join(", ")}`);
   }
   const events = logEvents(run.path);
   const base = countOf(events, after);
@@ -178,7 +193,11 @@ async function pauseAt(run: Run, after: string): Promise<void> {
   const patience = Date.now() + allowed;
   // A log runs to tens of megabytes, and one that did not grow says what it said.
   let size = -1;
-  while (writers(run, processes()).length > 0) {
+  // A kept run between two starts, at a login's limit, still owes the point a word names: its keeper
+  // starts it again, and a stop now would read a comparison it never wrote.
+  const waits = () =>
+    writers(run, processes()).length > 0 || (after !== "next" && keepers(run.name).length > 0);
+  while (waits()) {
     const grown = statSync(run.path).size;
     // Past its patience nothing need have moved: a held solve records nothing.
     const late = after === "next" && Date.now() > patience;
@@ -361,6 +380,7 @@ export async function continueRun(args: readonly string[]): Promise<void> {
       "usage: bun run runs continue <name> [--at <commit>] [--login N] [--budget N] [--after <event>] [--yes] [-- <flags>]",
     );
   }
+  if (values.after !== undefined) kindsNamed(values.after);
   const run = runNamed(name);
   // Flags after `--` stand for the kept ones: a pack's path where the campaign was copied to
   // another host is that host's.
@@ -399,8 +419,9 @@ export async function pause(args: readonly string[]): Promise<void> {
   if (name === undefined) {
     throw new Error("usage: bun run runs pause <name> [--after <word>[|<word>...]] [--yes]");
   }
-  const run = runNamed(name);
   const after = values.after ?? "next";
+  kindsNamed(after);
+  const run = runNamed(name);
   if (!values.yes) return said(run, `would be stopped after its next ${after === "next" ? "step" : after}`);
   await pauseAt(run, after);
 }

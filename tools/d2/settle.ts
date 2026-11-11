@@ -59,17 +59,18 @@
  *
  * It starts no solve and calls no model. Not run here: see `campaign.ts`.
  */
-import { PASS_LABELS, passesIn, REPORTED, swapped, toLabel, UNSETTLED } from "#src/campaign/comparison.ts";
+import { PASS_LABELS, passesIn, reported, swapped, toLabel, UNSETTLED } from "#src/campaign/comparison.ts";
 import { settleReading } from "#src/campaign/round.ts";
 import { draw } from "#src/kernel/compare.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
+import { lastReports } from "#src/kernel/reports.ts";
 import { stopRule } from "#src/campaign/admission.ts";
 import { verdictsOf } from "#src/kernel/solves.ts";
 import { blockingOf } from "#src/kernel/verify.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
-import { asRecord, isString, type JsonValue } from "#src/meta/json-shape.ts";
+import { asRecord, type JsonValue } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
@@ -153,9 +154,6 @@ function labelsIn<Word extends string>(
 /** What a campaign's settled packets say: the Referee's agreement with their labels, and each
  *  settled comparison's decision read again with the verdicts its labels overturned swapped in. */
 export function labelLines(events: readonly LogEvent[]): string[] {
-  const ids = new Set(
-    events.flatMap(({ kind, data }) => (kind === REPORTED && isString(data.session) ? [data.session] : [])),
-  );
   const labels = settledLabels(events);
   const measured = agreement(events, labels);
   const rate = (value: number | null) => (value === null ? "none" : value.toFixed(2));
@@ -164,7 +162,7 @@ export function labelLines(events: readonly LogEvent[]): string[] {
   return [
     `the Referee against ${plural(labels.size, "labelled rejection")}, ${String(measured.unruled.length)} of them unruled: agreement of each kind ${each}; over all three ${rate(measured.observed)}, PABAK ${rate(measured.pabak)} beside kappa ${rate(measured.kappa)}`,
     ...(unclear === null ? [] : [unclear]),
-    ...[...ids].flatMap((id) => {
+    ...lastReports(events, "all").flatMap(({ session: id }) => {
       const again = swapped(events, id);
       if (again === null) return [];
       const { wins, losses, ties } = again.scored;
@@ -206,10 +204,7 @@ export async function settleCommand(args: readonly string[]): Promise<number> {
     console.log(`answers still to read in ${file}; nothing is recorded until none is`);
     return 0;
   }
-  const settled = events.findLast(
-    ({ kind, data }) => kind === "comparison.reported" && data.session === session,
-  );
-  if (asRecord(settled?.data.settled) !== null) {
+  if (asRecord(reported(events, session)?.settled) !== null) {
     console.log(`comparison ${session} is settled already, and this is the report it was settled as`);
   }
   const report = settleReading(campaign.log, session, rejections, passes);

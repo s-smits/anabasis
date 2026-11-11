@@ -52,11 +52,11 @@ function moveNamed(log: Log, named: string): Move {
 /** The comparison's own solves of `task` under `harness`, in the order they started: where `solves`
  *  is a number, its first that many that ended in a pass or a fail, as a pair counts them (`pairsOf`,
  *  `src/kernel/compare.ts`), so that a control's further arm stays out of the reference's side. */
-function ownSolves(log: Log, move: ComparisonMove, task: string, harness: string, solves?: number): Ran[] {
+export function ownSolves(log: Log, id: string, task: string, harness: string, solves?: number): Ran[] {
   const own = ranIn(log)
     .filter(
       (solve) =>
-        solve.start.comparison === move.id && solve.under.task === task && solve.under.harness === harness,
+        solve.start.comparison === id && solve.under.task === task && solve.under.harness === harness,
     )
     .toSorted((one, other) => one.started - other.started);
   if (solves === undefined) return own;
@@ -94,8 +94,8 @@ function scoredTasks(log: Log, move: ComparisonMove, tier: Tier): ScoredTask[] {
   if (report === null) {
     return (fixedIn(log.events, move.id)?.tasks ?? []).map((task) =>
       scoredTask(task, null, [
-        rows(ownSolves(log, move, task, move.old)),
-        rows(ownSolves(log, move, task, move.fresh)),
+        rows(ownSolves(log, move.id, task, move.old)),
+        rows(ownSolves(log, move.id, task, move.fresh)),
       ]),
     );
   }
@@ -110,7 +110,7 @@ function scoredTasks(log: Log, move: ComparisonMove, tier: Tier): ScoredTask[] {
   // A task set aside is in no pair: its solves are the comparison's on it, under each side, cut to
   // its solves a side as a pair is.
   const aside = report.aside.map((task) => {
-    const side = (harness: string) => rows(ownSolves(log, move, task, harness, move.solves));
+    const side = (harness: string) => rows(ownSolves(log, move.id, task, harness, move.solves));
     return scoredTask(task, "aside", [side(move.old), side(move.fresh)]);
   });
   return [...tallied, ...aside];

@@ -27,10 +27,9 @@ import { type SeatTool, sessionClock, sit } from "../agent/session.ts";
 import { endingWith, openingTool } from "../builder/tools.ts";
 import { budgetLeft } from "../campaign/opening.ts";
 import { append, read } from "../kernel/log.ts";
-import { priceKey } from "../kernel/meter.ts";
+import { priceKey, type Spent } from "../kernel/meter.ts";
 import { Cancellation } from "../kernel/solve.ts";
 import { examinerSessions } from "../kernel/solves.ts";
-import { unfinished } from "../kernel/trace.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { JsonObject } from "../meta/json-shape.ts";
@@ -205,6 +204,8 @@ async function examining(
   // The ask in force, the turns and dollars before it, and its own clock, which a rest closes.
   let current: Sitting = request;
   let [from, billed] = [0, 0];
+  // What the conversation has spent so far, which `sit` hands over as it opens.
+  let soFar: (() => Promise<Spent>) | undefined;
   const timed = new AbortController();
   const clocked = () => {
     const own = sessionClock(began, current.limits.wallSeconds);
@@ -249,9 +250,10 @@ async function examining(
       const asking = mode.ask;
       if (request.rest === undefined || asking === undefined) return null;
       clock.close();
-      const dollars =
-        unfinished(read(log)).find(({ of, id }) => of === mode.kind && id === current.id)?.dollars ?? 0;
-      billed += dollars;
+      // The ask bills the conversation's spend beyond the asks before it, its compactions included.
+      const total = Math.max(billed, (await soFar?.())?.billed ?? 0);
+      const dollars = total - billed;
+      billed = total;
       const result = closeAsk(ended, { crash: null, turns: turns.length - from, billed: dollars });
       // An ask's home is kept at its rest, as a session's was at its end before one conversation
       // held every ask: the conversation's wall closes only when the conversation does.
@@ -327,6 +329,9 @@ async function examining(
       },
       onTool: (phase) => {
         running += phase === "start" ? 1 : -1;
+      },
+      spending: (now) => {
+        soFar = now;
       },
       stops,
     });

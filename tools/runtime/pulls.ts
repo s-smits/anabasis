@@ -225,6 +225,11 @@ export function firstStack(open: readonly Pull[]): Pull[] {
   return (stacked.length > 0 ? stacked : stacks).toSorted((a, b) => oldest(a) - oldest(b))[0] ?? [];
 }
 
+/** The highest-numbered top of the open stacks, lone pull requests among them, which
+ *  `bun run land -- latest` lands; 0 where none is open. */
+export const latestTop = (open: readonly Pull[]): number =>
+  Math.max(0, ...chains(open).stacks.map((line) => line.at(-1)?.number ?? 0));
+
 /** Every open pull request of the repository `root`'s remote names, as GitHub lists them now. */
 export const openPulls = (root: string): Pull[] =>
   parseJsonAs<Pull[]>(

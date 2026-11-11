@@ -11,7 +11,9 @@
  *   bun tools/wri/wri.ts lanes --out .ana/wri/20261008-truss [--lanes 1-4,7] [--agents 3] [--regroup]
  *   bun tools/wri/wri.ts collect --out .ana/wri/20261008-truss
  *   bun tools/wri/wri.ts synthesis --out .ana/wri/20261008-truss
- *   bun tools/wri/wri.ts grade --log .ana/d2/truss/log.jsonl [--bundle <pack>] --task <taskId> --answer <file>
+ *   bun tools/wri/wri.ts grade --log .ana/d2/truss/log.jsonl [--bundle <pack>] --task <taskId> --answer <file> [--set <path>=<json>]...
+ *   bun tools/wri/wri.ts grade --log <log> [--bundle <pack>] --solve <id> [--set <path>=<json>]...
+ *   bun tools/wri/wri.ts grade --log <log> [--bundle <pack>] --answers <dir>
  *   bun tools/wri/wri.ts derive (--log <log>[,<log>...] | --all) [--verbose] [--force] [--no-embed]
  *   bun tools/wri/wri.ts index [--root <dir>] [--out <file>]
  *
@@ -58,47 +60,42 @@
  *   fourteen days, then each pull request a `plan.md` or a fork's `forkedPR<N>` names, with its forks'
  *   per-run ledgers read (`tools/wri/index.ts`). It prints each section's row count and how many
  *   folders it read whole, in part or not at all, and never the page, which holds hidden values.
- * - `grade` puts one answer to the campaign's own checker and prints the verdict in one line. It
- *   writes nothing and logs nothing. It needs the pack and its tool tree, and the Mac's verifier wall.
- *   An answer outside a drafted exam's answer format is refused first, as `judge` refuses a
- *   solver's, and no check reads it (`src/solver/run.ts`). The format is the draft's, which the
- *   campaign's contract holds (`packOpened`, `tools/d2/campaign.ts`). Until 20 October grade put
- *   every answer to the checks alone, and a lane of buffer-fresh-opus-forkedPR223_v0_5_4-r3's
- *   investigation, probing through it, read the evaluator's leniency on keys the format refuses as
- *   a gap of the exam, where the host refuses such an answer before any check: none of the
- *   campaign's 2,480 verdicts held a format fault. A stored pack's format is read from its sweep,
- *   which grade is not given, so its answers are put to the checks alone, and grade says so.
- *   A campaign over a stored pack names it with `--bundle`, and its checks stand beside the log; a
- *   campaign that drafted its exam names none, and its exam is read where the campaign staged it
- *   (`exams/<digest>/`, `tools/d2/exam.ts`). On 10 October t-10's lane 1 was given `<campaign>/checks`
- *   for a drafted exam and stopped on ENOENT.
+ * - `grade` puts answers to the campaign's own checker and prints each verdict in one line, with the
+ *   command that repeats it: one file against `--task`, the answer a solve's verdict holds (`--solve`,
+ *   beside the recorded verdict), either with fields replaced (`--set`, which refuses a path the answer
+ *   lacks and a change of JSON type), or every file of a folder (`--answers`) with each one's sha256
+ *   (`tools/wri/grade.ts`). It writes nothing and logs nothing.
  *
  * A log is named by its path or, since 15 October, by its campaign's whole name in any of the
  * repository's worktrees (`runNamed`). No verb starts a solve, a session
  * or a round, and none appends to a log.
  */
-import { draftOf } from "#src/examiner/draft.ts";
-import { answerFormatFault } from "#src/kernel/contract.ts";
 import { LOG_FILE, read } from "#src/kernel/log.ts";
-import { openVerifier, spelled } from "#src/kernel/verify.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
-import { capturedJsonParse, parseJsonAs } from "#src/meta/json-runtime.ts";
+import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { gitMaybe, gitText, mainTree } from "#src/meta/git.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { plural } from "#src/meta/text.ts";
-import { writtenTasks } from "#src/kernel/history.ts";
 import { codeOf } from "../d2/campaign.ts";
 import { installAt } from "../runs/code.ts";
 import { receipts } from "../runs/receipt.ts";
 import { isCampaign, processes, readable, type Running } from "../runs/registry.ts";
 import { stillRunning } from "../runs/diagnosis.ts";
 import { snapshotCampaign } from "../runs/seed.ts";
-import { type Derived, derive, derivedLine, derivedOf, derivedText, readersOf } from "./derive.ts";
+import {
+  type Derived,
+  derive,
+  derivedLine,
+  derivedMap,
+  derivedOf,
+  derivedText,
+  folderOf,
+  readersOf,
+} from "./derive.ts";
 import { logAcross } from "../runs/snapshots.ts";
-import { stagedExamOf } from "../d2/exam.ts";
-import { readPack } from "../m0/stored-sweep.ts";
 import { catalogueText, lanesOf, ownersOf, REFERENCES } from "./catalogue.ts";
 import { climbTable, crossings } from "./climb.ts";
 import {
@@ -106,12 +103,14 @@ import {
   type Campaign,
   filled,
   lanePrompt,
+  movedTo,
   numbersOf,
   reportIndex,
   reportOf,
   reportPath,
   selected,
   sessionsOf,
+  sharedPrompt,
   stem,
   weightOf,
 } from "./investigation.ts";
@@ -119,6 +118,7 @@ import { INVESTIGATION, investigationIndex, REPORTS, SHARED } from "./index.ts";
 import { overview, rendered } from "./read.ts";
 import { buildPackets, joinPackets } from "./packets.ts";
 import { gradesIn, HOURS, trajectoryText } from "./trajectory.ts";
+import { grade } from "./grade.ts";
 
 interface Investigation {
   readonly out: string;
@@ -143,6 +143,9 @@ const { values, positionals } = parseArgs({
     bundle: { type: "string" },
     task: { type: "string" },
     answer: { type: "string" },
+    solve: { type: "string" },
+    set: { type: "string", multiple: true },
+    answers: { type: "string" },
     all: { type: "boolean" },
     verbose: { type: "boolean" },
     force: { type: "boolean" },
@@ -175,7 +178,7 @@ function oneLog(): string {
   return log;
 }
 
-function needed(name: "log" | "out" | "bundle" | "task" | "answer"): string {
+function needed(name: "log" | "out"): string {
   const value = values[name];
   if (value === undefined) throw new Error(`name --${name}`);
   return value;
@@ -380,12 +383,17 @@ async function start(): Promise<number> {
 function opened(): Investigation {
   const out = resolve(needed("out"));
   const { logs } = parseJsonAs<{ logs: string[] }>(readFileSync(join(out, INVESTIGATION), "utf8"));
-  const campaigns = logs.map((log) => ({
-    name: nameOf(log, logs),
-    log,
-    overview: overview(read(log), receipts(log)),
-  }));
-  return { out, shared: readFileSync(join(out, SHARED), "utf8"), campaigns };
+  const campaigns = logs.map((stored) => {
+    const log = existsSync(stored) ? stored : movedTo(stored, readable(REPO).filter(isCampaign));
+    if (log !== stored) console.log(`${nameOf(stored, logs)}: its stored log is gone, read from ${log}`);
+    return { name: nameOf(stored, logs), log, overview: overview(read(log), receipts(log)) };
+  });
+  // The instructions name each log where `start` found it; a prompt built now names where it stands.
+  const shared = campaigns.reduce(
+    (text, { log }, index) => text.replaceAll(logs[index] ?? log, log),
+    readFileSync(join(out, SHARED), "utf8"),
+  );
+  return { out, shared, campaigns };
 }
 
 /** The campaigns in lane 22's columns, and the `/tmp` paths one named before another's solve ran
@@ -442,12 +450,18 @@ function lanes(): number {
     throw new Error(`--agents ${String(values.agents)}: name a whole number from 1`);
   }
   mkdirSync(join(out, "lanes"), { recursive: true });
+  // What `start` derived for each log, as the folders stand now.
+  const root = derivedOf(REPO);
+  const files = derivedMap(campaigns.map(({ name, log }) => ({ name, dir: folderOf(root, log) })));
+  // What every open lane shares is one file, named by its bytes: a later build under edited
+  // instructions writes another beside it, and no prompt built before points at text that moved.
+  const parts = { shared, campaigns, catalogue, owners, derived: files };
+  const every = `${sharedPrompt(parts)}\n`;
+  const common = join(out, "lanes", `shared-${hashJsonValue(every).slice(0, 8)}.md`);
+  if (built.some((lane) => !lane.isolated && !lane.blind)) writeFileSync(common, every);
   for (const lane of built) {
     const report = reportPath(out, lane.number);
-    writeFileSync(
-      promptPath(out, lane.number),
-      `${lanePrompt({ lane, shared, campaigns, catalogue, owners, report, climb })}\n`,
-    );
+    writeFileSync(promptPath(out, lane.number), `${lanePrompt({ ...parts, lane, report, climb, common })}\n`);
   }
   const groups = sessionsOf(launched, count);
   // `--high K` gives the K heaviest sessions high reasoning and the rest medium (operator, 9
@@ -471,7 +485,8 @@ function lanes(): number {
       task:
         group.length === 1
           ? `Read ${prompts} and do exactly what it says.`
-          : `Read ${prompts}, one at a time, and do exactly what each says: each lane writes its own report.`,
+          : // One lane at a time: the skill's "Sizing" gives what reading them together lost.
+            `Read ${prompts}, one at a time, and do exactly what each says: read a lane's evidence and write its report before you open the next prompt.`,
       ownedPaths: group.map((lane) => reportPath(out, lane.number)),
       ...effortOf(group),
     };
@@ -512,7 +527,7 @@ function lanes(): number {
   return 0;
 }
 
-function collected({ out, campaigns }: Investigation) {
+function collected({ out, campaigns, shared }: Investigation) {
   const catalogue = catalogueText();
   const owners = ownersOf(catalogue);
   return lanesOf(catalogue)
@@ -520,14 +535,15 @@ function collected({ out, campaigns }: Investigation) {
     .map((lane) => {
       const path = reportPath(out, lane.number);
       const names = campaigns.map(({ name }) => name);
-      return reportOf(lane, existsSync(path) ? readFileSync(path, "utf8") : null, owners, names);
+      return reportOf(lane, existsSync(path) ? readFileSync(path, "utf8") : null, owners, names, shared);
     });
 }
 
 function collect(): number {
   const investigation = opened();
   const reports = collected(investigation);
-  const index = reportIndex(reports, (lane) => reportPath(investigation.out, lane), investigation.campaigns);
+  const { out, campaigns, shared } = investigation;
+  const index = reportIndex(reports, (lane) => reportPath(out, lane), campaigns, shared);
   writeFileSync(join(investigation.out, REPORTS), `# Reports\n\n${index}\n`);
   console.log(index);
   const open = reports.filter(({ state }) => state !== "ok").length;
@@ -550,7 +566,7 @@ function synthesis(): number {
       out,
       synthesis: join(out, "synthesis.md"),
       overview: readFileSync(join(out, "overview.md"), "utf8").trim(),
-      reports: reportIndex(reports, (lane) => reportPath(out, lane), investigation.campaigns),
+      reports: reportIndex(reports, (lane) => reportPath(out, lane), investigation.campaigns, shared),
       sharedInstructions: shared.replaceAll(/<!--[\s\S]*?-->\n?/g, "").trim(),
     }),
   );
@@ -560,45 +576,16 @@ function synthesis(): number {
   return 0;
 }
 
-async function grade(): Promise<number> {
-  const [log, taskId] = [oneLog(), needed("task")];
-  // The pack and the check program: the stored pack `--bundle` names, whose checks the campaign
-  // staged beside its log, or the exam the log drafted, where the campaign staged it.
-  const staged = values.bundle === undefined ? stagedExamOf(log) : null;
-  if (values.bundle === undefined && staged === null) {
-    throw new Error("name --bundle: the campaign drafted no exam of its own, so its pack is a stored one");
-  }
-  const { bundle, checks } = staged ?? { bundle: needed("bundle"), checks: join(dirname(log), "checks") };
-  // The tasks an Examiner wrote are in the log and in no pack.
-  const events = read(log);
-  const tasks = [...writtenTasks(events), ...readPack(bundle).tasks];
-  const task = tasks.find((each) => each.taskId === taskId);
-  if (task === undefined) throw new Error(`neither the log nor the pack holds task ${taskId}`);
-  const answer = capturedJsonParse(readFileSync(needed("answer"), "utf8"));
-  // The format first, as the host holds a solver's answer to it before any check reads it (`judge`).
-  const answerFormat = draftOf(events)?.answerFormat;
-  const fault = answerFormat === undefined ? null : answerFormatFault(answerFormat, answer);
-  if (fault !== null) {
-    console.log(`fail format: ${fault}`);
-    return 0;
-  }
-  if (answerFormat === undefined) {
-    console.error(
-      "the answer format of a stored pack is read from its sweep, which grade is not given: not held to it",
-    );
-  }
-  const verify = openVerifier({ checks, tools: join(bundle, ".toolchain"), packRoots: [bundle] });
-  console.log(spelled(await verify(task, answer)));
-  return 0;
-}
-
 async function main(): Promise<number> {
   const [verb] = positionals;
   if (verb === "read") {
     console.log(overviewText(oneLog()));
     return 0;
   }
-  if (verb === "grade") return grade();
+  if (verb === "grade") {
+    const { bundle, task, answer, solve, set = [], answers } = values;
+    return grade({ log: oneLog(), bundle, task, answer, solve, set, answers });
+  }
   if (verb === "derive") return deriveStep();
   if (verb === "index") {
     const checkout = mainTree(REPO);

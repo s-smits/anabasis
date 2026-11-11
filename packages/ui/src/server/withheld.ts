@@ -16,6 +16,7 @@
  */
 import { reported, toLabel } from "../../../../src/campaign/comparison.ts";
 import type { Handover } from "../../../../src/campaign/handover.ts";
+import { rejected } from "../../../../src/kernel/solves.ts";
 import { isString } from "../../../../src/meta/json-shape.ts";
 import type { Rulings, Withheld } from "../models.ts";
 import { awaitingIn, type Log, once, ranIn, reportsIn, solvedIn } from "./folds.ts";
@@ -56,10 +57,7 @@ function anyWithheld(log: Log, id: string): boolean {
   if (reported(log.events, id) === null) return true;
   return ranIn(log).some(
     ({ id: solve, start, ending, under }) =>
-      start.comparison === id &&
-      ending?.outcome === "fail" &&
-      ending.kind === "rejected" &&
-      rulingWithheld(log, solve, under.task) !== null,
+      start.comparison === id && rejected(ending) && rulingWithheld(log, solve, under.task) !== null,
   );
 }
 

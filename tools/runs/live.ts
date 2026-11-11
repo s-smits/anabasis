@@ -2,14 +2,17 @@
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { looseFlagsOf } from "../d2/campaign-terms.ts";
+import { keysIf } from "#src/meta/optional-key.ts";
 import { lastLaunch } from "./receipt.ts";
-import { stillRunning } from "./diagnosis.ts";
+import { lifeOf } from "./diagnosis.ts";
 import { processes, runs, SEAT } from "./registry.ts";
 
 export interface Live {
   readonly name: string;
   readonly login: string | null;
   readonly host: string;
+  /** Set on a kept run between two starts: its keeper lives and no process writes its log. */
+  readonly unwritten?: true;
 }
 
 /** The payer of a run that seats an `openai-codex/` model and names no numbered login: the Codex
@@ -47,16 +50,30 @@ export function seatsIn(table: readonly { readonly args: readonly string[] }[], 
 
 /** The runs a process writes or keeps on this machine, which `host` names, and the simulations: a
  *  seat's seed is counted on the login the seat names. A kept run between two starts holds its slot,
- *  since its keeper starts it again there. All of it is read from one table, `running`. */
+ *  since its keeper starts it again there, and says it is `unwritten` (`countedAgainst`). All of it
+ *  is read from one table, `running`. */
 export function liveHere(host = "here", running = processes()): Live[] {
   const seats = seatsIn(running, host);
   const live = runs()
-    .filter((run) => !seats.some(({ name }) => name === run.name) && stillRunning(run, running))
-    .map((run) => {
+    .filter((run) => !seats.some(({ name }) => name === run.name))
+    .flatMap((run) => {
+      const { writing, kept } = lifeOf(run, running);
+      if (!writing && !kept) return [];
       const launch = lastLaunch(run.path);
-      return { name: run.name, login: payerOf(launch?.login, launch?.flags ?? []) ?? null, host };
+      const login = payerOf(launch?.login, launch?.flags ?? []) ?? null;
+      return [{ name: run.name, login, host, ...keysIf(!writing, () => ({ unwritten: true as const })) }];
     });
   return [...live, ...seats];
+}
+
+/** The runs of `live` that count against a start of `name` on their login: every other, but for an
+ *  `unwritten` run, an `unwritten` one that sorts after it by name in code-unit order. Every keeper
+ *  reads one listing and so one order alike, so where more kept runs wait on a login than its cap,
+ *  as after a cap is lowered under them, the first by name start and the rest wait, where each would
+ *  otherwise find the login full. A run nothing keeps counts every kept run, which holds its slot. */
+export function countedAgainst(live: readonly Live[], name: string): Live[] {
+  const kept = live.some((run) => run.name === name && run.unwritten === true);
+  return live.filter((run) => run.name !== name && !(kept && run.unwritten === true && run.name > name));
 }
 
 /** The runs `host` said it writes, from the lines of its answer to `active --here`, or null where
@@ -70,7 +87,12 @@ export function liveOf(host: string, lines: readonly string[] | null): Live[] | 
       if (run === null || !isString(run.name) || !(run.login === null || isString(run.login))) {
         throw new Error("a live record needs a name and login");
       }
-      return { name: run.name, login: run.login, host };
+      return {
+        name: run.name,
+        login: run.login,
+        host,
+        ...keysIf(run.unwritten === true, () => ({ unwritten: true as const })),
+      };
     });
   } catch {
     return null;

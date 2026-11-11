@@ -78,7 +78,8 @@ describe("the turn a keeper takes", () => {
     }
     // A login's limit is waited out, so its process dies on the wait or ends on its environment.
     for (const events of [[waited(2)], [waited(2), event("campaign.ended", { ending: "environment" })]]) {
-      expect(kept(events)).toEqual({ kind: "kept" });
+      expect(kept(events).kind).toBe("kept");
+      expect(turnOf(kept(events), NOW, HOUR)).toBe("continue");
     }
   });
 
@@ -359,6 +360,24 @@ describe("a keeper's looks, scripted", () => {
     await uncounted.look(NOW);
     expect(uncounted.state.acted).toEqual([]);
     expect(uncounted.state.asked).toBe(0);
+  });
+
+  it("goes on with a kept run on its own login where it is first by name of more kept runs than the cap", async () => {
+    const kept = (name: string) => ({ name, login: "2", host: "here", unwritten: true as const });
+    const acted = async (live: { name: string; login: string; host: string; unwritten?: true }[]) => {
+      const { state, look } = scripted();
+      state.open = false;
+      state.otherKeeper = true;
+      state.pool = ["2"];
+      state.live = live;
+      await look(NOW);
+      return state.acted;
+    };
+    expect(await acted(["sample", "t", "u"].map(kept))).toEqual(["start 2"]);
+    expect(await acted(["r", "s", "sample"].map(kept))).toEqual([]);
+    expect(
+      await acted([kept("sample"), ...["t", "u"].map((name) => ({ name, login: "2", host: "m1" }))]),
+    ).toEqual([]);
   });
 
   it("does not take the login it moved off again until its limit resets, and then may", async () => {

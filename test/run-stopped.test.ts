@@ -86,6 +86,11 @@ describe("where a run stands, in one fold every reader shares", () => {
       kept: true,
     });
     expect(stateOf([], { writing: false, kept: true }, NOW)).toEqual({ kind: "kept" });
+    const cut = [event(1, "campaign.ended", { ending: "environment" })];
+    expect(stateOf(cut, { writing: false, kept: true }, NOW)).toEqual({
+      kind: "kept",
+      ending: "environment",
+    });
     expect(stateOf(ended, { writing: false, kept: false }, NOW)).toEqual({ kind: "ended", ending: "budget" });
     expect(stateOf([event(1, "build.started")], { writing: false, kept: false }, NOW)).toEqual({
       kind: "stopped",

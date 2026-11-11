@@ -81,6 +81,28 @@ describe("each payer's cap", () => {
       "not counted on linux",
     );
   });
+
+  it("starts the first kept runs by name where more wait on a login than its cap, and none over its writers", () => {
+    const env = { ANA_LOGIN_RUNS: "2" };
+    const kept = ["a", "b", "c"].map((name) => ({
+      name,
+      login: "2",
+      host: "here",
+      unwritten: true as const,
+    }));
+    const counted = { live: kept, unasked: [] };
+    const refused = kept.map(({ name }) => startRefusal(env, "2", "here", counted, name));
+    expect(refused.slice(0, 2)).toEqual([null, null]);
+    expect(refused[2]).toContain("login 2 is at its live-run cap");
+    // A run nothing kept takes no kept run's slot, and a kept run first by name none of a writer's.
+    expect(startRefusal(env, "2", "here", { live: kept.slice(1), unasked: [] }, "a")).toContain(
+      "login 2 is at its live-run cap",
+    );
+    const writing = ["x", "y"].map((name) => ({ name, login: "2", host: "m1" }));
+    expect(startRefusal(env, "2", "here", { live: [...kept, ...writing], unasked: [] }, "a")).toContain(
+      "login 2 is at its live-run cap",
+    );
+  });
 });
 
 describe("seatsIn", () => {

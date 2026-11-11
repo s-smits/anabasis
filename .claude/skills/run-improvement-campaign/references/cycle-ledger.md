@@ -21,6 +21,13 @@ each open decision.
 - release: the word, tree-equality proof, land result, merge commit and tag;
 - next cycle: its ledger, authority, runs and commits.
 
-**Timers**: each armed timer (name, id, schedule with UTC offset, purpose, authority); each firing
-(time, finding, rows resolved, usefulness, next step, timer change); and a dated append-only line for
-work between firings.
+**Timers**: each armed timer (name, id, schedule with UTC offset, the day it was created, purpose,
+authority), laid out as [timers.md](timers.md); one row for each firing that changed something (time
+from the clock, what moved, rows resolved, timer change), and none for a firing that found nothing;
+which session holds a step that two could take; and a dated append-only line for work between
+firings. A log written in local time is converted as it is quoted, and the row says so.
+
+**The loop's own measures**, at each handover: `timers.ts` over the session's transcripts (firings,
+changed and quiet, by timer); for each iteration closed in the cycle, the hours from its trigger's
+event to its fork's `campaign.opened`; the predictions written on a fix against those that held in
+the next fresh run; and the `measures` lines of `wri2p2.ts due`, the files no live run measures.

@@ -38,8 +38,9 @@ Answer from the log before writing "step".
 
 - **Repeated?** A new `--id` on the same pair draws fresh solves; until a later reading holds, call
   it one draw at its level.
-- **A/A.** Read `noise`, the reference's first solve against its second (`compared`,
-  `src/campaign/comparison.ts`); a step either way (`readsStepEitherWay`) is reported beside the step.
+- **A/A.** Read `noise`, the reference against itself on halves of its solves mirrored in time,
+  the mirror running on from task to task so that at two a side the earlier solve is the first half
+  on every other task (`compared`, `src/campaign/comparison.ts`; `pairsOf`); a step either way (`readsStepEitherWay`) is reported beside the step.
 - **How thin?** At 0.02, 6-0 is the least that clears (p = 0.015625) and 5-0 does not; with equal
   margins 8-1, 10-2 and 12-3 clear, and unequal margins need `flipP`. Give the retained tally apart,
   since a gain on new tasks can offset a loss on old ones; an empty retained set is `unmeasured`.

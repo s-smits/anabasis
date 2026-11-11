@@ -21,13 +21,14 @@ interface Wait {
  * November a keeper outranked every ending, so two keepers of one run each read the other's and
  * went on past `budget` or `stop`.
  * A run written on is waiting, quiet or live; one nothing writes is kept, ended or stopped (paused,
- * killed or dead, which the log does not tell apart).
+ * killed or dead, which the log does not tell apart). A kept run names the environment's ending where
+ * its log ends on one, so that `alerts` says it once.
  */
 export type RunState =
   | { readonly kind: "live"; readonly kept: boolean }
   | { readonly kind: "waiting"; readonly kept: boolean; readonly wait: Wait }
   | { readonly kind: "quiet"; readonly kept: boolean; readonly since: number }
-  | { readonly kind: "kept" }
+  | { readonly kind: "kept"; readonly ending?: typeof GOES_ON }
   | { readonly kind: "ended"; readonly ending: string }
   | { readonly kind: "stopped" };
 
@@ -64,7 +65,8 @@ export function stateOf(events: readonly LogEvent[], life: Life, now: number, la
   const last = events.at(-1);
   if (!life.writing) {
     const ending = last?.kind === "campaign.ended" && isString(last.data.ending) ? last.data.ending : null;
-    if (life.kept && (ending === null || ending === GOES_ON)) return { kind: "kept" };
+    if (life.kept && ending === GOES_ON) return { kind: "kept", ending };
+    if (life.kept && ending === null) return { kind: "kept" };
     return ending === null ? { kind: "stopped" } : { kind: "ended", ending };
   }
   const ends = events.slice(launched).flatMap((event) => waitOf(event)?.until ?? []);

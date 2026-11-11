@@ -370,12 +370,13 @@ describe("cancelling queued solves", () => {
   });
 
   it("holds no process past a cancelled load wait on this host's own sleep", () => {
-    // A process whose only solve waits five seconds a look on `HOST`, cancelled after 50 ms: it ends
-    // once the wait is left, rather than when a sleep nobody waits for runs out.
+    // A process whose only solve waits twenty seconds a look on `HOST`, cancelled after 50 ms: it ends
+    // once the wait is left, rather than when a sleep nobody waits for runs out. The bound sits far
+    // below the sleep and far above a cold start, which took 3.4 seconds on a loaded host.
     const script = `
       const { gated, HOST } = await import(${JSON.stringify(join(REPO, "tools/d2/host.ts"))});
       const seat = { builder: null, setting: "s", solve: async () => ({ solve: "s-1", ending: { outcome: "pass" } }) };
-      const host = { ...HOST, load: () => 99, cores: 1, waitMs: 5000 };
+      const host = { ...HOST, load: () => 99, cores: 1, waitMs: 20_000 };
       const seats = gated({ seated: () => seat, loaded: false, host }, ${JSON.stringify(logIn("exit"))})({ limits: { concurrency: 4 } }, {});
       const kill = new AbortController();
       setTimeout(() => kill.abort(), 50);
@@ -384,7 +385,7 @@ describe("cancelling queued solves", () => {
     const started = performance.now();
     const ran = Bun.spawnSync({ cmd: [capturedExecPath, "-e", script], cwd: REPO });
     expect(ran.exitCode).toBe(0);
-    expect(performance.now() - started).toBeLessThan(2500);
+    expect(performance.now() - started).toBeLessThan(10_000);
   });
 });
 

@@ -40,7 +40,7 @@ import {
 } from "#src/kernel/compare.ts";
 import { contractHash } from "#src/kernel/contract.ts";
 import { LOG_FILE, read } from "#src/kernel/log.ts";
-import { ended, passed, ranUnder, rejectionAside, verdictsOf } from "#src/kernel/solves.ts";
+import { ended, passed, ranUnder, rejectionAside, rulingsOf, verdictsOf } from "#src/kernel/solves.ts";
 import { taskSets } from "#src/kernel/task.ts";
 import { billedAll } from "#src/kernel/meter.ts";
 import { existsSync, mkdirSync } from "#src/meta/filesystem.ts";
@@ -251,16 +251,23 @@ export function pairLines(
   ];
 }
 
-/** The baseline against itself on halves of its solves mirrored in time (at four, first and last
- *  against the two between; at two, first against second), the A/A every comparison of two solves a
- *  side carries: it should read no step. */
-function itself(baseline: System, own: Map<string, Solved>, at: Parameters<typeof pairLines>[2]): string[] {
+/** The baseline against itself on halves of its solves mirrored in time, the A/A every comparison of
+ *  two solves a side carries: it should read no step. The mirror runs on from one task to the next
+ *  as `pairsOf` reads the campaign's A/A, so at four solves the first and last stand against the two
+ *  between, and at two the earlier solve is the first half on every other task. */
+export function itself(
+  baseline: System,
+  own: Map<string, Solved>,
+  at: Parameters<typeof pairLines>[2],
+): string[] {
   if (at.solves < 2 || at.solves % 2 !== 0) return [];
   const half = (solves: "out" | "in") =>
     new Map(
-      [...own].map(([task, row]) => {
+      [...own].map(([task, row], place) => {
         const pick = <T>(values: readonly T[]) =>
-          values.slice(0, at.solves).filter((_, index) => [0, 3].includes(index % 4) === (solves === "out"));
+          values
+            .slice(0, at.solves)
+            .filter((_, index) => [0, 3].includes((place * at.solves + index) % 4) === (solves === "out"));
         return [
           task,
           {
@@ -316,7 +323,7 @@ async function solveAll(opened: readonly Opened[], { source, seed, tasks, solves
   await Promise.all(Array.from({ length: source.limits.concurrency }, work));
   const unruled = opened.flatMap(({ system, log, reviewers }) => {
     const own = existsSync(log) ? read(log) : [];
-    const found = new Set(own.flatMap(({ kind, data }) => (kind === "referee.finding" ? [data.solve] : [])));
+    const found = rulingsOf(own);
     return ended(ranUnder(own)).flatMap((solve) =>
       solve.ending?.kind === "rejected" && !found.has(solve.id) ? [{ system, reviewers, solve }] : [],
     );

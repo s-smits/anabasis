@@ -110,6 +110,8 @@ const TOOL_PREFIX = `mcp__${SERVER}__`;
 const CLI_TOOLS = ["WebSearch"];
 /** How long a closing query waits on its interrupt. One answered mid-turn in 16 ms. */
 const INTERRUPT_MS = 1000;
+/** How long `claudeSpendNow` waits on Claude Code's count; with a login it asks the plan's limits too. */
+const USAGE_MS = 5000;
 /**
  * How long a turn waits for Claude Code's next message before it reads the query as hung. A turn
  * streams partial messages while the model writes, and Claude Code's own retries and compactions take
@@ -707,6 +709,29 @@ export async function claudeLedger(key: string): Promise<BackendSpend | null> {
   const read = (await reads.get(key)) ?? null;
   reads.delete(key);
   return read;
+}
+
+/**
+ * What session `key`'s live query has spent so far by Claude Code's own count, the same ledger its
+ * `result` carries, read through the Agent SDK's usage request, which Claude Code answers from memory
+ * with no model call. Every request it makes credits that ledger, its compactions' summaries
+ * (`querySource: "compact"`) included. Null where no query of this process serves the session, or the
+ * experimental request fails, answers in another shape or takes longer than five seconds or the
+ * session's quiet bound.
+ */
+export async function claudeSpendNow(key: string): Promise<BackendSpend | null> {
+  const session = sessions.get(key);
+  if (session === undefined) return null;
+  const read = session.query
+    .usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true })
+    .then(({ session: { total_cost_usd, model_usage } }) => {
+      const spend = claudeSpend(session.provider, { total_cost_usd, modelUsage: model_usage });
+      // The request may change shape, and a renamed field would bill NaN, then nothing, from here on.
+      const finite = Object.values(spend.ledger).every((each) => Object.values(each).every(Number.isFinite));
+      return finite ? spend : null;
+    })
+    .catch(() => null);
+  return await Promise.race([read, Bun.sleep(Math.min(USAGE_MS, session.quiet)).then(() => null)]);
 }
 
 /** The query's next `result`, read, or null where the query ends or is aborted first. */

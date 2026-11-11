@@ -6,9 +6,9 @@
  * that taught something. `40e540bdd` embeds only what no earlier read embedded, and `495c4cde2` finishes
  * offline and with a store it cannot write.
  *
- * Progress survives a kill. A cut reader keeps its last result and says nothing (`readInto`,
- * `tools/wri/pass.ts`), so the vectors go down after every batch, and the next read embeds the rest. A
- * reader that calls this marks itself `embeds`, or a cut never comes round again (`runQueue`).
+ * Progress survives a kill: the vectors go down after every batch, and the next read embeds the rest.
+ * A reader that calls this marks itself `embeds`, which `derive --no-embed` leaves out; no moment names
+ * one, so a pulse's pass runs none.
  * The vectors are made from text that may hold hidden values, so they lie in the reader store under
  * `.ana/`, closed to every seat by name, instead of v1's `~/.cache`. The public model's files stay in
  * the shared cache, outside every worktree, so a fresh checkout downloads nothing. One log has one file

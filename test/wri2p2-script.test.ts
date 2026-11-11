@@ -3,20 +3,25 @@
 // default a recorded reason passes (operator, 7 November), so each is walked owed, met and deviated.
 import { afterAll, describe, expect, it } from "bun:test";
 import {
+  dueLines,
   ledgerViews,
   lengthsIn,
+  movedIn,
   nextOf,
-  rowOf,
-  triggerOf,
+  openingOf,
+  unmeasured,
 } from "#skills/run-improvement-campaign/scripts/wri2p2.ts";
+import { progressOf as rowOf, triggerOf } from "#tools/runs/said.ts";
 import { forkOf, idsOf, outcomesOf, pullOf } from "#tools/wri/ledger.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { gitText } from "../src/meta/git.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 
 const live = { name: "r", host: "here", live: true };
+const SCRIPT = ".claude/skills/run-improvement-campaign/scripts/wri2p2.ts";
 const PLAN_FILE = "plan.md";
 const PLAN =
   "# Plan\n\nvet-1 in cross-domain.md, by E1, B2 and S1.\n\nPull request: #602\n\n## Intentionally opposed\n\n- none\n";
@@ -102,6 +107,40 @@ function folder(name: string, run: string, iteration: boolean) {
 
 const table = (ids: string[], outcome = "x") =>
   `| id | outcome |\n| --- | --- |\n${ids.map((id) => `| ${id} | ${outcome} |`).join("\n")}\n`;
+
+describe("a run's step at its trigger", () => {
+  const row = { name: "r1", host: "here", live: true };
+  const pausing = (args: string[]) => [{ pid: 1, cwd: "/w", args }];
+
+  it("pauses a live run after its next comparison before its investigation opens", () => {
+    expect(openingOf(row, "2 promotions", [])).toEqual([
+      "step: pause · 2 promotions; the investigation opens once the run stops after its next comparison",
+      "  bun run runs pause r1 --after reported --yes",
+    ]);
+  });
+
+  it("waits while a pause of the run is armed, and opens once the run has stopped", () => {
+    const armed = pausing(["bun", "tools/runs/cli.ts", "pause", "r1", "--after", "reported", "--yes"]);
+    expect(openingOf(row, "2 promotions", armed)[0]).toStartWith("step: waits");
+    // A `continue --after` stops the run too, so it is the pause's waiter as well (`waiters`).
+    const continuing = pausing(["bun", "tools/runs/cli.ts", "continue", "r1", "--after", "compacted"]);
+    expect(openingOf(row, "2 promotions", continuing)[0]).toStartWith("step: waits");
+    expect(
+      openingOf(row, "2 promotions", pausing(["bun", "tools/runs/cli.ts", "continue", "r1"]))[0],
+    ).toStartWith("step: pause");
+    expect(openingOf(row, "2 promotions", pausing(["bun", "cli.ts", "pause", "r2"]))[0]).toStartWith(
+      "step: pause",
+    );
+    expect(openingOf({ ...row, live: false }, "2 promotions", armed)[0]).toBe("step: open · 2 promotions");
+    expect(openingOf(row, null, [])).toEqual(["step: run"]);
+  });
+
+  it("pauses a peer's run on its own host", () => {
+    expect(openingOf({ ...row, host: "peer" }, "12.0 h since its opening", [])[1]).toBe(
+      "  bun run runs on peer pause r1 --after reported --yes",
+    );
+  });
+});
 
 describe("the next step of an investigation", () => {
   it("walks the shared steps from the shared instructions to the fresh runs", () => {
@@ -417,5 +456,150 @@ describe("the next step of an investigation", () => {
   it("reads the pull request only from its own line, not from a number cited in the prose", () => {
     expect(pullOf("Fixed on #602, after #601's round.\n")).toBeNull();
     expect(pullOf("# Plan\n\nPull request: #603\n")).toBe(603);
+  });
+});
+
+describe("the short view a timer reads", () => {
+  const now = OPENED + 100 * 3_600_000;
+  const standing = (name: string, isLive: boolean, dir: string | null, step: string[], last = 99) => ({
+    row: rowOf({ name, host: "here", live: isLive }, [event(0, "campaign.opened")], now),
+    last: OPENED + last * 3_600_000,
+    dir,
+    step,
+  });
+  // Each folder was last written this many hours after the opening.
+  const written = new Map([
+    ["/wri/a", 97],
+    ["/wri/b", 60],
+    ["/wri/old", 10],
+  ]);
+  const changedAt = (dir: string) => OPENED + (written.get(dir) ?? 0) * 3_600_000;
+
+  it("says nothing is owed while every run runs on or is measured, and counts the live ones", () => {
+    const lines = dueLines(
+      [
+        standing("r1", true, null, ["step: run"]),
+        standing("r2", false, "/wri/a", ["step: done · #7 is measured by r2-forkedPR7"]),
+      ],
+      changedAt,
+      now,
+    );
+    expect(lines).toEqual(["due at 2026-11-08T04:00Z · nothing owed · 1 run(s) live"]);
+  });
+
+  it("lists a live run's trigger first, then the longest-standing step, one line a folder's step", () => {
+    const lines = dueLines(
+      [
+        standing("r1", false, "/wri/a", ["deviated: lanes · by hand", "step: vet · vetting.md names no P2"]),
+        standing("r2", false, "/wri/b", ["step: outcomes · resolve C1"]),
+        standing("r3", false, "/wri/b", ["step: outcomes · resolve C1"]),
+        // A live run at its trigger owes its pause, and the line names the pause, never `open`.
+        standing("r4", true, null, openingOf({ name: "r4", host: "here", live: true }, "2 promotions", [])),
+        standing("r5", false, null, ["step: open · closed (budget)"], 88),
+      ],
+      changedAt,
+      now,
+    );
+    expect(lines[0]).toBe(
+      "due at 2026-11-08T04:00Z · 4 step(s) owed, the oldest listed for 40.0 h · 1 run(s) live",
+    );
+    expect(lines.slice(1).map((line) => line.split(" · ").slice(0, 3).join(" · "))).toEqual([
+      "pause · new · r4",
+      "outcomes · 40.0 h · r2 and 1 more",
+      "open · 12.0 h · r5",
+      "vet · 3.0 h · r1",
+    ]);
+    // Each line ends in the command that prints its step whole.
+    const commands = lines.slice(1, 3).map((line) => line.split(" · ").at(-1));
+    expect(commands).toEqual(["bun run runs pause r4 --after reported --yes", `bun ${SCRIPT} next /wri/b`]);
+    // A stopped run's step that carries no command line still opens.
+    expect(lines[3]?.split(" · ").at(-1)).toBe(`bun ${SCRIPT} open r5`);
+  });
+
+  it("only counts a step nobody has taken for the days, a closed run's unread trigger included", () => {
+    const lines = dueLines(
+      [
+        standing("r1", false, "/wri/old", ["step: plan · plan.md is missing"]),
+        standing("r2", false, null, ["step: open · closed"], 40),
+        standing("r3", false, "/wri/a", ["step: plan · plan.md is missing"]),
+      ],
+      changedAt,
+      now,
+    );
+    // Three owed in all, one listed, and the two older than the days counted on the last line.
+    expect(lines.map((line) => /\d+(?= step| of them)/u.exec(line)?.[0])).toEqual(["3", undefined, "2"]);
+    expect(lines[1]?.split(" · ").slice(0, 3)).toEqual(["plan", "3.0 h", "r3"]);
+    // The same steps are all listed once the window is widened to hold them.
+    expect(dueLines([standing("r1", false, "/wri/old", ["step: plan · x"])], changedAt, now, 5)).toHaveLength(
+      2,
+    );
+  });
+
+  it("counts and names the step that `nextOf` prints for a real folder, so a change of its wording shows", () => {
+    for (const iteration of [false, true]) {
+      const { dir, step } = folder(`due-${String(iteration)}`, "rx", iteration);
+      const printed = step();
+      const name = /^step: (\w+)/u.exec(printed.find((line) => line.startsWith("step: ")) ?? "")?.[1] ?? "";
+      // An owed step: neither the running nor the measured one, which the view leaves out.
+      expect(name).toMatch(/^(?!run$|done$)\w+$/u);
+      const lines = dueLines([{ ...standing("rx", false, dir, []), step: printed }], () => now, now);
+      expect(lines[0]).toContain("1 step(s) owed");
+      expect(lines[1]?.split(" · ").slice(0, 3)).toEqual([name, "0.0 h", "rx"]);
+    }
+  });
+
+  it("never says nothing is owed while every owed step has stood for the days", () => {
+    const lines = dueLines([standing("r1", false, "/wri/old", ["step: plan · x"])], changedAt, now);
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).not.toContain("nothing owed");
+    expect(lines.map((line) => /\d+(?= step| of them)/u.exec(line)?.[0])).toEqual(["1", "1"]);
+  });
+
+  it("reads the window from a log's last event, so a closed run that ended before it is left out and a live one stays", () => {
+    // The file's time is no part of the reading: a copy fetched again is a file written now.
+    const ended = standing("r-ended", false, null, ["step: open · closed"], 40);
+    const recent = standing("r-recent", false, null, ["step: open · closed"], 60);
+    const running = standing("r-live", true, null, ["step: run"], 40);
+    const names = (days: number) => movedIn([ended, recent, running], now, days).map(({ row }) => row.name);
+    expect(names(2)).toEqual(["r-recent", "r-live"]);
+    expect(names(3)).toEqual(["r-ended", "r-recent", "r-live"]);
+    // What is left out is owed nowhere, where before it was counted as owed for the days.
+    expect(dueLines(movedIn([ended], now, 2), changedAt, now)[0]).toContain("nothing owed");
+    expect(dueLines([ended], changedAt, now)[0]).toContain("1 step(s) owed");
+  });
+});
+
+describe("what a live run does not measure", () => {
+  it("counts a change to a campaign command beside the source, and none to a test or a skill", () => {
+    const repo = join(base, "measures");
+    const put = (path: string, text: string) => {
+      mkdirSync(dirname(join(repo, path)), { recursive: true });
+      writeFileSync(join(repo, path), text);
+    };
+    const commit = () => {
+      gitText(repo, "add", "-A");
+      gitText(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "c");
+      return gitText(repo, "rev-parse", "HEAD");
+    };
+    mkdirSync(repo, { recursive: true });
+    gitText(repo, "init", "-q");
+    for (const path of ["src/a.ts", "tools/d2/b.ts", "test/c.test.ts", ".claude/skills/s/SKILL.md"]) {
+      put(path, "one\n");
+    }
+    const from = commit();
+    put("test/c.test.ts", "two\n");
+    put(".claude/skills/s/SKILL.md", "two\n");
+    const unrun = commit();
+    put("tools/d2/b.ts", "two\n");
+    const run = commit();
+    const standing = {
+      row: rowOf(live, [event(0, "campaign.opened")], OPENED),
+      last: OPENED,
+      commit: from,
+      dir: null,
+      step: [],
+    };
+    expect(unmeasured(repo, unrun, standing)).toContain("changes nothing it runs");
+    expect(unmeasured(repo, run, standing)).toContain("1 file(s) of the code a solve runs differ");
   });
 });

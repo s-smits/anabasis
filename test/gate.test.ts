@@ -18,7 +18,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import { tmpdir } from "../src/meta/os.ts";
+import { hostname, tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
 import { holdAlone, sayingPulls } from "../tools/runtime/landing.ts";
@@ -321,13 +321,17 @@ describe("proveCommits", () => {
 });
 
 describe("one landing of a clone at a time", () => {
+  /** The record a live process of this host holds a lock by (`holder.ts`). */
+  const recordOf = (pid: number): string =>
+    `${String(pid)} ${hostname()} ${execTextSync("/bin/ps", ["-o", "lstart=", "-p", String(pid)]).trim()}`;
+
   it("waits while a live process holds the clone, and takes the lock over once its holder is gone", async () => {
     const clone = mkdtempSync(join(fixture, "alone-"));
     execTextSync("git", ["init", "-q"], { cwd: clone });
     const lock = join(clone, ".git", "ana-land.lock");
     const mine = String(runtimeProcess.pid);
-    // The lock is a link whose target is its holder's pid.
-    symlinkSync(mine, lock);
+    // The lock is a link whose target is its holder's record.
+    symlinkSync(recordOf(runtimeProcess.pid), lock);
     const said: string[] = [];
     const held = holdAlone(clone, "land", (line) => said.push(line), 20);
     const early = await Promise.race([held.then(() => "held"), Bun.sleep(200).then(() => "waiting")]);
@@ -337,10 +341,10 @@ describe("one landing of a clone at a time", () => {
     rmSync(lock);
     symlinkSync("4194399", lock);
     const release = await held;
-    expect(readlinkSync(lock)).toBe(mine);
+    expect(readlinkSync(lock)).toBe(recordOf(runtimeProcess.pid));
     release();
     const again = await holdAlone(clone, "land", () => undefined, 20);
-    expect(readlinkSync(lock)).toBe(mine);
+    expect(readlinkSync(lock)).toBe(recordOf(runtimeProcess.pid));
     again();
   });
 
@@ -350,7 +354,7 @@ describe("one landing of a clone at a time", () => {
       execTextSync("git", ["init", "-q"], { cwd: clone });
       const lock = join(clone, ".git", "ana-land.lock");
       const holder = Bun.spawn(["sleep", "30"]);
-      symlinkSync(`${String(holder.pid)} #5 sanitizing`, lock);
+      symlinkSync(`${recordOf(holder.pid)} #5 sanitizing`, lock);
       return { clone, lock, holder };
     };
     const over = (note: string): boolean => note === "#5 sanitizing";
@@ -374,19 +378,115 @@ describe("one landing of a clone at a time", () => {
     await holder.exited;
     expect(holder.signalCode).toBe("SIGTERM");
     expect(said.join("\n")).toContain(`pid ${String(holder.pid)}, #5 sanitizing`);
-    expect(readlinkSync(lock)).toBe(`${String(runtimeProcess.pid)} #6 sanitizing`);
+    expect(readlinkSync(lock)).toBe(`${recordOf(runtimeProcess.pid)} #6 sanitizing`);
     release();
   });
 
-  it("takes over at once a lock an older landing left as a folder without its pid", async () => {
+  it("lets one of many landings take a dead holder's lock, and the others wait for it", async () => {
+    const clone = mkdtempSync(join(fixture, "alone-"));
+    execTextSync("git", ["init", "-q"], { cwd: clone });
+    symlinkSync("4194399", join(clone, ".git", "ana-land.lock"));
+    const taker = join(clone, "taker.ts");
+    const landingPath = JSON.stringify(join(import.meta.dir, "..", "tools", "runtime", "landing.ts"));
+    writeFileSync(
+      taker,
+      [
+        `import { holdAlone } from ${landingPath};`,
+        // Every taker starts at one instant, so they meet at the takeover rather than one after another.
+        `while (Date.now() < ${String(Date.now() + 3000)});`,
+        `await holdAlone(${JSON.stringify(clone)}, "land", () => console.log("waiting"), 20);`,
+        `console.log("held");`,
+        "await Bun.sleep(30000);",
+      ].join("\n"),
+    );
+    const takers = Array.from({ length: 8 }, () => Bun.spawn([capturedExecPath, taker], { stdout: "pipe" }));
+    const firstLine = async (one: (typeof takers)[number]): Promise<string> => {
+      const reader = one.stdout.getReader();
+      let text = "";
+      while (!text.includes("\n")) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        text += new TextDecoder().decode(value);
+      }
+      return text.split("\n")[0] ?? "";
+    };
+    const said = await Promise.all(takers.map(firstLine));
+    for (const one of takers) one.kill();
+    expect(said.filter((one) => one === "held")).toHaveLength(1);
+    expect(said.filter((one) => one === "waiting")).toHaveLength(7);
+  }, 30_000);
+
+  it("reads a holder whose live pid started at another time as gone, and ends nothing", async () => {
     const clone = mkdtempSync(join(fixture, "alone-"));
     execTextSync("git", ["init", "-q"], { cwd: clone });
     const lock = join(clone, ".git", "ana-land.lock");
-    mkdirSync(lock);
-    const held = holdAlone(clone, "land", () => undefined, 20);
-    const early = await Promise.race([held.then(() => "held"), Bun.sleep(60).then(() => "waiting")]);
+    const stranger = Bun.spawn(["sleep", "30"]);
+    symlinkSync(`${String(stranger.pid)} ${hostname()} Thu Jan  1 00:00:00 1970 #5 sanitizing`, lock);
+    const held = holdAlone(clone, "land", () => undefined, 20, { note: "#6 sanitizing", over: () => true });
+    const early = await Promise.race([held.then(() => "held"), Bun.sleep(500).then(() => "waiting")]);
     expect(early).toBe("held");
-    expect(readlinkSync(lock)).toBe(String(runtimeProcess.pid));
+    expect(stranger.killed || stranger.signalCode !== null).toBe(false);
+    stranger.kill();
+    (await held)();
+  });
+
+  it("waits for a live landing that writes the older record, ends nothing, and takes the lock once it is gone", async () => {
+    const clone = mkdtempSync(join(fixture, "alone-"));
+    execTextSync("git", ["init", "-q"], { cwd: clone });
+    const lock = join(clone, ".git", "ana-land.lock");
+    const older = Bun.spawn(["sleep", "30"]);
+    symlinkSync(`${String(older.pid)} #5 sanitizing`, lock);
+    const held = holdAlone(clone, "land", () => undefined, 20, { note: "#6 sanitizing", over: () => true });
+    const early = await Promise.race([held.then(() => "held"), Bun.sleep(300).then(() => "waiting")]);
+    expect(early).toBe("waiting");
+    expect(older.signalCode).toBe(null);
+    expect(readlinkSync(lock)).toBe(`${String(older.pid)} #5 sanitizing`);
+    older.kill();
+    await older.exited;
+    (await held)();
+  });
+
+  it("takes at once an older record whose pid is gone", async () => {
+    const clone = mkdtempSync(join(fixture, "alone-"));
+    execTextSync("git", ["init", "-q"], { cwd: clone });
+    const lock = join(clone, ".git", "ana-land.lock");
+    symlinkSync("4194399 #5 sanitizing", lock);
+    const held = holdAlone(clone, "land", () => undefined, 20);
+    const early = await Promise.race([held.then(() => "held"), Bun.sleep(300).then(() => "waiting")]);
+    expect(early).toBe("held");
+    expect(readlinkSync(lock)).toBe(recordOf(runtimeProcess.pid));
+    (await held)();
+  });
+
+  it("takes over at once a folder lock an older landing left without its pid or naming a dead one", async () => {
+    for (const pid of [null, "4194399"]) {
+      const clone = mkdtempSync(join(fixture, "alone-"));
+      execTextSync("git", ["init", "-q"], { cwd: clone });
+      const lock = join(clone, ".git", "ana-land.lock");
+      mkdirSync(lock);
+      if (pid !== null) writeFileSync(join(lock, "pid"), pid);
+      const held = holdAlone(clone, "land", () => undefined, 20);
+      const early = await Promise.race([held.then(() => "held"), Bun.sleep(60).then(() => "waiting")]);
+      expect(early, `a folder whose pid is ${String(pid)}`).toBe("held");
+      expect(readlinkSync(lock)).toBe(recordOf(runtimeProcess.pid));
+      (await held)();
+    }
+  });
+
+  it("waits for a live landing that holds a folder lock, ends nothing, and takes the lock once it is gone", async () => {
+    const clone = mkdtempSync(join(fixture, "alone-"));
+    execTextSync("git", ["init", "-q"], { cwd: clone });
+    const lock = join(clone, ".git", "ana-land.lock");
+    const older = Bun.spawn(["sleep", "30"]);
+    mkdirSync(lock);
+    writeFileSync(join(lock, "pid"), `${String(older.pid)} #5 sanitizing`);
+    const held = holdAlone(clone, "land", () => undefined, 20, { note: "#6 sanitizing", over: () => true });
+    const early = await Promise.race([held.then(() => "held"), Bun.sleep(300).then(() => "waiting")]);
+    expect(early).toBe("waiting");
+    expect(older.signalCode).toBe(null);
+    expect(readFileSync(join(lock, "pid"), "utf8")).toBe(`${String(older.pid)} #5 sanitizing`);
+    older.kill();
+    await older.exited;
     (await held)();
   });
 

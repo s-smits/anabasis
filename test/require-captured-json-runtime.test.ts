@@ -1,11 +1,12 @@
 /**
- * The rule that sends JSON and `structuredClone` through the bindings `src/meta/json-runtime.ts`
- * captured at load, and the fixer that renames the call and imports the binding.
+ * The rule that sends JSON through the bindings `src/meta/json-runtime.ts` captured at load, and the
+ * fixer that renames the call and imports the binding. `structuredClone` has no binding and stays
+ * the plain global.
  *
  * Two things are pinned here that a reading of the rule does not settle. The first is its scope:
  * the controller's own process is `src` and `vendor`, and a dev-time reporter under `tools/`
  * loads no generated module, so the global it reaches cannot have been replaced. The second is
- * that three calls in one file produce one import, which is the whole reason the import edit
+ * that two calls in one file produce one import, which is the whole reason the import edit
  * rides on every diagnostic rather than the first: oxlint drops a fix overlapping one it has
  * already applied, so a single carrier would be lost exactly when it was the one dropped.
  */
@@ -26,7 +27,7 @@ export function encode(value: unknown): string {
 }
 
 export function copy(value: unknown): unknown {
-  return structuredClone(value); // REPORT the ambient structuredClone
+  return structuredClone(value); // ADMITTED structuredClone has no captured binding
 }
 
 export function decodeWith(raw: string, parse: (one: string) => unknown): unknown {
@@ -45,18 +46,18 @@ export function spelled(): string {
 describe("ana/require-captured-json-runtime", () => {
   it("reports each ambient global and nothing that merely names one", async () => {
     await lintRules("ana", [
-      [RULE, CALLS, 3, INSIDE],
-      [RULE, CALLS, 3, "vendor/pi-claude-bridge/example.ts"],
+      [RULE, CALLS, 2, INSIDE],
+      [RULE, CALLS, 2, "vendor/pi-claude-bridge/example.ts"],
       [RULE, CALLS, 0, "tools/example.ts"],
       [RULE, CALLS, 0, "src/meta/json-runtime.ts"],
     ]);
   });
 
-  it("renames all three calls and imports them through one statement", async () => {
+  it("renames both calls and imports them through one statement", async () => {
     const fixed = await fixedSource("ana", RULE, CALLS, INSIDE);
     expect(fixed).toContain("return capturedJsonParse(raw);");
     expect(fixed).toContain("return capturedJsonStringify(value);");
-    expect(fixed).toContain("return capturedStructuredClone(value);");
+    expect(fixed).toContain("return structuredClone(value);");
     expect(fixed.match(/json-runtime\.ts/gu)).toHaveLength(1);
     expect(fixed).toContain("return parse(raw);");
     expect(fixed).toContain('return "JSON.parse";');

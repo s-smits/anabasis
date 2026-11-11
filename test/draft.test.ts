@@ -326,7 +326,7 @@ describe("a campaign's drafts", () => {
       patience: 3,
       unprepared: false,
       practice: null,
-      wanted: { target: 12, level: 0.02 },
+      wanted: { target: 12, level: 0.02, solves: 2 },
       pastStop: null,
       prompted: true,
       admits: [],

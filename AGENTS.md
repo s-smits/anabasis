@@ -237,7 +237,8 @@ log.
 `bun tools/d2/harness-builder.ts` opens a campaign from a prompt or a stored pack and runs it
 unattended to one of seven endings: `budget`, `stop`, `exam`, `no-room`, `environment`, `operator`
 or `finished` (three Builder conversations in a row made no campaign move). Its budget is one total,
-and it ends once less than one solve's reserve is left. Each solve waits in the solve queue for the
+and it ends once less is left than one solve's reserve, or than the next comparison's test costs at
+what its solves billed. Each solve waits in the solve queue for the
 host's load, at most half an hour (`--loaded` skips it, `campaign.waited` records it). The operator
 steers it with `tools/d2/word.ts`, which no seat reads. The setting fixes the solver, its limits,
 `--target` and `--solves`; a conflicting value is refused. Practice is released from reference
@@ -246,7 +247,8 @@ leaves at least the comparison floor of frontier tasks (`practiceDue`).
 
 **What refuses a move**: comparison admission (`src/campaign/admission.ts`), session admission and
 the stop rule, which only `--past-stop "<why>"` passes. A command writes nothing before its last
-refusal, so a refused move leaves the log as it was.
+refusal, so a refused move leaves the log as it was, but for the harness the Builder's `compare`
+froze to ask for it (`build.checkpoint`), which the table then names as not yet compared.
 
 **Defaults**: 24 scored tasks; 2 solves a side (`SIZE`); level 0.02; improvement and supply patience of 6; gap floor 1%
 (`ROOM`); a stop after more than 3 tasks with a check defect; a reserve of 3 dollars a solve; a

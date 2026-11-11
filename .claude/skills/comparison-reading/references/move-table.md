@@ -10,7 +10,8 @@ code, printed on the view's last line:
 1. `stop`: the operator left a stop.
 2. `exam`: the exam does not stand. It is drafted, or read where nobody read its checker or the
    operator admitted a new check; a fault nobody froze or admitted ends the campaign.
-3. `bound`: the budget, the crash rule (`crashedRun`), the stop rule, a defect stop or a cap cut.
+3. `bound`: the budget, the crash rule (`crashedRun`), the stop rule, a defect stop, a cap cut, or a
+   budget below what the next comparison's test costs (`cap-short`).
 4. `tasks`: a pack's tasks are taken in, practice released, or tasks written where there are none,
    where the operator asked (after a waiting step is promoted), or before the first comparison up to
    the admission floor plus owed practice.

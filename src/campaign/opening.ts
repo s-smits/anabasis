@@ -175,6 +175,7 @@ export function planOf(
     wanted: {
       target: isNumber(named) ? named : (beside.target ?? SIZE.tasks),
       level: beside.level,
+      solves: isNumber(recorded?.solves) ? recorded.solves : SIZE.solves,
     },
     left: budgetLeft(events),
     prompted: opening?.prompt != null,

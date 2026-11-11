@@ -265,9 +265,12 @@ export function patienceOf(events: readonly LogEvent[]): number {
  * comparison. Its settled wrong passes count as that side's fails.
  *
  * With `sides` "old" or "fresh", that side's harness is read against itself instead, its solves of
- * each task split into halves mirrored in time: "old" is the reference's A/A as the report read it
- * (`noise`, `comparison.ts`). A fold over solves already paid for, none where a side's solves do not
- * split evenly; in an older `--noise` log only the reference's A/A, on its two mirrored halves.
+ * each task split into halves mirrored in time: "old" is the reference's A/A as a report of this
+ * tree reads it (`noise`, `comparison.ts`). A report of two solves a side written before the mirror
+ * ran on from one task to the next (`pairsOf`) recorded the earlier split, so this fold can differ
+ * from that report's own `noise`, which stays as written. A fold over solves already paid for, none
+ * where a side's solves do not split evenly; in an older `--noise` log only the reference's A/A, on
+ * its two mirrored halves.
  */
 export function pairsReported(
   events: readonly LogEvent[],
@@ -318,7 +321,7 @@ function runOf(runs: readonly TalliedIn[]): number | undefined {
 
 /** Every task a log holds a state, a solve or a report of, each as `TaskRecord` reads it, and the
  *  held-out ones in the order they were held out. */
-function taskRecords(events: readonly LogEvent[]) {
+export function taskRecords(events: readonly LogEvent[]) {
   const heldOut = taskSets(events).held;
   const held = new Set(heldOut);
   const records = new Map<string, TaskRecord>();

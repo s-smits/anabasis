@@ -1,40 +1,36 @@
 /**
- * What one look of the pulse adds from the deterministic readers (`READERS`, `tools/wri/derive.ts`):
- * every reader run over each run whose log moved, shared between the observers of a host, and of
- * their output only what this observer has not seen. The operator asked for it on 5 November: "we
- * need to classify the new logs that came up in that 300+ seconds", "ALL the scripts for it now".
+ * What one look of the pulse adds from the deterministic readers (`READERS`, `tools/wri/derive.ts`), by
+ * moment: a comparison's report, a promotion, an Examiner's or Builder's end, a campaign's opening or
+ * ending. Each reader names the moments its answer serves (`at`), a pass runs it on a log only once
+ * one lies past what it read (`tools/wri/pass.ts`), and a look says, under the event, the lines of its
+ * text that name the moment's session or harness (or its `gist` where none does). A reader's answer
+ * between moments repeats what a look said with another count: until 10 November every reader ran on
+ * every log that moved, and on the largest closed log the 27 readers without the embedding model took
+ * 277 s against a pass of 30 s.
  *
  * Three limits shape it, and each is measured or tested rather than assumed.
  *
  * The look must not slow a campaign. A solve waits in its queue for the one-minute load
  * (`tools/d2/host.ts`) and a deadline counts elapsed time, so a pass is one process a host at the
  * lowest priority, one reader at a time, at most `PASS_MS` once in `GAP_MS` however many observers
- * look, and each reader starts only where the load leaves it room (`room`). A reader on the largest
- * log takes 0.2 to 3 s and up to 929 MB (measured 5 November), so one at a time limits memory as well.
- * Under load the readers are shed, and said to be.
+ * look, each reader only where the load leaves it room (`room`), and none at all where a look's new
+ * events hold no moment not yet read.
  *
  * The hook's `timeout 40` kills a look's whole process group. So the pass runs in a session of its
- * own and outlives the look that started it (`startPass`): a look waits for it at most `WAIT_MS`,
- * reads what the store holds and names the rest, and what the pass still finishes is there for the
- * next look. Each result lands by a rename, so a kill leaves no half of one.
+ * own and outlives the look that started it (`startPass`): a look waits for it at most `WAIT_MS`, and
+ * what the pass still finishes is there for the next look. Each result lands by a rename, so a kill
+ * leaves no half of one.
  *
- * A skipped reader must never read as nothing new. So what a look says it did not read comes from the
- * store and not from a pass's account of itself (`notRead`): a reader that has read nothing past what
- * this observer's last look saw, on a log that moved since, is named, whatever stopped it.
- *
- * A line fires once. A reader's output is compared by its pattern, with digits and digests masked, as
- * `keyOf` in `pulse.ts` keeps a trigger from firing with each solve: over 57 recorded logs 757 of 784
- * lines of one trigger were the same line with another count, and on 22 October the operator called
- * the routine pulses noise. A line past the most of its pattern seen at once is new and is said at once,
- * so a new row of a table fires though its pattern is known. A line that moved only in a number waits
- * for the first result past a milestone, as a trigger of kind `reading` does. What a wake cuts is in
- * the file it names.
+ * A skipped reader must never read as nothing new. A moment whose readers have not read it is kept in
+ * the observer's memory (`Moment`), named once with the reason the store gives (`whyNot`), keeps a
+ * closed run in the looks, and its lines are said at the look that finds them.
  *
  * The output holds hidden values as the log does. The store lies under the main worktree's `.ana/`,
  * closed to every seat as the repository and its worktrees are, and an observer's files lie beside its
  * `--state`, in `.ana/` or the host's temporary folder, also closed (`src/wall/isolation.ts`).
  * `test/runs-pulse-readers.test.ts` tries to read both through the wall.
  */
+import type { EventKind, LogEvent } from "#src/kernel/log.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import {
   existsSync,
@@ -48,6 +44,7 @@ import {
 } from "#src/meta/filesystem.ts";
 import { mainTree } from "#src/meta/git.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
+import { isString } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
@@ -71,16 +68,20 @@ const POLL_MS = 200;
 const LOCK = "pass.lock";
 const LAST = "pass.json";
 const ERRORS = "pass.err";
-const NAMES = "readers.json";
+const LIST = "readers.json";
+/** The lines an observer remembers having said, enough for some days of moments. */
+const SAID_KEPT = 400;
 
-/** The most lines a wake says of one reader, of one run and of one host. My choice, on the replay the
- *  pull request reports. */
+/** The most lines a look says of one reader on a moment, of one run and of one host. */
 const PER_READER = 3;
 const PER_RUN = 12;
 export const PER_LOOK = 30;
 
+/** How the one reason for an unread moment that is something to look at begins. */
+const FAILED = "the last pass failed";
+
 /** What the store holds of one reader on one log. `size` is the log's bytes it read, -1 where none
- *  finished, and `at` when it last ran, which a cut moves too, so it goes to the back of the queue. */
+ *  finished, and `at` when it last ran. */
 interface ReaderResult {
   readonly size: number;
   readonly at: number;
@@ -88,76 +89,76 @@ interface ReaderResult {
   readonly ok: boolean;
 }
 
-/** How a pass ended, for the line that names what it left. */
-export interface PassEnding {
+interface PassEnding {
   readonly at: number;
   readonly ended: "finished" | "budget" | "load";
 }
 
-/** What this observer has compared of one reader on one log. */
-export interface SaidOf {
-  readonly size: number;
-  /** The most lines of each pattern seen at once, by the pattern's hash. It never falls. */
-  readonly highest: Readonly<Record<string, number>>;
-  /** The hash of each line that needs no saying: those of the last result past a milestone, and each
-   *  said since. */
-  readonly last: readonly string[];
-  /** The pattern of the failure last said, so a reader that keeps failing is said to once. */
-  readonly failed?: string;
-}
-
-/** One of the investigation's triggers of a log. */
-export interface Alarm {
+/** A reader as the pass lists it for the looks, which read no helper. */
+interface Listed {
   readonly name: string;
-  readonly lane: number;
-  readonly detail: string;
+  readonly at?: readonly EventKind[];
+  readonly gist?: RegExp;
 }
 
-/** One look's reading of one run's readers. */
-interface ReadersSaid {
-  readonly said: readonly string[];
-  readonly seen: Readonly<Record<string, SaidOf>>;
-  /** Readers behind the log, which keep a closed run in the looks until they have read it. */
-  readonly owed: boolean;
-}
-
-interface ReadersAsked {
-  readonly store: string;
-  readonly log: string;
-  /** The log's bytes as this look found them, and as this observer's last look found them. */
+/** An event a reader answers, as an observer remembers it until its readers have read it: `size` is
+ *  the log's bytes at the look that saw it, and `left` the readers that had not, all of its kind's
+ *  where no list was on record. */
+export interface Moment {
+  readonly kind: EventKind;
+  readonly session?: string;
+  readonly harness?: string;
   readonly size: number;
-  readonly lastSize: number | undefined;
-  readonly before: Readonly<Record<string, SaidOf>> | undefined;
-  /** The log's bytes at the last look that saw a milestone in its events. */
-  readonly milestoneAt: number | undefined;
+  readonly left?: readonly string[];
+}
+
+/** One look's ask of the pass: a log, its bytes now, its new events and the moments still owed. */
+interface Ask {
+  readonly log: string;
+  readonly size: number;
+  readonly fresh: readonly LogEvent[];
+  readonly owed: readonly Moment[] | undefined;
+}
+
+interface ReadersAsked extends Ask {
+  readonly store: string;
+  /** The hashes of the lines this observer has said. */
+  readonly said: readonly string[] | undefined;
   /** Where this observer's copies of the full text go, one folder a run. */
   readonly files: string;
   /** How many more lines this look may say of the readers. */
   readonly spare: number;
-  /** A line another part of the look says itself. */
-  readonly saidElsewhere: (reader: string, line: string) => boolean;
+  /** The triggers the look says itself, by name. */
+  readonly watched: ReadonlySet<string>;
+}
+
+/** One line a reader has for a moment; `at` is its event's place among the new ones, null for an
+ *  owed moment. */
+interface Found {
+  readonly reader: string;
+  readonly at: number | null;
+  readonly label: string;
+  readonly line: string;
+  readonly hash: string;
 }
 
 /** One of the investigation's triggers as its command prints it: `NAME (lane N): detail`. */
 const TRIGGER_LINE = /^([A-Z][A-Z0-9 -]*[A-Z0-9]) \(lane (\d+)\): (.*)$/;
-export const triggerNameOf = (line: string): string => TRIGGER_LINE.exec(line)?.[1] ?? "";
 
-export const storeOf = (cwd: string): string => join(mainTree(cwd), ".ana", "pulse", "readers");
+export const storeOf = (cwd: string): string => join(mainTree(cwd), ".ana", "pulse", "moments");
 export const folderOf = (store: string, log: string) => join(store, sha256(log).slice(0, 16));
-const hashOf = (text: string) => sha256(text).slice(0, 8);
-const short = (line: string) => line.replaceAll(/\s+/g, " ").trim().slice(0, 160);
+/** A reader's line with its columns one space apart, cut at 200 characters: a rejection's row under
+ *  a campaign name of 53 runs to 167, and its last column says whether the task is set aside. */
+const short = (line: string) => line.replaceAll(/\s+/g, " ").trim().slice(0, 200);
 const loadNow = () => loadavg()[0] ?? 0;
+/** A stored file's JSON, `null` where there is none. */
+const jsonIn = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : "null");
 
 /** One reader's stored result on `log`, or null where it never ran. */
-export function resultOf(store: string, log: string, reader: string): ReaderResult | null {
-  const file = join(folderOf(store, log), `${reader}.json`);
-  return existsSync(file) ? parseJsonAs<ReaderResult>(readFileSync(file, "utf8")) : null;
-}
+export const resultOf = (store: string, log: string, reader: string) =>
+  parseJsonAs<ReaderResult | null>(jsonIn(join(folderOf(store, log), `${reader}.json`)));
 
-function lastPass(store: string): PassEnding | null {
-  const file = join(store, LAST);
-  return existsSync(file) ? parseJsonAs<PassEnding>(readFileSync(file, "utf8")) : null;
-}
+const lastPass = (store: string) => parseJsonAs<PassEnding | null>(jsonIn(join(store, LAST)));
 
 const textOf = (store: string, log: string, reader: string) =>
   readFileSync(join(folderOf(store, log), `${reader}.txt`), "utf8");
@@ -187,14 +188,23 @@ export function keepResult(
   remember(join(folder, `${reader}.json`), capturedJsonStringify(result));
 }
 
-/** The readers a pass runs, kept for the looks, which read no helper. */
-export function keepNames(store: string, names: readonly string[]): void {
-  remember(join(store, NAMES), capturedJsonStringify(names));
+/** The readers a pass runs, with their moments and gists, kept for the looks. */
+export function keepReaders(store: string, listed: readonly Listed[]): void {
+  const named = listed.flatMap(({ name, at, gist }) =>
+    at === undefined ? [] : [{ name, at, gist: gist?.source ?? null }],
+  );
+  remember(join(store, LIST), capturedJsonStringify(named));
 }
 
-function namesIn(store: string): readonly string[] {
-  const file = join(store, NAMES);
-  return existsSync(file) ? parseJsonAs<readonly string[]>(readFileSync(file, "utf8")) : [];
+function readersIn(store: string): readonly Listed[] {
+  const named = parseJsonAs<readonly { name: string; at: EventKind[]; gist: string | null }[] | null>(
+    jsonIn(join(store, LIST)),
+  );
+  return (named ?? []).map(({ name, at, gist }) => ({
+    name,
+    at,
+    ...keyIfDefined("gist", gist === null ? undefined : new RegExp(gist)),
+  }));
 }
 
 /** Whether another reader may start: the host stays a core under the line where a solve waits
@@ -203,8 +213,7 @@ export const room = (load = loadNow(), cores = availableParallelism()): boolean 
 
 /** Record how a pass ended, and drop the results of logs no look has moved for a week. */
 export function endPass(store: string, ended: PassEnding["ended"]): void {
-  const ending: PassEnding = { at: Date.now(), ended };
-  remember(join(store, LAST), capturedJsonStringify(ending));
+  remember(join(store, LAST), capturedJsonStringify({ at: Date.now(), ended } satisfies PassEnding));
   for (const entry of readdirSync(store, { withFileTypes: true })) {
     const folder = join(store, entry.name);
     if (entry.isDirectory() && Date.now() - statSync(folder).mtimeMs > STALE_MS) {
@@ -213,33 +222,18 @@ export function endPass(store: string, ended: PassEnding["ended"]): void {
   }
 }
 
-/** Whether a lock of the old format, a file holding the pid of a pass from a tree before 9 November,
- *  holds as that tree read it: its pass lives and took it within two `PASS_MS`. Every session's hook
- *  runs the pulse from its own tree against one store, so old and new passes meet; this serves the
- *  switch from the old format and can go once no tree older than this commit runs the pulse. */
-function heldOfOld(lock: string): boolean {
+/** What `run` answers under the host's lock, held while this process lives however long it reads, or
+ *  null where another holds it. */
+export async function underLock<T>(store: string, run: () => Promise<T>): Promise<T | null> {
+  mkdirSync(store, { recursive: true });
+  const lock = join(store, LOCK);
+  if (!hold(lock)) return null;
   try {
-    const { mtimeMs } = statSync(lock);
-    runtimeProcess.kill(Number(readFileSync(lock, "utf8")), 0);
-    return Date.now() - mtimeMs <= 2 * PASS_MS;
-  } catch {
-    return false;
+    return await run();
+  } finally {
+    release(lock);
   }
 }
-
-/** Whether a pass holds the host's lock: one held while its process lives, however long it reads. */
-export const passRunning = (store: string): boolean =>
-  held(join(store, LOCK)) || heldOfOld(join(store, LOCK));
-
-/** The host's lock, for one pass however many looks started one. */
-export function takeLock(store: string): boolean {
-  mkdirSync(store, { recursive: true });
-  return !heldOfOld(join(store, LOCK)) && hold(join(store, LOCK));
-}
-
-export const dropLock = (store: string): void => {
-  release(join(store, LOCK));
-};
 
 /** What `ask` answers within `ms`, and null after that. The timer goes with the answer, since one left
  *  running would hold a finished look's process until it fired. */
@@ -258,35 +252,62 @@ export async function withinDeadline<T>(ask: Promise<T>, ms: number): Promise<T 
   }
 }
 
-/** Whether any reader on `logs` is behind its log. With no names on record yet, every one is. */
-function due(store: string, logs: readonly string[]): boolean {
-  const names = namesIn(store);
-  return (
-    names.length === 0 ||
-    logs.some((log) => names.some((name) => resultOf(store, log, name)?.size !== statSync(log).size))
-  );
+/** The moments among `fresh`, read at `size` bytes: every event of a kind a listed reader names, and
+ *  with no list on record yet the last event, which the first pass then names. */
+function momentsIn(fresh: readonly LogEvent[], size: number, listed: readonly Listed[]) {
+  const kinds = new Set(listed.flatMap(({ at }) => at ?? []));
+  const chosen =
+    listed.length === 0
+      ? fresh.slice(-1).map((event) => ({ event, at: fresh.length - 1 }))
+      : fresh.flatMap((event, at) => (kinds.has(event.kind) ? [{ event, at }] : []));
+  return chosen.map(({ event: { kind, data }, at }) => {
+    const harness =
+      kind === "harness.promoted" && isString(data.harness) ? data.harness.slice(0, 8) : undefined;
+    const moment: Moment = {
+      kind,
+      ...keyIfDefined("session", isString(data.session) ? data.session : undefined),
+      ...keyIfDefined("harness", harness),
+      size,
+    };
+    return { moment, at };
+  });
+}
+
+/** The listed readers a moment waits on: those of its kind that have not read to its size. */
+function leftOf(store: string, log: string, moment: Moment, listed: readonly Listed[]): string[] {
+  const asked =
+    moment.left ?? listed.flatMap(({ name, at }) => (at?.includes(moment.kind) === true ? [name] : []));
+  return asked.filter((name) => (resultOf(store, log, name)?.size ?? -1) < moment.size);
+}
+
+/** Whether `ask` holds a moment some reader has not read. With no list on record, any moment does. */
+function unread(store: string, ask: Ask, listed: readonly Listed[]): boolean {
+  const moments = [
+    ...momentsIn(ask.fresh, ask.size, listed).map(({ moment }) => moment),
+    ...(ask.owed ?? []),
+  ];
+  if (listed.length === 0) return moments.length > 0;
+  return moments.some((moment) => leftOf(store, ask.log, moment, listed).length > 0);
 }
 
 /**
- * Start a pass over `logs` in a session of its own if the host owes one, and wait for it, or for the
- * host's running one, at most `waitMs`. It is `tools/wri/pass.ts` by its command: production imports
- * no helper (`AGENTS.md`, section 12), the choice a review of 1 November made for `wri.ts read`.
+ * Start a pass over the logs whose asks hold a moment not yet read, in a session of its own, and wait
+ * for it, or for the host's running one, at most `waitMs`; with no such moment, neither. It is
+ * `tools/wri/pass.ts` by its command: production imports no helper (`AGENTS.md`, section 12).
  */
 export async function startPass(
   store: string,
-  logs: readonly string[],
-  {
-    tree,
-    waitMs = WAIT_MS,
-    roomNow = room,
-    noEmbed = false,
-  }: { tree: string; waitMs?: number; roomNow?: () => boolean; noEmbed?: boolean },
+  asks: readonly Ask[],
+  { tree, waitMs = WAIT_MS, roomNow = room }: { tree: string; waitMs?: number; roomNow?: () => boolean },
 ): Promise<void> {
+  const listed = readersIn(store);
+  const logs = asks.flatMap((ask) => (unread(store, ask, listed) ? [ask.log] : []));
+  if (logs.length === 0) return;
   const deadline = performance.now() + waitMs;
   mkdirSync(store, { recursive: true });
   const last = lastPass(store);
   const rested = last === null || Date.now() - last.at >= GAP_MS;
-  if (logs.length > 0 && rested && roomNow() && !passRunning(store) && due(store, logs)) {
+  if (rested && roomNow() && !held(join(store, LOCK))) {
     const { PATH, HOME } = runtimeProcess.env;
     const pass = capturedSpawn(
       [
@@ -299,7 +320,6 @@ export async function startPass(
         store,
         "--budget",
         String(PASS_MS),
-        ...(noEmbed ? ["--no-embed"] : []),
         ...logs,
       ],
       {
@@ -315,23 +335,22 @@ export async function startPass(
     // Until it holds the lock, which a loaded host may take a moment over, only its ending says.
     await withinDeadline(pass.exited, waitMs);
   }
-  while (passRunning(store) && performance.now() < deadline) await Bun.sleep(POLL_MS);
+  while (held(join(store, LOCK)) && performance.now() < deadline) await Bun.sleep(POLL_MS);
 }
 
-/** Why a look finds readers behind, in the terms of what it can see now. */
+/** Why a moment's readers are behind, in the terms of what a look can see now. */
 function whyNot(store: string): string {
   // What a pass printed on stderr is what is left of one that could not run, until a later pass
   // ends: a pass that prints nothing leaves the file as it was, so on 6 November a look called the
   // pass of 08:19 the last one for hours after others had ended.
   const errors = join(store, ERRORS);
-  const standing = existsSync(errors) && statSync(errors).mtimeMs > (lastPass(store)?.at ?? 0);
-  const failed = standing ? readFileSync(errors, "utf8").trim().split("\n").at(-1) : "";
-  if (failed !== undefined && failed !== "") return `the last pass failed: ${short(failed)}`;
-  if (passRunning(store)) return "a pass is still reading, and what it finishes comes to the next look";
-  if (!room()) {
-    return `shed for the load, ${loadNow().toFixed(1)} of ${String(availableParallelism())} cores`;
-  }
   const last = lastPass(store);
+  const standing = existsSync(errors) && statSync(errors).mtimeMs > (last?.at ?? 0);
+  const failed = standing ? readFileSync(errors, "utf8").trim().split("\n").at(-1) : "";
+  if (failed !== undefined && failed !== "") return `${FAILED}: ${short(failed)}`;
+  if (held(join(store, LOCK))) return "a pass is still reading, and what it finishes comes to the next look";
+  // The load before the rest: with room a look starts a pass, so one that started none had none.
+  if (!room()) return `shed for the load, ${loadNow().toFixed(1)} of ${String(availableParallelism())} cores`;
   if (last === null) return "no pass has finished on this host";
   const at = new Date(last.at).toISOString().slice(11, 16);
   if (last.ended === "load") return `the pass of ${at}Z stopped for the load`;
@@ -339,158 +358,136 @@ function whyNot(store: string): string {
   return `the last pass ended at ${at}Z, and passes rest ${String(GAP_MS / 60_000)} minutes`;
 }
 
-/**
- * The readers this look cannot say it read: nothing past what this observer's last look saw, and not
- * at the log's end either. A first look makes no claim, and nor does one whose log has not moved, since
- * it holds no new events and the last look already said so. This reads the store alone, so a kill, a
- * shed, a crash and a pass that never started read alike.
- */
-export function notRead(
-  store: string,
-  log: string,
-  names: readonly string[],
-  size: number,
-  lastSize: number | undefined,
-): readonly string[] {
-  if (lastSize === undefined || lastSize === size) return [];
-  return names.filter((name) => {
-    const read = resultOf(store, log, name)?.size ?? -1;
-    return read !== size && read <= lastSize;
-  });
+const labelOf = ({ kind, session, harness }: Moment) => [kind, session, harness].filter(Boolean).join(" ");
+
+/** The lines of `reader`'s text on `moment`: a failure's last line, else those naming its session or
+ *  harness, else those its gist picks, leaving out a trigger the look says itself. */
+function linesOf(asked: ReadersAsked, reader: Listed, moment: Moment): string[] {
+  const result = resultOf(asked.store, asked.log, reader.name);
+  const lines = textOf(asked.store, asked.log, reader.name)
+    .split("\n")
+    .filter((line) => line.trim() !== "");
+  if (result?.ok !== true) return [`⚠ ${reader.name} failed: ${short(lines.at(-1) ?? "no output")}`];
+  const own = lines.filter((line) => !asked.watched.has(TRIGGER_LINE.exec(line)?.[1] ?? ""));
+  const bare = moment.session?.replaceAll(/[^\w-]/g, "");
+  const session = bare === "" ? undefined : bare;
+  const named = new RegExp(`(?<![\\w-])${session ?? String.raw`\0`}(?![\\w-]*\\d)`);
+  const naming = own.filter(
+    (line) =>
+      (session !== undefined && named.test(line)) ||
+      (moment.harness !== undefined && line.includes(moment.harness)),
+  );
+  const gist = reader.gist;
+  const picked = naming.length > 0 || gist === undefined ? naming : own.filter((line) => gist.test(line));
+  return picked.map((line) => `◆ ${reader.name}: ${short(line)}`);
 }
 
-/** Digits, digests and the times they make masked, so a line that moved in a number is one line. */
-const patternOf = (line: string) =>
-  line.replaceAll(/\b(?=[0-9a-f]*\d)[0-9a-f]{7,}\b/g, "#").replaceAll(/\d+(?:\.\d+)?/g, "#");
-
-/**
- * What `lines` say that `before` has not seen. A line it holds is no news. Of the rest, a line past
- * the most of its pattern seen at once is new, the last ones of a pattern first, since a table grows at
- * its end, and any other moved only in a number. The most never falls, so a line that went and came
- * back fires as nothing new. A moved line stays out of what is held until a milestone says it.
- */
-export function newsIn(
-  lines: readonly string[],
-  before: Pick<SaidOf, "highest" | "last"> | undefined,
-  { milestone }: { readonly milestone: boolean },
-) {
-  const known = new Set(before?.last);
-  const hashes = lines.map(hashOf);
-  const patterns = lines.map((line) => hashOf(patternOf(line)));
-  const counts = new Map<string, number>();
-  for (const pattern of patterns) counts.set(pattern, (counts.get(pattern) ?? 0) + 1);
-  const highest: Record<string, number> = { ...before?.highest };
-  const spare = new Map<string, number>();
-  for (const [pattern, n] of counts) {
-    spare.set(pattern, Math.max(0, n - (highest[pattern] ?? 0)));
-    highest[pattern] = Math.max(n, highest[pattern] ?? 0);
-  }
-  const fresh: string[] = [];
-  const moved: string[] = [];
-  const freshHashes: string[] = [];
-  for (let at = lines.length - 1; at >= 0; at -= 1) {
-    const hash = hashes[at] ?? "";
-    if (known.has(hash)) continue;
-    const pattern = patterns[at] ?? "";
-    const left = spare.get(pattern) ?? 0;
-    if (left > 0) {
-      spare.set(pattern, left - 1);
-      fresh.unshift(lines[at] ?? "");
-      freshHashes.push(hash);
-    } else {
-      moved.unshift(lines[at] ?? "");
-    }
-  }
-  const last = milestone || before === undefined ? hashes : [...new Set([...known, ...freshHashes])];
-  return { fresh, moved, highest, last };
+/** What each reader that has read `moment` says of it, at most `PER_READER` each, and who has not. */
+function foundOf(asked: ReadersAsked, moment: Moment, at: number | null, listed: readonly Listed[]) {
+  const left = leftOf(asked.store, asked.log, moment, listed);
+  const label = labelOf(moment);
+  const readers = listed.filter(
+    ({ name, at: kinds }) =>
+      (moment.left?.includes(name) ?? kinds?.includes(moment.kind) === true) && !left.includes(name),
+  );
+  const found = readers.flatMap((reader) =>
+    linesOf(asked, reader, moment).map((line) => ({
+      reader: reader.name,
+      at,
+      label,
+      line,
+      hash: sha256(line).slice(0, 8),
+    })),
+  );
+  return { found, left };
 }
 
-/** Whether a result of `size` bytes is the first of a reader's to read past a milestone, where a
- *  look saw the log at `at` bytes with one in its events, and the reader had read `was`. */
-export const pastMilestone = (at: number | undefined, was: number | undefined, size: number): boolean =>
-  at !== undefined && (was ?? -1) < at && size >= at;
-
-/** One reader's lines for the wake, and what to remember of it. */
-function oneReader(asked: ReadersAsked, name: string): { said: string[]; seen: SaidOf | undefined } {
-  const { store, log, before, milestoneAt, files, saidElsewhere } = asked;
-  const result = resultOf(store, log, name);
-  const was = before?.[name];
-  if (result === null || result.size <= (was?.size ?? -1)) return { said: [], seen: was };
-  const text = textOf(store, log, name);
-  const lines = text.split("\n").filter((line) => line.trim() !== "");
-  if (!result.ok) {
-    const last = short(lines.at(-1) ?? "no output");
-    const failed = hashOf(patternOf(last));
-    const seen: SaidOf = { ...(was ?? { highest: {}, last: [] }), size: result.size, failed };
-    return { said: was?.failed === failed ? [] : [`⚠ ${name} failed: ${last}`], seen };
-  }
-  const milestone = pastMilestone(milestoneAt, was?.size, result.size);
-  const { fresh, moved, highest, last } = newsIn(lines, was, { milestone });
-  const seen: SaidOf = { size: result.size, highest, last };
-  if (was === undefined) return { said: [], seen };
-  const news = [...fresh, ...(milestone ? moved : [])].filter((line) => !saidElsewhere(name, line));
-  if (news.length === 0) return { said: [], seen };
-  mkdirSync(files, { recursive: true });
-  writeFileSync(join(files, `${name}.txt`), text);
-  const more = news.length - PER_READER;
-  return {
-    said: [
-      ...news.slice(0, PER_READER).map((line) => `◆ ${name}: ${short(line)}`),
-      ...(more > 0 ? [`◆ ${name}: ${String(more)} more`] : []),
-    ],
-    seen,
-  };
-}
-
-/**
- * What the readers add to one look at one run: what they said that this observer has not seen, with
- * the folder that holds the full text, and which of them it cannot say it read. A reader's first
- * result is remembered and not said, as a trigger's is on a first look, and an old state reads alike.
- */
-export function readersSaid(asked: ReadersAsked): ReadersSaid {
-  const { store, log, size, lastSize, files, spare } = asked;
-  const names = namesIn(store);
-  const seen: Record<string, SaidOf> = { ...asked.before };
-  const news: { name: string; line: string }[] = [];
-  for (const name of names) {
-    const one = oneReader(asked, name);
-    news.push(...one.said.map((line) => ({ name, line })));
-    if (one.seen !== undefined) seen[name] = one.seen;
-  }
-  // A failure comes first, since a bound must not hide that a reader read nothing.
-  const lines = news.toSorted(
+/** The lines `found` may say: each once to this observer, at most `PER_READER` a reader on a moment,
+ *  failures first, at most `most` in all; and the rest. */
+function bounded(found: readonly Found[], said: ReadonlySet<string>, most: number) {
+  const fresh = found.filter(
+    ({ hash }, at) => !said.has(hash) && found.findIndex((other) => other.hash === hash) === at,
+  );
+  const perReader = fresh.filter(
+    (one, at) =>
+      fresh.slice(0, at).filter(({ reader, label }) => reader === one.reader && label === one.label).length <
+      PER_READER,
+  );
+  const ordered = perReader.toSorted(
     (one, other) => Number(other.line.startsWith("⚠")) - Number(one.line.startsWith("⚠")),
   );
-  const most = Math.min(PER_RUN, Math.max(0, spare));
-  const over = lines.slice(most);
-  const withheld = [...new Set(over.map(({ name }) => name))].join(", ");
-  const said = [
-    ...lines.slice(0, most).map(({ line }) => line),
-    ...(over.length > 0 ? [`◆ ${String(over.length)} more lines, of ${withheld}`] : []),
-    ...(news.some(({ line }) => line.startsWith("◆")) ? [`◆ the readers' full text: ${resolve(files)}`] : []),
-  ];
-  const missing = notRead(store, log, names, size, lastSize);
-  const never = names.length === 0 && lastSize !== undefined && lastSize !== size;
-  const named = never || missing.length === names.length ? "every reader" : missing.join(", ");
-  const cut =
-    missing.length > 0 || never ? [`⚠ not read since the last look: ${named}; ${whyNot(store)}`] : [];
-  return {
-    said: [...said, ...cut],
-    seen,
-    owed: names.length === 0 || names.some((name) => resultOf(store, log, name)?.size !== size),
-  };
+  const shown = ordered.slice(0, most);
+  const over = fresh.filter((one) => !shown.includes(one));
+  return { shown, over };
 }
 
-/** The investigation's triggers, where the rows have read further than this observer last compared. */
-export function alarmsMoved(store: string, log: string, before: SaidOf | undefined): readonly Alarm[] | null {
+/**
+ * What the readers add to one look at one run: under each new moment the lines of the readers that
+ * have read it, after them those of moments owed from earlier looks that a reader has now read, the
+ * folder that holds the full text, and the moments not read yet, named once. A line is said once to an
+ * observer, whichever moment asks for it again.
+ */
+export function readersSaid(asked: ReadersAsked) {
+  const { store, log, size, files } = asked;
+  const listed = readersIn(store);
+  const said = new Set(asked.said);
+  const found: Found[] = [];
+  const named: Moment[] = [];
+  const owed: Moment[] = [];
+  const earlier = (asked.owed ?? []).map((moment) => ({ moment, at: null }));
+  for (const { moment, at } of [...momentsIn(asked.fresh, size, listed), ...earlier]) {
+    const one = listed.length === 0 ? { found: [], left: moment.left } : foundOf(asked, moment, at, listed);
+    found.push(...one.found);
+    if (one.left?.length === 0) continue;
+    const kept: Moment = { ...moment, ...keyIfDefined("left", one.left) };
+    owed.push(kept);
+    if (at !== null) named.push(kept);
+  }
+  const { shown, over } = bounded(found, said, Math.min(PER_RUN, Math.max(0, asked.spare)));
+  const placed = [...new Set(shown.flatMap(({ at }) => (at === null ? [] : [at])))].map((at) => ({
+    at,
+    lines: shown.filter((one) => one.at === at).map(({ line }) => line),
+  }));
+  const late = shown
+    .filter(({ at }) => at === null)
+    .map(({ reader, label, line }) => line.replace(`◆ ${reader}: `, `◆ ${reader} on ${label}: `));
+  const texts = new Set(
+    [...shown, ...over].filter(({ line }) => line.startsWith("◆")).map(({ reader }) => reader),
+  );
+  for (const reader of texts) remember(join(files, `${reader}.txt`), textOf(store, log, reader));
+  const withheld = [...new Set(over.map(({ reader }) => reader))].join(", ");
+  const missing = named.map(
+    (moment) => `${moment.left === undefined ? "the readers" : moment.left.join(", ")} of ${labelOf(moment)}`,
+  );
+  // A moment waiting for its pass is routine, and a pass that failed is the one reason to look:
+  // until 10 November every unread moment warned, at each report of every run on every host.
+  const why = missing.length > 0 ? whyNot(store) : "";
+  const lines = [
+    ...late,
+    ...(over.length > 0 ? [`◆ ${String(over.length)} more lines, of ${withheld}`] : []),
+    ...(shown.some(({ line }) => line.startsWith("◆"))
+      ? [`◆ the readers' full text: ${resolve(files)}`]
+      : []),
+    ...(missing.length > 0
+      ? [`${why.startsWith(FAILED) ? "⚠" : "·"} not read yet: ${missing.join(", ")}; ${why}`]
+      : []),
+  ];
+  const remembered = [...(asked.said ?? []), ...shown.map(({ hash }) => hash)].slice(-SAID_KEPT);
+  return { placed, lines, owed, said: remembered };
+}
+
+/** The investigation's triggers, where the rows have read further than `rowsAt`, and the size they
+ *  read to. */
+export function alarmsMoved(store: string, log: string, rowsAt: number | undefined) {
   const result = resultOf(store, log, "rows");
-  if (result?.ok !== true || result.size <= (before?.size ?? -1)) return null;
-  return textOf(store, log, "rows")
+  if (result?.ok !== true || result.size <= (rowsAt ?? -1)) return null;
+  const alarms = textOf(store, log, "rows")
     .split("\n")
     .flatMap((line) => {
       const [, name = "", lane = "", detail = ""] = TRIGGER_LINE.exec(line) ?? [];
       return name === "" ? [] : [{ name, lane: Number(lane), detail }];
     });
+  return { alarms, size: result.size };
 }
 
 /** Drop the files of observers gone for a week, beside a peer's `--state`, and each that `remember`

@@ -9,11 +9,19 @@ import {
   type AssistantMessage,
   type Message,
   type Model,
+  createModels,
   normalizeContext,
   type ThinkingLevel,
   Type,
 } from "@earendil-works/pi-ai";
-import { claudeLedger, claudeProvider, SWEEP_COMPACT_WINDOW } from "../src/agent/backends/claude.ts";
+import {
+  claudeLedger,
+  claudeProvider,
+  claudeSpendNow,
+  SWEEP_COMPACT_WINDOW,
+} from "../src/agent/backends/claude.ts";
+import { sit } from "../src/agent/session.ts";
+import type { Spent } from "../src/kernel/meter.ts";
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { capturedJsonParse } from "../src/meta/json-runtime.ts";
 import { asRecord, isString, type JsonObject } from "../src/meta/json-shape.ts";
@@ -64,6 +72,7 @@ let solve = new AbortController();
 let solves = 0;
 beforeEach(() => {
   writeFileSync(join(home, "launch.jsonl"), "");
+  writeFileSync(join(home, "usage.jsonl"), "");
   solve = new AbortController();
   shutdown = new AbortController();
   sweep = claudeProvider({
@@ -146,6 +155,13 @@ function launches(): number {
   return readFileSync(join(home, "launch.jsonl"), "utf8")
     .split("\n")
     .filter((line) => line.includes('"argv"')).length;
+}
+
+/** The fake's answer to the next usage request: the query has served `input` tokens for `dollars`. */
+function usageAnswer(input: number, dollars: number): void {
+  const used = { ...USAGE, inputTokens: input, costUSD: dollars, canonicalModel: "claude-haiku-4-5" };
+  const session = { total_cost_usd: dollars, model_usage: { "claude-haiku-4-5-20251001": used } };
+  writeFileSync(join(home, "usage.jsonl"), `${JSON.stringify({ session })}\n`);
 }
 
 /** Whether Claude Code was sent an interrupt. */
@@ -458,6 +474,77 @@ describe("the Claude backend", () => {
     await sweep.streamSimple(recorded, solverContext([opening, first, nudge]), options).result();
     shutdown.abort();
     expect((await claudeLedger(options.sessionId))?.reported).toBe(0.3);
+  });
+
+  // Claude Code's compactions, retries and side calls show in no turn, and a conversation's `result`
+  // comes only at its end; its usage count is the same ledger, read while the query lives.
+  it("reads a live query's spend so far from Claude Code's own count", async () => {
+    usageAnswer(41_000, 0.75);
+    await turn([opening]);
+    expect(await claudeSpendNow(solveOptions().sessionId)).toEqual({
+      ledger: {
+        "claude/claude-haiku-4-5": {
+          input: 41_000,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          cacheWrite1h: 0,
+          dollars: 0.75,
+        },
+      },
+      byServed: true,
+      reported: 0.75,
+    });
+    expect(await claudeSpendNow("no query of this process")).toBeNull();
+  });
+
+  it.each([
+    ["refuses the request", { error: "unsupported" }],
+    ["answers without a session", {}],
+    ["never answers", { silent: true }],
+    ["answers in another shape", { session: { total_cost_usd: 1, model_usage: { m: { input_tokens: 1 } } } }],
+  ])("reads no spend where Claude Code %s", async (_how, answer) => {
+    writeFileSync(join(home, "usage.jsonl"), `${JSON.stringify(answer)}\n`);
+    const compaction = { window: SWEEP_COMPACT_WINDOW };
+    sweep = claudeProvider({ executable, compaction, home, shutdown: shutdown.signal, quiet: 200 });
+    await turn([opening]);
+    expect(await claudeSpendNow(solveOptions().sessionId)).toBeNull();
+  });
+
+  // The seat's meter prices Claude Code's ledger at the host's list price, so an Examiner's ask
+  // closed at a rest bills what its turns alone do not show.
+  it("hands a seat what its session has spent so far, priced from the backend's own count", async () => {
+    usageAnswer(41_000, 0.75);
+    // A stand-in login, read where `claudeProvider` reads its token, so the fake CLI is reached.
+    const models = createModels({
+      authContext: {
+        env: async (name) => (name === "CLAUDE_CODE_OAUTH_TOKEN" ? "token" : undefined),
+        fileExists: async () => false,
+      },
+    });
+    models.setProvider(sweep);
+    let now: (() => Promise<Spent>) | undefined;
+    let soFar: Spent | undefined;
+    const sat = await sit({
+      models: () => models,
+      id: solveOptions().sessionId,
+      model: recorded,
+      effort: "medium",
+      system: "An examiner.",
+      opening: "Begin.",
+      tools: [],
+      turns: [],
+      stops: [],
+      spending: (reader) => {
+        now = reader;
+      },
+      next: async () => {
+        soFar = await now?.();
+        return null;
+      },
+    });
+    expect(sat.crash).toBeNull();
+    expect(soFar?.billed).toBeCloseTo((recorded.cost.input * 41_000) / 1_000_000, 10);
   });
 
   // An abort listener never fires for a signal that has already aborted, so a turn asked under one

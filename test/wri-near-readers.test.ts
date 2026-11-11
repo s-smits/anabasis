@@ -8,7 +8,6 @@ import type { JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfNotNull } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { newsIn } from "../tools/runs/pulse-readers.ts";
 import { READERS, readersOf } from "../tools/wri/derive.ts";
 import { dot, type Embed, groupsOf } from "../tools/wri/embed.ts";
 import { nearnessOf } from "../tools/wri/nearness.ts";
@@ -277,25 +276,25 @@ describe("nearness", () => {
   });
 });
 
-describe("as readers of a pass", () => {
-  it("makes a group ruled two ways news at a look, and a group that only grew a moved count", async () => {
+describe("as readers of `derive`", () => {
+  it("names a group ruled two ways only once it is, and a group that only grew by its count", async () => {
     const lines = ["1", "2", "3"].flatMap((at) => [
       refused(`s-${at}`, ["ph"]),
       ruled(`s-${at}`, `t-${at}`, "earned", `group-1 wording ${at}`),
     ]);
     const { log, store } = logOf(lines);
     const ways = { store, load: scripted().load };
-    const seen = newsIn(await restatedOf(log, ways), undefined, { milestone: false });
+    await restatedOf(log, ways);
     appendFileSync(log, refused("s-4", ["ph"]) + ruled("s-4", "t-4", "earned", "group-1 wording 4"));
-    const grown = newsIn(await restatedOf(log, ways), seen, { milestone: false });
-    expect(grown.fresh).toEqual([]);
-    expect(grown.moved.some((row) => row.startsWith("restated: 4 rulings on 4 tasks"))).toBe(true);
+    const grown = await restatedOf(log, ways);
+    expect(grown.some((row) => row.startsWith("restated: 4 rulings on 4 tasks"))).toBe(true);
+    expect(grown.some((row) => row.startsWith("ruled two ways"))).toBe(false);
     appendFileSync(log, refused("s-5", ["ph"]) + ruled("s-5", "t-5", "unclear", "group-1 wording 5"));
-    const split = newsIn(await restatedOf(log, ways), grown, { milestone: false });
-    expect(split.fresh).toEqual(["ruled two ways: 5 rulings on 5 tasks, earned 4, unclear 1; check ph"]);
+    const split = await restatedOf(log, ways);
+    expect(split).toContain("ruled two ways: 5 rulings on 5 tasks, earned 4, unclear 1; check ph");
   });
 
-  it("makes a new comparison news at a look, in a row short enough for one", async () => {
+  it("gives a new comparison a row of its own, short enough for a look", async () => {
     const task = (version: string, publicInput: string) =>
       line("task.proposed", {
         version,
@@ -321,16 +320,16 @@ describe("as readers of a pass", () => {
     };
     const { log, store } = logOf([task("v1", "its own"), ...compared("g-1")]);
     const ways = { store, load: scripted().load };
-    const seen = newsIn(await nearnessOf(log, ways), undefined, { milestone: false });
+    const seen = await nearnessOf(log, ways);
     appendFileSync(log, compared("g-2").join(""));
     const said = await nearnessOf(log, ways);
-    expect(newsIn(said, seen, { milestone: false }).fresh).toEqual([
+    expect(said.filter((row) => !seen.includes(row) && row.startsWith("g-"))).toEqual([
       "g-2 no-step: 1 scored tasks in 1 groups at 0.98, the largest 1, with 1 of 1 wins",
     ]);
     for (const row of said) expect(row.length).toBeLessThanOrEqual(160);
   });
 
-  it("resume after a cut, so a pass comes round to them again", () => {
+  it("are the readers that load the local model", () => {
     for (const name of ["restated", "nearness"]) {
       expect(READERS.find((reader) => reader.name === name)?.embeds).toBe(true);
     }

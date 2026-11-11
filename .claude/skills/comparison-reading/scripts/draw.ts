@@ -18,6 +18,7 @@
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { comparisonFloor, refusals, supplyOf } from "#src/campaign/admission.ts";
+import { askedOf } from "#src/campaign/ground.ts";
 import { tasksByEpoch } from "#src/campaign/climb.ts";
 import { scoredSet } from "#src/campaign/round.ts";
 import { frozenChecker } from "#src/kernel/acceptance.ts";
@@ -73,7 +74,7 @@ export function drawLines(
   const level = values.level ?? plan.wanted.level;
   const drawn = drawOf(events, target, frozenChecker(events)?.contract ?? "");
   const { pool } = drawn;
-  const refused = refusals(supplyOf(events), { target, level, pastStop: plan.pastStop ?? undefined });
+  const refused = refusals(supplyOf(events), { ...askedOf(plan), target, level });
   return [
     `held-out pool: ${String(pool.scorable)} scorable (${String(pool.frontier)} frontier, ${String(pool.retained)} retained, of which ${String(pool.exhausted)} exhausted), ${String(pool.awaiting)} awaiting task review and left out; ${String(pool.practiceFrontier)} on the reference's own frontier for practice`,
     `next comparison at target ${String(target)}: ${plural(drawn.scored, "frontier task")} and ${plural(drawn.retained, "retained task")} (one for every three frontier)`,

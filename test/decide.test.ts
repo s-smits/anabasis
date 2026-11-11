@@ -25,7 +25,7 @@ const PLAN: Plan = {
   patience: 3,
   unprepared: false,
   practice: null,
-  wanted: { target: 12, level: 0.1 },
+  wanted: { target: 12, level: 0.1, solves: 2 },
   pastStop: null,
   prompted: false,
   admits: [],
@@ -696,7 +696,7 @@ describe("unread harnesses and tasks", () => {
 });
 
 describe("the build conditions", () => {
-  it("begins a comparison or an Examiner session while what is left holds a solve's reserve, whatever the last one billed", () => {
+  it("begins a comparison while what is left covers its test at what the log's solves billed, and an Examiner session while it holds a solve's reserve", () => {
     const solve = (id: string, billed: number) => [
       event("solve.started", { solve: id, comparison: "g-1" }),
       event("solve.finished", { solve: id, billed, ending: { outcome: "pass" } }),
@@ -711,8 +711,18 @@ describe("the build conditions", () => {
       built("b-2", "h2"),
     ];
     const left = (dollars: number) => ({ ...PLAN, left: { dollars, reserve: 0.4 } });
-    expect(move(log, left(0.95))).toMatchObject({ move: "build" });
+    // Twelve held-out tasks at two solves a side make a test of 48 solves, $24 at the $0.50 the
+    // log's two solves billed each. What is left covers it or the campaign ends before paying: on
+    // 20 October the forecast that did this went, since no record held a comparison its cap had
+    // cut, and three have been cut since.
+    expect(move(log, left(24))).toMatchObject({ move: "build" });
+    expect(decide(log, left(23.99))).toMatchObject({ move: "end", ending: "budget", code: "bound" });
     expect(decide(log, left(0.3))).toMatchObject({ move: "end", ending: "budget" });
+    // A comparison that began was admitted under its own cap, and goes on.
+    const open = event("comparison.started", { session: "g-2", old: "start", fresh: "h2" });
+    expect(move([...log, open], left(0.95))).toMatchObject({ move: "compare", id: "g-2" });
+    // With no finished solve there is no rate to price a test by, and the reserve alone bounds it.
+    expect(move(FIRST, left(0.95))).toMatchObject({ move: "build" });
     const dear = [...FIRST, ...full("g-1"), ...examined("x-1", ["v13"], { billed: 6 }), ...full("g-2")];
     expect(move(dear, { ...PLAN, left: { dollars: 10, reserve: 0.5 } })).toMatchObject({ move: "examine" });
   });

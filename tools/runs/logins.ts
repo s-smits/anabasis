@@ -19,11 +19,11 @@
  * The pool: a run moves to another login when one is spent, so demand is one rate, in % of one
  * login's week an hour, summed over the logins with room left; the forecast spends it in five-minute
  * steps for the next 4 weeks from the login whose week resets soonest, each refilled at its reset.
- * Three paces: the week's, each login's share over its window so far (floored at 12 hours, so a
- * window minutes old does not extrapolate); the recent one, from the readings kept in the main
- * worktree's `.ana/logins-history.jsonl` (28 days): a login still in the window of a reading 2 to 24
- * hours old gives its rise since, any other its week's pace; and the model's, hour by hour over the
- * next day, once it beats the week pace and the per-run rate on hours held out (`usage-model.ts`).
+ * One forecast is printed, the one that read the last hours held out best (`usage-model.ts`): the
+ * model's, hour by hour over the next day from the readings kept in the main worktree's
+ * `.ana/logins-history.jsonl` (28 days), where it beats both older paces; otherwise the better of
+ * the week's pace (each login's share over its window so far, floored at 12 hours, so a window
+ * minutes old does not extrapolate) and the per-run rate times each login's live runs.
  * The 5-hour windows are left out: they cap how fast one login spends, not what a week holds. These
  * forecasts are printed for a person and feed no choice; a keeper asks of one login's five hours by
  * themselves, with the run it would move there added (`fiveHourWith`).
@@ -59,7 +59,7 @@ import { looseFlagsOf } from "../d2/campaign-terms.ts";
 import { recordedSetting } from "../d2/setting.ts";
 import { asked } from "./hosts.ts";
 import { hostsOf } from "./host-config.ts";
-import { CODEX, type Live, liveHere, liveOf } from "./live.ts";
+import { CODEX, countedAgainst, type Live, liveHere, liveOf } from "./live.ts";
 import {
   closedResets,
   historyFile,
@@ -259,9 +259,9 @@ export function fullOn(
 
 /** Why a run that `payer` pays may not start on `host` beside the runs in `live`, less one named
  *  `name` (the run itself, live where it is moved from), or null where it may: a host that went
- *  uncounted, a login at its cap across the fleet, or a machine at its cap of Codex runs. Until
- *  29 October only `fresh` and `keep` held a login to its cap, and `continue` and `move` were
- *  counted by hand. */
+ *  uncounted, a login at its cap across the fleet (counting `countedAgainst` it), or a machine at its
+ *  cap of Codex runs. Until 29 October only `fresh` and `keep` held a login to its cap, and
+ *  `continue` and `move` were counted by hand. */
 export function startRefusal(
   env: Readonly<Record<string, string | undefined>>,
   payer: string | undefined,
@@ -271,7 +271,7 @@ export function startRefusal(
 ): string | null {
   if (payer === undefined) return null;
   if (counted.unasked.length > 0) return uncounted(counted.unasked);
-  const others = counted.live.filter((run) => run.name !== name);
+  const others = countedAgainst(counted.live, name);
   return atCap(env, [payer], others).size > 0
     ? `login ${payer} is at its live-run cap across the fleet (ANA_LOGIN_RUNS, ANA_LOGIN_SUBS)`
     : fullOn(env, payer, host, others);
@@ -562,45 +562,22 @@ function forecast(weeks: readonly Week[], rate: number, now: number): string {
   return `all out ${said(first)} · ${String(Math.round(out / HOUR))}h out over the next 7d${longest === first ? "" : `, longest ${said(longest)}`}`;
 }
 
-/** The pool's lines over `weeks`, each login's recent pace read from `history`. */
-function poolLines(
-  weeks: readonly Week[],
-  history: readonly Snapshot[],
-  unread: number,
-  now: number,
-): string[] {
-  const perDay = (rate: number) => `~${String(Math.round(rate * 24))}%/day`;
-  const weekRate = (week: Week) => (week.pct >= 100 ? 0 : weekPace(week, now));
-  // The oldest reading 2 to 24 hours back in the same window (`sameWindow`).
-  const recents = weeks.map((week) => {
-    const then = history.find(({ at, weeks: read }) => {
-      const was = read[week.login];
-      return was !== undefined && now - at >= 2 * HOUR && now - at <= 24 * HOUR && sameWindow(was, week);
-    });
-    const hours = then === undefined ? 0 : (now - then.at) / HOUR;
-    const was = then?.weeks[week.login]?.pct ?? 0;
-    return then === undefined ? null : { rate: week.pct >= 100 ? 0 : (week.pct - was) / hours, hours };
-  });
-  const poolPace = weeks.reduce((sum, week) => sum + weekRate(week), 0);
-  const lines = [
-    `pool  ${perDay(poolPace)} of one login's week at the week's pace; ${String(weeks.length)} login${weeks.length > 1 ? "s" : ""} refill ~${String(Math.round((weeks.length * 100) / 7))}%/day${
-      unread > 0 ? ` (${String(unread)} unread, left out)` : ""
-    }`,
-    `  week pace    ${forecast(weeks, poolPace, now)}`,
-  ];
-  if (recents.every((recent) => recent === null)) {
-    return [...lines, "  last hours   no reading 2 to 24h old yet; run again later for the recent pace"];
-  }
-  const recent = weeks.reduce((sum, week, at) => sum + (recents[at]?.rate ?? weekRate(week)), 0);
-  const hours = Math.round(Math.max(...recents.map((one) => one?.hours ?? 0)));
-  return [
-    ...lines,
-    `  last ${`${String(hours)}h`.padEnd(7)} ${perDay(recent)}: ${forecast(weeks, recent, now)}`,
-  ];
+const perDay = (rate: number) => `~${String(Math.round(rate * 24))}%/day`;
+/** The pool's rate at the week's pace, in % of one login's week an hour. */
+const poolPace = (weeks: readonly Week[], now: number) =>
+  weeks.reduce((sum, week) => sum + (week.pct >= 100 ? 0 : weekPace(week, now)), 0);
+
+/** The pool's head line over `weeks`. */
+function poolLine(weeks: readonly Week[], unread: number, now: number): string {
+  return `pool  ${perDay(poolPace(weeks, now))} of one login's week at the week's pace; ${String(weeks.length)} login${weeks.length > 1 ? "s" : ""} refill ~${String(Math.round((weeks.length * 100) / 7))}%/day${
+    unread > 0 ? ` (${String(unread)} unread, left out)` : ""
+  }`;
 }
 
-/** The model's lines (`usage-model.ts`): when the pool runs out at its pace over the next `HORIZON`
- *  hours, each login's rise at a few of those hours and the hour its week ends; or what stops it. */
+/** The one forecast (`usage-model.ts`): where the model beats both older paces on the hours held
+ *  out, when the pool runs out at its pace over the next `HORIZON` hours, each login's rise at a few
+ *  of those hours and the hour its week ends; otherwise the pool at whichever of the week pace and
+ *  the per-run rate read those hours better, and what kept the model off. */
 export function modelLines(
   weeks: readonly Week[],
   recorded: readonly Snapshot[],
@@ -608,11 +585,23 @@ export function modelLines(
   now: number,
   rate: number | null,
 ): string[] {
-  if (assessment === null) return ["  model       off: no rows yet to fit on and hold out"];
-  const errors = `fitted on ${String(assessment.days)} days; held-out error ${assessment.error.toFixed(2)} vs ${assessment.week.toFixed(2)} for the week pace and ${assessment.run.toFixed(2)} for the per-run rate, % over ${String(assessment.held)} rows of logins with room`;
-  if (assessment.model === null) return [`  model       not used: ${errors}`];
-  const rises = ahead(assessment.model, recorded);
   const live = byTime(recorded).at(-1)?.runs ?? {};
+  const errors =
+    assessment === null
+      ? "off: no rows yet to fit on and hold out"
+      : `fitted on ${String(assessment.days)} days; held-out error ${assessment.error.toFixed(2)} vs ${assessment.week.toFixed(2)} for the week pace and ${assessment.run.toFixed(2)} for the per-run rate, % over ${String(assessment.held)} rows of logins with room`;
+  if (assessment?.model == null) {
+    const perRun = assessment !== null && rate !== null && assessment.run < assessment.week ? rate : null;
+    const rateNow =
+      perRun === null
+        ? poolPace(weeks, now)
+        : weeks.reduce((sum, week) => sum + (week.pct >= 100 ? 0 : (live[week.login] ?? 0) * perRun), 0);
+    return [
+      `  ${(perRun === null ? "week pace" : "per run").padEnd(12)}${perDay(rateNow)}: ${forecast(weeks, rateNow, now)}`,
+      `              model ${assessment === null ? errors : `not used: ${errors}`}`,
+    ];
+  }
+  const rises = ahead(assessment.model, recorded);
   const day = weeks.reduce((sum, { login }) => sum + (rises[login]?.at(-1) ?? 0), 0);
   const each = weeks.map((week) => {
     const curve = rises[week.login] ?? [];
@@ -625,7 +614,7 @@ export function modelLines(
     return `  login ${week.login.padEnd(6)}${at.join("  ")}${ends}`;
   });
   return [
-    `  model ${`${String(HORIZON)}h`.padEnd(6)}~${String(Math.round((day * 24) / HORIZON))}%/day: ${forecast(weeks, day / HORIZON, now)}`,
+    `  model ${`${String(HORIZON)}h`.padEnd(6)}${perDay(day / HORIZON)}: ${forecast(weeks, day / HORIZON, now)}`,
     ...each,
     `              ${errors}`,
   ];
@@ -828,7 +817,7 @@ export async function logins(args: readonly string[]): Promise<void> {
     })),
   };
   const recorded = [...kept.filter(({ at }) => now - at < KEPT_MS), snapshot];
-  console.log(poolLines(weeks, kept, held.length - weeks.length, now).join("\n"));
+  console.log(poolLine(weeks, held.length - weeks.length, now));
   console.log(
     rate === null
       ? `  a run       no measured rate yet (under ${String(LEAST_RUN_HOURS)} run-hours): each login's week pace over its live runs`

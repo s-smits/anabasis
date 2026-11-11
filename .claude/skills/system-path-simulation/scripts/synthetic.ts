@@ -78,7 +78,7 @@ const PLAN: Plan = {
   patience: 3,
   unprepared: false,
   practice: null,
-  wanted: { target: 8, level: 0.1 },
+  wanted: { target: 8, level: 0.1, solves: 2 },
   pastStop: null,
   prompted: false,
   admits: [],

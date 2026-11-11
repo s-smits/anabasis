@@ -137,6 +137,18 @@ describe("the fold of one look", () => {
     expect(alertsOf(start, here(row({ state: ENDED }))).lines).toEqual(["r (here): ended budget"]);
   });
 
+  it("says an ending its keeper goes on past once, and again only once the run went on and ended afresh", () => {
+    const kept = row({ state: { kind: "kept", ending: "environment" } });
+    const first = alertsOf(lookedAt(row()), here(kept));
+    expect(first.lines).toEqual([
+      "r (here): no writer process; its keeper lives",
+      "r (here): ended environment",
+    ]);
+    expect(alertsOf(first.next, here(kept)).lines).toEqual([]);
+    const again = alertsOf(alertsOf(first.next, here(row())).next, here(kept));
+    expect(again.lines).toContain("r (here): ended environment");
+  });
+
   it("says a stall once, and again once the run has moved and stalled afresh", () => {
     const stalled = row({ state: { kind: "quiet", kept: true, since: 0 } });
     const first = alertsOf(lookedAt(row()), here(stalled));
@@ -159,7 +171,7 @@ describe("the fold of one look", () => {
     ];
     const down = alertsOf(start, away);
     expect(down.lines).toHaveLength(1);
-    expect(down.lines[0]).toStartWith("peer: did not answer");
+    expect(down.lines[0]).toStartWith("peer: gave no answer this tree reads");
     const again = alertsOf(down.next, away);
     expect(again.lines).toEqual([]);
     expect(Object.keys(again.next.runs)).toEqual(["r"]);
@@ -392,7 +404,7 @@ describe("the verb over real logs", () => {
     const { made, look, state } = host({});
     const first = look({ FAKE_OFFLINE: "1" });
     expect(first.code).toBe(0);
-    expect(first.out).toContain(`${made.host.name} did not answer`);
+    expect(first.out).toContain(`${made.host.name} gave no answer this tree reads`);
     const second = look({ FAKE_OFFLINE: "1" });
     expect([second.code, second.out]).toEqual([0, ""]);
     expect(readFileSync(state, "utf8")).toContain(made.host.name);
@@ -407,10 +419,49 @@ describe("the verb over real logs", () => {
       JSON.stringify({ rows: [row({ name: "away", promotions })], held: ["away"] });
     expect(look(fleet(peer([]))).out).toContain("recorded 2 runs on 2 hosts");
     const down = look(fleet("no list here"));
-    expect(down.out).toBe(`${made.host.name}: did not answer; its runs stay as last seen\n`);
+    expect(down.out).toBe(`${made.host.name}: gave no answer this tree reads; its runs stay as last seen\n`);
     const back = look(fleet(peer([{ digest: "aaaa", read: null }])));
     expect(back.code).toBe(0);
     expect(back.out).toContain(`away (${made.host.name}): promotion 1, harness aaaa`);
+  });
+
+  it("reads a peer answering from an older tree as a host down, in one line, and the peer that answered as before", () => {
+    const { made, look } = host({});
+    const behind = { ...made.host, name: "behind", ssh: "fake-behind" };
+    const whole = row({ name: "aged" });
+    const { state: _, ...rest } = whole;
+    const stateless = JSON.stringify(rest);
+    const fleet = (current: Row["promotions"], aged: string) => ({
+      ANA_HOSTS: JSON.stringify([made.host, behind]),
+      FAKE_FLEET: JSON.stringify({
+        [made.host.ssh]: {
+          alerts: JSON.stringify(heldAs([row({ name: "away", promotions: current })])),
+        },
+        [behind.ssh]: { alerts: `{"rows":[${aged}],"held":["aged"]}` },
+      }),
+    });
+    const first = look(fleet([], JSON.stringify(whole)));
+    expect([first.code, first.out]).toEqual([
+      0,
+      "first look: recorded 3 runs on 3 hosts, and each later look prints what is new\n",
+    ]);
+    const promoted = [unread("aaaa")];
+    const next = look(fleet(promoted, stateless));
+    expect([next.code, next.err]).toEqual([0, ""]);
+    const named = "behind: gave no answer this tree reads; its runs stay as last seen";
+    const [said, promotion, ...more] = next.out.trim().split("\n");
+    expect(said).toBe(named);
+    expect(promotion).toStartWith(`away (${made.host.name}): promotion 1, harness aaaa`);
+    expect(more).toEqual([]);
+    expect(look(fleet(promoted, stateless)).out).toBe("");
+    // Back on a whole answer, and then a starter read with no tally, which the fold would also throw on.
+    expect(look(fleet(promoted, JSON.stringify(whole))).out).toBe("");
+    const untallied = JSON.stringify({
+      ...whole,
+      promotions: [{ digest: "bbbb", read: { session: "g-9" } }],
+    });
+    const again = look(fleet(promoted, untallied));
+    expect([again.code, again.out]).toEqual([0, `${named}\n`]);
   });
 
   it("answers another host with its rows and writes no state there", () => {

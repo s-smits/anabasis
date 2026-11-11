@@ -8,13 +8,15 @@
  * It holds objective measures, which are exam-side, so a file written by `--record` goes under the
  * ignored `data/derived/` and out of every prompt, pull request and paste.
  */
+import { startOf } from "#src/campaign/comparison.ts";
 import { objectiveRuleIn, pairsOf, type Paired } from "#src/kernel/compare.ts";
 import { failWrongPasses, wrongPasses } from "#src/kernel/history.ts";
 import { type EventKind, type LogEvent, read } from "#src/kernel/log.ts";
 import { lastReports, pairsReported, type Reported } from "#src/kernel/reports.ts";
+import { solvesIn } from "#src/kernel/solves.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { gitText } from "#src/meta/git.ts";
-import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
@@ -93,26 +95,17 @@ export function paired(task: Task): Paired {
   };
 }
 
-/** A log's `solve.finished` facts by solve id. */
-function finishedIn(events: readonly LogEvent[]) {
-  const found = new Map<string, { turns: number | null; seconds: number | null }>();
-  for (const { kind, data } of events) {
-    if (kind !== "solve.finished" || !isString(data.solve)) continue;
-    found.set(data.solve, { turns: numberOr(data.turns), seconds: numberOr(data.seconds) });
-  }
-  return found;
-}
-
-function taskOf(pair: Paired, retained: ReadonlySet<string>, finished: ReturnType<typeof finishedIn>): Task {
+/** A pair as a task of the record, with each solve's turns and seconds from its ending (`solvesIn`). */
+function taskOf(pair: Paired, retained: ReadonlySet<string>, ends: Map<string, JsonObject | null>): Task {
   const side = (which: "old" | "fresh"): Solve[] =>
     pair[which].map((valid, at) => {
-      const end = finished.get(pair.solves?.[which][at] ?? "");
+      const end = ends.get(pair.solves?.[which][at] ?? "");
       return {
         valid,
         measure: numberOr(pair.objective?.[which][at]),
         billed: numberOr(pair.used?.[which][at]?.billed),
-        turns: end?.turns ?? null,
-        seconds: end?.seconds ?? null,
+        turns: numberOr(end?.turns),
+        seconds: numberOr(end?.seconds),
       };
     });
   return {
@@ -150,7 +143,7 @@ function selfPairs(events: readonly LogEvent[], report: Reported, versions: read
 
 /** One campaign's reported comparisons that scored a task. */
 export function comparisonsIn(name: string, events: readonly LogEvent[]): Comparison[] {
-  const finished = finishedIn(events);
+  const finished = new Map(solvesIn(events).map(({ id, end }) => [id, end]));
   const opened = Date.parse(events[0]?.at ?? "");
   const reports = lastReports(events);
   const promotions = events.flatMap(({ kind, data }, index) =>
@@ -160,9 +153,7 @@ export function comparisonsIn(name: string, events: readonly LogEvent[]): Compar
     const { old, fresh, reading, level } = report.data;
     const pairs = pairsReported(events, report);
     if (pairs.length === 0 || !isString(old) || !isString(fresh)) return [];
-    const start =
-      events.find(({ kind, data }) => kind === "comparison.started" && data.session === report.session)
-        ?.data ?? {};
+    const start = startOf(events, report.session) ?? {};
     const retained = new Set(Array.isArray(start.retained) ? start.retained.filter(isString) : []);
     const starter = start.starter ?? report.data.starter;
     const versions = pairs.map(({ task }) => task);

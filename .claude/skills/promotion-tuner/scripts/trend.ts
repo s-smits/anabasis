@@ -13,8 +13,9 @@
  * runs are younger and are paused at their trigger, so every measure is a rate with its exposure as
  * the denominator or a median, never a count a longer run would win by lasting. One campaign is one
  * draw: a difference is put to a permutation test with the campaign as the unit (`main/stats.ts`),
- * and reads `moved` at p <= 0.05, `inside the spread` above it, and `too few runs` where the
- * windows could read nothing at that level whatever happened.
+ * and reads `moved` at p <= 0.05, `inside the spread` above it, and `too few runs` where no deal
+ * of the same runs into the two windows could read a difference at that level. The closing line
+ * counts the packs' own tests once, leaving out the pooled block, which reads their runs again.
  *
  * A campaign selects on its own comparisons, so more promotions an hour is a gain only where they
  * hold: one line a window sets the speed beside the promotions the starter confirmed and the tasks
@@ -62,7 +63,6 @@ const LEVEL = 0.05;
 /** The elapsed hours a run's first promotion is counted by, the iteration's trigger. */
 const MARK = 12;
 const ALL = "all packs";
-const NO_VALUE = "no value";
 const MIXED = "no single direction";
 /** What a pattern says, by whether promotions came faster. */
 const READINGS = new Map([
@@ -100,7 +100,7 @@ export interface Change {
   /** The newest value over the earlier, less one; null where either is missing or the earlier is 0. */
   readonly relative: number | null;
   readonly shift: Shift;
-  readonly verdict: "too few runs" | "inside the spread" | "moved, better" | "moved, worse" | typeof NO_VALUE;
+  readonly verdict: "too few runs" | "inside the spread" | "moved, better" | "moved, worse" | "no value";
 }
 
 type Each = (run: Run) => number;
@@ -231,8 +231,8 @@ export function changeOf(measure: Measure, then: readonly Run[], now: readonly R
   const [before, after] = [measure.of(then), measure.of(now)];
   const shift = shiftOf(then, now, measure.of);
   const relative = before === null || after === null || before === 0 ? null : after / before - 1;
-  if (shift.p === null || before === null || after === null) return { relative, shift, verdict: NO_VALUE };
-  if (shift.deals < 2 / LEVEL) return { relative, shift, verdict: "too few runs" };
+  if (shift.p === null || before === null || after === null) return { relative, shift, verdict: "no value" };
+  if ((shift.least ?? 1) > LEVEL) return { relative, shift, verdict: "too few runs" };
   if (shift.p > LEVEL) return { relative, shift, verdict: "inside the spread" };
   const up = after > before;
   return {
@@ -252,7 +252,7 @@ export function valued(measure: Measure, runs: readonly Run[]): string {
 /** A difference as a cell: the relative change, p and the verdict. A sampled p is never zero, so
  *  the smallest one printed is a bound. */
 function changed({ relative, shift, verdict }: Change): string {
-  if (verdict === NO_VALUE) return MISSING;
+  if (verdict === "no value") return MISSING;
   const moved =
     relative === null ? "" : `${relative >= 0 ? "+" : "-"}${Math.abs(100 * relative).toFixed(0)}%, `;
   const untested = shift.p === null || verdict === "too few runs";
@@ -278,7 +278,7 @@ export function guardOf(then: readonly Run[], now: readonly Run[]): { pattern: s
     change: changeOf(measure, then, now),
   }));
   const [speed, ...held] = read.map(({ change }) => change);
-  if (speed?.verdict === NO_VALUE || held.every(({ verdict }) => verdict === NO_VALUE)) {
+  if (speed?.verdict === "no value" || held.every(({ verdict }) => verdict === "no value")) {
     return {
       pattern: "not read",
       line: "not read: a window holds no promotion the starter read, or no active hour.",
@@ -393,6 +393,8 @@ async function main(args: CommandArgs): Promise<number> {
     const read = pack === ALL || args.flag("any-setting") ? { windows: own, left: 0 } : comparable(own);
     const block = packLines(pack, read.windows, read.left, format);
     console.log(block.lines.join("\n"));
+    // The pooled block reads the packs' runs again, so its tests are no further tests.
+    if (pack === ALL) continue;
     tested += block.tested;
     moved += block.moved;
   }
@@ -409,7 +411,7 @@ async function main(args: CommandArgs): Promise<number> {
   }
   if (format === "tsv") return 0;
   console.log(
-    `\n${String(tested)} differences tested at ${String(LEVEL)}, ${String(moved)} read moved; about ${(tested * LEVEL).toFixed(1)} would by chance where nothing changed.`,
+    `\n${String(tested)} differences tested at ${String(LEVEL)} in the packs' own blocks, ${String(moved)} read moved. Where nothing changed, each test reads moved one time in twenty; the tests share runs and counts, so such readings come in groups rather than as a steady share.`,
   );
   console.log(
     "A campaign is the unit: p is the share of ways to deal the two windows' campaigns out again that move the measure as far apart. No row is a step or a comparison of harnesses, and none decides a promotion.",

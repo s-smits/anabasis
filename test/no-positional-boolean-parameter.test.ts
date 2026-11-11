@@ -20,6 +20,10 @@
  * keeps the nearest hostile cases: a callback written inline, a string union beside `undefined`,
  * a number default and a `declare` guard.
  *
+ * A function this file only hands on as an argument is a callback under a name: `states.map(worded)`
+ * calls it with the data, and no call site spells a bare `true`. One direct call with a literal, or
+ * an export, and it is reported again.
+ *
  * A boolean followed by a function parameter is the condition that function runs under when
  * every read of it guards a call of that function: `keysIf(files.size > 0, () => …)` is an `if`
  * written as a call, and keeps its boolean. A flag that only precedes a callback is reported.
@@ -97,6 +101,15 @@ function graded(handle: string, accepted: boolean) { // REPORT a property under 
 function record(handle: string, solvedCase: { accepted: boolean; pass: boolean }) {
   return scored(handle, solvedCase.accepted) + graded(handle, solvedCase.pass);
 }
+function worded(open: boolean) { // ADMITTED only handed on as a callback, which is called with the data
+  return open ? "open" : "closed";
+}
+function spelled(open: boolean) { // REPORT handed on, and one direct call passes a bare literal
+  return open ? "open" : "closed";
+}
+export function listed(states: readonly boolean[]) {
+  return states.map(worded).join(" ") + states.map(spelled).join(" ") + spelled(true);
+}
 export function sentence(handle: string, everyBattery: boolean) { // REPORT exported: its callers are elsewhere
   return tail(handle, everyBattery) + head(handle, everyBattery) + head(handle, true) + settle(handle, () => true, () => false) + record(handle, { accepted: true, pass: false });
 }
@@ -125,14 +138,21 @@ export function limit(handle: string, retries = 3) { // ADMITTED a number defaul
 }
 export declare function isSet(value: unknown, strict: boolean): value is string; // ADMITTED a guard narrows on it
 export const names = ["a", "b"].filter((name, index) => index > 0 && name !== ""); // ADMITTED an inline callback
+export function tally(rows: readonly (boolean | null)[]) {
+  const counted = (confirmed: boolean | null) => rows.filter((row) => row === confirmed).length; // ADMITTED a callback under a name, called with the data
+  const direct = (confirmed: boolean | null) => rows.filter((row) => row === confirmed).length; // REPORT handed on, and one direct call passes a bare literal
+  return [...[true, false, null].map(counted), ...[null].map(direct), direct(true)];
+}
+export const shared = (confirmed: boolean | null) => String(confirmed); // REPORT exported: another file calls it
+export const each = [true, null].map(shared);
 `.trimStart();
 
 describe("ana/no-positional-boolean-parameter", () => {
   it("reports only the marked lines in every fixture and scope", async () => {
     await lintRules("ana", [
-      ["no-positional-boolean-parameter", PARAMETERS, 10, "src/example.ts"],
+      ["no-positional-boolean-parameter", PARAMETERS, 11, "src/example.ts"],
       ["no-positional-boolean-parameter", WIDENED, 0, "src/narrow.ts"],
-      ["no-positional-boolean-parameter", WIDENED, 6, "src/wide.ts", { widen: ["flags", "bindings"] }],
+      ["no-positional-boolean-parameter", WIDENED, 8, "src/wide.ts", { widen: ["flags", "bindings"] }],
     ]);
   });
 });

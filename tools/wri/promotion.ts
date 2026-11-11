@@ -365,7 +365,11 @@ function sharedTmpTrigger(log: Index): Trigger[] {
     const solve = solves.get(id);
     if (solve === undefined) return "unknown";
     if (solve.comparison === null) return "practice";
-    const side = solve.harness === reference.get(solve.comparison) ? "reference" : "new";
+    // An Examiner's try names its own session there and no comparison starts under it: until
+    // 11 November esp32's 19 tries read as a comparison's new side.
+    const old = reference.get(solve.comparison);
+    if (old === undefined) return `${solve.comparison} try ${short(solve.harness)}`;
+    const side = solve.harness === old ? "reference" : "new";
     return `${solve.comparison} ${side} ${short(solve.harness)}`;
   });
   const namers = new Map<string, Set<string>>();

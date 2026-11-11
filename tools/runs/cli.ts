@@ -31,7 +31,7 @@ import { fresh } from "./fresh.ts";
 import { holds, NAMING, on, routed, verbOn } from "./hosts.ts";
 import { hostsHealth } from "./health.ts";
 import { keep } from "./keep.ts";
-import { HERE, KEEPING, Misused } from "./registry.ts";
+import { HERE, KEEPING, Misused, ownArgs } from "./registry.ts";
 import { loadwatch } from "./loadwatch.ts";
 import { active, logins } from "./logins.ts";
 import { continueRun, launch, pause } from "./manage.ts";
@@ -312,11 +312,10 @@ const onHere = argv[0] === "on" && argv[1] === HERE;
 if (onHere) runtimeProcess.env.ANA_HOP = "1";
 const [verb, ...given] = onHere ? argv.slice(2) : argv;
 const chosen = verbNamed(verb);
-const dashes = given.includes("--") ? given.indexOf("--") : given.length;
-const own = given.slice(0, dashes);
+const own = ownArgs(given);
 const stripped = !READS_HERE.has(verb) && own.includes(KEEPING);
 if (stripped) runtimeProcess.env.ANA_HOP = "1";
-const args = stripped ? [...own.filter((word) => word !== KEEPING), ...given.slice(dashes)] : given;
+const args = stripped ? [...own.filter((word) => word !== KEEPING), ...given.slice(own.length)] : given;
 if (HELP.has(verb)) {
   // A bare command or `help` alone asks for the list; verbs after it, or `all`, for their usage.
   const asked = (given[0] === "all" ? Object.keys(VERBS) : given).map(

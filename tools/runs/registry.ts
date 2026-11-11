@@ -295,6 +295,10 @@ export function flagOf(args: readonly string[], name: string): string | undefine
   return at === -1 ? undefined : args[at + 1];
 }
 
+/** A command line's own arguments, those before any `--`. */
+export const ownArgs = (args: readonly string[]) =>
+  args.slice(0, args.includes("--") ? args.indexOf("--") : args.length);
+
 /** The processes in `running` that write `run`'s log: a campaign's by its name, a live solve's by
  *  the task and cycle its name begins with. */
 export function writers(run: Run, running: readonly Running[]): Running[] {

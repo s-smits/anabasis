@@ -49,7 +49,7 @@ import { preparedHost, publishedAt } from "./code.ts";
 import { freshFleet, freshHost, freshLogin, loginPool, loginPresent } from "./placement.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 import { launch } from "./manage.ts";
-import { everyRun, HERE, harnessesOf, Misused } from "./registry.ts";
+import { everyRun, HERE, harnessesOf, Misused, ownArgs } from "./registry.ts";
 import { batchFresh } from "./batch.ts";
 import { CODEX, seatsCodex } from "./live.ts";
 import { billsLogin, readLogins } from "./logins.ts";
@@ -113,10 +113,10 @@ export function freeName(base: string, taken: (name: string) => boolean): string
 
 /** `bun run runs fresh`. */
 export async function fresh(args: readonly string[], read: typeof readLogins = readLogins): Promise<void> {
-  const boundary = args.indexOf("--");
-  const more = boundary === -1 ? [] : args.slice(boundary + 1);
+  const own = ownArgs(args);
+  const more = args.slice(own.length + 1);
   const { values, positionals } = parseArgs({
-    args: [...(boundary === -1 ? args : args.slice(0, boundary))],
+    args: [...own],
     allowPositionals: true,
     options: {
       model: { type: "string", default: "opus" },

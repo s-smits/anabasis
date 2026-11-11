@@ -17,12 +17,12 @@
  */
 import { read } from "#src/kernel/log.ts";
 import type { Call, Traced } from "#src/kernel/trace.ts";
+import { MINUTE_MS } from "#src/meta/clock.ts";
 import type { JsonValue } from "#src/meta/json-shape.ts";
 import { median } from "#src/meta/tally.ts";
 import { type Index, indexOf, printRows, type Solve } from "./folds.ts";
 
 const SESSION_SEATS: ReadonlySet<string> = new Set(["build", "exam", "draft"]);
-const MINUTE_MS = 60_000;
 
 const isCall = (each: Traced): each is Call & { readonly ms: number } =>
   each.part === "call" && each.ms !== null;

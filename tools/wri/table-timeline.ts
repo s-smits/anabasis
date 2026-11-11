@@ -32,6 +32,7 @@ import { type Decided, short } from "#src/campaign/move.ts";
 import { decide } from "#src/campaign/decide.ts";
 import type { EventKind, LogEvent } from "#src/kernel/log.ts";
 import { type Call, tracesIn } from "#src/kernel/trace.ts";
+import { HOUR_MS, MINUTE_MS } from "#src/meta/clock.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { resolve } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
@@ -74,8 +75,6 @@ const POINTS: ReadonlySet<EventKind> = new Set([
 /** The events between two points that can move the table without being a point themselves. */
 const FINE: ReadonlySet<EventKind> = new Set(["task.proposed", "task.state", "task.feasible"]);
 const MOVED = "campaign.move";
-const HOUR_MS = 3_600_000;
-const MINUTE_MS = 60_000;
 const NOT_RECORDED = "not recorded";
 const REPO = resolve(import.meta.dir, "../..");
 

@@ -32,8 +32,10 @@ const PLAN: Plan = {
   left: null,
   promotions: null,
 };
-const event = (kind: EventKind, data: JsonObject): LogEvent => ({ at, kind, data });
 const EXAM_FINISHED = "exam.finished" as const;
+/** A comparison in which both harnesses answered every task in every solve: no room. */
+const FULL = { tally: [0, 0, 12], valid: { old: ALL, fresh: ALL } } as const;
+const event = (kind: EventKind, data: JsonObject): LogEvent => ({ at, kind, data });
 const heldOut = (version: string) => [
   event("task.proposed", { version, taskId: version }),
   event("task.gate", { version, gate: 1, outcome: "passed" }),
@@ -104,8 +106,6 @@ function compared(
     }),
   ];
 }
-/** A comparison in which both harnesses answered every task in every solve: no room. */
-const FULL = { tally: [0, 0, 12], valid: { old: ALL, fresh: ALL } } as const;
 const full = (id: string) => compared(id, "h1", "no-step", FULL);
 /** Every held task, both targets' worth, answered by both in every solve: none is left unread. */
 const EVERY = Object.fromEntries([...HELD, ...REPEAT].map((version) => [version, "PP PP"]));

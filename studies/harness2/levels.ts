@@ -1,10 +1,9 @@
-#!/usr/bin/env bun
 /**
  * A rubric-graded benchmark's result for two arms, at each grain, with a sealed half of the tasks
  * withheld. It starts no solve and calls no model, and it prints ids, weights and counts, never a
  * rubric's text or a grader's reasons, so its output may go into a ledger or a pull request.
  *
- *   bun studies/harness2/levels.ts --dataset <dir> --a <arm> --b <arm> [--salt <text> [--unseal]]
+ *   bun studies/harness2/compare.ts levels --dataset <dir> --of <arm> --of <arm> [--salt <text> [--unseal]]
  *
  * It reads JobBench's layout: `<dataset>/<group>/<task>/eval_result/eval_<arm>__<group>__<task>/`,
  * one `*judge.json` in it.
@@ -25,16 +24,8 @@ import { sha256 } from "#src/meta/digest.ts";
 import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, type JsonObject } from "#src/meta/json-shape.ts";
-import { join, resolve } from "#src/meta/path.ts";
-import { parseArgs } from "#src/meta/process.ts";
+import { join } from "#src/meta/path.ts";
 
-const OPTIONS = {
-  dataset: { type: "string" },
-  a: { type: "string" },
-  b: { type: "string" },
-  salt: { type: "string" },
-  unseal: { type: "boolean" },
-} as const;
 const SUFFIX = "judge.json";
 /** `flipP` reads whole units, so a task's difference goes in hundredths of a point. */
 const UNITS = 100;
@@ -217,21 +208,4 @@ export function levelLines({ label, a, b, salt, unseal }: Asked): string[] {
     ...blockLines(label, open, a, b),
     ...(unseal ? ["", "sealed half, read once, not pooled", ...blockLines(label, sealed, a, b)] : []),
   ];
-}
-
-if (import.meta.main) {
-  const { values } = parseArgs({ args: Bun.argv.slice(2), options: OPTIONS, strict: true });
-  const { dataset, a, b, salt = null, unseal = false } = values;
-  if (dataset === undefined || a === undefined || b === undefined) {
-    throw new Error("usage: levels.ts --dataset <dir> --a <arm> --b <arm> [--salt <text> [--unseal]]");
-  }
-  if (salt === null && unseal) throw new Error("--unseal reads beside --salt");
-  const lines = levelLines({
-    label: { a, b },
-    a: armOf(resolve(dataset), a),
-    b: armOf(resolve(dataset), b),
-    salt,
-    unseal,
-  });
-  console.log(lines.join("\n"));
 }

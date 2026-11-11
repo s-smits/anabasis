@@ -139,14 +139,16 @@ export function chainLog(later: "lost" | "won"): LogEvent[] {
  * scores 144. With `validity` "split", the reference misses one solve of the first task, which splits
  * its validity in the comparison; with "flip", both sides miss their second solve of the last task,
  * which ties it on validity in the comparison and splits it, at 600 points, in the A/A. `byTask` gives
- * the reference other measures on the tasks it names, and so its A/A another difference there.
+ * the reference other measures on the tasks it names, and so its A/A another difference there;
+ * `size` tasks in place of six.
  */
 export function objectiveLog(
   margin: number,
   validity: "tied" | "split" | "flip" = "tied",
   byTask?: Measures["tasks"],
+  size = 6,
 ): LogEvent[] {
-  const tasks = named("t", 6);
+  const tasks = named("t", size);
   const tied = spelled(tasks, "PP PP");
   const outcomes =
     validity === "split" ? { ...tied, t0: "PF PP" } : validity === "flip" ? { ...tied, t5: "PF PF" } : tied;

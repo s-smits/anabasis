@@ -3,7 +3,7 @@
 import { describe, expect, it } from "bun:test";
 import { conditionId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
-import { asRecord, type JsonObject } from "../src/meta/json-shape.ts";
+import { asRecord, isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { climbTable, safeguardTriggers } from "../tools/wri/climb.ts";
 import { indexOf, type TRIGGERS } from "../tools/wri/folds.ts";
@@ -68,11 +68,12 @@ const triggered = (log: readonly LogEvent[]) => {
 };
 
 /**
- * A promotion read twice on `author` tasks the gate held on their author's answer alone, every
- * reference solve valid at one measure and the author's better, and `spread` held on reference
- * answers apart by the objective. Every frontier task is won in each reading, `by` the new side's
- * better measure or its bill of half the reference's; on validity alone they tie, unless the
- * reference `fails` each of its solves.
+ * A promotion read twice on `author` tasks whose room is their author's answer alone, every
+ * reference solve of them valid at one measure and the author's better, and `spread` tasks whose
+ * two reference answers lie 25% apart by the objective. A gate holds only its outcome, as since
+ * 1 November. Every frontier task is won in each reading, `by` the new side's better measure or its
+ * bill of half the reference's (the new side then measuring as the reference does); on validity
+ * alone they tie, unless the reference `fails` its first solve of each task.
  */
 function leaning({
   author,
@@ -89,32 +90,33 @@ function leaning({
   const tasks = Array.from({ length: author + spread }, (_, at) => `t${String(at)}`);
   put("campaign.opened", { budget: 300, terms: {} });
   put("exam.started", { session: "x-1" });
-  for (const [at, version] of tasks.entries()) {
+  for (const version of tasks) {
     put("task.proposed", { version, taskId: version });
-    const condition = conditionOf(version, "hbase");
-    put("condition.recorded", { id: conditionId(condition), condition: requireJsonValue(condition) });
-    for (const [solve, measure] of [1, at < author ? 1 : 1.5, 1].entries()) {
-      const id = `${version}-gate-${String(solve)}`;
-      put("solve.started", { solve: id, condition: conditionId(condition), comparison: "x-1" });
-      put("verdict", { solve: id, kind: "pass", objective: measure });
-      put("solve.finished", { solve: id, ending: { outcome: "pass" }, turns: 3 });
-    }
-    put("task.gate", { version, gate: 1, outcome: "passed", reference: { valid: 3, solves: 3 } });
+    put("task.gate", { version, gate: 1, outcome: "passed" });
     put("task.feasible", { version, session: "x-1", objective: { direction: "lower", measure: 0.5 } });
   }
   for (const session of ["g-1", "g-2"]) {
-    const outcomes = Object.fromEntries(tasks.map((task) => [task, fails ? "FF PP" : "PP PP"]));
+    const outcomes = Object.fromEntries(tasks.map((task) => [task, fails ? "FP PP" : "PP PP"]));
     const { events: solves, terms } = roundSolves(session, ["hbase", "hn"], outcomes);
     put("comparison.started", { session, old: "hbase", fresh: "hn", ...terms });
     let fresh = false;
+    let apart = false;
+    let nth = 0;
     for (const { kind, data } of solves) {
-      if (kind === "condition.recorded") fresh = asRecord(data.condition)?.harness === "hn";
+      if (kind === "condition.recorded") {
+        const condition = asRecord(data.condition);
+        fresh = condition?.harness === "hn";
+        apart = isString(condition?.task) && tasks.indexOf(condition.task) >= author;
+        nth = 0;
+      }
+      if (kind === "solve.started") nth += 1;
       const passed = kind === "solve.finished" && asRecord(data.ending)?.outcome === "pass";
       if (passed) {
+        const reference = (by === "bill" ? 1 : 1.5) * (apart && nth === 2 ? 1.25 : 1);
         put("verdict", {
           solve: data.solve ?? "",
           kind: "pass",
-          objective: by === "bill" || fresh ? 1 : 1.5,
+          objective: fresh && by === "objective" ? 1 : reference,
         });
       }
       put(kind, passed ? { ...data, billed: by === "objective" || fresh ? 1 : 2 } : data);
@@ -262,6 +264,26 @@ describe("lane 22: a promotion and the climb after it", () => {
     expect(carriers).toMatch(/g-2 won 6 .*6 untied, none to spare; g-3 won 8 .*8 untied, 2 to spare/);
   });
 
+  it("adds a step's retained tally where it lost more of those tasks than it won, and only then", () => {
+    const scores = [...Array.from({ length: 17 }, () => 1), -1, -1, -1, -1, 0, 0, 0];
+    const carried = (reading: string, retained: readonly number[]) => {
+      const { log, compare } = held();
+      const scored = { ...STEP.scored, unbilled: scores };
+      compare("g-1", "hbase", "hn", {
+        ...STEP,
+        level: 0.02,
+        scored,
+        retained: { differences: [...retained] },
+        reading,
+      })();
+      return triggered(log)("STEP CARRIERS");
+    };
+    const [plain = ""] = carried("step", [0, 0, 0]);
+    expect(plain).toMatch(/^g-1 won 17 of 21 untied, \w+ to spare$/);
+    expect(carried("step", [-1, -1, -1, -1])).toEqual([`${plain}, its retained tasks 0-4-0`]);
+    expect(carried("no-step", [-1, -1, -1, -1])).toEqual([]);
+  });
+
   it("reads a promotion on the differences its step tested: the frontier and the retained tasks since 20 October, the frontier alone before", () => {
     const frontier = { differences: [4, 4], of: ["a", "b"] };
     const retained = { differences: [-4], of: ["c"] };
@@ -364,7 +386,20 @@ describe("lane 22 across campaigns", () => {
           },
         ],
       ],
-      [{ author: 1, spread: 6, fails: true }, []],
+      // Tasks whose own reference answers lie apart leave room without the author's answer.
+      [
+        { author: 0, spread: 6, fails: false },
+        [
+          {
+            lane: 8,
+            name: "SAFEGUARD-9 PROMOTION BEYOND VALIDITY",
+            detail:
+              "hn 6-0 p 0.016 joined at level 0.02, 0-0 p 1.000 on validity alone, 6-0 p 0.016 by the current score",
+          },
+        ],
+      ],
+      // A task the reference fails once has room on validity, whatever its author answered.
+      [{ author: 4, spread: 2, fails: true }, []],
       [{ author: 4, spread: 1, fails: false }, []],
     ] as const) {
       expect(safeguardTriggers(indexOf(leaning(input)))).toEqual([...expected]);

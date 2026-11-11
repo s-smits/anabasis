@@ -14,12 +14,11 @@
 import { pairsReported } from "#src/kernel/reports.ts";
 import { epochsOf as epochsRead } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";
-import { gateAnswers } from "./gate-era.ts";
 import {
   differenceOf,
   flipP,
   readsStep,
-  informative,
+  gapAgainst,
   type Paired,
   pointsOf,
   wholePoints,
@@ -27,7 +26,7 @@ import {
 import type { LogEvent } from "#src/kernel/log.ts";
 import { asRecord, isNumber } from "#src/meta/json-shape.ts";
 import { validityOf } from "#tools/d2/close.ts";
-import { type Compared, count, fired, type Index, indexOf, items, type Trigger, text } from "./folds.ts";
+import { count, fired, type Index, indexOf, items, type Trigger, text } from "./folds.ts";
 import {
   epochsOf,
   joinedTest,
@@ -161,8 +160,9 @@ export function climbTable(campaigns: readonly Campaign[]): string {
  *
  * 8 and 9 are what buffer-fresh-opus-forkedPR223_v0_5_4-r3 leaned on, the first campaign from a
  * prompt to promote three times (19 October). 8: the joined frontier clears the level only with
- * the tasks the task admission held out on their author's answer alone, every reference solve of them valid
- * and alike and the author's better than each (`authorRoom`). Its second promotion
+ * the tasks whose room in the comparisons it rests on was their author's answer alone, every
+ * reference solve of them there valid and alike and the author's better than each (`authorRoom`).
+ * Its second promotion
  * read 8-0 joined and 5-0 (p 0.031) without them, its third 8-0 and 3-0 (p 0.125): such a task's
  * room is the author's answer measured by the author's objective, and the promotion is as sound as
  * both. 9: the joined frontier on validity alone does not clear the level, so the objective or the
@@ -177,7 +177,6 @@ export function climbTable(campaigns: readonly Campaign[]): string {
  * bill as well (`stepOf`), so the second reading falls short only for a promotion made before.
  */
 export function safeguardTriggers(log: Index): Trigger[] {
-  const authored = authorRoom(log.events);
   const reported = new Map(log.compared.map((compared) => [compared.session, compared] as const));
   const said = (differences: readonly number[]) =>
     `${String(differences.filter((one) => one > 0).length)}-${String(differences.filter((one) => one < 0).length)} p ${pSaid(flipP(differences))}`;
@@ -188,9 +187,19 @@ export function safeguardTriggers(log: Index): Trigger[] {
     const joined = joinedTest(reports);
     if (rests.length === 0 || !readsStep(joined, level)) return [];
     const harness = `${short(text(data.harness))} ${said(joined)} joined at level ${String(level)}`;
-    const without = joinedTest(reports, authored);
-    const valid = measuredOf(log.events, rests, (pair) => wholePoints(pointsOf(pair).validity));
-    return [{ level, harness, without, valid, scored: measuredOf(log.events, rests, differenceOf) }];
+    const settled = rests.map(({ session, at, last }) => ({
+      tested: new Set(testedOf(last).of),
+      pairs: pairsReported(log.events, { session, index: at, data: last }),
+    }));
+    const without = joinedTest(
+      reports,
+      authorRoom(
+        log.events,
+        settled.flatMap(({ pairs }) => pairs),
+      ),
+    );
+    const valid = measuredOf(settled, (pair) => wholePoints(pointsOf(pair).validity));
+    return [{ level, harness, without, valid, scored: measuredOf(settled, differenceOf) }];
   });
   const author = promotions.filter(({ without, level }) => !readsStep(without, level));
   const beyond = promotions.filter(({ valid, level }) => !readsStep(valid, level));
@@ -227,55 +236,39 @@ export function safeguardTriggers(log: Index): Trigger[] {
 /** Each tested task's score (`testedOf`) by `scoreOf`, from the settled pairs (`pairsReported`),
  *  summed over a promotion's two readings as `joined` sums them. */
 function measuredOf(
-  events: readonly LogEvent[],
-  rests: readonly Compared[],
+  settled: readonly { tested: ReadonlySet<string | undefined>; pairs: readonly Paired[] }[],
   scoreOf: (pair: Paired) => number,
 ) {
   const sums = new Map<string, number>();
-  for (const { session, at, last } of rests) {
-    const tested = new Set(testedOf(last).of);
-    for (const pair of pairsReported(events, { session, index: at, data: last })) {
+  for (const { tested, pairs } of settled) {
+    for (const pair of pairs) {
       if (tested.has(pair.task)) sums.set(pair.task, (sums.get(pair.task) ?? 0) + scoreOf(pair));
     }
   }
   return [...sums.values()];
 }
 
-/** The task versions the task admission held out on their author's answer alone: every reference solve
- *  valid, their measures alike, and the author's on record better than each, the
- *  room `informative` reads only with the author's measure (since 19 October). */
-function authorRoom(events: readonly LogEvent[]): Set<string> {
-  const answers = gateAnswers(events, -1);
-  const bests = new Map<string, number>();
-  let direction: "lower" | "higher" | null = null;
+/** The tasks of a promotion's settled `pairs` whose room was their author's answer alone: in a
+ *  comparison's own reference solves every one valid and their measures alike (no gap among them, `gapAgainst`), and an answer
+ *  of the author's on record (`task.feasible`) better than one by the floor, the room `informative`
+ *  reads only with the author's measure (since 19 October). */
+function authorRoom(events: readonly LogEvent[], pairs: readonly Paired[]): Set<string> {
+  const authored = new Map<string, number[]>();
   for (const { kind, data } of events) {
-    const objective = asRecord(data.objective);
-    if (kind !== "task.feasible" || !isNumber(objective?.measure)) continue;
-    direction = objective.direction === "higher" ? "higher" : "lower";
-    const was = bests.get(text(data.version));
-    const pick = direction === "lower" ? Math.min : Math.max;
-    bests.set(text(data.version), was === undefined ? objective.measure : pick(was, objective.measure));
+    const measure = asRecord(data.objective)?.measure;
+    const version = text(data.version);
+    if (kind === "task.feasible" && isNumber(measure)) {
+      authored.set(version, [...(authored.get(version) ?? []), measure]);
+    }
   }
-  if (direction === null) return new Set();
-  const rule = direction;
   return new Set(
-    events.flatMap(({ kind, data }) => {
-      const reference = asRecord(data.reference);
-      const all = count(reference?.solves);
-      if (kind !== "task.gate" || data.outcome !== "passed" || all === 0 || count(reference?.valid) !== all) {
-        return [];
-      }
-      const measures = (answers.get(text(data.version)) ?? []).map(({ measure }) => measure);
-      const pair: Paired = {
-        task: text(data.version),
-        old: measures.map(() => true),
-        fresh: [],
-        objective: { direction: rule, old: measures, fresh: [] },
-      };
-      return !informative(pair, "old", new Set()) && informative(pair, "old", new Set(), bests)
+    pairs.flatMap((pair) =>
+      pair.old.every(Boolean) &&
+      !gapAgainst(pair, "old", []) &&
+      gapAgainst(pair, "old", authored.get(pair.task) ?? [])
         ? [pair.task]
-        : [];
-    }),
+        : [],
+    ),
   );
 }
 

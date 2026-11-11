@@ -59,8 +59,9 @@ export function chainTrigger(log: Index): Trigger[] {
  *  task's halves tied on validity; a win on a task with no such A/A difference is not counted
  *  inside. One outlier task no longer sets the ceiling for every win, which put 14 of one step's 20
  *  wins inside against 4 read task by task. A win where its task's A/A tied clears a zero difference
- *  only, so the line counts those, and the tail counts the other such steps most of whose wins were
- *  of that kind, which gives no spread to read a margin against. */
+ *  only, so the line counts those, and the other such steps most of whose wins were of that kind,
+ *  which gives no spread to read a margin against: as a count after the steps the line names, or,
+ *  where it names none, each with its wins on A/A-tied tasks of its wins. */
 export function marginTrigger(log: Index): Trigger[] {
   const read = lastReports(log.events).flatMap((report) => {
     if (report.data.reading !== "step") return [];
@@ -84,10 +85,14 @@ export function marginTrigger(log: Index): Trigger[] {
         ]
       : [],
   );
-  const flat = read.filter(({ wins, inside, zero }) => inside * 2 <= wins && zero * 2 > wins).length;
-  const tail =
-    flat === 0
-      ? ""
-      : `; ${share(flat, read.length)} objective-only steps won most of their tasks where the A/A tied, which gives no spread to read a margin against`;
-  return lines.length > 0 ? [fired("MARGINS INSIDE THE NOISE", `${lines.join("; ")}${tail}`)] : [];
+  const flat = read.filter(({ wins, inside, zero }) => inside * 2 <= wins && zero * 2 > wins);
+  const said = "won most of their tasks where the A/A tied, which gives no spread to read a margin against";
+  if (lines.length > 0) {
+    const tail = flat.length === 0 ? "" : `; ${share(flat.length, read.length)} objective-only steps ${said}`;
+    return [fired("MARGINS INSIDE THE NOISE", `${lines.join("; ")}${tail}`)];
+  }
+  const each = flat.map(({ session, wins, zero }) => `${session} ${share(zero, wins)}`);
+  return each.length > 0
+    ? [fired("MARGINS INSIDE THE NOISE", `objective-only steps ${said}: ${each.join(", ")}`)]
+    : [];
 }

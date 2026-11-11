@@ -21,6 +21,11 @@
  * judgement's dollars are the shim log's rows inside its window. One record a task lands in
  * `<out>/judged/<name>/`, and `table` prints the pilot's arms table from them: every arm over all
  * the tasks (the pilot's eight unless named) and over those that are not a profession's first.
+ * A record also names the files judge.py's reader cut at 200,000 characters before the judge read
+ * them (`cut`: each file with its length, or null where that reader did not run), since a score on
+ * a cut file partly reads how long the file ran. `table` marks such a cell `CUT <n>` and prints a
+ * third block, `fair uncut`, over the fair tasks on which no record of any arm in the store holds a
+ * cut file; a record written before `cut` existed counts as holding none.
  * `compare.ts` runs a whole comparison through `score`: `--solve-only` leaves a block's judging for
  * afterwards, and `again:<side>` with `--rubrics` judges a deliverable it copied once more.
  *
@@ -67,7 +72,7 @@ import { logAcross } from "#tools/runs/snapshots.ts";
 import { exportForClaudeCode } from "../shared/claude-export.ts";
 import { inGroup, REFUSED } from "./h2/claude.ts";
 import { NAMESPACE } from "./h2/recursion.ts";
-import { envOf, jobBench, pilotClaude, SCRUB } from "./jobbench.ts";
+import { cutOf, envOf, jobBench, pilotClaude, SCRUB } from "./jobbench.ts";
 
 /** The judge as the pilot ran it (`h2l1.sh`, `judge-arm.sh`, `_run_judge`). */
 const JUDGE = { model: "anthropic/claude-opus-5-5", effort: "medium", timeoutS: 1800 } as const;
@@ -446,6 +451,7 @@ export async function score(values: Values): Promise<void> {
   const scoreOne = async (task: string): Promise<void> => {
     const label = arm.label(task);
     const place = { store, task, label };
+    const output = join(store, task, "model_output", label);
     const got = await judge(jb, place, values["api-base"] ?? "", values["judge-log"], values.rubrics);
     if (isString(got)) {
       console.log(`${task}: not judged (${got})`);
@@ -462,7 +468,7 @@ export async function score(values: Values): Promise<void> {
       harness: arm.harness,
       task,
       label,
-      delivered: readdirSync(join(store, task, "model_output", label)).length > 0,
+      delivered: readdirSync(output).length > 0,
       points: got.details.total_score ?? null,
       total: got.details.max_score ?? null,
       passed: got.details.passed_count ?? null,
@@ -473,6 +479,7 @@ export async function score(values: Values): Promise<void> {
       attempts: log.attempts,
       build: arm.build(task),
       peeked: needles.filter((needle) => traces.some((trace) => trace.includes(needle))),
+      cut: cutOf(jb, output),
     };
     mkdirSync(judged, { recursive: true });
     writeFileSync(join(judged, `${keyOf(task)}.json`), `${capturedJsonStringify(record, null, 2)}\n`);
@@ -519,9 +526,15 @@ function table(out: string, tasks: readonly string[]): void {
   const arms = [...new Set(records.map((record) => text(record.arm)))].toSorted();
   const money = (value: number | null): string => (value === null ? "?" : value.toFixed(2));
   const width = Math.max(10, ...arms.map((arm) => arm.length));
+  const cuts = (record: JsonObject | undefined): number =>
+    Array.isArray(record?.cut) ? record.cut.length : 0;
+  const uncut = fair(tasks).filter(
+    (task) => !records.some((record) => record.task === task && cuts(record) > 0),
+  );
   for (const [title, set] of [
     ["all", tasks],
     ["fair", fair(tasks)],
+    ["fair uncut", uncut],
   ] as const) {
     console.log(`${title} ${set.length}`);
     for (const arm of arms) {
@@ -563,7 +576,8 @@ function table(out: string, tasks: readonly string[]): void {
     const cells = arms.flatMap((arm) => {
       const row = records.find((record) => record.arm === arm && record.task === task);
       const peeked = Array.isArray(row?.peeked) && row.peeked.length > 0 ? " PEEKED" : "";
-      return row === undefined ? [] : [`${arm} ${text(row.points)}/${text(row.total)}${peeked}`];
+      const cut = cuts(row) > 0 ? ` CUT ${String(cuts(row))}` : "";
+      return row === undefined ? [] : [`${arm} ${text(row.points)}/${text(row.total)}${peeked}${cut}`];
     });
     if (cells.length > 0) console.log(`${task}: ${cells.join(", ")}`);
   }

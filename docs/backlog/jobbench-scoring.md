@@ -85,7 +85,10 @@ JobBench (`studies/harness2/README.md`, "Read every result against how uneven th
     The 8 tasks may serve for noise, since no proposal came from noise. An arm whose changes came from
     reading them runs on tasks nobody has read (`comparison-review`, "A proposal tested on its own
     tasks").
-16. **Read the judge's view beside every score.** `eval/judge.py` cuts each file at 200,000
+16. **Read the judge's view beside every score.** Present in source from this change: each
+    `score.ts` record names the files the judge's reader cut (`cut`), and `score.ts table` marks
+    such a cell `CUT <n>` and adds a `fair uncut` block over the fair tasks with no cut file in any
+    arm's record. `eval/judge.py` cuts each file at 200,000
     characters, counts embedded figures against that, and reads only `text` notebook outputs. Read it
     apart and report it beside the official score (`comparison-review`, level 6). Counted on the
     store's deliverables through the judge's own converter on 11 November 2026: the workbook of

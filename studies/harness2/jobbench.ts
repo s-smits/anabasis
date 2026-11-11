@@ -51,6 +51,8 @@ import { DeadRollout, NAMESPACE, runDomain, type Bench } from "./h2/recursion.ts
 const PILOT = { model: "claude-opus-5-5", effort: "high", budgetUsd: "5", timeoutS: 3600 };
 const BASE_HARNESS = new URL("h2/base", import.meta.url).pathname;
 const MAX_CHARS_PER_FILE = 200_000;
+/** judge.py's `SQLITE_EXTS`: a database's text is never cut. */
+const SQLITE_EXTS = new Set(["db", "sqlite", "sqlite3"]);
 const VISION = new Set(["png", "jpg", "jpeg", "gif", "webp"]);
 const MAX_VISION = 8;
 /** The four improver jobs a task runs, whose prompt sizes the plan prints. */
@@ -173,6 +175,25 @@ function judgeExtract(jb: string, dir: string): Extract | null {
   }
   const images = Array.isArray(doc.images) ? doc.images.filter((path) => isString(path)) : [];
   return { files, flat: isString(doc.flat) ? doc.flat : "", images };
+}
+
+/**
+ * The files of `dir` whose text judge.py's `extract_all_file_contents` cuts before the judge reads
+ * it, each with its length in Python's characters. Its rule: `if ext not in SQLITE_EXTS and
+ * len(content) > MAX_CHARS_PER_FILE`, where `ext` is the file's suffix lowered without its dot and
+ * the content is `convert_file_to_text`'s. Null where the judge's own reader did not run, so that a
+ * cut nobody could count is not read as none.
+ */
+export function cutOf(jb: string, dir: string): { file: string; chars: number }[] | null {
+  const read = judgeExtract(jb, dir);
+  if (read === null) return null;
+  return [...read.files].flatMap(([file, text]) => {
+    const name = file.split("/").at(-1) ?? file;
+    const dot = name.lastIndexOf(".");
+    const ext = dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
+    const chars = pyLen(text);
+    return chars > MAX_CHARS_PER_FILE && !SQLITE_EXTS.has(ext) ? [{ file, chars }] : [];
+  });
 }
 
 /** The JobBench adapter (`JobBenchAdapter` on the `cc` substrate), over one run store. */

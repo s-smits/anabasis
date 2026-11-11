@@ -361,8 +361,9 @@ three tasks; and arms scored on different days are confounded with the day (the 
 backlog's item 16). Every workbook on record for `social_science_research_assistants/task2` passes
 that (15 of 15, its two data sheets ahead of its summary sheets), and that task alone gives 16 of
 the Starter's 36; the memo of `statisticians/task1` passes it in 6 of 13 deliverables. A score on
-either task therefore partly reads how long a file ran: name the deliverables that passed the cut
-beside those two scores, and give the fair five's sum with and without the workbook task. So a
+either task therefore partly reads how long a file ran, which `score.ts table` shows: it marks a
+cell whose deliverable the judge's reader cut `CUT <n>`, and its `fair uncut` block sums each arm
+over the fair tasks on which no arm's record holds a cut file. So a
 Starter is rolled
 beside the reference in the same sitting, and the fair five at two rollouts a side (20 rollouts)
 reads more than the eight at one (16), since it gives the Starter's spread on the tasks compared.
@@ -404,7 +405,7 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
    come before any new arm (the backlog's item 15).
 5. **Read** with one `score.ts table --out <store> --tasks <list>` for each part, since the table
    sums an arm only where it holds every task named and counts every task but a profession's first
-   as fair. A session that a login's limit or the provider cut is refused: it stays unjudged, and
+   as fair, and report its `fair uncut` block beside the fair one. A session that a login's limit or the provider cut is refused: it stays unjudged, and
    the same command rolls it again (rule 7). A rollout that ended at its own 5 dollars or 3600 s is
    scored on what it delivered, as a solve that ends at a limit is its side's fail. No rollout is
    run again because its score disappoints.

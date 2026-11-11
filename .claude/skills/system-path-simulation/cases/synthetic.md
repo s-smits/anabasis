@@ -1,9 +1,8 @@
 # Synthetic logs
 
-A reader maps events to a decision: a task becomes easy, a move is named, the Examiner is told a
-count, a campaign ends. A recorded log holds only the patterns its run happened to produce. To ask
-what a reader does with another pattern, build it in memory and pass it to the reader. This is unit
-testing on constructed inputs: no model runs, nothing is written, and it takes seconds.
+A recorded log holds only the patterns its run happened to produce. To ask what a reader does with
+another, build it in memory and pass it to the reader: unit testing on constructed inputs, with no
+model, nothing written, in seconds.
 
 ```sh
 S=.claude/skills/system-path-simulation/scripts/synthetic.ts
@@ -46,7 +45,7 @@ event the kit lacks, copy its writer's shape from `src/` or from `test/decide.te
 
 ## What to try
 
-Write the prediction first (rule 1), then build the smallest log that could falsify it.
+Write the outcomes first (rule 1), then build the smallest log that tells them apart.
 
 - **One constant changed** (`RUNS` or `SIZE` in `src/kernel/size.ts`, a floor, a weight) in a copied
   tree, one scenario under both with `--tree`: a reader that does not move holds its own copy.

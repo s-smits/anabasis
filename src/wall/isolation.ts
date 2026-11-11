@@ -196,7 +196,7 @@ function commandIsolationEnvironment(dirs: CommandDirectories): CommandIsolation
 /**
  * Runtime and toolchain roots to reopen inside the directories a denial closed. Only paths a read
  * denial actually covers are kept, since every other host path is readable already under the open
- * default and re-allowing it would add a rule that changes nothing. The adopted tool tree is added
+ * read rule and re-allowing it would add a rule that changes nothing. The adopted tool tree is added
  * explicitly, as no list above names it: it lies under the repository or a stored pack, both closed
  * whole. Both operating systems use this list, and Darwin emits it after the denials so the later,
  * more specific rule decides.
@@ -270,34 +270,39 @@ function darwinCommandProfile(
   const profile = [
     // Anthropic's sandbox-runtime base (`seatbelt-base.ts`): nothing is allowed but what it names,
     // so a command neither signals a process outside its wall (Linux gives each command a pid
-    // namespace of its own) nor asks one to act for it.
+    // namespace of its own) nor reaches a Mach service the base leaves out.
     ...seatbeltBaseRules(base),
     // The base allows `process-info*` on the command's own processes, which leaves another's to the
     // default, and under that default a walled `sysctl(KERN_PROCARGS2)` still returned another
     // process's command line (probe, 11 November): another seat's `bash -c` text, a held-out task's
     // among them, is what that would read. Named outright, the deny holds.
     "(deny process-info* (target others))",
-    // The base lists the sysctls a JavaScript runtime reads; `sysctl -n hw.ncpu` and Apple's `java`
-    // launcher, which finds its runtime through `java_home`, need more, and an unprivileged command
-    // can neither read a secret nor write a system setting through one.
-    "(allow sysctl*)",
+    // launchd answers every process of the user, walled or not: a walled `launchctl kickstart`
+    // started a job the command had not made, unconfined, and `launchctl disable` switched it off
+    // (probe, 11 November). No profile operation gates those requests, so the program that sends
+    // them is refused, and the system kills a copy; one speaking launchd's own protocol is heard.
+    '(deny process-exec* (literal "/bin/launchctl"))',
     // Reads open by default, with the repository and its worktrees, a stored pack and the home
     // closed. All of it arrives through `solveIsolationPolicy`, so there is no second list here to
     // fall out of step. Writes stay closed but for the seat's root and a few devices, below.
     "(allow file-read*)",
     // A seat's command may reach the network, so it can install what its task needs; a check may
-    // not (`src/kernel/verify.ts`).
-    ...(base.network ? ["(allow network*)"] : []),
-    // A Unix socket in a closed folder is a door to whatever listens on it, unconfined: an ssh
-    // control master's under `/tmp` runs commands on the hosts it reaches, and a probe's listener
-    // there heard a walled `nc -U` (11 November). The seat's own root is opened again after, by the
-    // same last-rule tie-break the file rules below rely on.
-    ...[...new Set([...readDenies, ...sharedTmp])]
-      .toSorted()
-      .map((root) => `(deny network-outbound (remote unix-socket (subpath ${capturedJsonStringify(root)})))`),
-    ...scratchRoots.map(
-      (root) => `(allow network-outbound (remote unix-socket (subpath ${capturedJsonStringify(root)})))`,
-    ),
+    // not (`src/kernel/verify.ts`). A Unix socket is a door to whatever listens on it, unconfined:
+    // an ssh control master's runs commands on the hosts it reaches, and a walled connect reached a
+    // VPN daemon's control socket and the print server's (probe, 11 November). So a command reaches
+    // the sockets in its own root and the one the resolver answers on, without which no name
+    // resolves, and no other; the later rule wins, as among the file rules below.
+    ...(base.network
+      ? [
+          "(allow network*)",
+          '(deny network-outbound (remote unix-socket (path-regex #"^/")))',
+          ...scratchRoots.map(
+            (root) =>
+              `(allow network-outbound (remote unix-socket (subpath ${capturedJsonStringify(root)})))`,
+          ),
+          '(allow network-outbound (remote unix-socket (path-literal "/private/var/run/mDNSResponder")))',
+        ]
+      : []),
     // The host's shared temporary folders, closed whole: what another process left there is
     // neither read nor run, and a command leaves nothing there for the next. Their listings are
     // every tenant's names, which Linux hides under a tmpfs. The seat's root, which lies in the

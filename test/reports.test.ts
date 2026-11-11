@@ -6,6 +6,7 @@ import { type Condition, conditionId, settingId } from "../src/kernel/condition.
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import {
   comparedAs,
+  endedOf,
   endingOf,
   lastReports,
   latestBuilt,
@@ -132,6 +133,10 @@ describe("how a campaign ended", () => {
     expect(endingOf([ended, event("campaign.word", {})])).toBeNull();
     expect(endingOf([event("campaign.ended", { why: "no ending named" })])).toBeNull();
     expect(endingOf([])).toBeNull();
+    // With its reason, which a closing report and the page print; one that names none reads empty.
+    expect(endedOf([promotion, ended])).toEqual({ ending: "budget", why: "spent" });
+    expect(endedOf([event("campaign.ended", { ending: "stop" })])).toEqual({ ending: "stop", why: "" });
+    expect(endedOf([ended, event("campaign.word", {})])).toBeNull();
   });
 });
 

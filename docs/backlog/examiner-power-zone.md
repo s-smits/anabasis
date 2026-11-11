@@ -50,7 +50,7 @@ second.
 
 ## What the record shows (6 November)
 
-Two campaigns, read with `zone.ts` and from each `comparison.reported`: the jobstat campaign under
+Two campaigns, read with `reading.ts --zone` and from each `comparison.reported`: the jobstat campaign under
 the tuned prompt ("v5", at `933cfb995`, which matches no stack head, stopped with `g-8` not reported),
 and the Opus buffer control (at `0e53cc190`, stopped with no ending). They differ in pack and commit,
 so they are described side by side and neither is read against the other. Each tally is from the
@@ -578,7 +578,7 @@ one exception (3). Watch these with every change above:
   leaves admission reading tries to the operator, where the replay now recommends against it.
 - **6 November, 18:33 to 18:45 CET.** The final report of the cron set on 5 November. The table above
   was read then, on two campaigns, with no model and no money.
-  - Item 1: `zone.ts` read both logs, one of them live. It decides nothing and no seat is told it.
+  - Item 1: `reading.ts --zone` read both logs, one of them live. It decides nothing and no seat is told it.
   - Item 2: the paired drafting seats were not run. v5 is a description of the tuned prompt with no
     control beside it.
   - Item 3: the paired writing seats were not run, and their prediction stands unsettled. Each pair

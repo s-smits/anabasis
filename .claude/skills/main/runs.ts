@@ -17,6 +17,10 @@
  * much of a solve waits on the provider, so it is an upper bound on the load's cost and an
  * estimate. No hour is scaled by the chip or the operating system.
  *
+ * A fold can stop short of a log's end: at a moment, so that a reading repeats, and at an age, so
+ * that runs of different ages are read alike (`trend.ts`). The run is then read as it stood at the
+ * cut, live there where its log goes on past it.
+ *
  * Hours say how fast a run climbed, not what it climbed on, so three readings stand beside them.
  * **Room on validity** is the scored tasks, summed over the reported comparisons, that the
  * reference did not answer validly in every solve; near zero, a step can be won only on the
@@ -25,22 +29,34 @@
  * comparison has read at all, the denominator, and `after` is the reference's tally in them on the
  * tasks written after its promotion, which it was not chosen on.
  *
+ * **Dollars** are what the log billed under its own commit's meter, and the meter moved: on
+ * 25 October it began pricing each turn at the model that served it, and on 1 November (#563) it
+ * began billing a session on its backend's ledger. **Repriced** dollars price every recorded turn
+ * with the seat meter a live seat runs today (`seatMeter` on its provider's catalogue), the one
+ * measure every run shares (operator, 2 November: "use current metrics mechanisms to backtrack
+ * earlier runs and equally compare that way"); no old log holds a backend's excess over its turns.
+ *
  * The first promotion over the Starter is set-up (epoch 0), as the closing report counts it
  * (`epochLine`); `promotions` holds it, and the climb is one fewer.
  */
-import { epochsOf, ORIGINS, starterReads } from "#src/campaign/climb.ts";
+import { backends } from "#src/agent/backends/models.ts";
+import { epochsOf, ORIGINS, starterIn, starterReads } from "#src/campaign/climb.ts";
 import { comparisonsOf } from "#src/campaign/ground.ts";
 import { campaignOf } from "#src/campaign/handover.ts";
+import { openingOf } from "#src/campaign/opening.ts";
 import type { Tally } from "#src/kernel/compare.ts";
 import { type EventKind, type LogEvent, read } from "#src/kernel/log.ts";
-import { billedBetween } from "#src/kernel/meter.ts";
+import { billedBetween, seatMeter } from "#src/kernel/meter.ts";
+import { askedOf, type Seat, tracesIn } from "#src/kernel/trace.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
 import { gitMaybe } from "#src/meta/git.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
+import { keyIfNotNull } from "#src/meta/optional-key.ts";
 import { relative, sep } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { median } from "#src/meta/tally.ts";
 import { validityOf } from "#tools/d2/close.ts";
+import { modelNamed, sweepOptions } from "#tools/m0/stored-sweep.ts";
 import { ranWith, receipts } from "#tools/runs/receipt.ts";
 import { packOf } from "#tools/runs/registry.ts";
 import { summed } from "#tools/wri/folds.ts";
@@ -53,7 +69,17 @@ import { MISSING } from "./print.ts";
 const CALLS: ReadonlySet<EventKind> = new Set(["solve.call", "exam.call", "build.call", "referee.call"]);
 /** A run whose log has been quiet for longer than this, or whose last event is an ending, is not
  *  live. A run sitting out a provider's reset longer than this reads as finished with no ending. */
-export const LIVE_MS = 2 * HOUR_MS;
+const LIVE_MS = 2 * HOUR_MS;
+/** The opening's seat a trace's turns ran on, where no start of their own names a model. */
+const OPENED = {
+  build: "builder",
+  exam: "examiner",
+  draft: "examiner",
+  referee: "reviewer",
+  solve: "solver",
+} as const satisfies Record<Seat, string>;
+
+type Meter = ReturnType<typeof seatMeter>;
 
 /** One promotion of a run, with the epoch it ended. */
 export interface Promotion {
@@ -90,7 +116,8 @@ export interface Run {
   /** The median one-minute load per core at a solve's start, and the median solve in seconds. */
   readonly load: number | null;
   readonly solveSeconds: number | null;
-  /** The time of its first launch, else its first event, and of its log's last event. */
+  /** The time of its first launch, else its first event, and of its log's last event, or of the
+   *  cut where the log goes on past it. */
   readonly launched: number;
   readonly last: number;
   readonly elapsed: number;
@@ -105,7 +132,13 @@ export interface Run {
    *  comparison nor a harness against itself. */
   readonly compared: number;
   readonly promotions: readonly Promotion[];
+  /** What the log billed under its own commit's meter (`billedAll`). */
   readonly dollars: number;
+  /** Every recorded turn at today's list prices through today's seat meter, the one measure every
+   *  run shares, or null with what stopped a turn being priced (`unpriced`). It leaves out a
+   *  backend's excess over its turns (compactions, retries), which `dollars` holds from #563 on. */
+  readonly repriced: number | null;
+  readonly unpriced: string | null;
   /** Scored tasks, summed over the reported comparisons, and those of them the reference did not
    *  answer validly in every solve: the room a harness can win on validity alone. */
   readonly scored: number;
@@ -138,6 +171,14 @@ export interface Asked {
   readonly holds?: readonly string[];
   /** The checkout whose release tags place a run and whose history `ranWith` reads. */
   readonly repo: string;
+  /** Where every log is read to, so that a reading repeats; now by default. */
+  readonly until?: number;
+}
+
+/** Where a fold stops reading a log: at `until`, and `age` hours past its first event. */
+interface Cut {
+  readonly until?: number | undefined;
+  readonly age?: number;
 }
 
 const hours = (ms: number) => ms / HOUR_MS;
@@ -201,10 +242,10 @@ function tallyOf(events: readonly LogEvent[], index: number): string {
 
 /** What the starter comparisons of a campaign read: how many promotions one has read, and the
  *  reference's tally in them on the tasks written after its promotion; and the comparisons a
- *  promotion could come from, which leaves out those whose new side is the starter. */
+ *  promotion could come from, which leaves out those whose new side is the starter, read or not. */
 function heldOf(events: readonly LogEvent[]): Pick<Run, "reads" | "after" | "compared"> {
   const reads = starterReads(events);
-  const starter = reads[0]?.starter;
+  const starter = starterIn(events);
   return {
     reads: reads.length,
     after: summed(reads.map(({ origins }) => origins[ORIGINS[2]].whole)),
@@ -214,15 +255,73 @@ function heldOf(events: readonly LogEvent[]): Pick<Run, "reads" | "after" | "com
   };
 }
 
-/** One campaign as a row, or null for a rehearsal. */
+/** One meter a model, priced on today's catalogue as a live seat's is; the catalogue is built at the
+ *  first turn priced. */
+function meters(): (name: string) => Meter {
+  const held = new Map<string, Meter>();
+  let models: ReturnType<typeof backends> | undefined;
+  return (name) => {
+    const found = held.get(name);
+    if (found !== undefined) return found;
+    models ??= backends(sweepOptions());
+    const meter = seatMeter(modelNamed(name));
+    meter.catalogue(models);
+    held.set(name, meter);
+    return meter;
+  };
+}
+
+/** Every recorded turn of a log at today's prices, each at the model its start asked for (else its
+ *  seat's at the opening) and served at the one that answered, or what stopped one being priced. */
+function repricedOf(events: readonly LogEvent[], meterOf: (name: string) => Meter) {
+  const asked = askedOf(events);
+  const opening = openingOf(events);
+  const seats = { ...opening?.seats, solver: opening?.solver ?? null };
+  let total = 0;
+  for (const turn of tracesIn(events)) {
+    if (turn.part !== "turn" || turn.usage === null) continue;
+    const model = asked.get(turn.id) ?? seats[OPENED[turn.seat]]?.model;
+    if (model === undefined) return { repriced: null, unpriced: `no model for ${turn.seat}.turn` };
+    const [provider = "", ...id] = model.split("/");
+    try {
+      total += meterOf(model).turn({
+        provider,
+        model: id.join("/"),
+        ...keyIfNotNull("responseModel", turn.model),
+        // SAFETY: a `*.turn` event's `usage` is the pi usage its seat recorded whole (`src/agent/session.ts`).
+        usage: turn.usage as never,
+      });
+    } catch (error) {
+      return { repriced: null, unpriced: errorMessage(error) };
+    }
+  }
+  return { repriced: total, unpriced: null };
+}
+
+/** The events of a log read only to `until`, as a reading then saw it, and to `age` hours after its
+ *  first; the moment they are read at; and the run's last moment, the age where its log goes on. */
+function cutOf(logged: readonly LogEvent[], { until = Date.now(), age = Infinity }: Cut) {
+  const seen = logged.filter(({ at }) => Date.parse(at) <= until);
+  const aged = Date.parse(seen[0]?.at ?? "") + age * HOUR_MS;
+  const events = seen.filter(({ at }) => Date.parse(at) <= aged);
+  const end = events.at(-1)?.at;
+  const last = events.length < seen.length ? aged : end === undefined ? 0 : Date.parse(end);
+  return { events, last, moment: Math.min(until, aged) };
+}
+
+/** One campaign as a row, or null for a rehearsal; `meterOf` reprices its turns, and `cut` stops the
+ *  log short (`cutOf`), so that the run is read as it stood then. */
 export function runOf(
   found: Found,
-  events: readonly LogEvent[],
+  logged: readonly LogEvent[],
   tags: readonly { name: string; at: number }[],
+  meterOf = meters(),
+  cut: Cut = {},
 ): Run | null {
-  if (rehearsed(events)) return null;
+  if (rehearsed(logged)) return null;
+  const { events, last, moment } = cutOf(logged, cut);
   const stamps = events.map(({ at }) => Date.parse(at));
-  const [first = 0, last = 0] = [stamps[0], stamps.at(-1)];
+  const first = stamps[0] ?? 0;
   const launch = receipts(found.path)[0];
   const launched = launch === undefined ? first : Date.parse(launch.at);
   const tag = tags.findLast(({ at }) => at <= launched);
@@ -273,11 +372,12 @@ export function runOf(
     elapsed: hours(last - first),
     active: activeAt(last),
     unloaded: unloadedAt(last),
-    live: events.at(-1)?.kind !== "campaign.ended" && Date.now() - last < LIVE_MS,
+    live: events.at(-1)?.kind !== "campaign.ended" && moment - last < LIVE_MS,
     firstCompared: firstOf("comparison.started"),
     firstReported: firstOf("comparison.reported"),
     promotions,
     dollars: billedBetween(events, 0),
+    ...repricedOf(events, meterOf),
     ...validityOf(campaignOf(events).steps),
     ...heldOf(events),
     confirmed: epochs.filter((epoch) => epoch.confirmed === true).length,
@@ -287,20 +387,20 @@ export function runOf(
   };
 }
 
-/** The share of a list of runs promoted by `mark` elapsed hours, as the promoted and the runs that
- *  either were or lasted that long, so a run still young counts for neither side. */
-export function promotedBy(runs: readonly Run[], mark: number): { promoted: number; known: number } {
-  const by = (run: Run) => (run.promotions[0]?.elapsed ?? Infinity) <= mark;
-  const known = runs.filter((run) => run.elapsed >= mark || by(run));
-  return { promoted: known.filter(by).length, known: known.length };
-}
-
-/** Every campaign asked for as a row, oldest launch first, and the logs that could not be read. */
-export async function loadRuns(asked: Asked): Promise<{ runs: Run[]; skipped: string[] }> {
-  const { home, names = [], has = [], holds = [], repo } = asked;
+/** Every campaign asked for as a row, oldest launch first, read to `until`; the logs that could not
+ *  be read; and `at`, which reads a run again as it stood `age` hours past its first event. */
+export async function loadRuns(asked: Asked) {
+  const { home, names = [], has = [], holds = [], repo, until } = asked;
   const tags = releasesOf(repo);
+  const meterOf = meters();
   const skipped: string[] = [];
   const runs: Run[] = [];
+  const logOf = new Map<Run, Found>();
+  const at = (run: Run, age: number): Run => {
+    const found = logOf.get(run);
+    if (found === undefined || run.elapsed <= age) return run;
+    return runOf(found, read(found.path, CALLS), tags, meterOf, { until, age }) ?? run;
+  };
   for (const each of await campaignLogs(home, [], asked.since)) {
     // Under an explicit home, a campaign's host is the folder it lies in where that lies in the
     // given one (`data/runs/<host>/<name>/log.jsonl`), and this machine otherwise.
@@ -309,11 +409,13 @@ export async function loadRuns(asked: Asked): Promise<{ runs: Run[]; skipped: st
     if (names.length > 0 && !names.some((part) => found.name.includes(part))) continue;
     if (has.length + holds.length > 0 && !ranWith(found.path, repo, { has, holds })) continue;
     try {
-      const run = runOf(found, read(found.path, CALLS), tags);
-      if (run !== null) runs.push(run);
+      const run = runOf(found, read(found.path, CALLS), tags, meterOf, { until });
+      if (run === null) continue;
+      runs.push(run);
+      logOf.set(run, found);
     } catch (error) {
       skipped.push(`${found.name}: ${errorMessage(error)}`);
     }
   }
-  return { runs: runs.toSorted((a, b) => a.launched - b.launched), skipped };
+  return { runs: runs.toSorted((a, b) => a.launched - b.launched), skipped, at };
 }

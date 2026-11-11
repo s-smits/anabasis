@@ -17,6 +17,10 @@
  * and the hours and dollars a rung after set-up, kept apart because set-up takes longer than a
  * rung and one number for both would be skewed by it; the all-in hours a promotion stand beside them.
  *
+ * `--rows cost` sets each run's recorded dollars beside its turns repriced on today's meter, a
+ * promotion and a confirmed promotion, since the meter moved and only the repriced dollars compare
+ * across it; `trend.ts` pools them by window.
+ *
  * A row is one campaign as `.claude/skills/main/runs.ts` folds it from its log and receipts; that
  * module's head comment says what places a run and what the hours, the room on validity and a
  * confirmed promotion are. `--has` and `--holds` keep the runs whose every launch ran with a
@@ -40,13 +44,13 @@ const SINCE = "2026-10-01";
 const LAST = 20;
 const USAGE = `usage:
   bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/table.ts
-    [--since <date>] [--name <part of a campaign>]... [--rows recent|runs|promotions] [--last <n>]
+    [--since <date>] [--name <part of a campaign>]... [--rows recent|runs|promotions|cost] [--last <n>]
     [--has <text>]... [--holds <commit>]... [--format md|tsv] [--runs <dir>]
 
 --since   campaigns whose last event is at or after this date; ${SINCE} by default
 --name    these campaigns only, matched by part of the name (repeatable)
 --rows    recent (default): live runs and the latest finished runs that promoted; runs: one row a
-          run; promotions: one row a promotion
+          run; promotions: one row a promotion; cost: one row a run, its dollars repriced on one meter
 --last    how many finished runs recent lists, ${String(LAST)} by default
 --has     only runs whose every launch ran with code that holds this text (repeatable)
 --holds   only runs whose every launch holds this commit (repeatable)
@@ -108,6 +112,20 @@ const RECENT_HEAD = [
   "$ a rung",
   "h a promotion, set-up included",
 ];
+const COST_HEAD = [
+  "run",
+  "launched",
+  "setting",
+  "state",
+  "promotions",
+  "confirmed",
+  "recorded $",
+  "repriced $",
+  "repriced/recorded",
+  "recorded $ a promotion",
+  "repriced $ a promotion",
+  "repriced $ a confirmed promotion",
+];
 const PROMOTION_HEAD = [
   "run",
   "promotion",
@@ -127,6 +145,9 @@ const CAVEAT = [
   "Unloaded hours also take out the share of each stretch an overloaded host could not serve (1 - cores/load), as if the run were CPU-bound: an upper bound on what load cost, an estimate.",
   "One run is one draw, and the spread between runs is wide: trend.ts sets groups of runs against it, and results are never compared across settings.",
 ];
+/** What `--rows cost` adds to the caveat. */
+const REPRICED =
+  "Repriced: every recorded turn at today's list prices through today's seat meter, the one measure every run shares; it leaves out a backend's excess over its turns (compactions, retries), which only runs from #563 on record, so repriced/recorded just under 1 on a newer run is that excess.";
 
 const tenths = (value: number | null | undefined): string =>
   value === null || value === undefined ? MISSING : value.toFixed(1);
@@ -198,6 +219,26 @@ const promotionRows = (runs: readonly Run[]) =>
     ]),
   );
 
+/** Dollars over a count, or none where nothing was priced or counted. */
+const per = (dollars: number | null, count: number) =>
+  money(dollars === null || count === 0 ? null : dollars / count);
+
+const costRows = (runs: readonly Run[]) =>
+  runs.map((run) => [
+    run.name,
+    new Date(run.launched).toISOString().slice(0, 10),
+    run.setting,
+    run.live ? "live" : run.ending,
+    String(run.promotions.length),
+    String(run.confirmed),
+    money(run.dollars),
+    run.repriced === null ? `? (${run.unpriced ?? ""})` : money(run.repriced),
+    run.repriced === null || run.dollars === 0 ? MISSING : (run.repriced / run.dollars).toFixed(2),
+    per(run.dollars, run.promotions.length),
+    per(run.repriced, run.promotions.length),
+    per(run.repriced, run.confirmed),
+  ]);
+
 async function main(args: CommandArgs): Promise<number> {
   const format = formatOf(args);
   const [has, holds] = [args.list("has"), args.list("holds")];
@@ -223,6 +264,7 @@ async function main(args: CommandArgs): Promise<number> {
     ["recent", () => printed(RECENT_HEAD, recentRows(listed), format)],
     ["runs", () => printed(RUN_HEAD, runRows(runs), format)],
     ["promotions", () => printed(PROMOTION_HEAD, promotionRows(runs), format)],
+    ["cost", () => printed(COST_HEAD, costRows(runs), format)],
   ]);
   const rows = args.value("rows") ?? "recent";
   const table = tables.get(rows);
@@ -233,7 +275,7 @@ async function main(args: CommandArgs): Promise<number> {
   const only = has.length + holds.length > 0 ? `, only runs with ${[...has, ...holds].join(", ")}` : "";
   const promotions = runs.reduce((sum, run) => sum + run.promotions.length, 0);
   console.log(`\n${String(runs.length)} campaigns, ${String(promotions)} promotions, since ${since}${only}.`);
-  console.log(CAVEAT.join("\n"));
+  console.log([...CAVEAT, ...(rows === "cost" ? [REPRICED] : [])].join("\n"));
   if (skipped.length > 0) console.log(`not read (${String(skipped.length)}): ${skipped.join("; ")}`);
   return 0;
 }

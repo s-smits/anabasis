@@ -1,6 +1,6 @@
 ---
 name: promotion-tuner
-description: "Read recorded comparisons under other promotion rules without model calls or spending. scripts/lab.ts tries any mechanism (weights, the bill, turns or seconds as a gain or a guard, floors, the test, the level, free code) on one panel over the record; scripts/replay.ts asks whether a tree's rule supports the promotions on record and which measure won each task; scripts/table.ts lists runs and their promotions; scripts/trend.ts sets the newest week's runs against the weeks before, each difference tested against the spread between runs, with the climb read against what holds it and, with --bench, against outside scores; scripts/cost.ts prices promotions on one meter. Use for past promotions, changed scoring, what a promotion should reward, whether the system does better than one or two weeks ago, or comparisons between release cycles; a replay never establishes a live improvement."
+description: "Read recorded comparisons under other promotion rules without model calls or spending. scripts/lab.ts tries any mechanism (weights, the bill, turns or seconds as a gain or a guard, floors, the test, the level, free code) on one panel over the record; scripts/replay.ts asks whether a tree's rule supports the promotions on record and which measure won each task; scripts/table.ts lists runs and their promotions, and with --rows cost prices them on one meter; scripts/trend.ts sets the newest week's runs against the weeks before, each difference tested against the spread between runs, with the climb read against what holds it and, with --bench, against outside scores. Use for past promotions, changed scoring, what a promotion should reward, whether the system does better than one or two weeks ago, or comparisons between release cycles; a replay never establishes a live improvement."
 ---
 
 # Promotion tuner
@@ -129,12 +129,17 @@ bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/trend.ts \
 "Is the system doing better than a week and two weeks ago" is answered here, a pack at a time. A
 run is placed by the day it opened; an earlier window keeps only runs under a setting the newest
 holds, and each window names its releases, since a difference across minor releases describes the
-record and attributes nothing. Every measure is a rate over its exposure, because the newest runs
-are younger and paused at their trigger, and each difference is put to a permutation test with the
-campaign as the unit (`.claude/skills/main/stats.ts`): `moved` at p of 0.05 or less, `inside the
-spread`, or `too few runs` where no deal of the same runs could read a difference at that level. The
-closing line counts each pack's tests once, without the pooled block; one test in twenty reads
-`moved` by chance, and tests that share runs do so together. `--back 4 --pack buffer` is the control read of `AGENTS.md` section 10.
+record and attributes nothing. The newest runs are younger and paused at their trigger, so a block
+reads every run as it stood at one age, its horizon: the least that a newest run cut short (live,
+paused, killed or stopped by the operator) has lasted past six hours. A run cut short sooner is
+left out and counted, one that ended on its own terms is read as it ended, and the block's first
+lines say the horizon. `--until` reads every log only to that moment, so a reading repeats. Each
+difference is put to a permutation test with the campaign as the unit
+(`.claude/skills/main/stats.ts`): `moved` at p of 0.05 or less, `inside the spread`, or `too few
+runs` where no deal of the same runs could read a difference at that level. The closing line counts
+each pack's tests once, without the pooled block; one test in twenty reads `moved` by chance, and
+tests that share runs do so together. `--back 4 --pack buffer` is the control read of `AGENTS.md`
+section 10.
 
 **The climb against what holds it.** More promotions an hour is a gain only where they hold, so one
 line a window sets promotions a 100 active hours beside the share the starter confirmed and the
@@ -155,13 +160,13 @@ seat (`AGENTS.md`, section 1). Wording a claim from either table is
 runs on one meter:
 
 ```sh
-bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/cost.ts \
-  [--since <date>] [--name <part>]... [--by week|pack|setting|none] [--format md|tsv]
+bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/table.ts --rows cost \
+  [--since <date>] [--name <part>]... [--format md|tsv]
 ```
 
-It reprices every recorded turn with today's `seatMeter` beside the recorded bill and pools dollars
-a promotion; on newer runs `repriced/recorded` just under 1 is the backend's excess (compactions,
-retries).
+It reprices every recorded turn with today's `seatMeter` beside the recorded bill, a promotion and
+a confirmed promotion; on newer runs `repriced/recorded` just under 1 is the backend's excess
+(compactions, retries). `trend.ts` pools the repriced dollars a promotion by window.
 
 ## Tuning the score
 

@@ -10,8 +10,12 @@
  * A row is the fold of `.claude/skills/main/runs.ts`, placed by the day the run opened. Results are
  * never read across settings (section 9), so an earlier window keeps only the runs under a setting
  * the newest window of that pack holds, and a window that spans a minor release says so. The newest
- * runs are younger and are paused at their trigger, so every measure is a rate with its exposure as
- * the denominator or a median, never a count a longer run would win by lasting. One campaign is one
+ * runs are younger and are paused at their trigger, so a block reads every run as it stood at one
+ * age, its horizon: the least that a newest run cut short (live, paused, killed or stopped by the
+ * operator) has lasted past `FLOOR` hours. A run cut short sooner is left out and counted, and one
+ * that ended on its own terms is read as it ended, so no run is read younger than another and no
+ * measure can favour a window by its youth. `--until` reads every log only to that moment, so a
+ * reading repeats however the logs have grown since. One campaign is one
  * draw: a difference is put to a permutation test with the campaign as the unit (`main/stats.ts`),
  * and reads `moved` at p <= 0.05, `inside the spread` above it, and `too few runs` where no deal
  * of the same runs into the two windows could read a difference at that level. The closing line
@@ -25,7 +29,7 @@
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { formatOf, MISSING, printed } from "#skills/main/print.ts";
-import { loadRuns, promotedBy, type Run, rungsOf } from "#skills/main/runs.ts";
+import { loadRuns, type Run, rungsOf } from "#skills/main/runs.ts";
 import { type Shift, shiftOf } from "#skills/main/stats.ts";
 import { DAY_MS } from "#src/meta/clock.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
@@ -39,7 +43,8 @@ const USAGE = `usage:
 
 --window       the days a window spans, 7 by default; a run is placed by the day it opened
 --back         how many earlier windows the newest is read against, 2 by default
---until        where the newest window ends, now by default; a date repeats a reading
+--until        where the newest window ends and every log is read to, now by default; a date
+               repeats a reading
 --pack         these packs only (repeatable); every pack the newest window holds by default
 --any-setting  keep earlier runs under settings the newest window does not hold
 --has, --holds only runs whose every launch ran with code that holds this text or commit (repeatable)
@@ -60,8 +65,10 @@ const OPTIONS = {
 } as const;
 /** The level a difference between windows is described at; it decides nothing. */
 const LEVEL = 0.05;
-/** The elapsed hours a run's first promotion is counted by, the iteration's trigger. */
-const MARK = 12;
+/** The hours a run cut short must have lasted to set a block's horizon, half the iteration's
+ *  twelve-hour trigger: most runs cut short sooner never ran, and a horizon near the first
+ *  comparison would read nothing. */
+const FLOOR = 6;
 const ALL = "all packs";
 const MIXED = "no single direction";
 /** What a pattern says, by whether promotions came faster. */
@@ -107,6 +114,8 @@ type Each = (run: Run) => number;
 
 const total = (runs: readonly Run[], each: Each) => runs.reduce((sum, run) => sum + each(run), 0);
 const promoted: Each = (run) => run.promotions.length;
+/** Every run read counts once, which a share of runs takes as its denominator. */
+const one: Each = () => 1;
 
 /** A ratio of two sums over the runs, so that a longer run weighs by its exposure; more is better
  *  unless `lower` says otherwise. */
@@ -141,7 +150,7 @@ export const MEASURES = {
     "supply",
     "runs that reported a comparison",
     (run) => (run.firstReported === null ? 0 : 1),
-    (run) => (run.firstReported !== null || !run.live ? 1 : 0),
+    one,
   ),
   firstReport: middle("supply", "hours to the first report", (run) =>
     run.firstReported === null ? [] : [run.firstReported],
@@ -155,12 +164,7 @@ export const MEASURES = {
   firstPromotion: middle("climb", "hours to the first promotion", (run) =>
     run.promotions.slice(0, 1).map((first) => first.elapsed),
   ),
-  byMark: rate(
-    "climb",
-    `runs promoted by ${String(MARK)} h`,
-    (run) => promotedBy([run], MARK).promoted,
-    (run) => promotedBy([run], MARK).known,
-  ),
+  byHorizon: rate("climb", "runs promoted by the horizon", (run) => Math.min(promoted(run), 1), one),
   speed: rate("climb", "promotions a 100 active hours", promoted, (run) => run.active, 100),
   perComparison: rate("climb", "promotions a comparison", promoted, (run) => run.compared),
   rung: middle("climb", "hours a rung", (run) => rungsOf(run).map((rung) => rung.epochElapsed)),
@@ -192,6 +196,15 @@ export const MEASURES = {
   ),
   rungDollars: middle("economy", "dollars a rung", (run) => rungsOf(run).map((rung) => rung.dollars)),
   perPromotion: lower(rate("economy", "dollars a promotion", (run) => run.dollars, promoted)),
+  // On one meter across the windows, over the runs whose every turn it priced.
+  repriced: lower(
+    rate(
+      "economy",
+      "repriced dollars a promotion",
+      (run) => run.repriced ?? 0,
+      (run) => (run.repriced === null ? 0 : promoted(run)),
+    ),
+  ),
   perConfirmed: lower(
     rate(
       "economy",
@@ -216,15 +229,39 @@ export function windowsOf(runs: readonly Run[], until: number, days: number, bac
  *  other settings were left out. */
 export function comparable(windows: readonly Window[]) {
   const held = new Set(windows[0]?.runs.map(({ setting }) => setting));
-  const kept = windows.map((window) => ({
-    ...window,
-    runs: window.runs.filter(({ setting }) => held.has(setting)),
-  }));
-  const left = windows.reduce(
-    (sum, window, at) => sum + window.runs.length - (kept[at]?.runs.length ?? 0),
-    0,
+  return keptOf(windows, ({ setting }) => held.has(setting));
+}
+
+/** The windows with only the runs `keep` holds, and how many it left out. */
+function keptOf(windows: readonly Window[], keep: (run: Run) => boolean) {
+  const kept = windows.map((window) => ({ ...window, runs: window.runs.filter(keep) }));
+  const size = (each: readonly Window[]) => each.reduce((sum, { runs }) => sum + runs.length, 0);
+  return { windows: kept, left: size(windows) - size(kept) };
+}
+
+/** Whether nothing in a run ended it: it is live, was paused or killed, or the operator stopped it.
+ *  A run that ended on its own terms is known at any age. */
+const cutShort = (run: Run) => run.live || run.ending === "no ending" || run.ending === "operator";
+
+/** A block's windows with every run read at its horizon by `at` (`loadRuns`), and the line that says
+ *  so. Where no newest run was cut short past `FLOOR`, each run is read whole, and only runs cut
+ *  short before the floor are left out. */
+export function atHorizon(windows: readonly Window[], at: (run: Run, hours: number) => Run) {
+  const ages = (windows[0]?.runs ?? []).flatMap((run) =>
+    cutShort(run) && run.elapsed >= FLOOR ? [run.elapsed] : [],
   );
-  return { windows: kept, left };
+  const hours = Math.min(...ages);
+  const { windows: kept, left } = keptOf(
+    windows,
+    (run) => !cutShort(run) || run.elapsed >= (Number.isFinite(hours) ? hours : FLOOR),
+  );
+  const read = Number.isFinite(hours)
+    ? `Read at ${hours.toFixed(1)} hours from each run's first event, the least a newest run cut short has lasted past ${String(FLOOR)} h`
+    : `No newest run was cut short past ${String(FLOOR)} h, so each run is read whole`;
+  return {
+    windows: kept.map((window) => ({ ...window, runs: window.runs.map((run) => at(run, hours)) })),
+    line: `${read}; ${counted(left, "run")} cut short sooner ${left === 1 ? "is" : "are"} left out.`,
+  };
 }
 
 export function changeOf(measure: Measure, then: readonly Run[], now: readonly Run[]): Change {
@@ -305,7 +342,12 @@ export function guardOf(then: readonly Run[], now: readonly Run[]): { pattern: s
 }
 
 /** One pack's block: what its windows pool, the measures by window, and the guard lines. */
-function packLines(pack: string, windows: readonly Window[], left: number, format: "md" | "tsv") {
+function packLines(
+  pack: string,
+  read: { windows: readonly Window[]; left: number; line: string },
+  format: "md" | "tsv",
+) {
+  const { windows, left } = read;
   const [now, ...before] = windows;
   if (now === undefined) return { lines: [], tested: 0, moved: 0 };
   // A window without a run is named once and takes no column, difference or guard line.
@@ -337,6 +379,7 @@ function packLines(pack: string, windows: readonly Window[], left: number, forma
   const minors = (window: Window) =>
     new Set(window.runs.flatMap(({ release }) => /v\d+\.\d+/u.exec(release)?.[0] ?? []));
   const notes = [
+    read.line,
     left > 0 && `Left out: ${String(left)} earlier runs under settings the newest window does not hold.`,
     pack === ALL &&
       "Every pack and setting is pooled here, so a difference can be the mix of packs alone: read each pack's block first.",
@@ -374,7 +417,8 @@ async function main(args: CommandArgs): Promise<number> {
   const until = named === null ? Date.now() : Date.parse(named);
   if (Number.isNaN(until)) return args.die(`--until takes a date; got ${named ?? ""}`);
   const kept = { home: args.value("runs"), repo: runtimeProcess.cwd() };
-  const { runs, skipped } = await loadRuns({
+  const { runs, skipped, at } = await loadRuns({
+    until,
     ...kept,
     since: day(until - (back + 1) * days * DAY_MS),
     has: args.list("has"),
@@ -391,7 +435,7 @@ async function main(args: CommandArgs): Promise<number> {
     }));
     // Every pack pooled is read only as a whole, where a setting is one pack's concern.
     const read = pack === ALL || args.flag("any-setting") ? { windows: own, left: 0 } : comparable(own);
-    const block = packLines(pack, read.windows, read.left, format);
+    const block = packLines(pack, { ...atHorizon(read.windows, at), left: read.left }, format);
     console.log(block.lines.join("\n"));
     // The pooled block reads the packs' runs again, so its tests are no further tests.
     if (pack === ALL) continue;

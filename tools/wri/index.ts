@@ -42,6 +42,7 @@ import { compareCodeUnits } from "#src/meta/stable-json.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural, textOr } from "#src/meta/text.ts";
 import { epochsOf } from "#src/campaign/climb.ts";
+import { endingOf } from "#src/kernel/reports.ts";
 import { isCampaign, logEvents, packOf, type Run } from "../runs/registry.ts";
 import {
   forkOf,
@@ -444,8 +445,7 @@ function movedRows(
     const epochs = epochsOf(events);
     const promoted = epochs.filter(({ promoted: harness }) => harness !== null).length;
     const confirmed = epochs.filter(({ confirmed: read }) => read === true).length;
-    const ending =
-      last.kind === "campaign.ended" && isString(last.data.ending) ? last.data.ending : "no ending";
+    const ending = endingOf(events) ?? "no ending";
     return [
       [last.at.slice(0, 10), ...head, ending, `${String(promoted)}, ${String(confirmed)} confirmed`, ...tail],
     ];

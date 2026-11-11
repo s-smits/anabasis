@@ -34,7 +34,7 @@ table, "The pillars and the v1.0 bar". This table holds each row's value and lev
 7 November 2026 from `promotion-tuner/scripts/table.ts --rows runs` over the 222 campaigns whose
 last event falls on or after 1 September, `comparison-reading/scripts/starter-reads.ts --all`, and,
 for the fresh jobstat campaign at `9190fbbac` that proves v0.10.0 (live, five promotions), `bun run
-runs view` and `examiner-complexity/scripts/zone.ts`. That campaign is the nearest to the climb
+runs view` and `comparison-reading/scripts/reading.ts --zone`. That campaign is the nearest to the climb
 row's measured campaign: it opened from a prompt and every launch names one commit.
 
 | Row | Now | Level | Status |

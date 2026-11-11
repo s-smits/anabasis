@@ -1,16 +1,15 @@
 // The examiner-complexity readers: one line an Examiner session under the reference in force, a
 // campaign's hours to its first comparison and promotion, every draft an Examiner wrote beside what
 // the gate measured on it, blind grades against outcomes with non-results counted nowhere, and the
-// ladder's rungs re-rated blind against their stated grades.
+// ladder's rungs re-rated blind against their stated grades. A comparison's zone is the reading's
+// (`test/comparison-reading-script.test.ts`).
 import { describe, expect, it } from "bun:test";
 import { campaignLine, sessionLines } from "#skills/examiner-complexity/scripts/ambition.ts";
 import { csvLines, draftRows } from "#skills/examiner-complexity/scripts/exams.ts";
 import { gradeLines, outcomesOf } from "#skills/examiner-complexity/scripts/grades.ts";
 import { compareLines, packetOf } from "#skills/examiner-complexity/scripts/rungs.ts";
-import { zoneRows } from "#skills/examiner-complexity/scripts/zone.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
-import { roundSolves } from "./helpers/logged-round.ts";
 
 const event = (minutes: number, kind: EventKind, data: JsonObject): LogEvent => ({
   at: new Date(Date.UTC(2026, 9, 31, 0, minutes)).toISOString(),
@@ -242,127 +241,5 @@ describe("rungs", () => {
     expect(lines.at(-1)).toMatch(
       /^1 of 18 rungs at their stated grade, 1 below, 0 above, 1 not above the rung before, 16 not graded$/u,
     );
-  });
-});
-
-describe("zone", () => {
-  const reported = (
-    session: string,
-    harnesses: readonly [string, string],
-    terms: JsonObject,
-    more: JsonObject,
-  ) =>
-    event(9, "comparison.reported", {
-      session,
-      old: harnesses[0],
-      fresh: harnesses[1],
-      starter: "h1",
-      reading: "no-step",
-      scored: { wins: 0, losses: 0, ties: 0 },
-      ...terms,
-      ...more,
-    });
-  const held = (...tasks: readonly string[]) =>
-    tasks.flatMap((task) => [
-      event(0, "task.proposed", { version: task, taskId: task }),
-      event(0, "task.gate", { version: task, gate: 1, outcome: "passed" }),
-    ]);
-  // A verdict for each solve of `events`, in order, carrying its objective.
-  const measured = (events: readonly LogEvent[], measures: readonly number[]) =>
-    events
-      .filter(({ kind }) => kind === "solve.started")
-      .map(({ data }, index) =>
-        event(8, "verdict", {
-          solve: data.solve ?? "",
-          kind: "pass",
-          answer: {},
-          objective: measures[index] ?? 0,
-        }),
-      );
-
-  it("counts the reference's tasks and what untied them, beside the A/A's untied tasks", () => {
-    const outcomes = { all: "PP PP", some: "PF PP", none: "FF PP", neither: "FF FF" };
-    const { events, terms } = roundSolves("g-1", ["h1", "h2"], outcomes);
-    const noise = { differences: [0, 0.6, -0.6, 0] };
-    const log = [
-      ...held(...Object.keys(outcomes)),
-      ...events,
-      reported("g-1", ["h1", "h2"], terms, { noise }),
-    ];
-    expect(zoneRows("c", log)).toEqual([
-      [
-        "c",
-        "g-1",
-        "candidate",
-        "0",
-        "no-step",
-        "4",
-        "2",
-        "1",
-        "1",
-        "0.38",
-        "2",
-        "0",
-        "2",
-        "0.50",
-        "2",
-        "0.50",
-      ],
-    ]);
-  });
-
-  it("ties a task whose objective points round to nothing, as the comparison's report does", () => {
-    const { events, terms } = roundSolves("g-1", ["h1", "h2"], { near: "PP PP" });
-    const log = [
-      ...held("near"),
-      ...events,
-      ...measured(events, [100, 112, 106, 106]),
-      reported("g-1", ["h1", "h2"], terms, { objective: { direction: "lower" } }),
-    ];
-    expect(zoneRows("c", log)[0]?.slice(10, 13)).toEqual(["0", "0", "1"]);
-  });
-
-  it("calls a task untied on the objective only past its floor, and only with validity tied", () => {
-    const { events, terms } = roundSolves("g-1", ["h1", "h2"], { apart: "PP PP" });
-    const close = roundSolves("g-2", ["h1", "h2"], { close: "PP PP" });
-    const objective = { objective: { direction: "lower" } };
-    const log = [
-      ...held("apart", "close"),
-      ...events,
-      ...measured(events, [10, 10, 5, 5]),
-      reported("g-1", ["h1", "h2"], terms, objective),
-      ...close.events,
-      ...measured(close.events, [10, 10, 10.01, 10.01]),
-      reported("g-2", ["h1", "h2"], close.terms, objective),
-    ];
-    const untied = zoneRows("c", log).map((row) => row.slice(10, 13));
-    expect(untied).toEqual([
-      ["0", "1", "0"],
-      ["0", "0", "1"],
-    ]);
-  });
-
-  it("names a starter comparison by its sides and its epoch by the promotions before it", () => {
-    const { events, terms } = roundSolves("g-1", ["h2", "h1"], { task: "PP PF" });
-    const log = [
-      ...held("task"),
-      event(1, "harness.promoted", { harness: "h2" }),
-      ...events,
-      reported("g-1", ["h2", "h1"], terms, {}),
-    ];
-    expect(zoneRows("c", log)[0]?.slice(2, 4)).toEqual(["starter", "1"]);
-  });
-
-  it("leaves the A/A blank where a comparison held none, and a comparison that tallied nothing out", () => {
-    const { events, terms } = roundSolves("g-1", ["h1", "h2"], { task: "PP PP" });
-    const log = [
-      ...held("task"),
-      ...events,
-      reported("g-1", ["h1", "h2"], terms, {}),
-      reported("g-2", ["h1", "h2"], terms, { scored: null }),
-    ];
-    const rows = zoneRows("c", log);
-    expect(rows.map((row) => row[1])).toEqual(["g-1"]);
-    expect(rows[0]?.slice(14)).toEqual(["", ""]);
   });
 });

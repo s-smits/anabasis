@@ -90,7 +90,7 @@ fired**, counted in each log with a hostile log proving the count can see it; **
 estimates** (`promotion-tuner`, whose `trend.ts` gives the spread between runs that a difference
 between two campaigns must exceed before it is more than one draw against another); **each rival
 with a refuting count**, host programs included (`bun
-run runs source`); **where the gap sits** (`comparison-reading/scripts/gap.ts`); **an unselected
+run runs source`); **where the gap sits** (the gap line of `comparison-reading/scripts/reading.ts`); **an unselected
 reading**, such as the first starter comparison after a promotion, since a promoting one runs high;
 and **a fresh read before any credit** (`compare-systems`), paid, on the operator's word, with its
 settling rule frozen. With no `ANA_HOSTS` loaded, readers take the copies under

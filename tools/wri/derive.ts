@@ -145,7 +145,7 @@ export const READERS: readonly Reader[] = [
   at(
     skillReader(
       "readings",
-      "each comparison's terms, tally, p, wins to spare or losses short of a step, cap and A/A",
+      "each comparison's tally, p, wins to spare or losses short, cap, A/A, zone and gap to the best",
       "comparison-reading/scripts/reading.ts",
     ),
     [REPORTED],
@@ -168,14 +168,6 @@ export const READERS: readonly Reader[] = [
     },
     [PROMOTED],
     /^\| (?!campaign |---)/,
-  ),
-  at(
-    skillReader(
-      "gap",
-      "per comparison, how far each side's valid answers stand from the best answer on record",
-      "comparison-reading/scripts/gap.ts",
-    ),
-    [REPORTED],
   ),
   at(
     namedReader(
@@ -295,7 +287,8 @@ export const READERS: readonly Reader[] = [
     skillReader(
       "zone",
       "per comparison, tasks the reference answers never, in some solves or always, and untied by what",
-      "examiner-complexity/scripts/zone.ts",
+      "comparison-reading/scripts/reading.ts",
+      "--zone",
     ),
     [REPORTED],
   ),

@@ -29,7 +29,7 @@
  * not measured on each), and `cancelling` (gains of the two sides cancelling over the pairings).
  * The origin a starter read gives each task is `starter-reads.ts --tasks`'s column
  * (`comparison-reading`), so no column here repeats it. `x_best` gives each side's median ratio to
- * the best answer on record for the task, reference then new (1.00 is the best; `sideGap`, `gap.ts`,
+ * the best answer on record for the task, reference then new (1.00 is the best; `sideGap`, `reading.ts`'s gap line,
  * which prints the same per comparison): half of lane 11's sessions of 3 to 10 November set it
  * beside each task's writer by hand. It comes from hidden values, so the output stays on the exam
  * side: it names task versions and families and no task text, answer or measure.

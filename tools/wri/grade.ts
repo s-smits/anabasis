@@ -84,6 +84,13 @@ const typeOf = (value: JsonValue | undefined): string => {
   return isNumber(value) ? "number" : "boolean";
 };
 
+/** A value as a change prints it, cut at 80 characters with its length: a replaced field can be a
+ *  recorded answer's whole text, and a lane's report is read outside the exam side. */
+const clipped = (value: JsonValue | undefined) => {
+  const said = String(capturedJsonStringify(value));
+  return said.length > 80 ? `${said.slice(0, 80)}... (${String(said.length)} characters)` : said;
+};
+
 /**
  * `answer` with each `<path>=<json>` replaced, and one line a change; it throws where a path does
  * not resolve in the answer or a value would change the field's JSON type. A scalar answer's root
@@ -113,7 +120,7 @@ export function withSet(answer: JsonValue, sets: readonly string[]): { answer: J
     }
     // The Referee's own replacement, so a lane's change and a probe's are one operation.
     changed = withReplacedField(changed, path, value);
-    return `set ${path}: ${capturedJsonStringify(held.value)} -> ${capturedJsonStringify(value)}`;
+    return `set ${path}: ${clipped(held.value)} -> ${clipped(value)}`;
   });
   return { answer: changed, said };
 }

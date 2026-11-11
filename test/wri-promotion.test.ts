@@ -315,6 +315,28 @@ describe("lane 22: a promotion and the climb after it", () => {
       expect(triggered(log)("SHARED TEMPORARY FOLDER")).toEqual([]);
     },
   );
+
+  it("files an Examiner's try apart from a comparison's two sides", () => {
+    // A try names its Examiner session where a comparison's solve names its comparison, and no
+    // comparison starts under it: on 11 November esp32's 19 tries read as "x-1 new".
+    const { log, put, compare } = held();
+    compare("g-1", "hbase", "hn", STEP);
+    for (const [solve, harness, comparison] of [
+      ["s1", "hbase", "x-1"],
+      ["s2", "hbase", "g-1"],
+      ["s3", "hn", "g-1"],
+    ] as const) {
+      const ran = conditionOf("v1", harness);
+      put("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
+      put("solve.started", { solve, condition: conditionId(ran), comparison });
+      put("solve.call", { solve, tool: "bash", args: { command: "cat /tmp/scratch" }, isError: false });
+    }
+    const [said = ""] = triggered(log)("SHARED TEMPORARY FOLDER");
+    expect(said).toContain("3 solves by side:");
+    for (const side of ["x-1 try hbase", "g-1 reference hbase", "g-1 new hn"]) {
+      expect(said).toContain(`${side} 1`);
+    }
+  });
 });
 
 describe("lane 22 across campaigns", () => {

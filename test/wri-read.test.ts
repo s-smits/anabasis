@@ -483,6 +483,24 @@ describe("the reader of a round compared with another harness than its session s
     expect(withUnbilled([0, 0, 0, 0])).toContain("0 won, 0 lost and 4 tied");
   });
 
+  it("names edited tools only for a session whose end record says it changed its harness", () => {
+    // A shell command that runs the tool tree names it as a write does: on 11 November three esp32
+    // sessions whose end records read `changed` false were named.
+    const edited = (read: readonly LogEvent[]) =>
+      overview(read)
+        .triggers.filter(({ name }) => name === "TOOLS EDITED")
+        .map(({ detail }) => detail);
+    const unchanged = events.map(
+      (event): LogEvent =>
+        event.kind === BUILD_FINISHED ? { ...event, data: { ...event.data, changed: false } } : event,
+    );
+    // A session a stop cut has no end record, so what its calls wrote still stands in for it.
+    const cut = events.filter(({ kind }) => kind !== BUILD_FINISHED);
+    expect(edited(events)).toEqual(["b-1: agent/tools.mjs"]);
+    expect(edited(unchanged)).toEqual([]);
+    expect(edited(cut)).toEqual(edited(events));
+  });
+
   it("reads the tools a new harness called whether its Builder session finished or not", () => {
     // A led session freezes its harness for a comparison and may never finish: until 2 November
     // these triggers keyed on the finished harness and opened lane 16 in none of seven led runs.

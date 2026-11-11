@@ -307,12 +307,14 @@ function harnessTriggers(log: Index): Trigger[] {
       ...new Set(calls.flatMap(({ tool, args }) => (FILE_WRITERS.has(tool) ? [text(args?.path)] : []))),
       ...new Set(calls.flatMap(({ args }) => /\.toolchain/.exec(text(args?.command)) ?? [])),
     ];
-    const toolFiles = written.filter((path) => /tools|\.toolchain/.test(path));
     // A stop writes no end record, so a session it cut says nothing of what it changed: recode's
     // b-1 wrote its harness for forty minutes and this read none of it (2026-10-10). Its file-tool
     // calls are what the end record would have said, so they stand in for `changed` wherever a
     // trigger asks whether this session touched its harness at all.
     const edited = finished === null ? written.length > 0 : finished.changed === true;
+    // A shell command that only runs or lists the tool tree names it too, so `edited` decides:
+    // on 11 November three esp32 sessions whose end records read `changed` false were named.
+    const toolFiles = edited ? written.filter((path) => /tools|\.toolchain/.test(path)) : [];
     const fresh = edited ? round.scoring : [];
     const erring = fresh.filter((solve) => solve.errors > 0).length;
     return [

@@ -47,7 +47,7 @@ src/tools/      command (the one launch of a command), coding (pi's tools), answ
 src/harness/    the starter, a kept state opened for a solver (open, shim)
 src/examiner/   draft (the drafting session), shell (the walled home)
 src/campaign/   handover (a campaign's reading), decide and ground (the move table), names
-tools/c/        the check program: accept, carry, rejections, repaired
+tools/c/        the check program: accept, rejections
 tools/d1b/      examine, draft
 tools/d2/       the campaign's commands and the solve queue (host)
 tools/runs/     the run registry, receipts, logins, hosts

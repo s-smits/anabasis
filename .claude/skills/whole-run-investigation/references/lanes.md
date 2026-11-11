@@ -176,9 +176,9 @@ harnesses, weighted to checks that refused nothing, and say from the published r
 answer could still get wrong: an unread field, an uncited rule, a looser tolerance. An `author`
 instrument means only that the author's computation agreed, and a named tool is a field engine only
 if it does the decisive work. With no pass, the check rows are the whole lane. For `VERIFIER TOOLS
-MOVED` or a checker trigger, say under which tool tree or checker each result counted; carried tasks
-are read with `tools/c/repaired.ts`, `wri.ts grade` tests a constructed answer, and `grade --solve
-<id> --set <path>=<json>` regrades a recorded one with one field changed. A `try-` task, or a solve
+MOVED` or a checker trigger, say under which tool tree or checker each result counted; `wri.ts grade`
+tests a constructed answer, and `grade --solve <id> --set <path>=<json>` regrades a recorded one
+with one field changed. A `try-` task, or a solve
 an Examiner session asked for, is a rehearsal and never scored; `checks.txt` counts it under
 `examiner`. Read no pass rate. The decision: whether a pass means a right answer or a well-shaped one. Routes to
 `pack/evaluator`, `pack/brief`, `pack/controls` and `operator` (a freeze `despite` faults).

@@ -26,7 +26,6 @@ procedures and never run inside an investigation.
 | Is a run alive, and what did it last do? | `bun run runs pulse` |
 | Is there supply for a comparison? | `bun run runs view <name>` |
 | Does the checker stand on fresh controls? | `bun tools/c/accept.ts <the campaign's flags>` |
-| What does a repaired checker move? | `bun tools/c/repaired.ts --log <log> --bundle <repaired pack>` |
 | What do set-aside rejections read once labelled? | `bun tools/d2/settle.ts <the campaign's flags> --session <id>` |
 | Did another model answer any seat? | `bun tools/runs/degradations.ts <name>` (and `data/runs/degradations/`) |
 | Which sessions ran, from which parent, with which reading? | `bun tools/wri/wri.ts read --log <log>`, row F and `CHAIN` |
@@ -118,7 +117,7 @@ lane is given none of this. A reader that finds its campaign by name (`view`, `l
 its file says so in one line. Left out are tools that read no run
 (`comparison-reading/scripts/size.ts`, `examiner-complexity/scripts/rungs.ts`,
 `system-audit/scripts/recent.ts`), that need more than a campaign
-(`examiner-complexity/scripts/grades.ts`, `oracle-handover/scripts/slice.ts`, `tools/c/repaired.ts`,
+(`examiner-complexity/scripts/grades.ts`, `oracle-handover/scripts/slice.ts`,
 `tools/runs/search.ts`, `wri.ts grade`), that write (`wri.ts start`, `lanes`, `collect`, `synthesis`,
 `index` and `derive`, `wri2p2.ts open`, `tools/c/rejections.ts`, `tools/d2/close.ts`) or that call a
 paid model (`system-path-simulation/scripts/live-seat.ts`,
@@ -191,7 +190,7 @@ them unless the primary deletes them.
   traces; a finding handed to a seat that writes the harness or the tasks is the leak lane 12 looks
   for.
 - **A `pack/` finding is a decision, never a patch.** It goes to the checker's owner, and a repair is
-  another campaign (`accept.ts --freeze`, `repaired.ts`).
+  another campaign (`accept.ts --freeze`).
 - **Verify every session's model from its transcript** before using its report.
 
 ## Editing the shared instructions

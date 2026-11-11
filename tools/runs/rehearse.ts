@@ -267,7 +267,9 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
     const answers = answersOf(graded, read(campaign.log));
     const least = starter(campaign);
     /** How a script puts a file in the solver's home under each harness, by the harness's folder:
-     *  with pi's `write` where the harness selects it, and through its shell where it does not. */
+     *  through its shell where the harness selects one, so that each rehearsed solve runs a command
+     *  inside the wall, and with pi's `write` where it does not. Until 11 November 2026 `write` came
+     *  first, and a rehearsal of a wall change walled the checks and no solver command. */
     const writers = new Map<string, Promise<readonly string[]>>();
     const selectedOf = (dir: string) => {
       const known = writers.get(dir) ?? openHarness(dir).then(({ presets }) => selectedCodingTools(presets));
@@ -310,9 +312,9 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
           );
         }
         const content = JSON.stringify(answer);
-        const written: readonly [string, JsonObject] = (await selectedOf(harness.dir)).includes("write")
-          ? ["write", { path: ANSWER_FILE, content }]
-          : ["bash", { command: `printf %s ${shellQuote(content)} > ${ANSWER_FILE}` }];
+        const written: readonly [string, JsonObject] = (await selectedOf(harness.dir)).includes("bash")
+          ? ["bash", { command: `printf %s ${shellQuote(content)} > ${ANSWER_FILE}` }]
+          : ["write", { path: ANSWER_FILE, content }];
         const by = scripted(
           [...(answer === null ? [] : [written]), ["submit", {}]],
           campaign.limits.turns + 1,

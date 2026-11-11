@@ -16,9 +16,8 @@ import {
   replayedHeads,
   republish,
 } from "#skills/stack-pr/scripts/republish.ts";
-import { offMain, told as stackTold } from "#skills/stack-pr/scripts/stack.ts";
 import { follow, hazards, targetOf } from "#tools/runtime/follow.ts";
-import { chains, firstStack, type Pull, stackHolding } from "#tools/runtime/pulls.ts";
+import { chains, firstStack, offMain, type Pull, stackHolding, stackTold } from "#tools/runtime/pulls.ts";
 import {
   existsSync,
   mkdirSync,

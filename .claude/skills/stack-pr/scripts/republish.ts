@@ -48,9 +48,9 @@ import {
   type Pull,
   STACKS,
   stackHolding,
+  trunkHead,
   trunkOf,
 } from "#tools/runtime/pulls.ts";
-import { trunkHead } from "./stack.ts";
 
 /** One surviving pull request: its new head and final base. */
 interface Move {

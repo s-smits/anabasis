@@ -6,7 +6,6 @@ import { gitText } from "#src/meta/git.ts";
 import { bundle } from "#skills/oracle-handover/scripts/bundle.ts";
 import { declarationLines, sanitised, sectionLines } from "#skills/oracle-handover/scripts/document.ts";
 import { groupsOf, parseSelector, pick, slice } from "#skills/oracle-handover/scripts/slice.ts";
-import { follow, hazards, targetOf } from "#skills/stack-pr/scripts/follow.ts";
 import { itself, pairLines } from "#skills/compare-systems/scripts/systems.ts";
 import { censusOf, newsOf } from "#skills/system-path-simulation/scripts/live-seat.ts";
 import {
@@ -18,6 +17,7 @@ import {
   republish,
 } from "#skills/stack-pr/scripts/republish.ts";
 import { offMain, told as stackTold } from "#skills/stack-pr/scripts/stack.ts";
+import { follow, hazards, targetOf } from "#tools/runtime/follow.ts";
 import { chains, firstStack, type Pull, stackHolding } from "#tools/runtime/pulls.ts";
 import {
   existsSync,
@@ -177,6 +177,25 @@ describe("the hourly follow's reasons not to move", () => {
       "files the top adds are here already: new.txt",
     );
     expect(readFileSync(join(co, "shared.txt"), "utf8"), "nothing moved").toBe("mine\n");
+  });
+
+  it("does not count the follow that asks as work running in the checkout", () => {
+    // The verb runs from tools/runtime/, a path the hazards read as work, with the checkout as its
+    // working folder; a probe of the same shape stands in for it.
+    const clean = join(root, "safe-own");
+    git(root, "clone", "-q", up, clean);
+    const probe = join(root, "tools", "runtime", "probe.ts");
+    mkdirSync(join(root, "tools", "runtime"), { recursive: true });
+    writeFileSync(
+      probe,
+      [
+        `import { hazards, targetOf } from ${capturedJsonStringify(join(import.meta.dir, "..", "tools", "runtime", "follow.ts"))};`,
+        `const target = targetOf([{ number: 1, headRefName: "claude/top", baseRefName: "main" }], "main");`,
+        `console.log(JSON.stringify(hazards(${capturedJsonStringify(clean)}, target, Date.now() + 3_600_000)));`,
+      ].join("\n"),
+    );
+    const asked = runSync([capturedExecPath, probe], { cwd: clean });
+    expect(decodeOutput(asked.stdout).trim(), decodeOutput(asked.stderr)).toBe("[]");
   });
 
   it("refuses to switch over an ignored file the top adds, and keeps it", () => {

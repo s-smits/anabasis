@@ -290,6 +290,50 @@ describe("a solve's wall activity", () => {
   });
 });
 
+describe("a solve's deadline across a host's sleep", () => {
+  /** A clock whose timers fire only when the test fires them, whatever `now` reads. */
+  function splitClock() {
+    const timers: { readonly ms: number; readonly fall: () => void; lowered: boolean }[] = [];
+    const at = { now: 0 };
+    const clock: WallClock = {
+      now: () => at.now,
+      after: (ms, fall) => {
+        const timer = { ms, fall, lowered: false };
+        timers.push(timer);
+        return () => {
+          timer.lowered = true;
+        };
+      },
+    };
+    return { clock, timers, at };
+  }
+
+  it("is armed again for the rest when its timer fires before the solve's own clock reaches it, falls once that clock has, and lowers the timer armed last", () => {
+    const { clock, timers, at } = splitClock();
+    const wall = raiseWall(30 * 60, clock);
+    // Eighteen minutes of the solve's clock, and a timer that counted twelve more of sleep.
+    at.now = 18 * 60_000;
+    timers[0]?.fall();
+    expect(wall.signal.aborted).toBe(false);
+    expect(timers.map(({ ms }) => ms)).toEqual([30 * 60_000, 12 * 60_000]);
+    at.now = 30 * 60_000;
+    timers[1]?.fall();
+    expect(wall.signal.aborted).toBe(true);
+    expect(timers).toHaveLength(2);
+
+    const second = splitClock();
+    const lowered = raiseWall(60, second.clock);
+    second.at.now = 20_000;
+    second.timers[0]?.fall();
+    lowered.lower();
+    expect(second.timers.map(({ ms, lowered: off }) => [ms, off])).toEqual([
+      [60_000, false],
+      [40_000, true],
+    ]);
+    expect(lowered.signal.aborted).toBe(false);
+  });
+});
+
 describe("a solve's ending precedence", () => {
   it("is a kill, then moved files, then a held answer, before the sandbox's crash", async () => {
     const kill = AbortSignal.abort();

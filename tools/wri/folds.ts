@@ -282,6 +282,15 @@ export const strings = (value: JsonValue | undefined): string[] => items(value).
 export const measured = (solve: Solve): boolean => ["pass", "fail", "flagged"].includes(solve.outcome ?? "");
 export const share = (part: number, whole: number): string => `${String(part)} of ${String(whole)}`;
 /** A tally as `wins-losses-ties`. */
+/** `tallies` summed. */
+export function summed(tallies: readonly Tally[]): Tally {
+  return {
+    wins: tallies.reduce((total, { wins }) => total + wins, 0),
+    losses: tallies.reduce((total, { losses }) => total + losses, 0),
+    ties: tallies.reduce((total, { ties }) => total + ties, 0),
+  };
+}
+
 export const wlt = ({ wins, losses, ties }: Tally): string =>
   `${String(wins)}-${String(losses)}-${String(ties)}`;
 export const percent = (part: number): string => `${(part * 100).toFixed(1)}%`;

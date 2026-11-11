@@ -41,8 +41,8 @@
  * spawner copied for the second arm by sed: the event where each arm began was typed by hand
  * (10757), the watcher summed `billed` by kinds of its own, the reader named one domain's programs,
  * and the second arm's spawner had to name Bun by its path and set `RUN_REMOTE=0`, since the `bun`
- * on the PATH sends a command to a remote host. Each fact here has one owner already: the login
- * (`loginEnv`), the dollars (`billedBetween`), a task admission that read its draft (`measuredGate`) and held
+ * on the PATH then sent a check task to a remote host unless told otherwise. Each fact here has one
+ * owner already: the login (`loginEnv`), the dollars (`billedBetween`), a task admission that read its draft (`measuredGate`) and held
  * it (`heldAtGate`), and the turns of the reference's valid answers at a task admission (`gateAnswers`).
  *
  * The prompt rewrite of 27 October (#471) ran two rounds of before-and-after arms and improvised the
@@ -380,7 +380,8 @@ async function start(args: CommandArgs, command: readonly string[]): Promise<num
   const from = read(log).length;
   const env = {
     ...loginEnv(runtimeProcess.env, args.value("login") ?? undefined),
-    RUN_REMOTE: "0",
+    // A RUN_REMOTE the caller set for its own checks would send the seat's check tasks elsewhere.
+    RUN_REMOTE: "here",
   };
   const child = capturedSpawn(["nice", "-n", "10", capturedExecPath, ...command, "--name", name], {
     cwd: tree,

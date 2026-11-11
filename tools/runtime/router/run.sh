@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # The runner: run.sh <test|typecheck|lint|secrets|gate> [args]. The bun shim sends Anabasis's
-# check tasks here, so that they run on a host `ANA_HOSTS` lists rather than on this loaded laptop: a
-# push once gated here at a load average of 47 beside seven live runs. RUN_REMOTE picks the host by
-# its place in that list, its name or its ssh destination, 0 runs the task here, and unset takes the
-# first host that is not busy (`pick_host`), or this machine where no host sets `checks`. Whatever the host,
+# check tasks here, and RUN_REMOTE says where each runs. Unset, empty, `here` or the older `0` run it
+# on this machine without reading the host list; a host's name or ssh destination runs it on that
+# one of the hosts `ANA_HOSTS` lists with `checks`; `any` runs it on the first of them that is not
+# busy (`pick_host`), or here where none sets `checks`. Any other value is refused with the names to
+# write. Until 11 November 2026 unset meant `any` and a number named a host by its place in the list,
+# which shifts as hosts are added, so names became the one spelling of a host. Whatever the host,
 # the task is `bun run <task>` over the working tree as it stands, uncommitted bytes included,
 # under the Bun the tree pins and one deadline, and its exit status is this script's.
 #
@@ -68,7 +70,7 @@ taken_here() {
   printf '%s' "$taken"
 }
 
-# pick_host: the host an unset RUN_REMOTE runs on. Every host is asked its one-minute load and its
+# pick_host: the host RUN_REMOTE=any runs on. Every host is asked its one-minute load and its
 # cores at once, and the first in the list's order that is not busy takes the task: busy is
 # a load at or above ANA_RUNNER_BUSY percent of its cores, or every slot held by this machine's own
 # tasks. Where all are busy, the least loaded one with a free slot takes it, else the first that
@@ -115,15 +117,17 @@ pick_host() {
   printf '%s' "$pick"
 }
 
-# The hosts are the machines ANA_HOSTS lists, read by its one reader (tools/runs/host-config.ts)
-# through hosts.js, which install.ts bundles from hosts.ts: from the environment, or else from
-# .env.runs in the main worktree, where `bun run runs` finds them, each that sets `checks` with that
-# many slots, the ssh command rsync takes (`sshCommand`, tools/runs/host-command.ts) and the ssh
+# The hosts, read only where RUN_REMOTE names a host or `any`, are the machines ANA_HOSTS lists,
+# read by its one reader (tools/runs/host-config.ts) through hosts.js, which install.ts bundles
+# from hosts.ts: from the environment, or else from .env.runs in the main worktree, where
+# `bun run runs` finds them, each that sets `checks` with that many slots, the ssh command rsync takes (`sshCommand`, tools/runs/host-command.ts) and the ssh
 # options every connection to it takes (`sshOptions`, src/meta/ssh.ts), both the runs verbs' own.
 # Until 25 October the runner kept a hosts file of its own, which on the operator's
 # laptop named the same two machines, in the same order, as its ANA_HOSTS, each with two slots. The
 # lister runs in this folder, so Bun loads no .env of the tree.
 root="$(git rev-parse --show-toplevel)"
+choice="${RUN_REMOTE:-here}"
+[[ "$choice" != 0 ]] || choice=here
 host_names=() host_sshs=() host_slots=() host_transports=() host_options=() slots=1
 list_hosts() {
   local main env_file=()
@@ -131,13 +135,13 @@ list_hosts() {
   [[ ! -f "$main/.env.runs" ]] || env_file=(--env-file="$main/.env.runs")
   (cd "$runner_dir" && "$(pinned_bun "$root")" ${env_file[@]+"${env_file[@]}"} hosts.js)
 }
-if [[ "${RUN_REMOTE:-}" != 0 ]]; then
-  if [[ ! -x "$(pinned_bun "$root")" ]]; then
-    printf "runner: no Bun at %s: install the one this tree pins\n" "$(pinned_bun "$root")" >&2
-    exit 2
-  fi
+if [[ ! -x "$(pinned_bun "$root")" ]]; then
+  printf "runner: no Bun at %s: install the one this tree pins\n" "$(pinned_bun "$root")" >&2
+  exit 2
+fi
+if [[ "$choice" != here ]]; then
   if ! listed="$(list_hosts)"; then
-    printf "runner: ANA_HOSTS could not be read; RUN_REMOTE=0 runs the task here\n" >&2
+    printf "runner: ANA_HOSTS could not be read; RUN_REMOTE=here runs the task here\n" >&2
     exit 2
   fi
   # A line without its count, its rsync command or its options comes from a hosts.js older than this
@@ -158,23 +162,25 @@ options_of() {
   transport="${host_transports[$1]}"
 }
 
-# The host: none for RUN_REMOTE=0, else the host whose place (from 1), name or ssh destination it
-# gives, and for an unset RUN_REMOTE the one `pick_host` names, or none where the list is empty.
+# The host: none for `here`, the one `pick_host` names for `any` (or none where no host sets
+# `checks`), else the host whose name or ssh destination RUN_REMOTE gives.
 host=""
-choice="${RUN_REMOTE:-}"
-if [[ -z "$choice" ]]; then
-  if ((${#host_sshs[@]} == 0)); then choice=0; else choice="$(pick_host)"; fi
+if [[ "$choice" == any ]]; then
+  if ((${#host_sshs[@]} == 0)); then choice=here; else choice="$(pick_host)"; fi
 fi
-if [[ "$choice" != 0 ]]; then
+if [[ "$choice" != here ]]; then
   for ((i = 0; i < ${#host_sshs[@]}; i++)); do
-    if [[ "$choice" == "$((i + 1))" || "$choice" == "${host_names[$i]}" || "$choice" == "${host_sshs[$i]}" ]]; then
+    if [[ "$choice" == "${host_names[$i]}" || "$choice" == "${host_sshs[$i]}" ]]; then
       host="${host_sshs[$i]}" slots="${host_slots[$i]}"
       options_of "$i"
       break
     fi
   done
   if [[ -z "$host" ]]; then
-    printf "RUN_REMOTE=%s names no host ANA_HOSTS lists with checks; 0 runs the task here\n" "$choice" >&2
+    printf -v named '%s, ' ${host_names[@]+"${host_names[@]}"}
+    named="${named%, }"
+    printf "RUN_REMOTE=%s names no host that takes checks; write here, any or one of: %s\n" \
+      "$choice" "${named:-none, since ANA_HOSTS sets checks for no host}" >&2
     exit 2
   fi
 fi

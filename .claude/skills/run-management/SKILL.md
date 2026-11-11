@@ -242,8 +242,7 @@ path order, and `ANA_PYTHON` with `ANA_PYTHON_PACKAGES`, one Python through `uv`
 (what a solve finds is `hostPython`). With no flag it prints the differences; `--yes` applies and
 rechecks; `--check` exits 1 on any difference, for a timer. A change a seat would see is refused on a
 host with a live campaign, or an uncountable one, unless `--force`, because what a solver is given is
-the operator's. A runner reinstall here is refused without `--force` while hosts are listed and none
-sets `checks`, since every check would then run here. Sync uninstalls nothing, never touches a run, and never carries `.env` or an env
+the operator's. Sync uninstalls nothing, never touches a run, and never carries `.env` or an env
 file: logins move between hosts by the operator's hand.
 
 ## What is refused

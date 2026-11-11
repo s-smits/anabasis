@@ -63,6 +63,12 @@ export interface HostRows {
   readonly held: readonly string[];
 }
 
+/** What one host answered a look, null for one that gave no answer the look can read. */
+interface Answer {
+  readonly host: string;
+  readonly said: HostRows | null;
+}
+
 /** What the last look saw of one run. */
 interface Seen {
   readonly host: string;
@@ -180,26 +186,29 @@ function seenOf(row: Row, host: string): Seen {
   };
 }
 
-/** The lines `row` earns since `seen`, each to be headed by the run's name. A run first seen says its
- *  promotions in one line, since its log may hold a seed's or a run's from before this state. */
-function newsOf(row: Row, seen: Seen | undefined): string[] {
+/** The lines `row`, which stands at `now`, earns since `seen`, each to be headed by the run's name. A
+ *  run first seen says its promotions in one line, since its log may hold a seed's or a run's from
+ *  before this state. */
+function newsOf(row: Row, now: Seen, seen: Seen | undefined): string[] {
   const last = row.promotions.at(-1);
   const first =
     last === undefined
       ? []
       : [`first seen with ${plural(row.promotions.length, "promotion")}, the last ${last.digest}`];
-  const gap = gapOf(row);
-  const ending = endingOf(row.state);
+  // What turned since `seen`: the gap and the ending where each is new, and whether the log went quiet.
+  const gap = now.gap === seen?.gap ? null : now.gap;
+  const ending = now.ending === seen?.ending ? null : now.ending;
+  const quiet = now.quiet && seen?.quiet !== true;
   return [
     ...(seen === undefined ? first : climbed(row, seen).map(({ line }) => line)),
     ...row.kept
       .slice(seen?.kept ?? row.kept.length)
       .map((line) => `keeper: ${line.replace(`${row.name}: `, "")}`),
-    ...(gap !== null && gap !== seen?.gap ? [gap] : []),
-    ...(row.state.kind === "quiet" && seen?.quiet !== true
+    ...(gap === null ? [] : [gap]),
+    ...(quiet
       ? [`quiet: no new event since ${row.lastAt ?? "its start"}, and no login limit waited on`]
       : []),
-    ...(ending !== null && ending !== seen?.ending ? [`ended ${ending}`] : []),
+    ...(ending === null ? [] : [`ended ${ending}`]),
   ];
 }
 
@@ -209,7 +218,7 @@ function newsOf(row: Row, seen: Seen | undefined): string[] {
  */
 export function alertsOf(
   before: AlertState | null,
-  answers: readonly { readonly host: string; readonly said: HostRows | null }[],
+  answers: readonly Answer[],
 ): { lines: string[]; next: AlertState } {
   const down = answers.flatMap(({ host, said }) => (said === null ? [host] : []));
   const heard = answers.flatMap(({ host, said }) => (said === null ? [] : [{ host, said }]));
@@ -238,10 +247,11 @@ export function alertsOf(
     }
   }
   for (const [name, { host, row }] of current) {
+    const now = seenOf(row, host);
     if (before !== null) {
-      lines.push(...newsOf(row, before.runs[name]).map((line) => `${name} (${host}): ${line}`));
+      lines.push(...newsOf(row, now, before.runs[name]).map((line) => `${name} (${host}): ${line}`));
     }
-    next[name] = seenOf(row, host);
+    next[name] = now;
   }
   if (before === null) {
     const silent = down.length === 0 ? "" : `; ${down.join(", ")} gave no answer this tree reads`;
@@ -284,6 +294,15 @@ function lastLook(path: string): { before: AlertState | null; torn: boolean } {
   return { before: null, torn: true };
 }
 
+/** What this machine and every host `ANA_HOSTS` lists answer one look. */
+async function looked(): Promise<Answer[]> {
+  const away = await asked(["alerts", "--rows"]);
+  return [
+    { host: HERE, said: rowsHere(Date.now()) },
+    ...away.map(({ host, lines: said }) => ({ host: host.name, said: answerOf(said) })),
+  ];
+}
+
 /** `bun run runs alerts`. */
 export async function alerts(args: readonly string[]): Promise<void> {
   const { values } = parseArgs({
@@ -298,11 +317,7 @@ export async function alerts(args: readonly string[]): Promise<void> {
     return;
   }
   const { before, torn } = lastLook(values.state);
-  const away = await asked(["alerts", "--rows"]);
-  const { lines, next } = alertsOf(before, [
-    { host: HERE, said: rowsHere(Date.now()) },
-    ...away.map(({ host, lines: said }) => ({ host: host.name, said: answerOf(said) })),
-  ]);
+  const { lines, next } = alertsOf(before, await looked());
   if (torn) console.log(`${values.state} could not be read, so this look is a first look`);
   for (const line of lines) console.log(line);
   remember(values.state, capturedJsonStringify(next));

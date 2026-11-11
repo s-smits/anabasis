@@ -283,6 +283,11 @@ when they turn, not at every look.
 keeper move, missing process, ending or stall, nothing otherwise, and exit 0. It prints the `runs
 pause` command once two promotions are read against the starter, and never runs it.
 
+A session that waits on a few runs follows the log the local job writes these lines to with one
+`Monitor` (`tail -n 0 -F`), re-armed when it expires, and so wakes at each step a run owes. On a
+machine where no job writes that log, one `Monitor` on `bun run runs pulse --every 290 --state
+<file>` serves instead. Neither pauses or stops anything.
+
 Each look also says, under each moment among a run's new events (the contract's freeze, a
 comparison's start, a report, a promotion, an Examiner's or Builder's end, a campaign's opening or
 ending), what the deterministic readers that

@@ -209,6 +209,12 @@ export function promoted(events: readonly LogEvent[]): string | null {
   return isString(harness) ? harness : null;
 }
 
+/** The ending the log's last event carries, or null: a campaign that went on after one has none. */
+export function endingOf(events: readonly LogEvent[]): string | null {
+  const last = events.at(-1);
+  return last?.kind === "campaign.ended" && isString(last.data.ending) ? last.data.ending : null;
+}
+
 /** The campaign's reference: last promoted, otherwise its recorded starter, or the first old
  *  side where an earlier log names no starter. */
 export function referenceOf(events: readonly LogEvent[]): string | null {

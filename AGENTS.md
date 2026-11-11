@@ -379,6 +379,17 @@ regress. Run both, since they are far apart: a change that holds on both, surgic
 plausibly generalises. Until jobstat climbs, put the effort there; before v1.0, read the other
 domains' newest runs against their past ones and bring back any that regressed.
 
+**The outside aim.** A confirmed jobstat reference is also read on JobBench, under that benchmark's
+own judge (`studies/harness2/`), against three baselines that are kept apart: the bareSolver (the
+Starter, exported), stock Claude Code with an empty guide (Harness²'s Base) and Harness²'s held-out
+arm. The operator's order of aims is a built harness above the bareSolver, then level with the
+held-out arm, then above it. Read a deficit as a difference in conditions first (what the export
+carries and tells the solver, the interpreter and its packages, the day) and as the harness only
+once those are equal; a difference inside the Starter's own spread between rollouts is no reading.
+A change to the export or to the scoring makes every earlier rollout another condition, so each arm
+is rolled afresh after it. run-improvement-campaign ("The outside aim") owns the tasks and the
+read, and `docs/plan.md` the values.
+
 An anti-stall hook is on by default: every 290 seconds it runs `bun run runs pulse` and wakes an
 idle session only on a line worth reading. It is paused only on the operator's word.
 

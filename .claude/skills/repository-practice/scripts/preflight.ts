@@ -27,7 +27,6 @@ import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { gitMaybe, gitOutput, gitText } from "#src/meta/git.ts";
-import { told as stackTold } from "#skills/stack-pr/scripts/stack.ts";
 import { treeFault } from "#tools/d2/campaign.ts";
 import { AUTHORED_ROOTS, sourceTextFindings } from "#tools/loc/source-policy.ts";
 import {
@@ -41,7 +40,7 @@ import {
   UI_SETUP,
 } from "#tools/runtime/gate.ts";
 import { CATEGORIES } from "#tools/runtime/land.ts";
-import { openPulls } from "#tools/runtime/pulls.ts";
+import { openPulls, stackTold } from "#tools/runtime/pulls.ts";
 import { momentsOf } from "#tools/runtime/moments.ts";
 
 /** The diff a preflight reads: every changed path, those beyond the documentation set, and the
@@ -281,7 +280,7 @@ export function told(owed: Owed): string[] {
 /** The facts about the tree a change is made in, each from its owner: whether the hooks are on
  *  (`git config core.hooksPath`, set by `bun run hooks:install`), whether a run may start here
  *  (`treeFault`, `tools/d2/campaign.ts`), and with `stack` where the branch sits on the open stack
- *  (`told`, `.claude/skills/stack-pr/scripts/stack.ts`, which asks GitHub). */
+ *  (`stackTold`, `tools/runtime/pulls.ts`, over what GitHub lists). */
 export function treeLines(root: string, stack: "stack" | "no-stack"): string[] {
   const hooks = gitMaybe(root, "config", "core.hooksPath");
   const fault = treeFault(root);

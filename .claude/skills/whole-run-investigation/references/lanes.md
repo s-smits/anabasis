@@ -968,7 +968,7 @@ tasks written after it. Four parts, kept apart:
    each task written after the promotion a fair sign at its recorded margin. Count the draws that
    would still read `confirmed` at the level. That count is how often this read confirms by
    selection alone. `starter-reads.txt` prints it for each read, over every sign draw of the untied
-   tasks written after (`stepCount`, `tools/wri/selection.ts`), and says where every such task tied
+   tasks written after (`stepCount`, comparison-reading's `selection.ts`), and says where every such task tied
    whether the other tasks alone confirm. Show the draw's size and its count, not a single rate.
 3. **The fleet.** Across every read under review: reads confirmed, reads confirmed on the tasks
    written after alone (`starter-reads.ts --all` prints both), and the number the selection-only

@@ -42,6 +42,7 @@
  * for a night or a week catches up when it answers; nothing here deletes an original. Without --yes
  * it describes the sweep and changes nothing.
  */
+import { DAY_MS } from "#src/meta/clock.ts";
 import { existsSync, lstatSync, mkdirSync, readdirSync, rmSync } from "#src/meta/filesystem.ts";
 import { gitMaybe, gitText, mainTree, type Worktree as Tree, worktreeList } from "#src/meta/git.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";
@@ -63,7 +64,6 @@ export interface Sweep {
   readonly yes: boolean;
 }
 
-const DAY_MS = 86_400_000;
 /** A worktree or branch nothing uses stays this long, and a tree with a change no commit names twice
  *  as long: past it the system has moved too far for the change to apply (operator, 26 September). */
 const TREE_DAYS = 7;

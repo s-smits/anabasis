@@ -30,6 +30,7 @@ import { type Called, calledBy, namesOf } from "#src/campaign/names.ts";
 import { openingOf, planOf } from "#src/campaign/opening.ts";
 import { type Campaign, campaignOf, type Handover, openSteps } from "#src/campaign/handover.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
+import { MINUTE_MS } from "#src/meta/clock.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { gitText } from "#src/meta/git.ts";
 import { resolve } from "#src/meta/path.ts";
@@ -58,8 +59,6 @@ const STANDINGS = [
   ["repaired", "repaired"],
   ["failing-again", "failing again"],
 ] as const;
-
-const MINUTE_MS = 60_000;
 
 const dollars = (billed: number) => `$${billed.toFixed(2)}`;
 const row = (id: string, said: string) => `  ${id.padEnd(11)} ${said}`;

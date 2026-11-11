@@ -47,6 +47,7 @@ import type { LogEvent } from "#src/kernel/log.ts";
 import { lastReports } from "#src/kernel/reports.ts";
 import { practiceRan } from "#src/kernel/solves.ts";
 import { AGENT_DIR, GUIDE_FILE, TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
+import { HOUR_MS } from "#src/meta/clock.ts";
 import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync } from "#src/meta/filesystem.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
@@ -55,7 +56,6 @@ import { median } from "#src/meta/tally.ts";
 import { waitsOf } from "./time.ts";
 
 export const HOURS = [2, 4, 6, 8, 12, 16, 24] as const;
-const HOUR = 3_600_000;
 const SILENCE = 30 * 60 * 1000;
 /** Path segments of what a harness installed rather than wrote. */
 const INSTALLED =
@@ -138,7 +138,7 @@ export function clockOf(events: readonly LogEvent[]): (at: string) => number {
   return (at) => {
     const to = Date.parse(at);
     const lost = merged.reduce((sum, [from, until]) => sum + Math.max(0, Math.min(until, to) - from), 0);
-    return (to - start - Math.min(lost, to - start)) / HOUR;
+    return (to - start - Math.min(lost, to - start)) / HOUR_MS;
   };
 }
 
@@ -237,7 +237,7 @@ export function trajectoryOf(name: string, events: readonly LogEvent[], grades: 
   return {
     name,
     opened: events[0]?.at ?? "",
-    elapsed: (Date.parse(end) - Date.parse(events[0]?.at ?? end)) / HOUR,
+    elapsed: (Date.parse(end) - Date.parse(events[0]?.at ?? end)) / HOUR_MS,
     work: clock(end),
     ending: isString(ending) ? ending : null,
     cut: isString(open) && !hourOfSession.has(open) ? open : null,

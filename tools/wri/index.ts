@@ -33,6 +33,7 @@
  * unresolved, what each fork leaves out on purpose, and whether each fork carried the ids its
  * parent's runs did not hold. A fork from before the per-run files reads as "no per-run files".
  */
+import { DAY_MS } from "#src/meta/clock.ts";
 import { existsSync, readdirSync, readFileSync, statSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
@@ -124,7 +125,6 @@ const PREDICTED = new RegExp(`\\b(${PREDICTIONS.join("|")})\\b`, "u");
 /** A ledger's column that resolves its predictions: `held, falsified or unreached` and its kin. */
 const RESOLVED = /^(verdict|resolution|outcome|held, falsified)/u;
 const RECENT_DAYS = 14;
-const DAY_MS = 86_400_000;
 const DATE = /(\d{4})-?(\d{2})-?(\d{2})/u;
 /** The per-run ledgers of a cycle folder, `<kind>-<run>.md`. */
 const PER_RUN = ["predictions", "outcomes", "still-missing"] as const;

@@ -26,7 +26,7 @@
  * either, since an author told a share writes towards it (`AGENTS.md`, section 2).
  *
  * Names resolve through logAcross; read and lastReports own log parsing and report selection.
- * This script evaluates recorded scores. Use promotion-tuner/lab.ts to rescore recorded solves
+ * This script evaluates recorded scores. Use promotion-tuner/replay.ts --try to rescore recorded solves
  * under other rules. Output holds session ids, counts, ratios to the best, short digests and harness
  * letters, and no task identity, family, answer, measure or check; the ratios come from hidden
  * values, so it stays on the exam side.

@@ -1,6 +1,6 @@
 /**
  * The campaign logs a skill script reads across the record, found one way for every skill: the
- * replay, the lab, the tables and the trend of promotion-tuner and the starter reads of
+ * replay and its panel, the tables and the trend of promotion-tuner and the starter reads of
  * comparison-reading each list them here (until 11 November the list lived in promotion-tuner's
  * `tree.ts`, and comparison-reading reached into that skill for it).
  *

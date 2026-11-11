@@ -174,10 +174,12 @@ it("finds the logs of a folder of worktrees, of an archive's host folder and of 
       writeFileSync(join(dir, "log.jsonl"), text);
       if (seed) writeFileSync(join(dir, "seed.json"), "{}");
     };
-    put(join(home, "anabasis-a", ".ana", "d2", "camp"), "{}\n");
-    put(join(home, "m1", "camp"), "{}\n{}\n");
-    put(join(home, "m1", "other"), "{}\n");
-    put(join(home, "m1", "seeded"), "{}\n", true);
+    // Each line carries a time, as every event does: the fleet is the logs whose last one is recent.
+    const EVENT = `{"at":"2026-11-01T00:00:00.000Z"}\n`;
+    put(join(home, "anabasis-a", ".ana", "d2", "camp"), EVENT);
+    put(join(home, "m1", "camp"), EVENT + EVENT);
+    put(join(home, "m1", "other"), EVENT);
+    put(join(home, "m1", "seeded"), EVENT, true);
     const found = await campaignLogs(home, [], "");
     expect(found.map(({ name }) => name)).toEqual(["camp", "other"]);
     expect(found[0]?.path).toBe(join(home, "m1", "camp", "log.jsonl"));

@@ -62,7 +62,7 @@ import { isString } from "#src/meta/json-shape.ts";
 import { basename, dirname } from "#src/meta/path.ts";
 import { plural } from "#src/meta/text.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
-import { wlt } from "#tools/wri/folds.ts";
+import { summed, wlt } from "#tools/wri/folds.ts";
 import { type StepCount, stepCount } from "#tools/wri/selection.ts";
 
 /** What a read is made of: its after-slices and its sign draws, null where the level is not recorded. */
@@ -224,14 +224,7 @@ function taskLines(
 
 /** The totals over `reads`, naming the `campaigns` they come from where they span several logs. */
 function totalLines(reads: readonly StarterRead[], campaigns?: number): string[] {
-  const of = (origin: Origin, part: keyof Split): Tally => {
-    const tallies = reads.map(({ origins }) => origins[origin][part]);
-    return {
-      wins: tallies.reduce((total, { wins }) => total + wins, 0),
-      losses: tallies.reduce((total, { losses }) => total + losses, 0),
-      ties: tallies.reduce((total, { ties }) => total + ties, 0),
-    };
-  };
+  const of = (origin: Origin, part: keyof Split) => summed(reads.map(({ origins }) => origins[origin][part]));
   const compositions = reads.map(compositionOf);
   const counted = compositions.flatMap(({ draws }) => (draws === null ? [] : [draws]));
   const expected = counted.reduce((sum, { confirm, draws }) => sum + Number(confirm) / Number(draws), 0);

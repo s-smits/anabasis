@@ -19,20 +19,11 @@
  * ceiling. Scores are read under this tree's rule (`differenceOf`). Both decide nothing.
  */
 import { ORIGINS, type Origin, starterReads } from "#src/campaign/climb.ts";
-import { differenceOf, pointsOf, type Tally } from "#src/kernel/compare.ts";
+import { differenceOf, pointsOf } from "#src/kernel/compare.ts";
 import { lastReports, pairsReported } from "#src/kernel/reports.ts";
-import { fired, type Index, share, type Trigger, wlt } from "./folds.ts";
+import { fired, type Index, share, summed, type Trigger, wlt } from "./folds.ts";
 
 const [CHOSEN, BEFORE, AFTER] = ORIGINS;
-
-/** `tallies` summed. */
-function summed(tallies: readonly Tally[]): Tally {
-  return {
-    wins: tallies.reduce((total, { wins }) => total + wins, 0),
-    losses: tallies.reduce((total, { losses }) => total + losses, 0),
-    ties: tallies.reduce((total, { ties }) => total + ties, 0),
-  };
-}
 
 /** `CHAIN AGAINST THE STARTER` (lane 28): two or more starter reads whose tasks written after their
  *  promotions the reference lost more often than it won, summed over the reads. */

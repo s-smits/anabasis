@@ -1,8 +1,16 @@
 // The forecast of `runs usage` (`tools/runs/usage-model.ts`): what it fits on, when it speaks, and
 // that it learns when runs come and go, which the per-run rate, holding the runs live now, cannot.
 import { describe, expect, it } from "bun:test";
-import { modelLines, perRunRate } from "../tools/runs/logins.ts";
-import { ahead, assess, type Snapshot, weekEnd } from "../tools/runs/usage-model.ts";
+import { perRunRate, weeksFor } from "../tools/runs/logins.ts";
+import {
+  ahead,
+  assess,
+  endWords,
+  modelLines,
+  poolLine,
+  type Snapshot,
+  weekEnd,
+} from "../tools/runs/usage-model.ts";
 
 const HOUR = 3_600_000;
 const BASE = Date.UTC(2026, 10, 1, 12);
@@ -50,7 +58,7 @@ describe("the usage model", () => {
   it("speaks only where it beats both older paces on the hours held out, from a sparse record too", () => {
     const now = atLocal(21);
     expect(assess(history(7, now - 72 * HOUR), now, perRunRate)).toBeNull();
-    expect(modelLines([], [], null, now, null).join("\n")).toContain("model off");
+    expect(modelLines([], [], null, now, null).lines.join("\n")).toContain("model off");
     const sparse = assess(
       history(7, now).filter((_, at) => at % 3 === 0),
       now,
@@ -74,7 +82,7 @@ describe("the usage model", () => {
     // Silent, it leaves the one forecast to whichever older pace read the held-out hours better.
     const weeks = [{ login: "1", pct: 50, reset: now + 48 * HOUR }];
     const first = (read: typeof blind, rate: number | null) =>
-      modelLines(weeks, [], read, now, rate)[0]?.trim();
+      modelLines(weeks, [], read, now, rate).lines[0]?.trim();
     expect(first(blind, 0.15)?.startsWith(blind.week < blind.run ? "week pace" : "per run")).toBe(true);
     const runsWon = { ...blind, run: blind.week / 2 };
     expect(first(runsWon, 0.15)?.startsWith("per run")).toBe(true);
@@ -203,7 +211,7 @@ describe("weekEnd", () => {
 });
 
 describe("the model's lines", () => {
-  it("names the end, and says where the live runs kept going decide it", () => {
+  it("names each login's end, and says where the live runs kept going decide it", () => {
     // At 05:00 the last reading counts two live runs on each login.
     const now = atLocal(5);
     const kept = history(7, now);
@@ -211,14 +219,78 @@ describe("the model's lines", () => {
     const last = kept.at(-1);
     if (read?.model == null || last === undefined) throw new Error("the model did not speak");
     const weeks = Object.entries(last.weeks).map(([login, { reset }]) => ({ login, pct: 99, reset }));
-    const trees = modelLines(weeks, kept, read, now, 0).join("\n");
-    expect(trees).toContain("week out ~");
-    expect(trees).not.toContain("if its runs keep going");
+    const ends = (list: typeof weeks, record: Snapshot[], rate: number) => [
+      ...(modelLines(list, record, read, now, rate).ends?.values() ?? []),
+    ];
+    expect(ends(weeks, kept, 0).some((end) => end.at !== null)).toBe(true);
+    expect(ends(weeks, kept, 0).some((end) => end.runs)).toBe(false);
     const onlyRuns = weeks.map((week) => ({ ...week, pct: 50 }));
-    const held = modelLines(onlyRuns, kept, read, now, 100).join("\n");
-    expect(held).toContain("if its runs keep going");
+    expect(ends(onlyRuns, kept, 100).some((end) => end.runs)).toBe(true);
     // At a reading that counts no run, no rate makes a run of them.
     const idle = kept.map((one) => ({ ...one, runs: { "1": 0, "2": 0, "3": 0, "4": 0 } }));
-    expect(modelLines(onlyRuns, idle, read, now, 100).join("\n")).not.toContain("if its runs keep going");
+    expect(ends(onlyRuns, idle, 100).some((end) => end.runs)).toBe(false);
+    // Where the model is not the forecast printed, each head line keeps its week's pace.
+    expect(modelLines(weeks, kept, { ...read, model: null }, now, 0).ends).toBeNull();
+    // The head line says the hour, that the model gave it, and where the runs decided it.
+    const said = endWords({ at: now + 90 * 60_000, runs: true }, now);
+    expect(said.startsWith("ends in 1h30m")).toBe(true);
+    expect(said).toContain("by the model if its runs keep going");
+    expect(endWords({ at: null, runs: false }, now)).toBe("lasts, by the model");
+  });
+});
+
+describe("the pool's room", () => {
+  it("leaves out a login out of the pool with no live run, as neither demand nor room", () => {
+    const now = atLocal(12);
+    // Login 1 spends 90% over 144 hours, so its 10% left lasts 16 hours, 8 before its reset.
+    const spending = { login: "1", pct: 90, reset: now + 24 * HOUR };
+    const spare = { login: "2", pct: 0, reset: now + 160 * HOUR };
+    // Login 3 spends as fast, on a person's session no keeper moves.
+    const person = { login: "3", pct: 90, reset: now + 24 * HOUR, room: false };
+    const forecastOf = (room: boolean) =>
+      modelLines([spending, { ...spare, room }, person], [], null, now, null).lines[0] ?? "";
+    expect(forecastOf(false)).toContain("all out in 16h00m");
+    expect(forecastOf(true)).toContain("makes the next 7d");
+    expect(poolLine([spending, { ...spare, room: false }, person], 0, now)).toContain(
+      "~15%/day of one login's week at the week's pace; 1 login refill ~14%/day",
+    );
+    expect(poolLine([spending, spare], 0, now)).toContain("2 logins refill ~29%/day");
+    // Every login in the pool spent: its runs count no demand, and the pool is out until a reset.
+    const spent = { login: "4", pct: 100, reset: now + 36 * HOUR };
+    expect(modelLines([spent], [], null, now, null).lines[0]).toContain(
+      "all out now for 1d12h, till login 4 resets",
+    );
+    // With no login a run may take, there is no pool to run out.
+    expect(modelLines([person], [], null, now, null).lines[0]).toContain(
+      "no login is in the pool or carries a run",
+    );
+  });
+});
+
+describe("a reading of a few logins", () => {
+  it("fills the logins it did not read from the last reading kept, where still in their window", () => {
+    const now = atLocal(12);
+    const last: Snapshot = {
+      at: now - HOUR,
+      runs: {},
+      weeks: {
+        "1": { pct: 40, reset: now + 50 * HOUR },
+        "2": { pct: 70, reset: now + 20 * HOUR },
+        // Login 4's window reset since the last reading, so its 95% is no longer its week.
+        "4": { pct: 95, reset: now - HOUR },
+      },
+    };
+    const older: Snapshot = {
+      at: now - 2 * HOUR,
+      runs: {},
+      weeks: { "3": { pct: 10, reset: now + 90 * HOUR } },
+    };
+    const read = [{ login: "1", pct: 41, reset: now + 50 * HOUR }];
+    expect(weeksFor(read, [last, older], now)).toEqual({
+      "1": { pct: 41, reset: now + 50 * HOUR },
+      "2": { pct: 70, reset: now + 20 * HOUR },
+    });
+    // The whole view reads every login itself and passes no record.
+    expect(weeksFor(read, [], now)).toEqual({ "1": { pct: 41, reset: now + 50 * HOUR } });
   });
 });

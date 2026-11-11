@@ -16,7 +16,7 @@ import { parseJsonAs } from "../src/meta/json-runtime.ts";
 
 const fixtures: string[] = [];
 const PREPARE =
-  'import { preparedHost } from "REPOSITORY/tools/runs/code.ts"; import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; console.log(preparedHost(hostsOf()[0]!, process.env.FAKE_COMMIT!));';
+  'import { preparedHost } from "REPOSITORY/tools/runs/code.ts"; import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; console.log(await preparedHost(hostsOf()[0]!, process.env.FAKE_COMMIT!));';
 const ASK =
   'import { asked } from "REPOSITORY/tools/runs/hosts.ts"; console.log(await asked(["active", "--here"]));';
 

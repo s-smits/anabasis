@@ -364,6 +364,13 @@ function openingFor(bench: Bench): string {
   const { request } = bench;
   const recorded = read(request.log);
   const campaign = campaignOf(recorded);
+  // A promotion inside the conversation moves the reference, and never the records listed here.
+  const began = recorded.findLastIndex(
+    ({ kind, data }) => kind === BUILD_STARTED && data.session === request.id,
+  );
+  const moved = recorded.slice(began).some(({ kind }) => kind === "harness.promoted")
+    ? " The reference harness has changed since this conversation began; the practice records above are still those under the harness you start from."
+    : "";
   return firstMessage(
     request.contract,
     bench.tasks.map(({ version, task }) => ({
@@ -380,7 +387,7 @@ function openingFor(bench: Bench): string {
       solve: request.solve,
     },
     {
-      start: startTold(campaign, bench.parent, request.id),
+      start: `${startTold(campaign, bench.parent, request.id)}${moved}`,
       fails: failsTold(
         campaign.fails,
         new Map(bench.tasks.map(({ version, task }) => [version, task.taskId])),

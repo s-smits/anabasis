@@ -16,17 +16,11 @@
  * (403 oauth_scope_insufficient), so for those the verb reads the `anthropic-ratelimit-unified-*`
  * headers off a one-token Haiku call instead: the numbers the CLI shows, for one output token.
  *
- * The pool: a run moves to another login when one is spent, so demand is one rate, in % of one
- * login's week an hour, summed over the logins with room left; the forecast spends it in five-minute
- * steps for the next 4 weeks from the login whose week resets soonest, each refilled at its reset.
- * One forecast is printed, the one that read the last hours held out best (`usage-model.ts`): the
- * model's, hour by hour over the next day from the readings kept in the main worktree's
- * `.ana/logins-history.jsonl` (28 days), where it beats both older paces; otherwise the better of
- * the week's pace (each login's share over its window so far, floored at 12 hours, so a window
- * minutes old does not extrapolate) and the per-run rate times each login's live runs.
- * The 5-hour windows are left out: they cap how fast one login spends, not what a week holds. These
- * forecasts are printed for a person and feed no choice; a keeper asks of one login's five hours by
- * themselves, with the run it would move there added (`fiveHourWith`).
+ * When the pool runs out is `usage-model.ts`'s, from the readings kept in the main worktree's
+ * `.ana/logins-history.jsonl` (28 days). The 5-hour windows are left out: they cap how fast one
+ * login spends, not what a week holds. These forecasts are printed for a person and feed no choice;
+ * a keeper asks of one login's five hours by themselves, with the run it would move there added
+ * (`fiveHourWith`).
  *
  * `bun run runs active` names the runs a process writes, by the login each run's last launch named,
  * and the live seats of `system-path-simulation`, by the login each seat names (`liveHere`), on this
@@ -55,6 +49,7 @@ import { dirname } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { runSync, zeroExitText } from "#src/meta/subprocess.ts";
+import { hasText, textOr } from "#src/meta/text.ts";
 import { looseFlagsOf } from "../d2/campaign-terms.ts";
 import { recordedSetting } from "../d2/setting.ts";
 import { asked } from "./hosts.ts";
@@ -71,14 +66,17 @@ import {
   windowOpen,
 } from "./login-state.ts";
 import {
-  ahead,
   assess,
-  type Assessment,
   byTime,
-  HORIZON,
+  clock,
+  type End,
+  endWords,
+  modelLines,
+  poolLine,
   sameWindow,
   type Snapshot,
-  weekEnd,
+  spanOf,
+  type Week,
   weekPace,
 } from "./usage-model.ts";
 
@@ -101,22 +99,19 @@ export type Reading = { readonly login: string; readonly plain: boolean } & (Rea
 interface Failed {
   readonly error: string;
 }
-interface Week {
-  readonly login: string;
-  readonly pct: number;
-  readonly reset: number;
-}
 
-const TOKEN = "CLAUDE_CODE_OAUTH_TOKEN";
+/** A process environment, as `runtimeProcess.env` holds it. */
+export type Env = Readonly<Record<string, string | undefined>>;
+
+export const TOKEN = "CLAUDE_CODE_OAUTH_TOKEN";
+/** A numbered login's key, with its number captured. */
+export const NUMBERED = new RegExp(`^${TOKEN}(\\d+)$`);
 /** The plain login's name among the logins `readLogins` is asked for: its key is `TOKEN` and nothing. */
 const PLAIN = "";
 const BASE = "https://api.anthropic.com";
 const BETA = "oauth-2025-04-20";
 const TIMEOUT_MS = 30_000;
 const HOUR = 3_600_000;
-const WEEK = 168 * HOUR;
-const AHEAD = 4 * WEEK;
-const STEP = HOUR / 12;
 /** The readings kept, for `usage-model.ts`'s longest window; the per-run rate reads the last `RATE_MS`. */
 const KEPT_MS = 28 * 24 * HOUR;
 const RATE_MS = 8 * 24 * HOUR;
@@ -154,27 +149,28 @@ const SUBS: Readonly<Record<"claude" | "codex", Readonly<Record<string, string>>
 /** Every login `env` holds, by its number. A key left empty holds none: a copied `.env.example`
  *  names `CLAUDE_CODE_OAUTH_TOKEN2=`, and until 5 November that made a login nobody can pay with, so
  *  `fresh` said no login had room. */
-function loginsIn(env: Readonly<Record<string, string | undefined>>): string[] {
+function loginsIn(env: Env): string[] {
   return Object.entries(env)
-    .flatMap(([key, value]) =>
-      value === undefined || value === "" ? [] : (new RegExp(`^${TOKEN}(\\d+)$`).exec(key)?.[1] ?? []),
-    )
+    .flatMap(([key, value]) => (hasText(value) ? (NUMBERED.exec(key)?.[1] ?? []) : []))
     .toSorted((one, other) => Number(one) - Number(other));
+}
+
+/** `login`'s credential in `env`, or undefined where it holds none or a blank one. */
+export function tokenOf(env: Env, login: string): string | undefined {
+  const token = env[`${TOKEN}${login}`];
+  return hasText(token) ? token : undefined;
 }
 
 /** The key to set where none of `allowed` holds one, or null where one does. Until 5 November this
  *  read as no login having room, which names a limit where the credential is what is missing. */
-export function noLogin(
-  env: Readonly<Record<string, string | undefined>>,
-  allowed: readonly string[],
-): string | null {
-  if (allowed.some((login) => (env[`${TOKEN}${login}`] ?? "") !== "")) return null;
+export function noLogin(env: Env, allowed: readonly string[]): string | null {
+  if (allowed.some((login) => tokenOf(env, login) !== undefined)) return null;
   const keys = allowed.length === 0 ? TOKEN : allowed.map((login) => `${TOKEN}${login}`).join(" or ");
   return `no login here: set ${keys} in the process environment, or in a file named with bun --env-file=<file>`;
 }
 
 /** The logins a run may take: those `ANA_LOGINS` names, or every login `env` holds. */
-export function allowedLogins(env: Readonly<Record<string, string | undefined>>): string[] {
+export function allowedLogins(env: Env): string[] {
   const named = env.ANA_LOGINS?.split(",")
     .map((login) => login.trim())
     .filter((login) => login !== "");
@@ -184,8 +180,8 @@ export function allowedLogins(env: Readonly<Record<string, string | undefined>>)
 /** Whether a run goes on the plain `CLAUDE_CODE_OAUTH_TOKEN` alone: no numbered login is allowed
  *  and the plain one is set, as on a machine with one Claude login. Until 28 October `fresh` and
  *  `keep` refused such a machine for want of a numbered login. */
-export function plainOnly(env: Readonly<Record<string, string | undefined>>): boolean {
-  return allowedLogins(env).length === 0 && (env[TOKEN] ?? "") !== "";
+export function plainOnly(env: Env): boolean {
+  return allowedLogins(env).length === 0 && hasText(env[TOKEN]);
 }
 
 /** Whether a run bills a Claude login: whether an effective seat is a `claude/` model. The last
@@ -202,10 +198,7 @@ export function billsLogin(events: readonly LogEvent[], flags: readonly string[]
 
 /** The subscription `ANA_LOGIN_SUBS` names for `login`, such as `N:ultra` or `codex:pro200`, and
  *  the runs it carries; null where it names none or one its provider does not offer. */
-function subOf(
-  env: Readonly<Record<string, string | undefined>>,
-  login: string,
-): { readonly sub: string; readonly runs: string } | null {
+function subOf(env: Env, login: string): { readonly sub: string; readonly runs: string } | null {
   const offered = SUBS[login === CODEX ? "codex" : "claude"];
   const entries = (env.ANA_LOGIN_SUBS ?? "").split(",").map((entry) => entry.trim().split(":"));
   const sub = entries.find(([who]) => who === login)?.[1];
@@ -218,7 +211,7 @@ function subOf(
  *  `null` where none names it. The Codex CLI's login takes no bare number, and one a machine
  *  without an entry or a subscription (operator, 29 October). Until 4 November no subscription
  *  was read, and each larger login took an `N:4` by hand. */
-export function capOf(env: Readonly<Record<string, string | undefined>>, login: string): string | null {
+export function capOf(env: Env, login: string): string | null {
   const entries = (env.ANA_LOGIN_RUNS ?? "").split(",").map((entry) => entry.trim().split(":"));
   const own =
     entries.find(([who, most]) => who === login && most !== undefined)?.[1] ?? subOf(env, login)?.runs;
@@ -228,11 +221,7 @@ export function capOf(env: Readonly<Record<string, string | undefined>>, login: 
 
 /** The logins of `allowed` that carry as many live runs across the fleet (`live`) as their cap,
  *  which takes no other run: neither a fresh one nor one a keeper moves. */
-export function atCap(
-  env: Readonly<Record<string, string | undefined>>,
-  allowed: readonly string[],
-  live: readonly Live[],
-): Set<string> {
+export function atCap(env: Env, allowed: readonly string[], live: readonly Live[]): Set<string> {
   return new Set(
     allowed.filter((login) => {
       const cap = login === CODEX ? null : capOf(env, login);
@@ -244,7 +233,7 @@ export function atCap(
 /** Why `host` takes no other run of `payer`, or null where it does: the Codex CLI's login is one a
  *  machine, so its cap from `ANA_LOGIN_RUNS` (`codex:1`) counts the runs on that machine alone. */
 export function fullOn(
-  env: Readonly<Record<string, string | undefined>>,
+  env: Env,
   payer: string | undefined,
   host: string,
   live: readonly Live[],
@@ -263,7 +252,7 @@ export function fullOn(
  *  cap of Codex runs. Until 29 October only `fresh` and `keep` held a login to its cap, and
  *  `continue` and `move` were counted by hand. */
 export function startRefusal(
-  env: Readonly<Record<string, string | undefined>>,
+  env: Env,
   payer: string | undefined,
   host: string,
   counted: { readonly live: readonly Live[]; readonly unasked: readonly string[] },
@@ -387,17 +376,14 @@ async function viaRateLimitHeaders(token: string, agent: string): Promise<Read |
 }
 
 /** Each of `wanted` read from `env`, by the first route that answers. */
-export async function readLogins(
-  wanted: readonly string[],
-  env: Readonly<Record<string, string | undefined>>,
-): Promise<Reading[]> {
+export async function readLogins(wanted: readonly string[], env: Env): Promise<Reading[]> {
   const version = zeroExitText(runSync(["claude", "--version"]))?.split(/\s+/)[0];
   // CodexBar's fallbackClaudeCodeVersion where no CLI answers.
-  const agent = `claude-code/${version === undefined || version === "" ? "2.1.0" : version}`;
+  const agent = `claude-code/${textOr(version, "2.1.0")}`;
   return Promise.all(
     wanted.map(async (login): Promise<Reading> => {
-      const token = env[`${TOKEN}${login}`];
-      if (token === undefined || token === "") {
+      const token = tokenOf(env, login);
+      if (token === undefined) {
         return { login, plain: false, error: `no ${TOKEN}${login} in the environment` };
       }
       const plain = env[TOKEN] === token;
@@ -440,23 +426,6 @@ export function room(
     .toSorted((one, other) => one.reset - other.reset)
     .map(({ login }) => login);
 }
-
-const spanOf = (mins: number): string =>
-  mins >= 1440
-    ? `${String(Math.floor(mins / 1440))}d${String(Math.floor((mins % 1440) / 60))}h`
-    : `${String(Math.floor(mins / 60))}h${String(mins % 60).padStart(2, "0")}m`;
-const clock = (at: number): string =>
-  new Date(at).toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" });
-const stamp = (at: number): string =>
-  new Date(at)
-    .toLocaleString("en-GB", {
-      weekday: "short",
-      day: "numeric",
-      month: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-    .replace(" at ", " ");
 
 /** What `window` of `length` minutes holds at its reset at the pace it was used so far, or null where
  *  either is unread. */
@@ -502,7 +471,7 @@ function pace(window: Window, length: number, now: number): string {
     : `ends in ${spanOf(mins)} (${clock(now + mins * 60_000)})`;
 }
 
-function shown(window: Window, length: number, now: number): string {
+function shown(window: Window, length: number, now: number, end?: End): string {
   const filled = window.pct === null ? null : Math.min(20, Math.round(window.pct / 5));
   const bar = filled === null ? "?".repeat(20) : "#".repeat(filled) + ".".repeat(20 - filled);
   const pct = window.pct === null ? "  ?" : `${String(Math.round(window.pct)).padStart(3)}%`;
@@ -512,112 +481,20 @@ function shown(window: Window, length: number, now: number): string {
       ? ""
       : `resets in ${spanOf(Math.max(0, Math.round((reset - now) / 60_000))).padEnd(6)} (${clock(reset)})`;
   const status = window.status !== undefined && window.status !== "allowed";
-  const tail = status
-    ? `  ${pace(window, length, now).padEnd(26)}  [${window.status}]`
-    : `  ${pace(window, length, now)}`;
+  const said = end === undefined || (window.pct ?? 0) >= 100 ? pace(window, length, now) : endWords(end, now);
+  const tail = status ? `  ${said.padEnd(26)}  [${window.status}]` : `  ${said}`;
   return `[${bar}] ${pct}  ${until}${tail.trimEnd()}`;
 }
 
-/** When the pool of `weeks` runs dry at `rate`, in % of one login's week an hour. */
-function forecast(weeks: readonly Week[], rate: number, now: number): string {
-  const pool = weeks.map((week) => ({
-    login: week.login,
-    left: Math.max(0, 100 - week.pct),
-    reset: week.reset,
-  }));
-  const gaps: { from: number; to: number | null; by: string }[] = [];
-  let lowest = { left: Number.POSITIVE_INFINITY, at: now };
-  for (let at = now; at < now + AHEAD; at += STEP) {
-    const refilled = pool.filter((login) => at >= login.reset);
-    for (const login of refilled) Object.assign(login, { left: 100, reset: login.reset + WEEK });
-    let need = (rate * STEP) / HOUR;
-    for (const login of pool.toSorted((one, other) => one.reset - other.reset)) {
-      const take = Math.min(login.left, need);
-      login.left -= take;
-      need -= take;
-    }
-    const open = gaps.at(-1)?.to === null ? gaps.at(-1) : undefined;
-    if (need > 1e-9) {
-      if (open === undefined) gaps.push({ from: at, to: null, by: "" });
-    } else if (open !== undefined) {
-      Object.assign(open, { to: at, by: refilled.map(({ login }) => `login ${login}`).join(", ") });
-    }
-    const left = pool.reduce((sum, login) => sum + login.left, 0);
-    if (at < now + WEEK && left < lowest.left) lowest = { left, at };
-  }
-  const lasting = (gap: (typeof gaps)[number]) => (gap.to ?? now + AHEAD) - gap.from;
-  const said = (gap: (typeof gaps)[number]) =>
-    `${gap.from - now < STEP ? "now" : `in ${spanOf(Math.round((gap.from - now) / 60_000))} (${stamp(gap.from)})`} for ${spanOf(Math.round(lasting(gap) / 60_000))}${gap.to === null ? "+" : gap.by === "" ? "" : `, till ${gap.by} resets`}`;
-  const [first] = gaps;
-  if (first === undefined || first.from >= now + WEEK) {
-    const week = `makes the next 7d, lowest ~${String(Math.round(lowest.left))}% of one login left (${stamp(lowest.at)})`;
-    return `${week}; ${first === undefined ? "lasts the 4 weeks looked ahead" : `then all out ${said(first)}`}`;
-  }
-  const inWeek = gaps.filter((gap) => gap.from < now + WEEK);
-  const out = inWeek.reduce(
-    (sum, gap) => sum + Math.min(gap.to ?? Number.POSITIVE_INFINITY, now + WEEK) - gap.from,
-    0,
-  );
-  const longest = inWeek.reduce((one, other) => (lasting(other) > lasting(one) ? other : one));
-  return `all out ${said(first)} · ${String(Math.round(out / HOUR))}h out over the next 7d${longest === first ? "" : `, longest ${said(longest)}`}`;
-}
-
-const perDay = (rate: number) => `~${String(Math.round(rate * 24))}%/day`;
-/** The pool's rate at the week's pace, in % of one login's week an hour. */
-const poolPace = (weeks: readonly Week[], now: number) =>
-  weeks.reduce((sum, week) => sum + (week.pct >= 100 ? 0 : weekPace(week, now)), 0);
-
-/** The pool's head line over `weeks`. */
-function poolLine(weeks: readonly Week[], unread: number, now: number): string {
-  return `pool  ${perDay(poolPace(weeks, now))} of one login's week at the week's pace; ${String(weeks.length)} login${weeks.length > 1 ? "s" : ""} refill ~${String(Math.round((weeks.length * 100) / 7))}%/day${
-    unread > 0 ? ` (${String(unread)} unread, left out)` : ""
-  }`;
-}
-
-/** The one forecast (`usage-model.ts`): where the model beats both older paces on the hours held
- *  out, when the pool runs out at its pace over the next `HORIZON` hours, each login's rise at a few
- *  of those hours and the hour its week ends; otherwise the pool at whichever of the week pace and
- *  the per-run rate read those hours better, and what kept the model off. */
-export function modelLines(
-  weeks: readonly Week[],
-  recorded: readonly Snapshot[],
-  assessment: Assessment | null,
-  now: number,
-  rate: number | null,
-): string[] {
-  const live = byTime(recorded).at(-1)?.runs ?? {};
-  const errors =
-    assessment === null
-      ? "off: no rows yet to fit on and hold out"
-      : `fitted on ${String(assessment.days)} days; held-out error ${assessment.error.toFixed(2)} vs ${assessment.week.toFixed(2)} for the week pace and ${assessment.run.toFixed(2)} for the per-run rate, % over ${String(assessment.held)} rows of logins with room`;
-  if (assessment?.model == null) {
-    const perRun = assessment !== null && rate !== null && assessment.run < assessment.week ? rate : null;
-    const rateNow =
-      perRun === null
-        ? poolPace(weeks, now)
-        : weeks.reduce((sum, week) => sum + (week.pct >= 100 ? 0 : (live[week.login] ?? 0) * perRun), 0);
-    return [
-      `  ${(perRun === null ? "week pace" : "per run").padEnd(12)}${perDay(rateNow)}: ${forecast(weeks, rateNow, now)}`,
-      `              model ${assessment === null ? errors : `not used: ${errors}`}`,
-    ];
-  }
-  const rises = ahead(assessment.model, recorded);
-  const day = weeks.reduce((sum, { login }) => sum + (rises[login]?.at(-1) ?? 0), 0);
-  const each = weeks.map((week) => {
-    const curve = rises[week.login] ?? [];
-    const at = [1, 3, 6, 12, HORIZON].map(
-      (hours) => `+${String(hours)}h ${(curve[hours - 1] ?? 0).toFixed(1)}%`,
-    );
-    const out = weekEnd(curve, week, now, (live[week.login] ?? 0) * (rate ?? 0));
-    const kept = out === weekEnd(curve, week, now) ? "" : " if its runs keep going";
-    const ends = out === null ? "" : ` · week out ~${clock(out)}${kept}`;
-    return `  login ${week.login.padEnd(6)}${at.join("  ")}${ends}`;
-  });
-  return [
-    `  model ${`${String(HORIZON)}h`.padEnd(6)}${perDay(day / HORIZON)}: ${forecast(weeks, day / HORIZON, now)}`,
-    ...each,
-    `              ${errors}`,
-  ];
+/** The weeks the model reads now: those `weeks` read, and the other logins' from the last of `kept`
+ *  where still in their window, so a reading of a few logins reads every login as the whole view does
+ *  and a head line names the same end in either. */
+export function weeksFor(weeks: readonly Week[], kept: readonly Snapshot[], now: number): Snapshot["weeks"] {
+  const others = Object.entries(byTime(kept).at(-1)?.weeks ?? {});
+  return {
+    ...Object.fromEntries(others.filter(([, { reset }]) => reset > now)),
+    ...Object.fromEntries(weeks.map(({ login, pct, reset }) => [login, { pct, reset }])),
+  };
 }
 
 /** The share of one login's week a live run spends an hour, over `history`: each login's rise
@@ -692,7 +569,7 @@ export function activeLines(
   live: readonly Live[],
   allowed: readonly string[],
   unasked: readonly string[],
-  env: Readonly<Record<string, string | undefined>> = {},
+  env: Env = {},
 ): string[] {
   const named = [...new Set([...allowed, CODEX, ...live.flatMap(({ login }) => login ?? [])])];
   const lines = [...named, null].flatMap((login) => {
@@ -711,9 +588,7 @@ export function activeLines(
       `${head.padEnd(10)}${count}${sub === null ? "" : ` (${sub.sub})`}${on.length === 0 ? "" : `: ${on.join(", ")}`}`,
     ];
   });
-  return unasked.length === 0
-    ? lines
-    : [...lines, `not counted on ${unasked.join(", ")}: no answer to \`active\``];
+  return unasked.length === 0 ? lines : [...lines, uncounted(unasked)];
 }
 
 /** `bun run runs active [--here]`: the live runs on each login, on every host; with `--here` this
@@ -761,17 +636,35 @@ export async function logins(args: readonly string[]): Promise<void> {
     values.json ? null : liveEverywhere(),
   ]);
   const now = Date.now();
+  // A run on the plain login names no login.
+  const onEach = (login: string) => counted?.live.filter((run) => (run.login ?? PLAIN) === login).length ?? 0;
+  const allowed = allowedLogins(runtimeProcess.env);
   const weeks = readings.flatMap((reading): Week[] => {
     const reset = "error" in reading ? null : resetOf(reading.sevenDay.resetsAt);
+    const spendable = allowed.length === 0 || allowed.includes(reading.login) || onEach(reading.login) > 0;
     return "error" in reading || reading.sevenDay.pct === null || reset === null
       ? []
-      : [{ login: reading.login, pct: reading.sevenDay.pct, reset }];
+      : [{ login: reading.login, pct: reading.sevenDay.pct, reset, room: spendable }];
   });
   const history = historyFile();
   const kept = keptReadings(history);
   const rate = perRunRate(kept.filter(({ at }) => now - at < RATE_MS));
-  // A run on the plain login names no login.
-  const onEach = (login: string) => counted?.live.filter((run) => (run.login ?? PLAIN) === login).length ?? 0;
+  // The pool's lines and the history are the whole view's; a reading of a few logins writes no history.
+  const whole = !values.json && positionals.length === 0 && weeks.length > 0;
+  const read = weeksFor(weeks, whole ? [] : kept, now);
+  const snapshot: Snapshot = {
+    at: now,
+    weeks: read,
+    closed: closedResets(readings),
+    ...keysIf(counted?.unasked.length === 0, () => ({
+      runs: Object.fromEntries(Object.keys(read).map((login) => [login, onEach(login)])),
+    })),
+  };
+  const recorded = [...kept.filter(({ at }) => now - at < KEPT_MS), snapshot];
+  const forecast =
+    values.json || weeks.length === 0
+      ? null
+      : modelLines(weeks, recorded, assess(recorded, now, perRunRate), now, rate);
   const listed = listedBy(readings, values);
   if (values.json) console.log(capturedJsonStringify(listed, null, 2));
   for (const reading of values.json ? [] : listed) {
@@ -784,12 +677,12 @@ export async function logins(args: readonly string[]): Promise<void> {
         : ` · ${carried(onEach(reading.login), capOf(runtimeProcess.env, reading.login), fit)}`;
     const sub = subOf(runtimeProcess.env, reading.login);
     const own = reading.login === PLAIN ? `plain ${TOKEN}` : `login ${reading.login}`;
-    const state = stateWords(reading, allowedLogins(runtimeProcess.env), clock);
+    const state = stateWords(reading, allowed, clock);
     const head = `${own}${sub === null ? "" : ` · ${sub.sub}`}${state}${runsOn}${reading.plain && reading.login !== PLAIN ? `  (= plain ${TOKEN})` : ""}`;
     console.log(
       "error" in reading
         ? `${head}\n  ${reading.error}`
-        : `${head}\n  5h    ${shown(reading.fiveHour, 5 * 60, now)}\n  week  ${shown(reading.sevenDay, 7 * 1440, now)}${reading.notes.length > 0 ? `\n  ${reading.notes.join(" · ")}` : ""}`,
+        : `${head}\n  5h    ${shown(reading.fiveHour, 5 * 60, now)}\n  week  ${shown(reading.sevenDay, 7 * 1440, now, forecast?.ends?.get(reading.login))}${reading.notes.length > 0 ? `\n  ${reading.notes.join(" · ")}` : ""}`,
     );
   }
   const subs = held.flatMap((login) => subOf(runtimeProcess.env, login) ?? []);
@@ -807,23 +700,14 @@ export async function logins(args: readonly string[]): Promise<void> {
     console.log(activeLines(codex, [CODEX], [], runtimeProcess.env).join("\n"));
   }
   if ((counted?.unasked.length ?? 0) > 0) console.log(uncounted(counted?.unasked ?? []));
-  if (values.json || positionals.length > 0 || weeks.length === 0) return;
-  const snapshot: Snapshot = {
-    at: now,
-    weeks: Object.fromEntries(weeks.map(({ login, pct, reset }) => [login, { pct, reset }])),
-    closed: closedResets(readings),
-    ...keysIf(counted?.unasked.length === 0, () => ({
-      runs: Object.fromEntries(weeks.map(({ login }) => [login, onEach(login)])),
-    })),
-  };
-  const recorded = [...kept.filter(({ at }) => now - at < KEPT_MS), snapshot];
+  if (!whole) return;
   console.log(poolLine(weeks, held.length - weeks.length, now));
   console.log(
     rate === null
       ? `  a run       no measured rate yet (under ${String(LEAST_RUN_HOURS)} run-hours): each login's week pace over its live runs`
       : `  a run       ~${rate.toFixed(2)}% of a login's week an hour, active ${String(Math.round(ACTIVE_SHARE * 24))} of 24h: the most each login carries for ${String(RUN_HOURS)}h`,
   );
-  console.log(modelLines(weeks, recorded, assess(recorded, now, perRunRate), now, rate).join("\n"));
+  console.log(forecast?.lines.join("\n"));
   mkdirSync(dirname(history), { recursive: true });
   const lines = recorded.map((one) => capturedJsonStringify(one));
   writeFileSync(history, `${lines.join("\n")}\n`);

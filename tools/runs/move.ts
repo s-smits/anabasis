@@ -66,7 +66,7 @@ import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { type Host, hostNamed, hostsOf, ownName } from "./host-config.ts";
-import { quoted, rsync, shellPath, sshScript, worktreesIn } from "./host-command.ts";
+import { quoted, rsync, shellOn, shellPath, sideOf } from "./host-command.ts";
 import { verbOn } from "./hosts.ts";
 import { stillRunning } from "./diagnosis.ts";
 import { CAMPAIGNS, HERE, processes, readNamed } from "./registry.ts";
@@ -103,8 +103,7 @@ function rehomed(flags: readonly string[], from: string, to: string): string[] {
 
 /** The shell text `script` run at `end`, its output trimmed. */
 function at(end: End, script: string): string {
-  const command = end.host === undefined ? ["sh", "-c", script] : sshScript(end.host, script);
-  return runTextSyncOrThrow(command).trim();
+  return runTextSyncOrThrow(shellOn(end.host, script)).trim();
 }
 
 /** The end `name` names: this machine, or a host `ANA_HOSTS` lists. */
@@ -122,7 +121,7 @@ function endOf(name: string): End {
 function treeOf(end: End, name: string): string | undefined {
   const found = at(
     end,
-    `${worktreesIn(quoted(end.repo))} | while IFS= read -r w; do test -f "$w/${CAMPAIGNS}/${name}/${LOG_FILE}" && echo "$w"; done; true`,
+    `git -C ${quoted(end.repo)} worktree list --porcelain | sed -n 's/^worktree //p' | while IFS= read -r w; do test -f "$w/${CAMPAIGNS}/${name}/${LOG_FILE}" && echo "$w"; done; true`,
   )
     .split("\n")
     .filter((line) => line !== "");
@@ -138,7 +137,12 @@ async function flagsAt(end: End, source: string, name: string): Promise<readonly
   const stage = join(tmpdir(), `ana-move-receipts-${crypto.randomUUID()}`);
   mkdirSync(stage);
   try {
-    await rsync(`${side(end, dirname(log))}/`, `${stage}/`, "--include=/launch-*.json", "--exclude=/*");
+    await rsync(
+      `${sideOf(end.host, dirname(log))}/`,
+      `${stage}/`,
+      "--include=/launch-*.json",
+      "--exclude=/*",
+    );
     return lastLaunch(join(stage, LOG_FILE))?.flags ?? null;
   } finally {
     rmSync(stage, { recursive: true, force: true });
@@ -146,7 +150,6 @@ async function flagsAt(end: End, source: string, name: string): Promise<readonly
 }
 
 /** The rsync side of `path` at `end`. */
-const side = (end: End, path: string) => (end.host === undefined ? path : `${end.host.ssh}:${quoted(path)}`);
 
 /** `bun run runs move`. */
 export async function move(args: readonly string[]): Promise<void> {
@@ -214,7 +217,7 @@ export async function move(args: readonly string[]): Promise<void> {
   // Counted before the pause too: the destination's caps must take the run, less the run itself.
   await roomToStart(payerOf(values.login, flags), to.host?.name ?? "here", name);
   // Prepare before the pause: a missing commit or failed install must leave the source running.
-  const controller = to.host === undefined ? undefined : preparedHost(to.host, commit);
+  const controller = to.host === undefined ? undefined : await preparedHost(to.host, commit);
   if (to.host === undefined) publishedAt(to.repo, commit);
   const paused = ["pause", name, "--after", values.after, "--yes"];
   if (from.host === undefined) await pause(paused.slice(1));
@@ -225,8 +228,8 @@ export async function move(args: readonly string[]): Promise<void> {
   // a campaign so that a stage a killed move left is taken up and removed by the next.
   const stage = from.host && to.host ? join(tmpdir(), `ana-move-${name}`) : undefined;
   try {
-    if (stage !== undefined) await rsync(`${side(from, folder(source))}/`, `${stage}/`);
-    await rsync(`${stage ?? side(from, folder(source))}/`, `${side(to, folder(tree))}/`);
+    if (stage !== undefined) await rsync(`${sideOf(from.host, folder(source))}/`, `${stage}/`);
+    await rsync(`${stage ?? sideOf(from.host, folder(source))}/`, `${sideOf(to.host, folder(tree))}/`);
   } finally {
     if (stage !== undefined) rmSync(stage, { recursive: true, force: true });
   }

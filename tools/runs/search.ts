@@ -11,7 +11,7 @@ import { existsSync, lstatSync, mkdtempSync, realpathSync } from "#src/meta/file
 import { mainTree } from "#src/meta/git.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { homedir, tmpdir } from "#src/meta/os.ts";
-import { dirname, join, resolve } from "#src/meta/path.ts";
+import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { runCaptured } from "#src/meta/subprocess.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
@@ -73,7 +73,6 @@ const EXCLUSION_GLOBS = EXCLUDED.map((pattern) => new Bun.Glob(pattern));
 const OPTIONS = {
   regex: { type: "boolean", default: false },
   "ignore-case": { type: "boolean", default: false },
-  here: { type: "boolean", default: false },
   in: { type: "string", default: "all" },
   max: { type: "string", default: "20000" },
 } as const;
@@ -97,13 +96,7 @@ function rootsOf(scope: string): string[] {
           .filter(isCampaign)
           .map((run) => dirname(run.path));
   const notes = scope === "logs" ? [] : [join(main, "notes"), join(main, "docs")];
-  return [
-    ...new Set(
-      [...logs, ...notes].map((path) =>
-        resolve(path === "~" ? homedir() : path.replace(/^~\//, `${homedir()}/`)),
-      ),
-    ),
-  ].filter(existsSync);
+  return [...logs, ...notes].filter(existsSync);
 }
 
 /** rg on the PATH, or a user install in ~/.local/bin, which a plain ssh command leaves off it. */
@@ -223,7 +216,7 @@ export async function search(args: readonly string[], dependencies: Dependencies
   if (!Number.isSafeInteger(max) || max < 1) throw new Error("--max takes a positive integer");
   const query = { pattern, regex: values.regex, ignoreCase: values["ignore-case"] };
   checked(query);
-  const targets = values.here ? [] : (dependencies.hosts ?? hostsOf());
+  const targets = dependencies.hosts ?? hostsOf();
   const local = dependencies.local ?? ((asked: Query, within: string) => searchLocal(asked, rootsOf(within)));
   const here = Promise.resolve()
     .then(() => local(query, scope))

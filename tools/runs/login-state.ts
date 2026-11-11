@@ -74,10 +74,8 @@ export function stateWords(
 
 /** `wanted`, less each login the last of `kept` found closed whose reset has not come by `now`. */
 export function notClosed(wanted: readonly string[], kept: readonly Snapshot[], now: number): string[] {
-  const last = kept.reduce<Snapshot | null>(
-    (latest, one) => (latest === null || one.at >= latest.at ? one : latest),
-    null,
-  );
+  // A stable sort keeps the later of two snapshots taken at one time last, as the record wrote them.
+  const last = kept.toSorted((one, other) => one.at - other.at).at(-1);
   return wanted.filter((login) => (last?.closed?.[login] ?? 0) <= now);
 }
 

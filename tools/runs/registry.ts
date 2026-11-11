@@ -124,7 +124,7 @@ function scriptOf(args: readonly string[]): string | undefined {
   const named = rest.filter((arg) => !arg.startsWith("-"));
   return named[0] === "run" ? named[1] : named[0];
 }
-const runsAs = (args: readonly string[], tools: readonly string[]) => {
+export const runsAs = (args: readonly string[], tools: readonly string[]) => {
   const script = scriptOf(args);
   return script !== undefined && tools.some((tool) => script.endsWith(tool));
 };
@@ -280,17 +280,24 @@ export function processes(table = runTextSyncOrThrow(["ps", "-axo", "pid=,args="
   return found.map(({ pid: id, args }) => ({ pid: Number(id), cwd: cwds.get(id) ?? "", args }));
 }
 
+/** The value of the flag `name` on a command line, in either form `parseArgs` takes (`--name x` and
+ *  `--name=x`), or undefined where it is absent. Until 20 October a campaign started by hand with
+ *  `--name=r1` read as closed while it wrote, and until 10 November an absent flag read as `args[0]`. */
+export function flagOf(args: readonly string[], name: string): string | undefined {
+  const joined = args.find((arg) => arg.startsWith(`${name}=`));
+  if (joined !== undefined) return joined.slice(name.length + 1);
+  const at = args.indexOf(name);
+  return at === -1 ? undefined : args[at + 1];
+}
+
 /** The processes in `running` that write `run`'s log: a campaign's by its name, a live solve's by
- *  the task and cycle its name begins with. A flag is read in both forms `parseArgs` takes: until
- *  20 October a campaign started by hand with `--name=r1` read as closed while it wrote. */
+ *  the task and cycle its name begins with. */
 export function writers(run: Run, running: readonly Running[]): Running[] {
-  const flag = (args: readonly string[], name: string) =>
-    args.find((arg) => arg.startsWith(`${name}=`))?.slice(name.length + 1) ?? args[args.indexOf(name) + 1];
   const writes = (args: readonly string[]) =>
     run.end === CAMPAIGN_END
-      ? writesCampaign(args) && flag(args, "--name") === run.name
+      ? writesCampaign(args) && flagOf(args, "--name") === run.name
       : runsAs(args, [LIVE]) &&
-        run.name.startsWith(`${String(flag(args, "--task"))}-${String(flag(args, "--cycle"))}-`);
+        run.name.startsWith(`${String(flagOf(args, "--task"))}-${String(flagOf(args, "--cycle"))}-`);
   // The worktree is the script's, as the campaign command places its log by its own checkout
   // (`campaignLog`): until 20 October it was the working directory, and a script of another
   // checkout run from this one was read as this one's writer. Every script is `tools/<dir>/<file>`.

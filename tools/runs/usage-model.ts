@@ -46,6 +46,18 @@
  * runs move to the others: it took the curve's error from 3.09 to 2.52 over the hours both spoke.
  * These were chosen on this record from overlapping hourly forecasts, so they are estimates until
  * later readings repeat them.
+ *
+ * The pool (`modelLines`, printed by `bun run runs usage`): a run moves to another login when one is
+ * spent, so demand is one rate, in % of one login's week an hour, summed over the logins with room
+ * left; the forecast spends it in five-minute steps for the next 4 weeks from the login whose week
+ * resets soonest, each refilled at its reset. The pool is the logins a run may spend: those
+ * `ANA_LOGINS` names and any that carries live runs already. A login out of the pool with no run is
+ * a person's to spend, so it is neither demand nor room, and only its own lines forecast it. One
+ * forecast is printed, the one that read the last hours held out best: the model's, where it beats
+ * both older paces; otherwise the better of the week's pace (each login's share over its window so
+ * far, floored at 12 hours, so a window minutes old does not extrapolate) and the per-run rate times
+ * each login's live runs. Where the model is printed, each login's head line names the hour its week
+ * ends by the model (`modelLines`), so the head and the forecast name one hour.
  */
 
 export interface Snapshot {
@@ -79,7 +91,7 @@ interface Model {
 
 /** How the model and the two older paces did on the held-out hours, and the model refitted on every
  *  row where it beat both there. */
-export interface Assessment {
+interface Assessment {
   readonly held: number;
   readonly days: number;
   readonly error: number;
@@ -88,8 +100,26 @@ export interface Assessment {
   readonly model: Model | null;
 }
 
+export interface Week {
+  readonly login: string;
+  readonly pct: number;
+  readonly reset: number;
+  /** Whether a run may spend this week: the login is in the pool or carries live runs already. The
+   *  pool's demand and room are these weeks alone (`poolLine`, `modelLines`). */
+  readonly room?: boolean;
+}
+
+/** A login's week end by the model, and whether its live runs kept going brought it sooner. */
+export interface End {
+  readonly at: number | null;
+  readonly runs: boolean;
+}
+
 const HOUR = 3_600_000;
-export const HORIZON = 24;
+const WEEK = 168 * HOUR;
+const AHEAD = 4 * WEEK;
+const STEP = HOUR / 12;
+const HORIZON = 24;
 /** The days a fit may read, each tried, the one with the lower held-out error kept. */
 const WINDOWS = [7, 14, 28] as const;
 const HELD = 48;
@@ -366,4 +396,138 @@ export function weekEnd(
   const hours = hour === -1 ? (left / day) * HORIZON : hour + 1;
   const end = at + hours * HOUR;
   return end < week.reset ? end : null;
+}
+
+export const spanOf = (mins: number): string =>
+  mins >= 1440
+    ? `${String(Math.floor(mins / 1440))}d${String(Math.floor((mins % 1440) / 60))}h`
+    : `${String(Math.floor(mins / 60))}h${String(mins % 60).padStart(2, "0")}m`;
+export const clock = (at: number): string =>
+  new Date(at).toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" });
+const stamp = (at: number): string =>
+  new Date(at)
+    .toLocaleString("en-GB", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+    .replace(" at ", " ");
+
+/** When the pool of `weeks` runs dry at `rate`, in % of one login's week an hour. */
+function forecast(weeks: readonly Week[], rate: number, now: number): string {
+  if (weeks.length === 0) return "no login is in the pool or carries a run";
+  const pool = weeks.map((week) => ({
+    login: week.login,
+    left: Math.max(0, 100 - week.pct),
+    reset: week.reset,
+  }));
+  const gaps: { from: number; to: number | null; by: string }[] = [];
+  let lowest = { left: Number.POSITIVE_INFINITY, at: now };
+  for (let at = now; at < now + AHEAD; at += STEP) {
+    const refilled = pool.filter((login) => at >= login.reset);
+    for (const login of refilled) Object.assign(login, { left: 100, reset: login.reset + WEEK });
+    const room = pool.reduce((sum, login) => sum + login.left, 0);
+    let need = (rate * STEP) / HOUR;
+    for (const login of pool.toSorted((one, other) => one.reset - other.reset)) {
+      const take = Math.min(login.left, need);
+      login.left -= take;
+      need -= take;
+    }
+    const open = gaps.at(-1)?.to === null ? gaps.at(-1) : undefined;
+    // A step that opens with no room is out even where a spent login's runs count no demand (`poolPace`).
+    if (need > 1e-9 || room <= 1e-9) {
+      if (open === undefined) gaps.push({ from: at, to: null, by: "" });
+    } else if (open !== undefined) {
+      Object.assign(open, { to: at, by: refilled.map(({ login }) => `login ${login}`).join(", ") });
+    }
+    const left = pool.reduce((sum, login) => sum + login.left, 0);
+    if (at < now + WEEK && left < lowest.left) lowest = { left, at };
+  }
+  const lasting = (gap: (typeof gaps)[number]) => (gap.to ?? now + AHEAD) - gap.from;
+  const said = (gap: (typeof gaps)[number]) =>
+    `${gap.from - now < STEP ? "now" : `in ${spanOf(Math.round((gap.from - now) / 60_000))} (${stamp(gap.from)})`} for ${spanOf(Math.round(lasting(gap) / 60_000))}${gap.to === null ? "+" : gap.by === "" ? "" : `, till ${gap.by} resets`}`;
+  const [first] = gaps;
+  if (first === undefined || first.from >= now + WEEK) {
+    const week = `makes the next 7d, lowest ~${String(Math.round(lowest.left))}% of one login left (${stamp(lowest.at)})`;
+    return `${week}; ${first === undefined ? "lasts the 4 weeks looked ahead" : `then all out ${said(first)}`}`;
+  }
+  const inWeek = gaps.filter((gap) => gap.from < now + WEEK);
+  const out = inWeek.reduce(
+    (sum, gap) => sum + Math.min(gap.to ?? Number.POSITIVE_INFINITY, now + WEEK) - gap.from,
+    0,
+  );
+  const longest = inWeek.reduce((one, other) => (lasting(other) > lasting(one) ? other : one));
+  return `all out ${said(first)} · ${String(Math.round(out / HOUR))}h out over the next 7d${longest === first ? "" : `, longest ${said(longest)}`}`;
+}
+
+const roomy = (week: Week) => week.room !== false;
+const perDay = (rate: number) => `~${String(Math.round(rate * 24))}%/day`;
+/** The pool's rate at the week's pace, in % of one login's week an hour. */
+const poolPace = (weeks: readonly Week[], now: number) =>
+  weeks.reduce((sum, week) => sum + (week.pct >= 100 ? 0 : weekPace(week, now)), 0);
+
+/** The pool's head line over `weeks`. */
+export function poolLine(weeks: readonly Week[], unread: number, now: number): string {
+  const pool = weeks.filter(roomy);
+  return `pool  ${perDay(poolPace(pool, now))} of one login's week at the week's pace; ${String(pool.length)} login${pool.length === 1 ? "" : "s"} refill ~${String(Math.round((pool.length * 100) / 7))}%/day${
+    unread > 0 ? ` (${String(unread)} unread, left out)` : ""
+  }`;
+}
+
+export const endWords = (end: End, now: number) =>
+  end.at === null
+    ? "lasts, by the model"
+    : `ends in ${spanOf(Math.round((end.at - now) / 60_000))} (${clock(end.at)}) by the model${end.runs ? " if its runs keep going" : ""}`;
+
+/** The one forecast: where the model beats both older paces on the hours held out, when the pool
+ *  runs out at its pace over the next `HORIZON` hours and each login's rise at a few of those hours,
+ *  with the hour each login's week ends, the sooner of its curve and the rise its live runs keep up
+ *  at `rate` (`weekEnd`), which its head line says in place of its week's pace, so the head and the
+ *  forecast name one hour; otherwise the pool at whichever of the week pace and the per-run rate read
+ *  those hours better, what kept the model off, and no ends. */
+export function modelLines(
+  weeks: readonly Week[],
+  recorded: readonly Snapshot[],
+  assessment: Assessment | null,
+  now: number,
+  rate: number | null,
+): { lines: string[]; ends: Map<string, End> | null } {
+  const live = byTime(recorded).at(-1)?.runs ?? {};
+  const pool = weeks.filter(roomy);
+  const errors =
+    assessment === null
+      ? "off: no rows yet to fit on and hold out"
+      : `fitted on ${String(assessment.days)} days; held-out error ${assessment.error.toFixed(2)} vs ${assessment.week.toFixed(2)} for the week pace and ${assessment.run.toFixed(2)} for the per-run rate, % over ${String(assessment.held)} rows of logins with room`;
+  if (assessment?.model == null) {
+    const perRun = assessment !== null && rate !== null && assessment.run < assessment.week ? rate : null;
+    const rateNow =
+      perRun === null
+        ? poolPace(pool, now)
+        : pool.reduce((sum, week) => sum + (week.pct >= 100 ? 0 : (live[week.login] ?? 0) * perRun), 0);
+    const lines = [
+      `  ${(perRun === null ? "week pace" : "per run").padEnd(12)}${perDay(rateNow)}: ${forecast(pool, rateNow, now)}`,
+      `              model ${assessment === null ? errors : `not used: ${errors}`}`,
+    ];
+    return { lines, ends: null };
+  }
+  const rises = ahead(assessment.model, recorded);
+  const day = pool.reduce((sum, { login }) => sum + (rises[login]?.at(-1) ?? 0), 0);
+  const ends = new Map<string, End>();
+  const each = weeks.map((week) => {
+    const curve = rises[week.login] ?? [];
+    const at = weekEnd(curve, week, now, (live[week.login] ?? 0) * (rate ?? 0));
+    ends.set(week.login, { at, runs: at !== weekEnd(curve, week, now) });
+    const hours = [1, 3, 6, 12, HORIZON].map(
+      (hour) => `+${String(hour)}h ${(curve[hour - 1] ?? 0).toFixed(1)}%`,
+    );
+    return `  login ${week.login.padEnd(6)}${hours.join("  ")}`;
+  });
+  const lines = [
+    `  model ${`${String(HORIZON)}h`.padEnd(6)}${perDay(day / HORIZON)}: ${forecast(pool, day / HORIZON, now)}`,
+    ...each,
+    `              ${errors}`,
+  ];
+  return { lines, ends };
 }

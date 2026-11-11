@@ -37,10 +37,10 @@ import { capturedExecPath, parseArgs, runtimeProcess } from "#src/meta/process.t
 import { decodeOutput, runCaptured, runSync } from "#src/meta/subprocess.ts";
 import { pinnedPythonDir, TOOLCHAIN_HOME_ROOTS } from "#src/wall/policy.ts";
 import { scanText } from "../secrets/rules.ts";
-import { quoted, sshScript } from "./host-command.ts";
+import { quoted, shellOn } from "./host-command.ts";
 import { type Host, hostsOf, ownName } from "./host-config.ts";
 import { carriedTo, scriptOn } from "./hosts.ts";
-import { liveEverywhere } from "./logins.ts";
+import { type Env, liveEverywhere } from "./logins.ts";
 import { type HostPython, PYTHON_PROBE, pythonIn } from "./receipt.ts";
 import { HERE } from "./registry.ts";
 
@@ -189,16 +189,13 @@ function factsIn(stdout: string, tools: readonly Tool[]): Facts | null {
 
 async function factsOf(machine: Machine, tools: readonly Tool[]): Promise<Facts | null> {
   const probe = probeOf(tools);
-  const command = machine.host === undefined ? ["/bin/sh", "-c", probe] : sshScript(machine.host, probe);
-  const { exitCode, stdout } = await runCaptured(command, { timeout: READ_MS });
+  const { exitCode, stdout } = await runCaptured(shellOn(machine.host, probe), { timeout: READ_MS });
   return exitCode === 0 ? factsIn(stdout, tools) : null;
 }
 
 /** The exit of `script` on `machine`, its output said here. */
 function runOn(machine: Machine, script: string): number {
-  const { host } = machine;
-  const command = host === undefined ? ["/bin/sh", "-c", script] : sshScript(host, script);
-  const { exitCode, stdout, stderr } = runSync(command, { timeout: APPLY_MS });
+  const { exitCode, stdout, stderr } = runSync(shellOn(machine.host, script), { timeout: APPLY_MS });
   const said = `${decodeOutput(stdout)}${decodeOutput(stderr)}`.trimEnd();
   if (said !== "") console.log(said.replaceAll(/^/gmu, "    "));
   return exitCode ?? 1;
@@ -381,7 +378,7 @@ function printPlan({ machine: { name, host }, facts, findings, notes }: Plan): v
   for (const note of notes) console.log(`  note: ${note}`);
 }
 
-const pinOf = (env: Readonly<Record<string, string | undefined>>): Pin | null => {
+const pinOf = (env: Env): Pin | null => {
   const version = env.ANA_PYTHON?.trim() ?? "";
   const packages = (env.ANA_PYTHON_PACKAGES ?? "").split(/[\s,]+/u).filter((one) => one !== "");
   if (version === "") {

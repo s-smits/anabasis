@@ -10,9 +10,12 @@ import { gitText } from "#src/meta/git.ts";
 import { isAbsolute, join } from "#src/meta/path.ts";
 import { capturedExecPath } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { runCaptured, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
+import { runTextOrThrow, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { type Host, configuredRuntime } from "./host-config.ts";
 import { quoted, shellPath, sshScript, treeBun } from "./host-command.ts";
+
+/** Whether a preparation installs a missing controller, or only takes one installed already. */
+type Mode = "cached" | "install";
 
 /** The folder in the common Git directory that holds one controller a commit. `PRUNE` keeps the
  *  newest three, and `runs retire` leaves every tree in it to that. */
@@ -114,7 +117,7 @@ export function installAt(tree: string, commit: string): void {
 
 /** Shell text shared by one-shot preparation and ordinary host requests. A successful frozen
  *  install is cached by commit outside the tree. It is checked again before a launch. */
-function preparation(host: Host, commit: string, mode: "cached" | "install"): string {
+function preparation(host: Host, commit: string, mode: Mode): string {
   if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error("host preparation needs a whole commit id");
   return `set -eu
 ${STALE}
@@ -154,9 +157,9 @@ test -z "$(git status --porcelain)" || { echo 'control tree has uncommitted chan
 }
 
 /** Prepare the remote controller without asking its possibly older CLI to update itself. */
-export function preparedHost(host: Host, commit: string): Host {
-  const script = `${preparation(host, commit, "install")}\nprintf '%s\\n' "$tree"`;
-  const tree = runTextSyncOrThrow(sshScript(host, script), { timeout: PREPARE_MS }).trim();
+export async function preparedHost(host: Host, commit: string, mode: Mode = "install"): Promise<Host> {
+  const script = `${preparation(host, commit, mode)}\nprintf '%s\\n' "$tree"`;
+  const tree = (await runTextOrThrow(sshScript(host, script), { timeout: PREPARE_MS })).trim();
   if (!isAbsolute(tree) || tree.includes("\n")) throw new Error(`${host.name}: no prepared control tree`);
   return { ...host, ...configuredRuntime(host), tree, prepared: true };
 }
@@ -179,15 +182,7 @@ export async function readControllers(hosts: readonly Host[]): Promise<(Host | n
 async function readController(host: Host, commit: string): Promise<Host | null> {
   const started = performance.now();
   try {
-    const script = `${preparation(host, commit, "cached")}\nprintf '%s\\n' "$tree"`;
-    const { stdout, stderr, exitCode, signal } = await runCaptured(sshScript(host, script), {
-      timeout: PREPARE_MS,
-    });
-    const tree = stdout.trim();
-    if (exitCode !== 0 || !isAbsolute(tree) || tree.includes("\n")) {
-      throw new Error(`controller preparation failed (${signal ?? String(exitCode)}): ${stderr.trim()}`);
-    }
-    return { ...host, ...configuredRuntime(host), tree, prepared: true };
+    return await preparedHost(host, commit, "cached");
   } catch (error) {
     console.error(
       `${host.name}: ${errorMessage(error)} after ${((performance.now() - started) / 1000).toFixed(1)} s`,

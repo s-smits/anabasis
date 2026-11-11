@@ -85,20 +85,18 @@ export function seedCampaign(from: string, to: string, cut: Cut) {
         .map((line) => `${line}\n`)
         .join(""),
     );
-    // A campaign over a stored pack stages its checks beside the log; one that drafted its exam
-    // stages the exam under `exams/<digest>/` (`tools/d2/exam.ts`), which a seed of it needs too.
-    for (const part of ["checks", "exams", "states"]) {
+    const copy = (part: string) => {
       if (existsSync(join(from, part))) {
         cpSync(join(from, part), join(to, part), { recursive: true, verbatimSymlinks: true });
       }
-    }
+    };
+    // A campaign over a stored pack stages its checks beside the log; one that drafted its exam
+    // stages the exam under `exams/<digest>/` (`tools/d2/exam.ts`), which a seed of it needs too.
+    for (const part of ["checks", "exams", "states"]) copy(part);
     // Read as this tree reads a log: an event kind it does not know is refused here, not mid-round.
     const events = read(join(to, LOG_FILE));
     for (const { kind, data } of events) {
-      const notes = kind === "build.started" && isString(data.session) ? join("memory", data.session) : null;
-      if (notes !== null && existsSync(join(from, notes))) {
-        cpSync(join(from, notes), join(to, notes), { recursive: true, verbatimSymlinks: true });
-      }
+      if (kind === "build.started" && isString(data.session)) copy(join("memory", data.session));
     }
     // The Examiner's home is one folder each session replaces as it ends (`src/examiner/shell.ts`),
     // so it is the one the cut stood with only where no session ended after the cut. Until 26
@@ -106,12 +104,7 @@ export function seedCampaign(from: string, to: string, cut: Cut) {
     const examinerHome =
       existsSync(join(from, "examiner-home")) &&
       !lines.slice(kept).some((line) => HOME_ENDS.has(asRecord(capturedJsonParse(line))?.kind));
-    if (examinerHome) {
-      cpSync(join(from, "examiner-home"), join(to, "examiner-home"), {
-        recursive: true,
-        verbatimSymlinks: true,
-      });
-    }
+    if (examinerHome) copy("examiner-home");
     const origin = {
       from: resolve(from),
       events: kept,

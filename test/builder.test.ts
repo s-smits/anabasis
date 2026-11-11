@@ -486,7 +486,7 @@ describe("a Builder session", () => {
     await session(s.request, s, s.walled);
     // The notes block comes first in the opening message, ahead of the rules, under v1's header.
     expect(s.sent[0]).toContain(
-      String.raw`{"role":"user","content":"Historical notes, model-authored and possibly stale. You wrote these files in earlier sessions,`,
+      String.raw`{"role":"user","content":"Historical notes, model-authored and possibly stale. You wrote these files, in this session or an earlier one,`,
     );
     expect(s.sent[0]).toContain(String.raw`--- MEMORY.md ---\n<!-- carried forward from b-0,`);
     expect(s.sent[0]).toContain("The base is always odd.");
@@ -509,6 +509,46 @@ describe("a Builder session", () => {
     );
     expect(readFileSync(join(own, "SCRATCHPAD.md"), "utf8")).toContain("- try the base as a string");
     expect(readFileSync(join(own, "scratch", "gen.py"), "utf8")).toBe("print(6)\n");
+  });
+
+  it("re-serves a first session's own notes without dating them to an earlier session", async () => {
+    // The opening is served again inside one conversation: in six first sessions on record, 13
+    // such calls dated notes the session had just written to "earlier sessions".
+    const note = "A table of factors did not help.";
+    const s = await setup([
+      call(WRITE_FILE, { path: "MEMORY.md", content: `# Builder memory\n\n${note}\n` }),
+      call("read_opening", {}),
+      finish,
+    ]);
+    // Only a conversation a campaign leads rebuilds its opening when asked again.
+    await session({ ...s.request, campaign: () => ({ hook: () => "", tools: [] }) }, s, s.walled);
+    const opening = s.of(BUILD_CALL).find(({ tool: name }) => name === "read_opening")?.text;
+    expect(opening).toContain(note);
+    expect(opening).not.toContain("earlier session");
+  });
+
+  it("says the re-served practice records stay under the harness it started from once a promotion moves the reference, and nothing before", async () => {
+    // 16 openings on record came after a promotion inside their session, and listed the records
+    // under the harness the conversation started from as though it were still the reference.
+    const s = await setup([call("read_opening", {}), call("promote", {}), call("read_opening", {}), finish]);
+    const promote = tool({
+      name: "promote",
+      description: "Promote another harness.",
+      parameters: Type.Object({}),
+      execute: async () => {
+        append(s.request.log, "harness.promoted", { harness: "f".repeat(64) });
+        return text("Promoted.");
+      },
+    });
+    await session({ ...s.request, campaign: () => ({ hook: () => "", tools: [promote] }) }, s, s.walled);
+    const [before, after] = s
+      .of(BUILD_CALL)
+      .flatMap(({ tool: name, text: told }) => (name === "read_opening" && isString(told) ? [told] : []));
+    const moved = "The reference harness has changed since this conversation began";
+    expect(before).not.toContain(moved);
+    expect(after).toContain(
+      `${moved}; the practice records above are still those under the harness you start from.`,
+    );
   });
 
   it("sets aside unestablished practice rejections in results, traces and later records, and takes a check defect's task out of practice", async () => {
@@ -777,6 +817,20 @@ describe("a Builder session", () => {
     expect(last).toContain("Under the harness you started from: 1 of 2, the objective 30.");
     expect(last).toContain("Measured the objective:");
     expect(last.split(quantity)).toHaveLength(2);
+  });
+
+  it("states the objective's quantity once in the opening, however long and whatever word it begins with", async () => {
+    // Quantities on record run from 157 to 337 characters, and each opening carried one twice.
+    const long = `the mean ${"weighted lateness of every job past its due time, ".repeat(6)}over all machines`;
+    expect(long.length).toBeGreaterThan(300);
+    for (const quantity of [long, "lower bound on the summed cost"]) {
+      const s = await setup([finish], [], false, CHECK, {
+        ...CONTRACT,
+        objective: { quantity, direction: "lower" },
+      });
+      await session(s.request, s, s.walled);
+      expect(s.sent[0]?.split(quantity)).toHaveLength(2);
+    }
   });
 
   it("is told an author's better answer on a released task under an objective, and nothing of a held-out one's", async () => {

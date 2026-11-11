@@ -8,6 +8,9 @@ import { runtimeProcess } from "#src/meta/process.ts";
 import { isAbsolute } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 
+/** The live campaigns a machine carries where nothing configures its capacity. */
+export const RUN_CAP = 2;
+
 export interface Host {
   readonly name: string;
   readonly ssh: string;

@@ -1,9 +1,10 @@
 /** A run's life and bounded stderr, shared by the run state (`state.ts`), view, pulse and remote
  *  record snapshots. */
-import { existsSync, lstatSync, readdirSync, readFileSync, renameSync } from "#src/meta/filesystem.ts";
+import { existsSync, lstatSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { boundText } from "#src/meta/bounded-text.ts";
+import { remember } from "./pulse-readers.ts";
 import { HERE, keepers, type Run, type Running, writers } from "./registry.ts";
 
 interface Observation {
@@ -37,11 +38,8 @@ export async function stderrTail(log: string): Promise<string | null> {
 }
 
 /** Publish observation metadata with a new inode, preserving any previous hardlinked snapshot. */
-export async function keepObservation(folder: string, observation: Observation): Promise<void> {
-  const temporary = join(folder, `${OBSERVATION}.tmp`);
-  await Bun.write(temporary, capturedJsonStringify(observation));
-  renameSync(temporary, join(folder, OBSERVATION));
-}
+export const keepObservation = (folder: string, observation: Observation) =>
+  remember(join(folder, OBSERVATION), capturedJsonStringify(observation));
 
 /** What the last fetch of a peer's campaign saw there, or null for this machine's own: a snapshot
  *  carries remote liveness, and local pids never decide whether a remote campaign lives. */

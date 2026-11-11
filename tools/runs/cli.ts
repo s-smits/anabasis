@@ -49,7 +49,7 @@ interface Verb {
 }
 
 /** The verbs whose own parser reads `--here`, each with more to it than reaching no other host. */
-const READS_HERE: ReadonlySet<string | undefined> = new Set(["active", "hosts", "keep", "pulse", "search"]);
+const READS_HERE: ReadonlySet<string | undefined> = new Set(["active", "hosts", "keep", "pulse"]);
 
 /** Each verb: its function, the file whose head states its usage, and what it does, in the groups
  *  the bare command prints. */

@@ -101,7 +101,7 @@ describe("searching logs and notes", () => {
   test("caps match characters and spills every whole match when a line or total is cut", async () => {
     for (const max of ["180", "10000"]) {
       const output: string[] = [];
-      await search(["needle", "--here", "--max", max], {
+      await search(["needle", "--max", max], {
         hosts: [],
         local: (request) => searchLocal(request, [join(root, note)]),
         print: (text) => output.push(text),

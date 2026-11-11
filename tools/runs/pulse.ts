@@ -218,8 +218,6 @@ const PEERS_MS = 33_000;
 /** The last line a peer prints, with the token that the next look returns. */
 const ACK_LINE = /^ack ([0-9a-f]+)$/;
 
-const isMilestone = ({ kind }: LogEvent) => MILESTONES.has(kind);
-
 const count = (log: readonly LogEvent[], kind: EventKind) =>
   log.filter((event) => event.kind === kind).length;
 
@@ -460,7 +458,10 @@ export function pulse(
   if (quiet && before?.quiet !== true) lines.push(`⚠ quiet for ${minutes(now - state.since)}`);
   if (!quiet && before?.quiet === true) lines.push("· not quiet any more");
   if (before?.open === true && !open && !stand.ended) lines.push(`⚠ the process is gone before ${stand.end}`);
-  const triggers = triggersSaid(before, { milestone: milestone ?? fresh.some(isMilestone), found: alarms() });
+  const triggers = triggersSaid(before, {
+    milestone: milestone ?? fresh.some(({ kind }) => MILESTONES.has(kind)),
+    found: alarms(),
+  });
   lines.push(...triggers.said);
   // The trigger is a campaign's: a round or a seed measures no climb an investigation could read.
   const read = isCampaign(run) && run.seed !== true;

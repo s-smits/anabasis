@@ -45,10 +45,7 @@ export async function replay(args: readonly string[]): Promise<void> {
   const { asked, names } = askedIn(args);
   const asks = asked.holds.length + asked.has.length > 0;
   const logs = (await readableAcross(names)).filter(
-    (run) =>
-      isCampaign(run) &&
-      (names.length === 0 || names.some((name) => run.name.includes(name))) &&
-      (!asks || ranWith(run.path, run.tree, asked)),
+    (run) => isCampaign(run) && (!asks || ranWith(run.path, run.tree, asked)),
   );
   let refused = 0;
   for (const run of logs) {

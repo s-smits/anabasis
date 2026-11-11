@@ -29,6 +29,7 @@
  * and the two-stage rule of older trees, and the rule-by-rule tally, none of which `main` holds.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
+import { short } from "#src/campaign/move.ts";
 import { carriedBy as carriedOn, type Paired, wholePoints } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import type { Reported } from "#src/kernel/reports.ts";
@@ -145,7 +146,6 @@ export function emptyTotals(): Totals {
   };
 }
 
-const short = (digest: string) => digest.slice(0, 8);
 const numbers = (value: JsonValue | undefined) => (Array.isArray(value) ? value.filter(isNumber) : []);
 const won = (differences: readonly number[]) => differences.filter((one) => one > 0).length;
 const lost = (differences: readonly number[]) => differences.filter((one) => one < 0).length;

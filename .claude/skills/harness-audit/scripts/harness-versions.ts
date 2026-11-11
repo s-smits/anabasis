@@ -39,6 +39,7 @@
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { type Handover, campaignOf } from "#src/campaign/handover.ts";
+import { short } from "#src/campaign/move.ts";
 import { DIGEST, namesOf } from "#src/campaign/names.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import {
@@ -133,7 +134,6 @@ interface Keeping {
   readonly states: string;
 }
 
-const short = (digest: string): string => digest.slice(0, 8);
 const lines = (text: string | null): string[] =>
   text === null ? [] : text.split("\n").filter((line) => line.trim() !== "");
 

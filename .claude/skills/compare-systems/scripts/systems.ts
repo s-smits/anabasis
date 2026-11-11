@@ -48,6 +48,7 @@ import { isNumber } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { join } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
+import { mean } from "#src/meta/tally.ts";
 import { type Kept, keptAs, openCampaign, packNamed } from "#tools/d2/campaign.ts";
 import { gated } from "#tools/d2/host.ts";
 import {
@@ -60,6 +61,7 @@ import {
 } from "#tools/d2/round.ts";
 import { recordedSetting, settingNamed } from "#tools/d2/setting.ts";
 import { loginEnv } from "#tools/runs/manage.ts";
+import { dollars } from "#tools/runs/said.ts";
 import { SEED_FILE } from "#tools/runs/registry.ts";
 
 const USAGE = `compare-systems: solve a campaign's held-out tasks under two or more systems, and read them
@@ -159,12 +161,6 @@ function solvedIn(log: string): Map<string, Solved> {
   return out;
 }
 
-const dollars = (value: number) => `$${value.toFixed(2)}`;
-const mean = (values: readonly (number | null)[]) => {
-  const counted = values.filter(isNumber);
-  return counted.length === 0 ? null : counted.reduce((sum, one) => sum + one, 0) / counted.length;
-};
-
 /** The systems side by side, each on the average of its counted solves. The cost is the log's whole
  *  bill over those solves, the Referee's rulings included, so it runs a little over the solves' own;
  *  the time is a solve's wall, which a harness's own programs can fill (`improve-truss` searched to
@@ -178,7 +174,7 @@ function tableLines(rows: readonly { system: System; own: Map<string, Solved>; b
       const solves = [...own.values()];
       const valid = solves.flatMap((row) => row.valid);
       const seconds = solves.flatMap((row) => row.seconds).filter(isNumber);
-      const turns = mean(solves.flatMap((row) => row.turns));
+      const turns = mean(solves.flatMap((row) => row.turns).filter(isNumber));
       return `| ${system.name} | ${String(valid.filter(Boolean).length)} of ${String(valid.length)} | ${valid.length === 0 ? "n/a" : dollars(billed / valid.length)} | ${minutes(mean(seconds))} | ${minutes(seconds.length === 0 ? null : Math.max(...seconds))} | ${turns === null ? "n/a" : turns.toFixed(1)} |`;
     }),
   ];

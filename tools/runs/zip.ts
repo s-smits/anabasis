@@ -54,6 +54,7 @@ import {
   writeFileSync,
 } from "#src/meta/filesystem.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
+import { endingOf } from "#src/kernel/reports.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { tmpdir } from "#src/meta/os.ts";
@@ -80,7 +81,6 @@ import {
 import { readableAcross, syncRuns } from "./snapshots.ts";
 
 const LEVELS = ["light", "medium", "verbose"] as const;
-const CAMPAIGN_ENDED = "campaign.ended";
 const PROMOTED = "harness.promoted";
 const CHOOSING = ["latest", "minPromotions", "minTime", "since", "until"] as const;
 const MOMENT = /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2}))?$/;
@@ -283,8 +283,6 @@ function gather(chosen: readonly Run[], level: Level, stage: string) {
     const now = standing(run.tree);
     const last = log.findLast(({ kind }) => kind === run.end)?.data;
     const reading = last?.reading ?? asRecord(last?.ending)?.outcome;
-    // A campaign's ending is its log's last event: one that goes on after an ending has none.
-    const ended = log.at(-1)?.kind === CAMPAIGN_ENDED ? log.at(-1)?.data.ending : undefined;
     return {
       name: run.name,
       log: join(basename(run.tree), folder, basename(run.path)),
@@ -295,7 +293,7 @@ function gather(chosen: readonly Run[], level: Level, stage: string) {
       ...now,
       events: log.length,
       reading: isString(reading) ? reading : null,
-      ended: isString(ended) ? ended : null,
+      ended: endingOf(log),
     };
   });
   return { schema: "runs-zip/v1", level, made: new Date().toISOString(), runs: told, files, left };

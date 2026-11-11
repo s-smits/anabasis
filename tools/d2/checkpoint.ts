@@ -51,7 +51,7 @@ import { contractHash } from "#src/kernel/contract.ts";
 import { read } from "#src/kernel/log.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { parseArgs } from "#src/meta/process.ts";
-import { keptAs, packNamed, starter, stayAwake } from "./campaign.ts";
+import { keptAs, PACK_OPTIONS, packNamed, starter, stayAwake } from "./campaign.ts";
 import {
   campaignFor,
   predictionNamed,
@@ -59,7 +59,6 @@ import {
   objectiveNamed,
   packaged,
   reviewersNamed,
-  ROUND_OPTIONS,
   type Seated,
   solved,
   printReport,
@@ -69,11 +68,7 @@ import { keepSetting, SETTING_OPTIONS } from "./setting.ts";
 
 /** A standalone comparison's flags and their defaults. */
 const STANDALONE_OPTIONS = {
-  root: ROUND_OPTIONS.root,
-  sweep: ROUND_OPTIONS.sweep,
-  cycle: ROUND_OPTIONS.cycle,
-  bundle: ROUND_OPTIONS.bundle,
-  name: ROUND_OPTIONS.name,
+  ...PACK_OPTIONS,
   id: { type: "string" },
   new: { type: "string", default: "latest" },
   ...SETTING_OPTIONS,

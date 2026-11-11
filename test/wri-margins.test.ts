@@ -28,6 +28,8 @@ describe("lane 28: whether the chain adds up against the starter", () => {
 
 describe("lane 29: what an objective-only step won by", () => {
   const SAID = "by no more than its A/A's difference on the same task where validity tied";
+  const FLAT =
+    "objective-only steps won most of their tasks where the A/A tied, which gives no spread to read a margin against";
 
   it("names a step whose wins between valid answers are all within the A/A's difference on their own task", () => {
     expect(triggered(objectiveLog(0.05), "MARGINS INSIDE THE NOISE")).toEqual([`g-1 won 6 of 6 ${SAID}`]);
@@ -56,13 +58,68 @@ describe("lane 29: what an objective-only step won by", () => {
 
   it("reads a win where its task's A/A tied as clear only of a zero difference, and says so", () => {
     // The A/A ties t1 to t5 and differs by 150 on t0 (esp32 g-5's shape): every win is on a tied
-    // task, so none is inside, where the largest difference would have put all five inside.
+    // task, so none is inside, where the largest difference would have put all five inside; the
+    // line names the step by its wins on tied tasks alone.
     const same = [1, 1] as const;
     const ties = { t0: [1, 0.5] as const, t1: same, t2: same, t3: same, t4: same, t5: same };
-    expect(triggered(objectiveLog(0.05, "tied", ties), "MARGINS INSIDE THE NOISE")).toEqual([]);
+    expect(triggered(objectiveLog(0.05, "tied", ties), "MARGINS INSIDE THE NOISE")).toEqual([
+      `${FLAT}: g-1 5 of 5`,
+    ]);
     // Where most wins are inside, the line names the wins whose task's A/A tied.
     expect(triggered(objectiveLog(0.05, "tied", { t0: same, t1: same }), "MARGINS INSIDE THE NOISE")).toEqual(
       [`g-1 won 4 of 6 ${SAID}, and 2 more where that task's A/A tied, clear only of a zero difference`],
     );
+  });
+
+  describe("a step most of whose wins are on tasks its A/A tied, where no step meets the main line", () => {
+    // The first three tasks keep the A/A's 21-point difference, which their 4-point wins sit inside;
+    // the next `tied` tie in the A/A, and the rest differ by 3 points, below their 14-point wins.
+    const step = (size: number, tied: number) =>
+      objectiveLog(
+        0.05,
+        "tied",
+        Object.fromEntries(
+          Array.from({ length: size - 3 }, (_, nth) => [
+            `t${String(nth + 3)}`,
+            [1, nth < tied ? 1 : 0.99] as const,
+          ]),
+        ),
+        size,
+      );
+
+    it("names the step and its wins on A/A-tied tasks of its wins", () => {
+      expect(triggered(step(18, 12), "MARGINS INSIDE THE NOISE")).toEqual([`${FLAT}: g-1 12 of 18`]);
+      // The A/A ties every task, so all six wins clear only a zero difference.
+      const same = [1, 1] as const;
+      const everywhere = { t0: same, t1: same, t2: same, t3: same, t4: same, t5: same };
+      expect(triggered(objectiveLog(0.05, "tied", everywhere), "MARGINS INSIDE THE NOISE")).toEqual([
+        `${FLAT}: g-1 6 of 6`,
+      ]);
+    });
+
+    it("stays silent where fewer than half the wins are on A/A-tied tasks", () => {
+      expect(triggered(step(16, 6), "MARGINS INSIDE THE NOISE")).toEqual([]);
+    });
+
+    it("leaves the main line as it was, the other steps counted after it", () => {
+      // A second comparison of the same shape under another session, its wins all on A/A-tied tasks.
+      const renamed = (event: LogEvent): LogEvent => ({
+        ...event,
+        data: Object.fromEntries(
+          Object.entries(event.data).map(([key, value]) => [
+            key,
+            ["session", "comparison"].includes(key) && value === "g-1" ? "g-2" : value,
+          ]),
+        ),
+      });
+      const same = [1, 1] as const;
+      const flat = objectiveLog(0.05, "tied", { t0: same, t1: same, t2: same, t3: same, t4: same, t5: same });
+      expect(
+        triggered(
+          [...objectiveLog(0.05), ...flat.filter(({ kind }) => !kind.startsWith("task.")).map(renamed)],
+          "MARGINS INSIDE THE NOISE",
+        ),
+      ).toEqual([`g-1 won 6 of 6 ${SAID}; 1 of 2 ${FLAT}`]);
+    });
   });
 });

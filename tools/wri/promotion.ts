@@ -21,7 +21,7 @@
  */
 import { epochsOf as epochsRead } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";
-import { flipP, scoresIn } from "#src/kernel/compare.ts";
+import { flipP, scoresIn, testOf } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import type { Call, Seat } from "#src/kernel/trace.ts";
 import { billedBetween } from "#src/kernel/meter.ts";
@@ -409,7 +409,8 @@ export function promotionTriggers(log: Index): Trigger[] {
 }
 
 /** `STEP CARRIERS` (lane 17): each step's untied tasks on the scores it is read on (`scoresIn`), and how many of its largest
- *  wins it could lose to a tie and still clear its level (`spareOf`, `clearance.ts`). On 1 November the gate ablation's g-3 cleared at
+ *  wins it could lose to a tie and still clear its level (`spareOf`, `clearance.ts`), with its retained tasks' tally where
+ *  it lost more of them than it won. On 1 November the gate ablation's g-3 cleared at
  *  6-0 with none to spare, and supply's g-2 lost its step without the 5 tasks priced in yen; lanes
  *  15, 23, 25 and 34 each found a part of that. */
 function carrierTrigger(log: Index): Trigger[] {
@@ -417,8 +418,13 @@ function carrierTrigger(log: Index): Trigger[] {
     const unbilled = scoresIn(last.scored);
     if (text(last.reading) !== "step" || unbilled.length === 0) return [];
     const spare = spareOf(unbilled, count(last.level));
+    const retained = testOf(scoresIn(last.retained));
+    const lost =
+      retained.losses > retained.wins
+        ? `, its retained tasks ${String(retained.wins)}-${String(retained.losses)}-${String(retained.ties)}`
+        : "";
     return [
-      `${session} won ${share(unbilled.filter((one) => one > 0).length, unbilled.filter((one) => one !== 0).length)} untied, ${spare === 0 ? "none" : String(spare)} to spare`,
+      `${session} won ${share(unbilled.filter((one) => one > 0).length, unbilled.filter((one) => one !== 0).length)} untied, ${spare === 0 ? "none" : String(spare)} to spare${lost}`,
     ];
   });
   return lines.length > 0 ? [fired("STEP CARRIERS", lines.join("; "))] : [];

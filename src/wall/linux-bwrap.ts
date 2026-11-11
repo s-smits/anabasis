@@ -55,6 +55,16 @@ const BWRAP_CANDIDATES = ["/usr/bin/bwrap", "/bin/bwrap", "/usr/local/bin/bwrap"
 /** The system roots a private runtime prefix or the resolver's target is already under. */
 const LINUX_SYSTEM_READ_ROOTS = ["/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc", "/opt"] as const;
 
+/** Bubblewrap's own stderr messages for a refused unprivileged user namespace. They are matched
+ *  literally because they are what the installed bwrap prints, not text this module owns, so
+ *  paraphrasing them here would silently stop matching. */
+const USER_NAMESPACE_REFUSALS = [
+  "loopback: Failed RTM_NEWADDR",
+  "loopback: Failed RTM_NEWLINK",
+  "setting up uid map: Permission denied",
+  "No permissions to create a new namespace",
+] as const;
+
 /** The resolver file a network posture needs. On a systemd-resolved host `/etc/resolv.conf` is a
  *  symlink into `/run`, which the Lima VM's wall once left dangling: the child then had a socket and
  *  no way to turn a name into an address. Only the link target is bound, never the directory
@@ -104,16 +114,6 @@ export function nodeRuntimeReadRoots(): string[] {
   }
   return [...roots].toSorted();
 }
-
-/** Bubblewrap's own stderr messages for a refused unprivileged user namespace. They are matched
- *  literally because they are what the installed bwrap prints, not text this module owns, so
- *  paraphrasing them here would silently stop matching. */
-const USER_NAMESPACE_REFUSALS = [
-  "loopback: Failed RTM_NEWADDR",
-  "loopback: Failed RTM_NEWLINK",
-  "setting up uid map: Permission denied",
-  "No permissions to create a new namespace",
-] as const;
 
 function runBwrap(
   path: string,

@@ -29,6 +29,12 @@ export type Slot =
     }
   | { readonly kind: "break"; readonly key: string; readonly setting: string | null };
 
+/** The steps an axis of whole tasks may take, so that its ticks are even and at most about five. */
+const STEPS = [1, 2, 5, 10, 20, 25, 50, 100] as const;
+
+/** The two measures in the order the tally weighs them (`WEIGHTS`, `src/kernel/compare.ts`). */
+export const MEASURES = ["validity", "objective"] as const satisfies readonly (keyof Measures)[];
+
 /** The chart's columns, in the order of `bars`, with a break column before a comparison whose
  *  setting differs from the one before it. A comparison with no report stands at its scored tasks
  *  as one open column, never at zero. */
@@ -48,9 +54,6 @@ export function comparisonSlots(bars: readonly ComparisonBar[]): Slot[] {
     return broken ? [{ kind: "break", key: `setting-${bar.id}`, setting: bar.setting }, column] : [column];
   });
 }
-
-/** The steps an axis of whole tasks may take, so that its ticks are even and at most about five. */
-const STEPS = [1, 2, 5, 10, 20, 25, 50, 100] as const;
 
 /** A count axis up to `top`: whole numbers from nought at one even step, its last tick at or above
  *  `top`, and at most about five ticks. Recharts left to itself prints 7, 6, 4, 2, 0 on a column of
@@ -92,9 +95,6 @@ export function tallyText(tally: Tally | null): string {
 export function pText(p: number | null): string {
   return p === null ? "no test" : `p ${p.toFixed(3)}`;
 }
-
-/** The two measures in the order the tally weighs them (`WEIGHTS`, `src/kernel/compare.ts`). */
-export const MEASURES = ["validity", "objective"] as const satisfies readonly (keyof Measures)[];
 
 /** Tasks by the measure that carried each, the measures that carried none left out: "validity 4,
  *  objective 22", or "none". */

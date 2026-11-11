@@ -20,7 +20,8 @@ once by the first command that begins a solve-bearing move (`settingOf`) and nev
 solver and its effort, window and limits (`--solver`, `--solver-effort`, `--solver-window`,
 `--solve-minutes`, `--solve-model-turns`), `--target` and `--solves`. A conflicting flag is refused,
 since no solve on record counts for a different solver. A log with solves from before any setting is
-held to its last test-side solves' setting (`firstRecord`). `--solver-window` (300,000 tokens) is
+held to its last test-side solves' setting (`firstRecord`), refused as a paid command opens the
+campaign (`campaignFor`). `--solver-window` (300,000 tokens) is
 where the solver's backend compacts, so a model served with a 200K context is refused at it.
 
 ### Practice release

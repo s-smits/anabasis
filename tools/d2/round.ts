@@ -294,21 +294,16 @@ export function sessionNamed(
 
 /**
  * What a command's flags ask of a comparison, as its admission takes it (`admitComparison`): the
- * size, the cap, the reason to go on past the stop rule where one is given, and what the setting
- * named here is against the one the log's last test-side solves ran under.
+ * size, the cap, and the reason to go on past the stop rule where one is given.
  */
 export function wantedNamed(
-  campaign: Campaign,
   values: {
     readonly level: string;
     readonly "past-stop"?: string | undefined;
   },
   given: { readonly setting: AskedSetting; readonly cap: Cap | undefined; readonly builds: boolean },
 ): Wanted {
-  const { named, target, solves } = given.setting;
-  // The campaign is open, so who solves is known whether or not a flag named it.
-  const solving = solvingAs(campaign, named);
-  const ran = solverLast(read(campaign.log));
+  const { target, solves } = given.setting;
   return {
     target,
     solves,
@@ -316,7 +311,6 @@ export function wantedNamed(
     builds: given.builds,
     cap: given.cap ?? null,
     pastStop: predictionNamed(values["past-stop"]),
-    unrecorded: firstRecord(given.setting, solving, ran),
   };
 }
 
@@ -391,7 +385,11 @@ export function refereeNamed(
 /**
  * The campaign a round, a session or a standalone comparison runs in. The cap and the Referee are read before
  * it is opened, so a paid move without them starts nothing, and what the flags name of the setting
- * is held to the log's record before the campaign is opened under it (`setting.ts`).
+ * is held to the log's record before the campaign is opened under it (`setting.ts`). Once it is
+ * open, who solves is known, and a paid command's first record of the setting is held to what the
+ * log's last test-side solves ran under (`firstRecord`); a rehearsal is exempt, as from admission.
+ * A led campaign's moves arrive seated through its solve queue and so read as scripted here: its own
+ * opening has held the first record and kept it before the first move (`harness-builder.ts`).
  */
 export async function campaignFor(
   values: Parameters<typeof capNamed>[0] &
@@ -404,7 +402,13 @@ export async function campaignFor(
   const cap = capNamed(values, seats);
   refereeNamed(values, seats);
   const setting = settingAsked(values, recordedSetting(read(campaignLog(pack.name))));
-  return { cap, setting, campaign: await openCampaign({ ...pack, ...setting.named }) };
+  const campaign = await openCampaign({ ...pack, ...setting.named });
+  const unrecorded =
+    seats === "paid"
+      ? firstRecord(setting, solvingAs(campaign, setting.named), solverLast(read(campaign.log)))
+      : undefined;
+  if (unrecorded !== undefined) throw new Error(unrecorded);
+  return { cap, setting, campaign };
 }
 
 /** A comparison's report and the stop rule as JSON, then its lines for a person to read: the
@@ -615,7 +619,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
   // terms, and only then an override of the stop rule and the campaign's setting.
   const notes = admitComparison(campaign.log, {
     id: session,
-    wanted: wantedNamed(campaign, values, { setting, cap, builds: true }),
+    wanted: wantedNamed(values, { setting, cap, builds: true }),
     seats: seats.paid ? "paid" : "scripted",
     own: () =>
       refuseTerms(request, {

@@ -27,7 +27,8 @@ import { runtimeProcess } from "../src/meta/process.ts";
 import { errorMessage } from "../src/meta/runtime-values.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { openHarness } from "../src/harness/open.ts";
-import { codeOf, FOLLOWED, starter, keptAs, openCampaign, treeFault } from "../tools/d2/campaign.ts";
+import { Refused } from "../src/campaign/admission.ts";
+import { codeOf, FOLLOWED, LIMITS, starter, keptAs, openCampaign, treeFault } from "../tools/d2/campaign.ts";
 import { gitText } from "../src/meta/git.ts";
 import { checkpointCommand } from "../tools/d2/checkpoint.ts";
 import { importCommand } from "../tools/d2/import.ts";
@@ -57,6 +58,8 @@ const FRESH = `${NAME}-fresh`;
 /** Campaigns whose checks pass, and reject, the stored sweep's accepted answer. */
 const PROVEN = `${NAME}-proven`;
 const UNPROVEN = `${NAME}-unproven`;
+/** A campaign whose log holds solves and no setting. */
+const UNRECORDED = `${NAME}-unrecorded`;
 const ASKED = { level: 0.02, patience: PATIENCE };
 const TASKS = Array.from({ length: 7 }, (_, index) => ({
   taskId: `t-${String(index + 1)}`,
@@ -99,7 +102,7 @@ const rehearsal =
 
 afterAll(() => {
   rmSync(root, { recursive: true, force: true });
-  for (const name of [NAME, FRESH, PROVEN, UNPROVEN]) {
+  for (const name of [NAME, FRESH, PROVEN, UNPROVEN, UNRECORDED]) {
     rmSync(join(REPO, ".ana", "d2", name), { recursive: true, force: true });
   }
 });
@@ -778,6 +781,32 @@ describe("a campaign", () => {
     const kept = read(campaign.log).filter(({ kind }) => kind === "campaign.setting");
     expect(kept.map(({ data }) => data.minutes)).toEqual([8]);
     expect(read(campaign.log).some(({ data }) => data.session === "z-4")).toBe(false);
+  });
+
+  // A log whose test-side solves ran before any setting was recorded, held to 15 model turns: a
+  // paid command that names none would record 20 and solve under it.
+  it("refuses a paid command's first record of another setting as it opens the campaign, and no rehearsal's", async () => {
+    const campaign = await openCampaign({ ...ARGS, name: UNRECORDED });
+    const condition = { side: "test", model: SERVED, effort: "high", limits: { ...LIMITS, modelTurns: 15 } };
+    append(campaign.log, "condition.recorded", { id: "c-1", condition });
+    append(campaign.log, "solve.started", { condition: "c-1" });
+    const before = read(campaign.log).length;
+    const flags = [...flagsOf({ ...ARGS, name: UNRECORDED }), "--cap", "100", "--reviewer", SERVED];
+    // The command's own refusal, no longer the admission's, which a led Builder would read.
+    const refusal = await roundCommand([...flags, "--session", "u-1", "--builder", SERVED]).catch(
+      (error: unknown) => (error instanceof Refused ? "the admission's" : errorMessage(error)),
+    );
+    expect(refusal).toContain("records no setting yet, and this command names another");
+    expect(refusal).toContain("--solve-model-turns 15");
+    await expect(checkpointCommand(["--id", "u-2", ...flags])).rejects.toThrow("records no setting yet");
+    expect(read(campaign.log)).toHaveLength(before);
+    // A rehearsal walks the seed as it stands: it goes on to the Builder's seat.
+    await expect(
+      roundCommand(
+        [...flags, "--session", "u-1"],
+        rehearsal(() => undefined),
+      ),
+    ).rejects.toThrow("name --builder");
   });
   // Plan item 5.3 (14 October): a pack's stored accepted answer said nothing of a task's
   // feasibility, so a task only a stored solve had answered could go to a person as infeasible.

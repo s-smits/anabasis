@@ -26,13 +26,13 @@
  * pops them back where they were. A branch another worktree has checked out is refused before
  * anything moves: git before 2.42, as on the Linux runner (2.34), resets it under that worktree.
  */
-import { CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { gitMaybe, gitText } from "#src/meta/git.ts";
-import { runtimeProcess } from "#src/meta/process.ts";
+import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { errorMessage } from "#src/meta/runtime-values.ts";
 import { lstatSync } from "#src/meta/filesystem.ts";
 import { join } from "#src/meta/path.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
-import { firstStack, openPulls, type Pull, trunkOf } from "#tools/runtime/pulls.ts";
+import { firstStack, openPulls, type Pull, trunkOf } from "./pulls.ts";
 
 /** Where `follow` moves a checkout: its branch, the branch on origin it tracks, how a line names it,
  *  the open pull requests it holds, bottom first, and the trunk, the one branch beside `stack-pr<N>`
@@ -169,7 +169,7 @@ export function follow(root: string, target: Target): string[] {
     .map((entry) => entry.split("\n"))
     .find((lines) => lines.includes(`branch refs/heads/${name}`) && lines[0] !== `worktree ${root}`);
   if (held !== undefined) {
-    throw new CommandFailure(`${name} is checked out in ${held[0]?.slice(9) ?? "another worktree"}`);
+    throw new Error(`${name} is checked out in ${held[0]?.slice(9) ?? "another worktree"}`);
   }
   const stashes = (): string[] => gitText(root, "stash", "list", "--format=%H").split("\n");
   const before = stashes();
@@ -195,7 +195,7 @@ export function follow(root: string, target: Target): string[] {
   }
   if (stashed) {
     if (gitMaybe(root, "stash", "pop", "-q", at()) === null) {
-      throw new CommandFailure(`your changes conflict with ${name}: resolve them, then drop ${at()}`);
+      throw new Error(`your changes conflict with ${name}: resolve them, then drop ${at()}`);
     }
     said.push("your uncommitted changes are back");
   }
@@ -206,27 +206,29 @@ export function follow(root: string, target: Target): string[] {
   return said;
 }
 
+/** What the command prints for `argv`: the move, or under `--if-safe` the reasons it stayed. */
+function main(argv: readonly string[]): string[] {
+  const { values } = parseArgs({ args: [...argv], options: { "if-safe": { type: "boolean" } } });
+  const root = gitText(runtimeProcess.cwd(), "rev-parse", "--show-toplevel");
+  gitText(root, "fetch", "-q", "--prune", "origin");
+  const target = targetOf(firstStack(openPulls(root)), trunkOf(root));
+  const moves =
+    gitMaybe(root, "symbolic-ref", "--short", "-q", "HEAD") !== target.name ||
+    gitText(root, "rev-parse", "HEAD") !== gitText(root, "rev-parse", target.upstream);
+  const unsafe = values["if-safe"] === true && moves ? hazards(root, target) : [];
+  return unsafe.length > 0
+    ? [
+        `skip: not moving to ${target.name} at ${target.upstream} this time`,
+        ...unsafe.map((why) => `  ${why}`),
+      ]
+    : follow(root, target);
+}
+
 if (import.meta.main) {
-  await runCommand(
-    { name: "follow", usage: "bun run follow [-- --if-safe]", options: { "if-safe": "flag" } },
-    (args) => {
-      const root = gitText(runtimeProcess.cwd(), "rev-parse", "--show-toplevel");
-      gitText(root, "fetch", "-q", "--prune", "origin");
-      const target = targetOf(firstStack(openPulls(root)), trunkOf(root));
-      const moves =
-        gitMaybe(root, "symbolic-ref", "--short", "-q", "HEAD") !== target.name ||
-        gitText(root, "rev-parse", "HEAD") !== gitText(root, "rev-parse", target.upstream);
-      const unsafe = args.flag("if-safe") && moves ? hazards(root, target) : [];
-      if (unsafe.length > 0) {
-        console.log(
-          [
-            `skip: not moving to ${target.name} at ${target.upstream} this time`,
-            ...unsafe.map((why) => `  ${why}`),
-          ].join("\n"),
-        );
-        return;
-      }
-      console.log(follow(root, target).join("\n"));
-    },
-  );
+  try {
+    console.log(main(Bun.argv.slice(2)).join("\n"));
+  } catch (error) {
+    console.error(`follow: ${errorMessage(error).replaceAll("\n", " ")}`);
+    runtimeProcess.exit(1);
+  }
 }

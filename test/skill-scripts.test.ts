@@ -6,7 +6,6 @@ import { gitText } from "#src/meta/git.ts";
 import { bundle } from "#skills/oracle-handover/scripts/bundle.ts";
 import { declarationLines, sanitised, sectionLines } from "#skills/oracle-handover/scripts/document.ts";
 import { groupsOf, parseSelector, pick, slice } from "#skills/oracle-handover/scripts/slice.ts";
-import { follow, hazards, targetOf } from "#skills/stack-pr/scripts/follow.ts";
 import { itself, pairLines } from "#skills/compare-systems/scripts/systems.ts";
 import { censusOf, newsOf } from "#skills/system-path-simulation/scripts/live-seat.ts";
 import {
@@ -18,6 +17,7 @@ import {
   republish,
 } from "#skills/stack-pr/scripts/republish.ts";
 import { offMain, told as stackTold } from "#skills/stack-pr/scripts/stack.ts";
+import { follow, hazards, targetOf } from "#tools/runtime/follow.ts";
 import { chains, firstStack, type Pull, stackHolding } from "#tools/runtime/pulls.ts";
 import {
   existsSync,

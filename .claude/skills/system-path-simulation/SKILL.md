@@ -1,6 +1,6 @@
 ---
 name: system-path-simulation
-description: "Test an uncertain Anabasis path before a real run walks it: read the record (a reader's one fact, a replay of every log, or a synthetic log in memory), rehearse (the real commands on a seed with scripted seats), or seat a model (a live Examiner session, round or Referee ruling from a seed, or rounds of paired seats that tune a prompt or term against one count), each runnable before and after a change, and trace what it finds to the owner that should be fixed, simplified or rewritten. Use to test a join, revisit a recorded position, size a comparison, check what a kill or stop leaves, simulate an open stack's changes before it lands, or tune the Examiner's prompt or terms (cases/optimize.md). Not for reading a finished run (whole-run-investigation) or starting a paid campaign (run-management)."
+description: "Test an uncertain Anabasis path before a real run walks it: read the record (a reader's one fact, a replay of every log, or a synthetic log in memory), rehearse (the real commands on a seed with scripted seats), or seat a model (a live Examiner session or round from a seed, or rounds of paired seats that tune a prompt or term against one count), each runnable before and after a change, and trace what it finds to the owner that should be fixed, simplified or rewritten. Use to test a join, revisit a recorded position, size a comparison, check what a kill or stop leaves, simulate an open stack's changes before it lands, or tune the Examiner's prompt or terms (cases/optimize.md). Not for reading a finished run (whole-run-investigation) or starting a paid campaign (run-management)."
 ---
 
 # System path simulation
@@ -116,7 +116,6 @@ size stated first: the seats, each seat's cap and minutes, and the total. Each s
 | An Examiner session | where it should start | `tools/d1b/examine.ts --session x-<n> --examiner <model> --examiner-effort <e> ...` | `live-seat.ts read`, `pairs` |
 | A round's solves alone | right after a recorded `build.finished` (`--events`) | the round again with that `--session` | its report |
 | A round or campaign stretch | before `build.started`, or at rest | the round or `harness-builder.ts`, every seat's model named | the log's readers |
-| One Referee ruling | right before it (`--events`) | `scripts/referee-seat.ts --solve <id> --reviewer <model>`, by absolute path | the ruling `start` prints |
 | One solve of a stored sweep | none | `bun tools/m0/live-solve.ts <pack flags> --task <id> --live` | its verdict |
 
 - **The env file is a path**, passed on and never opened, printed or copied.

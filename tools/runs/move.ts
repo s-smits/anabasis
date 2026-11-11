@@ -76,6 +76,7 @@ import { recordDegradations } from "./degradations.ts";
 import { continueRun, pause, said } from "./manage.ts";
 import { payerOf } from "./live.ts";
 import { roomToStart } from "./logins.ts";
+import { loginPresent } from "./placement.ts";
 import { preparedHost, publishedAt } from "./code.ts";
 import { lastLaunch } from "./receipt.ts";
 
@@ -128,10 +129,10 @@ function treeOf(end: End, name: string): string | undefined {
   return only;
 }
 
-/** Read kept flags through the local receipt owner before pausing or copying the campaign. */
-async function flagsAt(end: End, source: string, name: string): Promise<readonly string[] | null> {
+/** The last launch's receipt, read through the local receipt owner before anything is paused or copied. */
+async function launchAt(end: End, source: string, name: string) {
   const log = join(source, CAMPAIGNS, name, LOG_FILE);
-  if (end.host === undefined) return lastLaunch(log)?.flags ?? null;
+  if (end.host === undefined) return lastLaunch(log);
   const stage = join(tmpdir(), `ana-move-receipts-${crypto.randomUUID()}`);
   mkdirSync(stage);
   try {
@@ -141,7 +142,7 @@ async function flagsAt(end: End, source: string, name: string): Promise<readonly
       "--include=/launch-*.json",
       "--exclude=/*",
     );
-    return lastLaunch(join(stage, LOG_FILE))?.flags ?? null;
+    return lastLaunch(join(stage, LOG_FILE));
   } finally {
     rmSync(stage, { recursive: true, force: true });
   }
@@ -198,7 +199,8 @@ export async function move(args: readonly string[]): Promise<void> {
       `${tree} is there already on ${to.name}: the source remains at ${folder(source)} on ${from.name}; preserve ${folder(tree)} outside ${tree}, remove the destination with git -C ${quoted(to.repo)} worktree remove ${quoted(tree)} on ${to.name}, then retry; nothing was stopped or moved`,
     );
   }
-  const kept = given.length > 0 ? given : await flagsAt(from, source, name);
+  const launch = await launchAt(from, source, name);
+  const kept = given.length > 0 ? given : (launch?.flags ?? null);
   if (kept === null && !values.hold) {
     throw new Error(
       `${name} has no launch receipt at ${folder(source)}: supply campaign flags after -- or use --hold; nothing was stopped or moved`,
@@ -212,8 +214,14 @@ export async function move(args: readonly string[]): Promise<void> {
     console.log("nothing is done without --yes");
     return;
   }
-  // Counted before the pause too: the destination's caps must take the run, less the run itself.
-  await roomToStart(payerOf(values.login, flags), to.host?.name ?? "here", name);
+  // Counted before the pause, on the login `continue` goes on with, less the run itself.
+  const numbered = values.login ?? launch?.login;
+  await roomToStart(payerOf(numbered, flags), to.host?.name ?? "here", name);
+  // Asked before the pause too: `continue` refuses a login its host lacks, by then of a stopped run.
+  const asks = to.host !== undefined && numbered !== undefined && !values.hold;
+  if (asks && !(await loginPresent(to.host, numbered))) {
+    throw new Error(`login ${numbered} must be carried to ${to.name} first: nothing was stopped or moved`);
+  }
   // Prepare before the pause: a missing commit or failed install must leave the source running.
   const controller = to.host === undefined ? undefined : await preparedHost(to.host, commit);
   if (to.host === undefined) publishedAt(to.repo, commit);

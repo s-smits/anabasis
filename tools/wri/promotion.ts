@@ -412,7 +412,9 @@ export function promotionTriggers(log: Index): Trigger[] {
 
 /** `STEP CARRIERS` (lane 17): each step's untied tasks on the scores it is read on (`scoresIn`), and how many of its largest
  *  wins it could lose to a tie and still clear its level (`spareOf`, `clearance.ts`), with its retained tasks' tally where
- *  it lost more of them than it won. On 1 November the gate ablation's g-3 cleared at
+ *  it lost more of them than it won, and a clause where it tallied tasks of several families and won in one only: of the
+ *  49 starter reads on record on 11 November, 0 of the 6 after such a step confirmed its promotion, and 21 of the 33
+ *  after a step with under three in four of its wins in one family. On 1 November the gate ablation's g-3 cleared at
  *  6-0 with none to spare, and supply's g-2 lost its step without the 5 tasks priced in yen; lanes
  *  15, 23, 25 and 34 each found a part of that. */
 function carrierTrigger(log: Index): Trigger[] {
@@ -422,8 +424,13 @@ function carrierTrigger(log: Index): Trigger[] {
     const spare = spareOf(unbilled, count(last.level));
     const retained = testOf(scoresIn(last.retained));
     const lost = retained.losses > retained.wins ? `, its retained tasks ${wlt(retained)}` : "";
+    const won = Object.values(asRecord(last.families) ?? {})
+      .map((family) => asRecord(asRecord(family)?.frontier))
+      .filter((held) => count(held?.wins) + count(held?.losses) + count(held?.ties) > 0)
+      .map((held) => count(held?.wins));
+    const narrow = won.length > 1 && won.filter((wins) => wins > 0).length === 1;
     return [
-      `${session} won ${share(unbilled.filter((one) => one > 0).length, unbilled.filter((one) => one !== 0).length)} untied, ${spare === 0 ? "none" : String(spare)} to spare${lost}`,
+      `${session} won ${share(unbilled.filter((one) => one > 0).length, unbilled.filter((one) => one !== 0).length)} untied, ${spare === 0 ? "none" : String(spare)} to spare${lost}${narrow ? `, every win in one of its ${String(won.length)} families` : ""}`,
     ];
   });
   return lines.length > 0 ? [fired("STEP CARRIERS", lines.join("; "))] : [];

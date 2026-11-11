@@ -94,6 +94,7 @@ import {
   type Kept,
   keptAs,
   openCampaign,
+  PACK_OPTIONS,
   packNamed,
   stayAwake,
 } from "./campaign.ts";
@@ -163,11 +164,7 @@ export const COMPARISON_OPTIONS = {
  *  their defaults. `--target` is the size of the campaign's scored draw, which a session scores
  *  nothing of: it is the setting's, and the campaign's first command records it. */
 export const SESSION_OPTIONS = {
-  root: { type: "string" },
-  sweep: { type: "string" },
-  cycle: { type: "string" },
-  bundle: { type: "string" },
-  name: { type: "string" },
+  ...PACK_OPTIONS,
   session: { type: "string" },
   builder: { type: "string" },
   "builder-effort": { type: "string", default: "high" },

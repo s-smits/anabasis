@@ -91,6 +91,10 @@ afterAll(() => {
   for (const dir of scratches) rmSync(dir, { recursive: true, force: true });
 });
 
+/** `context` with the session's clock at its start: every tool result carries it, and two sessions
+ *  that read alike differ in it by the seconds each took. */
+const clockless = (context: string) => context.replaceAll(/\d+:\d\d of 10:00 used/g, "0:00 of 10:00 used");
+
 /** A scratch with the fixture harness as the parent, and a log in which v1 and v2 are released and
  *  v0 and v3 are held out. `endings` are what the practice solves end in, in order.
  *  With `tree`, the parent has an installed program. */
@@ -851,8 +855,8 @@ describe("a Builder session", () => {
         });
       }
       await session(s.request, s, s.walled);
-      // The practice result's text alone, since a context also carries the clock and durations.
-      return /"toolName":"practice","content":(.*?),"details"/.exec(s.sent[2] ?? "")?.[1] ?? "";
+      // The practice result's text alone, since a context also carries durations.
+      return clockless(/"toolName":"practice","content":(.*?),"details"/.exec(s.sent[2] ?? "")?.[1] ?? "");
     };
     expect(await told([["v1", 12]])).toContain("An answer on record that no harness gave measures 12.");
     // v3 is held out: its author's measure, whatever it is, changes nothing the Builder reads.
@@ -1376,14 +1380,13 @@ describe("what crosses to the Builder", () => {
           ]
         : [],
     );
-    return (
+    return clockless(
       [...s.sent, ...files.toSorted()]
         .join("\n")
         .replaceAll(s.scratch, "<scratch>")
         .replaceAll(/"(timestamp|durationMs)":\d+/g, '"$1":0')
         // The scripted provider names itself and each of its calls anew in every set-up.
-        .replaceAll(/(faux|tool):\d+:\w+/g, "$1")
-        .replaceAll(/\d+:\d\d of 10:00 used/g, "0:00 of 10:00 used")
+        .replaceAll(/(faux|tool):\d+:\w+/g, "$1"),
     );
   }
 

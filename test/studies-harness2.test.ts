@@ -343,6 +343,7 @@ describe("a harness written out for Claude Code", () => {
     expect(guide).toContain("doubled. They are not available here");
     expect(guide).toContain("`scripts/toolchain/bin`, and nothing puts them on your PATH");
     expect(guide).not.toContain("export PATH");
+    expect(guide).toMatch(/written for that runner's files .* find none of them here/u);
     expect(readFileSync(join(into, "scripts", "toolchain", "bin", "mark"), "utf8")).toContain("echo marked");
     expect(parseJsonAs<{ harness: string }>(readFileSync(join(into, "export.json"), "utf8")).harness).toBe(
       made.child,
@@ -357,6 +358,8 @@ describe("a harness written out for Claude Code", () => {
     expect(guide.startsWith("# How this harness reaches you")).toBe(true);
     expect(guide).not.toContain("not available here");
     expect(guide).not.toContain("scripts/toolchain");
+    expect(guide).toMatch(/limit on turns or time, .* does not hold here/u);
+    expect(guide).not.toContain("find none of them here");
     expect(existsSync(join(into, "scripts"))).toBe(false);
     await expect(exportForClaudeCode(into, "starter")).rejects.toThrow(/there already/u);
   });

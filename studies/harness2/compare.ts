@@ -10,8 +10,9 @@
  *     [--judge-log <shim.jsonl>] [--dry-run] --yes
  *   bun studies/harness2/compare.ts read --out <dir> --id <id> [--unblind]
  *   bun studies/harness2/compare.ts rejudge --out <dir> --jb <checkout> --api-base <url> --of <label>
- *     --of <label> --times <n> [--tasks <list>] [--split] [--judge-log <shim.jsonl>] --salt <text> --yes
- *   bun studies/harness2/compare.ts agree --out <dir> --of <label> --of <label> --times <n>
+ *     --of <label> --times <n> [--tasks <list>] [--split] [--cap <chars>] [--judge-log <shim.jsonl>]
+ *     --salt <text> --yes
+ *   bun studies/harness2/compare.ts agree --out <dir> --of <label> --of <label> --times <n> [--cap <chars>]
  *   bun studies/harness2/compare.ts derive --from <tree> --guide <file> --into <dir>
  *
  * An arm is what `score.ts` takes as `--arm`. `read`, `agree` and `derive` start nothing and call no
@@ -39,7 +40,10 @@
  *   solves block by block in an order that follows from the salt.
  * - Nothing said how much of the gap was the judge's. `rejudge` judges the existing deliverables
  *   again without a rollout, all their rubrics or only those two sides split, and `agree` reads what
- *   moved. That costs tens of dollars where new rollouts cost thousands.
+ *   moved. That costs tens of dollars where new rollouts cost thousands. With `--cap` it judges them
+ *   under a wider cut than judge.py's 200,000 characters a file, under names of their own that `agree
+ *   --cap` reads, so the gap between the two readings says how much of a score the cut decides. The
+ *   official score keeps judge.py's cut; the wider one is a second reading beside it, for every arm alike.
  *
  * Sides carry neutral labels (`x<hash>r<n>`), held apart from what they stand for in `key.json`, so a
  * session reads a result before it knows which arm led. A judge's prompt never holds the label, so
@@ -48,8 +52,7 @@
  * another guide) as a copy beside the store: it edits no kept harness, and a solver running under a
  * changed guide still takes the operator's word (`AGENTS.md`, section 3).
  *
- * Not here: a judge reading a file past its own cap, since that would no longer be the benchmark's
- * judge, and any model call in the tests, as with the rest of this study.
+ * Not here: any model call in the tests, as with the rest of this study.
  */
 import { sha256 } from "#src/meta/digest.ts";
 import {
@@ -66,7 +69,7 @@ import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { armOf, bothWays, type Graded, levelLines } from "./levels.ts";
-import { hasOneBefore, keyOf, PILOT_TASKS, score, tasksOf, type Values } from "./score.ts";
+import { capOf, hasOneBefore, keyOf, PILOT_TASKS, score, tasksOf, type Values } from "./score.ts";
 
 const OPTIONS = {
   out: { type: "string" },
@@ -82,6 +85,7 @@ const OPTIONS = {
   repeats: { type: "string" },
   times: { type: "string" },
   split: { type: "boolean" },
+  cap: { type: "string" },
   unblind: { type: "boolean" },
   from: { type: "string" },
   guide: { type: "string" },
@@ -376,7 +380,14 @@ export function splitRubrics(dataset: string, a: string, b: string): Map<string,
   return split;
 }
 
-const againOf = (label: string, time: number): string => `${label}-j${String(time)}`;
+/** `--cap` as a judging's name carries it, refused where `score` would refuse it, before anything is copied. */
+const capName = (values: Options): string | undefined => {
+  const cap = capOf(isString(values.cap) ? values.cap : undefined);
+  return cap === undefined ? undefined : String(cap);
+};
+/** A further judging's name; one under a wider cut names the cut, so it never stands for one under judge.py's. */
+const againOf = (label: string, time: number, cap: string | undefined): string =>
+  cap === undefined ? `${label}-j${String(time)}` : `${label}-c${cap}-j${String(time)}`;
 const indexFile = (out: string, name: string, task: string): string =>
   join(out, "rejudged", name, `${keyOf(task)}.json`);
 
@@ -392,10 +403,11 @@ export function prepareAgain(place: {
   time: number;
   task: string;
   indexes: readonly number[] | null;
+  cap?: string;
 }): string {
-  const { out, jb, label, time, task, indexes } = place;
+  const { out, jb, label, time, task, indexes, cap } = place;
   const dataset = join(out, "dataset");
-  const name = againOf(label, time);
+  const name = againOf(label, time, cap);
   const from = join(dataset, task, "model_output", `${label}__${keyOf(task)}`);
   const to = join(dataset, task, "model_output", `${name}__${keyOf(task)}`);
   if (!existsSync(from)) throw new Error(`${from} is missing: there is no deliverable to judge again`);
@@ -413,10 +425,15 @@ export function prepareAgain(place: {
 }
 
 /** Each rubric judged again, beside its first judging, and what the two labels' gap read each time. */
-export function agreeLines(out: string, labels: readonly [string, string], times: number): string[] {
+export function agreeLines(
+  out: string,
+  labels: readonly [string, string],
+  times: number,
+  cap?: string,
+): string[] {
   const dataset = join(out, "dataset");
   const judged = (label: string, time: number): Map<string, Map<number, number>> => {
-    const name = againOf(label, time);
+    const name = againOf(label, time, cap);
     const scores = new Map<string, Map<number, number>>();
     for (const [task, graded] of armOf(dataset, name)) {
       const mapped: JsonValue = capturedJsonParse(readFileSync(indexFile(out, name, task), "utf8"));
@@ -556,6 +573,7 @@ async function rejudge(values: Options): Promise<void> {
   );
   if (values.yes !== true) throw new Error("judging again is paid; --yes is the operator's word");
   const base = paidWith(values);
+  const cap = capName(values);
   for (const { label, task, time } of inHashOrder(
     jobs,
     (job) => `${salt}\n${job.label}\n${job.task}\n${String(job.time)}`,
@@ -567,8 +585,16 @@ async function rejudge(values: Options): Promise<void> {
       time,
       task,
       indexes: split?.get(task) ?? null,
+      ...keyIfDefined("cap", cap),
     });
-    await score({ ...base, arm: `again:${label}`, name: againOf(label, time), tasks: task, rubrics });
+    await score({
+      ...base,
+      arm: `again:${label}`,
+      name: againOf(label, time, cap),
+      tasks: task,
+      rubrics,
+      ...keyIfDefined("cap", cap),
+    });
   }
 }
 
@@ -615,8 +641,11 @@ async function main(args: readonly string[]): Promise<void> {
     await rejudge(values);
   } else if (verb === "agree") {
     const [a = "", b = ""] = values.of ?? [];
+    const cap = capName(values);
     console.log(
-      agreeLines(resolve(named(values, "out")), [a, b], whole(named(values, "times"), "times")).join("\n"),
+      agreeLines(resolve(named(values, "out")), [a, b], whole(named(values, "times"), "times"), cap).join(
+        "\n",
+      ),
     );
   } else if (verb === "derive") {
     deriveTree(

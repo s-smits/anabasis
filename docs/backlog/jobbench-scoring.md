@@ -97,6 +97,8 @@ JobBench (`studies/harness2/README.md`, "Read every result against how uneven th
     2 to 6 of that task's 9 rubrics in each of the 13 judged, 5 or 6 in 11 of them; the memo of
     `statisticians/task1` passes it in 6 of 13 (202,000 to 468,000); on `statisticians/task2` and
     `task3` only source data an arm copied beside its answer passes it, but for one report workbook.
+    A wider cut is read apart, on stored deliverables and for every arm alike, with `compare.ts
+    rejudge ... --cap <chars>` and `agree ... --cap <chars>`; the official score keeps judge.py's.
 17. **Benchmark 20 tasks, 31% of the 65, in the professions closest to the prompt.** The three
     professions the prompt names hold 8 tasks. The other 12 come from the highest ranked professions
     of two tasks or more, whole, with two sides an arm (`studies/harness2/compare.ts plan --tasks ...

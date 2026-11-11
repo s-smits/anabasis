@@ -402,7 +402,8 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
    rollout costs 9 to 11 dollars with its judging, most of it the judge (124 dollars for 11 on
    5 November 2026, about 85 for 9 on 9 November). Where no judge noise is on record,
    `compare.ts rejudge` and `agree` read it from the existing deliverables for tens of dollars, and
-   come before any new arm (the backlog's item 15).
+   come before any new arm (the backlog's item 15); a reading under a wider cut than the judge's
+   (`rejudge --cap`) is judged apart, on the operator's word, and never replaces the official score.
 5. **Read** with one `score.ts table --out <store> --tasks <list>` for each part, since the table
    sums an arm only where it holds every task named and counts every task but a profession's first
    as fair, and report its `fair uncut` block beside the fair one. A session that a login's limit or the provider cut is refused: it stays unjudged, and

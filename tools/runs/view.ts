@@ -39,6 +39,7 @@ import { PRACTICE } from "../d2/prepare.ts";
 import { COMPARISON_OPTIONS } from "../d2/round.ts";
 import { logEvents, Misused, processes } from "./registry.ts";
 import { readAcross } from "./snapshots.ts";
+import { dollars } from "./said.ts";
 import { lastLaunch } from "./receipt.ts";
 import { runReason, runState } from "./state.ts";
 
@@ -60,7 +61,6 @@ const STANDINGS = [
   ["failing-again", "failing again"],
 ] as const;
 
-const dollars = (billed: number) => `$${billed.toFixed(2)}`;
 const row = (id: string, said: string) => `  ${id.padEnd(11)} ${said}`;
 
 /** How a session stands, said for its line: its ending; or cut, where the campaign went past it;

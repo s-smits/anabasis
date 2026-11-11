@@ -487,7 +487,7 @@ describe("named snapshot readers", () => {
     );
     expect({ code: audit.code, err: audit.err }).toEqual({ code: 0, err: "" });
     const tuning = made.run(
-      'import { campaignLogs } from "REPOSITORY/.claude/skills/promotion-tuner/scripts/tree.ts"; console.log(await campaignLogs(null, ["distant"], "2000"));',
+      'import { campaignLogs } from "REPOSITORY/.claude/skills/main/logs.ts"; console.log(await campaignLogs(null, ["distant"], "2000"));',
       remote.env,
     );
     expect(tuning.code).toBe(0);

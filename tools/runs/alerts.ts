@@ -17,13 +17,13 @@
  * a run leaves the state only once a host that answered no longer holds it. A first look, or one
  * after a state file that cannot be read, records the present and fires on no history.
  */
+import { type Static, Type } from "typebox";
 import { existsSync, readFileSync, statSync } from "#src/meta/filesystem.ts";
-import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
-import { asRecord, isBoolean, isNumber, isString } from "#src/meta/json-shape.ts";
+import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
-import { asked } from "./hosts.ts";
+import { asked, answerOf } from "./hosts.ts";
 import { keeperActed } from "./keep.ts";
 import { keepsItself } from "./manage.ts";
 import { type RunState, runState } from "./state.ts";
@@ -69,25 +69,44 @@ interface Answer {
   readonly said: HostRows | null;
 }
 
-/** What the last look saw of one run. */
-interface Seen {
-  readonly host: string;
-  readonly promotions: number;
-  /** The starter comparisons read so far, by id. */
-  readonly reads: readonly string[];
-  readonly ending: string | null;
-  readonly gap: string | null;
-  readonly quiet: boolean;
-  readonly kept: number;
-}
-
-export interface AlertState {
-  readonly down: readonly string[];
-  readonly runs: Readonly<Record<string, Seen>>;
-}
-
 /** The file's last look, where no `--state` names another. */
 const STATE = join(".ana", "runs-alerts.json");
+const MAYBE_TEXT = Type.Union([Type.String(), Type.Null()]);
+/** What the last look saw of one run; `reads` are the starter comparisons read so far, by id. */
+const SEEN = Type.Object({
+  host: Type.String(),
+  promotions: Type.Number(),
+  reads: Type.Array(Type.String()),
+  ending: MAYBE_TEXT,
+  gap: MAYBE_TEXT,
+  quiet: Type.Boolean(),
+  kept: Type.Number(),
+});
+type Seen = Static<typeof SEEN>;
+/** The state file: the hosts the last look heard nothing from, and what it saw of each run. */
+const ALERT_STATE = Type.Object({ down: Type.Array(Type.String()), runs: Type.Record(Type.String(), SEEN) });
+export type AlertState = Static<typeof ALERT_STATE>;
+
+/** A host's answer to `alerts --rows`, checked for the parts a peer on an older tree lacks, such as
+ *  `state`, so that such a peer reads as a host down. The rest of a row is this tree's own `Row`. */
+const HOST_ROWS = Type.Object({
+  rows: Type.Array(
+    Type.Unsafe<Row>(
+      Type.Object({
+        name: Type.String(),
+        state: Type.Object({ kind: Type.String() }),
+        kept: Type.Array(Type.Unknown()),
+        promotions: Type.Array(
+          Type.Object({
+            digest: Type.String(),
+            read: Type.Union([Type.Null(), Type.Object({ session: Type.String(), tally: Type.Object({}) })]),
+          }),
+        ),
+      }),
+    ),
+  ),
+  held: Type.Array(Type.String()),
+});
 
 /** The row of `run`, whose log is read at `now` among the processes `running`. */
 function rowOf(run: Run, running: readonly Running[], now: number): Row {
@@ -121,38 +140,6 @@ function rowsHere(now: number): HostRows {
     return onAlerts(run, writing, now - statSync(run.path).mtimeMs) ? [rowOf(run, running, now)] : [];
   });
   return { rows, held: held.map(({ name }) => name) };
-}
-
-/** Whether `value` is a promotion as this tree reads one (`Promotion`). */
-function readsPromotion(value: unknown): boolean {
-  const promotion = asRecord(value);
-  const read = asRecord(promotion?.read);
-  const readable = promotion?.read === null || (isString(read?.session) && asRecord(read?.tally) !== null);
-  return isString(promotion?.digest) && readable;
-}
-
-/** Whether `value` is a row as this tree reads one (`Row`). */
-function readsRow(value: unknown): boolean {
-  const row = asRecord(value);
-  return (
-    isString(row?.name) &&
-    isString(asRecord(row?.state)?.kind) &&
-    Array.isArray(row?.kept) &&
-    Array.isArray(row?.promotions) &&
-    row.promotions.every(readsPromotion)
-  );
-}
-
-/** A host's answer, or null for one that gave none a look can read: a peer on an older tree sends
- *  rows that lack a part, such as `state`, and reads as a host down. */
-function answerOf(lines: readonly string[] | null): HostRows | null {
-  if (lines === null) return null;
-  try {
-    const answer = parseJsonAs<HostRows>(lines.join("\n"));
-    return answer.rows.every(readsRow) && Array.isArray(answer.held) ? answer : null;
-  } catch {
-    return null;
-  }
 }
 
 /** Whether a process writes the run's log: a state written on carries whether a keeper lives beside it. */
@@ -262,36 +249,12 @@ export function alertsOf(
   return { lines, next: { down, runs: next } };
 }
 
-/** Whether `value` is a state the fold can read, every run in it included. */
-function wellFormed(value: unknown): value is AlertState {
-  const state = asRecord(value);
-  const seen = asRecord(state?.runs);
-  if (seen === null || !Array.isArray(state?.down)) return false;
-  return Object.values(seen).every((entry) => {
-    const run = asRecord(entry);
-    return (
-      run !== null &&
-      isString(run.host) &&
-      isNumber(run.promotions) &&
-      Array.isArray(run.reads) &&
-      (run.ending === null || isString(run.ending)) &&
-      (run.gap === null || isString(run.gap)) &&
-      isBoolean(run.quiet) &&
-      isNumber(run.kept)
-    );
-  });
-}
-
-/** The state file's last look, null where there is none or it could not be read, which `torn` says. */
+/** The state file's last look, null where there is none or it could not be read, which `torn` says:
+ *  a torn file and JSON of the wrong form read alike. */
 function lastLook(path: string): { before: AlertState | null; torn: boolean } {
   if (!existsSync(path)) return { before: null, torn: false };
-  try {
-    const before = capturedJsonParse(readFileSync(path, "utf8"));
-    if (wellFormed(before)) return { before, torn: false };
-  } catch {
-    // A torn file is no JSON; it falls through to the same answer as JSON of the wrong form.
-  }
-  return { before: null, torn: true };
+  const before = answerOf(ALERT_STATE, [readFileSync(path, "utf8")]);
+  return { before, torn: before === null };
 }
 
 /** What this machine and every host `ANA_HOSTS` lists answer one look. */
@@ -299,7 +262,10 @@ async function looked(): Promise<Answer[]> {
   const away = await asked(["alerts", "--rows"]);
   return [
     { host: HERE, said: rowsHere(Date.now()) },
-    ...away.map(({ host, lines: said }) => ({ host: host.name, said: answerOf(said) })),
+    ...away.map(({ host, lines }) => ({
+      host: host.name,
+      said: answerOf(HOST_ROWS, lines),
+    })),
   ];
 }
 

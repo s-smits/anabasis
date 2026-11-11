@@ -403,6 +403,12 @@ describe("campaign snapshots", () => {
     ]) {
       expect(made.run(sync, extra).code).toBe(1);
     }
+    // A host that answers with an entry this tree cannot read refuses the read, as an unsafe path does.
+    const misshapen = made.run(sync, {
+      FAKE_CATALOGUE: JSON.stringify([{ name: "distant", path: remote.log, open: "yes" }]),
+    });
+    expect(misshapen.code).toBe(1);
+    expect(misshapen.err).toContain("runner: invalid campaign catalogue");
     const silent = made.run(sync, { FAKE_OFFLINE: "1" });
     expect(silent.code).toBe(0);
     expect(silent.err).toContain("runner: no campaign catalogue");

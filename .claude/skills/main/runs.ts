@@ -47,6 +47,7 @@ import { campaignOf } from "#src/campaign/handover.ts";
 import type { Tally } from "#src/kernel/compare.ts";
 import { type EventKind, type LogEvent, read } from "#src/kernel/log.ts";
 import { billedBetween } from "#src/kernel/meter.ts";
+import { HOUR_MS } from "#src/meta/clock.ts";
 import { gitMaybe } from "#src/meta/git.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { relative, sep } from "#src/meta/path.ts";
@@ -62,7 +63,6 @@ import { MISSING } from "./print.ts";
 /** The tool calls of solves and sessions, which no fold here reads; `draft.call` is read for what a
  *  drafting session cut short had metered (`unfinished`, `src/kernel/trace.ts`). */
 const CALLS: ReadonlySet<EventKind> = new Set(["solve.call", "exam.call", "build.call", "referee.call"]);
-const HOUR_MS = 3_600_000;
 /** A run whose log has been quiet for longer than this, or whose last event is an ending, is not
  *  live. A run sitting out a provider's reset longer than this reads as finished with no ending. */
 export const LIVE_MS = 2 * HOUR_MS;

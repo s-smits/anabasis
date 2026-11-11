@@ -530,8 +530,8 @@ tasks together.
 
 A timer wakes a model for a judgement. Whether anything is due is a condition, and code reads it
 with no model: the anti-stall hook's pulse and `runs alerts` (a local job runs it) report each
-report, promotion, starter read, ending and stall as it lands, `runs watch` ends when a named run
-owes a step, a subagent's ending wakes its session, and `wri2p2.ts due` prints each step owed with the hours it has stood. So no timer polls a
+report, promotion, starter read, ending and stall as it lands, a subagent's ending wakes its
+session, and `wri2p2.ts due` prints each step owed with the hours it has stood. So no timer polls a
 run or a folder, and none repeats a fact one of these reports. Keep each timer with its id, schedule
 and authority in `cycle.md`; [references/timers.md](references/timers.md) holds each timer's map and
 what its prompt carries.
@@ -559,7 +559,7 @@ judgement.
 | Timer | When | It wakes the session to |
 | --- | --- | --- |
 | none: the pulse and the alerts | as an event lands; the pulse every 290 s through the hook, or where a session has none, one Monitor on `bun run runs pulse --every 290 --state <file>` | read that milestone and follow the protocol: a triggered run starts an iteration, a freed slot goes as the iteration's step 5 says |
-| none: a watch | as a named run owes a step; one `bun run runs watch <name>[,<name>...]` (run-management) in the background, whose ending wakes the session | take the loop's step for that run, then watch the runs it has not read |
+| none: the alerts log | as a run owes a step; one `Monitor` on the log the alerts job writes (`tail -n 0 -F`, run-management), re-armed when it expires | take the loop's step for that run |
 | driver | recurring, every two hours, with its ten-minute chain while steps are owed | the protocol, for a step no event announces |
 | milestone | one-shot at a predicted event or deadline | that milestone or row |
 | open decisions | recurring, every four hours | decide the routine doubts, each with what would overturn it, and list for the operator those section 3 reserves |
@@ -570,8 +570,9 @@ At a handover the timers are counted with `timers.ts` instead of asked
 ([references/timers.md](references/timers.md), "Reading the timers"), and the loop's own measures
 are recorded as [references/cycle-ledger.md](references/cycle-ledger.md) lays them out.
 
-The pulse says every event of a run and `runs watch` only the steps a run owes, so a session whose
-hook is paused keeps one watch in the background and wakes at a step alone. A `Monitor` expires
+The pulse says every event of a run and the alerts log each step a run owes, so a session whose
+hook is paused follows that log with one `Monitor`, or the pulse with `--every` where no local job
+writes the log, and wakes at a step alone. A `Monitor` expires
 within half an hour and each re-arm is a model turn, so it serves a bounded wait.
 A `CronCreate` timer lives only in its session, fires only while it is idle, and expires after seven
 days if recurring, so each prompt stands alone after compaction, carrying what

@@ -4,14 +4,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "../src/meta/file
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { join } from "../src/meta/path.ts";
-import {
-  type AlertState,
-  alertsOf,
-  type HostRows,
-  onAlerts,
-  type Row,
-  watchOf,
-} from "../tools/runs/alerts.ts";
+import { type AlertState, alertsOf, type HostRows, onAlerts, type Row } from "../tools/runs/alerts.ts";
 import type { RunState } from "../tools/runs/state.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
@@ -304,77 +297,6 @@ describe("the fold of one look", () => {
   });
 });
 
-describe("the fold of a watch", () => {
-  /** A watch of `names` that looked at `rows` and found nothing owed. */
-  const waiting = (names: readonly string[], ...rows: Row[]): AlertState => {
-    const first = watchOf(names, null, here(...rows));
-    expect([first.lines, first.absent]).toEqual([[], []]);
-    return first.next;
-  };
-
-  it("waits through a first promotion and its starter read, and ends at the second promotion", () => {
-    const start = waiting(["r"], row());
-    const one = watchOf(["r"], start, here(row({ promotions: [unread("aaaa")] })));
-    expect(one.lines).toEqual([]);
-    const read1 = watchOf(["r"], one.next, here(row({ promotions: [read("aaaa", "g-2")] })));
-    expect(read1.lines).toEqual([]);
-    const two = watchOf(["r"], read1.next, here(row({ promotions: [read("aaaa", "g-2"), unread("bbbb")] })));
-    expect(two.lines).toHaveLength(1);
-    expect(two.lines[0]).toStartWith("r (here): promotion 2, harness bbbb");
-  });
-
-  it("ends on the named runs only, whatever another run does at the same look", () => {
-    const other = row({ name: "r-2" });
-    const start = waiting(["r"], row(), other);
-    const elsewhere = watchOf(
-      ["r"],
-      start,
-      here(row(), { ...other, promotions: [unread("aaaa"), unread("bbbb")], state: ENDED }),
-    );
-    expect(elsewhere.lines).toEqual([]);
-    // Named beside it, the same look ends the watch with that run's lines and none of the other's.
-    const both = watchOf(
-      ["r", "r-2"],
-      start,
-      here(row({ promotions: [unread("aaaa")] }), { ...other, state: ENDED }),
-    );
-    expect(both.lines).toEqual(["r-2 (here): ended budget"]);
-  });
-
-  it("ends on an ending, a missing process, a quiet log and a run that left the registry", () => {
-    const start = waiting(["r"], row());
-    const ends = (state: RunState) => watchOf(["r"], start, here(row({ state }))).lines;
-    expect(ends(ENDED)).toEqual(["r (here): ended budget"]);
-    expect(ends(STOPPED)).toEqual(["r (here): no writer process and no keeper"]);
-    expect(ends({ kind: "quiet", kept: true, since: 0 })[0]).toStartWith("r (here): quiet:");
-    expect(watchOf(["r"], start, here()).lines).toEqual(["r (here): left the registry with no ending seen"]);
-    // The nearest hostile case: the same standing a second look running, which owes nothing new.
-    const stopped = watchOf(["r"], start, here(row({ state: STOPPED })));
-    expect(watchOf(["r"], stopped.next, here(row({ state: STOPPED }))).lines).toEqual([]);
-  });
-
-  it("ends at its first look on a run that already stands at a step, and names a run no host holds", () => {
-    const late = watchOf(["r"], null, here(row({ promotions: [read("aaaa", "g-2"), unread("bbbb")] })));
-    expect(late.lines).toEqual(["r (here): first seen with 2 promotions, the last bbbb"]);
-    expect(watchOf(["r"], null, here(row({ state: ENDED }))).lines).toEqual(["r (here): ended budget"]);
-    const one = watchOf(["r", "nope"], null, here(row({ promotions: [unread("aaaa")] })));
-    expect([one.lines, one.absent]).toEqual([[], ["nope"]]);
-    expect(watchOf(["nope"], one.next, here(row())).absent).toEqual([]);
-  });
-
-  it("keeps waiting on a run whose host gives no answer, and ends when it answers with a step", () => {
-    const peer = (said: HostRows | null) => [
-      { host: "here", said: heldAs([]) },
-      { host: "peer", said },
-    ];
-    const start = watchOf(["r"], null, peer(heldAs([row()]))).next;
-    const down = watchOf(["r"], start, peer(null));
-    expect(down.lines).toEqual([]);
-    const back = watchOf(["r"], down.next, peer(heldAs([row({ state: ENDED })])));
-    expect(back.lines).toEqual(["r (peer): ended budget"]);
-  });
-});
-
 describe("the verb over real logs", () => {
   /** A fixture host with one campaign's log, read by the real CLI under `extra`. */
   function host(extra: Record<string, string> = { ANA_HOSTS: "[]" }) {
@@ -551,27 +473,5 @@ describe("the verb over real logs", () => {
     expect(answer.held).toEqual(["the-run"]);
     expect(answer.rows[0]?.promotions[0]?.digest).toBe("abcd1234");
     expect(() => readFileSync(state, "utf8")).toThrow();
-  });
-
-  it("watches a named run until it owes a step, exits 0 with its lines and writes no state", () => {
-    const { made, event, state } = host();
-    const watch = (...args: string[]) => made.runScript(CLI, ["watch", ...args], { ANA_HOSTS: "[]" });
-    // The fixture's log has no writer, which is a step owed at the first look.
-    const gap = watch("the-run");
-    expect(gap.code).toBe(0);
-    expect(gap.out).toStartWith("the-run (here): no writer process");
-    event("campaign.ended", { ending: "budget" });
-    const ended = watch("the-run,the-run");
-    expect([ended.code, ended.out]).toEqual([0, "the-run (here): ended budget\n"]);
-    expect(() => readFileSync(state, "utf8")).toThrow();
-    // Refused before any wait: a name no host holds, no name, and an interval that is no number.
-    const unknown = watch("the-run,nope");
-    expect(unknown.code).not.toBe(0);
-    expect(unknown.err).toContain("named nope");
-    for (const args of [[], ["the-run", "--every", "soon"], ["the-run", "other"]]) {
-      const refused = watch(...args);
-      expect(refused.code).not.toBe(0);
-      expect(refused.err).toContain("usage: bun run runs watch");
-    }
   });
 });

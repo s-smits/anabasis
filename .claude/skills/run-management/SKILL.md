@@ -39,7 +39,6 @@ campaign; `copy <name> --to <worktree>` brings one back.
 | `on <host> <verb ...>`, `hosts [--all] [--health]` | a verb on another host; each host's status or health | `hosts.ts` |
 | `pulse [<part> ...] [--every 290] [--state <file>] [--no-readers]` | what each run gained since the last look | `pulse.ts` |
 | `alerts [--state <file>]` | the same for cron, one line per new event | `alerts.ts` |
-| `watch <name>[,<name>...] [--every 600]` | waits until a named run owes a step, says it and ends | `alerts.ts` |
 | `view <name>` | one campaign as its log reads, and the table's next move | `view.ts` |
 | `source <name> [--holds <c>]...` | each launch's commit and tree, and whether it holds a fix | `receipt.ts` |
 | `zip`, `replay`, `seed`, `rehearse` | handover, readers over every log, a seed, a rehearsal | zip-run, system-path-simulation |
@@ -286,13 +285,10 @@ when they turn, not at every look.
 keeper move, missing process, ending or stall, nothing otherwise, and exit 0. It prints the `runs
 pause` command once two promotions are read against the starter, and never runs it.
 
-`bun run runs watch <name>[,<name>...]` is that look repeated in one process, for a session that
-waits on a few runs. It ends with the run's lines and exit 0 at the first look where a named run
-owes a step: its second promotion, an ending, a missing process, a stall, or leaving the
-registry. A run that already stands at one of these ends it at the first look, so a watch set
-again names only the runs not yet read, and a name no answering host holds is refused. It keeps
-its looks in memory, so it shares nothing with the cron's state, and it pauses and stops nothing.
-Run in the background its ending wakes the session, and a command joined by `&&` runs at the step.
+A session that waits on a few runs follows the log the local job writes these lines to with one
+`Monitor` (`tail -n 0 -F`), re-armed when it expires, and so wakes at each step a run owes. On a
+machine where no job writes that log, one `Monitor` on `bun run runs pulse --every 290 --state
+<file>` serves instead. Neither pauses or stops anything.
 
 Each look also says, under each moment among a run's new events (the contract's freeze, a
 comparison's start, a report, a promotion, an Examiner's or Builder's end, a campaign's opening or

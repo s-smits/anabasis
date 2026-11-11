@@ -87,6 +87,7 @@ import {
   HERE,
   isCampaign,
   logEvents,
+  Misused,
   openComparisons,
   processes,
   type Run,
@@ -657,6 +658,11 @@ export async function watch(args: readonly string[]): Promise<void> {
       "no-readers": { type: "boolean", default: false },
     },
   });
+  // A wait that is not a number above 0 is none, and the loop would look as fast as it could.
+  const every = values.every === undefined ? null : Number(values.every);
+  if (every !== null && !(every > 0)) {
+    throw new Misused(`--every takes a number of seconds above 0, not ${String(values.every)}`);
+  }
   const cwd = runtimeProcess.cwd();
   const readers = !values["no-readers"];
   const store = readers ? storeOf(cwd) : null;
@@ -704,9 +710,9 @@ export async function watch(args: readonly string[]): Promise<void> {
     if (away.length > 0) remember(state, capturedJsonStringify({ ...here.memory, ...peers }));
     // A host still preparing holds this process for up to five minutes, and the hook's limit is 40 s;
     // the exit carries the code this look set.
-    if (values.every === undefined && unanswered) runtimeProcess.exit();
-    if (values.every === undefined) break;
-    await Bun.sleep(Number(values.every) * 1000);
+    if (every === null && unanswered) runtimeProcess.exit();
+    if (every === null) break;
+    await Bun.sleep(every * 1000);
   }
 }
 

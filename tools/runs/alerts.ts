@@ -41,6 +41,7 @@ import {
   isCampaign,
   keptFile,
   logEvents,
+  Misused,
   processes,
   type Run,
   runs,
@@ -374,7 +375,7 @@ export async function watchRuns(args: readonly string[]): Promise<void> {
   const names = (positionals[0] ?? "").split(",").filter((name) => name !== "");
   const everyMs = Number(values.every) * 1000;
   if (names.length === 0 || positionals.length > 1 || !(everyMs > 0)) {
-    throw new Error("usage: bun run runs watch <name>[,<name>...] [--every <seconds>]");
+    throw new Misused();
   }
   let before: AlertState | null = null;
   for (;;) {

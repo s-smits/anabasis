@@ -13,6 +13,7 @@ import { join } from "../src/meta/path.ts";
 import { move } from "../tools/runs/move.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 import { writeReceipt } from "../tools/runs/receipt.ts";
+import { Misused } from "../tools/runs/registry.ts";
 
 const roots: string[] = [];
 afterAll(() => {
@@ -217,7 +218,7 @@ describe("recovering interrupted moves", () => {
   it("refuses a move to where the campaign is, asking no host", async () => {
     const own = hostname().split(".")[0] ?? "";
     for (const flags of [["--to", "here"], ["--to", own], ["--from", own, "--to", "here"], []]) {
-      await expect(move(["c", ...flags])).rejects.toThrow(/usage:/);
+      await expect(move(["c", ...flags])).rejects.toBeInstanceOf(Misused);
     }
   });
 });

@@ -36,7 +36,7 @@ import { resolve } from "#src/meta/path.ts";
 import { plural } from "#src/meta/text.ts";
 import { PRACTICE } from "../d2/prepare.ts";
 import { COMPARISON_OPTIONS } from "../d2/round.ts";
-import { logEvents, processes } from "./registry.ts";
+import { logEvents, Misused, processes } from "./registry.ts";
 import { readAcross } from "./snapshots.ts";
 import { lastLaunch } from "./receipt.ts";
 import { runReason, runState } from "./state.ts";
@@ -196,9 +196,7 @@ export async function view(args: readonly string[]): Promise<void> {
   });
   const [name] = positionals;
   if (name === undefined) {
-    throw new Error(
-      'usage: bun run runs view <name> [--level N] [--target N] [--practice N] [--past-stop "<why>"]',
-    );
+    throw new Misused();
   }
   const run = await readAcross(name);
   const reader = gitText(resolve(import.meta.dir, "../.."), "rev-parse", "--short=9", "HEAD");

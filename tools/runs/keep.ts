@@ -1,7 +1,7 @@
 /**
  * Keep a campaign going until it ends on its own terms.
  *
- *   bun --env-file=<file> run runs keep <name> [--logins 2,3,4] [--wait-hours 0.25] [--yes]
+ *   bun --env-file=<file> run runs keep <name> [--logins 2,3,4] [--wait-hours 0.25] [--yes | --here]
  *
  * `launch`, `continue` and so `fresh` and `move` leave a run on a numbered login its keeper by
  * themselves (`keepsItself`, `manage.ts`); this verb attaches one to a run already live, or to a run
@@ -30,7 +30,8 @@
  * provider answered (`turnsIn`) is left: something the keeper cannot mend ends it each time.
  *
  * With `--yes` the verb leaves a keeper running by itself, its output in `keep.out` beside the log,
- * and ends: one keeper a run, and `runs stop`, `pause` or `continue --after` of the run end it. Until
+ * and ends: one keeper a run, and `runs stop`, `pause` or `continue --after` of the run end it. That
+ * keeper is this verb under `--here` (`KEEPING`), which keeps the run in this process. Until
  * 15 October this was three shell loops of the operator's and a wrapper a login, each moving one run.
  */
 import type { LogEvent } from "#src/kernel/log.ts";
@@ -55,7 +56,7 @@ import {
 } from "./logins.ts";
 import type { Live } from "./live.ts";
 import { lastRun, leaveKeeper, rerun, said, start, WAIT_HOURS } from "./manage.ts";
-import { keepers, logEvents, processes, type Run, runNamed } from "./registry.ts";
+import { keepers, logEvents, Misused, processes, type Run, runNamed } from "./registry.ts";
 import { stop } from "./stop.ts";
 
 export type Turn = "watch" | "move" | "continue" | "done";
@@ -298,9 +299,7 @@ export async function keep(args: readonly string[]): Promise<void> {
   const named = values.logins?.split(",").filter((login) => login !== "");
   const logins = named ?? allowedLogins(runtimeProcess.env);
   if (name === undefined) {
-    throw new Error(
-      `usage: bun --env-file=<file> run runs keep <name> --logins 2,3,4 [--wait-hours ${WAIT_HOURS}] [--yes]`,
-    );
+    throw new Misused();
   }
   const run = runNamed(name);
   if (

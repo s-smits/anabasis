@@ -6,11 +6,14 @@
  * The host sets every field; the Builder sets none. The model, its effort and every limit are the
  * host's, and nothing a harness declares about them is read.
  */
-import { asRecord, isNumber, type JsonValue } from "../meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { hashJsonValue, requireJsonValue } from "../meta/stable-json.ts";
-import { append, type LogEvent, read } from "./log.ts";
+import { append, type EventKind, type LogEvent, read } from "./log.ts";
 import type { PriceTable } from "./meter.ts";
+
+/** The event that records a condition, once each. */
+const RECORDED: EventKind = "condition.recorded";
 
 /**
  * What the host holds every solve to. A harness never sets one: a file or a prompt that asks for a
@@ -141,10 +144,17 @@ export function settingId(setting: Setting): string {
  */
 export function recordCondition(log: string, condition: Condition): string {
   const id = conditionId(condition);
-  if (!read(log).some((event) => event.kind === "condition.recorded" && event.data.id === id)) {
-    append(log, "condition.recorded", { id, condition: requireJsonValue(condition) });
+  if (!read(log).some((event) => event.kind === RECORDED && event.data.id === id)) {
+    append(log, RECORDED, { id, condition: requireJsonValue(condition) });
   }
   return id;
+}
+
+/** The host's code (`Condition.host`) the last condition in `events` names, which their latest
+ *  solve ran under; undefined before any. */
+export function lastHost(events: readonly LogEvent[]): string | undefined {
+  const host = asRecord(events.findLast(({ kind }) => kind === RECORDED)?.data.condition)?.host;
+  return isString(host) ? host : undefined;
 }
 
 /** Every condition the log records, by id. A record that does not hash to its id is refused: the id
@@ -152,7 +162,7 @@ export function recordCondition(log: string, condition: Condition): string {
 export function conditionsOf(events: readonly LogEvent[]): Map<string, Condition> {
   const conditions = new Map<string, Condition>();
   for (const event of events) {
-    if (event.kind === "condition.recorded") {
+    if (event.kind === RECORDED) {
       // SAFETY: only `recordCondition` writes the event, and the hash proves the record whole.
       const condition = event.data.condition as unknown as Condition;
       const id = conditionId(condition);

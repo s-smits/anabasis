@@ -48,7 +48,7 @@ under `.ana/wri/<date>-<campaign>/` on the central host.
    (`bun run runs stop <name> --yes`), or pass `--snapshot`. With
    `bun --env-file=.env.runs tools/wri/wri.ts ... --log <name>`, a remote campaign is fetched into
    `data/runs/<host>/<name>/` (`runs fetch <name>` refreshes it). Where the last receipt names
-   another commit, `start` checks it out as `anabasis-wri-<commit>` so lanes can run readers as they
+   another commit, `start` checks it out as `anabasis-at-<commit>` so lanes can run readers as they
    ran. Later verbs reread the stored paths; a new snapshot is a new investigation.
    *Check:* use the tree the `host-code digest` line names, or mark each source claim as concerning
    another tree (the receipt, not the digest, gives the commit). Settle rows A to F.

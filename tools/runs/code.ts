@@ -6,8 +6,9 @@
  * Cold controllers fetch, check publication and install frozen dependencies. Launch preparation
  * checks its exact commit again. Ordinary requests reuse a successful install while checking its clean source.
  */
-import { gitText } from "#src/meta/git.ts";
-import { isAbsolute, join } from "#src/meta/path.ts";
+import { existsSync } from "#src/meta/filesystem.ts";
+import { gitMaybe, gitText, mainTree } from "#src/meta/git.ts";
+import { dirname, isAbsolute, join } from "#src/meta/path.ts";
 import { capturedExecPath } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { runTextOrThrow, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
@@ -113,6 +114,22 @@ export function installAt(tree: string, commit: string): void {
     gitText(tree, "checkout", "-q", "--detach", commit);
   }
   runTextSyncOrThrow(["nice", "-n", "10", capturedExecPath, "install", "--frozen-lockfile"], { cwd: tree });
+}
+
+/** Where `treeAt` checks `commit` out, beside the main checkout of the repository `repo` lies in. */
+export const atCommit = (repo: string, commit: string) =>
+  join(dirname(mainTree(repo)), `anabasis-at-${commit.slice(0, 9)}`);
+
+/** A detached tree at `commit` with its dependencies installed, made where it is missing, for a
+ *  reader or a seed that needs the code a run ran; null where the repository holds no such commit.
+ *  On 4 November buffer583's own tree held no dependencies, so two investigation lanes ran this
+ *  checkout's code instead, and the primary had checked the run's commit out by hand. */
+export function treeAt(repo: string, commit: string): string | null {
+  if (gitMaybe(repo, "cat-file", "-e", `${commit}^{commit}`) === null) return null;
+  const tree = atCommit(repo, commit);
+  if (!existsSync(tree)) gitText(repo, "worktree", "add", "-q", "--detach", tree, commit);
+  if (!existsSync(join(tree, "node_modules"))) installAt(tree, commit);
+  return tree;
 }
 
 /** Shell text shared by one-shot preparation and ordinary host requests. A successful frozen

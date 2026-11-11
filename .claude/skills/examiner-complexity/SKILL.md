@@ -78,7 +78,7 @@ steps 5 to 8: one login and host, a writing position only where the exam offers 
 ## 5. Read a fresh pair to its first comparison
 
 ```sh
-bun .claude/skills/examiner-complexity/scripts/zone.ts <log or campaign name>...
+bun .claude/skills/comparison-reading/scripts/reading.ts --zone <log or campaign name>...
 ```
 
 prints per comparison the reference's tasks with no, some and every solve valid, the untied tasks

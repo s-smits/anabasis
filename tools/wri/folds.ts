@@ -22,7 +22,7 @@
 import { unadmitted } from "#src/kernel/acceptance.ts";
 import { type Condition, conditionsOf } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { flipP, unsolved as noneAnswered } from "#src/kernel/compare.ts";
+import { flipP, type Tally, unsolved as noneAnswered } from "#src/kernel/compare.ts";
 import { lastReports, poolOf, pairsReported, referenceOf } from "#src/kernel/reports.ts";
 import { SEATS, type Traced, traced, traceKind, tracesIn } from "#src/kernel/trace.ts";
 import { spendOf } from "#src/kernel/meter.ts";
@@ -281,6 +281,9 @@ export const strings = (value: JsonValue | undefined): string[] => items(value).
  *  solver's flag is its side's own fail, as the comparison counts it. */
 export const measured = (solve: Solve): boolean => ["pass", "fail", "flagged"].includes(solve.outcome ?? "");
 export const share = (part: number, whole: number): string => `${String(part)} of ${String(whole)}`;
+/** A tally as `wins-losses-ties`. */
+export const wlt = ({ wins, losses, ties }: Tally): string =>
+  `${String(wins)}-${String(losses)}-${String(ties)}`;
 export const percent = (part: number): string => `${(part * 100).toFixed(1)}%`;
 export const fired = (name: keyof typeof TRIGGERS, detail: string): Trigger => ({
   lane: TRIGGERS[name],

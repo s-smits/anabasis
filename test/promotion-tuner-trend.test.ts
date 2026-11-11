@@ -13,7 +13,14 @@ import {
   MEASURES,
   windowsOf,
 } from "#skills/promotion-tuner/scripts/trend.ts";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  appendFileSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
@@ -21,6 +28,7 @@ import { execTextSync } from "./helpers/bun-spawn-sync.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 const DAY_MS = 86_400_000;
+const HOUR_MS = 3_600_000;
 const UNTIL = Date.parse("2026-11-10T00:00:00.000Z");
 const home = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-trend-")));
 afterAll(() => rmSync(home, { recursive: true, force: true }));
@@ -61,6 +69,8 @@ function run(over: Partial<Run> & { readonly promoted?: number }): Run {
     compared: promoted,
     promotions: Array.from({ length: promoted }, (_, at) => promotion(at + 1, `digest-${String(at)}`, null)),
     dollars: 100,
+    repriced: null,
+    unpriced: null,
     scored: 10,
     room: 1,
     stepped: promoted,
@@ -281,4 +291,84 @@ it("reads two campaigns under one folder into the windows they opened in", () =>
   expect(head?.slice(3)).toEqual(["now", "1 back", "now against 1 back"]);
   // Neither campaign reported a comparison, one run a window.
   expect(first?.slice(3, 5)).toEqual(["0.00 (0/1)", "0.00 (0/1)"]);
+});
+
+/** A campaign's log under `folder`: it opens at `opened`, and each later event is at its hours. */
+function logAt(folder: string, opened: string, later: readonly (readonly [number, string, JsonObject])[]) {
+  mkdirSync(folder, { recursive: true });
+  const at = (hours: number) => new Date(Date.parse(opened) + hours * HOUR_MS).toISOString();
+  const events = [
+    { at: opened, kind: "campaign.opened", data: { project: "p", budget: { dollars: 10, reserve: 1 } } },
+    ...later.map(([hours, kind, data]) => ({ at: at(hours), kind, data })),
+  ];
+  writeFileSync(join(folder, "log.jsonl"), events.map((event) => `${JSON.stringify(event)}\n`).join(""));
+}
+const trendOf = (folder: string, format: "md" | "tsv") =>
+  execTextSync(
+    "bun",
+    [
+      ".claude/skills/promotion-tuner/scripts/trend.ts",
+      "--runs",
+      folder,
+      "--until",
+      "2026-11-10T00:00:00.000Z",
+      "--back",
+      "1",
+      "--format",
+      format,
+    ],
+    { cwd: ROOT, env: { ...Bun.env, ANA_HOSTS: undefined } },
+  );
+const promotedAt = (hours: number, harness: string) => [hours, "harness.promoted", { harness }] as const;
+const movedAt = (hours: number) => [hours, "campaign.move", { move: "build" }] as const;
+
+it("reads every run at the hours the youngest newest run has lasted, so a young window gains nothing by youth", () => {
+  const folder = join(home, "horizon");
+  // The week before: five runs that promoted at 7 h and again at 20 h, and ran 48 h to their budget.
+  for (const nth of [1, 2, 3, 4, 5]) {
+    logAt(join(folder, `pack-then-${String(nth)}`), `2026-10-28T0${String(nth)}:00:00.000Z`, [
+      promotedAt(7, "h1"),
+      promotedAt(20, "h2"),
+      [48, "campaign.ended", { ending: "budget", why: "w" }],
+    ]);
+  }
+  // The newest week: four runs paused at 8 h, one of which promoted at 6 h, and one cut at 2 h.
+  for (const nth of [1, 2, 3, 4]) {
+    logAt(join(folder, `pack-now-${String(nth)}`), `2026-11-0${String(nth + 4)}T00:00:00.000Z`, [
+      ...(nth === 1 ? [promotedAt(6, "h1")] : []),
+      movedAt(8),
+    ]);
+  }
+  logAt(join(folder, "pack-now-young"), "2026-11-09T00:00:00.000Z", [movedAt(2)]);
+  const rows = new Map(
+    trendOf(folder, "tsv")
+      .trim()
+      .split("\n")
+      .map((row) => row.split("\t"))
+      .map((row) => [row[2], row.slice(3)]),
+  );
+  // At 8 h each earlier run had promoted once in 8 hours, not ten times in 240.
+  expect(rows.get("promotions a 100 active hours")?.slice(0, 2)).toEqual(["3.13 (1/32)", "12.5 (5/40)"]);
+  expect(rows.get("runs promoted by the horizon")).toEqual([
+    "0.25 (1/4)",
+    "1.00 (5/5)",
+    "-75%, p 0.048, moved, worse",
+  ]);
+  // No earlier run had reached its second promotion by 8 h.
+  expect(rows.get("hours a rung")?.[1]).toBe("-");
+  expect(trendOf(folder, "md")).toContain(
+    "Read at 8.0 hours from each run's first event, the least a newest run cut short has lasted past 6 h; 1 run cut short sooner is left out.",
+  );
+});
+
+it("repeats a reading with --until when the log has grown since", () => {
+  const folder = join(home, "until");
+  const log = join(folder, "pack-now", "log.jsonl");
+  logAt(join(folder, "pack-now"), "2026-11-08T00:00:00.000Z", [promotedAt(5, "h1"), movedAt(10)]);
+  const before = trendOf(folder, "md");
+  appendFileSync(
+    log,
+    `${JSON.stringify({ at: "2026-11-11T00:00:00.000Z", kind: "harness.promoted", data: { harness: "h2" } })}\n`,
+  );
+  expect(trendOf(folder, "md")).toBe(before);
 });

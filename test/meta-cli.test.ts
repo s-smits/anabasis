@@ -6,21 +6,27 @@ import { join } from "#src/meta/path.ts";
 describe("parseCliArgs", () => {
   test("reads values, repeated values, flags and positionals", () => {
     const parsed = parseCliArgs(["a.json", "--out", "/o", "--tag=x", "--tag", "y", "--json"], {
-      values: ["out"],
-      repeatable: ["tag"],
-      flags: ["json"],
+      options: { out: "text", tag: "list", json: "flag" },
       positionals: 1,
     });
-    expect(parsed.single.get("out")).toBe("/o");
-    expect(parsed.repeated.get("tag")).toEqual(["x", "y"]);
-    expect(parsed.flags.has("json")).toBe(true);
+    expect(parsed.values).toMatchObject({ out: "/o", tag: ["x", "y"], json: true });
     expect(parsed.positionals).toEqual(["a.json"]);
   });
 
-  test("refuses unknown options and positional bounds, and preserves bare positional spelling", () => {
-    expect(() => parseCliArgs(["--rnu", "abc"], { values: ["run"] })).toThrow('unknown option "--rnu"');
-    expect(() => parseCliArgs(["a", "b"], { positionals: 1 })).toThrow('unexpected positional argument "b"');
-    expect(() => parseCliArgs([], { positionals: [1, 2] })).toThrow("expected at least 1 positional");
+  test("refuses what would run another condition, and preserves bare positional spelling", () => {
+    const options = { run: "text", out: "text", json: "flag" } as const;
+    // A misspelled option, an option taken as another's value, a flag given a value, one passed twice.
+    expect(() => parseCliArgs(["--rnu", "abc"], { options })).toThrow(/--rnu/u);
+    expect(() => parseCliArgs(["--out", "--json"], { options })).toThrow(/--out/u);
+    expect(() => parseCliArgs(["--out"], { options })).toThrow(/--out/u);
+    expect(() => parseCliArgs(["--json=1"], { options })).toThrow(/--json/u);
+    expect(() => parseCliArgs(["--run", "a", "--run", "b"], { options })).toThrow(/--run.*once/u);
+    expect(() => parseCliArgs(["-x"], { options })).toThrow(/-x/u);
+    expect(parseCliArgs(["--run=--x"], { options }).values.run).toBe("--x");
+    // The positionals are counted, except under --help, which -h spells too.
+    expect(() => parseCliArgs(["a", "b"], { positionals: 1 })).toThrow(/1 positional.*got 2/u);
+    expect(() => parseCliArgs([], { positionals: [1, 2] })).toThrow(/1 to 2 positional.*got 0/u);
+    expect(parseCliArgs(["-h"], { positionals: 1 }).values.help).toBe(true);
     expect(parseCliArgs(["--", "--x"], { positionals: 1 }).positionals).toEqual(["--x"]);
     expect(parseCliArgs(["-"], { positionals: 1 }).positionals).toEqual(["-"]);
   });

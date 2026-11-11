@@ -56,7 +56,7 @@ function sliceCall(argv: ESTree.MemberExpression): ESTree.CallExpression | null 
  *
  * Two reads are not a parse. `Bun.argv[0]` is the runtime's own executable, which a script uses to
  * spawn Bun again. And `Bun.argv.slice(2)` handed straight to the library — `parseOrDie`,
- * `parseCommandOrDie`, `parseCliArgs` or `runCommand` — is the library doing the reading, including
+ * `parseCliArgs` or `runCommand` — is the library doing the reading, including
  * behind `import.meta.main ? … : []`. A script that keeps a testable `main(argv)` passes too, when
  * that function hands its parameter to the library, directly or through another function the file
  * declares; the parameter is followed by name and position, not guessed at.
@@ -91,7 +91,7 @@ export const noHandReadArgvRule = defineRule({
     },
     messages: {
       handRead:
-        "`{{read}}` reads the process arguments by hand. Declare them in a runCommand spec, or pass the slice straight to parseOrDie / parseCommandOrDie from .claude/skills/main/cli.ts, so a misspelled flag refuses instead of being ignored.",
+        "`{{read}}` reads the process arguments by hand. Declare them in a runCommand spec, or pass the slice straight to parseOrDie from .claude/skills/main/cli.ts, so a misspelled flag refuses instead of being ignored.",
     },
   },
   createOnce(context) {

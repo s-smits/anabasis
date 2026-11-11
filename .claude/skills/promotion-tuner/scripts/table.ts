@@ -33,6 +33,7 @@ import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { formatOf, MISSING, money, printed } from "#skills/main/print.ts";
 import { loadRuns, type Run, rungsOf } from "#skills/main/runs.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
+import { mean } from "#src/meta/tally.ts";
 import { MEASURES, valued } from "./trend.ts";
 
 const SINCE = "2026-10-01";
@@ -129,8 +130,6 @@ const CAVEAT = [
 
 const tenths = (value: number | null | undefined): string =>
   value === null || value === undefined ? MISSING : value.toFixed(1);
-const mean = (values: readonly number[]) =>
-  values.length === 0 ? null : values.reduce((sum, value) => sum + value, 0) / values.length;
 
 const runRows = (runs: readonly Run[]) =>
   runs.map((run) => [

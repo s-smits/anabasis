@@ -1,13 +1,15 @@
 /**
- * The strict argument parser the repository's command scripts share, and the one-line refusal they
- * exit through.
+ * The front the repository's command scripts share: their declared options read by production's
+ * `parseArgs` (`src/meta/process.ts`), and the one-line refusal they exit through.
  *
- * Strict means a misspelled flag refuses before anything runs. A reader that looks up
+ * The parse is strict, so a misspelled flag refuses before anything runs. A reader that looks up
  * `argv.indexOf("--run")` and ignores everything else turns `--rnu abc` into a run with no `--run`,
  * and one that takes the token after a flag as its value turns `--out --json` into an output path
  * called `--json`. Either way the script measures a condition nobody asked for and says nothing.
- * `--name=value` stays available for a legitimate value that begins with `--`, and a bare `--`
- * ends the options, so every token after it is positional.
+ * `--name=value` stays available for a value that begins with `-`, and a bare `--` ends the
+ * options, so every token after it is positional. Two refusals are this file's own: an option that
+ * is no list passed twice, where the platform keeps the last, and a count of positionals outside
+ * the spec's.
  *
  * `--host <name>` runs any script that goes through `runCommand` on a host `ANA_HOSTS` names, by the
  * runs CLI's own transport (`scriptOn`), and writes a path under this machine's home as the same path
@@ -16,27 +18,11 @@
  * `pairs` and `stop` read only the machine they ran on.
  */
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
-import { isNumber } from "#src/meta/json-shape.ts";
+import { isNumber, isString } from "#src/meta/json-shape.ts";
 import { homedir } from "#src/meta/os.ts";
 import { isAbsolute, join, relative, resolve } from "#src/meta/path.ts";
-import { runtimeProcess } from "#src/meta/process.ts";
+import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-
-interface CliOptionSpec {
-  values?: readonly string[];
-  repeatable?: readonly string[];
-  flags?: readonly string[];
-  /** How many positional arguments are accepted, as an exact count or an inclusive `[min, max]`.
-   *  Absent means none: an unexpected positional is as likely a typo as an unknown option. */
-  positionals?: number | readonly [number, number];
-}
-
-interface ParsedCliArgs {
-  single: ReadonlyMap<string, string>;
-  repeated: ReadonlyMap<string, readonly string[]>;
-  flags: ReadonlySet<string>;
-  positionals: readonly string[];
-}
 
 /**
  * The script's own name in front of its one-line diagnostic, then the exit code a caller reads.
@@ -46,12 +32,6 @@ interface ParsedCliArgs {
  * than a function that quietly returned.
  */
 type ExitWith = (message: string, code?: number) => never;
-
-interface Collected {
-  single: Map<string, string>;
-  repeated: Map<string, string[]>;
-  flags: Set<string>;
-}
 
 /**
  * How one declared option is read. `abs` refuses a relative path, `int` a non-integer, and `list`
@@ -81,100 +61,46 @@ export interface CommandArgs {
   flag: (name: string) => boolean;
   list: (name: string) => readonly string[];
 }
-class CliArgumentError extends Error {}
-
-function quoted(name: string): string {
-  return capturedJsonStringify(`--${name}`);
+/** What `parseArgs` read: each option as a string, `true` for a flag or every value of a list. */
+interface Parsed {
+  readonly values: Readonly<Record<string, string | boolean | readonly (string | boolean)[] | undefined>>;
+  readonly positionals: readonly string[];
 }
 
-/** Record one `--name` or `--name=value` token, returning how many following tokens it consumed. */
-function takeOption(spec: CliOptionSpec, token: string, next: string | undefined, into: Collected): number {
-  const equalsAt = token.indexOf("=");
-  const name = token.slice(2, equalsAt === -1 ? undefined : equalsAt);
-  if (spec.flags?.includes(name) === true) {
-    if (equalsAt !== -1) throw new CliArgumentError(`option ${quoted(name)} does not take a value`);
-    if (into.flags.has(name)) throw new CliArgumentError(`option ${quoted(name)} may be passed only once`);
-    into.flags.add(name);
-    return 0;
-  }
-  const repeatable = spec.repeatable?.includes(name) === true;
-  if (!repeatable && spec.values?.includes(name) !== true) {
-    throw new CliArgumentError(`unknown option ${quoted(name)}`);
-  }
-  if (equalsAt === -1 && (next === undefined || next.startsWith("--"))) {
-    throw new CliArgumentError(`option ${quoted(name)} needs a value`);
-  }
-  const value = equalsAt === -1 ? (next ?? "") : token.slice(equalsAt + 1);
-  if (repeatable) {
-    into.repeated.set(name, [...(into.repeated.get(name) ?? []), value]);
-  } else if (into.single.has(name)) {
-    throw new CliArgumentError(`option ${quoted(name)} may be passed only once`);
-  } else {
-    into.single.set(name, value);
-  }
-  return equalsAt === -1 ? 1 : 0;
-}
-
-function checkPositionals(spec: CliOptionSpec, positionals: readonly string[]): void {
+/** `argv` read against `spec` by production's `parseArgs`, which throws for an unknown option, a
+ *  flag given a value and a value that is missing or looks like an option. `-h` is `--help`, under
+ *  which the positionals are not counted. */
+export function parseCliArgs(
+  argv: readonly string[],
+  spec: Pick<CommandSpec, "options" | "positionals">,
+): Parsed {
+  const kinds = spec.options ?? {};
+  const { values, positionals, tokens } = parseArgs({
+    args: [...argv],
+    options: {
+      ...Object.fromEntries(
+        Object.entries(kinds).map(([name, kind]) => [
+          name,
+          kind === "flag"
+            ? { type: "boolean" as const }
+            : { type: "string" as const, multiple: kind === "list" },
+        ]),
+      ),
+      help: { type: "boolean", short: "h" },
+    },
+    allowPositionals: true,
+    tokens: true,
+  });
+  const names = tokens.flatMap((token) => (token.kind === "option" ? [token.name] : []));
+  const twice = names.find((name, index) => kinds[name] !== "list" && names.indexOf(name) !== index);
+  if (twice !== undefined) throw new TypeError(`option --${twice} may be passed only once`);
   const allowed = spec.positionals ?? 0;
   const [min, max] = isNumber(allowed) ? [allowed, allowed] : allowed;
-  if (positionals.length > max) {
-    const extra = positionals[max] ?? "";
-    throw new CliArgumentError(`unexpected positional argument ${capturedJsonStringify(extra)}`);
+  if (values.help !== true && (positionals.length < min || positionals.length > max)) {
+    const count = min === max ? String(min) : `${String(min)} to ${String(max)}`;
+    throw new TypeError(`takes ${count} positional arguments, got ${String(positionals.length)}`);
   }
-  if (positionals.length < min) {
-    const count = `${min === max ? "" : "at least "}${min} positional argument${min === 1 ? "" : "s"}`;
-    throw new CliArgumentError(`expected ${count}`);
-  }
-}
-
-/** Parse `argv` against `spec`, throwing `CliArgumentError` for anything the spec does not admit. A
- *  `-h` counts as `--help` when the spec declares that flag; any other single-dash token except the
- *  bare `-` (stdin, by convention) is refused as an unknown option. */
-export function parseCliArgs(argv: readonly string[], spec: CliOptionSpec): ParsedCliArgs {
-  const into: Collected = { single: new Map(), repeated: new Map(), flags: new Set() };
-  const positionals: string[] = [];
-  for (let index = 0; index < argv.length; index += 1) {
-    const raw = argv[index] ?? "";
-    const token = raw === "-h" && spec.flags?.includes("help") === true ? "--help" : raw;
-    if (token === "--") {
-      positionals.push(...argv.slice(index + 1));
-      break;
-    }
-    if (token.startsWith("--")) index += takeOption(spec, token, argv[index + 1], into);
-    else if (token.startsWith("-") && token !== "-") {
-      throw new CliArgumentError(`unknown option ${capturedJsonStringify(token)}`);
-    } else positionals.push(token);
-  }
-  if (!into.flags.has("help")) checkPositionals(spec, positionals);
-  return { ...into, positionals };
-}
-
-export function exitWith(script: string): ExitWith {
-  return (message: string, code = 2): never => {
-    console.error(`${script}: ${message}`);
-    runtimeProcess.exit(code);
-    throw new Error("process exit returned unexpectedly");
-  };
-}
-
-/**
- * Parse this process's arguments, refusing through `die` when the parser says they are wrong.
- *
- * The re-throw is the part a hand-written copy gets wrong: a parser fault is a defect in the script
- * and has to arrive with its stack, while a bad argument is the caller's and gets one line.
- */
-export function parseOrDie(
-  die: ExitWith,
-  spec: CliOptionSpec,
-  argv: readonly string[] = Bun.argv.slice(2),
-): ParsedCliArgs {
-  try {
-    return parseCliArgs(argv, spec);
-  } catch (error) {
-    if (error instanceof CliArgumentError) die(error.message);
-    throw error;
-  }
+  return { values, positionals };
 }
 
 /**
@@ -190,17 +116,7 @@ export class CommandFailure extends Error {
   }
 }
 
-function kindsOf(options: Readonly<Record<string, OptionKind>>): CliOptionSpec {
-  const names = (wanted: (kind: OptionKind) => boolean): string[] =>
-    Object.entries(options).flatMap(([name, kind]) => (wanted(kind) ? [name] : []));
-  return {
-    values: names((kind) => kind === "text" || kind === "abs" || kind === "int"),
-    repeatable: names((kind) => kind === "list"),
-    flags: [...names((kind) => kind === "flag"), "help"],
-  };
-}
-
-function commandArgs(spec: CommandSpec, parsed: ParsedCliArgs, die: ExitWith): CommandArgs {
+function commandArgs(spec: CommandSpec, parsed: Parsed, die: ExitWith): CommandArgs {
   const options = spec.options ?? {};
   const kindOf = (name: string, ...allowed: OptionKind[]): OptionKind => {
     const kind = options[name];
@@ -211,9 +127,13 @@ function commandArgs(spec: CommandSpec, parsed: ParsedCliArgs, die: ExitWith): C
     }
     return kind;
   };
+  const text = (name: string): string | undefined => {
+    const raw = parsed.values[name];
+    return isString(raw) ? raw : undefined;
+  };
   const value = (name: string): string | null => {
     const kind = kindOf(name, "text", "abs", "int");
-    const raw = parsed.single.get(name);
+    const raw = text(name);
     if (raw === undefined || kind !== "abs") return raw ?? null;
     if (!isAbsolute(raw)) die(`--${name} must be an absolute path, got ${capturedJsonStringify(raw)}`);
     return resolve(raw);
@@ -229,18 +149,19 @@ function commandArgs(spec: CommandSpec, parsed: ParsedCliArgs, die: ExitWith): C
     },
     int: (name) => {
       kindOf(name, "int");
-      const raw = parsed.single.get(name);
+      const raw = text(name);
       if (raw === undefined) return null;
       if (!/^-?\d+$/.test(raw)) die(`--${name} must be an integer, got ${capturedJsonStringify(raw)}`);
       return Number(raw);
     },
     flag: (name) => {
       kindOf(name, "flag");
-      return parsed.flags.has(name);
+      return parsed.values[name] === true;
     },
     list: (name) => {
       kindOf(name, "list");
-      return parsed.repeated.get(name) ?? [];
+      const all = parsed.values[name];
+      return Array.isArray(all) ? all.filter(isString) : [];
     },
   };
 }
@@ -288,7 +209,11 @@ export async function runCommand(
   run: (args: CommandArgs) => CommandResult | Promise<CommandResult>,
   argv: readonly string[] = Bun.argv.slice(2),
 ): Promise<void> {
-  const die: ExitWith = exitWith(spec.name);
+  const die: ExitWith = (message, code = 2) => {
+    console.error(`${spec.name}: ${message}`);
+    runtimeProcess.exit(code);
+    throw new Error("process exit returned unexpectedly");
+  };
   const home = homedir();
   const route = hostRoute(argv, home);
   if (route !== null) {
@@ -303,12 +228,16 @@ export async function runCommand(
     }
     return;
   }
-  const parsed = parseOrDie(
-    die,
-    { ...kindsOf(spec.options ?? {}), positionals: spec.positionals ?? 0 },
-    argv.map((arg) => rehome(arg, "~", home)),
-  );
-  if (parsed.flags.has("help")) {
+  let parsed: Parsed;
+  try {
+    parsed = parseCliArgs(
+      argv.map((arg) => rehome(arg, "~", home)),
+      spec,
+    );
+  } catch (error) {
+    die(errorMessage(error).replaceAll("\n", " "));
+  }
+  if (parsed.values.help === true) {
     console.log(`${spec.usage}\n\n--host <name> runs it on a host ANA_HOSTS names.`);
     return;
   }

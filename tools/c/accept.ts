@@ -53,15 +53,11 @@ import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { keyIfDefined, keysIf } from "#src/meta/optional-key.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
-import { openCampaign, packNamed } from "../d2/campaign.ts";
+import { openCampaign, PACK_OPTIONS, packNamed } from "../d2/campaign.ts";
 import { packControls, sweepRows, toolOnPath } from "../m0/stored-sweep.ts";
 
 const OPTIONS = {
-  root: { type: "string" },
-  sweep: { type: "string" },
-  bundle: { type: "string" },
-  name: { type: "string" },
-  cycle: { type: "string" },
+  ...PACK_OPTIONS,
   admit: { type: "string" },
   "admit-authored": { type: "boolean", default: false },
   jobs: { type: "string", default: "4" },

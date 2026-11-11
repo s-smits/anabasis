@@ -53,18 +53,14 @@ import type { JsonValue } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
-import { awaitingLines, openCampaign, packNamed } from "./campaign.ts";
+import { awaitingLines, openCampaign, PACK_OPTIONS, packNamed } from "./campaign.ts";
 import { ROUND_OPTIONS } from "./round.ts";
 import { recordedSetting, targetNamed } from "./setting.ts";
 
 /** The practice tasks a campaign is brought to where no command names a count. */
 export const PRACTICE = 6;
 const OPTIONS = {
-  root: { type: "string" },
-  sweep: { type: "string" },
-  cycle: { type: "string" },
-  bundle: { type: "string" },
-  name: { type: "string" },
+  ...PACK_OPTIONS,
   practice: { type: "string", default: String(PRACTICE) },
   level: ROUND_OPTIONS.level,
   target: ROUND_OPTIONS.target,

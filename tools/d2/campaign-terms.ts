@@ -23,7 +23,7 @@ import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { sameJsonValue } from "#src/meta/stable-json.ts";
-import { projectOf } from "./campaign.ts";
+import { PACK_OPTIONS, projectOf } from "./campaign.ts";
 import type { Host } from "./host.ts";
 import { PRACTICE, type prepareCommand } from "./prepare.ts";
 import { type Campaign, COMPARISON_OPTIONS, capRead, SESSION_OPTIONS, type Seated, solved } from "./round.ts";
@@ -60,11 +60,7 @@ export interface Turn {
 export type Values = ReturnType<typeof flagsOf>;
 
 const OPTIONS = {
-  root: SESSION_OPTIONS.root,
-  sweep: SESSION_OPTIONS.sweep,
-  cycle: SESSION_OPTIONS.cycle,
-  bundle: SESSION_OPTIONS.bundle,
-  name: SESSION_OPTIONS.name,
+  ...PACK_OPTIONS,
   project: { type: "string" },
   prompt: { type: "string" },
   "prompt-file": { type: "string" },

@@ -41,21 +41,33 @@ import {
   gapAgainst,
   type Paired,
   pointsOf,
+  ROOM,
   scoresIn,
   testOf,
   unsolved,
 } from "#src/kernel/compare.ts";
 import { proposalsOf } from "#src/kernel/history.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
-import { sideGap } from "#skills/comparison-reading/scripts/gap.ts";
 import { lastReports, pairsReported, poolOf, type Reported } from "#src/kernel/reports.ts";
 import { ended, passed, type Ran, ranUnder } from "#src/kernel/solves.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
+import { median } from "#src/meta/tally.ts";
 import { NO_TRACES, printRows } from "./folds.ts";
 
 /** The kind of a tied task, by its solves. */
 type TieKind = "both-invalid" | "exact-repeat" | "within-room" | "both-valid" | "cancelling";
+
+/** One side of one comparison, read against the best on record. */
+export interface SideGap {
+  /** The median over tasks of a task's median ratio to the best; null where no task gave one. */
+  readonly ratio: number | null;
+  readonly atBest: number;
+  /** The tasks that gave a ratio. */
+  readonly read: number;
+  /** The tasks the side answered validly that gave none: no best on record, or a measure at or below zero. */
+  readonly unread: number;
+}
 
 /** A finished counted solve, with the place its start stands in the log. */
 type Counted = Ran & { readonly finished: number; readonly end: JsonObject };
@@ -448,6 +460,33 @@ export function pairRows(events: readonly LogEvent[]): string[] {
     HEAD,
     ...rows,
   ];
+}
+
+/** What `pairs` read of `side`, against `bests` by task. */
+export function sideGap(
+  pairs: readonly Paired[],
+  side: "old" | "fresh",
+  bests: ReadonlyMap<string, number>,
+): SideGap {
+  const ratios: number[] = [];
+  let unread = 0;
+  for (const { task, objective } of pairs) {
+    const measures = objective?.[side].filter((measure) => measure !== null) ?? [];
+    if (measures.length === 0) continue;
+    const best = bests.get(task) ?? 0;
+    const own = measures.filter((measure) => measure > 0);
+    const ratio = median(
+      own.map((measure) => (objective?.direction === "lower" ? measure / best : best / measure)),
+    );
+    if (best > 0 && ratio !== null) ratios.push(ratio);
+    else unread += 1;
+  }
+  return {
+    ratio: median(ratios),
+    atBest: ratios.filter((ratio) => ratio <= 1 + ROOM).length,
+    read: ratios.length,
+    unread,
+  };
 }
 
 if (import.meta.main) printRows("pairs", (log) => pairRows(read(log, NO_TRACES)));

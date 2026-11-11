@@ -5,7 +5,8 @@
  */
 import { describe, expect, it } from "bun:test";
 import { drawLines, drawOf } from "#skills/comparison-reading/scripts/draw.ts";
-import { gapLines, sideGap } from "#skills/comparison-reading/scripts/gap.ts";
+import { gapLines } from "#skills/comparison-reading/scripts/gap.ts";
+import { sideGap } from "#tools/wri/pairs.ts";
 import { scoresRead, sizeOf } from "#skills/comparison-reading/scripts/size.ts";
 import { rowsOf } from "#skills/comparison-reading/scripts/reading.ts";
 import { starterReads } from "../src/campaign/climb.ts";

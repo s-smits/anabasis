@@ -42,7 +42,7 @@
  * with `--tasks` it also holds task versions and ratios read from hidden values, so it stays exam-side.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import { sideGap } from "#skills/comparison-reading/scripts/gap.ts";
+import { sideGap } from "#tools/wri/pairs.ts";
 import { campaignLogs, rehearsed } from "#skills/main/logs.ts";
 import {
   ORIGINS,

@@ -21,54 +21,15 @@
  * seat's message, pull request or paste. Written on 5 November.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import { type Paired, ROOM } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { lastReports, pairsReported, poolOf } from "#src/kernel/reports.ts";
-import { median } from "#src/meta/tally.ts";
 import { logEvents } from "#tools/runs/registry.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
-
-/** One side of one comparison, read against the best on record. */
-interface SideGap {
-  /** The median over tasks of a task's median ratio to the best; null where no task gave one. */
-  readonly ratio: number | null;
-  readonly atBest: number;
-  /** The tasks that gave a ratio. */
-  readonly read: number;
-  /** The tasks the side answered validly that gave none: no best on record, or a measure at or below zero. */
-  readonly unread: number;
-}
+import { type SideGap, sideGap } from "#tools/wri/pairs.ts";
 
 const USAGE = `usage: gap.ts <log.jsonl | campaign name>
 
 Each comparison's two sides against the best answer on record. The output is exam-side.`;
-
-/** What `pairs` read of `side`, against `bests` by task. */
-export function sideGap(
-  pairs: readonly Paired[],
-  side: "old" | "fresh",
-  bests: ReadonlyMap<string, number>,
-): SideGap {
-  const ratios: number[] = [];
-  let unread = 0;
-  for (const { task, objective } of pairs) {
-    const measures = objective?.[side].filter((measure) => measure !== null) ?? [];
-    if (measures.length === 0) continue;
-    const best = bests.get(task) ?? 0;
-    const own = measures.filter((measure) => measure > 0);
-    const ratio = median(
-      own.map((measure) => (objective?.direction === "lower" ? measure / best : best / measure)),
-    );
-    if (best > 0 && ratio !== null) ratios.push(ratio);
-    else unread += 1;
-  }
-  return {
-    ratio: median(ratios),
-    atBest: ratios.filter((ratio) => ratio <= 1 + ROOM).length,
-    read: ratios.length,
-    unread,
-  };
-}
 
 /** One line of a side, or that nothing was read. */
 function sideLine({ ratio, atBest, read, unread }: SideGap): string {

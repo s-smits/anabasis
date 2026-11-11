@@ -10,6 +10,10 @@
  * pass after that one does, so the sweep only settles because it runs to convergence; and the
  * comment above a declaration travels with it, which is the part a hand edit gets wrong.
  *
+ * Declarations that follow one another are one finding: the report lands on the first and the
+ * fix moves the run whole, so one function written above twelve declarations is one error instead
+ * of twelve. `Lone`, which code separates from the run, is a finding of its own.
+ *
  * The safe-name set is where the rule was blind until 2026-09-20: it admitted an import and a
  * function declaration wherever they sat but not an `interface` or a `type` this file declares,
  * so `const BY_LATE = new Map<string, Late>()` was refused for reading a name that is erased and
@@ -25,14 +29,14 @@ const MIXED = `export function first(row: string): string {
   return row.trim();
 }
 
-interface Late { // REPORT erased, so its position is a reading decision and nothing else
+interface Late { // REPORT erased, so its position is a reading decision; the four below it are its run
   readonly one: string;
 }
-type Alias = string; // REPORT erased
+type Alias = string; // IN THE RUN erased
 /** The size a reader goes to the front of the file to find. */
-const PLAIN = 3; // REPORT no effect in the initialiser and no position-dependent read
-const BUILT = new Set(["a"]); // REPORT a pure constructor has no result but its value
-const BY_LATE = new Map<string, Late>(); // REPORT reads a type this file declares, which is erased
+const PLAIN = 3; // IN THE RUN no effect in the initialiser and no position-dependent read
+const BUILT = new Set(["a"]); // IN THE RUN a pure constructor has no result but its value
+const BY_LATE = new Map<string, Late>(); // IN THE RUN reads a type this file declares, which is erased
 const DERIVED = PLAIN + 1; // ADMITTED reads a const still under the code; movable once PLAIN moves
 const CWD = process.cwd(); // ADMITTED a call in the initialiser
 const HOME = process.env.HOME; // ADMITTED reads a global, whose value depends on where it is read
@@ -42,9 +46,10 @@ enum Mode {
   One = 1,
 }
 const FROM_ENUM = Mode.One; // ADMITTED an enum has a runtime value, so where it is read matters
+type Lone = number; // REPORT what stays put above it ends the run, so this is a finding of its own
 
 export function second(one: Late, two: Alias): number {
-  const read = PLAIN + BUILT.size + BY_LATE.size + DERIVED + FROM_ENUM + bump();
+  const read: Lone = PLAIN + BUILT.size + BY_LATE.size + DERIVED + FROM_ENUM + bump();
   return read + CWD.length + (HOME ?? "").length + one.one.length + two.length;
 }
 `;
@@ -58,7 +63,7 @@ export const SNAPSHOT = new Set(VALUES); // ADMITTED copies the contents after t
 describe("ana/require-declarations-first", () => {
   it("moves what is erased or provably fixed, and leaves an effect, a global read and state alone", async () => {
     await lintRules("ana", [
-      [RULE, MIXED, 5],
+      [RULE, MIXED, 2],
       [RULE, SNAPSHOT, 0],
     ]);
   });
@@ -77,6 +82,7 @@ describe("ana/require-declarations-first", () => {
       "const BUILT",
       "const BY_LATE",
       "const DERIVED",
+      "type Lone",
     ]) {
       expect(fixed.indexOf(moved)).toBeGreaterThan(-1);
       expect(fixed.indexOf(moved)).toBeLessThan(code);
@@ -87,5 +93,9 @@ describe("ana/require-declarations-first", () => {
     expect(fixed).toContain(
       "/** The size a reader goes to the front of the file to find. */\nconst PLAIN = 3;",
     );
+    // The run arrives in the order it was written, with nothing of the code between its members.
+    const run = fixed.slice(fixed.indexOf("interface Late"), fixed.indexOf("const BY_LATE"));
+    expect(run).toContain("type Alias");
+    expect(run).not.toContain("function");
   });
 });

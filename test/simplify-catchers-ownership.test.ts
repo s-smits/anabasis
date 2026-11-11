@@ -271,6 +271,12 @@ export function keyed() {
   record("spawned.json", "two");
   record("spawned.json", "three");
 }
+type Verdict = "no value" | "moved, better";
+export function verdictOf(p: number | null): Verdict {
+  if (p === null) return "no value"; // ADMITTED the file declares it as a literal type, so the compiler holds each copy to the union
+  return p < 1 ? "moved, better" : "no value";
+}
+export const unread = (verdict: Verdict) => verdict === "no value" || verdictOf(null) === "no value";
 export function short() {
   record("a.ts", "one"); // ADMITTED four characters is a word rather than a value
   record("a.ts", "two");

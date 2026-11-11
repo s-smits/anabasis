@@ -6,8 +6,10 @@
  * unit, since tasks and promotions inside one campaign share its exam.
  *
  * Few deals are all counted and p is exact; past `DRAWS` a fixed sequence of shuffles stands in,
- * so a reading repeats to the digit. Fewer deals than `2 / level` can read no difference at that
- * level (three against three is twenty), which a caller says instead of printing a p.
+ * so a reading repeats to the digit. Beside p stands the smallest p any deal of the same units could
+ * have read: where it is above the level, no record of these units could read a difference at it
+ * (three against three, twenty deals with the record and its mirror the most extreme, or runs most
+ * of which hold no denominator), which a caller says instead of printing a p.
  *
  * It describes the record: no comparison of harnesses (`AGENTS.md`, section 7) and no step.
  */
@@ -26,8 +28,9 @@ export interface Shift {
   /** The share of deals at least as far apart as the record; null where a group's statistic has no
    *  value as recorded. */
   readonly p: number | null;
-  /** The deals there are, `Infinity` past `DRAWS`, where shuffles were drawn instead. */
-  readonly deals: number;
+  /** The share of deals as far apart as the most extreme deal read, the smallest p these units can
+   *  give; null where p is. */
+  readonly least: number | null;
 }
 
 /** The ways to pick `size` of `pool`, `Infinity` once past `DRAWS`. */
@@ -79,22 +82,23 @@ export function shiftOf<Unit>(
   const pool = [...then, ...now];
   const deals = dealsOf(pool.length, then.length);
   const [before, after] = [statistic(then), statistic(now)];
-  if (before === null || after === null) return { p: null, deals };
-  const apart = Math.abs(after - before) - SLACK;
-  let [read, far] = [0, 0];
-  const dealt = Number.isFinite(deals)
-    ? choicesOf(pool.length, then.length)
-    : shufflesOf(pool.length, then.length);
+  if (before === null || after === null) return { p: null, least: null };
+  const exact = Number.isFinite(deals);
+  const dealt = exact ? choicesOf(pool.length, then.length) : shufflesOf(pool.length, then.length);
+  const read: number[] = [];
   for (const chosen of dealt) {
     const picked = new Set(chosen);
     const [one, other] = [
       statistic(pool.filter((_, at) => picked.has(at))),
       statistic(pool.filter((_, at) => !picked.has(at))),
     ];
-    if (one === null || other === null) continue;
-    read += 1;
-    if (Math.abs(one - other) >= apart) far += 1;
+    if (one !== null && other !== null) read.push(Math.abs(one - other));
   }
   // A sampled p counts the record itself among the deals, so it is never zero.
-  return { p: Number.isFinite(deals) ? far / read : (far + 1) / (read + 1), deals };
+  const share = (apart: number) => {
+    const far = read.filter((one) => one >= apart - SLACK).length;
+    return exact ? far / read.length : (far + 1) / (read.length + 1);
+  };
+  const recorded = Math.abs(after - before);
+  return { p: share(recorded), least: share(Math.max(recorded, ...read)) };
 }

@@ -10,6 +10,7 @@ import {
   comparable,
   guardOf,
   type Measure,
+  MEASURES,
   windowsOf,
 } from "#skills/promotion-tuner/scripts/trend.ts";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
@@ -131,6 +132,16 @@ it("refuses a verdict where the windows are too small, however far apart they ar
   const few = (active: number) => Array.from({ length: 3 }, () => run({ active }));
   expect(changeOf(HOURS, few(100), few(1)).verdict).toBe("too few runs");
   expect(changeOf(HOURS, [], few(1)).verdict).toBe("no value");
+  // Three against four has thirty-five deals and no mirror, so the record alone can read a step.
+  expect(changeOf(HOURS, few(100), [...few(1), run({ active: 1 })]).verdict).toBe("moved, better");
+});
+
+it("reads too few runs where only the runs holding a denominator can be dealt apart", () => {
+  // Three of eight runs hold a starter read: seventy deals exist, but none falls below a third.
+  const read = (confirmed: number) => run({ reads: 1, confirmed });
+  const then = [read(1), run({}), run({}), run({})];
+  const now = [read(0), read(0), run({}), run({})];
+  expect(changeOf(MEASURES.confirmed, then, now).verdict).toBe("too few runs");
 });
 
 it("names a faster climb that holds less as apart, and one that holds more as together", () => {

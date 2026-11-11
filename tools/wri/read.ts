@@ -28,6 +28,7 @@
  * A one-program answer lead requires a logged judged answer, including JSON null; flags and
  * blocked submits remain in the finished-solve denominator without supplying an answer.
  */
+import { resetOf } from "#src/agent/backends/claude.ts";
 import { comparisonsOf } from "#src/campaign/ground.ts";
 import { short } from "#src/campaign/move.ts";
 import { campaignOf as handoverOf, type Handover, nextBound, openSteps } from "#src/campaign/handover.ts";
@@ -538,8 +539,10 @@ function solveTriggers(log: Index, steps: readonly Handover[]): Trigger[] {
     missed.filter((solve) => solve.kind !== "rejected"),
     (solve) => solve.kind ?? "unkinded",
   );
-  const ends = [...log.of(BUILD_END), ...log.of(EXAM_END)];
-  const crashed = ends.filter((data) => isString(data.crash) || data.ended === "crashed");
+  // A crash that names a provider's reset is a limit the host waits out, no alarm (rule 15).
+  const crashed = [...log.of(BUILD_END), ...log.of(EXAM_END)]
+    .filter((data) => isString(data.crash) || data.ended === "crashed")
+    .flatMap((data) => (resetOf(text(data.crash), new Date(0)) === null ? [text(data.session)] : []));
   // Non-results by harness in each comparison: a side whose bad solves are run again is favoured.
   const rerun = log.compared.flatMap(({ session, own, scoring }) => {
     const mine = scoring.filter((solve) => solve.outcome === "non-result");
@@ -566,9 +569,7 @@ function solveTriggers(log: Index, steps: readonly Handover[]): Trigger[] {
     ...(cut + open > 0 ? [fired("SOLVE NEVER FINISHED", apart(solves(cut), solves(open)))] : []),
     ...(unended.length > 0 ? [fired("EXAMINER NEVER FINISHED", apart(ids("cut"), ids("open")))] : []),
     ...(Object.keys(unjudged).length > 0 ? [fired("MISSES WITHOUT A VERDICT", tally(unjudged))] : []),
-    ...(crashed.length > 0
-      ? [fired("SESSION CRASHED", crashed.map((data) => text(data.session)).join(", "))]
-      : []),
+    ...(crashed.length > 0 ? [fired("SESSION CRASHED", crashed.join(", "))] : []),
     ...costTriggers(log),
   ];
 }

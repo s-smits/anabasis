@@ -225,7 +225,13 @@ describe("the runs pulse", () => {
     const first = [...built, crashed(1, "x-1")];
     const baseline = pulse(round, first, "open", undefined, START + 2 * MINUTE);
     expect(baseline.said).toEqual([]);
-    const second = [...first, crashed(2, "x-2")];
+    // A session the provider's limit ended is waited out, and is no alarm.
+    const limit = event(2, "build.finished", {
+      session: "b-9",
+      ended: "crashed",
+      crash: "You've hit your weekly limit · resets Oct 15 at 9pm (Europe/Amsterdam)",
+    });
+    const second = [...first, limit, crashed(2, "x-2")];
     const moved = pulse(round, second, "open", baseline.seen, START + 3 * MINUTE);
     expect(moved.said.filter((line) => line.includes("SESSION CRASHED"))).toEqual([
       "⚠ economy: SESSION CRASHED (lane 24): x-1, x-2",

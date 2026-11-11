@@ -33,7 +33,8 @@ JobBench (`studies/harness2/README.md`, "Read every result against how uneven th
 ## Intended changes
 
 1. **Score a promoted jobstat reference again after a further promotion.** The first promotion was
-   scored on 5 November. Score the next reference on the same 8 tasks, then print `score.ts table`.
+   scored on 5 November. Each newly confirmed reference is read as run-improvement-campaign sets
+   out ("The outside aim"), whose eight tasks replace the pilot's eight for a reference's read.
 2. **Correct the pilot's label.** In the pilot of 3 November the arm named "anabasis" was the
    Starter (digest `6af25e7a`, exported from a campaign that had promoted nothing), so its 298 of
    550 is a bareSolver score, not a built one. The pilot's `final.json` and any text that cites it
@@ -57,10 +58,9 @@ JobBench (`studies/harness2/README.md`, "Read every result against how uneven th
    0.02 even at five wins to none (a sign-flip p of 1/32). Add rollouts, a Starter A/A beside the
    comparison, and per-task paired differences beside the summed points, since a summed total
    weighs each task by its maximum.
-8. **A rollout ended by a limit is a non-result** (plausible, from the code). `rolloutLog` counts an
-   attempt as run once it emits a `result`, so a rollout cut by a session limit would be judged on
-   an empty output and score 0. Read `is_error` and the stop reason, and retry such a rollout
-   (rule 7).
+8. **A rollout ended by a limit is a non-result.** Present in source from `8eba94a95`: a result
+   the API ended in error is refused and rolled again, and a rollout that ended at its own turns or
+   budget stays the arm's fail.
 9. **Name each arm's tree in its record.** A held-out record stores `heldout` rather than the
    harness of the task before, so the record alone does not say which tree solved it.
 10. **Close the store to the solver, or widen the check.** The workspace has no wall, the store
@@ -74,11 +74,9 @@ JobBench (`studies/harness2/README.md`, "Read every result against how uneven th
     its guide says to run it first. `claude-export.ts`'s note says the guide's `input.json`,
     `answer.json` and `submit` are absent, and names no program. Name the ones that read them, so
     that a score is read against what the solver could use.
-13. **Keep the toolchain's links in the export.** `claude-export.ts` leaves 7 links in
-    `scripts/toolchain` pointing into its temporary `.part-` directory, and they dangle once it is
-    renamed, so `installTree` does not copy them. `bin/python`, `python/bin/python` and
-    `python/bin/python3` are among them. `bin/python3` does arrive, and it imported pandas, scipy,
-    statsmodels, openpyxl and `statkit` in a live workspace.
+13. **Keep the toolchain's links in the export.** Present in source from `8c876e7bc`: relative
+    links stay relative, where 7 of them, `bin/python` among them, dangled once the export was
+    renamed into place.
 14. **Make what the export tells the solver true.** The note corrects three names, and the guide's
     "20 turns and 30 minutes", its scoring section and its path layout stay, under no turn cap and
     3600 s. This changes what the study's solver is told, so it takes the operator's word.
@@ -89,7 +87,13 @@ JobBench (`studies/harness2/README.md`, "Read every result against how uneven th
     tasks").
 16. **Read the judge's view beside every score.** `eval/judge.py` cuts each file at 200,000
     characters, counts embedded figures against that, and reads only `text` notebook outputs. Read it
-    apart and report it beside the official score (`comparison-review`, level 6).
+    apart and report it beside the official score (`comparison-review`, level 6). Counted on the
+    store's deliverables through the judge's own converter on 11 November 2026: the workbook of
+    `social_science_research_assistants/task2` passes the cut in 15 of 15 (208,000 to 260,000
+    characters, two data sheets ahead of the summary sheets), and the judge's reasons name a cut in
+    2 to 6 of that task's 9 rubrics in each of the 13 judged, 5 or 6 in 11 of them; the memo of
+    `statisticians/task1` passes it in 6 of 13 (202,000 to 468,000); on `statisticians/task2` and
+    `task3` only source data an arm copied beside its answer passes it, but for one report workbook.
 17. **Benchmark 20 tasks, 31% of the 65, in the professions closest to the prompt.** The three
     professions the prompt names hold 8 tasks. The other 12 come from the highest ranked professions
     of two tasks or more, whole, with two sides an arm (`studies/harness2/compare.ts plan --tasks ...
@@ -105,9 +109,9 @@ JobBench (`studies/harness2/README.md`, "Read every result against how uneven th
 ## How it came to be
 
 - **3 November 2026.** The pilot set Anabasis against Harness² on eight JobBench statistics tasks.
-  On the fair five, scores out of 296 were: Starter 202 (the pilot's "Base", Harness²'s own base
-  harness), Harness² k=1 194, Harness² held-out 146, and the arm labelled Anabasis 168. The judge
-  cost about $422 over 243 calls.
+  On the fair five, scores out of 296 were: Base 202 (Harness²'s own base harness, stock Claude
+  Code with an empty guide), Harness² k=1 194, Harness² held-out 146, and the arm labelled
+  Anabasis, in fact the Starter, 168. The judge cost about $422 over 243 calls.
 - **4 November, about 05:00 UTC.** The operator asked to "run 10% of the jobstat comparison to
   optimize and prepare the system - use latest jobstat harness present", with the existing copy
   mechanism for the harness. The first plan scored the newest kept jobstat harness, a Builder's

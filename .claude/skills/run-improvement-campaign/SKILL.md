@@ -30,6 +30,7 @@ to go in one sitting, is the session's judgement. Read the script first and deci
 | a fix is ready | stack-pr's `stack.ts`, repository-practice's `preflight.ts` | step 4, its before-and-after, then step 5 |
 | a run bills while its milestone stays put | `runs pulse <name>`, `wri.ts read --log <log>` | "A stall", then "The walk" |
 | a step has stood for two days, or two sessions hold one step | the hours `due` prints; the rows of `cycle.md` | take it, pass it in `deviations.md`, or name its one holder in `cycle.md` |
+| a jobstat run is paused with a reference the starter has confirmed and no read has scored | the last read's prediction file; `score.ts table` over the store | "The outside aim": the prediction and the dry run now, the rollouts on the operator's word |
 | a handover is due, or a timer fires with nothing to do | `timers.ts <the session's transcripts>` | "Timers": retire or retime it; then the five points |
 
 ## The release cycle
@@ -298,6 +299,133 @@ promotion-tuner's `scripts/table.ts` (`--rows recent`, `--rows groups`) sets thi
 earlier ones; read room first, since hours without room say nothing about ability. A changed level,
 target or solves a side changes the instrument, not the harness, and is the operator's.
 
+## The outside aim: Harness² on JobBench
+
+The v1.0 bar's outside row (system-audit, "The pillars and the v1.0 bar"; its value in
+`docs/plan.md`) asks whether a harness built blind to a benchmark stands against Harness² on unseen
+tasks under that benchmark's own grader. The operator's aim (11 November 2026) is JobBench: parity
+with Harness²'s held-out arm, then above it (`docs/backlog/jobbench-scoring.md`;
+`docs/backlog/v1-bar.md`, item 2); the bar's threshold for the row stays unset. That is why jobstat
+takes the effort first and buffer is its control. Harness²'s own arm adapts on each task it is
+scored on and its held-out arm is built on the task before in the same profession, while Anabasis
+sees no JobBench task, so a lower score is the expected reading and parity a strong one
+(`studies/harness2/README.md`, "Read every result against how uneven the comparison is").
+
+The loop serves the aim in three ways:
+
+- **Indirectly, in every pass.** A campaign optimises one thing, a promotion confirmed on its own
+  held-out tasks. What a bench read teaches reaches a plan only as a shape, stripped of the
+  benchmark's name, the direction and the score, and is falsified by a count in a campaign's own
+  log before any further bench (comparison-review, `references/backtrack.md`). The two shapes on
+  record are leads, untested forward: a harness's program bound to the workspace it was built in,
+  and a harness selected on one measure spending less on work no comparison rewards. A jobstat
+  run's predictions therefore carry the two rows that say whether its climb is likely to carry:
+  whether any step is won on validity instead of the objective alone, and whether a reference
+  still wins the tasks written since its promotion (`starter-reads.ts`).
+- **In the carrying.** A kept harness reaches JobBench through an export
+  (`studies/shared/claude-export.ts`). A defect in what the export carries or tells the solver (the
+  backlog's items 5 and 12 to 14) is fixed at its owner before the next read, since it is wrong
+  whichever side led, and it is the one lever on the score that touches no campaign.
+- **Directly, by reading it**: the newest confirmed jobstat reference on the tasks below, once its
+  run is paused.
+
+Nothing of the benchmark crosses into a campaign. No seat, prompt, check or query hears its tasks,
+rubrics or scores (`AGENTS.md`, section 1, "An outside benchmark against fitting the query to it";
+rules 2, 3 and 9); the query is the operator's and is bounded against its origin; and a bench score
+promotes nothing and is never a step.
+
+### A reference's read
+
+The benchmark set is 20 of JobBench's 65 tasks, in the professions nearest the query (the
+backlog's item 17). A read uses eight of them: three were taken from the pilot's eight on
+9 November 2026 with their stored scores in view, and five were added on 10 November by rule, with
+no score read. `score.ts` calls another set "the pilot's eight" and takes it where `--tasks` is
+missing, so every command names its tasks.
+
+| Part | Tasks | What it can read |
+| --- | --- | --- |
+| the fair five | `biostatisticians/task2`, `statisticians/task2`, `statisticians/task3`, `social_science_research_assistants/task2`, `social_science_research_assistants/task3` | the reference against the Starter, and against Harness²'s held-out arm, which has a score on these five only |
+| the first task | `statisticians/task1` | the reference against the Starter where Harness²'s held-out arm has no harness, so it is read alone and never summed with the five. Its record (26 of 116 in six built rollouts, 36 in two of the Starter's) reads no defect of the carrying: three rubrics every arm passes make the 26, and the Starter's two further tens came from two different rubrics, each by one criterion |
+| the outside pair | `supply_chain_managers/task2`, `sociology_teachers_postsecondary/task2` | the reference against the Starter in two professions outside the query; Harness² has no arm there, so the pair is reported apart and feeds no decision before the 20-task comparison |
+
+```text
+fair five     biostatisticians/task2,statisticians/task2,statisticians/task3,social_science_research_assistants/task2,social_science_research_assistants/task3
+first task    statisticians/task1
+outside pair  supply_chain_managers/task2,sociology_teachers_postsecondary/task2
+```
+
+Size decides what a read can say. Five tasks at one rollout cannot clear 0.02 even at five to none
+(a sign-flip p of 1/32); the Starter's own two rollouts on record differ by 36 of 250 points on
+three tasks; and arms scored on different days are confounded with the day (the backlog's item 7;
+`compare.ts`, head comment). The judge also reads at most 200,000 characters of each file (the
+backlog's item 16). Every workbook on record for `social_science_research_assistants/task2` passes
+that (15 of 15, its two data sheets ahead of its summary sheets), and that task alone gives 16 of
+the Starter's 36; the memo of `statisticians/task1` passes it in 6 of 13 deliverables. A score on
+either task therefore partly reads how long a file ran: name the deliverables that passed the cut
+beside those two scores, and give the fair five's sum with and without the workbook task. So a
+Starter is rolled
+beside the reference in the same sitting, and the fair five at two rollouts a side (20 rollouts)
+reads more than the eight at one (16), since it gives the Starter's spread on the tasks compared.
+
+1. **Arms.** The newest reference the starter has confirmed and no read has scored, named to
+   `--harness` by its letter or whole digest (`runs view <name>` prints the letter beside the
+   digest's head), under a label taken from the digest, since a label binds one exported tree and
+   one rollout a task for good. Beside it
+   a Starter under a new label, on the same tasks. A further rollout of either takes a further
+   label. `heldout` stands on its stored record of the fair five, or is rolled again under a new
+   label in the same sitting where the operator asks for all three side by side. A change to the
+   export or to `score.ts` since an arm's last rollout makes that rollout another condition, so the
+   arm is rolled afresh on every task.
+2. **Predict first**, in the cycle's folder as `jobbench-<label>-prediction.md` before any rollout:
+   the tasks, the arms with their digests, the size, the export's defects still open, the dry run's
+   line, and rows that `score.ts table` settles by a count: the reference against the Starter beside
+   it on the fair five; against `heldout`'s stored sum, with the Starter's spread as the margin; the
+   first task and the outside pair where they are bought; the dollars.
+3. **Prove the path without a model.** The store, the JobBench checkout and the judge's shim are
+   local, named in the last read's prediction file and in `cycle.md`.
+
+   ```sh
+   bun studies/harness2/score.ts score --arm <campaign> --harness <kept> --name <label> \
+     --out <store> --jb <checkout> --api-base <shim url> --judge-log <shim log> --tasks <list> --dry-run
+   ```
+
+   It resolves the kept harness and every task, and writes the exported tree to
+   `<store>/trees/<label>` and no record. Where it cannot find the kept harness of a run another
+   host holds, fetch the run first (`bun run runs fetch <name>`). Without `--judge-log` no
+   judgement's dollars are recorded and the table prints `judge ?`.
+4. **Run on the operator's word**, which names the login, the budget, the moment and the size,
+   since a bench is a paid simulation beside the live runs: the same command with `--yes`, from a
+   worktree at a published commit, with the shim running, the arms in turn and never two processes
+   on one store, since a judgement's dollars are the shim log's rows inside its window. Every arm
+   keeps the one condition `score.ts` states in its head comment. On the two bills on record a
+   rollout costs 9 to 11 dollars with its judging, most of it the judge (124 dollars for 11 on
+   5 November 2026, about 85 for 9 on 9 November). Where no judge noise is on record,
+   `compare.ts rejudge` and `agree` read it from the existing deliverables for tens of dollars, and
+   come before any new arm (the backlog's item 15).
+5. **Read** with one `score.ts table --out <store> --tasks <list>` for each part, since the table
+   sums an arm only where it holds every task named and counts every task but a profession's first
+   as fair. A session that a login's limit or the provider cut is refused: it stays unjudged, and
+   the same command rolls it again (rule 7). A rollout that ended at its own 5 dollars or 3600 s is
+   scored on what it delivered, as a solve that ends at a limit is its side's fail. No rollout is
+   run again because its score disappoints.
+6. **Claim nothing inside the Starter's spread.** A difference between two arms smaller than the
+   difference between the Starter's own rollouts on the same tasks is no reading; a larger one is a
+   direction and names no winner (rule 6). A reading that names a winner or parity needs two
+   rollouts a side and a Starter A/A on the 20, on terms `compare.ts plan` fixes first and
+   `compare.ts read` prints (the backlog's items 3 and 15).
+7. **Review the result** with comparison-review, its ledger in the cycle's folder, before any
+   change follows from it: a task read to explain a result is burned for an arm built from that
+   reading.
+8. **Resolve and record.** Settle each prediction in the read's file with the table's counts, add
+   one row to `cycle.md`, and carry the outside row's new value to `docs/plan.md` in the
+   iteration's pull request. A read moves no campaign, query or promotion however it falls. Below
+   the Starter beyond its spread, check the carrying first. Inside the spread, nothing follows but
+   the next read. Above Harness²'s held-out arm beyond the spread, ask the operator for the 20-task
+   comparison, the only reading that can claim it.
+9. **Clear up after every bench**: once an arm's records are in `judged/`, move its rollout
+   workspaces (`hevo_ws_cc` under the temporary directory) to the Trash, and keep the store's
+   `trees/`, `dataset/` and `judged/`, which the records point to.
+
 ## Milestones
 
 Read each milestone the hour it lands, with the next prediction on record. Room is `informative`
@@ -440,5 +568,6 @@ days if recurring, so each prompt stands alone after compaction, carrying what
 
 run-management runs the campaigns, whole-run-investigation reads them, system-path-simulation proves
 paths, stack-pr implements and lands, attribution-and-proof precedes a claim, harness-audit a
-handover, and oracle-handover takes what the repository cannot settle. Change this skill where a pass
+handover, comparison-review reads an outside comparison, and oracle-handover takes what the
+repository cannot settle. Change this skill where a pass
 exposes duplicated work or a wrong decision, replacing the rule at its owner.

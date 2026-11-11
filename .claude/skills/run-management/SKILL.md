@@ -104,8 +104,9 @@ in `launch-run-<n>.out` and `.err` beside the receipt `launch-run-<n>.json`. Out
 - **The env file is Bun's to read.** `bun --env-file=<file> run runs …` loads it into the process; no
   verb opens it, and you never print, copy or search it. `--login N` passes the login held as
   `CLAUDE_CODE_OAUTH_TOKEN<N>` on as `CLAUDE_CODE_OAUTH_TOKEN`, and no numbered key reaches the
-  command. Without `--login` no login is guessed, so a `claude/` seat's dry run refuses; a machine
-  holding only the plain token uses it (`plainOnly`, `tools/runs/logins.ts`). `claude/<model>` and
+  command. Without `--login` a launch guesses no login, so a `claude/` seat's dry run refuses; a machine
+  holding only the plain token uses it (`plainOnly`, `tools/runs/logins.ts`). A `continue` without it
+  stays on the login its last run recorded, and its dry form names that login. `claude/<model>` and
   `claude-api/<model>` are two providers, so they make two settings.
 - **Machine settings are environment.** `ANA_LOGINS` lists the logins a run may take, and
   `ANA_HOSTS` the peers as JSON `{name, ssh, tree, bun, envFiles, capacity, checks, packs}`. They live

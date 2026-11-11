@@ -7,14 +7,30 @@ commands join and what a position of a given size can read at all.
 ## Seed
 
 ```sh
-bun run runs seed --from <campaign folder> --name sim-<what> [--before <session> | --events <n>]
+bun run runs seed --from <campaign folder> --points
+bun run runs seed --from <campaign folder> --name sim-<what> [--before <session> | --events <n>] [--as-ran]
 ```
 
-Run it in the worktree whose source should run. `--before <session>` keeps what preceded a Builder
-or Examiner session, `--events <n>` the first n events, and neither the whole log. A log at rest
-gives a repeatable cut. Read the sets it prints: a seed with no held-out task scores nothing. For
-other practice tasks, cut before the first release and run `bun tools/d2/prepare.ts <pack flags>
---name sim-<what> --practice 2`.
+`--points` lists where the log can be cut and writes nothing: each session's start, each Builder's
+end, each comparison's report with its reading, each promotion, each starter read's start and each
+Referee reading's first turn with its solve, each with the event's index. `--events <index>` cuts
+right before that event and `--events <index + 1>` right after it. `--before <session>` keeps what
+preceded a Builder or Examiner session, and neither flag keeps the whole log. A log at rest gives a
+repeatable cut.
+
+The seed lands in the worktree the command runs in, whose source then runs. To revisit a position
+as the run met it, add `--as-ran`: the seed goes to a tree holding the code the run's last condition
+before the cut names (`treeAsRan`, `tools/runs/seed.ts`), which is the run's own worktree while
+`runs retire` has not removed it (seven days idle) and it still stands at that code, and otherwise a
+detached tree made at the commit of the launch that covers the cut. A run continued at a later
+commit is why its own tree can be the wrong one for an early cut. Where no tree holds that code,
+such as a launch from a dirty tree, it refuses and names both digests. `rehearse` and `live-seat.ts
+start` print one `code:` line saying whether their tree holds the code the seed's source ran; in a
+before-and-after pair the after arm is meant to differ.
+
+Read the sets a seed prints: one with no held-out task scores nothing. For other practice tasks, cut
+before the first release and run `bun tools/d2/prepare.ts <pack flags> --name sim-<what> --practice
+2`.
 
 ## Forms
 

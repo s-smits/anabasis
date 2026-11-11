@@ -15,22 +15,32 @@
  *
  * The Examiner's home comes with it only where it is still the one the cut stood with.
  *
+ * `--as-ran` puts the seed in a tree that holds the code the run ran at the cut (`treeAsRan`)
+ * instead of this one, and `--points` prints where a seed can be cut and writes nothing.
+ *
  * Not copied: the receipts and outputs, which are the source run's, and the notes of a
  * session the cut log no longer holds, which a session run again under its id would otherwise find
  * in its place. The states come with the
  * tool trees kept beside them. A state frozen while its link named the tree by its whole path still
  * links to the source's tree; a solve reads it behind the wall and writes nothing there.
  */
-import { LOG_FILE, read } from "#src/kernel/log.ts";
+import { epochsOf } from "#src/campaign/climb.ts";
+import { lastHost } from "#src/kernel/condition.ts";
+import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
+import { lastReports } from "#src/kernel/reports.ts";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
+import { gitMaybe, mainTree } from "#src/meta/git.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
-import { dirname, join, resolve } from "#src/meta/path.ts";
+import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { containsPath } from "#src/meta/path-containment.ts";
 import { parseArgs } from "#src/meta/process.ts";
+import { compareCodeUnits } from "#src/meta/stable-json.ts";
 import { taskSets } from "#src/kernel/task.ts";
+import { codeOf } from "../d2/campaign.ts";
+import { treeAt } from "./code.ts";
 import { receipts } from "./receipt.ts";
-import { CAMPAIGNS, SEED_FILE } from "./registry.ts";
+import { CAMPAIGNS, logEvents, SEED_FILE } from "./registry.ts";
 import { logAcross } from "./snapshots.ts";
 
 const SESSION_STARTS = new Set<unknown>(["build.started", "exam.started", "draft.started"]);
@@ -68,13 +78,95 @@ function keptLines(lines: readonly string[], cut: Cut): number {
 export const seedCut = (folder: string): number =>
   parseJsonAs<{ events: number }>(readFileSync(join(folder, SEED_FILE), "utf8")).events;
 
+/** The whole lines of the log in `from`: a run still writing may have a torn last line, which is no
+ *  event yet. */
+function linesOf(from: string): string[] {
+  const source = join(from, LOG_FILE);
+  if (!existsSync(source)) throw new Error(`${from} holds no ${LOG_FILE}: name a campaign's folder`);
+  return readFileSync(source, "utf8").split("\n").slice(0, -1);
+}
+
+/**
+ * The tree that holds the code the campaign in `from` ran at the cut: the host code its last
+ * condition at or before the cut names (`codeOf`), or, before any, the commit of the launch that
+ * covers the cut, from a clean tree. The run's own tree is asked first, then a detached tree at that
+ * launch's commit (`treeAt`), since `runs continue --at` leaves the run's tree at its last commit,
+ * which is not the code of an earlier stretch. Refused where neither holds it.
+ */
+export function treeAsRan(from: string, cut: Cut, repo: string): string {
+  const lines = linesOf(from);
+  // Lines `append` wrote; `seedCampaign` reads the copy again and refuses an unknown kind.
+  const events = lines.slice(0, keptLines(lines, cut)).map((line) => parseJsonAs<LogEvent>(line));
+  const host = lastHost(events);
+  const at = events.at(-1)?.at ?? "";
+  const launches = receipts(join(from, LOG_FILE));
+  const launch = launches.findLast((each) => compareCodeUnits(each.at, at) <= 0) ?? launches[0];
+  const fits = (tree: string) =>
+    host === undefined
+      ? launch?.dirty === false && gitMaybe(tree, "rev-parse", "HEAD") === launch.commit
+      : hostOf(tree) === host;
+  const own = resolve(from, "..", "..", "..");
+  const trees = new Set([
+    ...(resolve(from, "..") === join(own, CAMPAIGNS) && own !== mainTree(repo) ? [own] : []),
+    join(dirname(mainTree(repo)), `anabasis-${basename(from)}`),
+  ]);
+  const found = [...trees].find((tree) => fits(tree));
+  if (found !== undefined) return found;
+  const made = launch === undefined ? null : treeAt(repo, launch.commit);
+  if (made !== null && fits(made)) return made;
+  const ran =
+    host?.slice(0, 8) ?? `no condition yet, launched at ${launch?.commit.slice(0, 9) ?? "no receipt"}`;
+  throw new Error(
+    `no tree holds the code ${basename(from)} ran by event ${String(events.length)} (${ran}${launch?.dirty === true ? ", from a dirty tree" : ""}): ${made === null ? "this repository holds no commit of its launch" : `${made} holds ${hostOf(made)?.slice(0, 8) ?? "no host code"}`}`,
+  );
+}
+
+/** The host's code as a condition names it (`codeOf`), for a tree that holds it. */
+export function hostOf(tree: string): string | undefined {
+  const parts = ["src", "vendor", "package.json"].map((part) => join(tree, part));
+  return parts.every((part) => existsSync(part)) ? codeOf(tree).host : undefined;
+}
+
+/** Where a seed of `events` can be cut, one line each as `--events` counts: the index of the event
+ *  it keeps nothing from, its kind and session or solve, and a comparison's reading. Each Builder
+ *  and Examiner session's start and a Builder's end, each promotion, each comparison's report and
+ *  each starter read's start (`epochsOf`), and each Referee reading's first turn with the solve its
+ *  finding names: a turn names its reader alone. */
+export function pointsOf(events: readonly LogEvent[]): string[] {
+  const starterReads = new Set(epochsOf(events).flatMap(({ starter_read }) => starter_read ?? []));
+  const reports = new Map(lastReports(events).map((report) => [report.index, report.data.reading]));
+  const solveOf = new Map(
+    events.flatMap(({ kind, data }) => (kind === "referee.finding" ? [[data.reader, data.solve]] : [])),
+  );
+  const readers = new Set<unknown>();
+  return events.flatMap(({ kind, data }, index) => {
+    const row = (...parts: unknown[]) => [[index, kind, ...parts].map(String).join(" ")];
+    if (SESSION_STARTS.has(kind) || kind === "build.finished") return row(data.session);
+    if (kind === "harness.promoted") return row(data.harness);
+    if (kind === "comparison.started" && isString(data.session) && starterReads.has(data.session)) {
+      return row(data.session, "starter read");
+    }
+    if (reports.has(index)) return row(data.session, reports.get(index));
+    if (kind !== "referee.turn" || readers.has(data.reader)) return [];
+    readers.add(data.reader);
+    return row("solve", solveOf.get(data.reader) ?? "with no finding");
+  });
+}
+
+/** One line on whether `tree` holds the code the seed in `folder` ran at its cut. It informs and
+ *  refuses nothing, since the after arm of a before-and-after simulation is meant to differ. */
+export function codeLine(tree: string, folder: string): string {
+  const here = hostOf(tree);
+  const ran = lastHost(read(join(folder, LOG_FILE)));
+  if (here === undefined) return `code: ${tree} holds no host code to read`;
+  if (ran === undefined) return `code: ${here.slice(0, 8)} here; the seed records no condition by its cut`;
+  return `code: ${here.slice(0, 8)} here, ${ran === here ? "the code" : `not the ${ran.slice(0, 8)}`} its source ran at the cut`;
+}
+
 /** Copy the campaign in `from` to the folder `to`, its log cut, and say what the seed holds. */
 export function seedCampaign(from: string, to: string, cut: Cut) {
   if (existsSync(to)) throw new Error(`${to} is there already: a seed takes a name of its own`);
-  const source = join(from, LOG_FILE);
-  if (!existsSync(source)) throw new Error(`${from} holds no ${LOG_FILE}: name a campaign's folder`);
-  // A run still writing may have a torn last line, which is no event yet.
-  const lines = readFileSync(source, "utf8").split("\n").slice(0, -1);
+  const lines = linesOf(from);
   const kept = keptLines(lines, cut);
   mkdirSync(to, { recursive: true });
   try {
@@ -153,17 +245,24 @@ export async function seed(args: readonly string[]): Promise<void> {
       name: { type: "string" },
       before: { type: "string" },
       events: { type: "string" },
+      "as-ran": { type: "boolean", default: false },
+      points: { type: "boolean", default: false },
     },
   });
-  const { from, name, before, events } = values;
-  if (from === undefined || name === undefined) {
+  const { from, name, before, events, points } = values;
+  if (from === undefined || (name === undefined && !points)) {
     throw new Error(
-      "usage: bun run runs seed --from <campaign folder> --name <name> [--before <session> | --events <n>]",
+      "usage: bun run runs seed --from <campaign folder> (--points | --name <name> [--before <session> | --events <n>] [--as-ran])",
     );
   }
-  const to = join(resolve(import.meta.dir, "..", ".."), CAMPAIGNS, name);
-  const source = existsSync(from) ? from : dirname(await logAcross(from));
-  const { sets, ...made } = seedCampaign(source, to, { before, events });
+  const source = existsSync(from) ? from : dirname(await logAcross(from, points ? "record" : "whole"));
+  if (points || name === undefined) {
+    console.log(pointsOf(logEvents(join(source, LOG_FILE))).join("\n"));
+    return;
+  }
+  const repo = resolve(import.meta.dir, "..", "..");
+  const tree = values["as-ran"] ? treeAsRan(source, { before, events }, repo) : repo;
+  const { sets, ...made } = seedCampaign(source, join(tree, CAMPAIGNS, name), { before, events });
   console.log(
     `seeded ${name} from ${made.from}: ${String(made.events)} of ${String(made.of)} events${made.before === null ? "" : `, cut before session ${made.before}`}`,
   );
@@ -173,6 +272,7 @@ export async function seed(args: readonly string[]): Promise<void> {
   if (!made.examinerHome) {
     console.log("  no Examiner home: the source holds none, or a session after the cut replaced it");
   }
+  if (tree !== repo) console.log(`  in ${tree}, which holds the code the run ran at the cut`);
   console.log(`  scripted  bun run runs rehearse ... --name ${name} --session <id>`);
   console.log(`  live      bun tools/d2/harness-builder.ts ... --name ${name}, or a move's own command`);
 }

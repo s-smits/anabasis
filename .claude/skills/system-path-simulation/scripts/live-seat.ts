@@ -85,7 +85,7 @@ import { plural } from "#src/meta/text.ts";
 import { capturedExecPath, capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { processGroupExists, terminateAndReapProcessGroupId } from "#src/meta/subprocess.ts";
 import { ROUND, SEED_FILE } from "#tools/runs/registry.ts";
-import { seedCut } from "#tools/runs/seed.ts";
+import { codeLine, seedCut } from "#tools/runs/seed.ts";
 import { loginEnv } from "#tools/runs/manage.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 
@@ -376,6 +376,7 @@ async function start(args: CommandArgs, command: readonly string[]): Promise<num
   const closed = existsSync(`${out}.stopped`) ? readFileSync(`${out}.stopped`, "utf8") : "";
   if (closed !== "") args.die(`${out} was stopped (${closed}): its round is read; seat under another --out`);
   const log = seedLog(tree, name, args.die);
+  console.log(codeLine(tree, dirname(log)));
   const from = read(log).length;
   const env = {
     ...loginEnv(runtimeProcess.env, args.value("login") ?? undefined),

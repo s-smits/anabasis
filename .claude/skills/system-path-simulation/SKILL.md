@@ -39,8 +39,9 @@ repeat that over option 3 in rounds.
    construction, such as an added sentence appearing or a removed refusal being gone, is a delivery
    check: report it as what reached the seat, never as a prediction that held. An outcome nobody
    wrote down is itself the finding.
-2. **Seed late, and only from a real run.** Cut right before the event in question, from a log at
-   rest, and state in one line how the seed differs from the nearest real position.
+2. **Seed late, and only from a real run.** Cut right before the event in question (`runs seed
+   --points` lists them), from a log at rest, under the code the run ran unless the code is the
+   variable (`--as-ran`), and state in one line how the seed differs from the nearest real position.
 3. **Build a position with the campaign's own commands.** Never append or edit a line by hand, or
    put a harness into `states/`; for a position no run reached, cut earlier and run the real command
    with other flags. Hand-built events stay in memory (the synthetic log).

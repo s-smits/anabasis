@@ -1,7 +1,8 @@
 /**
  * Start a campaign, go on with one, and pause one at a clean point.
  *
- *   bun --env-file=<file> run runs launch <name> [--login N] [--yes] -- <the campaign command's flags>
+ *   bun --env-file=<file> run runs launch <name> [--login N] [--yes]
+ *     -- <the campaign command's flags but --name>
  *   bun --env-file=<file> run runs continue <name> [--at <commit>] [--login N] [--budget N]
  *     [--after <word>[|<word>...]] [--yes] [-- <flags>]
  *   bun run runs pause <name> [--after <word>[|<word>...]] [--yes]
@@ -73,6 +74,7 @@ import {
   logEvents,
   keepers,
   keptFile,
+  Misused,
   openComparisons,
   processes,
   type Run,
@@ -342,9 +344,7 @@ export async function launch(args: readonly string[]): Promise<void> {
   });
   const [name, ...flags] = positionals;
   if (name === undefined || flags.some((flag) => flag === "--name" || flag.startsWith("--name="))) {
-    throw new Error(
-      "usage: bun run runs launch <name> [--login N] [--yes] -- <the campaign command's flags but --name>",
-    );
+    throw new Misused();
   }
   // By case too: on macOS's file system a name that differs only by case is the same folder.
   const held = everyRun().find((run) => run.name.toLowerCase() === name.toLowerCase() && isCampaign(run));
@@ -371,9 +371,7 @@ export async function continueRun(args: readonly string[]): Promise<void> {
   });
   const [name, ...given] = positionals;
   if (name === undefined) {
-    throw new Error(
-      "usage: bun run runs continue <name> [--at <commit>] [--login N] [--budget N] [--after <event>] [--yes] [-- <flags>]",
-    );
+    throw new Misused();
   }
   if (values.after !== undefined) kindsNamed(values.after);
   const run = runNamed(name);
@@ -412,7 +410,7 @@ export async function pause(args: readonly string[]): Promise<void> {
   });
   const [name] = positionals;
   if (name === undefined) {
-    throw new Error("usage: bun run runs pause <name> [--after <word>[|<word>...]] [--yes]");
+    throw new Misused();
   }
   const after = values.after ?? "next";
   kindsNamed(after);

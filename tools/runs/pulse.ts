@@ -5,6 +5,7 @@
  * whole record, so the pulse keeps only how far it read and what it last said, in `--state`.
  *
  *   bun run runs pulse [<part of a name> ...] [--every 290] [--state .ana/runs-pulse.json]
+ *     [--here] [--no-readers] [--ack <token>]
  *   bun run runs status [--all]
  *
  * One look and out, unless `--every <seconds>` asks it to keep looking. Until 5 November a bare pulse

@@ -105,6 +105,11 @@ export const campaignsIn = (dir: string, tree: string): Run[] =>
     .map((name) => campaignIn(dir, name, tree));
 /** Whether `run` is a campaign, as against a live solve. */
 export const isCampaign = (run: Run) => run.end === CAMPAIGN_END;
+/** A verb given words it cannot act on: the CLI answers with the usage the head of the verb's file
+ *  states, the one owner of it, under the message where there is one. Until 11 November each verb
+ *  threw a usage line of its own, and 12 of the 18 had come to differ from the head's. */
+export class Misused extends Error {}
+
 /** A campaign's pack, from its name, the one place a stored campaign keeps it: what stands before
  *  the first `-fresh-` of the `<pack>-fresh-<model>...` that `runs fresh` names, so a hyphenated
  *  pack stays whole, else the name's first word, as campaigns named by hand were read. */

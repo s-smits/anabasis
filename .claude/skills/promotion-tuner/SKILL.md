@@ -1,6 +1,6 @@
 ---
 name: promotion-tuner
-description: "Read recorded comparisons under other promotion rules without model calls or spending. scripts/lab.ts tries any mechanism (weights, the bill, turns or seconds as a gain or a guard, floors, the test, the level, free code) on one panel over the record; scripts/replay.ts asks whether a tree's rule supports the promotions on record and which measure won each task; scripts/table.ts lists runs and their promotions, and with --rows cost prices them on one meter; scripts/trend.ts sets the newest week's runs against the weeks before, each difference tested against the spread between runs, with the climb read against what holds it and, with --bench, against outside scores. Use for past promotions, changed scoring, what a promotion should reward, whether the system does better than one or two weeks ago, or comparisons between release cycles; a replay never establishes a live improvement."
+description: "Read recorded comparisons under other promotion rules without model calls or spending. scripts/replay.ts asks whether a tree's rule supports the promotions on record and which measure won each task, and with --try, --mechanism or --against reads any mechanism (weights, the bill, turns or seconds as a gain or a guard, floors, the test, the level, free code) beside it on one panel over the record; scripts/table.ts lists runs and their promotions, and with --rows cost prices them on one meter; scripts/trend.ts sets the newest week's runs against the weeks before, each difference tested against the spread between runs, with the climb read against what holds it and, with --bench, against outside scores. Use for past promotions, changed scoring, what a promotion should reward, whether the system does better than one or two weeks ago, or comparisons between release cycles; a replay never establishes a live improvement."
 ---
 
 # Promotion tuner
@@ -17,7 +17,7 @@ live improvement**.
 
 ## What can be tuned
 
-| Term | Where it lives | Lab knob |
+| Term | Where it lives | `--try` knob |
 | --- | --- | --- |
 | Weights of validity and the objective | `WEIGHTS`, `src/kernel/compare.ts`, in steps of five | `validity=`, `objective=` |
 | A resource as a gain | none in production | `bill=`, `turns=`, `seconds=`, with `when=`, `side=`, `lead=`, `floor=` |
@@ -30,16 +30,17 @@ live improvement**.
 `scripts/mechanisms.ts` documents each knob. An older tree also scored the bill; the replay scores
 it where that tree weighs it (`Points`, `scripts/tree.ts`).
 
-## The lab
+## The panel
 
 ```sh
-bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/lab.ts \
-  [--try <knobs>]... [--mechanism <file>]... [--against <worktree>]... [--tree <worktree>] \
+bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/replay.ts \
+  [--try <knobs>|standard]... [--mechanism <file>]... [--against <worktree>]... [--tree <worktree>] \
   [--from <tag or date>] [--logs <dir>] [--name <campaign>]... [--record <file>] [--refresh] \
   [--split <tag or date>] [--named]
 ```
 
-With no `--try`, `--mechanism` or `--against` it prints a standard set. `--try
+Any of `--try`, `--mechanism`, `--against`, `--split` or `--named` prints the panel in place of
+the replay, and with none of the first three it shows a standard set (`--try standard`). `--try
 bill=0.1,lead=answers` sets knobs over today's values; a `--mechanism` file exports `Mechanism`s
 with free `score`, `test` and `guard` code. `--record <file>` keeps the reduced record under
 `data/derived/` (exam-side: never in a prompt, pull request or paste); `--refresh` rereads the logs;
@@ -67,11 +68,12 @@ any rule row.
 ## The replay
 
 ```sh
-bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/replay.ts --tree <worktree> \
+bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/replay.ts [--tree <worktree>] \
   [--logs <dir>] [--since <date>] [--name <campaign>]... [--totals]
 ```
 
-`--tree` is the absolute path of the worktree whose kernel scores the record; the totals name its
+`--tree` is the absolute path of the worktree whose kernel scores the record, this checkout by
+default; the totals name its
 commit and any uncommitted `src/` change, and a tree that scores no weighted measures is refused.
 By default the run registry finds campaigns in every worktree, archive and host (`ANA_HOSTS`);
 `--logs` reads the offline layout `<logs>/<any>/.ana/d2/<name>/log.jsonl`, the largest copy of each
@@ -166,7 +168,7 @@ a confirmed promotion; on newer runs `repriced/recorded` just under 1 is the bac
 
 1. **Predict first**, in `.ana/wri/<date>-<what>/`: for each mechanism, which counts of step 5 move
    and which way. A sweep read before its prediction describes the record instead of tuning it.
-2. Read the lab's reconciliation and the tree's row; keep a `--record` where a frozen comparison
+2. Read the panel's reconciliation and the tree's row; keep a `--record` where a frozen comparison
    is needed.
 3. Try mechanisms with `--try` or a `--mechanism` file, weights in steps of five.
 4. Where knobs cannot express it, make a candidate worktree from `origin/main` through

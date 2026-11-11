@@ -35,6 +35,7 @@
  * next look, on stdout, where the hook's filter keeps them.
  */
 import type { EventKind, LogEvent } from "#src/kernel/log.ts";
+import { endingOf } from "#src/kernel/reports.ts";
 import { degradations, traceKind, tracesIn } from "#src/kernel/trace.ts";
 import { billedAll } from "#src/kernel/meter.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
@@ -752,7 +753,7 @@ export async function runsStatus(args: readonly string[]): Promise<void> {
     }
     const log = logEvents(run.path);
     const kept = lastLaunch(run.path);
-    const ended = log.at(-1)?.kind === ENDED ? `ended ${word(log.at(-1)?.data.ending)}` : "";
+    const ending = endingOf(log);
     const comparing = openComparisons(log);
     const [steps, reads] = [count(log, PROMOTED), count(log, REPORTED)];
     [promoted, compared] = [promoted + steps, compared + reads];
@@ -763,7 +764,7 @@ export async function runsStatus(args: readonly string[]): Promise<void> {
       comparing.length > 0 ? `comparing ${comparing.join(", ")}` : "",
       `${String(reads)} compared`,
       steps > 0 ? `* ${String(steps)}x promotion *` : "",
-      open ? "" : ended,
+      open || ending === null ? "" : `ended ${ending}`,
       open || age > RECENT_MS ? "" : `off status in ${String(Math.ceil((RECENT_MS - age) / HOUR_MS))}h`,
     ];
     console.log(

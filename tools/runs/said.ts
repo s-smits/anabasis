@@ -14,6 +14,7 @@ import { comparisonFloor } from "#src/campaign/admission.ts";
 import { BARS, epochsOf, starterReads } from "#src/campaign/climb.ts";
 import { readsStepEitherWay, scoresIn, type Tally, testOf } from "#src/kernel/compare.ts";
 import type { EventKind, LogEvent } from "#src/kernel/log.ts";
+import { endingOf } from "#src/kernel/reports.ts";
 import { clearing, sizeLines } from "#src/kernel/size.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
@@ -305,7 +306,7 @@ export function progressOf<Run extends { readonly live: boolean }>(
       const scored = asRecord(data.scored);
       return data.reading !== "not-scored" && scored?.wins === 0 && scored.losses === 0;
     }),
-    ending: last?.kind === ENDED && isString(last.data.ending) ? last.data.ending : null,
+    ending: endingOf(events),
     // A live run is timed to now: one in a long wait writes nothing, and its clock still runs.
     hours: Number.isNaN(opened) ? 0 : ((seen.live ? now : Date.parse(last?.at ?? "")) - opened) / HOUR_MS,
   };

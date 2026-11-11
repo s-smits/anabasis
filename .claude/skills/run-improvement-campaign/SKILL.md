@@ -295,9 +295,12 @@ Open and close each pass with these per campaign, and say which point the pass m
 The closing report is `bun tools/d2/close.ts --name <name> --to <scratch dir>`, with `--to` outside
 the repository or under `data/harnesses/`.
 
-promotion-tuner's `scripts/table.ts` (`--rows recent`, `--rows groups`) sets this cycle's runs beside
-earlier ones; read room first, since hours without room say nothing about ability. A changed level,
-target or solves a side changes the instrument, not the harness, and is the operator's.
+promotion-tuner's `scripts/table.ts` lists this cycle's runs, and its `scripts/trend.ts` sets them
+against the weeks before, each difference tested against the spread between runs and the climb's
+speed read beside what holds it (`--pack buffer --back 4` is the control read of `AGENTS.md`
+section 10). Read room first, since hours without room say nothing about ability, and a row that
+reads `moved` as a lead and no gain: the windows span releases. A changed level, target or solves a
+side changes the instrument, not the harness, and is the operator's.
 
 ## The outside aim: Harness² on JobBench
 
@@ -424,7 +427,9 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
    reading.
 8. **Resolve and record.** Settle each prediction in the read's file with the table's counts, add
    one row to `cycle.md`, and carry the outside row's new value to `docs/plan.md` in the
-   iteration's pull request. A read moves no campaign, query or promotion however it falls. Below
+   iteration's pull request. promotion-tuner's `trend.ts --bench <store>` then sets every arm on
+   record beside the promotion it names, where a climb the benchmark does not reward shows. A read
+   moves no campaign, query or promotion however it falls. Below
    the Starter beyond its spread, check the carrying first. Inside the spread, nothing follows but
    the next read. Above Harness²'s held-out arm beyond the spread, ask the operator for the 20-task
    comparison, the only reading that can claim it.

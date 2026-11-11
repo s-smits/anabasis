@@ -52,7 +52,8 @@ bun .claude/skills/comparison-reading/scripts/starter-reads.ts <log.jsonl | camp
   few untied tasks to read one), the one origin no step selected: generalisation rather than
   selection bias. `--all`
   sums the record, `--name` filters by a text such as a pack. The fold is `starterReads`
-  (`src/campaign/climb.ts`).
+  (`src/campaign/climb.ts`). Across weeks of runs the same fold is read by promotion-tuner's
+  [trend.ts](../promotion-tuner/SKILL.md), which sets it beside how fast the promotions came.
 
 `size`, `reading` and `draw` print counts, ids, short digests and harness letters, never task
 identities, answers, objective measures or checks.

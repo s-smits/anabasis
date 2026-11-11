@@ -54,5 +54,7 @@ tools/runs/     the run registry, receipts, logins, hosts
 tools/runtime/  test and lint wrappers, the commit check, gate, pre-push, land, moments
 packages/ui/    a loopback server over the folds (src/server) and four panes (src/views); DESIGN.md
 studies/        measurements outside a campaign (`studies/README.md`)
-.claude/skills/ the procedures; main/ parses the skill scripts' `--host`
+.claude/skills/ the procedures; main/ is the scripts' shared library: cli (arguments, `--host`),
+                logs (campaign logs), runs (one row a run), print (tables), stats (the
+                permutation test between groups of runs)
 ```

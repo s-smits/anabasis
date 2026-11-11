@@ -14,6 +14,10 @@ test; a change that writes no code can skip it.
 - Dependencies run one way because production must stay readable without the tooling around it.
   Production is `src/`, `vendor/`, `packages/` and `tools/` outside `tools/wri/`; a fact production
   needs from a helper moves into a production owner.
+- Helper code has three homes, `tools/wri/`, `.claude/skills/main/` and a skill's `scripts/`, told
+  apart by who reads it (`AGENTS.md`, section 12, "Where a reader or a helper lives"). Before
+  adding a helper, search `main/` and `tools/wri/folds.ts`; no check yet enforces that `main/`
+  imports no skill's `scripts/`.
 - A test checks the facts a message carries (an outcome, a count, a limit) and the wall's exclusions
   by their absence, because wording changes freely. A prompt's sentence is checked by reading the
   composed prompt.

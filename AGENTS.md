@@ -456,6 +456,22 @@ a wrong finding through `bun run not-slop`. Production imports `node:` only thro
 helpers may wrap production, never the reverse. Keep files within 800 nonblank lines and functions
 within 115, export only names another file reads, and test facts rather than wording.
 
+### Where a reader or a helper lives
+
+Place new code by who reads it, taking the first row that fits:
+
+| Who reads it | Where it lives |
+| --- | --- |
+| a campaign, a `bun run` verb, a local job or the UI | production: a fold in `src/` (one reader per fact, section 5), or the command's own folder under `tools/` |
+| an investigation of one campaign, in depth from its log, reached through `wri.ts` | `tools/wri/` |
+| the scripts of two or more skills, or a reading across campaigns | `.claude/skills/main/`, a library with no command of its own: arguments (`cli.ts`), log discovery (`logs.ts`), one row a run (`runs.ts`), tables (`print.ts`), the permutation test between groups of runs (`stats.ts`) |
+| one skill's procedure | that skill's `scripts/` |
+
+A helper that gains a caller in a second skill moves to `main/` instead of being copied, and
+`main/` imports no skill's `scripts/`. `tools/wri/`, `main/` and the skills may import production
+and each other; when production needs what a helper reads, the reader moves into production
+(`direction.ts`).
+
 **In `repository-practice`, section 12** (`code-and-writing.md`).
 
 ## 13. Writing
@@ -490,4 +506,5 @@ src/harness  the Built Harness    src/solver   one solve              src/builde
 src/campaign round, admission, decide, opening, words
 tools/d2     campaign commands    tools/runs   run registry           tools/wri  run investigation
 tools/runtime  lint, test, gate, land, moments  packages/ui  read-only log page  vendor  copied
+.claude/skills  the procedures and their scripts  .claude/skills/main  the scripts' shared library
 ```

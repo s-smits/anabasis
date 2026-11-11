@@ -44,6 +44,7 @@
  */
 import { openingOf, SEATS } from "#src/campaign/opening.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
+import { HOUR_MS } from "#src/meta/clock.ts";
 import { mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
@@ -114,10 +115,9 @@ const PLAIN = "";
 const BASE = "https://api.anthropic.com";
 const BETA = "oauth-2025-04-20";
 const TIMEOUT_MS = 30_000;
-const HOUR = 3_600_000;
 /** The readings kept, for `usage-model.ts`'s longest window; the per-run rate reads the last `RATE_MS`. */
-const KEPT_MS = 28 * 24 * HOUR;
-const RATE_MS = 8 * 24 * HOUR;
+const KEPT_MS = 28 * 24 * HOUR_MS;
+const RATE_MS = 8 * 24 * HOUR_MS;
 /** The share of a day a run is read active for the runs a week fits: 16 of 24 hours (operator, 22 October). */
 const ACTIVE_SHARE = 16 / 24;
 /** The hours a run is read to live: the release cycle stops its runs twelve hours after their
@@ -458,7 +458,7 @@ export function fiveHourWith(reading: Reading, on: number, now: number): number 
   const reset = resetOf(fiveHour.resetsAt);
   if (pct === null || (pct > 0 && reset === null)) return null;
   if (on > 0) return pct + (((atReset(fiveHour, FIVE_HOURS, now) ?? pct) - pct) * (on + 1)) / on;
-  return pct + RUN_FIVE_HOUR * (reset === null ? FIVE_HOURS / 60 : Math.max(0, (reset - now) / HOUR));
+  return pct + RUN_FIVE_HOUR * (reset === null ? FIVE_HOURS / 60 : Math.max(0, (reset - now) / HOUR_MS));
 }
 
 /** When `window` of `length` minutes runs out at the pace it was used so far: it opened `length`
@@ -510,7 +510,7 @@ export function perRunRate(history: readonly Snapshot[]): number | null {
   const sorted = byTime(history);
   const spans = sorted.flatMap((then, at) => {
     const next = sorted[at + 1];
-    const hours = next === undefined ? 0 : (next.at - then.at) / HOUR;
+    const hours = next === undefined ? 0 : (next.at - then.at) / HOUR_MS;
     if (next === undefined || hours < 0.25 || hours > 3) return [];
     return Object.entries(then.runs ?? {}).flatMap(([login, runs]) => {
       const [was, now] = [then.weeks[login], next.weeks[login]];
@@ -535,7 +535,7 @@ export function perRunHour(week: Week, on: number, rate: number | null, now: num
  *  `perHour` of it an hour; null without a rate. */
 export function fitOf(week: Week, perHour: number | null, now: number): number | null {
   if (perHour === null) return null;
-  const need = perHour * Math.max(0, Math.min(RUN_HOURS, (week.reset - now) / HOUR));
+  const need = perHour * Math.max(0, Math.min(RUN_HOURS, (week.reset - now) / HOUR_MS));
   return need <= 0 ? Number.POSITIVE_INFINITY : Math.floor(Math.max(0, 100 - week.pct) / need);
 }
 

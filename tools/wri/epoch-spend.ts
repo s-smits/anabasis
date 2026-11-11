@@ -17,11 +17,10 @@ import { epochsOf } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { billedBetween, billedFor, spendOf } from "#src/kernel/meter.ts";
+import { HOUR_MS } from "#src/meta/clock.ts";
 import { plural } from "#src/meta/text.ts";
 import { printRows } from "./folds.ts";
 import { logEvents } from "#tools/runs/registry.ts";
-
-const HOUR_MS = 3_600_000;
 
 /** One line an epoch of `events`. */
 export function epochSpendLines(events: readonly LogEvent[]): string[] {

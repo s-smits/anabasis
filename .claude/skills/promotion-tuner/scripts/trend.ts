@@ -26,6 +26,7 @@ import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { formatOf, MISSING, printed } from "#skills/main/print.ts";
 import { loadRuns, promotedBy, type Run, rungsOf } from "#skills/main/runs.ts";
 import { type Shift, shiftOf } from "#skills/main/stats.ts";
+import { DAY_MS } from "#src/meta/clock.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { median } from "#src/meta/tally.ts";
 import { campaignsOf, outsideLines, scoresOf } from "./outside.ts";
@@ -56,7 +57,6 @@ const OPTIONS = {
   format: "text",
   runs: "abs",
 } as const;
-const DAY_MS = 86_400_000;
 /** The level a difference between windows is described at; it decides nothing. */
 const LEVEL = 0.05;
 /** The elapsed hours a run's first promotion is counted by, the iteration's trigger. */

@@ -14,6 +14,7 @@ import {
   functionParameterTypeAnnotation,
 } from "../shared/function-parameters.ts";
 import { resolveVariable } from "../shared/scope.ts";
+import { enclosingFunction } from "../../implicit-state/shared/syntax.ts";
 
 import type { ESTree, SourceCode, Variable } from "@oxlint/plugins";
 import type { RuleExample } from "../../rule-examples.ts";
@@ -174,21 +175,6 @@ function annotationTarget(
   return annotation === null || annotation === undefined
     ? null
     : classifyWideningTarget(annotation.typeAnnotation, environment);
-}
-
-function enclosingFunction(node: ESTree.Node): FunctionExpression | null {
-  let current: ESTree.Node | null = node.parent;
-  while (current !== null && current.type !== "Program") {
-    if (
-      current.type === "ArrowFunctionExpression" ||
-      current.type === "FunctionDeclaration" ||
-      current.type === "FunctionExpression"
-    ) {
-      return current;
-    }
-    current = current.parent;
-  }
-  return null;
 }
 
 function sourceKeyName(sourceCode: SourceCode, key: ESTree.PropertyKey): string {

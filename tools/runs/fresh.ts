@@ -5,7 +5,7 @@
  * and refuses what it refuses.
  *
  *   bun run runs fresh <pack> [<pack> ...] [--logins <allowed-list>] [--model opus|sonnet|gpt|<provider>/<id>] [--effort hhmm] [--login N] [--budget 800]
- *     [--at <commit>] [--as <suffix>] [--host <host>] [--yes] [-- <more of the campaign command's flags>]
+ *     [--at <commit>] [--as <suffix>] [--host <host> | --placed] [--yes] [-- <more of the campaign command's flags>]
  *
  * The prompt is the operator's, `<pack>-prompt.txt` in the folder `ANA_PROMPTS` names, by default
  * `anabasis-prompts` beside the checkout, and the verb opens nothing else of it. The name is
@@ -49,7 +49,7 @@ import { preparedHost, publishedAt } from "./code.ts";
 import { freshFleet, freshHost, freshLogin, loginPool, loginPresent } from "./placement.ts";
 import { modelNamed } from "../m0/stored-sweep.ts";
 import { launch } from "./manage.ts";
-import { everyRun, HERE, harnessesOf } from "./registry.ts";
+import { everyRun, HERE, harnessesOf, Misused } from "./registry.ts";
 import { batchFresh } from "./batch.ts";
 import { CODEX, seatsCodex } from "./live.ts";
 import { billsLogin, readLogins } from "./logins.ts";
@@ -133,9 +133,7 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
   });
   const [pack] = positionals;
   if (pack === undefined) {
-    throw new Error(
-      "usage: bun run runs fresh <pack> [<pack> ...] [--logins <allowed-list>] [--model opus|sonnet|gpt|<provider>/<id>] [--effort hhmm] [--login N] [--budget 800] [--at <commit>] [--as <suffix>] [--host <host>] [--yes] [-- <more of the campaign command's flags>]",
-    );
+    throw new Misused();
   }
   if (
     positionals.some((name) => !isSafePathSegment(name)) ||

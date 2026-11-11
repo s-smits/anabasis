@@ -561,6 +561,34 @@ export const solved: Seated = (campaign, { builder }) => ({
   paid: true,
 });
 
+/** What a comparison is made on, for a round and a standalone comparison alike: the starter, the
+ *  scored set, the flags' terms and the seats that solve and rule. */
+export async function comparedOn(
+  { campaign, setting, cap }: Awaited<ReturnType<typeof campaignFor>>,
+  values: { readonly level: string; readonly defects: string; readonly predict?: string | undefined },
+  seats: Seats,
+  reviewers: Reviewers | null,
+): Promise<Omit<RoundRequest, "session" | "reference" | "builder">> {
+  const packageOf = packaged(campaign);
+  return {
+    starter: await starter(campaign),
+    ...scoredSet(read(campaign.log), setting.target, contractHash(campaign.contract)),
+    solves: setting.solves,
+    level: Number(values.level),
+    objective: objectiveNamed(campaign),
+    defects: Number(values.defects),
+    cap,
+    prediction: predictionNamed(values.predict),
+    concurrency: setting.named.limits.concurrency,
+    solve: (version, harness, comparison, kill) => seats.solve(packageOf(version), harness, kill, comparison),
+    setting: seats.setting,
+    referee:
+      reviewers === null
+        ? undefined
+        : (solve, version, kill) => reviewers.referee(solve, packageOf(version), kill),
+  };
+}
+
 /** `bun tools/d2/round.ts`, and under a simulation's `seated` the same round with its seats scripted. */
 export async function roundCommand(args: readonly string[], seated: Seated = solved): Promise<Report> {
   const { values } = parseArgs({ args: [...args], options: ROUND_OPTIONS });
@@ -569,7 +597,6 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
   if (session === undefined) throw new Error("name --session, the id the round takes in the log");
   const { cap, setting, campaign } = await campaignFor(values, pack, seated);
   const { limits } = setting.named;
-  const packageOf = packaged(campaign);
   const reviewers = reviewersNamed(campaign, values);
   const parent = await parentNamed(campaign, { ...values, session });
   const reference = await keptAs(campaign, "--reference", values.reference);
@@ -582,21 +609,7 @@ export async function roundCommand(args: readonly string[], seated: Seated = sol
   const request: RoundRequest = {
     session: built,
     reference,
-    starter: await starter(campaign),
-    ...scoredSet(read(campaign.log), setting.target, contractHash(campaign.contract)),
-    solves: setting.solves,
-    level: Number(values.level),
-    objective: objectiveNamed(campaign),
-    defects: Number(values.defects),
-    cap,
-    prediction: predictionNamed(values.predict),
-    concurrency: limits.concurrency,
-    solve: (version, harness, comparison, kill) => seats.solve(packageOf(version), harness, kill, comparison),
-    setting: seats.setting,
-    referee:
-      reviewers === null
-        ? undefined
-        : (solve, version, kill) => reviewers.referee(solve, packageOf(version), kill),
+    ...(await comparedOn({ campaign, setting, cap }, values, seats, reviewers)),
   };
   // Every refusal comes before anything is recorded: the admission's, then the round's own
   // terms, and only then an override of the stop rule and the campaign's setting.

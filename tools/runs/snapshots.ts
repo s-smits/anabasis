@@ -9,17 +9,18 @@
  *
  *   bun run runs catalogue
  */
+import { Type } from "typebox";
 import { LOG_FILE, type LogEvent } from "#src/kernel/log.ts";
 import { openingOf } from "#src/campaign/opening.ts";
 import { existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync } from "#src/meta/filesystem.ts";
-import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
-import { asRecord, isString, isBoolean, isNumber } from "#src/meta/json-shape.ts";
+import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
+import { isNumber } from "#src/meta/json-shape.ts";
 import { dirname, isAbsolute, join } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { pooled } from "#src/meta/pool.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { asked } from "./hosts.ts";
+import { asked, answerOf } from "./hosts.ts";
 import { type Host, hostNamed, hostsOf } from "./host-config.ts";
 import { quoted, rsync, sideOf, sshScript } from "./host-command.ts";
 import { runTextOrThrow } from "#src/meta/subprocess.ts";
@@ -60,6 +61,18 @@ const RECORD = [
   `--include=/${SEED_FILE}`,
   "--exclude=/*",
 ];
+/** A host's answer to `catalogue`. `kept` and `bytes` are read where a host's tree sends them. */
+const CATALOGUE = Type.Array(
+  Type.Object({
+    name: Type.String(),
+    path: Type.String(),
+    project: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+    open: Type.Boolean(),
+    kept: Type.Optional(Type.Unknown()),
+    stderr: Type.Union([Type.String(), Type.Null()]),
+    bytes: Type.Optional(Type.Unknown()),
+  }),
+);
 /** How many copies are refreshed at once. Each is one rsync over the host's shared ssh connection,
  *  which carries ten sessions at most by sshd's default. */
 const AT_ONCE = 6;
@@ -101,36 +114,25 @@ export const localCatalogue = () => originals().map(entryOf);
 /** Validate before a remote record can name a transfer source or local destination. */
 export function remoteRuns(lines: readonly string[] | null, host: Host): RemoteRun[] {
   if (lines === null) throw new Error(`${host.name}: no campaign catalogue; copies were not refreshed`);
-  const value = capturedJsonParse(lines.join("\n"));
-  if (!Array.isArray(value)) throw new Error(`${host.name}: campaign catalogue is not a list`);
-  return value.map((entry) => {
-    const run = asRecord(entry);
+  const said = answerOf(CATALOGUE, lines);
+  if (said === null) throw new Error(`${host.name}: invalid campaign catalogue`);
+  return said.map(({ name, path, project, open, kept, stderr, bytes }) => {
     if (
-      run === null ||
-      !isString(run.name) ||
-      !isSafePathSegment(run.name) ||
-      !isString(run.path) ||
-      !isAbsolute(run.path)
+      !isSafePathSegment(name) ||
+      !isAbsolute(path) ||
+      !path.endsWith(`/${name}/${LOG_FILE}`) ||
+      path.includes("\n")
     ) {
-      throw new Error(`${host.name}: invalid campaign catalogue entry`);
-    }
-    if (!run.path.endsWith(`/${run.name}/${LOG_FILE}`) || run.path.includes("\n")) {
       throw new Error(`${host.name}: campaign path does not name its log`);
     }
-    if (run.project !== undefined && run.project !== null && !isString(run.project)) {
-      throw new Error(`${host.name}: invalid campaign project`);
-    }
-    if (!isBoolean(run.open) || !(run.stderr === null || isString(run.stderr))) {
-      throw new Error(`${host.name}: invalid campaign observation`);
-    }
     return {
-      name: run.name,
-      path: run.path,
-      project: isString(run.project) ? run.project : null,
-      open: run.open,
-      kept: run.kept === true,
-      stderr: run.stderr,
-      bytes: isNumber(run.bytes) ? run.bytes : null,
+      name,
+      path,
+      project: project ?? null,
+      open,
+      kept: kept === true,
+      stderr,
+      bytes: isNumber(bytes) ? bytes : null,
     };
   });
 }

@@ -14,6 +14,18 @@ describe("each login's live runs", () => {
     expect(liveOf("m1", ['[{"name":"a","login":"2","host":"here"}]'])).toEqual([
       { name: "a", login: "2", host: "m1" },
     ]);
+    // A record without its login, or a list that is not one of records, leaves the host uncounted.
+    for (const said of ['[{"name":"a"}]', '[{"name":"a","login":2}]', '["a"]']) {
+      expect(liveOf("m1", [said])).toBeNull();
+    }
+    expect(
+      liveOf("m1", [
+        '[{"name":"a","login":null,"unwritten":true},{"name":"b","login":null,"unwritten":false}]',
+      ]),
+    ).toEqual([
+      { name: "a", login: null, host: "m1", unwritten: true },
+      { name: "b", login: null, host: "m1" },
+    ]);
   });
 });
 

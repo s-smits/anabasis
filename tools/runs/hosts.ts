@@ -29,6 +29,10 @@
  * published ancestor for ordinary verbs and skill scripts; all configured paths remain literal shell words.
  * Live records belong to live.ts, shared by usage and placement (22 October 2026).
  */
+import type { Static, TSchema } from "typebox";
+import { Value } from "typebox/value";
+import { capturedJsonParse } from "#src/meta/json-runtime.ts";
+import type { JsonValue } from "#src/meta/json-shape.ts";
 import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { runCaptured } from "#src/meta/subprocess.ts";
 import { CARRIED, type Host, hostsOf, hostNamed, configuredRuntime, RUN_CAP } from "./host-config.ts";
@@ -181,6 +185,20 @@ export async function asked(
   mode: "prepared" | "configured" = "prepared",
 ): Promise<{ host: Host; lines: string[] | null; elapsedMs: number }[]> {
   return await askedScript(CLI, args, targets, mode);
+}
+
+/** What a peer's lines answer where they are JSON that `schema` holds, and null otherwise: no answer,
+ *  no JSON, or an older tree's answer that lacks a part. Extra keys pass, so a newer tree's answer
+ *  stays readable. A file's lines read the same way. */
+export function answerOf<S extends TSchema>(schema: S, lines: readonly string[] | null): Static<S> | null;
+export function answerOf(schema: TSchema, lines: readonly string[] | null): JsonValue | null {
+  if (lines === null) return null;
+  try {
+    const value = capturedJsonParse(lines.join("\n"));
+    return Value.Check(schema, value) ? value : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Ask all hosts a script, concurrently and within the same deadline as the runs CLI. */

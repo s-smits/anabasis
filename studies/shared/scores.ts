@@ -34,6 +34,7 @@ import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { join } from "#src/meta/path.ts";
+import { mean } from "#src/meta/tally.ts";
 import { RESULT_FILE, TRACE_FILE } from "./pi-solve.ts";
 
 /** One trial of one task, as `trials.py` names it and its folder shows it. */
@@ -169,8 +170,6 @@ export function shortfall(
   );
 }
 
-const mean = (values: readonly number[]) => values.reduce((sum, each) => sum + each, 0) / values.length;
-
 /** A small seeded generator, so that a report read again prints the same interval. */
 function seeded(seed: number): () => number {
   let state = seed >>> 0;
@@ -196,13 +195,14 @@ export function readArms(
   const full = (by: Map<string, number[]>, task: string) => (by.get(task)?.length ?? 0) >= streams;
   const tasks = all.filter((task) => full(scoredA, task) && full(scoredB, task));
   const cut = (by: Map<string, number[]>, task: string) => (by.get(task) ?? []).slice(0, streams);
-  const meansA = tasks.map((task) => mean(cut(scoredA, task)));
-  const meansB = tasks.map((task) => mean(cut(scoredB, task)));
+  const meansA = tasks.map((task) => mean(cut(scoredA, task)) ?? 0);
+  const meansB = tasks.map((task) => mean(cut(scoredB, task)) ?? 0);
   const gaps = tasks.map((_, at) => (meansB[at] ?? 0) - (meansA[at] ?? 0));
   const units = gaps.map((gap) => Math.round(gap * 100 * streams));
   const draw = seeded(seed);
-  const resampled = Array.from({ length: 10_000 }, () =>
-    mean(tasks.map(() => gaps[Math.floor(draw() * gaps.length)] ?? 0)),
+  const resampled = Array.from(
+    { length: 10_000 },
+    () => mean(tasks.map(() => gaps[Math.floor(draw() * gaps.length)] ?? 0)) ?? 0,
   ).toSorted((one, other) => one - other);
   const at = (share: number) => (resampled[Math.floor(share * (resampled.length - 1))] ?? 0) * 100;
   const none = tasks.length === 0;
@@ -211,9 +211,9 @@ export function readArms(
     short: all.filter((task) => !tasks.includes(task)),
     streams,
     level,
-    meanA: none ? 0 : mean(meansA) * 100,
-    meanB: none ? 0 : mean(meansB) * 100,
-    difference: none ? 0 : mean(gaps) * 100,
+    meanA: (mean(meansA) ?? 0) * 100,
+    meanB: (mean(meansB) ?? 0) * 100,
+    difference: (mean(gaps) ?? 0) * 100,
     interval: none ? [0, 0] : [at(0.025), at(0.975)],
     won: units.filter((each) => each > 0).length,
     lost: units.filter((each) => each < 0).length,

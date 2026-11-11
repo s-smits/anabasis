@@ -15,6 +15,7 @@
  * scripts; this reader wraps the folds that the paired seats already read by.
  */
 import { campaignOf } from "#src/campaign/handover.ts";
+import { promoted } from "#src/kernel/reports.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { billedAll } from "#src/kernel/meter.ts";
 import { existsSync, statSync } from "#src/meta/filesystem.ts";
@@ -32,9 +33,7 @@ export const STARTS = new Set<string>(["exam.started", "draft.started"]);
  *  the session lines here and by `exams.ts` for each draft, so an exam's drafts are read against
  *  the harness they had to leave room for. */
 export function referenceAt(events: readonly LogEvent[], index: number): string {
-  const promoted = events.slice(0, index).findLast((event) => event.kind === "harness.promoted")
-    ?.data.harness;
-  return isString(promoted) ? promoted.slice(0, 8) : "starter";
+  return promoted(events.slice(0, index))?.slice(0, 8) ?? "starter";
 }
 
 /** One line an Examiner session: its id, the reference in force, and its reading. */

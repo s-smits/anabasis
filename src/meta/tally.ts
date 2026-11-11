@@ -22,3 +22,7 @@ export function median(values: readonly number[]): number | null {
   const upper = sorted[middle] ?? 0;
   return sorted.length % 2 === 1 ? upper : ((sorted[middle - 1] ?? 0) + upper) / 2;
 }
+
+/** The average, or null when there is none, as `median` reads an empty list. */
+export const mean = (values: readonly number[]): number | null =>
+  values.length === 0 ? null : values.reduce((sum, value) => sum + value, 0) / values.length;

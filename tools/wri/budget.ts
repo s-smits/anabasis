@@ -28,7 +28,8 @@ const HOUR_S = 3600;
 
 const most = (values: readonly number[]) => (values.length === 0 ? null : Math.max(...values));
 const said = (value: number | null, digits = 0) => (value === null ? "none" : value.toFixed(digits));
-const percent = (value: number | null) => (value === null ? "none" : `${String(Math.round(value * 100))}%`);
+export const percent = (value: number | null) =>
+  value === null ? "none" : `${String(Math.round(value * 100))}%`;
 
 /** The comparison each solve counted in: its start's, else the fold's window for an older report. */
 function comparisonsOf(index: Index): Map<string, string> {

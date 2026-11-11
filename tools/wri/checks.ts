@@ -4,7 +4,7 @@
  * and by side, with what stands of its scored refusals. The first line names the exam the rows
  * belong to: the check program on disk, the one the rows were read at and the frozen one.
  *
- *   bun tools/wri/checks.ts <log | campaign folder | name>
+ *   bun tools/wri/wri.ts reader checks --log <log | campaign folder | name>
  *
  * Lanes 1, 3 and 5 read it first. Between 3 and 10 November all 18 lane 1 sessions found the exam's
  * files by hand and set each `checker.read` row beside its `brief.json` entry, and 5 of 8 lane 3
@@ -19,9 +19,8 @@
  * ruling (rule 8). A check the verdicts name and the reading does not gets a row of its own, marked.
  * It prints counts; no row says which check to read.
  */
-import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { frozenChecker } from "#src/kernel/acceptance.ts";
-import { type LogEvent, read } from "#src/kernel/log.ts";
+import type { LogEvent } from "#src/kernel/log.ts";
 import { labelsIn } from "#src/kernel/solves.ts";
 import { blockingOf, type Brief, checkProgramVersion, OBJECTIVE, readBrief } from "#src/kernel/verify.ts";
 import { existsSync } from "#src/meta/filesystem.ts";
@@ -31,18 +30,7 @@ import { errorMessage } from "#src/meta/runtime-values.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { stagedExamOf } from "#tools/d2/exam.ts";
-import { logAcross } from "#tools/runs/snapshots.ts";
-import {
-  count,
-  indexOf,
-  items,
-  NO_TRACES,
-  refusals,
-  refusalsByCheck,
-  type Solve,
-  strings,
-  text,
-} from "./folds.ts";
+import { count, indexOf, items, refusals, refusalsByCheck, type Solve, strings, text } from "./folds.ts";
 import { askedOf, sideOf } from "./rejections.ts";
 
 /** Where the exam's check program stands on disk, and what it holds, or why neither is known. */
@@ -52,14 +40,13 @@ interface OnDisk {
   readonly brief: Brief | null;
 }
 
-const USAGE = "usage: bun tools/wri/checks.ts <log | campaign folder | name>";
 const NOT_RECORDED = "not recorded";
 const STANDS = ["earned", "check-defect", "unclear", "unread"] as const;
 const short = (digest: string | null | undefined) => (isString(digest) ? digest.slice(0, 8) : NOT_RECORDED);
 
 /** The check program a campaign judges by: a drafted exam where it was staged (`stagedExamOf`), a
  *  stored pack's beside the log. Read, never written. */
-function programOnDisk(log: string): OnDisk {
+export function programOnDisk(log: string): OnDisk {
   let checks: string;
   try {
     checks = stagedExamOf(log)?.checks ?? join(dirname(log), "checks");
@@ -174,15 +161,4 @@ export function checkRows(events: readonly LogEvent[], disk: OnDisk): string[] {
       ? [`the reading's faults: ${String(strings(reading?.faults).length)}`]
       : []),
   ];
-}
-
-async function main(args: CommandArgs): Promise<number> {
-  const named = args.positionals[0] ?? args.required("log");
-  const log = await logAcross(named);
-  console.log(checkRows(read(log, NO_TRACES), programOnDisk(log)).join("\n"));
-  return 0;
-}
-
-if (import.meta.main) {
-  await runCommand({ name: "checks", usage: USAGE, options: { log: "text" }, positionals: [0, 1] }, main);
 }

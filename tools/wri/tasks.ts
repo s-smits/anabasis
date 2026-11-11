@@ -180,18 +180,30 @@ function gradeRows(events: readonly LogEvent[], campaign: string): string[] {
   ];
 }
 
+/** Every task the log scored or released, a block each, or a line each of its structure (`shape`). */
+export function tasksLines(events: readonly LogEvent[], form: "shape" | "blocks" = "blocks"): string[] {
+  const tasks = listed(events);
+  const lines =
+    form === "shape"
+      ? tasks.map(
+          ({ task, where }) =>
+            `${task.version.slice(0, 8)}  ${task.taskId ?? "no id"}  ${where}  ${task.input === undefined ? "none in the log" : inputPaths(task.input.publicInput)}`,
+        )
+      : tasks.flatMap(({ task, where }) => taskLines(task, where));
+  return lines.length === 0 ? ["no comparison has scored a task"] : lines;
+}
+
 async function main(args: CommandArgs): Promise<number> {
   const [named = ""] = args.positionals;
   const log = await logAcross(args.value("log") ?? named);
   const events = read(log);
-  const tasks = listed(events);
   const asked = args.value("task");
   if (args.flag("rows")) {
     console.log(gradeRows(events, basename(dirname(log))).join("\n"));
     return 0;
   }
   if (asked !== null) {
-    const found = tasks.find(({ task }) => task.taskId === asked || task.version.startsWith(asked));
+    const found = listed(events).find(({ task }) => task.taskId === asked || task.version.startsWith(asked));
     if (found === undefined) return args.die(`${asked} is no task this log scored or released`);
     const { task, where } = found;
     console.log(
@@ -199,13 +211,7 @@ async function main(args: CommandArgs): Promise<number> {
     );
     return 0;
   }
-  const lines = args.flag("shape")
-    ? tasks.map(
-        ({ task, where }) =>
-          `${task.version.slice(0, 8)}  ${task.taskId ?? "no id"}  ${where}  ${task.input === undefined ? "none in the log" : inputPaths(task.input.publicInput)}`,
-      )
-    : tasks.flatMap(({ task, where }) => taskLines(task, where));
-  console.log(lines.length === 0 ? "no comparison has scored a task" : lines.join("\n"));
+  console.log(tasksLines(events, args.flag("shape") ? "shape" : "blocks").join("\n"));
   return 0;
 }
 

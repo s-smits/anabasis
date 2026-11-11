@@ -260,13 +260,18 @@ function acrossLines(
     for (const each of own) kept.set(each.key, each);
     if (own.length === 0) continue;
     campaigns.add(name);
-    lines.push(name, ...campaignLines(events, own, tasks));
+    lines.push(name, ...campaignLines(events, own, tasks ? "tasks" : "reads"));
   }
   return [...lines, "all of them", ...totalLines([...kept.values()], campaigns.size)];
 }
 
-/** `reads` of one log, each with its task rows where `tasks` asks, then their sums. */
-function campaignLines(events: readonly LogEvent[], reads: readonly StarterRead[], tasks: boolean): string[] {
+/** `reads` of one log, each with its task rows where `rows` asks, then their sums. */
+function campaignLines(
+  events: readonly LogEvent[],
+  reads: readonly StarterRead[],
+  rows: "tasks" | "reads",
+): string[] {
+  const tasks = rows === "tasks";
   const called = calledBy(namesOf(events));
   const endings = tasks ? endingsOf(events) : new Map<string, string>();
   const bests = tasks ? poolOf(events).bests : new Map<string, number>();
@@ -277,6 +282,16 @@ function campaignLines(events: readonly LogEvent[], reads: readonly StarterRead[
     ]),
     ...totalLines(reads),
   ];
+}
+
+/** One log's starter reads under the legend, with each read's task rows where `rows` asks, or why
+ *  it has none. */
+export function starterLines(events: readonly LogEvent[], rows: "tasks" | "reads" = "reads"): string[] {
+  const reads = starterReads(events);
+  if (reads.length === 0 && !events.some(({ kind }) => kind === "harness.promoted")) {
+    return ["no promotion in this log, so no starter read"];
+  }
+  return [...LEGEND, ...campaignLines(events, reads, rows)];
 }
 
 /** Every campaign on record whose name holds `part`, rehearsals left out. */
@@ -310,12 +325,7 @@ if (import.meta.main) {
         return;
       }
       const events = read(await logAcross(named[0] ?? ""));
-      const reads = starterReads(events);
-      if (reads.length === 0 && !events.some(({ kind }) => kind === "harness.promoted")) {
-        console.log("no promotion in this log, so no starter read");
-        return;
-      }
-      console.log([...LEGEND, ...campaignLines(events, reads, tasks)].join("\n"));
+      console.log(starterLines(events, tasks ? "tasks" : "reads").join("\n"));
     },
   );
 }

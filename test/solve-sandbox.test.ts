@@ -362,14 +362,17 @@ describe.skipIf(!onDarwin)("the Darwin wall's edges", () => {
     });
     const client = (path: string) =>
       `python3 -I -c 'import socket,sys;socket.socket(socket.AF_UNIX).connect(sys.argv[1])' ${path} 2>/dev/null && echo reached || echo refused`;
+    // The seat's own is named from its temporary folder, as a socket's path is cut at 104 bytes.
+    const probes = (own: string) =>
+      `${client(join(unclosed, "s"))}; cd "$TMPDIR" && python3 -I -c 'import socket,sys;s=socket.socket(socket.AF_UNIX);s.bind(sys.argv[1]);s.listen();s.accept()' ${own} & sleep 1; cd "$TMPDIR"; ${client(own)}; ${client("/var/run/mDNSResponder")}`;
     try {
-      await inSeat(workRepo(), [], async (_wall, run) => {
-        // Named from the seat's temporary folder, as a socket's path is cut at 104 bytes.
-        const server = `cd "$TMPDIR" && python3 -I -c 'import socket,sys;s=socket.socket(socket.AF_UNIX);s.bind(sys.argv[1]);s.listen();s.accept()' o & sleep 1`;
-        const output = await run(
-          `${client(join(unclosed, "s"))}; ${server}; cd "$TMPDIR"; ${client("o")}; ${client("/var/run/mDNSResponder")}`,
-        );
-        expect(output.split("\n").slice(0, 3)).toEqual(["refused", "reached", "reached"]);
+      await inSeat(workRepo(), [], async (wall, run) => {
+        const reach = async (own: string, under = wall) =>
+          (await run(probes(own), under)).split("\n").slice(0, 3);
+        expect(await reach("o")).toEqual(["refused", "reached", "reached"]);
+        // A check's wall, which has no network: its own socket still, and the resolver's no more.
+        const offline = { ...wall, base: { ...wall.base, network: false } };
+        expect(await reach("p", offline)).toEqual(["refused", "reached", "refused"]);
       });
       await Bun.sleep(200);
       expect(heard).toBe(0);

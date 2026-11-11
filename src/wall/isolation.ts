@@ -289,20 +289,20 @@ function darwinCommandProfile(
     // A seat's command may reach the network, so it can install what its task needs; a check may
     // not (`src/kernel/verify.ts`). A Unix socket is a door to whatever listens on it, unconfined:
     // an ssh control master's runs commands on the hosts it reaches, and a walled connect reached a
-    // VPN daemon's control socket and the print server's (probe, 11 November). So a command reaches
-    // the sockets in its own root and the one the resolver answers on, without which no name
-    // resolves, and no other; the later rule wins, as among the file rules below.
+    // VPN daemon's control socket and the print server's (probe, 11 November). So with the network
+    // a command reaches the one the resolver answers on, without which no name resolves, and with
+    // or without it those in its own root, as a check on Linux does; the later rule wins.
     ...(base.network
       ? [
           "(allow network*)",
           '(deny network-outbound (remote unix-socket (path-regex #"^/")))',
-          ...scratchRoots.map(
-            (root) =>
-              `(allow network-outbound (remote unix-socket (subpath ${capturedJsonStringify(root)})))`,
-          ),
           '(allow network-outbound (remote unix-socket (path-literal "/private/var/run/mDNSResponder")))',
         ]
       : []),
+    ...scratchRoots.flatMap((root) => [
+      `(allow network-bind (local unix-socket (subpath ${capturedJsonStringify(root)})))`,
+      `(allow network-outbound (remote unix-socket (subpath ${capturedJsonStringify(root)})))`,
+    ]),
     // The host's shared temporary folders, closed whole: what another process left there is
     // neither read nor run, and a command leaves nothing there for the next. Their listings are
     // every tenant's names, which Linux hides under a tmpfs. The seat's root, which lies in the

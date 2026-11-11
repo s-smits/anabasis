@@ -285,17 +285,13 @@ export function runnerLags(tree: string, commit: string): boolean {
   return gitMaybe(tree, ...same) === null;
 }
 
-function runnerFinding(machine: Machine, facts: Facts, { hosts, force }: Options): Finding | null {
+function runnerFinding(machine: Machine, facts: Facts, { hosts }: Options): Finding | null {
   const { host } = machine;
   if (hosts.length === 0 || facts.runner === null || !runnerLags(TREE, facts.runner)) return null;
-  const everyCheckHere = host === undefined && !hosts.some(({ checks }) => checks !== undefined);
   return {
     line: `runner installed from ${facts.runner}, whose source this tree's has moved past`,
     seats: false,
-    blocked:
-      everyCheckHere && !force
-        ? "no host in ANA_HOSTS sets `checks`, so this install would run every check on this machine: set them first, or --force"
-        : null,
+    blocked: null,
     apply: () => {
       if (host !== undefined) return scriptOn(host, INSTALL, []);
       return runOn(machine, `${quoted(capturedExecPath)} ${quoted(join(TREE, INSTALL))}`);

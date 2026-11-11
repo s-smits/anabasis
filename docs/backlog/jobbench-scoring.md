@@ -110,6 +110,39 @@ JobBench (`studies/harness2/README.md`, "Read every result against how uneven th
     professions of one task are passed over, since a stream's first task has no held-out score. The
     test is parity, whose margin goes in the prediction. A further benchmark, from professions the
     prompt does not reach, reads transfer out of the domain, and `plan` draws that by default.
+18. **Ablate Harness² at k=5 beside its k=1.** The reproduction runs k=1 only: `h2/recursion.ts`
+    fixes `k: 1` and delivers its one final without a selector session. The paper reads k=5 above
+    k=1 in each of its four settings on WorkBuddy-Bench Code (80.8 against 76.5 and 81.0 against
+    79.4 under Gemini 3.5 Flash, 81.9 against 77.1 and 77.2 against 74.9 under GLM-5), so the arm
+    on record is the method's weaker setting, and a reference level with it is not yet shown level
+    with Harness². Port k above 1 (`K` candidates a scope, `K` compositions and the selector
+    session, `4K` rollouts and `3K` improver sessions a task), then score k=5 held-out on the fair
+    tasks beside k=1 rolled afresh in the same sitting, two rollouts an arm and task. The fork's
+    own `--k 5` runs under another runner, so it would change two things at once. A build at k=5
+    costs about five times the k=1 record in sessions and in judged rollouts, an estimate to
+    reprice from the first task; the ablation waits for a login with room and the operator's cap.
+19. **Roll the three arms afresh once the current batch of fixes has landed on the stack.** A
+    fresh Starter, Harness² held-out again, and the jobstat reference of a fresh campaign after at
+    least two promotions, the second confirmed by its starter read, over all eight tasks in one
+    sitting (run-improvement-campaign, "The outside aim"). No stored record stands in for an arm:
+    the export and the scoring changed after every record in the store but those of the last two
+    arms of 9 November, and item 16 changes what a table prints. It runs after the batch, on the
+    operator's word for the paying login and the cap, with its prediction written first.
+20. **Count what holds a built harness back before loosening anything.** On the benchmark no
+    limit and no refusal was met: 71 of 71 rollouts ended `success`, the dearest at 3.51 of 5
+    dollars and the longest at 1,349 of 3,600 s, and a rollout there runs behind no wall. What the
+    record shows is a harness that works less. The exported reference `f04b0aad` sent fewer
+    messages than the Starter on each of the eight tasks (375 against 536 in all, 13.89 against
+    17.66 dollars; one rollout a task, so a direction), each rubric it lost was one criterion
+    short on a statement it left out, and no program of a harness was called in the 15 rollouts
+    of 9 November. Its guide tells the solver of 20 turns and 30 minutes, which hold in a
+    campaign and not here (item 14). Four counts in campaigns' own logs come before any change,
+    each read under the reference and under the Starter: the share of solves that end on a limit
+    of turns, minutes or prompts; the wall's refusals a solve and a Builder session; the share of
+    solves in which each program of the reference is called and exits 0; and the share of a
+    guide's words that restate what the host already tells the solver. A limit that binds, a wall
+    that refuses work a solve needed, or a guide that carries the host's limits are three
+    different owners, and a campaign's limits and what a solver is told are the operator's.
 
 ## How it came to be
 
@@ -203,3 +236,16 @@ JobBench (`studies/harness2/README.md`, "Read every result against how uneven th
   worse than Harness2 if we run the full benchmark, which is fine, we should run the 20 queries in the
   domain groups that the prompt is most adhered to i think for now, if we can reach parity that'd
   already be sick" (item 17).
+
+  On 11 November 2026 the operator asked whether Harness² had been reproduced "according to their
+  results but with a different SDK" and model, which it had, at k=1 only. On the paper's table,
+  where k=5 reads above k=1 in every setting: "oooh wow and they got better scores with k=5 ?",
+  then "ahh we should still ablate the k=5 then, put in the backlog" (item 18). An arm at a dollar
+  cap of 10 was asked for and withdrawn the same hour ("ok nvm then"), since no rollout had reached
+  5. Asked whether the bare arm had silently run a stronger model, the record read that every
+  stored rollout of every arm ran on Opus 5.5. The operator then: "what would you change in the
+  Anabasis system to let it limit less and actually have the highest chance of being better? Maybe
+  we limit it too much through sandboxing even though we've had quite a bit of fixes recently",
+  and "we have to re-run the bareSolver and jobstat >2promos jobstat domainSolver right?", then
+  "so put this int the backlog as well" and "we need to do that after current improvement batch"
+  (items 19 and 20).

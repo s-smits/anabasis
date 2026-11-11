@@ -1,69 +1,69 @@
 # Optimise by simulation
 
 Some changes are judged by one count a live seat produces, such as drafts an Examiner holds after a
-promotion or rulings a Referee gets wrong, which no test can predict. This case tunes such a change
-in rounds, each a [before-after](before-after.md) pair of [live seats](live-seat.md) from seeds,
-until the count moves or the position shows it cannot.
+promotion, which no test can predict. This case tunes such a change in rounds, each a
+[before-after](before-after.md) pair of [live seats](live-seat.md) from seeds, until the count moves
+or the position shows it cannot. Its aim is to learn which of several outcomes happens, not to show
+that the hoped-for one does: a protocol that can only confirm its hypothesis teaches nothing. Scoring
+is tuned from the record instead ([promotion-tuner](../../promotion-tuner/SKILL.md)).
 
-Treat it as training with a tiny batch. The seeds are the training set, the composed prompt is the
-parameter, the count is the loss, and a seed from another campaign is the validation set. Each arm is
-one draw, and two draws of one commit give the noise floor a round must clear. Weights stay fixed, so
-an idea from reward-based training transfers only through what the seat reads. Scoring is tuned from
-the record instead ([promotion-tuner](../../promotion-tuner/SKILL.md)).
+A round can change a sentence of the Examiner's prompt (`src/examiner/prompt.ts`), a fact in a tool
+result (`admitDraft`, `src/examiner/write.ts`; `src/examiner/record.ts`) or its home
+(`src/examiner/shell.ts`), each as a commit whose pull request adds what the Examiner newly reads to
+`AGENTS.md` section 3's list. A session's terms (`tools/d1b/examine.ts`, `--tasks 12 --proposals 36
+--minutes 240 --turns 200`) are the operator's conditions, so a round over them, as a flag at one
+commit, ends in a recommendation. The solver, its budget and the exam are no term.
 
-For the Examiner a round can change a sentence of the prompt (`src/examiner/prompt.ts`), a fact in a
-tool result (`admitDraft`, `src/examiner/write.ts`; `src/examiner/record.ts`) or the home
-(`src/examiner/shell.ts`), each as a commit whose pull request also adds what the Examiner newly reads
-to `AGENTS.md` section 3's list. It can change the session's terms (`tools/d1b/examine.ts`, `--tasks
-12 --proposals 36 --minutes 240 --turns 200`) as a flag at one commit, but those are the operator's
-conditions, so the result is a recommendation. The solver, its budget and the exam are no term
-(`AGENTS.md`, section 6; rule 2).
+## 1. Name one count, a graded loss and the guards
 
-## 1. Name the count, a graded loss and the guards
+A series has one primary count with its better direction and threshold, fixed before its first
+round; a round that names another count starts a new series. Beside a sparse count name a **graded
+loss**, a dense surrogate read on every attempt that must move with it, and the **guards**, counts
+the change must leave alone. Size each arm from the surveyed base rate, so that the outcomes the
+ledger names differ by at least two events.
 
-Choose one count that `live-seat.ts read` prints, and its better direction. A rare count (at one
-hold in ten, six admissions yield 0.6) is too sparse to tune on, so name beside it a **graded loss**,
-a dense surrogate read on every attempt, which must move with the count (longer reference solves
-while holds fall are no room). Name the **guards**, counts the change must leave alone. All three go
-in the ledger (step 7) first.
+`pairs` prints held drafts, room on validity, `gap >= 1%`, the median turns of the reference's valid
+answers and dollars per admission. A task admission has recorded only passed or refused since
+1 November 2026 (`TASK_ADMISSION`, `src/examiner/write.ts`), so for a current seat `held` counts
+drafts that passed the package check and room on validity and `gap >= 1%` read 0; only older logs
+give those two. The median turns read the reference's valid answers to the session's
+`try_reference` probes (`gateAnswers`).
 
 | seat | count | graded loss | guards |
 | --- | --- | --- | --- |
-| Examiner after a promotion | drafts held, by where their room came from | drafts refused; the author's gain over the reference's best (`gap >= 1%`, `median gap`); share reading `some` | dollars per admission |
-| Examiner at an opening | drafts held before the first comparison | drafts refused on their package | dollars per admission |
-| Referee | rulings agreeing with a hand label | evidence refusals per ruling | rulings refused for evidence |
-| Builder | practice solves before its first edit; edits reaching a comparison | practice solves failing one check twice | dollars per session |
+| Examiner after a promotion | drafts held | drafts refused; median turns of the reference's valid `try_reference` answers | dollars per admission |
+| Examiner at an opening | drafts held before the first comparison | drafts refused | dollars per admission |
 
-Size each arm from the surveyed base rate, so the predicted difference is at least two events.
+The room a held task leaves shows only once a comparison solves it (examiner-complexity's
+`ambition.ts`). No script counts a Referee's agreement with hand labels or a Builder's practice and
+edits over seats, and `prompt` composes only an Examiner session, so a Referee or Builder series
+first needs that reader, written and tested.
 
 ## 2. Find a position where the count can move
 
-Survey before seeding: read each recorded stretch at the position (`live-seat.ts read --log <name>
---from <event>`), classify every attempt, and keep positions where the count was poor. Look first for
-a **positive deviant**, another session at the same position and reference that did move the count;
-it proves the position open. A seat's failures never prove a position closed; only structure does:
-every check is one the reference's programs already compute and there is no objective, or the last
-comparison left room on no task and no recorded seat has held a draft there since. Seed right before
-the seat (SKILL.md, rule 2), and pick two positions from different campaigns, one to tune on and one
-to confirm on.
+Survey before seeding: read each recorded stretch at the position (`live-seat.ts read --log <absolute
+log path> --from <event>`) and keep positions where the count was poor. A **positive deviant**,
+another session at the same position and reference that did move the count, proves a position open.
+A seat's failures never prove it closed; only structure does: every check is one the reference's
+programs already compute and there is no objective, or the last comparison left room on no task and
+no recorded seat has held a draft there since. Pick two positions from different campaigns, one to
+tune on and one to confirm on.
+
+Before any arm is read at a new position, seat two controls from it once and record their spread on
+the count and the graded loss. That spread is the position's noise floor; one borrowed from another
+position or model is none.
 
 ## 3. Diagnose before editing
 
-Read the attempts call by call, the deviant's beside the failing seat's. Three questions find most
-defects:
-
-- **Does the seat score itself with its own method?** A generator scored by a solver's regret learns
-  nothing when it computes answers with the solver's method: the regret is zero by construction. The
-  lever is a fact that separates the methods, never an instruction.
-- **Which sentence does the record contradict?** Read the composed prompt (step 4) as claims. One the
-  admissions contradict is a defect, and so is one that prescribes a course instead of stating a fact
-  (`AGENTS.md`, section 2).
-- **Which failure does every arm repeat?** It is a fact the prompt or tool states wrongly, and its fix
-  confounds nothing. `live-seat.ts calls <log or campaign folder>...` counts each Examiner call once,
-  failures by tool and error line, and `finish` calls the session went past.
-
-Read-only research sessions ([codex-gpt-swarm](../../codex-gpt-swarm/SKILL.md)) give leads to check
-against code and log. Keep each candidate to a few lines: an overhaul is several variables at once.
+Read the attempts call by call, the deviant's beside the failing seat's, and ask three questions.
+Does the seat score itself with its own method? A generator scored by a solver's regret learns
+nothing when it computes answers the solver's way, and the lever is a fact that separates the
+methods, never an instruction. Which sentence of the composed prompt (step 4) does the record
+contradict, or which prescribes a course instead of stating a fact (`AGENTS.md`, section 2)? Which
+failure does every arm repeat? That is a fact a prompt or tool states wrongly, and its fix confounds
+nothing; `live-seat.ts calls <log or campaign folder>...` counts each Examiner call once, with
+failures by tool and error line. Keep each candidate to a few lines: an overhaul is several
+variables at once.
 
 ## 4. Compose the prompts before paying
 
@@ -75,92 +75,90 @@ bun <after-tree>/.claude/skills/system-path-simulation/scripts/live-seat.ts prom
 diff <(sed 's/sim-<what>-before/X/g' before.txt) <(sed 's/sim-<what>-after/X/g' after.txt)
 ```
 
-Each tree composes with its own modules, so the script need not exist at the before commit; pass the
-seat's real flags, model included. Every diff line is the round's variable, so seat nothing while it
-holds a line you did not intend, and repeat this free step after every edit.
+Each tree composes with its own modules; pass the seat's real flags, model included. Every diff line
+is the round's variable, so seat nothing while it holds a line you did not intend.
 
 ## 5. Run the arms
 
-A **series** fixes an evaluation protocol before its first round: positions, models and efforts,
-each pair's cap and minutes, the admission count pairs are read at, and the host class. Each round
-seats every position as a fresh control and arm pair; changing the outline starts a new series.
+A **series** fixes its outline before its first round: positions, models and efforts, each pair's
+cap and minutes, the admission count pairs are read at, and the host class. Each round seats every
+position as a fresh control and arm pair, the control being the code the last round decided for.
 
+- **Size the round to decide, or call it a screen.** The sign over pairs needs five pairs of one
+  model at six or more admissions; a round with fewer is labelled a screen in the ledger, and its
+  result supports keeping no change in a pull request.
 - **Two seeds, one cut**: `bun run runs seed --from <campaign> --name sim-<what>-<arm> --before
-  <session>` in each arm's tree, on the seating host (it fetches across `ANA_HOSTS`). If a seed must
-  be copied, `rsync -aL` one into an existing `.ana/d2`, check it (line count, no links,
-  `seed.json`), then `cp -a` it under the other name, deleting nothing first.
-- **The same seats**: the source's models, efforts and reviewer, each arm on a login with room (`bun
-  run runs usage`).
-- **The next control is the code the round decided for**, on fresh seeds. Several candidates can
-  share one control, read at equal admissions with their start times in the ledger.
-- **Both arms at once, on the host with the most free cores** (`bun run runs hosts --health`). Never
-  pass `--loaded`, and seat now instead of waiting for load to fall.
-- **One cap and clock an arm**: `start --cap <dollars> --minutes <n>`, at about $0.25 to $0.50 per
-  admitted draft, each `start` one background command followed by `due --hook` or `watch`.
+  <session>` in each arm's tree, on the seating host. A seed that must be copied goes with `rsync
+  -aL`, checked for its line count, links and `seed.json`.
+- **The same seats**: the source's models, efforts and reviewer, both arms at once (SKILL.md,
+  section 3), never with `--loaded`.
+- **One cap and clock an arm**: `start --cap <dollars> --minutes <n>`, the cap sized from the
+  position's record (SKILL.md, section 3), each `start` one background command followed by `due
+  --hook` or `watch`.
 
 ## 6. Read the round
 
-Read in order: whether the round measured what the ledger says, then each pair, then the pairs
-against the noise floor, and only then the sign. A count read before the first two is no reading.
+Read in order: who ran and what reached the seat, then each pair, then the floor, then the sign.
 
 **Who ran.** `pairs` refuses a pair whose seats differ in model or effort, or whose seeds differ in
-campaign or cut. Check each arm's commit in `compare` against the ledger's `variable`.
+campaign or cut; check each arm's commit in `compare` against the ledger's `variable`.
 
 **What reached the seat.** Step 4 proves the prompt. A tool-result fact reaches the seat only when
 the tool produces it, so count it from each seed's cut: `tail -n +<events + 1> <log> | grep -c
-'<text>'`, with `events` from `seed.json`. An arm that never received its variable is `unreached`
-(run-improvement-campaign, section 7): two draws of the control, useful only for the noise floor.
+'<text>'`, with `events` from `seed.json`. These are delivery checks (SKILL.md, rule 1). An arm that
+never received its variable is `unreached` (run-improvement-campaign, "The pass"), two draws of the
+control.
 
-**Each pair at equal admissions.**
+**Each pair at the fixed count.**
 
 ```sh
-bun .claude/skills/system-path-simulation/scripts/live-seat.ts pairs <control>,<arm> <control>,<arm> ... [--gates N]
+bun .claude/skills/system-path-simulation/scripts/live-seat.ts pairs <control>,<arm> <control>,<arm> ... --gates N
 ```
 
-`pairs` reads each pair at the shorter arm's admission count, or at N: holds, admissions with room on
-validity (`some`, `none, proved`) or with `gap >= 1%`, median turns of the reference's valid
-room-solve answers, and dollars per admission; `compare <prefix>... --gates N` gives full columns.
-Room on validity and room on the objective are different findings. A pair under 6 admissions is
-**thin** and left out of the sign. Stop both arms once both reach the count; when the round is
-decided, run `live-seat.ts stop` over every prefix its scripts name, seated or not.
+Read each pair at the admission count N the outline fixed (`compare <prefix>... --gates N` gives full
+columns); a pair under 6 admissions is **thin** and left out of the sign. Stop both arms once both
+reach the count; a seat that ran on is read again at its end, and that reading goes in the ledger
+beside the first, whichever way it points. When the round is decided, run `live-seat.ts stop` over
+every prefix its scripts name, seated or not. Where a count needs judgement (families, kinds, notes),
+a reader who does not know which seat is which arm grades each output before the arms are unmasked.
 
-**Against two draws of one commit**, the round's A/A, which a series gains whenever a round reseats
-earlier code at the same position. At about 13 admissions such draws have differed by up to two
-holds and 18% in dollars per admission, so a 30% cost guard sits just outside the noise. Keep the
-spread in the ledger and update it; a difference inside it is indistinguishable from session
-variance. Where the control holds nearly everything a round can only show harm, and where it holds
-nothing only gain, so seat the "no harm" bar (step 8) at the first and a gain at the second.
-
-**The sign over pairs.** `pairs` counts, per Examiner model, the pairs where the arm did more, fewer
-or the same. Pool only one series and one model and effort. A tie counts against the prediction, five
-of five is the least a sign test reads at 0.05, and holds are never summed over pairs of unequal
-admission counts.
+**The floor and the sign.** A difference inside the position's control spread (step 2) is session
+variance; widen the spread as reseated controls add draws. Where the control holds nearly everything
+a round can only show harm, and where it holds nothing only gain. `pairs` counts, per Examiner model,
+the pairs where the arm did more, fewer or the same; pool only one series, model and effort. A tie
+counts against a gain, five of five is the least a sign test reads at 0.05, and holds are never
+summed over pairs of unequal admission counts.
 
 ## 7. The ledger
 
-One file for the optimisation in the investigation's folder (`.ana/wri/<date>-<what>/`), with one
-section a round written before its arms start:
+One file in the investigation's folder (`.ana/wri/<date>-<what>/`), with a section a round written
+before its arms start, holding the intent and two or three outcomes that could each happen (SKILL.md,
+rule 1):
 
 ```text
 ## Round <n>, <date> <time>
-series:     <name>; its outline once, in the first round: positions, models and efforts, cap,
-            minutes, admission count, host class
-variable:   <after sha> on <before sha>; the diff of step 4, one line a change
-why:        the diagnosis or report it comes from, with the count that showed it
-arms:       sim-<what>-<arm> in <tree>, from <campaign> cut before <session>; the control; start times
-predict:    P1 <arm> holds at least 1 by its sixth admission; P2 ...
-guards:     dollars per admission within 30% of the control
-result:     (after) who ran, what reached the seat, pairs at the count beside the spread, the pairs the
-            decision rests on, thin pairs, each prediction held or missed, the bar taken (step 8)
-next:       (after) the edit, the next seed, or the end of the loop
+series:    <name>; in the first round its outline (step 5) and the primary count and threshold
+variable:  <after sha> on <before sha>; the diff of step 4
+why:       the diagnosis, with the count that showed it
+arms:      each seed, its tree, source and cut; the control; start times
+size:      pairs per model, or "screen"
+intent:    what the change is meant to do
+outcomes:  O1 <arm> holds 2 more than the control: confirm on the second position;
+           O2 within the spread: revert, or keep on the simpler bar; O3 fewer, or a guard moves:
+           revert and diagnose
+delivery:  what must reach the seat, never counted as an outcome
+guards:    dollars per admission within 30% of the control
+result:    (after) step 6 in order, the outcome matched, the bar taken
+next:      (after) the edit, the next seed, or the end of the loop
 ```
 
-Name the arm in every prediction and resolve it only as written; a prediction about the arm that the
-control happens to meet has missed.
+Name the arm in every outcome and resolve it only as written; a result that matches none is the
+next diagnosis, never an outcome written after the fact.
 
 ## 8. Decide
 
-An arm enters its pull request on one of two bars, named in the ledger and the pull request:
+An arm enters its pull request on one of two bars, named in the ledger and the pull request, and
+only from a round sized to decide:
 
 - **A gain**: the variable reached the seat, the arm beat the control on the count or the graded loss
   by more than the spread in each model's pairs, no guard moved, and the move held on the confirming
@@ -169,25 +167,22 @@ An arm enters its pull request on one of two bars, named in the ledger and the p
   held, and the change removes more prompt, tools or code than it adds (reduce-complexity measures
   it). A change that adds cannot pass this bar.
 
-An arm that meets neither is reverted. Otherwise an `unreached` arm sends you back to step 3; a
-structurally closed position (step 2) means changing the seed, never the prompt; no move despite a
-deviant means diagnosing again on the deviant's calls; a moved graded loss alone, or a moved count
-with guards intact, means running the confirming seed; a moved guard means fixing its cause first.
+An arm that meets neither is reverted. An `unreached` arm sends you back to step 3; a structurally
+closed position (step 2) means changing the seed, never the prompt; no move despite a deviant means
+diagnosing again on the deviant's calls; a moved count or graded loss with guards intact means
+running the confirming seed; a moved guard means fixing its cause first.
 Stop after three rounds that moved neither count nor graded loss on positions that could move: the
 seat does not own the count, and the admission or the exam is the next place to look.
 
 ## Claims and limits
 
 The pull request says "the count moved on two seeds from two campaigns", never that the change
-raises it; that needs fresh campaigns at its commit (`AGENTS.md`, section 10, item 9). A seed reads
-only the first session after its cut, and a position's count rests on its source's exam, whose
-spread across campaigns exceeds any round's effect, so rounds compare only within a position.
+raises it; that needs fresh campaigns at its commit (`AGENTS.md`, section 10, item 9). A position's
+count rests on its source's exam, whose spread across campaigns exceeds any round's effect, so rounds
+compare only within a position.
 
 ## The result
 
-Report the ledger's `result` line in order: series, round and commits; who ran and what reached each
-arm; each pair at the count with thin pairs named; the spread and which differences exceed it; each
-prediction, the guards and the bar; and seats still running, seeds kept and what was not run.
-
-Trash each round's seeds once its result is in the ledger and every arm's worktree at the end
-([before-after](before-after.md)). Keep the ledger.
+Report the ledger's `result` line, then seats still running, seeds kept and what was not run. Trash
+each round's seeds once its result is in the ledger and every arm's worktree at the end; keep the
+ledger.

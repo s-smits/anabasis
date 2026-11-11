@@ -98,6 +98,8 @@ const COLUMNS = [
   "chars",
   "title",
 ] as const satisfies readonly (keyof DraftRow)[];
+/** The CSV's header. */
+export const EXAMS_HEADER = ["campaign", ...COLUMNS].join(",");
 
 /** What each gate said, by the version it read. A version is its content's digest
  *  (`taskVersion`), so a draft re-put to the gate after a refusal reads under the same key. */
@@ -196,7 +198,7 @@ if (import.meta.main) {
     { name: "exams", usage, options: { every: "flag" }, positionals: [1, 100] },
     async (args) => {
       const keep = args.flag("every") ? "every" : "grouped";
-      console.log(["campaign", ...COLUMNS].join(","));
+      console.log(EXAMS_HEADER);
       for (const path of await Promise.all(args.positionals.map((named) => logAcross(named)))) {
         const events = read(path);
         for (const line of csvLines(basename(dirname(path)), draftRows(events, keep))) {

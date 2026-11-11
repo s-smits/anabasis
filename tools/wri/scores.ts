@@ -1,7 +1,7 @@
 /**
  * What each comparison's reading rests on, a block a comparison, for lanes 8 and 17:
  *
- *   bun tools/wri/scores.ts <log>
+ *   bun tools/wri/wri.ts reader scores --log <log>
  *
  * The block recounts the report's task scores with this tree's `differenceOf` over the pairs the
  * report made (`pairsReported`), matched to the recorded scores by task (`testedOf().of`), and says
@@ -24,7 +24,6 @@
  * answers were valid, the other everywhere.
  */
 import type { LogEvent } from "#src/kernel/log.ts";
-import { read } from "#src/kernel/log.ts";
 import {
   differenceOf,
   flipP,
@@ -41,7 +40,6 @@ import { lastReports, pairsReported, type Reported } from "#src/kernel/reports.t
 import { solvesIn } from "#src/kernel/solves.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { spareOf } from "./clearance.ts";
-import { printRows } from "./folds.ts";
 import { pSaid, testedOf, testSaid } from "./promotion.ts";
 
 const LEVEL = 0.02;
@@ -212,5 +210,3 @@ export function scoreRows(events: readonly LogEvent[]): string[] {
     }),
   ];
 }
-
-if (import.meta.main) printRows("scores", (log) => scoreRows(read(log)));

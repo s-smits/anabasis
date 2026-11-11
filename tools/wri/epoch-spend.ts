@@ -2,7 +2,7 @@
  * Each epoch's billed dollars by role, and its comparisons' share: one row an epoch (`epochsOf`,
  * `src/campaign/climb.ts`), from the event that opened it to the promotion that closed it.
  *
- *   bun tools/wri/epoch-spend.ts <log>
+ *   bun tools/wri/wri.ts reader epoch-spend --log <log>
  *
  * For lane 22, whose question is what the climb after a promotion cost. Between 3 and 10 November
  * 7 of 14 lane-22 sessions summed `solve.finished` and `exam.finished` bills after the promotion by
@@ -19,8 +19,6 @@ import type { LogEvent } from "#src/kernel/log.ts";
 import { billedBetween, billedFor, spendOf } from "#src/kernel/meter.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
 import { plural } from "#src/meta/text.ts";
-import { printRows } from "./folds.ts";
-import { logEvents } from "#tools/runs/registry.ts";
 
 /** One line an epoch of `events`. */
 export function epochSpendLines(events: readonly LogEvent[]): string[] {
@@ -43,5 +41,3 @@ export function epochSpendLines(events: readonly LogEvent[]): string[] {
     ].join("\n");
   });
 }
-
-if (import.meta.main) printRows("epoch-spend", (log) => epochSpendLines(logEvents(log)));

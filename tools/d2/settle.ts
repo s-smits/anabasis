@@ -76,15 +76,11 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { agreement, RULINGS, settledLabels, unclearReport } from "#src/referee/agreement.ts";
 import { labelled } from "#src/referee/rejections.ts";
-import { openCampaign, packNamed } from "./campaign.ts";
+import { openCampaign, PACK_OPTIONS, packNamed } from "./campaign.ts";
 import { type Campaign, reportLines } from "./round.ts";
 
 const OPTIONS = {
-  root: { type: "string" },
-  sweep: { type: "string" },
-  cycle: { type: "string" },
-  bundle: { type: "string" },
-  name: { type: "string" },
+  ...PACK_OPTIONS,
   session: { type: "string" },
 } as const;
 /** The most a packet draws of the rejections ruled earned, and of the answers that passed. */

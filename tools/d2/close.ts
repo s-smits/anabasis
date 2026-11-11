@@ -77,7 +77,7 @@ import { join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { openHarness } from "#src/harness/open.ts";
-import { campaignLog, keptAs, openCampaign, PROMOTED, packNamed } from "./campaign.ts";
+import { campaignLog, keptAs, openCampaign, PACK_OPTIONS, PROMOTED, packNamed } from "./campaign.ts";
 import { type Seated, solved } from "./round.ts";
 import { recordedSetting, SETTING_OPTIONS, settingNamed } from "./setting.ts";
 
@@ -85,11 +85,7 @@ type Campaign = Awaited<ReturnType<typeof openCampaign>>;
 type Compared = Extract<Handover, { step: "comparison" }>;
 
 const OPTIONS = {
-  root: { type: "string" },
-  sweep: { type: "string" },
-  cycle: { type: "string" },
-  bundle: { type: "string" },
-  name: { type: "string" },
+  ...PACK_OPTIONS,
   to: { type: "string" },
   harness: { type: "string" },
   solve: { type: "string" },

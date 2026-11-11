@@ -306,9 +306,13 @@ The v1.0 bar's outside row (system-audit, "The pillars and the v1.0 bar"; its va
 tasks under that benchmark's own grader. The operator's aim (11 November 2026) is JobBench: parity
 with Harness²'s held-out arm, then above it (`docs/backlog/jobbench-scoring.md`;
 `docs/backlog/v1-bar.md`, item 2); the bar's threshold for the row stays unset. That is why jobstat
-takes the effort first and buffer is its control. Harness²'s own arm adapts on each task it is
-scored on and its held-out arm is built on the task before in the same profession, while Anabasis
-sees no JobBench task, so a lower score is the expected reading and parity a strong one
+takes the effort first and buffer is its control. Harness² knows the benchmark's tasks and
+Anabasis does not: every rollout Harness² builds on answers a real JobBench request with its
+files, though no session of it is shown a rubric or a grade, and it writes no task of its own; its
+own arm adapts on the task it is scored on, and its held-out arm is built on the task before in
+the same profession. Anabasis's Examiner writes every task its harness is built on from a
+description of the domain. So a score close to the held-out arm's, within the spread of two
+rollouts, already answers the row, level with it is a strong reading, and above it is the aim
 (`studies/harness2/README.md`, "Read every result against how uneven the comparison is").
 
 The loop serves the aim in three ways:

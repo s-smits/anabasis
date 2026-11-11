@@ -5,7 +5,7 @@
  * long the table named that move before it began, the Builder's `wait` calls, and the Examiner's
  * sessions.
  *
- *   bun tools/wri/table-timeline.ts <log>        (or --log <log>)
+ *   bun tools/wri/table-timeline.ts <log>
  *
  * For lanes 21 and 23, and 22 and 26 for time. Lane 23 wrote this replay twice by hand (6 and
  * 10 November), and 1 of 18 lane-21 sessions rebuilt it from copies of the log's prefixes; that one
@@ -35,10 +35,10 @@ import { type Call, tracesIn } from "#src/kernel/trace.ts";
 import { HOUR_MS, MINUTE_MS } from "#src/meta/clock.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { resolve } from "#src/meta/path.ts";
-import { parseArgs } from "#src/meta/process.ts";
 import { codeOf } from "#tools/d2/campaign.ts";
 import { logEvents } from "#tools/runs/registry.ts";
 import { planOn } from "#tools/runs/view.ts";
+import { printRows } from "./folds.ts";
 import { openAt } from "./launches.ts";
 
 /** The table at one prefix of the log: what it names, and that as a short key. */
@@ -261,9 +261,4 @@ export function timelineLines(events: readonly LogEvent[], here: string): string
   ];
 }
 
-if (import.meta.main) {
-  const { values, positionals } = parseArgs({ allowPositionals: true, options: { log: { type: "string" } } });
-  const given = values.log ?? positionals[0];
-  if (given === undefined) throw new Error("name a log: bun tools/wri/table-timeline.ts <log>");
-  console.log(timelineLines(logEvents(resolve(given)), codeOf(REPO).host).join("\n"));
-}
+if (import.meta.main) printRows("table-timeline", (log) => timelineLines(logEvents(log), codeOf(REPO).host));

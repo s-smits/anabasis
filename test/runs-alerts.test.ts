@@ -125,6 +125,11 @@ describe("the fold of one look", () => {
       [{ state: { kind: "kept" } }, "no writer process; its keeper lives"],
       [{ state: STOPPED }, "no writer process and no keeper"],
       [{ state: STOPPED, owed: false }, "no writer process"],
+      // A run its launch's pause stopped is paused, owed a keeper or not; a peer that sends no word of
+      // a pause says the older line above.
+      [{ state: STOPPED, paused: true }, "paused"],
+      [{ state: STOPPED, owed: false, paused: true }, "paused"],
+      [{ state: STOPPED, paused: false }, "no writer process and no keeper"],
     ] as const;
     for (const [state, says] of gaps) {
       const once = alertsOf(start, here(row(state)));
@@ -193,6 +198,15 @@ describe("the fold of one look", () => {
     const ended = alertsOf(lookedAt(row({ state: ENDED })), here());
     expect(ended.lines).toEqual([]);
     expect(ended.next.runs).toEqual({});
+    // One `runs retire` moved into the archive of a host that answered is said nothing of, and forgotten.
+    const retired = alertsOf(lookedAt(row({ state: STOPPED })), [
+      { host: "here", said: { ...heldAs([]), retired: ["r"] } },
+    ]);
+    expect(retired.lines).toEqual([]);
+    expect(retired.next.runs).toEqual({});
+    // A peer that names no archive says it as before.
+    const older = alertsOf(lookedAt(row({ state: STOPPED })), [{ host: "here", said: heldAs([]) }]);
+    expect(older.lines).toEqual(["r (here): left the registry with no ending seen"]);
   });
 
   it("keeps quiet of a run still held though the rows left it out, and it reads on when it returns", () => {
@@ -472,6 +486,26 @@ describe("the verb over real logs", () => {
     const answer = parseJsonAs<HostRows>(out);
     expect(answer.held).toEqual(["the-run"]);
     expect(answer.rows[0]?.promotions[0]?.digest).toBe("abcd1234");
+    expect(answer.rows[0]?.paused).toBe(false);
+    expect(answer.retired).toEqual([]);
     expect(() => readFileSync(state, "utf8")).toThrow();
+  });
+
+  it("reads a pause left in the run's current launch, and none left before it", () => {
+    const { made, folder, event, state } = host();
+    const rows = () =>
+      parseJsonAs<HostRows>(
+        made.runScript(CLI, ["alerts", "--rows", "--state", state], { ANA_HOSTS: "[]" }).out,
+      ).rows[0];
+    event("campaign.word", { word: "pause", why: "two promotions" });
+    expect(rows()?.paused).toBe(true);
+    // A launch after it is the run gone on, and its pause was for the process that stopped.
+    writeFileSync(
+      join(folder, "launch-run-2.json"),
+      JSON.stringify({ at: new Date(Date.now() + 1000).toISOString() }),
+    );
+    event("build.started", { session: "b-2" });
+    const later = rows();
+    expect(later?.paused).toBe(false);
   });
 });

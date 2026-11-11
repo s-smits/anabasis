@@ -214,6 +214,9 @@ export interface Built {
   readonly ended: "finished" | "wall" | "turns" | "killed" | "crashed" | "stopped";
 }
 
+/** How a session may end, the first that holds winning: `finish` over a limit that fell in the same turn. */
+const ENDINGS = ["finished", "killed", "wall", "crashed", "turns"] as const;
+
 /** A practice solve by the runner, with the id of the attempt that ended it: the id its trace and its
  *  verdict carry in the log, which the reviewers and `read_trace` are asked for. */
 export async function practised(request: SolveRequest): Promise<Practised> {
@@ -230,9 +233,6 @@ export async function practised(request: SolveRequest): Promise<Practised> {
   }
   return { solve: last?.id ?? request.id, ending };
 }
-
-/** How a session may end, the first that holds winning: `finish` over a limit that fell in the same turn. */
-const ENDINGS = ["finished", "killed", "wall", "crashed", "turns"] as const;
 
 /** Keep the state an interrupted session's own practice solve last ran on as a harness snapshot, once,
  *  where it changed the parent and its saved state opens. A cut harness is passed over

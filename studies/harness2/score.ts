@@ -155,6 +155,22 @@ interface Judging {
   readonly cap: number | undefined;
 }
 
+const OPTIONS = {
+  arm: { type: "string" },
+  name: { type: "string" },
+  harness: { type: "string" },
+  tasks: { type: "string" },
+  out: { type: "string" },
+  jb: { type: "string" },
+  "api-base": { type: "string" },
+  "judge-log": { type: "string" },
+  rubrics: { type: "string" },
+  "solve-only": { type: "boolean" },
+  cap: { type: "string" },
+  "dry-run": { type: "boolean" },
+  yes: { type: "boolean" },
+} as const;
+
 /** `--cap` as a count of characters: a whole number above judge.py's own cut, or a refusal. */
 export function capOf(cap: string | undefined): number | undefined {
   if (cap === undefined) return undefined;
@@ -428,22 +444,6 @@ async function judge(
   renameSync(details, `${details}.judge_failed`);
   return why;
 }
-
-const OPTIONS = {
-  arm: { type: "string" },
-  name: { type: "string" },
-  harness: { type: "string" },
-  tasks: { type: "string" },
-  out: { type: "string" },
-  jb: { type: "string" },
-  "api-base": { type: "string" },
-  "judge-log": { type: "string" },
-  rubrics: { type: "string" },
-  "solve-only": { type: "boolean" },
-  cap: { type: "string" },
-  "dry-run": { type: "boolean" },
-  yes: { type: "boolean" },
-} as const;
 
 export async function score(values: Values): Promise<void> {
   if (values.out === undefined || values["api-base"] === undefined || values.jb === undefined) {

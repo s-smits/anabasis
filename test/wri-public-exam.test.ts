@@ -18,21 +18,6 @@ import { publicExam } from "../tools/wri/public-exam.ts";
 import { conditionOf } from "./helpers/logged-round.ts";
 
 const folders: string[] = [];
-afterAll(() => {
-  for (const folder of folders) rmSync(folder, { recursive: true, force: true });
-});
-function scratch(): string {
-  const folder = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-public-exam-")));
-  folders.push(folder);
-  return folder;
-}
-
-const event = (kind: EventKind, data: JsonObject): LogEvent => ({
-  at: "2026-11-10T00:00:00.000Z",
-  kind,
-  data,
-});
-
 const CANARIES = {
   evaluator: "canary-evaluator-source-5521",
   check: "canary-check-id-8830",
@@ -47,6 +32,21 @@ const CANARIES = {
   probe: "canary-probe-value-5057",
   reason: "canary-referee-reason-3390",
 } as const;
+
+afterAll(() => {
+  for (const folder of folders) rmSync(folder, { recursive: true, force: true });
+});
+function scratch(): string {
+  const folder = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-public-exam-")));
+  folders.push(folder);
+  return folder;
+}
+
+const event = (kind: EventKind, data: JsonObject): LogEvent => ({
+  at: "2026-11-10T00:00:00.000Z",
+  kind,
+  data,
+});
 
 const draft: Draft = {
   domain: "invented",

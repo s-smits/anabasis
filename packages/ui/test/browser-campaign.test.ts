@@ -30,14 +30,6 @@ let served: Served;
 let exam: Served;
 let browser: Browser;
 
-beforeAll(async () => {
-  [served, exam, browser] = await Promise.all([serveFixture(), serveFixture("exam"), launchBrowser()]);
-});
-afterAll(async () => {
-  await browser.close();
-  await Promise.all([served.stop(), exam.stop()]);
-});
-
 const OUTCOME_LABELS = [
   "Won",
   "Lost",
@@ -47,6 +39,14 @@ const OUTCOME_LABELS = [
   "Set aside for a label",
 ] as const;
 const COLUMNS = ["b-1", "r-1", "c-1", "b-2", "b-3", "r-3", "b-4", "g-9"] as const;
+
+beforeAll(async () => {
+  [served, exam, browser] = await Promise.all([serveFixture(), serveFixture("exam"), launchBrowser()]);
+});
+afterAll(async () => {
+  await browser.close();
+  await Promise.all([served.stop(), exam.stop()]);
+});
 
 /** The main campaign's Campaign pane, open at `width` (the desktop's by default). */
 async function openCampaign(name = "fixture", width: number = DESKTOP.width): Promise<Opened> {

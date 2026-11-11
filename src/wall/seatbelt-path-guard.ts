@@ -36,6 +36,11 @@ import { posixContainsPath } from "../meta/path-containment.ts";
 import { ancestorDirectories } from "./policy.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 
+/** Upstream's pair. `file-write-unlink` covers the rename's source and `file-write-create` its
+ *  destination, so neither moving a protected path away nor putting a symlink in its place is
+ *  available. */
+const MOVE_OPS = ["file-write-unlink", "file-write-create"] as const;
+
 /** Whether a deny rooted at `root` reaches `target`. SBPL paths are always "/"-separated. */
 export function covers(root: string, target: string): boolean {
   return posixContainsPath(target, root);
@@ -49,11 +54,6 @@ export function sbRule(verb: string, form: "subpath" | "literal", paths: readonl
     ? []
     : [`(${verb}`, ...paths.map((path) => `  (${form} ${capturedJsonStringify(path)})`), ")"];
 }
-
-/** Upstream's pair. `file-write-unlink` covers the rename's source and `file-write-create` its
- *  destination, so neither moving a protected path away nor putting a symlink in its place is
- *  available. */
-const MOVE_OPS = ["file-write-unlink", "file-write-create"] as const;
 
 /**
  * Deny rules that keep `protectedRoots` reachable only at the paths the read denies name. Sorted

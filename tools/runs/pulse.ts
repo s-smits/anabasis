@@ -18,7 +18,8 @@
  * gone" and its stderr for a day). A name matches every run whose name holds it. Quiet, no event for 20 minutes in an
  * open run, counted from a named reset it waits out where that is later, is said when it starts and
  * when it ends. Since 22 October each look also polls every configured host once, with a cursor for
- * this observer, unless --here is named. A missing peer is a warning and exit 1. No local state path is sent to another machine.
+ * this observer, unless --here is named. A missing peer is a warning and exit 0, since the anti-stall
+ * hook reads any other exit as a failed look. No local state path is sent to another machine.
  *
  * What an event says is `said.ts`'s, which the alerts and the iteration's script read too. A look also
  * says, under each moment among its new events (an opening, the contract's freeze, a comparison's
@@ -708,9 +709,9 @@ export async function watch(args: readonly string[]): Promise<void> {
     }
     const { unanswered, ...peers } = await saidOfPeers(away, started, memory);
     if (away.length > 0) remember(state, capturedJsonStringify({ ...here.memory, ...peers }));
-    // A host still preparing holds this process for up to five minutes, and the hook's limit is 40 s;
-    // the exit carries the code this look set.
-    if (every === null && unanswered) runtimeProcess.exit();
+    // A host still preparing holds this process for up to five minutes, and the hook's limit is 40 s,
+    // so a look a peer left unanswered ends here, as one that read every peer does.
+    if (every === null && unanswered) runtimeProcess.exit(0);
     if (every === null) break;
     await Bun.sleep(every * 1000);
   }

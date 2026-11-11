@@ -34,7 +34,8 @@ procedures and never run inside an investigation.
 | How far had each campaign got at each work hour? | `bun tools/wri/wri.ts trajectory --log <log>,<log> [--grades <report>] [--hours 2,4,8]` (a description; rule 1 keeps "better" for a comparison) |
 | Did tasks and harnesses grow across campaigns, graded blind? | `bun tools/wri/wri.ts packets --log <log>,<log> --out <dir> --graders 2`, launch its `launch.json`, then `packets --out <dir> --join` and `trajectory --grades <dir>/grades.tsv` |
 | What did earlier investigations find? | `bun tools/wri/wri.ts index [--root <dir>] [--out <file>]`, which rewrites `.ana/wri/INDEX.md` and stays under `.ana/` |
-| How does this run's cost a promotion compare with its release? | `bun .claude/skills/promotion-tuner/scripts/table.ts --rows groups` (or `--name <part> --rows promotions`) |
+| How does this run's cost a promotion compare with its release? | `bun .claude/skills/promotion-tuner/scripts/table.ts --name <part> --rows promotions`, read against `trend.ts --pack <pack>` |
+| Is this pack's climb faster or slower than in the weeks before, and does it hold? | `bun .claude/skills/promotion-tuner/scripts/trend.ts --pack <pack>` |
 
 ## The procedure
 

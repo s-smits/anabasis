@@ -185,9 +185,13 @@ typecheck every commit where it sits (`git rebase --exec 'bun run typecheck' ori
 
 ## 8. Regroup and publish
 
-Make each group one pull request. The survivor is the one whose subject is widest, not the highest
-on the stack; its head becomes the group's top. It takes the highest importance it absorbed.
-Retitle it to cover the group (stack-pr, "Title and body") and rewrite its body: one line naming
+Make each group one pull request, and keep one of the group's own as its survivor: the one whose
+change matters most to the system (the highest importance, then the widest subject), not the highest
+on the stack. Its branch takes the group's top, and where step 3's verdict is a rewrite, the rewrite
+becomes its commits. A consolidation so keeps about one pull request in three open under its own
+number, with its thread; opening new pull requests for the groups and closing every old one takes
+the operator's word. The survivor takes the highest importance it absorbed. Retitle it to cover the
+group (stack-pr, "Title and body") and rewrite its body: one line naming
 what it carries, then each problem from step 1 with the part that answers it, and "Not done" for any
 problem the group no longer answers, with why. The importance stays a label, never a title prefix.
 
@@ -216,6 +220,9 @@ passes its old bytes had, so a regroup is proved again in full.
   the old and new head.
 - **Leases are on what GitHub showed.** A lease refuses a branch its owner moved meanwhile; read the
   stack again and map again.
+- **A fold crosses another session's commits.** The operator's word for the consolidation covers
+  rewriting them. A pair that adds a thing and removes it again folds even where a third pull
+  request edits the thing in between, and that edit goes with it; say so in the survivor's body.
 - **A regroup with adjacent folds only keeps every head.** Folding each pull request into the one
   above it moves no commit, so its passes stand; publish such a regroup first where the rest waits
   on reviews.

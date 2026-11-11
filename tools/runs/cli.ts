@@ -18,7 +18,7 @@ import { readFileSync } from "#src/meta/filesystem.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
-import { alerts } from "./alerts.ts";
+import { alerts, watchRuns } from "./alerts.ts";
 import { fresh } from "./fresh.ts";
 import { holds, on, routed, verbOn } from "./hosts.ts";
 import { hostsHealth } from "./health.ts";
@@ -116,6 +116,11 @@ const GROUPS = {
       run: alerts,
       file: "alerts.ts",
       says: "for cron: one line for each promotion, starter read, ending and stall new since the last look",
+    },
+    watch: {
+      run: watchRuns,
+      file: "alerts.ts",
+      says: "wait until a named run owes a step (two promotions, an ending, a stall), say it and end",
     },
     view: {
       run: view,

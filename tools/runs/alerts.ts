@@ -5,6 +5,7 @@
  *
  *   bun run runs alerts [--state .ana/runs-alerts.json]
  *   bun run runs alerts --rows
+ *   bun run runs watch <name>[,<name>...] [--every 600]
  *
  * One look asks every host `ANA_HOSTS` lists for its rows (`--rows`, which each host reads for itself,
  * as only it can see its own processes) and prints one line on stdout for each thing new since the
@@ -16,6 +17,10 @@
  * A run a silent host holds stays as it was last seen, so a host coming back says what it gained, and
  * a run leaves the state only once a host that answered no longer holds it. A first look, or one
  * after a state file that cannot be read, records the present and fires on no history.
+ *
+ * `watch` is the same look repeated in one process, for a session that waits on a few runs: it ends,
+ * with their lines, at the first look where a named run owes a step (`owes`) or left the registry. It
+ * keeps its looks in memory and writes no file, so it shares nothing with the cron's state.
  */
 import { existsSync, readFileSync, statSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
@@ -30,7 +35,7 @@ import { type RunState, runState } from "./state.ts";
 import { onStatus } from "./pulse.ts";
 import { remember } from "./pulse-readers.ts";
 import { lastLaunch, unlaunchedSeed } from "./receipt.ts";
-import { climbed, type Promotion, promotionsOf } from "./said.ts";
+import { climbed, type Promotion, promotionsOf, TRIGGER_AT } from "./said.ts";
 import {
   HERE,
   isCampaign,
@@ -61,6 +66,12 @@ export interface Row {
 export interface HostRows {
   readonly rows: readonly Row[];
   readonly held: readonly string[];
+}
+
+/** What one host answered a look, null for one that gave no answer the look can read. */
+interface Answer {
+  readonly host: string;
+  readonly said: HostRows | null;
 }
 
 /** What the last look saw of one run. */
@@ -180,26 +191,34 @@ function seenOf(row: Row, host: string): Seen {
   };
 }
 
-/** The lines `row` earns since `seen`, each to be headed by the run's name. A run first seen says its
- *  promotions in one line, since its log may hold a seed's or a run's from before this state. */
-function newsOf(row: Row, seen: Seen | undefined): string[] {
+/** What of a run's standing turned since `was`: its gap and its ending where each is new, and whether
+ *  its log went quiet. */
+const turned = (now: Seen, was: Seen | undefined) => ({
+  gap: now.gap === was?.gap ? null : now.gap,
+  ending: now.ending === was?.ending ? null : now.ending,
+  quiet: now.quiet && was?.quiet !== true,
+});
+
+/** The lines `row`, which stands at `now`, earns since `seen`, each to be headed by the run's name. A
+ *  run first seen says its promotions in one line, since its log may hold a seed's or a run's from
+ *  before this state. */
+function newsOf(row: Row, now: Seen, seen: Seen | undefined): string[] {
   const last = row.promotions.at(-1);
   const first =
     last === undefined
       ? []
       : [`first seen with ${plural(row.promotions.length, "promotion")}, the last ${last.digest}`];
-  const gap = gapOf(row);
-  const ending = endingOf(row.state);
+  const { gap, ending, quiet } = turned(now, seen);
   return [
     ...(seen === undefined ? first : climbed(row, seen).map(({ line }) => line)),
     ...row.kept
       .slice(seen?.kept ?? row.kept.length)
       .map((line) => `keeper: ${line.replace(`${row.name}: `, "")}`),
-    ...(gap !== null && gap !== seen?.gap ? [gap] : []),
-    ...(row.state.kind === "quiet" && seen?.quiet !== true
+    ...(gap === null ? [] : [gap]),
+    ...(quiet
       ? [`quiet: no new event since ${row.lastAt ?? "its start"}, and no login limit waited on`]
       : []),
-    ...(ending !== null && ending !== seen?.ending ? [`ended ${ending}`] : []),
+    ...(ending === null ? [] : [`ended ${ending}`]),
   ];
 }
 
@@ -209,7 +228,7 @@ function newsOf(row: Row, seen: Seen | undefined): string[] {
  */
 export function alertsOf(
   before: AlertState | null,
-  answers: readonly { readonly host: string; readonly said: HostRows | null }[],
+  answers: readonly Answer[],
 ): { lines: string[]; next: AlertState } {
   const down = answers.flatMap(({ host, said }) => (said === null ? [host] : []));
   const heard = answers.flatMap(({ host, said }) => (said === null ? [] : [{ host, said }]));
@@ -238,10 +257,11 @@ export function alertsOf(
     }
   }
   for (const [name, { host, row }] of current) {
+    const now = seenOf(row, host);
     if (before !== null) {
-      lines.push(...newsOf(row, before.runs[name]).map((line) => `${name} (${host}): ${line}`));
+      lines.push(...newsOf(row, now, before.runs[name]).map((line) => `${name} (${host}): ${line}`));
     }
-    next[name] = seenOf(row, host);
+    next[name] = now;
   }
   if (before === null) {
     const silent = down.length === 0 ? "" : `; ${down.join(", ")} gave no answer this tree reads`;
@@ -250,6 +270,37 @@ export function alertsOf(
     );
   }
   return { lines, next: { down, runs: next } };
+}
+
+/** Whether a run owes a step it did not at the last look: the trigger's count of promotions, an
+ *  ending, a missing process or a quiet log. A run first seen owes whatever it stands at, so a watch
+ *  armed late still ends. */
+function owes(now: Seen, was: Seen | undefined): boolean {
+  const { gap, ending, quiet } = turned(now, was);
+  const triggered = now.promotions >= TRIGGER_AT.promotions && (was?.promotions ?? 0) < TRIGGER_AT.promotions;
+  return triggered || gap !== null || ending !== null || quiet;
+}
+
+/**
+ * The fold of one look of a watch: everything the look says of each run of `names` that owes a step
+ * or left the registry, and the names no host that answered holds, which a first look refuses.
+ */
+export function watchOf(
+  names: readonly string[],
+  before: AlertState | null,
+  answers: readonly Answer[],
+): { lines: string[]; next: AlertState; absent: string[] } {
+  const { lines, next } = alertsOf(before ?? { down: [], runs: {} }, answers);
+  const due = names.filter((name) => {
+    const now = next.runs[name];
+    const was = before?.runs[name];
+    return now === undefined ? was !== undefined : owes(now, was);
+  });
+  return {
+    lines: lines.filter((line) => due.some((name) => line.startsWith(`${name} (`))),
+    next,
+    absent: before === null ? names.filter((name) => next.runs[name] === undefined) : [],
+  };
 }
 
 /** Whether `value` is a state the fold can read, every run in it included. */
@@ -284,6 +335,15 @@ function lastLook(path: string): { before: AlertState | null; torn: boolean } {
   return { before: null, torn: true };
 }
 
+/** What this machine and every host `ANA_HOSTS` lists answer one look. */
+async function looked(): Promise<Answer[]> {
+  const away = await asked(["alerts", "--rows"]);
+  return [
+    { host: HERE, said: rowsHere(Date.now()) },
+    ...away.map(({ host, lines: said }) => ({ host: host.name, said: answerOf(said) })),
+  ];
+}
+
 /** `bun run runs alerts`. */
 export async function alerts(args: readonly string[]): Promise<void> {
   const { values } = parseArgs({
@@ -298,12 +358,35 @@ export async function alerts(args: readonly string[]): Promise<void> {
     return;
   }
   const { before, torn } = lastLook(values.state);
-  const away = await asked(["alerts", "--rows"]);
-  const { lines, next } = alertsOf(before, [
-    { host: HERE, said: rowsHere(Date.now()) },
-    ...away.map(({ host, lines: said }) => ({ host: host.name, said: answerOf(said) })),
-  ]);
+  const { lines, next } = alertsOf(before, await looked());
   if (torn) console.log(`${values.state} could not be read, so this look is a first look`);
   for (const line of lines) console.log(line);
   remember(values.state, capturedJsonStringify(next));
+}
+
+/** `bun run runs watch`. */
+export async function watchRuns(args: readonly string[]): Promise<void> {
+  const { values, positionals } = parseArgs({
+    args: [...args],
+    allowPositionals: true,
+    options: { every: { type: "string", default: "600" } },
+  });
+  const names = (positionals[0] ?? "").split(",").filter((name) => name !== "");
+  const everyMs = Number(values.every) * 1000;
+  if (names.length === 0 || positionals.length > 1 || !(everyMs > 0)) {
+    throw new Error("usage: bun run runs watch <name>[,<name>...] [--every <seconds>]");
+  }
+  let before: AlertState | null = null;
+  for (;;) {
+    const { lines, next, absent } = watchOf(names, before, await looked());
+    if (absent.length > 0) {
+      const unheld = `no host that answered holds a run a look reads named ${absent.join(", ")}`;
+      if (next.down.length === 0) throw new Error(`${unheld}: bun run runs status lists them`);
+      console.error(`${unheld}; ${next.down.join(", ")} gave no answer, so the watch goes on`);
+    }
+    for (const line of lines) console.log(line);
+    if (lines.length > 0) return;
+    before = next;
+    await Bun.sleep(everyMs);
+  }
 }

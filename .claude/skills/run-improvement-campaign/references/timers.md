@@ -19,7 +19,7 @@ names.
 | handover | the operator's agreed time | the five points, the stack, the loop's own measures ([cycle-ledger.md](cycle-ledger.md)) | what the next session or the operator takes up | the handover section in `cycle.md` | it fires once |
 
 No row reads a run's log on a schedule: the pulse and `runs alerts` report a run's events as they
-land, with no model. Where a firing finds itself doing what a command could (counting live runs,
+land, and `runs watch` ends at a named run's step, each with no model. Where a firing finds itself doing what a command could (counting live runs,
 checking that a watcher still runs, looking for a marker), that check belongs in `due`, a verb of
 `bun run runs` or a local job, and the firing reads its one line.
 

@@ -14,8 +14,10 @@
  *     --salt <text> --yes
  *   bun studies/harness2/compare.ts agree --out <dir> --of <label> --of <label> --times <n> [--cap <chars>]
  *   bun studies/harness2/compare.ts derive --from <tree> --guide <file> --into <dir>
+ *   bun studies/harness2/compare.ts levels --dataset <dir> --of <arm> --of <arm> [--salt <text> [--unseal]]
  *
- * An arm is what `score.ts` takes as `--arm`. `read`, `agree` and `derive` start nothing and call no
+ * An arm is what `score.ts` takes as `--arm`. `levels` reads any two arms of a JobBench dataset at
+ * every grain, with a sealed half withheld (`levelLines`, `levels.ts`). `read`, `agree`, `derive` and `levels` start nothing and call no
  * model, and what they print holds ids, weights and counts, never a rubric's text or a judge's reasons.
  *
  * Why. The first promoted jobstat harness scored 310 against the Starter's 342 of 550 on 5 November
@@ -73,6 +75,7 @@ import { capOf, hasOneBefore, keyOf, PILOT_TASKS, score, tasksOf, type Values } 
 
 const OPTIONS = {
   out: { type: "string" },
+  dataset: { type: "string" },
   id: { type: "string" },
   jb: { type: "string" },
   arm: { type: "string", multiple: true },
@@ -87,6 +90,7 @@ const OPTIONS = {
   split: { type: "boolean" },
   cap: { type: "string" },
   unblind: { type: "boolean" },
+  unseal: { type: "boolean" },
   from: { type: "string" },
   guide: { type: "string" },
   into: { type: "string" },
@@ -653,9 +657,18 @@ async function main(args: readonly string[]): Promise<void> {
       resolve(named(values, "guide")),
       resolve(named(values, "into")),
     );
+  } else if (verb === "levels") {
+    const [a, b] = values.of ?? [];
+    if (a === undefined || b === undefined) throw new Error("levels reads two arms, each named by --of");
+    const dataset = resolve(named(values, "dataset"));
+    const { salt = null, unseal = false } = values;
+    if (salt === null && unseal) throw new Error("--unseal reads beside --salt");
+    console.log(
+      levelLines({ label: { a, b }, a: armOf(dataset, a), b: armOf(dataset, b), salt, unseal }).join("\n"),
+    );
   } else {
     throw new Error(
-      "usage: compare.ts plan | run | read | rejudge | agree | derive; the head of this file has each one's options",
+      "usage: compare.ts plan | run | read | rejudge | agree | derive | levels; the head of this file has each one's options",
     );
   }
 }

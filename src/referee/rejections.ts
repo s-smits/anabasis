@@ -17,13 +17,11 @@
  * This counts and decides nothing. What share of check defects a checker may carry, and the bar the
  * Referee must clear against the labels (`agreement.ts`), are the operator's.
  */
-import type { Regraded } from "../kernel/acceptance.ts";
 import { draw } from "../kernel/compare.ts";
 import type { LogEvent } from "../kernel/log.ts";
-import { standsOf, verdictsOf } from "../kernel/solves.ts";
+import { verdictsOf } from "../kernel/solves.ts";
 import { blockingOf } from "../kernel/verify.ts";
 import { asRecord, isString, type JsonValue } from "../meta/json-shape.ts";
-import { plural } from "../meta/text.ts";
 import { RULINGS } from "./agreement.ts";
 import type { Ruling } from "./referee.ts";
 
@@ -36,21 +34,6 @@ export interface Rejections {
   readonly unruled: readonly string[];
   /** The check defects, by the check each ruling names. */
   readonly defects: Readonly<Record<string, number>>;
-}
-
-/** A repaired checker as the readings of the old one's verdicts judge it. */
-interface RepairReading {
-  /** Refusals the repair withdraws, by what was read of each answer: ruled a check defect, ruled
-   *  earned, or not read, an unclear ruling among them. */
-  readonly withdrawn: Readonly<Record<"check-defect" | "earned" | "unread", readonly string[]>>;
-  /** Answers the old checker accepted and the repaired one refuses. Nobody rules on a pass, so none
-   *  of these was read. */
-  readonly tightened: readonly string[];
-  /** Answers ruled a check defect that the repaired checker still refuses. */
-  readonly unrepaired: readonly string[];
-  /** What stands between the repair and its use, one sentence each; none when every verdict
-   *  it moves is one that was read and ruled the old checker's fault. */
-  readonly against: readonly string[];
 }
 
 /** Every solve whose logged verdict is an answer some check refused. An answer outside the
@@ -110,53 +93,4 @@ export function labelled<Word extends string>(file: JsonValue, known: readonly W
     else labels.set(solve, word);
   }
   return { labels, open };
-}
-
-/**
- * A repair read against what was ruled of the old checker's verdicts: `rows` are a log's answers
- * under the repaired checker (`regraded`), `labels` a person's, which stand over the Referee's
- * ruling of the same solve.
- *
- * It is what keeps a repair from being a tuning. A checker may be changed where it was shown wrong
- * on an answer, and nowhere else: a refusal is withdrawn only from an answer ruled a check defect.
- * One withdrawn from an answer ruled earned loosens the exam, one withdrawn from an answer nobody
- * read is a guess, and an accepted answer newly refused is a change nobody asked for. Each is named,
- * and whether to adopt the repair all the same is the operator's.
- */
-export function repairReading(
-  rows: readonly Regraded[],
-  events: readonly LogEvent[],
-  labels: ReadonlyMap<string, Ruling>,
-): RepairReading {
-  // What stands of a refused answer: a person's label where `labels` holds one, over what stands
-  // of it on record (`standsOf`), and nothing where nobody read it or a reading ruled nothing.
-  const stands = standsOf(events);
-  const ruled = (solve: string): Ruling | undefined =>
-    labels.get(solve) ?? RULINGS.find((known) => known === stands.get(solve));
-  const refusedBefore = rows.filter(({ was }) => was.startsWith("fail "));
-  const passing = refusedBefore.filter(({ now }) => now === "pass");
-  const of = (ruling: Ruling | undefined) =>
-    passing.flatMap(({ solve }) => (ruled(solve) === ruling ? [solve] : []));
-  const withdrawn = {
-    "check-defect": of("check-defect"),
-    earned: of("earned"),
-    unread: [...of("unclear"), ...of(undefined)],
-  };
-  const tightened = rows.flatMap(({ solve, was, now }) =>
-    was === "pass" && now.startsWith("fail ") ? [solve] : [],
-  );
-  const said = (solves: readonly string[], what: string) =>
-    solves.length === 0 ? [] : [`${plural(solves.length, "answer")} ${what}: ${solves.join(", ")}`];
-  return {
-    withdrawn,
-    tightened,
-    unrepaired: refusedBefore.flatMap(({ solve, now }) =>
-      now.startsWith("fail ") && ruled(solve) === "check-defect" ? [solve] : [],
-    ),
-    against: [
-      ...said(withdrawn.earned, "ruled an earned fail would pass"),
-      ...said(withdrawn.unread, "refused before and read by nobody would pass"),
-      ...said(tightened, "accepted before would be refused"),
-    ],
-  };
 }

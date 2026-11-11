@@ -52,8 +52,7 @@
  *
  * Where a task itself looks infeasible, say so with `prepare.ts --infeasible <task id> --note`,
  * which refuses the task and logs the note. A task disputed here on a check's fault is a repair
- * owed to the check program's owner, and a repair is held to these labels where the settled report
- * holds them (`tools/c/repaired.ts`). Labels made beside a log that holds the Referee's rulings measure the Referee only as far
+ * owed to the check program's owner, and a repaired checker takes a campaign of its own. Labels made beside a log that holds the Referee's rulings measure the Referee only as far
  * as a packet keeps them from the person: its bar is cleared on labels drawn before it reads
  * (`tools/c/rejections.ts`).
  *

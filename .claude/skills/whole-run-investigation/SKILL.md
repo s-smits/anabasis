@@ -121,7 +121,7 @@ its file says so in one line. Left out are tools that read no run
 (`examiner-complexity/scripts/grades.ts`, `oracle-handover/scripts/slice.ts`, `tools/c/repaired.ts`,
 `tools/runs/search.ts`, `wri.ts grade`), that write (`wri.ts start`, `lanes`, `collect`, `synthesis`,
 `index` and `derive`, `wri2p2.ts open`, `tools/c/rejections.ts`, `tools/d2/close.ts`) or that call a
-paid model (`system-path-simulation/scripts/live-seat.ts` and `referee-seat.ts`,
+paid model (`system-path-simulation/scripts/live-seat.ts`,
 `compare-systems/scripts/systems.ts`).
 `derive` writes `data/derived/<campaign>@<path>/<reader>.txt` in the main worktree, one folder a
 log path, so a snapshot and the live log never share one, rewriting a folder only when its log or

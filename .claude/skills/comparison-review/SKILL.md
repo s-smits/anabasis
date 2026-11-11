@@ -44,7 +44,7 @@ No step starts until the check before it holds.
    already seen, one primary measure with the rest secondary, and the arms. *Check:* its digest
    (`shasum -a 256`) and the time are recorded. The digest is the seal's one salt, so an unwelcome
    split cannot be redrawn.
-2. **Seal half the tasks**: `bun studies/harness2/levels.ts --dataset <dir> --a <arm> --b <arm> --salt
+2. **Seal half the tasks**: `bun studies/harness2/compare.ts levels --dataset <dir> --of <arm> --of <arm> --salt
    <salt>` assigns each task by a hash of the salt and its name and withholds the sealed scores until
    step 7. A sealed half smaller than a sweep (six at level 0.02) can falsify a story but read no
    step. A task read closely before the freeze is left out of step 7's count; if all were read, the

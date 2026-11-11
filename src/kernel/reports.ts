@@ -209,11 +209,14 @@ export function promoted(events: readonly LogEvent[]): string | null {
   return isString(harness) ? harness : null;
 }
 
-/** The ending the log's last event carries, or null: a campaign that went on after one has none. */
-export function endingOf(events: readonly LogEvent[]): string | null {
+/** The ending the log's last event carries and its reason, or null: a campaign that went on has none. */
+export function endedOf(events: readonly LogEvent[]) {
   const last = events.at(-1);
-  return last?.kind === "campaign.ended" && isString(last.data.ending) ? last.data.ending : null;
+  if (last?.kind !== "campaign.ended" || !isString(last.data.ending)) return null;
+  return { ending: last.data.ending, why: isString(last.data.why) ? last.data.why : "" };
 }
+
+export const endingOf = (events: readonly LogEvent[]): string | null => endedOf(events)?.ending ?? null;
 
 /** The campaign's reference: last promoted, otherwise its recorded starter, or the first old
  *  side where an earlier log names no starter. */

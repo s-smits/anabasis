@@ -103,7 +103,6 @@ describe("the solve isolation's policy", () => {
     // Both path forms of the repository, or the symlink form stays readable and the isolation leaks.
     expect(policy.deniedReadRoots).toContain(repoRoot);
     expect(policy.deniedReadRoots).toContain(realpathSync.native(repoRoot));
-    expect(policy.deniedWriteRoots.length).toBeGreaterThan(0);
     expect(policy.allowedReadRoots.every((root) => root.startsWith(`${homedir()}/`))).toBe(true);
     expect(policy.allowedReadRoots.some((root) => root.includes("/.ssh") || root.includes("/.claude"))).toBe(
       false,
@@ -121,7 +120,6 @@ describe("the solve isolation's policy", () => {
       profileId: HOST_SOLVE_ISOLATION_PROFILE_ID,
       policyHash: "fixture",
       deniedReadRoots: [repoRoot],
-      deniedWriteRoots: [repoRoot],
       allowedReadRoots: [],
       mechanismPath: "/usr/bin/bwrap",
       mechanismId: LINUX_BWRAP_ID,
@@ -311,6 +309,88 @@ describe("the rename guard", () => {
       expect(output).not.toContain("RENAMED-CANARY");
       expect(existsSync(join(repoRoot, "canary.txt"))).toBe(true);
       expect(existsSync(moved)).toBe(false);
+    });
+  }, 60_000);
+});
+
+// Seatbelt confines a process and its children, not what it asks of a process outside: each case
+// asks an unconfined one to act and checks that nothing came back. Under `(allow default)` the first
+// two read a denied file and reached a socket (11 November). Linux's pid namespace and overmounts
+// answer the same questions by construction.
+describe.skipIf(!onDarwin)("the Darwin wall's edges", () => {
+  it("is not started by `open` on an app the command wrote", async () => {
+    const repoRoot = workRepo();
+    writeFileSync(join(repoRoot, "secret.txt"), "OPEN-CANARY\n");
+    await inSeat(repoRoot, [], async (wall, run) => {
+      const app = join(wall.dirs.root, "Probe.app");
+      const leak = join(wall.dirs.root, "leak.txt");
+      mkdirSync(join(app, "Contents", "MacOS"), { recursive: true });
+      writeFileSync(
+        join(app, "Contents", "MacOS", "Probe"),
+        `#!/bin/sh\ncat ${repoRoot}/secret.txt > ${leak}\n`,
+        {
+          mode: 0o755,
+        },
+      );
+      writeFileSync(
+        join(app, "Contents", "Info.plist"),
+        '<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Probe</string>' +
+          "<key>LSBackgroundOnly</key><true/></dict></plist>",
+      );
+      const output = await run(`echo started; open -g -j ${app} 2>/dev/null; echo "open=$?"; sleep 3`);
+      expect(output).toStartWith("started\n");
+      expect(output).not.toContain("open=0");
+      expect(existsSync(leak)).toBe(false);
+    });
+  }, 60_000);
+
+  it("is not reached through a socket in a closed folder, while one in the seat's root is", async () => {
+    const repoRoot = workRepo();
+    const heard: string[] = [];
+    const listener = Bun.listen({
+      unix: join(repoRoot, "s"),
+      socket: {
+        data: (_socket, data) => {
+          heard.push(data.toString());
+        },
+      },
+    });
+    const client = (path: string) =>
+      `python3 -I -c 'import socket,sys;s=socket.socket(socket.AF_UNIX);s.connect(sys.argv[1]);s.sendall(b"WALL")' ${path} 2>/dev/null && echo reached || echo refused`;
+    try {
+      await inSeat(repoRoot, [], async (_wall, run) => {
+        // Named from the seat's temporary folder, as a socket's path is cut at 104 bytes.
+        const server = `cd "$TMPDIR" && python3 -I -c 'import socket,sys;s=socket.socket(socket.AF_UNIX);s.bind(sys.argv[1]);s.listen();s.accept()' o & sleep 1`;
+        const output = await run(`${client(join(repoRoot, "s"))}; ${server}; cd "$TMPDIR"; ${client("o")}`);
+        expect(output.split("\n").slice(0, 2)).toEqual(["refused", "reached"]);
+      });
+      await Bun.sleep(200);
+      expect(heard).toEqual([]);
+    } finally {
+      listener.stop(true);
+    }
+  }, 60_000);
+
+  it("keeps another process's command line out of reach", async () => {
+    const marker = `ARGV-CANARY-${String(runtimeProcess.pid)}`;
+    const other = Bun.spawn(["/bin/sh", "-c", `sleep 30; : ${marker}`]);
+    try {
+      await inSeat(workRepo(), [], async (_wall, run) => {
+        const output = await run(`echo started; pgrep -lf ${marker} 2>/dev/null; true`);
+        expect(output).toStartWith("started\n");
+        expect(output).not.toContain(`: ${marker}`);
+      });
+    } finally {
+      other.kill();
+    }
+  }, 60_000);
+
+  it("runs a process substitution and writes to its own standard streams, while /tmp stays closed", async () => {
+    await inSeat(workRepo(), [], async (_wall, run) => {
+      const output = await run(
+        `diff <(echo a) <(echo a) && echo same; echo out > /dev/stdout; python3 -I -c 'open("/dev/stderr","w").write("err\\n")' 2>&1; (echo x > /tmp/wall-probe) 2>/dev/null || echo closed`,
+      );
+      expect(output.split("\n").slice(0, 4)).toEqual(["same", "out", "err", "closed"]);
     });
   }, 60_000);
 });

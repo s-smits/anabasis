@@ -277,6 +277,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 - Source: https://github.com/anthropic-experimental/sandbox-runtime, at commit 295f0e1
 - Copy: `generateMoveBlockingRules` in `src/wall/seatbelt-path-guard.ts`, changed as that file's
   header states
+- Copy, at commit f7a0f19 (0.0.82, the same repository under `anthropics/`): the base rules of
+  `generateSandboxProfile` in `src/wall/seatbelt-base.ts`, and the writable devices of
+  `SANDBOX_OWN_WRITE_PATHS` in `src/wall/isolation.ts`, changed as `seatbelt-base.ts`'s header
+  states
 
 ```text
                                  Apache License

@@ -62,7 +62,6 @@ const LEVEL = 0.05;
 /** The elapsed hours a run's first promotion is counted by, the iteration's trigger. */
 const MARK = 12;
 const ALL = "all packs";
-const NO_VALUE = "no value";
 const MIXED = "no single direction";
 /** What a pattern says, by whether promotions came faster. */
 const READINGS = new Map([
@@ -100,7 +99,7 @@ export interface Change {
   /** The newest value over the earlier, less one; null where either is missing or the earlier is 0. */
   readonly relative: number | null;
   readonly shift: Shift;
-  readonly verdict: "too few runs" | "inside the spread" | "moved, better" | "moved, worse" | typeof NO_VALUE;
+  readonly verdict: "too few runs" | "inside the spread" | "moved, better" | "moved, worse" | "no value";
 }
 
 type Each = (run: Run) => number;
@@ -231,7 +230,7 @@ export function changeOf(measure: Measure, then: readonly Run[], now: readonly R
   const [before, after] = [measure.of(then), measure.of(now)];
   const shift = shiftOf(then, now, measure.of);
   const relative = before === null || after === null || before === 0 ? null : after / before - 1;
-  if (shift.p === null || before === null || after === null) return { relative, shift, verdict: NO_VALUE };
+  if (shift.p === null || before === null || after === null) return { relative, shift, verdict: "no value" };
   if (shift.deals < 2 / LEVEL) return { relative, shift, verdict: "too few runs" };
   if (shift.p > LEVEL) return { relative, shift, verdict: "inside the spread" };
   const up = after > before;
@@ -252,7 +251,7 @@ export function valued(measure: Measure, runs: readonly Run[]): string {
 /** A difference as a cell: the relative change, p and the verdict. A sampled p is never zero, so
  *  the smallest one printed is a bound. */
 function changed({ relative, shift, verdict }: Change): string {
-  if (verdict === NO_VALUE) return MISSING;
+  if (verdict === "no value") return MISSING;
   const moved =
     relative === null ? "" : `${relative >= 0 ? "+" : "-"}${Math.abs(100 * relative).toFixed(0)}%, `;
   const untested = shift.p === null || verdict === "too few runs";
@@ -278,7 +277,7 @@ export function guardOf(then: readonly Run[], now: readonly Run[]): { pattern: s
     change: changeOf(measure, then, now),
   }));
   const [speed, ...held] = read.map(({ change }) => change);
-  if (speed?.verdict === NO_VALUE || held.every(({ verdict }) => verdict === NO_VALUE)) {
+  if (speed?.verdict === "no value" || held.every(({ verdict }) => verdict === "no value")) {
     return {
       pattern: "not read",
       line: "not read: a window holds no promotion the starter read, or no active hour.",

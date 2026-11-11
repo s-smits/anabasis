@@ -39,6 +39,16 @@ import { ownedElsewhere } from "../shared/literal-owner.ts";
  * another, and the five `introduced: "2026-09-15"` rows of the safeguard inventory are a
  * hyphenated word by the same reading — naming either is not a repair.
  *
+ * The bare-tag test reads a union member from its characters, and a member with a space or a comma
+ * in it fails that test: `"no value"` beside `"moved, better"` in one verdict union. Where the file
+ * itself writes the spelling as a literal type, the union is in view, and the copies in value
+ * position are the ones the compiler holds to it: a returned `{ verdict: "no valeu" }` and a
+ * comparison `verdict === "no valeu"` are both build failures. On 11 November 2026 the rule asked
+ * for a constant for four such copies, and the constant then had to be read back into the union as
+ * `typeof NO_VALUE`, which is the declaration bent around the rule. So a spelling this file
+ * declares as a literal type is not counted. It is still a proxy: a copy handed to an untyped
+ * place is not checked, and a union another file declares is out of view, where the report stands.
+ *
  * Some spellings are somebody else's, and `ownedElsewhere` answers which: a flag, a media type,
  * a registry name, a system path. `args.push("--ro-bind", path, path)` reads against `man bwrap`,
  * while `args.push(RO_BIND, path, path)` reads against nothing, and the `const` would have been
@@ -166,6 +176,9 @@ export const noRepeatedStringLiteralRule = defineRule({
     /** Every node and line each repeated value appears on, in source order, by value. */
     const spellings = new Map<string, Spelling>();
 
+    /** The spellings this file writes as a literal type, whose copies the compiler checks. */
+    const typed = new Set<string>();
+
     /** The last top-level import, which is where a fixed file's new constant goes. */
     let afterImports: ESTree.Node | null = null;
 
@@ -188,6 +201,7 @@ export const noRepeatedStringLiteralRule = defineRule({
     return {
       before: () => {
         spellings.clear();
+        typed.clear();
         suite = isTestFile(context.filename);
         floor = suite ? REPEAT_FLOOR.test : REPEAT_FLOOR.source;
         return true;
@@ -200,6 +214,7 @@ export const noRepeatedStringLiteralRule = defineRule({
         const { raw } = node;
         if (raw === null || !raw.startsWith('"')) return;
         const value = raw.slice(1, -1);
+        if (node.parent.type === "TSLiteralType") typed.add(value);
         if (value.length < LENGTH_FLOOR || BARE_TAG.test(value) || positional(node)) return;
         if (suite && PROSE.test(value)) return;
         // A flag, a media type or a system path is another owner's spelling, not this file's.
@@ -223,7 +238,7 @@ export const noRepeatedStringLiteralRule = defineRule({
 
       "Program:exit": () => {
         for (const [value, seen] of spellings) {
-          if (seen.lines.length < floor) continue;
+          if (seen.lines.length < floor || typed.has(value)) continue;
           const first = seen.nodes[0];
           if (first === undefined) continue;
           const name = suite ? constantName(value, context.sourceCode.text) : null;

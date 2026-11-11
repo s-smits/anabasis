@@ -39,7 +39,12 @@ function guardsCallOf(read: ESTree.Node, name: string): boolean {
  * nothing and a bag of optional fields hides the same question one level further in.
  *
  * Only a declaration is reported. A callback's parameter type is written by whoever declared the
- * signature it satisfies, and renaming it there changes nothing for a reader.
+ * signature it satisfies, and renaming it there changes nothing for a reader. A callback under a
+ * name is the same callback: `const counted = (confirmed: boolean | null) => …` whose one use is
+ * `[true, false, null].map(counted)` is called with the data, and no line of the file spells
+ * `counted(true)`. So a function this file never calls and never exports, and only hands on as an
+ * argument, keeps its boolean; one direct call, or an export, and its call sites are judged again.
+ * On 11 November 2026 that was one of the two sites the widened reading still held.
  *
  * An assertion or guard keeps its boolean. `judgeIntegrity(condition: boolean): asserts condition`
  * needs that parameter to be the thing TypeScript narrows on, so the union the message asks for
@@ -105,7 +110,7 @@ export const noPositionalBooleanParameterRule = defineRule({
     ],
     messages: {
       opaqueAtCallSite:
-        "`{{fn}}({{name}}: boolean)` reads as `{{fn}}(…, true)` at the call site, which names neither the parameter nor the state. Take a union of two string literals that say what the two states are.",
+        "`{{fn}}({{name}}: boolean)` reads as `{{fn}}({{call}})` at the call site, which names neither the parameter nor the state. Take a union of two string literals that say what the two states are.",
     },
   },
   createOnce(context) {
@@ -150,6 +155,21 @@ export const noPositionalBooleanParameterRule = defineRule({
       });
     }
 
+    /** Whether this file only hands the function on as an argument, so that whatever it is handed
+     *  to calls it with the data and no call site here passes a bare `true`. */
+    function handedOnOnly(declaring: ESTree.Node, fn: string): boolean {
+      const reads = context.sourceCode
+        .getDeclaredVariables(declaring)
+        .find((variable) => variable.name === fn)
+        ?.references.filter((reference) => reference.isRead());
+      if (reads === undefined || reads.length === 0) return false;
+      return reads.every(({ identifier }) => {
+        const { parent } = identifier;
+        const called = parent.type === "CallExpression" || parent.type === "NewExpression";
+        return called && parent.arguments.some((argument) => argument === identifier);
+      });
+    }
+
     /** Whether the parameter after this boolean takes a function, and every read of the boolean in
      *  `owner` is the condition that function runs under. */
     function gatesNextFunction(owner: Owner, name: string, next: ESTree.Node | undefined) {
@@ -179,10 +199,12 @@ export const noPositionalBooleanParameterRule = defineRule({
         if (binding === null) continue;
         if (gatesNextFunction(owner, binding.name, parameters[index + 1])) continue;
         if (declaring !== null && namedAtEveryCall(declaring, fn, index, binding.name)) continue;
+        // The call as a reader meets it: `fn(true)` for a lone parameter, `fn(…, true)` for a last.
+        const call = [index > 0 ? "…" : [], "true", index < parameters.length - 1 ? "…" : []].flat();
         context.report({
           node: parameter,
           messageId: "opaqueAtCallSite",
-          data: { fn, name: binding.name },
+          data: { fn, name: binding.name, call: call.join(", ") },
         });
       }
     }
@@ -198,12 +220,11 @@ export const noPositionalBooleanParameterRule = defineRule({
 
       // An exported declaration arrives wrapped, so its own node is not the module-scope statement
       // and its callers are in other files: it never takes the call-site exemption.
-      FunctionDeclaration: (node) =>
-        report(
-          node.parent.type === "Program" ? node : null,
-          node.id === null ? "this function" : node.id.name,
-          node,
-        ),
+      FunctionDeclaration: (node) => {
+        const fn = node.id === null ? "this function" : node.id.name;
+        if (!node.parent.type.startsWith("Export") && handedOnOnly(node, fn)) return;
+        report(node.parent.type === "Program" ? node : null, fn, node);
+      },
       // A method is reached through a value, not a name this rule can resolve.
       MethodDefinition: (node) => {
         if (node.key.type !== "Identifier") return;
@@ -215,6 +236,8 @@ export const noPositionalBooleanParameterRule = defineRule({
         const { id, init } = node;
         const callable = init?.type === "ArrowFunctionExpression" || init?.type === "FunctionExpression";
         if (!widen.has("bindings") || id.type !== "Identifier" || !callable) return;
+        const exported = node.parent.parent?.type.startsWith("Export") === true;
+        if (!exported && handedOnOnly(node, id.name)) return;
         report(node.parent.parent?.type === "Program" ? node : null, id.name, init);
       },
       TSDeclareFunction: (node) => {

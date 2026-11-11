@@ -1,16 +1,15 @@
 /** One bounded health reading per machine, using the same live-run owner as placement. */
 import { Type, type Static } from "typebox";
-import { Value } from "typebox/value";
 import { existsSync, statfsSync } from "#src/meta/filesystem.ts";
 import { gitText, mainTree, worktrees } from "#src/meta/git.ts";
-import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
+import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
 import { basename, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { runSync, zeroExitText } from "#src/meta/subprocess.ts";
 import { controllersOf } from "./code.ts";
-import { asked, hosts } from "./hosts.ts";
+import { asked, hosts, answerOf } from "./hosts.ts";
 import { liveHere, seatsIn } from "./live.ts";
 import { ARCHIVE, processes, runs, writers } from "./registry.ts";
 
@@ -187,8 +186,8 @@ export async function hostsHealth(args: readonly string[]): Promise<void> {
   for (const { host, lines, elapsedMs } of await away) {
     console.log(`── ${host.name} (${(elapsedMs / 1000).toFixed(1)} s)`);
     try {
-      const reading = capturedJsonParse(lines?.join("\n") ?? "null");
-      if (!Value.Check(HEALTH, reading)) throw new Error("no valid health answer");
+      const reading = answerOf(HEALTH, lines);
+      if (reading === null) throw new Error("no valid health answer");
       console.log(healthLines(reading).join("\n"));
     } catch (error) {
       console.error(`${host.name}: health unavailable: ${errorMessage(error)}`);

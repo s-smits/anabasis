@@ -51,6 +51,7 @@ if (args.includes("stream-json")) {
   const dead = guide.includes("DEAD");
   const empty = (label.endsWith("alpha__task1__base1") && attempt === 1) || guide.includes("EMPTY") || dead;
   if (!empty) writeFileSync(join(ws, "output", "report.md"), (label.includes("gamma") ? ${JSON.stringify(`${MARKER}\n`)} : "") + "report by " + label + "\\n" + guide);
+  if (guide.includes("LONG")) for (const [name, size] of [["long.csv", 200001], ["exact.csv", 200000], ["data.db", 200001]]) writeFileSync(join(ws, "output", name), "x".repeat(size));
   const said = guide.includes("PEEK") ? { type: "tool_use", name: "Bash", input: { command: "cat ../RUBRICS.json" } } : { type: "text", text: "working" };
   const events = [{ type: "system", subtype: "init" }, { type: "assistant", message: { content: [said] } }, { type: "result", subtype: "success", num_turns: 1, total_cost_usd: empty ? 0.125 : 0.25 }];
   for (const event of dead ? events.slice(0, 1) : events) console.log(JSON.stringify(event));
@@ -258,6 +259,12 @@ const JUDGE_STAND_IN = `import { appendFileSync, existsSync, readFileSync, readd
 import { join } from "node:path";
 const args = process.argv.slice(2);
 const flag = (name) => args[args.indexOf(name) + 1];
+// judgeExtract's launch, python -c <driver> <judge.py> <dir>: each file's text, as the driver prints it.
+if (args[0] === "-c") {
+  const dir = args[3];
+  console.log(JSON.stringify({ files: Object.fromEntries(readdirSync(dir).sort().map((name) => [name, readFileSync(join(dir, name), "utf8")])), flat: "", images: [] }));
+  process.exit(0);
+}
 appendFileSync(${JSON.stringify(join(root, "judge.jsonl"))}, JSON.stringify({ args, cwd: process.cwd(), effort: process.env.JUDGE_REASONING_EFFORT, key: process.env.JUDGE_API_KEY, scrubbed: process.env.ANTHROPIC_API_KEY ?? null }) + "\\n");
 const dir = flag("--output-dir");
 const names = existsSync(dir) ? readdirSync(dir) : [];
@@ -290,7 +297,15 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
     `#!/bin/sh\nexec '${capturedExecPath}' '${join(root, "judge.mjs")}' "$@"\n`,
   );
   chmodSync(join(jb, ".venv", "bin", "python"), 0o755);
-  for (const word of ["PEEK", "DEAD", "EMPTY", "FLAKY"]) {
+  // A second fair task, solved only by the arm whose deliverable the judge's reader cuts.
+  const LONG = "beta/task2";
+  mkdirSync(join(jb, "dataset", "main", LONG, "task_folder"), { recursive: true });
+  writeFileSync(join(jb, "dataset", "main", LONG, "task_folder", "TASK_INSTRUCTIONS.txt"), "Report.\n");
+  writeFileSync(
+    join(jb, "dataset", "main", LONG, "RUBRICS.json"),
+    readFileSync(join(jb, "dataset", "main", FIRST, "RUBRICS.json")),
+  );
+  for (const word of ["PEEK", "DEAD", "EMPTY", "FLAKY", "LONG"]) {
     mkdirSync(join(root, "trees", word), { recursive: true });
     writeFileSync(join(root, "trees", word, "CLAUDE.md"), `# ${word}\n`);
   }
@@ -327,10 +342,15 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
     dead: scored(`tree:${join(root, "trees", "DEAD")}`, "dead", "beta/task1", "--yes"),
     empty: scored(`tree:${join(root, "trees", "EMPTY")}`, "empty", "beta/task1", "--yes"),
     flaky: scored(`tree:${join(root, "trees", "FLAKY")}`, "flaky", "beta/task1", "--yes"),
+    long: scored(`tree:${join(root, "trees", "LONG")}`, "long", LONG, "--yes"),
   };
   const rolledOnce = rowsOf(calls).length;
   const again = scored("base", "base", alpha, "--yes");
   const tabled = runSync([capturedExecPath, SCORE, "table", "--out", out, "--tasks", alpha], { env });
+  const tabledFair = runSync(
+    [capturedExecPath, SCORE, "table", "--out", out, "--tasks", `alpha/task2,${LONG}`],
+    { env },
+  );
   const rolls = rowsOf(calls).slice(before);
   const judges = rowsOf(join(root, "judge.jsonl"));
   const record = (name: string, task: string): JsonValue =>
@@ -457,7 +477,7 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
     const lines = decodeOutput(tabled.stdout).split("\n");
     expect(tabled.exitCode).toBe(0);
     const fairAt = lines.indexOf("fair 1");
-    const [all, fairLines] = [lines.slice(0, fairAt), lines.slice(fairAt)];
+    const [all, fairLines] = [lines.slice(0, fairAt), lines.slice(fairAt, lines.indexOf("fair uncut 1"))];
     expect(all).toContain("all 2");
     expect(all).toContain("  heldout    1 of 2 tasks scored");
     for (const [part, pattern] of [
@@ -471,5 +491,25 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
       expect(part.filter((line) => pattern.test(line))).toHaveLength(1);
     }
     expect(lines).toContain("alpha/task1: base 3/5, k1 5/5, starter 3/5");
+  });
+
+  it("records the files the judge's reader cuts, a database and a file of exactly the cap not among them", () => {
+    expect(runs.long.exitCode).toBe(0);
+    expect(field(record("long", LONG), "cut")).toEqual([{ file: "long.csv", chars: 200_001 }]);
+    for (const [name, task] of [
+      ["base", FIRST],
+      ["base", "alpha/task2"],
+      ["heldout", "alpha/task2"],
+      ["k1", FIRST],
+    ] as const) {
+      expect(field(record(name, task), "cut")).toEqual([]);
+    }
+    const lines = decodeOutput(tabledFair.stdout).split("\n");
+    expect(lines).toContain(`${LONG}: long 3/5 CUT 1`);
+    const uncutAt = lines.indexOf("fair uncut 1");
+    expect(uncutAt).toBeGreaterThan(lines.indexOf("fair 2"));
+    const uncut = lines.slice(uncutAt);
+    expect(uncut.filter((line) => /^ {2}heldout +score 5\/5 /u.test(line))).toHaveLength(1);
+    expect(uncut.filter((line) => /^ {2}long +0 of 1 tasks scored$/u.test(line))).toHaveLength(1);
   });
 });

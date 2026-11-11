@@ -1,5 +1,9 @@
 /**
- * `bun run runs rehearse <the flags of tools/d2/round.ts that name no model> [--held none:pass] [--starter none]`
+ *   bun run runs rehearse --name <seed> <the flags of tools/d2/round.ts but --builder, --solver and --reviewer>
+ *     [--held none:pass] [--starter none] [--root <folder> --sweep <sweep> --bundle <folder>]
+ *   bun run runs rehearse --name <seed> --id <comparison> <the flags of tools/d2/checkpoint.ts> ...
+ *   bun run runs rehearse --name <seed> --no-comparison <the flags of tools/d2/session.ts> ...
+ *   bun run runs rehearse --name <seed> --campaign <the flags of tools/d2/harness-builder.ts> [--supply N] ...
  *
  * A round over a seeded campaign (`seed.ts`) with a script in each model seat and no model called.
  * The plan's first round is walked this way before it is paid for (`7f0add79:docs/plan.md`, Phase 0): the
@@ -83,7 +87,7 @@ import { harnessBuilder } from "../d2/harness-builder.ts";
 import { roundCommand, type Seated } from "../d2/round.ts";
 import { sessionCommand } from "../d2/session.ts";
 import { packControls, storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
-import { SEED_FILE } from "./registry.ts";
+import { Misused, SEED_FILE } from "./registry.ts";
 import { codeLine } from "./seed.ts";
 
 /** How a scripted solve ends: a valid answer, one a check rejects, or none at all. */
@@ -511,9 +515,7 @@ export async function rehearse(args: readonly string[]): Promise<void> {
     (named !== 0 && named !== PACK_FLAGS) ||
     !isString(values.name)
   ) {
-    throw new Error(
-      "usage: bun run runs rehearse <the flags of tools/d2/round.ts, of tools/d2/checkpoint.ts, of tools/d2/session.ts with --no-comparison, or of tools/d2/harness-builder.ts with --campaign, that name no model> [--held old:new] [--starter pass|fail|none] [--supply N]",
-    );
+    throw new Misused();
   }
   const stored = isString(root) && isString(sweep) && isString(bundle) ? { root, sweep, bundle } : null;
   const drafted = stored === null ? draftedSource(values.name) : null;

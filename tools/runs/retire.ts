@@ -54,7 +54,7 @@ import { hostsOf } from "./host-config.ts";
 import { syncRuns } from "./snapshots.ts";
 import { stillRunning } from "./diagnosis.ts";
 import { unlaunchedSeed } from "./receipt.ts";
-import { archived, archiveOf, HERE, processes, runs } from "./registry.ts";
+import { archived, archiveOf, HERE, Misused, processes, runs } from "./registry.ts";
 
 /** What one sweep is asked: the main worktree, how long idle is, the time, and whether to act. */
 export interface Sweep {
@@ -68,7 +68,6 @@ export interface Sweep {
  *  as long: past it the system has moved too far for the change to apply (operator, 26 September). */
 const TREE_DAYS = 7;
 const DIRTY_DAYS = 14;
-const USAGE = "usage: bun run runs retire [--days 1] [--yes]";
 
 const say = (sweep: Sweep, line: string) => console.log(`${sweep.yes ? "" : "would: "}${line}`);
 const daysSince = (sweep: Sweep, ms: number) => (sweep.now - ms) / DAY_MS;
@@ -243,7 +242,7 @@ export async function retire(args: readonly string[]): Promise<void> {
     options: { days: { type: "string", default: "1" }, yes: { type: "boolean", default: false } },
   });
   const days = Number(values.days);
-  if (!Number.isFinite(days) || days < 0) throw new Error(USAGE);
+  if (!Number.isFinite(days) || days < 0) throw new Misused();
   const sweep: Sweep = { main: mainTree(runtimeProcess.cwd()), days, now: Date.now(), yes: values.yes };
   console.log(
     `retire at ${new Date(sweep.now).toISOString()}${sweep.yes ? "" : ": nothing is done without --yes"}`,

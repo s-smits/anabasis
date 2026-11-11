@@ -4,8 +4,11 @@
  * adds below this machine's own wherever a host is listed.
  *
  *   bun run runs on <host> <verb> [args ...]
- *   bun run runs hosts [--all] [--health]
+ *   bun run runs hosts [--all] [--health [--here]]
  *   bun run runs holds <name ...>
+ *
+ * `--health` is `health.ts`'s: each machine's load, disk and busiest processes, this one included,
+ * and with `--here` this machine's alone as JSON, which is what each host is asked.
  *
  * The hosts are `ANA_HOSTS` in the environment, a JSON list, loaded as the credentials are by Bun's
  * `--env-file` from a file git ignores, so no machine is named in the repository. Each names the
@@ -37,7 +40,7 @@ import { scanText } from "../secrets/rules.ts";
 /** How long `hosts` waits for one host's rows, and a verb for each host's `holds`. */
 const HOST_MS = 30_000;
 /** The verbs that act on the runs they name: every name `stop` is given, and the first word of the rest. */
-const NAMING = new Set(["stop", "continue", "pause", "keep", "copy"]);
+export const NAMING = new Set(["stop", "continue", "pause", "keep", "copy"]);
 /** The options of the verbs in `NAMING` that take no value. Any other option not joined to its value
  *  by `=` takes the next argument as its value. */
 const SWITCHES = new Set(["--yes", "--all", "--json", "--hold", "--here"]);

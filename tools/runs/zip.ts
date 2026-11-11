@@ -67,7 +67,16 @@ import { receipts } from "./receipt.ts";
 import { hostNamed } from "./host-config.ts";
 import { rsync, sideOf, sshScript } from "./host-command.ts";
 import { verbOn } from "./hosts.ts";
-import { HERE, isCampaign, logEvents, readable, type Run, standing, wholeLines } from "./registry.ts";
+import {
+  HERE,
+  isCampaign,
+  logEvents,
+  Misused,
+  readable,
+  type Run,
+  standing,
+  wholeLines,
+} from "./registry.ts";
 import { readableAcross, syncRuns } from "./snapshots.ts";
 
 const LEVELS = ["light", "medium", "verbose"] as const;
@@ -446,9 +455,7 @@ export async function zipRuns(args: readonly string[]): Promise<void> {
   const levels = LEVELS.filter((level) => values[level]);
   const [level] = levels;
   if (level === undefined || levels.length > 1) {
-    throw new Error(
-      "usage: bun run runs zip [<name> ...] --light|--medium|--verbose [--out FILE] [--max-mb N] [--note FILE] [--from HOST] [--latest N] [--minPromotions N] [--minTime 2h] [--since WHEN] [--until WHEN]",
-    );
+    throw new Misused();
   }
   const megabytes = values["max-mb"];
   const { choice, forwarded } = choiceOf(values);

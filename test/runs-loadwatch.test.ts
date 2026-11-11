@@ -46,5 +46,5 @@ test("a malformed interval is refused with the usage line", () => {
     env: { ...Bun.env, ANA_HOSTS: "[]" },
   });
   expect(result.exitCode).not.toBe(0);
-  expect(result.stderr.toString()).toContain("usage: runs loadwatch");
+  expect(result.stderr.toString()).toBe("usage: bun run runs loadwatch [<seconds>] [--once]\n");
 });

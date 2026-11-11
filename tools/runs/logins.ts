@@ -4,6 +4,7 @@
  * alone (`room`, `keep.ts`).
  *
  *   bun --env-file=<file> run runs usage [N ...] [--json] [--open] [--closed]
+ *   bun run runs active [--here [--login N]]
  *
  * A login is `CLAUDE_CODE_OAUTH_TOKEN<N>` in this process's environment, which Bun's own
  * `--env-file` loads: the verb opens no file of credentials, and prints no token. With no number it
@@ -24,7 +25,9 @@
  *
  * `bun run runs active` names the runs a process writes, by the login each run's last launch named,
  * and the live seats of `system-path-simulation`, by the login each seat names (`liveHere`), on this
- * machine and every host `ANA_HOSTS` lists (`liveEverywhere`), and asks no provider. `usage` puts
+ * machine and every host `ANA_HOSTS` lists (`liveEverywhere`), and asks no provider; `--here` prints
+ * this machine's alone as JSON, which is what each host is asked, and with `--login N` whether this
+ * machine's environment holds that login. `usage` puts
  * each login's count on its head line, out of the most `ANA_LOGIN_RUNS` or its subscription in
  * `ANA_LOGIN_SUBS` lets that login carry (`capOf`), and sums the subscriptions' most under the logins.
  *

@@ -9,8 +9,9 @@ A campaign is one process over one log (`tools/d2/harness-builder.ts`): it prepa
 holds one Builder conversation, which edits the harness and calls campaign tools for the Examiner,
 practice, comparison and promotion. Its life on the host is managed by one CLI, `bun run runs`
 (`tools/runs/cli.ts`), over every run log in the repository's worktrees (`tools/runs/registry.ts`).
-A bare `bun run runs` lists the verbs and `<verb> --help` gives their options. Run authority and the
-conditions of a measured campaign are in `AGENTS.md`, section 10.
+A bare `bun run runs` lists the verbs, `<verb> --help` gives every option its parser takes and
+`help all` every verb's; a verb given words it cannot act on answers with the same usage. Run
+authority and the conditions of a measured campaign are in `AGENTS.md`, section 10.
 
 Verbs that name a run route to the machine that holds it, and refuse where the host is missing or
 more than one holds the name. Reading verbs refresh copies of remote records first; `pulse` polls

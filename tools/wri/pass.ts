@@ -9,8 +9,9 @@
  * A reader runs on a log only where an event of one of its kinds (`at`, `derive.ts`) lies in the
  * bytes past what it last read, found by a scan of those bytes for the kind's text instead of a parse:
  * the largest closed log is 96 MB, which a parse would read at every pass. It takes the logs as given
- * and each log's due readers in the list's order, one reader at a time. A reader whose last run would
- * not fit what is left waits for a later pass, one the limit cuts keeps its last result, and the pass
+ * and each log's due readers in the list's order, one reader at a time, those of this process on one
+ * parse of the log. A reader whose last run would
+ * not fit what is left waits for a later pass, one of its own process the limit cuts keeps its last result, and the pass
  * stops where the load leaves no room. A second pass that finds the lock held leaves at once, which is
  * what settles several looks that started one at one moment.
  */
@@ -18,7 +19,7 @@ import { closeSync, openSync, readSync, statSync } from "#src/meta/filesystem.ts
 import { resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { endPass, keepReaders, keepResult, resultOf, room, underLock } from "#tools/runs/pulse-readers.ts";
-import { READERS, type Reader, readerOutput } from "./derive.ts";
+import { READERS, type Reader, readerOutput, type Source, sourceOf } from "./derive.ts";
 
 type Ended = Parameters<typeof endPass>[1];
 
@@ -93,10 +94,10 @@ export async function runQueue(
 
 /** Read one log with one reader and keep what it said. A reader its limit cut read nothing, so its
  *  last result stands and only its time moves. */
-async function readInto(store: string, repo: string, { log, reader }: Due, timeoutMs: number): Promise<void> {
+async function readInto(store: string, source: Source, reader: Reader, timeoutMs: number): Promise<void> {
+  const { log } = source;
   const started = performance.now();
-  const { size } = statSync(log);
-  const { text, ok, cut } = await readerOutput(reader, log, repo, timeoutMs);
+  const { text, ok, cut, size } = await readerOutput(reader, source, timeoutMs);
   const ms = Math.round(performance.now() - started);
   const kept = resultOf(store, log, reader.name);
   const read = cut ? { size: kept?.size ?? -1, ok: kept?.ok ?? false } : { size, ok };
@@ -120,12 +121,15 @@ export async function passOver(
   const repo = resolve(import.meta.dir, "..", "..");
   await underLock(store, async () => {
     keepReaders(store, readers);
+    // One parse a log for every reader of this pass that runs in this process.
+    const sources = new Map(logs.map((log) => [log, sourceOf(log, repo)]));
     const ended = await runQueue(dueOf(store, logs, readers), {
       budgetMs,
       room: roomNow,
       now: () => performance.now(),
       // A spawn takes a whole number of milliseconds and refuses any other.
-      read: (due, timeoutMs) => readInto(store, repo, due, Math.ceil(timeoutMs)),
+      read: ({ log, reader }, timeoutMs) =>
+        readInto(store, sources.get(log) ?? sourceOf(log, repo), reader, Math.ceil(timeoutMs)),
     });
     endPass(store, ended);
   });

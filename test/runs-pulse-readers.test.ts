@@ -387,11 +387,14 @@ describe("what a pass costs a host", () => {
     await passOver(store, [log], { budgetMs: 45_000, roomNow: () => true });
     const named = READERS.filter(({ at }) => at?.some((kind) => kinds.includes(kind)) === true);
     const read = named.flatMap(({ name }) => resultOf(store, log, name) ?? []);
-    // A spawn that refused its limit failed every reader in 0 ms, which only a real pass shows.
+    // A spawn that refused its limit failed every reader of its own process in 0 ms, which only a
+    // real pass shows; a reader of this process may take less than a millisecond.
     expect(resultOf(store, log, "rows")).toMatchObject({ ok: true, size: statSync(log).size });
     expect(read).toHaveLength(named.length);
     expect(read.filter(({ ok }) => ok).length).toBeGreaterThan(named.length / 2);
-    expect(read.every(({ ms }) => ms > 0)).toBe(true);
+    const spawned = named.filter((reader) => "args" in reader);
+    expect(spawned.length).toBeGreaterThan(0);
+    expect(spawned.every(({ name }) => (resultOf(store, log, name)?.ms ?? 0) > 0)).toBe(true);
     for (const { name } of READERS.filter(({ at }) => at === undefined)) {
       expect(resultOf(store, log, name)).toBeNull();
     }
@@ -793,7 +796,9 @@ describe("the readers' list", () => {
 
   it("reads a log's campaign by the folder that holds it", () => {
     const view = READERS.find(({ name }) => name === "view");
-    expect(view?.args("/a/b/the-run/log.jsonl", "/repo")).toEqual(["tools/runs/cli.ts", "view", "the-run"]);
+    expect(
+      view !== undefined && "args" in view ? view.args("/a/b/the-run/log.jsonl", "/repo") : null,
+    ).toEqual(["tools/runs/cli.ts", "view", "the-run"]);
   });
 });
 

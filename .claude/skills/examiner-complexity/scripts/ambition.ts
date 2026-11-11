@@ -85,13 +85,16 @@ export function campaignLine(events: readonly LogEvent[]): string {
   return `first comparison ${reachedBy(events, "comparison.started", opened)}, first promotion ${reachedBy(events, "harness.promoted", opened)}; ${String(count("comparison.started"))} compared, ${String(count("harness.promoted"))} promoted; reference valid every solve on ${String(scored - room)} of ${String(scored)} scored tasks, ${String(onValidity)} of ${String(stepped)} steps won by validity`;
 }
 
+/** The campaign's line under its name, then each session's line indented. */
+export function ambitionLines(name: string, events: readonly LogEvent[]): string[] {
+  return [`${name}: ${campaignLine(events)}`, ...sessionLines(events).map((line) => `  ${line}`)];
+}
+
 if (import.meta.main) {
   const usage = "ambition.ts <log or campaign folder>...";
   await runCommand({ name: "ambition", usage, positionals: [1, 100] }, async ({ positionals }) => {
     for (const path of await Promise.all(positionals.map((named) => logAcross(named)))) {
-      const events = read(path);
-      console.log(`${basename(dirname(path))}: ${campaignLine(events)}`);
-      for (const line of sessionLines(events)) console.log(`  ${line}`);
+      console.log(ambitionLines(basename(dirname(path)), read(path)).join("\n"));
     }
   });
 }

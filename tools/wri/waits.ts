@@ -1,7 +1,7 @@
 /**
  * How much of a solve's or a session's time went inside its tool calls, read by side and ending:
  *
- *   bun tools/wri/waits.ts <log>
+ *   bun tools/wri/wri.ts reader waits --log <log>
  *
  * A deadline counts elapsed time, and a long solve is the model's thinking or a program's running.
  * `WALL SHARE` says how much of the deadline a solve took, and nothing says which of the two took it.
@@ -15,12 +15,11 @@
  * a rejected solve 0.62 (of 1,033) and one out of turns 0.80 (of 141); within one log misses stood higher
  * than passes in 29 of 44, which at that size could be chance. It is a lead and decides nothing.
  */
-import { read } from "#src/kernel/log.ts";
 import type { Call, Traced } from "#src/kernel/trace.ts";
 import { MINUTE_MS } from "#src/meta/clock.ts";
 import type { JsonValue } from "#src/meta/json-shape.ts";
 import { median } from "#src/meta/tally.ts";
-import { type Index, indexOf, printRows, type Solve } from "./folds.ts";
+import type { Index, Solve } from "./folds.ts";
 
 const SESSION_SEATS: ReadonlySet<string> = new Set(["build", "exam", "draft"]);
 
@@ -93,5 +92,3 @@ export function waitRows(index: Index): string[] {
   const rows = [...comparisonRows(index, callsOf), ...sessionRows(index)];
   return rows.length === 0 ? ["waits: no call on record holds its time"] : rows;
 }
-
-if (import.meta.main) printRows("waits", (log) => waitRows(indexOf(read(log))));

@@ -132,8 +132,9 @@ holds, and each window names its releases, since a difference across minor relea
 record and attributes nothing. Every measure is a rate over its exposure, because the newest runs
 are younger and paused at their trigger, and each difference is put to a permutation test with the
 campaign as the unit (`.claude/skills/main/stats.ts`): `moved` at p of 0.05 or less, `inside the
-spread`, or `too few runs`. The closing line counts the tests, since one in twenty reads `moved` by
-chance. `--back 4 --pack buffer` is the control read of `AGENTS.md` section 10.
+spread`, or `too few runs` where no deal of the same runs could read a difference at that level. The
+closing line counts each pack's tests once, without the pooled block; one test in twenty reads
+`moved` by chance, and tests that share runs do so together. `--back 4 --pack buffer` is the control read of `AGENTS.md` section 10.
 
 **The climb against what holds it.** More promotions an hour is a gain only where they hold, so one
 line a window sets promotions a 100 active hours beside the share the starter confirmed and the

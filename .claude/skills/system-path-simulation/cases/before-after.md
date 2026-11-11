@@ -34,7 +34,9 @@ Readers take the same logs by name. A seed is cut in each fork from the same sou
 | A model seat | `scripts/live-seat.ts start` on each seed, on the operator's word for both | one draw an arm; a difference is a lead unless the change forces it. Repeated rounds are [optimize](optimize.md) |
 
 Run each reader twice per arm before diffing, since time, load and process state differ from run to
-run. Where the source run's recording already stands at the before commit, it is the before arm and
+run, and leave the line that names the tree's host code out of the diff, since it differs by
+construction. A change to code a solve runs moves the condition's `host` digest and leaves `sandbox`
+alone, which digests the wall's profile and platform (`codeOf`, `tools/d2/campaign.ts`). Where the source run's recording already stands at the before commit, it is the before arm and
 only the after arm is seated: seed from the newest run that stood there, cut right before the session
 or ruling in question, and name every other difference, such as effort or login.
 

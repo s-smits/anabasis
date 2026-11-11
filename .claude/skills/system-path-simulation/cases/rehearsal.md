@@ -1,8 +1,12 @@
 # Rehearsal
 
 A round, session, standalone comparison or campaign on a seed, with every seat scripted on pi's
-faux provider and no Referee. Everything under the seats is the paid path, so it answers whether
-commands join and what a position of a given size can read at all.
+faux provider and no Referee. Under the seats it is the paid path, so it answers whether commands
+join and what a position of a given size can read at all. A scripted solver runs one command inside
+the wall, the `printf` that writes its answer (`write` where its harness leaves the shell out), so a
+wall change is rehearsed for the checks and that write only; a domain's own toolchain under the
+wall stays with the wall's tests. No script makes a seat throw, so a crash or a provider's limit in
+a session is read from the record and from `test/host.test.ts`.
 
 ## Seed
 
@@ -16,7 +20,8 @@ end, each comparison's report with its reading, each promotion, each starter rea
 Referee reading's first turn with its solve, each with the event's index. `--events <index>` cuts
 right before that event and `--events <index + 1>` right after it. `--before <session>` keeps what
 preceded a Builder or Examiner session, and neither flag keeps the whole log. A log at rest gives a
-repeatable cut.
+repeatable cut. A tree from before `--points` takes the index all the same: list the points from a
+tree that has the flag and pass `--events` there.
 
 The seed lands in the worktree the command runs in, whose source then runs. To revisit a position
 as the run met it, add `--as-ran`: the seed goes to a tree holding the code the run's last condition

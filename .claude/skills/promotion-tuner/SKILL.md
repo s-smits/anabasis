@@ -1,6 +1,6 @@
 ---
 name: promotion-tuner
-description: "Read recorded comparisons under other promotion rules without model calls or spending. scripts/lab.ts tries any mechanism (weights, the bill, turns or seconds as a gain or a guard, floors, the test, the level, free code) on one panel over the record; scripts/replay.ts asks whether a tree's rule supports the promotions on record and which measure won each task; scripts/table.ts describes runs by release, pack and setting; scripts/cost.ts prices promotions on one meter. Use for past promotions, changed scoring, what a promotion should reward, or comparisons between release cycles; a replay never establishes a live improvement."
+description: "Read recorded comparisons under other promotion rules without model calls or spending. scripts/lab.ts tries any mechanism (weights, the bill, turns or seconds as a gain or a guard, floors, the test, the level, free code) on one panel over the record; scripts/replay.ts asks whether a tree's rule supports the promotions on record and which measure won each task; scripts/table.ts lists runs and their promotions; scripts/trend.ts sets the newest week's runs against the weeks before, each difference tested against the spread between runs, with the climb read against what holds it and, with --bench, against outside scores; scripts/cost.ts prices promotions on one meter. Use for past promotions, changed scoring, what a promotion should reward, whether the system does better than one or two weeks ago, or comparisons between release cycles; a replay never establishes a live improvement."
 ---
 
 # Promotion tuner
@@ -76,7 +76,7 @@ commit and any uncommitted `src/` change, and a tree that scores no weighted mea
 By default the run registry finds campaigns in every worktree, archive and host (`ANA_HOSTS`);
 `--logs` reads the offline layout `<logs>/<any>/.ana/d2/<name>/log.jsonl`, the largest copy of each
 name. Seeds, `sim-`, `rh-` and `test-` names and rehearsals are left out (`campaignLogs`,
-`rehearsed`, `scripts/tree.ts`). `--since` defaults to five days back; `--name` overrides the date;
+`rehearsed`, `.claude/skills/main/logs.ts`). `--since` defaults to five days back; `--name` overrides the date;
 `--totals` prints only totals. Live logs grow, so read baseline and candidate close together and
 note the minute. The script reaches a tree only through `loadTree`.
 
@@ -103,18 +103,52 @@ ability is whole-run-investigation's lane 27.
 
 ```sh
 bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/table.ts \
-  [--rows recent|groups|runs|promotions] [--by release,pack,setting,host,none] \
-  [--since <date>] [--name <part>]... [--last 20] [--has <text>]... [--holds <commit>]... [--format md|tsv]
+  [--rows recent|runs|promotions] [--since <date>] [--name <part>]... [--last 20] \
+  [--has <text>]... [--holds <commit>]... [--format md|tsv]
 ```
 
-One row a run, group or promotion, nothing rescored. **`recent`** (default) lists live runs and the
+One row a run or promotion, nothing rescored. **`recent`** (default) lists live runs and the
 latest twenty that promoted, set-up hours apart from hours and dollars a later promotion.
-**`groups`** groups by release (the tag before the first launch), pack and setting, since settings
-are never compared (`AGENTS.md`, section 9); `--by release` pools them as `POOLED`. `groups` and
-`runs` also give validity room and steps won by validity (`validityOf`): without room a cycle
-promotes only on the objective. `--has` and `--holds` keep runs whose every launch had a mechanism
-(`ranWith`). Active hours subtract recorded waits (`waitsOf`, `tools/wri/time.ts`). One run is one
-draw.
+**`runs`** gives each run's own counts of the trend's measures, among them validity room and steps
+won by validity (`validityOf`): without room a run promotes only on the objective. `--has` and
+`--holds` keep runs whose every launch had a mechanism (`ranWith`). Active hours subtract recorded
+waits (`waitsOf`, `tools/wri/time.ts`). The row is the fold of `.claude/skills/main/runs.ts`
+(`runOf`); beside the climb it carries what holds it: the promotions a starter comparison read and
+confirmed, and the reference's tally on the tasks written after its promotion (`starterReads`;
+comparison-reading's [starter-reads.ts](../comparison-reading/SKILL.md) prints one run's). One run
+is one draw, so groups of runs are set against each other by `trend.ts` alone.
+
+## Then and now
+
+```sh
+bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/trend.ts \
+  [--window 7] [--back 2] [--until <date>] [--pack <pack>]... [--any-setting] \
+  [--has <text>]... [--holds <commit>]... [--bench <store>] [--format md|tsv]
+```
+
+"Is the system doing better than a week and two weeks ago" is answered here, a pack at a time. A
+run is placed by the day it opened; an earlier window keeps only runs under a setting the newest
+holds, and each window names its releases, since a difference across minor releases describes the
+record and attributes nothing. Every measure is a rate over its exposure, because the newest runs
+are younger and paused at their trigger, and each difference is put to a permutation test with the
+campaign as the unit (`.claude/skills/main/stats.ts`): `moved` at p of 0.05 or less, `inside the
+spread`, or `too few runs`. The closing line counts the tests, since one in twenty reads `moved` by
+chance. `--back 4 --pack buffer` is the control read of `AGENTS.md` section 10.
+
+**The climb against what holds it.** More promotions an hour is a gain only where they hold, so one
+line a window sets promotions a 100 active hours beside the share the starter confirmed and the
+share of tasks written after a promotion that the reference still won, and names the pattern:
+`together`, `apart` (faster while fewer held, the shape of a climb fitted to its comparisons), `no
+single direction` or `not read`. It is a lead for [comparison-review](../comparison-review/SKILL.md)
+or a [whole-run investigation](../whole-run-investigation/SKILL.md), never a finding.
+
+**The outside link.** `--bench <store>` reads a score store's judged records (`scripts/outside.ts`;
+run-improvement-campaign's "The outside aim" fills the store) and joins each arm to the promotion
+that promoted its digest, with its points against the Starter's lowest and highest sum on the same
+tasks. A promotion the starter confirms that stays inside or below that spread is the case to
+investigate, as a difference in conditions first. A bench score promotes nothing and reaches no
+seat (`AGENTS.md`, section 1). Wording a claim from either table is
+[attribution-and-proof](../attribution-and-proof/SKILL.md)'s.
 
 `table.ts` uses each run's own meter, which has changed. Before calling a cycle cheaper, price all
 runs on one meter:

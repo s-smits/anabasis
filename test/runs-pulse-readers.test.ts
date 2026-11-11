@@ -723,10 +723,9 @@ describe("a look that was cut", () => {
         ?.args.at(-1)
         ?.replaceAll(String.raw`'\''`, "") ?? "";
     const offline = look({ FAKE_OFFLINE: "1" });
-    expect(offline.code).toBe(1);
-    // The hook's filter keeps an indented warning and drops an unindented line.
-    expect(offline.out).toContain("── runner");
-    expect(offline.out).toContain("  ⚠ no answer: its lines carry to the next look");
+    expect(offline.code).toBe(0);
+    // The hook's filter shows a line that opens with a warning on its own.
+    expect(offline.out).toMatch(/^⚠ runner is offline: no answer in /mu);
     look(fleet("◆ reported no-step\nack 89abcdef"));
     expect(remote()).toContain("--ack 0123abcd");
     look(fleet(""));

@@ -3,9 +3,9 @@
  * a test over the scores, and a guard that may refuse a step. Any of them may be free code in a file
  * (`--mechanism`); most are written as knobs (`--try bill=0.05,when=tied`).
  *
- * The knobs start from production's weights and floor, and `lab.ts` counts every task on which their
- * score at those values differs from the tree's own, so they cannot drift from it unseen. Each knob
- * is one the record has been asked about:
+ * The knobs start from production's weights and floor, and `replay.ts`'s panel counts every task on
+ * which their score at those values differs from the tree's own, so they cannot drift from it
+ * unseen. Each knob is one the record has been asked about:
  *
  * - `validity`, `objective`: the weights. They set a task's margin and never whether a tied task
  *   counts, so a change moves many scores and few readings.

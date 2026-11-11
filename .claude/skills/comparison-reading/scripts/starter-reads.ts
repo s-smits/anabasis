@@ -26,7 +26,7 @@
  * Each read also gives what lanes 30 and 31 counted by hand between 3 and 10 November (all 4 lane 30
  * sessions and all 5 of lane 31's): the summed margin of each origin and its share of the read's;
  * how many of the sign draws of the untied tasks written after, every other task as scored, read a
- * step (`stepCount`, `tools/wri/selection.ts`); and the tasks written after, slice by writing
+ * step (`stepCount`, `selection.ts`); and the tasks written after, slice by writing
  * session, each by majority and alone, with no test across the slices. The sums over reads
  * give the confirmations those draws expect beside those read, and where the slices went. `--tasks`
  * gives one row a task of each read (lanes 28, 19 and 22): its origin, writer, each solve's ending on
@@ -63,7 +63,7 @@ import { basename, dirname } from "#src/meta/path.ts";
 import { plural } from "#src/meta/text.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 import { summed, wlt } from "#tools/wri/folds.ts";
-import { type StepCount, stepCount } from "#tools/wri/selection.ts";
+import { type StepCount, stepCount } from "#skills/comparison-reading/scripts/selection.ts";
 
 /** What a read is made of: its after-slices and its sign draws, null where the level is not recorded. */
 interface Composition {
@@ -149,7 +149,7 @@ function drawLine(each: StarterRead, { draws }: Composition): string {
 }
 
 /** The read's after-slices, each by majority and alone. No test across them: whether the slices are
- *  independent draws is lane 31's question (`tools/wri/selection.ts`). */
+ *  independent draws is lane 31's question (`selection.ts`). */
 function sliceLines({ slices }: Composition): string[] {
   return slices.map(
     ({ writer, tally, alone }) =>

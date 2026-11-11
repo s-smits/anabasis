@@ -30,7 +30,7 @@
  * is set in one of the three places the closing paragraph names.
  *
  * The same day graders that had not read the ladder re-rated each rung blind from its words
- * (`examiner-complexity`, `rungs.ts`). The first put 3 of 18 rungs at their stated grade and 15
+ * (`examiner-complexity`, `grades.ts rungs`). The first put 3 of 18 rungs at their stated grade and 15
  * below, so each field was rewritten: a flat rung replaced, and each field's 7 set within a
  * tolerance of a bound the contract states. Five more rounds of two fresh graders each moved the
  * rungs to the graders' medians; the last put 14 of 18 at their stated grade and the other 4 one

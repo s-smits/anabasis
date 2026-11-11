@@ -148,6 +148,28 @@ describe("moving a campaign to another machine", () => {
     expect(result.out).toContain("--project kept-project");
     expect(existsSync(join(made.into, "launch-run-1.json"))).toBe(true);
   });
+
+  it("counts room against the receipt's login unless --login names another", () => {
+    const made = seedMove();
+    writeReceipt(join(made.folder, "log.jsonl"), "run-1", {
+      at: new Date().toISOString(),
+      pid: 42,
+      flags: ["--project", "kept-project"],
+      envFile: null,
+      commit: made.commit,
+      dirty: false,
+      load: 0,
+      cores: 2,
+      login: "3",
+    });
+    const capped = { ANA_LOGIN_RUNS: "3:0" };
+    const kept = made.move(["--hold"], capped);
+    expect(kept.code).toBe(1);
+    expect(kept.err).toContain("login 3");
+    expect(existsSync(made.folder)).toBe(true);
+    expect(made.move(["--hold", "--login", "2"], capped).code).toBe(0);
+    expect(existsSync(made.folder)).toBe(false);
+  });
 });
 
 describe("recovering interrupted moves", () => {

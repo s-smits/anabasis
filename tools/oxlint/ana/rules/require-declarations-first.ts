@@ -46,6 +46,11 @@ import { declaredBy, identifierName, isConstDeclaration, isNamedMember } from ".
  * run, on its first declaration, and names the rest; the fix carries the run across the code in
  * one replacement, with the comments and blank lines between its members where they were.
  *
+ * `as const` is no read. The assertion's `const` arrives as a reference to a name nothing can
+ * declare, and until 11 November 2026 it was barred as a global whose value depends on where it is
+ * read, so `const BY = ["release", "pack"] as const` stayed under the code unreported while the
+ * plain array beside it moved. Eighteen sites tree-wide stood behind that, in fifteen files.
+ *
  * The fixer is the reason the rule is worth having: this is a reordering pass, not a set of
  * judgements. The comment is the part a hand edit gets wrong — a JSDoc block left behind above the
  * next function now documents the wrong thing, and nothing fails.
@@ -93,6 +98,8 @@ const CONSTANT_GLOBALS = new Set([
   ...PURE_CONSTRUCTORS,
   ...PURE_CALLEES,
   ...PURE_METHODS.keys(),
+  // `as const` reads as a reference to a name `const`, which no binding can have.
+  "const",
   "Error",
   "Infinity",
   "NaN",

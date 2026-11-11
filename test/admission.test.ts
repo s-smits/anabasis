@@ -49,6 +49,14 @@ const LIMITS = {
   shellMaxSeconds: 900,
   concurrency: 4,
 };
+/** A comparison `g-1` about to start against the starter, and a session `b-2` with none after it. */
+const ASKED = {
+  id: "g-1",
+  reference: "starter",
+  wanted: WANTED,
+  own: () => undefined,
+  seats: "paid",
+} as const;
 const event = (kind: EventKind, data: JsonObject): LogEvent => ({ at: AT, kind, data });
 const heldOut = (version: string): LogEvent[] => [
   event("task.proposed", { version }),
@@ -83,14 +91,6 @@ function logOf(events: readonly LogEvent[]): string {
 /** Six held-out tasks, with whatever `more` adds. */
 const six = (more: readonly LogEvent[] = []) =>
   logOf([...["v1", "v2", "v3", "v4", "v5", "v6"].flatMap(heldOut), ...more]);
-/** A comparison `g-1` about to start against the starter, and a session `b-2` with none after it. */
-const ASKED = {
-  id: "g-1",
-  reference: "starter",
-  wanted: WANTED,
-  own: () => undefined,
-  seats: "paid",
-} as const;
 const SESSION = { id: "b-2", wanted: { cap: WANTED.cap }, seats: "paid" } as const;
 /** A campaign of patience three whose three comparisons could each have shown a gain and showed
  *  none: the plan's stop rule has stopped it. */

@@ -110,6 +110,15 @@ interface Extract {
   readonly images: readonly string[];
 }
 
+const OPTIONS = {
+  tasks: { type: "string" },
+  out: { type: "string" },
+  sections: { type: "string" },
+  jb: { type: "string" },
+  "dry-run": { type: "boolean" },
+  yes: { type: "boolean" },
+} as const;
+
 /**
  * The fork's `os.environ` less `drop`: this process's environment with what the fork's Python
  * adds before it starts anything, `config.py`'s Vertex region and PEP 538's UTF-8 locale where the
@@ -307,15 +316,6 @@ export function pilotClaude(jb: string): Claude {
     },
   };
 }
-
-const OPTIONS = {
-  tasks: { type: "string" },
-  out: { type: "string" },
-  sections: { type: "string" },
-  jb: { type: "string" },
-  "dry-run": { type: "boolean" },
-  yes: { type: "boolean" },
-} as const;
 
 /** The streams: each profession's tasks in the stream's order (`sorted`). */
 function streamsOf(list: string): Map<string, string[]> {

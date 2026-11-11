@@ -28,6 +28,7 @@ import type { LogEvent } from "#src/kernel/log.ts";
 import { AT_A_LIMIT } from "#src/kernel/reports.ts";
 import { degradations, type Turn, tracesIn } from "#src/kernel/trace.ts";
 import { roleOf, spendOf } from "#src/kernel/meter.ts";
+import { HOUR_MS, MINUTE_MS } from "#src/meta/clock.ts";
 import { isNumber, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy, median } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
@@ -85,8 +86,6 @@ const SPANS = [
 const BETWEEN_MOVES = "between moves";
 /** The recorded waits by what they waited for, in the order the hours line names them. */
 const WAIT_KINDS = ["provider", "network", "load"] as const;
-const MINUTE_MS = 60_000;
-const HOUR_MS = 3_600_000;
 
 interface Span {
   readonly part: string;

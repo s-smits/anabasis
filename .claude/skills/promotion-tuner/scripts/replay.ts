@@ -32,6 +32,7 @@ import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { carriedBy as carriedOn, type Paired, wholePoints } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import type { Reported } from "#src/kernel/reports.ts";
+import { DAY_MS } from "#src/meta/clock.ts";
 import { type JsonValue, asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { median } from "#src/meta/tally.ts";
@@ -57,7 +58,6 @@ const OPTIONS = {
   totals: "flag",
 } as const;
 const DAYS_BACK = 5;
-const DAY_MS = 86_400_000;
 const PROMOTED = "harness.promoted";
 const MEASURES = ["validity", "objective", "bill"] as const;
 

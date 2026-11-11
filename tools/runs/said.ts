@@ -15,6 +15,7 @@ import { BARS, epochsOf, starterReads } from "#src/campaign/climb.ts";
 import { readsStepEitherWay, scoresIn, type Tally, testOf } from "#src/kernel/compare.ts";
 import type { EventKind, LogEvent } from "#src/kernel/log.ts";
 import { clearing, sizeLines } from "#src/kernel/size.ts";
+import { HOUR_MS } from "#src/meta/clock.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { plural } from "#src/meta/text.ts";
@@ -22,7 +23,6 @@ import { plural } from "#src/meta/text.ts";
 export const REPORTED = "comparison.reported";
 export const PROMOTED = "harness.promoted";
 export const ENDED = "campaign.ended";
-const HOUR_MS = 3_600_000;
 const DIGEST_CHARS = 8;
 
 /** Where a run owes its next step, which names an investigation and stops nothing: two promotions

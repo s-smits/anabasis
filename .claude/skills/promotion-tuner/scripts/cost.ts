@@ -29,6 +29,7 @@
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { billedAll, roleOf, seatMeter } from "#src/kernel/meter.ts";
+import { DAY_MS } from "#src/meta/clock.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
@@ -57,7 +58,6 @@ const SEAT = new Map([
   ["examiner", "examiner"],
   ["referee", "reviewer"],
 ]);
-const DAY_MS = 86_400_000;
 /** A run whose log has been quiet this long, or whose last event is an ending, is not live
  *  (`LIVE_MS`, `table.ts`). */
 

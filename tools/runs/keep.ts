@@ -34,6 +34,7 @@
  * 15 October this was three shell loops of the operator's and a wrapper a login, each moving one run.
  */
 import type { LogEvent } from "#src/kernel/log.ts";
+import { HOUR_MS } from "#src/meta/clock.ts";
 import { mainTree } from "#src/meta/git.ts";
 import { join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -77,7 +78,6 @@ const LOOK_MS = 60_000;
 /** How long a keeper with nowhere to go waits before it reads the logins again: a reading may cost a
  *  one-token request a login (`readLogins`), and a week's wait lasts for days. */
 const ASK_MS = 10 * 60_000;
-const HOUR = 3_600_000;
 /** Goings-on in a row with no model turn, after which a keeper leaves its run. */
 const BARREN = 3;
 
@@ -315,7 +315,7 @@ export async function keep(args: readonly string[]): Promise<void> {
       named === undefined
         ? poolOf(join(mainTree(run.tree), ".env.runs"), runtimeProcess.env)
         : async () => named;
-    return keepGoing(run, pool, Number(values["wait-hours"]) * HOUR);
+    return keepGoing(run, pool, Number(values["wait-hours"]) * HOUR_MS);
   }
   if (keepers(name).length > 0) throw new Error(`${name} is kept already`);
   if (!values.yes) return said(run, `would be kept going on logins ${logins.join(", ")}`);

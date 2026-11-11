@@ -23,6 +23,7 @@
 import { campaignOf, openSteps } from "#src/campaign/handover.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { type Solve, solvesIn } from "#src/kernel/solves.ts";
+import { HOUR_MS } from "#src/meta/clock.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
@@ -36,7 +37,6 @@ type Launch = Receipt & { readonly session: string };
 /** The session endings a stretch can hold, by the event that carries them. */
 const SESSION_ENDS = new Set(["build.finished", "exam.finished", "draft.finished"]);
 const KILLED = "killed";
-const HOUR_MS = 3_600_000;
 /** How long before its receipt a launch writes its `campaign.opened`: a few milliseconds. */
 const OPENED_MS = 1000;
 

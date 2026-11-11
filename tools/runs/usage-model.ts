@@ -59,6 +59,7 @@
  * each login's live runs. Where the model is printed, each login's head line names the hour its week
  * ends by the model (`modelLines`), so the head and the forecast name one hour.
  */
+import { HOUR_MS } from "#src/meta/clock.ts";
 
 export interface Snapshot {
   readonly at: number;
@@ -115,10 +116,9 @@ export interface End {
   readonly runs: boolean;
 }
 
-const HOUR = 3_600_000;
-const WEEK = 168 * HOUR;
+const WEEK = 168 * HOUR_MS;
 const AHEAD = 4 * WEEK;
-const STEP = HOUR / 12;
+const STEP = HOUR_MS / 12;
 const HORIZON = 24;
 /** The days a fit may read, each tried, the one with the lower held-out error kept. */
 const WINDOWS = [7, 14, 28] as const;
@@ -132,18 +132,18 @@ const NONE = -1;
 /** The hours back the rise before a reading is read over. */
 const BEFORE = { least: 3, most: 6 } as const;
 /** Readings closer than this to the last one kept are a burst, and make no row of their own. */
-const APART = HOUR / 2;
+const APART = HOUR_MS / 2;
 
 /** The share of its week `week` has spent an hour since it opened, at `at`, floored at 12 hours so
  *  a window minutes old does not extrapolate. */
 export const weekPace = (week: { pct: number; reset: number }, at: number) =>
-  week.pct / Math.max(12, (at - (week.reset - 168 * HOUR)) / HOUR);
+  week.pct / Math.max(12, (at - (week.reset - 168 * HOUR_MS)) / HOUR_MS);
 /** Whether reading `later` of a login's week is in the window of reading `earlier`: their resets
  *  agree within an hour and its use has not fallen. A fall is a window opened afresh without a new
  *  reset, as when a login's plan is upgraded (login 3 read 94% and then 0% under one reset on
  *  4 November, the one fall in 284 readings), so a rise read across it would be counted as none. */
 export const sameWindow = (earlier: { pct: number; reset: number }, later: { pct: number; reset: number }) =>
-  Math.abs(earlier.reset - later.reset) < HOUR && later.pct >= earlier.pct;
+  Math.abs(earlier.reset - later.reset) < HOUR_MS && later.pct >= earlier.pct;
 const mean = (values: readonly number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
 /** The readings of `history` that counted live runs, in time order. */
 export const byTime = (history: readonly Snapshot[]) =>
@@ -157,12 +157,12 @@ function riseBefore(sorted: readonly Snapshot[], index: number, login: string): 
   let then: Snapshot | undefined;
   for (let back = index - 1; back >= 0 && then === undefined; back -= 1) {
     const one = sorted[back];
-    if (one === undefined || at - one.at > BEFORE.most * HOUR) break;
-    if (at - one.at >= BEFORE.least * HOUR && one.weeks[login] !== undefined) then = one;
+    if (one === undefined || at - one.at > BEFORE.most * HOUR_MS) break;
+    if (at - one.at >= BEFORE.least * HOUR_MS && one.weeks[login] !== undefined) then = one;
   }
   const was = then?.weeks[login];
   if (now === undefined || then === undefined || was === undefined || !sameWindow(was, now)) return NONE;
-  return (now.pct - was.pct) / ((at - then.at) / HOUR);
+  return (now.pct - was.pct) / ((at - then.at) / HOUR_MS);
 }
 
 /** The features of `login` at reading `index` of `sorted`, before the horizon is added. */
@@ -180,7 +180,7 @@ function stateOf(sorted: readonly Snapshot[], index: number, login: string): num
 const withHorizon = (state: readonly number[], at: number, hours: number) => [
   ...state,
   hours,
-  new Date(at + hours * HOUR).getHours(),
+  new Date(at + hours * HOUR_MS).getHours(),
 ];
 
 /** A row for each login and horizon at each reading at least `APART` after the last one kept. */
@@ -194,12 +194,12 @@ function rowsOf(sorted: readonly Snapshot[]): Row[] {
     const then = sorted[index];
     if (then === undefined) return [];
     let end = index + 1;
-    while (end < sorted.length && (sorted[end]?.at ?? 0) - then.at <= (HORIZON + 0.5) * HOUR) end += 1;
+    while (end < sorted.length && (sorted[end]?.at ?? 0) - then.at <= (HORIZON + 0.5) * HOUR_MS) end += 1;
     const soon = sorted.slice(index + 1, end);
     return Object.entries(then.weeks).flatMap(([login, was]) => {
       const state = stateOf(sorted, index, login);
       return Array.from({ length: HORIZON }, (_, at) => at + 1).flatMap((hours) => {
-        const later = soon.find(({ at }) => Math.abs(at - then.at - hours * HOUR) <= HOUR / 2);
+        const later = soon.find(({ at }) => Math.abs(at - then.at - hours * HOUR_MS) <= HOUR_MS / 2);
         const now = later?.weeks[login];
         if (now === undefined || !sameWindow(was, now)) return [];
         const x = withHorizon(state, then.at, hours);
@@ -331,19 +331,19 @@ export function assess(
   rateOf: (history: readonly Snapshot[]) => number | null,
 ): Assessment | null {
   const sorted = byTime(
-    history.filter(({ at }) => at <= now && now - at < (WINDOWS.at(-1) ?? 0) * 24 * HOUR),
+    history.filter(({ at }) => at <= now && now - at < (WINDOWS.at(-1) ?? 0) * 24 * HOUR_MS),
   );
   const rows = rowsOf(sorted);
-  const cut = now - HELD * HOUR;
+  const cut = now - HELD * HOUR_MS;
   const held = rows.filter(({ at, left }) => at >= cut && left > 0);
   const errorOf = (guess: (row: Row) => number) => mean(held.map((row) => Math.abs(guess(row) - row.y)));
-  const since = (days: number) => rows.filter(({ at }) => now - at < days * 24 * HOUR);
+  const since = (days: number) => rows.filter(({ at }) => now - at < days * 24 * HOUR_MS);
   // A window reaching past the oldest reading reads what a shorter one did, so it is not fitted.
   const oldest = sorted[0]?.at ?? now;
   const tried = WINDOWS.filter(
-    (_, at) => at === 0 || now - oldest >= (WINDOWS[at - 1] ?? 0) * 24 * HOUR,
+    (_, at) => at === 0 || now - oldest >= (WINDOWS[at - 1] ?? 0) * 24 * HOUR_MS,
   ).flatMap((days) => {
-    const before = since(days).filter(({ at, hours }) => at + (hours + 0.5) * HOUR < cut);
+    const before = since(days).filter(({ at, hours }) => at + (hours + 0.5) * HOUR_MS < cut);
     if (before.length === 0) return [];
     const early = fit(before);
     return [{ days, error: errorOf((row) => predict(early, row.x, row.hours, row.left)) }];
@@ -394,7 +394,7 @@ export function weekEnd(
   const hour = rises.findIndex((rise) => rise >= left);
   const day = rises.at(-1) ?? 0;
   const hours = hour === -1 ? (left / day) * HORIZON : hour + 1;
-  const end = at + hours * HOUR;
+  const end = at + hours * HOUR_MS;
   return end < week.reset ? end : null;
 }
 
@@ -429,7 +429,7 @@ function forecast(weeks: readonly Week[], rate: number, now: number): string {
     const refilled = pool.filter((login) => at >= login.reset);
     for (const login of refilled) Object.assign(login, { left: 100, reset: login.reset + WEEK });
     const room = pool.reduce((sum, login) => sum + login.left, 0);
-    let need = (rate * STEP) / HOUR;
+    let need = (rate * STEP) / HOUR_MS;
     for (const login of pool.toSorted((one, other) => one.reset - other.reset)) {
       const take = Math.min(login.left, need);
       login.left -= take;
@@ -459,7 +459,7 @@ function forecast(weeks: readonly Week[], rate: number, now: number): string {
     0,
   );
   const longest = inWeek.reduce((one, other) => (lasting(other) > lasting(one) ? other : one));
-  return `all out ${said(first)} · ${String(Math.round(out / HOUR))}h out over the next 7d${longest === first ? "" : `, longest ${said(longest)}`}`;
+  return `all out ${said(first)} · ${String(Math.round(out / HOUR_MS))}h out over the next 7d${longest === first ? "" : `, longest ${said(longest)}`}`;
 }
 
 const roomy = (week: Week) => week.room !== false;

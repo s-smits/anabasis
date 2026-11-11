@@ -59,6 +59,7 @@
  * after `investigate` was read by hand from the folder.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
+import { HOUR_MS } from "#src/meta/clock.ts";
 import {
   existsSync,
   mkdirSync,
@@ -126,7 +127,6 @@ const DEVIATIONS = "deviations.md";
 const LEVERS = join(import.meta.dir, "..", "references", "levers.md");
 const USAGE = `usage: bun ${DRIVER} [due] [<part> ...] [--promotions 2] [--hours 12] [--days 2] | open <name>[,<name>] [--out <dir>] | next <dir> | ledger <dir>`;
 const OPTIONS = { promotions: "int", hours: "int", days: "int", out: "abs" } as const;
-const HOUR_MS = 3_600_000;
 const WRI = "tools/wri/wri.ts";
 /** The first line of a step as `nextOf` prints it: its gate, then what the gate owes. */
 const STEP = /^step: (?<name>[a-z]+)(?: · (?<rest>.*))?$/u;

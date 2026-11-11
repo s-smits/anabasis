@@ -37,6 +37,7 @@ import type { EventKind, LogEvent } from "#src/kernel/log.ts";
 import { degradations, traceKind, tracesIn } from "#src/kernel/trace.ts";
 import { billedAll } from "#src/kernel/meter.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
+import { DAY_MS, HOUR_MS } from "#src/meta/clock.ts";
 import { existsSync, readFileSync, rmSync, statfsSync, statSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { isNumber, isString } from "#src/meta/json-shape.ts";
@@ -147,8 +148,6 @@ interface Chosen {
 }
 
 /** A closed run `status` shows without `--all`: one whose log changed this recently. */
-const HOUR_MS = 60 * 60_000;
-const DAY_MS = 24 * HOUR_MS;
 const RECENT_MS = DAY_MS;
 /** How many of the archive's newest campaigns `status` names under its rows. */
 const NEWEST = 3;

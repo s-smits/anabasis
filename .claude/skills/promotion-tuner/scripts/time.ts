@@ -13,6 +13,7 @@
  * seen to take six to seven hours and no reader said where they went.
  */
 import type { LogEvent } from "#src/kernel/log.ts";
+import { HOUR_MS } from "#src/meta/clock.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import type { Tree } from "./tree.ts";
 
@@ -24,7 +25,6 @@ interface Span {
 
 type Part = "examiner" | "comparison" | "builder";
 
-const HOUR_MS = 3_600_000;
 const STARTS = new Map<string, Part>([
   ["exam.started", "examiner"],
   ["draft.started", "examiner"],

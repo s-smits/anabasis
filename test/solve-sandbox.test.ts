@@ -344,31 +344,47 @@ describe.skipIf(!onDarwin)("the Darwin wall's edges", () => {
     });
   }, 60_000);
 
-  it("is not reached through a socket in a closed folder, while one in the seat's root is", async () => {
-    const repoRoot = workRepo();
-    const heard: string[] = [];
+  it("reaches a socket in the seat's root and the resolver's, and no other listener's", async () => {
+    // A folder no path rule closes, so that only the rule on sockets stands between the command
+    // and the listener: the VPN daemon's and the print server's sockets lie in such a folder.
+    const cache = Bun.spawnSync(["/usr/bin/getconf", "DARWIN_USER_CACHE_DIR"]).stdout.toString().trim();
+    const unclosed = mkdtempSync(join(cache, "ana-wall-"));
+    made.push(unclosed);
+    let heard = 0;
     const listener = Bun.listen({
-      unix: join(repoRoot, "s"),
+      unix: join(unclosed, "s"),
       socket: {
-        data: (_socket, data) => {
-          heard.push(data.toString());
+        open: () => {
+          heard += 1;
         },
+        data: () => {},
       },
     });
     const client = (path: string) =>
-      `python3 -I -c 'import socket,sys;s=socket.socket(socket.AF_UNIX);s.connect(sys.argv[1]);s.sendall(b"WALL")' ${path} 2>/dev/null && echo reached || echo refused`;
+      `python3 -I -c 'import socket,sys;socket.socket(socket.AF_UNIX).connect(sys.argv[1])' ${path} 2>/dev/null && echo reached || echo refused`;
     try {
-      await inSeat(repoRoot, [], async (_wall, run) => {
+      await inSeat(workRepo(), [], async (_wall, run) => {
         // Named from the seat's temporary folder, as a socket's path is cut at 104 bytes.
         const server = `cd "$TMPDIR" && python3 -I -c 'import socket,sys;s=socket.socket(socket.AF_UNIX);s.bind(sys.argv[1]);s.listen();s.accept()' o & sleep 1`;
-        const output = await run(`${client(join(repoRoot, "s"))}; ${server}; cd "$TMPDIR"; ${client("o")}`);
-        expect(output.split("\n").slice(0, 2)).toEqual(["refused", "reached"]);
+        const output = await run(
+          `${client(join(unclosed, "s"))}; ${server}; cd "$TMPDIR"; ${client("o")}; ${client("/var/run/mDNSResponder")}`,
+        );
+        expect(output.split("\n").slice(0, 3)).toEqual(["refused", "reached", "reached"]);
       });
       await Bun.sleep(200);
-      expect(heard).toEqual([]);
+      expect(heard).toBe(0);
     } finally {
       listener.stop(true);
     }
+  }, 60_000);
+
+  it("does not run launchctl, whose requests launchd takes from a walled process too", async () => {
+    await inSeat(workRepo(), [], async (_wall, run) => {
+      const output = await run(
+        `id -un >/dev/null && echo id; launchctl print "gui/$(id -u)" >/dev/null 2>&1; echo "launchctl=$?"`,
+      );
+      expect(output.split("\n").slice(0, 2)).toEqual(["id", "launchctl=126"]);
+    });
   }, 60_000);
 
   it("keeps another process's command line out of reach", async () => {

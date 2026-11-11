@@ -118,7 +118,7 @@ section tells the lane that the record behind every table stays open to it. An i
 lane is given none of this. A reader that finds its campaign by name (`view`, `loop`, `source`,
 `logged`, `cost`, `table`) is not run on a snapshot or a second copy, whose name finds another log;
 its file says so in one line. Left out are tools that read no run
-(`comparison-reading/scripts/size.ts`, `examiner-complexity/scripts/rungs.ts`,
+(`comparison-reading/scripts/size.ts`, `examiner-complexity/scripts/grades.ts rungs`,
 `system-audit/scripts/recent.ts`), that need more than a campaign
 (`examiner-complexity/scripts/grades.ts`, `oracle-handover/scripts/slice.ts`,
 `tools/runs/search.ts`, `wri.ts grade`), that write (`wri.ts start`, `lanes`, `collect`, `synthesis`,

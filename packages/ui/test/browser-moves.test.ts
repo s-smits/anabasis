@@ -31,6 +31,13 @@ let served: Served;
 let browser: Browser;
 let moves: readonly Move[];
 
+/** The Kind choice's words for a step (`FILTER_LABELS`, `moves-list.tsx`). */
+const KIND = {
+  examiner: "Examiner sessions",
+  builder: "Builder sessions",
+  comparison: "Comparisons",
+} as const;
+
 beforeAll(async () => {
   [served, browser] = await Promise.all([serveFixture(), launchBrowser()]);
   moves = answersOver(served.fixture.root, "default").campaign(served.fixture.key).moves;
@@ -88,13 +95,6 @@ function shownMoves(page: Page, count = 17) {
     .filter({ hasText: /\bmoves$/u });
   return expect(status).toHaveText(count === 17 ? "17 moves" : `${String(count)} of 17 moves`);
 }
-
-/** The Kind choice's words for a step (`FILTER_LABELS`, `moves-list.tsx`). */
-const KIND = {
-  examiner: "Examiner sessions",
-  builder: "Builder sessions",
-  comparison: "Comparisons",
-} as const;
 
 async function expectAccessible(page: Page): Promise<void> {
   expect(await accessibilityViolations(page, "main")).toEqual([]);

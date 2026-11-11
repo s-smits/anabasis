@@ -14,6 +14,10 @@
  * fix moves the run whole, so one function written above twelve declarations is one error instead
  * of twelve. `Lone`, which code separates from the run, is a finding of its own.
  *
+ * `TUPLE` is where the rule was blind until 11 November 2026: `as const` reads as a reference to a
+ * name `const`, which nothing declares, so no table written with the assertion ever moved and
+ * thirteen sites stood under the code unreported.
+ *
  * The safe-name set is where the rule was blind until 2026-09-20: it admitted an import and a
  * function declaration wherever they sat but not an `interface` or a `type` this file declares,
  * so `const BY_LATE = new Map<string, Late>()` was refused for reading a name that is erased and
@@ -42,6 +46,7 @@ const CWD = process.cwd(); // ADMITTED a call in the initialiser
 const HOME = process.env.HOME; // ADMITTED reads a global, whose value depends on where it is read
 let counter = 1; // ADMITTED a module let is state, not a constant
 const bump = (): number => counter + 1; // ADMITTED holds a function, not a value
+const TUPLE = ["a", "b"] as const; // REPORT the assertion reads no name, so the table is as fixed as PLAIN
 enum Mode {
   One = 1,
 }
@@ -49,7 +54,7 @@ const FROM_ENUM = Mode.One; // ADMITTED an enum has a runtime value, so where it
 type Lone = number; // REPORT what stays put above it ends the run, so this is a finding of its own
 
 export function second(one: Late, two: Alias): number {
-  const read: Lone = PLAIN + BUILT.size + BY_LATE.size + DERIVED + FROM_ENUM + bump();
+  const read: Lone = PLAIN + TUPLE.length + BUILT.size + BY_LATE.size + DERIVED + FROM_ENUM + bump();
   return read + CWD.length + (HOME ?? "").length + one.one.length + two.length;
 }
 `;
@@ -63,7 +68,7 @@ export const SNAPSHOT = new Set(VALUES); // ADMITTED copies the contents after t
 describe("ana/require-declarations-first", () => {
   it("moves what is erased or provably fixed, and leaves an effect, a global read and state alone", async () => {
     await lintRules("ana", [
-      [RULE, MIXED, 2],
+      [RULE, MIXED, 3],
       [RULE, SNAPSHOT, 0],
     ]);
   });
@@ -83,6 +88,7 @@ describe("ana/require-declarations-first", () => {
       "const BY_LATE",
       "const DERIVED",
       "type Lone",
+      "const TUPLE",
     ]) {
       expect(fixed.indexOf(moved)).toBeGreaterThan(-1);
       expect(fixed.indexOf(moved)).toBeLessThan(code);

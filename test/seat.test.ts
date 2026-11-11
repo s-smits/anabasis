@@ -19,9 +19,9 @@ import { type Seat, sit } from "../src/agent/session.ts";
 import { text, tool } from "../src/tools/answer.ts";
 
 const scratch = mkdtempSync(join(tmpdir(), "ana-seat-"));
+const TOOL_USE = { stopReason: "toolUse" } as const;
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
-const TOOL_USE = { stopReason: "toolUse" } as const;
 const look = fauxAssistantMessage([fauxToolCall("look", {})], TOOL_USE);
 
 /** A seat on the faux provider that answers `responses` in order, with one tool, `look`, whose

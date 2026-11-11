@@ -149,6 +149,8 @@ const SUBS: Readonly<Record<"claude" | "codex", Readonly<Record<string, string>>
   codex: { pro100: "2", pro200: "4" },
 };
 
+const FLAG = { type: "boolean", default: false } as const;
+
 /** Every login `env` holds, by its number. A key left empty holds none: a copied `.env.example`
  *  names `CLAUDE_CODE_OAUTH_TOKEN2=`, and until 5 November that made a login nobody can pay with, so
  *  `fresh` said no login had room. */
@@ -615,8 +617,6 @@ export async function active(args: readonly string[]): Promise<void> {
   const { live, unasked } = await liveEverywhere();
   console.log(activeLines(live, allowedLogins(runtimeProcess.env), unasked, runtimeProcess.env).join("\n"));
 }
-
-const FLAG = { type: "boolean", default: false } as const;
 
 /** `bun run runs usage`. */
 export async function logins(args: readonly string[]): Promise<void> {

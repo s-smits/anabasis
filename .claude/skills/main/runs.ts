@@ -2,41 +2,28 @@
  * One campaign folded into the row every reader of the record across runs shares: when it reached
  * its first comparison and each promotion, what each took in hours and dollars, and what its climb
  * rests on. promotion-tuner's `table.ts` prints the rows and `trend.ts` sets one window of them
- * against another; until 11 November the fold lived inside `table.ts`, so a second reader across
- * runs would have folded the logs again (AGENTS.md section 5, habit 2).
+ * against another. Every number is a production fold over the log and its launch receipts
+ * (AGENTS.md section 5): `comparisonsOf`, `epochsOf`, `starterReads`, `billedBetween` and `waitsOf`.
  *
- * Every number is a fold over the campaign's log and its launch receipts (section 5: no second
- * store), and the folds are the production ones: `comparisonsOf` for the reading a promotion rests
- * on, `epochsOf` for each epoch's comparisons, its confirmation and the campaign's A/A
- * comparisons, `starterReads` for the reference against the starter by where each task came from,
- * `billedBetween` for the dollars, and `waitsOf` (`tools/wri/time.ts`) for the waits.
+ * A run's **release** is the release tag before its first launch (`after v0.7.4` is the cycle that
+ * built the next release; a campaign with no receipt is placed by its first event), its **pack**
+ * is `packOf` of its name, and its **setting** the solver, its effort and the solve limits.
  *
- * What places a run. Its **release** is the release tag before its first launch, `after v0.7.4`
- * being the cycle that built the next release (a campaign with no receipt is placed by its first
- * event). Its **pack** is read from its name by `packOf` (`tools/runs/registry.ts`), and its
- * **setting** is the solver, its effort and the solve limits of `campaign.setting`.
+ * All times are on the log's own clock. **Elapsed** hours run from the first event. **Active**
+ * hours subtract the union of every recorded wait (a provider's reset, the network, the solve
+ * queue), so a run that sat out a limit is not slower for it. **Unloaded** hours also take out what
+ * an overloaded host cost (`overloadOf`): each stretch after a recorded load counts the share of
+ * the demand its cores could not serve, `1 - cores / load`. That treats the run as CPU-bound while
+ * much of a solve waits on the provider, so it is an upper bound on the load's cost and an
+ * estimate. No hour is scaled by the chip or the operating system.
  *
- * What the hours are. All times are on the log's own clock (`at`), which is the same on macOS and
- * Linux. **Elapsed** hours run from the log's first event. **Active** hours subtract the union of
- * every recorded wait (a provider's reset, a network wait and a solve-queue wait for load), so a run
- * that sat out a limit on one host is not slower than the same run on another. **Unloaded** hours
- * take out of the active hours what an overloaded host cost (`overloadOf`): each stretch after a
- * recorded load counts the share of the demand its cores could not serve, `1 - cores / load`. That
- * treats the run as CPU-bound, while much of a solve waits on the provider, so it bounds the load's
- * cost from above and is an estimate (operator, 30 October, when one host stood at a load of 91 on
- * 12 cores). No hour is scaled by the chip or the operating system, since one factor for two of
- * each would be an invented number.
- *
- * What the hours leave out. A promotion's hours say how fast a run climbed, not what it climbed on,
- * so these stand beside them (operator, 1 November, after one cycle's buffer runs matched the last
- * cycle's median first promotion while the reference answered nearly every task). **Room on
- * validity** is the scored tasks, summed over the reported comparisons, that the reference did not
- * answer validly in every solve, as `ambition.ts` reads them: where it is near zero, a step can be
- * won only on the objective. **Steps won by validity** counts them as the closing report counts it.
- * A promotion is **confirmed** where the first starter comparison of the epoch it opened to tally a
- * task read the reference above the starter (`confirmed`, `src/campaign/climb.ts`); `reads` counts
- * the promotions such a comparison has read at all, the denominator, and `after` is the
- * reference's tally in them on the tasks written after its promotion, which it was not chosen on.
+ * Hours say how fast a run climbed, not what it climbed on, so three readings stand beside them.
+ * **Room on validity** is the scored tasks, summed over the reported comparisons, that the
+ * reference did not answer validly in every solve; near zero, a step can be won only on the
+ * objective. **Steps won by validity** counts them as the closing report does. A promotion is
+ * **confirmed** by `confirmed` (`src/campaign/climb.ts`); `reads` counts the promotions a starter
+ * comparison has read at all, the denominator, and `after` is the reference's tally in them on the
+ * tasks written after its promotion, which it was not chosen on.
  *
  * The first promotion over the Starter is set-up (epoch 0), as the closing report counts it
  * (`epochLine`); `promotions` holds it, and the climb is one fewer.

@@ -3,7 +3,7 @@
  * each side of every comparison measured on the tasks each session wrote, against the best answer
  * its author has on record:
  *
- *   bun tools/wri/aim.ts <log>
+ *   bun tools/wri/wri.ts reader aim --log <log>
  *
  * Lanes 11, 28 and 31 ask whether the tasks written after a promotion were written against the
  * reference in force, and a starter read pools them with the rest. Between 3 and 10 November 14 of
@@ -29,13 +29,12 @@ import { REFERENCE_HOME } from "#src/examiner/shell.ts";
 import { gapAgainst, type Paired } from "#src/kernel/compare.ts";
 import { conditionsOf } from "#src/kernel/condition.ts";
 import { proposalsOf } from "#src/kernel/history.ts";
-import { type LogEvent, read } from "#src/kernel/log.ts";
+import type { LogEvent } from "#src/kernel/log.ts";
 import { lastReports, pairsReported, type Reported, taskRecords } from "#src/kernel/reports.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
 import { type Call, tracesIn } from "#src/kernel/trace.ts";
 import { asRecord, isBoolean, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { median } from "#src/meta/tally.ts";
-import { printRows } from "./folds.ts";
 
 /** A comparison's last report with the pairs it tallied. */
 interface PairedReport {
@@ -332,5 +331,3 @@ export function aimRows(events: readonly LogEvent[]): string[] {
     ),
   ];
 }
-
-if (import.meta.main) printRows("aim", (log) => aimRows(read(log)));

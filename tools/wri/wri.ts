@@ -15,6 +15,7 @@
  *   bun tools/wri/wri.ts grade --log <log> [--bundle <pack>] --solve <id> [--set <path>=<json>]...
  *   bun tools/wri/wri.ts grade --log <log> [--bundle <pack>] --answers <dir>
  *   bun tools/wri/wri.ts derive (--log <log>[,<log>...] | --all) [--verbose] [--force] [--no-embed]
+ *   bun tools/wri/wri.ts reader <name> --log <log>
  *   bun tools/wri/wri.ts index [--root <dir>] [--out <file>]
  *
  * - `climb` prints lane 22's columns for every log `--log` names, one row each, and the paths
@@ -53,6 +54,8 @@
  *   file as well, for a session that wants to read them all. `--all` takes every campaign this
  *   machine reads (`readable`, `tools/runs/registry.ts`), which is how a job keeps them current.
  *   `start` derives its logs the same way, quietly, and names the folders in the instructions.
+ * - `reader` prints what one of those readers says of one log, the text `derive` writes to its
+ *   file, and exits 1 where it failed.
  * - `index` reads every investigation under `--root` (the main worktree's `.ana/wri/` by default)
  *   and writes one page over them to `--out` (`<root>/INDEX.md`): a row a folder, newest first,
  *   then each campaign group's binding constraints in time order, each cycle folder and prediction
@@ -78,7 +81,7 @@ import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { plural } from "#src/meta/text.ts";
-import { atCommit, treeAt } from "../runs/code.ts";
+import { treeAt } from "../runs/code.ts";
 import { lastHost } from "#src/kernel/condition.ts";
 import { receipts } from "../runs/receipt.ts";
 import { isCampaign, processes, readable, type Running } from "../runs/registry.ts";
@@ -92,11 +95,15 @@ import {
   derivedOf,
   derivedText,
   folderOf,
+  overviewText,
+  READERS,
+  readerOutput,
   readersOf,
+  sourceOf,
 } from "./derive.ts";
 import { logAcross } from "../runs/snapshots.ts";
 import { catalogueText, lanesOf, ownersOf, REFERENCES } from "./catalogue.ts";
-import { climbTable, crossings } from "./climb.ts";
+import { climbText } from "./climb.ts";
 import {
   blankSections,
   type Campaign,
@@ -114,7 +121,7 @@ import {
   weightOf,
 } from "./investigation.ts";
 import { INVESTIGATION, investigationIndex, REPORTS, SHARED } from "./index.ts";
-import { overview, rendered } from "./read.ts";
+import { overview } from "./read.ts";
 import { buildPackets, joinPackets } from "./packets.ts";
 import { gradesIn, HOURS, trajectoryText } from "./trajectory.ts";
 import { grade } from "./grade.ts";
@@ -127,7 +134,7 @@ interface Investigation {
 
 const REPO = resolve(import.meta.dir, "..", "..");
 const USAGE =
-  "usage: bun tools/wri/wri.ts read | climb | trajectory | start | lanes | collect | synthesis | grade | derive | index";
+  "usage: bun tools/wri/wri.ts read | climb | trajectory | start | lanes | collect | synthesis | grade | derive | reader | index";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -183,46 +190,6 @@ function needed(name: "log" | "out"): string {
   return value;
 }
 
-/**
- * One line on where the code the campaign last ran under stands: this checkout, or the tree the
- * campaign runs in (`<tree>/.ana/d2/<campaign>/log.jsonl`), which a live campaign keeps unmoved.
- * The condition names that code by a digest of its content, which is no commit: two lanes of
- * 14 October read one digest against a receipt's commit as two trees. So the line calls it a
- * digest and names the commit the last launch's receipt holds (`receipts`) beside it. A snapshot's
- * log lies under the investigation, not the campaign's tree, so the tree `start` checks out at
- * that commit is asked too: on 7 November the esp32 investigation's line called that tree, which
- * held the code that ran, "another tree", and three lanes discounted exact source evidence.
- */
-function hostLine(log: string): string {
-  const last = lastHost(read(log));
-  const here = hostOf(REPO) ?? "";
-  const launch = receipts(log).at(-1);
-  const commit =
-    launch === undefined
-      ? "; no launch receipt beside the log"
-      : `; the last launch's receipt names commit ${launch.commit.slice(0, 8)}${launch.dirty ? ", from a dirty tree" : ""}`;
-  const said = (line: string) =>
-    `host-code digest (of src, vendor and package.json, not a commit): ${line}${commit}`;
-  if (last === undefined) return said(`no condition in the log; this checkout's is ${here.slice(0, 8)}`);
-  if (last === here) return said(`the last condition's and this checkout's are both ${here.slice(0, 8)}`);
-  const trees = [
-    resolve(dirname(log), "..", "..", ".."),
-    ...(launch === undefined ? [] : [atCommit(REPO, launch.commit)]),
-  ];
-  const tree = trees.find((each) => hostOf(each) === last);
-  return tree === undefined
-    ? said(
-        `the last condition's is ${last.slice(0, 8)} and this checkout's is ${here.slice(0, 8)}, so every statement about source is about another tree`,
-      )
-    : said(
-        `the last condition's is ${last.slice(0, 8)}, which \`${tree}\` holds as it stands, so read source there; this checkout's is ${here.slice(0, 8)}`,
-      );
-}
-
-function overviewText(log: string): string {
-  return `${rendered(overview(read(log), receipts(log)))}\n\n${hostLine(log)}\n`;
-}
-
 /** The folders `derive` keeps for `logs`, written or kept as they stand, and the line it prints. */
 async function derived(logs: readonly string[]): Promise<{ done: Derived[]; line: string }> {
   const root = derivedOf(REPO);
@@ -247,6 +214,17 @@ async function deriveStep(): Promise<number> {
   if (values.verbose === true) console.log(derivedText(done));
   console.log(line);
   return done.some(({ failed }) => failed.length > 0) ? 1 : 0;
+}
+
+/** What the reader `name` says of the one log `--log` names, as `derive` writes it to its file. */
+async function oneReader(name: string | undefined): Promise<number> {
+  const reader = READERS.find((each) => each.name === name);
+  if (reader === undefined) {
+    throw new Error(`name a reader: ${READERS.map((each) => each.name).join(", ")}`);
+  }
+  const { text, ok } = await readerOutput(reader, sourceOf(oneLog(), REPO));
+  runtimeProcess.stdout.write(text);
+  return ok ? 0 : 1;
 }
 
 /** The logs among `logs` that a campaign may still write: a log the registry does not list has no
@@ -311,7 +289,7 @@ async function start(): Promise<number> {
           `- ${nameOf(log)}: the code its last launch ran is checked out at \`${tree}\`, its dependencies installed. Read source there, and run a reader there (\`cd ${tree} && bun tools/...\`) to see what it printed at that commit; the derived files below come from this checkout's code.`,
         ];
   });
-  const texts = logs.map(overviewText);
+  const texts = logs.map((log) => overviewText(log, read(log), REPO));
   const campaigns = [
     "| campaign | log | events | checkout |",
     "| --- | --- | --- | --- |",
@@ -362,26 +340,16 @@ function opened(): Investigation {
   return { out, shared, campaigns };
 }
 
-/** The campaigns in lane 22's columns, and the `/tmp` paths one named before another's solve ran
- *  them (`tools/wri/climb.ts`). */
-function climbText(logs: readonly string[]): string {
-  const campaigns = logs.map((each) => ({ name: nameOf(each), events: read(each) }));
-  const { left, scratch } = crossings(campaigns);
-  return [
-    "### The climb, side by side",
-    climbTable(campaigns),
-    "### Solves that named what another campaign's session left under `/tmp`",
-    left.length > 0 ? left.map((line) => `- ${line}`).join("\n") : "None.",
-    `And ${scratch}.`,
-  ].join("\n\n");
-}
+/** The campaigns of `logs` side by side in lane 22's columns (`tools/wri/climb.ts`). */
+const climbOf = (logs: readonly string[]) =>
+  climbText(logs.map((log) => ({ name: nameOf(log), events: read(log) })));
 
 const promptPath = (out: string, lane: number) => join(out, "lanes", `${stem(lane)}-prompt.md`);
 
 function lanes(): number {
   const { out, shared, campaigns } = opened();
   refuseRunning(campaigns.map(({ log }) => log));
-  const climb = campaigns.length > 1 ? climbText(campaigns.map(({ log }) => log)) : "";
+  const climb = campaigns.length > 1 ? climbOf(campaigns.map(({ log }) => log)) : "";
   const blank = blankSections(shared);
   if (blank.length > 0) throw new Error(`write these sections of ${SHARED} first: ${blank.join(", ")}`);
   const catalogue = catalogueText();
@@ -545,9 +513,11 @@ function synthesis(): number {
 async function main(): Promise<number> {
   const [verb] = positionals;
   if (verb === "read") {
-    console.log(overviewText(oneLog()));
+    const log = oneLog();
+    console.log(overviewText(log, read(log), REPO));
     return 0;
   }
+  if (verb === "reader") return await oneReader(positionals[1]);
   if (verb === "grade") {
     const { bundle, task, answer, solve, set = [], answers } = values;
     return grade({ log: oneLog(), bundle, task, answer, solve, set, answers });
@@ -571,7 +541,7 @@ async function main(): Promise<number> {
   }
   if (verb === "climb") {
     needed("log");
-    console.log(climbText(resolvedLogs));
+    console.log(climbOf(resolvedLogs));
     return 0;
   }
   if (verb === "trajectory") {

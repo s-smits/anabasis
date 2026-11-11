@@ -78,7 +78,7 @@ const OPTIONS = { comparison: "text", level: "text", zone: "flag" } as const;
 /** The kinds of task a report lists apart from the tallied ones, in the order they are told. */
 const APART = ["aside", "short", "disputed", "flagged", "withdrawn"] as const;
 /** The columns of `--zone`, in the order of `zoneRows`. */
-const HEADER =
+export const ZONE_HEADER =
   "campaign\tcomparison\tkind\tepoch\treading\ttasks\tref_none\tref_some\tref_all\tref_valid_share\tuntied_validity\tuntied_objective\ttied\tuntied_share\taa_untied\taa_share";
 
 /** A tally with its p. */
@@ -487,12 +487,18 @@ function summaryLine(rows: readonly Row[]): string {
   return `${String(rows.length)} comparisons reported${rows.length === 0 ? "" : `: ${said}`}; ${String(aaSteps)} A/A read a step either way; ${String(otherwise)} read otherwise by this tree's stepOf`;
 }
 
+/** The summary, then each row's lines, each harness called by its letter in `events`. */
+export function readingLines(events: readonly LogEvent[], rows = rowsOf(events, null, null)): string[] {
+  const called = calledBy(namesOf(events));
+  return [summaryLine(rows), ...rows.flatMap((row) => rowLines(row, called))];
+}
+
 if (import.meta.main) {
   await runCommand(
     { name: "reading", usage: USAGE, options: OPTIONS, positionals: [1, 100] },
     async (args: CommandArgs) => {
       if (args.flag("zone")) {
-        console.log(HEADER);
+        console.log(ZONE_HEADER);
         for (const each of args.positionals) {
           const log = await logAcross(each);
           for (const row of zoneRows(basename(dirname(log)), read(log))) console.log(row.join("\t"));
@@ -510,8 +516,7 @@ if (import.meta.main) {
       if (only !== null && rows.length === 0) {
         throw new CommandFailure(`no comparison ${only} reported in this log`);
       }
-      const called = calledBy(namesOf(events));
-      console.log([summaryLine(rows), ...rows.flatMap((row) => rowLines(row, called))].join("\n"));
+      console.log(readingLines(events, rows).join("\n"));
     },
   );
 }

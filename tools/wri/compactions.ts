@@ -1,7 +1,7 @@
 /**
  * Every compaction of a seat's context, one line each, then each compacted session's total (lane 25):
  *
- *   bun tools/wri/compactions.ts <log>
+ *   bun tools/wri/wri.ts reader compactions --log <log>
  *
  * A line gives the log line, the seat and session, the tokens the context held before
  * (`tokensBefore`), the seconds the summary took, its error if any, the usages it holds and the
@@ -14,10 +14,9 @@
  * read `src/agent/session.ts` or `src/kernel/meter.ts` (37 commands) to learn whether a compaction is
  * billed. It counts and decides nothing.
  */
-import { type LogEvent, read } from "#src/kernel/log.ts";
+import type { LogEvent } from "#src/kernel/log.ts";
 import { type Traced, tracesIn } from "#src/kernel/trace.ts";
 import { isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
-import { printRows } from "./folds.ts";
 
 const NOT_RECORDED = "not recorded";
 
@@ -65,5 +64,3 @@ export function compactionRows(events: readonly LogEvent[]): string[] {
   }
   return rows;
 }
-
-if (import.meta.main) printRows("compactions", (log) => compactionRows(read(log)));

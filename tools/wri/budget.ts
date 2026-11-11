@@ -1,7 +1,7 @@
 /**
  * Whether a solve's budget bound, one block a comparison and side (lane 24):
  *
- *   bun tools/wri/budget.ts <log>
+ *   bun tools/wri/wri.ts reader budget --log <log>
  *
  * For the solves each side of each comparison ran, as the folds place them (`Solve.role`,
  * `folds.ts`): how they ended, their turns against the bound their start set and how many used every
@@ -15,11 +15,10 @@
  * of two comparisons that overlapped. It counts and decides nothing: a solve at its bound may have
  * been near an answer or far from one.
  */
-import { read } from "#src/kernel/log.ts";
 import { AT_A_LIMIT } from "#src/kernel/reports.ts";
 import { isNumber, isString } from "#src/meta/json-shape.ts";
 import { median } from "#src/meta/tally.ts";
-import { type Index, indexOf, measured, printRows, type Solve } from "./folds.ts";
+import { type Index, measured, type Solve } from "./folds.ts";
 
 /** A call within this share of the shell's default limit ran to it. */
 const AT_SHELL_LIMIT = 0.95;
@@ -117,5 +116,3 @@ export function budgetRows(index: Index): string[] {
         ...rows,
       ];
 }
-
-if (import.meta.main) printRows("budget", (log) => budgetRows(indexOf(read(log))));

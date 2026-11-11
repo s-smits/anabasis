@@ -25,22 +25,34 @@
  * comparison has read at all, the denominator, and `after` is the reference's tally in them on the
  * tasks written after its promotion, which it was not chosen on.
  *
+ * **Dollars** are what the log billed under its own commit's meter, and the meter moved: on
+ * 25 October it began pricing each turn at the model that served it, and on 1 November (#563) it
+ * began billing a session on its backend's ledger. **Repriced** dollars price every recorded turn
+ * with the seat meter a live seat runs today (`seatMeter` on its provider's catalogue), the one
+ * measure every run shares (operator, 2 November: "use current metrics mechanisms to backtrack
+ * earlier runs and equally compare that way"); no old log holds a backend's excess over its turns.
+ *
  * The first promotion over the Starter is set-up (epoch 0), as the closing report counts it
  * (`epochLine`); `promotions` holds it, and the climb is one fewer.
  */
+import { backends } from "#src/agent/backends/models.ts";
 import { epochsOf, ORIGINS, starterReads } from "#src/campaign/climb.ts";
 import { comparisonsOf } from "#src/campaign/ground.ts";
 import { campaignOf } from "#src/campaign/handover.ts";
+import { openingOf } from "#src/campaign/opening.ts";
 import type { Tally } from "#src/kernel/compare.ts";
 import { type EventKind, type LogEvent, read } from "#src/kernel/log.ts";
-import { billedBetween } from "#src/kernel/meter.ts";
+import { billedBetween, seatMeter } from "#src/kernel/meter.ts";
+import { askedOf, type Seat, tracesIn } from "#src/kernel/trace.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
 import { gitMaybe } from "#src/meta/git.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
+import { keyIfNotNull } from "#src/meta/optional-key.ts";
 import { relative, sep } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { median } from "#src/meta/tally.ts";
 import { validityOf } from "#tools/d2/close.ts";
+import { modelNamed, sweepOptions } from "#tools/m0/stored-sweep.ts";
 import { ranWith, receipts } from "#tools/runs/receipt.ts";
 import { packOf } from "#tools/runs/registry.ts";
 import { summed } from "#tools/wri/folds.ts";
@@ -54,6 +66,16 @@ const CALLS: ReadonlySet<EventKind> = new Set(["solve.call", "exam.call", "build
 /** A run whose log has been quiet for longer than this, or whose last event is an ending, is not
  *  live. A run sitting out a provider's reset longer than this reads as finished with no ending. */
 export const LIVE_MS = 2 * HOUR_MS;
+/** The opening's seat a trace's turns ran on, where no start of their own names a model. */
+const OPENED = {
+  build: "builder",
+  exam: "examiner",
+  draft: "examiner",
+  referee: "reviewer",
+  solve: "solver",
+} as const satisfies Record<Seat, string>;
+
+type Meter = ReturnType<typeof seatMeter>;
 
 /** One promotion of a run, with the epoch it ended. */
 export interface Promotion {
@@ -105,7 +127,13 @@ export interface Run {
    *  comparison nor a harness against itself. */
   readonly compared: number;
   readonly promotions: readonly Promotion[];
+  /** What the log billed under its own commit's meter (`billedAll`). */
   readonly dollars: number;
+  /** Every recorded turn at today's list prices through today's seat meter, the one measure every
+   *  run shares, or null with what stopped a turn being priced (`unpriced`). It leaves out a
+   *  backend's excess over its turns (compactions, retries), which `dollars` holds from #563 on. */
+  readonly repriced: number | null;
+  readonly unpriced: string | null;
   /** Scored tasks, summed over the reported comparisons, and those of them the reference did not
    *  answer validly in every solve: the room a harness can win on validity alone. */
   readonly scored: number;
@@ -214,11 +242,55 @@ function heldOf(events: readonly LogEvent[]): Pick<Run, "reads" | "after" | "com
   };
 }
 
-/** One campaign as a row, or null for a rehearsal. */
+/** One meter a model, priced on today's catalogue as a live seat's is; the catalogue is built at the
+ *  first turn priced. */
+function meters(): (name: string) => Meter {
+  const held = new Map<string, Meter>();
+  let models: ReturnType<typeof backends> | undefined;
+  return (name) => {
+    const found = held.get(name);
+    if (found !== undefined) return found;
+    models ??= backends(sweepOptions());
+    const meter = seatMeter(modelNamed(name));
+    meter.catalogue(models);
+    held.set(name, meter);
+    return meter;
+  };
+}
+
+/** Every recorded turn of a log at today's prices, each at the model its start asked for (else its
+ *  seat's at the opening) and served at the one that answered, or what stopped one being priced. */
+function repricedOf(events: readonly LogEvent[], meterOf: (name: string) => Meter) {
+  const asked = askedOf(events);
+  const opening = openingOf(events);
+  const seats = { ...opening?.seats, solver: opening?.solver ?? null };
+  let total = 0;
+  for (const turn of tracesIn(events)) {
+    if (turn.part !== "turn" || turn.usage === null) continue;
+    const model = asked.get(turn.id) ?? seats[OPENED[turn.seat]]?.model;
+    if (model === undefined) return { repriced: null, unpriced: `no model for ${turn.seat}.turn` };
+    const [provider = "", ...id] = model.split("/");
+    try {
+      total += meterOf(model).turn({
+        provider,
+        model: id.join("/"),
+        ...keyIfNotNull("responseModel", turn.model),
+        // SAFETY: a `*.turn` event's `usage` is the pi usage its seat recorded whole (`src/agent/session.ts`).
+        usage: turn.usage as never,
+      });
+    } catch (error) {
+      return { repriced: null, unpriced: errorMessage(error) };
+    }
+  }
+  return { repriced: total, unpriced: null };
+}
+
+/** One campaign as a row, or null for a rehearsal; `meterOf` reprices its turns. */
 export function runOf(
   found: Found,
   events: readonly LogEvent[],
   tags: readonly { name: string; at: number }[],
+  meterOf = meters(),
 ): Run | null {
   if (rehearsed(events)) return null;
   const stamps = events.map(({ at }) => Date.parse(at));
@@ -278,6 +350,7 @@ export function runOf(
     firstReported: firstOf("comparison.reported"),
     promotions,
     dollars: billedBetween(events, 0),
+    ...repricedOf(events, meterOf),
     ...validityOf(campaignOf(events).steps),
     ...heldOf(events),
     confirmed: epochs.filter((epoch) => epoch.confirmed === true).length,
@@ -299,6 +372,7 @@ export function promotedBy(runs: readonly Run[], mark: number): { promoted: numb
 export async function loadRuns(asked: Asked): Promise<{ runs: Run[]; skipped: string[] }> {
   const { home, names = [], has = [], holds = [], repo } = asked;
   const tags = releasesOf(repo);
+  const meterOf = meters();
   const skipped: string[] = [];
   const runs: Run[] = [];
   for (const each of await campaignLogs(home, [], asked.since)) {
@@ -309,7 +383,7 @@ export async function loadRuns(asked: Asked): Promise<{ runs: Run[]; skipped: st
     if (names.length > 0 && !names.some((part) => found.name.includes(part))) continue;
     if (has.length + holds.length > 0 && !ranWith(found.path, repo, { has, holds })) continue;
     try {
-      const run = runOf(found, read(found.path, CALLS), tags);
+      const run = runOf(found, read(found.path, CALLS), tags, meterOf);
       if (run !== null) runs.push(run);
     } catch (error) {
       skipped.push(`${found.name}: ${errorMessage(error)}`);

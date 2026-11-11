@@ -191,6 +191,15 @@ export const MEASURES = {
   ),
   rungDollars: middle("economy", "dollars a rung", (run) => rungsOf(run).map((rung) => rung.dollars)),
   perPromotion: lower(rate("economy", "dollars a promotion", (run) => run.dollars, promoted)),
+  // On one meter across the windows, over the runs whose every turn it priced.
+  repriced: lower(
+    rate(
+      "economy",
+      "repriced dollars a promotion",
+      (run) => run.repriced ?? 0,
+      (run) => (run.repriced === null ? 0 : promoted(run)),
+    ),
+  ),
   perConfirmed: lower(
     rate(
       "economy",

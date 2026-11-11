@@ -40,7 +40,7 @@ the release cycle stays aimed at them?
    labelled, since until then it would read nothing (rule 13).
 7. **Systems: in v1.0 or after it (the operator's).** The row reads `compare-systems` on a measured
    campaign's held-out tasks, with its pair of solvers and margin fixed first.
-8. **Economy reads dollars per confirmed promotion on one meter.** `cost.ts` prices it; any dollar
+8. **Economy reads dollars per confirmed promotion on one meter.** `table.ts --rows cost` prices it; any dollar
    target is the operator's, and none has been set.
 9. **The release notes carry the bar.** Each release's "Validation and limits" gives one line a
    row, read from its reader, and the plan copies them. This needs one sentence in `stack-pr`
@@ -58,7 +58,7 @@ the release cycle stays aimed at them?
 
 Read from `promotion-tuner/scripts/table.ts --rows runs` (222 campaigns whose last event falls on
 or after 1 September), `starter-reads.ts --all`, a search of every gathered and live log for
-`pass.labelled` and `diagnosis.labelled`, `runs view` and `zone.ts` of the proof campaign, and
+`pass.labelled` and `diagnosis.labelled`, `runs view` and `reading.ts --zone` of the proof campaign, and
 `gh release view` of v0.9.2 to v0.9.5. Counts only; the values per row are in the plan.
 
 - **Rows that no longer matched a goal.**

@@ -204,9 +204,9 @@ export const READERS: readonly Reader[] = [
     namedReader(
       "cost",
       "dollars recorded and repriced, a promotion and a confirmed promotion, on one meter",
-      `${TUNER}/cost.ts`,
+      `${TUNER}/table.ts`,
       ["--name"],
-      ["--format", "tsv"],
+      ["--rows", "cost", "--format", "tsv"],
     ),
     [PROMOTED, ENDED],
     /^\S+\t\d{4}-\d\d-\d\d\t/,

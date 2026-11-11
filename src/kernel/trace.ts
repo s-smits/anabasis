@@ -185,6 +185,18 @@ export function traced({ kind, at, data }: LogEvent, index: number): Traced | nu
   return { ...mark, part, billed: usages.reduce<number>((sum, usage) => sum + (costOf(usage) ?? 0), 0) };
 }
 
+/** The model each session or solve's start asked for, as `provider/model`, by its id; the Referee's
+ *  turns have no start, so none is named for them. */
+export function askedOf(events: readonly LogEvent[]): Map<string, string> {
+  const asked = new Map<string, string>();
+  for (const { kind, data } of events) {
+    const seat = SEATS.find((each) => kind === `${each}.started`);
+    const id = seat === undefined ? undefined : data[whose(seat)];
+    if (isString(id) && isString(data.model)) asked.set(id, data.model);
+  }
+  return asked;
+}
+
 /** The turns from `from` on that another model answered than their seat asked for, one row a
  *  session or solve and model served. Every seat's start names the model asked for, as
  *  `provider/model`; the Referee's turns have no start, so they go unread. A dated snapshot reads as
@@ -195,12 +207,7 @@ export function traced({ kind, at, data }: LogEvent, index: number): Traced | nu
  *  new turns, by the gather for the record it keeps in `data/runs/degradations/` and by the
  *  investigation. */
 export function degradations(events: readonly LogEvent[], from = 0): Degradation[] {
-  const asked = new Map<string, string>();
-  for (const { kind, data } of events) {
-    const seat = SEATS.find((each) => kind === `${each}.started`);
-    const id = seat === undefined ? undefined : data[whose(seat)];
-    if (isString(id) && isString(data.model)) asked.set(id, data.model);
-  }
+  const asked = askedOf(events);
   const rows = new Map<string, Degradation>();
   for (const each of tracesIn(events.slice(from))) {
     const seat = each.part === "turn" ? asked.get(each.id) : undefined;

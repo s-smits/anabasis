@@ -60,6 +60,8 @@ function run(over: Partial<Run> & { readonly promoted?: number }): Run {
     compared: promoted,
     promotions: Array.from({ length: promoted }, (_, at) => promotion(at + 1, `digest-${String(at)}`, null)),
     dollars: 100,
+    repriced: null,
+    unpriced: null,
     scored: 10,
     room: 1,
     stepped: promoted,

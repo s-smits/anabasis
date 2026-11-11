@@ -1,6 +1,6 @@
 ---
 name: promotion-tuner
-description: "Read recorded comparisons under other promotion rules without model calls or spending. scripts/lab.ts tries any mechanism (weights, the bill, turns or seconds as a gain or a guard, floors, the test, the level, free code) on one panel over the record; scripts/replay.ts asks whether a tree's rule supports the promotions on record and which measure won each task; scripts/table.ts lists runs and their promotions; scripts/trend.ts sets the newest week's runs against the weeks before, each difference tested against the spread between runs, with the climb read against what holds it and, with --bench, against outside scores; scripts/cost.ts prices promotions on one meter. Use for past promotions, changed scoring, what a promotion should reward, whether the system does better than one or two weeks ago, or comparisons between release cycles; a replay never establishes a live improvement."
+description: "Read recorded comparisons under other promotion rules without model calls or spending. scripts/lab.ts tries any mechanism (weights, the bill, turns or seconds as a gain or a guard, floors, the test, the level, free code) on one panel over the record; scripts/replay.ts asks whether a tree's rule supports the promotions on record and which measure won each task; scripts/table.ts lists runs and their promotions, and with --rows cost prices them on one meter; scripts/trend.ts sets the newest week's runs against the weeks before, each difference tested against the spread between runs, with the climb read against what holds it and, with --bench, against outside scores. Use for past promotions, changed scoring, what a promotion should reward, whether the system does better than one or two weeks ago, or comparisons between release cycles; a replay never establishes a live improvement."
 ---
 
 # Promotion tuner
@@ -154,13 +154,13 @@ seat (`AGENTS.md`, section 1). Wording a claim from either table is
 runs on one meter:
 
 ```sh
-bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/cost.ts \
-  [--since <date>] [--name <part>]... [--by week|pack|setting|none] [--format md|tsv]
+bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/table.ts --rows cost \
+  [--since <date>] [--name <part>]... [--format md|tsv]
 ```
 
-It reprices every recorded turn with today's `seatMeter` beside the recorded bill and pools dollars
-a promotion; on newer runs `repriced/recorded` just under 1 is the backend's excess (compactions,
-retries).
+It reprices every recorded turn with today's `seatMeter` beside the recorded bill, a promotion and
+a confirmed promotion; on newer runs `repriced/recorded` just under 1 is the backend's excess
+(compactions, retries). `trend.ts` pools the repriced dollars a promotion by window.
 
 ## Tuning the score
 

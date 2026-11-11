@@ -23,12 +23,9 @@
  * and the hours and dollars a rung after set-up, kept apart because set-up takes longer than a
  * rung and one number for both would be skewed by it; the all-in hours a promotion stand beside them.
  *
- * Every number is a fold over the campaign's log and its launch receipts (AGENTS.md section 5: no
- * second store), so a run is in the table from its first event and the table is as old as the logs
- * the registry reads, the peers' included (`campaignLogs`). The folds are the production ones:
- * `comparisonsOf` for the reading a promotion rests on, `epochsOf` for each epoch's comparisons and
- * the campaign's A/A comparisons, `billedBetween` for the dollars, and `waitsOf`
- * (`tools/wri/time.ts`) for the waits.
+ * A row is one campaign as `.claude/skills/main/runs.ts` folds it from its log and receipts; that
+ * module's head comment says what the hours, the room on validity and a confirmed promotion are,
+ * and the table is as old as the logs the registry reads, the peers' included (`campaignLogs`).
  *
  * What a group is. Runs are compared by what they ran on, never by the number of the pull request
  * that stacked their code: a stack's numbers mean nothing from one cycle to the next. A run's
@@ -40,31 +37,12 @@
  * many settings it pooled. `--has` and `--holds` keep the runs whose every launch ran with a
  * mechanism (`ranWith`), which is how a change is read against the runs without it.
  *
- * What the hours are. All times are on the log's own clock (`at`), which is the same on macOS and
- * Linux. **Elapsed** hours run from the log's first event. **Active** hours subtract the union of
- * every recorded wait (a provider's reset, a network wait and a solve-queue wait for load), so a run
- * that sat out a limit on one host is not slower than the same run on another. The host, its cores,
- * the median one-minute load per core at a solve's start and the median solve in seconds stand
- * beside them as indicators of the machine. **Unloaded** hours take out of the active hours what
- * an overloaded host cost (`overloadOf`): each stretch after a recorded load counts the share of the
- * demand its cores could not serve, `1 - cores / load`. That treats the run as CPU-bound, while much
- * of a solve waits on the provider, so it bounds the load's cost from above and is an estimate
- * (operator, 30 October, when one host stood at a load of 91 on 12 cores). No hour is scaled by
- * the chip or the operating system, since one factor for two of each would be an invented number. A group is compared at equal
- * elapsed time: "by 12 h" counts the runs promoted within 12 hours of those that either did or lasted
- * that long, so a run still young is not counted as a miss.
- *
- * What the hours leave out. A promotion's hours say how fast a run climbed, not what it climbed on,
- * so three counts stand beside them (operator, 1 November, after this cycle's buffer runs matched
- * the last cycle's median first promotion while the reference answered nearly every task). **Room
- * on validity** is the scored tasks, summed over the reported comparisons, that the reference did
- * not answer validly in every solve, as `ambition.ts` reads them: where it is near zero, a step can
- * be won only on the objective and the bill. **Steps won by validity** counts them as the
- * closing report counts it. **Confirmed** is the promotions the first starter comparison of their
- * epoch to tally a task read above the starter (`confirmed`, `src/campaign/climb.ts`).
- *
- * The first promotion over the Starter is set-up (epoch 0), as the closing report counts it
- * (`epochLine`); `promotions` counts it, and the climb is one fewer.
+ * A group is compared at equal elapsed time: "by 12 h" counts the runs promoted within 12 hours of
+ * those that either did or lasted that long, so a run still young is not counted as a miss. A
+ * rate stands with its denominator: the promotions over the comparisons one could come from, the
+ * promotions the starter confirmed over those a starter comparison has read, and the reference's
+ * won and lost tasks among those written after its promotion. `trend.ts` reads the same rows by the
+ * week a run opened and says which differences exceed the spread between runs.
  *
  * Written on 29 October, when the operator asked for one place to compare the runs of one cycle
  * with those of the last and no reader assembled them across campaigns.
@@ -72,27 +50,12 @@
  * It prints counts, short digests and campaign names, and never a task, an answer or a check.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import { epochsOf } from "#src/campaign/climb.ts";
-import { comparisonsOf } from "#src/campaign/ground.ts";
-import { campaignOf } from "#src/campaign/handover.ts";
-import { type EventKind, type LogEvent, read } from "#src/kernel/log.ts";
-import { billedBetween } from "#src/kernel/meter.ts";
-import { gitMaybe } from "#src/meta/git.ts";
-import { relative, sep } from "#src/meta/path.ts";
-import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
+import { formatOf, MISSING, money, printed } from "#skills/main/print.ts";
+import { loadRuns, promotedBy, type Run, rungsOf } from "#skills/main/runs.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
-import { errorMessage } from "#src/meta/runtime-values.ts";
 import { median } from "#src/meta/tally.ts";
-import { validityOf } from "#tools/d2/close.ts";
-import { ranWith, receipts } from "#tools/runs/receipt.ts";
-import { packOf } from "#tools/runs/registry.ts";
-import { overloadOf, waitedMs, waitsOf } from "#tools/wri/time.ts";
-import { campaignLogs, type Found, rehearsed } from "./tree.ts";
 
 const SINCE = "2026-10-01";
-/** The tool calls of solves and sessions, which no fold here reads; `draft.call` is read for what a
- *  drafting session cut short had metered (`unfinished`, `src/kernel/trace.ts`). */
-const CALLS: ReadonlySet<EventKind> = new Set(["solve.call", "exam.call", "build.call", "referee.call"]);
 const LAST = 20;
 const USAGE = `usage:
   bun --env-file=.env.runs .claude/skills/promotion-tuner/scripts/table.ts
@@ -121,22 +84,19 @@ const OPTIONS = {
   format: "text",
   runs: "abs",
 } as const;
-const HOUR_MS = 3_600_000;
 const BY = ["release", "pack", "setting", "host", "none"] as const;
 const ROWS = ["recent", "groups", "runs", "promotions"] as const;
-/** A run whose log has been quiet for longer than this, or whose last event is an ending, is not
- *  live. A run sitting out a provider's reset longer than this reads as finished with no ending. */
-export const LIVE_MS = 2 * HOUR_MS;
 /** The elapsed hours a group is compared at. */
 const MARKS = [6, 12, 24] as const;
-const MISSING = "-";
 const ACTIVE = "active h";
 const UNLOADED = "unloaded h";
 const FIRST_PROMOTION = "1st promotion h";
 const AA = "A/A steps/capable";
 const ROOM = "room on validity";
 const ON_VALIDITY = "steps won by validity";
-const CONFIRMED = "confirmed";
+const CONFIRMED = "confirmed/read by the starter";
+const PER_COMPARISON = "promotions/comparisons";
+const AFTER = "written after won-lost";
 const GROUP_HEAD = [
   "group",
   "runs",
@@ -152,7 +112,9 @@ const GROUP_HEAD = [
   "$ a rung",
   ROOM,
   ON_VALIDITY,
+  PER_COMPARISON,
   CONFIRMED,
+  AFTER,
   AA,
   "settings",
 ];
@@ -171,7 +133,9 @@ const RUN_HEAD = [
   "1st reported h",
   "promotions",
   FIRST_PROMOTION,
+  PER_COMPARISON,
   CONFIRMED,
+  AFTER,
   "$",
   ROOM,
   ON_VALIDITY,
@@ -217,209 +181,17 @@ const CAVEAT = [
 type By = (typeof BY)[number];
 type Rows = (typeof ROWS)[number];
 
-/** One promotion of a run, with the epoch it ended. */
-interface Promotion {
-  readonly nth: number;
-  /** Elapsed and active hours from the log's first event to the promotion. */
-  readonly elapsed: number;
-  readonly active: number;
-  /** The epoch's own elapsed and active hours and dollars: from the opening or the promotion
-   *  before, to this one. */
-  readonly epochElapsed: number;
-  readonly epochActive: number;
-  /** The epoch's active hours less what an overloaded host cost (`overloadOf`), an estimate. */
-  readonly epochUnloaded: number;
-  readonly dollars: number;
-  /** The comparisons reported in the epoch. A Builder's sessions are left out: a conversation that
-   *  leads its campaign spans epochs and ends in the last. */
-  readonly comparisons: number;
-  /** The promoting comparison's tally of tasks won, lost and tied, and its p. */
-  readonly tally: string;
-}
-
-/** One campaign, folded from its log and receipts. */
-interface Run {
-  readonly name: string;
-  readonly host: string;
-  readonly release: string;
-  readonly pack: string;
-  readonly setting: string;
-  readonly cores: number | null;
-  /** The median one-minute load per core at a solve's start, and the median solve in seconds. */
-  readonly load: number | null;
-  readonly solveSeconds: number | null;
-  /** The time of its first launch, else its first event, and of its log's last event. */
-  readonly launched: number;
-  readonly last: number;
-  readonly elapsed: number;
-  readonly active: number;
-  readonly unloaded: number;
-  /** Whether the log is still being written: its last event is no ending and is recent. */
-  readonly live: boolean;
-  /** Hours from the first event to the first comparison started and reported. */
-  readonly firstCompared: number | null;
-  readonly firstReported: number | null;
-  readonly promotions: readonly Promotion[];
-  readonly dollars: number;
-  /** Scored tasks, summed over the reported comparisons, and those of them the reference did not
-   *  answer validly in every solve: the room a harness can win on validity alone. */
-  readonly scored: number;
-  readonly room: number;
-  /** The comparisons that read a step, and those whose step won points by validity (`validityOf`). */
-  readonly stepped: number;
-  readonly onValidity: number;
-  /** The promotions the first starter comparison of their epoch to tally a task confirmed
-   *  (`confirmed`, `epochsOf`). */
-  readonly confirmed: number;
-  /** The A/A comparisons able to read a step, and those that did (`falsePromotion`). */
-  readonly controls: number;
-  readonly aaSteps: number;
-  readonly ending: string;
-}
-
-const hours = (ms: number) => ms / HOUR_MS;
-const tenths = (value: number | null | undefined) =>
+const tenths = (value: number | null | undefined): string =>
   value === null || value === undefined ? MISSING : value.toFixed(1);
-const money = (value: number | null) => (value === null ? MISSING : value.toFixed(0));
-const numeral = (value: JsonValue | undefined) => (isNumber(value) ? String(value) : "?");
 const present = (values: readonly (number | null | undefined)[]) =>
   values.filter((value) => value !== null && value !== undefined);
 const mean = (values: readonly number[]) =>
   values.length === 0 ? null : values.reduce((sum, value) => sum + value, 0) / values.length;
-/** The promotions after set-up, the rungs of the climb. */
-const rungsOf = (run: Run) => run.promotions.slice(1);
 
-/** The release tags with their dates, oldest first. */
-function releasesOf(repo: string): { name: string; at: number }[] {
-  const lines = gitMaybe(
-    repo,
-    "for-each-ref",
-    "--sort=creatordate",
-    "--format=%(creatordate:iso-strict) %(refname:short)",
-    "refs/tags/v*",
-  );
-  return (lines ?? "").split("\n").flatMap((line) => {
-    const [date = "", name = ""] = line.split(" ");
-    return /^v\d/u.test(name) ? [{ name, at: Date.parse(date) }] : [];
-  });
-}
-
-/** What a run's solver was set to: its model, effort, solve minutes and model turns. */
-function settingOf(events: readonly LogEvent[]): string {
-  const data = events.find(({ kind }) => kind === "campaign.setting")?.data;
-  const solver = asRecord(data?.solver);
-  if (data === undefined || solver === null) return "no setting";
-  const model = isString(solver.model) ? solver.model.replace(/^claude\//u, "") : "?";
-  return `${model}/${isString(solver.effort) ? solver.effort : "?"} ${numeral(data.minutes)}m ${numeral(data.modelTurns)}t`;
-}
-
-/** The time of a campaign's solves: the median in seconds, and the median one-minute load per core
- *  at their start. */
-function machineOf(events: readonly LogEvent[]) {
-  const seconds = events.flatMap(({ kind, data }) =>
-    kind === "solve.finished" && isNumber(data.seconds) ? [data.seconds] : [],
-  );
-  const loads = events.flatMap(({ kind, data }) => {
-    const first = Array.isArray(data.load) ? data.load[0] : undefined;
-    return kind === "solve.started" && isNumber(first) && isNumber(data.cores) && data.cores > 0
-      ? [first / data.cores]
-      : [];
-  });
-  return { solveSeconds: median(seconds), load: median(loads) };
-}
-
-/** The tally and p of the comparison a promotion rests on: the last reading of the promoted harness
- *  against the reference it replaced that read `step`, else its last reading of any kind. */
-function tallyOf(events: readonly LogEvent[], index: number): string {
-  const { harness, from } = events[index]?.data ?? {};
-  const readings = comparisonsOf(events.slice(0, index)).filter(
-    ({ fresh, old, report }) => report !== null && fresh === harness && (from === undefined || old === from),
-  );
-  const scored = asRecord(
-    (readings.findLast(({ report }) => report?.reading === "step") ?? readings.at(-1))?.report?.scored,
-  );
-  if (scored === null) return MISSING;
-  const p = isNumber(scored.p) ? ` p ${scored.p.toFixed(4)}` : "";
-  return `${numeral(scored.wins)}-${numeral(scored.losses)}-${numeral(scored.ties)}${p}`;
-}
-
-/** One campaign as a row, or null for a rehearsal. */
-function runOf(
-  found: Found,
-  events: readonly LogEvent[],
-  tags: readonly { name: string; at: number }[],
-): Run | null {
-  if (rehearsed(events)) return null;
-  const stamps = events.map(({ at }) => Date.parse(at));
-  const [first = 0, last = 0] = [stamps[0], stamps.at(-1)];
-  const launch = receipts(found.path)[0];
-  const launched = launch === undefined ? first : Date.parse(launch.at);
-  const tag = tags.findLast(({ at }) => at <= launched);
-  const waits = waitsOf(events);
-  const overload = overloadOf(events);
-  // Hours between two moments less the waits inside them, and less what an overloaded host cost.
-  const activeAt = (to: number, from = first) => hours(to - from - waitedMs(waits, from, to));
-  const unloadedAt = (to: number, from = first) => activeAt(to, from) - hours(overload(from, to));
-  const indexes = events.flatMap(({ kind }, at) => (kind === "harness.promoted" ? [at] : []));
-  const epochs = epochsOf(events);
-  const promotions = indexes.map((at, nth): Promotion => {
-    const start = indexes[nth - 1] ?? 0;
-    const [before = first, now = first] = [stamps[start], stamps[at]];
-    return {
-      nth: nth + 1,
-      elapsed: hours(now - first),
-      active: activeAt(now),
-      epochElapsed: hours(now - before),
-      epochActive: activeAt(now, before),
-      epochUnloaded: unloadedAt(now, before),
-      dollars: billedBetween(events, start, at + 1),
-      comparisons: epochs[nth]?.comparisons.length ?? 0,
-      tally: tallyOf(events, at),
-    };
-  });
-  const firstOf = (kind: string) => {
-    const at = stamps[events.findIndex((event) => event.kind === kind)];
-    return at === undefined ? null : hours(at - first);
-  };
-  const ended = events.findLast(({ kind }) => kind === "campaign.ended")?.data.ending;
-  // `falsePromotion` reads the A/A comparisons of the whole campaign on every epoch.
-  const noise = epochs[0]?.falsePromotion;
-  return {
-    name: found.name,
-    host: found.archived ?? "here",
-    release: tag === undefined ? `before ${tags[0]?.name ?? "the first release"}` : `after ${tag.name}`,
-    pack: packOf(found.name),
-    setting: settingOf(events),
-    cores: launch?.cores ?? null,
-    ...machineOf(events),
-    launched,
-    last,
-    elapsed: hours(last - first),
-    active: activeAt(last),
-    unloaded: unloadedAt(last),
-    live: events.at(-1)?.kind !== "campaign.ended" && Date.now() - last < LIVE_MS,
-    firstCompared: firstOf("comparison.started"),
-    firstReported: firstOf("comparison.reported"),
-    promotions,
-    dollars: billedBetween(events, 0),
-    ...validityOf(campaignOf(events).steps),
-    confirmed: epochs.filter((epoch) => epoch.confirmed === true).length,
-    controls: noise?.controls ?? 0,
-    aaSteps: noise?.errors ?? 0,
-    ending: isString(ended) ? ended : "no ending",
-  };
-}
-
-/** The share of a group promoted by `mark` elapsed hours, over the runs that either were or lasted
- *  that long, so a run still young counts for neither side. */
-function promotedBy(runs: readonly Run[], mark: number): string {
-  const by = (run: Run) => (run.promotions[0]?.elapsed ?? Infinity) <= mark;
-  const known = runs.filter((run) => run.elapsed >= mark || by(run));
-  return known.length === 0 ? MISSING : `${String(known.filter(by).length)}/${String(known.length)}`;
-}
-
-const sumOf = (runs: readonly Run[], key: "scored" | "room" | "stepped" | "onValidity" | "confirmed") =>
-  runs.reduce((sum, run) => sum + run[key], 0);
+const sumOf = (
+  runs: readonly Run[],
+  key: "scored" | "room" | "stepped" | "onValidity" | "confirmed" | "reads" | "compared",
+) => runs.reduce((sum, run) => sum + run[key], 0);
 /** The room on validity of a list of runs, as tasks and a share of the scored ones. */
 function roomOf(runs: readonly Run[]): string {
   const [room, scored] = [sumOf(runs, "room"), sumOf(runs, "scored")];
@@ -430,6 +202,12 @@ function roomOf(runs: readonly Run[]): string {
 const onValidityOf = (runs: readonly Run[]) =>
   `${String(sumOf(runs, "onValidity"))}/${String(sumOf(runs, "stepped"))}`;
 
+const perComparisonOf = (runs: readonly Run[]) =>
+  `${String(runs.reduce((sum, run) => sum + run.promotions.length, 0))}/${String(sumOf(runs, "compared"))}`;
+const confirmedOf = (runs: readonly Run[]) =>
+  `${String(sumOf(runs, "confirmed"))}/${String(sumOf(runs, "reads"))}`;
+const afterOf = (runs: readonly Run[]) =>
+  `${String(runs.reduce((sum, run) => sum + run.after.wins, 0))}-${String(runs.reduce((sum, run) => sum + run.after.losses, 0))}`;
 const aaOf = (runs: readonly Run[]) =>
   `${String(runs.reduce((sum, run) => sum + run.aaSteps, 0))}/${String(runs.reduce((sum, run) => sum + run.controls, 0))}`;
 
@@ -451,14 +229,20 @@ function groupRows(runs: readonly Run[], by: readonly By[]): string[][] {
       tenths(median(present(list.map((run) => run.firstReported)))),
       tenths(median(present(list.map((run) => run.promotions[0]?.elapsed)))),
       tenths(median(present(list.map((run) => run.promotions[0]?.active)))),
-      ...MARKS.map((mark) => promotedBy(list, mark)),
+      // The share promoted by each mark, of the runs that either were or lasted that long.
+      ...MARKS.map((mark) => {
+        const { promoted, known } = promotedBy(list, mark);
+        return known === 0 ? MISSING : `${String(promoted)}/${String(known)}`;
+      }),
       tenths(median(rungs.map((rung) => rung.epochElapsed))),
       tenths(median(rungs.map((rung) => rung.epochActive))),
       tenths(median(rungs.map((rung) => rung.epochUnloaded))),
       money(median(rungs.map((rung) => rung.dollars))),
       roomOf(list),
       onValidityOf(list),
-      String(sumOf(list, "confirmed")),
+      perComparisonOf(list),
+      confirmedOf(list),
+      afterOf(list),
       aaOf(list),
       settings === 1 ? "1" : `${String(settings)} POOLED`,
     ];
@@ -481,7 +265,9 @@ const runRows = (runs: readonly Run[]) =>
     tenths(run.firstReported),
     String(run.promotions.length),
     tenths(run.promotions[0]?.elapsed),
-    String(run.confirmed),
+    perComparisonOf([run]),
+    confirmedOf([run]),
+    afterOf([run]),
     money(run.dollars),
     roomOf([run]),
     onValidityOf([run]),
@@ -534,17 +320,6 @@ const promotionRows = (runs: readonly Run[]) =>
     ]),
   );
 
-/** A table as GitHub markdown, or tab-separated lines for a spreadsheet. */
-export function printed(
-  head: readonly string[],
-  rows: readonly (readonly string[])[],
-  format: "md" | "tsv",
-): string {
-  if (format === "tsv") return [head, ...rows].map((row) => row.join("\t")).join("\n");
-  const line = (row: readonly string[]) => `| ${row.join(" | ")} |`;
-  return [line(head), line(head.map(() => "---")), ...rows.map(line)].join("\n");
-}
-
 /** The words of a comma list, each one of `allowed`, in the order `allowed` gives them. */
 function parsed<T extends string>(
   args: CommandArgs,
@@ -562,33 +337,17 @@ function parsed<T extends string>(
 async function main(args: CommandArgs): Promise<number> {
   const [rows = "recent"] = parsed<Rows>(args, "rows", ROWS, "recent");
   const by = parsed<By>(args, "by", BY, "release,pack,setting");
-  const format = args.value("format") ?? "md";
-  if (format !== "md" && format !== "tsv") return args.die(`--format takes md or tsv; got ${format}`);
-  const repo = runtimeProcess.cwd();
-  const [has, holds, names] = [args.list("has"), args.list("holds"), args.list("name")];
+  const format = formatOf(args);
+  const [has, holds] = [args.list("has"), args.list("holds")];
   const since = args.value("since") ?? SINCE;
-  const tags = releasesOf(repo);
-  const skipped: string[] = [];
-  const runs: Run[] = [];
-  const home = args.value("runs");
-  const logs = await campaignLogs(home, [], since);
-  // Under `--runs`, a campaign's host is the folder it lies in where that lies in the given one
-  // (`data/runs/<host>/<name>/log.jsonl`), and this machine otherwise.
-  const placed = logs.map((each) => {
-    const parts = home === null ? [] : relative(home, each.path).split(sep);
-    return parts.length === 3 ? { ...each, archived: parts[0] ?? "here" } : each;
+  const { runs, skipped } = await loadRuns({
+    home: args.value("runs"),
+    since,
+    names: args.list("name"),
+    has,
+    holds,
+    repo: runtimeProcess.cwd(),
   });
-  for (const found of placed) {
-    if (names.length > 0 && !names.some((part) => found.name.includes(part))) continue;
-    if (has.length + holds.length > 0 && !ranWith(found.path, repo, { has, holds })) continue;
-    try {
-      const run = runOf(found, read(found.path, CALLS), tags);
-      if (run !== null) runs.push(run);
-    } catch (error) {
-      skipped.push(`${found.name}: ${errorMessage(error)}`);
-    }
-  }
-  runs.sort((a, b) => a.launched - b.launched);
   // Every live run, then the latest finished runs that promoted, newest first.
   const newest = (list: readonly Run[]) => list.toSorted((a, b) => b.last - a.last);
   const listed = [

@@ -49,6 +49,7 @@ import {
 } from "#src/meta/json-shape.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 import { equalMost, equalNeed, shortOf, spareOf } from "#tools/wri/clearance.ts";
+import { wlt } from "#tools/wri/folds.ts";
 
 const USAGE = `usage:
   bun .claude/skills/comparison-reading/scripts/reading.ts <log.jsonl | campaign folder | campaign name>
@@ -261,11 +262,6 @@ export function rowsOf(events: readonly LogEvent[], level: number | null, only: 
   return lastReports(events)
     .filter(({ session }) => only === null || session === only)
     .map(({ session, data }) => rowOf(session, data, level, starts.get(session)));
-}
-
-/** A tally as wins-losses-ties. */
-function wlt({ wins, losses, ties }: Tally): string {
-  return `${String(wins)}-${String(losses)}-${String(ties)}`;
 }
 
 /** A p to four places. */

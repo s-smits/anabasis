@@ -1,7 +1,8 @@
 // Replay follows the selected tree's rule, including historical records.
 import { expect, it } from "bun:test";
 import { campaignLines, emptyTotals } from "#skills/promotion-tuner/scripts/replay.ts";
-import { campaignLogs, loadTree, type Tree } from "#skills/promotion-tuner/scripts/tree.ts";
+import { campaignLogs } from "#skills/main/logs.ts";
+import { loadTree, type Tree } from "#skills/promotion-tuner/scripts/tree.ts";
 import { type Paired, scored } from "../src/kernel/compare.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import type { LogEvent } from "../src/kernel/log.ts";

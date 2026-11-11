@@ -43,7 +43,7 @@
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { sideGap } from "#skills/comparison-reading/scripts/gap.ts";
-import { campaignLogs, rehearsed } from "#skills/promotion-tuner/scripts/tree.ts";
+import { campaignLogs, rehearsed } from "#skills/main/logs.ts";
 import {
   ORIGINS,
   type Origin,
@@ -62,6 +62,7 @@ import { isString } from "#src/meta/json-shape.ts";
 import { basename, dirname } from "#src/meta/path.ts";
 import { plural } from "#src/meta/text.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
+import { wlt } from "#tools/wri/folds.ts";
 import { type StepCount, stepCount } from "#tools/wri/selection.ts";
 
 /** What a read is made of: its after-slices and its sign draws, null where the level is not recorded. */
@@ -94,7 +95,6 @@ const SHORT: Readonly<Record<Origin, string>> = {
 };
 /** A task version as the task rows print it, enough to find it again. */
 const TASK_CHARS = 8;
-const wlt = ({ wins, losses, ties }: Tally) => `${String(wins)}-${String(losses)}-${String(ties)}`;
 const signedPoints = (points: number) => `${points > 0 ? "+" : ""}${String(Math.round(points))}`;
 
 function compositionOf(each: StarterRead): Composition {

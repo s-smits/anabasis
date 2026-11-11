@@ -35,8 +35,9 @@ import { errorMessage } from "#src/meta/runtime-values.ts";
 import { backends } from "#src/agent/backends/models.ts";
 import { modelNamed, sweepOptions } from "#tools/m0/stored-sweep.ts";
 import { packOf } from "#tools/runs/registry.ts";
-import { LIVE_MS, printed } from "./table.ts";
-import { campaignLogs, rehearsed } from "./tree.ts";
+import { printed } from "#skills/main/print.ts";
+import { LIVE_MS } from "#skills/main/runs.ts";
+import { campaignLogs, rehearsed } from "#skills/main/logs.ts";
 
 const SINCE = "2026-10-01";
 const BY = ["week", "pack", "setting", "none"] as const;

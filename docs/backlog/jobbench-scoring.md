@@ -157,6 +157,23 @@ already answers the question; level with it is a strong reading and above it the
     that refuses work a solve needed, or a guide that carries the host's limits are three
     different owners, and a campaign's limits and what a solver is told are the operator's.
 
+    **Counted on 11 November**, in two finished jobstat campaigns kept apart (547 and 1,087
+    finished solves). No solve ended on a limit of turns, minutes or prompts: the most any used
+    was 16 and 12 of 20 turns and 787 s and 577 s of 1,800 s. A refused call occurred in 17 of
+    547 and 29 of 1,087 solves (3.1% and 2.7%), each of which still passed, and in 0 of 185 and
+    4 of 422 Builder calls; both campaigns ran before the macOS wall denied by default, so these
+    describe the earlier profile. Each promoted reference's answer program ran without error in
+    at least 99% of its comparison solves, while its profiling programs ran in 0 of 214 and 7 of
+    442. Between 1.4% and 3.4% of a promoted guide's words restate what the host tells the
+    solver, and none of the five guides states a limit (the exported `f04b0aad`, from an earlier
+    campaign, does: item 14). So inside a campaign no limit, wall or guide holds the harness
+    back, and nothing is loosened. What the same logs show is the benchmark's direction: the
+    median turns of a comparison solve fall with each promotion (8 under the Starter, then 5 and
+    5 in one campaign and 5, 3 and 3 in the other). The exam selects a harness under which the
+    solver does less, so the owner is what the exam's validity checks, which rejected
+    one of the larger campaign's 1,087 finished solves (four more were provider non-results) and
+    so separated no two harnesses there.
+
 ## How it came to be
 
 - **3 November 2026.** The pilot set Anabasis against Harness² on eight JobBench statistics tasks.
@@ -275,3 +292,9 @@ already answers the question; level with it is a strong reading and above it the
   run?" The source reads: Harness² rolls the benchmark's own task and its improver reads those
   rollouts, with no rubric or grade in any session, and it writes no task; the two places above
   that said it built from the judge's scores were wrong and are corrected.
+
+  The four counts of item 20 were read the same day from two finished jobstat campaigns, with no
+  model. The operator, on what follows them: "Okay so most likely no bugs and we need to ablate
+  all 8 or 10 queries further in 14 hours?", then, on the order, "yeah so after full
+  improvement+simulation etc". The three arms and the note's ablation are rolled once the
+  running campaigns' iteration is through (item 19).

@@ -624,9 +624,10 @@ function settle(state: string, ack: string): void {
 /**
  * What a look says of each peer, in the order they are listed, the token each printed last, and
  * the hosts that gave no answer. A late answer's token is never returned, so its host says those
- * lines again at the next look. A silent host is a warning and exit 1 at the look that finds it so,
- * and is said again when it answers: until 10 November every look at a host that stayed down
- * failed and said so, which was a line and a woken session every five minutes of an outage.
+ * lines again at the next look. A host is said in one line when it stops answering and in one when
+ * it answers again, and in none while it stays down; each line is a warning, the one mark the
+ * anti-stall hook shows on its own, and neither fails the look, which would add the hook's line of a
+ * failed look to it.
  */
 async function saidOfPeers(
   away: readonly { name: string; ask: ReturnType<typeof asked> }[],
@@ -644,17 +645,12 @@ async function saidOfPeers(
       unanswered = answer === undefined || unanswered;
       silent.push(name);
       if (down.includes(name)) continue;
-      console.log(
-        `── ${name} (${elapsed} s)\npulse unavailable\n  ⚠ no answer: its lines carry to the next look`,
-      );
-      runtimeProcess.exitCode = 1;
+      console.log(`⚠ ${name} is offline: no answer in ${elapsed} s, said again once it answers`);
       continue;
     }
+    if (down.includes(name)) console.log(`⚠ ${name} is online again`);
     const token = ACK_LINE.exec(lines.at(-1) ?? "")?.[1];
-    const said = [
-      ...(down.includes(name) ? ["· answers again"] : []),
-      ...(token === undefined ? lines : lines.slice(0, -1)),
-    ];
+    const said = token === undefined ? lines : lines.slice(0, -1);
     if (token === undefined) delete tokens[name];
     else tokens[name] = token;
     if (said.some((line) => line.trim() !== "")) console.log(`── ${name} (${elapsed} s)\n${said.join("\n")}`);
@@ -721,7 +717,7 @@ export async function watch(args: readonly string[]): Promise<void> {
     const { unanswered, ...peers } = await saidOfPeers(away, started, memory);
     if (away.length > 0) remember(state, capturedJsonStringify({ ...here.memory, ...peers }));
     // A host still preparing holds this process for up to five minutes, and the hook's limit is 40 s;
-    // the exit carries the code a host newly silent set.
+    // the exit carries the code this look set.
     if (values.every === undefined && unanswered) runtimeProcess.exit();
     if (values.every === undefined) break;
     await Bun.sleep(Number(values.every) * 1000);

@@ -452,7 +452,10 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
    budget are the operator's, recorded in `cycle.md`; until they are, a read stops at its dry run and its row reads `owed`.
    A bench is a paid simulation beside the live runs: the same command with `--yes`, from a
    worktree at a published commit, with the shim running, the arms in turn and never two processes
-   on one store, since a judgement's dollars are the shim log's rows inside its window. Every arm
+   on one store, since a judgement's dollars are the shim log's rows inside its window. An arm rolls
+   one task at a time and judges it before the next, nothing else runs on the machine beside it, and
+   what an arm left in the machine's temporary folder is cleared before the next arm begins, so that
+   every rollout meets the same machine (operator, 12 November 2026). Every arm
    keeps the one condition `score.ts` states in its head comment. On the two bills on record a
    rollout costs 9 to 11 dollars with its judging, most of it the judge (124 dollars for 11 on
    5 November 2026, about 85 for 9 on 9 November). Where no judge noise is on record,

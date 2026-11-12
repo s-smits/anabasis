@@ -92,7 +92,8 @@ export interface Window {
 
 interface Read {
   readonly via: "oauth-usage" | "ratelimit-headers";
-  readonly fiveHour: Window;
+  /** Null where the login's plan has no five-hour limit (`planned`). */
+  readonly fiveHour: Window | null;
   readonly sevenDay: Window;
   readonly notes: readonly string[];
 }
@@ -380,7 +381,18 @@ async function viaRateLimitHeaders(token: string, agent: string): Promise<Read |
   return { via: "ratelimit-headers", fiveHour: win("5h"), sevenDay: win("7d"), notes };
 }
 
-/** Each of `wanted` read from `env`, by the first route that answers. */
+/** `reading` as its login's plan holds it: without its five-hour window where a login `ANA_LOGIN_SUBS`
+ *  names `ultra` reports none. A verified ultra account has no five-hour limit, and the provider then names no share, reset
+ *  or status for it, which until 12 November printed as an unread bar and kept a keeper off the login
+ *  as one that "could not be read". Not every ultra account is verified, so one that still reports
+ *  the window keeps it, and any other plan's unread window stays unread. */
+export function planned(reading: Reading, env: Env): Reading {
+  const five = "error" in reading ? null : reading.fiveHour;
+  const silent = five?.pct === null && five.resetsAt === null && five.status === undefined;
+  return silent && subOf(env, reading.login)?.sub === "ultra" ? { ...reading, fiveHour: null } : reading;
+}
+
+/** Each of `wanted` read from `env`, by the first route that answers, as its plan holds it (`planned`). */
 export async function readLogins(wanted: readonly string[], env: Env): Promise<Reading[]> {
   const version = zeroExitText(runSync(["claude", "--version"]))?.split(/\s+/)[0];
   // CodexBar's fallbackClaudeCodeVersion where no CLI answers.
@@ -394,9 +406,9 @@ export async function readLogins(wanted: readonly string[], env: Env): Promise<R
       const plain = env[TOKEN] === token;
       try {
         const first = await viaOAuthUsage(token, agent);
-        if (!("error" in first)) return { login, plain, ...first };
+        if (!("error" in first)) return planned({ login, plain, ...first }, env);
         const second = await viaRateLimitHeaders(token, agent);
-        if (!("error" in second)) return { login, plain, ...second };
+        if (!("error" in second)) return planned({ login, plain, ...second }, env);
         return { login, plain, error: `${first.error}; ${second.error}` };
       } catch (error) {
         return { login, plain, error: errorMessage(error) };
@@ -424,7 +436,7 @@ export function room(
       !allowed.includes(reading.login) ||
       spent.has(reading.login) ||
       !windowOpen(reading.sevenDay) ||
-      !windowOpen(reading.fiveHour)
+      (reading.fiveHour !== null && !windowOpen(reading.fiveHour))
         ? []
         : [{ login: reading.login, reset: resetOf(reading.sevenDay.resetsAt) ?? Number.POSITIVE_INFINITY }],
     )
@@ -449,11 +461,13 @@ function atReset(window: Window, length: number, now: number): number | null {
  * pace, and what its window holds came from runs that have left, so it reads the window's share and
  * `RUN_FIVE_HOUR` to its reset. A person's own session on a login is charged to its runs, as in
  * `perRunRate`, and a window minutes old reads high until the next look. The week's forecast cannot
- * answer this: the readings kept hold no five-hour share, and a run's rate is in % of a week.
+ * answer this: the readings kept hold no five-hour share, and a run's rate is in % of a week. A login
+ * whose plan has no five-hour limit (`planned`) reads 0, since no run added there can reach one.
  */
 export function fiveHourWith(reading: Reading, on: number, now: number): number | null {
   if ("error" in reading) return null;
   const { fiveHour } = reading;
+  if (fiveHour === null) return 0;
   const { pct } = fiveHour;
   const reset = resetOf(fiveHour.resetsAt);
   if (pct === null || (pct > 0 && reset === null)) return null;
@@ -685,7 +699,7 @@ export async function logins(args: readonly string[]): Promise<void> {
     console.log(
       "error" in reading
         ? `${head}\n  ${reading.error}`
-        : `${head}\n  5h    ${shown(reading.fiveHour, 5 * 60, now)}\n  week  ${shown(reading.sevenDay, 7 * 1440, now, forecast?.ends?.get(reading.login))}${reading.notes.length > 0 ? `\n  ${reading.notes.join(" · ")}` : ""}`,
+        : `${head}${reading.fiveHour === null ? "" : `\n  5h    ${shown(reading.fiveHour, 5 * 60, now)}`}\n  week  ${shown(reading.sevenDay, 7 * 1440, now, forecast?.ends?.get(reading.login))}${reading.notes.length > 0 ? `\n  ${reading.notes.join(" · ")}` : ""}`,
     );
   }
   const subs = held.flatMap((login) => subOf(runtimeProcess.env, login) ?? []);

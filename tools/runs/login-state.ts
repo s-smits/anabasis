@@ -33,7 +33,7 @@ export const windowOpen = (window: Window): boolean =>
  *  for a login that is open or could not be read. */
 export function closedOf(reading: Reading): { until: number | null } | null {
   if ("error" in reading) return null;
-  const closed = [reading.fiveHour, reading.sevenDay].filter((window) => !windowOpen(window));
+  const closed = [reading.fiveHour ?? [], reading.sevenDay].flat().filter((window) => !windowOpen(window));
   if (closed.length === 0) return null;
   const resets = closed.map(({ resetsAt }) => resetOf(resetsAt));
   return { until: resets.includes(null) ? null : Math.max(...resets.flatMap((at) => at ?? [])) };

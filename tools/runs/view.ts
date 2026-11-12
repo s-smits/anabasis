@@ -24,7 +24,7 @@
  * It names no task and no family, and it is for the operator and the session that stands in for
  * the campaign's owner: what a Builder is told of the same rows is `src/builder/past.ts`.
  */
-import { barLines, epochLine, epochsOf } from "#src/campaign/climb.ts";
+import { barLines, epochLine, epochsOf, starterReads } from "#src/campaign/climb.ts";
 import { decide } from "#src/campaign/decide.ts";
 import type { Plan } from "#src/campaign/ground.ts";
 import { type Decided, decidedLine, short } from "#src/campaign/move.ts";
@@ -221,7 +221,8 @@ export async function view(args: readonly string[]): Promise<void> {
   // read on a log that does not hold its end yet.
   const open = openSteps(campaign.steps);
   const decided = decidedOn(events, values);
-  const climb = epochsOf(events).map((epoch) => `  ${epochLine(epoch, called)}`);
+  const reads = starterReads(events);
+  const climb = epochsOf(events).map((epoch) => `  ${epochLine(epoch, called, reads)}`);
   for (const line of [
     ...lines,
     "the climb",

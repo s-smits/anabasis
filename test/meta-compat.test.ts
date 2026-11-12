@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { sep } from "../src/meta/path.ts";
+import { join, sep } from "../src/meta/path.ts";
 import { containsPath, posixContainsPath } from "../src/meta/path-containment.ts";
 import { errorCode } from "../src/meta/runtime-values.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
@@ -102,5 +102,25 @@ describe("hasText", () => {
     expect(textOr(" ", "fallback")).toBe(" ");
     expect(textOr("", "fallback")).toBe("fallback");
     expect(textOr(undefined, "fallback")).toBe("fallback");
+  });
+});
+
+describe("warn", () => {
+  /** What a child process writes to stderr for one warning, with its stderr said to be a terminal or not. */
+  const written = (terminal: boolean, env: Record<string, string> = {}) =>
+    Bun.spawnSync(
+      [
+        process.execPath,
+        "-e",
+        `import { warn } from "./src/meta/process.ts"; process.stderr.isTTY = ${String(terminal)}; warn("one host is silent");`,
+      ],
+      { cwd: join(import.meta.dir, ".."), env },
+    ).stderr.toString();
+
+  it("is yellow on a terminal, and plain in a pipe or where NO_COLOR is set", () => {
+    expect(written(true)).toBe("\u001B[33mone host is silent\u001B[39m\n");
+    // A log or a test that reads the line gets its text alone.
+    expect(written(false)).toBe("one host is silent\n");
+    expect(written(true, { NO_COLOR: "1" })).toBe("one host is silent\n");
   });
 });

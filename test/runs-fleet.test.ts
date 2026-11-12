@@ -11,7 +11,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import { join } from "../src/meta/path.ts";
+import { dirname, join } from "../src/meta/path.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
 import { held } from "../tools/runs/holder.ts";
 import { quoted, treeBun } from "../tools/runs/host-command.ts";
@@ -304,6 +304,33 @@ describe("campaign snapshots", () => {
     expect(copied.out.includes("distant: 3 paths named as another but for case stay on runner alone")).toBe(
       folds,
     );
+  });
+
+  it("leaves on its host what a campaign installed and cached, and copies a harness's own files", () => {
+    const remote = campaign();
+    const { made } = remote;
+    const files = [
+      "examiner-home/.cache/pip/wheel",
+      "examiner-home/draft.md",
+      "states/tree-a/lib/numpy-2.0.dist-info/METADATA",
+      "states/tree-a/lib/numpy/__pycache__/core.pyc",
+      "states/tree-a/lib/numpy/core.py",
+      "states/tree-a/src/tool.py",
+    ];
+    for (const file of files) {
+      mkdirSync(dirname(join(made.root, "remote", "distant", file)), { recursive: true });
+      writeFileSync(join(made.root, "remote", "distant", file), file);
+    }
+    const listing = ["log.jsonl", ...files].map((file) => `./${file}\n`).join("");
+    expect(made.run(sync, { ...remote.env, FAKE_FILES: listing }).code).toBe(0);
+    const transfer = made.recorded().find((call) => call.tool === "rsync");
+    // Each install by its outermost folder: the cache inside the pip target is named by it.
+    expect(transfer?.args.filter((arg) => /^--exclude=\/./u.test(arg))).toEqual([
+      "--exclude=/examiner-home/.cache/",
+      "--exclude=/states/tree-a/lib/",
+    ]);
+    const copied = (file: string) => existsSync(join(made.main, "data", "runs", "runner", "distant", file));
+    expect(files.map(copied)).toEqual([false, true, false, false, false, true]);
   });
 
   it("brings every other copy of a host where one copy fails, names it, and still fails the read", () => {
@@ -681,7 +708,7 @@ describe("the daily retire's host step", () => {
         env,
       );
     const dry = extract("describe");
-    expect(dry.out).toContain(`would: runner over: held whole in ${here("here", "over")}`);
+    expect(dry.out).toContain(`would: runner over: held in ${here("here", "over")}`);
     expect([existsSync(there("over")), existsSync(here("here", "over"))]).toEqual([true, false]);
     expect(extract("take").out).toContain("runner apart: stays there, 1 paths differ from the copy here");
     expect([existsSync(there("apart", LOG_FILE)), existsSync(here("runner", "apart", LOG_FILE))]).toEqual([
@@ -689,6 +716,42 @@ describe("the daily retire's host step", () => {
       true,
     ]);
     expect([existsSync(there("over")), existsSync(here("here", "over", LOG_FILE))]).toEqual([false, true]);
+  });
+});
+
+describe("a take-over of a campaign that installed packages", () => {
+  it("takes it once the copy holds all but the packages, and leaves it where the copy lacks a file of its own", () => {
+    const { made, there, here, listed } = ablation();
+    const env = {
+      FAKE_CATALOGUE: JSON.stringify([listed("over", there), listed("apart", there)]),
+      FAKE_FILES: ["log.jsonl", "memory/note.txt", "tree/lib/pkg-1.dist-info/METADATA", "tree/own.py"]
+        .map((file) => `./${file}\n`)
+        .join(""),
+    };
+    for (const name of ["over", "apart"]) {
+      mkdirSync(there(name, "tree/lib/pkg-1.dist-info"), { recursive: true });
+      writeFileSync(there(name, "tree/lib/pkg-1.dist-info/METADATA"), "installed");
+      writeFileSync(there(name, "tree/own.py"), "the Builder's");
+    }
+    const snapshots = 'import { takeRetired, syncRuns } from "REPOSITORY/tools/runs/snapshots.ts";';
+    expect(made.run(`${snapshots} await syncRuns([]);`, env).code).toBe(0);
+    expect(existsSync(here("runner", "over", "tree/lib"))).toBe(false);
+    // The copy of one loses a file of the harness's own, which no rule leaves out.
+    rmSync(here("runner", "apart", "tree/own.py"));
+    const taken = made.run(
+      `${snapshots} import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; await takeRetired(hostsOf()[0]!, "take");`,
+      env,
+    );
+    expect(taken.out).toContain("runner apart: stays there, 1 paths differ from the copy here");
+    expect([existsSync(there("apart", "tree/lib")), existsSync(here("here", "apart"))]).toEqual([
+      true,
+      false,
+    ]);
+    expect([existsSync(there("over")), readFileSync(here("here", "over", "tree/own.py"), "utf8")]).toEqual([
+      false,
+      "the Builder's",
+    ]);
+    expect(existsSync(here("here", "over", "tree/lib"))).toBe(false);
   });
 });
 

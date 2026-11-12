@@ -643,7 +643,10 @@ What stops the campaign climbing now, as one link with its count? Walk the lates
 long each named move stood, how much of that passed inside Builder waits, and what admission
 refused. A row without `=` ran under other code, so its replay is a counterfactual. `readings.txt`
 prints each comparison's cap, its reserve and the test's price, and whether it was cut. Name the
-link, its count against what it needed, and its owner. Count promotions within this campaign only. The decision: what runs next. Routes to `examiner-prompt`, `builder-prompt`,
+link, its count against what it needed, and its owner, and for that link each change new since the
+parent run that sits on it (the prior state lists them), with how often its trigger occurred and its
+event followed: a change whose event never fired on the binding link has not been measured, whatever
+the link reads. Count promotions within this campaign only. The decision: what runs next. Routes to `examiner-prompt`, `builder-prompt`,
 `operator` (size or stop) and `host` (`src/campaign/decide.ts`).
 
 **22. The promotion and the climb after it.**
@@ -661,7 +664,10 @@ Read this lane before saying a campaign improved a harness, in five parts kept a
 
 1. **The rule.** `PROMOTED` gives the harness, its parent, who promoted it (the table, or
    `tools/d2/promote.ts` with any `despite`) and its comparisons with tally, p, level and A/A; the
-   A/A is evidence about variance, never a second threshold. Say whether lane 19 finds it confirmed,
+   A/A is evidence about variance, never a second threshold. Count the candidate's wins by validity
+   and by the objective alone, and say whether the starter comparison was the first comparison of
+   its epoch to tally a task, since a Builder comparison that reads first leaves the promotion
+   unconfirmed for good. Say whether lane 19 finds it confirmed,
    and what the tasks written after it read alone (`after`, `starter-reads.ts`); where every win is an objective margin, read lane 29 before calling the step
    an effect.
 2. **What the step measured.** `STARTER BARE` means the reference answered nothing on most tasks, so

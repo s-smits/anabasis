@@ -12,6 +12,7 @@ import {
   launchBrowser,
   type Opened,
   openPage,
+  PATIENCE_FLOOR_MS,
   type Served,
   serveFixture,
 } from "./browser.ts";
@@ -127,9 +128,14 @@ function chipOf(page: Page, id: string) {
   return page.getByRole("button", { name: new RegExp(`solve ${id}$`, "u") });
 }
 
+/** One transition, armed just before it: evidence in every frame, and no placeholder sooner than
+ *  the page's patience. A read that outlasts the patience is said by design (`waited.ts`), and a
+ *  loaded machine makes one late: on 12 November 2026, beside a gate and a sweep of the archive, a
+ *  commit that changed nothing here failed a landing on two such frames. */
 function expectSteady(frames: Frames): void {
   expect(frames.frames).toBeGreaterThan(0);
-  expect({ blank: frames.blank, loading: frames.loading }).toEqual({ blank: 0, loading: 0 });
+  const early = frames.loading > 0 && (frames.firstLoading ?? 0) < PATIENCE_FLOOR_MS;
+  expect({ blank: frames.blank, early }).toEqual({ blank: 0, early: false });
 }
 
 describe("the Moves pane between frames", () => {
@@ -147,9 +153,11 @@ describe("the Moves pane between frames", () => {
       window.dispatchEvent(new PopStateEvent("popstate"));
     }, next);
     await expect(page.getByRole("heading", { level: 2, name: /b-1\s*Comparison/u })).toBeVisible();
+    expectSteady(await read());
+    const back = await watchFrames(page);
     await page.goBack();
     await expect(page.getByRole("heading", { level: 2, name: /x-1/u })).toBeVisible();
-    expectSteady(await read());
+    expectSteady(await back());
     expectQuiet(opened);
     await opened.context.close();
   });
@@ -195,7 +203,7 @@ describe("the Moves pane between frames", () => {
       await expect(page.locator("main .ana-nosignal")).toContainText(id);
       const waiting = await read();
       expect(waiting.blank).toBe(0);
-      expect(waiting.firstLoading ?? 0).toBeGreaterThanOrEqual(300);
+      expect(waiting.firstLoading ?? 0).toBeGreaterThanOrEqual(PATIENCE_FLOOR_MS);
       held.resolve();
       // A move's heading names it; a solve's names its task, with its id in the line beneath.
       await expect(

@@ -620,12 +620,12 @@ export function poolOf(events: readonly LogEvent[]) {
   const older = [...new Set([...spent.filter((task) => !out.has(task)), ...unstood])];
   // One task a family: its first held that is not an older one, or its first.
   const families = new Map(proposalsOf(events).map(({ version, family }) => [version, family ?? version]));
-  const scorable = [
-    ...Map.groupBy(
-      held.filter((task) => !out.has(task)),
-      (task) => families.get(task) ?? task,
-    ).values(),
-  ].flatMap((kin) => kin.find((task) => !older.includes(task)) ?? kin.slice(0, 1));
+  const kin = (tasks: readonly string[]) => [
+    ...Map.groupBy(tasks, (task) => families.get(task) ?? task).values(),
+  ];
+  const scorable = kin(held.filter((task) => !out.has(task))).flatMap(
+    (family) => family.find((task) => !older.includes(task)) ?? family.slice(0, 1),
+  );
   const retained = older.filter((task) => scorable.includes(task));
   // Practice's allowance also leaves out a task with no independent valid answer that the reference
   // answered in none of two comparisons: unlike `awaiting`, only the reference's own cut solves pass
@@ -648,9 +648,9 @@ export function poolOf(events: readonly LogEvent[]) {
   return {
     scorable,
     frontier: scorable.filter((task) => !retained.includes(task)),
-    practiceFrontier: held.filter(
-      (task) => !(before.has(task) && !stood.has(task)) && !practiceOut.has(task),
-    ),
+    practiceFrontier: kin(
+      held.filter((task) => !(before.has(task) && !stood.has(task)) && !practiceOut.has(task)),
+    ).flatMap((family) => family.slice(0, 1)),
     // What a practice release draws from: a rejection the reference's own solve left in doubt reads
     // the reference alone, so which task another harness won moves nothing here (rule 3).
     practicePool: held.filter((task) => !doubted.includes(task)),

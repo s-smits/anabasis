@@ -412,7 +412,7 @@ describe("bun run land", () => {
   });
 
   // The runner's exits that say nothing of the commit: a dropped connection, no slot in time, and a
-  // host that does not answer or lacks the disk (`tools/runtime/router/run.sh`).
+  // host that does not answer or lacks the disk (`tools/runtime/router/run.ts`).
   for (const code of ["255", "75", "69"]) {
     it(`runs a step again where its runner exited ${code}, and passes on the second run`, () => {
       const result = runLand(["12", "--sanitize"], {

@@ -178,7 +178,7 @@ const TEST_REPORT_LINES = 200;
 /** A pass keeps its output in a log and prints nothing for minutes, which reads like a hung push. */
 const PULSE_MS = (Number(runtimeProcess.env.ANA_GATE_PULSE_SECONDS) || 60) * 1000;
 const LOG_DAYS = 14;
-/** The check runner's exits that say nothing about the commit (`tools/runtime/router/run.sh`): 255
+/** The check runner's exits that say nothing about the commit (`tools/runtime/router/run.ts`): 255
  *  where ssh dropped or the task left no status, 75 where no slot came free in time, and 69 where the
  *  host does not answer or lacks the disk. Until 9 November only 255 counted, so a queue that timed
  *  out failed the commit, and the landing printed a fix for a commit nothing had read. */

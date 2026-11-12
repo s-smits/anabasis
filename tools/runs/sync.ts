@@ -114,7 +114,7 @@ const READ_MS = 60_000;
 const APPLY_MS = 900_000;
 const INSTALL = "tools/runtime/router/install.ts";
 const TREE = join(import.meta.dir, "..", "..");
-/** What the installed runner is made of, `hosts.js` bundling the last three among them. */
+/** What the installed runner is made of, `run.js` bundling the last three among them. */
 const RUNNER_SOURCE = [
   "tools/runtime/router",
   "tools/runs/host-config.ts",

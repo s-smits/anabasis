@@ -1,30 +1,46 @@
 #!/usr/bin/env bash
 # The one bun router, installed as ~/.local/bin/bun, first on PATH in every shell. It runs the Bun
-# the tree pins (package.json "packageManager"), and sends Anabasis's check tasks to run.sh, which
-# runs them here or on the host of `ANA_HOSTS` that RUN_REMOTE names. A Bun called by its full path
-# bypasses both, so call plain `bun`. `bun tools/runtime/router/install.ts` installs a change,
-# renaming new copies over the installed paths.
+# the tree pins (package.json "packageManager": "bun@X", kept as ~/.bun/releases/X/bin/bun beside
+# the global ~/.bun/bin/bun), and hands Anabasis's check tasks to the installed runner (`run.ts`,
+# bundled as run.js), which runs them here or on the host RUN_REMOTE names. A Bun called by its full
+# path bypasses both, so call plain `bun`. `bun tools/runtime/router/install.ts` installs a change.
 #
-# A tree is Anabasis's when it holds tools/runtime/gate.ts, the script of `bun run gate`. Until
-# 25 October the test was a common Git folder of ~/Developer/anabasis, which the Linux host does
-# not have; harness-builder-v4 shares the package name and has no gate.ts.
+# A tree is Anabasis's when it holds tools/runtime/gate.ts, the script of `bun run gate`.
 set -euo pipefail
-runner_dir="$HOME/.local/share/ana-runner"
-source "$runner_dir/lib.sh"
 top="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+package="${top:-$PWD}/package.json"
+pin=""
+if [[ -f "$package" ]]; then
+  pin="$(sed -n '/"packageManager"/{s/.*"bun@\([^"+]*\).*/\1/p;q;}' "$package")"
+fi
+bun="$HOME/.bun/releases/$pin/bin/bun"
+[[ -n "$pin" && -x "$bun" ]] || bun="$HOME/.bun/bin/bun"
+if [[ ! -x "$bun" ]]; then
+  printf "bun router: no Bun at %s: install the one this tree pins\n" "$bun" >&2
+  exit 2
+fi
 
+task=""
 if [[ -z "${ANA_RUNNER_ACTIVE:-}" && -n "$top" && -f "$top/tools/runtime/gate.ts" ]]; then
   case "${1-}:${2-}" in
     test:*)
+      task=test
       shift
-      exec "$runner_dir/run.sh" test "$@"
       ;;
     run:test | run:typecheck | run:lint | run:secrets | run:gate)
       task=$2
       shift 2
-      [[ "${1-}" == "--" ]] && shift
-      exec "$runner_dir/run.sh" "$task" "$@"
+      [[ "${1-}" != "--" ]] || shift
       ;;
   esac
 fi
-exec "$(pinned_bun "${top:-$PWD}")" "$@"
+[[ -n "$task" ]] || exec "$bun" "$@"
+
+# A task for another host needs ANA_HOSTS, which lives in the main worktree's .env.runs, where
+# `bun run runs` finds it. A task that runs here reads no host list.
+hosts=()
+if [[ "${RUN_REMOTE:-here}" != here && "${RUN_REMOTE:-}" != 0 && -z "${ANA_HOSTS:-}" ]]; then
+  main="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+  [[ ! -f "$main/.env.runs" ]] || hosts=(--env-file="$main/.env.runs")
+fi
+exec "$bun" ${hosts[@]+"${hosts[@]}"} "$HOME/.local/share/ana-runner/run.js" "$top" "$pin" "$task" "$@"

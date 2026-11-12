@@ -405,7 +405,7 @@ describe("runner", () => {
   function stale(home: string): void {
     const dir = join(home, ".local/share/ana-runner");
     mkdirSync(dir, { recursive: true });
-    for (const name of ["lib.sh", "run.sh", "host.sh", "hosts.js"]) writeFileSync(join(dir, name), "old\n");
+    for (const name of ["task.sh", "run.js"]) writeFileSync(join(dir, name), "old\n");
     writeFileSync(join(home, ".local/bin/bun"), "old\n");
     writeFileSync(join(dir, "INSTALLED"), '{"commit":"oldcommit"}');
   }
@@ -415,9 +415,9 @@ describe("runner", () => {
     stale(made.hereHome);
     const found = made.run([]);
     expect(found.out).toContain("installed from oldcommit");
-    expect(readFileSync(join(made.hereHome, ".local/share/ana-runner/run.sh"), "utf8")).toBe("old\n");
+    expect(readFileSync(join(made.hereHome, ".local/share/ana-runner/task.sh"), "utf8")).toBe("old\n");
     made.run(["--yes"]);
-    expect(readFileSync(join(made.hereHome, ".local/share/ana-runner/run.sh"), "utf8")).not.toBe("old\n");
+    expect(readFileSync(join(made.hereHome, ".local/share/ana-runner/task.sh"), "utf8")).not.toBe("old\n");
     expect(existsSync(join(made.peerHome, ".local/share/ana-runner"))).toBe(false);
   });
 
@@ -442,8 +442,8 @@ describe("runner", () => {
       return gitText(repo, "rev-parse", "HEAD");
     };
     gitText(repo, "init", "-q");
-    const first = commit("tools/runtime/router/run.sh", "one\n");
-    const moved = commit("tools/runtime/router/run.sh", "two\n");
+    const first = commit("tools/runtime/router/run.ts", "one\n");
+    const moved = commit("tools/runtime/router/run.ts", "two\n");
     commit("README.md", "elsewhere\n");
     expect(runnerLags(repo, moved)).toBe(false);
     expect(runnerLags(repo, first)).toBe(true);

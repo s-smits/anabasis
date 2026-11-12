@@ -125,7 +125,8 @@ size stated first: the seats, each seat's cap and minutes, and the total. Each s
 - **Seats at once.** Both arms of a pair start together on one host, the one with the most free
   cores (`bun run runs hosts --health`), so that they share its load, each on a login with room for
   the whole seat (`bun run runs usage`): a login that reaches its session limit fails every solve in
-  flight.
+  flight. Several pairs spread over the hosts `ANA_HOSTS` lists, one pair a host (`--host <name>`),
+  least loaded first (`bun run runs loadwatch --once`), so that no pair reads another's load.
 - **A seat is one sample.** It proves a path and measures no rate (rule 6 of `AGENTS.md`); whether a
   change moves a count is [optimize](cases/optimize.md)'s question. Nothing returns to the campaign,
   and a seed shows no climb (`AGENTS.md`, section 10, item 9).

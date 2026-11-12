@@ -54,6 +54,19 @@ interface RemoteRun {
 
 type Depth = "record" | "whole";
 const EXCLUDED = ["--exclude=.env", "--exclude=.env.*", "--exclude=*.env", "--exclude=auth.json"];
+/** Folders of installed packages, caches and built bundles, by name. A harness's `.bundle-snapshots`
+ *  were 30 of the 38 MB its states held on 2026-10-08. */
+const DERIVED = new Set([
+  "node_modules",
+  ".bundle-snapshots",
+  "__pycache__",
+  ".git",
+  ".cache",
+  ".cargo",
+  ".local",
+  ".matplotlib",
+  "Library",
+]);
 // The seed's mark comes too, so a copy of a rehearsal's seed is no paid campaign to a reader: until
 // 29 October the gather left it out, and two compare-systems seeds counted as campaigns in a replay.
 const RECORD = [
@@ -82,6 +95,12 @@ const WAIT_MS = 200;
 
 /** The text only an opening's line holds. A line that merely quotes it is parsed and passed over. */
 const OPENED = `"kind":"campaign.opened"`;
+
+/** Whether a folder of this name, holding these entries, is installed, cached or built: one named so
+ *  (`DERIVED`), or a pip target, known by a `.dist-info` in it. Neither a copy of a campaign nor a zip
+ *  holds one, since the log names what was installed and nothing here reads the packages. */
+export const derived = (name: string, entries: readonly string[]): boolean =>
+  DERIVED.has(name) || entries.some((entry) => entry.endsWith(".dist-info"));
 
 /** One original campaign's identity and project, as a catalogue lists it. Only the openings are
  *  parsed: every refresh asks each host for its catalogue, and parsing every line of every log for
@@ -138,21 +157,46 @@ export function remoteRuns(lines: readonly string[] | null, host: Host): RemoteR
   });
 }
 
-/** The files of a remote folder that a disk which folds case cannot hold beside another named the
- *  same but for case: all of each such group but its last in byte order, the most lower-case, to
- *  which `terminfo`'s upper-case aliases link. Until 10 November 4 of 118 whole copies of the Linux
- *  host failed every night: `N/NCR260VT300WPP`, a link to `../n/ncr260vt300wpp`, became a link to
- *  itself here, and an Examiner's `w/t1.py` beside its `w/T1.py` aborted rsync. */
-async function caseTwins(host: Host, folder: string): Promise<string[]> {
+/** The files and links of a remote folder, each by its path from it, in byte order. */
+async function filesOf(host: Host, folder: string): Promise<string[]> {
   const listed = await runTextOrThrow(sshScript(host, `cd ${quoted(folder)} && find . ! -type d -print0`));
-  const paths = listed
+  return listed
     .split("\0")
     .filter((path) => path.startsWith("./"))
     .map((path) => path.slice(2))
     .toSorted();
+}
+
+/** The folders among a campaign's `paths` that a copy leaves on its host (`derived`), each the
+ *  outermost such folder: the packages a harness or the Examiner installed, and caches. On
+ *  12 November they were 25.1 of the 27.7 GB that 69 whole copies of one runner held here, in tool
+ *  trees copied again at each freeze. A copy therefore opens as no harness (`keptAs` refuses a kept
+ *  state short of its programs), which a copy never did: a campaign runs on from its original. */
+function installs(paths: readonly string[]): string[] {
+  const found = new Set<string>();
+  for (const path of paths) {
+    const parts = path.split("/");
+    const at = parts.findIndex(
+      (part, index) => index + 1 < parts.length && derived(part, parts.slice(index + 1, index + 2)),
+    );
+    if (at !== -1) found.add(parts.slice(0, at + 1).join("/"));
+  }
+  const outer = [...found].toSorted();
+  return outer.filter((folder) => !outer.some((other) => folder.startsWith(`${other}/`)));
+}
+
+/** The files among `paths` that a disk which folds case cannot hold beside another named the same
+ *  but for case: all of each such group but its last in byte order, the most lower-case, to which
+ *  `terminfo`'s upper-case aliases link. Until 10 November 4 of 118 whole copies of the Linux host
+ *  failed every night: `N/NCR260VT300WPP`, a link to `../n/ncr260vt300wpp`, became a link to itself
+ *  here, and an Examiner's `w/t1.py` beside its `w/T1.py` aborted rsync. */
+function caseTwins(paths: readonly string[]): string[] {
   const last = new Map(paths.map((path) => [path.toLowerCase(), path]));
   return paths.filter((path) => last.get(path.toLowerCase()) !== path);
 }
+
+/** The rsync flag that leaves one path of the copied folder where it is. */
+const leaving = (path: string): string => `--exclude=/${path.replaceAll(/[*?[]/gu, String.raw`\$&`)}`;
 
 /** Refresh one copy under its holder (`holder.ts`), which a fetch keeps however long it transfers and
  *  the next takes over once its process is gone. The stage sits beside the holder, so a fetch killed
@@ -177,10 +221,11 @@ async function refresh(run: RemoteRun, into: string, host: Host, depth: Depth): 
     rmSync(stage, { recursive: true, force: true });
     mkdirSync(folder, { recursive: true });
     const reused = existsSync(into) ? [`--link-dest=${into}`] : [];
-    const twins =
-      depth === "whole" && existsSync(dirname(into).toUpperCase())
-        ? await caseTwins(host, dirname(run.path))
-        : [];
+    const paths = depth === "whole" ? await filesOf(host, dirname(run.path)) : [];
+    const left = installs(paths);
+    const twins = existsSync(dirname(into).toUpperCase())
+      ? caseTwins(paths.filter((path) => !left.some((install) => path.startsWith(`${install}/`))))
+      : [];
     if (twins.length > 0) {
       console.log(
         `${run.name}: ${String(twins.length)} paths named as another but for case stay on ${host.name} alone`,
@@ -191,7 +236,8 @@ async function refresh(run: RemoteRun, into: string, host: Host, depth: Depth): 
       `${folder}/`,
       ...reused,
       ...EXCLUDED,
-      ...twins.map((path) => `--exclude=/${path.replaceAll(/[*?[]/gu, String.raw`\$&`)}`),
+      ...left.map((install) => leaving(`${install}/`)),
+      ...twins.map(leaving),
       ...(depth === "record" ? RECORD : []),
     );
     const log = join(folder, LOG_FILE);
@@ -305,21 +351,23 @@ export async function syncRuns(
 
 /**
  * Take over the campaigns `host` has retired, the host being the one `ABLATION_HOST` names: each
- * that its own retire has moved into its archive, which no process writes or keeps there and whose
- * folder this machine holds byte for byte, joins this machine's own archive, and the original is
- * deleted there, so that the host stays clear for ablations. Nothing else deletes an original. That
- * host's retire stays the one owner of when a campaign is finished (idle for a day, `archiveIdle`,
- * retire.ts): a log's ending would be a second one and a poor one, since of the 69 campaigns one
- * runner held on 12 November 10 ended in an ending and the rest were stopped where they stood. A
- * campaign still in its worktree there, which a `continue` can go on with, is left alone. The proof
+ * that its own retire has moved into its archive, which no process writes or keeps there and of
+ * which this machine holds every file a copy takes byte for byte, joins this machine's own archive,
+ * and the original is deleted there, so that the host stays clear for ablations. Nothing else
+ * deletes an original. That host's retire stays the one owner of when a campaign is finished (idle
+ * for a day, `archiveIdle`, retire.ts): a log's ending would be a second one and a poor one, since
+ * of the 69 campaigns one runner held on 12 November 10 ended in an ending and the rest were
+ * stopped where they stood. A campaign still in its worktree there, which a `continue` can go on
+ * with, is left alone. The proof
  * is one checksummed dry run of rsync, which names every path the copy lacks or holds differently,
  * so a campaign with a path left on its host for its case (`caseTwins`) stays there, named; a
- * credential file is never copied (`EXCLUDED`) and goes with the original. The copy moves first, so
- * a sweep killed before the deletion is finished by the next one, and the deletion runs only while
- * the log there is as long as the catalogue said: one that grew stays, and its copy is the host's
- * again. A deletion that fails part way leaves the copy this machine's own, since it is then the
- * one whole copy and a later refresh from what is left must not replace it. Asked to `describe`, it
- * says what it would do.
+ * credential file and what was installed there are never copied (`EXCLUDED`, `installs`) and go
+ * with the original, so a campaign taken over is a record and runs no further. The copy moves
+ * first, so a sweep killed before the deletion is finished by the next one, and the deletion runs
+ * only while the log there is as long as the catalogue said: one that grew stays, and its copy is
+ * the host's again. A deletion that fails part way leaves the copy this machine's own, since it is
+ * then the one copy and a later refresh from what is left must not replace it. Asked to
+ * `describe`, it says what it would do.
  */
 export async function takeRetired(host: Host, act: "take" | "describe"): Promise<void> {
   const archive = archiveOf(runtimeProcess.cwd());
@@ -334,7 +382,15 @@ export async function takeRetired(host: Host, act: "take" | "describe"): Promise
     if (!retired || run.open || run.kept || run.bytes === null || held === undefined) continue;
     try {
       const differing = (
-        await rsync(`${sideOf(host, from)}/`, `${held}/`, "-n", "-c", "--itemize-changes", ...EXCLUDED)
+        await rsync(
+          `${sideOf(host, from)}/`,
+          `${held}/`,
+          "-n",
+          "-c",
+          "--itemize-changes",
+          ...EXCLUDED,
+          ...installs(await filesOf(host, from)).map((folder) => leaving(`${folder}/`)),
+        )
       )
         .split("\n")
         // A line that opens with a point names a path whose times or modes alone differ.
@@ -346,7 +402,7 @@ export async function takeRetired(host: Host, act: "take" | "describe"): Promise
         continue;
       }
       console.log(
-        `${act === "take" ? "" : "would: "}${host.name} ${run.name}: held whole in ${own}, ${from} deleted there`,
+        `${act === "take" ? "" : "would: "}${host.name} ${run.name}: held in ${own}, ${from} deleted there`,
       );
       if (act === "describe") continue;
       mkdirSync(dirname(own), { recursive: true });

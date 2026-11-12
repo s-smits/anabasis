@@ -36,14 +36,14 @@
  *
  * Only the repository's worktrees are swept, so a separate clone is never read. Every host sweeps
  * its own originals with its own daily job, and this one then refreshes each configured host's
- * records through snapshots.ts and brings every campaign no process writes there whole, so the
- * central host holds each closed run in full and a zip of it fetches nothing. A host that does not
- * answer is skipped with its copies as they were, and the next sweep asks it again, so a Mac asleep
- * for a night or a week catches up when it answers. No original is deleted but on the host
- * `ABLATION_HOST` names, which is kept clear for ablations: a campaign that host's own retire has
- * archived leaves it at this machine's next sweep, once this machine holds it byte for byte
- * (`takeRetired`), where it would otherwise stay in that host's archive for good. Without
- * --yes it describes the sweep and changes nothing.
+ * records through snapshots.ts and brings every campaign no process writes there whole but for
+ * what it installed (`installs`), so the central host holds all a zip of a closed run can hold and
+ * the zip fetches nothing. A host that does not answer is skipped with its copies as they were, and
+ * the next sweep asks it again, so a Mac asleep for a night or a week catches up when it answers.
+ * No original is deleted but on the host `ABLATION_HOST` names, which is kept clear for ablations:
+ * a campaign that host's own retire has archived leaves it at this machine's next sweep, once this
+ * machine holds byte for byte what a copy takes (`takeRetired`), where it would otherwise stay in
+ * that host's archive for good. Without --yes it describes the sweep and changes nothing.
  */
 import { DAY_MS } from "#src/meta/clock.ts";
 import { existsSync, lstatSync, mkdirSync, readdirSync, rmSync } from "#src/meta/filesystem.ts";

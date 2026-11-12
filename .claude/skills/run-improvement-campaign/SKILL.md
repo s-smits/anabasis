@@ -414,7 +414,8 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
    first task and the outside pair where they are bought; the dollars.
 3. **Prove the path without a model.** A read runs on the machine `ABLATION_HOST` names in
    `.env.runs`, which `runs retire` keeps clear of retired campaigns, and on this machine where it is
-   unset. The store, the JobBench checkout and the judge's shim are on that machine, named in the
+   unset. A campaign that ran on that machine is exported before its retire archives it (a day
+   after it goes idle): the copy that replaces it holds no installed package. The store, the JobBench checkout and the judge's shim are on that machine, named in the
    last read's prediction file and in `cycle.md`.
 
    ```sh

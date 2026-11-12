@@ -230,7 +230,7 @@ function Readings({ detail, reading }: { detail: ComparisonDetail; reading: Camp
 /** What the report says beside its test of what the test could see, as label and value: how much
  *  a step has to be to show, what an attempt risks, and what the tally's counts hide. */
 function sensitivityFacts(seen: Sensitivity): (readonly [string, string])[] {
-  const { frontier, informative, overlap, billed, noise, families } = seen;
+  const { frontier, informative, overlap, billed, noise } = seen;
   return [
     ...(frontier === null
       ? []
@@ -243,14 +243,6 @@ function sensitivityFacts(seen: Sensitivity): (readonly [string, string])[] {
               : `the new harness wins ${percent(frontier.detectable)} of them`,
           ],
           ["False promotion an attempt", percent(frontier.falseRate)],
-        ] as const)),
-    ...(families === null || frontier === null || frontier.untied === 0
-      ? []
-      : ([
-          [
-            "Families",
-            `the largest of ${String(families.count)} ${families.count === 1 ? "family" : "families"} holds ${String(families.largest)} of them`,
-          ],
         ] as const)),
     ...(informative === null
       ? []

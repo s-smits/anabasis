@@ -367,7 +367,6 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
 
   it("solves each task once under the arm's tree, with the sweep's PATH and cap, and no grader in reach", () => {
     expect(runs.base.exitCode).toBe(0);
-    // Rollouts run three at a time, so they finish in any order.
     expect(
       rollsOf("base")
         .map((row) => text(field(row, "label")))

@@ -17,8 +17,10 @@
  * N-1) or `sweep:base1` and `sweep:agg1` (the sweep's own rollouts in `--out`, judged and rolled
  * by nothing else). Scoring into the sweep's `--out` keeps every arm in one store, as the pilot's
  * `runs/jb/dataset` was. The tasks default to the pilot's eight, the fair five for `heldout`.
- * Rollouts run three at a time as `score.sh` ran them; judgements run one at a time, so a
- * judgement's dollars are the shim log's rows inside its window. One record a task lands in
+ * Rollouts run one at a time and each is judged before the next begins, so that no rollout's clock
+ * or deadline depends on another's load on the machine (`score.sh` ran three, and until
+ * 12 November 2026 so did this; the operator's word that day), and a judgement's dollars are the
+ * shim log's rows inside its window. One record a task lands in
  * `<out>/judged/<name>/`, and `table` prints the pilot's arms table from them: every arm over all
  * the tasks (the pilot's eight unless named) and over those that are not a profession's first.
  * A record also names the files judge.py's reader cut at 200,000 characters before the judge read
@@ -111,7 +113,6 @@ export const PILOT_TASKS = [
   "social_science_research_assistants/task2",
   "social_science_research_assistants/task3",
 ];
-const AT_ONCE = 3;
 const STAGES = ["base1", "inv1", "dom1", "agg1"];
 
 /** What a score's build cost: `of` names what was built, so an arm counts each build once. */
@@ -480,7 +481,7 @@ export async function score(values: Values): Promise<void> {
   const judged = join(out, "judged", arm.name);
   console.log(`arm ${arm.name}: ${arm.harness}, ${tasks.length} tasks into ${judged}`);
   console.log(
-    `  solve: ${claude.model} at ${claude.effort}, $${claude.budgetUsd} and ${claude.timeoutS} s an attempt, 2 attempts, ${AT_ONCE} at once`,
+    `  solve: ${claude.model} at ${claude.effort}, $${claude.budgetUsd} and ${claude.timeoutS} s an attempt, 2 attempts, one rollout at a time`,
   );
   console.log(
     `  judge: ${JUDGE.model} at ${JUDGE.effort} through ${values["api-base"]}, one at a time, each file cut at ${String(cap ?? MAX_CHARS_PER_FILE)} characters`,
@@ -538,33 +539,25 @@ export async function score(values: Values): Promise<void> {
     writeFileSync(join(judged, `${keyOf(task)}.json`), `${capturedJsonStringify(record, null, 2)}\n`);
     console.log(`${task}: ${text(record.points)}/${text(record.total)}, $${log.usd.toFixed(4)} solved`);
   };
-  const queue = tasks.filter((task) => !existsSync(join(judged, `${keyOf(task)}.json`)));
-  let judging = Promise.resolve();
-  const worker = async (): Promise<void> => {
-    for (let task = queue.shift(); task !== undefined; task = queue.shift()) {
-      const tree = arm.tree(task);
-      const label = arm.label(task);
-      // The runner's SKIP: a rollout on record, delivered or not, is this arm's one solve.
-      if (tree !== null && !rolloutLog(store, task, label).ran) {
-        try {
-          await bench.execute(task, tree, `${arm.name}/${task}`);
-        } catch (error) {
-          console.log(`${task}: ${errorMessage(error)}`);
-        }
+  for (const task of tasks.filter((one) => !existsSync(join(judged, `${keyOf(one)}.json`)))) {
+    const tree = arm.tree(task);
+    const label = arm.label(task);
+    // The runner's SKIP: a rollout on record, delivered or not, is this arm's one solve.
+    if (tree !== null && !rolloutLog(store, task, label).ran) {
+      try {
+        await bench.execute(task, tree, `${arm.name}/${task}`);
+      } catch (error) {
+        console.log(`${task}: ${errorMessage(error)}`);
       }
-      if (tree !== null && !rolloutLog(store, task, label).ran) {
-        console.log(`${task}: no attempt reached a result, a non-result; scoring again rolls it again`);
-        runtimeProcess.exitCode = 1;
-        continue;
-      }
-      // `compare.ts run` solves a block's sides side by side and judges them in turn afterwards.
-      if (values["solve-only"] === true) continue;
-      const due = task;
-      judging = judging.then(async () => await scoreOne(due));
     }
-  };
-  await Promise.all(Array.from({ length: AT_ONCE }, worker));
-  await judging;
+    if (tree !== null && !rolloutLog(store, task, label).ran) {
+      console.log(`${task}: no attempt reached a result, a non-result; scoring again rolls it again`);
+      runtimeProcess.exitCode = 1;
+      continue;
+    }
+    // `compare.ts run` solves a block's sides side by side and judges them in turn afterwards.
+    if (values["solve-only"] !== true) await scoreOne(task);
+  }
 }
 
 /** The pilot's arms table (`final.py`) from the records under `<out>/judged/`. */

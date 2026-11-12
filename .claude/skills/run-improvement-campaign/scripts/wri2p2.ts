@@ -41,7 +41,8 @@
  *   ledgers (`predictions-<run>.md` resolved id by id in `outcomes-<run>.md`, and for a fork what it
  *   carries from the iteration that made it), the vetting of every prediction, the read across
  *   domains (`cross-domain.md`), a plan that answers both and says under "Intentionally opposed"
- *   what it leaves out on purpose, and each fork's ledger.
+ *   what it leaves out on purpose, and each fork's ledger; a jobstat run's also passes its row in
+ *   `outside-reads.md` (`outsideGate`).
  * - `ledger` prints the views derived from those files and never written by hand: the cycle view,
  *   every prediction of the folder's runs with its outcome, and each run's still-missing view, what
  *   it did not hold beside its plan's `## Not done` and `## Intentionally opposed`.
@@ -124,6 +125,8 @@ const MARKER = "iteration.json";
 const PLAN = "plan.md";
 /** The gates a session passed on purpose, each with its reason. */
 const DEVIATIONS = "deviations.md";
+/** One row a stopped jobstat run, in a cycle's folder: its reference's read on the outside benchmark. */
+const OUTSIDE = "outside-reads.md";
 const LEVERS = join(import.meta.dir, "..", "references", "levers.md");
 const USAGE = `usage: bun ${DRIVER} [due] [<part> ...] [--promotions 2] [--hours 12] [--days 2] | open <name>[,<name>] [--out <dir>] | next <dir> | ledger <dir>`;
 const OPTIONS = { promotions: "int", hours: "int", days: "int", out: "abs" } as const;
@@ -296,6 +299,30 @@ function runGates(where: Ledgers, run: string): Gate[] {
   ];
 }
 
+/**
+ * The outside read a jobstat run owes once it has stopped (run-improvement-campaign, "The outside
+ * aim"): a row that names it in a cycle's `outside-reads.md`, scored, skipped or still owed. Four
+ * jobstat runs were investigated from 10 to 12 November 2026 with two promotions each and none was
+ * read, since only prose asked for it. A run of another domain owes none.
+ */
+function outsideGate({ root, dir }: Ledgers, run: string): Gate[] {
+  if (!run.startsWith("jobstat")) return [];
+  return [
+    [
+      "outside",
+      run,
+      () =>
+        ledgerFiles(root, dir, OUTSIDE).some((path) =>
+          rowsOf(read(path), "run").some(([name]) => name === run),
+        )
+          ? null
+          : [
+              `step: outside · ${run} has no row in ${OUTSIDE} of its cycle's folder under ${root}: read its newest promoted reference on the eight tasks beside a fresh Starter (run-improvement-campaign, "A reference's read"), then add the row whose first cell is the run's name, with its scores, "skipped" with lane 27's grade or no promotion, or "owed" with what the read waits for`,
+            ],
+    ],
+  ];
+}
+
 /** The rows of the folder `dir`'s `deviations.md`, each step with its reason. */
 function deviationsOf(dir: string): Map<string, string> {
   return new Map(
@@ -384,7 +411,7 @@ function gatesOf(where: Ledgers, launchedAt: (pull: number) => string[], passed:
               `${wri("collect")} && bun ${WRI} synthesis --out ${dir}`,
             ],
     ],
-    ...only(runs.flatMap((run) => runGates(where, run))),
+    ...only(runs.flatMap((run) => [...runGates(where, run), ...outsideGate(where, run)])),
     ["vet", null, () => vetOwed(dir, root, runs, kind)],
     ...only([
       [

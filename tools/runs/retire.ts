@@ -49,7 +49,7 @@ import { DAY_MS } from "#src/meta/clock.ts";
 import { existsSync, lstatSync, mkdirSync, readdirSync, rmSync } from "#src/meta/filesystem.ts";
 import { gitMaybe, gitText, mainTree, type Worktree as Tree, worktreeList } from "#src/meta/git.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";
-import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { parseArgs, runtimeProcess, warn } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { controllersOf } from "./code.ts";
@@ -100,7 +100,7 @@ export function archiveIdle(sweep: Sweep): Set<string> {
       .map((each) => join(own, each))
       .find((path) => !existsSync(path) && !taken.has(path));
     if (to === undefined) {
-      console.error(`${from}: the archive holds ${run.name} under both its names, so it stays`);
+      warn(`${from}: the archive holds ${run.name} under both its names, so it stays`);
       continue;
     }
     say(sweep, `${from} -> ${to}`);

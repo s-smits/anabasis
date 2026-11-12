@@ -9,7 +9,7 @@
 import { existsSync } from "#src/meta/filesystem.ts";
 import { gitMaybe, gitText, mainTree } from "#src/meta/git.ts";
 import { dirname, isAbsolute, join } from "#src/meta/path.ts";
-import { capturedExecPath } from "#src/meta/process.ts";
+import { capturedExecPath, warn } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { runTextOrThrow, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { type Host, configuredRuntime } from "./host-config.ts";
@@ -83,7 +83,7 @@ function readCommit(): string {
   if (tips.length === 0) throw new Error("no remote branch holds a controller revision");
   const commit = gitText(repo, "merge-base", head, ...tips);
   if (commit !== head && !warned.has(head)) {
-    console.error(`remote reads use published ancestor ${commit.slice(0, 9)} of HEAD ${head.slice(0, 9)}`);
+    warn(`remote reads use published ancestor ${commit.slice(0, 9)} of HEAD ${head.slice(0, 9)}`);
     warned.add(head);
   }
   return commit;

@@ -14,6 +14,17 @@ export function processAnswers(pid: number): boolean {
   }
 }
 
+/**
+ * Say `text` on stderr as a warning: a line the reader should know of, after which the command goes
+ * on and ends as it would have. Bun prints every `console.error` line in red on a terminal, where a
+ * warning then read as a failure; this one is yellow there, and plain in a pipe or a log, or where
+ * `NO_COLOR` is set.
+ */
+export function warn(text: string): void {
+  const coloured = runtimeProcess.stderr.isTTY && (runtimeProcess.env.NO_COLOR ?? "") === "";
+  console.warn(coloured ? `\u001B[33m${text}\u001B[39m` : text);
+}
+
 /** Argument parsing for the repository's own command entrypoints; Bun 1.4 has no equivalent. */
 export { parseArgs, type ParseArgsOptionsConfig } from "node:util";
 

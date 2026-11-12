@@ -412,8 +412,10 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
    line, and rows that `score.ts table` settles by a count: the reference against the Starter beside
    it on the fair five; against `heldout`'s stored sum, with the Starter's spread as the margin; the
    first task and the outside pair where they are bought; the dollars.
-3. **Prove the path without a model.** The store, the JobBench checkout and the judge's shim are
-   local, named in the last read's prediction file and in `cycle.md`.
+3. **Prove the path without a model.** A read runs on the machine `ABLATION_HOST` names in
+   `.env.runs`, which `runs retire` keeps clear of retired campaigns, and on this machine where it is
+   unset. The store, the JobBench checkout and the judge's shim are on that machine, named in the
+   last read's prediction file and in `cycle.md`.
 
    ```sh
    bun studies/harness2/score.ts score --arm <campaign> --harness <kept> --name <label> \

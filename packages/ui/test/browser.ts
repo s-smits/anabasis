@@ -26,6 +26,7 @@ import {
   type BrowserContext,
   type BrowserContextOptions,
   chromium,
+  errors,
   type Locator,
   type Page,
   expect as web,
@@ -33,7 +34,10 @@ import {
 import { mkdtempSync, realpathSync, rmSync } from "../../../src/meta/filesystem.ts";
 import { tmpdir } from "../../../src/meta/os.ts";
 import { join } from "../../../src/meta/path.ts";
-import { interruptAndReapProcessGroup } from "../../../src/meta/subprocess.ts";
+import {
+  interruptAndReapProcessGroup,
+  terminateAndReapProcessGroupId,
+} from "../../../src/meta/subprocess.ts";
 import type { Tier } from "../src/models.ts";
 import { type Fixture, writeFixtureCampaign } from "./fixture-campaign.ts";
 
@@ -96,6 +100,8 @@ export interface FramesSeen {
 const PACKAGE = join(import.meta.dir, "..");
 const STARTED = /anabasis at (http:\/\/127\.0\.0\.1:\d+)\/\?token=([0-9a-f]+)/u;
 const START_MS = 20_000;
+/** The process of a launch, as Playwright's call log names it in the launch's timeout. */
+const LAUNCHED = /<launched> pid=(\d+)/u;
 /** How long one load, click or other action may wait. Playwright's own 30 s twice over is the test's
  *  whole 60 s, so a page that never loaded under ten parallel files on 14 October timed the test out
  *  and named no step; at 15 s the stuck step fails with its own message first. */
@@ -184,28 +190,53 @@ async function startLine(stdout: ReadableStream<Uint8Array>): Promise<[string, s
  *  macOS each time a test opens a page, so it is for watching one test; to see what a run did,
  *  record it headless (`ANA_UI_VIDEO`, `openPage`).
  *
- *  The launch and the first context are each bounded at `START_MS`, inside Bun's 60 s for the hook.
- *  On 14 October, at loads of 15 to 54 on 12 cores, Chrome stalled at its start in 4 of the first
- *  15 commits the pre-push gate ran: the launch, or the first context after it, did not answer for
- *  60 s. Bun timed the test out and killed Chrome, and the awaited call rejected after its test had
- *  ended, outside any test, where the test wrapper runs no file again. Bounded here, the stall fails
- *  the file's `beforeAll`, which the wrapper runs again on a crowded host. */
-export async function launchBrowser(): Promise<Browser> {
+ *  One start is the launch and the first context, bounded together at `within`, so that two starts
+ *  fit inside Bun's 60 s for the hook. On 14 October, at loads of 15 to 54 on 12 cores, Chrome
+ *  stalled at its start in 4 of the first 15 commits the pre-push gate ran, and on 12 November in 2
+ *  of the 7 proofs of a landing (0 of the 61 kept before it), on two commits that changed nothing
+ *  of the page. A stall is the browser's and no test's, and the test wrapper runs no failed file
+ *  again (`tools/runtime/test-suite.ts`), so a stalled start is tried once more here, saying so; a
+ *  second stall fails the file's `beforeAll`, and a launch that fails outright fails it at once. */
+export async function launchBrowser(within = START_MS): Promise<Browser> {
+  const browser = (await startChrome(within)) ?? (await startChrome(within));
+  if (browser !== null) return browser;
+  throw new Error(`Chrome stalled at its start twice, ${String(within)} ms each`);
+}
+
+/** Chrome once it has opened a context, or `null` where its start has not answered `within` ms of
+ *  the launch. A Chrome whose launch stalled is ended with its process group, and one whose first
+ *  context stalled is closed without waiting on it. */
+async function startChrome(within: number): Promise<Browser | null> {
   const executable = Bun.env.ANA_UI_CHROME;
   const options = {
     headless: Bun.env.ANA_UI_HEADED !== "1",
     slowMo: Number(Bun.env.ANA_UI_SLOW_MS ?? "0"),
-    timeout: START_MS,
+    timeout: within,
   };
-  const browser = await chromium.launch(
-    executable === undefined ? { channel: "chrome", ...options } : { executablePath: executable, ...options },
-  );
-  const answered = browser.newContext().then(async (context) => {
-    await context.close();
-    return true;
-  });
-  if (await Promise.race([answered, Bun.sleep(START_MS).then(() => false)])) return browser;
-  throw new Error(`Chrome opened no context within ${String(START_MS)} ms of its launch`);
+  const late = Bun.sleep(within).then(() => false);
+  const browser = await chromium
+    .launch(
+      executable === undefined
+        ? { channel: "chrome", ...options }
+        : { executablePath: executable, ...options },
+    )
+    .catch(async (error: unknown) => {
+      if (!(error instanceof errors.TimeoutError)) throw error;
+      // Under Bun, Playwright leaves the process of a launch it timed out running.
+      await terminateAndReapProcessGroupId(Number(LAUNCHED.exec(error.message)?.[1]));
+      return null;
+    });
+  if (browser !== null) {
+    const answered = browser.newContext().then(async (context) => {
+      await context.close();
+      return true;
+    });
+    if (await Promise.race([answered, late])) return browser;
+    answered.catch(() => false);
+    browser.close().catch(() => false);
+  }
+  console.error(`browser: Chrome's start did not answer within ${String(within)} ms`);
+  return null;
 }
 
 /** A fresh context and page at `url`, recording what goes wrong. The page has loaded its first

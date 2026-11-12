@@ -21,7 +21,9 @@ bun .claude/skills/harness-audit/scripts/harness-versions.ts <log | campaign fol
 
 A harness is named as the campaign's commands name one (`keptAs`: `starter`, `promoted`, `latest`,
 a digest, or a letter from `namesOf`). For each, starter first, the list gives whether it opens as
-kept (a solve refuses one that opens as another digest, as after a lost tool tree); how it was made
+kept (a solve refuses one that opens as another digest, as after a lost tool tree; a copy of a
+campaign from another host leaves out what its harness installed, so there such a state reads the
+same, and `--diff` reads its files where they sit and says so in a line); how it was made
 (session and parent, import, starter, or no record, which means a sweep's first parent, another
 checkout's starter or a `programs-of` control: say which and never rebuild it); its roles; its parts
 (guide and `agent/tools.ts` lines, declared tools, `.toolchain` size, caches excluded as the digest

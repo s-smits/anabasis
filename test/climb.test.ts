@@ -210,7 +210,7 @@ describe("the climb", () => {
           const strength = strengthOf(reference);
           written += 1;
           const tasks = ABOVE.map((above, index) => ({
-            family: "fixture",
+            family: `written-${String(written * 100 + index)}`,
             public_input: { base: strength + above, n: written * 100 + index },
             hidden: null,
           }));
@@ -300,7 +300,6 @@ describe("the chance of a false promotion among an epoch's attempts", () => {
       versions: ["v1"],
       frontier: { differences: [0] },
       retained: "unmeasured",
-      families: {},
       noise: noise === undefined ? null : { differences: noise },
     });
   const started = event("comparison.started", { session: "g-1", old: "S", fresh: "h2", starter: "S" });

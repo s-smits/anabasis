@@ -25,7 +25,7 @@ to go in one sitting, is the session's judgement. Read the script first and deci
 | --- | --- | --- |
 | starting, resuming or woken with nothing named | `wri2p2.ts due`, then `cycle.md` | the live run's trigger it lists, else the longest-standing step; `next <dir>` prints it whole |
 | a report, promotion, starter read or ending lands | `runs view <name>`; comparison-reading's `starter-reads.ts` after a promotion | "Milestones"; resolve that run's predictions with the log's length; at a trigger, `wri2p2.ts open` |
-| a slot is free | `runs active`, `runs usage`, the cycle's `run-queue.md` | the iteration's step 5: its `predictions-<run>.md`, the dry run, then `runs fresh` |
+| a slot is free | `runs active`, `runs usage`, `runs loadwatch --once` (its last line: the machines, least loaded first), the cycle's `run-queue.md` | the iteration's step 5: its `predictions-<run>.md`, the dry run, then `runs fresh` |
 | lanes are out, or a synthesis is written | `wri2p2.ts next <dir>`, `wri2p2.ts ledger <dir>` | the iteration's steps 2 and 3 |
 | a fix is ready | stack-pr's `stack.ts`, repository-practice's `preflight.ts` | step 4, its before-and-after, then step 5 |
 | a run bills while its milestone stays put | `runs pulse <name>`, `wri.ts read --log <log>` | "A stall", then "The walk" |
@@ -188,7 +188,8 @@ each pull request stacks on the one before. Nothing in an iteration is merged; t
    request head, naming any pull request above it. For a cycle, fork one fresh campaign per runner
    host, or the set the operator names, after a dry run:
    `runs fresh <pack> --host <host> --at <commit> --login N --as <suffix> --yes`. Take hosts from
-   `ANA_HOSTS` (`hostsOf`) after `runs hosts --health`, and launch them one after another, since
+   `ANA_HOSTS` (`hostsOf`) after `runs hosts --health` and `runs loadwatch --once`, whose last line
+   orders them least loaded first, and launch them one after another, since
    concurrent `fresh --host` launches from one checkout fail. Ordinary forks let `fresh` place them;
    placement does not ask whether a peer holds the pack's prompt, so a pack whose prompt only the
    central host holds takes `--host here`. Name a pull request's head by its number in the ledger
@@ -539,6 +540,30 @@ run or a folder, and none repeats a fact one of these reports. Keep each timer w
 and authority in `cycle.md`; [references/timers.md](references/timers.md) holds each timer's map and
 what its prompt carries.
 
+### A hook where the reaction is one fixed command
+
+A timer and a wake both need a session that is alive and idle, so a step that must not wait for one
+is written as a hook: code with no model in the loop, tied to the event. The pause at a second
+promotion is the case. The alert says the promotion within minutes, yet until a session armed
+`runs pause <name> --after reported --yes` the run went on, and overnight nobody may be awake.
+
+Two places take a hook. The local job that runs `runs alerts` pipes each look's new lines to a
+script, which acts on the line it names; this suits a step on a run, since it needs no session. A
+Claude Code hook (`Stop`, `UserPromptSubmit` or `PreToolUse` in a `settings.json`) runs inside a
+session's own loop, as the anti-stall hook does, and suits what must reach or hold a session: a
+wake, a fact put before it, a refusal ahead of a command. A reaction that needs judgement is a
+skill with its scripts instead, which a hook can name in the line it writes.
+
+A hook takes only the step the protocol already grants at that event, here the pause at a trigger,
+and never a launch, a merge or another decision of `AGENTS.md` section 3. It writes one line to the
+log the alerts job writes, so that a session reads what was done and `wri2p2.ts due` then prints
+`waits` instead of `pause`. It starts a command that waits in a session of its own, since the job
+that fed it must end. And it carries a dry mode that prints the command, a way to leave one named
+run out, and in its head comment the operator's words it rests on. Hooks of the operator's own
+machines are listed in the local skill `operator-machines`.
+
+### A firing
+
 Every firing follows one protocol; what it reads and concludes between steps is the session's
 judgement.
 
@@ -562,6 +587,7 @@ judgement.
 | Timer | When | It wakes the session to |
 | --- | --- | --- |
 | none: the pulse and the alerts | as an event lands; the pulse every 290 s through the hook, or where a session has none, one Monitor on `bun run runs pulse --every 290 --state <file>` | read that milestone and follow the protocol: a triggered run starts an iteration, a freed slot goes as the iteration's step 5 says |
+| none: a hook | at its event, with no model and no session | run the one command the protocol grants there: at a second promotion, the pause after the next comparison |
 | none: the alerts log | as a run owes a step; one `Monitor` on the log the alerts job writes (`tail -n 0 -F`, run-management), re-armed when it expires | take the loop's step for that run |
 | driver | recurring, every two hours, with its ten-minute chain while steps are owed | the protocol, for a step no event announces |
 | milestone | one-shot at a predicted event or deadline | that milestone or row |

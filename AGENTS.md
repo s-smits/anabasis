@@ -359,7 +359,8 @@ handover (`zip-run`, `oracle-handover`). `bun run runs` lists the run CLI's verb
    main worktree or one holding `ana-followed` (`treeFault`).
 2. **Prove the path first without a model** (`--dry-run`, `runs replay`, `runs rehearse`).
 3. **Record one prediction, settled by a count that can fall either way, before the first solve.**
-4. **One or two rounds at a time on one host**, since load shifts deadlines.
+4. **One or two rounds at a time on one host**, since load shifts deadlines; before placing a run,
+   read `bun run runs loadwatch --once`, whose last line orders the machines least loaded first.
 5. **Never open, print or copy the file passed as `--env-file`.**
 6. **Do not stop a run to fix it**; the fix goes on the stack and reaches the next fresh runs.
 7. **Read the log's events and the report before any agent's prose**, your own earlier account too.

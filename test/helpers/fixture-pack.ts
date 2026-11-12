@@ -15,10 +15,11 @@ export type Step =
   | readonly [string, JsonObject]
   | { readonly wait: () => Promise<readonly [string, JsonObject]> };
 
-/** A fixture task: its answer is six times its base. */
+/** A fixture task: its answer is six times its base. Each is a family of its own, since a
+ *  comparison scores one task of each (`poolOf`). */
 export interface FixtureTask {
   readonly taskId: string;
-  readonly family: "fixture";
+  readonly family: string;
   readonly publicInput: { readonly base: number };
   readonly hidden: null;
 }
@@ -27,7 +28,7 @@ export interface FixtureTask {
 export const fixtureTasks = (count: number): FixtureTask[] =>
   Array.from({ length: count }, (_, index) => ({
     taskId: `t-${String(index + 1)}`,
-    family: "fixture",
+    family: `fixture-${String(index + 1)}`,
     publicInput: { base: index + 2 },
     hidden: null,
   }));

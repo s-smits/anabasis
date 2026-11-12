@@ -35,7 +35,7 @@ campaign; `copy <name> --to <worktree>` brings one back.
 | `sync [--yes \| --check] [--force]` | aligns tools and Python across hosts | `sync.ts` |
 | `search <pattern> [--regex] [--ignore-case] [--here] [--in logs\|notes\|all] [--max <chars>]` | searches campaign folders, notes and docs on all hosts | `search.ts` |
 | `fetch [<name>] [--from <host>]` | copies a peer's campaign, or every peer's records, into the archive | `move.ts` |
-| `retire [--days 1] [--yes]` | archives idle campaigns, deletes seeds and stale worktrees, refreshes peers' records | `retire.ts` |
+| `retire [--days 1] [--yes]` | archives idle campaigns, deletes seeds and stale worktrees, refreshes peers' records, and takes over what the host `ABLATION_HOST` names has archived | `retire.ts` |
 | `on <host> <verb ...>`, `hosts [--all] [--health]` | a verb on another host; each host's status or health | `hosts.ts` |
 | `pulse [<part> ...] [--every 290] [--state <file>] [--no-readers]` | what each run gained since the last look | `pulse.ts` |
 | `alerts [--state <file>]` | the same for cron, one line per new event | `alerts.ts` |

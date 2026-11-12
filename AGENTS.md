@@ -222,8 +222,9 @@ their conditions differ in the one thing compared.
 4. **Keep old event kinds readable** (`EVENT_KINDS`).
 
 The log holds hidden values, so it stays out of prompts, PRs and pastes. `bun run runs retire`
-moves a campaign idle for a day into `data/runs/` and deletes an idle seed that no paid launch went
-on from; nothing else deletes a log.
+moves a campaign idle for a day into `data/runs/`, deletes an idle seed that no paid launch went on
+from, and takes a campaign archived on the host `ABLATION_HOST` names into the central archive,
+deleting it there once the copy matches byte for byte; nothing else deletes a log.
 
 ## 6. A campaign's commands
 

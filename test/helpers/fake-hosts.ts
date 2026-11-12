@@ -30,7 +30,7 @@ if (peer.timeout && script.includes("ANA_HOP")) await Bun.sleep(50000);
 if (peer.freshExit && script.includes("ANA_HOP") && script.includes("fresh")) process.exit(peer.freshExit);
 if (peer.active !== undefined && peer.execute && script.includes("'active'")) { console.log(peer.active); process.exit(0); }
 if (peer.alerts !== undefined && script.includes("'alerts'")) { console.log(peer.alerts); process.exit(0); }
-if (process.env.FAKE_EXECUTE === "1" || peer.execute || (process.env.FAKE_PREPARE_EXECUTE === "1" && !script.includes("ANA_HOP"))) {
+if (process.env.FAKE_EXECUTE === "1" || peer.execute || script.includes("rm -rf -- ") || (process.env.FAKE_PREPARE_EXECUTE === "1" && !script.includes("ANA_HOP"))) {
   const env = {...process.env, ...(peer.env ?? {})};
   const child = Bun.spawn(["sh", "-c", script], {env, stdout:"inherit", stderr:"inherit"});
   process.exit(await child.exited);
@@ -52,6 +52,7 @@ const quoted = remote ? source.split(":").slice(1).join(":").slice(0,-1) : "";
 const from = remote ? quoted.slice(1,-1).replaceAll("'\\\\''", "'") : source;
 const target = args.at(-1);
 const into = target.includes(":") ? target.split(":").slice(1).join(":").replace(/\\/$/, "").slice(1,-1) + "/" : target;
+if (args.includes("-n")) { const real = Bun.spawnSync(["/usr/bin/rsync", "-a", "-n", "-c", "--itemize-changes", from + "/", into], {env: {...process.env, PATH: "/usr/bin:/bin"}}); process.stdout.write(real.stdout); process.exit(real.exitCode); }
 if (process.env.FAKE_TRANSFER_FAIL === "1" || (process.env.FAKE_TRANSFER_FAIL_FROM !== undefined && from.includes(process.env.FAKE_TRANSFER_FAIL_FROM))) { mkdirSync(into, {recursive: true}); writeFileSync(into + "log.jsonl", "partial"); process.exit(23); }
 const kept = args.filter((arg) => arg.startsWith("--include=/")).map((arg) => new RegExp("^" + arg.slice(11).replaceAll(".", "[.]").replaceAll("*", ".*") + "$"));
 cpSync(from, into, {recursive: true, verbatimSymlinks: true, filter: (file) => !args.includes("--exclude=/*") || resolve(file) === resolve(from) || (dirname(file) === resolve(from) && kept.some((name) => name.test(basename(file))))});`,

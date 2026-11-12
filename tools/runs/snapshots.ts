@@ -26,6 +26,7 @@ import { quoted, rsync, sideOf, sshScript } from "./host-command.ts";
 import { runTextOrThrow } from "#src/meta/subprocess.ts";
 import { hold, release } from "./holder.ts";
 import {
+  ARCHIVE,
   archiveOf,
   HERE,
   keepers,
@@ -300,6 +301,74 @@ export async function syncRuns(
     throw new Error(`${String(failed.length)} of ${String(kept.length)} copies failed: ${failed.join("; ")}`);
   }
   return [...brought.filter((log) => log !== null), ...left.map((run) => run.path)];
+}
+
+/**
+ * Take over the campaigns `host` has retired, the host being the one `ABLATION_HOST` names: each
+ * that its own retire has moved into its archive, which no process writes or keeps there and whose
+ * folder this machine holds byte for byte, joins this machine's own archive, and the original is
+ * deleted there, so that the host stays clear for ablations. Nothing else deletes an original. That
+ * host's retire stays the one owner of when a campaign is finished (idle for a day, `archiveIdle`,
+ * retire.ts): a log's ending would be a second one and a poor one, since of the 69 campaigns one
+ * runner held on 12 November 10 ended in an ending and the rest were stopped where they stood. A
+ * campaign still in its worktree there, which a `continue` can go on with, is left alone. The proof
+ * is one checksummed dry run of rsync, which names every path the copy lacks or holds differently,
+ * so a campaign with a path left on its host for its case (`caseTwins`) stays there, named; a
+ * credential file is never copied (`EXCLUDED`) and goes with the original. The copy moves first, so
+ * a sweep killed before the deletion is finished by the next one, and the deletion runs only while
+ * the log there is as long as the catalogue said: one that grew stays, and its copy is the host's
+ * again. A deletion that fails part way leaves the copy this machine's own, since it is then the
+ * one whole copy and a later refresh from what is left must not replace it. Asked to `describe`, it
+ * says what it would do.
+ */
+export async function takeRetired(host: Host, act: "take" | "describe"): Promise<void> {
+  const archive = archiveOf(runtimeProcess.cwd());
+  const [answer] = await asked(["catalogue"], [host]);
+  const failed: string[] = [];
+  for (const run of remoteRuns(answer?.lines ?? null, host)) {
+    const from = dirname(run.path);
+    const copy = join(archive, host.name, run.name);
+    const own = join(archive, HERE, run.name);
+    const held = [own, copy].find((folder) => existsSync(join(folder, LOG_FILE)));
+    const retired = run.path.endsWith(`/${join(ARCHIVE, HERE, run.name, LOG_FILE)}`);
+    if (!retired || run.open || run.kept || run.bytes === null || held === undefined) continue;
+    try {
+      const differing = (
+        await rsync(`${sideOf(host, from)}/`, `${held}/`, "-n", "-c", "--itemize-changes", ...EXCLUDED)
+      )
+        .split("\n")
+        // A line that opens with a point names a path whose times or modes alone differ.
+        .filter((line) => line !== "" && !line.startsWith("."));
+      if (differing.length > 0) {
+        console.log(
+          `${host.name} ${run.name}: stays there, ${String(differing.length)} paths differ from the copy here, the first ${differing[0] ?? ""}`,
+        );
+        continue;
+      }
+      console.log(
+        `${act === "take" ? "" : "would: "}${host.name} ${run.name}: held whole in ${own}, ${from} deleted there`,
+      );
+      if (act === "describe") continue;
+      mkdirSync(dirname(own), { recursive: true });
+      if (held === copy) renameSync(copy, own);
+      const folder = quoted(from);
+      const said = await runTextOrThrow(
+        sshScript(
+          host,
+          `if test "$(wc -c < ${quoted(run.path)} | tr -d ' ')" = ${String(run.bytes)}; then chmod -R u+w ${folder}; rm -rf -- ${folder}; else echo grown; fi`,
+        ),
+      );
+      if (said.includes("grown")) {
+        if (held === copy) renameSync(own, copy);
+        failed.push(`${run.name}: its log there is no longer the length its catalogue gave, so it stays`);
+      }
+    } catch (error) {
+      failed.push(`${run.name}: ${errorMessage(error)}`);
+    }
+  }
+  if (failed.length > 0) {
+    throw new Error(`${String(failed.length)} campaigns were not taken over: ${failed.join("; ")}`);
+  }
 }
 
 /** Resolve a path as given, or refresh a named campaign before reading its existing archive copy. */

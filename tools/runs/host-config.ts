@@ -138,6 +138,15 @@ export function configuredRuntime(host: Host) {
  *  here, and what `move` reads as `here`. */
 export const ownName = (): string => hostname().replace(/\..*$/u, "");
 
+/** The machine kept for ablations and outside reads, which `runs retire` keeps clear of the
+ *  campaigns it has retired (`takeRetired`, snapshots.ts): the entry `ABLATION_HOST` names. Unset, empty or
+ *  `here`, there is none: they run on this machine, and retire deletes no original anywhere. A name
+ *  no entry holds is refused, since a misspelt one would leave the host to fill unseen. */
+export function ablationHost(): Host | undefined {
+  const name = runtimeProcess.env.ABLATION_HOST ?? "";
+  return name === "" || name === "here" ? undefined : hostNamed(name);
+}
+
 export function hostNamed(name: string | undefined): Host {
   const known = hostsOf();
   const host = known.find((one) => one.name === name);

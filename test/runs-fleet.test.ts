@@ -3,6 +3,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { append, LOG_FILE } from "../src/kernel/log.ts";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -568,6 +569,25 @@ describe("snapshot depth", () => {
   });
 });
 
+/** A host kept for ablations: where a campaign its retire archived lies there, where one still in
+ *  its worktree does, where a copy lies here, and a campaign with one artefact as the catalogue
+ *  lists it. */
+function ablation() {
+  const made = fixture();
+  const there = (name: string, file = "") =>
+    join(made.root, "remote", "main", "data", "runs", "here", name, file);
+  const resting = (name: string, file = "") =>
+    join(made.root, "remote", `tree-${name}`, ".ana", "d2", name, file);
+  const here = (from: string, name: string, file = "") => join(made.main, "data", "runs", from, name, file);
+  const listed = (name: string, at: typeof there, more: { readonly kept?: boolean } = {}) => {
+    mkdirSync(at(name, "memory"), { recursive: true });
+    writeFileSync(at(name, "memory/note.txt"), "kept");
+    append(at(name, LOG_FILE), "campaign.word", { word: "fixture" });
+    return { name, path: at(name, LOG_FILE), bytes: lstatSync(at(name, LOG_FILE)).size, ...more };
+  };
+  return { made, there, resting, here, listed };
+}
+
 describe("the daily retire's host step", () => {
   it("brings a closed campaign whole and an open one as its record, and asks a silent host again at the next sweep", () => {
     const remote = campaign();
@@ -606,6 +626,69 @@ describe("the daily retire's host step", () => {
     expect(existsSync(copy("busy", "memory/note.txt"))).toBe(false);
     expect(existsSync(copy("waiting", LOG_FILE))).toBe(true);
     expect(existsSync(copy("waiting", "memory"))).toBe(false);
+  });
+
+  it("takes over what the ablation host has archived once the copy here matches it, and leaves every other campaign there", () => {
+    const { made, there, resting, here, listed } = ablation();
+    const ahead = listed("ahead", there);
+    const env = {
+      FAKE_CATALOGUE: JSON.stringify([
+        listed("over", there),
+        listed("resting", resting),
+        listed("kept", there, { kept: true }),
+        // The log there is longer than its catalogue said, as one gone on with since would be.
+        { ...ahead, bytes: ahead.bytes - 1 },
+      ]),
+    };
+    const sweep = (extra: Record<string, string>) =>
+      made.run('import { retire } from "REPOSITORY/tools/runs/retire.ts"; await retire(["--yes"]);', {
+        ...env,
+        ...extra,
+      });
+    // With no ablation host named, a sweep copies every campaign and deletes none, and a name no
+    // host holds is refused.
+    expect(sweep({}).code).toBe(0);
+    expect([existsSync(there("over")), existsSync(here("runner", "over", LOG_FILE))]).toEqual([true, true]);
+    const unknown = sweep({ ABLATION_HOST: "nowhere" });
+    expect([unknown.code, unknown.err.includes("no host nowhere")]).toEqual([1, true]);
+
+    const taken = sweep({ ABLATION_HOST: "runner" });
+    // The archived campaign is this machine's own now, whole, and gone from the host.
+    expect(readFileSync(here("here", "over", "memory/note.txt"), "utf8")).toBe("kept");
+    expect([existsSync(there("over")), existsSync(here("runner", "over"))]).toEqual([false, false]);
+    // One still in its worktree, one a keeper holds and one that went on stay where they are.
+    for (const [name, at] of [
+      ["resting", resting],
+      ["kept", there],
+      ["ahead", there],
+    ] as const) {
+      expect([existsSync(at(name, LOG_FILE)), existsSync(here("here", name))]).toEqual([true, false]);
+      expect(existsSync(here("runner", name, LOG_FILE))).toBe(true);
+    }
+    expect(taken.code).toBe(1);
+    expect(taken.err).toContain("1 campaigns were not taken over: ahead:");
+  });
+
+  it("says what it would take without --yes, and keeps on its host a campaign whose copy here lacks a path", () => {
+    const { made, there, here, listed } = ablation();
+    const env = { FAKE_CATALOGUE: JSON.stringify([listed("over", there), listed("apart", there)]) };
+    const snapshots = 'import { takeRetired, syncRuns } from "REPOSITORY/tools/runs/snapshots.ts";';
+    expect(made.run(`${snapshots} await syncRuns([]);`, env).code).toBe(0);
+    writeFileSync(there("apart", "late.txt"), "written since the copy");
+    const extract = (act: "take" | "describe") =>
+      made.run(
+        `${snapshots} import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; await takeRetired(hostsOf()[0]!, "${act}");`,
+        env,
+      );
+    const dry = extract("describe");
+    expect(dry.out).toContain(`would: runner over: held whole in ${here("here", "over")}`);
+    expect([existsSync(there("over")), existsSync(here("here", "over"))]).toEqual([true, false]);
+    expect(extract("take").out).toContain("runner apart: stays there, 1 paths differ from the copy here");
+    expect([existsSync(there("apart", LOG_FILE)), existsSync(here("runner", "apart", LOG_FILE))]).toEqual([
+      true,
+      true,
+    ]);
+    expect([existsSync(there("over")), existsSync(here("here", "over", LOG_FILE))]).toEqual([false, true]);
   });
 });
 

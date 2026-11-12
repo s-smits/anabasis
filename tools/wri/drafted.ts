@@ -115,10 +115,8 @@ function failedRows(events: readonly LogEvent[]): string[] {
   const failed = calls.filter(({ isError }) => isError);
   return [
     `drafting calls: ${String(calls.length)}, ${String(failed.length)} failed`,
-    ...failed.map(
-      ({ id, turn, tool, text }) =>
-        `  ${id} turn ${String(turn ?? "?")} ${tool}: ${clip(text.split("\n")[0] ?? "")}`,
-    ),
+    // A failed call's own output can hold what its author computed, so only where it fell is said.
+    ...failed.map(({ id, turn, tool }) => `  ${id} turn ${String(turn ?? "?")} ${tool}`),
   ];
 }
 

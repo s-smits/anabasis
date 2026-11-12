@@ -30,7 +30,7 @@ to go in one sitting, is the session's judgement. Read the script first and deci
 | a fix is ready | stack-pr's `stack.ts`, repository-practice's `preflight.ts` | step 4, its before-and-after, then step 5 |
 | a run bills while its milestone stays put | `runs pulse <name>`, `wri.ts read --log <log>` | "A stall", then "The walk" |
 | a step has stood for two days, or two sessions hold one step | the hours `due` prints; the rows of `cycle.md` | take it, pass it in `deviations.md`, or name its one holder in `cycle.md` |
-| a jobstat run is paused with a reference the starter has confirmed and no read has scored | the last read's prediction file; `score.ts table` over the store | "The outside aim": the prediction and the dry run now, the rollouts on the operator's word |
+| a jobstat run has stopped with a promoted reference no read has scored | its lane 27 report; the last read's prediction file; `score.ts table` over the store | "The outside aim": the audit's grade, the prediction and the dry run now, the rollouts once `cycle.md` names the login and the budget |
 | a handover is due, or a timer fires with nothing to do | `timers.ts <the session's transcripts>` | "Timers": retire or retime it; then the five points |
 
 ## The release cycle
@@ -333,13 +333,36 @@ The loop serves the aim in three ways:
   (`studies/shared/claude-export.ts`). A defect in what the export carries or tells the solver (the
   backlog's items 5 and 12 to 14) is fixed at its owner before the next read, since it is wrong
   whichever side led, and it is the one lever on the score that touches no campaign.
-- **Directly, by reading it**: the newest confirmed jobstat reference on the tasks below, once its
-  run is paused.
+- **Directly, by reading it**: each jobstat run's newest promoted reference on the tasks below,
+  once the run has stopped.
 
 Nothing of the benchmark crosses into a campaign. No seat, prompt, check or query hears its tasks,
 rubrics or scores (`AGENTS.md`, section 1, "An outside benchmark against fitting the query to it";
 rules 2, 3 and 9); the query is the operator's and is bounded against its origin; and a bench score
 promotes nothing and is never a step.
+
+### One jobstat run always, read at its end
+
+One of the live full runs is always a jobstat run, also where one slot is all there is (operator,
+12 November 2026), so a freed slot goes to jobstat first wherever none is live. When a jobstat run
+stops at its trigger, its newest promoted reference is read on the eight tasks below, confirmed or
+not, unless the run's blind audit finds it inferior: lane 27 of its investigation, which grades
+each kept version before reading any result, puts its soundness at 2 or below (broken, fitted or
+churn) or reads it as bloat, a weight that grew while soundness stayed flat. The audit therefore
+comes before the read, and its grade and weight go into the read's prediction file before any
+rollout.
+
+Each read, and each read the audit skipped, adds one row to `outside-reads.md` in the cycle's
+folder, counts only:
+
+```text
+| run's domain and date | digest | step: tally, measure that carried it | starter read: confirmed, written-after tally | audit: soundness, weight | fair five: reference, Starter beside it | skipped |
+```
+
+The table is the ablation of the loop's own readings against the benchmark: whether a step, a
+confirmation or the audit's grade tells in advance what the benchmark rewards. No column is read
+against another before six rows hold a score, and a skipped row holds none, so the audit's skips are
+the part of it the table cannot test.
 
 ### A reference's read
 
@@ -375,7 +398,7 @@ Starter is rolled
 beside the reference in the same sitting, and the fair five at two rollouts a side (20 rollouts)
 reads more than the eight at one (16), since it gives the Starter's spread on the tasks compared.
 
-1. **Arms.** The newest reference the starter has confirmed and no read has scored, named to
+1. **Arms.** The run's newest promoted reference that no read has scored, named to
    `--harness` by its letter or whole digest (`runs view <name>` prints the letter beside the
    digest's head), under a label taken from the digest, since a label binds one exported tree and
    one rollout a task for good. Beside it
@@ -401,8 +424,10 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
    `<store>/trees/<label>` and no record. Where it cannot find the kept harness of a run another
    host holds, fetch the run first (`bun run runs fetch <name>`). Without `--judge-log` no
    judgement's dollars are recorded and the table prints `judge ?`.
-4. **Run on the operator's word**, which names the login, the budget, the moment and the size,
-   since a bench is a paid simulation beside the live runs: the same command with `--yes`, from a
+4. **Run on the operator's word.** The moment and the size stand (each jobstat run's end; the
+   eight tasks, the reference and a Starter beside it at one rollout a task), and the login and the
+   budget are the operator's, recorded in `cycle.md`; until they are, a read stops at its dry run.
+   A bench is a paid simulation beside the live runs: the same command with `--yes`, from a
    worktree at a published commit, with the shim running, the arms in turn and never two processes
    on one store, since a judgement's dollars are the shim log's rows inside its window. Every arm
    keeps the one condition `score.ts` states in its head comment. On the two bills on record a

@@ -366,13 +366,15 @@ handover (`zip-run`, `oracle-handover`). `bun run runs` lists the run CLI's verb
 
 **Which domains to run.** Jobstat is the domain v1.0 is built towards, and buffer is the control:
 its runs read against those of two, three and four weeks before, to show that a change did not
-regress. Run both, since they are far apart: a change that holds on both, surgical ones above all,
-plausibly generalises. Until jobstat climbs, put the effort there; before v1.0, read the other
-domains' newest runs against their past ones, find the change behind any regression and repair it.
+regress. One live run is always jobstat; run both, since they are far apart: a change that holds on
+both, surgical ones above all, plausibly generalises. Until jobstat climbs, put the effort there;
+before v1.0, read the other domains' newest runs against their past ones, find the change behind
+any regression and repair it.
 
-**The outside aim.** A confirmed jobstat reference is also read on JobBench, under that benchmark's
-own judge (`studies/harness2/`), against three baselines kept apart: the bareSolver (the Starter,
-exported), stock Claude Code with an empty guide (Harness²'s Base) and Harness²'s held-out arm. The
+**The outside aim.** Each jobstat run's newest promoted reference is also read on JobBench as the
+run stops, unless its blind audit finds it inferior, under that benchmark's own judge
+(`studies/harness2/`), against three baselines kept apart: the bareSolver (the Starter, exported),
+stock Claude Code with an empty guide (Harness²'s Base) and Harness²'s held-out arm. The
 operator's aims, in order, are a built harness above the bareSolver, level with the held-out arm,
 then above it. Read a deficit as a difference in conditions first (what the export carries and tells
 the solver, the interpreter and its packages, the day) and as the harness only once those are equal;

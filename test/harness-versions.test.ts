@@ -1,8 +1,8 @@
 // The harness-versions script of the harness-audit skill, over a campaign written here with the
 // log's own `append`: the starter, the child one session froze from it (the account's worked
 // harness, one program and a guide), and a copy of the child kept under a digest it does not open
-// as, which `keptAs` refuses and the listing has to name. Beside them lies a shared tool tree
-// (`tree-*`), which a kept state links to and which is no harness.
+// as, which the listing has to name and a diff has to read where it sits. Beside them lies a shared
+// tool tree (`tree-*`), which a kept state links to and which is no harness.
 import { afterAll, describe, expect, it } from "bun:test";
 import { type Version, versionsOf } from "#skills/harness-audit/scripts/harness-versions.ts";
 import { recordCondition } from "../src/kernel/condition.ts";
@@ -236,7 +236,7 @@ describe("the command", () => {
     expect(run(log, "--name", "camp").code).not.toBe(0);
   });
 
-  it("refuses a control, a harness with no parent on record, and a state that opens as another", () => {
+  it("refuses a control, a harness with no parent on record, and a digest the campaign does not keep", () => {
     for (const [harness, fact] of [
       ["programs-of:latest", "no control"],
       ["starter", "no parent"],
@@ -245,8 +245,19 @@ describe("the command", () => {
       expect(refused.code).toBe(2);
       expect(refused.stderr).toContain(fact);
     }
-    const misread = run(log, "--diff", misnamed, "--against", "starter");
-    expect(misread.code).toBe(1);
-    expect(misread.stderr).toContain("no longer opens as the harness it is kept as");
+    const unkept = run(log, "--diff", "f".repeat(64), "--against", "starter");
+    expect(unkept.code).toBe(1);
+    expect(unkept.stderr).toContain("is no harness this campaign keeps");
+  });
+
+  it("diffs a state that opens as another harness where it is kept, and says how it opens", () => {
+    // A copy of a campaign leaves out what its harness installed, so there a kept state opens as
+    // another digest; the files it keeps still read against its parent's.
+    const [header, note, ...moves] = run(log, "--diff", misnamed, "--against", "starter").stdout.split("\n");
+    expect(header).toBe(`${misnamed} against ${starter}`);
+    expect(note).toContain(`${short(misnamed)} opens as ${short(child)}, not as kept`);
+    const [, ...kept] = run(log, "--diff", child, "--against", "starter").stdout.split("\n");
+    expect(kept.join("\n")).not.toContain("not as kept");
+    expect(moves).toStrictEqual(kept);
   });
 });

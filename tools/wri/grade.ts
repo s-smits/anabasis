@@ -104,7 +104,11 @@ export function withSet(answer: JsonValue, sets: readonly string[]): { answer: J
     // A lane names a field as it reads it (`cohort.x`); a probe roots it (`$.cohort.x`).
     const path = given.startsWith("$") ? given : `$.${given}`;
     const held = resolveJsonPath(changed, path);
-    if (at === -1 || !held.found) throw new Error(`--set ${each}: ${path} is no field of the answer`);
+    if (at === -1 || !held.found) {
+      throw new Error(
+        `--set ${each}: ${path} is no field of the answer (an index goes in brackets: items[2].limit)`,
+      );
+    }
     let value: JsonValue;
     try {
       value = capturedJsonParse(each.slice(at + 1));

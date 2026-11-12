@@ -12,7 +12,9 @@ rule, cap and any `--predict`; a continuation refuses a change.
 ## The scored draw
 
 The draw (`poolOf`) takes `--target` held-out tasks, newest epoch first and within it those held
-since the last comparison began, ordered by the contract's hash. It leaves out tasks awaiting review
+since the last comparison began, ordered by the contract's hash. It holds one task of each family,
+a frontier task before a retained one and of each the first held, since a family's tasks share a
+construction and their results move together. It leaves out tasks awaiting review
 (no valid answer after two comparisons, "Awaiting task review" in `limits-and-room.md`) and marks as
 **exhausted** a task the reference answered in every one of its own solves in its last two
 comparisons (`ownOf`). Only the reference's solves count here, so which task the candidate won moves

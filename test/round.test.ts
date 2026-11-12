@@ -621,11 +621,6 @@ describe("a round", () => {
           of: HELD,
         },
         retained: "unmeasured",
-        // Each family's tallies, from the same rows, sum to the whole.
-        families: {
-          f1: { frontier: { wins: 2, losses: 0, ties: 0 } },
-          f2: { frontier: { wins: 2, losses: 0, ties: 0 } },
-        },
         overlap: null,
         // Each harness by itself: the reference answered no task validly, the new one all, twice.
         // Every task is informative for the reference: a valid answer to each is on record, the
@@ -1602,16 +1597,17 @@ describe("a standalone comparison", () => {
     // The fixture compares a kept harness with a different starter: make the kept one the reference.
     append(s.log, "harness.promoted", { harness: s.old, from: s.starter.digest, rests: [] });
     for (const version of ["s6", "s7", "s8", "s9"]) {
-      append(s.log, "task.proposed", { version, family: version < "s8" ? "f3" : "f4" });
+      append(s.log, "task.proposed", { version, family: `f-${version}` });
       append(s.log, "task.gate", passedPackageCheck(version));
     }
     // Two comparisons in which the reference answered s1 in every solve exhaust it, and the hash
     // keeps a third of the exhausted, here s1 itself, in the draw as retained. s2 to s5 were held
-    // out before the promotion and the reference stood in no comparison of them: retained too.
+    // out before the promotion and the reference stood in no comparison of them: retained too, at
+    // one task a family, so s1 stands for the first family and s3 for the second (`poolOf`).
     await checkpoint(s.compare("g1", { tasks: ["s1"] }));
     await checkpoint(s.compare("g2", { tasks: ["s1"] }));
     const tasks = ["s1", "s6", "s7", "s8", "s9"];
-    expect(poolOf(read(s.log)).retained.toSorted()).toEqual(["s1", "s2", "s3", "s4", "s5"]);
+    expect(poolOf(read(s.log)).retained.toSorted()).toEqual(["s1", "s3"]);
     // One draw gives the scored set and the retained tasks in it, one for each three frontier
     // tasks, and the start records both.
     const drawn = scoredSet(read(s.log), 12, "c");
@@ -1809,6 +1805,37 @@ describe("the scored set", () => {
     expect(scoredSet([], 12, "contract-a")).toEqual({ tasks: [], retained: [] });
   });
 
+  it("scores one task of each family, the first held, so that a construction written three times is one result", () => {
+    const families: LogEvent[] = [
+      ...heldOut(["a1", "a2", "a3"], "fa"),
+      ...heldOut(["b1", "b2"], "fb"),
+      ...heldOut(["c1", "c2"]),
+    ];
+    // Two named families and two tasks that name none, each a family of its own.
+    const first = ["a1", "b1", "c1", "c2"];
+    expect(drawn(families, 12).toSorted()).toEqual(first);
+    // A sibling written later takes no place, and a target under the families held takes as many
+    // families, never two tasks of one.
+    expect(drawn([...families, ...heldOut(["b3"], "fb")], 12).toSorted()).toEqual(first);
+    expect(drawn(families, 2).filter((task) => !first.includes(task))).toEqual([]);
+    // A family's next task stands for it once its first is released for practice.
+    const released = { at, kind: TASK_STATE, data: { version: "a1", state: "released" } } as const;
+    expect(drawn([...families, released], 12).toSorted()).toEqual(["a2", "b1", "c1", "c2"]);
+    // After a promotion the older tasks are retained. A family holds a frontier task before a
+    // retained one, so fa's older tasks leave the set and fb's, which has no task since, is read
+    // as retained: no family is read twice.
+    const climbed: LogEvent[] = [
+      ...heldOut(["a1", "a2"], "fa"),
+      ...heldOut(["b1", "b2"], "fb"),
+      { at, kind: "harness.promoted", data: { harness: "h1" } } as const,
+      ...heldOut(["a3"], "fa"),
+      ...heldOut(["d1", "d2", "d3"]),
+    ];
+    const after = scoredSet(climbed, 12, "contract-a");
+    expect(after.tasks.toSorted()).toEqual(["a3", "b1", "d1", "d2", "d3"]);
+    expect(after.retained).toEqual(["b1"]);
+  });
+
   it("takes the newest epoch's tasks first, and reads the epochs before the reference never stood in as retained", () => {
     // The simulated climb of 10 October: after two promotions a draw over every epoch at once
     // took two or three tasks the reference failed out of 19, and three comparisons read one win
@@ -1943,11 +1970,12 @@ describe("the scored set", () => {
     // s2 to s4 were answered by both harnesses in every solve of both comparisons: exhausted, and
     // retained as a check on regression. Until 16 October two thirds of them left the draw.
     // s5, held out before the promotion and never scored, is retained beside them, and with no
-    // frontier task left the draw takes none.
+    // frontier task left the draw takes none. Of the retained one task a family is scorable: s2 for
+    // the first family, whose s1 waits, and s3 for the second.
     const pool = poolOf(read(s.log));
     expect(pool).toMatchObject({ awaiting: ["s1"], frontier: [] });
-    expect(pool.retained.toSorted()).toEqual(["s2", "s3", "s4", "s5"]);
-    expect(pool.exhausted.toSorted()).toEqual(["s2", "s3", "s4"]);
+    expect(pool.retained.toSorted()).toEqual(["s2", "s3"]);
+    expect(pool.exhausted.toSorted()).toEqual(["s2", "s3"]);
     expect(scoredSet(read(s.log), 12, "c")).toEqual({ tasks: [], retained: [] });
     // Named for a comparison all the same, it is refused: the draw leaves it out, and a name
     // was the one way past that (2026-10-09).

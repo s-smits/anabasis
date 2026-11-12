@@ -119,9 +119,8 @@ function scoredTasks(log: Log, move: ComparisonMove, tier: Tier): ScoredTask[] {
 /** What a comparison's report says beside its test, read as counts and shares: no task is named.
  *  Null for a report that compared nothing. */
 function sensitivityOf(report: Report): Sensitivity | null {
-  const { scored, frontier, valid, noise, families, overlap } = report;
+  const { scored, frontier, valid, noise, overlap } = report;
   if (scored === null) return null;
-  const untied = Object.values(families ?? {}).map(({ frontier: { wins, losses } }) => wins + losses);
   // The set the step was read on: the scored tasks, or the frontier in a report before 20 October;
   // untied on the scores the step reads (`steppedOf`).
   const test = testedSet(scored, frontier);
@@ -138,10 +137,6 @@ function sensitivityOf(report: Report): Sensitivity | null {
     overlap: overlap === null ? null : { with: overlap.with, tasks: overlap.tasks.length },
     billed: report.billed,
     noise: noise === null ? null : { flips: noise.flips, detectable: noise.detectable ?? null },
-    families:
-      families === null
-        ? null
-        : { count: untied.filter((each) => each > 0).length, largest: Math.max(0, ...untied) },
   };
 }
 

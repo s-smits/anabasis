@@ -9,6 +9,7 @@ import { drafting } from "../src/examiner/draft.ts";
 import { FIELDS, GRADES, LADDER, REACH } from "../src/examiner/ladder.ts";
 import { systemPrompt } from "../src/examiner/prompt.ts";
 import { ROOM } from "../src/kernel/compare.ts";
+import { poolOf } from "../src/kernel/reports.ts";
 
 /** A drafting session's system prompt. */
 const DRAFTING = drafting(
@@ -53,6 +54,22 @@ describe("the Examiner's ladder", () => {
     expect(systemPrompt("unseen", "given")).toContain(LADDER);
     expect(DRAFTING).toContain(REACH);
     for (const { rungs } of FIELDS) for (const rung of rungs) expect(DRAFTING).not.toContain(rung);
+  });
+
+  it("tells a writing session the unit a comparison scores, which the pool counts", () => {
+    // Read on 12 November: one buffer campaign wrote 44 tasks under one family a session, which a
+    // comparison that scores one task a family never admits, and the author heard nothing of it.
+    const held = ["a", "b"].flatMap((version) => [
+      { at: "2026-11-12T00:00:00.000Z", kind: "task.proposed" as const, data: { version, family: "one" } },
+      {
+        at: "2026-11-12T00:00:00.000Z",
+        kind: "task.gate" as const,
+        data: { version, gate: 1, outcome: "passed" },
+      },
+    ]);
+    expect(poolOf(held).scorable).toEqual(["a"]);
+    expect(systemPrompt("in-home", "none")).toContain("one held-out task of each family");
+    expect(DRAFTING).not.toContain("one held-out task of each family");
   });
 
   it("tells a drafting session the floor two valid answers are compared at, and the export that measures them", () => {

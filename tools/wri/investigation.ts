@@ -312,7 +312,7 @@ function predicting(owed: readonly Prediction[]): string[] {
   if (first === undefined) return [];
   return [
     "## Predictions this lane resolves",
-    `The prior state names this lane on the ${owed.length === 1 ? "row" : "rows"} below. Recount each from the log, whatever else the lane finds, and give each one line under \`## Predictions\` in your report: \`${PREDICTION} <id>: <${RESOLUTIONS.join(" | ")}>\`, then the count that settles it. A row whose trigger never came is unreached; the collector refuses a report that leaves a row out.`,
+    `The prior state names this lane on the ${owed.length === 1 ? "row" : "rows"} below. Recount each from the log, whatever else the lane finds, and give each one line under \`## Predictions\` in your report: \`${PREDICTION} <id>: <${RESOLUTIONS.join(" | ")}>\`, then two counts: how often the row's trigger occurred in the log, and how often the event its mechanism writes followed. A row whose trigger never came is unreached, and one held on a mechanism that ran and moved no reading says so; the collector refuses a report that leaves a row out.`,
     [first.head, first.head.replaceAll(/[^|]+/g, " --- "), ...owed.map(({ row }) => row)].join("\n"),
   ];
 }
@@ -362,7 +362,7 @@ function form(
       ...(open
         ? [
             "## Predictions",
-            `${PREDICTION} <id>: <${RESOLUTIONS.join(" | ")}>, then the count that settles it; a line for each row the lane's prompt hands it, and no section where it hands none`,
+            `${PREDICTION} <id>: <${RESOLUTIONS.join(" | ")}>, then how often its trigger occurred and how often its event followed; a line for each row the lane's prompt hands it, and no section where it hands none`,
             "",
           ]
         : []),

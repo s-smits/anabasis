@@ -134,10 +134,12 @@ already answers the question; level with it is a strong reading and above it the
     costs about five times the k=1 record in sessions, and only what it delivers is judged, since
     no session of the build reads a grade; that is an estimate to
     reprice from the first task; the ablation waits for a login with room and the operator's cap.
-19. **Roll the three arms afresh once the current batch of fixes has landed on the stack.** A
-    fresh Starter, Harness² held-out again, and the jobstat reference of a fresh campaign after at
-    least two promotions, the second confirmed by its starter read, over all eight tasks in one
-    sitting (run-improvement-campaign, "The outside aim"). No stored record stands in for an arm:
+19. **Roll the arms afresh in one sitting, for one full comparison table, once the logins' weeks
+    have reset and the current batch of fixes has landed on the stack.** A fresh Starter at two
+    rollouts a task, Harness² held-out again, and the reference of every jobstat run that reached
+    two promotions and has no read (four were investigated from 10 to 12 November with none), each
+    that can still be exported, over all eight tasks (run-improvement-campaign, "The outside aim").
+    Harness² at k=5 joins the same table once item 18's port exists. No stored record stands in for an arm:
     the export and the scoring changed after every record in the store but those of the last two
     arms of 9 November, and item 16 changes what a table prints. It runs after the batch, on the
     operator's word for the paying login and the cap, with its prediction written first.
@@ -298,3 +300,13 @@ already answers the question; level with it is a strong reading and above it the
   all 8 or 10 queries further in 14 hours?", then, on the order, "yeah so after full
   improvement+simulation etc". The three arms and the note's ablation are rolled once the
   running campaigns' iteration is through (item 19).
+- **12 November.** The store's records were read again: no arm was judged after 9 November, though
+  four jobstat runs investigated from 10 to 12 November had promoted twice each, and no
+  `outside-reads.md` existed. The Starter's two arms on record differ by 20 of 66 and 16 of 68
+  points on the two fair tasks both hold. The operator: "we need to rerun starter on all 8 ... and
+  also run harness2 on k=5", then "we should upgrade the Skill(s) to really demand this and also
+  have a full comparison table in the future when [two logins] fully reset", "Also attune WRI for
+  this", "or at least WRI invocations that we for jobstat should [check] if we did the 8 tasks
+  already". So the iteration's driver now asks a jobstat run's investigation for its row (the
+  `outside` gate of `wri2p2.ts next`), a read that waits is recorded as owed, and item 19 rolls
+  every owed reference in one sitting for one table.

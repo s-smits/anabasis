@@ -212,6 +212,32 @@ describe("the next step of an investigation", () => {
     expect(step()[0]).toStartWith("step: isolated");
   });
 
+  it("owes a stopped jobstat run its row in outside-reads.md, scored, skipped or owed, and no other domain one", () => {
+    const run = "jobstat-fresh-opus-forkedPR600";
+    const { ledger, write, step, lone } = folder("outside", run, true);
+    lone(4, "launch.json");
+    ledger(`predictions-${run}.md`, table(["P1"]));
+    ledger(`outcomes-${run}.md`, table(["P1"], "held"));
+    expect(step()[0]).toStartWith(`step: outside · ${run} has no row in outside-reads.md`);
+    // A row for another run leaves it owed.
+    const head = "| run | digest | fair five |\n| --- | --- | --- |\n";
+    ledger("outside-reads.md", `${head}| jobstat-fresh-opus-forkedPR599 | abc | 166, 192 |\n`);
+    expect(step()[0]).toStartWith("step: outside");
+    // A read that waits for a login is recorded as owed, which passes the gate and keeps the debt on record.
+    ledger("outside-reads.md", `${head}| ${run} | abc | owed: no login with room |\n`);
+    expect(step()[0]).toStartWith("step: vet");
+    ledger("outside-reads.md", "");
+    write("deviations.md", `| step | reason |\n| --- | --- |\n| outside:${run} | no reference to read |\n`);
+    expect(step()).toContain(`deviated: outside:${run} · no reference to read`);
+    // The same folder for a run of another domain never meets the gate.
+    const buffer = "buffer-fresh-opus-forkedPR600";
+    const other = folder("outside-other", buffer, true);
+    other.lone(4, "launch.json");
+    other.ledger(`predictions-${buffer}.md`, table(["P1"]));
+    other.ledger(`outcomes-${buffer}.md`, table(["P1"], "held"));
+    expect(other.step()[0]).toStartWith("step: vet");
+  });
+
   it("walks an iteration through its isolated lanes, each run's ledgers, the read across and a fork's carry", () => {
     const { dir, cycle, write, ledger, step, lone } = folder("iteration", "r", true);
     expect(step()[0]).toStartWith("step: isolated");

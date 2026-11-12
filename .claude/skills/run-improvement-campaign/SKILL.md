@@ -120,8 +120,8 @@ owed steps only, as a timer takes it.
 1. **Trigger.** Whichever comes first: two promotions, twelve hours since the opening, a scored
    comparison that left no task untied, or an ending after a comparison. At a live run's trigger
    `wri2p2.ts` prints `pause`: run its command (`runs pause <name> --after reported --yes`, with
-   nohup), which stops the run at the first point after its next comparison reports with no
-   comparison, Examiner session or draft open (operator, 10 November). The comparison's tally and
+   nohup), which stops the run at the first point after its next comparison reports with nothing
+   but the Builder's conversation open (operator, 10 November). The comparison's tally and
    reading are one event written once every solve has finished, so nothing of it is lost; a step
    the pause lands between its report and its promotion is promoted at the run's next move
    (`decide`, "read a step, and was not promoted"). After two promotions that next comparison is

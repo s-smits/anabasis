@@ -152,7 +152,9 @@ in the one that wrote each report before the next lane. With a smaller budget, r
 3. **Harness (12 to 16)**, lane 12 first.
 4. **Supply (7 to 11), solve (24), economy (25), runs (26).**
 5. **Climb (21 to 23, 27, 28, 30, 31)**: open it before anyone is told a campaign improved a harness. Lane 27
-   runs from the start.
+   runs from the start. In a jobstat run's iteration its grade also decides whether the newest
+   promoted reference is read on the outside benchmark, and the iteration's `outside` gate asks
+   whether that read has a row yet (run-improvement-campaign, "The outside aim").
 
 In a release cycle, launch every lane at once and synthesise from the reports in hand within the
 twelve-hour improvement window (run-improvement-campaign). `--lanes` builds a named lane without its

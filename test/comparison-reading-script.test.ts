@@ -8,7 +8,7 @@ import { drawLines, drawOf } from "#skills/comparison-reading/scripts/draw.ts";
 import { sideGap } from "#tools/wri/pairs.ts";
 import { scoresRead, sizeOf } from "#skills/comparison-reading/scripts/size.ts";
 import { rowsOf, zoneRows } from "#skills/comparison-reading/scripts/reading.ts";
-import { starterReads } from "../src/campaign/climb.ts";
+import { epochLine, epochsOf, starterReads } from "../src/campaign/climb.ts";
 import { flipP } from "../src/kernel/compare.ts";
 import { clearing } from "../src/kernel/size.ts";
 import { type EventKind, LOG_FILE, type LogEvent } from "../src/kernel/log.ts";
@@ -246,13 +246,13 @@ describe("a promotion's starter read, split by what its tasks had been through",
 
   /** A promotion on the seven chosen tasks, then a starter read of those, of `before` tasks written
    *  before it and drawn only now, and of `after` tasks written after it, each with its outcomes. */
-  const readOf = (before: number, after: Readonly<Record<string, string>>) => {
+  const logOf = (before: number, after: Readonly<Record<string, string>>): LogEvent[] => {
     const undrawn = Array.from({ length: before }, (_, nth) => `undrawn-${String(nth)}`);
     const outcomes = {
       ...Object.fromEntries([...chose, ...undrawn].map((task) => [task, "PP FF"])),
       ...after,
     };
-    return starterReads([
+    return [
       ...[...chose, ...undrawn].flatMap((task) => gate(task)),
       ...comparison("g-1", [STARTER, NEW], Object.fromEntries(chose.map((task) => [task, "FF PP"])), {
         reading: "step",
@@ -261,8 +261,13 @@ describe("a promotion's starter read, split by what its tasks had been through",
       { at: AT, kind: "harness.promoted", data: { harness: NEW, from: STARTER, rests: [] } },
       ...Object.keys(after).flatMap((task) => gate(task, "x-1")),
       ...comparison("g-2", [NEW, STARTER], outcomes, { reading: "step", differences: scores(7 + before, 0) }),
-    ])[0]?.after;
+    ];
   };
+  const readOf = (before: number, after: Readonly<Record<string, string>>) =>
+    starterReads(logOf(before, after))[0]?.after;
+  /** The climb's line of the epoch a log's first promotion opens, with the log's starter reads. */
+  const climbLine = (events: readonly LogEvent[]) =>
+    epochsOf(events).map((epoch) => epochLine(epoch, undefined, starterReads(events)))[1];
   const six = (outcome: string) =>
     Object.fromEntries(Array.from({ length: 6 }, (_, nth) => [`after-${String(nth)}`, outcome]));
 
@@ -275,6 +280,21 @@ describe("a promotion's starter read, split by what its tasks had been through",
   it("reads no step from six tasks written before the promotion and won, which leaving out the chosen tasks alone would", () => {
     expect(readOf(6, {})).toBe("too few");
     expect(readOf(6, { lost: "FF PP" })).toBe("too few");
+  });
+
+  it("says the tasks written after apart on the climb line with the sessions that wrote them, and nothing where the read held none", () => {
+    expect(climbLine(log)).toContain(
+      "against the starter 8 won, 1 lost, 1 tied, a step, so its promotion is confirmed, of which 0 won, 1 lost, 1 tied on the tasks 2 Examiner sessions wrote after it;",
+    );
+    expect(climbLine(logOf(0, six("FF PP")))).toContain(
+      "of which 0 won, 6 lost, 0 tied on the tasks 1 Examiner session wrote after it;",
+    );
+    // A read whose every task was written before the promotion has no such slice to say.
+    expect(climbLine(logOf(6, {}))).toContain("0 won, 13 lost, 0 tied, no step;");
+    // A caller without the reads prints the pooled tally alone, as every line did before.
+    expect(epochsOf(log).map((epoch) => epochLine(epoch))[1]).toContain(
+      "1 tied, a step, so its promotion is confirmed;",
+    );
   });
 
   it("finds no read before a starter comparison reports, and none in a log with no promotion", () => {

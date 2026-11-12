@@ -45,17 +45,19 @@ else if (script.includes("status") && script.includes("ANA_HOP")) console.log(pe
 else console.log(process.env.FAKE_PREPARED);`,
   "rsync": `${RECORD}
 import { cpSync, mkdirSync, writeFileSync } from "node:fs";
-import { basename, dirname, resolve } from "node:path";
+import { basename, dirname, relative, resolve } from "node:path";
 const source = args.at(-2);
 const remote = source.includes(":");
 const quoted = remote ? source.split(":").slice(1).join(":").slice(0,-1) : "";
 const from = remote ? quoted.slice(1,-1).replaceAll("'\\\\''", "'") : source;
 const target = args.at(-1);
 const into = target.includes(":") ? target.split(":").slice(1).join(":").replace(/\\/$/, "").slice(1,-1) + "/" : target;
-if (args.includes("-n")) { const real = Bun.spawnSync(["/usr/bin/rsync", "-a", "-n", "-c", "--itemize-changes", from + "/", into], {env: {...process.env, PATH: "/usr/bin:/bin"}}); process.stdout.write(real.stdout); process.exit(real.exitCode); }
+const left = args.filter((arg) => arg.startsWith("--exclude=/") && arg !== "--exclude=/*");
+if (args.includes("-n")) { const real = Bun.spawnSync(["/usr/bin/rsync", "-a", "-n", "-c", "--itemize-changes", ...left, from + "/", into], {env: {...process.env, PATH: "/usr/bin:/bin"}}); process.stdout.write(real.stdout); process.exit(real.exitCode); }
 if (process.env.FAKE_TRANSFER_FAIL === "1" || (process.env.FAKE_TRANSFER_FAIL_FROM !== undefined && from.includes(process.env.FAKE_TRANSFER_FAIL_FROM))) { mkdirSync(into, {recursive: true}); writeFileSync(into + "log.jsonl", "partial"); process.exit(23); }
 const kept = args.filter((arg) => arg.startsWith("--include=/")).map((arg) => new RegExp("^" + arg.slice(11).replaceAll(".", "[.]").replaceAll("*", ".*") + "$"));
-cpSync(from, into, {recursive: true, verbatimSymlinks: true, filter: (file) => !args.includes("--exclude=/*") || resolve(file) === resolve(from) || (dirname(file) === resolve(from) && kept.some((name) => name.test(basename(file))))});`,
+const gone = left.map((arg) => arg.slice(11).replace(/\\/$/, ""));
+cpSync(from, into, {recursive: true, verbatimSymlinks: true, filter: (file) => gone.includes(relative(resolve(from), resolve(file))) ? false : !args.includes("--exclude=/*") || resolve(file) === resolve(from) || (dirname(file) === resolve(from) && kept.some((name) => name.test(basename(file))))});`,
   "git": `${RECORD}
 import { mkdirSync, rmSync } from "node:fs";
 if (args.includes("fetch")) process.exit(process.env.FAKE_FETCH_FAIL === "1" ? 1 : 0);

@@ -30,7 +30,7 @@ to go in one sitting, is the session's judgement. Read the script first and deci
 | a fix is ready | stack-pr's `stack.ts`, repository-practice's `preflight.ts` | step 4, its before-and-after, then step 5 |
 | a run bills while its milestone stays put | `runs pulse <name>`, `wri.ts read --log <log>` | "A stall", then "The walk" |
 | a step has stood for two days, or two sessions hold one step | the hours `due` prints; the rows of `cycle.md` | take it, pass it in `deviations.md`, or name its one holder in `cycle.md` |
-| a jobstat run has stopped with a promoted reference no read has scored | its lane 27 report; the last read's prediction file; `score.ts table` over the store | "The outside aim": the audit's grade, the prediction and the dry run now, the rollouts once `cycle.md` names the login and the budget |
+| a jobstat run has stopped with a promoted reference no read has scored | its lane 27 report; the last read's prediction file; `score.ts table` over the store | "The outside aim": the audit's grade, the prediction and the dry run now, the rollouts once `cycle.md` names the login and the budget, and the run's row in `outside-reads.md` either way, which `wri2p2.ts next` asks for |
 | a handover is due, or a timer fires with nothing to do | `timers.ts <the session's transcripts>` | "Timers": retire or retime it; then the five points |
 
 ## The release cycle
@@ -172,7 +172,8 @@ owed steps only, as a timer takes it.
    top only where the cycle's word covers it; idle capacity measures nothing.
 
 `next` walks these gates in order: `open`, `instruct`, `lanes`, `reports`, `isolated`, `synthesise`;
-for each run `predictions`, `outcomes` and, for a fork, `carry`; then `vet`,
+for each run `predictions`, `outcomes`, for a fork `carry` and, for a jobstat run, `outside` (its
+row in `outside-reads.md`, "The outside aim"); then `vet`,
 `across`, `plan`, `implement`, `launch`, `forks` and `done`. A folder without `iteration.json` takes
 the shared gates only. Every gate but `done` is a default rather than a wall: a row
 `| <step> | <reason> |` in the folder's `deviations.md` (the step, or `<step>:<run>`) passes it, and
@@ -353,12 +354,29 @@ churn) or reads it as bloat, a weight that grew while soundness stayed flat. The
 comes before the read, and its grade and weight go into the read's prediction file before any
 rollout.
 
-Each read, and each read the audit skipped, adds one row to `outside-reads.md` in the cycle's
-folder, counts only:
+The read is owed from the moment the run stops, and its row in `outside-reads.md` in the cycle's
+folder is the receipt. The run's investigation checks for it: `wri2p2.ts next` holds a jobstat
+run's folder at its `outside` gate, after the run's ledgers and before the vetting, until a row
+names the run. A row is one of three kinds, counts only:
+
+- **scored**, once the eight tasks are judged;
+- **skipped**, with the audit's grade, or because the run promoted nothing;
+- **owed**, with what the read waits for (a login with room, the operator's budget). The dry run
+  still runs at once, since it exports the reference's tree into the store while the campaign's
+  installed packages exist. An owed row passes the gate and holds no fork back.
 
 ```text
-| run's domain and date | digest | step: tally, measure that carried it | starter read: confirmed, written-after tally | audit: soundness, weight | fair five: reference, Starter beside it | skipped |
+| run | digest | step: tally, measure that carried it | starter read: confirmed, written-after tally | audit: soundness, weight | fair five: reference, Starter beside it | first task and outside pair: reference, Starter | scored, skipped or owed |
 ```
+
+Owed reads are rolled together, oldest first, in the first sitting a login has room, ahead of any
+other paid simulation, with one fresh Starter at two rollouts a task beside them all instead of one
+for each. Each pass's report counts the rows still owed.
+
+`score.ts table --out <store> --tasks <the eight>` over the whole store is the full comparison
+table: every arm on record, task by task, with its sums over the fair five. It is printed into the
+iteration's report after every sitting, the arms of earlier sittings marked with their date, since
+arms scored on different days are confounded with the day.
 
 The table is the ablation of the loop's own readings against the benchmark: whether a step, a
 confirmation or the audit's grade tells in advance what the benchmark rewards. No column is read
@@ -416,8 +434,9 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
 3. **Prove the path without a model.** A read runs on the machine `ABLATION_HOST` names in
    `.env.runs`, which `runs retire` keeps clear of retired campaigns, and on this machine where it is
    unset. A campaign that ran on that machine is exported before its retire archives it (a day
-   after it goes idle): the copy that replaces it holds no installed package. The store, the JobBench checkout and the judge's shim are on that machine, named in the
-   last read's prediction file and in `cycle.md`.
+   after it goes idle): the copy that replaces it holds no installed package. The store, the JobBench checkout and the
+   judge's shim are named in the last read's prediction file and in `cycle.md`; every sitting
+   scores into that one store, so that one table holds every arm.
 
    ```sh
    bun studies/harness2/score.ts score --arm <campaign> --harness <kept> --name <label> \
@@ -430,7 +449,7 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
    judgement's dollars are recorded and the table prints `judge ?`.
 4. **Run on the operator's word.** The moment and the size stand (each jobstat run's end; the
    eight tasks, the reference and a Starter beside it at one rollout a task), and the login and the
-   budget are the operator's, recorded in `cycle.md`; until they are, a read stops at its dry run.
+   budget are the operator's, recorded in `cycle.md`; until they are, a read stops at its dry run and its row reads `owed`.
    A bench is a paid simulation beside the live runs: the same command with `--yes`, from a
    worktree at a published commit, with the shim running, the arms in turn and never two processes
    on one store, since a judgement's dollars are the shim log's rows inside its window. Every arm

@@ -53,7 +53,8 @@ const ENDED = new Map<string, string>(
     wall: "ended at its time limit",
     turns: "ended at its turn limit",
     crashed: "crashed: its conversation was lost to a provider or host error",
-    killed: "was killed",
+    // A stop and a pause end a session so (`endCut`, `tools/d2/harness-builder.ts`).
+    killed: "was cut when the run stopped, so only its notes and the harness above remain",
     stopped: "was stopped as the campaign's run ended",
   } satisfies Record<Built["ended"], string>),
 );

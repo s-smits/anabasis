@@ -11,8 +11,8 @@
  * holds a campaign of, in this worktree. `continue` runs a campaign again from its log in the
  * worktree that holds it, on the flags its last run kept (`lastLaunch`), less its name and its
  * total: the record holds the total, which a budget word may have set since, and `--budget` names
- * another. `pause` waits until the log has gained one more of the named event and no comparison,
- * Examiner session or draft is open, and then stops the run (`stop.ts`); `continue --after` is that
+ * another. `pause` waits until the log has gained one more of the named event and nothing but the
+ * Builder's conversation is open, and then stops the run (`stop.ts`); `continue --after` is that
  * pause and then the continue, which moves a run to another login or commit. `next`, the word a
  * pause takes where none is named, waits for the next solve that finishes or tool call any seat
  * records, having left a word that starts no further solve, once every open solve has finished, or
@@ -56,7 +56,7 @@
  * also carried the run's name, so a stop ended two process groups for one run. These verbs ask no
  * admission of a move (`7f0add79:docs/simplify.md`, D2): the command refuses what it refuses.
  */
-import { unfinished } from "#src/kernel/trace.ts";
+import { SEATS, traceKind, unfinished } from "#src/kernel/trace.ts";
 import { append, type LogEvent } from "#src/kernel/log.ts";
 import { PAUSE, pauseWaitMs } from "#src/campaign/word.ts";
 import { mkdirSync, openSync, statSync } from "#src/meta/filesystem.ts";
@@ -93,11 +93,11 @@ import { installAt, publishedAt } from "./code.ts";
 export const WAIT_HOURS = "0.25";
 
 /** The events a pause waits for one more of, by the word that names it: `next` is the smallest step
- *  a run completes, a finished solve or a recorded tool call of any seat. Words joined by `|` wait
- *  for the first of their events. */
+ *  a run completes, a finished solve or a recorded tool call of any seat, and `compacted` a
+ *  compaction of any seat's conversation. Words joined by `|` wait for the first of their events. */
 const AFTER = {
   next: ["solve.finished", "build.call", "draft.call", "exam.call", "referee.call", "solve.call"],
-  compacted: ["build.compacted"],
+  compacted: SEATS.map((seat) => traceKind(seat, "compacted")),
   reported: ["comparison.reported"],
   promoted: ["harness.promoted"],
   examined: ["exam.finished"],
@@ -135,29 +135,38 @@ export function loginEnv(env: Env, login: string | undefined) {
 
 const isWord = (word: string): word is keyof typeof AFTER => Object.hasOwn(AFTER, word);
 
-/** The kinds of event the words `after` names, or undefined where one of them names none, or where
+/** The kinds of event the words `after` names, refused where one of them names none, or where
  *  `next` is joined to another: it pauses at the next step, with its own word to the run and its own
- *  rest, and every other point lies past it. */
-const kindsOf = (after: string): readonly string[] | undefined => {
+ *  rest, and every other point lies past it. The dry form asks it too, and so refuses as `--yes` does. */
+function kindsOf(after: string): readonly string[] {
   const words = after.split("|");
-  const joined = words.length > 1 && words.includes("next");
-  return words.every(isWord) && !joined ? words.flatMap((word) => AFTER[word]) : undefined;
-};
+  if (!words.every(isWord) || (words.length > 1 && words.includes("next"))) {
+    throw new Error(`--after takes ${Object.keys(AFTER).join(", ")}, or several but next joined by |`);
+  }
+  return words.flatMap((word) => AFTER[word]);
+}
 
-/** How many events of the kinds `after` names `events` holds. */
-const countOf = (events: readonly LogEvent[], after: string) =>
-  events.filter((event) => kindsOf(after)?.includes(event.kind) === true).length;
+/** How many events of `kinds` `events` holds. */
+const countOf = (events: readonly LogEvent[], kinds: readonly string[]) =>
+  events.filter(({ kind }) => kinds.includes(kind)).length;
 
 /** Whether a pause may stop the run whose log is `events`: it holds more than `base` of the kinds
- *  `after` names, and no solve is open at the next step, or, past it, no comparison, Examiner session
- *  or draft. The Builder's conversation is open throughout a led campaign, and a pause cuts it: the
- *  campaign run again opens a new one on its notes. */
+ *  `after` names, and no solve is open at the next step, or, past it, nothing but the Builder's
+ *  conversation: no comparison, Examiner ask, draft, solve or Referee reading. The Builder's
+ *  conversation is open throughout a led campaign, and a pause cuts it: the campaign run again opens
+ *  a new one on its notes, from the last harness it practised or froze (`endCut`). A practice solve
+ *  and its reading are read since that conversation began: one a killed run left open stays open on
+ *  record, since `endCut` ends sessions only (3 of 65 campaigns since 1 November), and holds nothing. */
 export function restsAfter(events: readonly LogEvent[], after: string, base: number): boolean {
-  if (countOf(events, after) <= base) return false;
+  if (countOf(events, kindsOf(after)) <= base) return false;
   const open = unfinished(events);
-  return after === "next"
-    ? !open.some(({ of }) => of === "solve")
-    : !open.some(({ of }) => of === "exam" || of === "draft") && openComparisons(events).length === 0;
+  if (after === "next") return !open.some(({ of }) => of === "solve");
+  const led = events.slice(events.findLastIndex(({ kind }) => kind === "build.started"));
+  return (
+    !open.some(({ of }) => of === "exam" || of === "draft") &&
+    openComparisons(events).length === 0 &&
+    unfinished(led).every(({ of }) => of === "build")
+  );
 }
 
 /** How long a pause at the next step lets the open solves of the run whose log is `events` finish:
@@ -166,29 +175,20 @@ export function solvesMs(events: readonly LogEvent[]): number {
   return pauseWaitMs((recordedSetting(events)?.minutes ?? LIMITS.wallSeconds / 60) * 60);
 }
 
-/** The kinds `after` names, refused where `kindsOf` reads none, so the dry form refuses as `--yes` does. */
-function kindsNamed(after: string): readonly string[] {
-  const kinds = kindsOf(after);
-  if (kinds === undefined) {
-    throw new Error(`--after takes ${Object.keys(AFTER).join(", ")}, or several but next joined by |`);
-  }
-  return kinds;
-}
-
 async function pauseAt(run: Run, after: string): Promise<void> {
-  const kinds = kindsNamed(after);
+  const kinds = kindsOf(after);
   // One waiter a run: a `continue --after` would start again a run another's pause had stopped.
   const waiting = waiters(run.name);
   if (waiting.length > 0) {
     throw new Error(`${run.name} already waits to stop in process ${waiting.join(", ")}`);
   }
   const events = logEvents(run.path);
-  const base = countOf(events, after);
+  const base = countOf(events, kinds);
   const allowed = solvesMs(events);
   console.log(
     after === "next"
       ? `${run.name}: starting no further solve, and letting its open ones finish, ${String(allowed / 60_000)} minutes at most`
-      : `${run.name}: waiting for ${kinds.join(", ")} past ${String(base)}, with no comparison or Examiner session open`,
+      : `${run.name}: waiting for ${kinds.join(", ")} past ${String(base)}, with nothing but the Builder's conversation open`,
   );
   if (after === "next" && writers(run, processes()).length > 0) {
     append(run.path, "campaign.word", { word: PAUSE });
@@ -376,7 +376,7 @@ export async function continueRun(args: readonly string[]): Promise<void> {
   if (name === undefined) {
     throw new Misused();
   }
-  if (values.after !== undefined) kindsNamed(values.after);
+  if (values.after !== undefined) kindsOf(values.after);
   const run = runNamed(name);
   // Flags after `--` stand for the kept ones: a pack's path where the campaign was copied to
   // another host is that host's.
@@ -421,7 +421,7 @@ export async function pause(args: readonly string[]): Promise<void> {
     throw new Misused();
   }
   const after = values.after ?? "next";
-  kindsNamed(after);
+  kindsOf(after);
   const run = runNamed(name);
   if (!values.yes) return said(run, `would be stopped after its next ${after === "next" ? "step" : after}`);
   await pauseAt(run, after);

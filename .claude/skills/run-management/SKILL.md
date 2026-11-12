@@ -145,12 +145,18 @@ It refuses as `launch` does, refuses `--at` another commit while a comparison is
 a second GPT run on one machine, or a fleet it cannot count (`startRefusal`). A measured run continues
 at its opening commit; a fix is measured by a fresh run.
 
-`pause` waits for one more event its word names at a point with no comparison, Examiner session or
-draft open, then stops the run. The words are `compacted` (`build.compacted`), `reported`
-(`comparison.reported`), `promoted` (`harness.promoted`), `examined` (`exam.finished`) and
-`finished` (`build.finished`); words joined by `|`, as `reported|promoted`, wait for the first of
-their events. A pause right after `promoted` leaves that promotion's starter comparison unread. A pause cuts the Builder's
-conversation, so the continued campaign opens a new one on its notes. `continue --after <event>`
+`pause` waits for one more event its word names at a point where nothing but the Builder's
+conversation is open (no comparison, Examiner ask, draft, solve or Referee reading), then stops the
+run. The words are `compacted` (a compaction of any seat: `build`, `exam`, `draft`, `referee` or
+`solve`), `reported` (`comparison.reported`), `promoted` (`harness.promoted`), `examined`
+(`exam.finished`) and `finished` (`build.finished`); words joined by `|`, as `reported|promoted`,
+wait for the first of their events. A pause right after `promoted` leaves that promotion's starter
+comparison unread. No seat's conversation outlives its process (pi-durable's in-memory store, and
+Claude Code without a saved session), so a compaction is no better point to pause than another: a
+pause cuts the Builder's conversation and a resting Examiner's. The continued campaign opens a new
+Builder conversation on the cut one's notes, from the last harness it practised or froze, and tells
+it so (`startTold`); the next Examiner ask opens on the whole record and its kept home. Only
+`--after finished` loses nothing of the Builder's. `continue --after <event>`
 pauses and continues, which moves a run to another login or commit cleanly. `--after next`, the
 default, drains the run to save credit: no further solve starts, and it stops at the next finished
 solve or tool call, or a minute past the solve limit. Sessions spend until then; `runs stop` frees a

@@ -8,8 +8,8 @@
  * Each end is a host `ANA_HOSTS` lists or this machine, named by its own short host name or `here`
  * and the default source (27 October: the operator names every machine by its name); between two
  * hosts the folder passes through this machine, since rsync takes one remote side. The verb pauses
- * the campaign where it runs, at the next `--after` event with no comparison, Examiner session or
- * draft open (`runs pause`; one no process writes is taken as it is, and without
+ * the campaign where it runs, at the next `--after` event with nothing but the Builder's
+ * conversation open (`runs pause`; one no process writes is taken as it is, and without
  * `--after` the pause waits for the next `finished`), makes a worktree beside the destination's
  * repository at the commit the source's worktree stands at, takes the campaign's folder there whole
  * with rsync and checks that the log arrived as long as it left, sets the source's folder aside under

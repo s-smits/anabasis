@@ -33,7 +33,7 @@ import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import type { JsonValue } from "#src/meta/json-shape.ts";
-import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
+import { capturedSpawn, runtimeProcess, warn } from "#src/meta/process.ts";
 import { runCaptured } from "#src/meta/subprocess.ts";
 import { CARRIED, type Host, hostsOf, hostNamed, configuredRuntime, RUN_CAP } from "./host-config.ts";
 import { quoted, shellPath, sshScript, treeBun } from "./host-command.ts";
@@ -221,7 +221,7 @@ export async function askedScript(
       });
       const elapsedMs = Math.round(performance.now() - started);
       if (exitCode !== 0) {
-        console.error(
+        warn(
           `${host.name} did not answer ${args[0] ?? ""} (${signal === null ? `exit ${String(exitCode)}` : "timed out"}, ${(elapsedMs / 1000).toFixed(1)} s)`,
         );
       }
@@ -241,7 +241,7 @@ async function holders(names: readonly string[], here: ReadonlySet<string>): Pro
   for (const { host, lines } of await asked(["holds", ...names])) {
     // A run held here goes on while a peer is silent: until 30 October one down host refused it.
     if (lines === null && names.every((name) => here.has(name))) {
-      console.error(`${host.name}: not checked for another original of ${names.join(", ")}`);
+      warn(`${host.name}: not checked for another original of ${names.join(", ")}`);
       continue;
     }
     if (lines === null) throw new Error(`${host.name}: cannot locate a campaign without its answer`);

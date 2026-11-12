@@ -18,7 +18,7 @@ import { isNumber } from "#src/meta/json-shape.ts";
 import { dirname, isAbsolute, join } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { pooled } from "#src/meta/pool.ts";
-import { runtimeProcess } from "#src/meta/process.ts";
+import { runtimeProcess, warn } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { asked, answerOf } from "./hosts.ts";
 import { type Host, hostNamed, hostsOf } from "./host-config.ts";
@@ -261,7 +261,7 @@ export async function syncRuns(
         .filter((run) => matches(run.name) && (options.closed !== true || !(run.open || run.kept)))
         .map((run) => ({ host, run }));
     }
-    console.error(`${host.name}: no campaign catalogue; its copies were left as they were`);
+    warn(`${host.name}: no campaign catalogue; its copies were left as they were`);
     silent.add(host.name);
     return [];
   });
@@ -271,7 +271,7 @@ export async function syncRuns(
     if (owners.has(one.run.name)) {
       const twice = `${one.run.name}: more than one original campaign, including ${one.host.name}`;
       if (options.match === "exact") throw new Error(twice);
-      console.error(`${twice}; that copy is left out`);
+      warn(`${twice}; that copy is left out`);
       continue;
     }
     owners.add(one.run.name);

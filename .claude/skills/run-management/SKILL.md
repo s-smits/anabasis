@@ -219,9 +219,9 @@ bun --env-file=<file> --env-file=.env.runs run runs hosts [--all]
 history in `.ana/logins-history.jsonl`, and forecasts when the pool runs out by whichever of the
 model, the week pace and the per-run rate read the last held-out hours best (`modelLines`). Each login
 line shows `open` or `closed until <reset>` and its live runs out of the most it carries: the lower of
-its cap (`capOf`: its `N:most` in `ANA_LOGIN_RUNS`, else its subscription in `ANA_LOGIN_SUBS`, two
-for `max` or `pro100` and four for `ultra` or `pro200`, else the bare number) and the runs its week
-can fit (`fitOf`), with more marked `oversubscribed`. `keep` and `fresh` read room the same way.
+its cap (`capOf`: its `N:most` in `ANA_LOGIN_RUNS`, else its subscription in `ANA_LOGIN_SUBS`, one
+for `max`, two for `ultra` or `pro100` and four for `pro200`, else the bare number) and the runs its
+week can fit (`fitOf`), with more marked `oversubscribed`. `keep` and `fresh` read room the same way.
 `active` names the live runs on each login across hosts, by each run's last launch; count it before a
 launch, continue or move, and add by hand any seat without `--login` or session on a numbered login.
 

@@ -141,11 +141,11 @@ const NOTED = [
   ["seven_day_routines", "routines"],
 ] as const;
 
-/** The live runs each subscription carries, by provider (operator, 4 November): a Claude login two
- *  on `max` and four on `ultra`, the Codex login two on `pro100` and four on `pro200`, which counts
- *  a machine as its cap does. */
+/** The live runs each subscription carries, by provider: a Claude login one on `max` and two on
+ *  `ultra` (operator, 12 November; two and four from 4 November), the Codex login two on `pro100`
+ *  and four on `pro200`, which counts a machine as its cap does. */
 const SUBS: Readonly<Record<"claude" | "codex", Readonly<Record<string, string>>>> = {
-  claude: { max: "2", ultra: "4" },
+  claude: { max: "1", ultra: "2" },
   codex: { pro100: "2", pro200: "4" },
 };
 

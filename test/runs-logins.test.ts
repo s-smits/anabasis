@@ -47,18 +47,18 @@ describe("each payer's cap", () => {
   });
 
   it("takes a login's most from its subscription, below its own entry and above the bare number", () => {
-    const env = { ANA_LOGIN_SUBS: "1:ultra,2:max,3:ultra,4:pro200,codex:pro200", ANA_LOGIN_RUNS: "1,3:3" };
+    const env = { ANA_LOGIN_SUBS: "1:ultra,2:max,3:ultra,4:pro200,codex:pro200", ANA_LOGIN_RUNS: "5,3:3" };
     expect(["1", "2", "3", "4", "5", "codex"].map((login) => capOf(env, login))).toEqual([
-      "4",
       "2",
+      "1",
       "3",
-      "1",
-      "1",
+      "5",
+      "5",
       "4",
     ]);
     expect(capOf({ ANA_LOGIN_SUBS: "codex:ultra" }, "codex")).toBe("1");
     expect(activeLines([], ["1"], [], env)).toEqual([
-      "login 1   0/4 live (ultra)",
+      "login 1   0/2 live (ultra)",
       "codex     0 live, at most 4 a machine (pro200)",
     ]);
   });

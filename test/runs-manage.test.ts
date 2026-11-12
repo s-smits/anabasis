@@ -55,7 +55,7 @@ describe("going on with a campaign", () => {
     // `next` joined to another point names nothing: taken as that other point it would write no
     // pause word and rest with a solve open.
     expect(restsAfter(promoted, "reported|promoted", 0)).toBe(true);
-    expect(restsAfter(promoted, "next|reported", 0)).toBe(false);
+    expect(() => restsAfter(promoted, "next|reported", 0)).toThrow("--after takes");
     // An old ladder's reading left open is no comparison: no move goes on with it.
     const read = [...promoted, event("comparison.started", { session: "l-1", ladder: true })];
     expect(restsAfter(read, "reported", 0)).toBe(true);
@@ -86,6 +86,42 @@ describe("going on with a campaign", () => {
     // The quiet point still binds: a comparison open since the promotion holds the pause.
     const reading = [...climbing, event("comparison.started", { session: "g-2" })];
     expect(restsAfter(reading, "promoted", 0)).toBe(false);
+  });
+
+  it("pauses after any seat's compaction, once the Builder's conversation is all that is open", () => {
+    const open = [
+      event("build.started", { session: "b-1" }),
+      event("exam.started", { session: "x-1" }),
+      event("exam.compacted", { session: "x-1", tokensBefore: 290_000 }),
+    ];
+    // The Examiner's ask holds the pause until it ends; its compaction counts from then.
+    expect(restsAfter(open, "compacted", 0)).toBe(false);
+    const rested = [...open, event("exam.finished", { session: "x-1" })];
+    expect(restsAfter(rested, "compacted", 0)).toBe(true);
+    for (const kind of [
+      "build.compacted",
+      "draft.compacted",
+      "solve.compacted",
+      "referee.compacted",
+    ] as const) {
+      expect(restsAfter([...rested, event(kind, {})], "compacted", 1)).toBe(true);
+    }
+    // A practice solve the Builder waits on, and the Referee's reading of its fail, hold it too:
+    // stopped there, the solve is spent and the reading writes no finding.
+    const practising = [...rested, event("solve.started", { solve: "s-1" })];
+    expect(restsAfter(practising, "compacted", 0)).toBe(false);
+    const ruling = [
+      ...practising,
+      event("solve.finished", { solve: "s-1" }),
+      event("referee.turn", { reader: "r-1" }),
+    ];
+    expect(restsAfter(ruling, "compacted", 0)).toBe(false);
+    expect(restsAfter([...ruling, event("referee.finding", { reader: "r-1" })], "compacted", 0)).toBe(true);
+    // A solve a killed run left open began before the conversation open now and holds nothing,
+    // where one begun inside that conversation still does.
+    const orphan = { ...event("solve.started", { solve: "s-0" }), at: "2026-10-15T11:00:00.000Z" };
+    expect(restsAfter([orphan, ...rested], "compacted", 0)).toBe(true);
+    expect(restsAfter([orphan, ...practising], "compacted", 0)).toBe(false);
   });
 
   it("refuses a word it does not know, alone or among joined ones", async () => {

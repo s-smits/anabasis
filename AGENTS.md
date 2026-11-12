@@ -224,7 +224,9 @@ their conditions differ in the one thing compared.
 The log holds hidden values, so it stays out of prompts, PRs and pastes. `bun run runs retire`
 moves a campaign idle for a day into `data/runs/`, deletes an idle seed that no paid launch went on
 from, and takes a campaign archived on the host `ABLATION_HOST` names into the central archive,
-deleting it there once the copy matches byte for byte; nothing else deletes a log.
+deleting it there once the copy matches byte for byte; nothing else deletes a log. A copy of a
+campaign on another host holds its record and each kept harness's own files, never the packages a
+seat installed (`installs`, `tools/runs/snapshots.ts`), so it is read and never run.
 
 ## 6. A campaign's commands
 

@@ -78,7 +78,7 @@ import {
   standing,
   wholeLines,
 } from "./registry.ts";
-import { readableAcross, syncRuns } from "./snapshots.ts";
+import { derived, readableAcross, syncRuns } from "./snapshots.ts";
 
 const LEVELS = ["light", "medium", "verbose"] as const;
 const PROMOTED = "harness.promoted";
@@ -136,19 +136,6 @@ const GROUPS: readonly (readonly [name: string, holds: string, level: Level, pat
   ["rest", "anything else in the run's folder", "verbose", /^/],
 ];
 
-/** Folders of installed packages, caches and built bundles, by name; a pip target is known by its
- *  `.dist-info`. A harness's `.bundle-snapshots` were 30 of the 38 MB its states held on 2026-10-08. */
-const DERIVED = new Set([
-  "node_modules",
-  ".bundle-snapshots",
-  "__pycache__",
-  ".git",
-  ".cache",
-  ".cargo",
-  ".local",
-  ".matplotlib",
-  "Library",
-]);
 const SECRET = /^(auth\.json|.*\.env|\.DS_Store)$/;
 const LIGHT_MAX = 2 * 1024 * 1024;
 const SOURCE = ["src", "tools", "docs", "package.json"];
@@ -176,9 +163,7 @@ function unfit(root: string, path: string): string | null {
   const stat = lstatSync(path);
   if (stat.isSymbolicLink()) return linkedIn(root, path) === null ? "a link out of its folder" : null;
   if (SECRET.test(basename(path))) return "a secret's name";
-  const installed =
-    stat.isDirectory() &&
-    (DERIVED.has(basename(path)) || readdirSync(path).some((name) => name.endsWith(".dist-info")));
+  const installed = stat.isDirectory() && derived(basename(path), readdirSync(path));
   return installed ? "installed, cached or built" : null;
 }
 

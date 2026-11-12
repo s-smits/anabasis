@@ -36,6 +36,12 @@
  * these by hand, and 13 of their 21 refusals were a diff loop given a campaign's `states/` path,
  * which a lane guard refuses and this command, taking the log, does not need. A digest prefix of eight
  * characters names a version where it names one; lane 16 sessions typed the prefixes the readers print.
+ *
+ * `--diff` reads a kept state where it sits, as `--chain` does, and says in a line where one opens
+ * as another harness. A copy of a campaign from another host leaves out what its harness installed
+ * (`installs`, `tools/runs/snapshots.ts`), so there a state opens as another digest: on 12 November
+ * every diff of such a copy's four states was refused (`keptAs`, which guards a solve), and a lane
+ * read "not as kept" as a lost harness.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { type Handover, campaignOf } from "#src/campaign/handover.ts";
@@ -247,6 +253,13 @@ function turnsOf(events: readonly LogEvent[], digest: string): string | null {
   return `${session}{${String(Math.min(...turns))}-${String(Math.max(...turns))}}`;
 }
 
+/** How a kept state opens, as a solve would read it (`openHarness`). */
+const opensAs = async (dir: string, digest: string): Promise<string> =>
+  await openHarness(dir).then(
+    (harness) => (harness.digest === digest ? "as kept" : `as ${short(harness.digest)}, not as kept`),
+    (error: unknown) => `refused: ${errorMessage(error)}`,
+  );
+
 /** Every harness the log names or the states folder keeps: in the order the log first names them,
  *  the starter first, then any state the log never names. Only the list reads how a state opens and
  *  what its parts hold, and opening one digests its whole tree (25 s of every call on 34 states of
@@ -271,14 +284,7 @@ export async function versionsOf(
     digests.map(async (digest): Promise<Version> => {
       const dir = join(keeping.states, digest);
       const kept = states.includes(digest);
-      const opens =
-        kept && whole
-          ? await openHarness(dir).then(
-              (harness) =>
-                harness.digest === digest ? "as kept" : `as ${short(harness.digest)}, not as kept`,
-              (error: unknown) => `refused: ${errorMessage(error)}`,
-            )
-          : null;
+      const opens = kept && whole ? await opensAs(dir, digest) : null;
       return {
         digest,
         kept,
@@ -520,7 +526,15 @@ async function main(args: CommandArgs): Promise<number> {
     if (digest === undefined && ["starter", "reference", "latest"].includes(role)) {
       args.die(`${flag} ${harness} names the starter, which this campaign keeps no state of`);
     }
-    return await keptAs(keeping, flag, digest ?? wholeOf(args, versions, flag, harness));
+    const whole = digest ?? wholeOf(args, versions, flag, harness);
+    // A letter, or a name this campaign does not keep, is `keptAs`'s to resolve or refuse.
+    if (!versions.some((version) => version.kept && version.digest === whole)) {
+      return { ...(await keptAs(keeping, flag, whole)), notes: [] };
+    }
+    const dir = join(keeping.states, whole);
+    const opens = await opensAs(dir, whole);
+    const note = `${short(whole)} opens ${opens}; read as its files stand here (a copy of a campaign leaves out what its harness installed)`;
+    return { dir, digest: whole, notes: opens === "as kept" ? [] : [note] };
   };
   const child = await named("--diff", asked);
   const parent = args.value("against") ?? versions.find((version) => version.digest === child.digest)?.parent;
@@ -531,7 +545,8 @@ async function main(args: CommandArgs): Promise<number> {
   }
   const against = await named("--against", parent);
   const moves = await movesAt(against.dir, child.dir, depth);
-  console.log([`${child.digest} against ${against.digest}`, ...moves.map((line) => `  ${line}`)].join("\n"));
+  const shown = [...child.notes, ...against.notes, ...moves];
+  console.log([`${child.digest} against ${against.digest}`, ...shown.map((line) => `  ${line}`)].join("\n"));
   return 0;
 }
 

@@ -203,7 +203,9 @@ them unless the primary deletes them.
 `<dir>/shared-instructions.md` goes whole into the file the open lanes share and into the synthesis;
 an isolated lane gets only its campaign and hard-rule sections. A table of the prior state whose
 header has an `id` and a `lanes` column is read as predictions: each lane a row names is handed that
-row in its own prompt and owes it a line. A blank `##` section refuses `lanes`, and deleting a
+row in its own prompt and owes it a line, with how often the row's trigger occurred in the log and
+how often its mechanism's event followed, so that the vetting can name each change's rung
+(`AGENTS.md`, section 9) from counts. A blank `##` section refuses `lanes`, and deleting a
 heading drops that section on purpose.
 
 | section | written by | holds |

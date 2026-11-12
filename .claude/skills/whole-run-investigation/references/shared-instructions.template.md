@@ -14,7 +14,9 @@ never the answer you expect. At most about twenty lines; quote nothing from the 
 
 <!-- AUTHOR: what changed between these campaigns and those before, and between each other (checker,
 host code, model, a seat's prompt), the earlier findings this investigation checks, and what would
-falsify each. An earlier diagnosis goes here as a hypothesis. Write "none" when nothing moved. -->
+falsify each. For each change new since the parent run, name its trigger in a log and the event its
+mechanism writes, so a lane can count both. An earlier diagnosis goes here as a hypothesis. Write
+"none" when nothing moved. -->
 
 ## Already read by the primary
 

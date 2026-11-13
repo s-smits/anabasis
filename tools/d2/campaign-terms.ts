@@ -16,7 +16,6 @@ import { draftOf } from "#src/examiner/draft.ts";
 import type { Session } from "#src/examiner/session.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import { PATIENCE } from "#src/kernel/reports.ts";
-import { taskStates, taskVersion } from "#src/kernel/task.ts";
 import { mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
@@ -25,7 +24,7 @@ import { parseArgs } from "#src/meta/process.ts";
 import { sameJsonValue } from "#src/meta/stable-json.ts";
 import { PACK_OPTIONS, projectOf } from "./campaign.ts";
 import type { Host } from "./host.ts";
-import { PRACTICE, prepareCommand } from "./prepare.ts";
+import { PRACTICE, prepareCommand, ungated } from "./prepare.ts";
 import { promoteCommand } from "./promote.ts";
 import { type Campaign, COMPARISON_OPTIONS, capRead, SESSION_OPTIONS, type Seated, solved } from "./round.ts";
 import { SETTING_OPTIONS } from "./setting.ts";
@@ -483,7 +482,6 @@ export function turnOf(source: {
 }): Turn {
   const { log, values, opening, seats, held, campaign } = source;
   const events = read(log);
-  const states = taskStates(events);
   return {
     events,
     opening,
@@ -493,7 +491,7 @@ export function turnOf(source: {
     plan: planOf(
       events,
       {
-        unprepared: campaign?.tasks.some((task) => !states.has(taskVersion(campaign.pack(task)))) ?? false,
+        unprepared: campaign !== null && ungated(campaign, events).length > 0,
         level: Number(values.level ?? COMPARISON_OPTIONS.level.default),
         target: values.target === undefined ? undefined : Number(values.target),
         pastStop: values["past-stop"],

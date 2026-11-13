@@ -228,7 +228,9 @@ model, the week pace and the per-run rate read the last held-out hours best (`mo
 line shows `open` or `closed until <reset>` and its live runs out of the most it carries: the lower of
 its cap (`capOf`: its `N:most` in `ANA_LOGIN_RUNS`, else its subscription in `ANA_LOGIN_SUBS`, one
 for `max`, two for `ultra` or `pro100` and four for `pro200`, else the bare number) and the runs its
-week can fit (`fitOf`), with more marked `oversubscribed`. `keep` and `fresh` read room the same way.
+week can fit (`fitOf`), with more marked `oversubscribed`. The fit is a forecast that `usage` alone
+prints: `fresh`, `keep`, `continue` and `move` refuse at the cap (`atCap`), the most `active` counts
+against, so one login can read 2/1 in `usage` and 2/2 in `active` in the same minute.
 `active` names the live runs on each login across hosts, by each run's last launch; count it before a
 launch, continue or move, and add by hand any seat without `--login` or session on a numbered login.
 A host that does not answer is counted as the archive last gathered it (`gatheredOn`, the liveness

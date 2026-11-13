@@ -753,13 +753,16 @@ describe("this machine", () => {
         ]).trim(),
       );
     const simulator = orphan(`${token}/campaigns/c/workspace/.toolchain/qemu/qemu-system-xtensa`);
-    const worker = orphan(`bun test --test-worker ${token}`);
+    // The stand-in runs under a name of its own, which this task's `ps` alone shows as a test
+    // worker: a task reaps every orphaned worker on its host, so one starting in another slot took a
+    // stand-in named as a real one before this task did, in 2 of 5 runs beside such starts.
+    const worker = orphan(`stand-in-test-worker ${token}`);
     const filtered = join(root, "filtered-ps");
     script(
       join(filtered, "ps"),
       `#!/bin/sh
 case "$*" in
-  *command=*) ${realPs} "$@" | awk -v t='${token}' 'index($0, t) || $1 == 1' ;;
+  *command=*) ${realPs} "$@" | awk -v t='${token}' '{ sub(/stand-in-test-worker/, "bun test --test-worker") } index($0, t) || $1 == 1' ;;
   *) exec ${realPs} "$@" ;;
 esac
 `,
@@ -768,6 +771,10 @@ esac
       spawnTextSync(realPs, ["-o", "ppid=", "-p", String(pid)]).stdout.trim();
     try {
       await waitFor(() => parentOf(worker) === "1", 5);
+      // No task but this one may take the stand-in: to the host's own `ps` it is no test worker.
+      expect(spawnTextSync(realPs, ["-o", "command=", "-p", String(worker)]).stdout).not.toContain(
+        "bun test --test-worker",
+      );
       fresh();
       const local = run(["test"], { RUN_REMOTE: "here", PATH: `${filtered}:${env.PATH ?? ""}` });
       expect(lastCall(home)).toMatchObject({ bun: pinned, active: "1" });

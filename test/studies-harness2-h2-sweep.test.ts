@@ -329,6 +329,25 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
       ].concat(["--api-base", "http://127.0.0.1:9/v1", "--judge-log", join(root, "shim.jsonl"), ...flags]),
       { env: { ...env, ANTHROPIC_API_KEY: "never-reaches-the-judge" }, timeout: 280_000 },
     );
+  // Two exported arms already in the store: one whose tool tree holds a program for a processor no
+  // host of the suite has (32-bit Arm), one holding the opening bytes of the Bun this test runs on.
+  const armElf = Buffer.alloc(20);
+  armElf.writeUInt32BE(0x7f_45_4c_46, 0);
+  armElf.writeUInt16LE(40, 18);
+  for (const [name, program] of [
+    ["foreign", armElf],
+    ["native", readFileSync(capturedExecPath).subarray(0, 128)],
+  ] as const) {
+    mkdirSync(join(out, "trees", name, "scripts", "toolchain", "bin"), { recursive: true });
+    writeFileSync(join(out, "trees", name, "scripts", "toolchain", "bin", "tool"), program);
+    writeFileSync(join(out, "trees", name, "CLAUDE.md"), `# ${name}\n`);
+    writeFileSync(
+      join(out, "trees", name, "export.json"),
+      JSON.stringify({ harness: name, toolchain: "scripts/toolchain" }),
+    );
+  }
+  const foreignArm = scored("starter", "foreign", FIRST, "--dry-run");
+  const nativeArm = scored("starter", "native", FIRST, "--dry-run");
   const alpha = "alpha/task1,alpha/task2";
   const refused = scored("base", "base", alpha);
   const planned = scored("base", "base", alpha, "--dry-run");
@@ -363,6 +382,14 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
     expect(planned.exitCode).toBe(0);
     expect(decodeOutput(planned.stdout)).toContain("claude-opus-5-5 at high, $5 and 3600 s an attempt");
     expect(calledBefore).toBe(before);
+  });
+
+  it("refuses an arm whose programs this machine cannot run, and plans one whose programs it can", () => {
+    expect(foreignArm.exitCode).not.toBe(0);
+    expect(decodeOutput(foreignArm.stderr)).toContain("holds 1 programs this machine");
+    expect(decodeOutput(foreignArm.stderr)).toContain("bin/tool (an ELF binary for machine 40)");
+    expect(nativeArm.exitCode).toBe(0);
+    expect(decodeOutput(nativeArm.stdout)).toContain(join(out, "trees", "native"));
   });
 
   it("solves each task once under the arm's tree, with the sweep's PATH and cap, and no grader in reach", () => {

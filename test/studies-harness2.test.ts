@@ -10,6 +10,7 @@ import {
   bundleArm,
   foreignHead,
   foreignPrograms,
+  HERE,
   MODULE_FILE,
   placeHarness,
 } from "../studies/shared/bundle.ts";
@@ -33,7 +34,7 @@ import { capturedJsonStringify, parseJsonAs } from "../src/meta/json-runtime.ts"
 import { errorMessage } from "../src/meta/runtime-values.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { runtimeProcess } from "../src/meta/process.ts";
+import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
 import { runSync } from "../src/meta/subprocess.ts";
 import { openHarness } from "../src/harness/open.ts";
 import { EXAMPLE, writeStarter } from "../src/harness/starter.ts";
@@ -308,6 +309,18 @@ describe("a harness's programs, checked against the container", () => {
     expect(foreignHead(Buffer.from("#!/usr/bin/env python3\n"))).toBeNull();
     expect(foreignHead(Buffer.from("#!/bin/sh\n"))).toBeNull();
     expect(foreignHead(Buffer.from("plain text"))).toBeNull();
+  });
+
+  it("reads a program against the machine a rollout runs on, whose own paths are no fault", () => {
+    const linux = { name: "a Linux machine", mac: false, machine: 62, roots: null };
+    const mac = { name: "a Mac", mac: true, machine: 183, roots: null };
+    expect(foreignHead(head(0xcf, 0xfa, 0xed, 0xfe), linux)).toBe("a Mach-O binary");
+    expect(foreignHead(elf(183), linux)).toBe("an ELF binary for machine 183");
+    expect(foreignHead(elf(62), linux)).toBeNull();
+    expect(foreignHead(Buffer.from("#!/Users/me/venv/bin/python3\n"), linux)).toBeNull();
+    expect(foreignHead(head(0xcf, 0xfa, 0xed, 0xfe), mac)).toBeNull();
+    expect(foreignHead(elf(183), mac)).toBe("an ELF binary for machine 183");
+    expect(foreignHead(readFileSync(capturedExecPath).subarray(0, 128), HERE)).toBeNull();
   });
 
   it("refuses a tool tree holding foreign programs by path, and passes one the container runs", async () => {

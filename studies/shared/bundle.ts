@@ -33,7 +33,7 @@ import { TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";
-import { capturedExecPath } from "#src/meta/process.ts";
+import { capturedExecPath, runtimeProcess } from "#src/meta/process.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { openHarness } from "#src/harness/open.ts";
 import { writeStarter } from "#src/harness/starter.ts";
@@ -52,11 +52,34 @@ const TARGET = "bun-linux-x64-baseline";
 
 const SOLVER = join(import.meta.dir, "pi-solve.ts");
 
-/** Where a program's interpreter may sit to exist in a benchmark's container as on a host. */
-const CONTAINER_ROOTS = ["/usr/", "/bin/"];
-
-/** ELF's machine number for x86-64. */
+/** ELF's machine numbers for x86-64 and 64-bit Arm. */
 const X86_64 = 62;
+const AARCH64 = 183;
+
+/** Where a tool tree's programs are to run: whether it is macOS, ELF's machine number there, and
+ *  where a script's interpreter may sit, null where the place holds its host's paths as they are. */
+interface Place {
+  readonly name: string;
+  readonly mac: boolean;
+  readonly machine: number;
+  readonly roots: readonly string[] | null;
+}
+
+/** A benchmark's container, which holds of a host's paths only the system's. */
+const CONTAINER: Place = {
+  name: "a Linux x86-64 container",
+  mac: false,
+  machine: X86_64,
+  roots: ["/usr/", "/bin/"],
+};
+
+/** The machine this process runs on, where a rollout outside a container finds its programs. */
+export const HERE: Place = {
+  name: `this machine (${runtimeProcess.platform} ${runtimeProcess.arch})`,
+  mac: runtimeProcess.platform === "darwin",
+  machine: runtimeProcess.arch === "arm64" ? AARCH64 : X86_64,
+  roots: null,
+};
 
 /** Where an arm's harness came from, as its mount records it. */
 interface Origin {
@@ -147,37 +170,41 @@ export async function bundleArm(
   return { digest: opened.digest, origin };
 }
 
-/** Refuses a tool tree holding a program the Linux x86-64 container cannot run: a Mach-O binary,
- *  an ELF binary for another processor, or a script whose interpreter is a host path, as a Python
- *  venv's entry points are. A campaign on a Mac keeps such programs, and `command -v` in the
- *  container's dry run finds them all the same. */
-export async function foreignPrograms(tree: string): Promise<void> {
+/** Refuses a tool tree holding a program `place` cannot run: a binary of another operating system
+ *  or processor and, in a container, a script whose interpreter is a host path, as a Python venv's
+ *  entry points are. A campaign keeps the programs its own host built, `command -v` in a
+ *  container's dry run finds them all the same, and an arm rolled where they are dead would read
+ *  lower for the platform alone. */
+export async function foreignPrograms(tree: string, place: Place = CONTAINER): Promise<void> {
   if (!existsSync(tree)) return;
   const foreign: string[] = [];
   for await (const path of new Bun.Glob("**/*").scan({ cwd: tree, onlyFiles: true, dot: true })) {
-    const why = foreignHead(Buffer.from(await Bun.file(join(tree, path)).slice(0, 128).bytes()));
+    const head = Buffer.from(await Bun.file(join(tree, path)).slice(0, 128).bytes());
+    const why = foreignHead(head, place);
     if (why !== null) foreign.push(`${path} (${why})`);
   }
   if (foreign.length > 0) {
+    const shown = foreign.toSorted().slice(0, 5).join(", ");
     throw new Error(
-      `the harness's ${TOOL_TREE_DIR} holds programs a Linux x86-64 container cannot run: ${foreign.toSorted().join(", ")}`,
+      `the harness's ${TOOL_TREE_DIR} holds ${String(foreign.length)} programs ${place.name} cannot run: ${shown}${foreign.length > 5 ? ", and more" : ""}`,
     );
   }
 }
 
-/** Why the opening bytes of a file name a program foreign to the container, or null. */
-export function foreignHead(head: Buffer): string | null {
+/** Why the opening bytes of a file name a program foreign to `place`, or null. */
+export function foreignHead(head: Buffer, place: Place = CONTAINER): string | null {
   const magic = head.length >= 4 ? head.readUInt32BE(0) : 0;
   if ([0xfe_ed_fa_ce, 0xfe_ed_fa_cf, 0xce_fa_ed_fe, 0xcf_fa_ed_fe, 0xca_fe_ba_be].includes(magic)) {
-    return "a Mach-O binary";
+    return place.mac ? null : "a Mach-O binary";
   }
-  if (magic === 0x7f_45_4c_46 && head.length >= 20 && head.readUInt16LE(18) !== X86_64) {
-    return `an ELF binary for machine ${String(head.readUInt16LE(18))}`;
+  if (magic === 0x7f_45_4c_46 && head.length >= 20) {
+    const machine = head.readUInt16LE(18);
+    return place.mac || machine !== place.machine ? `an ELF binary for machine ${String(machine)}` : null;
   }
   const text = head.toString("latin1");
-  if (!text.startsWith("#!")) return null;
+  if (place.roots === null || !text.startsWith("#!")) return null;
   const interpreter = text.slice(2).trimStart().split(/\s/u, 1)[0] ?? "";
-  return CONTAINER_ROOTS.some((root) => interpreter.startsWith(root))
+  return place.roots.some((root) => interpreter.startsWith(root))
     ? null
     : `its interpreter ${interpreter} is a host path`;
 }

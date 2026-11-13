@@ -73,6 +73,7 @@ import { dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
+import { foreignPrograms, HERE } from "../shared/bundle.ts";
 import { exportForClaudeCode } from "../shared/claude-export.ts";
 import { inGroup, REFUSED } from "./h2/claude.ts";
 import { NAMESPACE } from "./h2/recursion.ts";
@@ -333,7 +334,12 @@ async function armOf(values: Values, out: string, baseHarness: string): Promise<
       arm === "starter" ? "starter" : { campaign: arm, ...keyIfDefined("harness", values.harness) },
     );
   }
-  const digest = field(readJson(join(into, "export.json")), "harness");
+  const record = readJson(join(into, "export.json"));
+  const digest = field(record, "harness");
+  // A rollout runs on this machine outside a container, and the export copies a campaign's
+  // programs as its host built them.
+  const toolchain = field(record, "toolchain");
+  if (isString(toolchain)) await foreignPrograms(join(into, toolchain), HERE);
   const build = { of: arm, usd: arm === "starter" ? 0 : billedAll(read(await logAcross(arm))) };
   return rolled(
     isString(digest) ? digest : into,

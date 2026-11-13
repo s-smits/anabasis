@@ -175,6 +175,17 @@ already answers the question; level with it is a strong reading and above it the
     solver does less, so the owner is what the exam's validity checks, which rejected
     one of the larger campaign's 1,087 finished solves (four more were provider non-results) and
     so separated no two harnesses there.
+21. **Roll an arm only where its programs run.** Present in source from this change: before a
+    rollout, `score.ts` refuses an exported arm whose tool tree holds a binary of another operating
+    system or processor (`foreignPrograms`, `studies/shared/bundle.ts`, which until now read a tree
+    for the container's platform alone). Every campaign has run on a Mac, and the export copies a
+    tool tree as its host built it: of the 11 built arms' trees in the score store, 10 hold 180 to
+    254 programs a Linux x86-64 machine cannot run, and all 11 pass on a Mac. Rolled on Linux, such
+    an arm would lose its packages and read lower for the platform alone. The refusal makes no arm
+    runnable there. For that the export must rebuild the tool tree where it rolls (the trees are
+    Python package folders and whole interpreters, so the same package versions installed for that
+    platform), which changes what a solver is given and is the operator's decision. A `tree:` arm
+    is not checked.
 
 ## How it came to be
 
@@ -310,3 +321,8 @@ already answers the question; level with it is a strong reading and above it the
   already". So the iteration's driver now asks a jobstat run's investigation for its row (the
   `outside` gate of `wri2p2.ts next`), a read that waits is recorded as owed, and item 19 rolls
   every owed reference in one sitting for one table.
+- **13 November.** The operator keeps one Linux machine for outside reads, one task at a time ("bc
+  then it's all fair"), and asked for the Starter's eight tasks there, to read beside each jobstat
+  run's ("run the 8 queries on it ... and compare with the multiple jobstat runs we run each, for
+  each task consecutively"). Reading the stored trees for that machine gave item 21's count, so
+  the Starter rolls there first and each built reference waits on an export for that platform.

@@ -46,6 +46,8 @@ import {
   allowedLogins,
   atCap,
   billsLogin,
+  blindOf,
+  type Counted,
   type Env,
   fiveHourWith,
   liveEverywhere,
@@ -55,7 +57,6 @@ import {
   room,
   startRefusal,
 } from "./logins.ts";
-import type { Live } from "./live.ts";
 import { lastRun, leaveKeeper, rerun, said, start, WAIT_HOURS } from "./manage.ts";
 import { keepers, logEvents, Misused, processes, type Run, runNamed } from "./registry.ts";
 import { stop } from "./stop.ts";
@@ -67,7 +68,7 @@ interface Hands {
   readonly events: () => readonly LogEvent[];
   readonly stands: (events: readonly LogEvent[], now: number) => RunState;
   readonly last: () => { readonly login?: string | undefined; readonly flags: readonly string[] };
-  readonly fleet: () => Promise<{ live: Live[]; unasked: string[] }>;
+  readonly fleet: () => Promise<Counted>;
   readonly read: typeof readLogins;
   readonly stop: () => Promise<void>;
   readonly start: (login: string | undefined) => Promise<boolean>;
@@ -135,11 +136,12 @@ export async function nextLogin(
 export async function roomFor(
   logins: readonly string[],
   spent: ReadonlySet<string>,
-  { live, unasked }: { live: readonly Live[]; unasked: readonly string[] },
+  counted: Counted,
   read: typeof readLogins = readNotClosed,
   { env = runtimeProcess.env, now = Date.now() }: { env?: Env; now?: number } = {},
 ): Promise<{ logins: string[]; why: string }> {
-  if (unasked.length > 0) return { logins: [], why: "" };
+  if (blindOf(counted).length > 0) return { logins: [], why: "" };
+  const { live } = counted;
   const out = new Set([...spent, ...atCap(env, logins, live)]);
   const readings = await read(
     logins.filter((login) => !out.has(login)),

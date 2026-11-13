@@ -20,7 +20,6 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
-  renameSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -327,8 +326,10 @@ function stamp(at: Date, form: "file" | "clock"): string {
 
 /**
  * `run_one` behind `execute`: stage the workspace, run `claude -p` up to twice (a second time only
- * when the first left no deliverable and did not spend its budget), and move what it produced to
- * `model_output/<label>`. Returns the dollars billed; the output directory may be left empty.
+ * when the first left no deliverable and did not spend its budget), and copy what it produced to
+ * `model_output/<label>`: the workspace is removed either way, and a rename is refused where the
+ * temporary folder and the store are on different filesystems. Returns the dollars billed; the
+ * output directory may be left empty.
  */
 export async function rollout(place: RolloutPlace, treeDir: string, claude: Claude): Promise<number> {
   const taskDir = join(place.store, place.task, TASK_FOLDER);
@@ -421,7 +422,7 @@ export async function rollout(place: RolloutPlace, treeDir: string, claude: Clau
       for (const item of readdirSync(output)
         .toSorted()
         .filter((entry) => !entry.startsWith("."))) {
-        renameSync(join(output, item), join(finalDir, item));
+        cpSync(join(output, item), join(finalDir, item), { recursive: true });
       }
       log(`[${stamp(new Date(), "clock")}] output -> ${finalDir}`);
     } else log(`[${stamp(new Date(), "clock")}] NO OUTPUT for ${place.task} (${place.label})`);

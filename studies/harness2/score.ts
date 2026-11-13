@@ -73,6 +73,7 @@ import { dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
+import { foreignPrograms, HERE } from "../shared/bundle.ts";
 import { exportForClaudeCode } from "../shared/claude-export.ts";
 import { inGroup, REFUSED } from "./h2/claude.ts";
 import { NAMESPACE } from "./h2/recursion.ts";
@@ -207,7 +208,8 @@ const text = (value: JsonValue | undefined): string =>
  * The runner's own log of one label, as the pilot's `costs.py` and `walls.py` read it: the dollars
  * of every attempt in every log, and the newest log's start to its last attempt. `ran` is false
  * where no attempt of the newest log reached a `result` of the arm's own, which is a dead agent or
- * a refused session (`REFUSED`), never a zero.
+ * a refused session (`REFUSED`), and where that log lacks the line a rollout closes with, which is
+ * one that threw or was killed before its delivery: neither is a zero.
  */
 function rolloutLog(store: string, task: string, label: string) {
   const dir = join(store, ".harness2-logs");
@@ -215,9 +217,10 @@ function rolloutLog(store: string, task: string, label: string) {
   const logs = (existsSync(dir) ? readdirSync(dir) : [])
     .filter((name) => name.startsWith(prefix) && /^\d{8}_\d{6}\.log$/u.test(name.slice(prefix.length)))
     .toSorted();
-  const attempts = logs.map((name) =>
+  const texts = logs.map((name) => readFileSync(join(dir, name), "utf8"));
+  const attempts = texts.map((log) =>
     [
-      ...readFileSync(join(dir, name), "utf8").matchAll(
+      ...log.matchAll(
         /\[(\d\d):(\d\d):(\d\d)\] attempt \d+: rc=-?\d+ result=(\S*) turns=\d+ tools=\d+ cost_usd=([\d.]+)/gu,
       ),
     ].map((match) => ({
@@ -242,7 +245,9 @@ function rolloutLog(store: string, task: string, label: string) {
   return {
     usd: attempts.flat().reduce((sum, attempt) => sum + attempt.usd, 0),
     attempts: last.length,
-    ran: last.some((attempt) => attempt.result !== "None" && attempt.result !== REFUSED),
+    ran:
+      /^\[[\d:]+\] (?:output -> |NO OUTPUT for )/mu.test(texts.at(-1) ?? "") &&
+      last.some((attempt) => attempt.result !== "None" && attempt.result !== REFUSED),
     seconds,
   };
 }
@@ -333,7 +338,12 @@ async function armOf(values: Values, out: string, baseHarness: string): Promise<
       arm === "starter" ? "starter" : { campaign: arm, ...keyIfDefined("harness", values.harness) },
     );
   }
-  const digest = field(readJson(join(into, "export.json")), "harness");
+  const record = readJson(join(into, "export.json"));
+  const digest = field(record, "harness");
+  // A rollout runs on this machine outside a container, and the export copies a campaign's
+  // programs as its host built them.
+  const toolchain = field(record, "toolchain");
+  if (isString(toolchain)) await foreignPrograms(join(into, toolchain), HERE);
   const build = { of: arm, usd: arm === "starter" ? 0 : billedAll(read(await logAcross(arm))) };
   return rolled(
     isString(digest) ? digest : into,
@@ -551,7 +561,7 @@ export async function score(values: Values): Promise<void> {
       }
     }
     if (tree !== null && !rolloutLog(store, task, label).ran) {
-      console.log(`${task}: no attempt reached a result, a non-result; scoring again rolls it again`);
+      console.log(`${task}: no rollout ended with a result, a non-result; scoring again rolls it again`);
       runtimeProcess.exitCode = 1;
       continue;
     }

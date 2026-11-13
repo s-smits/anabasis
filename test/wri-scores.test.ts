@@ -176,6 +176,53 @@ describe("the tally by practice", () => {
   });
 });
 
+describe("the tasks a comparison is the first to test", () => {
+  // g-4 tests v-10, which g-1 tested, and two tasks no comparison has: a sum of the `by practice`
+  // lines over g-1 and g-4 counts v-10 twice, and a sum of these lines counts each task once.
+  const again = [
+    { task: "v-10", recorded: 50 },
+    { task: "w-1", recorded: 600 },
+    { task: "w-2", recorded: 600 },
+  ];
+  const later = [
+    ...events,
+    ...["w-1", "w-2"].flatMap((task) => proposed(task, "x-3")),
+    ...again.flatMap(({ task }) => [
+      ...solved(`n4-${task}`, "h-new", task, task === "v-10" ? 12 : 5, "g-4"),
+      ...solved(`o4-${task}`, "h-old", task, task === "v-10" ? 10 : null, "g-4"),
+    ]),
+    event("comparison.reported", {
+      session: "g-4",
+      old: "h-old",
+      fresh: "h-new",
+      setting: settingId(conditionOf("any", "any")),
+      solves: 1,
+      level: 0.02,
+      objective: { direction: "higher" },
+      reading: "no-step",
+      versions: again.map(({ task }) => task),
+      scored: { wins: 3, losses: 0, ties: 0 },
+      frontier: { differences: again.map(({ recorded }) => recorded), of: again.map(({ task }) => task) },
+    }),
+  ];
+  const first = (session: string) => {
+    const all = scoreRows(later);
+    const from = all.findIndex((line) => line.startsWith(`${session}:`));
+    return all.slice(from).find((line) => line.trimStart().startsWith("first tested here")) ?? "";
+  };
+
+  it("leaves out of the second tally a task an earlier comparison tested", () => {
+    expect(first("g-4")).toBe(
+      "  first tested here, 2 of 3 tasks: a task of the family was practice before the start 0-0-0 p 1.000; none was 2-0-0 p 0.250",
+    );
+  });
+
+  it("counts every task where no comparison reported before", () => {
+    expect(first("g-1")).toContain("first tested here, 10 of 10 tasks:");
+    expect(first("g-1")).toContain("none was 9-0-1 p 0.002");
+  });
+});
+
 describe("a comparison with no recorded scores", () => {
   it("says the report is absent for one begun and never reported, and recounts nothing", () => {
     expect(block("g-2")[0]).toContain("report absent");

@@ -5,8 +5,10 @@
  *
  * Each session's line is the live-seat reading of that session alone (`readingOf`): its task
  * admissions by word, the drafts held, the turns the reference's valid room-solve answers took and
- * the dollars billed, under the reference in force when it opened. The campaign's line gives the
- * hours from `campaign.opened` to its first `comparison.started` and its first `harness.promoted`,
+ * the dollars billed, under the reference in force when it opened; a writing session's line also
+ * names the tasks its start asked for and how it stands, since a count of drafts held says nothing
+ * of the ask. The campaign's line gives the hours
+ * from `campaign.opened` to its first `comparison.started` and its first `harness.promoted`,
  * which is where an exam's ambition shows as supply and climb. Several logs print side by side,
  * one block each, so the two arms of a paired launch read at a glance. Read-only.
  *
@@ -14,11 +16,12 @@
  * record with one-off scripts, and the operator asked for the loop to be a skill with its own
  * scripts; this reader wraps the folds that the paired seats already read by.
  */
-import { campaignOf } from "#src/campaign/handover.ts";
+import { campaignOf, type Handover } from "#src/campaign/handover.ts";
 import { promoted } from "#src/kernel/reports.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { billedAll } from "#src/kernel/meter.ts";
-import { isString } from "#src/meta/json-shape.ts";
+import { HOUR_MS } from "#src/meta/clock.ts";
+import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { basename, dirname } from "#src/meta/path.ts";
 import { runCommand } from "#skills/main/cli.ts";
 import { ownedBy } from "#src/kernel/trace.ts";
@@ -36,9 +39,22 @@ export function referenceAt(events: readonly LogEvent[], index: number): string 
   return promoted(events.slice(0, index))?.slice(0, 8) ?? "starter";
 }
 
+/** What a writing session was asked for and how it stands: the tasks its start asked (`limits.tasks`,
+ *  which no fold reads), then the ending, turns and last event of the campaign's own fold, the turns
+ *  against the start's limit. On 13 November a row of a cycle's ledger gave five sessions' asks from
+ *  memory, three of them wrong, where this line read "held 14 of 14" of a session asked for 17. */
+function askedOf(start: LogEvent, step: Extract<Handover, { step: "examiner" }>): string {
+  const limits = asRecord(start.data.limits);
+  const ask = isNumber(limits?.tasks) ? `asked ${String(limits.tasks)}, ` : "";
+  const limit = isNumber(limits?.turns) ? ` of ${String(limits.turns)}` : "";
+  const hours = (Date.parse(step.last) - Date.parse(start.at)) / HOUR_MS;
+  return `${ask}${step.ended ?? (step.cut ? "cut" : "open")} at ${String(step.turns)}${limit} turns in ${hours.toFixed(1)} h`;
+}
+
 /** One line an Examiner session: its id, the reference in force, and its reading. */
 export function sessionLines(events: readonly LogEvent[]): string[] {
   const starts = events.flatMap((event, index) => (STARTS.has(event.kind) ? [index] : []));
+  const written = campaignOf(events).steps.flatMap((step) => (step.step === "examiner" ? [step] : []));
   return starts.map((start, nth) => {
     const end = starts[nth + 1] ?? events.length;
     const reading = readingOf(events.slice(0, end), start, []);
@@ -53,7 +69,10 @@ export function sessionLines(events: readonly LogEvent[]): string[] {
       .join(", ");
     const gated = Object.values(reading.gates).reduce((sum, count) => sum + count, 0);
     const turns = reading.turns === null ? "no valid room solve" : `median turns ${String(reading.turns[1])}`;
-    return `${isString(session) ? session : "?"} · reference ${reference} · held ${String(reading.held)} of ${String(gated)} (${words || "no task admission"}) · ${turns} · $${billedAll(own).toFixed(2)}`;
+    const from = events[start];
+    const step = from?.kind === "exam.started" ? written.find(({ id }) => id === session) : undefined;
+    const asked = from === undefined || step === undefined ? "" : ` · ${askedOf(from, step)}`;
+    return `${isString(session) ? session : "?"} · reference ${reference} · held ${String(reading.held)} of ${String(gated)} (${words || "no task admission"})${asked} · ${turns} · $${billedAll(own).toFixed(2)}`;
   });
 }
 

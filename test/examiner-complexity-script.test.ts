@@ -58,6 +58,31 @@ describe("ambition", () => {
     expect(second).toContain("x-2 · reference abcdef01 · held 1 of 1");
   });
 
+  it("names what a writing session was asked for beside what it held, and how it stands", () => {
+    const turn = (minutes: number, session: string) => event(minutes, "exam.turn", { session });
+    const asked = [
+      event(0, "draft.started", { session: "d-1" }),
+      event(1, "exam.started", { session: "x-1", limits: { tasks: 17, turns: 200 } }),
+      turn(2, "x-1"),
+      ...gate(3, "passed", 1),
+      turn(4, "x-1"),
+      event(121, "exam.finished", { session: "x-1", ended: "finished", proposed: 1, held: ["v3"] }),
+      event(122, "exam.started", { session: "x-2", limits: { tasks: 1, turns: 200 } }),
+      ...gate(123, "passed", 0),
+      event(152, "exam.finished", { session: "x-2", ended: "supplied", proposed: 1, held: ["v123"] }),
+      event(153, "exam.started", { session: "x-3", limits: { tasks: 12, turns: 200 } }),
+      turn(183, "x-3"),
+    ];
+    const [draft, short, met, open] = sessionLines(asked);
+    // The hostile case: one task held of one gated reads as full supply where seventeen were asked.
+    expect(short).toContain("held 1 of 1 (some 1) · asked 17, finished at 2 of 200 turns in 2.0 h");
+    expect(met).toContain("held 1 of 1 (none 1) · asked 1, supplied at 0 of 200 turns in 0.5 h");
+    expect(open).toContain("asked 12, open at 1 of 200 turns in 0.5 h");
+    expect(draft).not.toContain("asked");
+    // A start that names no limits gives no ask, and a session the campaign went past reads cut.
+    expect(sessionLines(log)[1]).toContain("(every 1, some 1) · cut at 0 turns in 0.0 h");
+  });
+
   it("bills a session its own end and tries, never the comparison or Builder spend before the next start", () => {
     const solve = (minutes: number, id: string, by: string, billed: number) => [
       event(minutes, "solve.started", { solve: id, comparison: by }),

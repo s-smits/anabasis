@@ -22,7 +22,11 @@ const args = process.argv.slice(2);
 appendFileSync(process.env.FAKE_CALLS, JSON.stringify({tool: process.argv[1].split("/").at(-1), args}) + "\\n");`;
 
 const SCRIPTS = {
+  // `FAKE_ACTIVE_FILE` names a file read at each call, for a count that changes while a verb waits:
+  // a child of the verb sees no later change to the verb's environment.
   "ssh": `${RECORD}
+import { existsSync, readFileSync } from "node:fs";
+const written = (file) => (file !== undefined && existsSync(file) ? readFileSync(file, "utf8") : undefined);
 const script = args.at(-1);
 const peer = JSON.parse(process.env.FAKE_FLEET ?? "{}")[args.at(-2)] ?? {};
 if (process.env.FAKE_OFFLINE === "1" || peer.offline) process.exit(255);
@@ -37,7 +41,7 @@ if (process.env.FAKE_EXECUTE === "1" || peer.execute || script.includes("rm -rf 
 }
 if (script.includes("--health")) console.log(JSON.stringify(peer.health ?? JSON.parse(process.env.FAKE_HEALTH ?? "null")));
 else if (script.includes("catalogue")) console.log(JSON.stringify((peer.catalogue ?? JSON.parse(process.env.FAKE_CATALOGUE ?? "[]")).map((run) => ({open:false,stderr:null,...run}))));
-else if (script.includes("active")) console.log(script.includes("--login") ? peer.loginPresent ?? process.env.FAKE_LOGIN_PRESENT ?? "true" : JSON.stringify(peer.active ?? JSON.parse(process.env.FAKE_ACTIVE ?? "[]")));
+else if (script.includes("active")) console.log(script.includes("--login") ? peer.loginPresent ?? process.env.FAKE_LOGIN_PRESENT ?? "true" : JSON.stringify(peer.active ?? JSON.parse(written(process.env.FAKE_ACTIVE_FILE) ?? process.env.FAKE_ACTIVE ?? "[]")));
 else if (script.includes("pulse")) console.log(peer.pulse ?? "◆ reported step");
 else if (script.includes("find . ")) process.stdout.write((process.env.FAKE_FILES ?? "").replaceAll("\\n", "\\0"));
 else if (script.includes("holds")) console.log((peer.holds ?? [process.env.FAKE_HOLDS ?? ""]).join("\\n"));
@@ -58,12 +62,24 @@ if (process.env.FAKE_TRANSFER_FAIL === "1" || (process.env.FAKE_TRANSFER_FAIL_FR
 const kept = args.filter((arg) => arg.startsWith("--include=/")).map((arg) => new RegExp("^" + arg.slice(11).replaceAll(".", "[.]").replaceAll("*", ".*") + "$"));
 const gone = left.map((arg) => arg.slice(11).replace(/\\/$/, ""));
 cpSync(from, into, {recursive: true, verbatimSymlinks: true, filter: (file) => gone.includes(relative(resolve(from), resolve(file))) ? false : !args.includes("--exclude=/*") || resolve(file) === resolve(from) || (dirname(file) === resolve(from) && kept.some((name) => name.test(basename(file))))});`,
+  // `FAKE_FETCH_STARTS` names a log that gains a comparison's start during one fetch, once the file
+  // `<log>.starts` exists: a run that moves on while a verb asks the remote.
+  // `FAKE_DIRTY_FILE` names a file whose text, once it exists, is the tree's uncommitted change.
   "git": `${RECORD}
-import { mkdirSync, rmSync } from "node:fs";
-if (args.includes("fetch")) process.exit(process.env.FAKE_FETCH_FAIL === "1" ? 1 : 0);
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+const dirt = process.env.FAKE_DIRTY_FILE;
+if (args.includes("fetch")) {
+  const moving = process.env.FAKE_FETCH_STARTS;
+  if (moving !== undefined && existsSync(moving + ".starts")) {
+    rmSync(moving + ".starts");
+    const { append } = await import(process.env.FAKE_REPO + "/src/kernel/log.ts");
+    append(moving, "comparison.started", { session: "g-2" });
+  }
+  process.exit(process.env.FAKE_FETCH_FAIL === "1" ? 1 : 0);
+}
 if (args.includes("merge-base") || args.includes("for-each-ref")) console.log(process.env.FAKE_ANCESTOR ?? process.env.FAKE_COMMIT);
 else if (args.includes("rev-parse")) console.log(args.includes("--git-common-dir") ? process.env.FAKE_GIT : args.includes("--show-toplevel") ? process.env.FAKE_MAIN : args.includes("--verify") && process.env.FAKE_AT !== undefined ? process.env.FAKE_AT : args.includes("-C") ? process.env.FAKE_COMMIT : process.env.FAKE_REMOTE_COMMIT ?? process.env.FAKE_COMMIT);
-else if (args.includes("status")) console.log(process.env.FAKE_DIRTY ?? "");
+else if (args.includes("status")) console.log(dirt !== undefined && existsSync(dirt) ? readFileSync(dirt, "utf8") : process.env.FAKE_DIRTY ?? "");
 else if (args.includes("branch")) console.log(process.env.FAKE_UNPUBLISHED === "1" ? "" : "origin/main");
 else if (args.includes("ls-remote")) console.log(process.env.FAKE_TAGGED === "1" ? process.env.FAKE_COMMIT + "\\trefs/tags/run/r/1" : "");
 else if (args.includes("worktree") && args.includes("list")) console.log("worktree " + process.env.FAKE_MAIN);

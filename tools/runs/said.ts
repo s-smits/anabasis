@@ -17,7 +17,7 @@ import type { EventKind, LogEvent } from "#src/kernel/log.ts";
 import { endingOf } from "#src/kernel/reports.ts";
 import { clearing, sizeLines } from "#src/kernel/size.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
-import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
+import { asRecord, isBoolean, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { plural } from "#src/meta/text.ts";
 
@@ -169,9 +169,14 @@ export const SAID: Partial<Record<EventKind, (data: JsonObject) => string | null
   },
   "build.started": (data) => `· build ${word(data.session)} started on ${word(data.model)}`,
   "exam.started": (data) => `· exam ${word(data.session)} started on ${word(data.model)}`,
-  "build.finished": (data) =>
-    `◆ build ended at ${word(data.ended)} and ${data.changed === true ? "changed the harness" : "left the harness as it was"}` +
-    `${data.broken === null ? "" : `, broken: ${short(data.broken)}`}${cost(data)}`,
+  // A session a stop cut is ended on record by the host, whose event holds neither `changed` nor
+  // `broken` (`endCut`); the line then says nothing of the harness, where it said "left the harness
+  // as it was, broken:" with no reason.
+  "build.finished": (data) => {
+    const harness = data.changed === true ? "changed the harness" : "left the harness as it was";
+    const broken = short(data.broken);
+    return `◆ build ended at ${word(data.ended)}${isBoolean(data.changed) ? ` and ${harness}` : ""}${broken === "" ? "" : `, broken: ${broken}`}${cost(data)}`;
+  },
   "exam.finished": (data) => {
     const head = `◆ exam ${word(data.session)} ended${cost(data)}`;
     if (!isNumber(data.proposed)) return head;

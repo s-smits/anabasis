@@ -308,7 +308,12 @@ describe("going on with a campaign", () => {
     expect(raced.out.trim().split("\n").at(-1)).toBe("waits");
   });
 
-  it("asks at the point what the start would refuse, before the stop, so that a refusal leaves the run running", async () => {
+  /** A campaign a keeper holds, whose command's dry run passes, and the driver of a `continue` on
+   *  `flags` that waits for its next report. The driver shortens the pause's 30-second look, and the
+   *  log gains the report once the verb says it waits, so after the pause has counted the reports it
+   *  starts from however long the count and the dry run before it took; what `meanwhile` returns for
+   *  the fixture and its log runs in the driver at that moment. */
+  function pointed(flags: readonly string[], meanwhile: (root: string, log: string) => string = () => "") {
     const made = fakeHosts();
     fixtures.push(made.root);
     const name = "pointed";
@@ -316,7 +321,6 @@ describe("going on with a campaign", () => {
     mkdirSync(folder, { recursive: true });
     const log = join(folder, "log.jsonl");
     append(log, "build.started", { session: "b-1" });
-    // The campaign command's dry run passes, as before any pause a continue waits for.
     mkdirSync(join(made.main, "tools", "d2"), { recursive: true });
     writeFileSync(join(made.main, "tools", "d2", "harness-builder.ts"), "process.exit(0);\n");
     const keeper = capturedSpawn({
@@ -326,25 +330,129 @@ describe("going on with a campaign", () => {
       stderr: "ignore",
       detached: true,
     });
-    const row = `${String(keeper.pid)} ${capturedExecPath} tools/runs/cli.ts keep ${name} --here`;
-    // The driver shortens the pause's 30-second look, and the log gains its report while the verb
-    // waits; the remote answers no fetch, which the start after a stop would have met too late.
     const driver = [
+      'import { existsSync, writeFileSync } from "node:fs";',
       'import { append } from "REPOSITORY/src/kernel/log.ts";',
       "const sleep = Bun.sleep; Bun.sleep = (ms) => sleep(Math.min(Number(ms), 100));",
       'const { continueRun } = await import("REPOSITORY/tools/runs/manage.ts");',
-      `setTimeout(() => append(${JSON.stringify(log)}, "comparison.reported", { session: "g-1", reading: "no-step" }), 300);`,
-      `await continueRun(${JSON.stringify([name, "--after", "reported", "--yes", "--", "--target", "8"])});`,
+      `const report = () => { ${meanwhile(made.root, log)} append(${JSON.stringify(log)}, "comparison.reported", { session: "g-1", reading: "no-step" }); };`,
+      'const say = console.log; console.log = (line) => { say(line); if (String(line).includes("waiting for")) report(); };',
+      `await continueRun(${JSON.stringify([name, "--after", "reported", ...flags, "--yes", "--", "--target", "8"])});`,
     ].join("\n");
+    return {
+      made,
+      driver,
+      keeper,
+      row: `${String(keeper.pid)} ${capturedExecPath} tools/runs/cli.ts keep ${name} --here`,
+      ended: () => Promise.race([keeper.exited.then(() => true), Bun.sleep(500).then(() => false)]),
+    };
+  }
+
+  it("asks at the point what the start would refuse, before the stop, so that a refusal leaves the run running", async () => {
+    // The remote answers no fetch, which the start after a stop would have met too late.
+    const { made, driver, keeper, row, ended } = pointed([]);
     try {
       const refused = made.run(driver, { FAKE_PS: row, FAKE_FETCH_FAIL: "1" });
       expect(refused.code).not.toBe(0);
       expect(refused.out).toContain("waiting for comparison.reported past 0");
       expect(refused.out).not.toContain("its keeper");
-      const ended = () => Promise.race([keeper.exited.then(() => true), Bun.sleep(500).then(() => false)]);
       expect(await ended()).toBe(false);
       // With a remote that answers, the same wait stops the run at its next report.
       expect(made.run(driver, { FAKE_PS: row }).out).toContain("its keeper");
+      expect(await ended()).toBe(true);
+    } finally {
+      keeper.kill();
+    }
+  });
+
+  it("counts the login again at the point, so that one another run filled during the wait leaves the run running", async () => {
+    // The case of 13 November: the login had room as the verb was typed, and something started on
+    // another host took its one place before the report.
+    const filled = JSON.stringify([{ name: "other", login: "2", host: "runner" }]);
+    const answer = (root: string) => join(root, "active.json");
+    const { made, driver, keeper, row, ended } = pointed(
+      ["--login", "2"],
+      (root) => `writeFileSync(${JSON.stringify(answer(root))}, ${JSON.stringify(filled)});`,
+    );
+    try {
+      const refused = made.run(driver, {
+        FAKE_PS: row,
+        FAKE_ACTIVE_FILE: answer(made.root),
+        ANA_LOGIN_RUNS: "1",
+        [`${KEY}2`]: "a",
+      });
+      expect(refused.code).not.toBe(0);
+      expect(refused.out).toContain("waiting for comparison.reported past 0");
+      expect(refused.err).toContain("login 2 is at its live-run cap");
+      expect(refused.out).not.toContain("its keeper");
+      expect(await ended()).toBe(false);
+    } finally {
+      keeper.kill();
+    }
+  });
+
+  it("asks at the point whether the tree is still clean, so that a change made during the wait leaves the run running", async () => {
+    // The start refuses a tree with a change no commit names, and met it only after the stop.
+    const dirt = (root: string) => join(root, "dirty");
+    const { made, driver, keeper, row, ended } = pointed(
+      [],
+      (root) => `writeFileSync(${JSON.stringify(dirt(root))}, " M src/kernel/log.ts");`,
+    );
+    try {
+      const refused = made.run(driver, { FAKE_PS: row, FAKE_DIRTY_FILE: dirt(made.root) });
+      expect(refused.code).not.toBe(0);
+      expect(refused.out).toContain("waiting for comparison.reported past 0");
+      expect(refused.err).toContain("holds a change no commit names");
+      expect(refused.out).not.toContain("its keeper");
+      expect(await ended()).toBe(false);
+    } finally {
+      keeper.kill();
+    }
+  });
+
+  it("reads the rest again after asking, so that a run that began a comparison meanwhile is waited for", async () => {
+    // The asking takes seconds live. Here the fetch at the first point finds the run starting its
+    // next comparison, whose report the driver writes at the look after it.
+    const { made, driver, keeper, row, ended } = pointed([], (_root, log) => {
+      const marker = JSON.stringify(`${log}.starts`);
+      const reported = `append(${JSON.stringify(log)}, "comparison.reported", { session: "g-2", reading: "no-step" })`;
+      return [
+        `writeFileSync(${marker}, "");`,
+        "const looked = Bun.sleep; let closed = false;",
+        `Bun.sleep = (ms) => { if (!closed && !existsSync(${marker})) { closed = true; ${reported}; } return looked(ms); };`,
+      ].join(" ");
+    });
+    try {
+      const log = join(made.main, ".ana", "d2", "pointed", "log.jsonl");
+      const moved = made.run(driver, { FAKE_PS: row, FAKE_FETCH_STARTS: log });
+      expect(moved.out).toContain("its keeper");
+      expect(await ended()).toBe(true);
+      // The remote is asked at the first point, at the second, and by the start after the stop: a
+      // stop at the first point, inside the comparison, would leave two.
+      const fetches = made.recorded().filter(({ tool, args }) => tool === "git" && args.includes("fetch"));
+      expect(fetches).toHaveLength(3);
+    } finally {
+      keeper.kill();
+    }
+  });
+
+  it("waits for a comparison that began during the asking where the continue names another commit, instead of refusing", async () => {
+    // The start refuses another commit under an open comparison, which is right of a stopped run. At
+    // the point the run still runs, so the comparison is waited for and the verb stops at its report.
+    const { made, driver, keeper, row, ended } = pointed(["--at", "b".repeat(40)], (_root, log) => {
+      const marker = JSON.stringify(`${log}.starts`);
+      const reported = `append(${JSON.stringify(log)}, "comparison.reported", { session: "g-2", reading: "no-step" })`;
+      return [
+        `writeFileSync(${marker}, "");`,
+        "const looked = Bun.sleep; let closed = false;",
+        `Bun.sleep = (ms) => { if (!closed && !existsSync(${marker})) { closed = true; ${reported}; } return looked(ms); };`,
+      ].join(" ");
+    });
+    try {
+      const log = join(made.main, ".ana", "d2", "pointed", "log.jsonl");
+      const moved = made.run(driver, { FAKE_PS: row, FAKE_FETCH_STARTS: log, FAKE_AT: "b".repeat(40) });
+      expect(moved.err).not.toContain("began and has not reported");
+      expect(moved.out).toContain("its keeper");
       expect(await ended()).toBe(true);
     } finally {
       keeper.kill();

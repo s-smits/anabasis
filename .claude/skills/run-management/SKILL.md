@@ -159,9 +159,15 @@ Builder conversation on the cut one's notes, from the last harness it practised 
 it so (`startTold`); the next Examiner ask opens on the whole record and its kept home. Only
 `--after finished` loses nothing of the Builder's. `continue --after <event>`
 pauses and continues, which moves a run to another login or commit cleanly. At the point, before
-the stop, it asks again what its start would refuse (the remote for the commit, the login's room
-across the fleet), so a login that filled during the wait ends the verb refused with the run still
-running; `move --after` counts before its wait only. `--after next`, the
+the stop, it asks again what its start would refuse (a clean tree, the remote for the commit, the
+login's room across the fleet, the command's dry run), so a login that filled during the wait ends
+the verb refused with the run still running, and then reads the rest again, so a run that began a
+comparison during the asking is waited for; `move --after` counts before its wait only. A waiting
+`pause` or `continue` is itself the process that stops the run, and a second one is refused while it
+lives, so start it with `nohup`: one started in a session's shell ends with the session, and the run
+then never rests. Start it from a detached worktree at a published commit and leave that HEAD where
+it is until the verb has ended: the keeper it leaves, and any verb sent to a peer, run the tree as
+it stands when they act, not as it stood when the wait began. `--after next`, the
 default, drains the run to save credit: no further solve starts, and it stops at the next finished
 solve or tool call, or a minute past the solve limit. Sessions spend until then; `runs stop` frees a
 login at once. Its pause word (`campaign.word`, `PAUSE`) is in the log once written and holds every

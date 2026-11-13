@@ -326,3 +326,13 @@ already answers the question; level with it is a strong reading and above it the
   run's ("run the 8 queries on it ... and compare with the multiple jobstat runs we run each, for
   each task consecutively"). Reading the stored trees for that machine gave item 21's count, so
   the Starter rolls there first and each built reference waits on an export for that platform.
+  Its first task there was lost to delivery: the machine keeps a rollout's temporary folder and the
+  score store on different filesystems, and the rollout moved its deliverable with a rename, which
+  is refused across them (`EXDEV`), so the task was recorded as not delivered and scored 0 of 58
+  with no judge called. A rollout now copies its deliverable (`rollout`,
+  `studies/harness2/h2/claude.ts`), since it removes its workspace either way. The zero was the
+  second defect: the error was caught, the log held an attempt with a result, and scoring went on
+  to judge an empty folder. A rollout is now on record only once its log holds the line it closes
+  with (`rolloutLog`, `score.ts`), so one that threw or was killed before its delivery is a
+  non-result and is rolled again. The record of that task says nothing about the arm, and the
+  sitting starts again under a new name.

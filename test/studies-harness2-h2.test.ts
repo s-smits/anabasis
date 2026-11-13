@@ -9,10 +9,12 @@ import { afterAll, describe, expect, it } from "bun:test";
 import {
   cpSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { capturedJsonParse } from "../src/meta/json-runtime.ts";
@@ -21,7 +23,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
-import { callKey, REFUSED, summarize, type Claude } from "../studies/harness2/h2/claude.ts";
+import { callKey, REFUSED, rollout, summarize, type Claude } from "../studies/harness2/h2/claude.ts";
 import { Library } from "../studies/harness2/h2/library.ts";
 import { prompt, readSections, type Job } from "../studies/harness2/h2/prompts.ts";
 import { pyDumps, walkFiles } from "../studies/harness2/h2/py.ts";
@@ -249,5 +251,41 @@ describe("a rollout's result", () => {
     expect(events({ subtype: "success", is_error: false })).toBe("success");
     expect(events({ subtype: "error_max_turns", is_error: true })).toBe("error_max_turns");
     expect(events({ subtype: "error_max_budget_usd", is_error: true })).toBe("error_max_budget_usd");
+  });
+
+  it("reaches the store with its files and folders, on another filesystem where one is at hand", async () => {
+    // A Linux machine keeps /dev/shm on a filesystem of its own, where a rename out of the
+    // workspace is refused; elsewhere the store is beside the workspace.
+    const apart = existsSync("/dev/shm") && statSync("/dev/shm").dev !== statSync(tmpdir()).dev;
+    const store = mkdtempSync(join(apart ? "/dev/shm" : root, "delivery-"));
+    try {
+      const [task, label, tree, bin] = [
+        "g/task1",
+        "arm__g__task1",
+        join(root, "no-tree"),
+        join(root, "session"),
+      ];
+      mkdirSync(join(store, task, "task_folder"), { recursive: true });
+      mkdirSync(tree);
+      writeFileSync(
+        bin,
+        `#!/bin/sh\nmkdir output/tables\necho report > output/report.md\necho rows > output/tables/a.csv\necho '{"type":"result","subtype":"success","total_cost_usd":0.5}'\n`,
+        { mode: 0o755 },
+      );
+      const billed = await rollout({ store, task, label }, tree, {
+        bin,
+        model: "",
+        effort: "",
+        budgetUsd: "",
+        timeoutS: 30,
+        env: { PATH: runtimeProcess.env.PATH ?? "" },
+      });
+      const delivered = join(store, task, "model_output", label);
+      expect(billed).toBe(0.5);
+      expect(readFileSync(join(delivered, "report.md"), "utf8")).toBe("report\n");
+      expect(readFileSync(join(delivered, "tables", "a.csv"), "utf8")).toBe("rows\n");
+    } finally {
+      rmSync(store, { recursive: true, force: true });
+    }
   });
 });

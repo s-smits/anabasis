@@ -3,7 +3,10 @@
  * `campaign.move` beside what this tree's table names on the log just before it (`decidedOn`), each
  * point where the replayed move changes, with what comparison admission would refuse there and how
  * long the table named that move before it began, the Builder's `wait` calls, and the Examiner's
- * sessions.
+ * sessions. One `admissible` row marks where admission first refused no comparison, before the first
+ * one started, and each `compare` move names the pool it began on, held out and released: the
+ * Builder's calls between the two rows are what it chose while it could have compared. Both were
+ * counted by hand for two campaigns and a pair of seats on 13 November.
  *
  *   bun tools/wri/table-timeline.ts <log>
  *
@@ -214,14 +217,34 @@ export function timelineLines(events: readonly LogEvent[], here: string): string
     const row = `${String(index + 1).padStart(6)}  ${at}Z  ${ranAt(index).padEnd(12)}  ${what}`;
     rows.set(index, [...(rows.get(index) ?? []), row]);
   };
+  // The pool on the first `upTo` events and what comparison admission refuses there.
+  const poolAt = (upTo: number) => {
+    const prefix = events.slice(0, upTo);
+    const supply = supplyOf(prefix);
+    const codes = refusals(supply, askedOf(planOn(prefix))).map(({ code }) => code);
+    const refused = codes.length === 0 ? "nothing" : codes.join(", ");
+    return {
+      open: codes.length === 0,
+      text: `${String(supply.held)} held out, ${String(supply.released)} released · admission refuses ${refused}`,
+    };
+  };
   for (const change of stoodOf(events, tableAt, waits)) {
     const { upTo, table, hours, waited, until } = change;
-    const prefix = events.slice(0, upTo);
-    const codes = refusals(supplyOf(prefix), askedOf(planOn(prefix))).map(({ code }) => code);
-    const refused = codes.length === 0 ? "nothing" : codes.join(", ");
     put(
       Math.max(0, upTo - 1),
-      `table      replayed ${table.key} · admission refuses ${refused} · named ${hours.toFixed(2)} h, ${waited.toFixed(2)} h of it inside Builder waits, until ${until}`,
+      `table      replayed ${table.key} · ${poolAt(upTo).text} · named ${hours.toFixed(2)} h, ${waited.toFixed(2)} h of it inside Builder waits, until ${until}`,
+    );
+  }
+  // Where a first comparison became admissible: the Builder's calls from here to the first
+  // `compare` row are what it chose while it could have compared.
+  const first = events.findIndex(({ kind }) => kind === "comparison.started");
+  const admissible = events
+    .slice(0, first === -1 ? events.length : first)
+    .findIndex(({ kind }, index) => (kind.startsWith("task.") || POINTS.has(kind)) && poolAt(index + 1).open);
+  if (admissible !== -1) {
+    put(
+      admissible,
+      `admissible a first comparison from ${(events[admissible]?.at ?? "").slice(11, 19)}: ${poolAt(admissible + 1).text}`,
     );
   }
   const moves = events.flatMap((event, index) => (event.kind === MOVED ? [index] : []));
@@ -237,13 +260,14 @@ export function timelineLines(events: readonly LogEvent[], here: string): string
     const unmatched = open.filter((id) => !moves.some((at) => events[at]?.data.session === id));
     const left = index === moves.at(-1) ? [...mine, ...unmatched] : mine;
     const last = left.length > 0 ? ` · begun, ${left.join(", ")} open at the log's end` : "";
-    put(index, `move       recorded ${recorded.padEnd(24)} replayed ${tableAt(index).key}${last}`);
+    const pool = data.move === "compare" ? ` · ${poolAt(index).text}` : "";
+    put(index, `move       recorded ${recorded.padEnd(24)} replayed ${tableAt(index).key}${pool}${last}`);
   }
   for (const { index, at, ms } of waits) {
     const from = new Date(Date.parse(at) - (ms ?? 0)).toISOString();
     put(
       index,
-      `wait       Builder wait from ${from.slice(11, 16)} to ${at.slice(11, 16)} (${((ms ?? 0) / MINUTE_MS).toFixed(1)} min)`,
+      `wait       Builder wait from ${from.slice(11, 19)} to ${at.slice(11, 19)} (${((ms ?? 0) / MINUTE_MS).toFixed(1)} min)`,
     );
   }
   for (const [index, event] of events.entries()) {

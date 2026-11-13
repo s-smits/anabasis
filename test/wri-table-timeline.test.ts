@@ -75,7 +75,31 @@ describe("table-timeline", () => {
     const lines = timelineLines(log.events, HERE);
     const last = rowsOf(lines, "table").at(-1) ?? "";
     expect(last).toContain("named 2.00 h, 0.50 h of it inside Builder waits, until the log ends");
-    expect(rowsOf(lines, "wait")[0]).toContain("from 00:30 to 01:00 (30.0 min)");
+    expect(rowsOf(lines, "wait")[0]).toContain("from 00:30:00 to 01:00:00 (30.0 min)");
+  });
+
+  it("names where a first comparison became admissible, and the pool a compare began on", () => {
+    const tasks = ["a", "b", "c", "d", "e", "f", "g", "h", "i"];
+    const log = logOf().add(2, "exam.started", { session: "x-1" });
+    for (const [place, version] of tasks.entries()) {
+      log
+        .add(3 + place, "task.proposed", { session: "x-1", version, taskId: `t-${version}`, family: version })
+        .add(3 + place, "task.gate", { version, gate: 1, outcome: "passed" });
+    }
+    log
+      .add(20, "task.state", { version: "i", state: "released" })
+      .add(30, "campaign.move", { move: "compare", code: "led", why: "w", session: "g-1" })
+      .add(30, "comparison.started", { session: "g-1" })
+      .add(40, "task.proposed", { session: "x-1", version: "j", taskId: "t-j", family: "j" });
+    const lines = timelineLines(log.events, HERE);
+    const admissible = rowsOf(lines, "admissible");
+    // The eighth task held, at minute 10, opens admission; seven did not, and nothing after the
+    // first comparison's start is a first position.
+    expect(admissible).toHaveLength(1);
+    expect(admissible[0]).toContain("from 00:10:00: 8 held out, 0 released · admission refuses nothing");
+    expect(rowsOf(lines, "move").at(-1)).toContain("8 held out, 1 released · admission refuses nothing");
+    const short = logOf().add(3, "task.proposed", proposed("v-1"));
+    expect(rowsOf(timelineLines(short.events, HERE), "admissible")).toHaveLength(0);
   });
 
   it("marks rows that ran under another tree's code, warns once, and counts no agreement", () => {

@@ -43,6 +43,7 @@ import { countBy } from "#src/meta/tally.ts";
 import { plural, textOr } from "#src/meta/text.ts";
 import { epochsOf } from "#src/campaign/climb.ts";
 import { endingOf } from "#src/kernel/reports.ts";
+import { lastAt } from "#skills/main/logs.ts";
 import { isCampaign, logEvents, packOf, type Run } from "../runs/registry.ts";
 import {
   forkOf,
@@ -415,9 +416,10 @@ function folderList(folders: readonly string[]): string {
 }
 
 /** The campaigns whose log took an event in the `RECENT_DAYS` before `now`, newest first: a log's
- *  file time sorts them out first, since a gathered copy can be newer than its last event. A log
- *  that will not read is shown so. A campaign's ending is its log's last event, as every reader
- *  takes it: one that went on after an ending has none. */
+ *  file time sorts them out first, then its last event read from its tail (`lastAt`), since a
+ *  gathered copy is often newer than its last event, so only a log inside the window is parsed.
+ *  A log in the window that will not read is shown so. A campaign's ending is its log's last
+ *  event, as every reader takes it: one that went on after an ending has none. */
 function movedRows(
   runs: readonly Run[],
   entries: readonly Entry[],
@@ -437,12 +439,13 @@ function movedRows(
     ];
     let events;
     try {
+      if (Date.parse(lastAt(run.path)) < since) return [];
       events = logEvents(run.path);
     } catch {
       return [["unreadable", ...head, "unreadable log", "unknown", ...tail]];
     }
     const last = events.at(-1);
-    if (last === undefined || Date.parse(last.at) < since) return [];
+    if (last === undefined) return [];
     const epochs = epochsOf(events);
     const promoted = epochs.filter(({ promoted: harness }) => harness !== null).length;
     const confirmed = epochs.filter(({ confirmed: read }) => read === true).length;

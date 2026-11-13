@@ -17,7 +17,7 @@ import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import type { Receipt } from "../runs/receipt.ts";
-import { fired, type Index, share, tally, text, type Trigger } from "./folds.ts";
+import { fired, firedIf, type Index, share, tally, text, type Trigger } from "./folds.ts";
 
 /** Lane 23: endings the campaign went on from, and the operator's words with how many an event
  *  acted on, read as the host reads them (`pendingWords`). Until 5 November it also counted the
@@ -33,15 +33,12 @@ function moveTriggers(log: Index): Trigger[] {
   // A pause is answered by its time, not by a move (`paused`), so only the other words are owed one.
   const owed = words.filter(({ data }) => ANSWERED.some((each) => each === data.word)).length;
   return [
-    ...(endings.length > 0 ? [fired("ENDED AND WENT ON", endings.join("; "))] : []),
-    ...(words.length > 0
-      ? [
-          fired(
-            "OPERATOR WORDS",
-            `${tally(countBy(words, ({ data }) => text(data.word)))}; of the words a move answers, ${share(owed - pendingWords(log.events).length, owed)} acted on`,
-          ),
-        ]
-      : []),
+    ...firedIf(endings.length > 0, "ENDED AND WENT ON", endings.join("; ")),
+    ...firedIf(
+      words.length > 0,
+      "OPERATOR WORDS",
+      `${tally(countBy(words, ({ data }) => text(data.word)))}; of the words a move answers, ${share(owed - pendingWords(log.events).length, owed)} acted on`,
+    ),
   ];
 }
 
@@ -58,7 +55,7 @@ function conversationTriggers(log: Index): Trigger[] {
           `${session}: ${plural(times, "compaction")} in ${plural(turns[session] ?? 0, "turn")}, read_opening ${String(opened)}`,
         ];
   });
-  return lines.length > 0 ? [fired("BUILDER COMPACTED", lines.join("; "))] : [];
+  return firedIf(lines.length > 0, "BUILDER COMPACTED", lines.join("; "));
 }
 
 /** Lane 6: the drafts an exam took, how each drafting session ended, and the measurement it
@@ -82,22 +79,21 @@ function draftTriggers(log: Index): Trigger[] {
  *  dirty tree, or a campaign command that left no receipt. */
 function launchTriggers(log: Index, launches: readonly Receipt[]): Trigger[] {
   if (launches.length === 0) {
-    return log.of("campaign.opened").length > 0
-      ? [fired("NO LAUNCH RECEIPT", "a campaign command opened this log and no receipt lies beside it")]
-      : [];
+    return firedIf(
+      log.of("campaign.opened").length > 0,
+      "NO LAUNCH RECEIPT",
+      "a campaign command opened this log and no receipt lies beside it",
+    );
   }
   const commits = new Set(launches.map((launch) => launch.commit.slice(0, 8)));
   const dirty = launches.filter((launch) => launch.dirty).length;
   const logins = new Set(launches.map((launch) => launch.login ?? "unnamed"));
   const buns = new Set(launches.map((launch) => launch.bun ?? "unrecorded"));
-  return launches.length > 1 || dirty > 0
-    ? [
-        fired(
-          "LAUNCHES",
-          `${String(launches.length)} launch${launches.length === 1 ? "" : "es"} at ${plural(commits.size, "commit")} (${[...commits].join(", ")}), ${String(dirty)} from a dirty tree, under ${plural(logins.size, "login")} and ${plural(buns.size, "Bun version")}`,
-        ),
-      ]
-    : [];
+  return firedIf(
+    launches.length > 1 || dirty > 0,
+    "LAUNCHES",
+    `${String(launches.length)} launch${launches.length === 1 ? "" : "es"} at ${plural(commits.size, "commit")} (${[...commits].join(", ")}), ${String(dirty)} from a dirty tree, under ${plural(logins.size, "login")} and ${plural(buns.size, "Bun version")}`,
+  );
 }
 
 /** Lane 26: what an append-only log of one writer cannot hold: a clock that runs backwards, a solve
@@ -116,15 +112,17 @@ function orderTriggers(log: Index): Trigger[] {
     ...(orphans.length > 0 ? [`${plural(orphans.length, "solve")} finished with no start`] : []),
     ...(twice.length > 0 ? [`comparison started twice: ${twice.map(([id]) => id).join(", ")}`] : []),
   ];
-  return said.length > 0 ? [fired("LOG OUT OF ORDER", said.join("; "))] : [];
+  return firedIf(said.length > 0, "LOG OUT OF ORDER", said.join("; "));
 }
 
 /** Lane 5: the rulings the host refused for want of their evidence, by the ruling asked for. */
 function refusalTriggers(log: Index): Trigger[] {
   const refused = log.of("referee.refused");
-  return refused.length > 0
-    ? [fired("RULINGS REFUSED", tally(countBy(refused, (data) => text(asRecord(data.asked)?.ruling))))]
-    : [];
+  return firedIf(
+    refused.length > 0,
+    "RULINGS REFUSED",
+    tally(countBy(refused, (data) => text(asRecord(data.asked)?.ruling))),
+  );
 }
 
 /** Every trigger of this module, in lane order. */

@@ -35,6 +35,7 @@ import { plural } from "#src/meta/text.ts";
 import {
   type Compared,
   fired,
+  firedIf,
   type Index,
   measured,
   percent,
@@ -129,14 +130,11 @@ function limitTriggers(log: Index): Trigger[] {
       return share(mine.filter(atALimit).length, mine.length);
     };
     const { at, of } = detail(missed);
-    return at === 0
-      ? []
-      : [
-          fired(
-            "MISSES AT A LIMIT",
-            `${session}: ${side(own.old)} reference misses and ${side(own.fresh)} new at a limit ${of}`,
-          ),
-        ];
+    return firedIf(
+      at !== 0,
+      "MISSES AT A LIMIT",
+      `${session}: ${side(own.old)} reference misses and ${side(own.fresh)} new at a limit ${of}`,
+    );
   });
   // An Examiner's admission solve names its session where a comparison's names the comparison.
   const started = new Set(log.of("comparison.started").map((start) => text(start.session)));
@@ -144,14 +142,11 @@ function limitTriggers(log: Index): Trigger[] {
   const { at, of } = detail(outside);
   return [
     ...compared,
-    ...(at > 0
-      ? [
-          fired(
-            "MISSES AT A LIMIT",
-            `outside a comparison: ${share(at, outside.length)} misses at a limit ${of}`,
-          ),
-        ]
-      : []),
+    ...firedIf(
+      at > 0,
+      "MISSES AT A LIMIT",
+      `outside a comparison: ${share(at, outside.length)} misses at a limit ${of}`,
+    ),
   ];
 }
 
@@ -170,29 +165,22 @@ function servedTriggers(log: Index, results: ReturnType<typeof scoredOf>): Trigg
     const other = scoring.filter((solve) => servedBy.has(solve.id));
     const under = other.filter((solve) => solve.harness === own.old).length;
     const models = other.flatMap((solve) => (servedBy.get(solve.id) ?? []).map((row) => row.served));
-    return other.length === 0
-      ? []
-      : [
-          fired(
-            "SERVED ANOTHER MODEL",
-            `${session}: ${share(other.length, scoring.length)} solves, ${String(under)} of them under the reference harness; ${tally(
-              countBy(models, (model) => model),
-            )}`,
-          ),
-        ];
+    return firedIf(
+      other.length > 0,
+      "SERVED ANOTHER MODEL",
+      `${session}: ${share(other.length, scoring.length)} solves, ${String(under)} of them under the reference harness; ${tally(
+        countBy(models, (model) => model),
+      )}`,
+    );
   });
   // A campaign whose comparisons scored none of the solves another model answered still opens the
   // lane: recode's every seat ran on claude-opus-5 under a check-defects reading.
   const turns = degraded.reduce((sum, row) => sum + row.turns, 0);
-  const anywhere =
-    otherModel.length === 0 && turns > 0
-      ? [
-          fired(
-            "SERVED ANOTHER MODEL",
-            `the campaign: ${plural(turns, "turn")} in ${String(new Set(degraded.map((row) => row.id)).size)} sessions and solves, none a comparison's scored solve; served by ${[...new Set(degraded.map((row) => row.served))].join(", ")}`,
-          ),
-        ]
-      : [];
+  const anywhere = firedIf(
+    otherModel.length === 0 && turns > 0,
+    "SERVED ANOTHER MODEL",
+    `the campaign: ${plural(turns, "turn")} in ${String(new Set(degraded.map((row) => row.id)).size)} sessions and solves, none a comparison's scored solve; served by ${[...new Set(degraded.map((row) => row.served))].join(", ")}`,
+  );
   return [...otherModel, ...anywhere];
 }
 
@@ -260,14 +248,11 @@ export function deadlineTriggers(log: Index): Trigger[] {
       const order = solves.map((solve) => (solve.harness === own.old ? "o" : "f")).join("");
       return !MIRRORS.some((mirror) => mirror.repeat(order.length).startsWith(order));
     }).length;
-    return late > 0 && own.old !== own.fresh
-      ? [
-          fired(
-            "STARTS OUT OF TURN",
-            `${session}: ${share(late, tasks.size)} tasks started their harnesses' solves out of turn`,
-          ),
-        ]
-      : [];
+    return firedIf(
+      late > 0 && own.old !== own.fresh,
+      "STARTS OUT OF TURN",
+      `${session}: ${share(late, tasks.size)} tasks started their harnesses' solves out of turn`,
+    );
   });
   const middles = loads.flatMap(({ halves }) => halves);
   const [calmest, busiest] = [Math.min(...middles), Math.max(...middles)];
@@ -278,14 +263,11 @@ export function deadlineTriggers(log: Index): Trigger[] {
     ...loaded,
     ...outOfTurn,
     ...servedTriggers(log, results),
-    ...(moved
-      ? [
-          fired(
-            "LOAD MOVED",
-            `median load when each comparison's solves started, its first half then its second: ${loads.map(({ session, halves }) => `${session} ${halves.map((half) => half.toFixed(1)).join(" then ")}`).join("; ")}`,
-          ),
-        ]
-      : []),
+    ...firedIf(
+      moved,
+      "LOAD MOVED",
+      `median load when each comparison's solves started, its first half then its second: ${loads.map(({ session, halves }) => `${session} ${halves.map((half) => half.toFixed(1)).join(" then ")}`).join("; ")}`,
+    ),
   ];
 }
 
@@ -471,16 +453,15 @@ export function costTriggers(log: Index): Trigger[] {
   const total = spend.reduce((sum, [, dollars]) => sum + dollars, 0);
   const [[leader, most] = ["", 0]] = spend;
   return [
-    ...(gaps.length > 0
-      ? [
-          fired(
-            "LONG SILENCES",
-            `${plural(gaps.length, "gap")} over ${(threshold / MINUTE_MS).toFixed(1)} min, ${why}: ${named.join("; ")}`,
-          ),
-        ]
-      : []),
-    ...(total > 0 && leader !== "solver" && most > total / 2
-      ? [fired("SPEND LED BY A ROLE", `${leader}: ${percent(most / total)} of billed dollars`)]
-      : []),
+    ...firedIf(
+      gaps.length > 0,
+      "LONG SILENCES",
+      `${plural(gaps.length, "gap")} over ${(threshold / MINUTE_MS).toFixed(1)} min, ${why}: ${named.join("; ")}`,
+    ),
+    ...firedIf(
+      total > 0 && leader !== "solver" && most > total / 2,
+      "SPEND LED BY A ROLE",
+      `${leader}: ${percent(most / total)} of billed dollars`,
+    ),
   ];
 }

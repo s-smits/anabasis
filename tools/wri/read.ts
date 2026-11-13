@@ -35,7 +35,6 @@ import { campaignOf as handoverOf, type Handover, nextBound, openSteps } from "#
 import { differenceOf, readsStepEitherWay, scoresIn } from "#src/kernel/compare.ts";
 import type { Condition } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { pairsReported } from "#src/kernel/reports.ts";
 import { billedAll, costLine, spendOf } from "#src/kernel/meter.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy } from "#src/meta/tally.ts";
@@ -48,6 +47,7 @@ import {
   EXAM_END,
   EXAM_START,
   fired,
+  firedIf,
   type Index,
   indexOf,
   instrumentTriggers,
@@ -171,35 +171,28 @@ function practiceTriggers(log: Index, { build, changed, read, round }: Practised
       solve.calls.length <= FEW_CALLS,
   ).length;
   return [
-    ...(changed && lastPractice === undefined
-      ? [fired("NO PRACTICE", `${session}: the harness changed and no practice solve ran`)]
-      : []),
+    ...firedIf(
+      changed && lastPractice === undefined,
+      "NO PRACTICE",
+      `${session}: the harness changed and no practice solve ran`,
+    ),
     ...(changed && lastPractice !== undefined ? unpractised : []),
-    ...(ended === "finished" ? [] : [fired("SESSION ENDED", `${session}: ${ended}`)]),
-    ...(failed.length > 0
-      ? [
-          fired(
-            "PRACTICE FAILS",
-            `${session}: ${plural(failed.length, "fail")}, ${String(earned)} ruled earned; the same task passed later under changed bytes ${String(answered)}, under the same bytes ${String(flipped)}`,
-          ),
-        ]
-      : []),
-    ...(exposed > 0
-      ? [
-          fired(
-            "PRACTISED TASK MEASURED",
-            `${session}: ${plural(exposed, "task")} both practised and measured`,
-          ),
-        ]
-      : []),
-    ...(quickWins > 0
-      ? [
-          fired(
-            "WIN AT A SMALL WALL SHARE",
-            `${session}: ${String(quickWins)} passed solves of tasks the new harness won, in few calls`,
-          ),
-        ]
-      : []),
+    ...firedIf(ended !== "finished", "SESSION ENDED", `${session}: ${ended}`),
+    ...firedIf(
+      failed.length > 0,
+      "PRACTICE FAILS",
+      `${session}: ${plural(failed.length, "fail")}, ${String(earned)} ruled earned; the same task passed later under changed bytes ${String(answered)}, under the same bytes ${String(flipped)}`,
+    ),
+    ...firedIf(
+      exposed > 0,
+      "PRACTISED TASK MEASURED",
+      `${session}: ${plural(exposed, "task")} both practised and measured`,
+    ),
+    ...firedIf(
+      quickWins > 0,
+      "WIN AT A SMALL WALL SHARE",
+      `${session}: ${String(quickWins)} passed solves of tasks the new harness won, in few calls`,
+    ),
   ];
 }
 
@@ -214,8 +207,8 @@ function practiceTriggers(log: Index, { build, changed, read, round }: Practised
  * measures listed as won a task the Linux fork of #306 tied and one it lost, both scored before it.
  */
 export function wonOf(log: Index) {
-  return log.compared.map(({ session, at, last }) => {
-    const pairs = pairsReported(log.events, { session, index: at, data: last });
+  return log.compared.map(({ session, last, pairs: settled }) => {
+    const pairs = settled();
     const tested = testedOf(last);
     const recorded = new Map(tested.of.map((task, index) => [task, tested.differences[index]] as const));
     return {
@@ -232,9 +225,11 @@ function winTriggers(log: Index): Trigger[] {
       (pair) =>
         `${short(pair.task)} new ${pair.solves?.fresh.join(" ") ?? "-"}, reference ${pair.solves?.old.join(" ") ?? "-"}`,
     );
-    return won.length === 0
-      ? []
-      : [fired("WINS", `${session}: ${share(won.length, pairs.length)} tasks won: ${solves.join("; ")}`)];
+    return firedIf(
+      won.length > 0,
+      "WINS",
+      `${session}: ${share(won.length, pairs.length)} tasks won: ${solves.join("; ")}`,
+    );
   });
 }
 
@@ -277,9 +272,11 @@ function programTriggers(log: Index): Trigger[] {
       : [];
   });
   const lines = [...practised, ...compared];
-  return lines.length > 0
-    ? [fired("ANSWER FROM A PROGRAM", `one shell call, then submit, in ${lines.join("; ")}`)]
-    : [];
+  return firedIf(
+    lines.length > 0,
+    "ANSWER FROM A PROGRAM",
+    `one shell call, then submit, in ${lines.join("; ")}`,
+  );
 }
 
 /** Lanes 12 to 15: the harness, which is the Builder's. */
@@ -319,52 +316,42 @@ function harnessTriggers(log: Index): Trigger[] {
     const fresh = edited ? round.scoring : [];
     const erring = fresh.filter((solve) => solve.errors > 0).length;
     return [
-      ...(edited
-        ? [
-            fired(
-              "HARNESS CHANGED",
-              `${session}: ${short(parent)} to ${finished === null ? "what a stop left unsaved" : short(child)}; written by its file tools and shell: ${written.join(", ") || "nothing"}`,
-            ),
-          ]
-        : []),
-      ...(isString(finished?.broken)
-        ? [
-            fired(
-              child === "" ? "BROKEN AT END" : "MEASURED AN EARLIER STATE",
-              `${session}: what the session left does not open`,
-            ),
-          ]
-        : []),
-      ...(edited && !calls.some(({ tool }) => tool === "check_harness")
-        ? [fired("NEVER CHECKED", `${session}: no check_harness call`)]
-        : []),
-      ...(fresh.length > 0
-        ? [
-            fired(
-              "TOOLS CALLED",
-              `${[...new Set(fresh.map((solve) => short(solve.harness)))].join(", ")}, left by ${session}, over ${plural(fresh.length, "test-side solve")}: ${tally(
-                countBy(
-                  fresh.flatMap((solve) => solve.calls),
-                  (tool) => tool,
-                ),
-              )}; through bash: ${tally(
-                countBy(
-                  fresh.flatMap((solve) => solve.programs),
-                  (program) => program,
-                ),
-              )}`,
-            ),
-          ]
-        : []),
-      ...(erring * 4 > fresh.length
-        ? [
-            fired(
-              "TOOL CALLS ERRED",
-              `${session}: in ${share(erring, fresh.length)} solves under the new harness, a call marked an error, as every non-zero exit is, which a test reporting what is unmet may give by design`,
-            ),
-          ]
-        : []),
-      ...(toolFiles.length > 0 ? [fired("TOOLS EDITED", `${session}: ${toolFiles.join(", ")}`)] : []),
+      ...firedIf(
+        edited,
+        "HARNESS CHANGED",
+        `${session}: ${short(parent)} to ${finished === null ? "what a stop left unsaved" : short(child)}; written by its file tools and shell: ${written.join(", ") || "nothing"}`,
+      ),
+      ...firedIf(
+        isString(finished?.broken),
+        child === "" ? "BROKEN AT END" : "MEASURED AN EARLIER STATE",
+        `${session}: what the session left does not open`,
+      ),
+      ...firedIf(
+        edited && !calls.some(({ tool }) => tool === "check_harness"),
+        "NEVER CHECKED",
+        `${session}: no check_harness call`,
+      ),
+      ...firedIf(
+        fresh.length > 0,
+        "TOOLS CALLED",
+        `${[...new Set(fresh.map((solve) => short(solve.harness)))].join(", ")}, left by ${session}, over ${plural(fresh.length, "test-side solve")}: ${tally(
+          countBy(
+            fresh.flatMap((solve) => solve.calls),
+            (tool) => tool,
+          ),
+        )}; through bash: ${tally(
+          countBy(
+            fresh.flatMap((solve) => solve.programs),
+            (program) => program,
+          ),
+        )}`,
+      ),
+      ...firedIf(
+        erring * 4 > fresh.length,
+        "TOOL CALLS ERRED",
+        `${session}: in ${share(erring, fresh.length)} solves under the new harness, a call marked an error, as every non-zero exit is, which a test reporting what is unmet may give by design`,
+      ),
+      ...firedIf(toolFiles.length > 0, "TOOLS EDITED", `${session}: ${toolFiles.join(", ")}`),
       ...practiceTriggers(log, {
         build,
         changed: edited,
@@ -407,25 +394,19 @@ function testTriggers(session: string, last: JsonObject): Trigger[] {
   const asked = last.tasks;
   const lacking = items(last.short).length;
   return [
-    ...(scored !== null && tasks === 0
-      ? [
-          fired(
-            "NOTHING SCORED",
-            `${session}: no task was scored${isNumber(asked) ? `, of ${String(asked)} asked for` : ""}; the report reads ${text(last.reading)}`,
-          ),
-        ]
-      : []),
-    ...(last.capped === true
-      ? [
-          fired(
-            "CUT BY ITS CAP",
-            scored === null
-              ? `${session}: the dollar cap ended it before it was read`
-              : `${session}: the dollar cap ended the starter's solves; its test stands, unread against the starter`,
-          ),
-        ]
-      : []),
-    ...(lacking > 0 ? [fired("SET SHORT", `${session}: ${String(lacking)} short of solves`)] : []),
+    ...firedIf(
+      scored !== null && tasks === 0,
+      "NOTHING SCORED",
+      `${session}: no task was scored${isNumber(asked) ? `, of ${String(asked)} asked for` : ""}; the report reads ${text(last.reading)}`,
+    ),
+    ...firedIf(
+      last.capped === true,
+      "CUT BY ITS CAP",
+      scored === null
+        ? `${session}: the dollar cap ended it before it was read`
+        : `${session}: the dollar cap ended the starter's solves; its test stands, unread against the starter`,
+    ),
+    ...firedIf(lacking > 0, "SET SHORT", `${session}: ${String(lacking)} short of solves`),
   ];
 }
 
@@ -456,31 +437,22 @@ function comparisonTriggers(log: Index): Trigger[] {
       .map(([key]) => key.endsWith(` ${text(own.old)}`));
     const noise = tallyOf(last.noise);
     return [
-      ...(moved > 0
-        ? [
-            fired(
-              "SCORED SET MOVED",
-              `${session}: ${share(moved, fixed.length)} tasks it began with are not in its tally`,
-            ),
-          ]
-        : []),
-      ...(open.length > 0
-        ? [
-            fired(
-              "SET ASIDE BY SIDE",
-              `${session}: ${plural(open.length, "rejection")} set ${plural(aside.size, "task")} aside, ${String(underOld)} under the reference harness and ${String(open.length - underOld)} under the others`,
-            ),
-          ]
-        : []),
+      ...firedIf(
+        moved > 0,
+        "SCORED SET MOVED",
+        `${session}: ${share(moved, fixed.length)} tasks it began with are not in its tally`,
+      ),
+      ...firedIf(
+        open.length > 0,
+        "SET ASIDE BY SIDE",
+        `${session}: ${plural(open.length, "rejection")} set ${plural(aside.size, "task")} aside, ${String(underOld)} under the reference harness and ${String(open.length - underOld)} under the others`,
+      ),
       ...testTriggers(session, last),
-      ...(flips.length > 0
-        ? [
-            fired(
-              "FLIPS",
-              `${session}: ${share(flips.length, seen.size)} task and harness pairs both passed and failed, ${String(flips.filter(Boolean).length)} under the reference harness and ${String(flips.filter((old) => !old).length)} under the other`,
-            ),
-          ]
-        : []),
+      ...firedIf(
+        flips.length > 0,
+        "FLIPS",
+        `${session}: ${share(flips.length, seen.size)} task and harness pairs both passed and failed, ${String(flips.filter(Boolean).length)} under the reference harness and ${String(flips.filter((old) => !old).length)} under the other`,
+      ),
       ...(noise === null
         ? []
         : [
@@ -497,14 +469,14 @@ function comparisonTriggers(log: Index): Trigger[] {
     return `${session} ${short(text(own.old) || (build?.parent ?? ""))}>${fresh} ${text(last.reading)}`;
   });
   return [
-    ...(hosts > 1
-      ? [fired("HOST CODE MOVED", `${String(hosts)} versions of the host's code in one log`)]
-      : []),
+    ...firedIf(hosts > 1, "HOST CODE MOVED", `${String(hosts)} versions of the host's code in one log`),
     ...perComparison,
-    ...(chain.length > 0 ? [fired("CHAIN", chain.join("; "))] : []),
-    ...(log.states.size > 0 && log.held.length === 0
-      ? [fired("NO TASK HELD OUT", "no task is held out, so a comparison has nothing to score")]
-      : []),
+    ...firedIf(chain.length > 0, "CHAIN", chain.join("; ")),
+    ...firedIf(
+      log.states.size > 0 && log.held.length === 0,
+      "NO TASK HELD OUT",
+      "no task is held out, so a comparison has nothing to score",
+    ),
   ];
 }
 
@@ -555,21 +527,18 @@ function solveTriggers(log: Index, steps: readonly Handover[]): Trigger[] {
   });
   return [
     ...deadlineTriggers(log),
-    ...(non.length > 0
-      ? [
-          fired(
-            "NON-RESULTS",
-            [
-              `${share(non.length, done.length)}; ${tally(countBy(non, (solve) => solve.kind ?? "unkinded"))}`,
-              ...rerun,
-            ].join("; "),
-          ),
-        ]
-      : []),
-    ...(cut + open > 0 ? [fired("SOLVE NEVER FINISHED", apart(solves(cut), solves(open)))] : []),
-    ...(unended.length > 0 ? [fired("EXAMINER NEVER FINISHED", apart(ids("cut"), ids("open")))] : []),
-    ...(Object.keys(unjudged).length > 0 ? [fired("MISSES WITHOUT A VERDICT", tally(unjudged))] : []),
-    ...(crashed.length > 0 ? [fired("SESSION CRASHED", crashed.join(", "))] : []),
+    ...firedIf(
+      non.length > 0,
+      "NON-RESULTS",
+      [
+        `${share(non.length, done.length)}; ${tally(countBy(non, (solve) => solve.kind ?? "unkinded"))}`,
+        ...rerun,
+      ].join("; "),
+    ),
+    ...firedIf(cut + open > 0, "SOLVE NEVER FINISHED", apart(solves(cut), solves(open))),
+    ...firedIf(unended.length > 0, "EXAMINER NEVER FINISHED", apart(ids("cut"), ids("open"))),
+    ...firedIf(Object.keys(unjudged).length > 0, "MISSES WITHOUT A VERDICT", tally(unjudged)),
+    ...firedIf(crashed.length > 0, "SESSION CRASHED", crashed.join(", ")),
     ...costTriggers(log),
   ];
 }
@@ -592,15 +561,12 @@ function reviewTriggers(log: Index): Trigger[] {
   const faults = ends.reduce((sum, data) => sum + items(data.reviewFaults).length, 0);
   const unprobed = [...log.rulings.values()].filter(unprobedEarned).length;
   return [
-    ...(moved > 0 ? [fired("REPLAY MOVED THE VERDICT", plural(moved, "ruling"))] : []),
-    ...(standing > 0
-      ? [
-          fired(
-            "SET ASIDE AND UNSETTLED",
-            `${plural(standing, "task")} left out of a comparison on a rejection no person has labelled`,
-          ),
-        ]
-      : []),
+    ...firedIf(moved > 0, "REPLAY MOVED THE VERDICT", plural(moved, "ruling")),
+    ...firedIf(
+      standing > 0,
+      "SET ASIDE AND UNSETTLED",
+      `${plural(standing, "task")} left out of a comparison on a rejection no person has labelled`,
+    ),
     ...log.compared.flatMap(({ session, own, last }) => {
       // The tally were every rejection that set a task aside to stand, beside the one without them,
       // both read without the bill as the step is (`tallyOf`); until 2 November it read the billed p.
@@ -645,8 +611,8 @@ function reviewTriggers(log: Index): Trigger[] {
             ]),
       ];
     }),
-    ...(faults > 0 ? [fired("REVIEW FAULTS", plural(faults, "reviewer failure"))] : []),
-    ...(unprobed > 0 ? [fired("EARNED WITHOUT A PROBE", share(unprobed, log.rulings.size))] : []),
+    ...firedIf(faults > 0, "REVIEW FAULTS", plural(faults, "reviewer failure")),
+    ...firedIf(unprobed > 0, "EARNED WITHOUT A PROBE", share(unprobed, log.rulings.size)),
   ];
 }
 

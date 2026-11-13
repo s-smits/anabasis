@@ -27,8 +27,9 @@
  * tree and what each added step had by the tree's own tally; A/A either way beside how many A/As
  * could read a step at all, since a rate over all of them flatters any rule; the starter reads, the
  * sign repeat on the disjoint solves of one comparison and the tasks that moved; what became of each
- * added step, with runs that never read again counted apart; the resources of the harnesses it would
- * promote; and every row by pack, since a pooled rate reads the mix of packs. Until 11 November the
+ * added step, with runs that never read again counted apart; the promotions on record whose starter
+ * read confirmed them, among those a row steps on and those it does not; the resources of the
+ * harnesses it would promote; and every row by pack, since a pooled rate reads the mix of packs. Until 11 November the
  * panel was a second command over the same tree.
  *
  * Tuning runs it on `main`'s tree and on a candidate (SKILL.md). Replaying the record counts
@@ -654,6 +655,10 @@ function detailLines(panels: readonly Panel[], comparisons: readonly Comparison[
   const packs = [...new Set(candidates.map(({ pack }) => pack))].toSorted();
   const width = Math.max(10, ...panels.map(({ name }) => name.length));
   const of = (pack: string) => candidates.filter((one) => one.pack === pack).length;
+  const settled = candidates.filter(({ confirmed }) => confirmed !== null);
+  const held = (some: readonly Comparison[]) =>
+    `${String(some.filter(({ confirmed }) => confirmed === true).length)}/${String(some.length)}`;
+  const groups = ["all", ...packs.filter((pack) => settled.some((one) => one.pack === pack))];
   const lines = [
     "",
     `steps by pack, of ${packs.map((pack) => `${pack} ${String(of(pack))}`).join(", ")}`,
@@ -662,6 +667,20 @@ function detailLines(panels: readonly Panel[], comparisons: readonly Comparison[
       const cells = packs.map((pack) =>
         pad(String([...steps].filter((one) => one.pack === pack).length), Math.max(pack.length, 3)),
       );
+      return `${name.padEnd(width)} ${cells.join(" ")}`;
+    }),
+    "",
+    "promotions on record with a starter read, confirmed/of: those the row steps on, then those it does not",
+    `${"mechanism".padEnd(width)} ${groups.map((group) => pad(group, Math.max(group.length, 11))).join(" ")}`,
+    ...panels.map(({ name, steps }) => {
+      const cells = groups.map((group) => {
+        const some = settled.filter((one) => group === "all" || one.pack === group);
+        const kept = some.filter((one) => steps.has(one));
+        return pad(
+          `${held(kept)} ${held(some.filter((one) => !kept.includes(one)))}`,
+          Math.max(group.length, 11),
+        );
+      });
       return `${name.padEnd(width)} ${cells.join(" ")}`;
     }),
     "",

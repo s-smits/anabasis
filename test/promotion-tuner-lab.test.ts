@@ -18,6 +18,7 @@ import {
 } from "#skills/promotion-tuner/scripts/record.ts";
 import { differenceOf, flipP } from "../src/kernel/compare.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
+import { chainLog } from "./helpers/starter-chain.ts";
 
 const LEVEL = 0.02;
 const die = (why: string): never => {
@@ -33,6 +34,7 @@ const solve = (billed: number, measure: number | null = null, valid = true): Sol
 });
 const task = (old: readonly Solve[], fresh: readonly Solve[], direction: Task["direction"] = null): Task => ({
   task: "t",
+  family: null,
   direction,
   retained: false,
   old,
@@ -130,6 +132,39 @@ describe("a resource as a guard", () => {
   });
 });
 
+describe("the unit a test counts", () => {
+  const scored = (old: number, fresh: number) =>
+    task([solve(1, old), solve(1, old)], [solve(1, fresh), solve(1, fresh)], "lower");
+  const of = (family: string | null, one: Task): Task => ({ ...one, family });
+
+  it("reads six wins of one family as one unit, and six families or six tasks of none as six", () => {
+    const siblings = Array.from({ length: 6 }, () => of("one", scored(100, 50)));
+    const apart = siblings.map((one, nth) => of(`f${String(nth)}`, one));
+    expect(steps(knobbed(TODAY, "today"), siblings)).toBe(true);
+    for (const unit of ["unit=family", "unit=first"]) {
+      expect(steps(mechanism(unit), siblings)).toBe(false);
+      expect(steps(mechanism(unit), apart)).toBe(true);
+      expect(
+        steps(
+          mechanism(unit),
+          siblings.map((one) => of(null, one)),
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it("takes a family's mean over its tasks, where its first task alone reads the other way", () => {
+    // Each family's first task is won by 150 points and its second lost by 225.
+    const mixed = Array.from({ length: 6 }, (_, nth) => `f${String(nth)}`).flatMap((family) => [
+      of(family, scored(100, 50)),
+      of(family, scored(25, 100)),
+    ]);
+    expect(steps(mechanism("unit=first"), mixed)).toBe(true);
+    expect(steps(mechanism("unit=family"), mixed)).toBe(false);
+    expect(steps(mechanism("unit=family"), mixed.toReversed())).toBe(false);
+  });
+});
+
 describe("a spec", () => {
   it("refuses a knob or a value it does not know", () => {
     expect(() => knobsOf("bil=0.1", die)).toThrow("no knob bil");
@@ -154,10 +189,30 @@ describe("the record", () => {
       tasks: [tied(1)],
       aa: [],
       after: { promoted: [], readings: 0 },
+      confirmed: null,
     });
     expect(
       once([of("fork", 2), of("parent", 1), of("other", 3, "c")]).map(({ campaign }) => campaign),
     ).toEqual(["parent", "other"]);
+  });
+
+  it("gives each task its family, and a step the confirmation of the promotion it made", () => {
+    const read = (events: readonly LogEvent[]) =>
+      Object.fromEntries(comparisonsIn("c", events).map(({ session, confirmed }) => [session, confirmed]));
+    // The first promotion's starter read is 7 to 3, no step; the second's is 10 to 0 or 7 to 3. A
+    // starter read made no promotion, so it holds none.
+    expect(read(chainLog("won"))).toEqual({ "g-1": false, "g-2": null, "g-3": true, "g-4": null });
+    expect(read(chainLog("lost"))["g-3"]).toBe(false);
+    // Before its starter read reports, a promotion is unread, which is not unconfirmed.
+    const log = chainLog("won");
+    const unread = log.slice(
+      0,
+      log.findIndex(({ kind, data }) => kind === "comparison.started" && data.session === "g-4"),
+    );
+    expect(read(unread)["g-3"]).toBeNull();
+    expect(comparisonsIn("c", log).flatMap(({ tasks }) => tasks.map(({ family }) => family))).toEqual(
+      Array.from({ length: 34 }, () => "fixture"),
+    );
   });
 
   it("reads no comparison from a log with none that scored a task", () => {

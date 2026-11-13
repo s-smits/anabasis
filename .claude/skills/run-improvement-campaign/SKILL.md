@@ -165,11 +165,16 @@ owed steps only, as a timer takes it.
    swarm writes are stacked by the primary with `git apply --3way`, and the composed gate runs on the
    top, since commits that pass alone can interact.
 5. **Predict, then fork at that head** with `--as forkedPR<N>`, by which `next` finds the runs that
-   measure it. Take each name from the dry run of `runs fresh` and write its
-   `predictions-<run>.md` first, with a `## Carried` section naming each id the parent runs did not
-   hold, as `<parent run>:<id>`. A slot an ended run frees goes at once to the first entry of
-   `run-queue.md` marked `ready: yes`, and where the queue holds none, to a fresh run at the current
-   top only where the cycle's word covers it; idle capacity measures nothing.
+   measure it; a fork launched at another pull request's head (a child of the plan's, say) is named
+   in the folder's `launch` deviation, and `next` then reads it as the iteration's fork all the same.
+   Take each name from the dry run of `runs fresh` and write its `predictions-<run>.md` first, with
+   a `## Carried` section naming each id the parent runs did not hold, as `<parent run>:<id>`; a
+   prediction the plan itself defines goes into that file as a row, since no outcomes file reads a
+   plan. A run starts for what it adds, never to fill a slot (operator, 13 November 2026): its file
+   opens by naming the component no live run measures (the fix it forks at, or one term or prompt
+   it ablates or tunes) with a `first` row for each, and its outcomes are resolved as its events
+   come. A slot an ended run frees goes to the first entry of `run-queue.md` marked `ready: yes`;
+   where no entry has such a component, it stays empty.
 
 `next` walks these gates in order: `open`, `instruct`, `lanes`, `reports`, `isolated`, `synthesise`;
 for each run `predictions`, `outcomes`, for a fork `carry` and, for a jobstat run, `outside` (its

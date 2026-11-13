@@ -229,6 +229,17 @@ export function ledgerOf(root: string, dir: string, file: string): string | null
   return found.length === 1 ? (found[0] ?? null) : null;
 }
 
+/**
+ * The forks the `launch` row of an iteration's `deviations` names. A fork launched at a child of the
+ * plan's pull request carries that child's number, so its name ties it to no iteration; on
+ * 12 November 2026 such a fork was read by no gate and carried nothing from its parents. A bare
+ * `forkedPR<N>` names no run.
+ */
+export const launchForks = (deviations: string): string[] =>
+  rowsOf(deviations, "step")
+    .filter(([step]) => step === "launch")
+    .flatMap(([, reason = ""]) => reason.match(/[\w.-]+-forkedPR\d+(?:-\w+)*/gu) ?? []);
+
 /** The pull request a fork measures, from `forkedPR<N>` in its name, or null. */
 export function forkOf(name: string): number | null {
   const pull = /forkedPR(\d+)(?!\d)/u.exec(name)?.[1];

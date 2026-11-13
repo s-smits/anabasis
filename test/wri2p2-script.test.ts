@@ -282,6 +282,22 @@ describe("the next step of an investigation", () => {
     expect(step()[0]).toStartWith("step: implement");
     write(PLAN_FILE, PLAN);
     expect(step()[0]).toStartWith("step: launch");
+    // A fork launched at a child of the plan's pull request carries another number. The `launch`
+    // deviation that names it makes it this iteration's fork, which owes the same carry; a bare
+    // `forkedPR602` in the reason names no run.
+    const child = "r-forkedPR603";
+    write(
+      "deviations.md",
+      `| step | reason |\n| --- | --- |\n| launch | measured by \`${child}\`, at the child of #602; no forkedPR602 is launched |\n`,
+    );
+    expect(step()[0]).toStartWith(`step: predictions · ${child} has no`);
+    writeFileSync(join(cycle, `predictions-${child}.md`), `${table(["F1"])}\n## Carried\n\n- r:P1\n`);
+    expect(step()[0]).toBe(
+      `step: carry · the "## Carried" section of ${join(cycle, `predictions-${child}.md`)} names r:P2: each id the iteration that made this fork did not hold`,
+    );
+    writeFileSync(join(cycle, `predictions-${child}.md`), `${table(["F1"])}\n## Carried\n\n- r:P2\n`);
+    expect(step()[0]).toBe(`step: done · #602 is measured by ${child}`);
+    write("deviations.md", "");
     // The fork owes its own predictions, then what it carries from the iteration that made it.
     const fork = "r-forkedPR602";
     expect(step([fork])[0]).toStartWith(`step: predictions · ${fork} has no`);

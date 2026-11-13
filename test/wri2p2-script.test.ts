@@ -442,6 +442,10 @@ describe("the next step of an investigation", () => {
       "| r | P2 | unreached |",
       "| r | P3 | unresolved |",
       "",
+      "# Dropped: unreached or falsified, carried by no run and under no plan's Not done",
+      "",
+      "- r: P2 (unreached)",
+      "",
       "# Still missing: r",
       "",
       "## Not held",
@@ -474,6 +478,55 @@ describe("the next step of an investigation", () => {
     // The plan's own section, where it has one, is the owner and wins.
     write(PLAN_FILE, "# Plan\n\n## Intentionally opposed\n\n- the solve limits stay\n");
     expect(views(50).slice(-1)).toEqual(["- the solve limits stay"]);
+  });
+
+  it("names each unreached or falsified row that no fork carries and no plan leaves undone", () => {
+    const { root, cycle, write, ledger } = folder("dropped", "r", true);
+    ledger("predictions-r.md", table(["P1", "P2", "P3", "P20"]));
+    ledger(
+      "outcomes-r.md",
+      `${table(["P1"], "held")}| P2 | unreached |\n| P3 | falsified |\n| P20 | pending |\n`,
+    );
+    const dropped = () => {
+      const views = ledgerViews(cycle, root, () => null);
+      return views.slice(views.findIndex((line) => line.startsWith("# Dropped")) + 2).slice(0, 1);
+    };
+    // A run no plan has read yet has dropped nothing: its iteration has still to carry its rows.
+    expect(dropped()).toEqual(["- none"]);
+    // A note beside the cycles' folders whose name reads as one is no folder of ledgers.
+    writeFileSync(join(root, "2026-11-07-cycle-test-brief.md"), "## Carried\n\n- r:P2, r:P3\n");
+    write(PLAN_FILE, PLAN);
+    expect(dropped()).toEqual(["- r: P2 (unreached), P3 (falsified)"]);
+    // Carried by a longer id's name, or for another run, is not carried.
+    ledger("predictions-f.md", `${table(["F1"])}\n## Carried\n\n- r:P20, s:P3\n`);
+    expect(dropped()).toEqual(["- r: P2 (unreached), P3 (falsified)"]);
+    ledger("predictions-f.md", `${table(["F1"])}\n## Carried\n\n- r:P2\n`);
+    expect(dropped()).toEqual(["- r: P3 (falsified)"]);
+    write(PLAN_FILE, `${PLAN}\n## Not done\n\n- P3: no run of this cycle reaches its event\n`);
+    expect(dropped()).toEqual(["- none"]);
+  });
+
+  it("owes a plan's own predictions a place in a fork's file or under its Not done", () => {
+    const { dir, write, ledger, step, lone } = folder("plan-predicts", "p", true);
+    lone(4);
+    ledger("predictions-p.md", table(["P1"]));
+    ledger("outcomes-p.md", table(["P1"], "held"));
+    write("vetting.md", "| # | finding |\n| --- | --- |\n| 1 | P1 |\n");
+    write("cross-domain.md", "rows");
+    const predicting = `${PLAN}\n## Predictions for the next runs\n\n${table(["SP1", "XB1", "XB2"])}`;
+    write(PLAN_FILE, predicting);
+    const fork = "p-forkedPR602";
+    ledger(`predictions-${fork}.md`, table(["F1", "XB1"]));
+    expect(step([fork])[0]).toStartWith(
+      `step: carry · ${join(dir, PLAN_FILE)} predicts SP1, XB2, which no fork's predictions file names`,
+    );
+    // The reason that passes every gate of the forks does not pass the plan's own rows.
+    write("deviations.md", `${DEVIATIONS}| forks | launched before the ledgers were kept |\n`);
+    expect(step([fork])[0]).toStartWith("step: carry · ");
+    write("deviations.md", "");
+    ledger(`predictions-${fork}.md`, table(["F1", "XB1", "SP1"]));
+    write(PLAN_FILE, `${predicting}\n## Not done\n\n- XB2: read by no run before the next esp32 fork\n`);
+    expect(step([fork])).toEqual([`step: done · #602 is measured by ${fork}`]);
   });
 
   it("reads a fork's parent by its whole number, so #60 never takes #600's runs", () => {

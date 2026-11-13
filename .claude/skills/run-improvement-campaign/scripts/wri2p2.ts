@@ -41,11 +41,13 @@
  *   decision, each run's ledgers (`predictions-<run>.md` resolved id by id in `outcomes-<run>.md`,
  *   and for a fork what it carries from the iteration that made it), the vetting of every
  *   prediction, the read across domains (`cross-domain.md`), a plan that answers both and says under
- *   "Intentionally opposed" what it leaves out on purpose, and each fork's ledger; a jobstat run's
- *   also passes its row in `outside-reads.md` (`outsideGate`).
+ *   "Intentionally opposed" what it leaves out on purpose, each fork's ledger, and the plan's own
+ *   predictions carried into a fork's (`planOwed`); a jobstat run's also passes its row in
+ *   `outside-reads.md` (`outsideGate`).
  * - `ledger` prints the views derived from those files and never written by hand: the cycle view,
- *   every prediction of the folder's runs with its outcome, and each run's still-missing view, what
- *   it did not hold beside its plan's `## Not done` and `## Intentionally opposed`.
+ *   every prediction of the folder's runs with its outcome; the dropped view, each unreached or
+ *   falsified id that no `## Carried` and no plan's `## Not done` names; and each run's still-missing
+ *   view, what it did not hold beside its plan's `## Not done` and `## Intentionally opposed`.
  *
  * Every gate is a default, never a wall (operator, 7 November: "to-be-deviated-from each time"): a
  * row `| <step> | <reason> |` in the folder's `deviations.md` passes it, and `next` prints the
@@ -98,15 +100,18 @@ import { INVESTIGATION, SHARED, SYNTHESIS, VETTING } from "#tools/wri/index.ts";
 import { blankSections, reportPath } from "#tools/wri/investigation.ts";
 import {
   COUNTED_LINE,
+  carriedIn,
   carryOf,
   countedOf,
   cycleViewOf,
+  droppedOf,
   idsOf,
   launchForks,
   ledgerFiles,
   ledgerOf,
   madeBy,
   names,
+  notDoneOf,
   OUTCOMES,
   outcomesOf,
   pullOf,
@@ -262,6 +267,24 @@ function carryOwed({ root }: Where, run: string, path: string): string[] | null 
     ? null
     : [
         `the "## Carried" section of ${path} names ${missing.join(", ")}: each id the iteration that made this fork did not hold`,
+      ];
+}
+
+/**
+ * What an iteration's `plan` owes the predictions it writes itself: each id of its own `id` tables
+ * named in a fork's `predictions-<run>.md` or under its `## Not done`. Until 13 November 2026 such a
+ * row had no owner that carried it into a run's file, so no outcomes file read it.
+ */
+function planOwed({ root, dir }: Where, plan: string, forks: readonly string[]): string[] | null {
+  const taken = [
+    ...forks.map((fork) => read(ledgerOf(root, dir, `predictions-${fork}.md`) ?? "")),
+    ...notDoneOf(plan),
+  ].join("\n");
+  const absent = idsOf(plan).filter((id) => !names(taken, id));
+  return absent.length === 0
+    ? null
+    : [
+        `${join(dir, PLAN)} predicts ${absent.join(", ")}, which no fork's predictions file names: write each into a fork's predictions-<run>.md, or under the plan's "## Not done" with why no run reads it`,
       ];
 }
 
@@ -447,6 +470,8 @@ function gatesOf(where: Where): Gate[] {
     ...only(
       forks.flatMap((fork) => runGates(where, fork, [FORKS]).filter(({ step }) => step !== "outcomes")),
     ),
+    // The plan's own predictions are carried as its runs' are, and only a reason of their own passes it.
+    ...only([{ step: "carry", keys: ["carry:plan"], owed: () => planOwed(where, plan, forks) }]),
     { step: "done", keys: [], owed: () => [`#${pull} is measured by ${forks.join(", ")}`] },
   ];
 }
@@ -703,8 +728,9 @@ function open(args: CommandArgs, repo: string): number {
 
 /**
  * The views derived from the ledgers of `dir`, an investigation's folder or a cycle's: the cycle view
- * of every run it holds, then each run's still-missing view beside the plan of the iteration that
- * read it (`dir`'s own, or the latest that names the run).
+ * of every run it holds, the rows among them that nothing took up (`droppedOf`), then each run's
+ * still-missing view beside the plan of the iteration that read it (`dir`'s own, or the latest that
+ * names the run).
  */
 export function ledgerViews(dir: string, root: string, lengthOf: Where["lengthOf"]): string[] {
   const own = existsSync(join(dir, INVESTIGATION));
@@ -724,6 +750,8 @@ export function ledgerViews(dir: string, root: string, lengthOf: Where["lengthOf
     "Derived from each run's predictions and outcomes and its iteration's plan: never write them by hand.",
     "",
     ...cycleViewOf(ledgers),
+    "",
+    ...droppedOf(ledgers, carriedIn(root, dir)),
     ...ledgers.flatMap((run) => ["", ...stillMissingOf(run)]),
   ];
 }

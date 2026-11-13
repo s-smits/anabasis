@@ -18,7 +18,7 @@
  * table, a heading or prose is never read as a prediction; comments and code fences are skipped,
  * so a heading inside an example does not count as the section.
  */
-import { existsSync, readdirSync } from "#src/meta/filesystem.ts";
+import { existsSync, readdirSync, readFileSync, statSync } from "#src/meta/filesystem.ts";
 import { join } from "#src/meta/path.ts";
 
 /** One parent run's name and its two ledgers' text, for what a fork of it carries. */
@@ -116,7 +116,7 @@ export function staleOf(outcomes: string, events: number | null): string[] {
 }
 
 /** The non-blank lines under every `## Not done` heading of a plan, whatever follows the words. */
-function notDoneOf(plan: string): string[] {
+export function notDoneOf(plan: string): string[] {
   return stripped(plan)
     .split("\n")
     .filter((line) => /^## Not done\b/u.test(line))
@@ -138,6 +138,32 @@ export function cycleViewOf(runs: readonly RunLedgers[]): string[] {
     ...runs.flatMap((run) =>
       idsOf(run.predictions).map((id) => `| ${run.name} | ${id} | ${shownOutcome(run, id)} |`),
     ),
+  ];
+}
+
+/**
+ * The dropped view: each prediction a run left `unreached` or `falsified` that nothing took up, named
+ * neither as `<run>:<id>` in a `## Carried` section (`carried`, every ledger's as one text) nor under
+ * a `## Not done` of the plan that read its run. A run no plan has read yet has dropped nothing. On
+ * 13 November 2026 a count by hand found 11 of a cycle's 56 unreached rows dropped so, which no
+ * gate names once the fork that should have carried them has passed its own.
+ */
+export function droppedOf(runs: readonly RunLedgers[], carried: string): string[] {
+  const lines = runs.flatMap((run) => {
+    const outcome = outcomesOf(run.outcomes);
+    const undone = notDoneOf(run.plan).join("\n");
+    const dropped = idsOf(run.predictions)
+      .map((id) => ({ id, read: outcome.get(id) ?? "" }))
+      .filter(({ read }) => run.plan !== "" && (read === "unreached" || read === "falsified"))
+      .filter(({ id }) => !names(carried, `${run.name}:${id}`) && !names(undone, id));
+    return dropped.length === 0
+      ? []
+      : [`- ${run.name}: ${dropped.map(({ id, read }) => `${id} (${read})`).join(", ")}`];
+  });
+  return [
+    "# Dropped: unreached or falsified, carried by no run and under no plan's Not done",
+    "",
+    ...(lines.length === 0 ? ["- none"] : lines),
   ];
 }
 
@@ -213,15 +239,32 @@ export const names = (text: string, token: string): boolean =>
  * for a cycle. More than one is a conflict the reader names, never a choice by listing order.
  */
 export function ledgerFiles(root: string, dir: string, file: string): string[] {
+  return ledgerFolders(root, dir)
+    .map((folder) => join(folder, file))
+    .filter((path) => existsSync(path));
+}
+
+/** The folders a ledger is read in: the investigation `dir` and each cycle's folder under `root`. */
+function ledgerFolders(root: string, dir: string): string[] {
   const cycles = existsSync(root)
     ? readdirSync(root)
         .filter((entry) => /-cycle-/u.test(entry))
         .map((entry) => join(root, entry))
     : [];
-  return [...new Set([dir, ...cycles])]
-    .map((folder) => join(folder, file))
-    .filter((path) => existsSync(path));
+  return [...new Set([dir, ...cycles])];
 }
+
+/** Every `## Carried` section of the predictions ledgers in those folders, as one text. A file
+ *  under `root` whose name holds `-cycle-` is no folder and holds none. */
+export const carriedIn = (root: string, dir: string): string =>
+  ledgerFolders(root, dir)
+    .filter((folder) => existsSync(folder) && statSync(folder).isDirectory())
+    .flatMap((folder) =>
+      readdirSync(folder)
+        .filter((file) => /^predictions-.+\.md$/u.test(file))
+        .flatMap((file) => sectionOf(readFileSync(join(folder, file), "utf8"), "Carried") ?? []),
+    )
+    .join("\n");
 
 /** The one path `ledgerFiles` finds, or null where it finds none or several (a conflict to name). */
 export function ledgerOf(root: string, dir: string, file: string): string | null {

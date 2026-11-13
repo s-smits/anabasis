@@ -380,6 +380,19 @@ describe("the pull requests and their forks", () => {
     expect(order).toEqual(["#600", "#223", "#62", "#61", "#60"]);
   });
 
+  it("lists under a pull request the fork its iteration's `launch` deviation names, whatever number it carries", () => {
+    const child = "esp32-fresh-opus-forkedPR64-f";
+    folder("2026-11-06-parent", {
+      "deviations.md": `| step | reason |\n| --- | --- |\n| launch | measured by \`${child}\`, at the child of #60 |\n`,
+    });
+    folder("2026-11-06-cycle-v100", {
+      [`predictions-${child}.md`]: `${predictions(["G1"])}\n## Carried\n\n- ${PARENT}:N2\n- ${PARENT}:N3\n`,
+    });
+    const row = rowOfPull(index().text, "#60");
+    expect(row).toContain(`| \`${FORK}\`, \`${child}\` |`);
+    expect(row).toContain(`${child}: 2 of 2 carried`);
+  });
+
   it("counts what a fork leaves out on purpose from the plan of the iteration that read it", () => {
     const later = "esp32-fresh-opus-forkedPR63-e";
     folder("2026-11-08-later", {

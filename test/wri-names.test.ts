@@ -1,6 +1,7 @@
 // Where a kept harness's own files name a task, over invented tasks and two kept states: a task id
 // that stands inside a longer one, a public identifier one task holds and a word every task holds, a
-// family, a version prefix, and a name in an installed package that the harness did not write.
+// hyphenated compound of plain words beside a hyphenated identifier, a family, a version prefix, and
+// a name in an installed package that the harness did not write.
 import { afterAll, describe, expect, it } from "bun:test";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
@@ -32,14 +33,14 @@ const task = (version: string, taskId: string, publicInput: JsonObject) => {
   });
   put("task.gate", { version, gate: 1, outcome: "passed" });
 };
-task(PRACTISED, "x-2-3", { site: "Ward_7B", note: "use shift-plan" });
+task(PRACTISED, "x-2-3", { site: "Ward_7B", note: "use shift-plan", cover: "night-cover", bay: "bay-12b" });
 task(HELD, "x-2-9", { site: "Ward_9Q", note: "use shift-plan" });
 task("1234abcd".padEnd(64, "0"), "x-3-1", { site: "Ward_1A", note: "use shift-plan" });
 put("task.state", { version: PRACTISED, state: "released" });
 
 writeHarness(join(states, one), {
   ...EXAMPLE,
-  guide: "Read x-2-31 and the Night-Rota notes.\nUse shift-plan carefully.\n",
+  guide: "Read x-2-31 and the Night-Rota notes.\nUse shift-plan carefully.\nKeep night-cover for bay-12b.\n",
   programs: { fit: "#!/bin/sh\n# Ward_7B first\necho x-2-3 deadbeef\n" },
 });
 writeHarness(join(states, two), { ...EXAMPLE, programs: { fit: "#!/bin/sh\necho Ward_7B\n" } });
@@ -72,10 +73,17 @@ describe("where a harness names a task", () => {
   });
 
   it("prints a rare public identifier's place, length and holders, never its text", () => {
-    const hits = blockOf(one).filter((row) => row.includes("  public"));
+    const hits = blockOf(one).filter((row) => row.includes("  public") && row.includes("bin/fit"));
     expect(hits).toHaveLength(1);
     expect(hits[0]).toContain("  bin/fit:2  public  7  2  1  x-2-3 (practice)");
     expect(rows.join("\n")).not.toContain("Ward_7B");
+  });
+
+  it("takes a hyphen between plain words for no identifier, and one beside a digit for one", () => {
+    // One task alone holds both words: the compound is prose a guide may repeat, the other an identifier.
+    const hits = blockOf(one).filter((row) => row.includes("  guide:3  "));
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toContain("  guide:3  public  7  1  1  x-2-3 (practice)");
   });
 
   it("leaves out a word every task holds", () => {

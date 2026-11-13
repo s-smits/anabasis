@@ -15,9 +15,10 @@
  *
  * A short id or a common word matches by chance, so each hit carries the token's length and how many
  * kept versions and public inputs hold it, and the lane judges. A public token is kept only where it
- * looks like an identifier (a digit, an inner `-`, `_` or `.`, or a capital past its first letter), has
+ * looks like an identifier (a digit, an inner `_`, `.` or `:`, or a capital past its first letter), has
  * at least `MIN_TOKEN` characters and stands in at most `RARE` tasks' public inputs; a plain word is
- * left out and the header says how many were. A public token's own text is not printed, its place is.
+ * left out, a compound of plain words joined by hyphens with it, and the header says how many were.
+ * A task's id is looked for whatever its form. A public token's own text is not printed, its place is.
  * A practice task's name in a harness is one the Builder was shown; a held-out task's is not, and
  * neither is called a breach here.
  *
@@ -41,7 +42,7 @@ const RARE = 2;
 const PREFIX_CHARS = 8;
 /** A word of a file or an input: letters, digits and inner `-`, `_`, `.` or `:`. */
 const WORD = /[\p{L}\p{N}_](?:[\p{L}\p{N}_.:-]*[\p{L}\p{N}_])?/gu;
-const IDENTIFIER = /\d|[-_.:]|^.+\p{Lu}/u;
+const IDENTIFIER = /\d|[_.:]|^.+\p{Lu}/u;
 const HEX = /^[0-9a-f]{8,64}$/;
 
 type Kind = "id" | "family" | "public" | "version";

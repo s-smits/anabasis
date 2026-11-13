@@ -26,14 +26,20 @@ The arms:
 - **bareSolver(Opus 5.5)** (`--arm starter`): the Starter Built Harness, the floor both are read
   against.
 
-One input still differs, and every reading says so: Harness² built its harness from this judge's
-scores on a neighbouring task, while Anabasis built its harness from its own checks and never saw
-JobBench (`studies/harness2/README.md`, "Read every result against how uneven the comparison is").
+One input still differs, and every reading says so. Harness² knows the benchmark's tasks: it built
+its harness on a neighbouring JobBench task, from rollouts that answered that task's real request
+and files, though its sessions are shown no rubric and no grade (`noGraderVerdicts`,
+`h2/recursion.ts`), and it writes no task of its own. Anabasis never saw a JobBench task: its
+Examiner wrote every task its harness was built on, and its own checks graded them
+(`studies/harness2/README.md`, "Read every result against how uneven the comparison is"). So the
+premise is that a reference close to Harness²'s held-out arm, within the spread of two rollouts,
+already answers the question; level with it is a strong reading and above it the aim.
 
 ## Intended changes
 
 1. **Score a promoted jobstat reference again after a further promotion.** The first promotion was
-   scored on 5 November. Score the next reference on the same 8 tasks, then print `score.ts table`.
+   scored on 5 November. Each newly confirmed reference is read as run-improvement-campaign sets
+   out ("The outside aim"), whose eight tasks replace the pilot's eight for a reference's read.
 2. **Correct the pilot's label.** In the pilot of 3 November the arm named "anabasis" was the
    Starter (digest `6af25e7a`, exported from a campaign that had promoted nothing), so its 298 of
    550 is a bareSolver score, not a built one. The pilot's `final.json` and any text that cites it
@@ -57,10 +63,9 @@ JobBench (`studies/harness2/README.md`, "Read every result against how uneven th
    0.02 even at five wins to none (a sign-flip p of 1/32). Add rollouts, a Starter A/A beside the
    comparison, and per-task paired differences beside the summed points, since a summed total
    weighs each task by its maximum.
-8. **A rollout ended by a limit is a non-result** (plausible, from the code). `rolloutLog` counts an
-   attempt as run once it emits a `result`, so a rollout cut by a session limit would be judged on
-   an empty output and score 0. Read `is_error` and the stop reason, and retry such a rollout
-   (rule 7).
+8. **A rollout ended by a limit is a non-result.** Present in source from `8eba94a95`: a result
+   the API ended in error is refused and rolled again, and a rollout that ended at its own turns or
+   budget stays the arm's fail.
 9. **Name each arm's tree in its record.** A held-out record stores `heldout` rather than the
    harness of the task before, so the record alone does not say which tree solved it.
 10. **Close the store to the solver, or widen the check.** The workspace has no wall, the store
@@ -69,27 +74,43 @@ JobBench (`studies/harness2/README.md`, "Read every result against how uneven th
     checkout to it, and give the workspace a neutral label rather than the arm's name.
 11. **Price every build on one meter.** Harness²'s build is read from Claude Code's
     `total_cost_usd` and a campaign's from `billedAll` at list price.
-12. **Say which programs cannot run on JobBench.** A jobstat harness's programs read that exam's
-    layout. `profile-workspace` needs `public/task.json`, which no JobBench workspace holds, and
-    its guide says to run it first. `claude-export.ts`'s note says the guide's `input.json`,
-    `answer.json` and `submit` are absent, and names no program. Name the ones that read them, so
-    that a score is read against what the solver could use.
-13. **Keep the toolchain's links in the export.** `claude-export.ts` leaves 7 links in
-    `scripts/toolchain` pointing into its temporary `.part-` directory, and they dangle once it is
-    renamed, so `installTree` does not copy them. `bin/python`, `python/bin/python` and
-    `python/bin/python3` are among them. `bin/python3` does arrive, and it imported pandas, scipy,
-    statsmodels, openpyxl and `statkit` in a live workspace.
-14. **Make what the export tells the solver true.** The note corrects three names, and the guide's
-    "20 turns and 30 minutes", its scoring section and its path layout stay, under no turn cap and
-    3600 s. This changes what the study's solver is told, so it takes the operator's word.
+12. **Say which programs cannot run on JobBench.** Present in source from this change, as a class:
+    where a harness has programs, `claude-export.ts`'s note says that those written for the other
+    runner's files (opening `input.json` or a `public/` folder, or checking `answer.json`) find none
+    of them here. It names no program one by one, so a score is still read without a list of which
+    the solver could use. A jobstat harness's programs read that exam's layout:
+    `profile-workspace` needs `public/task.json`, which no JobBench workspace holds, and its guide
+    says to run it first.
+13. **Keep the toolchain's links in the export.** Present in source from `8c876e7bc`: relative
+    links stay relative, where 7 of them, `bin/python` among them, dangled once the export was
+    renamed into place.
+14. **Make what the export tells the solver true.** Present in source from this change: the note
+    over every exported harness, the starter's included, says that whatever the guide says of a
+    limit on turns or time, of checking or submitting an answer, or of scoring belongs to the other
+    runner and does not hold here. The guide's own text, its "20 turns and 30 minutes", scoring
+    section and path layout, stays beneath it unchanged. This changes what the study's solver is
+    told. It is a change of its own so that it can be ablated: the same kept harness exported at
+    the commit beneath, rolled beside it, says whether the note moves a score, and a note that
+    moves nothing is taken out again.
 15. **Measure the noise before any further arm.** Grade the existing deliverables of the 11 split
     rubrics twice for the judge's own noise, then run a Starter A/A interleaved under one condition.
     The 8 tasks may serve for noise, since no proposal came from noise. An arm whose changes came from
     reading them runs on tasks nobody has read (`comparison-review`, "A proposal tested on its own
     tasks").
-16. **Read the judge's view beside every score.** `eval/judge.py` cuts each file at 200,000
+16. **Read the judge's view beside every score.** Present in source from this change: each
+    `score.ts` record names the files the judge's reader cut (`cut`), and `score.ts table` marks
+    such a cell `CUT <n>` and adds a `fair uncut` block over the fair tasks with no cut file in any
+    arm's record. `eval/judge.py` cuts each file at 200,000
     characters, counts embedded figures against that, and reads only `text` notebook outputs. Read it
-    apart and report it beside the official score (`comparison-review`, level 6).
+    apart and report it beside the official score (`comparison-review`, level 6). Counted on the
+    store's deliverables through the judge's own converter on 11 November 2026: the workbook of
+    `social_science_research_assistants/task2` passes the cut in 15 of 15 (208,000 to 260,000
+    characters, two data sheets ahead of the summary sheets), and the judge's reasons name a cut in
+    2 to 6 of that task's 9 rubrics in each of the 13 judged, 5 or 6 in 11 of them; the memo of
+    `statisticians/task1` passes it in 6 of 13 (202,000 to 468,000); on `statisticians/task2` and
+    `task3` only source data an arm copied beside its answer passes it, but for one report workbook.
+    A wider cut is read apart, on stored deliverables and for every arm alike, with `compare.ts
+    rejudge ... --cap <chars>` and `agree ... --cap <chars>`; the official score keeps judge.py's.
 17. **Benchmark 20 tasks, 31% of the 65, in the professions closest to the prompt.** The three
     professions the prompt names hold 8 tasks. The other 12 come from the highest ranked professions
     of two tasks or more, whole, with two sides an arm (`studies/harness2/compare.ts plan --tasks ...
@@ -101,13 +122,64 @@ JobBench (`studies/harness2/README.md`, "Read every result against how uneven th
     professions of one task are passed over, since a stream's first task has no held-out score. The
     test is parity, whose margin goes in the prediction. A further benchmark, from professions the
     prompt does not reach, reads transfer out of the domain, and `plan` draws that by default.
+18. **Ablate Harness² at k=5 beside its k=1.** The reproduction runs k=1 only: `h2/recursion.ts`
+    fixes `k: 1` and delivers its one final without a selector session. The paper reads k=5 above
+    k=1 in each of its four settings on WorkBuddy-Bench Code (80.8 against 76.5 and 81.0 against
+    79.4 under Gemini 3.5 Flash, 81.9 against 77.1 and 77.2 against 74.9 under GLM-5), so the arm
+    on record is the method's weaker setting, and a reference level with it is not yet shown level
+    with Harness². Port k above 1 (`K` candidates a scope, `K` compositions and the selector
+    session, `4K` rollouts and `3K` improver sessions a task), then score k=5 held-out on the fair
+    tasks beside k=1 rolled afresh in the same sitting, two rollouts an arm and task. The fork's
+    own `--k 5` runs under another runner, so it would change two things at once. A build at k=5
+    costs about five times the k=1 record in sessions, and only what it delivers is judged, since
+    no session of the build reads a grade; that is an estimate to
+    reprice from the first task; the ablation waits for a login with room and the operator's cap.
+19. **Roll the three arms afresh once the current batch of fixes has landed on the stack.** A
+    fresh Starter, Harness² held-out again, and the jobstat reference of a fresh campaign after at
+    least two promotions, the second confirmed by its starter read, over all eight tasks in one
+    sitting (run-improvement-campaign, "The outside aim"). No stored record stands in for an arm:
+    the export and the scoring changed after every record in the store but those of the last two
+    arms of 9 November, and item 16 changes what a table prints. It runs after the batch, on the
+    operator's word for the paying login and the cap, with its prediction written first.
+20. **Count what holds a built harness back before loosening anything.** On the benchmark no
+    limit and no refusal was met: 71 of 71 rollouts ended `success`, the dearest at 3.51 of 5
+    dollars and the longest at 1,349 of 3,600 s, and a rollout there runs behind no wall. What the
+    record shows is a harness that works less. The exported reference `f04b0aad` sent fewer
+    messages than the Starter on each of the eight tasks (375 against 536 in all, 13.89 against
+    17.66 dollars; one rollout a task, so a direction), each rubric it lost was one criterion
+    short on a statement it left out, and no program of a harness was called in the 15 rollouts
+    of 9 November. Its guide tells the solver of 20 turns and 30 minutes, which hold in a
+    campaign and not here (item 14). Four counts in campaigns' own logs come before any change,
+    each read under the reference and under the Starter: the share of solves that end on a limit
+    of turns, minutes or prompts; the wall's refusals a solve and a Builder session; the share of
+    solves in which each program of the reference is called and exits 0; and the share of a
+    guide's words that restate what the host already tells the solver. A limit that binds, a wall
+    that refuses work a solve needed, or a guide that carries the host's limits are three
+    different owners, and a campaign's limits and what a solver is told are the operator's.
+
+    **Counted on 11 November**, in two finished jobstat campaigns kept apart (547 and 1,087
+    finished solves). No solve ended on a limit of turns, minutes or prompts: the most any used
+    was 16 and 12 of 20 turns and 787 s and 577 s of 1,800 s. A refused call occurred in 17 of
+    547 and 29 of 1,087 solves (3.1% and 2.7%), each of which still passed, and in 0 of 185 and
+    4 of 422 Builder calls; both campaigns ran before the macOS wall denied by default, so these
+    describe the earlier profile. Each promoted reference's answer program ran without error in
+    at least 99% of its comparison solves, while its profiling programs ran in 0 of 214 and 7 of
+    442. Between 1.4% and 3.4% of a promoted guide's words restate what the host tells the
+    solver, and none of the five guides states a limit (the exported `f04b0aad`, from an earlier
+    campaign, does: item 14). So inside a campaign no limit, wall or guide holds the harness
+    back, and nothing is loosened. What the same logs show is the benchmark's direction: the
+    median turns of a comparison solve fall with each promotion (8 under the Starter, then 5 and
+    5 in one campaign and 5, 3 and 3 in the other). The exam selects a harness under which the
+    solver does less, so the owner is what the exam's validity checks, which rejected
+    one of the larger campaign's 1,087 finished solves (four more were provider non-results) and
+    so separated no two harnesses there.
 
 ## How it came to be
 
 - **3 November 2026.** The pilot set Anabasis against Harness² on eight JobBench statistics tasks.
-  On the fair five, scores out of 296 were: Starter 202 (the pilot's "Base", Harness²'s own base
-  harness), Harness² k=1 194, Harness² held-out 146, and the arm labelled Anabasis 168. The judge
-  cost about $422 over 243 calls.
+  On the fair five, scores out of 296 were: Base 202 (Harness²'s own base harness, stock Claude
+  Code with an empty guide), Harness² k=1 194, Harness² held-out 146, and the arm labelled
+  Anabasis, in fact the Starter, 168. The judge cost about $422 over 243 calls.
 - **4 November, about 05:00 UTC.** The operator asked to "run 10% of the jobstat comparison to
   optimize and prepare the system - use latest jobstat harness present", with the existing copy
   mechanism for the harness. The first plan scored the newest kept jobstat harness, a Builder's
@@ -154,8 +226,8 @@ JobBench (`studies/harness2/README.md`, "Read every result against how uneven th
   that gap of 44 is a change of condition and no measure of noise. No clean A/A exists yet. Neither
   arm has been shown better on JobBench. A step on jobstat's objective did not carry over at this size.
 
-  Against Harness²: Harness² built its harness from this judge's scores on the task before (k=1 on
-  the task itself for its other arm), while Anabasis never saw JobBench.
+  Against Harness²: Harness² built its harness on the task before (k=1 on the task itself for its
+  other arm), from its own rollouts there and no grade, while Anabasis never saw JobBench.
 
   Dollars at list price: the 11 new rollouts cost $20.78 to solve and $103.35 to judge, $124.13 in
   all. The records' judge dollars add up to the shim log's total for the window, so item 4 double
@@ -194,3 +266,35 @@ JobBench (`studies/harness2/README.md`, "Read every result against how uneven th
   worse than Harness2 if we run the full benchmark, which is fine, we should run the 20 queries in the
   domain groups that the prompt is most adhered to i think for now, if we can reach parity that'd
   already be sick" (item 17).
+
+  On 11 November 2026 the operator asked whether Harness² had been reproduced "according to their
+  results but with a different SDK" and model, which it had, at k=1 only. On the paper's table,
+  where k=5 reads above k=1 in every setting: "oooh wow and they got better scores with k=5 ?",
+  then "ahh we should still ablate the k=5 then, put in the backlog" (item 18). An arm at a dollar
+  cap of 10 was asked for and withdrawn the same hour ("ok nvm then"), since no rollout had reached
+  5. Asked whether the bare arm had silently run a stronger model, the record read that every
+  stored rollout of every arm ran on Opus 5.5. The operator then: "what would you change in the
+  Anabasis system to let it limit less and actually have the highest chance of being better? Maybe
+  we limit it too much through sandboxing even though we've had quite a bit of fixes recently",
+  and "we have to re-run the bareSolver and jobstat >2promos jobstat domainSolver right?", then
+  "so put this int the backlog as well" and "we need to do that after current improvement batch"
+  (items 19 and 20).
+
+  The note of item 14 was written and held back as a change to what the study's solver is told. The
+  operator handed the choice to their recorded design principles ("decide on my decision"). Decided
+  to add it, for every arm alike and as a pull request of its own: a guide that states limits which
+  do not hold is a wrongly tuned restriction, the note names nothing of the benchmark, and one
+  change a pull request keeps it ablatable (items 12 and 14).
+
+  The operator on the premise, the same day: "upgrade harness2 vs anabasis premise as well that we
+  can come close to (if we don't make it's scores) harness2 but they KNOW the queries for the
+  benchmark right? or they do not? during harness2 run do we also come up with our own queries to
+  run?" The source reads: Harness² rolls the benchmark's own task and its improver reads those
+  rollouts, with no rubric or grade in any session, and it writes no task; the two places above
+  that said it built from the judge's scores were wrong and are corrected.
+
+  The four counts of item 20 were read the same day from two finished jobstat campaigns, with no
+  model. The operator, on what follows them: "Okay so most likely no bugs and we need to ablate
+  all 8 or 10 queries further in 14 hours?", then, on the order, "yeah so after full
+  improvement+simulation etc". The three arms and the note's ablation are rolled once the
+  running campaigns' iteration is through (item 19).

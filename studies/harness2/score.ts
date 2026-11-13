@@ -8,7 +8,7 @@
  *
  *   bun studies/harness2/score.ts score --arm <arm> --name <name> --out <dir> --jb <checkout>
  *     --api-base <url> [--harness <kept>] [--tasks <profession/taskN,...>] [--judge-log <shim.jsonl>]
- *     [--solve-only] [--rubrics <file>] [--dry-run] --yes
+ *     [--solve-only] [--rubrics <file>] [--cap <chars>] [--dry-run] --yes
  *   bun studies/harness2/score.ts table --out <dir> [--tasks <profession/taskN,...>]
  *
  * An arm is `base` (Harness²'s base harness, the pilot's Base), `starter` or a campaign's name
@@ -21,8 +21,15 @@
  * judgement's dollars are the shim log's rows inside its window. One record a task lands in
  * `<out>/judged/<name>/`, and `table` prints the pilot's arms table from them: every arm over all
  * the tasks (the pilot's eight unless named) and over those that are not a profession's first.
+ * A record also names the files judge.py's reader cut at 200,000 characters before the judge read
+ * them (`cut`: each file with its length, or null where that reader did not run), since a score on
+ * a cut file partly reads how long the file ran. `table` marks such a cell `CUT <n>` and prints a
+ * third block, `fair uncut`, over the fair tasks on which no record of any arm in the store holds a
+ * cut file; a record written before `cut` existed counts as holding none.
  * `compare.ts` runs a whole comparison through `score`: `--solve-only` leaves a block's judging for
- * afterwards, and `again:<side>` with `--rubrics` judges a deliverable it copied once more.
+ * afterwards, and `again:<side>` with `--rubrics` judges a deliverable it copied once more,
+ * under a wider cut than judge.py's where `--cap` names one, recorded as `cap` with `cut` counted
+ * against it; no other arm takes `--cap`.
  *
  * What is the same for every arm: the task and its prompt, Opus 5.5 at high with $5 and 3600 s an
  * attempt and a second attempt only when none is delivered, one harness frozen for the whole arm,
@@ -67,11 +74,26 @@ import { logAcross } from "#tools/runs/snapshots.ts";
 import { exportForClaudeCode } from "../shared/claude-export.ts";
 import { inGroup, REFUSED } from "./h2/claude.ts";
 import { NAMESPACE } from "./h2/recursion.ts";
-import { envOf, jobBench, pilotClaude, SCRUB } from "./jobbench.ts";
+import { cutOf, envOf, jobBench, MAX_CHARS_PER_FILE, pilotClaude, SCRUB } from "./jobbench.ts";
 
 /** The judge as the pilot ran it (`h2l1.sh`, `judge-arm.sh`, `_run_judge`). */
 const JUDGE = { model: "anthropic/claude-opus-5-5", effort: "medium", timeoutS: 1800 } as const;
 const DETAILS = "claude-opus-5-5_judge.json";
+/**
+ * judge.py run whole under a wider cut: loaded as a module, as `EXTRACT_DRIVER` loads it, with its
+ * `MAX_CHARS_PER_FILE` set before `main()` reads its flags from `sys.argv` through argparse;
+ * `extract_all_file_contents` reads that global at each call.
+ */
+const WIDER = `import importlib.util, sys
+
+judge_py, cap = sys.argv[1], int(sys.argv[2])
+spec = importlib.util.spec_from_file_location("_jb_judge_wider", judge_py)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+mod.MAX_CHARS_PER_FILE = cap
+sys.argv = [judge_py, *sys.argv[3:]]
+mod.main()
+`;
 /** `_JUDGE_FAILURE_PREFIXES`: a rubric whose reasoning opens so was never judged. */
 const FAILED = [
   "opus judge failed",
@@ -120,8 +142,29 @@ export interface Values {
   readonly "judge-log"?: string;
   readonly rubrics?: string;
   readonly "solve-only"?: boolean;
+  readonly cap?: string;
   readonly "dry-run"?: boolean;
   readonly yes?: boolean;
+}
+
+/** How one judgement runs: the transport, the shim's log, the rubrics and any wider cut. */
+interface Judging {
+  readonly apiBase: string;
+  readonly shimLog: string | undefined;
+  readonly rubrics: string | undefined;
+  readonly cap: number | undefined;
+}
+
+/** `--cap` as a count of characters: a whole number above judge.py's own cut, or a refusal. */
+export function capOf(cap: string | undefined): number | undefined {
+  if (cap === undefined) return undefined;
+  const chars = Number(cap);
+  if (!Number.isInteger(chars) || chars <= MAX_CHARS_PER_FILE) {
+    throw new Error(
+      `--cap takes a whole number of characters above judge.py's ${String(MAX_CHARS_PER_FILE)}`,
+    );
+  }
+  return chars;
 }
 
 export const keyOf = (task: string): string => task.replace("/", "__");
@@ -324,12 +367,13 @@ function shimDollars(log: string, from: number, to: number): number {
 async function judge(
   jb: string,
   place: { store: string; task: string; label: string },
-  apiBase: string,
-  shimLog: string | undefined,
-  rubrics = join(jb, "dataset", "main", place.task, "RUBRICS.json"),
+  how: Judging,
 ): Promise<{ details: JsonObject; usd: number | null } | string> {
+  const { apiBase, shimLog, cap } = how;
+  const rubrics = how.rubrics ?? join(jb, "dataset", "main", place.task, "RUBRICS.json");
   const output = join(place.store, place.task, "model_output", place.label);
   const details = join(place.store, place.task, "eval_result", `eval_${place.label}`, DETAILS);
+  const judgePy = join(jb, "eval", "judge.py");
   let usd: number | null = null;
   if (!existsSync(details) || statSync(details).size === 0) {
     mkdirSync(dirname(details), { recursive: true });
@@ -338,7 +382,7 @@ async function judge(
     const code = await inGroup(
       [
         join(jb, ".venv", "bin", "python"),
-        join(jb, "eval", "judge.py"),
+        ...(cap === undefined ? [judgePy] : ["-c", WIDER, judgePy, String(cap)]),
         "--output-dir",
         output,
         "--rubrics-file",
@@ -396,6 +440,7 @@ const OPTIONS = {
   "judge-log": { type: "string" },
   rubrics: { type: "string" },
   "solve-only": { type: "boolean" },
+  cap: { type: "string" },
   "dry-run": { type: "boolean" },
   yes: { type: "boolean" },
 } as const;
@@ -403,6 +448,11 @@ const OPTIONS = {
 export async function score(values: Values): Promise<void> {
   if (values.out === undefined || values["api-base"] === undefined || values.jb === undefined) {
     throw new Error("score needs --arm, --name, --out, --jb and --api-base");
+  }
+  // An official record keeps judge.py's own cut, so a wider one reads only a deliverable judged again.
+  const cap = capOf(values.cap);
+  if (cap !== undefined && !(values.arm ?? "").startsWith("again:")) {
+    throw new Error("--cap judges only an again: arm, so no official record is made under another cut");
   }
   const jb = resolve(values.jb);
   const out = resolve(values.out);
@@ -432,7 +482,9 @@ export async function score(values: Values): Promise<void> {
   console.log(
     `  solve: ${claude.model} at ${claude.effort}, $${claude.budgetUsd} and ${claude.timeoutS} s an attempt, 2 attempts, ${AT_ONCE} at once`,
   );
-  console.log(`  judge: ${JUDGE.model} at ${JUDGE.effort} through ${values["api-base"]}, one at a time`);
+  console.log(
+    `  judge: ${JUDGE.model} at ${JUDGE.effort} through ${values["api-base"]}, one at a time, each file cut at ${String(cap ?? MAX_CHARS_PER_FILE)} characters`,
+  );
   for (const task of tasks) {
     console.log(`  ${task}: ${arm.label(task)} under ${arm.tree(task) ?? "the sweep's rollout"}`);
   }
@@ -446,7 +498,13 @@ export async function score(values: Values): Promise<void> {
   const scoreOne = async (task: string): Promise<void> => {
     const label = arm.label(task);
     const place = { store, task, label };
-    const got = await judge(jb, place, values["api-base"] ?? "", values["judge-log"], values.rubrics);
+    const output = join(store, task, "model_output", label);
+    const got = await judge(jb, place, {
+      apiBase: values["api-base"] ?? "",
+      shimLog: values["judge-log"],
+      rubrics: values.rubrics,
+      cap,
+    });
     if (isString(got)) {
       console.log(`${task}: not judged (${got})`);
       runtimeProcess.exitCode = 1;
@@ -462,7 +520,7 @@ export async function score(values: Values): Promise<void> {
       harness: arm.harness,
       task,
       label,
-      delivered: readdirSync(join(store, task, "model_output", label)).length > 0,
+      delivered: readdirSync(output).length > 0,
       points: got.details.total_score ?? null,
       total: got.details.max_score ?? null,
       passed: got.details.passed_count ?? null,
@@ -473,6 +531,8 @@ export async function score(values: Values): Promise<void> {
       attempts: log.attempts,
       build: arm.build(task),
       peeked: needles.filter((needle) => traces.some((trace) => trace.includes(needle))),
+      cut: cutOf(jb, output, cap),
+      ...keyIfDefined("cap", cap),
     };
     mkdirSync(judged, { recursive: true });
     writeFileSync(join(judged, `${keyOf(task)}.json`), `${capturedJsonStringify(record, null, 2)}\n`);
@@ -519,9 +579,15 @@ function table(out: string, tasks: readonly string[]): void {
   const arms = [...new Set(records.map((record) => text(record.arm)))].toSorted();
   const money = (value: number | null): string => (value === null ? "?" : value.toFixed(2));
   const width = Math.max(10, ...arms.map((arm) => arm.length));
+  const cuts = (record: JsonObject | undefined): number =>
+    Array.isArray(record?.cut) ? record.cut.length : 0;
+  const uncut = fair(tasks).filter(
+    (task) => !records.some((record) => record.task === task && cuts(record) > 0),
+  );
   for (const [title, set] of [
     ["all", tasks],
     ["fair", fair(tasks)],
+    ["fair uncut", uncut],
   ] as const) {
     console.log(`${title} ${set.length}`);
     for (const arm of arms) {
@@ -563,7 +629,8 @@ function table(out: string, tasks: readonly string[]): void {
     const cells = arms.flatMap((arm) => {
       const row = records.find((record) => record.arm === arm && record.task === task);
       const peeked = Array.isArray(row?.peeked) && row.peeked.length > 0 ? " PEEKED" : "";
-      return row === undefined ? [] : [`${arm} ${text(row.points)}/${text(row.total)}${peeked}`];
+      const cut = cuts(row) > 0 ? ` CUT ${String(cuts(row))}` : "";
+      return row === undefined ? [] : [`${arm} ${text(row.points)}/${text(row.total)}${peeked}${cut}`];
     });
     if (cells.length > 0) console.log(`${task}: ${cells.join(", ")}`);
   }

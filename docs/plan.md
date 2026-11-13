@@ -47,7 +47,7 @@ row's measured campaign: it opened from a prompt and every launch names one comm
 | grounding | No drafted exam names an installed engine (F32) | Planned | Not met |
 | economy | Proof campaign: $400 for 5 promotions and 1 confirmed, 0 epochs over 3 attempts. Record, summed from the table's per-run dollars and not repriced on one meter: $16,064 for 151 promotions and 12 confirmed, about $106 and $1,339 each | Exercised live | Attempts met; no dollar target set |
 | systems | No reading in any tracked record. One session's account of 28 October, truss, 12 tasks at one solve a task: the cheap solver in an unpromoted built harness valid on 11, the dear solver in the starter on 9 | An agent's account | Unmeasured |
-| outside | JobBench, one built arm (`f04b0aad`) at one rollout a task: 310 of 550 against the Starter's 342 on 8 tasks; on the fair five 166 of 296, level with Harness²'s held-out arm (166) and below the Starter (192). No Starter A/A, no margin on record, and Harness²'s held-out arm is absent on the 12 tasks item 17 adds. WorkBuddy-Bench: no container has run | Exercised in a study, no reading | Unmeasured; course undecided |
+| outside | JobBench, one built arm (`f04b0aad`) at one rollout a task: 310 of 550 against the Starter's 342 on 8 tasks; on the fair five 166 of 296, level with Harness²'s held-out arm (166) and below the Starter (192). No Starter A/A, no margin on record, and Harness²'s held-out arm is absent on the 12 tasks item 17 adds. WorkBuddy-Bench: no container has run | Exercised in a study, no reading | Unmeasured; the three arms are rolled afresh after the next iteration (`docs/backlog/jobbench-scoring.md`, item 19) |
 
 ### Where the dollars went, 29 October
 

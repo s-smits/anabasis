@@ -22,7 +22,7 @@
 import { unadmitted } from "#src/kernel/acceptance.ts";
 import { type Condition, conditionsOf } from "#src/kernel/condition.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { flipP, type Tally, unsolved as noneAnswered } from "#src/kernel/compare.ts";
+import { flipP, type Paired, type Tally, unsolved as noneAnswered } from "#src/kernel/compare.ts";
 import { lastReports, poolOf, pairsReported, referenceOf } from "#src/kernel/reports.ts";
 import { SEATS, type Traced, traced, traceKind, tracesIn } from "#src/kernel/trace.ts";
 import { spendOf } from "#src/kernel/meter.ts";
@@ -109,6 +109,9 @@ export interface Build {
 }
 
 /** A comparison as its reports hold it, with the solves it counted. */
+/** A comparison's two sides, or one of them split against itself (`pairsReported`). */
+type Split = NonNullable<Parameters<typeof pairsReported>[2]>;
+
 export interface Compared {
   /** The id it reported under: a round's session, or a standalone comparison's own. */
   readonly session: string;
@@ -124,6 +127,9 @@ export interface Compared {
   readonly scoredSet: ReadonlySet<string>;
   /** The test-side solves of its scored tasks under one of its harnesses that it could count. */
   readonly scoring: readonly Solve[];
+  /** Its settled pairs (`pairsReported`), or one side's against itself, folded once a log: each
+   *  fold reads the whole log before the report, and eight readers of the overview ask for them. */
+  readonly pairs: (sides?: Split) => readonly Paired[];
 }
 
 export interface Index {
@@ -299,13 +305,10 @@ export const fired = (name: keyof typeof TRIGGERS, detail: string): Trigger => (
   name,
   detail,
 });
-
-function records(value: JsonValue | undefined): JsonObject[] {
-  return items(value).flatMap((item) => {
-    const record = asRecord(item);
-    return record === null ? [] : [record];
-  });
-}
+/** A trigger where its condition holds, as the list a lane spreads; the detail is told either way,
+ *  so a site whose detail reads what only the condition proves keeps the ternary. */
+export const firedIf = (holds: boolean, name: keyof typeof TRIGGERS, detail: string): Trigger[] =>
+  holds ? [fired(name, detail)] : [];
 
 export function tally(counts: Readonly<Record<string, number>>): string {
   const named = Object.entries(counts).toSorted(([left], [right]) => left.localeCompare(right));
@@ -482,7 +485,13 @@ function comparedOf(events: readonly LogEvent[], log: Pick<Index, "solves" | "bu
     const scoring = log.solves.filter(
       (solve) => solve.side === TEST && solve.index < at && scoredSet.has(solve.version) && counted(solve),
     );
-    return { session, own, began, at, last, build, scoredSet, scoring };
+    const folded = new Map<Split, readonly Paired[]>();
+    const pairs = (sides: Split = "both") => {
+      const found = folded.get(sides) ?? pairsReported(events, { session, index: at, data: last }, sides);
+      folded.set(sides, found);
+      return found;
+    };
+    return { session, own, began, at, last, build, scoredSet, scoring, pairs };
   });
 }
 
@@ -538,7 +547,9 @@ export function practiceOf(log: Index, build: Build): Solve[] {
 export function instrumentTriggers(log: Index): Trigger[] {
   const reading = log.of("checker.read").at(-1);
   const frozen = log.of("contract.frozen").at(-1);
-  const rows = records(reading?.rows);
+  const rows = items(reading?.rows)
+    .map((row) => asRecord(row))
+    .filter((row) => row !== null);
   // Named by the tool it runs since 12 October (`acceptance.ts`): until then the brief's evidence
   // kind, and 5 of buffer's 7 `authored` checks ran the pack's installed engine.
   const authored = unadmitted(log.events, []).length;
@@ -571,72 +582,57 @@ export function instrumentTriggers(log: Index): Trigger[] {
   // it checked: 3 of buffer's 7 checks and 5 of recode's 11 on 10 October.
   const neverRefused = checks.map((row) => text(row.id)).filter((id) => byCheck[id] === undefined);
   return [
-    ...(authored > 0
-      ? [
-          fired(
-            "INSTRUMENT AUTHORED",
-            `${share(authored, rows.length)} checks run no engine, so their author's own computation decides them`,
-          ),
-        ]
-      : []),
-    ...(passes > 0 ? [fired("PASSES UNREAD", `${String(passes)} passes; no reviewer reads a pass`)] : []),
-    ...(trees > 1
-      ? [fired("VERIFIER TOOLS MOVED", `${String(trees)} tool trees decided verdicts in one log`)]
-      : []),
-    ...(lost > 0 ? [fired("TOOL MISSING", plural(lost, "check tool"))] : []),
-    ...(neverRefused.length > 0 && passes > 0
-      ? [
-          fired(
-            "REFUSALS BY CHECK",
-            `${share(neverRefused.length, checks.length)} checks refused none of ${plural(log.verdicts.size, "answer")}: ${neverRefused.join(", ")}; the rest: ${tally(byCheck)}`,
-          ),
-        ]
-      : []),
-    ...(reading === undefined
-      ? [fired("NO CHECKER READING", "accept.ts has not read this campaign's checker")]
-      : []),
-    ...(faults.length > 0 ? [fired("CHECKER READ WITH FAULTS", plural(faults.length, "fault"))] : []),
-    ...(uncaught.length > 0
-      ? [
-          fired(
-            "CONTROL COVERAGE",
-            `${share(uncaught.length, checks.length)} checks let through a reject control answer naming them, or were named by none: ${uncaught.map((row) => `${text(row.id)} refused ${String(count(row.caught))} of ${String(count(row.named))}`).join(", ")}`,
-          ),
-        ]
-      : []),
-    ...((ruled.unread ?? 0) > 0
-      ? [
-          fired(
-            "REFUSED UNREAD",
-            `${share(ruled.unread ?? 0, refused.length)} refused answers no reviewer ruled on`,
-          ),
-        ]
-      : []),
-    ...(defects.length > 0
-      ? [
-          fired(
-            "CHECK DEFECT RULED",
-            `${share(defects.length, refused.length)}; by check: ${tally(defectChecks)}`,
-          ),
-        ]
-      : []),
-    ...((ruled.unclear ?? 0) > 0 ? [fired("RULED UNCLEAR", share(ruled.unclear ?? 0, refused.length))] : []),
+    ...firedIf(
+      authored > 0,
+      "INSTRUMENT AUTHORED",
+      `${share(authored, rows.length)} checks run no engine, so their author's own computation decides them`,
+    ),
+    ...firedIf(passes > 0, "PASSES UNREAD", `${String(passes)} passes; no reviewer reads a pass`),
+    ...firedIf(trees > 1, "VERIFIER TOOLS MOVED", `${String(trees)} tool trees decided verdicts in one log`),
+    ...firedIf(lost > 0, "TOOL MISSING", plural(lost, "check tool")),
+    ...firedIf(
+      neverRefused.length > 0 && passes > 0,
+      "REFUSALS BY CHECK",
+      `${share(neverRefused.length, checks.length)} checks refused none of ${plural(log.verdicts.size, "answer")}: ${neverRefused.join(", ")}; the rest: ${tally(byCheck)}`,
+    ),
+    ...firedIf(reading === undefined, "NO CHECKER READING", "accept.ts has not read this campaign's checker"),
+    ...firedIf(faults.length > 0, "CHECKER READ WITH FAULTS", plural(faults.length, "fault")),
+    ...firedIf(
+      uncaught.length > 0,
+      "CONTROL COVERAGE",
+      `${share(uncaught.length, checks.length)} checks let through a reject control answer naming them, or were named by none: ${uncaught.map((row) => `${text(row.id)} refused ${String(count(row.caught))} of ${String(count(row.named))}`).join(", ")}`,
+    ),
+    ...firedIf(
+      (ruled.unread ?? 0) > 0,
+      "REFUSED UNREAD",
+      `${share(ruled.unread ?? 0, refused.length)} refused answers no reviewer ruled on`,
+    ),
+    ...firedIf(
+      defects.length > 0,
+      "CHECK DEFECT RULED",
+      `${share(defects.length, refused.length)}; by check: ${tally(defectChecks)}`,
+    ),
+    ...firedIf((ruled.unclear ?? 0) > 0, "RULED UNCLEAR", share(ruled.unclear ?? 0, refused.length)),
     ...(lopsided && passes > 0
       ? [fired("FAILS ON ONE CHECK", `${top[0]} refused ${share(top[1], refused.length)}`)]
       : []),
-    ...(defects.length > 0 && passes > 0
-      ? [fired("DEFECT RULED BESIDE PASSES", "a frozen alternative can settle what a ruling asserts")]
-      : []),
-    ...(frozen === undefined ? [fired("CHECKER NOT FROZEN", "no contract.frozen in the log")] : []),
-    ...(count(frozen?.faults) > 0
-      ? [fired("FROZEN DESPITE FAULTS", plural(count(frozen?.faults), "fault"))]
-      : []),
-    ...(frozen !== undefined && reading !== undefined && reading.checks !== frozen.checks
-      ? [fired("READ AT ANOTHER VERSION", "the last reading is of another check program than the frozen one")]
-      : []),
-    ...(carried > 0
-      ? [fired("TASKS CARRIED", `${plural(carried, "task")} came from another checker's campaign`)]
-      : []),
+    ...firedIf(
+      defects.length > 0 && passes > 0,
+      "DEFECT RULED BESIDE PASSES",
+      "a frozen alternative can settle what a ruling asserts",
+    ),
+    ...firedIf(frozen === undefined, "CHECKER NOT FROZEN", "no contract.frozen in the log"),
+    ...firedIf(count(frozen?.faults) > 0, "FROZEN DESPITE FAULTS", plural(count(frozen?.faults), "fault")),
+    ...firedIf(
+      frozen !== undefined && reading !== undefined && reading.checks !== frozen.checks,
+      "READ AT ANOTHER VERSION",
+      "the last reading is of another check program than the frozen one",
+    ),
+    ...firedIf(
+      carried > 0,
+      "TASKS CARRIED",
+      `${plural(carried, "task")} came from another checker's campaign`,
+    ),
   ];
 }
 
@@ -678,32 +674,24 @@ function tallyTriggers(compared: readonly Compared[]): Trigger[] {
     return read.length === 0 ? [] : [`${session}: ${read.join("; ")}`];
   });
   return [
-    ...(validTies.length > 0
-      ? [
-          fired(
-            "TIES BETWEEN VALID ANSWERS",
-            validTies
-              .map(
-                ({ session, ties, unsolved, tasks }) => `${session}: ${share(ties - unsolved, tasks)} tasks`,
-              )
-              .join("; "),
-          ),
-        ]
-      : []),
-    ...(tied.length > 0
-      ? [
-          fired(
-            "TIED TASKS",
-            tied
-              .map(
-                ({ session, ties, tasks, unsolved }) =>
-                  `${session}: ${share(ties, tasks)}, ${String(unsolved)} of them with no valid answer`,
-              )
-              .join("; "),
-          ),
-        ]
-      : []),
-    ...(byHarness.length > 0 ? [fired("VALID BY HARNESS", byHarness.join(" · "))] : []),
+    ...firedIf(
+      validTies.length > 0,
+      "TIES BETWEEN VALID ANSWERS",
+      validTies
+        .map(({ session, ties, unsolved, tasks }) => `${session}: ${share(ties - unsolved, tasks)} tasks`)
+        .join("; "),
+    ),
+    ...firedIf(
+      tied.length > 0,
+      "TIED TASKS",
+      tied
+        .map(
+          ({ session, ties, tasks, unsolved }) =>
+            `${session}: ${share(ties, tasks)}, ${String(unsolved)} of them with no valid answer`,
+        )
+        .join("; "),
+    ),
+    ...firedIf(byHarness.length > 0, "VALID BY HARNESS", byHarness.join(" · ")),
   ];
 }
 
@@ -729,8 +717,8 @@ export function taskTriggers(log: Index): Trigger[] {
   );
   // Each scored task by its last report: whether any counted solve of either side answered it.
   const scored = new Map(
-    lastReports(log.events).flatMap((report) =>
-      pairsReported(log.events, report).map((pair) => [pair.task, noneAnswered(pair)] as const),
+    log.compared.flatMap((compared) =>
+      compared.pairs().map((pair) => [pair.task, noneAnswered(pair)] as const),
     ),
   );
   const unanswered = [...scored.values()].filter(Boolean).length;
@@ -753,37 +741,30 @@ export function taskTriggers(log: Index): Trigger[] {
   });
   return [
     // A proposal still at the gate is neither passed nor refused: until 28 October it counted as refused.
-    ...(passed * 2 < admissions.length
-      ? [fired("SUPPLY THIN", `${share(passed, admissions.length)} decided tasks passed task admission`)]
-      : []),
-    ...(Object.keys(reasons).length > 0 ? [fired("GATE REFUSED", tally(reasons))] : []),
-    ...(late.size > 0 ? [fired("SCORED AFTER RELEASE", [lateSaid, ...[...late].map(short)].join(" "))] : []),
-    ...(unanswered > 0
-      ? [
-          fired(
-            "NO VALID ANSWER",
-            `${share(unanswered, scored.size)} scored tasks have no valid answer from any harness`,
-          ),
-        ]
-      : []),
-    ...(awaiting.length > 0
-      ? [
-          fired(
-            "AWAITING A LABEL",
-            `${plural(awaiting.length, "task")} with no valid answer on record after two comparisons that cut no solve of it at a limit, left out of the scored set until a person labels each: ${awaiting.map(short).join(" ")}`,
-          ),
-        ]
-      : []),
+    ...firedIf(
+      passed * 2 < admissions.length,
+      "SUPPLY THIN",
+      `${share(passed, admissions.length)} decided tasks passed task admission`,
+    ),
+    ...firedIf(Object.keys(reasons).length > 0, "GATE REFUSED", tally(reasons)),
+    ...firedIf(late.size > 0, "SCORED AFTER RELEASE", [lateSaid, ...[...late].map(short)].join(" ")),
+    ...firedIf(
+      unanswered > 0,
+      "NO VALID ANSWER",
+      `${share(unanswered, scored.size)} scored tasks have no valid answer from any harness`,
+    ),
+    ...firedIf(
+      awaiting.length > 0,
+      "AWAITING A LABEL",
+      `${plural(awaiting.length, "task")} with no valid answer on record after two comparisons that cut no solve of it at a limit, left out of the scored set until a person labels each: ${awaiting.map(short).join(" ")}`,
+    ),
     ...tallyTriggers(log.compared),
-    ...(done.length > 0 && quick.length * 2 > done.length
-      ? [
-          fired(
-            "PASSES AT A SMALL WALL SHARE",
-            `${share(quick.length, done.length)} test-side passes, in ${plural(sequences, "call sequence")}`,
-          ),
-        ]
-      : []),
-    ...(heard.length > 0 ? [fired("OUTCOMES BY SESSION", `held, by ${by}: ${heard.join("; ")}`)] : []),
+    ...firedIf(
+      done.length > 0 && quick.length * 2 > done.length,
+      "PASSES AT A SMALL WALL SHARE",
+      `${share(quick.length, done.length)} test-side passes, in ${plural(sequences, "call sequence")}`,
+    ),
+    ...firedIf(heard.length > 0, "OUTCOMES BY SESSION", `held, by ${by}: ${heard.join("; ")}`),
   ];
 }
 

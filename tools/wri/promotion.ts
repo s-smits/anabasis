@@ -25,7 +25,6 @@ import { differenceOf, flipP, pointsOf, scoresIn, testOf } from "#src/kernel/com
 import type { LogEvent } from "#src/kernel/log.ts";
 import type { Call, Seat } from "#src/kernel/trace.ts";
 import { billedBetween } from "#src/kernel/meter.ts";
-import { lastReports, pairsReported } from "#src/kernel/reports.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy, median } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
@@ -34,6 +33,7 @@ import {
   count,
   EXAM_END,
   fired,
+  firedIf,
   type Index,
   items,
   measured,
@@ -261,7 +261,7 @@ function restTriggers(log: Index, { at, until, data }: Epoch): Trigger[] {
       "PROMOTED",
       `${short(harness)} from ${short(text(data.from))} at event ${String(at)}, ${spentTo(log, 0, at)} after the opening, ${byTable ? "by the table" : "by the operator"}${despite > 0 ? ` despite ${plural(despite, "fault")}` : ""}; ${ruleOf(log)}; rests on ${said.join("; ") || "no comparison on record"}${together}`,
     ),
-    ...(bare.length > 0 ? [fired("STARTER BARE", bare.join("; "))] : []),
+    ...firedIf(bare.length > 0, "STARTER BARE", bare.join("; ")),
   ];
 }
 
@@ -394,7 +394,7 @@ function sharedTmpTrigger(log: Index): Trigger[] {
     ...(programs.length > 0 ? [`programs under it: ${programs.join(", ")}`] : []),
     ...(crossing.length > 0 ? [`named by more than one solve or session: ${crossing.join(", ")}`] : []),
   ];
-  return lines.length > 0 ? [fired("SHARED TEMPORARY FOLDER", lines.join("; "))] : [];
+  return firedIf(lines.length > 0, "SHARED TEMPORARY FOLDER", lines.join("; "));
 }
 
 /** Lane 22: every promotion the log holds, and the host's temporary folder wherever it is named;
@@ -429,7 +429,7 @@ function carrierTrigger(log: Index): Trigger[] {
       `${session} won ${share(unbilled.filter((one) => one > 0).length, unbilled.filter((one) => one !== 0).length)} untied, ${spare === 0 ? "none" : String(spare)} to spare${lost}`,
     ];
   });
-  return lines.length > 0 ? [fired("STEP CARRIERS", lines.join("; "))] : [];
+  return firedIf(lines.length > 0, "STEP CARRIERS", lines.join("; "));
 }
 
 /** `PROMOTION UNCONFIRMED` (lane 19): each promotion whose epoch has no starter comparison, or whose
@@ -447,14 +447,11 @@ function unconfirmedTrigger(log: Index): Trigger[] {
         : `against the starter ${wlt(against)} without the bill, no step`;
     return [`${short(reference)} in epoch ${String(nth)}, ${to === null ? "open" : "closed"}: ${read}`];
   });
-  return lines.length > 0
-    ? [
-        fired(
-          "PROMOTION UNCONFIRMED",
-          `${share(lines.length, epochs.length - 1)} promotions: ${lines.join("; ")}`,
-        ),
-      ]
-    : [];
+  return firedIf(
+    lines.length > 0,
+    "PROMOTION UNCONFIRMED",
+    `${share(lines.length, epochs.length - 1)} promotions: ${lines.join("; ")}`,
+  );
 }
 
 /** `CHAIN AGAINST THE STARTER` (lane 28): two or more starter reads whose tasks written after their
@@ -496,13 +493,14 @@ function chainTrigger(log: Index): Trigger[] {
  *  repeated exactly too. The new side's own difference bounds a win as the reference's does, which
  *  the reference's alone left out. */
 function marginTrigger(log: Index): Trigger[] {
-  const lines = lastReports(log.events).flatMap((report) => {
-    if (report.data.reading !== "step") return [];
-    const unequal = pairsReported(log.events, report).filter((pair) => differenceOf(pair) !== 0);
+  const lines = log.compared.flatMap((report) => {
+    if (report.last.reading !== "step") return [];
+    const unequal = report.pairs().filter((pair) => differenceOf(pair) !== 0);
     if (unequal.length === 0 || unequal.some((pair) => pointsOf(pair).validity !== 0)) return [];
     const own = (side: "old" | "fresh") =>
       new Map(
-        pairsReported(log.events, report, side)
+        report
+          .pairs(side)
           .filter((pair) => pointsOf(pair).validity === 0)
           .map((pair) => [pair.task, Math.abs(differenceOf(pair))]),
       );
@@ -519,5 +517,5 @@ function marginTrigger(log: Index): Trigger[] {
         ]
       : [];
   });
-  return lines.length > 0 ? [fired("MARGINS INSIDE THE NOISE", lines.join("; "))] : [];
+  return firedIf(lines.length > 0, "MARGINS INSIDE THE NOISE", lines.join("; "));
 }

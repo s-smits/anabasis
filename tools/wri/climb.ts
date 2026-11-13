@@ -11,7 +11,6 @@
  * Reference validity comes from each report's scored profile; an absent denominator reads
  * unmeasured rather than a measured zero.
  */
-import { pairsReported } from "#src/kernel/reports.ts";
 import { epochsOf as epochsRead } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";
 import {
@@ -26,7 +25,7 @@ import {
 import type { LogEvent } from "#src/kernel/log.ts";
 import { asRecord, isNumber } from "#src/meta/json-shape.ts";
 import { validityOf } from "#tools/d2/close.ts";
-import { count, fired, type Index, indexOf, items, type Trigger, text } from "./folds.ts";
+import { count, firedIf, type Index, indexOf, items, type Trigger, text } from "./folds.ts";
 import {
   epochsOf,
   joinedTest,
@@ -187,10 +186,7 @@ export function safeguardTriggers(log: Index): Trigger[] {
     const joined = joinedTest(reports);
     if (rests.length === 0 || !readsStep(joined, level)) return [];
     const harness = `${short(text(data.harness))} ${said(joined)} joined at level ${String(level)}`;
-    const settled = rests.map(({ session, at, last }) => ({
-      tested: new Set(testedOf(last).of),
-      pairs: pairsReported(log.events, { session, index: at, data: last }),
-    }));
+    const settled = rests.map(({ last, pairs }) => ({ tested: new Set(testedOf(last).of), pairs: pairs() }));
     const without = joinedTest(
       reports,
       authorRoom(
@@ -204,32 +200,26 @@ export function safeguardTriggers(log: Index): Trigger[] {
   const author = promotions.filter(({ without, level }) => !readsStep(without, level));
   const beyond = promotions.filter(({ valid, level }) => !readsStep(valid, level));
   return [
-    ...(author.length > 0
-      ? [
-          fired(
-            "SAFEGUARD-8 PROMOTION ON AUTHOR ROOM",
-            author
-              .map(
-                ({ harness, without }) =>
-                  `${harness}, ${said(without)} without the tasks held on their author's answer alone`,
-              )
-              .join("; "),
-          ),
-        ]
-      : []),
-    ...(beyond.length > 0
-      ? [
-          fired(
-            "SAFEGUARD-9 PROMOTION BEYOND VALIDITY",
-            beyond
-              .map(
-                ({ harness, valid, scored }) =>
-                  `${harness}, ${said(valid)} on validity alone, ${said(scored)} by the current score`,
-              )
-              .join("; "),
-          ),
-        ]
-      : []),
+    ...firedIf(
+      author.length > 0,
+      "SAFEGUARD-8 PROMOTION ON AUTHOR ROOM",
+      author
+        .map(
+          ({ harness, without }) =>
+            `${harness}, ${said(without)} without the tasks held on their author's answer alone`,
+        )
+        .join("; "),
+    ),
+    ...firedIf(
+      beyond.length > 0,
+      "SAFEGUARD-9 PROMOTION BEYOND VALIDITY",
+      beyond
+        .map(
+          ({ harness, valid, scored }) =>
+            `${harness}, ${said(valid)} on validity alone, ${said(scored)} by the current score`,
+        )
+        .join("; "),
+    ),
   ];
 }
 

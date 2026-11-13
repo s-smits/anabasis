@@ -430,7 +430,7 @@ describe("a campaign run by its log", () => {
       seated: answering(strayed),
       examine: (request) => {
         const tasks = [41, 42, 43, 44, 45, 46, 47, 48].map((base) => ({
-          family: `written-${String(base)}`,
+          family: "fixture",
           public_input: { base },
           hidden: null,
         }));
@@ -526,9 +526,8 @@ describe("a campaign run by its log", () => {
     // The script answers nothing under the reference nor the starter, so the starter comparison reads its
     // eight frontier tasks as beyond both, and draws three retained tasks beside them, one for each three
     // frontier tasks, as every comparison does: a valid answer to each is on record, so the reference
-    // failing it now is room. As the gate held the new tasks out, one of them and t-9 went to
-    // practice, so seven new tasks and t-8, an older task g-1's new harness answered, fill the
-    // frontier, and t-8 is room too: four informative tasks a side. From 30
+    // failing it now is room. Two of the new tasks went to practice as the gate held them out, so
+    // two older tasks g-1's new harness answered fill the frontier, and are room too. From 30
     // October to 2 November it scored the new tasks alone, found no room and asked for tasks, and
     // the promotion it confirms was read only where the reference was weakest.
     // One retained task for every three frontier ones, rounded up, as the Builder is told: three
@@ -540,7 +539,7 @@ describe("a campaign run by its log", () => {
     expect(of(name, "comparison.reported").at(-1)).toMatchObject({
       session: "g-2",
       reading: "no-step",
-      valid: { old: [11, 0, 0], fresh: [11, 0, 0], informative: { old: 4, fresh: 4 } },
+      valid: { old: [11, 0, 0], fresh: [11, 0, 0], informative: { old: 5, fresh: 5 } },
     });
     // The practice owed is released, so the Builder builds.
     expect(after).toMatchObject({ move: "build" });

@@ -13,5 +13,5 @@ export function tallied(wins: number, losses: number, ties: number) {
     ...Array.from({ length: losses }, () => -1),
     ...Array.from({ length: ties }, () => 0),
   ];
-  return { scored: tally, frontier: { ...tally, differences }, retained: "unmeasured" };
+  return { scored: tally, frontier: { ...tally, differences }, retained: "unmeasured", families: {} };
 }

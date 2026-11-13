@@ -55,8 +55,7 @@ the dated detail are in `7f0add79:docs/plan.md`, "Statistical power and cost", a
 - **The sign-flip test** assumes no more than the sign test it replaced (independent tasks,
   exchangeable sides) and equals it at equal margins, while also reading how far a task was won.
 - **One test over two sets.** A separate regression test on retained tasks fired once in 58 real
-  readings, and a "narrow" reading for steps within one family never fired in 1,598. The draw
-  scores one task a family instead (`poolOf`).
+  readings, and a "narrow" reading for steps within one family never fired in 1,598.
 - **One reading promotes.** A confirm-on-repeat rule saw all 11 repeats agree with the first
   reading, at 1 to 2.5 hours of a promotion's 6 to 7, so it went.
 - **The bill scores nothing.** With the bill at a tenth of the score, a harness worse by the

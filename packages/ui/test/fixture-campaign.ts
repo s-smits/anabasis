@@ -407,8 +407,7 @@ function examined(w: Writer, session: string, ids: readonly string[], refused: r
       session,
       task: {
         taskId: id,
-        // A family a task, since a comparison scores one task of each (`poolOf`).
-        family: `count-${id}`,
+        family: "count",
         publicInput: { word: `zorbeia-${id}` },
         hidden: { expected: practice ? "3" : `${MARKERS.hidden}-${id}` },
       },

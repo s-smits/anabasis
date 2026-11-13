@@ -145,6 +145,7 @@ function unscored(report: comparison.Report, reading = STOPPED, capped = false) 
     scored: null,
     frontier: null,
     retained: null,
+    families: null,
     valid: null,
     billed: null,
     noise: null,

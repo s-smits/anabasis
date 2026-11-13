@@ -35,7 +35,7 @@ import {
   differenceOf,
   gapAgainst,
 } from "./compare.ts";
-import { failWrongPasses, proposalsOf, wrongPasses, wrongPassesIn } from "./history.ts";
+import { failWrongPasses, wrongPasses, wrongPassesIn } from "./history.ts";
 import type { LogEvent } from "./log.ts";
 import { providerFailed, windowEnded } from "./solve.ts";
 import { passed, ranUnder, rejected, standsOf } from "./solves.ts";
@@ -471,7 +471,7 @@ function tallyReports(
 
 /**
  * The one place each held-out task has, and what its author may hear of each task a comparison
- * read: `scorable`, one a family, or `awaiting` a person's label, with
+ * read: `scorable`, in the order the tasks were held out, or `awaiting` a person's label, with
  * the `exhausted` among the `retained` and the `retained` among the scorable. Every reader of a task's state reads it
  * here, off one pass over the log.
  *
@@ -544,11 +544,13 @@ function tallyReports(
  * tasks, which the step reads with the retained ones, and what the supply counts (`supplyOf`,
  * `admission.ts`).
  *
- * **Scorable** holds one task a family, a frontier task before a retained one and of each the first
- * held; a task that names no family is a family of its own. A family's tasks share a construction
- * and their results move together: over sixty days of Opus campaigns (read 12 November) a jobstat
- * comparison scored 16 tasks of 4.7 families, and of 55 promotions with a starter comparison the 18
- * that read a step at one task a family were confirmed 13 times, the other 37 12 times.
+ * **Scorable** holds every such task, a family's siblings too. Siblings share a construction and
+ * their results move together (over sixty days of Opus campaigns, read 12 November, of 55 promotions
+ * with a starter comparison the 18 whose step still read at one task a family were confirmed 13
+ * times, the other 37 12 times), so for a day the pool held one task a family. Read 13 November:
+ * that draw refused 20 of 27 recorded jobstat comparison starts and admitted 7 at 8 to 11 tasks,
+ * and the 8 comparisons run under it scored 8 tasks each and read no step. So the family reading is
+ * reported beside the test (`compared`'s `families`, `tools/wri/scores.ts`) and decides nothing.
  *
  * **Known valid answers** are recorded for task versions: a solve's, under any harness
  * and at any limits, an author's answer the host saw pass on the task under its own id
@@ -616,17 +618,10 @@ export function poolOf(events: readonly LogEvent[]) {
         : [],
     ),
   );
+  const exhausted = spent.filter((task) => !out.has(task));
   const unstood = held.filter((task) => before.has(task) && !out.has(task) && !stood.has(task));
-  const older = [...new Set([...spent.filter((task) => !out.has(task)), ...unstood])];
-  // One task a family: its first held that is not an older one, or its first.
-  const families = new Map(proposalsOf(events).map(({ version, family }) => [version, family ?? version]));
-  const kin = (tasks: readonly string[]) => [
-    ...Map.groupBy(tasks, (task) => families.get(task) ?? task).values(),
-  ];
-  const scorable = kin(held.filter((task) => !out.has(task))).flatMap(
-    (family) => family.find((task) => !older.includes(task)) ?? family.slice(0, 1),
-  );
-  const retained = older.filter((task) => scorable.includes(task));
+  const retained = [...new Set([...exhausted, ...unstood])];
+  const scorable = held.filter((task) => !out.has(task));
   // Practice's allowance also leaves out a task with no independent valid answer that the reference
   // answered in none of two comparisons: unlike `awaiting`, only the reference's own cut solves pass
   // a comparison over, so the allowance reads nothing of the other harness (rule 3).
@@ -648,15 +643,15 @@ export function poolOf(events: readonly LogEvent[]) {
   return {
     scorable,
     frontier: scorable.filter((task) => !retained.includes(task)),
-    practiceFrontier: kin(
-      held.filter((task) => !(before.has(task) && !stood.has(task)) && !practiceOut.has(task)),
-    ).flatMap((family) => family.slice(0, 1)),
+    practiceFrontier: held.filter(
+      (task) => !(before.has(task) && !stood.has(task)) && !practiceOut.has(task),
+    ),
     // What a practice release draws from: a rejection the reference's own solve left in doubt reads
     // the reference alone, so which task another harness won moves nothing here (rule 3).
     practicePool: held.filter((task) => !doubted.includes(task)),
     awaiting,
     doubted,
-    exhausted: retained.filter((task) => spent.includes(task)),
+    exhausted,
     retained,
     feasible: new Set(
       records.flatMap(({ version, validAnswer }) => (validAnswer === "none" ? [] : [version])),

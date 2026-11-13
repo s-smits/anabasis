@@ -281,6 +281,22 @@ describe("the investigation index", () => {
       "| 2026-10-31 | `esp32-fresh-opus-new` | archive, peer | no ending | 0, 0 confirmed | none | none |",
     ]);
     expect(text).toContain("3 campaigns took an event in the 14 days to 2026-11-03.");
+    // A log whose file is new and whose last event is older than the window (a gathered copy) is
+    // dropped by that event alone: its body is never parsed, so a torn line in it is no row.
+    folder(
+      "truss-fresh-opus-old-torn",
+      {
+        "log.jsonl": `not json\n${JSON.stringify({ at: daysAgo(20), kind: "campaign.opened", data: {} })}\n`,
+      },
+      elsewhere,
+    );
+    runs.push({
+      name: "truss-fresh-opus-old-torn",
+      tree: "/x/anabasis-w",
+      path: join(elsewhere, "truss-fresh-opus-old-torn", "log.jsonl"),
+      end: "comparison.reported",
+    });
+    expect(rowsIn(index().text, "## Runs of the last 14 days")).toHaveLength(3);
     for (const hidden of [
       "RUN-SECRET",
       "truss-fresh-opus-old",

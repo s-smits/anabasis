@@ -30,7 +30,7 @@
  */
 import { Type } from "typebox";
 import { type SeatTool, textsOf } from "#src/agent/session.ts";
-import { Refused, stopRule } from "#src/campaign/admission.ts";
+import { comparisonFloor, Refused, stopRule } from "#src/campaign/admission.ts";
 import { CRASHES, decide, practiceDue } from "#src/campaign/decide.ts";
 import { comparisonsOf, crashedRun } from "#src/campaign/ground.ts";
 import { campaignOf } from "#src/campaign/handover.ts";
@@ -636,6 +636,26 @@ function halted(context: CampaignContext, bench: Bench) {
 }
 
 /**
+ * What the two counts amount to before a first comparison, where the Builder chooses between
+ * comparing and waiting for the Examiner: the practice still to come and when the host releases
+ * it (`practiceDue`), and what a comparison of the tasks held now can read (`sizeLines`, as a
+ * comparison's own result says it). Until 13 November it heard the size only in that result: of
+ * 23 fresh campaigns, 9 took their first comparison on at most 2 practice tasks and 1 read a
+ * step, against 4 of 4 on 6. It is a function of the two counts and the plan, which no outcome
+ * of a held-out task moves (rule 3).
+ */
+function firstFacts({ practice, wanted }: Turn["plan"], held: number, released: number): string {
+  const [size = ""] = sizeLines(Math.min(wanted.target, held), wanted.level);
+  if (practice === null) return `${size}.`;
+  // The first release has no such bound (`practiceDue`'s allowance).
+  const more =
+    released > 0 && released < practice
+      ? `, and another only while more than ${String(comparisonFloor(wanted.level))} tasks stay held out`
+      : "";
+  return `Released for practice: ${String(released)} of the ${plural(practice, "task")} the campaign names${more}. ${size}.`;
+}
+
+/**
  * What the Builder is told of its campaign, where it can have moved (a campaign tool's result):
  * what was written and released, what is left of the total, the last tally and what was spent.
  * Until 5 November it ended with the table's move as a suggestion. Reading it is also where the
@@ -660,7 +680,7 @@ function campaignStatus(context: CampaignContext, bench: Bench): string {
         ]),
     // The last tally stands here; `read_opening` holds every one.
     tallies.length === 0
-      ? "No comparison has a tally yet."
+      ? `No comparison has a tally yet. ${firstFacts(turn.plan, sets.held.length, sets.released.length)}`
       : `${plural(tallies.length, "comparison")} with a tally; the last:\n${tallies.at(-1) ?? ""}`,
     ...examinedLines(turn.events, writing),
     ...spentLines(turn),

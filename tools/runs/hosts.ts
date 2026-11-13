@@ -4,8 +4,11 @@
  * adds below this machine's own wherever a host is listed.
  *
  *   bun run runs on <host> <verb> [args ...]
- *   bun run runs hosts [--all] [--health]
+ *   bun run runs hosts [--all] [--health [--here]]
  *   bun run runs holds <name ...>
+ *
+ * `--health` is `health.ts`'s: each machine's load, disk and busiest processes, this one included,
+ * and with `--here` this machine's alone as JSON, which is what each host is asked.
  *
  * The hosts are `ANA_HOSTS` in the environment, a JSON list, loaded as the credentials are by Bun's
  * `--env-file` from a file git ignores, so no machine is named in the repository. Each names the
@@ -26,6 +29,10 @@
  * published ancestor for ordinary verbs and skill scripts; all configured paths remain literal shell words.
  * Live records belong to live.ts, shared by usage and placement (22 October 2026).
  */
+import type { Static, TSchema } from "typebox";
+import { Value } from "typebox/value";
+import { capturedJsonParse } from "#src/meta/json-runtime.ts";
+import type { JsonValue } from "#src/meta/json-shape.ts";
 import { capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
 import { runCaptured } from "#src/meta/subprocess.ts";
 import { CARRIED, type Host, hostsOf, hostNamed, configuredRuntime, RUN_CAP } from "./host-config.ts";
@@ -37,7 +44,7 @@ import { scanText } from "../secrets/rules.ts";
 /** How long `hosts` waits for one host's rows, and a verb for each host's `holds`. */
 const HOST_MS = 30_000;
 /** The verbs that act on the runs they name: every name `stop` is given, and the first word of the rest. */
-const NAMING = new Set(["stop", "continue", "pause", "keep", "copy"]);
+export const NAMING = new Set(["stop", "continue", "pause", "keep", "copy"]);
 /** The options of the verbs in `NAMING` that take no value. Any other option not joined to its value
  *  by `=` takes the next argument as its value. */
 const SWITCHES = new Set(["--yes", "--all", "--json", "--hold", "--here"]);
@@ -178,6 +185,20 @@ export async function asked(
   mode: "prepared" | "configured" = "prepared",
 ): Promise<{ host: Host; lines: string[] | null; elapsedMs: number }[]> {
   return await askedScript(CLI, args, targets, mode);
+}
+
+/** What a peer's lines answer where they are JSON that `schema` holds, and null otherwise: no answer,
+ *  no JSON, or an older tree's answer that lacks a part. Extra keys pass, so a newer tree's answer
+ *  stays readable. A file's lines read the same way. */
+export function answerOf<S extends TSchema>(schema: S, lines: readonly string[] | null): Static<S> | null;
+export function answerOf(schema: TSchema, lines: readonly string[] | null): JsonValue | null {
+  if (lines === null) return null;
+  try {
+    const value = capturedJsonParse(lines.join("\n"));
+    return Value.Check(schema, value) ? value : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Ask all hosts a script, concurrently and within the same deadline as the runs CLI. */

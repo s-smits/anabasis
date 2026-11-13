@@ -7,6 +7,7 @@ import { join } from "../src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, runtimeProcess } from "../src/meta/process.ts";
 import { LIMITS } from "../tools/d2/campaign.ts";
 import { loginEnv, restsAfter, solvesMs } from "../tools/runs/manage.ts";
+import { type Receipt, writeReceipt } from "../tools/runs/receipt.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
 const KEY = "CLAUDE_CODE_OAUTH_TOKEN";
@@ -124,6 +125,36 @@ describe("going on with a campaign", () => {
         verb === "pause" ? "would be stopped after its next reported" : "would go on after its next reported",
       );
     }
+  });
+
+  it("goes on under its last run's login where none is named, and under the one named", () => {
+    const made = fakeHosts();
+    fixtures.push(made.root);
+    const launched = {
+      at: "2026-11-11T02:43:00.000Z",
+      pid: 42,
+      flags: [],
+      envFile: null,
+      commit: "a".repeat(40),
+      dirty: false,
+      load: 0,
+      cores: 2,
+    };
+    const said = (name: string, receipt: Receipt, args: readonly string[]) => {
+      const log = join(made.main, ".ana", "d2", name, "log.jsonl");
+      mkdirSync(join(made.main, ".ana", "d2", name), { recursive: true });
+      append(log, "campaign.opened", { name });
+      writeReceipt(log, "run-1", receipt);
+      const told = made.run(
+        `import { continueRun } from "REPOSITORY/tools/runs/manage.ts"; await continueRun(${JSON.stringify([name, ...args])});`,
+      );
+      expect({ code: told.code, err: told.err }).toEqual({ code: 0, err: "" });
+      return told.out;
+    };
+    expect(said("numbered", { ...launched, login: "3" }, [])).toContain("on login 3 with");
+    expect(said("moved", { ...launched, login: "3" }, ["--login", "1"])).toContain("on login 1 with");
+    // A run launched on the unnumbered login is given no numbered one.
+    expect(said("plain", launched, [])).toContain("on the unnumbered login with");
   });
 
   it("pauses at the next step only once no solve is open", () => {

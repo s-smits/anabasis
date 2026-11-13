@@ -45,7 +45,7 @@
  * `continue` then goes on with it there. It is the one way a campaign's folder moves on one machine
  * (operator, 15 October), since a log is never copied by hand.
  *
- *   bun --env-file=.env.runs run runs fetch <name> [--from <host>]
+ *   bun --env-file=.env.runs run runs fetch [<name>] [--from <host>] [--whole]
  *
  * `fetch` takes a copy of a campaign another machine holds, to read here: its folder whole, into
  * the archive as `data/runs/<host>/<name>/` of the main worktree (`ARCHIVE`), where the readers read
@@ -53,8 +53,9 @@
  * unless `--from` names one, prints the copy's log, and run again brings the copy level with its
  * source. The run is left as it is. On 20 October a whole-run investigation of three runs on another
  * host read copies made by hand; until then a copy went to `.ana/fetched/`, which no reader read.
- * With no name it brings every campaign whose log grew, and then records where another model served
- * a seat than it asked for (`degradations.ts`).
+ * With no name it brings the record of every campaign whose log grew, and with `--whole` their
+ * folders too, as a named campaign always comes; it then records where another model served a seat
+ * than it asked for (`degradations.ts`).
  */
 import { LOG_FILE } from "#src/kernel/log.ts";
 import { cpSync, existsSync, mkdirSync, renameSync, rmSync, statSync } from "#src/meta/filesystem.ts";
@@ -69,12 +70,13 @@ import { type Host, hostNamed, hostsOf, ownName } from "./host-config.ts";
 import { quoted, rsync, shellOn, shellPath, sideOf } from "./host-command.ts";
 import { verbOn } from "./hosts.ts";
 import { stillRunning } from "./diagnosis.ts";
-import { CAMPAIGNS, HERE, processes, readNamed } from "./registry.ts";
+import { CAMPAIGNS, HERE, Misused, processes, readNamed } from "./registry.ts";
 import { syncRuns } from "./snapshots.ts";
 import { recordDegradations } from "./degradations.ts";
 import { continueRun, pause, said } from "./manage.ts";
 import { payerOf } from "./live.ts";
 import { roomToStart } from "./logins.ts";
+import { loginPresent } from "./placement.ts";
 import { preparedHost, publishedAt } from "./code.ts";
 import { lastLaunch } from "./receipt.ts";
 
@@ -85,9 +87,6 @@ interface End {
   /** A worktree of the repository there, absolute: the folder it sits in holds the others. */
   readonly repo: string;
 }
-
-const USAGE =
-  "usage: bun run runs move <name> --to <host> [--from <host>] [--login N] [--after <event>] [--hold] [--yes] [-- <flags>]";
 
 /** `flags` with each path under `from` named under `to` instead, whole or after a flag's `=`. */
 function rehomed(flags: readonly string[], from: string, to: string): string[] {
@@ -130,10 +129,10 @@ function treeOf(end: End, name: string): string | undefined {
   return only;
 }
 
-/** Read kept flags through the local receipt owner before pausing or copying the campaign. */
-async function flagsAt(end: End, source: string, name: string): Promise<readonly string[] | null> {
+/** The last launch's receipt, read through the local receipt owner before anything is paused or copied. */
+async function launchAt(end: End, source: string, name: string) {
   const log = join(source, CAMPAIGNS, name, LOG_FILE);
-  if (end.host === undefined) return lastLaunch(log)?.flags ?? null;
+  if (end.host === undefined) return lastLaunch(log);
   const stage = join(tmpdir(), `ana-move-receipts-${crypto.randomUUID()}`);
   mkdirSync(stage);
   try {
@@ -143,7 +142,7 @@ async function flagsAt(end: End, source: string, name: string): Promise<readonly
       "--include=/launch-*.json",
       "--exclude=/*",
     );
-    return lastLaunch(join(stage, LOG_FILE))?.flags ?? null;
+    return lastLaunch(join(stage, LOG_FILE));
   } finally {
     rmSync(stage, { recursive: true, force: true });
   }
@@ -169,7 +168,7 @@ export async function move(args: readonly string[]): Promise<void> {
   const own = ownName();
   const [fromName = HERE, toName] = [values.from, values.to].map((end) => (end === own ? HERE : end));
   if (name === undefined || !isSafePathSegment(name) || toName === undefined || toName === fromName) {
-    throw new Error(USAGE);
+    throw new Misused();
   }
   const from = endOf(fromName);
   const to = endOf(toName);
@@ -200,7 +199,8 @@ export async function move(args: readonly string[]): Promise<void> {
       `${tree} is there already on ${to.name}: the source remains at ${folder(source)} on ${from.name}; preserve ${folder(tree)} outside ${tree}, remove the destination with git -C ${quoted(to.repo)} worktree remove ${quoted(tree)} on ${to.name}, then retry; nothing was stopped or moved`,
     );
   }
-  const kept = given.length > 0 ? given : await flagsAt(from, source, name);
+  const launch = await launchAt(from, source, name);
+  const kept = given.length > 0 ? given : (launch?.flags ?? null);
   if (kept === null && !values.hold) {
     throw new Error(
       `${name} has no launch receipt at ${folder(source)}: supply campaign flags after -- or use --hold; nothing was stopped or moved`,
@@ -214,8 +214,14 @@ export async function move(args: readonly string[]): Promise<void> {
     console.log("nothing is done without --yes");
     return;
   }
-  // Counted before the pause too: the destination's caps must take the run, less the run itself.
-  await roomToStart(payerOf(values.login, flags), to.host?.name ?? "here", name);
+  // Counted before the pause, on the login `continue` goes on with, less the run itself.
+  const numbered = values.login ?? launch?.login;
+  await roomToStart(payerOf(numbered, flags), to.host?.name ?? "here", name);
+  // Asked before the pause too: `continue` refuses a login its host lacks, by then of a stopped run.
+  const asks = to.host !== undefined && numbered !== undefined && !values.hold;
+  if (asks && !(await loginPresent(to.host, numbered))) {
+    throw new Error(`login ${numbered} must be carried to ${to.name} first: nothing was stopped or moved`);
+  }
   // Prepare before the pause: a missing commit or failed install must leave the source running.
   const controller = to.host === undefined ? undefined : await preparedHost(to.host, commit);
   if (to.host === undefined) publishedAt(to.repo, commit);
@@ -264,7 +270,7 @@ export async function fetch(args: readonly string[]): Promise<void> {
     options: { from: { type: "string" }, whole: { type: "boolean", default: false } },
   });
   const [name, ...rest] = positionals;
-  if (rest.length > 0) throw new Error("usage: bun run runs fetch [<name>] [--from <host>] [--whole]");
+  if (rest.length > 0) throw new Misused();
   const from = keyIfDefined("from", values.from);
   // With no name, the records of every campaign the other hosts hold: the gather a timer runs.
   // `--whole` brings their folders too, as the nightly pass does; a named campaign always comes whole.
@@ -296,7 +302,7 @@ export function copy(args: readonly string[]): void {
   const trees = worktrees(runtimeProcess.cwd());
   const to = trees.find((tree) => values.to !== undefined && tree === resolve(values.to));
   if (name === undefined || to === undefined) {
-    throw new Error(`usage: bun run runs copy <name> --to <a worktree: ${trees.join(", ")}> [--yes]`);
+    throw new Misused(`--to names a worktree of this repository: ${trees.join(", ")}`);
   }
   const run = readNamed(name);
   if (run.archived !== undefined && run.archived !== HERE) {

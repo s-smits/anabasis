@@ -22,6 +22,7 @@ import { capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { killProcessGroup } from "#src/meta/subprocess.ts";
 import { hostsOf, ownName } from "./host-config.ts";
 import { shellOn } from "./host-command.ts";
+import { Misused } from "./registry.ts";
 
 interface Sample {
   readonly cores: number;
@@ -46,7 +47,6 @@ const ESC = "\u001B";
 const [RESET, DIM, BOLD] = [`${ESC}[0m`, `${ESC}[2m`, `${ESC}[1m`];
 const [GREEN, YELLOW, RED] = [`${ESC}[32m`, `${ESC}[33m`, `${ESC}[31m`];
 const ROWS = ["cpu now ", "load 1m ", "load 5m ", "load 15m"] as const;
-const USAGE = "usage: runs loadwatch [<seconds>] [--once]";
 // Each sample is "<cores>\n<1m> <5m> <15m>\n<idle percent>\n---\n". @I@ is the interval in seconds.
 const LOOP = String.raw`
 if [ -r /proc/stat ]; then
@@ -167,7 +167,7 @@ export async function loadwatch(args: readonly string[]): Promise<void> {
   });
   const [given = "5", extra] = positionals;
   const seconds = Number(given);
-  if (extra !== undefined || !Number.isFinite(seconds) || seconds <= 0) throw new Error(USAGE);
+  if (extra !== undefined || !Number.isFinite(seconds) || seconds <= 0) throw new Misused();
   const script = LOOP.replaceAll("@I@", String(Math.max(seconds, 0.5))).replaceAll(
     "@W@",
     String(Math.max(1, Math.round(seconds))),

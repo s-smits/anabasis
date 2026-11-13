@@ -9,8 +9,9 @@ A campaign is one process over one log (`tools/d2/harness-builder.ts`): it prepa
 holds one Builder conversation, which edits the harness and calls campaign tools for the Examiner,
 practice, comparison and promotion. Its life on the host is managed by one CLI, `bun run runs`
 (`tools/runs/cli.ts`), over every run log in the repository's worktrees (`tools/runs/registry.ts`).
-A bare `bun run runs` lists the verbs and `<verb> --help` gives their options. Run authority and the
-conditions of a measured campaign are in `AGENTS.md`, section 10.
+A bare `bun run runs` lists the verbs, `<verb> --help` gives every option its parser takes and
+`help all` every verb's; a verb given words it cannot act on answers with the same usage. Run
+authority and the conditions of a measured campaign are in `AGENTS.md`, section 10.
 
 Verbs that name a run route to the machine that holds it, and refuse where the host is missing or
 more than one holds the name. Reading verbs refresh copies of remote records first; `pulse` polls
@@ -103,8 +104,9 @@ in `launch-run-<n>.out` and `.err` beside the receipt `launch-run-<n>.json`. Out
 - **The env file is Bun's to read.** `bun --env-file=<file> run runs …` loads it into the process; no
   verb opens it, and you never print, copy or search it. `--login N` passes the login held as
   `CLAUDE_CODE_OAUTH_TOKEN<N>` on as `CLAUDE_CODE_OAUTH_TOKEN`, and no numbered key reaches the
-  command. Without `--login` no login is guessed, so a `claude/` seat's dry run refuses; a machine
-  holding only the plain token uses it (`plainOnly`, `tools/runs/logins.ts`). `claude/<model>` and
+  command. Without `--login` a launch guesses no login, so a `claude/` seat's dry run refuses; a machine
+  holding only the plain token uses it (`plainOnly`, `tools/runs/logins.ts`). A `continue` without it
+  stays on the login its last run recorded, and its dry form names that login. `claude/<model>` and
   `claude-api/<model>` are two providers, so they make two settings.
 - **Machine settings are environment.** `ANA_LOGINS` lists the logins a run may take, and
   `ANA_HOSTS` the peers as JSON `{name, ssh, tree, bun, envFiles, capacity, checks, packs}`. They live
@@ -282,6 +284,11 @@ when they turn, not at every look.
 `bun run runs alerts` is the cron watch: one stdout line per new promotion, starter comparison,
 keeper move, missing process, ending or stall, nothing otherwise, and exit 0. It prints the `runs
 pause` command once two promotions are read against the starter, and never runs it.
+
+A session that waits on a few runs follows the log the local job writes these lines to with one
+`Monitor` (`tail -n 0 -F`), re-armed when it expires, and so wakes at each step a run owes. On a
+machine where no job writes that log, one `Monitor` on `bun run runs pulse --every 290 --state
+<file>` serves instead. Neither pauses or stops anything.
 
 Each look also says, under each moment among a run's new events (the contract's freeze, a
 comparison's start, a report, a promotion, an Examiner's or Builder's end, a campaign's opening or

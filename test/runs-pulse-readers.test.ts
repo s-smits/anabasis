@@ -624,6 +624,13 @@ describe("a look that was cut", () => {
     process.kill(-watching.pid, "SIGTERM");
     await watching.exited;
     expect(early).toBe("still looking");
+    // A wait that is no number of seconds above 0 is refused before the first look, not looped on.
+    for (const wait of ["0", "-5", "soon"]) {
+      const refused = start("--every", wait, "the-run");
+      const code = await Promise.race([refused.exited, Bun.sleep(20_000).then(() => "still looking")]);
+      if (code === "still looking") process.kill(-refused.pid, "SIGTERM");
+      expect(code).toBe(1);
+    }
   });
 
   it("keeps a peer's look from counting as read until its caller returns the token", () => {
@@ -723,10 +730,9 @@ describe("a look that was cut", () => {
         ?.args.at(-1)
         ?.replaceAll(String.raw`'\''`, "") ?? "";
     const offline = look({ FAKE_OFFLINE: "1" });
-    expect(offline.code).toBe(1);
-    // The hook's filter keeps an indented warning and drops an unindented line.
-    expect(offline.out).toContain("── runner");
-    expect(offline.out).toContain("  ⚠ no answer: its lines carry to the next look");
+    expect(offline.code).toBe(0);
+    // The hook's filter shows a line that opens with a warning on its own.
+    expect(offline.out).toMatch(/^⚠ runner is offline: no answer in /mu);
     look(fleet("◆ reported no-step\nack 89abcdef"));
     expect(remote()).toContain("--ack 0123abcd");
     look(fleet(""));

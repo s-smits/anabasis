@@ -110,7 +110,8 @@ export async function freshHosts(): Promise<FreshHost[]> {
   ];
 }
 
-/** The same placement rule serves a single launch and a batch's reserved observations. */
+/** The host placement chooses for `pack`, over `counted` and `choices` where a batch has reserved
+ *  its earlier packs in them. */
 export async function placeFresh(
   pack: string,
   counted?: readonly Live[],
@@ -179,20 +180,15 @@ export async function loginPresent(host: Host, login: string): Promise<boolean> 
   return answer === "true";
 }
 
-/** The host a fresh run of `pack` goes to: chosen where `named` is undefined, this machine for
- *  `here`, and refused where it does not take the pack or carries as many runs of `payer` as it may. */
-export async function freshHost(
+/** The host a fresh run of `pack` named `named` goes to, this machine for `here`, refused where it
+ *  does not take the pack or carries as many runs of `payer` as it may. */
+export function freshHost(
   pack: string,
   fleet: readonly Live[],
-  named: string | undefined,
+  named: string,
   payer: string | undefined,
-): Promise<Host | undefined> {
-  const host =
-    named === undefined
-      ? await placeFresh(pack, fleet, undefined, payer)
-      : named === "here"
-        ? undefined
-        : hostNamed(named);
+): Host | undefined {
+  const host = named === "here" ? undefined : hostNamed(named);
   const where = host?.name ?? "here";
   const refused = takes(host, pack)
     ? fullOn(runtimeProcess.env, payer, where, fleet)

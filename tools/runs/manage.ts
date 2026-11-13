@@ -1,7 +1,8 @@
 /**
  * Start a campaign, go on with one, and pause one at a clean point.
  *
- *   bun --env-file=<file> run runs launch <name> [--login N] [--yes] -- <the campaign command's flags>
+ *   bun --env-file=<file> run runs launch <name> [--login N] [--yes]
+ *     -- <the campaign command's flags but --name>
  *   bun --env-file=<file> run runs continue <name> [--at <commit>] [--login N] [--budget N]
  *     [--after <word>[|<word>...]] [--yes] [-- <flags>]
  *   bun run runs pause <name> [--after <word>[|<word>...]] [--yes]
@@ -43,7 +44,10 @@
  * one. Until 26 October the launcher took the one numbered login a file held, refused
  * two, and from 25 October read the seats' models to skip both for a run that bills none: on
  * 16 October three drafts had ended on a provider not configured, which the dry run now refuses,
- * and on 25 October a gpt-6.1-sol launch was refused for want of a login no seat would use. Which
+ * and on 25 October a gpt-6.1-sol launch was refused for want of a login no seat would use. A
+ * `continue` that names no login stays on the one its last run recorded, which is no guess: on
+ * 11 November one typed without `--login` put a run launched on a numbered login on the unnumbered
+ * one, where its Builder session crashed at once, and the account that pays is the operator's. Which
  * login a run takes is chosen by `fresh` and `keep` (`billsLogin`, `logins.ts`). The verb never
  * opens the env file: Bun's own `--env-file` loads it.
  *
@@ -73,6 +77,7 @@ import {
   logEvents,
   keepers,
   keptFile,
+  Misused,
   openComparisons,
   processes,
   type Run,
@@ -342,9 +347,7 @@ export async function launch(args: readonly string[]): Promise<void> {
   });
   const [name, ...flags] = positionals;
   if (name === undefined || flags.some((flag) => flag === "--name" || flag.startsWith("--name="))) {
-    throw new Error(
-      "usage: bun run runs launch <name> [--login N] [--yes] -- <the campaign command's flags but --name>",
-    );
+    throw new Misused();
   }
   // By case too: on macOS's file system a name that differs only by case is the same folder.
   const held = everyRun().find((run) => run.name.toLowerCase() === name.toLowerCase() && isCampaign(run));
@@ -371,18 +374,21 @@ export async function continueRun(args: readonly string[]): Promise<void> {
   });
   const [name, ...given] = positionals;
   if (name === undefined) {
-    throw new Error(
-      "usage: bun run runs continue <name> [--at <commit>] [--login N] [--budget N] [--after <event>] [--yes] [-- <flags>]",
-    );
+    throw new Misused();
   }
   if (values.after !== undefined) kindsNamed(values.after);
   const run = runNamed(name);
   // Flags after `--` stand for the kept ones: a pack's path where the campaign was copied to
   // another host is that host's.
   const flags = rerun(given.length > 0 ? given : lastRun(run).flags, values.budget);
+  const login = values.login ?? lastLaunch(run.path)?.login;
   if (!values.yes) {
     const after = values.after === undefined ? "" : `after its next ${values.after}, `;
-    return said(run, `would go on ${after}at ${values.at ?? "its commit"} on ${flags.join(" ")}`);
+    const payer = login === undefined ? "the unnumbered login" : `login ${login}`;
+    return said(
+      run,
+      `would go on ${after}at ${values.at ?? "its commit"} on ${payer} with ${flags.join(" ")}`,
+    );
   }
   // A commit no remote holds is refused before the pause, which would leave the run stopped.
   const target = values.at === undefined ? undefined : publishedAt(run.tree, values.at);
@@ -396,11 +402,11 @@ export async function continueRun(args: readonly string[]): Promise<void> {
   if (values.after !== undefined) {
     // Counted before the pause, which would leave the run stopped where `start` then refuses it, as
     // is the command's dry run at the run's own commit; another commit is installed first, after it.
-    await roomToStart(payerOf(values.login, flags), "here", run.name);
-    if ((target ?? commit) === commit) dryRun(run, flags, loginEnv(runtimeProcess.env, values.login), commit);
+    await roomToStart(payerOf(login, flags), "here", run.name);
+    if ((target ?? commit) === commit) dryRun(run, flags, loginEnv(runtimeProcess.env, login), commit);
     await pauseAt(run, values.after);
   }
-  await startKept(run, flags, { login: values.login, at: target });
+  await startKept(run, flags, { login, at: target });
 }
 
 /** `bun run runs pause`. */
@@ -412,7 +418,7 @@ export async function pause(args: readonly string[]): Promise<void> {
   });
   const [name] = positionals;
   if (name === undefined) {
-    throw new Error("usage: bun run runs pause <name> [--after <word>[|<word>...]] [--yes]");
+    throw new Misused();
   }
   const after = values.after ?? "next";
   kindsNamed(after);

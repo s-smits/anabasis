@@ -1,6 +1,6 @@
 /**
  * Find an old analysis without fetching campaigns or asking machines one by one.
- * `runs search <pattern> [--regex] [--ignore-case] [--here] [--in logs|notes|all] [--max <chars>]`
+ * `bun run runs search <pattern> [--regex] [--ignore-case] [--here] [--in logs|notes|all] [--max <chars>]`
  * searches campaign folders and the main tree's notes and docs. Each peer runs this script
  * in its configured tree through the runs transport, within its 30-second deadline.
  * Whole matches spill locally when either the line window or the output cap cuts text.
@@ -17,7 +17,7 @@ import { runCaptured } from "#src/meta/subprocess.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { type Host, hostsOf } from "./host-config.ts";
 import { askedScript } from "./hosts.ts";
-import { everyRun, isCampaign } from "./registry.ts";
+import { everyRun, isCampaign, Misused } from "./registry.ts";
 
 interface Match {
   readonly path: string;
@@ -209,9 +209,7 @@ export async function search(args: readonly string[], dependencies: Dependencies
   const scope = values.in;
   const max = Number(values.max);
   if (pattern === undefined || extra !== undefined || !["logs", "notes", "all"].includes(scope)) {
-    throw new Error(
-      "usage: runs search <pattern> [--regex] [--ignore-case] [--here] [--in logs|notes|all] [--max <chars>]",
-    );
+    throw new Misused();
   }
   if (!Number.isSafeInteger(max) || max < 1) throw new Error("--max takes a positive integer");
   const query = { pattern, regex: values.regex, ignoreCase: values["ignore-case"] };

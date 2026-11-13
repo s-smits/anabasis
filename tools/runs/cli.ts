@@ -1,11 +1,19 @@
 /**
  * `bun run runs <verb>`, over every run log in the repository's worktrees (`registry.ts`). `GROUPS`
- * says what each verb does, in one line, and a bare `bun run runs` prints it grouped. The usage has
- * one owner, the head of the verb's file, which `bun run runs <verb> --help` reads (`usageOf`).
- * Until 30 October this head restated each verb in a paragraph only a reader of the source saw, and
- * the bare command printed the names alone and exited 1 (operator: "give the agents insights of
- * everything we can do"). A verb that names a run no worktree here holds runs on the host that holds
- * it (`routed`), and `holds` is what that host is asked.
+ * says what each verb does, in one line, and a bare `bun run runs` prints it grouped, with what
+ * holds of every verb under it (`EVERY`). The usage has one owner, the head of the verb's file,
+ * which `bun run runs <verb> --help` reads (`usageOf`); `help <verb> ...` prints several and
+ * `help all` every verb's. Until 30 October this head restated each verb in a paragraph only a reader
+ * of the source saw, and the bare command printed the names alone and exited 1 (operator: "give the
+ * agents insights of everything we can do"). A verb that names a run no worktree here holds runs on
+ * the host that holds it (`routed`), and `holds` is what that host is asked.
+ *
+ * A verb given words it cannot act on (`Misused`, or a flag or an argument `parseArgs` did not take)
+ * is answered with that usage, so the refusal is the correction; a word that names no verb is
+ * answered with the verbs nearest it (`unknown`). Until 11 November each verb threw a usage line of
+ * its own beside the head's, `--help` left out 20 options that the parsers of six verbs take, and
+ * an unknown flag said only its name (operator: "make more exhaustive", "and make more smart").
+ * `test/runs-cli.test.ts` holds each parser's options to the help of its file's verbs.
  *
  * `here` always names this machine, whichever verb hears it: `--here` is accepted by every verb, and a
  * verb with no use of its own for it reaches no other host for that one call, as a verb another host
@@ -20,10 +28,10 @@ import { join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { alerts } from "./alerts.ts";
 import { fresh } from "./fresh.ts";
-import { holds, on, routed, verbOn } from "./hosts.ts";
+import { holds, NAMING, on, routed, verbOn } from "./hosts.ts";
 import { hostsHealth } from "./health.ts";
 import { keep } from "./keep.ts";
-import { HERE, KEEPING } from "./registry.ts";
+import { HERE, KEEPING, Misused, ownArgs } from "./registry.ts";
 import { loadwatch } from "./loadwatch.ts";
 import { active, logins } from "./logins.ts";
 import { continueRun, launch, pause } from "./manage.ts";
@@ -202,23 +210,68 @@ const GROUPS = {
 const VERBS: Record<string, Verb> = Object.fromEntries(
   Object.values(GROUPS).flatMap((verbs) => Object.entries(verbs)),
 );
+/** The words that ask for the list, or for the usage of the verbs named after them. */
+const HELP: ReadonlySet<string | undefined> = new Set([undefined, "help", "--help", "-h"]);
+/** What holds of every verb, said under the list. */
+const EVERY = [
+  ["<verb> --help", "its usage; `help <verb> ...` prints several, and `help all` every verb's"],
+  [
+    KEEPING,
+    `this machine alone, asking no other host, as \`on ${HERE} <verb>\`; ${[...READS_HERE].join(", ")} read it for themselves`,
+  ],
+  ["--yes", "a verb that takes it says what it would do, and does it only with this"],
+  ["<name>", `${[...NAMING].join(", ")} act on the host that holds the run they name`],
+] as const;
+const WIDTH = Math.max(...[...Object.keys(VERBS), ...EVERY.map(([name]) => name)].map((name) => name.length));
 
-/** Every verb, grouped, with what it does. */
+/** The verb a word names, if any: by its own entry, so that `toString` names none. */
+const verbNamed = (word: string | undefined): Verb | undefined =>
+  Object.entries(VERBS).find(([name]) => name === word)?.[1];
+
+/** Names in one column and what each is in the next. */
+const columns = (lines: readonly (readonly [string, string])[]): string =>
+  lines.map(([name, says]) => `  ${name.padEnd(WIDTH)}  ${says}`).join("\n");
+
+/** Every verb, grouped, with what it does, and what holds of them all. */
 function list(): string {
-  const width = Math.max(...Object.keys(VERBS).map((name) => name.length));
   const groups = Object.entries(GROUPS).map(
     ([group, verbs]) =>
-      `${group}:\n${Object.entries(verbs)
-        .map(([name, { says }]) => `  ${name.padEnd(width)}  ${says}`)
-        .join("\n")}`,
+      `${group}:\n${columns(Object.entries(verbs).map(([name, { says }]) => [name, says] as const))}`,
   );
-  return `usage: bun run runs <verb> [<args>]; bun run runs <verb> --help prints its usage\n\n${groups.join("\n\n")}`;
+  return `usage: bun run runs <verb> [<args>]\n\n${groups.join("\n\n")}\n\nevery verb:\n${columns(EVERY)}`;
+}
+
+/** The edits that turn one word into another (Levenshtein), a row of the table at a time. */
+function edits(from: string, to: string): number {
+  let row = Array.from({ length: to.length + 1 }, (_, at) => at);
+  for (let i = 0; i < from.length; i += 1) {
+    const next = [i + 1];
+    for (let j = 0; j < to.length; j += 1) {
+      const swapped = (row[j] ?? 0) + (from[i] === to[j] ? 0 : 1);
+      next.push(Math.min(swapped, (row[j + 1] ?? 0) + 1, (next[j] ?? 0) + 1));
+    }
+    row = next;
+  }
+  return row.at(-1) ?? 0;
+}
+
+/** What a word that names no verb is answered: the verbs it begins, or else those two edits away at
+ *  most (one, for a word of four letters or fewer), and the whole list where none is near. It runs
+ *  none of them: `st` begins both `status` and `stop`. */
+function unknown(word: string): string {
+  const verbs = Object.entries(VERBS).map(([name, { says }]) => [name, says] as const);
+  const begun = verbs.filter(([name]) => word !== "" && name.startsWith(word));
+  const within = word.length > 4 ? 2 : 1;
+  const near = begun.length > 0 ? begun : verbs.filter(([name]) => edits(word, name) <= within);
+  if (near.length === 0) return `no verb \`${word}\`\n\n${list()}`;
+  return `no verb \`${word}\`; the nearest:\n${columns(near)}\n\`bun run runs\` lists every verb`;
 }
 
 /** A verb's usage, as the head of its file states it: each line indented in the head that names
  *  `runs <verb>`, with the lines indented further that continue it, and each quoted command
- *  `bun run runs <verb> ...` or `runs <verb> <args>`. The head stays the one owner of the options. */
-function usageOf(verb: string, { file, says }: Verb): string {
+ *  `bun run runs <verb> ...` or `runs <verb> <args>`. The head stays the one owner of the options:
+ *  `--help` prints these lines, and so does a verb given words it cannot act on (`misuse`). */
+function usageOf(verb: string, file: string): string[] {
   const text = readFileSync(join(import.meta.dir, file), "utf8");
   const head = text.slice(0, text.indexOf("*/")).replaceAll(/^\s*(\/\*\*|\*)/gmu, "");
   const indented = new RegExp(String.raw`^ {3}(\S.*\bruns ${verb}\b.*(?:\n {5,}\S.*)*)`, "gmu");
@@ -230,37 +283,58 @@ function usageOf(verb: string, { file, says }: Verb): string {
     (match[1] ?? "").replaceAll(/\s+/gu, " "),
   );
   // A quoted command that only begins a longer usage line says nothing more.
-  const usage = [...new Set(lines)].filter(
+  return [...new Set(lines)].filter(
     (line) => !lines.some((other) => other !== line && other.startsWith(line)),
   );
-  return `${verb}: ${says}\n\n${usage.map((line) => `  ${line}`).join("\n")}\n\nWhy, and what each option does: the head of tools/runs/${file}.`;
 }
 
-/** What a verb refused, as opposed to a defect: a plain `Error`, or a flag `parseArgs` did not take. */
-const refusal = (error: unknown): error is Error => {
-  if (!(error instanceof Error)) return false;
+/** What `--help` prints of a verb: what it does, its usage, and where each option is explained. */
+const helpOf = (verb: string, { file, says }: Verb): string =>
+  [
+    `${verb}: ${says}`,
+    ...usageOf(verb, file).map((line) => `  ${line}`),
+    `  why, and what each option does: the head of tools/runs/${file}`,
+  ].join("\n");
+
+/** Words a verb cannot act on: its own `Misused`, or a flag or an argument `parseArgs` did not take. */
+const misuse = (error: Error): boolean => {
   const code = asRecord(error)?.code;
-  return error.constructor === Error || (isString(code) && code.startsWith("ERR_PARSE_ARGS"));
+  return error instanceof Misused || (isString(code) && code.startsWith("ERR_PARSE_ARGS"));
 };
+
+/** What a verb refused, as opposed to a defect: a plain `Error`, or a misuse. */
+const refusal = (error: unknown): error is Error =>
+  error instanceof Error && (error.constructor === Error || misuse(error));
 
 // `on here <verb>` is that verb here, reaching no further host, as one sent to a peer does.
 const argv = Bun.argv.slice(2);
 const onHere = argv[0] === "on" && argv[1] === HERE;
 if (onHere) runtimeProcess.env.ANA_HOP = "1";
 const [verb, ...given] = onHere ? argv.slice(2) : argv;
-const chosen = Object.entries(VERBS).find(([name]) => name === verb)?.[1];
-const dashes = given.includes("--") ? given.indexOf("--") : given.length;
-const own = given.slice(0, dashes);
+const chosen = verbNamed(verb);
+const own = ownArgs(given);
 const stripped = !READS_HERE.has(verb) && own.includes(KEEPING);
 if (stripped) runtimeProcess.env.ANA_HOP = "1";
-const args = stripped ? [...own.filter((word) => word !== KEEPING), ...given.slice(dashes)] : given;
-if (chosen === undefined) {
-  // A bare command or `help` asks for the list; any other word is a mistake that still gets it.
-  const asked = verb === undefined || verb === "help" || verb === "--help" || verb === "-h";
-  (asked ? console.log : console.error)(list());
-  if (!asked) runtimeProcess.exitCode = 1;
+const args = stripped ? [...own.filter((word) => word !== KEEPING), ...given.slice(own.length)] : given;
+if (HELP.has(verb)) {
+  // A bare command or `help` alone asks for the list; verbs after it, or `all`, for their usage.
+  const asked = (given[0] === "all" ? Object.keys(VERBS) : given).map(
+    (name) => [name, verbNamed(name)] as const,
+  );
+  const stray = asked.find(([, known]) => known === undefined)?.[0];
+  if (stray === undefined) {
+    const helps = asked.flatMap(([name, known]) => (known === undefined ? [] : [helpOf(name, known)]));
+    console.log(helps.length === 0 ? list() : helps.join("\n\n"));
+  } else {
+    console.error(unknown(stray));
+    runtimeProcess.exitCode = 1;
+  }
+} else if (chosen === undefined) {
+  // Any other word is a mistake, answered with the nearest verbs or the list.
+  console.error(unknown(verb ?? ""));
+  runtimeProcess.exitCode = 1;
 } else if (own.includes("--help") || own.includes("-h")) {
-  console.log(usageOf(verb ?? "", chosen));
+  console.log(helpOf(verb ?? "", chosen));
 } else {
   try {
     const { here, away } = await routed(verb ?? "", args);
@@ -271,7 +345,9 @@ if (chosen === undefined) {
     if (here !== null) await chosen.run(here);
   } catch (error) {
     if (!refusal(error)) throw error;
-    console.error(error.message);
+    // A misuse is answered with the verb's usage, under what was wrong where the verb says it.
+    const usage = misuse(error) ? usageOf(verb ?? "", chosen.file).map((line) => `usage: ${line}`) : [];
+    console.error([error.message, ...usage].filter((line) => line !== "").join("\n"));
     runtimeProcess.exitCode = 1;
   }
 }

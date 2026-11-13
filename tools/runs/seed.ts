@@ -1,5 +1,5 @@
 /**
- * `bun run runs seed --from <campaign folder> --name <name> [--before <session> | --events <n>]`
+ * `bun run runs seed --from <campaign folder> (--points | --name <name> [--before <session> | --events <n>] [--as-ran])`
  *
  * A campaign is its folder: the log, the staged check program (or the staged exam it drafted), the
  * harness states its sessions kept and the notes each session left the next (`src/builder/memory.ts`). A seed is a copy of one under another name in this worktree, with the log cut where a
@@ -40,7 +40,7 @@ import { taskSets } from "#src/kernel/task.ts";
 import { codeOf } from "../d2/campaign.ts";
 import { treeAt } from "./code.ts";
 import { receipts } from "./receipt.ts";
-import { CAMPAIGNS, logEvents, SEED_FILE } from "./registry.ts";
+import { CAMPAIGNS, logEvents, Misused, SEED_FILE, wholeLines } from "./registry.ts";
 import { logAcross } from "./snapshots.ts";
 
 const SESSION_STARTS = new Set<unknown>(["build.started", "exam.started", "draft.started"]);
@@ -78,12 +78,11 @@ function keptLines(lines: readonly string[], cut: Cut): number {
 export const seedCut = (folder: string): number =>
   parseJsonAs<{ events: number }>(readFileSync(join(folder, SEED_FILE), "utf8")).events;
 
-/** The whole lines of the log in `from`: a run still writing may have a torn last line, which is no
- *  event yet. */
+/** The whole lines of the log in `from`. */
 function linesOf(from: string): string[] {
   const source = join(from, LOG_FILE);
   if (!existsSync(source)) throw new Error(`${from} holds no ${LOG_FILE}: name a campaign's folder`);
-  return readFileSync(source, "utf8").split("\n").slice(0, -1);
+  return wholeLines(source).split("\n").slice(0, -1);
 }
 
 /**
@@ -251,9 +250,7 @@ export async function seed(args: readonly string[]): Promise<void> {
   });
   const { from, name, before, events, points } = values;
   if (from === undefined || (name === undefined && !points)) {
-    throw new Error(
-      "usage: bun run runs seed --from <campaign folder> (--points | --name <name> [--before <session> | --events <n>] [--as-ran])",
-    );
+    throw new Misused();
   }
   const source = existsSync(from) ? from : dirname(await logAcross(from, points ? "record" : "whole"));
   if (points || name === undefined) {

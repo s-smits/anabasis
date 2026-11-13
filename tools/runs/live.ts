@@ -1,11 +1,12 @@
 /** Live campaigns and simulation seats on one machine, shared by usage and placement. */
-import { capturedJsonParse } from "#src/meta/json-runtime.ts";
-import { asRecord, isString } from "#src/meta/json-shape.ts";
+import { Type } from "typebox";
+import { isString } from "#src/meta/json-shape.ts";
 import { looseFlagsOf } from "../d2/campaign-terms.ts";
 import { keysIf } from "#src/meta/optional-key.ts";
 import { lastLaunch } from "./receipt.ts";
 import { lifeOf } from "./diagnosis.ts";
-import { flagOf, processes, runs, SEAT } from "./registry.ts";
+import { flagOf, ownArgs, processes, runs, SEAT } from "./registry.ts";
+import { answerOf } from "./hosts.ts";
 
 export interface Live {
   readonly name: string;
@@ -14,6 +15,15 @@ export interface Live {
   /** Set on a kept run between two starts: its keeper lives and no process writes its log. */
   readonly unwritten?: true;
 }
+
+/** A peer's answer to `active --here`. */
+const LIVE = Type.Array(
+  Type.Object({
+    name: Type.String(),
+    login: Type.Union([Type.String(), Type.Null()]),
+    unwritten: Type.Optional(Type.Unknown()),
+  }),
+);
 
 /** The payer of a run that seats an `openai-codex/` model and names no numbered login: the Codex
  *  CLI's login of the machine it runs on. Each machine signs Codex in on its own, so a cap on it
@@ -38,7 +48,7 @@ export const payerOf = (login: string | undefined, flags: readonly string[]): st
  *  names it too, so a seed is listed once. */
 export function seatsIn(table: readonly { readonly args: readonly string[] }[], host: string): Live[] {
   const seats = table.flatMap(({ args }) => {
-    const own = args.slice(0, args.includes("--") ? args.indexOf("--") : args.length);
+    const own = ownArgs(args);
     const flag = (name: string) => flagOf(own, name) ?? null;
     const name = flag("--name");
     return own.some((arg) => arg.endsWith(SEAT)) && own.includes("start") && name !== null
@@ -79,22 +89,12 @@ export function countedAgainst(live: readonly Live[], name: string): Live[] {
 /** The runs `host` said it writes, from the lines of its answer to `active --here`, or null where
  *  the answer is no JSON list. */
 export function liveOf(host: string, lines: readonly string[] | null): Live[] | null {
-  try {
-    const said = capturedJsonParse(lines?.join("\n") ?? "");
-    if (!Array.isArray(said)) return null;
-    return said.map((entry) => {
-      const run = asRecord(entry);
-      if (run === null || !isString(run.name) || !(run.login === null || isString(run.login))) {
-        throw new Error("a live record needs a name and login");
-      }
-      return {
-        name: run.name,
-        login: run.login,
-        host,
-        ...keysIf(run.unwritten === true, () => ({ unwritten: true as const })),
-      };
-    });
-  } catch {
-    return null;
-  }
+  return (
+    answerOf(LIVE, lines)?.map(({ name, login, unwritten }) => ({
+      name,
+      login,
+      host,
+      ...keysIf(unwritten === true, () => ({ unwritten: true as const })),
+    })) ?? null
+  );
 }

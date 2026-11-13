@@ -38,6 +38,7 @@ import {
   flagOf,
   keepers,
   logEvents,
+  Misused,
   processes,
   type Run,
   runNamed,
@@ -154,7 +155,7 @@ export async function stop(args: readonly string[]): Promise<void> {
     allowPositionals: true,
     options: { yes: { type: "boolean", default: false } },
   });
-  if (names.length === 0) throw new Error("usage: bun run runs stop <name> ... [--yes]");
+  if (names.length === 0) throw new Misused();
   const named = names.map((name) => runNamed(name));
   const running = processes();
   // A run stopped by hand is not gone on with: its keeper ends with it (`keep.ts`), and first, since

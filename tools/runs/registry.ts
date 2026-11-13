@@ -105,6 +105,11 @@ export const campaignsIn = (dir: string, tree: string): Run[] =>
     .map((name) => campaignIn(dir, name, tree));
 /** Whether `run` is a campaign, as against a live solve. */
 export const isCampaign = (run: Run) => run.end === CAMPAIGN_END;
+/** A verb given words it cannot act on: the CLI answers with the usage the head of the verb's file
+ *  states, the one owner of it, under the message where there is one. Until 11 November each verb
+ *  threw a usage line of its own, and 12 of the 18 had come to differ from the head's. */
+export class Misused extends Error {}
+
 /** A campaign's pack, from its name, the one place a stored campaign keeps it: what stands before
  *  the first `-fresh-` of the `<pack>-fresh-<model>...` that `runs fresh` names, so a hyphenated
  *  pack stays whole, else the name's first word, as campaigns named by hand were read. */
@@ -289,6 +294,10 @@ export function flagOf(args: readonly string[], name: string): string | undefine
   const at = args.indexOf(name);
   return at === -1 ? undefined : args[at + 1];
 }
+
+/** A command line's own arguments, those before any `--`. */
+export const ownArgs = (args: readonly string[]) =>
+  args.slice(0, args.includes("--") ? args.indexOf("--") : args.length);
 
 /** The processes in `running` that write `run`'s log: a campaign's by its name, a live solve's by
  *  the task and cycle its name begins with. */

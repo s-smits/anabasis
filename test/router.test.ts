@@ -219,6 +219,15 @@ function run(args: readonly string[], extra: Record<string, string | undefined> 
 const slot = (host: string, k: number): string =>
   join(homes, host, ".cache/ana-runner", `${MACHINE}-slot-${String(k)}`);
 const queueOf = (host: string): string => join(tmp, "ana-runner", host);
+/** The process each held slot of a queue names: a slot is a folder, and its one entry its holder. */
+const heldIn = (queue: string): string[] =>
+  readdirSync(queue).flatMap((each) => {
+    try {
+      return readdirSync(join(queue, each));
+    } catch {
+      return [];
+    }
+  });
 
 /** Each connection the stand-in ssh saw: its host, how it was carried, its socket and options. */
 function connections(): { host: string; how: string; socket: string; options: string[] }[] {
@@ -641,6 +650,15 @@ describe("the slots", () => {
     writeFileSync(`${job}.release`, "");
     expect(await child.exited).toBe(0);
   }
+  /** Lets every task started so far end, and clears the queue for the next case. */
+  async function released(): Promise<void> {
+    for (const [child, job] of jobs) {
+      writeFileSync(`${job}.release`, "");
+      await child.exited;
+    }
+    rmSync(queue, { recursive: true, force: true });
+  }
+  const holders = (): string[] => heldIn(queue);
 
   it("gives each task of a host its own slot up to the host's count, another host unhindered, and a dead or older runner's slot to the next task", async () => {
     fresh();
@@ -659,19 +677,54 @@ describe("the slots", () => {
       expect(run(["test"], { RUN_REMOTE: "m1", ANA_RUNNER_QUEUE_WAIT: "5" }).status).toBe(0);
       await finish(other);
       await finish(second);
-      expect(readdirSync(queue)).toEqual([]);
-      // A holder that died, and a folder an older runner left, hold nothing.
-      symlinkSync("99999999", join(queue, "slot-1"));
-      mkdirSync(join(queue, "slot-2"));
-      await finish(await started("third", { RUN_REMOTE: "m1" }));
-      expect(readdirSync(queue)).toEqual(["slot-2"]);
+      expect(holders()).toEqual([]);
+      // A holder that died holds nothing, whether it left a slot's entry or the link of the runner
+      // before, so each of the host's two slots goes to a next task.
+      mkdirSync(join(queue, "slot-1", "99999999"), { recursive: true });
+      rmSync(join(queue, "slot-2"), { recursive: true, force: true });
+      symlinkSync("99999999", join(queue, "slot-2"));
+      const third = await started("third", { RUN_REMOTE: "m1" });
+      const fourth = await started("fourth", { RUN_REMOTE: "m1" });
+      expect(holders().length).toBe(2);
+      // A live task of the runner before still holds its link.
+      await finish(third);
+      await finish(fourth);
+      rmSync(join(queue, "slot-1"), { recursive: true, force: true });
+      symlinkSync(String(runtimeProcess.pid), join(queue, "slot-1"));
+      rmSync(join(queue, "slot-2"), { recursive: true, force: true });
+      symlinkSync(String(runtimeProcess.pid), join(queue, "slot-2"));
+      expect(run(["test"], { RUN_REMOTE: "m1", ANA_RUNNER_QUEUE_WAIT: "0" }).status).toBe(75);
     } finally {
       git(source, "checkout", "-q", "--", "edited");
-      rmSync(join(queue, "slot-2"), { recursive: true, force: true });
-      for (const [child, job] of jobs) {
-        writeFileSync(`${job}.release`, "");
-        await child.exited;
-      }
+      await released();
+    }
+  });
+
+  it("gives a free slot to one of the tasks that reach it together, and the host no more tasks than its slots", async () => {
+    fresh();
+    rmSync(queue, { recursive: true, force: true });
+    const together = Array.from({ length: 6 }, (_, at) => {
+      const job = join(root, `together-${String(at)}`);
+      const child = capturedSpawn([shim, "test", `hold:${job}`], {
+        cwd: source,
+        env: { ...env, RUN_REMOTE: "m1", ANA_RUNNER_QUEUE_WAIT: "0" },
+        stdin: "ignore",
+        stdout: "ignore",
+        stderr: "ignore",
+      });
+      jobs.push([child, job]);
+      return [child, job] as const;
+    });
+    try {
+      await waitFor(() =>
+        together.every(([child, job]) => child.exitCode !== null || existsSync(`${job}.ready`)),
+      );
+      // The host has two slots: two tasks run, each in a slot of its own, and four found none.
+      expect(together.filter(([child]) => child.exitCode === null).length).toBe(2);
+      expect(together.filter(([child]) => child.exitCode === 75).length).toBe(4);
+      expect(holders().length).toBe(2);
+    } finally {
+      await released();
     }
   });
 });
@@ -742,6 +795,6 @@ esac
     const quick = performance.now();
     expect(run(["test", "exit:4"], { RUN_REMOTE: "here", ANA_RUNNER_WALL: "30" }).status).toBe(4);
     expect(performance.now() - quick).toBeLessThan(3000);
-    expect(readdirSync(queueOf("local"))).toEqual([]);
+    expect(heldIn(queueOf("local"))).toEqual([]);
   });
 });

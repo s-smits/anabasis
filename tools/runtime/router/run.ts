@@ -29,10 +29,11 @@
 import {
   copyFileSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   readlinkSync,
+  renameSync,
   rmSync,
-  symlinkSync,
 } from "#src/meta/filesystem.ts";
 import { gitMaybe, gitText } from "#src/meta/git.ts";
 import { hostTool } from "#src/meta/host-tool.ts";
@@ -112,25 +113,44 @@ function chosenHost(): Host | undefined {
   );
 }
 
-/** A free slot of `count` in `folder`, taken; null where a live task holds each. */
+/**
+ * A free slot of `count` in `folder`, taken; null where a live task holds each. A slot is a folder
+ * holding one entry named by its task's process. A task takes one by renaming such a folder of its
+ * own onto it, which the system refuses while the slot holds an entry, so of two tasks at one free
+ * slot one takes it; what a dead task left is removed by its own name, which no live task's is.
+ * A slot was a link naming its task before, removed and then made: two tasks that both read a slot
+ * free each removed the other's link and held it together.
+ */
 function takeSlot(folder: string, count: number): Slot | null {
+  const mine = String(runtimeProcess.pid);
+  const claim = join(folder, `claim-${mine}`);
+  const live = (holder: string): boolean =>
+    holder !== mine && /^[1-9]\d*$/u.test(holder) && processAnswers(Number(holder));
   for (let number = 1; number <= count; number++) {
     const path = join(folder, `slot-${String(number)}`);
-    let holder = "";
+    let held: string[] = [];
     try {
-      holder = readlinkSync(path);
+      // A runner from before the slots were folders left a link, which its live task still holds.
+      if (live(readlinkSync(path))) continue;
+      rmSync(path, { force: true });
     } catch {
-      // No link: free, or something an older runner left, which holds nothing.
+      try {
+        held = readdirSync(path);
+      } catch {
+        // Nothing there yet.
+      }
     }
-    if (/^[1-9]\d*$/u.test(holder) && processAnswers(Number(holder))) continue;
-    rmSync(path, { recursive: true, force: true });
+    if (held.some(live)) continue;
+    for (const dead of held) rmSync(join(path, dead), { recursive: true, force: true });
+    mkdirSync(join(claim, mine), { recursive: true });
     try {
-      symlinkSync(String(runtimeProcess.pid), path);
-      return { path, number };
+      renameSync(claim, path);
+      return { path: join(path, mine), number };
     } catch {
       // Another task took it between the two steps.
     }
   }
+  rmSync(claim, { recursive: true, force: true });
   return null;
 }
 
@@ -315,7 +335,7 @@ async function main(argv: readonly string[]): Promise<number> {
   const job: Job = { root, pin, task, wall: setting("ANA_RUNNER_WALL", 3600) || 3600 };
   const host = chosenHost();
   const slot = await slotAt(host?.ssh ?? "local", host?.checks ?? 1);
-  const release = (): void => rmSync(slot.path, { force: true });
+  const release = (): void => rmSync(slot.path, { recursive: true, force: true });
   try {
     if (host !== undefined) return await onHost(host, slot.number, job, release);
     const here = ["/bin/bash", "--norc", TASK_SCRIPT, "here", root, pin, String(job.wall), ...task];

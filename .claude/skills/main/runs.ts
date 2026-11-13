@@ -47,6 +47,7 @@ import { openingOf } from "#src/campaign/opening.ts";
 import type { Tally } from "#src/kernel/compare.ts";
 import { type EventKind, type LogEvent, read } from "#src/kernel/log.ts";
 import { billedBetween, seatMeter } from "#src/kernel/meter.ts";
+import { endingOf } from "#src/kernel/reports.ts";
 import { askedOf, type Seat, tracesIn } from "#src/kernel/trace.ts";
 import { HOUR_MS } from "#src/meta/clock.ts";
 import { gitMaybe } from "#src/meta/git.ts";
@@ -56,6 +57,7 @@ import { relative, sep } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { median } from "#src/meta/tally.ts";
 import { validityOf } from "#tools/d2/close.ts";
+import { recordedSetting } from "#tools/d2/setting.ts";
 import { modelNamed, sweepOptions } from "#tools/m0/stored-sweep.ts";
 import { ranWith, receipts } from "#tools/runs/receipt.ts";
 import { packOf } from "#tools/runs/registry.ts";
@@ -201,13 +203,19 @@ function releasesOf(repo: string): { name: string; at: number }[] {
   });
 }
 
-/** What a run's solver was set to: its model, effort, solve minutes and model turns. */
+/** What a run was set to, as its log records it (`recordedSetting`): who solves, the window it
+ *  compacts at where one was named, a solve's minutes and model turns, and the scored tasks by the
+ *  solves a side. Runs are read together only under one such line (`AGENTS.md`, section 9). */
 function settingOf(events: readonly LogEvent[]): string {
-  const data = events.find(({ kind }) => kind === "campaign.setting")?.data;
-  const solver = asRecord(data?.solver);
-  if (data === undefined || solver === null) return "no setting";
-  const model = isString(solver.model) ? solver.model.replace(/^claude\//u, "") : "?";
-  return `${model}/${isString(solver.effort) ? solver.effort : "?"} ${numeral(data.minutes)}m ${numeral(data.modelTurns)}t`;
+  const kept = recordedSetting(events);
+  if (kept === null) return "no setting";
+  const { solver, minutes, modelTurns, target, solves } = kept;
+  const window = solver?.window === undefined ? "" : `@${String(solver.window)}`;
+  const by =
+    solver === null
+      ? "the cycle's solver"
+      : `${solver.model.replace(/^claude\//u, "")}/${solver.effort}${window}`;
+  return `${by} ${String(minutes)}m ${modelTurns === null ? "unlimited" : String(modelTurns)}t ${String(target)}x${String(solves)}`;
 }
 
 /** The time of a campaign's solves: the median in seconds, and the median one-minute load per core
@@ -356,7 +364,7 @@ export function runOf(
     const at = stamps[events.findIndex((event) => event.kind === kind)];
     return at === undefined ? null : hours(at - first);
   };
-  const ended = events.findLast(({ kind }) => kind === "campaign.ended")?.data.ending;
+  const ended = endingOf(events);
   // `falsePromotion` reads the A/A comparisons of the whole campaign on every epoch.
   const noise = epochs[0]?.falsePromotion;
   return {
@@ -372,7 +380,7 @@ export function runOf(
     elapsed: hours(last - first),
     active: activeAt(last),
     unloaded: unloadedAt(last),
-    live: events.at(-1)?.kind !== "campaign.ended" && moment - last < LIVE_MS,
+    live: ended === null && moment - last < LIVE_MS,
     firstCompared: firstOf("comparison.started"),
     firstReported: firstOf("comparison.reported"),
     promotions,
@@ -383,7 +391,7 @@ export function runOf(
     confirmed: epochs.filter((epoch) => epoch.confirmed === true).length,
     controls: noise?.controls ?? 0,
     aaSteps: noise?.errors ?? 0,
-    ending: isString(ended) ? ended : "no ending",
+    ending: ended ?? "no ending",
   };
 }
 

@@ -96,8 +96,11 @@ bun .claude/skills/examiner-complexity/scripts/ambition.ts <control folder> <arm
 It prints hours, solves and dollars to the first `comparison.started` and `harness.promoted`, and
 per Examiner session the reference in force, drafts held, admission words (`every`, `some`,
 `none, proved`) and dollars; a writing session also reads `asked N`, its ending (or `open`, `cut`),
-its turns of the limit and its hours, so read supply as held against asked. Read in order: the arm received its text, the share reading `every`,
-drafts held, answerability, time to first comparison.
+its turns of the limit and its hours, so read supply as held against asked, and `N proposed in K
+families, largest M`, the grain a comparison draws from. Count families here or in `exams.ts`,
+never by `data.family` of `task.proposed`, which is null on a task the Examiner wrote. Read in
+order: the arm received its text, the share reading `every`, drafts held, answerability, time to
+first comparison.
 
 ## 6. What may be claimed
 

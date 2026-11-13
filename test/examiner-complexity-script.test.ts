@@ -21,6 +21,10 @@ const event = (minutes: number, kind: EventKind, data: JsonObject): LogEvent => 
   data,
 });
 
+/** A writing session's start, with the limits it was given where a test reads them. */
+const opened = (minutes: number, session: string, limits?: JsonObject): LogEvent =>
+  event(minutes, "exam.started", limits === undefined ? { session } : { session, limits });
+
 // A gate reads a proposed task, as every log holds it, so the campaign's fold can read the log whole.
 const gate = (minutes: number, outcome: string, valid: number) => {
   const version = `v${String(minutes)}`;
@@ -62,15 +66,15 @@ describe("ambition", () => {
     const turn = (minutes: number, session: string) => event(minutes, "exam.turn", { session });
     const asked = [
       event(0, "draft.started", { session: "d-1" }),
-      event(1, "exam.started", { session: "x-1", limits: { tasks: 17, turns: 200 } }),
+      opened(1, "x-1", { tasks: 17, turns: 200 }),
       turn(2, "x-1"),
       ...gate(3, "passed", 1),
       turn(4, "x-1"),
       event(121, "exam.finished", { session: "x-1", ended: "finished", proposed: 1, held: ["v3"] }),
-      event(122, "exam.started", { session: "x-2", limits: { tasks: 1, turns: 200 } }),
+      opened(122, "x-2", { tasks: 1, turns: 200 }),
       ...gate(123, "passed", 0),
       event(152, "exam.finished", { session: "x-2", ended: "supplied", proposed: 1, held: ["v123"] }),
-      event(153, "exam.started", { session: "x-3", limits: { tasks: 12, turns: 200 } }),
+      opened(153, "x-3", { tasks: 12, turns: 200 }),
       turn(183, "x-3"),
     ];
     const [draft, short, met, open] = sessionLines(asked);
@@ -81,6 +85,29 @@ describe("ambition", () => {
     expect(draft).not.toContain("asked");
     // A start that names no limits gives no ask, and a session the campaign went past reads cut.
     expect(sessionLines(log)[1]).toContain("(every 1, some 1) · cut at 0 turns in 0.0 h");
+  });
+
+  it("counts the families a session's proposals name where the label sits on the task", () => {
+    // The hostile case: an Examiner's proposal holds its label on the task and no `family` of its
+    // own, so a count by `data.family` reads every such session as one family, or as none.
+    const proposed = (minutes: number, session: string, family: string) => {
+      const version = `v${String(minutes)}`;
+      const task = { taskId: version, family, publicInput: {} };
+      return event(minutes, "task.proposed", { version, taskId: version, session, task });
+    };
+    const grain = [
+      opened(0, "x-1"),
+      proposed(1, "x-1", "a"),
+      proposed(2, "x-1", "b"),
+      proposed(3, "x-1", "a"),
+      opened(4, "x-2"),
+      proposed(5, "x-2", "a"),
+      opened(6, "x-3"),
+    ];
+    const [first, second, none] = sessionLines(grain);
+    expect(first).toContain("3 proposed in 2 families, largest 2");
+    expect(second).toContain("1 proposed in 1 families, largest 1");
+    expect(none).not.toContain("proposed in");
   });
 
   it("bills a session its own end and tries, never the comparison or Builder spend before the next start", () => {

@@ -7,7 +7,7 @@
  * admissions by word, the drafts held, the turns the reference's valid room-solve answers took and
  * the dollars billed, under the reference in force when it opened; a writing session's line also
  * names the tasks its start asked for and how it stands, since a count of drafts held says nothing
- * of the ask. The campaign's line gives the hours
+ * of the ask, and the families its proposals name, by count. The campaign's line gives the hours
  * from `campaign.opened` to its first `comparison.started` and its first `harness.promoted`,
  * which is where an exam's ambition shows as supply and climb. Several logs print side by side,
  * one block each, so the two arms of a paired launch read at a glance. Read-only.
@@ -17,6 +17,7 @@
  * scripts; this reader wraps the folds that the paired seats already read by.
  */
 import { campaignOf, type Handover } from "#src/campaign/handover.ts";
+import { proposalsOf } from "#src/kernel/history.ts";
 import { promoted } from "#src/kernel/reports.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
 import { billedAll } from "#src/kernel/meter.ts";
@@ -51,6 +52,23 @@ function askedOf(start: LogEvent, step: Extract<Handover, { step: "examiner" }>)
   return `${ask}${step.ended ?? (step.cut ? "cut" : "open")} at ${String(step.turns)}${limit} turns in ${hours.toFixed(1)} h`;
 }
 
+/** How many families a session's proposals name and how many tasks the largest holds, naming none,
+ *  through the fold that reads the label where each event keeps it (`proposalsOf`). A proposal the
+ *  Examiner wrote holds its label on the task, and `data.family` is null there: a count by that
+ *  field read "one family" of sessions that wrote two on 12 and again on 13 November, the second
+ *  time into a ledger and to the operator. A comparison's tasks are independent draws only as far
+ *  as their families differ, so the grain is read here beside the supply it belongs to. */
+function familiesOf(events: readonly LogEvent[], session: string): string {
+  const sizes = new Map<string, number>();
+  for (const { family } of proposalsOf(events).filter((each) => each.session === session)) {
+    const label = family ?? "";
+    sizes.set(label, (sizes.get(label) ?? 0) + 1);
+  }
+  const proposed = [...sizes.values()].reduce((sum, size) => sum + size, 0);
+  if (proposed === 0) return "";
+  return ` · ${String(proposed)} proposed in ${String(sizes.size)} families, largest ${String(Math.max(...sizes.values()))}`;
+}
+
 /** One line an Examiner session: its id, the reference in force, and its reading. */
 export function sessionLines(events: readonly LogEvent[]): string[] {
   const starts = events.flatMap((event, index) => (STARTS.has(event.kind) ? [index] : []));
@@ -72,7 +90,8 @@ export function sessionLines(events: readonly LogEvent[]): string[] {
     const from = events[start];
     const step = from?.kind === "exam.started" ? written.find(({ id }) => id === session) : undefined;
     const asked = from === undefined || step === undefined ? "" : ` · ${askedOf(from, step)}`;
-    return `${isString(session) ? session : "?"} · reference ${reference} · held ${String(reading.held)} of ${String(gated)} (${words || "no task admission"})${asked} · ${turns} · $${billedAll(own).toFixed(2)}`;
+    const families = isString(session) ? familiesOf(events, session) : "";
+    return `${isString(session) ? session : "?"} · reference ${reference} · held ${String(reading.held)} of ${String(gated)} (${words || "no task admission"})${asked}${families} · ${turns} · $${billedAll(own).toFixed(2)}`;
   });
 }
 

@@ -14,7 +14,8 @@
  * another. `pause` waits until the log has gained one more of the named event and nothing but the
  * Builder's conversation is open, and then stops the run (`stop.ts`), `reported` also waiting out a
  * promotion its starter comparison has not read (`restsAfter`); `continue --after` is that
- * pause and then the continue, which moves a run to another login or commit. `next`, the word a
+ * pause and then the continue, which moves a run to another login or commit, and at the point it
+ * asks, before the stop, what its start would refuse. `next`, the word a
  * pause takes where none is named, waits for the next solve that finishes or tool call any seat
  * records, having left a word that starts no further solve, once every open solve has finished, or
  * past the run's own limit on a solve with whatever is open, since a cut solve is paid for again:
@@ -183,7 +184,10 @@ export function solvesMs(events: readonly LogEvent[]): number {
   return pauseWaitMs((recordedSetting(events)?.minutes ?? LIMITS.wallSeconds / 60) * 60);
 }
 
-async function pauseAt(run: Run, after: string): Promise<void> {
+/** Stop `run` at the point `after` names. `ready` is asked at that point, before the stop, so that
+ *  what it refuses leaves the run running; a pause at the next step asks nothing, having already left
+ *  the word that starts no further solve. */
+async function pauseAt(run: Run, after: string, ready?: () => Promise<void>): Promise<void> {
   const kinds = kindsOf(after);
   // One waiter a run: a `continue --after` would start again a run another's pause had stopped.
   const waiting = waiters(run.name);
@@ -213,6 +217,7 @@ async function pauseAt(run: Run, after: string): Promise<void> {
     // Past its patience nothing need have moved: a held solve records nothing.
     const late = after === "next" && Date.now() > patience;
     if (late || (grown !== size && restsAfter(logEvents(run.path), after, base))) {
+      if (after !== "next") await ready?.();
       return stop([run.name, "--yes"]);
     }
     size = grown;
@@ -410,9 +415,16 @@ export async function continueRun(args: readonly string[]): Promise<void> {
   if (values.after !== undefined) {
     // Counted before the pause, which would leave the run stopped where `start` then refuses it, as
     // is the command's dry run at the run's own commit; another commit is installed first, after it.
-    await roomToStart(payerOf(login, flags), "here", run.name);
+    // The wait can be hours, so the remote and the login are asked again at the point, before the
+    // stop: on 13 November a login filled in a wait of nearly three hours, and the start was refused
+    // with the run stopped and its keeper ended.
+    const room = () => roomToStart(payerOf(login, flags), "here", run.name);
+    await room();
     if ((target ?? commit) === commit) dryRun(run, flags, loginEnv(runtimeProcess.env, login), commit);
-    await pauseAt(run, values.after);
+    await pauseAt(run, values.after, () => {
+      publishedAt(run.tree, target ?? commit);
+      return room();
+    });
   }
   await startKept(run, flags, { login, at: target });
 }

@@ -47,6 +47,7 @@ import { isCampaign, logEvents, packOf, type Run } from "../runs/registry.ts";
 import {
   forkOf,
   idsOf,
+  launchForks,
   ledgerFiles,
   carryOf,
   OUTCOMES,
@@ -521,7 +522,12 @@ function pullRows(root: string, entries: readonly Entry[], known: readonly strin
       const parents = planned.flatMap(({ folder, campaigns }) =>
         campaigns.map((run) => perRunOf(root, [root, join(root, folder)], run)),
       );
-      const forks = [...new Set(known.filter((name) => forkOf(name) === pull))]
+      // A fork launched at a child of the pull request carries the child's number, and the `launch`
+      // deviation of the iteration that planned it names it (`madeBy`).
+      const deviated = planned.flatMap(({ folder }) =>
+        launchForks(textAt(join(root, folder, "deviations.md")) ?? ""),
+      );
+      const forks = [...new Set([...known.filter((name) => forkOf(name) === pull), ...deviated])]
         .toSorted(compareCodeUnits)
         .map((name) => perRunOf(root, dirs, name));
       const held = forks.filter(({ files, conflicts }) => Object.keys(files).length + conflicts.length > 0);

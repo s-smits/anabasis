@@ -89,10 +89,11 @@ never copied.
 - The views are derived and never written by hand:
   `bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts ledger <dir>` prints, for a cycle's
   or an investigation's folder, the cycle view (every prediction of its runs with its outcome, a
-  stale one marked) and each run's still-missing view (the ids it did not hold beside its plan's two
-  sections). Until 8 November a cycle's `Predictions.md` kept resolutions of its own and each run a
-  `still-missing-<run>.md` that restated the plan, so each fact had two owners (`AGENTS.md` rule 12);
-  those files stay as written and are still read, and no new one is written.
+  stale one marked), the dropped view (each `unreached` or `falsified` id that no `## Carried`
+  names as `<run>:<id>` and no `## Not done` of its plan names; write each into a live run's file
+  or its plan until the view reads `none`) and each run's still-missing view (the ids it did not
+  hold beside its plan's two sections). A `Predictions.md` or `still-missing-<run>.md` from before
+  8 November stays as written and is still read, and no new one is written.
 
 A review that finds a run's `predictions-<run>.md` missing writes it first, marked as written after
 launch with the run's solves at that moment.
@@ -170,7 +171,8 @@ owed steps only, as a timer takes it.
    Take each name from the dry run of `runs fresh` and write its `predictions-<run>.md` first, with
    a `## Carried` section naming each id the parent runs did not hold, as `<parent run>:<id>`; a
    prediction the plan itself defines goes into that file as a row, since no outcomes file reads a
-   plan. A run starts for what it adds, never to fill a slot (operator, 13 November 2026): its file
+   plan: `next` owes `carry` for each id of the plan's `id` tables that no fork's file and no
+   `## Not done` names, passed only by a `carry:plan` row. A run starts for what it adds, never to fill a slot (operator, 13 November 2026): its file
    opens by naming the component no live run measures (the fix it forks at, or one term or prompt
    it ablates or tunes) with a `first` row for each, and its outcomes are resolved as its events
    come. A slot an ended run frees goes to the first entry of `run-queue.md` marked `ready: yes`;

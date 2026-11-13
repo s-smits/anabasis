@@ -293,8 +293,9 @@ the run lives, and the investigation's `open` once it has stopped. A closed run'
 when they turn, not at every look.
 
 `bun run runs alerts` is the cron watch: one stdout line per new promotion, starter comparison,
-keeper move, missing process, ending or stall, nothing otherwise, and exit 0. It prints the `runs
-pause` command once two promotions are read against the starter, and never runs it.
+keeper move, missing process, stall or ending (one a keeper went on past between two looks reads
+`ended <ending>, and went on`), nothing otherwise, and exit 0. It prints the `runs pause` command
+once two promotions are read against the starter, and never runs it.
 
 A session that waits on a few runs follows the log the local job writes these lines to with one
 `Monitor` (`tail -n 0 -F`), re-armed when it expires, and so wakes at each step a run owes. On a

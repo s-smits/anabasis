@@ -32,6 +32,9 @@ export interface Parent {
 interface RunLedgers extends Parent {
   /** The `plan.md` of the iteration that read the run, or "" before one is written. */
   readonly plan: string;
+  /** Whether a plan of its own can still place the run's rows: an investigation names it, or it is
+   *  live, and a live run's investigation opens at its trigger. */
+  readonly awaited: boolean;
   /** The run's `still-missing-<run>.md` written before 8 November, or "": read where the plan has no
    *  `## Intentionally opposed`, so an older run's trade-offs are shown rather than "none". */
   readonly older: string;
@@ -144,26 +147,42 @@ export function cycleViewOf(runs: readonly RunLedgers[]): string[] {
 /**
  * The dropped view: each prediction a run left `unreached` or `falsified` that nothing took up, named
  * neither as `<run>:<id>` in a `## Carried` section (`carried`, every ledger's as one text) nor under
- * a `## Not done` of the plan that read its run. A run no plan has read yet has dropped nothing. On
- * 13 November 2026 a count by hand found 11 of a cycle's 56 unreached rows dropped so, which no
- * gate names once the fork that should have carried them has passed its own.
+ * a `## Not done` of the plan that read its run. A run whose investigation has no plan yet has
+ * dropped nothing, since that plan has still to place its rows. A run at rest that no investigation
+ * names has no plan to come, so its rows are listed apart as unread, where only a `## Carried` can
+ * take them: on 13 November 2026 a fork at rest with nothing compared left 20 `unreached` rows that
+ * the view passed over while it read `none`. A live run is not listed there, since its investigation
+ * opens at its trigger: that day the view named a row falsified two hours into a run as unread, which
+ * no one could yet have read. The same day a count by hand found 11 of a cycle's 56 unreached
+ * rows dropped, which no gate names once the fork that should have carried them has passed its own.
  */
 export function droppedOf(runs: readonly RunLedgers[], carried: string): string[] {
-  const lines = runs.flatMap((run) => {
-    const outcome = outcomesOf(run.outcomes);
-    const undone = notDoneOf(run.plan).join("\n");
-    const dropped = idsOf(run.predictions)
-      .map((id) => ({ id, read: outcome.get(id) ?? "" }))
-      .filter(({ read }) => run.plan !== "" && (read === "unreached" || read === "falsified"))
-      .filter(({ id }) => !names(carried, `${run.name}:${id}`) && !names(undone, id));
-    return dropped.length === 0
-      ? []
-      : [`- ${run.name}: ${dropped.map(({ id, read }) => `${id} (${read})`).join(", ")}`];
-  });
+  const linesOf = (among: readonly RunLedgers[]) =>
+    among.flatMap((run) => {
+      const outcome = outcomesOf(run.outcomes);
+      const undone = notDoneOf(run.plan).join("\n");
+      const left = idsOf(run.predictions)
+        .map((id) => ({ id, read: outcome.get(id) ?? "" }))
+        .filter(({ read }) => read === "unreached" || read === "falsified")
+        .filter(({ id }) => !names(carried, `${run.name}:${id}`) && !names(undone, id));
+      return left.length === 0
+        ? []
+        : [`- ${run.name}: ${left.map(({ id, read }) => `${id} (${read})`).join(", ")}`];
+    });
+  const dropped = linesOf(runs.filter(({ plan }) => plan !== ""));
+  const unread = linesOf(runs.filter(({ awaited }) => !awaited));
   return [
     "# Dropped: unreached or falsified, carried by no run and under no plan's Not done",
     "",
-    ...(lines.length === 0 ? ["- none"] : lines),
+    ...(dropped.length === 0 ? ["- none"] : dropped),
+    ...(unread.length === 0
+      ? []
+      : [
+          "",
+          "# Unread: unreached or falsified in a run at rest no investigation names, carried by no run",
+          "",
+          ...unread,
+        ]),
   ];
 }
 

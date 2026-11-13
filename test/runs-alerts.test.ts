@@ -154,6 +154,33 @@ describe("the fold of one look", () => {
     expect(again.lines).toContain("r (here): ended environment");
   });
 
+  it("says each ending a run went on past between two looks, and none the look before saw it stand on", () => {
+    // 13 November: three endings in 41 minutes, each gone on from within 36 s, and a look every ten.
+    const twice = row({ endings: ["environment", "environment"], kept: ["T r: continue on login 2"] });
+    const { lines, next } = alertsOf(lookedAt(row({ endings: [] })), here(twice));
+    expect(lines).toEqual([
+      "r (here): keeper: T continue on login 2",
+      "r (here): ended environment, and went on",
+      "r (here): ended environment, and went on",
+    ]);
+    expect(alertsOf(next, here(twice)).lines).toEqual([]);
+    // An ending a look saw the log stand on is said then, and not again as the run goes on.
+    const standing = (endings: string[]): Row =>
+      row({ state: { kind: "kept", ending: "environment" }, endings });
+    const ended = (said: readonly string[]): string[] => said.filter((line) => line.includes("ended"));
+    const stood = alertsOf(lookedAt(row({ endings: ["budget"] })), here(standing(["budget", "environment"])));
+    expect(ended(stood.lines)).toEqual(["r (here): ended environment"]);
+    expect(alertsOf(stood.next, here(standing(["budget", "environment"]))).lines).toEqual([]);
+    const onwards = row({ endings: ["budget", "environment", "environment"] });
+    expect(alertsOf(stood.next, here(onwards)).lines).toEqual(["r (here): ended environment, and went on"]);
+    // A run that went on and stands on the same ending again has ended anew, though the word is the same.
+    const again = standing(["budget", "environment", "environment"]);
+    expect(ended(alertsOf(stood.next, here(again)).lines)).toEqual(["r (here): ended environment"]);
+    // A run first seen fires on no history, and a peer on an older tree, which sends no endings, on none.
+    expect(alertsOf(lookedAt(), here(twice)).lines).toEqual([]);
+    expect(alertsOf(lookedAt(twice), here(row())).lines).toEqual([]);
+  });
+
   it("says a stall once, and again once the run has moved and stalled afresh", () => {
     const stalled = row({ state: { kind: "quiet", kept: true, since: 0 } });
     const first = alertsOf(lookedAt(row()), here(stalled));

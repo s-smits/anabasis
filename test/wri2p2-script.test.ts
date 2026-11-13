@@ -504,6 +504,39 @@ describe("the next step of an investigation", () => {
     expect(dropped()).toEqual(["- r: P3 (falsified)"]);
     write(PLAN_FILE, `${PLAN}\n## Not done\n\n- P3: no run of this cycle reaches its event\n`);
     expect(dropped()).toEqual(["- none"]);
+    // A run no investigation names has no plan to come: its rows are listed apart until a fork
+    // carries them, and a row still pending, or a run with nothing left, adds no line.
+    const unread = (running: readonly string[] = []) => {
+      const views = ledgerViews(
+        cycle,
+        root,
+        () => null,
+        (name) => running.includes(name),
+      );
+      const from = views.findIndex((line) => line.startsWith("# Unread"));
+      return from === -1 ? [] : views.slice(from + 2, views.indexOf("", from + 2));
+    };
+    expect(unread()).toEqual([]);
+    ledger("predictions-s.md", table(["S1", "S2", "S3"]));
+    ledger("outcomes-s.md", `${table(["S1"], "unreached")}| S2 | falsified |\n| S3 | pending |\n`);
+    expect(dropped()).toEqual(["- none"]);
+    expect(unread()).toEqual(["- s: S1 (unreached), S2 (falsified)"]);
+    // A live run's investigation opens at its trigger, so its plan is still to come and its rows are
+    // unread by no one yet; they are listed from the look that finds it at rest. Another run's being
+    // live hides nothing, and a run a plan has read is dropped by that plan, live or not.
+    expect(unread(["s"])).toEqual([]);
+    expect(unread(["r"])).toEqual(["- s: S1 (unreached), S2 (falsified)"]);
+    write(PLAN_FILE, PLAN);
+    const views = ledgerViews(
+      cycle,
+      root,
+      () => null,
+      () => true,
+    );
+    expect(views).toContain("- r: P3 (falsified)");
+    write(PLAN_FILE, `${PLAN}\n## Not done\n\n- P3: no run of this cycle reaches its event\n`);
+    ledger("predictions-f.md", `${table(["F1"])}\n## Carried\n\n- r:P2, s:S1, s:S2\n`);
+    expect(unread()).toEqual([]);
   });
 
   it("owes a plan's own predictions a place in a fork's file or under its Not done", () => {

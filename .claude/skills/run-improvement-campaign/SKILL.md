@@ -91,8 +91,10 @@ never copied.
   or an investigation's folder, the cycle view (every prediction of its runs with its outcome, a
   stale one marked), the dropped view (each `unreached` or `falsified` id that no `## Carried`
   names as `<run>:<id>` and no `## Not done` of its plan names; write each into a live run's file
-  or its plan until the view reads `none`) and each run's still-missing view (the ids it did not
-  hold beside its plan's two sections). A `Predictions.md` or `still-missing-<run>.md` from before
+  or its plan until the view reads `none`; a run at rest that no investigation names has no plan,
+  so its ids are listed apart as unread until a `## Carried` takes them or its investigation
+  opens, and a live run's are not, since its trigger opens one) and each run's still-missing view
+  (the ids it did not hold beside its plan's two sections). A `Predictions.md` or `still-missing-<run>.md` from before
   8 November stays as written and is still read, and no new one is written.
 
 A review that finds a run's `predictions-<run>.md` missing writes it first, marked as written after
@@ -610,6 +612,20 @@ run or a folder, and none repeats a fact one of these reports. Keep each timer w
 and authority in `cycle.md`; [references/timers.md](references/timers.md) holds each timer's map and
 what its prompt carries.
 
+Where one run's event calls for a judgement the pulse does not single out (a first comparison's
+start, a third report, a first promotion), the session waits on the log itself, in a background
+command that ends at the event and so wakes it:
+
+```sh
+bun .claude/skills/run-improvement-campaign/scripts/until.ts <log | folder | name> \
+  --at comparison.reported:3 --at harness.promoted --hours 9 --say "<what to read next>"
+```
+
+It reads event kinds alone and ends at the first bound met, at the run's ending or at the raw hours
+named, with one line that holds each count; a kind it does not read is refused, and `--say` carries
+the session's own words and grants nothing. A wait ends with its session, so `cycle.md` names each
+beside the timers and a recurring look is its fallback.
+
 ### A hook where the reaction is one fixed command
 
 A timer and a wake both need a session that is alive and idle, so a step that must not wait for one
@@ -647,9 +663,8 @@ judgement.
    disagreeing recount adds a row; a falsified row opens a row in the one triage list (problem,
    link, event, status), ranked by first failed link and then by how many runs show it.
 3. **Chain or rest**: where `due` still lists a step this session can take, set a one-shot ten
-   minutes on that carries the same prompt; otherwise one at the next event a log predicts (for a
-   comparison, scored tasks × solves a side × 2 × median solve minutes ÷ concurrent solves). Delete
-   replaced timers by id.
+   minutes on that carries the same prompt; otherwise wait on the next event with `until.ts`, and
+   set a one-shot only at a deadline no event marks. Delete replaced timers by id.
 4. **Log** one row where something changed: the time the clock gave, what moved, the rows resolved
    and the timer changes. Speak to the operator only when a milestone landed, a run stalled or
    ended, or a prediction resolved.
@@ -660,7 +675,8 @@ judgement.
 | none: a hook | at its event, with no model and no session | run the one command the protocol grants there: at a second promotion, the pause after the next comparison |
 | none: the alerts log | as a run owes a step; one `Monitor` on the log the alerts job writes (`tail -n 0 -F`, run-management), re-armed when it expires | take the loop's step for that run |
 | driver | recurring, every two hours, with its ten-minute chain while steps are owed | the protocol, for a step no event announces |
-| milestone | one-shot at a predicted event or deadline | that milestone or row |
+| none: a wait on the run's log | at the event `until.ts` was given, the run's ending or its hours | read that event and resolve the rows it settles |
+| milestone | one-shot at a deadline no event marks | that row |
 | open decisions | recurring, every four hours | decide the routine doubts, each with what would overturn it, and list for the operator those section 3 reserves |
 | morning read | recurring, once a day after the nightly local jobs | read what changes once a night and no job reports: those jobs' outcome and last exit, the hosts' disks, where the stack stands on `main` |
 | handover | one-shot at the agreed time | the five points, changes, open decisions and the loop's own measures |

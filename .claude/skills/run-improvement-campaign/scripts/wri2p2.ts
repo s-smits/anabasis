@@ -523,12 +523,20 @@ export function lengthsIn(
 /** The folder every iteration's ledgers are read under: `.ana/wri/` of the main checkout. */
 const wriRoot = (repo: string) => join(mainTree(repo), ".ana", "wri");
 
-/** What every step one command prints is read from, beside its folder. */
-const knownIn = (repo: string, known: readonly Run[], running: () => readonly Running[] = processes) => ({
-  root: wriRoot(repo),
-  campaigns: known.filter(isCampaign).map(({ name }) => name),
-  lengthOf: lengthsIn(known, running),
-});
+/** What every step one command prints is read from, beside its folder, and whether a campaign of
+ *  that name may still write its log, for the views. */
+const knownIn = (repo: string, known: readonly Run[], running: () => readonly Running[] = processes) => {
+  let looked: readonly Running[] | undefined;
+  // One look at the processes serves both readers.
+  const once = () => (looked ??= running());
+  return {
+    root: wriRoot(repo),
+    campaigns: known.filter(isCampaign).map(({ name }) => name),
+    lengthOf: lengthsIn(known, once),
+    liveOf: (name: string) =>
+      known.some((run) => isCampaign(run) && run.name === name && stillRunning(run, once())),
+  };
+};
 
 /** The campaigns of `known` that are live or whose log's last event lies in the last `days`, each
  *  with whether it is live, and only those whose name holds one of `parts` where any is given. A
@@ -730,9 +738,14 @@ function open(args: CommandArgs, repo: string): number {
  * The views derived from the ledgers of `dir`, an investigation's folder or a cycle's: the cycle view
  * of every run it holds, the rows among them that nothing took up (`droppedOf`), then each run's
  * still-missing view beside the plan of the iteration that read it (`dir`'s own, or the latest that
- * names the run).
+ * names the run). `liveOf` says which runs may still write their logs, whose rows no plan is late for.
  */
-export function ledgerViews(dir: string, root: string, lengthOf: Where["lengthOf"]): string[] {
+export function ledgerViews(
+  dir: string,
+  root: string,
+  lengthOf: Where["lengthOf"],
+  liveOf: (run: string) => boolean = () => false,
+): string[] {
   const own = existsSync(join(dir, INVESTIGATION));
   const runs = own
     ? runsOf(dir)
@@ -742,7 +755,8 @@ export function ledgerViews(dir: string, root: string, lengthOf: Where["lengthOf
     const iteration = own ? dir : readers.find(({ names: theirs }) => theirs.includes(name))?.dir;
     const plan = iteration === undefined ? "" : read(join(iteration, PLAN));
     const older = read(ledgerOf(root, dir, `still-missing-${name}.md`) ?? "");
-    return { ...ledgersOf(root, dir, name), plan, older, events: lengthOf(name) };
+    const awaited = iteration !== undefined || liveOf(name);
+    return { ...ledgersOf(root, dir, name), plan, awaited, older, events: lengthOf(name) };
   });
   return [
     `# Ledger views of ${dir}`,
@@ -768,7 +782,7 @@ function main(args: CommandArgs): number {
   const lines =
     verb === "next"
       ? nextOf(resolve(dir), iteration)
-      : ledgerViews(resolve(dir), iteration.root, iteration.lengthOf);
+      : ledgerViews(resolve(dir), iteration.root, iteration.lengthOf, iteration.liveOf);
   for (const line of lines) console.log(line);
   return 0;
 }

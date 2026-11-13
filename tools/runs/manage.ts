@@ -233,6 +233,31 @@ async function pauseAt(run: Run, after: string, ready?: () => Promise<void>): Pr
   console.log(`${run.name} is not running`);
 }
 
+/** The commit `run` would start at on `flags`, as `login` and at `at` where named, once each refusal
+ *  of a start that needs no stopped run is passed: a change no commit names, a commit no remote
+ *  holds, another commit under an open comparison and a login without room. `start` asks it, and a
+ *  waiting `continue` at its point, before the stop, with the command's dry run where the commit is
+ *  the tree's own: until 13 November that verb asked only the remote and the login there, and would
+ *  have met a tree changed during its wait with the run stopped and its keeper ended. */
+async function startable(
+  run: Run,
+  flags: readonly string[],
+  login: string | undefined,
+  at: string | undefined,
+): Promise<string> {
+  const { commit, dirty } = standing(run.tree);
+  if (dirty) throw new Error(`${run.tree} holds a change no commit names: a run's commit states its source`);
+  const target = publishedAt(run.tree, at ?? commit);
+  const open = target === commit ? [] : openComparisons(logEvents(run.path));
+  if (open.length > 0) {
+    throw new Error(
+      `comparison ${open.join(", ")} began and has not reported: it goes on at ${commit.slice(0, 9)}`,
+    );
+  }
+  await roomToStart(payerOf(login, flags), "here", run.name);
+  return target;
+}
+
 /** Start the campaign command for `run` on `flags` in its worktree, as `login` where named and at
  *  `at` where named, once every refusal of the head comment is passed and its dry run passed, and
  *  say whether it is running three seconds on. */
@@ -246,16 +271,7 @@ export async function start(
   if (writers(run, processes()).length > 0) {
     throw new Error(`${run.name} is already being written in ${run.tree}`);
   }
-  const { commit, dirty } = standing(run.tree);
-  if (dirty) throw new Error(`${run.tree} holds a change no commit names: a run's commit states its source`);
-  const target = publishedAt(run.tree, at ?? commit);
-  const open = target === commit ? [] : openComparisons(logEvents(run.path));
-  if (open.length > 0) {
-    throw new Error(
-      `comparison ${open.join(", ")} began and has not reported: it goes on at ${commit.slice(0, 9)}`,
-    );
-  }
-  await roomToStart(payerOf(login, flags), "here", run.name);
+  const target = await startable(run, flags, login, at);
   installAt(run.tree, target);
   const command = dryRun(run, flags, env, target);
   mkdirSync(dirname(run.path), { recursive: true });
@@ -419,15 +435,15 @@ export async function continueRun(args: readonly string[]): Promise<void> {
   if (values.after !== undefined) {
     // Counted before the pause, which would leave the run stopped where `start` then refuses it, as
     // is the command's dry run at the run's own commit; another commit is installed first, after it.
-    // The wait can be hours, so the remote and the login are asked again at the point, before the
-    // stop: on 13 November a login filled in a wait of nearly three hours, and the start was refused
-    // with the run stopped and its keeper ended.
-    const room = () => roomToStart(payerOf(login, flags), "here", run.name);
-    await room();
-    if ((target ?? commit) === commit) dryRun(run, flags, loginEnv(runtimeProcess.env, login), commit);
-    await pauseAt(run, values.after, () => {
-      publishedAt(run.tree, target ?? commit);
-      return room();
+    // The wait can be hours, so at the point, before the stop, the verb asks again all that the start
+    // would refuse of a run still running (`startable`) and the dry run: on 13 November a login
+    // filled in a wait of nearly three hours, and the start was refused with the run stopped and its
+    // keeper ended.
+    const dry = () => dryRun(run, flags, loginEnv(runtimeProcess.env, login), commit);
+    await roomToStart(payerOf(login, flags), "here", run.name);
+    if ((target ?? commit) === commit) dry();
+    await pauseAt(run, values.after, async () => {
+      if ((await startable(run, flags, login, target)) === commit) dry();
     });
   }
   await startKept(run, flags, { login, at: target });

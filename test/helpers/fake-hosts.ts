@@ -64,8 +64,10 @@ const gone = left.map((arg) => arg.slice(11).replace(/\\/$/, ""));
 cpSync(from, into, {recursive: true, verbatimSymlinks: true, filter: (file) => gone.includes(relative(resolve(from), resolve(file))) ? false : !args.includes("--exclude=/*") || resolve(file) === resolve(from) || (dirname(file) === resolve(from) && kept.some((name) => name.test(basename(file))))});`,
   // `FAKE_FETCH_STARTS` names a log that gains a comparison's start during one fetch, once the file
   // `<log>.starts` exists: a run that moves on while a verb asks the remote.
+  // `FAKE_DIRTY_FILE` names a file whose text, once it exists, is the tree's uncommitted change.
   "git": `${RECORD}
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+const dirt = process.env.FAKE_DIRTY_FILE;
 if (args.includes("fetch")) {
   const moving = process.env.FAKE_FETCH_STARTS;
   if (moving !== undefined && existsSync(moving + ".starts")) {
@@ -77,7 +79,7 @@ if (args.includes("fetch")) {
 }
 if (args.includes("merge-base") || args.includes("for-each-ref")) console.log(process.env.FAKE_ANCESTOR ?? process.env.FAKE_COMMIT);
 else if (args.includes("rev-parse")) console.log(args.includes("--git-common-dir") ? process.env.FAKE_GIT : args.includes("--show-toplevel") ? process.env.FAKE_MAIN : args.includes("--verify") && process.env.FAKE_AT !== undefined ? process.env.FAKE_AT : args.includes("-C") ? process.env.FAKE_COMMIT : process.env.FAKE_REMOTE_COMMIT ?? process.env.FAKE_COMMIT);
-else if (args.includes("status")) console.log(process.env.FAKE_DIRTY ?? "");
+else if (args.includes("status")) console.log(dirt !== undefined && existsSync(dirt) ? readFileSync(dirt, "utf8") : process.env.FAKE_DIRTY ?? "");
 else if (args.includes("branch")) console.log(process.env.FAKE_UNPUBLISHED === "1" ? "" : "origin/main");
 else if (args.includes("ls-remote")) console.log(process.env.FAKE_TAGGED === "1" ? process.env.FAKE_COMMIT + "\\trefs/tags/run/r/1" : "");
 else if (args.includes("worktree") && args.includes("list")) console.log("worktree " + process.env.FAKE_MAIN);

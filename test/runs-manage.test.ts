@@ -391,6 +391,25 @@ describe("going on with a campaign", () => {
     }
   });
 
+  it("asks at the point whether the tree is still clean, so that a change made during the wait leaves the run running", async () => {
+    // The start refuses a tree with a change no commit names, and met it only after the stop.
+    const dirt = (root: string) => join(root, "dirty");
+    const { made, driver, keeper, row, ended } = pointed(
+      [],
+      (root) => `writeFileSync(${JSON.stringify(dirt(root))}, " M src/kernel/log.ts");`,
+    );
+    try {
+      const refused = made.run(driver, { FAKE_PS: row, FAKE_DIRTY_FILE: dirt(made.root) });
+      expect(refused.code).not.toBe(0);
+      expect(refused.out).toContain("waiting for comparison.reported past 0");
+      expect(refused.err).toContain("holds a change no commit names");
+      expect(refused.out).not.toContain("its keeper");
+      expect(await ended()).toBe(false);
+    } finally {
+      keeper.kill();
+    }
+  });
+
   it("reads the rest again after asking, so that a run that began a comparison meanwhile is waited for", async () => {
     // The asking takes seconds live. Here the fetch at the first point finds the run starting its
     // next comparison, whose report the driver writes at the look after it.

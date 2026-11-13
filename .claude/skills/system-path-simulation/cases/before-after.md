@@ -40,6 +40,12 @@ alone, which digests the wall's profile and platform (`codeOf`, `tools/d2/campai
 only the after arm is seated: seed from the newest run that stood there, cut right before the session
 or ruling in question, and name every other difference, such as effort or login.
 
+Two seats stay one variable apart only while the seat in question is the one writer of their logs.
+Cut a pair where no Examiner session is open: an Examiner beside each arm writes its own tasks, and
+the first one admitted releases practice to one arm alone. Where the position needs one open, count
+each arm's `task.state` and `campaign.waited` events since the cut before reading any outcome, and
+report a pair whose counts differ as confounded by them, a weaker lead than the outcome names.
+
 ## Reading the difference
 
 Write the intent and the outcomes that could each happen before either arm runs (rule 1): the named

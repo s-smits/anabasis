@@ -245,3 +245,11 @@ export function forkOf(name: string): number | null {
   const pull = /forkedPR(\d+)(?!\d)/u.exec(name)?.[1];
   return pull === undefined ? null : Number(pull);
 }
+
+/** Whether the iteration whose `plan` and `deviations` these are made the run `name`: it forks the
+ *  plan's pull request, by the whole number, or the `launch` deviation names it. A plan that names
+ *  no pull request makes no run by its name. */
+export function madeBy(plan: string, deviations: string, name: string): boolean {
+  const pull = pullOf(plan);
+  return (pull !== null && forkOf(name) === pull) || launchForks(deviations).includes(name);
+}

@@ -105,7 +105,7 @@ asking. One script reads where every run and iteration stands and prints the nex
 command:
 
 ```sh
-bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts [<part> ...] [--promotions 2] [--hours 12] [--days 2]
+bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts [<part> ...] [--days 2]
 bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts due [<part> ...] [--days 2]
 bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts open <name>[,<name>] [--out <dir>]
 bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts next <dir>

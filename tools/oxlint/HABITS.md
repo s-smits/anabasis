@@ -452,8 +452,10 @@ between two writes, a slow holder past a threshold) lands in a state no branch e
 one owner: a union, one record of a process's phase, the holder itself for a lock.
 
 Both tiers gate as errors in `.oxlintrc.json` and, like `ana` and `anti-slop`, fail only a strict
-run. A site whose state has no other place to live, such as a ported serialisation format or a
-fact kept only in a name a person types, is answered in the not-slop ledger.
+run. The `tree/` rows of the two tables below span files, so they are whole-tree scans (12.9) that
+`bun run simplify` reports and no lint gates on. A site whose state has no other place to live, such
+as a ported serialisation format or a fact kept only in a name a person types, is answered in the
+not-slop ledger.
 
 The generic tier infers its structure from syntax, asking the compiler only whether a literal set
 is ever written where a value changes; it names no module of this repository and runs on any

@@ -1,21 +1,41 @@
 # Rehearsal
 
 A round, session, standalone comparison or campaign on a seed, with every seat scripted on pi's
-faux provider and no Referee. Everything under the seats is the paid path, so it answers whether
-commands join and what a position of a given size can read at all.
+faux provider and no Referee. Under the seats it is the paid path, so it answers whether commands
+join and what a position of a given size can read at all. A scripted solver runs one command inside
+the wall, the `printf` that writes its answer (`write` where its harness leaves the shell out), so a
+wall change is rehearsed for the checks and that write only; a domain's own toolchain under the
+wall stays with the wall's tests. No script makes a seat throw, so a crash or a provider's limit in
+a session is read from the record and from `test/host.test.ts`.
 
 ## Seed
 
 ```sh
-bun run runs seed --from <campaign folder> --name sim-<what> [--before <session> | --events <n>]
+bun run runs seed --from <campaign folder> --points
+bun run runs seed --from <campaign folder> --name sim-<what> [--before <session> | --events <n>] [--as-ran]
 ```
 
-Run it in the worktree whose source should run. `--before <session>` keeps what preceded a Builder
-or Examiner session, `--events <n>` the first n events, and neither the whole log; what lies beyond
-the cut is left out (`seedCampaign`). A live campaign can be seeded, but a log at rest gives a
-repeatable cut. Read the sets it prints: a seed with no held-out task scores nothing. For other
-practice tasks, cut before the first release and run `bun tools/d2/prepare.ts <pack flags> --name
-sim-<what> --practice 2`.
+`--points` lists where the log can be cut and writes nothing: each session's start, each Builder's
+end, each comparison's report with its reading, each promotion, each starter read's start and each
+Referee reading's first turn with its solve, each with the event's index. `--events <index>` cuts
+right before that event and `--events <index + 1>` right after it. `--before <session>` keeps what
+preceded a Builder or Examiner session, and neither flag keeps the whole log. A log at rest gives a
+repeatable cut. A tree from before `--points` takes the index all the same: list the points from a
+tree that has the flag and pass `--events` there.
+
+The seed lands in the worktree the command runs in, whose source then runs. To revisit a position
+as the run met it, add `--as-ran`: the seed goes to a tree holding the code the run's last condition
+before the cut names (`treeAsRan`, `tools/runs/seed.ts`), which is the run's own worktree while
+`runs retire` has not removed it (seven days idle) and it still stands at that code, and otherwise a
+detached tree made at the commit of the launch that covers the cut. A run continued at a later
+commit is why its own tree can be the wrong one for an early cut. Where no tree holds that code,
+such as a launch from a dirty tree, it refuses and names both digests. `rehearse` and `live-seat.ts
+start` print one `code:` line saying whether their tree holds the code the seed's source ran; in a
+before-and-after pair the after arm is meant to differ.
+
+Read the sets a seed prints: one with no held-out task scores nothing. For other practice tasks, cut
+before the first release and run `bun tools/d2/prepare.ts <pack flags> --name sim-<what> --practice
+2`.
 
 ## Forms
 
@@ -30,11 +50,10 @@ bun run runs rehearse <pack flags> --name sim-<what> --id g2 --new latest [--hel
 bun run runs rehearse --name sim-<what> --campaign [--held ...] [--starter ...] [--supply N]
 ```
 
-`rehearse` dispatches to `roundCommand`, `sessionCommand` (`--no-comparison`), `checkpointCommand`
-(`--id`) or `harnessBuilder` (`--campaign`), and takes their flags less the three that name a model;
-it needs no `--cap`. Pack flags (`--root`, `--sweep`, `--cycle`, `--bundle`) are omitted for a
-drafted exam, and a recorded setting still binds. A second round takes another `--session` and
-builds on the first's harness; `--reference <digest>` names the other side.
+`rehearse` dispatches to the round, the session (`--no-comparison`), the standalone comparison
+(`--id`) or the campaign command (`--campaign`), and takes their flags less the three that name a
+model and with no `--cap`. Pack flags are omitted for a drafted exam, and a recorded setting still
+binds. A second round takes another `--session` and builds on the first's harness.
 
 ## The scripts
 
@@ -62,7 +81,7 @@ With four frontier tasks, two solves a side, `--level 0.10` and no objective dif
 | `--held none:pass` (default) | `step`, `valid.old` 4/0/0, `valid.fresh` 0/0/4 | four wins give p 0.0625 |
 | `--held pass:pass` | `no-step` | four ties |
 | `--held none:none` | `no-step`, `unsolved` 4 | after two comparisons each task waits for a label (`poolOf`) |
-| `--held fail:pass` | `not-scored`, `aside` 4, `counted` 4-0; `step` once `settle.ts` labels each `earned` | rejections nobody ruled |
+| `--held fail:pass` | `not-scored`, `aside` 4 tasks, `counted` 4-0; `step` once `settle.ts` labels each `earned` | rejections nobody ruled |
 | a Builder edit that does not land | `no-change` | the harness froze to its parent's digest |
 | `--campaign --held none:pass --starter pass --supply 40`, drafted-exam seed | repeated promotions | a `step` promotes outside `--hitl` |
 
@@ -71,10 +90,10 @@ With four frontier tasks, two solves a side, `--level 0.10` and no objective dif
 
 ## Reading it
 
-It prints the report, the stop rule and each harness's tasks by valid solves, then `the rehearsal
-went as scripted` (exit 0) or `the rehearsal did not go as scripted` (exit 1) with each stray named.
-For a stray, read the solve's `solve.call` and `verdict` and decide whether the script or the path is
-at fault (rule 7). Then run the readers a real run meets, since a join can break after the report:
+It prints the report, the stop rule and each harness's tasks by valid solves, then whether the
+rehearsal went as scripted (exit 0) or not (exit 1, each stray named). For a stray, read the solve's
+`solve.call` and `verdict` and decide whether the script or the path is at fault (rule 7). Then run
+the readers a real run meets, since a join can break after the report:
 
 ```sh
 bun run runs pulse sim-<what>
@@ -96,6 +115,5 @@ the reference alone, which the investigation's reader should name as `SET ASIDE 
 `READING MOVES WITH THE SET-ASIDE`. A reader silent on its own planted condition is a `blocking`
 finding against the reader.
 
-`test/runs-rehearse.test.ts` holds the seed and scripts, and `test/checker-commands.test.ts`
-rehearses two sessions and a standalone comparison where a command wall exists; a pass proves only
-that platform's wall. Trash each seed once its result is written.
+`test/runs-rehearse.test.ts` holds the seed and scripts; a rehearsal that passes proves only its own
+platform's wall.

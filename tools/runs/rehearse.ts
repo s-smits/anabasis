@@ -69,7 +69,7 @@ import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isFunction, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
-import { dirname, join } from "#src/meta/path.ts";
+import { dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { ANSWER_FILE } from "#src/tools/answer.ts";
@@ -84,6 +84,7 @@ import { roundCommand, type Seated } from "../d2/round.ts";
 import { sessionCommand } from "../d2/session.ts";
 import { packControls, storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
 import { SEED_FILE } from "./registry.ts";
+import { codeLine } from "./seed.ts";
 
 /** How a scripted solve ends: a valid answer, one a check rejects, or none at all. */
 const ENDS = ["pass", "fail", "none"] as const;
@@ -266,7 +267,9 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
     const answers = answersOf(graded, read(campaign.log));
     const least = starter(campaign);
     /** How a script puts a file in the solver's home under each harness, by the harness's folder:
-     *  with pi's `write` where the harness selects it, and through its shell where it does not. */
+     *  through its shell where the harness selects one, so that each rehearsed solve runs a command
+     *  inside the wall, and with pi's `write` where it does not. Until 11 November 2026 `write` came
+     *  first, and a rehearsal of a wall change walled the checks and no solver command. */
     const writers = new Map<string, Promise<readonly string[]>>();
     const selectedOf = (dir: string) => {
       const known = writers.get(dir) ?? openHarness(dir).then(({ presets }) => selectedCodingTools(presets));
@@ -309,9 +312,9 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
           );
         }
         const content = JSON.stringify(answer);
-        const written: readonly [string, JsonObject] = (await selectedOf(harness.dir)).includes("write")
-          ? ["write", { path: ANSWER_FILE, content }]
-          : ["bash", { command: `printf %s ${shellQuote(content)} > ${ANSWER_FILE}` }];
+        const written: readonly [string, JsonObject] = (await selectedOf(harness.dir)).includes("bash")
+          ? ["bash", { command: `printf %s ${shellQuote(content)} > ${ANSWER_FILE}` }]
+          : ["write", { path: ANSWER_FILE, content }];
         const by = scripted(
           [...(answer === null ? [] : [written]), ["submit", {}]],
           campaign.limits.turns + 1,
@@ -514,6 +517,11 @@ export async function rehearse(args: readonly string[]): Promise<void> {
   }
   const stored = isString(root) && isString(sweep) && isString(bundle) ? { root, sweep, bundle } : null;
   const drafted = stored === null ? draftedSource(values.name) : null;
+  const seeded = dirname(campaignLog(values.name));
+  // The code the seed's source ran at its cut, against this tree's: a line that refuses nothing.
+  if (existsSync(join(seeded, SEED_FILE))) {
+    console.log(codeLine(resolve(import.meta.dir, "..", ".."), seeded));
+  }
   const graded =
     stored === null
       ? (drafted?.graded ?? [])

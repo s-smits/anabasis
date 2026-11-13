@@ -73,18 +73,17 @@
 import { LOG_FILE, read } from "#src/kernel/log.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
-import { asRecord, isString } from "#src/meta/json-shape.ts";
-import { gitMaybe, gitText, mainTree } from "#src/meta/git.ts";
+import { mainTree } from "#src/meta/git.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { plural } from "#src/meta/text.ts";
-import { codeOf } from "../d2/campaign.ts";
-import { installAt } from "../runs/code.ts";
+import { atCommit, treeAt } from "../runs/code.ts";
+import { lastHost } from "#src/kernel/condition.ts";
 import { receipts } from "../runs/receipt.ts";
 import { isCampaign, processes, readable, type Running } from "../runs/registry.ts";
 import { stillRunning } from "../runs/diagnosis.ts";
-import { snapshotCampaign } from "../runs/seed.ts";
+import { hostOf, snapshotCampaign } from "../runs/seed.ts";
 import {
   type Derived,
   derive,
@@ -184,26 +183,18 @@ function needed(name: "log" | "out"): string {
   return value;
 }
 
-/** The host's code as a condition names it (`codeOf`), for a tree that holds it. */
-function hostOf(tree: string): string | undefined {
-  const parts = ["src", "vendor", "package.json"].map((part) => join(tree, part));
-  return parts.every((part) => existsSync(part)) ? codeOf(tree).host : undefined;
-}
-
 /**
  * One line on where the code the campaign last ran under stands: this checkout, or the tree the
  * campaign runs in (`<tree>/.ana/d2/<campaign>/log.jsonl`), which a live campaign keeps unmoved.
  * The condition names that code by a digest of its content, which is no commit: two lanes of
  * 14 October read one digest against a receipt's commit as two trees. So the line calls it a
  * digest and names the commit the last launch's receipt holds (`receipts`) beside it. A snapshot's
- * log lies under the investigation, not the campaign's tree, so the tree `sourceTree` checks out at
+ * log lies under the investigation, not the campaign's tree, so the tree `start` checks out at
  * that commit is asked too: on 7 November the esp32 investigation's line called that tree, which
  * held the code that ran, "another tree", and three lanes discounted exact source evidence.
  */
 function hostLine(log: string): string {
-  const ran = read(log).findLast(({ kind }) => kind === "condition.recorded")?.data.condition;
-  const host = asRecord(ran)?.host;
-  const last = isString(host) ? host : undefined;
+  const last = lastHost(read(log));
   const here = hostOf(REPO) ?? "";
   const launch = receipts(log).at(-1);
   const commit =
@@ -216,7 +207,7 @@ function hostLine(log: string): string {
   if (last === here) return said(`the last condition's and this checkout's are both ${here.slice(0, 8)}`);
   const trees = [
     resolve(dirname(log), "..", "..", ".."),
-    ...(launch === undefined ? [] : [wriTree(launch.commit)]),
+    ...(launch === undefined ? [] : [atCommit(REPO, launch.commit)]),
   ];
   const tree = trees.find((each) => hostOf(each) === last);
   return tree === undefined
@@ -226,34 +217,6 @@ function hostLine(log: string): string {
     : said(
         `the last condition's is ${last.slice(0, 8)}, which \`${tree}\` holds as it stands, so read source there; this checkout's is ${here.slice(0, 8)}`,
       );
-}
-
-/**
- * A tree at the commit the campaign's last launch ran, with its dependencies installed, beside the
- * main checkout, where this checkout's code differs from the code the campaign last ran under. On
- * 4 November buffer583's own tree held no dependencies, so two lanes ran the Examiner's view from
- * this checkout's code instead, and the primary had checked the run's commit out by hand. Null
- * where the code matches, no receipt names a commit, or this repository does not hold it.
- */
-function sourceTree(log: string): string | null {
-  const ran = asRecord(read(log).findLast(({ kind }) => kind === "condition.recorded")?.data.condition)?.host;
-  const commit = receipts(log).at(-1)?.commit;
-  if (
-    commit === undefined ||
-    ran === hostOf(REPO) ||
-    gitMaybe(REPO, "cat-file", "-e", `${commit}^{commit}`) === null
-  ) {
-    return null;
-  }
-  const tree = wriTree(commit);
-  if (!existsSync(tree)) gitText(REPO, "worktree", "add", "-q", "--detach", tree, commit);
-  if (!existsSync(join(tree, "node_modules"))) installAt(tree, commit);
-  return tree;
-}
-
-/** Where `sourceTree` checks out a launch's commit, beside the main checkout. */
-function wriTree(commit: string): string {
-  return join(dirname(mainTree(REPO)), `anabasis-wri-${commit.slice(0, 9)}`);
 }
 
 function overviewText(log: string): string {
@@ -336,9 +299,12 @@ async function start(): Promise<number> {
   refuseRunning(logs, running);
   mkdirSync(join(out, "lanes"), { recursive: true });
   const { done, line } = await derived(logs);
-  // Each launch's tree first, so that the host line can name it.
+  // Each launch's tree first, so that the host line can name it: a tree at the commit the last
+  // launch ran (`treeAt`), where this checkout's code differs from the code the campaign last ran.
+  const here = hostOf(REPO);
   const trees = logs.flatMap((log) => {
-    const tree = sourceTree(log);
+    const commit = receipts(log).at(-1)?.commit;
+    const tree = commit === undefined || lastHost(read(log)) === here ? null : treeAt(REPO, commit);
     return tree === null
       ? []
       : [

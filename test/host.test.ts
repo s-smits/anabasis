@@ -513,4 +513,19 @@ describe("the wait after a session the network failed", () => {
       { for: "network", ms: 300_000 },
     ]);
   });
+
+  it("is owed where the provider's edge refused the session, and never where its API did", async () => {
+    const [edge, api] = [logIn("edge"), logIn("api")];
+    const [waited, unwaited] = [hostOf(() => 0), hostOf(() => 0)];
+    for (const session of ["x-1", "x-2", "x-3"]) {
+      crash(edge, session, "Failed to authenticate. API Error: 403 Attention Required! | Cloudflare");
+      await waitCrashed(edge, waited);
+      crash(api, session, 'API Error: 403 {"error":{"type":"permission_error","message":"credit"}}');
+      await waitCrashed(api, unwaited);
+    }
+    expect(waited.slept).toEqual([60_000, 300_000]);
+    expect(unwaited.slept).toEqual([]);
+    expect(waits(api)).toEqual([]);
+    expect(crashedRun(read(api)).count).toBe(3);
+  });
 });

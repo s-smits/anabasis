@@ -47,6 +47,13 @@ describe("a login's state, from one reading", () => {
     });
   });
 
+  it("reads a login whose plan has no five-hour window by its week alone", () => {
+    expect(closedOf({ ...reading("1"), fiveHour: null })).toBeNull();
+    expect(closedOf({ ...reading("1", { pct: 10 }, { pct: 100 }), fiveHour: null })).toEqual({
+      until: WEEK_RESET,
+    });
+  });
+
   it("takes the later reset where both windows are closed", () => {
     expect(closedOf(reading("3", { pct: 100 }, { pct: 100 }))).toEqual({ until: WEEK_RESET });
   });

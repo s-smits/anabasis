@@ -917,13 +917,16 @@ Marks: none.
 
 Starts from `MARGINS INSIDE THE NOISE (lane 29)`.
 
-Did each step whose untied tasks all tie on validity win by more than the reference's own spread?
+Did each step whose untied tasks all tie on validity win by more than either side's own spread?
 Such a step is carried by the objective alone, each win a margin between two valid answers
 (`pointsOf`, `src/kernel/compare.ts`). `MARGINS INSIDE THE NOISE` names each where more than half
-of the wins are no larger than the difference of that report's own A/A (`noise`) on the same task,
-the reference read against itself under the same setting, so one outlier task sets no ceiling for
-the rest. It counts the wins on tasks whose A/A tied, which clear only a zero difference, and the
-other objective-only steps most of whose wins were of that kind, which give no spread to read. For
+of the wins are no larger than the wider of the two sides' own differences on the same task, each
+side read against itself under the same setting (the reference's is that report's own A/A,
+`noise`), so one outlier task sets no ceiling for the rest. A win on a task both sides repeated
+exactly is the difference of two repeated answers: an effect on that instance, counted outside, of
+which the question is how far it carries (lane 17). A win larger than both sides' differences
+where only the reference repeated is counted outside too, so a step silent here whose sides repeat
+on some tasks is read from `pairs.txt` by lane 17. For
 each step, read the wins' margins beside the A/A's distribution (`pairs.txt` gives each task's
 margin beside its stored and rebuilt A/A, the A/A's quantiles, the reading on first and on second
 solves alone, the count of wins inside, level with and outside their own task's A/A, and each

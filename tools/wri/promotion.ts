@@ -21,7 +21,7 @@
  */
 import { epochsOf as epochsRead } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";
-import { flipP, scoresIn } from "#src/kernel/compare.ts";
+import { flipP, scoresIn, testOf } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import type { Call, Seat } from "#src/kernel/trace.ts";
 import { billedBetween } from "#src/kernel/meter.ts";
@@ -42,6 +42,7 @@ import {
   tallyOf,
   text,
   type Trigger,
+  wlt,
 } from "./folds.ts";
 import { spareOf } from "./clearance.ts";
 import { chainTrigger, marginTrigger } from "./margins.ts";
@@ -78,8 +79,7 @@ export function testSaid(tested: JsonValue | undefined): string {
   const record = asRecord(tested);
   const step = tallyOf(tested);
   if (record === null || step === null) return "not scored";
-  const said = ({ wins, losses, ties, p }: typeof step) =>
-    `${String(wins)}-${String(losses)}-${String(ties)} p ${pSaid(p)}`;
+  const said = (read: typeof step) => `${wlt(read)} p ${pSaid(read.p)}`;
   const billed = said({
     wins: count(record.wins),
     losses: count(record.losses),
@@ -304,9 +304,7 @@ function afterTrigger(log: Index, { at, until, data }: Epoch, starter: string): 
     const said = (when: "after" | "before") => {
       const scores = ages.filter((one) => one.newer === (when === "after")).map(({ score }) => score);
       const step = tallyOf({ unbilled: scores });
-      return step === null || scores.length === 0
-        ? "none"
-        : `${String(step.wins)}-${String(step.losses)}-${String(step.ties)} p ${pSaid(step.p)}`;
+      return step === null || scores.length === 0 ? "none" : `${wlt(step)} p ${pSaid(step.p)}`;
     };
     return `; for the reference on tasks first drawn after the promotion ${said("after")}, before it ${said("before")}`;
   };
@@ -367,7 +365,11 @@ function sharedTmpTrigger(log: Index): Trigger[] {
     const solve = solves.get(id);
     if (solve === undefined) return "unknown";
     if (solve.comparison === null) return "practice";
-    const side = solve.harness === reference.get(solve.comparison) ? "reference" : "new";
+    // An Examiner's try names its own session there and no comparison starts under it: until
+    // 11 November esp32's 19 tries read as a comparison's new side.
+    const old = reference.get(solve.comparison);
+    if (old === undefined) return `${solve.comparison} try ${short(solve.harness)}`;
+    const side = solve.harness === old ? "reference" : "new";
     return `${solve.comparison} ${side} ${short(solve.harness)}`;
   });
   const namers = new Map<string, Set<string>>();
@@ -409,7 +411,10 @@ export function promotionTriggers(log: Index): Trigger[] {
 }
 
 /** `STEP CARRIERS` (lane 17): each step's untied tasks on the scores it is read on (`scoresIn`), and how many of its largest
- *  wins it could lose to a tie and still clear its level (`spareOf`, `clearance.ts`). On 1 November the gate ablation's g-3 cleared at
+ *  wins it could lose to a tie and still clear its level (`spareOf`, `clearance.ts`), with its retained tasks' tally where
+ *  it lost more of them than it won, and a clause where it tallied tasks of several families and won in one only: of the
+ *  49 starter reads on record on 11 November, 0 of the 6 after such a step confirmed its promotion, and 21 of the 33
+ *  after a step with under three in four of its wins in one family. On 1 November the gate ablation's g-3 cleared at
  *  6-0 with none to spare, and supply's g-2 lost its step without the 5 tasks priced in yen; lanes
  *  15, 23, 25 and 34 each found a part of that. */
 function carrierTrigger(log: Index): Trigger[] {
@@ -417,8 +422,15 @@ function carrierTrigger(log: Index): Trigger[] {
     const unbilled = scoresIn(last.scored);
     if (text(last.reading) !== "step" || unbilled.length === 0) return [];
     const spare = spareOf(unbilled, count(last.level));
+    const retained = testOf(scoresIn(last.retained));
+    const lost = retained.losses > retained.wins ? `, its retained tasks ${wlt(retained)}` : "";
+    const won = Object.values(asRecord(last.families) ?? {})
+      .map((family) => asRecord(asRecord(family)?.frontier))
+      .filter((held) => count(held?.wins) + count(held?.losses) + count(held?.ties) > 0)
+      .map((held) => count(held?.wins));
+    const narrow = won.length > 1 && won.filter((wins) => wins > 0).length === 1;
     return [
-      `${session} won ${share(unbilled.filter((one) => one > 0).length, unbilled.filter((one) => one !== 0).length)} untied, ${spare === 0 ? "none" : String(spare)} to spare`,
+      `${session} won ${share(unbilled.filter((one) => one > 0).length, unbilled.filter((one) => one !== 0).length)} untied, ${spare === 0 ? "none" : String(spare)} to spare${lost}${narrow ? `, every win in one of its ${String(won.length)} families` : ""}`,
     ];
   });
   return lines.length > 0 ? [fired("STEP CARRIERS", lines.join("; "))] : [];
@@ -436,7 +448,7 @@ function unconfirmedTrigger(log: Index): Trigger[] {
     const read =
       against === null
         ? "no starter comparison reported"
-        : `against the starter ${String(against.wins)}-${String(against.losses)}-${String(against.ties)} without the bill, no step`;
+        : `against the starter ${wlt(against)} without the bill, no step`;
     return [`${short(reference)} in epoch ${String(nth)}, ${to === null ? "open" : "closed"}: ${read}`];
   });
   return lines.length > 0

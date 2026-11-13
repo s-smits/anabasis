@@ -11,21 +11,19 @@
  * noise selected for, the Examiner's aim, or a worse harness.
  *
  * A step whose untied tasks all tie on validity is carried by the objective alone, and each of its
- * wins is a margin between two valid answers. The report's own A/A is the reference read against
- * itself under the same setting, rebuilt from its solves (`pairsReported`), and on a task whose
- * halves tied on validity its difference is a margin two solves of one harness reach by chance
- * there; a win no larger than its own task's is inside that noise (lane 29). An A/A task its halves split on validity
- * scores up to 600 points, which no win between valid answers can reach (`WEIGHTS`), so it sets no
+ * wins is a margin between two valid answers. Each side read against itself under the same setting,
+ * rebuilt from its solves (`pairsReported`), gives on a task whose halves tied on validity the
+ * margin two solves of one harness reach by chance there; a win no larger than the wider of the two
+ * on its own task is inside that noise (lane 29). A task a side's halves split on validity scores
+ * up to 600 points, which no win between valid answers can reach (`WEIGHTS`), so it sets no
  * ceiling. Scores are read under this tree's rule (`differenceOf`). Both decide nothing.
  */
 import { ORIGINS, type Origin, starterReads } from "#src/campaign/climb.ts";
 import { differenceOf, pointsOf, type Tally } from "#src/kernel/compare.ts";
 import { lastReports, pairsReported } from "#src/kernel/reports.ts";
-import { fired, type Index, share, type Trigger } from "./folds.ts";
+import { fired, type Index, share, type Trigger, wlt } from "./folds.ts";
 
 const [CHOSEN, BEFORE, AFTER] = ORIGINS;
-
-const wlt = ({ wins, losses, ties }: Tally) => `${String(wins)}-${String(losses)}-${String(ties)}`;
 
 /** `tallies` summed. */
 function summed(tallies: readonly Tally[]): Tally {
@@ -55,39 +53,37 @@ export function chainTrigger(log: Index): Trigger[] {
 }
 
 /** `MARGINS INSIDE THE NOISE` (lane 29): each step whose untied tasks all tie on validity and more
- *  than half of whose wins are no larger than its own A/A's difference on the same task, where that
- *  task's halves tied on validity; a win on a task with no such A/A difference is not counted
- *  inside. One outlier task no longer sets the ceiling for every win, which put 14 of one step's 20
- *  wins inside against 4 read task by task. A win where its task's A/A tied clears a zero difference
- *  only, so the line counts those, and the tail counts the other such steps most of whose wins were
- *  of that kind, which gives no spread to read a margin against. */
+ *  than half of whose wins are no larger than the wider of the two sides' own differences on the
+ *  same task, each side read against itself where its halves tied on validity. A win on a task both
+ *  sides repeated exactly is the difference of two repeated answers, where no split of either side
+ *  shows noise (`repeatLine`, `src/campaign/climb.ts`), and is not counted inside: until
+ *  11 November a win where the A/A alone tied was told as clear of a zero difference only, and 62 of
+ *  the 121 objective-only steps on record fired on that count, in 61 of them on tasks the new side
+ *  repeated exactly too. The new side's own difference bounds a win as the reference's does, which
+ *  the reference's alone left out. */
 export function marginTrigger(log: Index): Trigger[] {
-  const read = lastReports(log.events).flatMap((report) => {
+  const lines = lastReports(log.events).flatMap((report) => {
     if (report.data.reading !== "step") return [];
     const untied = pairsReported(log.events, report).filter((pair) => differenceOf(pair) !== 0);
     if (untied.length === 0 || untied.some((pair) => pointsOf(pair).validity !== 0)) return [];
-    const spread = new Map(
-      pairsReported(log.events, report, "old")
-        .filter((pair) => pointsOf(pair).validity === 0)
-        .map((pair) => [pair.task, Math.abs(differenceOf(pair))]),
-    );
-    if (spread.size === 0) return [];
+    const own = (side: "old" | "fresh") =>
+      new Map(
+        pairsReported(log.events, report, side)
+          .filter((pair) => pointsOf(pair).validity === 0)
+          .map((pair) => [pair.task, Math.abs(differenceOf(pair))]),
+      );
+    const [reference, candidate] = [own("old"), own("fresh")];
+    if (reference.size === 0) return [];
     const wins = untied.filter((pair) => differenceOf(pair) > 0);
-    const inside = wins.filter((pair) => differenceOf(pair) <= (spread.get(pair.task) ?? -1)).length;
-    const zero = wins.filter((pair) => spread.get(pair.task) === 0).length;
-    return [{ session: report.session, wins: wins.length, inside, zero }];
-  });
-  const lines = read.flatMap(({ session, wins, inside, zero }) =>
-    inside * 2 > wins
+    const inside = wins.filter(
+      (pair) =>
+        differenceOf(pair) <= Math.max(reference.get(pair.task) ?? -1, candidate.get(pair.task) ?? -1),
+    ).length;
+    return inside * 2 > wins.length
       ? [
-          `${session} won ${share(inside, wins)} by no more than its A/A's difference on the same task where validity tied${zero === 0 ? "" : `, and ${String(zero)} more where that task's A/A tied, clear only of a zero difference`}`,
+          `${report.session} won ${share(inside, wins.length)} by no more than the wider of the two sides' own differences on the same task where validity tied`,
         ]
-      : [],
-  );
-  const flat = read.filter(({ wins, inside, zero }) => inside * 2 <= wins && zero * 2 > wins).length;
-  const tail =
-    flat === 0
-      ? ""
-      : `; ${share(flat, read.length)} objective-only steps won most of their tasks where the A/A tied, which gives no spread to read a margin against`;
-  return lines.length > 0 ? [fired("MARGINS INSIDE THE NOISE", `${lines.join("; ")}${tail}`)] : [];
+      : [];
+  });
+  return lines.length > 0 ? [fired("MARGINS INSIDE THE NOISE", lines.join("; "))] : [];
 }

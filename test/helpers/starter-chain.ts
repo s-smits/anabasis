@@ -3,15 +3,16 @@
 // by the objective alone beside its own A/A.
 import type { EventKind, LogEvent } from "../../src/kernel/log.ts";
 import { flipP } from "../../src/kernel/compare.ts";
-import { asRecord, isString, type JsonObject } from "../../src/meta/json-shape.ts";
+import { asRecord, isNumber, isString, type JsonObject } from "../../src/meta/json-shape.ts";
 import { keyIfDefined } from "../../src/meta/optional-key.ts";
 import { roundSolves } from "./logged-round.ts";
 
 /** What the reference measured on its first and second valid answer of each task, or of the tasks
- *  `tasks` names, and the new side on every valid answer, lower being better. */
+ *  `tasks` names, and the new side on every valid answer, or on its first and second, lower being
+ *  better. */
 interface Measures {
   readonly old: readonly [number, number];
-  readonly fresh: number;
+  readonly fresh: number | readonly [number, number];
   readonly tasks?: Readonly<Record<string, readonly [number, number]>>;
 }
 
@@ -78,7 +79,8 @@ function compared(
     const passed = event.kind === "solve.finished" && asRecord(event.data.ending)?.outcome === "pass";
     if (event.kind === "solve.finished") nth += 1;
     if (measures === undefined || !passed) return [event];
-    const objective = side === "fresh" ? measures.fresh : (measures.tasks?.[task] ?? measures.old)[nth - 1];
+    const each = side === "fresh" ? measures.fresh : (measures.tasks?.[task] ?? measures.old);
+    const objective = isNumber(each) ? each : each[nth - 1];
     return [event, at("verdict", { solve: event.data.solve ?? "", kind: "pass", objective: objective ?? 0 })];
   });
   const sign = (outcome: string) => (outcome === LOST ? 600 : outcome === WON ? -600 : 0);
@@ -139,10 +141,11 @@ export function chainLog(later: "lost" | "won"): LogEvent[] {
  * scores 144. With `validity` "split", the reference misses one solve of the first task, which splits
  * its validity in the comparison; with "flip", both sides miss their second solve of the last task,
  * which ties it on validity in the comparison and splits it, at 600 points, in the A/A. `byTask` gives
- * the reference other measures on the tasks it names, and so its A/A another difference there.
+ * the reference other measures on the tasks it names, and so its A/A another difference there. A
+ * pair as `margin` gives the new side's first and second solve a margin each.
  */
 export function objectiveLog(
-  margin: number,
+  margin: number | readonly [number, number],
   validity: "tied" | "split" | "flip" = "tied",
   byTask?: Measures["tasks"],
 ): LogEvent[] {
@@ -154,7 +157,11 @@ export function objectiveLog(
     ...gated(tasks),
     ...compared("g-1", [STARTER, FIRST], outcomes, {
       reading: "step",
-      measures: { old: [1, 0.93], fresh: 1 - margin, ...keyIfDefined("tasks", byTask) },
+      measures: {
+        old: [1, 0.93],
+        fresh: isNumber(margin) ? 1 - margin : [1 - margin[0], 1 - margin[1]],
+        ...keyIfDefined("tasks", byTask),
+      },
     }),
   ];
 }

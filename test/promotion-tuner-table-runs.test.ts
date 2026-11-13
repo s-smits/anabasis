@@ -112,3 +112,27 @@ it("leaves a starter comparison out of those a promotion could come from, though
   expect(run?.reads).toBe(0);
   expect(run?.compared).toBe(1);
 });
+
+// Runs are read together only under one setting, so two that differ in the solves a side alone must
+// not read as one; and a campaign that went on after an ending has none, as production reads it.
+it("reads a run's setting whole from its record, and no ending once the campaign went on", () => {
+  const runWith = (name: string, solves: number, wentOn: boolean) => {
+    const folder = join(home, name);
+    mkdirSync(folder, { recursive: true });
+    const solver = { model: "claude/m", effort: "high" };
+    const events = [
+      { kind: "campaign.setting", data: { solver, minutes: 30, modelTurns: 20, target: 24, solves } },
+      { kind: "campaign.ended", data: { ending: "budget", why: "w" } },
+      ...(wentOn ? [{ kind: "build.started", data: { session: "b1", model: "claude/m" } }] : []),
+    ].map((event) => `${JSON.stringify({ at: "2026-11-01T00:00:00.000Z", ...event })}\n`);
+    writeFileSync(join(folder, "log.jsonl"), events.join(""));
+    const found = { name, path: join(folder, "log.jsonl") };
+    return runOf(found, read(found.path), []);
+  };
+  const two = runWith("two-solves", 2, false);
+  const three = runWith("three-solves", 3, true);
+  expect(two?.setting).toBe("m/high 30m 20t 24x2");
+  expect(three?.setting).toBe("m/high 30m 20t 24x3");
+  expect(two?.ending).toBe("budget");
+  expect(three?.ending).toBe("no ending");
+});

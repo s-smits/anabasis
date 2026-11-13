@@ -150,8 +150,9 @@ conversation is open (no comparison, Examiner ask, draft, solve or Referee readi
 run. The words are `compacted` (a compaction of any seat: `build`, `exam`, `draft`, `referee` or
 `solve`), `reported` (`comparison.reported`), `promoted` (`harness.promoted`), `examined`
 (`exam.finished`) and `finished` (`build.finished`); words joined by `|`, as `reported|promoted`,
-wait for the first of their events. A pause right after `promoted` leaves that promotion's starter
-comparison unread. No seat's conversation outlives its process (pi-durable's in-memory store, and
+wait for the first of their events. `reported` alone waits out a promotion whose starter comparison
+has not tallied, so the run rests with its newest promotion read; a pause that names `promoted`
+rests at the promotion and leaves that comparison unread. No seat's conversation outlives its process (pi-durable's in-memory store, and
 Claude Code without a saved session), so a compaction is no better point to pause than another: a
 pause cuts the Builder's conversation and a resting Examiner's. The continued campaign opens a new
 Builder conversation on the cut one's notes, from the last harness it practised or froze, and tells

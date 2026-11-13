@@ -331,15 +331,6 @@ export function censusOf(logs: readonly (readonly LogEvent[])[]) {
   };
 }
 
-/** The events of a log as far as they read: a line torn while the seat writes waits a tick. */
-function eventsNow(log: string): LogEvent[] | null {
-  try {
-    return read(log);
-  } catch {
-    return null;
-  }
-}
-
 /** The log of a seed: rule 4 of the skill, a seat writes only to a seed, and the name and seed.json
  *  are the guard. */
 function seedLog(tree: string, name: string, die: CommandArgs["die"]): string {
@@ -409,8 +400,7 @@ async function start(args: CommandArgs, command: readonly string[]): Promise<num
     for (let slept = 0; slept < TICK_MS && processGroupExists(child.pid); slept += 1000) {
       await Bun.sleep(1000);
     }
-    const events = eventsNow(log);
-    if (events === null) continue;
+    const events = read(log);
     const billed = billedBetween(events, from);
     const elapsed = (Date.now() - began) / 60_000;
     const news = newsOf(events, seen);
@@ -476,11 +466,9 @@ async function watch(args: CommandArgs): Promise<number> {
   const { log, from, pid } = keptSeat(args.required("seat"), args.die);
   let upTo = from;
   for (;;) {
-    const events = eventsNow(log);
-    if (events !== null) {
-      for (const line of newsOf(events, upTo)) console.log(line);
-      upTo = events.length;
-    }
+    const events = read(log);
+    for (const line of newsOf(events, upTo)) console.log(line);
+    upTo = events.length;
     if (pid === null || !processGroupExists(pid)) break;
     await Bun.sleep(TICK_MS);
   }
@@ -495,8 +483,7 @@ function due(args: CommandArgs, seats: readonly string[]): number {
   const lines = seats.flatMap((seat) => {
     const { log, from } = keptSeat(seat, args.die);
     const seen = existsSync(`${seat}.seen`) ? Number(readFileSync(`${seat}.seen`, "utf8")) : from;
-    const events = eventsNow(log);
-    if (events === null) return [];
+    const events = read(log);
     writeFileSync(`${seat}.seen`, `${String(events.length)}\n`);
     return newsOf(events, seen).map((line) => `${basename(seat)}: ${line}`);
   });

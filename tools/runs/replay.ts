@@ -12,7 +12,7 @@
  *
  * It is the check to run when an event's shape, a fold or a reader has changed. A log a real run
  * wrote that this tree refuses is named in the reader's own words, with exit code 1. A log being
- * appended to at that instant can read torn: run it again.
+ * appended to reads to its last whole line.
  */
 import { conditionsOf } from "#src/kernel/condition.ts";
 import { writtenTasks } from "#src/kernel/history.ts";

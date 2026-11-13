@@ -1,6 +1,7 @@
 // Check ending history, preceding moves and current stopping conditions, and the settings a log's
 // solves ran under with what each comparison mixed, using in-memory logs.
 import { describe, expect, it } from "bun:test";
+import { billedSeats, billRows, rankCorrelation } from "#skills/campaign-mechanics/scripts/bills.ts";
 import { conditionLines, differing } from "#skills/campaign-mechanics/scripts/conditions.ts";
 import { campaignEnding, endingLines } from "#skills/campaign-mechanics/scripts/ending.ts";
 import { type Condition, conditionId } from "../src/kernel/condition.ts";
@@ -183,5 +184,49 @@ describe("conditions.ts", () => {
     const lines = conditionLines(solves([{ condition: { ...BASE, task: "task-canary-9d2" } }], []));
     expect(lines.join("\n")).not.toContain("task-canary-9d2");
     expect(conditionLines([])).toStrictEqual(["0 solves under 0 conditions and 0 settings"]);
+  });
+});
+
+describe("bills.ts", () => {
+  /** A finished seat whose turns cost `each` dollars: a solve by default, a Builder session where named. */
+  const seat = (log: ReturnType<typeof opened>, id: string, each: readonly number[], of = "solve") => {
+    const [kind, whose] = of === "solve" ? (["solve", "solve"] as const) : (["build", "session"] as const);
+    log.add(`${kind}.started`, { [whose]: id, model: "faux/solver" });
+    for (const total of each) log.add(`${kind}.turn`, { [whose]: id, usage: { cost: { total } } });
+    const billed = each.reduce((sum, turn) => sum + turn, 0);
+    return log.add(`${kind}.finished`, { [whose]: id, turns: each.length, billed });
+  };
+
+  it("counts the solves billed past their campaign's reserve and the seats one turn dominates", () => {
+    const log = opened();
+    seat(log, "s-1", [1, 1, 1]);
+    seat(log, "s-2", [1, 1, 1, 1, 12]);
+    seat(log, "s-3", [1, 1]);
+    // A Builder session is held at no reserve, and one still open has no bill to read.
+    seat(log, "b-1", [4, 4, 4, 4], "build");
+    log.add("solve.started", { solve: "s-4", model: "faux/solver" });
+    log.add("solve.turn", { solve: "s-4", usage: { cost: { total: 50 } } });
+    const seats = billedSeats(log.events);
+    expect(seats.map(({ seat: of, billed, turns }) => [of, billed, turns])).toStrictEqual([
+      ["solve", 3, 3],
+      ["solve", 16, 5],
+      ["solve", 2, 2],
+      ["build", 16, 4],
+    ]);
+    const [solves, builds] = billRows(seats);
+    // Seats, the rank correlation, the seats with a turn at ten times their median, past the reserve of 10.
+    expect([solves?.[2], solves?.[10], solves?.[11], solves?.[12]]).toStrictEqual([
+      "3",
+      "1.00",
+      "1 of 3",
+      "1 of 3",
+    ]);
+    expect([builds?.[0], builds?.[11], builds?.[12]]).toStrictEqual(["build", "0 of 1", "-"]);
+  });
+
+  it("reads turns that say nothing of the bill as no correlation, and ties as half ranks", () => {
+    expect(rankCorrelation([1, 2, 3, 4], [4, 3, 2, 1])).toBeCloseTo(-1, 9);
+    expect(rankCorrelation([1, 2, 3, 4], [1, 2, 2, 4])).toBeCloseTo(0.9487, 3);
+    expect(rankCorrelation([2, 2, 2], [1, 5, 9])).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 ---
 name: campaign-mechanics
-description: "Use before editing tools/d2/ (harness-builder, campaign-actions, campaign-terms, prepare, round, session, word), src/campaign/opening.ts or src/kernel/{log,condition,task}.ts. Explains Builder choices, log events, conditions and settings, practice release, defaults, admission refusals and campaign endings or waits (AGENTS.md sections 4–6). ending.ts reports why a campaign stopped; conditions.ts compares solve settings. Use run-management to launch, pause or stop runs."
+description: "Use before editing tools/d2/ (harness-builder, campaign-actions, campaign-terms, prepare, round, session, word), src/campaign/opening.ts or src/kernel/{log,condition,task}.ts. Explains Builder choices, log events, conditions and settings, practice release, defaults, admission refusals and campaign endings or waits (AGENTS.md sections 4–6). ending.ts reports why a campaign stopped; conditions.ts compares solve settings; bills.ts reads what solves billed against their turns and the reserve. Use run-management to launch, pause or stop runs."
 ---
 
 # Campaign mechanics
@@ -21,13 +21,14 @@ What the table names next is `comparison-reading` section 7; moving, launching o
 
 ## Scripts
 
-Both resolve a campaign name locally or in the archive, or take an absolute log path, and
+Each resolves a campaign name locally or in the archive, or takes an absolute log path, and
 `--host <name>` runs them on another host. Their output names no task or check but remains
 exam-side, so it stays out of tracked files.
 
 ```text
 bun .claude/skills/campaign-mechanics/scripts/ending.ts <name | /abs/path/to/log.jsonl>
 bun .claude/skills/campaign-mechanics/scripts/conditions.ts <name | /abs/path/to/log.jsonl>
+bun .claude/skills/campaign-mechanics/scripts/bills.ts <name | /abs/path/to/log.jsonl>... | --runs <dir>
 ```
 
 - `ending.ts` answers why a campaign ended or what it waits for. It lists each `campaign.ended`
@@ -38,3 +39,7 @@ bun .claude/skills/campaign-mechanics/scripts/conditions.ts <name | /abs/path/to
 - `conditions.ts` answers whether two solves are comparable. Through `conditionsOf` it lists each
   setting in first-use order with what changed, and for each comparison names any difference beyond
   harness, tool tree and task, or prints `comparable`. A host-code change shows as a changed `host`.
+- `bills.ts` answers whether turns say what a seat cost and whether the reserve holds. For each seat
+  and model it prints the finished seats' bills, the dollars a turn, the rank correlation of turns
+  with the bill, the seats with a turn at ten times their median, and the solves that billed past
+  their campaign's reserve.

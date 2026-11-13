@@ -231,7 +231,8 @@ export function runNamed(name: string, among: readonly Run[] = runs()): Run {
   return only;
 }
 
-/** A log's text up to its last whole line: a torn last line is an append in flight. */
+/** A log's text up to its last whole line: what follows it is an append in flight, or one a
+ *  killed process left, which the next append cuts (`src/kernel/log.ts`). */
 export function wholeLines(path: string): string {
   const text = readFileSync(path, "utf8");
   return text.slice(0, text.lastIndexOf("\n") + 1);

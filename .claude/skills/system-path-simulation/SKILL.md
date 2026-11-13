@@ -91,7 +91,7 @@ answered by the tree at its receipt's commit.
 `bun run runs replay [<name> ...]` asks whether this tree still reads every recorded log. It first
 refreshes its copies of the campaigns other hosts hold, then reads those, the worktrees' logs (seeds
 included) and this host's archive through the kernel's folds, printing a refusal in the reader's
-words with exit 1; a log being appended to can read torn, so run it again. Run it before a commit
+words with exit 1; a log being appended to reads to its last whole line. Run it before a commit
 that changes `EVENT_KINDS` or a field a fold reads, after a rebase onto a moved stack, and before
 seeding from an old campaign, since `seedCampaign` checks only `read` and `taskSets`. What a reader
 does with a pattern no log holds yet is [synthetic](cases/synthetic.md).

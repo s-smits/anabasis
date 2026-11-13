@@ -405,27 +405,19 @@ describe("runner", () => {
   function stale(home: string): void {
     const dir = join(home, ".local/share/ana-runner");
     mkdirSync(dir, { recursive: true });
-    for (const name of ["lib.sh", "run.sh", "host.sh", "hosts.js"]) writeFileSync(join(dir, name), "old\n");
+    for (const name of ["task.sh", "run.js"]) writeFileSync(join(dir, name), "old\n");
     writeFileSync(join(home, ".local/bin/bun"), "old\n");
     writeFileSync(join(dir, "INSTALLED"), '{"commit":"oldcommit"}');
   }
 
-  test("a stale runner here is refused while no host sets checks, since the install would keep every check here", () => {
+  test("a stale runner here is reinstalled whether or not a host sets checks, and a peer with no runner is left with none", () => {
     const made = fixture();
     stale(made.hereHome);
-    const before = readFileSync(join(made.hereHome, ".local/share/ana-runner/run.sh"), "utf8");
-    const result = made.run(["--yes"]);
-    expect(result.code).toBe(1);
-    expect(result.out).toContain("installed from oldcommit");
-    expect(result.out).toContain("no host in ANA_HOSTS sets `checks`");
-    expect(readFileSync(join(made.hereHome, ".local/share/ana-runner/run.sh"), "utf8")).toBe(before);
-  });
-
-  test("with checks set it reinstalls here, and a peer with no runner is left with none", () => {
-    const made = fixture();
-    stale(made.hereHome);
-    made.run(["--yes"], { host: { checks: 2 } });
-    expect(readFileSync(join(made.hereHome, ".local/share/ana-runner/run.sh"), "utf8")).not.toBe("old\n");
+    const found = made.run([]);
+    expect(found.out).toContain("installed from oldcommit");
+    expect(readFileSync(join(made.hereHome, ".local/share/ana-runner/task.sh"), "utf8")).toBe("old\n");
+    made.run(["--yes"]);
+    expect(readFileSync(join(made.hereHome, ".local/share/ana-runner/task.sh"), "utf8")).not.toBe("old\n");
     expect(existsSync(join(made.peerHome, ".local/share/ana-runner"))).toBe(false);
   });
 
@@ -450,8 +442,8 @@ describe("runner", () => {
       return gitText(repo, "rev-parse", "HEAD");
     };
     gitText(repo, "init", "-q");
-    const first = commit("tools/runtime/router/run.sh", "one\n");
-    const moved = commit("tools/runtime/router/run.sh", "two\n");
+    const first = commit("tools/runtime/router/run.ts", "one\n");
+    const moved = commit("tools/runtime/router/run.ts", "two\n");
     commit("README.md", "elsewhere\n");
     expect(runnerLags(repo, moved)).toBe(false);
     expect(runnerLags(repo, first)).toBe(true);

@@ -8,7 +8,7 @@
 // is called.
 // It reads the Python fork and its venv, so it runs only where HARNESS2_FORK names the fork
 // (`h2src/h2fork`, with `../anabasis-arm/jobstat-tree` beside it), on this machine:
-//   HARNESS2_FORK=<h2fork> RUN_REMOTE=0 bun run test -- test/studies-harness2-parity.test.ts
+//   HARNESS2_FORK=<h2fork> RUN_REMOTE=here bun run test -- test/studies-harness2-parity.test.ts
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
   chmodSync,

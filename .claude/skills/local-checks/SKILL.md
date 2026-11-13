@@ -22,6 +22,17 @@ as a commit status, one API call instead of a runner.
 
 `--no-verify` skips the hook and its pending mark.
 
+## On which machine
+
+`bun run test|typecheck|lint|secrets|gate` and `bun test` go through the bun router
+(`tools/runtime/router/`, installed with `bun tools/runtime/router/install.ts`). They run on this
+machine unless `RUN_REMOTE` names a host that `ANA_HOSTS` lists with `checks`, as in
+`RUN_REMOTE=<host> bun run land -- <top> --sanitize`. Git carries the working tree there,
+uncommitted bytes included, as one commit in `HEAD`'s place, so only what the host lacks travels and
+a static gate reads the same change. The dependencies never travel: a slot installs them from the
+lockfiles it was sent, and again only once a lockfile or the pinned Bun moves. Exits 255, 75 and 69
+say nothing about the tree (`NO_VERDICT`, `tools/runtime/gate.ts`).
+
 ## Placing a new check
 
 Stop at the first yes: does its verdict need an independent clean machine (a step of `ci.yml`,

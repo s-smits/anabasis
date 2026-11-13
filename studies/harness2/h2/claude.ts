@@ -68,6 +68,23 @@ export interface Reply {
 export const REFUSED = "refused";
 
 /** The improver's reasoning effort (`_channels`, `effort="high"`). */
+/**
+ * What runs one attempt of a rollout in its workspace. `stage` gives the workspace the arm's tree
+ * before the first attempt, `argv` is the attempt's command, whose output is its trajectory file,
+ * and `seen` is what the attempt left to read once it has exited, as `summarize` reads a Claude
+ * Code stream. The pilot's is `claudeCode`; `score.ts` holds the pi arm's (`piAgent`).
+ */
+export interface Agent {
+  readonly stage: (treeDir: string, workspace: string) => void;
+  readonly argv: (ask: {
+    readonly prompt: string;
+    readonly treeDir: string;
+    readonly workspace: string;
+    readonly traj: string;
+  }) => string[];
+  readonly seen: (traj: string) => ReturnType<typeof summarize>;
+}
+
 const IMPROVER_EFFORT = "high";
 /** `config.SCRUB_ENV` less the auth names an improver keeps (`_CLAUDE_AUTH_ENV`). */
 const IMPROVER_SCRUB = new Set([
@@ -324,14 +341,58 @@ function stamp(at: Date, form: "file" | "clock"): string {
   return `${at.getFullYear()}${two(at.getMonth() + 1)}${two(at.getDate())}_${clock.replaceAll(":", "")}`;
 }
 
+/** `claude -p` over the tree `installTree` installs, as the pilot's runner started it. */
+function claudeCode(claude: Claude): Agent {
+  return {
+    stage: (treeDir, workspace) => {
+      const staged = mkdtempSync(join(tmpdir(), "adapt-cc-root-"));
+      try {
+        installTree(treeDir, staged);
+        for (const part of ["CLAUDE.md", ".claude", "scripts"].filter((each) =>
+          existsSync(join(staged, each)),
+        )) {
+          cpSync(join(staged, part), join(workspace, part), { recursive: true });
+        }
+      } finally {
+        rmSync(staged, { recursive: true, force: true });
+      }
+    },
+    argv: ({ prompt, workspace }) => [
+      claude.bin,
+      "-p",
+      prompt,
+      "--output-format",
+      "stream-json",
+      "--verbose",
+      "--include-hook-events",
+      "--dangerously-skip-permissions",
+      "--setting-sources",
+      "project",
+      "--strict-mcp-config",
+      "--no-session-persistence",
+      "--add-dir",
+      workspace,
+      ...(claude.model === "" ? [] : ["--model", claude.model]),
+      ...(claude.effort === "" ? [] : ["--effort", claude.effort]),
+      ...(claude.budgetUsd === "" ? [] : ["--max-budget-usd", claude.budgetUsd]),
+    ],
+    seen: summarize,
+  };
+}
+
 /**
- * `run_one` behind `execute`: stage the workspace, run `claude -p` up to twice (a second time only
+ * `run_one` behind `execute`: stage the workspace, run the agent up to twice (a second time only
  * when the first left no deliverable and did not spend its budget), and copy what it produced to
  * `model_output/<label>`: the workspace is removed either way, and a rename is refused where the
  * temporary folder and the store are on different filesystems. Returns the dollars billed; the
  * output directory may be left empty.
  */
-export async function rollout(place: RolloutPlace, treeDir: string, claude: Claude): Promise<number> {
+export async function rollout(
+  place: RolloutPlace,
+  treeDir: string,
+  claude: Claude,
+  agent: Agent = claudeCode(claude),
+): Promise<number> {
   const taskDir = join(place.store, place.task, TASK_FOLDER);
   const name = place.task.replaceAll("/", "_");
   const finalDir = join(place.store, place.task, "model_output", place.label);
@@ -344,25 +405,17 @@ export async function rollout(place: RolloutPlace, treeDir: string, claude: Clau
   mkdirSync(join(place.store, ".harness2-logs"), { recursive: true });
   const log = (line: string): void => appendFileSync(logFile, `${line}\n`);
   mkdirSync(trajDir, { recursive: true });
-  const staged = mkdtempSync(join(tmpdir(), "adapt-cc-root-"));
   const workspace = join(tmpdir(), "hevo_ws_cc", `${name}_${place.label}_${runtimeProcess.pid}`);
   const output = join(workspace, "output");
   let billed = 0;
   try {
-    installTree(treeDir, staged);
     rmSync(workspace, { recursive: true, force: true });
     for (let attempt = 1; attempt <= ROLLOUT_ATTEMPTS; attempt += 1) {
       rmSync(join(workspace, TASK_FOLDER), { recursive: true, force: true });
       rmSync(output, { recursive: true, force: true });
       mkdirSync(output, { recursive: true });
       cpSync(taskDir, join(workspace, TASK_FOLDER), { recursive: true });
-      if (attempt === 1) {
-        for (const part of ["CLAUDE.md", ".claude", "scripts"].filter((each) =>
-          existsSync(join(staged, each)),
-        )) {
-          cpSync(join(staged, part), join(workspace, part), { recursive: true });
-        }
-      }
+      if (attempt === 1) agent.stage(treeDir, workspace);
       const traj = join(
         trajDir,
         `${name}_${place.label}_attempt${attempt}_${stamp(new Date(), "file")}.jsonl`,
@@ -371,26 +424,7 @@ export async function rollout(place: RolloutPlace, treeDir: string, claude: Clau
       const prompt = ROLLOUT_PROMPT.replaceAll("{task_folder}", join(workspace, TASK_FOLDER))
         .replaceAll("{output_dir}", output)
         .replaceAll("{workspace}", workspace);
-      const argv = [
-        claude.bin,
-        "-p",
-        prompt,
-        "--output-format",
-        "stream-json",
-        "--verbose",
-        "--include-hook-events",
-        "--dangerously-skip-permissions",
-        "--setting-sources",
-        "project",
-        "--strict-mcp-config",
-        "--no-session-persistence",
-        "--add-dir",
-        workspace,
-      ];
-      if (claude.model !== "") argv.push("--model", claude.model);
-      if (claude.effort !== "") argv.push("--effort", claude.effort);
-      if (claude.budgetUsd !== "") argv.push("--max-budget-usd", claude.budgetUsd);
-      const code = await inGroup(argv, {
+      const code = await inGroup(agent.argv({ prompt, treeDir, workspace, traj }), {
         cwd: workspace,
         env: {
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
@@ -405,7 +439,7 @@ export async function rollout(place: RolloutPlace, treeDir: string, claude: Clau
         appendFileSync(logFile, readFileSync(`${logFile}.stderr`));
         rmSync(`${logFile}.stderr`);
       }
-      const seen = summarize(traj);
+      const seen = agent.seen(traj);
       billed += seen.costUsd;
       log(
         `[${stamp(new Date(), "clock")}] attempt ${attempt}: rc=${code} result=${seen.subtype} turns=${seen.turns} tools=${seen.tools} cost_usd=${seen.costUsd.toFixed(4)}`,
@@ -428,7 +462,6 @@ export async function rollout(place: RolloutPlace, treeDir: string, claude: Clau
     } else log(`[${stamp(new Date(), "clock")}] NO OUTPUT for ${place.task} (${place.label})`);
   } finally {
     rmSync(workspace, { recursive: true, force: true });
-    rmSync(staged, { recursive: true, force: true });
   }
   return billed;
 }

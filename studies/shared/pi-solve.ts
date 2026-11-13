@@ -21,7 +21,12 @@
  *   sentence a campaign's solver reads, and a duty that names the benchmark's deliverable;
  * - the solve wall and the model-turn cap, told on every tool result by `timed`, the nudge after a
  *   turn that stops without `submit`, durable's compaction and retries, and OpenRouter as the
- *   backends serve it (`openrouter`, `src/agent/backends/models.ts`);
+ *   backends serve it (`openrouter`, `src/agent/backends/models.ts`), or, with `--solver`, a model
+ *   of the campaign's own backends as a campaign's solve is served it, for a benchmark rolled on
+ *   the host with no container and no proxy (`piAgent`, `studies/harness2/score.ts`), where
+ *   `--budget-usd` ends the solve once its turns' own dollars reach it, the turn cap may be left
+ *   out, and the solver's commands are given this process's environment less its credentials
+ *   (`keyless`), since the login that serves the model is in it and no wall stands before a command;
  * - the trace as `solve.turn`, `solve.call` and `solve.compacted` events in a log of its own,
  *   written by `sit` (`src/agent/session.ts`) and read by `src/kernel/trace.ts`, and the spend
  *   as `sit` sums a campaign's solve, so a change to the log's format has one owner to change;
@@ -70,14 +75,17 @@ import { harnessTools, openHarness } from "#src/harness/open.ts";
 import { installedPrograms } from "#src/harness/programs.ts";
 import { NUDGE } from "#src/solver/prompt.ts";
 import { raiseWall, timed, type Wall } from "#src/solver/run.ts";
-import { type SeatTool, sit } from "#src/agent/session.ts";
+import { type Seat, type SeatTool, sit } from "#src/agent/session.ts";
 import { trajectoryOf } from "./atif.ts";
 import { shellQuote, toolTreeSearchDirs } from "#src/wall/isolation.ts";
-import { LIMITS } from "#tools/d2/campaign.ts";
+import { LIMITS, seatBackends } from "#tools/d2/campaign.ts";
+import { modelNamed, sweepOptions } from "#tools/m0/stored-sweep.ts";
 
 /** The file names the Harbor agent reads back from the trial's log folder (`harbor/pi_agent.py`). */
 export const TRACE_FILE = "pi-log.jsonl";
 export const RESULT_FILE = "pi-result.json";
+/** A name of the environment that holds a credential, by the way such names are written. */
+const CREDENTIAL = /TOKEN|API_KEY|SECRET|PASSWORD/u;
 
 const OPTIONS = {
   harness: { type: "string" },
@@ -86,28 +94,39 @@ const OPTIONS = {
   model: { type: "string" },
   "base-url": { type: "string" },
   key: { type: "string" },
+  solver: { type: "string" },
   effort: { type: "string" },
   "model-turns": { type: "string" },
   "wall-minutes": { type: "string" },
+  "budget-usd": { type: "string" },
   prompts: { type: "string" },
   logs: { type: "string" },
   "dry-run": { type: "boolean" },
 } as const;
 
-/** How a solve ended: an answer, a crash, or the kernel's word for a solve that left none. */
-type Ending = "submitted" | "crash" | ReturnType<typeof unanswered>["kind"];
+/** How a solve ended: an answer, a crash, its dollar bound, or the kernel's word for a solve that
+ *  left none. */
+type Ending = "submitted" | "crash" | "budget" | ReturnType<typeof unanswered>["kind"];
+
+/** OpenRouter's model behind the benchmark's proxy, or `provider/model` on the campaign's backends. */
+type Route =
+  | { readonly model: string; readonly baseUrl: string; readonly key: string }
+  | { readonly solver: string };
+
+/** The model and the backends that serve it, as `sit` takes them. */
+type Served = Pick<Seat, "model" | "models">;
 
 interface Asked {
   readonly harness: string;
-  /** The harness's tools module as the host bundled it (`bundleArm`). */
-  readonly module: string;
+  /** The harness's tools module as the host bundled it (`bundleArm`); none where this runs from
+   *  source and `openHarness` bundles it. */
+  readonly module: string | undefined;
   readonly instruction: string;
-  readonly model: string;
-  readonly baseUrl: string;
-  readonly key: string;
+  readonly route: Route;
   readonly effort: ThinkingLevel;
-  readonly modelTurns: number;
+  readonly modelTurns: number | undefined;
   readonly wallSeconds: number;
+  readonly budgetUsd: number | undefined;
   readonly prompts: number;
   readonly logs: string;
   readonly dryRun: boolean;
@@ -125,17 +144,21 @@ function asked(args: readonly string[]): Asked {
     if (!Number.isInteger(value) || value <= 0) throw new Error(`--${name} is a whole number above 0`);
     return value;
   };
+  const budget = Number(values["budget-usd"]);
+  if (values["budget-usd"] !== undefined && !(budget > 0)) throw new Error("--budget-usd is dollars above 0");
   return {
     harness: need("harness"),
-    module: readFileSync(need("module"), "utf8"),
+    module: values.module === undefined ? undefined : readFileSync(values.module, "utf8"),
     instruction: readFileSync(need("instruction"), "utf8"),
-    model: need("model"),
-    baseUrl: need("base-url"),
-    key: need("key"),
+    route:
+      values.solver === undefined
+        ? { model: need("model"), baseUrl: need("base-url"), key: need("key") }
+        : { solver: values.solver },
     // SAFETY: pi refuses a level its catalogue entry does not map, on the first call.
     effort: need("effort") as ThinkingLevel,
-    modelTurns: count("model-turns"),
+    modelTurns: values["model-turns"] === undefined ? undefined : count("model-turns"),
     wallSeconds: count("wall-minutes") * 60,
+    budgetUsd: values["budget-usd"] === undefined ? undefined : budget,
     prompts: count("prompts"),
     logs: need("logs"),
     dryRun: values["dry-run"] === true,
@@ -152,7 +175,9 @@ function duty(ask: Asked, guide: string | null): string {
     // A harness built in a campaign learned a contract of `input.json` in and `answer.json` out;
     // a benchmark has neither, so its guide's word on them is named as not applying here.
     "This task has no input.json and no answer.json: the first message is the whole task, and the files you leave are the answer, whatever a guide says of those two files.",
-    `The case has ${String(Math.round(ask.wallSeconds / 60))} minutes of solve time and ${String(ask.modelTurns)} turns of yours, a turn being one reply of yours with the tool calls in it. Every tool result ends with how much of both is used. When either runs out the task ends with the files as they stand.`,
+    ask.modelTurns === undefined
+      ? `The case has ${String(Math.round(ask.wallSeconds / 60))} minutes of solve time. Every tool result ends with how much of it is used. When it runs out the task ends with the files as they stand.`
+      : `The case has ${String(Math.round(ask.wallSeconds / 60))} minutes of solve time and ${String(ask.modelTurns)} turns of yours, a turn being one reply of yours with the tool calls in it. Every tool result ends with how much of both is used. When either runs out the task ends with the files as they stand.`,
     ...(guide === null
       ? []
       : [
@@ -220,9 +245,39 @@ export async function harnessIn(
   return { harness, prefix, domain };
 }
 
+/** OpenRouter's entry for the model, with the benchmark's proxy as its URL and the token that
+ *  names its route as the key. */
+function throughProxy(route: Extract<Route, { model: string }>): Served {
+  const provider = openrouter();
+  const listed = provider.getModels().find(({ id }) => id === route.model);
+  if (listed === undefined) throw new Error(`OpenRouter as the backends serve it has no ${route.model}`);
+  const model = { ...listed, baseUrl: route.baseUrl };
+  const models = createModels({
+    authContext: {
+      env: async (name) => (name === "OPENROUTER_API_KEY" ? route.key : undefined),
+      fileExists: async () => false,
+    },
+  });
+  // sit resolves the model by provider and id, including for compaction; keep the proxy URL there.
+  models.setProvider({ ...provider, getModels: () => [model], getAllModels: () => [model] });
+  return { model, models: () => models };
+}
+
+/**
+ * The environment's credentials, each as a name a command of the solver is not given. On the
+ * backends' route this process holds the login that serves the model, and a command that inherited
+ * it could print it into a trace that is kept. A campaign's wall builds a command's environment from
+ * an allowlist instead and trusts no such filter (`src/wall/isolation.ts`); a benchmark's rollout
+ * runs with the environment of the process that rolls it, so here the names are taken out.
+ */
+export function keyless(names: readonly string[]): Record<string, undefined> {
+  return Object.fromEntries(names.filter((name) => CREDENTIAL.test(name)).map((name) => [name, undefined]));
+}
+
 async function solve(ask: Asked) {
   const cwd = runtimeProcess.cwd();
-  const env = new NodeExecutionEnv({ cwd });
+  const shellEnv = "solver" in ask.route ? keyless(Object.keys(runtimeProcess.env)) : {};
+  const env = new NodeExecutionEnv({ cwd, shellEnv });
   const clock: SolveClock = { started: null, seconds: ask.wallSeconds };
   const opened = await harnessIn(ask, env, clock).catch((error: unknown) => errorMessage(error));
   if (isString(opened)) return { ending: "broken-harness", reason: opened };
@@ -251,15 +306,25 @@ async function solve(ask: Asked) {
       ? []
       : [`Project-specific instructions and guidelines (${GUIDE_FILE}):\n${harness.guide}`]),
   ].join("\n\n");
-  const provider = openrouter();
-  const listed = provider.getModels().find(({ id }) => id === ask.model);
-  if (listed === undefined) throw new Error(`OpenRouter as the backends serve it has no ${ask.model}`);
+  const { route } = ask;
+  // A model of the campaign's own backends is served as a campaign's solve is (`practised`,
+  // `tools/d2/campaign.ts`): the same options, and the same refusal of a tree that moves under it.
+  const served: Served =
+    "solver" in route
+      ? {
+          model: modelNamed(route.solver),
+          models: (home, shutdown) => seatBackends(sweepOptions(home, undefined, shutdown)),
+        }
+      : throughProxy(route);
   if (ask.dryRun) {
     const tools = defined.map(({ name }) => name);
-    const proxy = await fetch(new URL("/health", ask.baseUrl)).then(
-      async (response) => ({ status: response.status, body: await response.text() }),
-      (error: unknown) => ({ status: null, body: errorMessage(error) }),
-    );
+    const proxy =
+      "solver" in route
+        ? null
+        : await fetch(new URL("/health", route.baseUrl)).then(
+            async (response) => ({ status: response.status, body: await response.text() }),
+            (error: unknown) => ({ status: null, body: errorMessage(error) }),
+          );
     return {
       ending: "dry-run",
       harness: harness.digest,
@@ -269,15 +334,6 @@ async function solve(ask: Asked) {
       proxy,
     };
   }
-  const model = { ...listed, baseUrl: ask.baseUrl };
-  const models = createModels({
-    authContext: {
-      env: async (name) => (name === "OPENROUTER_API_KEY" ? ask.key : undefined),
-      fileExists: async () => false,
-    },
-  });
-  // sit resolves the model by provider and id, including for compaction; keep the proxy URL there.
-  models.setProvider({ ...provider, getModels: () => [model], getAllModels: () => [model] });
   const turns: AssistantMessage[] = [];
   const started = performance.now();
   clock.started = started;
@@ -287,10 +343,14 @@ async function solve(ask: Asked) {
   );
   const log = join(ask.logs, TRACE_FILE);
   let prompts = 1;
+  // The dollar bound, as a rollout under Claude Code is held by its `--max-budget-usd`: read after
+  // each turn from the turns' own dollars at list price, which leave out what a compaction or a
+  // retried attempt billed, so the result's bill can pass the bound by those.
+  const budget = new AbortController();
+  const bound = ask.budgetUsd ?? Infinity;
   const { thrown: crash, spent } = await sit({
-    models: () => models,
+    ...served,
     id: "pi-solve",
-    model,
     effort: ask.effort,
     system: prompt,
     opening: ask.instruction,
@@ -300,7 +360,10 @@ async function solve(ask: Asked) {
     trace: { log, of: "solve" },
     turns,
     most: ask.modelTurns,
-    onTurn: wall.onTurn,
+    onTurn: () => {
+      wall.onTurn();
+      if (turns.reduce((sum, turn) => sum + turn.usage.cost.total, 0) >= bound) budget.abort();
+    },
     onTool: wall.onTool,
     over: () => said.submitted,
     next: async () => {
@@ -308,21 +371,22 @@ async function solve(ask: Asked) {
       prompts += 1;
       return NUDGE;
     },
-    stops: [wall.signal],
+    stops: [wall.signal, budget.signal],
   });
   wall.lower();
   // Harbor's viewer and `harbor analyze` read an agent's run from `agent/trajectory.json`.
+  const named = "solver" in route ? route.solver : route.model;
   const trajectory = trajectoryOf(read(log), "solve", "pi-solve", {
     name: "anabasis",
     version: harness.digest,
-    model: ask.model,
+    model: named,
   });
   writeFileSync(join(ask.logs, "trajectory.json"), `${capturedJsonStringify(trajectory, null, 2)}\n`);
   return {
-    ending: endingOf({ crash, submitted: said.submitted, wall, turns, ask }),
+    ending: endingOf({ crash, submitted: said.submitted, budget: budget.signal.aborted, wall, turns, ask }),
     crash,
     harness: harness.digest,
-    model: ask.model,
+    model: named,
     effort: ask.effort,
     prompts,
     seconds: (performance.now() - started) / 1000,
@@ -344,13 +408,15 @@ function resolved(prefix: string | undefined, programs: readonly string[]): stri
 function endingOf(played: {
   crash: string | null;
   submitted: boolean;
+  budget: boolean;
   wall: Wall;
   turns: readonly AssistantMessage[];
   ask: Asked;
 }): Ending {
   if (played.crash !== null) return "crash";
   if (played.submitted) return "submitted";
-  const turnsEnded = played.turns.length >= played.ask.modelTurns;
+  if (played.budget) return "budget";
+  const turnsEnded = played.turns.length >= (played.ask.modelTurns ?? Infinity);
   const { wall } = played;
   const last = played.turns.at(-1);
   return unanswered({ wallEnded: wall.signal.aborted, silentSeconds: wall.silentSeconds, turnsEnded, last })

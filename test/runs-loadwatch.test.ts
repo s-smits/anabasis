@@ -9,16 +9,18 @@ import { runSync } from "../src/meta/subprocess.ts";
 
 const bin = mkdtempSync(join(tmpdir(), "ana-loadwatch-test-"));
 afterAll(() => rmSync(bin, { recursive: true, force: true }));
-// A stand-in ssh: the host `gone` refuses the connection, any other runs the command it was given here.
+// A stand-in ssh: the host `gone` refuses the connection, `busy` answers one sample of 4 cores under a
+// load of 400, and any other runs the command it was given here.
 writeFileSync(
   join(bin, "ssh"),
-  `#!/bin/sh\nfor last; do :; done\ncase " $* " in *" gone "*) exit 255;; esac\nexec /bin/sh -c "$last"\n`,
+  `#!/bin/sh\nfor last; do :; done\ncase " $* " in *" gone "*) exit 255;; *" busy "*) printf '4\\n400.00 400.00 400.00\\n0\\n---\\n'; exit 0;; esac\nexec /bin/sh -c "$last"\n`,
 );
 chmodSync(join(bin, "ssh"), 0o755);
 
-test("one frame reads this machine and a reachable host, and names an unreachable one", () => {
+test("one frame reads this machine and a reachable host, names an unreachable one and ranks the rest", () => {
   const hosts = [
     { name: "peer", ssh: "peer", tree: "/unused", bun: "bun" },
+    { name: "loaded", ssh: "busy", tree: "/unused", bun: "bun" },
     { name: "lost", ssh: "gone", tree: "/unused", bun: "bun" },
   ];
   const env = {
@@ -33,12 +35,17 @@ test("one frame reads this machine and a reachable host, and names an unreachabl
   expect(result.exitCode).toBe(0);
   const frame = Bun.stripANSI(result.stdout.toString());
   const blocks = frame.split("\n\n").slice(1, -1);
-  expect(blocks).toHaveLength(3);
+  expect(blocks).toHaveLength(4);
   for (const block of blocks.slice(0, 2)) {
     expect(block).toMatch(/^\S+ +\d+ cores\n {2}cpu now .* +\d+%\n {2}load 1m .*\(\d+\.\d\d\)/u);
   }
   expect(blocks[1]?.startsWith("peer ")).toBe(true);
-  expect(blocks[2]).toMatch(/^lost +UNREACHABLE\n/u);
+  expect(blocks[3]).toMatch(/^lost +UNREACHABLE\n/u);
+  // The order is by load a core, so the host under 400 on 4 cores comes last, and the host that did
+  // not answer has no place in it.
+  const order = (/\nleast loaded first, 1m load a core: (.+)$/u.exec(frame.trimEnd())?.[1] ?? "").split(", ");
+  expect(order).toHaveLength(3);
+  expect(order.at(-1)).toBe("loaded 100.00");
 });
 
 test("a malformed interval is refused with the usage line", () => {

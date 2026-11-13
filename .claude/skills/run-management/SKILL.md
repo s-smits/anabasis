@@ -37,6 +37,7 @@ campaign; `copy <name> --to <worktree>` brings one back.
 | `fetch [<name>] [--from <host>]` | copies a peer's campaign, or every peer's records, into the archive; a copy leaves installed packages and caches on its host, so it is read and never run | `move.ts` |
 | `retire [--days 1] [--yes]` | archives idle campaigns, deletes seeds and stale worktrees, refreshes peers' records, and takes over what the host `ABLATION_HOST` names has archived | `retire.ts` |
 | `on <host> <verb ...>`, `hosts [--all] [--health]` | a verb on another host; each host's status or health | `hosts.ts` |
+| `loadwatch [<seconds>] [--once]` | each machine's CPU and load, live; `--once` prints one frame and ends it with the machines in order, least loaded first | `loadwatch.ts` |
 | `pulse [<part> ...] [--every 290] [--state <file>] [--no-readers]` | what each run gained since the last look | `pulse.ts` |
 | `alerts [--state <file>]` | the same for cron, one line per new event | `alerts.ts` |
 | `view <name>` | one campaign as its log reads, and the table's next move | `view.ts` |
@@ -69,7 +70,11 @@ run's login pays for the fewest live runs, then one that already ran project `<p
 fewest live campaigns and seats, ties in configuration order. The caps are `ANA_RUN_CAP` here and
 each peer's `capacity` in `ANA_HOSTS`, both 2 where unset; `--host here` picks this machine. A peer whose entry lists `packs` takes
 only those packs, and they go nowhere else. Counts are observations that reserve nothing, so launch
-one after another. On a peer, `fresh` prepares a controller at the commit (fetch, a detached worktree
+one after another. Placement counts runs and never load, and a deadline counts elapsed time, so read
+`bun run runs loadwatch --once` before a launch, a `continue` or a `move`: its last line orders the
+machines that answered by one-minute load a core, least loaded first (a machine that did not answer
+is in no place of it). Where the least loaded machine below its cap is another than the one the dry
+run names, name it with `--host`; with many hosts this line, not the frame above it, is the reading. On a peer, `fresh` prepares a controller at the commit (fetch, a detached worktree
 under Git's `ana-code/`, a frozen install) and leaves the configured checkout alone.
 
 **Login.** For Claude seats, `fresh` takes `--login` or chooses, from the allowed logins, one with a

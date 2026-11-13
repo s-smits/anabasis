@@ -10,6 +10,7 @@ import { short } from "../src/campaign/move.ts";
 import { pendingWords } from "../src/campaign/word.ts";
 import { examine } from "../src/examiner/session.ts";
 import { append, LOG_FILE, type LogEvent, read } from "../src/kernel/log.ts";
+import { sizeLines } from "../src/kernel/size.ts";
 import { taskSets } from "../src/kernel/task.ts";
 import {
   mkdirSync,
@@ -259,6 +260,11 @@ describe("a campaign run by its live Builder", () => {
     expect(examinerCall?.text).toContain("Examiner session x-1 is writing beside this conversation");
     expect(examinerCall?.text).not.toContain("Suggested action");
     expect(examinerCall?.text).toContain("Campaign facts: 5 held-out tasks, 2 practice tasks.");
+    // Before a first comparison the two counts are read out: the practice named is all released,
+    // and a comparison scores the target's five of the tasks held.
+    expect(examinerCall?.text).toContain(
+      `No comparison has a tally yet. Released for practice: 2 of the 2 tasks the campaign names. ${sizeLines(5, 0.125)[0] ?? ""}.`,
+    );
     expect(examinerCall?.text).not.toContain("check-product");
     // wait returns once the session beside it has ended, with the campaign's facts.
     const ended = events.findIndex(({ kind, data }) => kind === "exam.finished" && data.session === "x-1");
@@ -543,6 +549,10 @@ describe("a campaign run by its live Builder", () => {
       expect(releasedWhileWriting(name)).toBe(1);
       const [told] = said(name, "wait");
       expect(told).toContain("Campaign facts: 9 held-out tasks, 4 practice tasks.");
+      // Nine are held and the target scores five of them.
+      expect(told).toContain(
+        `Released for practice: 4 of the 4 tasks the campaign names. ${sizeLines(5, 0.125)[0] ?? ""}.`,
+      );
       expect(told).toContain("x-1");
       expect(told).not.toContain("check-product");
       expect(of(name, MOVED, true).filter(({ code }) => code === "practice")).toMatchObject([
@@ -588,6 +598,10 @@ describe("a campaign run by its live Builder", () => {
       expect(at(`${CALLED}:wait`)).toBeGreaterThan(at(EXAMINED));
       expect(releasedWhileWriting(name)).toBe(0);
       expect(said(name, "wait")[0]).not.toContain("The host released");
+      // The Builder reads why: one practice task is still to come, and the floor holds it back.
+      expect(said(name, "wait")[0]).toContain(
+        `Released for practice: 3 of the 4 tasks the campaign names, and another only while more than 5 tasks stay held out. ${sizeLines(5, 0.125)[0] ?? ""}.`,
+      );
       expect(of(name, MOVED, true).filter(({ code }) => code === "practice")).toEqual([]);
     });
 
@@ -1482,6 +1496,9 @@ describe("a campaign tool where the table names more than the action", () => {
     }));
     expect(facts.length).toBeGreaterThan(whole ? 4 : 1);
     for (const { campaign, count } of facts) expect(count).toBe(campaign ? 1 : 0);
+    // What a first comparison can read is said before one has a tally, and never after: from then
+    // the tasks a comparison scores follow which were answered.
+    for (const text of said(name, "campaign_status")) expect(text).not.toContain("the campaign names");
     return (
       of(name, CALLED)
         .map(({ tool, text }) => `${isString(tool) ? tool : ""}: ${isString(text) ? text : ""}`)

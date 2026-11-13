@@ -549,7 +549,8 @@ function tallyReports(
  * with a starter comparison the 18 whose step still read at one task a family were confirmed 13
  * times, the other 37 12 times), so for a day the pool held one task a family. Read 13 November:
  * that draw refused 20 of 27 recorded jobstat comparison starts and admitted 7 at 8 to 11 tasks,
- * and the 8 comparisons run under it scored 8 tasks each and read no step. So the family reading is
+ * and the 8 comparisons run under it, or with every task a family of its own, scored 8 tasks each
+ * and read no step, 3 of them under the draw itself, all in one campaign. So the family reading is
  * reported beside the test (`compared`'s `families`, `tools/wri/scores.ts`) and decides nothing.
  *
  * **Known valid answers** are recorded for task versions: a solve's, under any harness

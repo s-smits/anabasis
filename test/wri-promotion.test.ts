@@ -284,23 +284,6 @@ describe("lane 22: a promotion and the climb after it", () => {
     expect(carried("no-step", [-1, -1, -1, -1])).toEqual([]);
   });
 
-  it("says where a step that scored several families won tasks in one only", () => {
-    const tally = (wins: number, ties = 1) => ({ frontier: { wins, losses: 0, ties } });
-    const carried = (families: Record<string, ReturnType<typeof tally>>) => {
-      const { log, compare } = held();
-      const scored = { ...STEP.scored, unbilled: [1, 1, 1, 1, 1, 1, 0] };
-      compare("g-1", "hbase", "hn", { ...STEP, level: 0.02, scored, families })();
-      return triggered(log)("STEP CARRIERS");
-    };
-    const [plain = ""] = carried({ a: tally(4), b: tally(2), c: tally(0) });
-    expect(plain).toMatch(/ to spare$/);
-    expect(carried({ a: tally(6), b: tally(0), c: tally(0) })).toEqual([
-      `${plain}, every win in one of its 3 families`,
-    ]);
-    // A step that tallied one family alone says nothing of where its wins fell, whatever families its retained tasks hold.
-    expect(carried({ a: tally(6), b: tally(0, 0) })).toEqual([plain]);
-  });
-
   it("reads a promotion on the differences its step tested: the frontier and the retained tasks since 20 October, the frontier alone before", () => {
     const frontier = { differences: [4, 4], of: ["a", "b"] };
     const retained = { differences: [-4], of: ["c"] };

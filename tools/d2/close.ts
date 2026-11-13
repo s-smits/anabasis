@@ -67,7 +67,7 @@ import { frozenChecker, unadmitted } from "#src/kernel/acceptance.ts";
 import { writtenTasks } from "#src/kernel/history.ts";
 import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
 import { comparisonsOf } from "#src/campaign/ground.ts";
-import { lastReports, promoted } from "#src/kernel/reports.ts";
+import { endedOf, lastReports, promoted } from "#src/kernel/reports.ts";
 import { billedAll, billedParts, costLine, spendOf } from "#src/kernel/meter.ts";
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
@@ -77,7 +77,7 @@ import { join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { openHarness } from "#src/harness/open.ts";
-import { campaignLog, keptAs, openCampaign, PROMOTED, packNamed } from "./campaign.ts";
+import { campaignLog, keptAs, openCampaign, PACK_OPTIONS, PROMOTED, packNamed } from "./campaign.ts";
 import { type Seated, solved } from "./round.ts";
 import { recordedSetting, SETTING_OPTIONS, settingNamed } from "./setting.ts";
 
@@ -85,11 +85,7 @@ type Campaign = Awaited<ReturnType<typeof openCampaign>>;
 type Compared = Extract<Handover, { step: "comparison" }>;
 
 const OPTIONS = {
-  root: { type: "string" },
-  sweep: { type: "string" },
-  cycle: { type: "string" },
-  bundle: { type: "string" },
-  name: { type: "string" },
+  ...PACK_OPTIONS,
   to: { type: "string" },
   harness: { type: "string" },
   solve: { type: "string" },
@@ -124,7 +120,7 @@ function comparisonRow(step: Compared, called: Called): string {
 function closingReport(name: string, events: readonly LogEvent[], handed: string, asked?: string): string {
   const { steps, supply } = campaignOf(events);
   const comparisons = steps.filter((step): step is Compared => step.step === "comparison");
-  const ended = events.at(-1)?.kind === "campaign.ended" ? events.at(-1)?.data : undefined;
+  const ended = endedOf(events);
   const opening = openingOf(events);
   const setting = recordedSetting(events);
   const reference = promoted(events);
@@ -162,9 +158,9 @@ function closingReport(name: string, events: readonly LogEvent[], handed: string
       : "the reference harness, promoted as below";
   return [
     `# ${name}: closing report`,
-    ended === undefined
-      ? `The campaign has not ended: the last event of its log is \`${events.at(-1)?.kind ?? "none"}\`.`
-      : `The campaign ended on its ${isString(ended.ending) ? ended.ending : "?"}: ${isString(ended.why) ? ended.why : ""}.`,
+    ended === null
+      ? `The campaign's log names no ending: its last event is \`${events.at(-1)?.kind ?? "none"}\`.`
+      : `The campaign ended on its ${ended.ending}: ${ended.why}.`,
     `It hands over harness ${called(handed)}, in \`harness/\`: ${
       asked === undefined
         ? defaulted
@@ -297,10 +293,10 @@ function promotionLines(
     ),
   );
   const worths = promotionsWorth(events);
-  return events.flatMap(({ kind, at, data }, index) => {
-    if (kind !== "harness.promoted" || !isString(data.harness)) return [];
-    // The first over the Starter is set-up, epoch 0, and the climb counts from it.
-    const nth = events.slice(0, index).filter((each) => each.kind === "harness.promoted").length;
+  // The first over the Starter is set-up, epoch 0, and the climb counts from it.
+  const promotions = events.filter(({ kind }) => kind === "harness.promoted");
+  return promotions.flatMap(({ at, data }, nth) => {
+    if (!isString(data.harness)) return [];
     const worth = worths.get(data.harness);
     const rung = nth === 0 ? "set-up (epoch 0)" : `rung ${String(nth)} of the climb`;
     const from = imported.get(data.harness);

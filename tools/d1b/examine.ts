@@ -58,7 +58,16 @@ import { parseArgs } from "#src/meta/process.ts";
 import { solverLast } from "#src/kernel/solves.ts";
 import type { Task } from "#src/kernel/verify.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { campaignLog, keptAs, openCampaign, packNamed, PROMOTED, REPO, stayAwake } from "../d2/campaign.ts";
+import {
+  campaignLog,
+  keptAs,
+  openCampaign,
+  PACK_OPTIONS,
+  packNamed,
+  PROMOTED,
+  REPO,
+  stayAwake,
+} from "../d2/campaign.ts";
 import { type Campaign, type Seated, solved, solvingAs } from "../d2/round.ts";
 import {
   type AskedSetting,
@@ -72,11 +81,7 @@ import { modelNamed } from "../m0/stored-sweep.ts";
 
 /** An Examiner session's flags and their defaults. */
 const EXAMINE_OPTIONS = {
-  root: { type: "string" },
-  sweep: { type: "string" },
-  cycle: { type: "string" },
-  bundle: { type: "string" },
-  name: { type: "string" },
+  ...PACK_OPTIONS,
   session: { type: "string" },
   examiner: { type: "string" },
   "examiner-effort": { type: "string", default: "high" },

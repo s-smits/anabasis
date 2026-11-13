@@ -30,9 +30,8 @@ import { reported } from "../../../../src/campaign/comparison.ts";
 import { namesOf } from "../../../../src/campaign/names.ts";
 import { budgetLeft } from "../../../../src/campaign/opening.ts";
 import { readsStepEitherWay } from "../../../../src/kernel/compare.ts";
-import { patienceOf } from "../../../../src/kernel/reports.ts";
+import { endedOf, patienceOf } from "../../../../src/kernel/reports.ts";
 import { billedAll, billedParts } from "../../../../src/kernel/meter.ts";
-import { isString } from "../../../../src/meta/json-shape.ts";
 import { keyIfDefined } from "../../../../src/meta/optional-key.ts";
 import { errorMessage } from "../../../../src/meta/runtime-values.ts";
 import { recordedSetting } from "../../../../tools/d2/setting.ts";
@@ -82,14 +81,11 @@ const ENVIRONMENT_WITHHELD = "withheld in the default tier: it quotes the error 
  *  default tier those the controller words itself (`WORDED`). */
 const reasonSaid = (ending: Ending, tier: Tier): boolean => examTier(tier) || WORDED.has(ending);
 
-/** How a campaign ended, where its last event is its ending: one before the last event is an
- *  ending the campaign went on from. Read from `campaign.ended`, which no fold reads. */
+/** How a campaign ended (`endedOf`), among the endings the page knows. */
 function endingOf(log: Log): { readonly ending: Ending; readonly why: string } | null {
-  const last = log.events.at(-1);
-  if (last?.kind !== "campaign.ended") return null;
-  const ending = ENDINGS.find((each) => each === last.data.ending);
-  if (ending === undefined) return null;
-  return { ending, why: isString(last.data.why) ? last.data.why : "" };
+  const ended = endedOf(log.events);
+  const ending = ENDINGS.find((each) => each === ended?.ending);
+  return ended === null || ending === undefined ? null : { ending, why: ended.why };
 }
 
 /** What a campaign's row holds of its log alone, kept with the log, and by the list in place of the

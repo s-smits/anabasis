@@ -165,7 +165,9 @@ the verb refused with the run still running, and then reads the rest again, so a
 comparison during the asking is waited for; `move --after` counts before its wait only. A waiting
 `pause` or `continue` is itself the process that stops the run, and a second one is refused while it
 lives, so start it with `nohup`: one started in a session's shell ends with the session, and the run
-then never rests. `--after next`, the
+then never rests. Start it from a detached worktree at a published commit and leave that HEAD where
+it is until the verb has ended: the keeper it leaves, and any verb sent to a peer, run the tree as
+it stands when they act, not as it stood when the wait began. `--after next`, the
 default, drains the run to save credit: no further solve starts, and it stops at the next finished
 solve or tool call, or a minute past the solve limit. Sessions spend until then; `runs stop` frees a
 login at once. Its pause word (`campaign.word`, `PAUSE`) is in the log once written and holds every

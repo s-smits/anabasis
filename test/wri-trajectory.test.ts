@@ -71,6 +71,19 @@ describe("what a harness wrote", () => {
     expect(own).toEqual(["bin/check", "lib/model.py"]);
   });
 
+  test("an interpreter's home goes whole under any name, and the tool tree itself is no home", () => {
+    const own = ownPrograms([
+      file("bin/check"),
+      file("lib/check_answer.py"),
+      file("pyhome/py313/BUILD"),
+      file("pyhome/py313/lib/python3.13/locale.py"),
+      file("pyhome/py313/lib/tcl9.0/safe.tcl"),
+    ]);
+    expect(own).toEqual(["bin/check", "lib/check_answer.py"]);
+    const prefixed = [file("bin/check"), file("lib/own.py"), file("lib/python3.13/own.py")];
+    expect(ownPrograms(prefixed)).toEqual(prefixed.map(({ path }) => path));
+  });
+
   test("a harness's own folder named like a package stays without an install mark", () => {
     expect(ownPrograms([file("lib/numpy/own.py")])).toEqual(["lib/numpy/own.py"]);
   });

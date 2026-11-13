@@ -308,6 +308,49 @@ describe("going on with a campaign", () => {
     expect(raced.out.trim().split("\n").at(-1)).toBe("waits");
   });
 
+  it("asks at the point what the start would refuse, before the stop, so that a refusal leaves the run running", async () => {
+    const made = fakeHosts();
+    fixtures.push(made.root);
+    const name = "pointed";
+    const folder = join(made.main, ".ana", "d2", name);
+    mkdirSync(folder, { recursive: true });
+    const log = join(folder, "log.jsonl");
+    append(log, "build.started", { session: "b-1" });
+    // The campaign command's dry run passes, as before any pause a continue waits for.
+    mkdirSync(join(made.main, "tools", "d2"), { recursive: true });
+    writeFileSync(join(made.main, "tools", "d2", "harness-builder.ts"), "process.exit(0);\n");
+    const keeper = capturedSpawn({
+      cmd: ["sleep", "60"],
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "ignore",
+      detached: true,
+    });
+    const row = `${String(keeper.pid)} ${capturedExecPath} tools/runs/cli.ts keep ${name} --here`;
+    // The driver shortens the pause's 30-second look, and the log gains its report while the verb
+    // waits; the remote answers no fetch, which the start after a stop would have met too late.
+    const driver = [
+      'import { append } from "REPOSITORY/src/kernel/log.ts";',
+      "const sleep = Bun.sleep; Bun.sleep = (ms) => sleep(Math.min(Number(ms), 100));",
+      'const { continueRun } = await import("REPOSITORY/tools/runs/manage.ts");',
+      `setTimeout(() => append(${JSON.stringify(log)}, "comparison.reported", { session: "g-1", reading: "no-step" }), 300);`,
+      `await continueRun(${JSON.stringify([name, "--after", "reported", "--yes", "--", "--target", "8"])});`,
+    ].join("\n");
+    try {
+      const refused = made.run(driver, { FAKE_PS: row, FAKE_FETCH_FAIL: "1" });
+      expect(refused.code).not.toBe(0);
+      expect(refused.out).toContain("waiting for comparison.reported past 0");
+      expect(refused.out).not.toContain("its keeper");
+      const ended = () => Promise.race([keeper.exited.then(() => true), Bun.sleep(500).then(() => false)]);
+      expect(await ended()).toBe(false);
+      // With a remote that answers, the same wait stops the run at its next report.
+      expect(made.run(driver, { FAKE_PS: row }).out).toContain("its keeper");
+      expect(await ended()).toBe(true);
+    } finally {
+      keeper.kill();
+    }
+  });
+
   it("refuses a second waiter on one run, which could start again a run the first had stopped", () => {
     const made = fakeHosts();
     fixtures.push(made.root);

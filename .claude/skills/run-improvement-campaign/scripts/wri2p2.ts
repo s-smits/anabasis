@@ -106,6 +106,7 @@ import {
   cycleViewOf,
   forkOf,
   idsOf,
+  launchForks,
   ledgerFiles,
   ledgerOf,
   names,
@@ -227,14 +228,14 @@ function ledgersOf(root: string, dir: string, name: string) {
 
 /**
  * What a fork owes the iteration that made it: in its `## Carried` section, each id the parent
- * iteration's runs did not hold, as `<run>:<id>`. A run that is no fork, or whose parent wrote no
- * plan, owes nothing.
+ * iteration's runs did not hold, as `<run>:<id>`: the one whose plan names its pull request or whose
+ * `launch` deviation names it (`launchForks`). A run that is no fork or has no such parent owes nothing.
  */
 function carryOwed(where: Ledgers, run: string, predictions: string): string[] | null {
   const pull = forkOf(run);
   if (pull === null) return null;
   const parents = investigations(where.root)
-    .filter(({ dir }) => pullOf(read(join(dir, PLAN))) === pull)
+    .filter(({ dir }) => pullOf(read(join(dir, PLAN))) === pull || namedForks(dir).includes(run))
     .flatMap(({ dir, names: runs }) => runs.map((name) => ledgersOf(where.root, dir, name)));
   const { missing: absent } = carryOf(read(predictions), parents);
   return absent.length === 0
@@ -332,6 +333,8 @@ function deviationsOf(dir: string): Map<string, string> {
   );
 }
 
+const namedForks = (dir: string): string[] => launchForks(read(join(dir, DEVIATIONS)));
+
 /** The first gate owed and not deviated from, as its lines, with each deviation passed on the way. */
 function firstOwed(
   gates: readonly Gate[],
@@ -356,6 +359,7 @@ function gatesOf(where: Ledgers, launchedAt: (pull: number) => string[], passed:
   const wri = (verb: string, more = "") => `  bun ${WRI} ${verb} --out ${dir}${more}`;
   const runs = runsOf(dir);
   const pull = () => pullOf(read(at(PLAN))) ?? 0;
+  const forks = () => [...new Set([...launchedAt(pull()), ...namedForks(dir)])];
   const kind = kindOf(dir);
   const only = (gates: Gate[]): Gate[] => (kind === "iteration" ? gates : []);
   return [
@@ -440,7 +444,7 @@ function gatesOf(where: Ledgers, launchedAt: (pull: number) => string[], passed:
       "launch",
       null,
       () =>
-        launchedAt(pull()).length > 0
+        forks().length > 0
           ? null
           : [
               `step: launch · take each run's name from the dry run, write its predictions-<run>.md in the cycle's folder (a "## Carried" section for what this iteration did not hold), then fork at #${String(pull())}'s head on the host and login with room`,
@@ -453,7 +457,7 @@ function gatesOf(where: Ledgers, launchedAt: (pull: number) => string[], passed:
         null,
         () =>
           firstOwed(
-            launchedAt(pull()).flatMap((fork) =>
+            forks().flatMap((fork) =>
               runGates(where, fork).filter(([step]) => step === "predictions" || step === "carry"),
             ),
             deviationsOf(dir),
@@ -461,7 +465,7 @@ function gatesOf(where: Ledgers, launchedAt: (pull: number) => string[], passed:
           ),
       ],
     ]),
-    ["done", null, () => [`step: done · #${String(pull())} is measured by ${launchedAt(pull()).join(", ")}`]],
+    ["done", null, () => [`step: done · #${String(pull())} is measured by ${forks().join(", ")}`]],
   ];
 }
 

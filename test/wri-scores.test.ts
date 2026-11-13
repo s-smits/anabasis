@@ -152,6 +152,30 @@ describe("a step", () => {
   });
 });
 
+describe("the tally by practice", () => {
+  const sibling = [...proposed("p-1", "x-1"), event("task.state", { version: "p-1", state: "released" })];
+  const reportAt = events.findIndex(
+    ({ kind, data }) => kind === "comparison.reported" && data.session === "g-1",
+  );
+  const said = (log: readonly LogEvent[]) =>
+    scoreRows(log).find((line) => line.trimStart().startsWith("by practice")) ?? "";
+
+  it("puts every score on the practised side once a task of the family was practice before the report", () => {
+    expect(said([...sibling, ...events])).toBe(
+      "  by practice: a task of the family was practice before the start 9-0-1 p 0.002; none was 0-0-0 p 1.000",
+    );
+  });
+
+  it("counts no sibling released after the report, nor one released after a recorded start", () => {
+    const none =
+      "  by practice: a task of the family was practice before the start 0-0-0 p 1.000; none was 9-0-1 p 0.002";
+    expect(said(events)).toBe(none);
+    expect(said([...events.slice(0, reportAt + 1), ...sibling, ...events.slice(reportAt + 1)])).toBe(none);
+    const started = event("comparison.started", { session: "g-1" });
+    expect(said([started, ...sibling, ...events])).toBe(none);
+  });
+});
+
 describe("a comparison with no recorded scores", () => {
   it("says the report is absent for one begun and never reported, and recounts nothing", () => {
     expect(block("g-2")[0]).toContain("report absent");

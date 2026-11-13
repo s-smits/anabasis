@@ -28,7 +28,7 @@ const DIGEST_CHARS = 8;
 
 /** Where a run owes its next step, which names an investigation and stops nothing: two promotions
  *  or twelve hours, and two starter comparisons read before a pause. */
-export const TRIGGER_AT = { promotions: 2, hours: 12 } as const;
+const TRIGGER_AT = { promotions: 2, hours: 12 } as const;
 /** The loop's driver, whose `open` a look names where a stopped run's investigation is due. */
 export const DRIVER = ".claude/skills/run-improvement-campaign/scripts/wri2p2.ts";
 
@@ -313,13 +313,10 @@ export function progressOf<Run extends { readonly live: boolean }>(
 }
 
 /** Why an investigation opens on `row` now, or null while it runs on. */
-export function triggerOf(
-  row: Progress,
-  limits: { promotions: number; hours: number } = TRIGGER_AT,
-): string | null {
-  if (row.promotions >= limits.promotions) return `${String(row.promotions)} promotions`;
+export function triggerOf(row: Progress): string | null {
+  if (row.promotions >= TRIGGER_AT.promotions) return `${String(row.promotions)} promotions`;
   if (row.allTied) return "a comparison left no task untied";
-  if (row.hours >= limits.hours) return `${row.hours.toFixed(1)} h since its opening`;
+  if (row.hours >= TRIGGER_AT.hours) return `${row.hours.toFixed(1)} h since its opening`;
   // A run that ended before any comparison measured nothing an iteration could read.
   if (!row.live && row.compared > 0) return `closed${row.ending === null ? "" : ` (${row.ending})`}`;
   return null;

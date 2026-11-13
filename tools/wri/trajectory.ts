@@ -60,6 +60,9 @@ const SILENCE = 30 * 60 * 1000;
 /** Path segments of what a harness installed rather than wrote. */
 const INSTALLED =
   /(^|\/)(python|site-packages|dist-packages|node_modules|\.?venv|vendor|include|__pycache__)(\/|$)/;
+/** A bundled interpreter's home, known by the library folder its build lays out, whatever the home
+ *  is named. The tool tree itself is no such home: a harness keeps its own programs there. */
+const HOME = /\/lib\/python\d[\d.]*\//;
 /** An installed package's metadata folder, and what follows its package's name in that folder's name. */
 const METADATA = /\.(?:dist-info|egg-info)$/;
 const PAST_NAME = /(?:-[^/]*)?\.(?:dist-info|egg-info)$/;
@@ -306,17 +309,22 @@ function installedBy(files: readonly { readonly path: string }[], recordOf: (pat
  *  of the tree by its path, or gives null): not an installed folder (`INSTALLED`, a wheel's `.libs`),
  *  not a file an installed package's metadata names, and not a binary-sized file. A harness's own
  *  module beside installed packages stays: until 10 November one `.dist-info` dropped the whole folder
- *  that held it, which hid a jobstat harness's own `pylib/statkit.py` behind thirteen packages. */
+ *  that held it, which hid a jobstat harness's own `pylib/statkit.py` behind thirteen packages. An
+ *  interpreter's home goes whole (`HOME`): on 13 November 882 of the 888 files read as written by a
+ *  jobstat harness were the standard library of one it kept under a name of its own, and 30 of the
+ *  32 places where `names.ts` found a task's identifier were lines of that library. */
 export function ownPrograms(
   files: readonly { readonly path: string; readonly bytes: number }[],
   recordOf: (path: string) => string | null = () => null,
 ): string[] {
   const installed = installedBy(files, recordOf);
+  const homes = [...new Set(files.map(({ path }) => path.slice(0, path.search(HOME) + 1)))].filter(Boolean);
   return files
     .filter(
       ({ path, bytes }) =>
         bytes <= WRITTEN_BYTES &&
         !INSTALLED.test(path) &&
+        !homes.some((home) => path.startsWith(home)) &&
         !LIBS.test(path) &&
         !installed.paths.has(path) &&
         !installed.folders.some((folder) => path.startsWith(folder)),

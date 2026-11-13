@@ -13,6 +13,10 @@
  *
  * An arm is `base` (Harness²'s base harness, the pilot's Base), `starter` or a campaign's name
  * (its kept harness written out by `claude-export.ts`, `--harness` as `keptAs` takes it),
+ * `pi:starter` or `pi:<campaign>` (the same harness as it is kept, solved inside by
+ * `../shared/pi-solve.ts` on pi-durable and the campaign's own backend, so that its own tools are
+ * callable and its programs first on the path, where the export drops the one and leaves the other
+ * off it; the operator, 13 November 2026, on finding every arm rolled under Claude Code),
  * `tree:<dir>` (any Claude Code tree), `heldout` (task N under the sweep's final harness of task
  * N-1) or `sweep:base1` and `sweep:agg1` (the sweep's own rollouts in `--out`, judged and rolled
  * by nothing else). Scoring into the sweep's `--out` keeps every arm in one store, as the pilot's
@@ -53,10 +57,13 @@
  * docx, pdfplumber, mammoth) 88 and 54 times, where Base's met it 12 times and k=1's never.
  * Here every arm gets the sweep's PATH (`pilotClaude`).
  */
+import { openHarness } from "#src/harness/open.ts";
 import { billedAll } from "#src/kernel/meter.ts";
 import { read } from "#src/kernel/log.ts";
+import { TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
 import {
   appendFileSync,
+  cpSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -68,14 +75,18 @@ import {
 } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isNumber, isRecord, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
-import { keyIfDefined } from "#src/meta/optional-key.ts";
-import { dirname, join, resolve } from "#src/meta/path.ts";
-import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { keyIfDefined, keysIf } from "#src/meta/optional-key.ts";
+import { tmpdir } from "#src/meta/os.ts";
+import { basename, dirname, join, resolve } from "#src/meta/path.ts";
+import { capturedExecPath, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
+import { runSync } from "#src/meta/subprocess.ts";
+import { LIMITS } from "#tools/d2/campaign.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
-import { foreignPrograms, HERE } from "../shared/bundle.ts";
+import { foreignPrograms, HARNESS_DIR, HERE, placeHarness } from "../shared/bundle.ts";
 import { exportForClaudeCode } from "../shared/claude-export.ts";
-import { inGroup, REFUSED } from "./h2/claude.ts";
+import { RESULT_FILE, TRACE_FILE } from "../shared/pi-solve.ts";
+import { inGroup, REFUSED, type Agent, type Claude } from "./h2/claude.ts";
 import { NAMESPACE } from "./h2/recursion.ts";
 import { cutOf, envOf, jobBench, MAX_CHARS_PER_FILE, pilotClaude, SCRUB } from "./jobbench.ts";
 
@@ -115,6 +126,18 @@ export const PILOT_TASKS = [
   "social_science_research_assistants/task3",
 ];
 const STAGES = ["base1", "inv1", "dom1", "agg1"];
+/** `--arm pi:<starter or campaign>`. */
+const PI = "pi:";
+const PI_SOLVE = join(import.meta.dir, "..", "shared", "pi-solve.ts");
+/** A rollout's log line for each ending of `pi-solve.ts` that Claude Code names otherwise: the
+ *  arm's own budget, which no second attempt follows, and a session that threw or that the
+ *  provider failed, each a non-result that is rolled again and never scored (rule 7). */
+const PI_RESULT = new Map([
+  ["submitted", "success"],
+  ["budget", "error_max_budget_usd"],
+  ["crash", REFUSED],
+  ["provider", REFUSED],
+]);
 
 /** What a score's build cost: `of` names what was built, so an arm counts each build once. */
 interface Build {
@@ -252,6 +275,83 @@ function rolloutLog(store: string, task: string, label: string) {
   };
 }
 
+/** Where one attempt's solver writes, named by its trajectory file: outside `model_traj`, whose
+ *  files a record reads flat. */
+const piLogs = (traj: string): string => join(tmpdir(), "pi-solve-logs", basename(traj, ".jsonl"));
+
+/**
+ * One attempt of a pi arm: `pi-solve.ts` in the rollout's workspace, inside the harness where the
+ * arm placed it, on the pilot's model through the campaign's Claude backend, at the pilot's effort
+ * and dollars. The solver is told two minutes less than the attempt's hold, so that its own wall
+ * ends it with a result before the rollout's kill would leave none, and no turn limit, as the
+ * other arms have none. Its trace becomes the attempt's trajectory, copied since a layer's
+ * temporary folder and the store are different mounts.
+ */
+export function piAgent(claude: Claude): Agent {
+  return {
+    stage: () => undefined,
+    argv: ({ prompt, treeDir, traj }) => {
+      const logs = piLogs(traj);
+      rmSync(logs, { recursive: true, force: true });
+      mkdirSync(logs, { recursive: true });
+      const instruction = join(logs, "instruction.md");
+      writeFileSync(instruction, prompt);
+      return [
+        capturedExecPath,
+        PI_SOLVE,
+        "--harness",
+        join(treeDir, HARNESS_DIR),
+        "--instruction",
+        instruction,
+        "--solver",
+        `claude/${claude.model}`,
+        "--effort",
+        claude.effort,
+        "--wall-minutes",
+        String(Math.floor(claude.timeoutS / 60) - 2),
+        "--budget-usd",
+        claude.budgetUsd,
+        "--prompts",
+        String(LIMITS.turns),
+        "--logs",
+        logs,
+      ];
+    },
+    seen: (traj) => {
+      const logs = piLogs(traj);
+      const result = readJson(join(logs, RESULT_FILE));
+      const trace = join(logs, TRACE_FILE);
+      const calls = existsSync(trace) ? read(trace).filter(({ kind }) => kind === "solve.call").length : 0;
+      if (existsSync(trace)) cpSync(trace, traj);
+      rmSync(logs, { recursive: true, force: true });
+      const ending = text(field(result, "ending"));
+      const [turns, reported, billed] = ["turns", "reportedCost", "billed"].map((key) => field(result, key));
+      return {
+        turns: isNumber(turns) ? turns : 0,
+        subtype: ending === "" ? "None" : (PI_RESULT.get(ending) ?? ending),
+        tools: calls,
+        costUsd: isNumber(reported) ? reported : isNumber(billed) ? billed : 0,
+      };
+    },
+  };
+}
+
+/** What the solver's own dry run finds of a pi arm on this machine, with no model call: the tools
+ *  it would be given and where each installed program resolves; a refusal where it cannot open. */
+function piDry(claude: Claude, tree: string): string {
+  const agent = piAgent(claude);
+  const traj = join(tmpdir(), `pi-dry-${String(runtimeProcess.pid)}.jsonl`);
+  const argv = agent.argv({ prompt: "A dry run.", treeDir: tree, workspace: tmpdir(), traj });
+  runSync([...argv, "--dry-run"], { cwd: tmpdir() });
+  const result = readJson(join(piLogs(traj), RESULT_FILE));
+  rmSync(piLogs(traj), { recursive: true, force: true });
+  if (field(result, "ending") !== "dry-run") {
+    throw new Error(`pi-solve cannot solve under ${tree}: ${text(result)}`);
+  }
+  const found = text(field(result, "found")).trim().split("\n").filter(Boolean);
+  return `  pi-solve: tools ${text(field(result, "tools"))}; ${String(found.length)} installed programs${found.length === 0 ? "" : `: ${found.join(", ")}`}`;
+}
+
 /** What the sweep in `out` spent to build the harness of `task` before the `except` rollouts. */
 function sweepBuild(out: string, task: string, rollouts: readonly string[]): Build | null {
   const summary = readJson(join(out, "adapt", NAMESPACE, keyOf(task), "summary.json"));
@@ -330,21 +430,35 @@ async function armOf(values: Values, out: string, baseHarness: string): Promise<
     );
   }
   if (arm === "") throw new Error("name --arm");
+  const pi = arm.startsWith(PI);
+  const from = pi ? arm.slice(PI.length) : arm;
+  const source =
+    from === "starter" ? "starter" : { campaign: from, ...keyIfDefined("harness", values.harness) };
   // An arm's name binds its tree, written once: another harness takes another name.
   const into = join(out, "trees", name);
   if (!existsSync(into)) {
-    await exportForClaudeCode(
-      into,
-      arm === "starter" ? "starter" : { campaign: arm, ...keyIfDefined("harness", values.harness) },
-    );
+    if (pi) {
+      const part = `${into}.part-${String(runtimeProcess.pid)}`;
+      await placeHarness(join(part, HARNESS_DIR), source);
+      renameSync(part, into);
+    } else await exportForClaudeCode(into, source);
   }
   const record = readJson(join(into, "export.json"));
-  const digest = field(record, "harness");
-  // A rollout runs on this machine outside a container, and the export copies a campaign's
-  // programs as its host built them.
-  const toolchain = field(record, "toolchain");
+  const digest = pi ? (await openHarness(join(into, HARNESS_DIR))).digest : field(record, "harness");
+  // A rollout runs on this machine outside a container, and both the export and a kept harness
+  // hold a campaign's programs as its host built them.
+  const toolchain = pi ? join(HARNESS_DIR, TOOL_TREE_DIR) : field(record, "toolchain");
   if (isString(toolchain)) await foreignPrograms(join(into, toolchain), HERE);
-  const build = { of: arm, usd: arm === "starter" ? 0 : billedAll(read(await logAcross(arm))) };
+  // The build is priced once, beside the tree and outside what a solver is given, so a tree copied
+  // to another machine rolls there without the campaign's log, which stays on its own host.
+  const priced = `${into}.build.json`;
+  if (!existsSync(priced)) {
+    const usd = from === "starter" ? 0 : billedAll(read(await logAcross(from)));
+    writeFileSync(priced, `${capturedJsonStringify({ of: from, usd })}\n`);
+  }
+  const [of, usd] = [field(readJson(priced), "of"), field(readJson(priced), "usd")];
+  if (!isString(of) || !isNumber(usd)) throw new Error(`${priced} names no build`);
+  const build = { of, usd };
   return rolled(
     isString(digest) ? digest : into,
     () => into,
@@ -469,7 +583,9 @@ export async function score(values: Values): Promise<void> {
   const out = resolve(values.out);
   const store = join(out, "dataset");
   const claude = pilotClaude(jb);
-  const bench = jobBench(jb, store, claude);
+  // A pi arm's tree is the harness itself, and its rollout's agent the solver that runs inside it.
+  const pi = (values.arm ?? "").startsWith(PI);
+  const bench = jobBench(jb, store, claude, pi ? piAgent(claude) : undefined);
   const arm = await armOf(values, out, bench.baseHarness);
   const tasks = tasksOf(values.tasks, values.arm === "heldout" ? fair(PILOT_TASKS) : PILOT_TASKS);
   const python = join(jb, ".venv", "bin", "python");
@@ -483,7 +599,9 @@ export async function score(values: Values): Promise<void> {
     const needs = [
       join(jb, "dataset", "main", task, "task_folder", "TASK_INSTRUCTIONS.txt"),
       join(jb, "dataset", "main", task, "RUBRICS.json"),
-      tree === null ? join(store, task, "model_output", arm.label(task)) : join(tree, "CLAUDE.md"),
+      tree === null
+        ? join(store, task, "model_output", arm.label(task))
+        : join(tree, pi ? HARNESS_DIR : "CLAUDE.md"),
     ];
     const missing = needs.find((need) => !existsSync(need));
     if (missing !== undefined) throw new Error(`${task}: ${missing} is missing`);
@@ -491,8 +609,10 @@ export async function score(values: Values): Promise<void> {
   const judged = join(out, "judged", arm.name);
   console.log(`arm ${arm.name}: ${arm.harness}, ${tasks.length} tasks into ${judged}`);
   console.log(
-    `  solve: ${claude.model} at ${claude.effort}, $${claude.budgetUsd} and ${claude.timeoutS} s an attempt, 2 attempts, one rollout at a time`,
+    `  solve: ${claude.model} at ${claude.effort}${pi ? " on pi-durable, inside the harness itself" : ""}, $${claude.budgetUsd} and ${claude.timeoutS} s an attempt, 2 attempts, one rollout at a time`,
   );
+  const [first] = tasks;
+  if (pi && first !== undefined) console.log(piDry(claude, arm.tree(first) ?? ""));
   console.log(
     `  judge: ${JUDGE.model} at ${JUDGE.effort} through ${values["api-base"]}, one at a time, each file cut at ${String(cap ?? MAX_CHARS_PER_FILE)} characters`,
   );
@@ -544,6 +664,7 @@ export async function score(values: Values): Promise<void> {
       peeked: needles.filter((needle) => traces.some((trace) => trace.includes(needle))),
       cut: cutOf(jb, output, cap),
       ...keyIfDefined("cap", cap),
+      ...keysIf(pi, () => ({ runtime: "pi-durable" })),
     };
     mkdirSync(judged, { recursive: true });
     writeFileSync(join(judged, `${keyOf(task)}.json`), `${capturedJsonStringify(record, null, 2)}\n`);

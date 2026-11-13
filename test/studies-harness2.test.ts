@@ -2,7 +2,8 @@
 // the owners the campaign's own handover uses, its own tools served as the container solver serves
 // them, and two arms read as a campaign reads a comparison. The campaign is written here with the
 // log's own `append`, and its kept states under the digests they open as, as a session's freeze
-// keeps them. The compiled solver is run where the container's platform is the host's.
+// keeps them. The compiled solver is run where the container's platform is the host's, and the
+// solver from source, as the outside scorer's `pi:` arm starts it, on every platform.
 import { afterAll, describe, expect, it } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
@@ -15,7 +16,9 @@ import {
   placeHarness,
 } from "../studies/shared/bundle.ts";
 import { exportForClaudeCode } from "../studies/shared/claude-export.ts";
-import { harnessIn, RESULT_FILE } from "../studies/shared/pi-solve.ts";
+import { harnessIn, keyless, RESULT_FILE, TRACE_FILE } from "../studies/shared/pi-solve.ts";
+import { type Agent, type Claude, REFUSED, rollout } from "../studies/harness2/h2/claude.ts";
+import { piAgent } from "../studies/harness2/score.ts";
 import { halves, readArms, shortfall, streamOf, type Trial, trialsOf } from "../studies/shared/scores.ts";
 import { append } from "../src/kernel/log.ts";
 import {
@@ -31,11 +34,12 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "../src/meta/json-runtime.ts";
+import type { JsonObject } from "../src/meta/json-shape.ts";
 import { errorMessage } from "../src/meta/runtime-values.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
-import { runSync } from "../src/meta/subprocess.ts";
+import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
 import { openHarness } from "../src/harness/open.ts";
 import { EXAMPLE, writeStarter } from "../src/harness/starter.ts";
 import { writeHarness } from "./helpers/write-harness.ts";
@@ -376,4 +380,169 @@ describe("a harness written out for Claude Code", () => {
     expect(existsSync(join(into, "scripts"))).toBe(false);
     await expect(exportForClaudeCode(into, "starter")).rejects.toThrow(/there already/u);
   });
+});
+
+/** The scorer's `pi:` arm: the harness as it is kept, its solver on pi-durable, with no model. */
+describe("a harness solved on pi-durable in the benchmark's rollout", () => {
+  const pilot: Claude = {
+    bin: "claude",
+    model: "claude-opus-5-5",
+    effort: "high",
+    budgetUsd: "5",
+    timeoutS: 3600,
+    env: {},
+  };
+  /** One attempt as the arm's agent starts it, before its solver has left anything. */
+  const started = (name: string) => {
+    const agent = piAgent(pilot);
+    const traj = join(root, `pi-arm-${String(runtimeProcess.pid)}-${name}.jsonl`);
+    const argv = agent.argv({ prompt: "The task.", treeDir: join(root, "tree"), workspace: root, traj });
+    const flag = (flagged: string): string => argv[argv.indexOf(flagged) + 1] ?? "";
+    return { agent, traj, argv, flag, logs: flag("--logs") };
+  };
+  /** What the agent reads of an attempt whose solver left `result` and a trace of `calls` calls. */
+  const read = (name: string, result: JsonObject, calls = 0) => {
+    const attempt = started(name);
+    writeFileSync(join(attempt.logs, RESULT_FILE), capturedJsonStringify(result));
+    for (let call = 0; call < calls; call += 1) {
+      append(join(attempt.logs, TRACE_FILE), "solve.call", { tool: "bash" });
+    }
+    return { ...attempt, seen: attempt.agent.seen(attempt.traj) };
+  };
+
+  it("gives the solver's commands the environment without its credentials", async () => {
+    const names = [
+      "PATH",
+      "CLAUDE_CODE_OAUTH_TOKEN",
+      "CLAUDE_CODE_OAUTH_TOKEN3",
+      "ANTHROPIC_API_KEY",
+      "HOME",
+    ];
+    expect(Object.keys(keyless(names))).toStrictEqual(names.slice(1, 4));
+    // The fix rests on this: a name the shell's own environment holds as undefined is not inherited.
+    const said = async (shellEnv: Record<string, undefined>) => {
+      let out = "";
+      await new NodeExecutionEnv({ cwd: root, shellEnv }).exec(
+        'printf "%s" "${HOME-withheld}"',
+        {
+          onOutput: (chunk) => {
+            out += Buffer.from(chunk).toString("utf8");
+          },
+        },
+        BACKGROUND_CONTEXT,
+      );
+      return out;
+    };
+    expect(await said({ HOME: undefined })).toBe("withheld");
+    expect(await said({})).toBe(runtimeProcess.env.HOME ?? "");
+  });
+
+  it("starts the solver inside the harness on the pilot's model, dollars and hour, with no turn limit", () => {
+    const { agent, traj, argv, flag, logs } = started("asked");
+    expect(flag("--harness")).toBe(join(root, "tree", "harness"));
+    expect(["--solver", "--effort", "--budget-usd", "--wall-minutes"].map(flag)).toStrictEqual([
+      "claude/claude-opus-5-5",
+      "high",
+      "5",
+      "58",
+    ]);
+    expect(argv).not.toContain("--model-turns");
+    expect(readFileSync(flag("--instruction"), "utf8")).toBe("The task.");
+    // A solver killed before it wrote its result is a dead agent, which a rollout rolls again.
+    expect(agent.seen(traj)).toStrictEqual({ turns: 0, subtype: "None", tools: 0, costUsd: 0 });
+    expect(existsSync(logs)).toBe(false);
+  });
+
+  it("reads each ending as a rollout's log names it, and a session that failed as a non-result", () => {
+    const done = read("done", { ending: "submitted", turns: 7, billed: 1.2, reportedCost: 1.5 }, 2);
+    expect(done.seen).toStrictEqual({ turns: 7, subtype: "success", tools: 2, costUsd: 1.5 });
+    expect(readFileSync(done.traj, "utf8").trim().split("\n")).toHaveLength(2);
+    expect(existsSync(done.logs)).toBe(false);
+    const spent = read("spent", { ending: "budget", turns: 30, billed: 5.02, reportedCost: null });
+    expect(spent.seen).toMatchObject({ subtype: "error_max_budget_usd", costUsd: 5.02 });
+    expect(read("threw", { ending: "crash", crash: "the session threw" }).seen.subtype).toBe(REFUSED);
+    expect(read("silent", { ending: "provider" }).seen.subtype).toBe(REFUSED);
+    // The solver's own loss stays its own: it is scored on what it left.
+    expect(read("late", { ending: "wall-ended", turns: 40 }).seen.subtype).toBe("wall-ended");
+  });
+
+  it("rolls any agent as it rolls Claude Code: a delivery, a second attempt after none, none after a spent budget", async () => {
+    const [store, task, tree] = [join(root, "pi-store"), "g/task1", join(root, "pi-no-tree")];
+    mkdirSync(join(store, task, "task_folder"), { recursive: true });
+    mkdirSync(tree);
+    const rolled = async (label: string, script: string, endings: readonly string[]) => {
+      let attempts = 0;
+      const agent: Agent = {
+        stage: (_tree, workspace) => writeFileSync(join(workspace, "staged"), "by the agent\n"),
+        argv: () => ["/bin/sh", "-c", script],
+        seen: () => {
+          attempts += 1;
+          return { turns: 3, subtype: endings[attempts - 1] ?? "None", tools: 2, costUsd: 0.25 };
+        },
+      };
+      const env = { PATH: runtimeProcess.env.PATH ?? "" };
+      const billed = await rollout({ store, task, label }, tree, { ...pilot, timeoutS: 30, env }, agent);
+      const log = readdirSync(join(store, ".harness2-logs")).find((file) => file.includes(`_${label}_`));
+      return {
+        attempts,
+        billed,
+        log: readFileSync(join(store, ".harness2-logs", log ?? ""), "utf8"),
+        delivered: join(store, task, "model_output", label),
+      };
+    };
+    const made = await rolled("made", "cat staged > output/report.md", ["success"]);
+    expect(made).toMatchObject({ attempts: 1, billed: 0.25 });
+    expect(readFileSync(join(made.delivered, "report.md"), "utf8")).toBe("by the agent\n");
+    expect(made.log).toContain("attempt 1: rc=0 result=success turns=3 tools=2 cost_usd=0.2500");
+    const none = await rolled("none", "true", [REFUSED, "None"]);
+    expect(none).toMatchObject({ attempts: 2, billed: 0.5 });
+    expect(none.log).toContain("NO OUTPUT");
+    expect(existsSync(none.delivered)).toBe(false);
+    expect((await rolled("spent", "true", ["error_max_budget_usd"])).attempts).toBe(1);
+  });
+
+  it("lists a campaign harness's own tool and finds its program before any rollout, and starts none without the word", async () => {
+    const SCORE = new URL("../studies/harness2/score.ts", import.meta.url).pathname;
+    const made = await campaign("on-pi", () => undefined, tooled());
+    const place = join(root, "pi-whole");
+    const [jb, out, task] = [join(place, "jb"), join(place, "out"), "alpha/task1"];
+    mkdirSync(join(jb, "dataset", "main", task, "task_folder"), { recursive: true });
+    writeFileSync(join(jb, "dataset", "main", task, "task_folder", "TASK_INSTRUCTIONS.txt"), "Report.");
+    writeFileSync(join(jb, "dataset", "main", task, "RUBRICS.json"), "{}");
+    for (const dir of [join(jb, "eval"), join(jb, ".venv", "bin"), join(place, "tmp")]) {
+      mkdirSync(dir, { recursive: true });
+    }
+    writeFileSync(join(jb, "eval", "judge.py"), "# a stand-in that nothing here runs\n");
+    writeFileSync(join(jb, ".venv", "bin", "python"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    const score = (...args: string[]) =>
+      runSync(
+        [capturedExecPath, SCORE, "score", ...args, "--out", out, "--jb", jb, "--tasks", task].concat(
+          "--api-base",
+          "http://127.0.0.1:9/v1",
+        ),
+        { env: { ...runtimeProcess.env, TMPDIR: join(place, "tmp") }, timeout: 120_000 },
+      );
+    const arm = ["--arm", `pi:${made.log}`, "--harness", made.child, "--name", "pi-tooled"];
+    const dry = score(...arm, "--dry-run");
+    const told = decodeOutput(dry.stdout);
+    expect(decodeOutput(dry.stderr)).toBe("");
+    expect(dry.exitCode).toBe(0);
+    expect(told).toContain("on pi-durable, inside the harness itself");
+    // The export of this same harness names `doubled` unavailable and leaves `mark` off the path.
+    expect(told).toMatch(/pi-solve: tools \[.*"doubled".*"submit"\]; 1 installed programs: \S+\/bin\/mark/u);
+    const tree = join(out, "trees", "pi-tooled");
+    expect((await openHarness(join(tree, "harness"))).digest).toBe(made.child);
+    expect(existsSync(join(tree, "CLAUDE.md"))).toBe(false);
+    // The tree and its build's price are all another machine needs: no campaign is read again.
+    const elsewhere = ["--arm", `pi:${join(place, "no-campaign")}`, "--name", "pi-tooled"];
+    expect(score(...elsewhere, "--dry-run").exitCode).toBe(0);
+    renameSync(`${tree}.build.json`, `${tree}.build.kept`);
+    expect(score(...elsewhere, "--dry-run").exitCode).not.toBe(0);
+    renameSync(`${tree}.build.kept`, `${tree}.build.json`);
+    const unsaid = score(...arm);
+    expect(unsaid.exitCode).not.toBe(0);
+    expect(decodeOutput(unsaid.stderr)).toContain("--yes");
+    expect(existsSync(join(out, "dataset", task, "model_output"))).toBe(false);
+    expect(readdirSync(join(place, "tmp"))).toStrictEqual([]);
+  }, 240_000);
 });

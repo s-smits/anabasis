@@ -26,7 +26,7 @@
  * Each read also gives what lanes 30 and 31 counted by hand between 3 and 10 November (all 4 lane 30
  * sessions and all 5 of lane 31's): the summed margin of each origin and its share of the read's;
  * how many of the sign draws of the untied tasks written after, every other task as scored, read a
- * step (`stepCount`, `tools/wri/selection.ts`); and the tasks written after, slice by writing
+ * step (`stepCount`, `selection.ts`); and the tasks written after, slice by writing
  * session, each by majority and alone, with no test across the slices. The sums over reads
  * give the confirmations those draws expect beside those read, and where the slices went. `--tasks`
  * gives one row a task of each read (lanes 28, 19 and 22): its origin, writer, each solve's ending on
@@ -42,8 +42,8 @@
  * with `--tasks` it also holds task versions and ratios read from hidden values, so it stays exam-side.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
-import { sideGap } from "#skills/comparison-reading/scripts/gap.ts";
-import { campaignLogs, rehearsed } from "#skills/promotion-tuner/scripts/tree.ts";
+import { sideGap } from "#tools/wri/pairs.ts";
+import { campaignLogs, rehearsed } from "#skills/main/logs.ts";
 import {
   ORIGINS,
   type Origin,
@@ -62,7 +62,8 @@ import { isString } from "#src/meta/json-shape.ts";
 import { basename, dirname } from "#src/meta/path.ts";
 import { plural } from "#src/meta/text.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
-import { type StepCount, stepCount } from "#tools/wri/selection.ts";
+import { summed, wlt } from "#tools/wri/folds.ts";
+import { type StepCount, stepCount } from "#skills/comparison-reading/scripts/selection.ts";
 
 /** What a read is made of: its after-slices and its sign draws, null where the level is not recorded. */
 interface Composition {
@@ -94,7 +95,6 @@ const SHORT: Readonly<Record<Origin, string>> = {
 };
 /** A task version as the task rows print it, enough to find it again. */
 const TASK_CHARS = 8;
-const wlt = ({ wins, losses, ties }: Tally) => `${String(wins)}-${String(losses)}-${String(ties)}`;
 const signedPoints = (points: number) => `${points > 0 ? "+" : ""}${String(Math.round(points))}`;
 
 function compositionOf(each: StarterRead): Composition {
@@ -149,7 +149,7 @@ function drawLine(each: StarterRead, { draws }: Composition): string {
 }
 
 /** The read's after-slices, each by majority and alone. No test across them: whether the slices are
- *  independent draws is lane 31's question (`tools/wri/selection.ts`). */
+ *  independent draws is lane 31's question (`selection.ts`). */
 function sliceLines({ slices }: Composition): string[] {
   return slices.map(
     ({ writer, tally, alone }) =>
@@ -224,14 +224,7 @@ function taskLines(
 
 /** The totals over `reads`, naming the `campaigns` they come from where they span several logs. */
 function totalLines(reads: readonly StarterRead[], campaigns?: number): string[] {
-  const of = (origin: Origin, part: keyof Split): Tally => {
-    const tallies = reads.map(({ origins }) => origins[origin][part]);
-    return {
-      wins: tallies.reduce((total, { wins }) => total + wins, 0),
-      losses: tallies.reduce((total, { losses }) => total + losses, 0),
-      ties: tallies.reduce((total, { ties }) => total + ties, 0),
-    };
-  };
+  const of = (origin: Origin, part: keyof Split) => summed(reads.map(({ origins }) => origins[origin][part]));
   const compositions = reads.map(compositionOf);
   const counted = compositions.flatMap(({ draws }) => (draws === null ? [] : [draws]));
   const expected = counted.reduce((sum, { confirm, draws }) => sum + Number(confirm) / Number(draws), 0);

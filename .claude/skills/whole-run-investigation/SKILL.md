@@ -26,7 +26,6 @@ procedures and never run inside an investigation.
 | Is a run alive, and what did it last do? | `bun run runs pulse` |
 | Is there supply for a comparison? | `bun run runs view <name>` |
 | Does the checker stand on fresh controls? | `bun tools/c/accept.ts <the campaign's flags>` |
-| What does a repaired checker move? | `bun tools/c/repaired.ts --log <log> --bundle <repaired pack>` |
 | What do set-aside rejections read once labelled? | `bun tools/d2/settle.ts <the campaign's flags> --session <id>` |
 | Did another model answer any seat? | `bun tools/runs/degradations.ts <name>` (and `data/runs/degradations/`) |
 | Which sessions ran, from which parent, with which reading? | `bun tools/wri/wri.ts read --log <log>`, row F and `CHAIN` |
@@ -34,7 +33,8 @@ procedures and never run inside an investigation.
 | How far had each campaign got at each work hour? | `bun tools/wri/wri.ts trajectory --log <log>,<log> [--grades <report>] [--hours 2,4,8]` (a description; rule 1 keeps "better" for a comparison) |
 | Did tasks and harnesses grow across campaigns, graded blind? | `bun tools/wri/wri.ts packets --log <log>,<log> --out <dir> --graders 2`, launch its `launch.json`, then `packets --out <dir> --join` and `trajectory --grades <dir>/grades.tsv` |
 | What did earlier investigations find? | `bun tools/wri/wri.ts index [--root <dir>] [--out <file>]`, which rewrites `.ana/wri/INDEX.md` and stays under `.ana/` |
-| How does this run's cost a promotion compare with its release? | `bun .claude/skills/promotion-tuner/scripts/table.ts --rows groups` (or `--name <part> --rows promotions`) |
+| How does this run's cost a promotion compare with its release? | `bun .claude/skills/promotion-tuner/scripts/table.ts --name <part> --rows promotions`, read against `trend.ts --pack <pack>` |
+| Is this pack's climb faster or slower than in the weeks before, and does it hold? | `bun .claude/skills/promotion-tuner/scripts/trend.ts --pack <pack>` |
 
 ## The procedure
 
@@ -117,10 +117,10 @@ lane is given none of this. A reader that finds its campaign by name (`view`, `l
 its file says so in one line. Left out are tools that read no run
 (`comparison-reading/scripts/size.ts`, `examiner-complexity/scripts/rungs.ts`,
 `system-audit/scripts/recent.ts`), that need more than a campaign
-(`examiner-complexity/scripts/grades.ts`, `oracle-handover/scripts/slice.ts`, `tools/c/repaired.ts`,
+(`examiner-complexity/scripts/grades.ts`, `oracle-handover/scripts/slice.ts`,
 `tools/runs/search.ts`, `wri.ts grade`), that write (`wri.ts start`, `lanes`, `collect`, `synthesis`,
 `index` and `derive`, `wri2p2.ts open`, `tools/c/rejections.ts`, `tools/d2/close.ts`) or that call a
-paid model (`system-path-simulation/scripts/live-seat.ts` and `referee-seat.ts`,
+paid model (`system-path-simulation/scripts/live-seat.ts`,
 `compare-systems/scripts/systems.ts`).
 `derive` writes `data/derived/<campaign>@<path>/<reader>.txt` in the main worktree, one folder a
 log path, so a snapshot and the live log never share one, rewriting a folder only when its log or
@@ -190,7 +190,7 @@ them unless the primary deletes them.
   traces; a finding handed to a seat that writes the harness or the tasks is the leak lane 12 looks
   for.
 - **A `pack/` finding is a decision, never a patch.** It goes to the checker's owner, and a repair is
-  another campaign (`accept.ts --freeze`, `repaired.ts`).
+  another campaign (`accept.ts --freeze`).
 - **Verify every session's model from its transcript** before using its report.
 
 ## Editing the shared instructions

@@ -12,12 +12,12 @@
  * the ladder was re-rated on 31 October: 1,438 of 1,465 solves valid at grades 2 to 5. Read-only;
  * the grades and the outcomes stay on the exam side and reach no seat.
  */
-import { LOG_FILE, read } from "#src/kernel/log.ts";
+import { read } from "#src/kernel/log.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
-import { existsSync, readFileSync, statSync } from "#src/meta/filesystem.ts";
+import { readFileSync } from "#src/meta/filesystem.ts";
 import { isNumber, isString } from "#src/meta/json-shape.ts";
-import { join } from "#src/meta/path.ts";
 import { runCommand } from "#skills/main/cli.ts";
+import { logAcross } from "#tools/runs/snapshots.ts";
 
 interface Tally {
   tasks: number;
@@ -75,7 +75,7 @@ if (import.meta.main) {
   const usage = "grades.ts <grades.tsv> <log or campaign folder>...";
   await runCommand(
     { name: "grades", usage, positionals: [2, 100] },
-    ({ positionals: [table = "", ...paths] }) => {
+    async ({ positionals: [table = "", ...paths] }) => {
       const grades = new Map(
         readFileSync(table, "utf8")
           .trim()
@@ -86,9 +86,7 @@ if (import.meta.main) {
             task === undefined || grade === undefined ? [] : [[task, grade] as const],
           ),
       );
-      const logs = paths.map((path) =>
-        read(existsSync(path) && statSync(path).isDirectory() ? join(path, LOG_FILE) : path),
-      );
+      const logs = await Promise.all(paths.map(async (named) => read(await logAcross(named))));
       for (const line of gradeLines(grades, outcomesOf(logs))) console.log(line);
     },
   );

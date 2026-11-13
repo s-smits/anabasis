@@ -121,6 +121,7 @@ import {
   ghOrThrow,
   MERGEABLE_CONTEXT,
   openPulls,
+  ranksOf,
   postStatus,
   type Pull,
   statusBoard,
@@ -185,7 +186,6 @@ const MOVES = 3;
 const STACK_POLL_MS = Number(runtimeProcess.env.ANA_CI_POLL_MS) || 2000;
 const STACK_WAIT_MS = 10 * 60_000;
 /** The labels that rank a pull request's importance; each of a landing carries exactly one. */
-const IMPORTANCE = /^importance:I[0-3]$/u;
 /** Subject labels: each pull request in a landing needs at least one. */
 export const CATEGORIES = new Set([
   "exam",
@@ -252,10 +252,6 @@ function readLanding(root: string, target: number, open: readonly Pull[]): Landi
   );
   return { trunk, trunkSha, pulls, top: named, beside, open };
 }
-
-/** The importance labels a pull request carries; a landing asks for exactly one. */
-export const ranksOf = (pull: Pull): string[] =>
-  pull.labels.map((label) => label.name).filter((name) => IMPORTANCE.test(name));
 
 /** Refuses a landing in which a pull request carries no importance label or more than one, or no
  *  category label. */

@@ -26,6 +26,9 @@ draw under one condition. It does not say:
 
 - **Match the identities** in each solve's `condition.recorded`. Two harnesses are set side by side
   only by one standalone comparison; solves from separate rounds are a description, never a pair.
+- **A difference between weeks of runs describes the record.** A row of promotion-tuner's
+  `trend.ts` that reads `moved` names no cause while its windows span releases, settings or packs,
+  and its outside block (`--bench`) promotes nothing and claims no step.
 - **Keep the counts apart**: valid answers, rejections by ruling, endings without an answer by
   kind, non-results, and tasks set aside. Every rate has a denominator and names what it left out.
 - **Keep verdicts, reviewer findings and environment facts apart.** A Referee ruling is a model's

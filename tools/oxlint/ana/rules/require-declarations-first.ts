@@ -39,6 +39,18 @@ import { declaredBy, identifierName, isConstDeclaration, isNamedMember } from ".
  * goes looking for at the front; `5bc9988:src/backends/pi-built-child.ts` had three of them among six
  * `let`s, and hoisting those three alone left the block worse than it was found.
  *
+ * Declarations that stand one after another below the code are one finding and move as one block.
+ * On 11 November 2026 one arrow constant written above the declarations of promotion-tuner's
+ * `table.ts` read as fourteen errors, each naming a declaration that stood where it always had,
+ * and the sweep needed a pass for each; by runs the same file reads three. The report lands once a
+ * run, on its first declaration, and names the rest; the fix carries the run across the code in
+ * one replacement, with the comments and blank lines between its members where they were.
+ *
+ * `as const` is no read. The assertion's `const` arrives as a reference to a name nothing can
+ * declare, and until 11 November 2026 it was barred as a global whose value depends on where it is
+ * read, so `const BY = ["release", "pack"] as const` stayed under the code unreported while the
+ * plain array beside it moved. Eighteen sites tree-wide stood behind that, in fifteen files.
+ *
  * The fixer is the reason the rule is worth having: this is a reordering pass, not a set of
  * judgements. The comment is the part a hand edit gets wrong — a JSDoc block left behind above the
  * next function now documents the wrong thing, and nothing fails.
@@ -86,12 +98,17 @@ const CONSTANT_GLOBALS = new Set([
   ...PURE_CONSTRUCTORS,
   ...PURE_CALLEES,
   ...PURE_METHODS.keys(),
+  // `as const` reads as a reference to a name `const`, which no binding can have.
+  "const",
   "Error",
   "Infinity",
   "NaN",
   "Promise",
   "undefined",
 ]);
+
+/** Names a report spells out before it counts the rest of a run. */
+const NAMED = 4;
 
 /** One module-level read: the name, where it was read, and whether a part of it was taken or
  *  its contents read through as a whole. */
@@ -372,6 +389,8 @@ export const requireDeclarationsFirstRule = defineRule({
         "`{{name}}` is declared after this file's first line of code, so a reader looking for the shape has to scan past the code to find out whether it is there. Types and interfaces go at the front.",
       constantAfterCode:
         "`{{name}}` is a module constant declared after this file's first line of code. It reads nothing that can change, so it has the same value wherever it sits and belongs at the front with the other declarations.",
+      runAfterCode:
+        "{{names}} stand together after this file's first line of code, so a reader looking for a shape or a constant has to scan past the code to find them. Each is a type, an interface or a constant that reads nothing that can change, and the run moves to the front as one.",
     },
   },
   createOnce(context) {
@@ -435,23 +454,36 @@ export const requireDeclarationsFirstRule = defineRule({
           belowTheHashbang(text),
           withLeadingComments(context.sourceCode, opening, body[firstCode - 1]),
         );
-        for (const [index, statement] of body.entries()) {
-          if (index <= firstCode) continue;
+        const movable = body.flatMap((statement, index) => {
+          if (index <= firstCode) return [];
           const inner = declaredBy(statement);
           const erased = ERASED.has(inner.type);
-          if (!erased && !isMovableConstant(inner, effects, reads)) continue;
-          if (!erased && besideMutableState(text, body, index)) continue;
-
-          const from = withLeadingComments(context.sourceCode, statement, body[index - 1]);
-          const to = throughBlankLines(text, statement.end);
-          const subject = named(inner);
+          if (!erased && !isMovableConstant(inner, effects, reads)) return [];
+          if (!erased && besideMutableState(text, body, index)) return [];
+          return [{ index, statement, erased, subject: named(inner) }];
+        });
+        // Declarations that follow one another are one run: one report and one move.
+        const runs = Map.groupBy(movable, (one, at) => one.index - at);
+        for (const run of runs.values()) {
+          const [first] = run;
+          const last = run.at(-1);
+          if (first === undefined || last === undefined) continue;
+          const from = withLeadingComments(context.sourceCode, first.statement, body[first.index - 1]);
+          const to = throughBlankLines(text, last.statement.end);
+          const alone = first.erased ? "erasedAfterCode" : "constantAfterCode";
+          const names = run.slice(0, NAMED).map(({ subject }) => `\`${subject.name}\``);
+          const rest = run.length > NAMED ? [`${String(run.length - NAMED)} more below them`] : [];
+          const listed = [...names, ...rest];
           context.report({
-            node: subject.node,
-            messageId: erased ? "erasedAfterCode" : "constantAfterCode",
-            data: { name: subject.name },
+            node: first.subject.node,
+            messageId: run.length === 1 ? alone : "runAfterCode",
+            data: {
+              name: first.subject.name,
+              names: `${listed.slice(0, -1).join(", ")} and ${listed.at(-1) ?? ""}`,
+            },
             // One range, not a remove plus an insert: a single replacement cannot half-apply and
-            // needs no assumption about the order the host applies a fix array in. Two of these
-            // overlap, so oxlint lands one per pass and the sweep runs to convergence.
+            // needs no assumption about the order the host applies a fix array in. Two runs'
+            // ranges overlap, so oxlint lands one per pass and the sweep runs to convergence.
             fix: (fixer) =>
               fixer.replaceTextRange([anchor, to], text.slice(from, to) + text.slice(anchor, from)),
           });

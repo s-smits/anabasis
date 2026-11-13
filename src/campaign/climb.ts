@@ -200,7 +200,7 @@ export function tasksByEpoch(events: readonly LogEvent[]): string[][] {
 }
 
 /** The starter harness's digest, as the first comparison's terms name it; null before one. */
-function starterIn(events: readonly LogEvent[]): string | null {
+export function starterIn(events: readonly LogEvent[]): string | null {
   const named = events.find(({ kind }) => kind === "comparison.started")?.data.starter;
   return isString(named) ? named : null;
 }

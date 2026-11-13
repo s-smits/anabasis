@@ -15,14 +15,15 @@
  * scripts; this reader wraps the folds that the paired seats already read by.
  */
 import { campaignOf } from "#src/campaign/handover.ts";
-import { LOG_FILE, type LogEvent, read } from "#src/kernel/log.ts";
+import { promoted } from "#src/kernel/reports.ts";
+import { type LogEvent, read } from "#src/kernel/log.ts";
 import { billedAll } from "#src/kernel/meter.ts";
-import { existsSync, statSync } from "#src/meta/filesystem.ts";
 import { isString } from "#src/meta/json-shape.ts";
-import { basename, dirname, join } from "#src/meta/path.ts";
+import { basename, dirname } from "#src/meta/path.ts";
 import { runCommand } from "#skills/main/cli.ts";
 import { ownedBy } from "#src/kernel/trace.ts";
 import { validityOf } from "#tools/d2/close.ts";
+import { logAcross } from "#tools/runs/snapshots.ts";
 import { readingOf } from "#skills/system-path-simulation/scripts/live-seat.ts";
 
 export const STARTS = new Set<string>(["exam.started", "draft.started"]);
@@ -32,9 +33,7 @@ export const STARTS = new Set<string>(["exam.started", "draft.started"]);
  *  the session lines here and by `exams.ts` for each draft, so an exam's drafts are read against
  *  the harness they had to leave room for. */
 export function referenceAt(events: readonly LogEvent[], index: number): string {
-  const promoted = events.slice(0, index).findLast((event) => event.kind === "harness.promoted")
-    ?.data.harness;
-  return isString(promoted) ? promoted.slice(0, 8) : "starter";
+  return promoted(events.slice(0, index))?.slice(0, 8) ?? "starter";
 }
 
 /** One line an Examiner session: its id, the reference in force, and its reading. */
@@ -86,14 +85,10 @@ export function campaignLine(events: readonly LogEvent[]): string {
   return `first comparison ${reachedBy(events, "comparison.started", opened)}, first promotion ${reachedBy(events, "harness.promoted", opened)}; ${String(count("comparison.started"))} compared, ${String(count("harness.promoted"))} promoted; reference valid every solve on ${String(scored - room)} of ${String(scored)} scored tasks, ${String(onValidity)} of ${String(stepped)} steps won by validity`;
 }
 
-/** A log's path from a log or its campaign folder. */
-export const logOf = (path: string) =>
-  existsSync(path) && statSync(path).isDirectory() ? join(path, LOG_FILE) : path;
-
 if (import.meta.main) {
   const usage = "ambition.ts <log or campaign folder>...";
-  await runCommand({ name: "ambition", usage, positionals: [1, 100] }, ({ positionals }) => {
-    for (const path of positionals.map(logOf)) {
+  await runCommand({ name: "ambition", usage, positionals: [1, 100] }, async ({ positionals }) => {
+    for (const path of await Promise.all(positionals.map((named) => logAcross(named)))) {
       const events = read(path);
       console.log(`${basename(dirname(path))}: ${campaignLine(events)}`);
       for (const line of sessionLines(events)) console.log(`  ${line}`);

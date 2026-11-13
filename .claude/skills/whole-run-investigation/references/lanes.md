@@ -176,9 +176,9 @@ harnesses, weighted to checks that refused nothing, and say from the published r
 answer could still get wrong: an unread field, an uncited rule, a looser tolerance. An `author`
 instrument means only that the author's computation agreed, and a named tool is a field engine only
 if it does the decisive work. With no pass, the check rows are the whole lane. For `VERIFIER TOOLS
-MOVED` or a checker trigger, say under which tool tree or checker each result counted; carried tasks
-are read with `tools/c/repaired.ts`, `wri.ts grade` tests a constructed answer, and `grade --solve
-<id> --set <path>=<json>` regrades a recorded one with one field changed. A `try-` task, or a solve
+MOVED` or a checker trigger, say under which tool tree or checker each result counted; `wri.ts grade`
+tests a constructed answer, and `grade --solve <id> --set <path>=<json>` regrades a recorded one
+with one field changed. A `try-` task, or a solve
 an Examiner session asked for, is a rehearsal and never scored; `checks.txt` counts it under
 `examiner`. Read no pass rate. The decision: whether a pass means a right answer or a well-shaped one. Routes to
 `pack/evaluator`, `pack/brief`, `pack/controls` and `operator` (a freeze `despite` faults).
@@ -968,7 +968,7 @@ tasks written after it. Four parts, kept apart:
    each task written after the promotion a fair sign at its recorded margin. Count the draws that
    would still read `confirmed` at the level. That count is how often this read confirms by
    selection alone. `starter-reads.txt` prints it for each read, over every sign draw of the untied
-   tasks written after (`stepCount`, `tools/wri/selection.ts`), and says where every such task tied
+   tasks written after (`stepCount`, comparison-reading's `selection.ts`), and says where every such task tied
    whether the other tasks alone confirm. Show the draw's size and its count, not a single rate.
 3. **The fleet.** Across every read under review: reads confirmed, reads confirmed on the tasks
    written after alone (`starter-reads.ts --all` prints both), and the number the selection-only

@@ -1,7 +1,9 @@
 // Replay follows the selected tree's rule, including historical records.
 import { expect, it } from "bun:test";
 import { campaignLines, emptyTotals } from "#skills/promotion-tuner/scripts/replay.ts";
-import { campaignLogs, loadTree, type Tree } from "#skills/promotion-tuner/scripts/tree.ts";
+import { epochLines } from "#skills/promotion-tuner/scripts/time.ts";
+import { campaignLogs } from "#skills/main/logs.ts";
+import { loadTree, type Tree } from "#skills/promotion-tuner/scripts/tree.ts";
 import { type Paired, scored } from "../src/kernel/compare.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
@@ -172,10 +174,12 @@ it("finds the logs of a folder of worktrees, of an archive's host folder and of 
       writeFileSync(join(dir, "log.jsonl"), text);
       if (seed) writeFileSync(join(dir, "seed.json"), "{}");
     };
-    put(join(home, "anabasis-a", ".ana", "d2", "camp"), "{}\n");
-    put(join(home, "m1", "camp"), "{}\n{}\n");
-    put(join(home, "m1", "other"), "{}\n");
-    put(join(home, "m1", "seeded"), "{}\n", true);
+    // Each line carries a time, as every event does: the fleet is the logs whose last one is recent.
+    const EVENT = `{"at":"2026-11-01T00:00:00.000Z"}\n`;
+    put(join(home, "anabasis-a", ".ana", "d2", "camp"), EVENT);
+    put(join(home, "m1", "camp"), EVENT + EVENT);
+    put(join(home, "m1", "other"), EVENT);
+    put(join(home, "m1", "seeded"), EVENT, true);
     const found = await campaignLogs(home, [], "");
     expect(found.map(({ name }) => name)).toEqual(["camp", "other"]);
     expect(found[0]?.path).toBe(join(home, "m1", "camp", "log.jsonl"));
@@ -188,4 +192,19 @@ it("finds the logs of a folder of worktrees, of an archive's host folder and of 
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
+});
+
+it("ends a draft cut short where the next draft starts, so the epoch's Examiner hours are the two drafts' own", async () => {
+  const at = (minutes: number) => new Date(Date.UTC(2026, 9, 26, 0, minutes)).toISOString();
+  const events: LogEvent[] = [
+    { at: at(0), kind: "draft.started", data: { session: "x-1" } },
+    { at: at(30), kind: "draft.started", data: { session: "x-2" } },
+    { at: at(60), kind: "draft.finished", data: { session: "x-2" } },
+    { at: at(120), kind: "harness.promoted", data: { from: "reference", harness: "candidate" } },
+  ];
+  const { lines, promoted } = epochLines(await loadTree(ROOT), events, [3]);
+  expect(promoted.map(({ hours }) => hours)).toEqual([2]);
+  expect(lines.find((line) => line.includes("Examiner"))).toContain(
+    "Examiner 2 sessions, 1.0 h (x-1 0.5, x-2 0.5)",
+  );
 });

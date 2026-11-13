@@ -157,6 +157,7 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
 
 - `require-declarations-first` [fix]: imports, types, module constants, then
   functions. A constant whose initialiser calls something or reads below stays where it is.
+  Declarations that follow one another are one report, and the fix moves the run whole.
 - `no-inline-schema-literal`: a table of three or more constant entries built inside a function
   moves to module scope under a name. Tests are exempt.
 - `no-deep-nesting`: a statement four levels inside its function is an error. `if`, loops,
@@ -182,7 +183,8 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
   with the condition at that value.
 - `prefer-const-conditional` [fix]: `let x; if (c) x = a; else x = b;` is `const x = c ? a : b`.
   A default followed by an override is `const w = o.w ?? D`.
-- `no-positional-boolean-parameter`: take a union of two string literals. Tests are exempt.
+- `no-positional-boolean-parameter`: take a union of two string literals. Tests are exempt, and so
+  is a function the file never calls or exports and only hands on as a callback.
 - `no-side-effect-in-predicate`: no mutation inside a `filter`, `find`, `some` or `every`
   callback. Deduplicate with `new Map(rows.map((r) => [r.id, r]))`, or write the loop.
 
@@ -206,7 +208,8 @@ A test file is anything under `test/` or named `*.test.*`. Exemptions live insid
 **Repetition**
 
 - `no-repeated-string-literal` [fix]: six or more characters, four spellings in a file (ten in a
-  test). Import sources, object keys and bare tags are exempt, and so is a test's prose.
+  test). Import sources, object keys and bare tags are exempt, and so are a test's prose and a
+  spelling the file itself declares as a literal type, which the compiler holds its copies to.
 - `no-thrice-spelled-object`: three or more properties, three spellings (five in a test).
 
 **Types**
@@ -346,7 +349,7 @@ campaign under `.ana/d2/<name>` (15 October):
 
 | Rule | It names | Here |
 | --- | --- | --- |
-| `no-hand-read-argv` | `.claude/skills/main/cli.ts` | Present. A skill script declares a `runCommand` spec, or passes its arguments to `parseOrDie` or `parseCommandOrDie`. The commands under `tools/` are outside the rule and parse with `parseArgs` from `#src/meta/process.ts` |
+| `no-hand-read-argv` | `.claude/skills/main/cli.ts` | Present. A skill script declares a `runCommand` spec, which production's `parseArgs` reads. The commands under `tools/` are outside the rule and parse with `parseArgs` from `#src/meta/process.ts` |
 | `no-hand-spelled-git` | `src/meta/git.ts` (`gitOutput`, `gitText`, `gitMaybe`), from skills, `src`, `tools/runs` and `tools/d2` | Present. Until 15 October the owner was `e3dfa9eb8:.claude/skills/main/git.ts`, which production cannot import, and `tools/runs` and `tools/d2` spelled git at five sites. The landing and gate commands of `tools/runtime`, and tests, are outside the rule: they read exit codes and feed input |
 | `no-lifetime-outside-owner` | `stageCommandIsolation` (`src/wall/isolation.ts`), `killProcessGroup` and `terminateAndReapProcessGroupId` (`src/meta/subprocess.ts`) | Present. The owner and its reader are the two files the rule exempts |
 

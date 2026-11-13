@@ -1,6 +1,6 @@
 ---
 name: comparison-reading
-description: "Use before editing src/kernel/{compare,reports,size,solve}.ts or src/campaign/{comparison,round,decide,admission,climb}.ts. Explains readings (step, no-step, not-scored), task scores (pointsOf, WEIGHTS), significance (flipP, readsStep), A/A controls, task draws (poolOf, scoredSet, held-short), sample size, decide and rule N (AGENTS.md sections 7–8). Scripts: size.ts, reading.ts, draw.ts, gap.ts and starter-reads.ts. Use promotion-tuner to read comparisons under other rules."
+description: "Use before editing src/kernel/{compare,reports,size,solve}.ts or src/campaign/{comparison,round,decide,admission,climb}.ts. Explains readings (step, no-step, not-scored), task scores (pointsOf, WEIGHTS), significance (flipP, readsStep), A/A controls, task draws (poolOf, scoredSet, held-short), sample size, decide and rule N (AGENTS.md sections 7–8). Scripts: size.ts, reading.ts, draw.ts and starter-reads.ts. Use promotion-tuner to read comparisons under other rules."
 ---
 
 # Comparison reading
@@ -29,8 +29,8 @@ bun .claude/skills/comparison-reading/scripts/size.ts [--level <n>] [--untied <n
   [--scores <s,s,...> [--unbilled <s,s,...>]]
 bun .claude/skills/comparison-reading/scripts/reading.ts <log.jsonl | campaign folder | name>
   [--comparison <id>] [--level <n>]
+bun .claude/skills/comparison-reading/scripts/reading.ts --zone <log.jsonl | campaign name>...
 bun .claude/skills/comparison-reading/scripts/draw.ts <log.jsonl | campaign name> [--target <n>] [--level <n>]
-bun .claude/skills/comparison-reading/scripts/gap.ts <log.jsonl | campaign name>
 bun .claude/skills/comparison-reading/scripts/starter-reads.ts <log.jsonl | campaign folder | name> | --all [--since <date>] [--name <part>]
 ```
 
@@ -40,19 +40,23 @@ bun .claude/skills/comparison-reading/scripts/starter-reads.ts <log.jsonl | camp
   (`--unbilled` without the bill).
 - `reading.ts` prints every comparison in a log by its last report: the reading, the test as
   tallied, the scored sets, the A/A either way, the room and the tasks left out. It flags a recorded
-  reading that this tree's `readsStep` would read otherwise.
+  reading that this tree's `readsStep` would read otherwise. Under each comparison a zone line
+  gives the reference's tasks with no, some and every solve valid and what untied each, and, under
+  an objective, a gap line gives each side's median ratio to the best answer on record and how
+  often it came within the floor: a large gap can mean a strong candidate or a weak reference. The
+  output is exam-side. `--zone` prints the zone counts with the A/A's untied share as one TSV row a
+  comparison across several logs.
 - `draw.ts` predicts the next comparison: the held-out pool by part, the set it would fix, its
   frontier by epoch, admission's floor and refusals (`held-short` among them) and the size lines, at
   the table's target and level by default.
-- `gap.ts` prints each side's median ratio to the best answer on record and how often it came within
-  the floor. A large gap can mean a strong candidate or a weak reference. Its output is exam-side.
 - `starter-reads.ts` asks what a confirmed promotion rests on. It splits each starter read into the
   tasks that selected the harness and those that did not (written before but undrawn, or after),
   and says what the tasks written after read alone (a step, a step for the starter, no step, or too
   few untied tasks to read one), the one origin no step selected: generalisation rather than
   selection bias. `--all`
   sums the record, `--name` filters by a text such as a pack. The fold is `starterReads`
-  (`src/campaign/climb.ts`).
+  (`src/campaign/climb.ts`). Across weeks of runs the same fold is read by promotion-tuner's
+  [trend.ts](../promotion-tuner/SKILL.md), which sets it beside how fast the promotions came.
 
 `size`, `reading` and `draw` print counts, ids, short digests and harness letters, never task
 identities, answers, objective measures or checks.

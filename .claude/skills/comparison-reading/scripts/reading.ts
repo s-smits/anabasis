@@ -4,6 +4,7 @@
  *
  *   bun .claude/skills/comparison-reading/scripts/reading.ts <log.jsonl | campaign folder | name>
  *     [--comparison <id>] [--level <n>]
+ *   bun .claude/skills/comparison-reading/scripts/reading.ts --zone <log | name>...
  *
  * For each comparison's last report, show its reading, full and unbilled tests, frontier and retained
  * tallies, A/A control, room and omitted-task counts. Re-evaluate the step with stepOf and the A/A
@@ -16,18 +17,28 @@
  * equal margins needs beside the losses read (`clearing`), whether the A/A tied every task, and
  * the comparison's dollar cap against its test at the dollars its counted solves billed.
  *
- * Names resolve through logAcross; read and lastReports own log parsing and report selection.
- * This script evaluates recorded scores. Use promotion-tuner/lab.ts to rescore recorded solves
- * under other rules. Output contains session ids, counts, short digests and harness letters;
- * it omits task identities, families, answers, objective measures and checks.
+ * From each report's pairs (`pairsReported`) it adds the zone, the reference's tasks with no, some
+ * and every solve valid and those untied on validity, on the objective alone (`carriedBy`) or tied,
+ * since a step reads only on untied tasks and a task the reference passes some of the time unties
+ * most often (beside the A/A, where such a task unties too); and, under an objective, the gap, each
+ * side's median ratio to the author's best answer on record (`sideGap`), which tells a strong
+ * candidate from a weak reference. `--zone` prints the zone as TSV across logs. No seat is told
+ * either, since an author told a share writes towards it (`AGENTS.md`, section 2).
  *
- * Written on 30 October, when AGENTS.md sections 7 and 8 moved into comparison-reading.
+ * Names resolve through logAcross; read and lastReports own log parsing and report selection.
+ * This script evaluates recorded scores. Use promotion-tuner/replay.ts --try to rescore recorded solves
+ * under other rules. Output holds session ids, counts, ratios to the best, short digests and harness
+ * letters, and no task identity, family, answer, measure or check; the ratios come from hidden
+ * values, so it stays on the exam side.
  */
 import { type CommandArgs, CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { billedRate } from "#src/campaign/admission.ts";
 import { calledBy, type Called, namesOf } from "#src/campaign/names.ts";
 import {
+  carriedBy,
   flipP,
+  type Paired,
+  pointsOf,
   readsStep,
   readsStepEitherWay,
   scoresIn,
@@ -37,7 +48,7 @@ import {
   UNMEASURED,
 } from "#src/kernel/compare.ts";
 import { type LogEvent, read } from "#src/kernel/log.ts";
-import { lastReports, roomOf } from "#src/kernel/reports.ts";
+import { lastReports, pairsReported, poolOf, roomOf } from "#src/kernel/reports.ts";
 import { ended, solvesIn } from "#src/kernel/solves.ts";
 import {
   asRecord,
@@ -47,19 +58,28 @@ import {
   type JsonObject,
   type JsonValue,
 } from "#src/meta/json-shape.ts";
+import { basename, dirname } from "#src/meta/path.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
+import { percent } from "#tools/wri/budget.ts";
 import { equalMost, equalNeed, shortOf, spareOf } from "#tools/wri/clearance.ts";
+import { wlt } from "#tools/wri/folds.ts";
+import { type SideGap, sideGap } from "#tools/wri/pairs.ts";
 
 const USAGE = `usage:
   bun .claude/skills/comparison-reading/scripts/reading.ts <log.jsonl | campaign folder | campaign name>
     [--comparison <id>] [--level <n>]
+  bun .claude/skills/comparison-reading/scripts/reading.ts --zone <log | campaign name>...
 
 A campaign's name is read where \`logAcross\` finds it, on this host or another ANA_HOSTS names.
 --comparison  this comparison only (its session id, as g-1)
---level       read the step and the A/A at this level, in place of each comparison's own`;
-const OPTIONS = { comparison: "text", level: "text" } as const;
+--level       read the step and the A/A at this level, in place of each comparison's own
+--zone        one TSV row a comparison that tallied a task, across every log named`;
+const OPTIONS = { comparison: "text", level: "text", zone: "flag" } as const;
 /** The kinds of task a report lists apart from the tallied ones, in the order they are told. */
 const APART = ["aside", "short", "disputed", "flagged", "withdrawn"] as const;
+/** The columns of `--zone`, in the order of `zoneRows`. */
+const HEADER =
+  "campaign\tcomparison\tkind\tepoch\treading\ttasks\tref_none\tref_some\tref_all\tref_valid_share\tuntied_validity\tuntied_objective\ttied\tuntied_share\taa_untied\taa_share";
 
 /** A tally with its p. */
 type Tested = Tally & { readonly p: number };
@@ -80,6 +100,12 @@ interface Cap {
   readonly cost: number | null;
   readonly capped: boolean | null;
 }
+
+/** Where a comparison's tallied tasks sat for the reference, `valid` of its `solves` passing, and what
+ *  untied each. */
+type Zone = Readonly<
+  Record<"tasks" | "none" | "some" | "all" | "valid" | "solves" | "validity" | "objective" | "tied", number>
+>;
 
 /** One comparison as its last report reads, and as this tree's rules read it again. */
 export interface Row {
@@ -124,6 +150,13 @@ export interface Row {
   /** This tree's `stepOf` at `level`; null where the report holds no frontier with its unbilled
    *  scores to read it on. */
   readonly reread: "step" | "no-step" | null;
+  /** A starter comparison sets the starter as the new side; the epoch counts the promotions before it. */
+  readonly kind: "starter" | "candidate";
+  readonly epoch: number;
+  /** Null where the report tallied no pair. */
+  readonly zone: Zone | null;
+  /** Each side against the best answer on record; null where no pair held an objective. */
+  readonly gap: { readonly old: SideGap; readonly fresh: SideGap } | null;
 }
 
 /** The numbers `value` holds, or null where it is no list of numbers. */
@@ -203,14 +236,19 @@ function nearOf(scores: readonly number[], level: number): Pick<Row, "reverse" |
 }
 
 /** One comparison's row from its report's data, read at `level` or at its own. */
-function rowOf(session: string, data: JsonObject, level: number | null, start?: Start): Row {
+function rowOf(
+  session: string,
+  data: JsonObject,
+  level: number | null,
+  start?: Start,
+): Omit<Row, "epoch" | "zone" | "gap"> {
   const at = level ?? (isNumber(data.level) ? data.level : 0);
   const scored = asRecord(data.scored);
   const tested = testedIn(data.scored);
   const unbilled = numbers(scored?.unbilled);
   // Before 20 October the frontier held the test's detectable share and false rate (`reportLines`).
   const sized = testedSet(scored, asRecord(data.frontier));
-  const share = sized?.detectable;
+  const detected = sized?.detectable;
   const retained = data.retained === UNMEASURED ? UNMEASURED : testedIn(data.retained);
   return {
     session,
@@ -224,7 +262,7 @@ function rowOf(session: string, data: JsonObject, level: number | null, start?: 
         ? null
         : {
             ...tested,
-            detectable: isNumber(share) || share === null ? share : undefined,
+            detectable: isNumber(detected) || detected === null ? detected : undefined,
             falseRate: isNumber(sized?.falseRate) ? sized.falseRate : null,
           },
     unbilled: unbilled === null ? null : testOf(unbilled),
@@ -243,7 +281,35 @@ function rowOf(session: string, data: JsonObject, level: number | null, start?: 
       withdrawn: count(data.withdrawn),
     },
     reread: rereadOf(data, at),
+    kind: data.fresh === data.starter ? "starter" : "candidate",
   };
+}
+
+/** The zone and the gap of a report's pairs, against the best answer on record of each task. */
+function pairedOf(pairs: readonly Paired[], bests: ReadonlyMap<string, number>): Pick<Row, "zone" | "gap"> {
+  const gap = pairs.some(({ objective }) => objective !== undefined)
+    ? { old: sideGap(pairs, "old", bests), fresh: sideGap(pairs, "fresh", bests) }
+    : null;
+  if (pairs.length === 0) return { zone: null, gap };
+  const zone = {
+    tasks: pairs.length,
+    none: 0,
+    some: 0,
+    all: 0,
+    valid: 0,
+    solves: 0,
+    validity: 0,
+    objective: 0,
+    tied: 0,
+  };
+  for (const pair of pairs) {
+    const valid = pair.old.filter(Boolean).length;
+    zone.valid += valid;
+    zone.solves += pair.old.length;
+    zone[valid === 0 ? "none" : valid === pair.old.length ? "all" : "some"] += 1;
+    zone[carriedBy(pointsOf(pair)) ?? "tied"] += 1;
+  }
+  return { zone, gap };
 }
 
 /** Each comparison of `events` that reported, by its last report, or the one named `only`. */
@@ -258,24 +324,20 @@ export function rowsOf(events: readonly LogEvent[], level: number | null, only: 
         : [],
     ),
   );
+  const { bests } = poolOf(events);
+  const promoted = events.flatMap(({ kind }, at) => (kind === "harness.promoted" ? [at] : []));
   return lastReports(events)
     .filter(({ session }) => only === null || session === only)
-    .map(({ session, data }) => rowOf(session, data, level, starts.get(session)));
-}
-
-/** A tally as wins-losses-ties. */
-function wlt({ wins, losses, ties }: Tally): string {
-  return `${String(wins)}-${String(losses)}-${String(ties)}`;
+    .map((report) => ({
+      ...rowOf(report.session, report.data, level, starts.get(report.session)),
+      epoch: promoted.filter((at) => at < report.index).length,
+      ...pairedOf(pairsReported(events, report), bests),
+    }));
 }
 
 /** A p to four places. */
 function pOf(p: number): string {
   return p < 0.0001 ? p.toExponential(1) : p.toFixed(4);
-}
-
-/** A share in whole percent, or none. */
-function percent(share: number | null): string {
-  return share === null ? "none" : `${String(Math.round(100 * share))}%`;
 }
 
 /** What the tree's rule says beside the recorded reading. */
@@ -348,6 +410,53 @@ function testLines({ scored, unbilled, frontier, retained }: Row): string[] {
   ];
 }
 
+/** A part of a whole to two places, or blank where the whole is none. */
+function share(part: number, whole: number): string {
+  return whole === 0 ? "" : (part / whole).toFixed(2);
+}
+
+/** One side's distance from the best answer on record, or that nothing was read. */
+function sideLine({ ratio, atBest, read: gave, unread }: SideGap): string {
+  const left = unread === 0 ? "" : `, ${String(unread)} unread`;
+  if (ratio === null) return `nothing read${left}`;
+  return `${ratio.toFixed(2)} x best, at it on ${String(atBest)} of ${String(gave)} tasks${left}`;
+}
+
+/** Where the tallied tasks sat for the reference and what untied them, and each side's gap. */
+function pairedLines({ zone, gap }: Row): string[] {
+  return [
+    ...(zone === null
+      ? []
+      : [
+          `  zone: reference none/some/every ${String(zone.none)}/${String(zone.some)}/${String(zone.all)} of ${String(zone.tasks)}, valid share ${share(zone.valid, zone.solves)}; untied by validity ${String(zone.validity)}, by objective ${String(zone.objective)}, tied ${String(zone.tied)}`,
+        ]),
+    ...(gap === null ? [] : [`  gap: reference ${sideLine(gap.old)} | candidate ${sideLine(gap.fresh)}`]),
+  ];
+}
+
+/** One TSV row, in the order of `HEADER`, a comparison of `events` that tallied a task. */
+export function zoneRows(campaign: string, events: readonly LogEvent[]): string[][] {
+  return rowsOf(events, null, null).flatMap(({ session, kind, epoch, reading, zone: z, aa }) => {
+    if (z === null) return [];
+    const aaUntied = aa === null ? null : aa.wins + aa.losses;
+    const said = [campaign, session, kind, String(epoch), reading === "unknown" ? "" : reading];
+    const counts = [z.tasks, z.none, z.some, z.all].map(String);
+    const untied = [z.validity, z.objective, z.tied].map(String);
+    const aaSaid =
+      aa === null || aaUntied === null ? ["", ""] : [String(aaUntied), share(aaUntied, aaUntied + aa.ties)];
+    return [
+      [
+        ...said,
+        ...counts,
+        share(z.valid, z.solves),
+        ...untied,
+        share(z.validity + z.objective, z.tasks),
+        ...aaSaid,
+      ],
+    ];
+  });
+}
+
 /** The lines of one row, each harness `called` by its letter. */
 function rowLines(row: Row, called: Called): string[] {
   const apart = APART.flatMap((kind) =>
@@ -361,6 +470,7 @@ function rowLines(row: Row, called: Called): string[] {
       ? "  A/A: none in the report"
       : `  A/A ${wlt(aa)}${aa.wins + aa.losses === 0 && aa.ties > 0 ? " (every task tied)" : ""}, flip rate ${percent(aa.flips)}, ${aa.either ? "reads a step either way, where none can be" : "reads no step either way"}`,
     ...nearLines(row),
+    ...pairedLines(row),
     `  room for the reference: ${row.room}; ${String(row.tallied)} tallied${apart.length === 0 ? "" : `, ${apart.join(", ")}`}`,
     rereadLine(row),
   ];
@@ -379,8 +489,17 @@ function summaryLine(rows: readonly Row[]): string {
 
 if (import.meta.main) {
   await runCommand(
-    { name: "reading", usage: USAGE, options: OPTIONS, positionals: 1 },
+    { name: "reading", usage: USAGE, options: OPTIONS, positionals: [1, 100] },
     async (args: CommandArgs) => {
+      if (args.flag("zone")) {
+        console.log(HEADER);
+        for (const each of args.positionals) {
+          const log = await logAcross(each);
+          for (const row of zoneRows(basename(dirname(log)), read(log))) console.log(row.join("\t"));
+        }
+        return;
+      }
+      if (args.positionals.length > 1) args.die("one log or campaign name, or several with --zone");
       const asked = args.value("level");
       const level = asked === null ? null : Number(asked);
       if (level !== null && !(level > 0 && level < 1)) args.die("--level must be a number between 0 and 1");

@@ -5,7 +5,7 @@
  * open where the stretch ends, the sessions and solves that ended `killed`, the size of its `.out`
  * and `.err`, and the hours from its last event to the next launch.
  *
- *   bun tools/wri/launches.ts <log>        (or --log <log>)
+ *   bun tools/wri/launches.ts <log>
  *
  * For lanes 23 and 26, and 22 where a run stopped after a promotion. A stop by hand writes no
  * `campaign.ended` and no `campaign.word`, only `killed` endings, so between 3 and 10 November 4 of
@@ -23,20 +23,20 @@
 import { campaignOf, openSteps } from "#src/campaign/handover.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { type Solve, solvesIn } from "#src/kernel/solves.ts";
+import { HOUR_MS } from "#src/meta/clock.ts";
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { isString } from "#src/meta/json-shape.ts";
-import { dirname, join, resolve } from "#src/meta/path.ts";
-import { parseArgs } from "#src/meta/process.ts";
+import { dirname, join } from "#src/meta/path.ts";
 import { plural } from "#src/meta/text.ts";
 import { type Receipt, receipts } from "#tools/runs/receipt.ts";
 import { logEvents, openComparisons } from "#tools/runs/registry.ts";
+import { printRows } from "./folds.ts";
 
 type Launch = Receipt & { readonly session: string };
 
 /** The session endings a stretch can hold, by the event that carries them. */
 const SESSION_ENDS = new Set(["build.finished", "exam.finished", "draft.finished"]);
 const KILLED = "killed";
-const HOUR_MS = 3_600_000;
 /** How long before its receipt a launch writes its `campaign.opened`: a few milliseconds. */
 const OPENED_MS = 1000;
 
@@ -133,10 +133,4 @@ export function launchLines(log: string, events: readonly LogEvent[]): string[] 
   ];
 }
 
-if (import.meta.main) {
-  const { values, positionals } = parseArgs({ allowPositionals: true, options: { log: { type: "string" } } });
-  const given = values.log ?? positionals[0];
-  if (given === undefined) throw new Error("name a log: bun tools/wri/launches.ts <log>");
-  const log = resolve(given);
-  console.log(launchLines(log, logEvents(log)).join("\n"));
-}
+if (import.meta.main) printRows("launches", (log) => launchLines(log, logEvents(log)));

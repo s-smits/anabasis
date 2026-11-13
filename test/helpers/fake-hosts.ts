@@ -22,7 +22,11 @@ const args = process.argv.slice(2);
 appendFileSync(process.env.FAKE_CALLS, JSON.stringify({tool: process.argv[1].split("/").at(-1), args}) + "\\n");`;
 
 const SCRIPTS = {
+  // `FAKE_ACTIVE_FILE` names a file read at each call, for a count that changes while a verb waits:
+  // a child of the verb sees no later change to the verb's environment.
   "ssh": `${RECORD}
+import { existsSync, readFileSync } from "node:fs";
+const written = (file) => (file !== undefined && existsSync(file) ? readFileSync(file, "utf8") : undefined);
 const script = args.at(-1);
 const peer = JSON.parse(process.env.FAKE_FLEET ?? "{}")[args.at(-2)] ?? {};
 if (process.env.FAKE_OFFLINE === "1" || peer.offline) process.exit(255);
@@ -37,7 +41,7 @@ if (process.env.FAKE_EXECUTE === "1" || peer.execute || script.includes("rm -rf 
 }
 if (script.includes("--health")) console.log(JSON.stringify(peer.health ?? JSON.parse(process.env.FAKE_HEALTH ?? "null")));
 else if (script.includes("catalogue")) console.log(JSON.stringify((peer.catalogue ?? JSON.parse(process.env.FAKE_CATALOGUE ?? "[]")).map((run) => ({open:false,stderr:null,...run}))));
-else if (script.includes("active")) console.log(script.includes("--login") ? peer.loginPresent ?? process.env.FAKE_LOGIN_PRESENT ?? "true" : JSON.stringify(peer.active ?? JSON.parse(process.env.FAKE_ACTIVE ?? "[]")));
+else if (script.includes("active")) console.log(script.includes("--login") ? peer.loginPresent ?? process.env.FAKE_LOGIN_PRESENT ?? "true" : JSON.stringify(peer.active ?? JSON.parse(written(process.env.FAKE_ACTIVE_FILE) ?? process.env.FAKE_ACTIVE ?? "[]")));
 else if (script.includes("pulse")) console.log(peer.pulse ?? "◆ reported step");
 else if (script.includes("find . ")) process.stdout.write((process.env.FAKE_FILES ?? "").replaceAll("\\n", "\\0"));
 else if (script.includes("holds")) console.log((peer.holds ?? [process.env.FAKE_HOLDS ?? ""]).join("\\n"));

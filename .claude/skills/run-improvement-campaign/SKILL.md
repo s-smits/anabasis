@@ -93,8 +93,8 @@ never copied.
   names as `<run>:<id>` and no `## Not done` of its plan names; write each into a live run's file
   or its plan until the view reads `none`; a run at rest that no investigation names has no plan,
   so its ids are listed apart as unread until a `## Carried` takes them or its investigation
-  opens) and each run's still-missing view (the ids it did not
-  hold beside its plan's two sections). A `Predictions.md` or `still-missing-<run>.md` from before
+  opens, and a live run's are not, since its trigger opens one) and each run's still-missing view
+  (the ids it did not hold beside its plan's two sections). A `Predictions.md` or `still-missing-<run>.md` from before
   8 November stays as written and is still read, and no new one is written.
 
 A review that finds a run's `predictions-<run>.md` missing writes it first, marked as written after

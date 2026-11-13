@@ -91,7 +91,9 @@ never copied.
   or an investigation's folder, the cycle view (every prediction of its runs with its outcome, a
   stale one marked), the dropped view (each `unreached` or `falsified` id that no `## Carried`
   names as `<run>:<id>` and no `## Not done` of its plan names; write each into a live run's file
-  or its plan until the view reads `none`) and each run's still-missing view (the ids it did not
+  or its plan until the view reads `none`; a run at rest that no investigation names has no plan,
+  so its ids are listed apart as unread until a `## Carried` takes them or its investigation
+  opens) and each run's still-missing view (the ids it did not
   hold beside its plan's two sections). A `Predictions.md` or `still-missing-<run>.md` from before
   8 November stays as written and is still read, and no new one is written.
 

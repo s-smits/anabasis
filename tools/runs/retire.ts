@@ -263,7 +263,13 @@ export async function retire(args: readonly string[]): Promise<void> {
         await syncRuns([], { from: host.name, depth: "record" });
         await syncRuns([], { from: host.name, depth: "whole", closed: true });
       }
-      if (host.name === cleared?.name) await takeRetired(host, sweep.yes ? "take" : "describe");
+      if (host.name !== cleared?.name) continue;
+      // Only a sweep that acts copies first, so one that describes reads the copies as they stand.
+      say(
+        sweep,
+        `${host.name}: each campaign archived there whose copy here is whole, taken; --yes refreshes the copies first, so it can take more than are named`,
+      );
+      await takeRetired(host, sweep.yes ? "take" : "describe");
     } catch (error) {
       // One host that does not answer holds up no other.
       console.error(`${host.name}: ${errorMessage(error)}`);

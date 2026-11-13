@@ -127,8 +127,9 @@ owed steps only, as a timer takes it.
    but the Builder's conversation open (operator, 10 November). The comparison's tally and
    reading are one event written once every solve has finished, so nothing of it is lost; a step
    the pause lands between its report and its promotion is promoted at the run's next move
-   (`decide`, "read a step, and was not promoted"). After two promotions that next comparison is
-   the starter read, so the pause also leaves the second promotion confirmable. While the pause
+   (`decide`, "read a step, and was not promoted"). Past a promotion the pause waits until that
+   promotion's starter comparison has tallied (`restsAfter`), whichever comparison reports first,
+   so a run rests with its newest promotion read. While the pause
    waits the step is `waits`, which `due` does not count. Resolve the run's predictions into
    `outcomes-<run>.md`, with the log's length.
 2. **Investigate** with whole-run-investigation, opened by `wri2p2.ts open` with the other triggered

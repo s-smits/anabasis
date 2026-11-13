@@ -12,7 +12,8 @@
  * worktree that holds it, on the flags its last run kept (`lastLaunch`), less its name and its
  * total: the record holds the total, which a budget word may have set since, and `--budget` names
  * another. `pause` waits until the log has gained one more of the named event and nothing but the
- * Builder's conversation is open, and then stops the run (`stop.ts`); `continue --after` is that
+ * Builder's conversation is open, and then stops the run (`stop.ts`), `reported` also waiting out a
+ * promotion its starter comparison has not read (`restsAfter`); `continue --after` is that
  * pause and then the continue, which moves a run to another login or commit. `next`, the word a
  * pause takes where none is named, waits for the next solve that finishes or tool call any seat
  * records, having left a word that starts no further solve, once every open solve has finished, or
@@ -59,6 +60,7 @@
 import { SEATS, traceKind, unfinished } from "#src/kernel/trace.ts";
 import { append, type LogEvent } from "#src/kernel/log.ts";
 import { PAUSE, pauseWaitMs } from "#src/campaign/word.ts";
+import { epochsOf } from "#src/campaign/climb.ts";
 import { mkdirSync, openSync, statSync } from "#src/meta/filesystem.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -156,11 +158,17 @@ const countOf = (events: readonly LogEvent[], kinds: readonly string[]) =>
  *  conversation is open throughout a led campaign, and a pause cuts it: the campaign run again opens
  *  a new one on its notes, from the last harness it practised or froze (`endCut`). A practice solve
  *  and its reading are read since that conversation began: one a killed run left open stays open on
- *  record, since `endCut` ends sessions only (3 of 65 campaigns since 1 November), and holds nothing. */
+ *  record, since `endCut` ends sessions only (3 of 65 campaigns since 1 November), and holds nothing.
+ *  `reported` alone also waits out a promotion no starter comparison has tallied (`epochsOf`), since
+ *  a run rested there leaves it unconfirmed (`AGENTS.md`, factor 1): the host promotes a step before
+ *  any other comparison, and on 13 November opened a writing session 5 seconds after one, past which
+ *  a pause would have rested the run before that read. A word naming `promoted` rests at it. */
 export function restsAfter(events: readonly LogEvent[], after: string, base: number): boolean {
   if (countOf(events, kindsOf(after)) <= base) return false;
   const open = unfinished(events);
   if (after === "next") return !open.some(({ of }) => of === "solve");
+  const last = epochsOf(events).at(-1);
+  if (after === "reported" && last?.reference !== "starter" && last?.starter_tally === null) return false;
   const led = events.slice(events.findLastIndex(({ kind }) => kind === "build.started"));
   return (
     !open.some(({ of }) => of === "exam" || of === "draft") &&
@@ -188,7 +196,7 @@ async function pauseAt(run: Run, after: string): Promise<void> {
   console.log(
     after === "next"
       ? `${run.name}: starting no further solve, and letting its open ones finish, ${String(allowed / 60_000)} minutes at most`
-      : `${run.name}: waiting for ${kinds.join(", ")} past ${String(base)}, with nothing but the Builder's conversation open`,
+      : `${run.name}: waiting for ${kinds.join(", ")} past ${String(base)}, with nothing but the Builder's conversation open${after === "reported" ? " and no promotion left unread against the starter" : ""}`,
   );
   if (after === "next" && writers(run, processes()).length > 0) {
     append(run.path, "campaign.word", { word: PAUSE });

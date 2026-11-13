@@ -42,22 +42,21 @@ describe("going on with a campaign", () => {
   });
 
   it("pauses past one more of the event, once no comparison, Examiner session or draft is open", () => {
-    const promoted = [
+    const reported = [
       event("build.started", { session: "b-1" }),
       event("comparison.started", { session: "g-2" }),
-      event("comparison.reported", { session: "g-2", reading: "step" }),
-      event("harness.promoted", { harness: "h" }),
+      event("comparison.reported", { session: "g-2", reading: "no-step" }),
     ];
     // The Builder's conversation is open throughout a led campaign, and a pause cuts it: the
     // campaign run again opens a new one on its notes.
-    expect(restsAfter(promoted, "reported", 0)).toBe(true);
-    expect(restsAfter(promoted, "reported", 1)).toBe(false);
+    expect(restsAfter(reported, "reported", 0)).toBe(true);
+    expect(restsAfter(reported, "reported", 1)).toBe(false);
     // `next` joined to another point names nothing: taken as that other point it would write no
     // pause word and rest with a solve open.
-    expect(restsAfter(promoted, "reported|promoted", 0)).toBe(true);
-    expect(() => restsAfter(promoted, "next|reported", 0)).toThrow("--after takes");
+    expect(restsAfter(reported, "reported|promoted", 0)).toBe(true);
+    expect(() => restsAfter(reported, "next|reported", 0)).toThrow("--after takes");
     // An old ladder's reading left open is no comparison: no move goes on with it.
-    const read = [...promoted, event("comparison.started", { session: "l-1", ladder: true })];
+    const read = [...reported, event("comparison.started", { session: "l-1", ladder: true })];
     expect(restsAfter(read, "reported", 0)).toBe(true);
     for (const open of [
       event("comparison.started", { session: "g-3" }),
@@ -66,6 +65,43 @@ describe("going on with a campaign", () => {
     ]) {
       expect(restsAfter([...read, open], "reported", 0)).toBe(false);
     }
+  });
+
+  it("holds a pause after a report from a promotion until its starter comparison has tallied", () => {
+    const report = (session: string, fresh: string, data: JsonObject) => [
+      event("comparison.started", { session, starter: "s" }),
+      event("comparison.reported", { session, old: "h", fresh, ...data }),
+    ];
+    const promoted = [
+      event("build.started", { session: "b-1" }),
+      event("comparison.started", { session: "g-1", starter: "s" }),
+      event("comparison.reported", { session: "g-1", old: "s", fresh: "h", reading: "step" }),
+      event("harness.promoted", { harness: "h" }),
+    ];
+    // The report a pause waited for read a step and the host promoted in the same move: a rest
+    // here would leave the promotion unread against the starter.
+    expect(restsAfter(promoted, "reported", 0)).toBe(false);
+    // A word that names the promotion rests at it, alone or joined.
+    expect(restsAfter(promoted, "promoted", 0)).toBe(true);
+    expect(restsAfter(promoted, "reported|promoted", 0)).toBe(true);
+    // The Builder's own comparison can read first, and a starter comparison that scored nothing
+    // leaves the pair owed: neither is the starter read.
+    const own = report("g-2", "c", { reading: "no-step", scored: { differences: [1] } });
+    expect(restsAfter([...promoted, ...own], "reported", 0)).toBe(false);
+    const unscored = report("g-2", "s", { reading: "not-scored" });
+    expect(restsAfter([...promoted, ...unscored], "reported", 0)).toBe(false);
+    // The starter read rests the run whatever it read, and still only past the pause's own count.
+    const starter = report("g-3", "s", { reading: "no-step", scored: { differences: [-1, 0] } });
+    expect(restsAfter([...promoted, ...starter], "reported", 0)).toBe(true);
+    expect(restsAfter([...promoted, ...starter], "reported", 2)).toBe(false);
+    // An earlier promotion's read does not stand in for the newest promotion's.
+    const again = [
+      ...promoted,
+      ...starter,
+      ...report("g-4", "c", { reading: "step" }),
+      event("harness.promoted", { harness: "c" }),
+    ];
+    expect(restsAfter(again, "reported", 0)).toBe(false);
   });
 
   it("pauses at a promotion or an Examiner session's end, or at the first of the words joined by |", () => {

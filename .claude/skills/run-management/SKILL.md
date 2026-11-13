@@ -231,6 +231,10 @@ for `max`, two for `ultra` or `pro100` and four for `pro200`, else the bare numb
 week can fit (`fitOf`), with more marked `oversubscribed`. `keep` and `fresh` read room the same way.
 `active` names the live runs on each login across hosts, by each run's last launch; count it before a
 launch, continue or move, and add by hand any seat without `--login` or session on a numbered login.
+A host that does not answer is counted as the archive last gathered it (`gatheredOn`, the liveness
+each fetch kept beside its copies), and the count says so; one the archive holds no copy of leaves
+the fleet uncounted, which refuses a continue, a move and a keeper's move. Placement still refuses
+any silent host.
 
 `status` hides stopped runs idle for a day unless `--all`, and names the archive's newest campaigns.
 `hosts --health` reports load against cores, the charger, disk sizes, Bun, controllers, live

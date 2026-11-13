@@ -2,7 +2,7 @@
  * Whether a harness repeats itself, one row a comparison: on the tasks a side passed in every solve,
  * on how many its solves handed in the same answer, byte for byte.
  *
- *   bun tools/wri/answers.ts <log>
+ *   bun tools/wri/wri.ts reader answers --log <log>
  *
  * A valid answer says a task was answered and nothing of how. Until 5 November no reader looked at two
  * answers together, so a harness whose program prints one answer and a solver that works one out anew
@@ -24,12 +24,11 @@
  * said so.
  */
 import { gapAgainst, type Paired } from "#src/kernel/compare.ts";
-import { type LogEvent, read } from "#src/kernel/log.ts";
+import type { LogEvent } from "#src/kernel/log.ts";
 import { lastReports, pairsReported } from "#src/kernel/reports.ts";
 import { type Judged, verdictsOf } from "#src/kernel/solves.ts";
 import { isNumber, isString } from "#src/meta/json-shape.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
-import { NO_TRACES, printRows } from "./folds.ts";
 
 interface Repeats {
   same: number;
@@ -108,5 +107,3 @@ export function answerRows(events: readonly LogEvent[]): string[] {
   });
   return rows.length === 0 ? ["answers: no comparison tallied a task two sides passed"] : rows;
 }
-
-if (import.meta.main) printRows("answers", (log) => answerRows(read(log, NO_TRACES)));

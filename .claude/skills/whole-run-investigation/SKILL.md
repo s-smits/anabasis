@@ -102,12 +102,15 @@ source.
 | 6 | `synthesis --out <dir>` | `synthesis-prompt.md` |
 | lanes 1, 3, 4 | `grade --log <log> [--bundle <pack>] (--task <taskId> --answer <file> \| --solve <id> \| --answers <dir>) [--set <path>=<json>]...` | nothing: one verdict line an answer, the recorded verdict beside a regraded solve, and with `--set` the same answer with one field changed (`--bundle` only for a stored pack) |
 | any | `derive (--log <log>[,<log>...] \| --all) [--verbose] [--force] [--no-embed]` | `data/derived/<campaign>@<path>/` (one folder a log): one file a reader and `manifest.json` |
+| any | `reader <name> --log <log>` | nothing: one reader's text, as `derive` writes it to its file |
 
 ### The readers, derived
 
-Deterministic readers each map one log to text (`READERS`, `tools/wri/derive.ts`, 44 of them on
-10 November; `bun run runs pulse` runs the same list), and each entry says in one line what its file
-holds. The file the open lanes share carries that list as a table, a campaign a column with each
+Deterministic readers each map one log to text (`READERS`, `tools/wri/derive.ts`, 43 of them on
+11 November; `bun run runs pulse` runs the same list), and each entry says in one line what its file
+holds. All but eleven are functions of the log's events, called on one parse of it; the eleven that
+need more (a campaign found by name, the embedding model, the kept harnesses) keep a process of
+their own. `wri.ts reader <name> --log <log>` prints any one. The file the open lanes share carries that list as a table, a campaign a column with each
 file's lines, beside the tools a lane runs with arguments (`## Tools a lane runs`,
 [the catalogue](references/lanes.md)), and a lane's own prompt names, under its triggers, the file
 that holds the rows each fired trigger counted (`ROWS`, `tools/wri/investigation.ts`). The same
@@ -115,7 +118,7 @@ section tells the lane that the record behind every table stays open to it. An i
 lane is given none of this. A reader that finds its campaign by name (`view`, `loop`, `source`,
 `logged`, `cost`, `table`) is not run on a snapshot or a second copy, whose name finds another log;
 its file says so in one line. Left out are tools that read no run
-(`comparison-reading/scripts/size.ts`, `examiner-complexity/scripts/rungs.ts`,
+(`comparison-reading/scripts/size.ts`, `examiner-complexity/scripts/grades.ts rungs`,
 `system-audit/scripts/recent.ts`), that need more than a campaign
 (`examiner-complexity/scripts/grades.ts`, `oracle-handover/scripts/slice.ts`,
 `tools/runs/search.ts`, `wri.ts grade`), that write (`wri.ts start`, `lanes`, `collect`, `synthesis`,

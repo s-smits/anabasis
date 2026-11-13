@@ -6,8 +6,12 @@
 import { describe, expect, it } from "bun:test";
 import { campaignLine, sessionLines } from "#skills/examiner-complexity/scripts/ambition.ts";
 import { csvLines, draftRows } from "#skills/examiner-complexity/scripts/exams.ts";
-import { gradeLines, outcomesOf } from "#skills/examiner-complexity/scripts/grades.ts";
-import { compareLines, packetOf } from "#skills/examiner-complexity/scripts/rungs.ts";
+import {
+  compareLines,
+  gradeLines,
+  outcomesOf,
+  packetOf,
+} from "#skills/examiner-complexity/scripts/grades.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 

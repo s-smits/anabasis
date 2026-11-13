@@ -216,9 +216,13 @@ async function pauseAt(run: Run, after: string, ready?: () => Promise<void>): Pr
     const grown = statSync(run.path).size;
     // Past its patience nothing need have moved: a held solve records nothing.
     const late = after === "next" && Date.now() > patience;
-    if (late || (grown !== size && restsAfter(logEvents(run.path), after, base))) {
-      if (after !== "next") await ready?.();
-      return stop([run.name, "--yes"]);
+    const rests = () => restsAfter(logEvents(run.path), after, base);
+    if (late || (grown !== size && rests())) {
+      if (after === "next" || ready === undefined) return stop([run.name, "--yes"]);
+      // The asking takes seconds (a fetch, a count across the fleet), in which the run can begin its
+      // next comparison or session: the rest is read again, and a run that moved on is waited for.
+      await ready();
+      if (rests()) return stop([run.name, "--yes"]);
     }
     size = grown;
     await Bun.sleep(after === "next" ? STEP_MS : LOOK_MS);

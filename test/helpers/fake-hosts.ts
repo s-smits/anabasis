@@ -62,9 +62,19 @@ if (process.env.FAKE_TRANSFER_FAIL === "1" || (process.env.FAKE_TRANSFER_FAIL_FR
 const kept = args.filter((arg) => arg.startsWith("--include=/")).map((arg) => new RegExp("^" + arg.slice(11).replaceAll(".", "[.]").replaceAll("*", ".*") + "$"));
 const gone = left.map((arg) => arg.slice(11).replace(/\\/$/, ""));
 cpSync(from, into, {recursive: true, verbatimSymlinks: true, filter: (file) => gone.includes(relative(resolve(from), resolve(file))) ? false : !args.includes("--exclude=/*") || resolve(file) === resolve(from) || (dirname(file) === resolve(from) && kept.some((name) => name.test(basename(file))))});`,
+  // `FAKE_FETCH_STARTS` names a log that gains a comparison's start during one fetch, once the file
+  // `<log>.starts` exists: a run that moves on while a verb asks the remote.
   "git": `${RECORD}
-import { mkdirSync, rmSync } from "node:fs";
-if (args.includes("fetch")) process.exit(process.env.FAKE_FETCH_FAIL === "1" ? 1 : 0);
+import { existsSync, mkdirSync, rmSync } from "node:fs";
+if (args.includes("fetch")) {
+  const moving = process.env.FAKE_FETCH_STARTS;
+  if (moving !== undefined && existsSync(moving + ".starts")) {
+    rmSync(moving + ".starts");
+    const { append } = await import(process.env.FAKE_REPO + "/src/kernel/log.ts");
+    append(moving, "comparison.started", { session: "g-2" });
+  }
+  process.exit(process.env.FAKE_FETCH_FAIL === "1" ? 1 : 0);
+}
 if (args.includes("merge-base") || args.includes("for-each-ref")) console.log(process.env.FAKE_ANCESTOR ?? process.env.FAKE_COMMIT);
 else if (args.includes("rev-parse")) console.log(args.includes("--git-common-dir") ? process.env.FAKE_GIT : args.includes("--show-toplevel") ? process.env.FAKE_MAIN : args.includes("--verify") && process.env.FAKE_AT !== undefined ? process.env.FAKE_AT : args.includes("-C") ? process.env.FAKE_COMMIT : process.env.FAKE_REMOTE_COMMIT ?? process.env.FAKE_COMMIT);
 else if (args.includes("status")) console.log(process.env.FAKE_DIRTY ?? "");

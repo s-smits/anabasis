@@ -312,8 +312,8 @@ describe("going on with a campaign", () => {
    *  `flags` that waits for its next report. The driver shortens the pause's 30-second look, and the
    *  log gains the report once the verb says it waits, so after the pause has counted the reports it
    *  starts from however long the count and the dry run before it took; what `meanwhile` returns for
-   *  the fixture runs in the driver at that moment. */
-  function pointed(flags: readonly string[], meanwhile: (root: string) => string = () => "") {
+   *  the fixture and its log runs in the driver at that moment. */
+  function pointed(flags: readonly string[], meanwhile: (root: string, log: string) => string = () => "") {
     const made = fakeHosts();
     fixtures.push(made.root);
     const name = "pointed";
@@ -331,11 +331,11 @@ describe("going on with a campaign", () => {
       detached: true,
     });
     const driver = [
-      'import { writeFileSync } from "node:fs";',
+      'import { existsSync, writeFileSync } from "node:fs";',
       'import { append } from "REPOSITORY/src/kernel/log.ts";',
       "const sleep = Bun.sleep; Bun.sleep = (ms) => sleep(Math.min(Number(ms), 100));",
       'const { continueRun } = await import("REPOSITORY/tools/runs/manage.ts");',
-      `const report = () => { ${meanwhile(made.root)} append(${JSON.stringify(log)}, "comparison.reported", { session: "g-1", reading: "no-step" }); };`,
+      `const report = () => { ${meanwhile(made.root, log)} append(${JSON.stringify(log)}, "comparison.reported", { session: "g-1", reading: "no-step" }); };`,
       'const say = console.log; console.log = (line) => { say(line); if (String(line).includes("waiting for")) report(); };',
       `await continueRun(${JSON.stringify([name, "--after", "reported", ...flags, "--yes", "--", "--target", "8"])});`,
     ].join("\n");
@@ -386,6 +386,32 @@ describe("going on with a campaign", () => {
       expect(refused.err).toContain("login 2 is at its live-run cap");
       expect(refused.out).not.toContain("its keeper");
       expect(await ended()).toBe(false);
+    } finally {
+      keeper.kill();
+    }
+  });
+
+  it("reads the rest again after asking, so that a run that began a comparison meanwhile is waited for", async () => {
+    // The asking takes seconds live. Here the fetch at the first point finds the run starting its
+    // next comparison, whose report the driver writes at the look after it.
+    const { made, driver, keeper, row, ended } = pointed([], (_root, log) => {
+      const marker = JSON.stringify(`${log}.starts`);
+      const reported = `append(${JSON.stringify(log)}, "comparison.reported", { session: "g-2", reading: "no-step" })`;
+      return [
+        `writeFileSync(${marker}, "");`,
+        "const looked = Bun.sleep; let closed = false;",
+        `Bun.sleep = (ms) => { if (!closed && !existsSync(${marker})) { closed = true; ${reported}; } return looked(ms); };`,
+      ].join(" ");
+    });
+    try {
+      const log = join(made.main, ".ana", "d2", "pointed", "log.jsonl");
+      const moved = made.run(driver, { FAKE_PS: row, FAKE_FETCH_STARTS: log });
+      expect(moved.out).toContain("its keeper");
+      expect(await ended()).toBe(true);
+      // The remote is asked at the first point, at the second, and by the start after the stop: a
+      // stop at the first point, inside the comparison, would leave two.
+      const fetches = made.recorded().filter(({ tool, args }) => tool === "git" && args.includes("fetch"));
+      expect(fetches).toHaveLength(3);
     } finally {
       keeper.kill();
     }

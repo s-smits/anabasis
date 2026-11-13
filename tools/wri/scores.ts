@@ -8,7 +8,8 @@
  * how many differ. It then gives three tallies: as scored, on validity alone and on the objective
  * alone, each beside the same three of the reference's A/A halves. It counts the tasks on which every
  * new solve beat every reference solve: valid against invalid, or by the objective by at least the
- * gap floor (`gainOver`, `ROOM`).
+ * gap floor (`gainOver`, `ROOM`). A last tally splits the scores by whether a task of the same
+ * family was practice before the comparison began (`practisedLine`).
  *
  * For a step it adds:
  * - p with each win removed;
@@ -38,6 +39,7 @@ import {
 import { proposalsOf } from "#src/kernel/history.ts";
 import { lastReports, pairsReported, type Reported } from "#src/kernel/reports.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
+import { taskSets } from "#src/kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { spareOf } from "./clearance.ts";
 import { pSaid, testedOf, testSaid } from "./promotion.ts";
@@ -154,6 +156,37 @@ function stepLines(
   ];
 }
 
+/**
+ * The scores by whether a task of the same family had been released for practice before the
+ * comparison began, or before its report where no start is on record. A harness can climb on the
+ * kinds of task its Builder practised and on no other, and one tally reads both alike: on 13
+ * November the four jobstat campaigns of that week that had promoted read 134 won to 24 lost
+ * on tasks with such a sibling and 32 to 26 on the rest. The family is the Examiner's own label,
+ * so siblings it labelled apart count as none, and a task that names no family has none. It is
+ * reported and decides nothing.
+ */
+function practisedLine(
+  events: readonly LogEvent[],
+  { session, index }: Reported,
+  tested: readonly Paired[],
+  scores: readonly number[],
+): string {
+  const began = events.findLastIndex(
+    ({ kind, data }, at) => at < index && kind === STARTED && data.session === session,
+  );
+  const family = new Map(proposalsOf(events).map((each) => [each.version, each.family]));
+  const practised = new Set(
+    taskSets(events.slice(0, began === -1 ? index : began)).released.map((version) => family.get(version)),
+  );
+  const [kin, none] = [true, false].map((wanted) =>
+    scores.filter((_, at) => {
+      const named = family.get(tested[at]?.task ?? "") ?? null;
+      return (named !== null && practised.has(named)) === wanted;
+    }),
+  );
+  return `  by practice: a task of the family was practice before the start ${tallied(kin ?? [])}; none was ${tallied(none ?? [])}`;
+}
+
 /** The block of one reported comparison. */
 function reportedLines(events: readonly LogEvent[], report: Reported): string[] {
   const { data, session } = report;
@@ -183,6 +216,7 @@ function reportedLines(events: readonly LogEvent[], report: Reported): string[] 
       ([name, measure]) => `  ${name}: ${tallied(tested.map(measure))}; A/A halves ${aa(measure)}`,
     ),
     `  every new solve beat every reference solve: ${String(tested.filter(beatsAll).length)} of ${String(tested.length)} tasks`,
+    practisedLine(events, report, tested, recorded),
   ];
   return readsStep(recorded, level) ? [...lines, ...stepLines(events, tested, recorded, level)] : lines;
 }

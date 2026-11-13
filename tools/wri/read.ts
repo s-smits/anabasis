@@ -141,7 +141,12 @@ function practiceTriggers(log: Index, { build, changed, read, round }: Practised
   // A session with no end record may still be running when the log is read: it is not finished by
   // the log's last event, which is not the same as a session cut short.
   const ended = finished === null ? "not finished by the log's last event" : text(finished.ended);
-  const failed = round.practice.filter((solve) => solve.outcome === "fail");
+  const fails = round.practice.filter((solve) => solve.outcome === "fail");
+  // A fail under the harness the session began from, or under one a solve ran under before it began
+  // (the reference, where the session followed a cut one), is a baseline's, which no edit of the
+  // session made or answered: on 13 November two such read as two fails a change had answered.
+  const older = new Set(log.solves.flatMap((solve) => (solve.index < build.from ? [solve.harness] : [])));
+  const failed = fails.filter((fail) => fail.harness !== build.parent && !older.has(fail.harness));
   const earned = failed.filter((fail) => log.stands.get(fail.id) === "earned").length;
   // A fail followed by a pass of the same task: under other bytes it may be the change answering
   // the fail, and under the same bytes it is the solver's variance and answers nothing.
@@ -179,9 +184,9 @@ function practiceTriggers(log: Index, { build, changed, read, round }: Practised
     ...(changed && lastPractice !== undefined ? unpractised : []),
     ...firedIf(ended !== "finished", "SESSION ENDED", `${session}: ${ended}`),
     ...firedIf(
-      failed.length > 0,
+      fails.length > 0,
       "PRACTICE FAILS",
-      `${session}: ${plural(failed.length, "fail")}, ${String(earned)} ruled earned; the same task passed later under changed bytes ${String(answered)}, under the same bytes ${String(flipped)}`,
+      `${session}: ${plural(failed.length, "fail")} under its own states, ${String(earned)} ruled earned; the same task passed later under changed bytes ${String(answered)}, under the same bytes ${String(flipped)}; ${plural(fails.length - failed.length, "fail")} under a harness older than the session`,
     ),
     ...firedIf(
       exposed > 0,
@@ -299,17 +304,36 @@ function harnessTriggers(log: Index): Trigger[] {
       ),
     };
     const child = text(finished?.harness);
+    // Where the end record names no harness, the last one the session froze for a comparison or
+    // the host kept for it at the cut (`keepPractised`) is what it left.
+    const left =
+      child ||
+      text(
+        log.events.findLast(({ kind, data }) => kind === "build.checkpoint" && data.session === session)?.data
+          .harness,
+      );
     // pi's `write` and `edit` since 2026-10-09, `write_file` in the sessions before it, and the tool tree
     // where a shell command named it: esp32's b-1 kept 9 tool files on 12 October, its file tools none.
-    const written = [
+    const files = [
       ...new Set(calls.flatMap(({ tool, args }) => (FILE_WRITERS.has(tool) ? [text(args?.path)] : []))),
+    ];
+    const written = [
+      ...files,
       ...new Set(calls.flatMap(({ args }) => /\.toolchain/.exec(text(args?.command)) ?? [])),
     ];
-    // A stop writes no end record, so a session it cut says nothing of what it changed: recode's
-    // b-1 wrote its harness for forty minutes and this read none of it (2026-10-10). Its file-tool
-    // calls are what the end record would have said, so they stand in for `changed` wherever a
-    // trigger asks whether this session touched its harness at all.
-    const edited = finished === null ? written.length > 0 : finished.changed === true;
+    // A session a stop cut says nothing of what it changed: it has no end record, or the `killed`
+    // one a relaunch writes for it (`endCut`), which holds no `changed`. Recode's b-1 wrote its
+    // harness for forty minutes and this read none of it (2026-10-10), and a jobstat b-1 killed
+    // after its edits fired no trigger here (2026-11-13). Its file-tool calls and the harness it
+    // left are what the end record would have said, so they stand in for `changed`. A shell command
+    // that names the tool tree does not: it may only run a program there, and standing in it named
+    // two killed sessions of other domains that wrote no file and left no harness (2026-11-13). A
+    // cut session that changed its tools through the shell alone and never practised or compared
+    // the result therefore reads as unchanged.
+    const edited =
+      finished?.changed === undefined
+        ? files.length > 0 || (left !== "" && left !== parent)
+        : finished.changed === true;
     // A shell command that only runs or lists the tool tree names it too, so `edited` decides:
     // on 11 November three esp32 sessions whose end records read `changed` false were named.
     const toolFiles = edited ? written.filter((path) => /tools|\.toolchain/.test(path)) : [];
@@ -319,7 +343,7 @@ function harnessTriggers(log: Index): Trigger[] {
       ...firedIf(
         edited,
         "HARNESS CHANGED",
-        `${session}: ${short(parent)} to ${finished === null ? "what a stop left unsaved" : short(child)}; written by its file tools and shell: ${written.join(", ") || "nothing"}`,
+        `${session}: ${short(parent)} to ${left === "" ? "what a stop left unsaved" : short(left)}; written by its file tools and shell: ${written.join(", ") || "nothing"}`,
       ),
       ...firedIf(
         isString(finished?.broken),

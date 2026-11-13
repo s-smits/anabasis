@@ -21,6 +21,7 @@ import { type Static, Type } from "typebox";
 import { pauseSince } from "#src/campaign/word.ts";
 import { existsSync, readFileSync, statSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
+import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
@@ -31,7 +32,7 @@ import { launchedIn, type RunState, runState } from "./state.ts";
 import { onStatus } from "./pulse.ts";
 import { remember } from "./pulse-readers.ts";
 import { lastLaunch, unlaunchedSeed } from "./receipt.ts";
-import { climbed, type Promotion, promotionsOf } from "./said.ts";
+import { climbed, ENDED, type Promotion, promotionsOf, word } from "./said.ts";
 import {
   archived,
   HERE,
@@ -58,6 +59,8 @@ export interface Row {
   readonly kept: readonly string[];
   /** Whether its current launch was left a pause (`pauseSince`); a peer on an older tree sends none. */
   readonly paused?: boolean;
+  /** Each ending on its log, oldest first; a peer on an older tree sends none. */
+  readonly endings?: readonly string[];
 }
 
 /** What a host answered: its rows, and every campaign it holds, which the rows leave out once they are
@@ -88,6 +91,8 @@ const SEEN = Type.Object({
   gap: MAYBE_TEXT,
   quiet: Type.Boolean(),
   kept: Type.Number(),
+  /** The endings on the run's log; a state file from before 13 November holds none. */
+  endings: Type.Optional(Type.Number()),
 });
 type Seen = Static<typeof SEEN>;
 /** The state file: the hosts the last look heard nothing from, and what it saw of each run. */
@@ -129,6 +134,7 @@ function rowOf(run: Run, running: readonly Running[], now: number): Row {
     lastAt: last?.at ?? null,
     kept: existsSync(file) ? readFileSync(file, "utf8").split("\n").filter(keeperActed) : [],
     paused: pauseSince(events, launchedIn(run, events)) !== undefined,
+    endings: events.flatMap(({ kind, data }) => (kind === ENDED ? [word(data.ending)] : [])),
   };
 }
 
@@ -181,6 +187,7 @@ function seenOf(row: Row, host: string): Seen {
     gap: gapOf(row),
     quiet: row.state.kind === "quiet",
     kept: row.kept.length,
+    ...keyIfDefined("endings", row.endings?.length),
   };
 }
 
@@ -193,10 +200,16 @@ function newsOf(row: Row, now: Seen, seen: Seen | undefined): string[] {
     last === undefined
       ? []
       : [`first seen with ${plural(row.promotions.length, "promotion")}, the last ${last.digest}`];
-  // What turned since `seen`: the gap and the ending where each is new, and whether the log went quiet.
+  // What turned since `seen`: the gap where it is new, and whether the log went quiet.
   const gap = now.gap === seen?.gap ? null : now.gap;
-  const ending = now.ending === seen?.ending ? null : now.ending;
   const quiet = now.quiet && seen?.quiet !== true;
+  // Each ending the log gained since `seen`; the run went on past all but one it stands on. A look
+  // comes every ten minutes and a keeper goes on within one: on 13 November a run ended on its
+  // environment three times and no look said so. Where either look lacks the count (a first sight,
+  // a peer on an older tree, an older state file), the ending the log stands on is said where new.
+  const gained = seen?.endings === undefined ? undefined : row.endings?.slice(seen.endings);
+  const stands = now.ending === null ? -1 : (gained?.length ?? 0) - 1;
+  const fallback = now.ending === null || now.ending === seen?.ending ? [] : [now.ending];
   return [
     ...(seen === undefined ? first : climbed(row, seen).map(({ line }) => line)),
     ...row.kept
@@ -206,7 +219,8 @@ function newsOf(row: Row, now: Seen, seen: Seen | undefined): string[] {
     ...(quiet
       ? [`quiet: no new event since ${row.lastAt ?? "its start"}, and no login limit waited on`]
       : []),
-    ...(ending === null ? [] : [`ended ${ending}`]),
+    ...(gained?.map((said, at) => `ended ${said}${at === stands ? "" : ", and went on"}`) ??
+      fallback.map((said) => `ended ${said}`)),
   ];
 }
 

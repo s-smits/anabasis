@@ -436,6 +436,29 @@ describe("going on with a campaign", () => {
     }
   });
 
+  it("waits for a comparison that began during the asking where the continue names another commit, instead of refusing", async () => {
+    // The start refuses another commit under an open comparison, which is right of a stopped run. At
+    // the point the run still runs, so the comparison is waited for and the verb stops at its report.
+    const { made, driver, keeper, row, ended } = pointed(["--at", "b".repeat(40)], (_root, log) => {
+      const marker = JSON.stringify(`${log}.starts`);
+      const reported = `append(${JSON.stringify(log)}, "comparison.reported", { session: "g-2", reading: "no-step" })`;
+      return [
+        `writeFileSync(${marker}, "");`,
+        "const looked = Bun.sleep; let closed = false;",
+        `Bun.sleep = (ms) => { if (!closed && !existsSync(${marker})) { closed = true; ${reported}; } return looked(ms); };`,
+      ].join(" ");
+    });
+    try {
+      const log = join(made.main, ".ana", "d2", "pointed", "log.jsonl");
+      const moved = made.run(driver, { FAKE_PS: row, FAKE_FETCH_STARTS: log, FAKE_AT: "b".repeat(40) });
+      expect(moved.err).not.toContain("began and has not reported");
+      expect(moved.out).toContain("its keeper");
+      expect(await ended()).toBe(true);
+    } finally {
+      keeper.kill();
+    }
+  });
+
   it("refuses a second waiter on one run, which could start again a run the first had stopped", () => {
     const made = fakeHosts();
     fixtures.push(made.root);

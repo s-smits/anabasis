@@ -27,13 +27,14 @@ import {
   pairsOf,
   scored,
   readsStep,
+  type Tally,
   UNMEASURED,
   unsolved,
   informative,
   wholePoints,
 } from "../kernel/compare.ts";
 import { conditionsOf, settingId } from "../kernel/condition.ts";
-import { failWrongPasses, wrongPasses } from "../kernel/history.ts";
+import { failWrongPasses, proposalsOf, wrongPasses } from "../kernel/history.ts";
 import type { LogEvent } from "../kernel/log.ts";
 import { poolOf } from "../kernel/reports.ts";
 import { passed, ranUnder, rejected, rulingsOf, solvesIn } from "../kernel/solves.ts";
@@ -111,6 +112,9 @@ export interface Report {
   /** The exhausted tasks the draw keeps, read in the one test with the frontier and reported apart,
    *  so a loss on them shows; `unmeasured` where none was tallied, never no loss (`compare.ts`). */
   readonly retained: Entered | typeof UNMEASURED | null;
+  /** Each family's tallies on the two sets, from the same rows, so they sum to the whole. They show
+   *  concentration; a family name can hide correlated tasks, and they establish no independence. */
+  readonly families: Readonly<Record<string, { readonly frontier: Tally }>> | null;
   /** The preceding comparison of the same two harnesses, and their initial draws' intersection. */
   readonly overlap: { readonly with: string; readonly tasks: readonly string[] } | null;
   /** The reference harness against itself on halves of its own solves mirrored in time, the A/A comparison,
@@ -220,6 +224,7 @@ export const NOTHING = {
   scored: null,
   frontier: null,
   retained: null,
+  families: null,
   overlap: null,
   valid: null,
   billed: null,
@@ -344,12 +349,20 @@ export function rejections(events: readonly LogEvent[], fixed: Fixed, labels: Re
 /**
  * The two sets a comparison's start fixed, as its tallied `pairs` fill them, which the step reads
  * as one: the frontier and the retained tasks, each with the tasks that entered it and those of
- * `aside` in it. A retained set no task was tallied in is unmeasured, never no loss. Until
- * 12 November a report also held each family's tally, which a draw of one task a family (`poolOf`)
- * makes one task each.
+ * `aside` in it, and each family's tallies on both, from the same rows. A retained set no task
+ * was tallied in is unmeasured, never no loss.
  */
-function setsOf(fixed: Fixed, pairs: readonly Paired[], aside: readonly string[]) {
+function setsOf(
+  events: readonly LogEvent[],
+  fixed: Fixed,
+  pairs: readonly Paired[],
+  aside: readonly string[],
+) {
   const kept = new Set(fixed.retained);
+  const named = new Map(
+    proposalsOf(events).flatMap(({ version, family }) => (family === null ? [] : [[version, family]])),
+  );
+  const familyOf = (task: string) => named.get(task) ?? "unnamed";
   const part = (set: "frontier" | "retained") =>
     pairs.filter(({ task }) => kept.has(task) === (set === "retained"));
   const tallied = { frontier: part("frontier"), retained: part("retained") };
@@ -359,9 +372,16 @@ function setsOf(fixed: Fixed, pairs: readonly Paired[], aside: readonly string[]
     const of = tallied[set].map(({ task }) => task);
     return { tasks: fixed.tasks.filter(within), aside: aside.filter(within), ...scored(tallied[set]), of };
   };
+  const ofFamily = (family: string): Tally => {
+    const { wins, losses, ties } = scored(tallied.frontier.filter(({ task }) => familyOf(task) === family));
+    return { wins, losses, ties };
+  };
   return {
     frontier: setOf("frontier"),
     retained: tallied.retained.length > 0 ? setOf("retained") : UNMEASURED,
+    families: Object.fromEntries(
+      [...new Set(fixed.tasks.map(familyOf))].map((family) => [family, { frontier: ofFamily(family) }]),
+    ),
   };
 }
 
@@ -414,7 +434,7 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
   const kept = (pairs: readonly Paired[]) => pairs.filter(({ task }) => !open.has(task));
   const pairs = kept(first);
   const aside = coverage.aside.filter(scorable);
-  const sets = setsOf(fixed, pairs, aside);
+  const sets = setsOf(all, fixed, pairs, aside);
   /** The reference against itself on halves of the test's own solves (`Sides`, `halves`), over
    *  the tallied tasks and no other: until 14 October it read every live task, so a task short on
    *  the new side alone stood in the A/A and not in the tally, and its printed count was neither. */
@@ -455,6 +475,7 @@ export function compared(all: readonly LogEvent[], fixed: Fixed, labels: Readonl
     },
     frontier: sets.frontier,
     retained: sets.retained,
+    families: sets.families,
     overlap: overlapOf(all, fixed),
     valid: validOf(pairs, fixed.solves, poolOf(events)),
     billed: { old: billedMean(pairs, "old"), fresh: billedMean(pairs, "fresh") },

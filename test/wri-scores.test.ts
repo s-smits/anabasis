@@ -144,6 +144,12 @@ describe("a step", () => {
   it("tallies the scores by the Examiner session that wrote each task", () => {
     expect(lineOf("g-1", "by writer")).toBe("  by writer: x-1 5-0-0 p 0.031; x-2 4-0-1 p 0.063");
   });
+
+  it("reads the step again on the first tallied task of each family, which ten siblings make one", () => {
+    expect(lineOf("g-1", "on one task a family")).toBe(
+      "  on one task a family: 1-0-0 p 0.500, no step at the level",
+    );
+  });
 });
 
 describe("a comparison with no recorded scores", () => {

@@ -500,6 +500,9 @@ export interface Sensitivity {
   /** The reference against itself: how often two of its solves of a task disagree, and the least
    *  share of its untied tasks one half has to win to be detected four times in five. */
   readonly noise: { readonly flips: number | null; readonly detectable: number | null } | null;
+  /** The families the frontier's untied tasks fall in, and how many of them the largest holds:
+   *  concentration, which a count of tasks hides. Null where the report holds no families. */
+  readonly families: { readonly count: number; readonly largest: number } | null;
 }
 
 export interface ComparisonDetail extends Answer {

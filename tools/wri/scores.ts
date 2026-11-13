@@ -134,7 +134,16 @@ function stepLines(
   const proposals = new Map(proposalsOf(events).map((each) => [each.version, each]));
   const spare = spareOf(scores, level);
   const wins = scores.filter((score) => score > 0).length;
+  // Siblings share a construction, so the step is also read on the first tallied task of each
+  // family, a task that names none being a family of its own: a subset of the same scores, no redraw.
+  const firsts = [
+    ...Map.groupBy(
+      scores,
+      (_, at) => proposals.get(tested[at]?.task ?? "")?.family ?? `task ${String(at)}`,
+    ).values(),
+  ].flatMap((kin) => kin.slice(0, 1));
   return [
+    `  on one task a family: ${tallied(firsts)}, ${readsStep(firsts, level) ? "a step" : "no step"} at the level`,
     `  without each win: ${withoutEach(scores, level)}`,
     `  wins to spare, largest first (spareOf): ${String(spare)}; the step is lost once the ${String(Math.min(spare + 1, wins))} largest are removed`,
     `  by writer: ${tallyBy(tested, scores, (task) => proposals.get(task)?.session ?? UNNAMED)}`,

@@ -63,7 +63,7 @@ const UNRECORDED = `${NAME}-unrecorded`;
 const ASKED = { level: 0.02, patience: PATIENCE };
 const TASKS = Array.from({ length: 7 }, (_, index) => ({
   taskId: `t-${String(index + 1)}`,
-  family: `fixture-${String(index + 1)}`,
+  family: "fixture",
   publicInput: { base: index + 2 },
   hidden: null,
 }));

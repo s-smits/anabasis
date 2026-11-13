@@ -30,7 +30,7 @@ to go in one sitting, is the session's judgement. Read the script first and deci
 | a fix is ready | stack-pr's `stack.ts`, repository-practice's `preflight.ts` | step 4, its before-and-after, then step 5 |
 | a run bills while its milestone stays put | `runs pulse <name>`, `wri.ts read --log <log>` | "A stall", then "The walk" |
 | a step has stood for two days, or two sessions hold one step | the hours `due` prints; the rows of `cycle.md` | take it, pass it in `deviations.md`, or name its one holder in `cycle.md` |
-| a jobstat run has stopped with a promoted reference no read has scored | its lane 27 report; the last read's prediction file; `score.ts table` over the store | "The outside aim": the audit's grade, the prediction and the dry run now, the rollouts once `cycle.md` names the login and the budget, and the run's row in `outside-reads.md` either way, which `wri2p2.ts next` asks for |
+| a jobstat run has promoted twice, or has stopped with a promoted reference no read has scored | the last read's prediction file; `score.ts table` over the store; its lane 27 report where the run stopped short of two promotions | "The outside aim": the prediction and the dry run, then the rollouts started detached and not waited for, the run's row in `outside-reads.md`, which `wri2p2.ts next` asks for, and the iteration's next step at once |
 | a handover is due, or a timer fires with nothing to do | `timers.ts <the session's transcripts>` | "Timers": retire or retime it; then the five points |
 
 ## The release cycle
@@ -336,34 +336,45 @@ The loop serves the aim in three ways:
   backlog's items 5 and 12 to 14) is fixed at its owner before the next read, since it is wrong
   whichever side led, and it is the one lever on the score that touches no campaign.
 - **Directly, by reading it**: each jobstat run's newest promoted reference on the tasks below,
-  once the run has stopped.
+  once the run has promoted twice or has stopped.
 
 Nothing of the benchmark crosses into a campaign. No seat, prompt, check or query hears its tasks,
 rubrics or scores (`AGENTS.md`, section 1, "An outside benchmark against fitting the query to it";
 rules 2, 3 and 9); the query is the operator's and is bounded against its origin; and a bench score
 promotes nothing and is never a step.
 
-### One jobstat run always, read at its end
+### One jobstat run always, read at its second promotion
 
 One of the live full runs is always a jobstat run, also where one slot is all there is (operator,
-12 November 2026), so a freed slot goes to jobstat first wherever none is live. When a jobstat run
-stops at its trigger, its newest promoted reference is read on the eight tasks below, confirmed or
-not, unless the run's blind audit finds it inferior: lane 27 of its investigation, which grades
-each kept version before reading any result, puts its soundness at 2 or below (broken, fitted or
-churn) or reads it as bloat, a weight that grew while soundness stayed flat. The audit therefore
-comes before the read, and its grade and weight go into the read's prediction file before any
-rollout.
+12 November 2026), so a freed slot goes to jobstat first wherever none is live. A jobstat run's
+newest promoted reference is read on the eight tasks below, confirmed or not, at the first of two
+moments:
 
-The read is owed from the moment the run stops, and its row in `outside-reads.md` in the cycle's
-folder is the receipt. The run's investigation checks for it: `wri2p2.ts next` holds a jobstat
-run's folder at its `outside` gate, after the run's ledgers and before the vetting, until a row
-names the run. A row is one of three kinds, counts only:
+- **Its second promotion** (operator, 13 November 2026: "start doing all 8 ablation after a run has
+  reached 2 promotions ... do not wait for these but continue with the next step of the loop"). The
+  read starts once the run rests at the pause its trigger asked for, whose comparison is the starter
+  read, and it waits for nothing else: not the investigation, and not lane 27's audit, whose grade
+  and weight go into the row when the lane reports. The rollouts are started detached, and the
+  iteration goes on to its investigation at once; the table is read when the arm's records are
+  judged. A reference the audit then grades inferior is a scored row all the same, and the only kind
+  that shows whether the grade tells what the benchmark rewards.
+- **Its stop at another trigger with one promotion.** Here the audit comes first: where lane 27,
+  which grades each kept version before reading any result, puts the reference's soundness at 2 or
+  below (broken, fitted or churn) or reads it as bloat, a weight that grew while soundness stayed
+  flat, the read is skipped, and otherwise its grade and weight go into the read's prediction file
+  before any rollout.
+
+The read's row in `outside-reads.md` in the cycle's folder is the receipt. The run's investigation
+checks for it: `wri2p2.ts next` holds a jobstat run's folder at its `outside` gate, after the run's
+ledgers and before the vetting, until a row names the run. A row is one of three kinds, counts
+only:
 
 - **scored**, once the eight tasks are judged;
 - **skipped**, with the audit's grade, or because the run promoted nothing;
-- **owed**, with what the read waits for (a login with room, the operator's budget). The dry run
-  still runs at once, since it exports the reference's tree into the store while the campaign's
-  installed packages exist. An owed row passes the gate and holds no fork back.
+- **owed**, with what the read waits for: its own rollouts still under way (with the time they
+  started), the read ahead of it on the machine, or a login with room. The dry run still runs at
+  once, since it exports the reference's tree into the store while the campaign's installed
+  packages exist. An owed row passes the gate and holds no fork back.
 
 ```text
 | run | digest | step: tally, measure that carried it | starter read: confirmed, written-after tally | audit: soundness, weight | fair five: reference, Starter beside it | first task and outside pair: reference, Starter | scored, skipped or owed |
@@ -447,12 +458,17 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
    `<store>/trees/<label>` and no record. Where it cannot find the kept harness of a run another
    host holds, fetch the run first (`bun run runs fetch <name>`). Without `--judge-log` no
    judgement's dollars are recorded and the table prints `judge ?`.
-4. **Run on the operator's word.** The moment and the size stand (each jobstat run's end; the
-   eight tasks, the reference and a Starter beside it at one rollout a task), and the login and the
-   budget are the operator's, recorded in `cycle.md`; until they are, a read stops at its dry run and its row reads `owed`.
-   A bench is a paid simulation beside the live runs: the same command with `--yes`, from a
-   worktree at a published commit, with the shim running, the arms in turn and never two processes
-   on one store, since a judgement's dollars are the shim log's rows inside its window. An arm rolls
+4. **Run, detached, on the operator's standing word.** That word (13 November 2026) covers a read
+   at the moment and the size above: the eight tasks, the reference and a Starter beside it at one
+   rollout a task, each rollout inside its own limits, on a login with room chosen as a run's
+   keeper chooses one unless the operator names another; each read's login and bill go into
+   `cycle.md`. A larger size (two rollouts a side, the 20-task comparison, a rejudge) takes the
+   operator's word again. A bench is a paid simulation beside the live runs: the same command with
+   `--yes`, from a worktree at a published commit, with the shim running, the arms in turn and
+   never two processes on one store, since a judgement's dollars are the shim log's rows inside its
+   window. It is started so that it outlives the session (`nohup`, or the machine's own wrapper for
+   a read) and is never waited for: the next step of the loop begins as soon as the first rollout
+   is seen to start. An arm rolls
    one task at a time and judges it before the next, nothing else runs on the machine beside it, and
    what an arm left in the machine's temporary folder is cleared before the next arm begins, so that
    every rollout meets the same machine (operator, 12 November 2026). Every arm

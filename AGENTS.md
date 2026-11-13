@@ -375,8 +375,9 @@ both, surgical ones above all, plausibly generalises. Until jobstat climbs, put 
 before v1.0, read the other domains' newest runs against their past ones, find the change behind
 any regression and repair it.
 
-**The outside aim.** Each jobstat run's newest promoted reference is also read on JobBench as the
-run stops, unless its blind audit finds it inferior, under that benchmark's own judge
+**The outside aim.** Each jobstat run's newest promoted reference is also read on JobBench once the
+run has promoted twice, started detached and never waited for, or as a run with one promotion
+stops, unless its blind audit finds it inferior, under that benchmark's own judge
 (`studies/harness2/`), against three baselines kept apart: the bareSolver (the Starter, exported),
 stock Claude Code with an empty guide (Harness²'s Base) and Harness²'s held-out arm. The
 operator's aims, in order, are a built harness above the bareSolver, level with the held-out arm,

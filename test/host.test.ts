@@ -478,6 +478,36 @@ describe("the provider's named reset", () => {
     expect(crashedRun([crashed(1), waited({ load: 99 }), crashed(2)]).count).toBe(2);
   });
 
+  // Found in a jobstat run of 13 November: two Builder sessions crashed, the third was served 28
+  // turns and ran 40 practice solves, and an Examiner session's crash beside it read as the third
+  // in a row, so the campaign ended on its environment and the host stopped the working session.
+  it("starts the crash rule's count again at the first turn served to a session that does not crash", () => {
+    const ending = (kind: LogEvent["kind"], session: string, ended: string): LogEvent => ({
+      kind,
+      at: NOW.toISOString(),
+      data: { session, ended, crash: ended === "crashed" ? "exited 1" : null },
+    });
+    const turn = (session: string, error: string | null = null): LogEvent => ({
+      kind: "build.turn",
+      at: NOW.toISOString(),
+      data: { session, turn: 1, error },
+    });
+    const two = [ending("build.finished", "b-1", "crashed"), ending("build.finished", "b-2", "crashed")];
+    const beside = ending("exam.finished", "x-1", "crashed");
+    expect(crashedRun([...two, turn("b-3"), beside]).count).toBe(1);
+    // The host's later stop of that session, at a pause, does not bring the two back.
+    const stopped = ending("build.finished", "b-3", "stopped");
+    expect(crashedRun([...two, turn("b-3"), beside, stopped]).count).toBe(1);
+    // A turn the provider failed serves nothing, and a session that crashes takes its turns with it.
+    expect(crashedRun([...two, turn("b-3", "overloaded"), beside]).count).toBe(3);
+    const crashed = ending("build.finished", "b-3", "crashed");
+    expect(crashedRun([...two, turn("b-3"), beside, crashed]).count).toBe(4);
+    // Only a session's first served turn counts: three sessions that crash beside a Builder that
+    // is served a turn after each still end the campaign.
+    const row = ["x-1", "x-2", "x-3"].flatMap((id) => [ending("exam.finished", id, "crashed"), turn("b-3")]);
+    expect(crashedRun([turn("b-3"), ...row]).count).toBe(3);
+  });
+
   it("is waited out after any seat's session crashed on it, a draft's as a Builder's", async () => {
     const log = logIn("draft");
     const host = hostOf(() => 0);

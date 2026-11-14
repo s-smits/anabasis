@@ -25,6 +25,7 @@ function comparison(
     readonly versions?: readonly string[];
     readonly more?: JsonObject;
     readonly reported?: boolean;
+    readonly families?: Readonly<Record<string, string>>;
   } = {},
 ): LogEvent[] {
   const { events, terms } = roundSolves("g-1", ["h1", "h2"], outcomes);
@@ -69,7 +70,12 @@ function comparison(
     ...options.more,
   });
   const proposed = Object.keys(outcomes).flatMap((task) => [
-    event("task.proposed", { version: task, taskId: task, session: "e-1", family: "fam" }),
+    event("task.proposed", {
+      version: task,
+      taskId: task,
+      session: "e-1",
+      family: options.families?.[task] ?? "fam",
+    }),
     event("task.gate", { version: task, gate: 1, outcome: "passed" }),
   ]);
   return [...proposed, start, ...events, ...verdicts, ...(options.reported === false ? [] : [report])];
@@ -209,6 +215,35 @@ describe("pairs", () => {
       "e-1 2-0-1, diff +900, 1 outside; the opening exam 0-1-0, diff -600, 0 outside",
     );
     expect(line("family")).toContain("fam 2-0-1, diff +900, 1 outside; - 0-1-0, diff -600, 0 outside");
+  });
+
+  it("gives a no-step's families by size without a label, the losses of one family together", () => {
+    const families = { a: "kin-one", b: "kin-one", c: "kin-one", d: "kin-two", e: "kin-two", f: "kin-three" };
+    const rows = pairRows(
+      comparison({ a: "PP FF", b: "PP FF", c: "PP FF", d: "FF PP", e: "FF PP", f: "FF PP" }, { families }),
+    );
+    const grain = rows.find((row) => row.includes(" grain, ")) ?? "";
+    expect(grain).toContain("): 3 0-3-0; 2 2-0-0; 1 1-0-0; no task's diff exceeds the others together");
+    expect(grain).not.toContain("kin-");
+    // The line by family keeps the labels: the grain line is the one to carry elsewhere.
+    expect(rows.find((row) => row.includes(" by family (")) ?? "").toContain("kin-one 0-3-0");
+  });
+
+  it("says where one task's score is larger than every other together, and not where two match it", () => {
+    const grain = (measures: Readonly<Record<string, readonly number[]>>) =>
+      pairRows(
+        comparison(Object.fromEntries(Object.keys(measures).map((task) => [task, "PP PP"])), { measures }),
+      )
+        .find((row) => row.includes(" grain, "))
+        ?.split("; ")
+        .at(-1) ?? "";
+    const small = { u: [100, 100, 97, 97], v: [100, 100, 96, 96] };
+    expect(grain({ t: [100, 100, 300, 300], ...small })).toMatch(
+      /^one task's diff \(\d+ in size\) exceeds the other 2 together \(\d+\)$/u,
+    );
+    expect(grain({ t: [100, 100, 300, 300], w: [100, 100, 300, 300], ...small })).toBe(
+      "no task's diff exceeds the others together",
+    );
   });
 
   it("tallies the first solves apart from the second as a description, never as a reading", () => {

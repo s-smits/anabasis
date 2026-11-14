@@ -17,7 +17,7 @@
  * the starter won, and `starter-reads.ts --tasks`, which gives the reference's margin over the
  * starter, has the opposite sign on the same task. Under each comparison's rows one line counts its
  * new side's wins whose `diff` stands inside, level with or outside that task's rebuilt A/A, and
- * apart those whose task has no A/A. A report stores its A/A (`noise`) aligned with `versions`; since 9a9528bf5 this
+ * apart those whose task has no A/A; a `grain` line gives the families by size, naming none. A report stores its A/A (`noise`) aligned with `versions`; since 9a9528bf5 this
  * tree mirrors the A/A's halves from one task to the next, so the rebuilt A/A can differ from the
  * stored one on an older log, and both are printed. Tasks the report did not tally have a row too,
  * by the list that holds them (`aside`, `short`, `disputed`, `flagged`, `withdrawn`), `unpaired`
@@ -303,21 +303,48 @@ function againstNoise(context: Context, pair: Paired): "inside" | "level" | "out
  * and one with two count errors; `starter-reads.ts` splits a starter read by origin alone.
  */
 function groupsSaid(context: Context, pairs: readonly Paired[], by: "writer" | "family"): string {
-  const groups = new Map<string, Paired[]>();
-  for (const pair of pairs) {
-    const key = originOf(context, pair.task)[by === "writer" ? 0 : 1];
-    groups.set(key, [...(groups.get(key) ?? []), pair]);
-  }
-  const said = [...groups]
-    .toSorted(([, one], [, other]) => other.length - one.length)
-    .map(([key, some]) => {
-      const diffs = some.map((pair) => differenceOf(pair));
-      const count = (sign: number) => String(diffs.filter((diff) => Math.sign(diff) === sign).length);
-      const net = diffs.reduce((sum, diff) => sum + diff, 0);
-      const outside = some.filter((pair) => againstNoise(context, pair) === "outside").length;
-      return `${key} ${count(1)}-${count(-1)}-${count(0)}, diff ${net > 0 ? "+" : ""}${String(net)}, ${String(outside)} outside`;
-    });
+  const said = groupsOf(context, pairs, by).map(([key, some]) => {
+    const diffs = some.map((pair) => differenceOf(pair));
+    const net = diffs.reduce((sum, diff) => sum + diff, 0);
+    const outside = some.filter((pair) => againstNoise(context, pair) === "outside").length;
+    return `${key} ${wonLostTied(diffs)}, diff ${net > 0 ? "+" : ""}${String(net)}, ${String(outside)} outside`;
+  });
   return `== ${context.session} by ${by} (won-lost-tied of the new side, summed diff, wins outside their task's A/A): ${said.join("; ")}`;
+}
+
+/** The tallied pairs by the session that wrote each task or by its family, the largest group first. */
+function groupsOf(context: Context, pairs: readonly Paired[], by: "writer" | "family") {
+  const groups = Map.groupBy(pairs, ({ task }) => originOf(context, task)[by === "writer" ? 0 : 1]);
+  return [...groups].toSorted(([, one], [, other]) => other.length - one.length);
+}
+
+/** `won-lost-tied` of the new side over `diffs`. */
+function wonLostTied(diffs: readonly number[]): string {
+  const count = (sign: number) => String(diffs.filter((diff) => Math.sign(diff) === sign).length);
+  return `${count(1)}-${count(-1)}-${count(0)}`;
+}
+
+/**
+ * One comparison's grain in a line that names no family, for a ledger or a message: the tally of
+ * each family by its size, and whether one task's `diff` is larger than the others' together, in
+ * which case that task alone sets the sign of the summed score. The sign-flip test weighs a task by
+ * its `diff` and counts siblings as independent draws, so both say what a reading rests on, a
+ * no-step as much as a step. On 14 November a first comparison of 9 tasks in 4 families read
+ * no-step at 6-2-1 on one loss of 217 against 200 over the other eight, and both counts were made
+ * by scratch scripts because the line by family carries the Examiner's labels.
+ */
+function grainSaid(context: Context, pairs: readonly Paired[]): string {
+  const families = groupsOf(context, pairs, "family").map(
+    ([, some]) => `${String(some.length)} ${wonLostTied(some.map((pair) => differenceOf(pair)))}`,
+  );
+  const sizes = pairs.map((pair) => Math.abs(differenceOf(pair))).toSorted((one, other) => other - one);
+  const [largest = 0, ...rest] = sizes;
+  const others = rest.reduce((sum, size) => sum + size, 0);
+  const carried =
+    rest.length > 0 && largest > others
+      ? `one task's diff (${String(largest)} in size) exceeds the other ${String(rest.length)} together (${String(others)})`
+      : "no task's diff exceeds the others together";
+  return `== ${context.session} grain, naming no family (tasks of each family and their won-lost-tied): ${families.join("; ")}; ${carried}`;
 }
 
 /** The summary line of one comparison's tallied pairs. */
@@ -424,6 +451,7 @@ function comparisonRows(
     winsAgainstNoise(context, pairs),
     groupsSaid(context, pairs, "writer"),
     groupsSaid(context, pairs, "family"),
+    grainSaid(context, pairs),
     summaryOf(context, report.data, pairs, untallied),
   ];
 }

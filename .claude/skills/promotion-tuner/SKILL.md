@@ -24,6 +24,7 @@ live improvement**.
 | A resource as a guard | none in production | `mostBill=`, `mostTurns=`, `mostSeconds=` |
 | The gap floor and form of a gain | `ROOM`, `pointsOf` | `room=`, `gain=` |
 | The test | `flipP`, `stepOf` | `test=`, `untied=`, `level=` |
+| What the test counts once | each task (`pairsOf`) | `unit=` (`family`, `first`) |
 | Which tasks enter | `scoredSet` | `retained=` |
 | Anything else | | a `--mechanism` file, or a candidate tree with `--against` |
 
@@ -59,6 +60,7 @@ Read a panel row by all its columns, never by steps alone:
 | repeat | sign agreement on other solves | resources repeat as habits |
 | bill, turns, secs, $/step, h/step | medians and spend a step | a guard bites on the maximum |
 | by pack, moved, same/other/none/unread | mix, changed scores, fate of an added step | later-unread runs are censored |
+| confirmed/of, kept then not | recorded promotions a starter read confirmed, by whether the row steps on them | the pooled pair reads the mix of packs; a pack of few families loses every step |
 
 On the record: a weight sets margins and rarely readings; a score must negate when the sides swap,
 or it leans in the A/A; a guard only removes steps (read the largest ratio first), and only a gain

@@ -15,6 +15,7 @@ import {
   ledgerOf,
   minus,
   NOTHING_SPENT,
+  reportedShare,
   seatMeter,
   sessionLedger,
   spendOf,
@@ -341,6 +342,21 @@ describe("what a log holds billed", () => {
     ]);
     // Backend $2.20 + $1.10 = $3.30 on 2 of 3 endings; the bill on those two $3; 3.30 / 3 = +10%.
     expect(line).toMatch(/\$3\.30\D+2\D+3\D+\$3\.00\D+\+10\.0%/);
+  });
+
+  it("gives each ask of one conversation its own share of the backend's total, and none where a read gave no total", () => {
+    // Totals of 5 and then 7 at two closes: the asks' shares are 5 and 2.
+    expect([reportedShare(5, 0), reportedShare(7, 5)]).toEqual([5, 2]);
+    // A read that gave no total voids its own ask and the next, which would take both asks' dollars.
+    expect([reportedShare(null, 5), reportedShare(9, null)]).toEqual([null, null]);
+    // The check adds the shares up: two asks the meter billed 4 and 2 against a backend total of 7
+    // read 7 on 2 of 2, where the first ask's record alone read 5 on 1 of 2.
+    const asks = (second: number | null) => [
+      event("exam.finished", { session: "x-1", billed: 4, reportedCost: reportedShare(5, 0) }),
+      event("exam.finished", { session: "x-2", billed: 2, reportedCost: second }),
+    ];
+    expect(costLine(asks(reportedShare(7, 5)))).toMatch(/\$7\.00\D+2\D+2\D+\$6\.00\D+\+16\.7%/);
+    expect(costLine(asks(null))).toMatch(/\$5\.00\D+1\D+2\D+\$4\.00\D+\+25\.0%/);
   });
 
   it("bills each role its own, the Examiner the solves its sessions asked for, and leaves out a role with no event", () => {

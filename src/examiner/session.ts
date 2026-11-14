@@ -27,7 +27,7 @@ import { type SeatTool, sessionClock, sit } from "../agent/session.ts";
 import { endingWith, openingTool } from "../builder/tools.ts";
 import { budgetLeft } from "../campaign/opening.ts";
 import { append, read } from "../kernel/log.ts";
-import { priceKey, type Spent } from "../kernel/meter.ts";
+import { priceKey, reportedShare, type Spent } from "../kernel/meter.ts";
 import { Cancellation } from "../kernel/solve.ts";
 import { examinerSessions } from "../kernel/solves.ts";
 import { boundText } from "../meta/bounded-text.ts";
@@ -204,6 +204,13 @@ async function examining(
   // The ask in force, the turns and dollars before it, and its own clock, which a rest closes.
   let current: Sitting = request;
   let [from, billed] = [0, 0];
+  // The backend's own total at the last ask's close, null where that read gave none.
+  let reported: number | null = 0;
+  const ownReported = (total: number | null) => {
+    const own = reportedShare(total, reported);
+    reported = total;
+    return own;
+  };
   // What the conversation has spent so far, which `sit` hands over as it opens.
   let soFar: (() => Promise<Spent>) | undefined;
   const timed = new AbortController();
@@ -251,10 +258,16 @@ async function examining(
       if (request.rest === undefined || asking === undefined) return null;
       clock.close();
       // The ask bills the conversation's spend beyond the asks before it, its compactions included.
-      const total = Math.max(billed, (await soFar?.())?.billed ?? 0);
+      const now = await soFar?.();
+      const total = Math.max(billed, now?.billed ?? 0);
       const dollars = total - billed;
       billed = total;
-      const result = closeAsk(ended, { crash: null, turns: turns.length - from, billed: dollars });
+      const result = closeAsk(ended, {
+        crash: null,
+        turns: turns.length - from,
+        billed: dollars,
+        reportedCost: ownReported(now?.reportedCost ?? null),
+      });
       // An ask's home is kept at its rest, as a session's was at its end before one conversation
       // held every ask: the conversation's wall closes only when the conversation does.
       walls?.keep();
@@ -345,14 +358,14 @@ async function examining(
       turns: turns.length - from >= current.limits.turns,
     };
     const ended = ENDINGS.find((reason) => by[reason] === true) ?? "stopped";
-    // A later ask bills the conversation's bill beyond the asks before it, and no backend total.
+    // A later ask bills the conversation's bill, and the backend's total, beyond the asks before it.
     return closeAsk(ended, {
       crash: sat.crash,
       ...keyIfDefined("running", ended === "crashed" ? running : undefined),
       ...sat.spent,
       turns: turns.length - from,
       billed: Math.max(0, sat.spent.billed - billed),
-      reportedCost: from === 0 ? sat.spent.reportedCost : null,
+      reportedCost: ownReported(sat.spent.reportedCost),
     });
   } finally {
     clock.close();

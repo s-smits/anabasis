@@ -530,8 +530,9 @@ Starts from `STEP CARRIERS (lane 17)`.
 
 Does a step generalise across the scored tasks, or rest on a few that share something else?
 `STEP CARRIERS` gives each step's untied tasks and how many top wins it could lose and still clear.
-From `readings.txt`, `tasks.txt` and `scores.txt` (each step's p without each win, its wins to
-spare, and its tallies by writing session and family; `nearness.txt` for tasks that read alike):
+From `readings.txt`, `tasks.txt`, `scores.txt` (each step's p without each win and its wins to
+spare) and `pairs.txt` (its tallies by writing session and family; `nearness.txt` for tasks that
+read alike):
 
 1. find the smallest set of wins whose removal takes the step below its level;
 2. say what they share: a unit or scale, a family, the session that wrote them, a convention, a reach

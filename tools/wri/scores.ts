@@ -15,10 +15,12 @@
  * For a step it adds:
  * - p with each win removed;
  * - the wins to spare and the fewest whose removal loses the step (`spareOf`, `clearance.ts`);
- * - the tally by the Examiner session that wrote each task and by its family.
+ * - the step read again on one task a family.
  *
  * A comparison cut short or left open has no recorded scores. Its block counts the solves it began
- * and says the report is absent. The task by task table is `pairs.ts`'s.
+ * and says the report is absent. The task by task table is `pairs.ts`'s, and so is every reading's
+ * tally by writing session and by family: until 14 November this block grouped a step's tasks a
+ * second time.
  *
  * Evidence: 9 of 12 lane-17 sessions between 3 and 10 November recomputed a step's p by hand without
  * one win and then without two. 4 of 7 lane-8 sessions split a tally by measure in their own
@@ -105,29 +107,7 @@ function withoutEach(scores: readonly number[], level: number): string {
   return `p from ${pSaid(Math.min(...ps))} to ${pSaid(Math.max(...ps))}; ${String(losing)} of ${String(wins.length)} single removals lose the step`;
 }
 
-/** The tally of `tested` by a key of each task: its writing session or its family. */
-function tallyBy(
-  tested: readonly Paired[],
-  scores: readonly number[],
-  keyOf: (task: string) => string,
-): string {
-  const groups = Map.groupBy(
-    scores.map((score, at) => ({ score, key: keyOf(tested[at]?.task ?? "") })),
-    ({ key }) => key,
-  );
-  const sorted = [...groups].toSorted(([one], [other]) => one.localeCompare(other));
-  const alone = sorted.filter(([, rows]) => rows.length === 1).flatMap(([, rows]) => rows);
-  return [
-    ...sorted
-      .filter(([, rows]) => rows.length > 1)
-      .map(([key, rows]) => `${key} ${tallied(rows.map(({ score }) => score))}`),
-    ...(alone.length === 0
-      ? []
-      : [`${String(alone.length)} of one task each ${tallied(alone.map(({ score }) => score))}`]),
-  ].join("; ");
-}
-
-/** A step's extra lines: removals, spare wins and the tally by writer and family. */
+/** A step's extra lines: the step on one task a family, removals and spare wins. */
 function stepLines(
   events: readonly LogEvent[],
   tested: readonly Paired[],
@@ -149,11 +129,6 @@ function stepLines(
     `  on one task a family: ${tallied(firsts)}, ${readsStep(firsts, level) ? "a step" : "no step"} at the level`,
     `  without each win: ${withoutEach(scores, level)}`,
     `  wins to spare, largest first (spareOf): ${String(spare)}; the step is lost once the ${String(Math.min(spare + 1, wins))} largest are removed`,
-    `  by writer: ${tallyBy(tested, scores, (task) => proposals.get(task)?.session ?? UNNAMED)}`,
-    `  by family: ${tallyBy(tested, scores, (task) => {
-      const family = proposals.get(task)?.family;
-      return isString(family) ? family : UNNAMED;
-    })}`,
   ];
 }
 

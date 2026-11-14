@@ -459,8 +459,7 @@ export const READERS: readonly Reader[] = [
   },
   {
     name: "scores",
-    answers:
-      "each comparison recounted by task: tallies by measure, A/A halves, a step's removals and writers",
+    answers: "each comparison recounted by task: tallies by measure, A/A halves, a step's removals",
     read: ({ events }) => scoreRows(events),
   },
   {

@@ -141,8 +141,11 @@ describe("a step", () => {
     expect(lineOf("g-1", "without each win")).toContain("0 of 9 single removals lose the step");
   });
 
-  it("tallies the scores by the Examiner session that wrote each task", () => {
-    expect(lineOf("g-1", "by writer")).toBe("  by writer: x-1 5-0-0 p 0.031; x-2 4-0-1 p 0.063");
+  it("leaves the tallies by writing session and by family to the one grouping, pairs.ts's", () => {
+    // Two readers grouped one comparison's tasks: this block for a step only, `pairs` for every
+    // reading (`test/wri-pairs.test.ts` holds its lines).
+    expect(rows.filter((line) => /^\s*by (writer|family)\b/u.test(line))).toStrictEqual([]);
+    expect(block("g-1").filter((line) => line.includes("on one task a family")).length).toBe(1);
   });
 
   it("reads the step again on the first tallied task of each family, which ten siblings make one", () => {

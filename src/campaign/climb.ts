@@ -331,8 +331,9 @@ const tallied = ({ wins, losses, ties }: Tally) =>
   `${String(wins)} won, ${String(losses)} lost, ${String(ties)} tied`;
 
 /** The epoch's starter comparison as the line prints it, nothing in the first epoch. With its
- *  `read`, the tasks written after the promotion are said apart with the sessions that wrote them:
- *  the pooled tally also holds the tasks that chose the harness, which it wins again. */
+ *  `read`, the tasks written after the promotion are said apart with the sessions that wrote them
+ *  and what they read alone (`Unselected`): the pooled tally also holds the tasks that chose the
+ *  harness, which it wins again. */
 function starterOf({ reference, starter_tally: tally, confirmed }: Epoch, read?: StarterRead): string {
   if (reference === "starter") return "";
   if (tally === null) return ", against the starter unread";
@@ -342,7 +343,7 @@ function starterOf({ reference, starter_tally: tally, confirmed }: Epoch, read?:
   const since =
     read === undefined || writers === 0
       ? ""
-      : `, of which ${tallied(read.origins[ORIGINS[2]].whole)} on the tasks ${plural(writers, "Examiner session")} wrote after it`;
+      : `, of which ${tallied(read.origins[ORIGINS[2]].whole)} on the tasks ${plural(writers, "Examiner session")} wrote after it, alone ${read.after}`;
   return `, against the starter ${tallied(tally)}, ${step}${since}`;
 }
 

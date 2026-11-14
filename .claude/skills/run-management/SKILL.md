@@ -173,7 +173,9 @@ solve or tool call, or a minute past the solve limit. Sessions spend until then;
 login at once. Its pause word (`campaign.word`, `PAUSE`) is in the log once written and holds every
 new solve of the running process for the solve limit and two minutes, so a pause or `continue
 --after next` interrupted after it leaves the run idle that long; only a restarted process ignores
-it, so arm the command once the decision is made.
+it, so arm the command once the decision is made. A pause or `continue` at a named point leaves the
+same word only at that point, once its asking has passed and just before the stop, so its log ends
+at a rest instead of a process that vanished, and a refusal at the point leaves no word.
 
 A word (`tools/d2/word.ts --name <name>`) acts at the next move boundary and reaches no seat:
 `--stop "<why>"` ends the campaign `operator`; `--budget N` sets its total; `--tasks "<why>"` asks for

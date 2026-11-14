@@ -93,6 +93,11 @@ export const heldOut = (data: JsonObject) => Array.isArray(data.held) && data.he
 export const cutShort = (event: LogEvent) =>
   sessionEnded(event) && CUT.has(event.data.ended) && !heldOut(event.data);
 
+/** A turn the provider served a session: its seat's `<seat>.turn` with the session's id and no
+ *  error, which a solve's and a Referee's do not name. */
+const servedTurn = ({ kind, data }: LogEvent) =>
+  kind.endsWith(".turn") && isString(data.session) && !isString(data.error);
+
 /** The sessions in a row, up to the log's end and since the campaign last
  *  ended, that the provider failed before they held out a task or changed a harness, with what
  *  the last session's crash said where it crashed. Such a session held out no task and left no harness because its provider
@@ -106,11 +111,30 @@ export function crashedRun(events: readonly LogEvent[]) {
   const since = events.findLastIndex(
     ({ kind, data }) => kind === "campaign.ended" || (kind === "campaign.waited" && data.for === "provider"),
   );
-  // A session the host stopped says nothing of the provider, and is passed over: until 14 October
-  // a Builder halted as a third crash ended the campaign read as whole, the count went back to
-  // nought, and the command exited with no ending on record.
-  const sessions = events
-    .slice(since + 1)
+  const tail = events.slice(since + 1);
+  // The count also starts again at the first turn the provider serves a session it does not crash,
+  // one still open or one the host stopped: the provider was back by then, so a crash before that
+  // turn and one after it are not in a row. Only a session's first turn does, since a Builder is
+  // served a turn after each Examiner session that crashes beside it, and three of those end the
+  // campaign. Until 14 November two Builder sessions that crashed, a third that was served 28
+  // turns and one crash beside it read as three in a row, and a campaign ended on its environment
+  // over a working session.
+  const crashed = new Set(
+    tail.flatMap((event) =>
+      sessionEnded(event) && event.data.ended === "crashed" ? [event.data.session] : [],
+    ),
+  );
+  const first = new Map<unknown, number>();
+  for (const [at, event] of tail.entries()) {
+    const { session } = event.data;
+    if (servedTurn(event) && !crashed.has(session) && !first.has(session)) first.set(session, at);
+  }
+  const back = Math.max(-1, ...first.values());
+  // The ending of a session the host stopped says nothing of the provider, and is passed over:
+  // until 14 October a Builder halted as a third crash ended the campaign read as whole, the count
+  // went back to nought, and the command exited with no ending on record.
+  const sessions = tail
+    .slice(back + 1)
     .filter((event) => sessionEnded(event) && event.data.ended !== "stopped")
     .toReversed();
   // A session moved the campaign whatever its ending where an Examiner's held a task out: one that
@@ -118,9 +142,7 @@ export function crashedRun(events: readonly LogEvent[]) {
   // is written whatever `ended` says). A Builder's moved it where its harness is one the campaign
   // goes on from (`latestBuilt`), which a crashed session's is only where a harness snapshot was kept: one
   // that edited and then crashed leaves the next session the same parent, so it counts as a crash.
-  const kept = new Set(
-    events.slice(since + 1).flatMap(({ kind, data }) => (kind === "build.checkpoint" ? [data.session] : [])),
-  );
+  const kept = new Set(tail.flatMap(({ kind, data }) => (kind === "build.checkpoint" ? [data.session] : [])));
   const moved = (data: JsonObject) =>
     heldOut(data) ||
     (isNumber(data.tries) && data.tries > 0) ||

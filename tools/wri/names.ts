@@ -1,7 +1,7 @@
 /**
  * Where a kept harness's own files name a task: its id, its version's prefix, its family, or a rare
- * identifier from its public input, word by word, each hit with the tasks it names and whether each
- * was practice or held out.
+ * identifier from its public input, word by word; or copy a phrase of its public input. Each hit
+ * carries the tasks it names and whether each was practice or held out.
  *
  *   bun tools/wri/names.ts <log>
  *   bun tools/wri/names.ts --log <log> [--harness <prefix>]
@@ -19,6 +19,13 @@
  * at least `MIN_TOKEN` characters and stands in at most `RARE` tasks' public inputs; a plain word is
  * left out, a compound of plain words joined by hyphens with it, and the header says how many were.
  * A task's id is looked for whatever its form. A public token's own text is not printed, its place is.
+ *
+ * A phrase is a span of at least `PHRASE` consecutive words, lower-cased and split on everything but
+ * letters and digits, that a written file shares with a public input, across its lines. Overlapping
+ * windows in one place are one hit, the longest span, at its first word's line, with its length in
+ * words and every task holding six words of it. A span every task's public input holds is the
+ * contract's fixed wording, not a copy of one task, so it is left out and the header counts such
+ * six-word spans; with one task nothing is left out so. A phrase's text is not printed either.
  * A practice task's name in a harness is one the Builder was shown; a held-out task's is not, and
  * neither is called a breach here.
  *
@@ -44,8 +51,10 @@ const PREFIX_CHARS = 8;
 const WORD = /[\p{L}\p{N}_](?:[\p{L}\p{N}_.:-]*[\p{L}\p{N}_])?/gu;
 const IDENTIFIER = /\d|[_.:]|^.+\p{Lu}/u;
 const HEX = /^[0-9a-f]{8,64}$/;
+const PHRASE = 6;
+const PLAIN = /[\p{L}\p{N}]+/gu;
 
-type Kind = "id" | "family" | "public" | "version";
+type Kind = "id" | "family" | "phrase" | "public" | "version";
 
 interface Token {
   readonly kind: Kind;
@@ -67,6 +76,54 @@ function stringsIn(value: JsonValue | undefined): string[] {
   if (Array.isArray(value)) return value.flatMap(stringsIn);
   const record = asRecord(value);
   return record === null ? [] : Object.entries(record).flatMap(([key, each]) => [key, ...stringsIn(each)]);
+}
+
+/** The words of a text as a phrase is matched: lower-cased runs of letters and digits, each with its offset. */
+function plainWords(text: string): { word: string; at: number }[] {
+  return [...text.matchAll(PLAIN)].map((match) => ({ word: match[0].toLowerCase(), at: match.index }));
+}
+
+/** The six-word spans of public inputs with the tasks holding each, and how many every task holds. */
+function spansOf(tasks: readonly { name: string; strings: readonly string[] }[]) {
+  const spans = new Map<string, Set<string>>();
+  for (const { name, strings } of tasks) {
+    for (const words of strings.map((text) => plainWords(text).map(({ word }) => word))) {
+      for (let from = 0; from + PHRASE <= words.length; from += 1) {
+        const span = words.slice(from, from + PHRASE).join(" ");
+        spans.set(span, (spans.get(span) ?? new Set()).add(name));
+      }
+    }
+  }
+  const everyone = new Set(tasks.map(({ name }) => name)).size;
+  const common = everyone < 2 ? [] : [...spans].filter(([, holders]) => holders.size === everyone);
+  for (const [span] of common) spans.delete(span);
+  return { spans, common: common.length };
+}
+
+/** The phrases of one written file: each run of overlapping shared windows, once, as its longest span. */
+function phrasesIn(path: string, text: string, spans: ReadonlyMap<string, ReadonlySet<string>>): Hit[] {
+  const words = plainWords(text);
+  const hits: Hit[] = [];
+  let run: { from: number; to: number; tasks: Set<string> } | null = null;
+  for (let from = 0; from <= words.length; from += 1) {
+    const holders = spans.get(
+      words
+        .slice(from, from + PHRASE)
+        .map(({ word }) => word)
+        .join(" "),
+    );
+    if (holders !== undefined) {
+      run ??= { from, to: from, tasks: new Set() };
+      run.to = from;
+      for (const task of holders) run.tasks.add(task);
+    } else if (run !== null) {
+      const span = words.slice(run.from, run.to + PHRASE).map(({ word }) => word);
+      const line = text.slice(0, words[run.from]?.at ?? 0).split("\n").length;
+      hits.push({ path, line, kind: "phrase", text: span.join(" "), tasks: [...run.tasks] });
+      run = null;
+    }
+  }
+  return hits;
 }
 
 /** The tokens to look for, by their text, with the tasks each names; and the plain words left out. */
@@ -97,7 +154,13 @@ function tokensOf(events: readonly LogEvent[]) {
   const versions = new Map(
     tasks.map(({ version, taskId }) => [version, taskId ?? version.slice(0, PREFIX_CHARS)]),
   );
-  return { tokens, families, publics, versions, plain };
+  const phrases = spansOf(
+    tasks.map(({ version, input }) => ({
+      name: versions.get(version) ?? version,
+      strings: stringsIn(input?.publicInput),
+    })),
+  );
+  return { tokens, families, publics, versions, plain, phrases };
 }
 
 /** What one word of a file names: a task id or public identifier, and the versions it begins. */
@@ -127,7 +190,8 @@ function hitsIn(state: string, known: ReturnType<typeof tokensOf>): { files: num
   }));
   // A link names another file of the tree, whose words are read under that file's own path.
   for (const [path, file] of [...files].filter(([, each]) => !lstatSync(each).isSymbolicLink())) {
-    for (const [at, text] of readFileSync(file, "utf8").split("\n").entries()) {
+    const whole = readFileSync(file, "utf8");
+    for (const [at, text] of whole.split("\n").entries()) {
       const line = at + 1;
       hits.push(
         ...[...new Set(text.match(WORD))].flatMap((word) =>
@@ -138,6 +202,7 @@ function hitsIn(state: string, known: ReturnType<typeof tokensOf>): { files: num
           .map(({ family, tasks }) => ({ path, line, kind: "family" as const, text: family, tasks })),
       );
     }
+    hits.push(...phrasesIn(path, whole, known.phrases.spans));
   }
   return { files: files.size, hits };
 }
@@ -164,15 +229,17 @@ export function nameRows(events: readonly LogEvent[], states: string, only: stri
   const kinds = [...known.tokens.values()];
   const count = (kind: Kind) => String(kinds.filter((token) => token.kind === kind).length);
   return [
-    `names: where the files each kept harness wrote name a task, word by word; looked for ${count("id")} task ids, ${String(known.versions.size)} version prefixes, ${String(known.families.size)} families and ${count("public")} identifiers of public inputs (${String(known.plain)} plain words left out)`,
+    `names: where the files each kept harness wrote name a task, word by word, or copy its public input; looked for ${count("id")} task ids, ${String(known.versions.size)} version prefixes, ${String(known.families.size)} families, ${count("public")} identifiers of public inputs (${String(known.plain)} plain words left out) and ${String(known.phrases.spans.size)} spans of ${String(PHRASE)} words of public inputs (${String(known.phrases.common)} spans every task shares left out)`,
     "harness  path:line  kind  length  kept versions holding it  public inputs holding it  tasks",
     ...(kept.length === 0 ? [`no kept harness under ${states}`] : []),
     ...scanned.flatMap(({ digest, files, hits }) => [
       `${digest.slice(0, 8)}  ${String(files)} written files, ${String(hits.length)} hits`,
-      ...hits.map(
-        (hit) =>
-          `  ${hit.path}:${String(hit.line)}  ${hit.kind}${hit.kind === "public" ? "" : ` ${hit.text}`}  ${String(hit.text.length)}  ${String(versionsHolding(hit.text))}  ${String(known.publics.get(hit.text)?.size ?? 0)}  ${hit.tasks.map(marked).join(", ")}`,
-      ),
+      ...hits.map((hit) => {
+        const phrase = hit.kind === "phrase";
+        const length = phrase ? hit.text.split(" ").length : hit.text.length;
+        const inputs = phrase ? hit.tasks.length : (known.publics.get(hit.text)?.size ?? 0);
+        return `  ${hit.path}:${String(hit.line)}  ${hit.kind}${phrase || hit.kind === "public" ? "" : ` ${hit.text}`}  ${String(length)}  ${String(versionsHolding(hit.text))}  ${String(inputs)}  ${hit.tasks.map(marked).join(", ")}`;
+      }),
     ]),
   ];
 }

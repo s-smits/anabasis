@@ -1,6 +1,7 @@
 // Campaign login isolation, clean-point pausing and dry-run refusals.
 import { afterAll, describe, expect, it } from "bun:test";
-import { append, type EventKind, type LogEvent } from "../src/kernel/log.ts";
+import { PAUSE, paused as holds } from "../src/campaign/word.ts";
+import { append, type EventKind, LOG_FILE, type LogEvent, read as readLog } from "../src/kernel/log.ts";
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { join } from "../src/meta/path.ts";
@@ -313,7 +314,11 @@ describe("going on with a campaign", () => {
    *  log gains the report once the verb says it waits, so after the pause has counted the reports it
    *  starts from however long the count and the dry run before it took; what `meanwhile` returns for
    *  the fixture and its log runs in the driver at that moment. */
-  function pointed(flags: readonly string[], meanwhile: (root: string, log: string) => string = () => "") {
+  function pointed(
+    flags: readonly string[],
+    meanwhile: (root: string, log: string) => string = () => "",
+    verb: "continueRun" | "pause" = "continueRun",
+  ) {
     const made = fakeHosts();
     fixtures.push(made.root);
     const name = "pointed";
@@ -334,10 +339,10 @@ describe("going on with a campaign", () => {
       'import { existsSync, writeFileSync } from "node:fs";',
       'import { append } from "REPOSITORY/src/kernel/log.ts";',
       "const sleep = Bun.sleep; Bun.sleep = (ms) => sleep(Math.min(Number(ms), 100));",
-      'const { continueRun } = await import("REPOSITORY/tools/runs/manage.ts");',
+      `const { ${verb} } = await import("REPOSITORY/tools/runs/manage.ts");`,
       `const report = () => { ${meanwhile(made.root, log)} append(${JSON.stringify(log)}, "comparison.reported", { session: "g-1", reading: "no-step" }); };`,
       'const say = console.log; console.log = (line) => { say(line); if (String(line).includes("waiting for")) report(); };',
-      `await continueRun(${JSON.stringify([name, "--after", "reported", ...flags, "--yes", "--", "--target", "8"])});`,
+      `await ${verb}(${JSON.stringify([name, "--after", "reported", ...flags, "--yes", "--", "--target", "8"])});`,
     ].join("\n");
     return {
       made,
@@ -362,6 +367,38 @@ describe("going on with a campaign", () => {
       expect(await ended()).toBe(true);
     } finally {
       keeper.kill();
+    }
+  });
+
+  it("leaves the pause's word in the log at a named point once the point is ready, just before the stop, and none where it refuses", async () => {
+    // Until 14 November a pause at a named point wrote nothing, and its run's log ended as if its
+    // process had vanished: two jobstat and two buffer runs held no word and no ending.
+    const words = (log: string) =>
+      readLog(log).flatMap(({ kind, data }, at) =>
+        kind === "campaign.word" ? [{ at, word: data.word }] : [],
+      );
+    for (const verb of ["continueRun", "pause"] as const) {
+      const { made, driver, keeper, row, ended } = pointed([], () => "", verb);
+      const log = join(made.main, ".ana", "d2", "pointed", LOG_FILE);
+      try {
+        if (verb === "continueRun") {
+          // The asking refuses at the point: the run goes on, with no word to hold its solves.
+          expect(made.run(driver, { FAKE_PS: row, FAKE_FETCH_FAIL: "1" }).code).not.toBe(0);
+          expect(await ended()).toBe(false);
+          expect(words(log)).toEqual([]);
+        }
+        expect(made.run(driver, { FAKE_PS: row }).out).toContain("its keeper");
+        expect(await ended()).toBe(true);
+        // One word, after the report the pause waited for, so that it held no solve during the wait.
+        const events = readLog(log);
+        const reported = events.findLastIndex(({ kind }) => kind === "comparison.reported");
+        expect(words(log)).toEqual([{ at: reported + 1, word: PAUSE }]);
+        // A continue's process begins after the word, and its solves are not held by it.
+        expect(holds(events, events.length, Date.now(), LIMITS.wallSeconds)).toBe(false);
+        expect(holds(events, 0, Date.now(), LIMITS.wallSeconds)).toBe(true);
+      } finally {
+        keeper.kill();
+      }
     }
   });
 

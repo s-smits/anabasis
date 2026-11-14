@@ -186,7 +186,8 @@ export function solvesMs(events: readonly LogEvent[]): number {
 
 /** Stop `run` at the point `after` names. `ready` is asked at that point, before the stop, so that
  *  what it refuses leaves the run running; a pause at the next step asks nothing, having already left
- *  the word that starts no further solve. */
+ *  the word that starts no further solve. A pause at a named point leaves that word once the point
+ *  is ready, just before its stop. */
 async function pauseAt(run: Run, after: string, ready?: () => Promise<void>): Promise<void> {
   const kinds = kindsOf(after);
   // One waiter a run: a `continue --after` would start again a run another's pause had stopped.
@@ -218,11 +219,16 @@ async function pauseAt(run: Run, after: string, ready?: () => Promise<void>): Pr
     const late = after === "next" && Date.now() > patience;
     const rests = () => restsAfter(logEvents(run.path), after, base);
     if (late || (grown !== size && rests())) {
-      if (after === "next" || ready === undefined) return stop([run.name, "--yes"]);
+      if (after === "next") return stop([run.name, "--yes"]);
       // The asking takes seconds (a fetch, a count across the fleet), in which the run can begin its
       // next comparison or session: the rest is read again, and a run that moved on is waited for.
-      await ready();
-      if (rests()) return stop([run.name, "--yes"]);
+      await ready?.();
+      if (ready === undefined || rests()) {
+        // Left only now, since the word holds every new solve: the log then ends at a rest, not at a
+        // process that vanished, and a refusal above leaves the run running without it.
+        append(run.path, "campaign.word", { word: PAUSE });
+        return stop([run.name, "--yes"]);
+      }
     }
     size = grown;
     await Bun.sleep(after === "next" ? STEP_MS : LOOK_MS);

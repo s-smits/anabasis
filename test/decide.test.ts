@@ -512,11 +512,19 @@ describe("room for the reference", () => {
     expect(newReference).toMatchObject({ move: "examine", code: "no-room" });
     expect(newReference.why).toContain("h1");
     expect(move([...promotedHalf, ...examined("x-1")])).toMatchObject({ move: "build" });
+    // A session the provider crashed or a stop killed is owed again, with tasks held or none. In a
+    // jobstat run of 14 November the sessions written for two new references were cut at 6 and 4
+    // tasks held, none followed either, and the scored set fell from 22 tasks to 14 in three
+    // comparisons.
     const crashed = { ended: "crashed", crash: "x" };
-    expect(move([...promotedHalf, ...examined("x-1", [], crashed)])).toMatchObject({ move: "examine" });
-    expect(move([...promotedHalf, ...examined("x-1", ["v13"], crashed)])).toMatchObject({
-      move: "compare",
-    });
+    const killed = { ended: "killed", crash: null };
+    for (const cut of [crashed, killed]) {
+      expect(move([...promotedHalf, ...examined("x-1", [], cut)])).toMatchObject({ move: "examine" });
+      expect(move([...promotedHalf, ...examined("x-1", ["v13"], cut)])).toMatchObject({ move: "examine" });
+      // The session after it that ends on its own is the one written for the reference.
+      const whole = [...promotedHalf, ...examined("x-1", ["v13"], cut), ...examined("x-2", ["v14"])];
+      expect(move(whole)).toMatchObject({ move: "compare" });
+    }
     const stepped = [
       ...FIRST,
       ...compared("g-1", "h1", "step", { tally: [8, 0, 4] }),

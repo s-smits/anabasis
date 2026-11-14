@@ -284,10 +284,10 @@ describe("a promotion's starter read, split by what its tasks had been through",
 
   it("says the tasks written after apart on the climb line with the sessions that wrote them, and nothing where the read held none", () => {
     expect(climbLine(log)).toContain(
-      "against the starter 8 won, 1 lost, 1 tied, a step, so its promotion is confirmed, of which 0 won, 1 lost, 1 tied on the tasks 2 Examiner sessions wrote after it;",
+      "against the starter 8 won, 1 lost, 1 tied, a step, so its promotion is confirmed, of which 0 won, 1 lost, 1 tied on the tasks 2 Examiner sessions wrote after it, alone too few;",
     );
     expect(climbLine(logOf(0, six("FF PP")))).toContain(
-      "of which 0 won, 6 lost, 0 tied on the tasks 1 Examiner session wrote after it;",
+      "of which 0 won, 6 lost, 0 tied on the tasks 1 Examiner session wrote after it, alone a step for the starter;",
     );
     // A read whose every task was written before the promotion has no such slice to say.
     expect(climbLine(logOf(6, {}))).toContain("0 won, 13 lost, 0 tied, no step;");

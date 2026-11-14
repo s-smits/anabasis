@@ -286,6 +286,12 @@ export function billedAll(events: readonly LogEvent[]): number {
   return unfinished(events).reduce((all, { dollars }) => all + dollars, total);
 }
 
+/** One ask's share of its conversation's backend total: the total at its close beyond the total
+ *  at the close before it, and null where either read gave none, so that an ask after a read that
+ *  failed is not given the dollars of the one before it. */
+export const reportedShare = (total: number | null, before: number | null) =>
+  total === null || before === null ? null : Math.max(0, total - before);
+
 /**
  * The billed dollars of the stretch from event `from` to event `to` (the log's end where none):
  * what the log had billed by `to` less what it had by `from`. A sum over the slice alone billed a

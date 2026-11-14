@@ -100,3 +100,68 @@ describe("where a harness names a task", () => {
     expect(rows.join("\n").toLowerCase()).not.toMatch(/breach|leak|violat/u);
   });
 });
+
+// Copied phrases, over invented tasks sharing one contract sentence: a nine-word span written with
+// other case and punctuation, a five-word span, a six-word span of a held-out task, the shared
+// sentence, and a harness that shares nothing but an installed file holding a task's story.
+describe("where a harness copies a phrase of a task's public input", () => {
+  const COMMON = "Answer with one JSON object that holds the total.";
+  const copied: LogEvent[] = [];
+  const add = (kind: EventKind, data: JsonObject) => {
+    copied.push({ at: new Date(Date.UTC(2026, 10, 6) + copied.length * 1000).toISOString(), kind, data });
+  };
+  const story = (version: string, taskId: string, text: string) => {
+    const publicInput = { brief: COMMON, story: text };
+    add("task.proposed", { version, taskId, session: "y-1", task: { taskId, family: "stock", publicInput } });
+    add("task.gate", { version, gate: 1, outcome: "passed" });
+  };
+  story(PRACTISED, "y-1-1", "the warehouse ledger drifts whenever pallets arrive after midnight");
+  story(HELD, "y-1-2", "count every crate twice before the morning shift signs off");
+  story("1234abcd".padEnd(64, "0"), "y-1-3", "unrelated words about rivers and bridges in spring");
+  add("task.state", { version: PRACTISED, state: "released" });
+  const shelves = join(root, "copied-states");
+  writeHarness(join(shelves, one), {
+    ...EXAMPLE,
+    guide: [
+      "Note: The Warehouse-Ledger drifts, whenever pallets arrive after midnight.",
+      "Always count every crate twice before lunch.",
+      "Check before the morning shift signs off, always.",
+      COMMON,
+      "",
+    ].join("\n"),
+  });
+  writeHarness(join(shelves, two), { ...EXAMPLE, guide: "Nothing here repeats any task.\n" });
+  const site = join(shelves, two, ".toolchain", "lib", "python", "site-packages", "pkg");
+  mkdirSync(site, { recursive: true });
+  writeFileSync(join(site, "mod.py"), "count every crate twice before the morning shift signs off\n");
+  const lines = nameRows(copied, shelves);
+  const phrases = (digest: string) => {
+    const start = lines.findIndex((row) => row.startsWith(digest.slice(0, 8)));
+    const end = lines.findIndex((row, at) => at > start && !row.startsWith("  "));
+    return lines.slice(start + 1, end === -1 ? undefined : end).filter((row) => row.includes("  phrase  "));
+  };
+
+  it("reports a span of six shared words and not one of five", () => {
+    expect(phrases(one).filter((row) => row.includes("guide:3"))).toEqual([
+      "  guide:3  phrase  6  1  1  y-1-2 (held out)",
+    ]);
+    expect(phrases(one).some((row) => row.includes("guide:2"))).toBe(false);
+  });
+
+  it("reports overlapping windows once, as the longest span, and never its text", () => {
+    expect(phrases(one).filter((row) => row.includes("guide:1"))).toEqual([
+      "  guide:1  phrase  9  1  1  y-1-1 (practice)",
+    ]);
+    expect(lines.join("\n")).not.toMatch(/warehouse|morning shift/iu);
+  });
+
+  it("leaves out a span every task shares and counts it in the header", () => {
+    expect(phrases(one).some((row) => row.includes("guide:4"))).toBe(false);
+    expect(lines[0]).toContain("4 spans every task shares left out");
+  });
+
+  it("prints no phrase for a harness that shares nothing and reads none it installed", () => {
+    expect(phrases(two)).toEqual([]);
+    expect(lines.find((row) => row.startsWith(two.slice(0, 8)))).toContain(", 0 hits");
+  });
+});

@@ -47,7 +47,8 @@ starts a named Examiner session beside the next conversation (`campaignTools`). 
 idle conversations; one the provider crashed or a stop killed, or one the host refused, is not idle
 (`idleOf`, `tools/d2/campaign-terms.ts`). `environment` follows a move that threw after it began,
 unless its session is recorded as crashed (`goesOn`), and three provider-failed sessions in a row
-that held no task and changed no harness (`crashedRun`, `src/campaign/ground.ts`). A comparison
+that held no task and changed no harness (`crashedRun`, `src/campaign/ground.ts`); the row starts
+again at the first turn served to a session that does not crash. A comparison
 begun under other code refuses to continue, so resume it at its own code. Run again by name, a
 campaign continues from its log, whatever ended the process: `test/campaign-kill.test.ts` ends the
 command with SIGKILL at six points and holds the run after it to what no kill may change. A killed

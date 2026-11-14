@@ -38,7 +38,7 @@ import { draftOf } from "../examiner/draft.ts";
 import { plural } from "../meta/text.ts";
 import { comparisonFloor } from "./admission.ts";
 import { epochsOf, tasksByEpoch } from "./climb.ts";
-import { crashedRun, cutShort, groundOf, heldOut, type Plan } from "./ground.ts";
+import { crashedRun, cutShort, groundOf, heldOut, type Plan, sessionEnded } from "./ground.ts";
 import { type Decided, type Ending, short } from "./move.ts";
 import { pendingWords } from "./word.ts";
 
@@ -501,11 +501,19 @@ function noRoom(ground: Ground): Move | null {
   const room = roomOf(last.report, side);
   if (room === "room") {
     const promotedAt = events.findLastIndex(({ kind }) => kind === PROMOTED);
-    // A session the provider crashed or a stop killed before it held out a task wrote nothing for
-    // the new reference (`cutShort`): on 21 October r5's x-4 and r6's x-5 crashed so, and each
-    // campaign compared its next harness on the tasks the old reference had closed.
+    // A session the provider crashed or a stop killed did not finish writing for the new
+    // reference, whatever it held out by then, and is owed again: on 21 October r5's x-4 and r6's
+    // x-5 crashed with nothing held, and each campaign compared its next harness on the tasks the
+    // old reference had closed. Until 14 November one cut with a task held counted as the
+    // reference's session: in a jobstat run the two written for its second and third references
+    // were cut at 6 and 4 tasks held, a crash and a move between logins, none followed, and its
+    // scored set fell from 22 tasks to 14 over the next three comparisons.
     const since = events.slice(promotedAt);
-    const cut = new Set(since.filter(cutShort).map(({ data }) => data.session));
+    const cut = new Set(
+      since
+        .filter((event) => sessionEnded(event) && CUT.has(event.data.ended))
+        .map(({ data }) => data.session),
+    );
     const written = since.some(
       (event) =>
         (event.kind === "exam.started" || event.kind === "exam.finished") && !cut.has(event.data.session),
@@ -514,7 +522,7 @@ function noRoom(ground: Ground): Move | null {
       ? null
       : {
           move: "examine",
-          why: `harness ${short(reference ?? "")} was promoted, and no Examiner session has written tasks for it since: tasks are written for each new reference`,
+          why: `harness ${short(reference ?? "")} was promoted, and no Examiner session has finished writing tasks for it since: tasks are written for each new reference`,
         };
   }
   const why =

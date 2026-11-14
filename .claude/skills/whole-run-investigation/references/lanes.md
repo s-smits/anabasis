@@ -417,8 +417,9 @@ the last practised state; name the later edits. Only the diff inventories the ch
 writes leave no `edit` call, and limits come from the condition (`agent/config.yaml` is ignored).
 Check every program for the Builder's one limit: no task id, text or answer, which would score
 higher on exactly those tasks and nowhere else (`names.txt` lists where a kept harness's own files
-name a task id, prefix, family or rare identifier, each hit with its length and how many tasks hold
-it; a hit is a place to read, since short names recur by chance). A search and a filter against the
+name a task id, prefix, family or rare identifier, or copy a span of six or more words of a task's
+public input, each hit with its length and how many tasks hold it; a hit is a place to read, since
+short names and stock phrases recur by chance). A search and a filter against the
 public rules are
 allowed, and the solver decides what it submits. The decision:
 what a step is attributed to, and whether the harness helped the solver or answered for it. Routes to

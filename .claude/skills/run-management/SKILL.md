@@ -203,8 +203,8 @@ ending, or ended `environment`, it continues on the same login if that is ready 
 a `budget` ending, even inside a comparison, is one no login can finish, and only a raised total
 (`continue --budget N`, the operator's dollar cap) goes on with it.
 A run with no `claude/` seat restarts after a death but sits out provider waits. Three continues in a
-row without an answered model turn end the keeper. Restarts stay at the worktree's commit; output
-goes to `keep.out`, and `runs stop <name> --yes` ends run and keeper both.
+row without an answered model turn end the keeper. Restarts stay at the worktree's commit; `keep.out`
+holds each move, wait and giving up under its time, and `runs stop <name> --yes` ends run and keeper.
 
 ## Copy and move
 

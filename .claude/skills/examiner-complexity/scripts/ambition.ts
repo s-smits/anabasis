@@ -57,7 +57,12 @@ function askedOf(start: LogEvent, step: Extract<Handover, { step: "examiner" }>)
  *  Examiner wrote holds its label on the task, and `data.family` is null there: a count by that
  *  field read "one family" of sessions that wrote two on 12 and again on 13 November, the second
  *  time into a ledger and to the operator. A comparison's tasks are independent draws only as far
- *  as their families differ, so the grain is read here beside the supply it belongs to. */
+ *  as their families differ, so the grain is read here beside the supply it belongs to. The turn
+ *  the session stood at when its first proposal came is the other half of its pace: on 14 November
+ *  an open session at 81 turns with 2 proposed was read against two that ended with 9 and 10, and
+ *  only a one-off count showed its first at turn 62 where theirs came at 39 and 46. The turns are
+ *  counted as the campaign's fold counts a session's, since an event's own `turn` numbers the
+ *  Examiner's conversation and runs on from the session before. */
 function familiesOf(events: readonly LogEvent[], session: string): string {
   const sizes = new Map<string, number>();
   for (const { family } of proposalsOf(events).filter((each) => each.session === session)) {
@@ -66,7 +71,12 @@ function familiesOf(events: readonly LogEvent[], session: string): string {
   }
   const proposed = [...sizes.values()].reduce((sum, size) => sum + size, 0);
   if (proposed === 0) return "";
-  return ` · ${String(proposed)} proposed in ${String(sizes.size)} families, largest ${String(Math.max(...sizes.values()))}`;
+  const first = events.findIndex(({ kind, data }) => kind === "task.proposed" && data.session === session);
+  const before = events
+    .slice(0, first)
+    .filter(({ kind, data }) => kind === "exam.turn" && data.session === session);
+  const turn = before.length === 0 ? "" : `, the first at turn ${String(before.length)}`;
+  return ` · ${String(proposed)} proposed in ${String(sizes.size)} families, largest ${String(Math.max(...sizes.values()))}${turn}`;
 }
 
 /** One line an Examiner session: its id, the reference in force, and its reading. */

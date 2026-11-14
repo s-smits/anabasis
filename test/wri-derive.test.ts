@@ -221,6 +221,36 @@ describe("one reader, by name", () => {
     expect(decodeOutput(ran.stderr)).toContain("rows");
     expect(decodeOutput(ran.stderr)).toContain("chain");
   });
+
+  it("keeps its own word after the verb for the reader's name, never a log", () => {
+    const ran = reader("degradations", log);
+    expect(ran.exitCode).not.toBe(0);
+    expect(decodeOutput(ran.stderr)).toContain("name one --log");
+  });
+});
+
+describe("a log named after the verb", () => {
+  const wri = (...args: string[]) => runSync([capturedExecPath, "tools/wri/wri.ts", ...args], { cwd: REPO });
+
+  it("is read as --log reads it, by path or by the campaign's folder", () => {
+    appendFileSync(log, STARTED);
+    const flagged = wri("read", "--log", log);
+    expect(flagged.exitCode).toBe(0);
+    // Until 14 November a log after the verb was dropped and `read` threw "name one --log".
+    for (const named of [log, dirname(log)]) {
+      const ran = wri("read", named);
+      expect(ran.exitCode).toBe(0);
+      expect(decodeOutput(ran.stdout)).toBe(decodeOutput(flagged.stdout));
+    }
+    // A verb that needs a log still refuses where neither names one.
+    expect(wri("climb").exitCode).not.toBe(0);
+  });
+
+  it("prints the usage for --help", () => {
+    const ran = wri("--help");
+    expect(ran.exitCode).toBe(0);
+    expect(decodeOutput(ran.stdout)).toContain("usage: bun tools/wri/wri.ts read");
+  });
 });
 
 describe("the map of derived files a lane's prompt carries", () => {

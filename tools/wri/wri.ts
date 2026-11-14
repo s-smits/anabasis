@@ -2,7 +2,7 @@
  * The whole-run investigation of one campaign, a verb a step. It reads a log and writes only under
  * the investigation's own directory, which belongs under the ignored `.ana/wri/`.
  *
- *   bun tools/wri/wri.ts read --log .ana/d2/truss/log.jsonl
+ *   bun tools/wri/wri.ts read --log .ana/d2/truss/log.jsonl      (or `read <log | campaign folder | name>`)
  *   bun tools/wri/wri.ts climb --log .ana/d2/truss/log.jsonl[,<log>,<log>]
  *   bun tools/wri/wri.ts trajectory --log <log>[,<log>...] [--grades <report>[,<report>]] [--hours 2,4,8]
  *   bun tools/wri/wri.ts packets --log <log>,<log>[,...] --out <dir> [--graders 2]
@@ -161,12 +161,15 @@ const { values, positionals } = parseArgs({
     graders: { type: "string" },
     join: { type: "boolean" },
     hours: { type: "string" },
+    help: { type: "boolean" },
   },
 });
 
-/** Every log `--log` names, comma-separated. */
+/** Every log `--log` names, comma-separated, or the ones written after the verb where it names
+ *  none, as the other readers take them; `reader`'s own positional is the reader's name. */
+const namedLogs = values.log ?? (positionals[0] === "reader" ? "" : positionals.slice(1).join(","));
 const resolvedLogs = await Promise.all(
-  (values.log ?? "")
+  namedLogs
     .split(",")
     .filter((each) => each !== "")
     .map(async (each) => resolve(await logAcross(each))),
@@ -185,7 +188,7 @@ function oneLog(): string {
 }
 
 function needed(name: "log" | "out"): string {
-  const value = values[name];
+  const value = name === "log" ? namedLogs || undefined : values.out;
   if (value === undefined) throw new Error(`name --${name}`);
   return value;
 }
@@ -512,6 +515,10 @@ function synthesis(): number {
 
 async function main(): Promise<number> {
   const [verb] = positionals;
+  if (values.help === true) {
+    console.log(USAGE);
+    return 0;
+  }
   if (verb === "read") {
     const log = oneLog();
     console.log(overviewText(log, read(log), REPO));

@@ -161,7 +161,8 @@ export async function roomFor(
 }
 
 /** Whether a line of `keep.out` says this keeper moved or restarted its run, left it waiting or gave it
- *  up (`keeperOf`), as against its error text and a run that ended by itself, which the log says. */
+ *  up (`keeperOf`), each under the time of its look, as against its error text and a run that ended by
+ *  itself, which the log says. */
 export const keeperActed = (line: string): boolean =>
   /: (?:move|continue) (?:on login|without a login)|; left waiting$|no seat took a model turn: kept no longer$/u.test(
     line,
@@ -176,6 +177,9 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
   let worked = -1;
   let waitedOn = "";
   let askAt = 0;
+  // What the keeper did or could not do, under the time of the look: a wait and a giving up write no
+  // event, so on 14 November two waits could be placed only by the gaps in their run's log.
+  const act = (now: number, what: string) => hands.say(`${new Date(now).toISOString()} ${name}: ${what}`);
   return async (now: number): Promise<boolean> => {
     const events = hands.events();
     const state = hands.stands(events, now);
@@ -216,7 +220,7 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
       target === null ? null : startRefusal(hands.env, payerOf(target, flags), "here", await counted(), name);
     if (target === null || full !== null) {
       const reason = full ?? (why === "" ? "no login to go on with" : why);
-      if (reason !== waitedOn) hands.say(`${name}: ${reason}; left waiting`);
+      if (reason !== waitedOn) act(now, `${reason}; left waiting`);
       waitedOn = reason;
       askAt = now + ASK_MS;
       return false;
@@ -227,12 +231,10 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
     barren = turn === "continue" && turns === worked ? barren + 1 : 0;
     worked = turns;
     if (barren >= BARREN) {
-      hands.say(`${name} went on ${String(BARREN)} times and no seat took a model turn: kept no longer`);
+      act(now, `went on ${String(BARREN)} times and no seat took a model turn: kept no longer`);
       return true;
     }
-    hands.say(
-      `${new Date(now).toISOString()} ${name}: ${turn} ${target === undefined ? "without a login" : `on login ${target}`}`,
-    );
+    act(now, `${turn} ${target === undefined ? "without a login" : `on login ${target}`}`);
     try {
       if (turn === "move") await hands.stop();
       await hands.start(target);

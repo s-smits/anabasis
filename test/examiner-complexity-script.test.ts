@@ -110,6 +110,41 @@ describe("ambition", () => {
     expect(none).not.toContain("proposed in");
   });
 
+  it("says the turn a session's first proposal came at, counted in its own turns", () => {
+    // The hostile case: an event's `turn` numbers the conversation, so a second session's first
+    // turn is no 1 there; another seat's turns fall between, and a session with no turn before its
+    // proposal, or with no proposal, names no turn.
+    const turn = (minutes: number, session: string, nth: number) =>
+      event(minutes, "exam.turn", { session, turn: nth });
+    const proposed = (minutes: number, session: string) => {
+      const version = `v${String(minutes)}`;
+      const task = { taskId: version, family: "a", publicInput: {} };
+      return event(minutes, "task.proposed", { version, taskId: version, session, task });
+    };
+    const pace = [
+      opened(0, "x-1"),
+      turn(1, "x-1", 1),
+      event(2, "build.turn", { session: "b-1", turn: 40 }),
+      turn(3, "x-1", 2),
+      proposed(4, "x-1"),
+      turn(5, "x-1", 3),
+      proposed(6, "x-1"),
+      opened(7, "x-2"),
+      turn(8, "x-2", 4),
+      proposed(9, "x-2"),
+      opened(10, "x-3"),
+      proposed(11, "x-3"),
+      turn(12, "x-3", 5),
+      opened(13, "x-4"),
+      turn(14, "x-4", 6),
+    ];
+    const [first, second, early, none] = sessionLines(pace);
+    expect(first).toContain("2 proposed in 1 families, largest 2, the first at turn 2 ·");
+    expect(second).toContain("1 proposed in 1 families, largest 1, the first at turn 1 ·");
+    expect(early).toContain("1 proposed in 1 families, largest 1 ·");
+    expect(none).not.toContain("proposed in");
+  });
+
   it("bills a session its own end and tries, never the comparison or Builder spend before the next start", () => {
     const solve = (minutes: number, id: string, by: string, billed: number) => [
       event(minutes, "solve.started", { solve: id, comparison: by }),

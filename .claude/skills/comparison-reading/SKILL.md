@@ -49,7 +49,8 @@ bun .claude/skills/comparison-reading/scripts/starter-reads.ts <log.jsonl | camp
   `bun tools/wri/wri.ts reader pairs --log <name>`: each task's score, the tally by writer and by
   family, and a `grain` line that gives the families by size without a label and says where one
   task's score exceeds the others together.
-- `draw.ts` predicts the next comparison: the held-out pool by part, the set it would fix, how many
+- `draw.ts` predicts the next comparison: the held-out pool by part, the set it would fix, its
+  families by count and the largest (naming none), how many
   of its tasks the comparison before scored, its frontier by epoch, admission's floor and refusals (`held-short` among them) and the size lines, at
   the table's target and level by default.
 - `starter-reads.ts` asks what a confirmed promotion rests on. It splits each starter read into the

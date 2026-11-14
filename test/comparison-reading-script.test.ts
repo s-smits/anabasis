@@ -386,8 +386,9 @@ describe("what the next comparison would score", () => {
   /** A task's hidden value, which no line of the draw may carry. */
   const HIDDEN = "hidden-canary-5e4";
 
-  /** A log over a read checker whose Examiner held `held` drafts and released `released`. */
-  function exam(held: number, released: number): LogEvent[] {
+  /** A log over a read checker whose Examiner held `held` drafts and released `released`, each task
+   *  of the family `familyOf` names for its place, or of none. */
+  function exam(held: number, released: number, familyOf?: (at: number) => string | undefined): LogEvent[] {
     const events: LogEvent[] = [];
     const add = (kind: LogEvent["kind"], data: JsonObject) =>
       events.push({ at: `2026-10-30T00:${String(events.length).padStart(2, "0")}:00.000Z`, kind, data });
@@ -395,7 +396,16 @@ describe("what the next comparison would score", () => {
     add("checker.read", { faults: [] });
     for (let at = 0; at < held + released; at += 1) {
       const [version, taskId] = [`v-${String(at)}`, `task-${String(at)}`];
-      add("task.proposed", { version, taskId, task: { taskId, publicInput: {}, hidden: { value: HIDDEN } } });
+      add("task.proposed", {
+        version,
+        taskId,
+        task: {
+          taskId,
+          ...keyIfDefined("family", familyOf?.(at)),
+          publicInput: {},
+          hidden: { value: HIDDEN },
+        },
+      });
       add("task.gate", {
         version,
         gate: 1,
@@ -458,6 +468,27 @@ describe("what the next comparison would score", () => {
     expect(again(compared(exam(8, 2), 2, 4))).toContain("3 of 8 scored in the comparison before");
     expect(again(exam(8, 2))).toBe("");
     expect(again(compared(exam(8, 2), 1, 9))).not.toContain("v-");
+  });
+
+  const grain = (log: readonly LogEvent[]) =>
+    drawLines(log, { target: 24, level: 0.02 }).find((line) => line.startsWith("the set's grain")) ?? "";
+
+  it("counts the families of the set and the largest, where 18 of 19 tasks are siblings", () => {
+    // On 14 November a second comparison drew 19 tasks in 2 families of 18 and 1, seen once it began.
+    const log = exam(19, 2, (at) => (at === 2 ? "kin-alone" : "kin-many"));
+    expect(grain(log)).toBe("the set's grain, naming no family: 19 tasks in 2 families, the largest 18");
+    expect(drawOf(log, 24, "c1").families).toStrictEqual({ sizes: [18, 1], unnamed: 0 });
+  });
+
+  it("counts a task that names no family apart from the families", () => {
+    expect(grain(exam(8, 2))).toBe(
+      "the set's grain, naming no family: 8 tasks, none of which names a family",
+    );
+    const mixed = exam(8, 2, (at) => (at < 6 ? "kin-many" : undefined));
+    expect(drawOf(mixed, 24, "c1").families).toStrictEqual({ sizes: [4], unnamed: 4 });
+    expect(grain(mixed)).toBe(
+      "the set's grain, naming no family: 8 tasks in 1 family, the largest 4, and 4 that name none",
+    );
   });
 });
 

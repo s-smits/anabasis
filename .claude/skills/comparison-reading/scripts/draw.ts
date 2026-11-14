@@ -10,6 +10,8 @@
  * comparisonFloor, refusals, supplyOf and sizeLines explain admission and sample size. The default
  * target and level come from planOn, as in the run view; flags override them for this inspection.
  * Once a comparison has reported, one line counts the tasks of this draw that it scored (testedOf).
+ * A grain line counts the set's families and the largest, since the test reads siblings as
+ * independent tasks; `pairs` (tools/wri) gives the same grain of a comparison that has reported.
  *
  * Output contains counts and refusal codes, without task identities. Stored-pack tasks have no
  * admission epoch in tasksByEpoch, so they do not enter the epoch-based draw. This reports the
@@ -23,6 +25,7 @@ import { askedOf } from "#src/campaign/ground.ts";
 import { tasksByEpoch } from "#src/campaign/climb.ts";
 import { scoredSet } from "#src/campaign/round.ts";
 import { frozenChecker } from "#src/kernel/acceptance.ts";
+import { proposalsOf } from "#src/kernel/history.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { keyIfNotNull } from "#src/meta/optional-key.ts";
 import { lastReports, poolOf } from "#src/kernel/reports.ts";
@@ -55,7 +58,17 @@ export function drawOf(events: readonly LogEvent[], target: number, contract: st
   // tasks that comparison scored less the one released since, and no line said so before it began.
   const before = lastReports(events).at(-1);
   const tested = new Set(before === undefined ? [] : testedOf(before.data).of);
+  // The set by the Examiner's own label, largest family first. On 14 November a second comparison
+  // drew 19 tasks in 2 families of 18 and 1, and no reader said so until it had begun.
+  const named = new Map(proposalsOf(events).map(({ version, family }) => [version, family]));
+  const kin = Map.groupBy(tasks, (task) => named.get(task) ?? null);
   return {
+    families: {
+      sizes: [...kin]
+        .flatMap(([family, some]) => (family === null ? [] : [some.length]))
+        .toSorted((one, other) => other - one),
+      unnamed: kin.get(null)?.length ?? 0,
+    },
     before:
       before === undefined
         ? null
@@ -75,6 +88,17 @@ export function drawOf(events: readonly LogEvent[], target: number, contract: st
   };
 }
 
+/** The set's families by count and the largest, naming none; a task that names no family is counted apart. */
+function grainLine({ sizes, unnamed }: ReturnType<typeof drawOf>["families"]): string {
+  const tasks = sizes.reduce((sum, size) => sum + size, unnamed);
+  const [largest] = sizes;
+  const said =
+    largest === undefined
+      ? `${plural(tasks, "task")}, none of which names a family`
+      : `${plural(tasks, "task")} in ${String(sizes.length)} ${sizes.length === 1 ? "family" : "families"}, the largest ${String(largest)}${unnamed === 0 ? "" : `, and ${String(unnamed)} that name none`}`;
+  return `the set's grain, naming no family: ${said}`;
+}
+
 /** The lines this script prints for `events`. */
 export function drawLines(
   events: readonly LogEvent[],
@@ -89,6 +113,7 @@ export function drawLines(
   return [
     `held-out pool: ${String(pool.scorable)} scorable (${String(pool.frontier)} frontier, ${String(pool.retained)} retained, of which ${String(pool.exhausted)} exhausted), ${String(pool.awaiting)} awaiting task review and left out; ${String(pool.practiceFrontier)} on the reference's own frontier for practice`,
     `next comparison at target ${String(target)}: ${plural(drawn.scored, "frontier task")} and ${plural(drawn.retained, "retained task")} (one for every three frontier)`,
+    grainLine(drawn.families),
     ...(drawn.before === null
       ? []
       : [

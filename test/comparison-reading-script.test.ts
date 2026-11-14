@@ -423,6 +423,42 @@ describe("what the next comparison would score", () => {
     expect(lines.find((line) => line.startsWith("admission "))).toContain("refused held-short");
     for (const canary of [HIDDEN, "task-", "v-"]) expect(lines.join("\n")).not.toContain(canary);
   });
+
+  /** `log` with a comparison g-1 that read no step on the tasks numbered `from` to `to`. */
+  function compared(log: readonly LogEvent[], from: number, to: number): LogEvent[] {
+    const of = Array.from({ length: to - from + 1 }, (_, at) => `v-${String(from + at)}`);
+    const reported: LogEvent = {
+      at: "2026-10-30T01:00:00.000Z",
+      kind: "comparison.reported",
+      data: {
+        session: "g-1",
+        old: "h0",
+        fresh: "h1",
+        reading: "no-step",
+        level: 0.02,
+        versions: of,
+        scored: { wins: 1, losses: 1, ties: of.length - 2 },
+        frontier: { differences: of.map((_, at) => (at === 0 ? 5 : at === 1 ? -5 : 0)), of },
+      },
+    };
+    return [...log, reported];
+  }
+  const again = (log: readonly LogEvent[]) =>
+    drawLines(log, { target: 24, level: 0.02 }).find((line) => line.includes("comparison before")) ?? "";
+
+  it("counts the tasks of the draw that the comparison before scored, a pool that is its tasks less one", () => {
+    // g-1 scored the eight held tasks and v-1, released since: the next draw is that comparison again.
+    expect(again(compared(exam(8, 2), 1, 9))).toBe(
+      "of those tasks, 8 of 8 scored in the comparison before (g-1)",
+    );
+    expect(drawOf(compared(exam(8, 2), 1, 9), 24, "c1").before).toStrictEqual({ session: "g-1", again: 8 });
+  });
+
+  it("counts only the repeated tasks where the pool grew, and prints no such line before a comparison", () => {
+    expect(again(compared(exam(8, 2), 2, 4))).toContain("3 of 8 scored in the comparison before");
+    expect(again(exam(8, 2))).toBe("");
+    expect(again(compared(exam(8, 2), 1, 9))).not.toContain("v-");
+  });
 });
 
 describe("how far a comparison's sides stood from the best on record", () => {

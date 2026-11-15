@@ -147,7 +147,9 @@ export function watching(Interrupted: new (message: string) => Error, moved: () 
   }, WATCH_MS);
   const halt = (): void =>
     stop.abort(
-      new Interrupted("interrupted; every pass so far is recorded, so landing again starts from there."),
+      new Interrupted(
+        "interrupted by a signal, which a landing that covers more of the stack also sends (the lock in the Git folder names it, and its passes are this one's); every pass so far is recorded, so landing again starts from there.",
+      ),
     );
   runtimeProcess.on("SIGINT", halt).on("SIGTERM", halt);
   const end = (): void => {

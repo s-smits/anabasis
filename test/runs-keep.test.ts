@@ -17,7 +17,7 @@ import {
   turnsIn,
 } from "../tools/runs/keep.ts";
 import { stateOf } from "../tools/runs/state.ts";
-import { billsLogin, fiveHourWith, type Reading, room } from "../tools/runs/logins.ts";
+import { billsLogin, fiveHourWith, planned, type Reading, room } from "../tools/runs/logins.ts";
 import { keepsItself, WAIT_HOURS } from "../tools/runs/manage.ts";
 import { type Receipt, writeReceipt } from "../tools/runs/receipt.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
@@ -184,6 +184,23 @@ describe("the five hours a login is read to last with a run added", () => {
     expect(fiveHourWith(five(30, null), 1, NOW)).toBeNull();
   });
 
+  it("drops the window of an ultra login that reports none, and of no other", () => {
+    const ultra = { ANA_LOGIN_SUBS: "2:ultra" };
+    const silent = five(null, null);
+    const lifted = planned(silent, ultra);
+    expect(lifted).toEqual({ ...silent, fiveHour: null });
+    // No run added there can reach a five-hour limit, and the login keeps its room.
+    expect(fiveHourWith(lifted, 3, NOW)).toBe(0);
+    expect(room([lifted], ["2"], new Set())).toEqual(["2"]);
+    // An ultra account not yet verified still reports the window, and keeps it.
+    expect(planned(five(40, 4), ultra)).toEqual(five(40, 4));
+    const refused = { ...silent, fiveHour: { pct: null, resetsAt: null, status: "rejected" } };
+    expect(planned(refused, ultra)).toEqual(refused);
+    // Another plan's unread window, or another login's plan, leaves a reading that failed, as before.
+    expect(fiveHourWith(planned(silent, { ANA_LOGIN_SUBS: "2:max" }), 0, NOW)).toBeNull();
+    expect(fiveHourWith(planned(silent, { ANA_LOGIN_SUBS: "3:ultra" }), 0, NOW)).toBeNull();
+  });
+
   it("leaves a login predicted over or unread, names which, and keeps the rest soonest week first", async () => {
     const readings: Reading[] = [
       { ...read("2", 10, 60, "allowed", 1) },
@@ -301,6 +318,11 @@ describe("a keeper's looks, scripted", () => {
     expect(barren.state.said.at(-1)).toContain("kept no longer");
     expect(barren.state.said.every(keeperActed)).toBe(true);
     expect(keeperActed("  a refusal's own text, with a colon: in it")).toBe(false);
+    // A wait and a giving up write no event, so the line is the one place their time stands.
+    const acts = [moved, waiting, barren].flatMap(({ state }) => state.said.filter(keeperActed));
+    expect(acts.filter((line) => !/^\d{4}-\d{2}-\d{2}T[\d:.]+Z sample: /u.test(line))).toEqual([]);
+    expect(waiting.state.said[0]?.startsWith(`${new Date(NOW).toISOString()} sample: `)).toBe(true);
+    expect(barren.state.said.at(-1)?.startsWith(new Date(NOW + 3 * MINUTE).toISOString())).toBe(true);
   });
 
   it("leaves a run whose login recovers first to go on by itself", async () => {

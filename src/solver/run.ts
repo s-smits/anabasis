@@ -367,16 +367,28 @@ const PROCESS_CLOCK: WallClock = {
   },
 };
 
-/** A deadline armed now, that expires `seconds` from now on `clock`. */
+/** A deadline armed now, that expires once `seconds` have passed by `clock.now`, the clock a solve's
+ *  time is recorded and told on. A timer that fires sooner by that clock is armed again for the
+ *  rest: the process's two clocks part while a host sleeps, where `performance.now` stands still (a
+ *  solve of 11 November 2026 recorded 74 s over 788 s of a host's day), so a deadline that only the
+ *  timer had reached would end a solve as its harness's fail for time the host slept. */
 export function raiseWall(seconds: number, clock: WallClock = PROCESS_CLOCK): Wall {
   const fall = new AbortController();
-  let heard = clock.now();
+  const raised = clock.now();
+  let heard = raised;
   let running = 0;
   let silentSeconds = 0;
-  const lower = clock.after(seconds * 1000, () => {
-    if (running === 0) silentSeconds = (clock.now() - heard) / 1000;
-    fall.abort();
-  });
+  const arm = (ms: number): (() => void) =>
+    clock.after(ms, () => {
+      const left = seconds * 1000 - (clock.now() - raised);
+      if (left > 0) {
+        lower = arm(left);
+        return;
+      }
+      if (running === 0) silentSeconds = (clock.now() - heard) / 1000;
+      fall.abort();
+    });
+  let lower = arm(seconds * 1000);
   return {
     signal: fall.signal,
     onTurn: () => {
@@ -389,7 +401,7 @@ export function raiseWall(seconds: number, clock: WallClock = PROCESS_CLOCK): Wa
     get silentSeconds() {
       return silentSeconds;
     },
-    lower,
+    lower: () => lower(),
   };
 }
 

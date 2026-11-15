@@ -20,7 +20,8 @@ once by the first command that begins a solve-bearing move (`settingOf`) and nev
 solver and its effort, window and limits (`--solver`, `--solver-effort`, `--solver-window`,
 `--solve-minutes`, `--solve-model-turns`), `--target` and `--solves`. A conflicting flag is refused,
 since no solve on record counts for a different solver. A log with solves from before any setting is
-held to its last test-side solves' setting (`firstRecord`). `--solver-window` (300,000 tokens) is
+held to its last test-side solves' setting (`firstRecord`), refused as a paid command opens the
+campaign (`campaignFor`). `--solver-window` (300,000 tokens) is
 where the solver's backend compacts, so a model served with a 200K context is refused at it.
 
 ### Practice release
@@ -63,8 +64,10 @@ Owners and edges of the defaults in `AGENTS.md` section 6:
 - `--target` and `--solves` live in `SIZE` (`src/kernel/size.ts`); `ROOM` is one constant read by
   the tally, task admission, the frontier and `roomOf`.
 - The defect stop is `--defects` of a hand comparison only.
-- The reserve (`--reserve`) sits above the most a solve billed under the default limits; for longer
-  solves set it near an earlier log's `solve.finished.billed`.
+- The reserve (`--reserve`) sits above the most a solve billed under the default limits, and is the
+  one place a turn limit stands in for dollars: a solve is held at it when it starts and is not cut
+  once it runs. `scripts/bills.ts` counts the solves on record that billed past it; read it before
+  naming longer solves or a lower reserve.
 - `--parent latest` and `--reference promoted`.
 - A Builder session has 24 practice solves (`--practice-solves`), fewer where the total cannot
   reserve them (`practiceLeft`, `src/builder/tools.ts`); an Examiner session 240 minutes, 200 turns

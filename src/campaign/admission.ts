@@ -26,9 +26,9 @@
  *   allows could have shown a gain and showed none (`stopRule`, `7f0add79:docs/plan.md`, row F48). The
  *   operator may go on past it by saying why (`--past-stop`), and the reason is logged.
  *
- * Two more are the command's, and are asked beside them: a start with no dollar cap, and a first
- * record of the campaign's setting other than the one the log's solves ran under (`unrecorded`,
- * `firstRecord` in `tools/d2/setting.ts`).
+ * One more is the command's, and is asked beside them: a start with no dollar cap. A first record of
+ * the campaign's setting other than the one the log's solves ran under is refused as the command
+ * opens the campaign (`campaignFor`, `tools/d2/round.ts`).
  *
  * A rehearsal is exempt from all of it, by name and here: its seats are scripts, which are paid
  * nothing, and it has to be able to walk any path a seed can be cut to. The refusals a comparison
@@ -90,9 +90,6 @@ export interface Wanted {
   readonly cap: Cap | null;
   /** The operator's reason to go on past the stop rule, where one is given. */
   readonly pastStop?: string | undefined;
-  /** Why the setting asked for may not be recorded as the campaign's first, where the caller found
-   *  that the log's solves ran under another (`firstRecord`, `tools/d2/setting.ts`). */
-  readonly unrecorded?: string | undefined;
 }
 
 /** What the supply's own refusals are read at: a comparison's size, the cap it is paid under, and
@@ -101,7 +98,7 @@ type Sized = Pick<Wanted, "target" | "level" | "solves" | "cap" | "pastStop">;
 
 /** What a Builder session with no comparison after it asks for: its cap, and the practice solves
  *  its limits allow. */
-interface WantedSession extends Pick<Wanted, "cap" | "pastStop" | "unrecorded"> {
+interface WantedSession extends Pick<Wanted, "cap" | "pastStop"> {
   readonly practiceSolves?: number | undefined;
 }
 
@@ -316,11 +313,11 @@ function faulty(supply: Supply): readonly [boolean, string] {
   ];
 }
 
-/** Whether a comparison should start on this supply: the command's two refusals, then the
+/** Whether a comparison should start on this supply: the command's refusal, then the
  *  supply's, and what its reader should know when it does. */
 function admission(supply: Supply, wanted: Wanted): Admission {
   const { scored, least, test } = sized(supply, wanted);
-  const { cap, pastStop, unrecorded } = wanted;
+  const { cap, pastStop } = wanted;
   const afforded = cap === null ? test : Math.floor(cap.dollars / cap.reserve);
   return {
     refusals: [
@@ -329,7 +326,6 @@ function admission(supply: Supply, wanted: Wanted): Admission {
           cap === null,
           "no --cap is named: a comparison is launched under a dollar cap, and one the cap cuts short reads not-scored",
         ],
-        [unrecorded !== undefined, unrecorded ?? ""],
       ]),
       ...refusals(supply, wanted).map(({ why }) => why),
     ],
@@ -360,7 +356,7 @@ function admission(supply: Supply, wanted: Wanted): Admission {
 /** The same for a Builder session with no comparison after it: with nothing to practise on, no
  *  check judges anything of the session, and an unread checker refuses nothing. */
 function sessionAdmission(supply: Supply, wanted: WantedSession): Admission {
-  const { cap, pastStop, unrecorded, practiceSolves } = wanted;
+  const { cap, pastStop, practiceSolves } = wanted;
   const afforded = cap === null ? null : Math.floor(cap.dollars / cap.reserve);
   const stop = stopped(supply, pastStop);
   return {
@@ -369,7 +365,6 @@ function sessionAdmission(supply: Supply, wanted: WantedSession): Admission {
         cap === null,
         "no --cap is named: a session is launched under a dollar cap, and no practice solve starts that a reserve for it would take past the cap",
       ],
-      [unrecorded !== undefined, unrecorded ?? ""],
       [
         supply.released > 0 && supply.faults === null,
         `${UNREAD}. A practice solve is judged by the same checks, and a Builder builds on what they reject`,

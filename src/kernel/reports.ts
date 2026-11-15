@@ -209,6 +209,15 @@ export function promoted(events: readonly LogEvent[]): string | null {
   return isString(harness) ? harness : null;
 }
 
+/** The ending the log's last event carries and its reason, or null: a campaign that went on has none. */
+export function endedOf(events: readonly LogEvent[]) {
+  const last = events.at(-1);
+  if (last?.kind !== "campaign.ended" || !isString(last.data.ending)) return null;
+  return { ending: last.data.ending, why: isString(last.data.why) ? last.data.why : "" };
+}
+
+export const endingOf = (events: readonly LogEvent[]): string | null => endedOf(events)?.ending ?? null;
+
 /** The campaign's reference: last promoted, otherwise its recorded starter, or the first old
  *  side where an earlier log names no starter. */
 export function referenceOf(events: readonly LogEvent[]): string | null {
@@ -534,6 +543,9 @@ function tallyReports(
  * regression, which is what the epochs before the newest were kept in the draw for. **Frontier** is the rest of the scorable
  * tasks, which the step reads with the retained ones, and what the supply counts (`supplyOf`,
  * `admission.ts`).
+ *
+ * **Scorable** holds a family's siblings too: one task a family refused 20 of 27 jobstat comparison
+ * starts, so families are reported beside the test (`compared`'s `families`) and decide nothing.
  *
  * **Known valid answers** are recorded for task versions: a solve's, under any harness
  * and at any limits, an author's answer the host saw pass on the task under its own id

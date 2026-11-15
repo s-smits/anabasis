@@ -36,24 +36,26 @@
  *
  * Only the repository's worktrees are swept, so a separate clone is never read. Every host sweeps
  * its own originals with its own daily job, and this one then refreshes each configured host's
- * records through snapshots.ts and brings every campaign no process writes there whole, so the
- * central host holds each closed run in full and a zip of it fetches nothing. A host that does not
- * answer is skipped with its copies as they were, and the next sweep asks it again, so a Mac asleep
- * for a night or a week catches up when it answers; nothing here deletes an original. Without --yes
- * it describes the sweep and changes nothing.
+ * records through snapshots.ts and brings every campaign no process writes there whole but for
+ * what it installed (`installs`), so the central host holds all a zip of a closed run can hold and
+ * the zip fetches nothing. A host that does not answer is skipped with its copies as they were, and
+ * the next sweep asks it again, so a Mac asleep for a night or a week catches up when it answers.
+ * No original is deleted but on the host `ABLATION_HOST` names, kept clear for ablations
+ * (`takeRetired`). Without --yes it describes the sweep and changes nothing.
  */
+import { DAY_MS } from "#src/meta/clock.ts";
 import { existsSync, lstatSync, mkdirSync, readdirSync, rmSync } from "#src/meta/filesystem.ts";
 import { gitMaybe, gitText, mainTree, type Worktree as Tree, worktreeList } from "#src/meta/git.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";
-import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { parseArgs, runtimeProcess, warn } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { controllersOf } from "./code.ts";
-import { hostsOf } from "./host-config.ts";
-import { syncRuns } from "./snapshots.ts";
+import { hostNamed, hostsOf } from "./host-config.ts";
+import { takeRetired, syncRuns } from "./snapshots.ts";
 import { stillRunning } from "./diagnosis.ts";
 import { unlaunchedSeed } from "./receipt.ts";
-import { archived, archiveOf, HERE, processes, runs } from "./registry.ts";
+import { archived, archiveOf, HERE, Misused, processes, runs } from "./registry.ts";
 
 /** What one sweep is asked: the main worktree, how long idle is, the time, and whether to act. */
 export interface Sweep {
@@ -63,12 +65,10 @@ export interface Sweep {
   readonly yes: boolean;
 }
 
-const DAY_MS = 86_400_000;
 /** A worktree or branch nothing uses stays this long, and a tree with a change no commit names twice
  *  as long: past it the system has moved too far for the change to apply (operator, 26 September). */
 const TREE_DAYS = 7;
 const DIRTY_DAYS = 14;
-const USAGE = "usage: bun run runs retire [--days 1] [--yes]";
 
 const say = (sweep: Sweep, line: string) => console.log(`${sweep.yes ? "" : "would: "}${line}`);
 const daysSince = (sweep: Sweep, ms: number) => (sweep.now - ms) / DAY_MS;
@@ -98,7 +98,7 @@ export function archiveIdle(sweep: Sweep): Set<string> {
       .map((each) => join(own, each))
       .find((path) => !existsSync(path) && !taken.has(path));
     if (to === undefined) {
-      console.error(`${from}: the archive holds ${run.name} under both its names, so it stays`);
+      warn(`${from}: the archive holds ${run.name} under both its names, so it stays`);
       continue;
     }
     say(sweep, `${from} -> ${to}`);
@@ -243,8 +243,12 @@ export async function retire(args: readonly string[]): Promise<void> {
     options: { days: { type: "string", default: "1" }, yes: { type: "boolean", default: false } },
   });
   const days = Number(values.days);
-  if (!Number.isFinite(days) || days < 0) throw new Error(USAGE);
+  if (!Number.isFinite(days) || days < 0) throw new Misused();
   const sweep: Sweep = { main: mainTree(runtimeProcess.cwd()), days, now: Date.now(), yes: values.yes };
+  // The host kept clear for ablations, none where unset or `here`; read before the sweep, so a name no
+  // entry holds, which would leave that host to fill unseen, refuses before anything moves.
+  const ablation = runtimeProcess.env.ABLATION_HOST ?? "";
+  const cleared = ablation === "" || ablation === HERE ? undefined : hostNamed(ablation).name;
   console.log(
     `retire at ${new Date(sweep.now).toISOString()}${sweep.yes ? "" : ": nothing is done without --yes"}`,
   );
@@ -259,6 +263,9 @@ export async function retire(args: readonly string[]): Promise<void> {
         await syncRuns([], { from: host.name, depth: "record" });
         await syncRuns([], { from: host.name, depth: "whole", closed: true });
       }
+      if (host.name !== cleared) continue;
+      say(sweep, `${host.name}: takes what its copy here holds whole; --yes copies first and can take more`);
+      await takeRetired(host, sweep.yes ? "take" : "describe");
     } catch (error) {
       // One host that does not answer holds up no other.
       console.error(`${host.name}: ${errorMessage(error)}`);

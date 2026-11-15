@@ -28,9 +28,9 @@ assignments whose sum reaches the observed one. When every untied task is won, p
 the count, and margins matter only when wins and losses mix. Frontier and retained tasks enter one
 test, reported apart; an empty retained set reads `unmeasured` instead of "no regression".
 
-A step (`stepOf`) is p at or under the level. Each reading prints its untied count, the win share it
-detects with power 0.8 (`detectable`) and its false rate at its margins (`falseRate`). At 0.02 the
-smallest set that can read a step is 6 won tasks (`sweepOf`), and admission asks for 8 frontier
+A step (`readsStep`) is p at or under the level. Each reading prints its untied count, the win share
+it detects with power 0.8 (`detectable`) and its false rate at its margins (`falseRate`). At 0.02
+the smallest set that can read a step is 6 won tasks (`sweepOf`), and admission asks for 8 frontier
 tasks (`comparisonFloor`); at 0.10 they are 4 and 6, and equal margins clear at 4 to 0, 6 to 1, 7 to
 2 or 9 to 3. At 24 untied tasks the false rate is 1.1% at 0.02 and 7.6% at 0.10, and a reading at
 0.02 detects with power 0.8 a harness that wins 80% of them (87% at 12; `src/kernel/size.ts`, head

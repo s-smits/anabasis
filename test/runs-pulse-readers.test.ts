@@ -122,6 +122,22 @@ describe("what a reader says of a moment", () => {
     expect(said.owed).toEqual([]);
   });
 
+  it("says of a line that counts every comparison in turn only this one's part, and any other line whole", () => {
+    const { store, log, look } = world([{ name: "rows", at: [REPORTED] }]);
+    const whole = "b-1: 33 practice solves, reading g-1 no-step; g-2 no-step";
+    const text = [
+      "TIED TASKS (lane 9): g-1: 1 of 8; g-2: 2 of 8",
+      "VALID BY HARNESS (lane 19): g-1: old 8 · g-2: old 7",
+      whole,
+    ];
+    keepResult(store, log, "rows", result(100), `${text.join("\n")}\n`);
+    expect(allOf(look({ fresh: [eventOf(REPORTED, { session: "g-2" })] })).slice(0, 3)).toEqual([
+      "◆ rows: TIED TASKS (lane 9): g-2: 2 of 8",
+      "◆ rows: VALID BY HARNESS (lane 19): g-2: old 7",
+      `◆ rows: ${whole}`,
+    ]);
+  });
+
   it("names a promotion by its harness's first eight characters", () => {
     const { store, log, look } = world([{ name: "replay", at: [PROMOTED] }]);
     keepResult(store, log, "replay", result(100), "promoted 0123abcd on g-3\nanother 89abcdef\n");
@@ -138,6 +154,21 @@ describe("what a reader says of a moment", () => {
     const named = allOf(look({ fresh: [eventOf(REPORTED, { session: "g-2" })] }));
     expect(named).toContain("◆ cost: g-2 of its own");
     expect(named.join("\n")).not.toContain("row 1 2");
+  });
+
+  it("gives a gist's lines to the newest moment of a kind, never to an owed one a later moment overtook", () => {
+    const { store, log, look } = world([{ name: "cost", at: [REPORTED], gist: /^row\t/ }]);
+    const second: Moment = { kind: REPORTED, session: "g-2", size: 60, left: ["cost"] };
+    const third: Moment = { kind: REPORTED, session: "g-3", size: 90, left: ["cost"] };
+    const cost = (said: ReturnType<typeof readersSaid>) =>
+      allOf(said).filter((line) => line.startsWith("◆ cost"));
+    // One pass read the log past both moments, so its text is the state the third comparison left.
+    keepResult(store, log, "cost", result(100), "head\tcols\nrow\t3\t4\n");
+    const both = look({ owed: [second, third] });
+    expect(cost(both)).toEqual(["◆ cost on comparison.reported g-3: row 3 4"]);
+    expect(both.owed).toEqual([]);
+    // The nearest hostile case: an owed moment nothing overtook still takes the gist's lines, as late.
+    expect(cost(look({ owed: [second] }))).toEqual(["◆ cost on comparison.reported g-2: row 3 4"]);
   });
 
   it("says each line once to an observer, whatever moment asks for it again, and once to each observer", () => {
@@ -387,11 +418,14 @@ describe("what a pass costs a host", () => {
     await passOver(store, [log], { budgetMs: 45_000, roomNow: () => true });
     const named = READERS.filter(({ at }) => at?.some((kind) => kinds.includes(kind)) === true);
     const read = named.flatMap(({ name }) => resultOf(store, log, name) ?? []);
-    // A spawn that refused its limit failed every reader in 0 ms, which only a real pass shows.
+    // A spawn that refused its limit failed every reader of its own process in 0 ms, which only a
+    // real pass shows; a reader of this process may take less than a millisecond.
     expect(resultOf(store, log, "rows")).toMatchObject({ ok: true, size: statSync(log).size });
     expect(read).toHaveLength(named.length);
     expect(read.filter(({ ok }) => ok).length).toBeGreaterThan(named.length / 2);
-    expect(read.every(({ ms }) => ms > 0)).toBe(true);
+    const spawned = named.filter((reader) => "args" in reader);
+    expect(spawned.length).toBeGreaterThan(0);
+    expect(spawned.every(({ name }) => (resultOf(store, log, name)?.ms ?? 0) > 0)).toBe(true);
     for (const { name } of READERS.filter(({ at }) => at === undefined)) {
       expect(resultOf(store, log, name)).toBeNull();
     }
@@ -624,6 +658,13 @@ describe("a look that was cut", () => {
     process.kill(-watching.pid, "SIGTERM");
     await watching.exited;
     expect(early).toBe("still looking");
+    // A wait that is no number of seconds above 0 is refused before the first look, not looped on.
+    for (const wait of ["0", "-5", "soon"]) {
+      const refused = start("--every", wait, "the-run");
+      const code = await Promise.race([refused.exited, Bun.sleep(20_000).then(() => "still looking")]);
+      if (code === "still looking") process.kill(-refused.pid, "SIGTERM");
+      expect(code).toBe(1);
+    }
   });
 
   it("keeps a peer's look from counting as read until its caller returns the token", () => {
@@ -723,10 +764,9 @@ describe("a look that was cut", () => {
         ?.args.at(-1)
         ?.replaceAll(String.raw`'\''`, "") ?? "";
     const offline = look({ FAKE_OFFLINE: "1" });
-    expect(offline.code).toBe(1);
-    // The hook's filter keeps an indented warning and drops an unindented line.
-    expect(offline.out).toContain("── runner");
-    expect(offline.out).toContain("  ⚠ no answer: its lines carry to the next look");
+    expect(offline.code).toBe(0);
+    // The hook's filter shows a line that opens with a warning on its own.
+    expect(offline.out).toMatch(/^⚠ runner is offline: no answer in /mu);
     look(fleet("◆ reported no-step\nack 89abcdef"));
     expect(remote()).toContain("--ack 0123abcd");
     look(fleet(""));
@@ -787,7 +827,9 @@ describe("the readers' list", () => {
 
   it("reads a log's campaign by the folder that holds it", () => {
     const view = READERS.find(({ name }) => name === "view");
-    expect(view?.args("/a/b/the-run/log.jsonl", "/repo")).toEqual(["tools/runs/cli.ts", "view", "the-run"]);
+    expect(
+      view !== undefined && "args" in view ? view.args("/a/b/the-run/log.jsonl", "/repo") : null,
+    ).toEqual(["tools/runs/cli.ts", "view", "the-run"]);
   });
 });
 

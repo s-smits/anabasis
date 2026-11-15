@@ -385,18 +385,20 @@ describe("scripted solves", () => {
       strayed,
     )(campaign, { builder: undefined, reference: FIXTURE });
     expect(seats.builder?.model.id).toBe("script");
-    // The fresh harness selects bash; the starter selects write.
+    // The fresh harness leaves the shell out, so its solver has `write` alone; the fixture and
+    // the starter select a shell, and a script writes through it.
     const fresh = { dir: join(root, "fresh"), digest: "f" };
     cpSync(FIXTURE, fresh.dir, { recursive: true });
+    writeFileSync(join(fresh.dir, "agent/tools-spec.json"), '{ "presets": ["write"], "tools": [] }\n');
     const old = { dir: FIXTURE, digest: "o" };
     await seats.solve(held, fresh, undefined);
     expect(strayed).toEqual([]);
     await seats.solve(held, old, undefined);
     await seats.solve(other, await starter(campaign), undefined);
     expect(calls).toMatchObject([
-      { name: "bash", arguments: { command: `printf %s '{"answer":"t-2 right"}' > answer.json` } },
+      { name: "write", arguments: { path: "answer.json", content: '{"answer":"t-2 right"}' } },
       { name: "bash", arguments: { command: `printf %s '{"answer":"t-2 wrong"}' > answer.json` } },
-      { name: "write", arguments: { path: "answer.json", content: '{"answer":"t-1 wrong"}' } },
+      { name: "bash", arguments: { command: `printf %s '{"answer":"t-1 wrong"}' > answer.json` } },
     ]);
     expect(strayed).toHaveLength(2);
     for (const [index, facts] of [
@@ -430,8 +432,8 @@ describe("scripted solves", () => {
     const under = scriptedSeats({ held: sidesOf("fail:pass"), starter: "pass" }, graded, strayed);
     await under(campaign, { builder: undefined, reference: least.dir }).solve(held, least, undefined, "g0");
     expect(calls.at(-1)).toMatchObject({
-      name: "write",
-      arguments: { path: "answer.json", content: '{"answer":"t-2 wrong"}' },
+      name: "bash",
+      arguments: { command: `printf %s '{"answer":"t-2 wrong"}' > answer.json` },
     });
     for (const fact of ["s-6", "t-2", "reference", "fail"]) expect(strayed.at(-1)).toContain(fact);
     expect(named).toEqual([undefined, undefined, undefined, undefined, undefined, "g0"]);

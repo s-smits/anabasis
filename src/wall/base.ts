@@ -21,6 +21,7 @@ import { nodeRuntimeReadRoots } from "./linux-bwrap.ts";
 import { type OsIsolationRuntime, osIsolationSupport } from "./os-isolation.ts";
 import { covers } from "./seatbelt-path-guard.ts";
 import { canonicalRoots, closedHome } from "./policy.ts";
+import { DARWIN_SEATBELT_ID } from "./darwin-seatbelt.ts";
 
 /** The profile a condition's `sandbox` names (`tools/d2/campaign.ts`). */
 export const HOST_SOLVE_ISOLATION_PROFILE_ID = "harness-host-solve-isolated";
@@ -31,7 +32,6 @@ export interface SolveIsolationPolicy {
    *  allowed roots. */
   policyHash: string;
   deniedReadRoots: string[];
-  deniedWriteRoots: string[];
   /** Exact runtime paths reopened read-only inside a denied home or repository. */
   allowedReadRoots: string[];
   mechanismPath: string;
@@ -71,7 +71,6 @@ export function solveIsolationPolicy(input: {
     ...(input.packRoots ?? []),
     home,
   ]);
-  const writes = [...reads];
   const allowedReads = canonicalRoots([...nodeRuntimeReadRoots(), ...(input.readAllowRoots ?? [])]).filter(
     (path) => reads.some((root) => covers(root, path)),
   );
@@ -79,9 +78,10 @@ export function solveIsolationPolicy(input: {
   const identity = {
     profileId: HOST_SOLVE_ISOLATION_PROFILE_ID,
     mechanism: { path: support.mechanismPath, sha256: support.mechanismDigest },
-    default: "allow",
+    // Darwin's command profile denies by default from sandbox-runtime's base (`seatbelt-base.ts`).
+    default: support.mechanismId === DARWIN_SEATBELT_ID ? "deny" : "allow",
     deniedReads: reads,
-    deniedWrites: writes,
+    deniedWrites: reads,
     allowedReads,
   };
   return {
@@ -89,7 +89,6 @@ export function solveIsolationPolicy(input: {
     // The network is named only where closed, so a seat's policy keeps the hash it had.
     policyHash: hashJsonBytes(network ? identity : { ...identity, network }),
     deniedReadRoots: reads,
-    deniedWriteRoots: writes,
     allowedReadRoots: allowedReads,
     mechanismPath: support.mechanismPath,
     mechanismId: support.mechanismId,

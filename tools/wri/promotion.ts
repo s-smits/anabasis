@@ -19,9 +19,9 @@
  * Split from `read.ts`, which stands near the size policy's ceiling, as `time.ts` and `folds.ts`
  * were. Nothing here reads a file beside the log.
  */
-import { epochsOf as epochsRead } from "#src/campaign/climb.ts";
+import { epochsOf as epochsRead, ORIGINS, type Origin, starterReads } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";
-import { flipP, scoresIn } from "#src/kernel/compare.ts";
+import { differenceOf, flipP, pointsOf, scoresIn, testOf } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import type { Call, Seat } from "#src/kernel/trace.ts";
 import { billedBetween } from "#src/kernel/meter.ts";
@@ -33,18 +33,20 @@ import {
   count,
   EXAM_END,
   fired,
+  firedIf,
   type Index,
   items,
   measured,
   practiceOf,
   share,
+  summed,
   tally,
   tallyOf,
   text,
   type Trigger,
+  wlt,
 } from "./folds.ts";
 import { spareOf } from "./clearance.ts";
-import { chainTrigger, marginTrigger } from "./margins.ts";
 
 /** A promotion and the stretch of the log it governs: up to the next promotion or the log's end. */
 interface Epoch {
@@ -53,6 +55,7 @@ interface Epoch {
   readonly data: JsonObject;
 }
 
+const [CHOSEN, BEFORE, AFTER] = ORIGINS;
 /** The units a budget on record may name (`folds.ts`). */
 const UNITS = ["turns", "prompts", "cpu", "seconds"] as const;
 /** The share of tasks a reference answers on none of its solves above which a step is read as an
@@ -78,8 +81,7 @@ export function testSaid(tested: JsonValue | undefined): string {
   const record = asRecord(tested);
   const step = tallyOf(tested);
   if (record === null || step === null) return "not scored";
-  const said = ({ wins, losses, ties, p }: typeof step) =>
-    `${String(wins)}-${String(losses)}-${String(ties)} p ${pSaid(p)}`;
+  const said = (read: typeof step) => `${wlt(read)} p ${pSaid(read.p)}`;
   const billed = said({
     wins: count(record.wins),
     losses: count(record.losses),
@@ -109,13 +111,10 @@ export function testedOf(report: JsonObject): { differences: number[]; of: (stri
 }
 
 /** The differences a promotion's readings tested (`testedOf`) joined, a task more than one scored
- *  counted once with its differences summed, less the tasks in `without`. Until 19 October a
+ *  counted once with its differences summed. Until 19 October a
  *  promotion read a step and its repeat so (`readTwice`), and a campaign of then is read by that
  *  rule. */
-export function joinedTest(
-  reports: readonly JsonObject[],
-  without: ReadonlySet<string> = new Set(),
-): number[] {
+export function joinedTest(reports: readonly JsonObject[]): number[] {
   const sums = new Map<string, number>();
   const unnamed: number[] = [];
   for (const report of reports) {
@@ -123,7 +122,7 @@ export function joinedTest(
     for (const [at, difference] of differences.entries()) {
       const task = of[at];
       if (task === undefined) unnamed.push(difference);
-      else if (!without.has(task)) sums.set(task, (sums.get(task) ?? 0) + difference);
+      else sums.set(task, (sums.get(task) ?? 0) + difference);
     }
   }
   return [...sums.values(), ...unnamed];
@@ -259,7 +258,7 @@ function restTriggers(log: Index, { at, until, data }: Epoch): Trigger[] {
       "PROMOTED",
       `${short(harness)} from ${short(text(data.from))} at event ${String(at)}, ${spentTo(log, 0, at)} after the opening, ${byTable ? "by the table" : "by the operator"}${despite > 0 ? ` despite ${plural(despite, "fault")}` : ""}; ${ruleOf(log)}; rests on ${said.join("; ") || "no comparison on record"}${together}`,
     ),
-    ...(bare.length > 0 ? [fired("STARTER BARE", bare.join("; "))] : []),
+    ...firedIf(bare.length > 0, "STARTER BARE", bare.join("; ")),
   ];
 }
 
@@ -304,9 +303,7 @@ function afterTrigger(log: Index, { at, until, data }: Epoch, starter: string): 
     const said = (when: "after" | "before") => {
       const scores = ages.filter((one) => one.newer === (when === "after")).map(({ score }) => score);
       const step = tallyOf({ unbilled: scores });
-      return step === null || scores.length === 0
-        ? "none"
-        : `${String(step.wins)}-${String(step.losses)}-${String(step.ties)} p ${pSaid(step.p)}`;
+      return step === null || scores.length === 0 ? "none" : `${wlt(step)} p ${pSaid(step.p)}`;
     };
     return `; for the reference on tasks first drawn after the promotion ${said("after")}, before it ${said("before")}`;
   };
@@ -367,7 +364,11 @@ function sharedTmpTrigger(log: Index): Trigger[] {
     const solve = solves.get(id);
     if (solve === undefined) return "unknown";
     if (solve.comparison === null) return "practice";
-    const side = solve.harness === reference.get(solve.comparison) ? "reference" : "new";
+    // An Examiner's try names its own session there and no comparison starts under it: until
+    // 11 November esp32's 19 tries read as a comparison's new side.
+    const old = reference.get(solve.comparison);
+    if (old === undefined) return `${solve.comparison} try ${short(solve.harness)}`;
+    const side = solve.harness === old ? "reference" : "new";
     return `${solve.comparison} ${side} ${short(solve.harness)}`;
   });
   const namers = new Map<string, Set<string>>();
@@ -390,11 +391,11 @@ function sharedTmpTrigger(log: Index): Trigger[] {
     ...(programs.length > 0 ? [`programs under it: ${programs.join(", ")}`] : []),
     ...(crossing.length > 0 ? [`named by more than one solve or session: ${crossing.join(", ")}`] : []),
   ];
-  return lines.length > 0 ? [fired("SHARED TEMPORARY FOLDER", lines.join("; "))] : [];
+  return firedIf(lines.length > 0, "SHARED TEMPORARY FOLDER", lines.join("; "));
 }
 
 /** Lane 22: every promotion the log holds, and the host's temporary folder wherever it is named;
- *  beside them lane 19's confirmation, lane 17's carriers and lanes 28 and 29 (`margins.ts`). */
+ *  beside them lane 19's confirmation, lane 17's carriers and lanes 28 and 29 (`chainTrigger`, `marginTrigger`). */
 export function promotionTriggers(log: Index): Trigger[] {
   const starter = log.compared.map(({ last }) => last.starter).find(isString) ?? "";
   const epochs = epochsOf(log.events);
@@ -409,7 +410,10 @@ export function promotionTriggers(log: Index): Trigger[] {
 }
 
 /** `STEP CARRIERS` (lane 17): each step's untied tasks on the scores it is read on (`scoresIn`), and how many of its largest
- *  wins it could lose to a tie and still clear its level (`spareOf`, `clearance.ts`). On 1 November the gate ablation's g-3 cleared at
+ *  wins it could lose to a tie and still clear its level (`spareOf`, `clearance.ts`), with its retained tasks' tally where
+ *  it lost more of them than it won, and a clause where it tallied tasks of several families and won in one only: of the
+ *  49 starter reads on record on 11 November, 0 of the 6 after such a step confirmed its promotion, and 21 of the 33
+ *  after a step with under three in four of its wins in one family. On 1 November the gate ablation's g-3 cleared at
  *  6-0 with none to spare, and supply's g-2 lost its step without the 5 tasks priced in yen; lanes
  *  15, 23, 25 and 34 each found a part of that. */
 function carrierTrigger(log: Index): Trigger[] {
@@ -417,11 +421,18 @@ function carrierTrigger(log: Index): Trigger[] {
     const unbilled = scoresIn(last.scored);
     if (text(last.reading) !== "step" || unbilled.length === 0) return [];
     const spare = spareOf(unbilled, count(last.level));
+    const retained = testOf(scoresIn(last.retained));
+    const lost = retained.losses > retained.wins ? `, its retained tasks ${wlt(retained)}` : "";
+    const won = Object.values(asRecord(last.families) ?? {})
+      .map((family) => asRecord(asRecord(family)?.frontier))
+      .filter((held) => count(held?.wins) + count(held?.losses) + count(held?.ties) > 0)
+      .map((held) => count(held?.wins));
+    const narrow = won.length > 1 && won.filter((wins) => wins > 0).length === 1;
     return [
-      `${session} won ${share(unbilled.filter((one) => one > 0).length, unbilled.filter((one) => one !== 0).length)} untied, ${spare === 0 ? "none" : String(spare)} to spare`,
+      `${session} won ${share(unbilled.filter((one) => one > 0).length, unbilled.filter((one) => one !== 0).length)} untied, ${spare === 0 ? "none" : String(spare)} to spare${lost}${narrow ? `, every win in one of its ${String(won.length)} families` : ""}`,
     ];
   });
-  return lines.length > 0 ? [fired("STEP CARRIERS", lines.join("; "))] : [];
+  return firedIf(lines.length > 0, "STEP CARRIERS", lines.join("; "));
 }
 
 /** `PROMOTION UNCONFIRMED` (lane 19): each promotion whose epoch has no starter comparison, or whose
@@ -436,15 +447,78 @@ function unconfirmedTrigger(log: Index): Trigger[] {
     const read =
       against === null
         ? "no starter comparison reported"
-        : `against the starter ${String(against.wins)}-${String(against.losses)}-${String(against.ties)} without the bill, no step`;
+        : `against the starter ${wlt(against)} without the bill, no step`;
     return [`${short(reference)} in epoch ${String(nth)}, ${to === null ? "open" : "closed"}: ${read}`];
   });
-  return lines.length > 0
-    ? [
-        fired(
-          "PROMOTION UNCONFIRMED",
-          `${share(lines.length, epochs.length - 1)} promotions: ${lines.join("; ")}`,
-        ),
-      ]
-    : [];
+  return firedIf(
+    lines.length > 0,
+    "PROMOTION UNCONFIRMED",
+    `${share(lines.length, epochs.length - 1)} promotions: ${lines.join("; ")}`,
+  );
+}
+
+/** `CHAIN AGAINST THE STARTER` (lane 28): two or more starter reads whose tasks written after their
+ *  promotions the reference lost more often than it won, summed over the reads. Each promotion is
+ *  read against its parent, so a chain of them can each win and still fail to beat the starter on
+ *  tasks that chose none of them. A starter read mixes three kinds of task (`starterReads`), and only
+ *  those written after the promotion are new to the promoted harness; they are also written by an
+ *  Examiner that reads the reference's outcomes (`src/examiner/record.ts`), so they may lean against
+ *  the reference and not the starter. A reference that loses more than it wins there is margin noise
+ *  selected for, the Examiner's aim, or a worse harness, which this separates and does not decide. */
+function chainTrigger(log: Index): Trigger[] {
+  const reads = starterReads(log.events);
+  if (reads.length < 2) return [];
+  const of = (origin: Origin) => summed(reads.map(({ origins }) => origins[origin].whole));
+  const after = of(AFTER);
+  if (after.losses <= after.wins) return [];
+  const each = reads.map(({ session, origins }) => `${session} ${wlt(origins[AFTER].whole)}`);
+  const alone = (reading: string) => reads.filter(({ after: read }) => read === reading).length;
+  return [
+    fired(
+      "CHAIN AGAINST THE STARTER",
+      `the reference's wins, losses and ties against the starter on tasks written after its promotion, oldest read first: ${each.join(", ")}; summed ${wlt(after)}, on tasks written before and not chosen on ${wlt(of(BEFORE))}, on the tasks that chose the harness ${wlt(of(CHOSEN))}; on the tasks written after alone, ${share(alone("a step"), reads.length)} reads a step and ${String(alone("a step for the starter"))} a step for the starter`,
+    ),
+  ];
+}
+
+/** `MARGINS INSIDE THE NOISE` (lane 29): a step whose untied tasks all tie on validity is carried by the
+ *  objective alone, each win a margin between two valid answers. Each side read against itself under
+ *  the same setting, rebuilt from its solves (`pairsReported`), gives on a task whose halves tied on
+ *  validity the margin two solves of one harness reach by chance; a task a side's halves split on
+ *  validity scores up to 600 points, which no win between valid answers reaches (`WEIGHTS`), so it
+ *  sets no ceiling. Scores are read under this tree's rule (`differenceOf`). It fires on each step whose untied tasks all tie on validity and more
+ *  than half of whose wins are no larger than the wider of the two sides' own differences on the
+ *  same task, each side read against itself where its halves tied on validity. A win on a task both
+ *  sides repeated exactly is the difference of two repeated answers, where no split of either side
+ *  shows noise (`repeatLine`, `src/campaign/climb.ts`), and is not counted inside: until
+ *  11 November a win where the A/A alone tied was told as clear of a zero difference only, and 62 of
+ *  the 121 objective-only steps on record fired on that count, in 61 of them on tasks the new side
+ *  repeated exactly too. The new side's own difference bounds a win as the reference's does, which
+ *  the reference's alone left out. */
+function marginTrigger(log: Index): Trigger[] {
+  const lines = log.compared.flatMap((report) => {
+    if (report.last.reading !== "step") return [];
+    const unequal = report.pairs().filter((pair) => differenceOf(pair) !== 0);
+    if (unequal.length === 0 || unequal.some((pair) => pointsOf(pair).validity !== 0)) return [];
+    const own = (side: "old" | "fresh") =>
+      new Map(
+        report
+          .pairs(side)
+          .filter((pair) => pointsOf(pair).validity === 0)
+          .map((pair) => [pair.task, Math.abs(differenceOf(pair))]),
+      );
+    const [reference, candidate] = [own("old"), own("fresh")];
+    if (reference.size === 0) return [];
+    const wins = unequal.filter((pair) => differenceOf(pair) > 0);
+    const inside = wins.filter(
+      (pair) =>
+        differenceOf(pair) <= Math.max(reference.get(pair.task) ?? -1, candidate.get(pair.task) ?? -1),
+    ).length;
+    return inside * 2 > wins.length
+      ? [
+          `${report.session} won ${share(inside, wins.length)} by no more than the wider of the two sides' own differences on the same task where validity tied`,
+        ]
+      : [];
+  });
+  return firedIf(lines.length > 0, "MARGINS INSIDE THE NOISE", lines.join("; "));
 }

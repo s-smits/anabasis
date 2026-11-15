@@ -48,23 +48,19 @@ import { contractHash } from "#src/kernel/contract.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import { poolOf, releaseOrder } from "#src/kernel/reports.ts";
 import { SIZE, sizeLines } from "#src/kernel/size.ts";
-import { packageGate, taskSets, taskStates, taskVersion } from "#src/kernel/task.ts";
+import { admissionsOf, packageGate, taskSets, taskStates, taskVersion } from "#src/kernel/task.ts";
 import type { JsonValue } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { storedAnswer, sweepRows } from "../m0/stored-sweep.ts";
-import { awaitingLines, openCampaign, packNamed } from "./campaign.ts";
-import { ROUND_OPTIONS } from "./round.ts";
+import { awaitingLines, openCampaign, PACK_OPTIONS, packNamed } from "./campaign.ts";
+import { type Campaign, ROUND_OPTIONS } from "./round.ts";
 import { recordedSetting, targetNamed } from "./setting.ts";
 
 /** The practice tasks a campaign is brought to where no command names a count. */
 export const PRACTICE = 6;
 const OPTIONS = {
-  root: { type: "string" },
-  sweep: { type: "string" },
-  cycle: { type: "string" },
-  bundle: { type: "string" },
-  name: { type: "string" },
+  ...PACK_OPTIONS,
   practice: { type: "string", default: String(PRACTICE) },
   level: ROUND_OPTIONS.level,
   target: ROUND_OPTIONS.target,
@@ -72,6 +68,13 @@ const OPTIONS = {
   infeasible: { type: "string", multiple: true },
   note: { type: "string" },
 } as const;
+
+/** The pack's tasks no gate has read: those the log does not hold, and one a killed command proposed
+ *  and left before its gate, which the task states hold from its proposal on. */
+export function ungated(campaign: Pick<Campaign, "tasks" | "pack">, events: readonly LogEvent[]) {
+  const gated = admissionsOf(events);
+  return campaign.tasks.map(campaign.pack).filter((task) => !gated.has(taskVersion(task)));
+}
 
 /**
  * `bun tools/d2/prepare.ts`. `heldBack`, the host's own release (`releaseOwed`), is read on the events
@@ -88,12 +91,15 @@ export async function prepareCommand(
   const campaign = await openCampaign(packNamed(values));
   const { log, contract } = campaign;
 
-  const known = taskStates(read(log));
-  const fresh = campaign.tasks.map(campaign.pack).filter((task) => !known.has(taskVersion(task)));
+  const opened = read(log);
+  const known = taskStates(opened);
+  const fresh = ungated(campaign, opened);
   let refused = 0;
   for (const task of fresh) {
     const version = taskVersion(task);
-    append(log, "task.proposed", { version, taskId: task.taskId, family: task.family });
+    if (!known.has(version)) {
+      append(log, "task.proposed", { version, taskId: task.taskId, family: task.family });
+    }
     const packaged = packageGate(contract, task);
     append(log, "task.gate", { version, gate: 1, ...packaged });
     if (packaged.outcome === "refused") {

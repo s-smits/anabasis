@@ -52,8 +52,7 @@
  *
  * Where a task itself looks infeasible, say so with `prepare.ts --infeasible <task id> --note`,
  * which refuses the task and logs the note. A task disputed here on a check's fault is a repair
- * owed to the check program's owner, and a repair is held to these labels where the settled report
- * holds them (`tools/c/repaired.ts`). Labels made beside a log that holds the Referee's rulings measure the Referee only as far
+ * owed to the check program's owner, and a repaired checker takes a campaign of its own. Labels made beside a log that holds the Referee's rulings measure the Referee only as far
  * as a packet keeps them from the person: its bar is cleared on labels drawn before it reads
  * (`tools/c/rejections.ts`).
  *
@@ -76,15 +75,11 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
 import { agreement, RULINGS, settledLabels, unclearReport } from "#src/referee/agreement.ts";
 import { labelled } from "#src/referee/rejections.ts";
-import { openCampaign, packNamed } from "./campaign.ts";
+import { openCampaign, PACK_OPTIONS, packNamed } from "./campaign.ts";
 import { type Campaign, reportLines } from "./round.ts";
 
 const OPTIONS = {
-  root: { type: "string" },
-  sweep: { type: "string" },
-  cycle: { type: "string" },
-  bundle: { type: "string" },
-  name: { type: "string" },
+  ...PACK_OPTIONS,
   session: { type: "string" },
 } as const;
 /** The most a packet draws of the rejections ruled earned, and of the answers that passed. */

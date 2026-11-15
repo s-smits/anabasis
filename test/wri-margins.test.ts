@@ -27,7 +27,10 @@ describe("lane 28: whether the chain adds up against the starter", () => {
 });
 
 describe("lane 29: what an objective-only step won by", () => {
-  const SAID = "by no more than its A/A's difference on the same task where validity tied";
+  const SAID =
+    "by no more than the wider of the two sides' own differences on the same task where validity tied";
+  const same = [1, 1] as const;
+  const everywhere = { t0: same, t1: same, t2: same, t3: same, t4: same, t5: same };
 
   it("names a step whose wins between valid answers are all within the A/A's difference on their own task", () => {
     expect(triggered(objectiveLog(0.05), "MARGINS INSIDE THE NOISE")).toEqual([`g-1 won 6 of 6 ${SAID}`]);
@@ -54,15 +57,25 @@ describe("lane 29: what an objective-only step won by", () => {
     expect(triggered(objectiveLog(0.05, "tied", outlier), "MARGINS INSIDE THE NOISE")).toEqual([]);
   });
 
-  it("reads a win where its task's A/A tied as clear only of a zero difference, and says so", () => {
-    // The A/A ties t1 to t5 and differs by 150 on t0 (esp32 g-5's shape): every win is on a tied
-    // task, so none is inside, where the largest difference would have put all five inside.
-    const same = [1, 1] as const;
-    const ties = { t0: [1, 0.5] as const, t1: same, t2: same, t3: same, t4: same, t5: same };
-    expect(triggered(objectiveLog(0.05, "tied", ties), "MARGINS INSIDE THE NOISE")).toEqual([]);
-    // Where most wins are inside, the line names the wins whose task's A/A tied.
+  it("counts a win on a task both sides repeated exactly outside, however many of them there are", () => {
+    // Both sides give one measure in every solve of every task (a buffer step between two programs):
+    // each win is the difference of two repeated answers, with a measured spread of zero.
+    expect(triggered(objectiveLog(0.05, "tied", everywhere), "MARGINS INSIDE THE NOISE")).toEqual([]);
+    // Four tasks keep the A/A's 21-point difference, which their 4-point wins sit inside; the two
+    // repeated tasks add nothing to the line.
     expect(triggered(objectiveLog(0.05, "tied", { t0: same, t1: same }), "MARGINS INSIDE THE NOISE")).toEqual(
-      [`g-1 won 4 of 6 ${SAID}, and 2 more where that task's A/A tied, clear only of a zero difference`],
+      [`g-1 won 4 of 6 ${SAID}`],
     );
+  });
+
+  it("reads a win against the new side's own difference where the reference repeated exactly", () => {
+    // The reference repeats on every task and the new side measures 0.95 and 0.6: its own solves
+    // differ by more than it won by, which the reference's A/A alone read as no spread at all.
+    expect(triggered(objectiveLog([0.05, 0.4], "tied", everywhere), "MARGINS INSIDE THE NOISE")).toEqual([
+      `g-1 won 6 of 6 ${SAID}`,
+    ]);
+    // The same reference, and a new side whose solves measure 0.7 and 0.67: it won by more than
+    // either side differs from itself, so each win stands outside both spreads.
+    expect(triggered(objectiveLog([0.3, 0.33], "tied", everywhere), "MARGINS INSIDE THE NOISE")).toEqual([]);
   });
 });

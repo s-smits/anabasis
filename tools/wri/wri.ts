@@ -2,7 +2,7 @@
  * The whole-run investigation of one campaign, a verb a step. It reads a log and writes only under
  * the investigation's own directory, which belongs under the ignored `.ana/wri/`.
  *
- *   bun tools/wri/wri.ts read --log .ana/d2/truss/log.jsonl
+ *   bun tools/wri/wri.ts read --log .ana/d2/truss/log.jsonl      (or `read <log | campaign folder | name>`)
  *   bun tools/wri/wri.ts climb --log .ana/d2/truss/log.jsonl[,<log>,<log>]
  *   bun tools/wri/wri.ts trajectory --log <log>[,<log>...] [--grades <report>[,<report>]] [--hours 2,4,8]
  *   bun tools/wri/wri.ts packets --log <log>,<log>[,...] --out <dir> [--graders 2]
@@ -15,6 +15,7 @@
  *   bun tools/wri/wri.ts grade --log <log> [--bundle <pack>] --solve <id> [--set <path>=<json>]...
  *   bun tools/wri/wri.ts grade --log <log> [--bundle <pack>] --answers <dir>
  *   bun tools/wri/wri.ts derive (--log <log>[,<log>...] | --all) [--verbose] [--force] [--no-embed]
+ *   bun tools/wri/wri.ts reader <name> --log <log>
  *   bun tools/wri/wri.ts index [--root <dir>] [--out <file>]
  *
  * - `climb` prints lane 22's columns for every log `--log` names, one row each, and the paths
@@ -53,6 +54,8 @@
  *   file as well, for a session that wants to read them all. `--all` takes every campaign this
  *   machine reads (`readable`, `tools/runs/registry.ts`), which is how a job keeps them current.
  *   `start` derives its logs the same way, quietly, and names the folders in the instructions.
+ * - `reader` prints what one of those readers says of one log, the text `derive` writes to its
+ *   file, and exits 1 where it failed.
  * - `index` reads every investigation under `--root` (the main worktree's `.ana/wri/` by default)
  *   and writes one page over them to `--out` (`<root>/INDEX.md`): a row a folder, newest first,
  *   then each campaign group's binding constraints in time order, each cycle folder and prediction
@@ -73,18 +76,17 @@
 import { LOG_FILE, read } from "#src/kernel/log.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
-import { asRecord, isString } from "#src/meta/json-shape.ts";
-import { gitMaybe, gitText, mainTree } from "#src/meta/git.ts";
+import { mainTree } from "#src/meta/git.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { plural } from "#src/meta/text.ts";
-import { codeOf } from "../d2/campaign.ts";
-import { installAt } from "../runs/code.ts";
+import { treeAt } from "../runs/code.ts";
+import { lastHost } from "#src/kernel/condition.ts";
 import { receipts } from "../runs/receipt.ts";
 import { isCampaign, processes, readable, type Running } from "../runs/registry.ts";
 import { stillRunning } from "../runs/diagnosis.ts";
-import { snapshotCampaign } from "../runs/seed.ts";
+import { hostOf, snapshotCampaign } from "../runs/seed.ts";
 import {
   type Derived,
   derive,
@@ -93,11 +95,15 @@ import {
   derivedOf,
   derivedText,
   folderOf,
+  overviewText,
+  READERS,
+  readerOutput,
   readersOf,
+  sourceOf,
 } from "./derive.ts";
 import { logAcross } from "../runs/snapshots.ts";
 import { catalogueText, lanesOf, ownersOf, REFERENCES } from "./catalogue.ts";
-import { climbTable, crossings } from "./climb.ts";
+import { climbText } from "./climb.ts";
 import {
   blankSections,
   type Campaign,
@@ -115,7 +121,7 @@ import {
   weightOf,
 } from "./investigation.ts";
 import { INVESTIGATION, investigationIndex, REPORTS, SHARED } from "./index.ts";
-import { overview, rendered } from "./read.ts";
+import { overview } from "./read.ts";
 import { buildPackets, joinPackets } from "./packets.ts";
 import { gradesIn, HOURS, trajectoryText } from "./trajectory.ts";
 import { grade } from "./grade.ts";
@@ -128,7 +134,7 @@ interface Investigation {
 
 const REPO = resolve(import.meta.dir, "..", "..");
 const USAGE =
-  "usage: bun tools/wri/wri.ts read | climb | trajectory | start | lanes | collect | synthesis | grade | derive | index";
+  "usage: bun tools/wri/wri.ts read | climb | trajectory | start | lanes | collect | synthesis | grade | derive | reader | index";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -155,12 +161,15 @@ const { values, positionals } = parseArgs({
     graders: { type: "string" },
     join: { type: "boolean" },
     hours: { type: "string" },
+    help: { type: "boolean" },
   },
 });
 
-/** Every log `--log` names, comma-separated. */
+/** Every log `--log` names, comma-separated, or the ones written after the verb where it names
+ *  none, as the other readers take them; `reader`'s own positional is the reader's name. */
+const namedLogs = values.log ?? (positionals[0] === "reader" ? "" : positionals.slice(1).join(","));
 const resolvedLogs = await Promise.all(
-  (values.log ?? "")
+  namedLogs
     .split(",")
     .filter((each) => each !== "")
     .map(async (each) => resolve(await logAcross(each))),
@@ -179,85 +188,9 @@ function oneLog(): string {
 }
 
 function needed(name: "log" | "out"): string {
-  const value = values[name];
+  const value = name === "log" ? namedLogs || undefined : values.out;
   if (value === undefined) throw new Error(`name --${name}`);
   return value;
-}
-
-/** The host's code as a condition names it (`codeOf`), for a tree that holds it. */
-function hostOf(tree: string): string | undefined {
-  const parts = ["src", "vendor", "package.json"].map((part) => join(tree, part));
-  return parts.every((part) => existsSync(part)) ? codeOf(tree).host : undefined;
-}
-
-/**
- * One line on where the code the campaign last ran under stands: this checkout, or the tree the
- * campaign runs in (`<tree>/.ana/d2/<campaign>/log.jsonl`), which a live campaign keeps unmoved.
- * The condition names that code by a digest of its content, which is no commit: two lanes of
- * 14 October read one digest against a receipt's commit as two trees. So the line calls it a
- * digest and names the commit the last launch's receipt holds (`receipts`) beside it. A snapshot's
- * log lies under the investigation, not the campaign's tree, so the tree `sourceTree` checks out at
- * that commit is asked too: on 7 November the esp32 investigation's line called that tree, which
- * held the code that ran, "another tree", and three lanes discounted exact source evidence.
- */
-function hostLine(log: string): string {
-  const ran = read(log).findLast(({ kind }) => kind === "condition.recorded")?.data.condition;
-  const host = asRecord(ran)?.host;
-  const last = isString(host) ? host : undefined;
-  const here = hostOf(REPO) ?? "";
-  const launch = receipts(log).at(-1);
-  const commit =
-    launch === undefined
-      ? "; no launch receipt beside the log"
-      : `; the last launch's receipt names commit ${launch.commit.slice(0, 8)}${launch.dirty ? ", from a dirty tree" : ""}`;
-  const said = (line: string) =>
-    `host-code digest (of src, vendor and package.json, not a commit): ${line}${commit}`;
-  if (last === undefined) return said(`no condition in the log; this checkout's is ${here.slice(0, 8)}`);
-  if (last === here) return said(`the last condition's and this checkout's are both ${here.slice(0, 8)}`);
-  const trees = [
-    resolve(dirname(log), "..", "..", ".."),
-    ...(launch === undefined ? [] : [wriTree(launch.commit)]),
-  ];
-  const tree = trees.find((each) => hostOf(each) === last);
-  return tree === undefined
-    ? said(
-        `the last condition's is ${last.slice(0, 8)} and this checkout's is ${here.slice(0, 8)}, so every statement about source is about another tree`,
-      )
-    : said(
-        `the last condition's is ${last.slice(0, 8)}, which \`${tree}\` holds as it stands, so read source there; this checkout's is ${here.slice(0, 8)}`,
-      );
-}
-
-/**
- * A tree at the commit the campaign's last launch ran, with its dependencies installed, beside the
- * main checkout, where this checkout's code differs from the code the campaign last ran under. On
- * 4 November buffer583's own tree held no dependencies, so two lanes ran the Examiner's view from
- * this checkout's code instead, and the primary had checked the run's commit out by hand. Null
- * where the code matches, no receipt names a commit, or this repository does not hold it.
- */
-function sourceTree(log: string): string | null {
-  const ran = asRecord(read(log).findLast(({ kind }) => kind === "condition.recorded")?.data.condition)?.host;
-  const commit = receipts(log).at(-1)?.commit;
-  if (
-    commit === undefined ||
-    ran === hostOf(REPO) ||
-    gitMaybe(REPO, "cat-file", "-e", `${commit}^{commit}`) === null
-  ) {
-    return null;
-  }
-  const tree = wriTree(commit);
-  if (!existsSync(tree)) gitText(REPO, "worktree", "add", "-q", "--detach", tree, commit);
-  if (!existsSync(join(tree, "node_modules"))) installAt(tree, commit);
-  return tree;
-}
-
-/** Where `sourceTree` checks out a launch's commit, beside the main checkout. */
-function wriTree(commit: string): string {
-  return join(dirname(mainTree(REPO)), `anabasis-wri-${commit.slice(0, 9)}`);
-}
-
-function overviewText(log: string): string {
-  return `${rendered(overview(read(log), receipts(log)))}\n\n${hostLine(log)}\n`;
 }
 
 /** The folders `derive` keeps for `logs`, written or kept as they stand, and the line it prints. */
@@ -284,6 +217,17 @@ async function deriveStep(): Promise<number> {
   if (values.verbose === true) console.log(derivedText(done));
   console.log(line);
   return done.some(({ failed }) => failed.length > 0) ? 1 : 0;
+}
+
+/** What the reader `name` says of the one log `--log` names, as `derive` writes it to its file. */
+async function oneReader(name: string | undefined): Promise<number> {
+  const reader = READERS.find((each) => each.name === name);
+  if (reader === undefined) {
+    throw new Error(`name a reader: ${READERS.map((each) => each.name).join(", ")}`);
+  }
+  const { text, ok } = await readerOutput(reader, sourceOf(oneLog(), REPO));
+  runtimeProcess.stdout.write(text);
+  return ok ? 0 : 1;
 }
 
 /** The logs among `logs` that a campaign may still write: a log the registry does not list has no
@@ -336,16 +280,19 @@ async function start(): Promise<number> {
   refuseRunning(logs, running);
   mkdirSync(join(out, "lanes"), { recursive: true });
   const { done, line } = await derived(logs);
-  // Each launch's tree first, so that the host line can name it.
+  // Each launch's tree first, so that the host line can name it: a tree at the commit the last
+  // launch ran (`treeAt`), where this checkout's code differs from the code the campaign last ran.
+  const here = hostOf(REPO);
   const trees = logs.flatMap((log) => {
-    const tree = sourceTree(log);
+    const commit = receipts(log).at(-1)?.commit;
+    const tree = commit === undefined || lastHost(read(log)) === here ? null : treeAt(REPO, commit);
     return tree === null
       ? []
       : [
           `- ${nameOf(log)}: the code its last launch ran is checked out at \`${tree}\`, its dependencies installed. Read source there, and run a reader there (\`cd ${tree} && bun tools/...\`) to see what it printed at that commit; the derived files below come from this checkout's code.`,
         ];
   });
-  const texts = logs.map(overviewText);
+  const texts = logs.map((log) => overviewText(log, read(log), REPO));
   const campaigns = [
     "| campaign | log | events | checkout |",
     "| --- | --- | --- | --- |",
@@ -396,26 +343,16 @@ function opened(): Investigation {
   return { out, shared, campaigns };
 }
 
-/** The campaigns in lane 22's columns, and the `/tmp` paths one named before another's solve ran
- *  them (`tools/wri/climb.ts`). */
-function climbText(logs: readonly string[]): string {
-  const campaigns = logs.map((each) => ({ name: nameOf(each), events: read(each) }));
-  const { left, scratch } = crossings(campaigns);
-  return [
-    "### The climb, side by side",
-    climbTable(campaigns),
-    "### Solves that named what another campaign's session left under `/tmp`",
-    left.length > 0 ? left.map((line) => `- ${line}`).join("\n") : "None.",
-    `And ${scratch}.`,
-  ].join("\n\n");
-}
+/** The campaigns of `logs` side by side in lane 22's columns (`tools/wri/climb.ts`). */
+const climbOf = (logs: readonly string[]) =>
+  climbText(logs.map((log) => ({ name: nameOf(log), events: read(log) })));
 
 const promptPath = (out: string, lane: number) => join(out, "lanes", `${stem(lane)}-prompt.md`);
 
 function lanes(): number {
   const { out, shared, campaigns } = opened();
   refuseRunning(campaigns.map(({ log }) => log));
-  const climb = campaigns.length > 1 ? climbText(campaigns.map(({ log }) => log)) : "";
+  const climb = campaigns.length > 1 ? climbOf(campaigns.map(({ log }) => log)) : "";
   const blank = blankSections(shared);
   if (blank.length > 0) throw new Error(`write these sections of ${SHARED} first: ${blank.join(", ")}`);
   const catalogue = catalogueText();
@@ -578,10 +515,16 @@ function synthesis(): number {
 
 async function main(): Promise<number> {
   const [verb] = positionals;
-  if (verb === "read") {
-    console.log(overviewText(oneLog()));
+  if (values.help === true) {
+    console.log(USAGE);
     return 0;
   }
+  if (verb === "read") {
+    const log = oneLog();
+    console.log(overviewText(log, read(log), REPO));
+    return 0;
+  }
+  if (verb === "reader") return await oneReader(positionals[1]);
   if (verb === "grade") {
     const { bundle, task, answer, solve, set = [], answers } = values;
     return grade({ log: oneLog(), bundle, task, answer, solve, set, answers });
@@ -605,7 +548,7 @@ async function main(): Promise<number> {
   }
   if (verb === "climb") {
     needed("log");
-    console.log(climbText(resolvedLogs));
+    console.log(climbOf(resolvedLogs));
     return 0;
   }
   if (verb === "trajectory") {
@@ -645,4 +588,12 @@ async function main(): Promise<number> {
   return step();
 }
 
-runtimeProcess.exitCode = await main();
+// A plain `Error` is a verb's refusal, said in one line with exit 2 as in `tools/runs/cli.ts`;
+// anything else is a defect and keeps its stack.
+try {
+  runtimeProcess.exitCode = await main();
+} catch (error) {
+  if (!(error instanceof Error) || error.constructor !== Error) throw error;
+  console.error(error.message);
+  runtimeProcess.exitCode = 2;
+}

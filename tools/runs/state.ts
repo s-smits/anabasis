@@ -3,6 +3,7 @@
  * log outranks the log, and with none a keeper outranks the environment's ending and no other.
  */
 import type { LogEvent } from "#src/kernel/log.ts";
+import { endingOf } from "#src/kernel/reports.ts";
 import { isNumber, isString } from "#src/meta/json-shape.ts";
 import { hasText } from "#src/meta/text.ts";
 import { type Life, lifeOf, observationOf, stderrTail } from "./diagnosis.ts";
@@ -63,9 +64,8 @@ function waitOf({ at, kind, data }: LogEvent): Wait | null {
  * finished load wait current; and two readers held their own `QUIET_MS`.
  */
 export function stateOf(events: readonly LogEvent[], life: Life, now: number, launched = 0): RunState {
-  const last = events.at(-1);
   if (!life.writing) {
-    const ending = last?.kind === "campaign.ended" && isString(last.data.ending) ? last.data.ending : null;
+    const ending = endingOf(events);
     if (life.kept && ending === GOES_ON) return { kind: "kept", ending };
     if (life.kept && ending === null) return { kind: "kept" };
     return ending === null ? { kind: "stopped" } : { kind: "ended", ending };
@@ -77,7 +77,7 @@ export function stateOf(events: readonly LogEvent[], life: Life, now: number, la
   const standing = at >= launched ? events[at] : undefined;
   const wait = standing === undefined ? null : waitOf(standing);
   if (wait !== null && wait.until > now) return { kind: "waiting", kept: life.kept, wait };
-  const since = Math.max(Date.parse(last?.at ?? ""), ...ends);
+  const since = Math.max(Date.parse(events.at(-1)?.at ?? ""), ...ends);
   return now - since > QUIET_MS
     ? { kind: "quiet", kept: life.kept, since }
     : { kind: "live", kept: life.kept };

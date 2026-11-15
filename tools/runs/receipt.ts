@@ -46,7 +46,7 @@ import { compareCodeUnits, hashJsonValue } from "#src/meta/stable-json.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 import { toolchainPathDirs } from "#src/wall/policy.ts";
-import { isCampaign, type Run } from "./registry.ts";
+import { isCampaign, Misused, type Run } from "./registry.ts";
 import { readAcross, readableAcross } from "./snapshots.ts";
 
 /** What a run is asked to have run with: commits its launch holds, and text its source holds. */
@@ -296,9 +296,7 @@ export async function source(args: readonly string[]): Promise<void> {
     }
     return;
   }
-  if (!asks) {
-    throw new Error("usage: bun run runs source <name> | (--holds <commit> | --has <text>)...");
-  }
+  if (!asks) throw new Misused();
   for (const run of (await readableAcross()).filter(
     (one) => isCampaign(one) && ranWith(one.path, one.tree, asked),
   )) {

@@ -74,6 +74,8 @@ const LIMITS = {
   concurrency: 2,
   practiceSolves: 3,
 };
+/** The session wall of the test whose deadline must find a practice solve already queued. */
+const QUEUED_WALL_SECONDS = 10;
 const TASKS: PracticeTask[] = [
   { version: "v1", task: { taskId: "t-1", family: "fixture", publicInput: { base: 7 } } },
   { version: "v2", task: { taskId: "t-2", family: "fixture", publicInput: { base: 9 } } },
@@ -88,6 +90,10 @@ const finish = call("finish", { note: "A shorter guide." });
 afterAll(() => {
   for (const dir of scratches) rmSync(dir, { recursive: true, force: true });
 });
+
+/** `context` with the session's clock at its start: every tool result carries it, and two sessions
+ *  that read alike differ in it by the seconds each took. */
+const clockless = (context: string) => context.replaceAll(/\d+:\d\d of 10:00 used/g, "0:00 of 10:00 used");
 
 /** A scratch with the fixture harness as the parent, and a log in which v1 and v2 are released and
  *  v0 and v3 are held out. `endings` are what the practice solves end in, in order.
@@ -849,8 +855,8 @@ describe("a Builder session", () => {
         });
       }
       await session(s.request, s, s.walled);
-      // The practice result's text alone, since a context also carries the clock and durations.
-      return /"toolName":"practice","content":(.*?),"details"/.exec(s.sent[2] ?? "")?.[1] ?? "";
+      // The practice result's text alone, since a context also carries durations.
+      return clockless(/"toolName":"practice","content":(.*?),"details"/.exec(s.sent[2] ?? "")?.[1] ?? "");
     };
     expect(await told([["v1", 12]])).toContain("An answer on record that no harness gave measures 12.");
     // v3 is held out: its author's measure, whatever it is, changes nothing the Builder reads.
@@ -1116,31 +1122,37 @@ describe("a Builder session", () => {
     expect(JSON.stringify(s.of(BUILD_CALL))).not.toContain(s.scratch);
   });
 
-  it("ends at its deadline, and blames no host, when the deadline reaches a practice solve queued at the host", async () => {
-    const s = await setup([call("practice", { tasks: ["t-1", "t-2"] }), finish]);
-    const built = await session(
-      {
-        ...s.request,
-        limits: { ...LIMITS, wallSeconds: 1 },
-        // t-1 is in flight and ends killed; t-2 waits in the solve queue and leaves on the kill
-        // with its reason before any solve starts (`queued`, `tools/d2/host.ts`).
-        practise: async (task, _dir, _digest, kill) => {
-          if (!kill.aborted) {
-            await new Promise((resolve) => {
-              kill.addEventListener("abort", resolve, { once: true });
-            });
-          }
-          if (task.version === "v2") kill.throwIfAborted();
-          return { solve: "s-killed", ending: { outcome: "non-result", kind: "killed", reason: "killed" } };
+  it(
+    "ends at its deadline, and blames no host, when the deadline reaches a practice solve queued at the host",
+    async () => {
+      const s = await setup([call("practice", { tasks: ["t-1", "t-2"] }), finish]);
+      const built = await session(
+        {
+          ...s.request,
+          // The wall must outlast the opening and the first turn, or the session ends before any
+          // practice starts: beside 350 tests on four workers they took over a second.
+          limits: { ...LIMITS, wallSeconds: QUEUED_WALL_SECONDS },
+          // t-1 is in flight and ends killed; t-2 waits in the solve queue and leaves on the kill
+          // with its reason before any solve starts (`queued`, `tools/d2/host.ts`).
+          practise: async (task, _dir, _digest, kill) => {
+            if (!kill.aborted) {
+              await new Promise((resolve) => {
+                kill.addEventListener("abort", resolve, { once: true });
+              });
+            }
+            if (task.version === "v2") kill.throwIfAborted();
+            return { solve: "s-killed", ending: { outcome: "non-result", kind: "killed", reason: "killed" } };
+          },
         },
-      },
-      s,
-      s.walled,
-    );
-    expect(built).toMatchObject({ ended: "wall", changed: false });
-    expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ ended: "wall", crash: null, practiceSolves: 1 });
-    expect(JSON.stringify(s.of(BUILD_CALL))).not.toContain("the host's fault");
-  });
+        s,
+        s.walled,
+      );
+      expect(built).toMatchObject({ ended: "wall", changed: false });
+      expect(s.of(BUILD_FINISHED)[0]).toMatchObject({ ended: "wall", crash: null, practiceSolves: 1 });
+      expect(JSON.stringify(s.of(BUILD_CALL))).not.toContain("the host's fault");
+    },
+    3000 * QUEUED_WALL_SECONDS,
+  );
 
   it("takes a task out of practice when its own check could not run", async () => {
     const s = await setup(
@@ -1368,14 +1380,13 @@ describe("what crosses to the Builder", () => {
           ]
         : [],
     );
-    return (
+    return clockless(
       [...s.sent, ...files.toSorted()]
         .join("\n")
         .replaceAll(s.scratch, "<scratch>")
         .replaceAll(/"(timestamp|durationMs)":\d+/g, '"$1":0')
         // The scripted provider names itself and each of its calls anew in every set-up.
-        .replaceAll(/(faux|tool):\d+:\w+/g, "$1")
-        .replaceAll(/\d+:\d\d of 10:00 used/g, "0:00 of 10:00 used")
+        .replaceAll(/(faux|tool):\d+:\w+/g, "$1"),
     );
   }
 

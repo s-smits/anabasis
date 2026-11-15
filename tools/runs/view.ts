@@ -19,10 +19,12 @@
  * A step's line holds counts, harnesses, a tally, a reading and a cost. A harness is named by its
  * letter beside its digest's head (`namesOf`, `src/campaign/names.ts`; 14 October), since a run of
  * eight hex characters a line was what an operator had to match by eye across the view and the
- * closing report. It names no task, and it is for the operator and the session that stands in for
+ * closing report. A comparison's line also says how far its tasks are independent draws: the
+ * largest family's share of its frontier, and the tasks the comparison of its kind before it drew.
+ * It names no task and no family, and it is for the operator and the session that stands in for
  * the campaign's owner: what a Builder is told of the same rows is `src/builder/past.ts`.
  */
-import { barLines, epochLine, epochsOf } from "#src/campaign/climb.ts";
+import { barLines, epochLine, epochsOf, starterReads } from "#src/campaign/climb.ts";
 import { decide } from "#src/campaign/decide.ts";
 import type { Plan } from "#src/campaign/ground.ts";
 import { type Decided, decidedLine, short } from "#src/campaign/move.ts";
@@ -30,14 +32,16 @@ import { type Called, calledBy, namesOf } from "#src/campaign/names.ts";
 import { openingOf, planOf } from "#src/campaign/opening.ts";
 import { type Campaign, campaignOf, type Handover, openSteps } from "#src/campaign/handover.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
+import { MINUTE_MS } from "#src/meta/clock.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { gitText } from "#src/meta/git.ts";
 import { resolve } from "#src/meta/path.ts";
 import { plural } from "#src/meta/text.ts";
 import { PRACTICE } from "../d2/prepare.ts";
 import { COMPARISON_OPTIONS } from "../d2/round.ts";
-import { logEvents, processes } from "./registry.ts";
+import { logEvents, Misused, processes } from "./registry.ts";
 import { readAcross } from "./snapshots.ts";
+import { dollars } from "./said.ts";
 import { lastLaunch } from "./receipt.ts";
 import { runReason, runState } from "./state.ts";
 
@@ -59,9 +63,6 @@ const STANDINGS = [
   ["failing-again", "failing again"],
 ] as const;
 
-const MINUTE_MS = 60_000;
-
-const dollars = (billed: number) => `$${billed.toFixed(2)}`;
 const row = (id: string, said: string) => `  ${id.padEnd(11)} ${said}`;
 
 /** How a session stands, said for its line: its ending; or cut, where the campaign went past it;
@@ -95,7 +96,7 @@ function stepLine(step: Handover, now: number, called: Called): string {
       `Builder session, ${stateOf(step, now)}: ${from}, ${plural(step.practiceSolves, "practice solve")} · ${dollars(step.billed)}`,
     );
   }
-  const { tally, valid, rulings } = step;
+  const { tally, valid, rulings, grain, repeat } = step;
   // A comparison with no report is open or cut, as a session with no end is, and says its solves.
   const unended = `${plural(step.solved, "solve")} ended, ${String(step.begun - step.solved)} ${step.cut ? "cut" : "open"}`;
   const read =
@@ -111,6 +112,12 @@ function stepLine(step: Handover, now: number, called: Called): string {
     step.id,
     [
       `comparison of ${called(step.fresh)} with ${called(step.old)} on ${plural(step.tasks, "task")}, ${String(step.solves)} solves a side at ${String(step.level)}: ${read}`,
+      ...(grain === null || grain.largest < 2
+        ? []
+        : [`${String(grain.largest)} of ${plural(grain.of, "tallied frontier task")} in one family`]),
+      ...(repeat === null
+        ? []
+        : [`${String(repeat.tasks)} of ${plural(step.tasks, "task")} also drawn by ${repeat.with}`]),
       ...(valid === null
         ? []
         : [
@@ -196,9 +203,7 @@ export async function view(args: readonly string[]): Promise<void> {
   });
   const [name] = positionals;
   if (name === undefined) {
-    throw new Error(
-      'usage: bun run runs view <name> [--level N] [--target N] [--practice N] [--past-stop "<why>"]',
-    );
+    throw new Misused();
   }
   const run = await readAcross(name);
   const reader = gitText(resolve(import.meta.dir, "../.."), "rev-parse", "--short=9", "HEAD");
@@ -215,7 +220,8 @@ export async function view(args: readonly string[]): Promise<void> {
   // read on a log that does not hold its end yet.
   const open = openSteps(campaign.steps);
   const decided = decidedOn(events, values);
-  const climb = epochsOf(events).map((epoch) => `  ${epochLine(epoch, called)}`);
+  const reads = starterReads(events);
+  const climb = epochsOf(events).map((epoch) => `  ${epochLine(epoch, called, reads)}`);
   for (const line of [
     ...lines,
     "the climb",

@@ -676,7 +676,7 @@ describe("a campaign run by its log", () => {
     );
     expect(report).toContain("| g-1 |");
     expect(report).not.toContain("Diagnos");
-    expect(report).toContain("The campaign has not ended");
+    expect(report).toContain("The campaign's log names no ending: its last event is `");
     // No task is named in it, and no check.
     expect(report).not.toContain("t-1");
     expect(report).not.toContain("check-product");

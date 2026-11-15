@@ -17,21 +17,23 @@
  * a run leaves the state only once a host that answered no longer holds it. A first look, or one
  * after a state file that cannot be read, records the present and fires on no history.
  */
+import { type Static, Type } from "typebox";
+import { pauseSince } from "#src/campaign/word.ts";
 import { existsSync, readFileSync, statSync } from "#src/meta/filesystem.ts";
-import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
-import { asRecord, isBoolean, isNumber, isString } from "#src/meta/json-shape.ts";
+import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { plural } from "#src/meta/text.ts";
-import { asked } from "./hosts.ts";
+import { asked, answerOf } from "./hosts.ts";
 import { keeperActed } from "./keep.ts";
 import { keepsItself } from "./manage.ts";
-import { type RunState, runState } from "./state.ts";
+import { launchedIn, type RunState, runState } from "./state.ts";
 import { onStatus } from "./pulse.ts";
 import { remember } from "./pulse-readers.ts";
-import { lastLaunch, unlaunchedSeed } from "./receipt.ts";
-import { climbed, type Promotion, promotionsOf } from "./said.ts";
+import { lastLaunch } from "./receipt.ts";
+import { climbed, ENDED, type Promotion, promotionsOf, word } from "./said.ts";
 import {
+  archived,
   HERE,
   isCampaign,
   keptFile,
@@ -54,6 +56,10 @@ export interface Row {
   readonly lastAt: string | null;
   /** What its keeper said it did, oldest first. */
   readonly kept: readonly string[];
+  /** Whether its current launch was left a pause (`pauseSince`). */
+  readonly paused: boolean;
+  /** Each ending on its log, oldest first. */
+  readonly endings: readonly string[];
 }
 
 /** What a host answered: its rows, and every campaign it holds, which the rows leave out once they are
@@ -61,27 +67,69 @@ export interface Row {
 export interface HostRows {
   readonly rows: readonly Row[];
   readonly held: readonly string[];
+  /** The campaigns `runs retire` moved into this host's own archive: a run that left the registry for
+   *  it has not vanished. */
+  readonly retired: readonly string[];
 }
 
-/** What the last look saw of one run. */
-interface Seen {
+/** What one host answered a look, null for one that gave no answer the look can read. */
+interface Answer {
   readonly host: string;
-  readonly promotions: number;
-  /** The starter comparisons read so far, by id. */
-  readonly reads: readonly string[];
-  readonly ending: string | null;
-  readonly gap: string | null;
-  readonly quiet: boolean;
-  readonly kept: number;
-}
-
-export interface AlertState {
-  readonly down: readonly string[];
-  readonly runs: Readonly<Record<string, Seen>>;
+  readonly said: HostRows | null;
 }
 
 /** The file's last look, where no `--state` names another. */
 const STATE = join(".ana", "runs-alerts.json");
+const MAYBE_TEXT = Type.Union([Type.String(), Type.Null()]);
+/** What the last look saw of one run; `reads` are the starter comparisons read so far, by id. */
+const SEEN = Type.Object({
+  host: Type.String(),
+  promotions: Type.Number(),
+  reads: Type.Array(Type.String()),
+  ending: MAYBE_TEXT,
+  gap: MAYBE_TEXT,
+  quiet: Type.Boolean(),
+  kept: Type.Number(),
+  endings: Type.Optional(Type.Number()),
+});
+type Seen = Static<typeof SEEN>;
+/** The state file: the hosts the last look heard nothing from, for how many looks in a row where
+ *  the state is new enough to count them, and what it saw of each run. */
+const ALERT_STATE = Type.Object({
+  down: Type.Array(Type.String()),
+  looks: Type.Optional(Type.Record(Type.String(), Type.Number())),
+  runs: Type.Record(Type.String(), SEEN),
+});
+/** The looks after which a host still down is said again while a run last seen open is there: an
+ *  hour of the job's ten-minute looks. On 15 November every peer was unread for 3.4 hours beside
+ *  two live runs, and the one line of the first look was all that said so. */
+const SAID_AGAIN = 6;
+export type AlertState = Static<typeof ALERT_STATE>;
+
+/** A host's answer to `alerts --rows`, checked for the parts a peer on an older tree lacks, such as
+ *  `state` or `endings`, so that such a peer reads as a host down. The rest of a row is this tree's
+ *  own `Row`. */
+const HOST_ROWS = Type.Object({
+  rows: Type.Array(
+    Type.Unsafe<Row>(
+      Type.Object({
+        name: Type.String(),
+        state: Type.Object({ kind: Type.String() }),
+        kept: Type.Array(Type.Unknown()),
+        paused: Type.Boolean(),
+        endings: Type.Array(Type.String()),
+        promotions: Type.Array(
+          Type.Object({
+            digest: Type.String(),
+            read: Type.Union([Type.Null(), Type.Object({ session: Type.String(), tally: Type.Object({}) })]),
+          }),
+        ),
+      }),
+    ),
+  ),
+  held: Type.Array(Type.String()),
+  retired: Type.Array(Type.String()),
+});
 
 /** The row of `run`, whose log is read at `now` among the processes `running`. */
 function rowOf(run: Run, running: readonly Running[], now: number): Row {
@@ -95,16 +143,20 @@ function rowOf(run: Run, running: readonly Running[], now: number): Row {
     owed: keepsItself(runtimeProcess.env, lastLaunch(run.path)?.login),
     lastAt: last?.at ?? null,
     kept: existsSync(file) ? readFileSync(file, "utf8").split("\n").filter(keeperActed) : [],
+    paused: pauseSince(events, launchedIn(run, events)) !== undefined,
+    endings: events.flatMap(({ kind, data }) => (kind === ENDED ? [word(data.ending)] : [])),
   };
 }
 
 /**
- * Whether a look reads a run: as `status` shows it, less a seed no launch continued. A rehearsal
- * writes its seed, so `status` shows it, and on 6 November two reached the operator's notifications
- * as "first seen with 6 promotions" beside a real second promotion.
+ * Whether a look reads a run: as `status` shows it, where a launch with a model in every seat kept
+ * its receipt (`keepReceipt`). A rehearsal's seed and a test's campaign run scripted seats and keep
+ * none, and `status` shows both: on 6 November two seeds reached the operator's notifications as
+ * "first seen with 6 promotions" beside a real second promotion, and on 15 November the campaigns
+ * of one check were 21 of the alerts log's last 30 lines.
  */
 export const onAlerts = (run: Run, writing: "open" | "closed", age: number): boolean =>
-  !unlaunchedSeed(run) && onStatus(run, writing, age);
+  lastLaunch(run.path) !== undefined && onStatus(run, writing, age);
 
 /** This machine's rows, and the name of every campaign its worktrees hold. */
 function rowsHere(now: number): HostRows {
@@ -114,39 +166,8 @@ function rowsHere(now: number): HostRows {
     const writing = writers(run, running).length > 0 ? "open" : "closed";
     return onAlerts(run, writing, now - statSync(run.path).mtimeMs) ? [rowOf(run, running, now)] : [];
   });
-  return { rows, held: held.map(({ name }) => name) };
-}
-
-/** Whether `value` is a promotion as this tree reads one (`Promotion`). */
-function readsPromotion(value: unknown): boolean {
-  const promotion = asRecord(value);
-  const read = asRecord(promotion?.read);
-  const readable = promotion?.read === null || (isString(read?.session) && asRecord(read?.tally) !== null);
-  return isString(promotion?.digest) && readable;
-}
-
-/** Whether `value` is a row as this tree reads one (`Row`). */
-function readsRow(value: unknown): boolean {
-  const row = asRecord(value);
-  return (
-    isString(row?.name) &&
-    isString(asRecord(row?.state)?.kind) &&
-    Array.isArray(row?.kept) &&
-    Array.isArray(row?.promotions) &&
-    row.promotions.every(readsPromotion)
-  );
-}
-
-/** A host's answer, or null for one that gave none a look can read: a peer on an older tree sends
- *  rows that lack a part, such as `state`, and reads as a host down. */
-function answerOf(lines: readonly string[] | null): HostRows | null {
-  if (lines === null) return null;
-  try {
-    const answer = parseJsonAs<HostRows>(lines.join("\n"));
-    return answer.rows.every(readsRow) && Array.isArray(answer.held) ? answer : null;
-  } catch {
-    return null;
-  }
+  const retired = archived().flatMap((run) => (run.archived === HERE ? [run.name] : []));
+  return { rows, held: held.map(({ name }) => name), retired };
 }
 
 /** Whether a process writes the run's log: a state written on carries whether a keeper lives beside it. */
@@ -160,11 +181,12 @@ const endingOf = (state: RunState): string | null => {
 
 /** What is wrong with a run that has not ended, in the words a line says it. Each guard narrows the
  *  state, and a kind added to `RunState` fails to compile at the last. */
-function gapOf({ state, owed }: Row): string | null {
+function gapOf({ state, owed, paused }: Row): string | null {
   if (written(state)) return owed && !state.kept ? "no keeper" : null;
   if (state.kind === "ended") return null;
   if (state.kind === "kept") return "no writer process; its keeper lives";
   state.kind satisfies "stopped";
+  if (paused) return "paused";
   return owed ? "no writer process and no keeper" : "no writer process";
 }
 
@@ -177,29 +199,37 @@ function seenOf(row: Row, host: string): Seen {
     gap: gapOf(row),
     quiet: row.state.kind === "quiet",
     kept: row.kept.length,
+    endings: row.endings.length,
   };
 }
 
-/** The lines `row` earns since `seen`, each to be headed by the run's name. A run first seen says its
- *  promotions in one line, since its log may hold a seed's or a run's from before this state. */
-function newsOf(row: Row, seen: Seen | undefined): string[] {
+/** The lines `row`, which stands at `now`, earns since `seen`, each to be headed by the run's name. A
+ *  run first seen says its promotions in one line, since its log may hold a seed's or a run's from
+ *  before this state. */
+function newsOf(row: Row, now: Seen, seen: Seen | undefined): string[] {
   const last = row.promotions.at(-1);
   const first =
     last === undefined
       ? []
       : [`first seen with ${plural(row.promotions.length, "promotion")}, the last ${last.digest}`];
-  const gap = gapOf(row);
-  const ending = endingOf(row.state);
+  // What turned since `seen`: the gap where it is new, and whether the log went quiet.
+  const gap = now.gap === seen?.gap ? null : now.gap;
+  const quiet = now.quiet && seen?.quiet !== true;
+  // Each ending the log gained since `seen`, as a keeper goes on within a look, the last the one it
+  // stands on; where a look lacks the count, the ending it stands on where new.
+  const fresh = now.ending === null || now.ending === seen?.ending ? [] : [now.ending];
+  const gained = seen?.endings === undefined ? fresh : row.endings.slice(seen.endings);
+  const stands = now.ending === null ? -1 : gained.length - 1;
   return [
     ...(seen === undefined ? first : climbed(row, seen).map(({ line }) => line)),
     ...row.kept
       .slice(seen?.kept ?? row.kept.length)
       .map((line) => `keeper: ${line.replace(`${row.name}: `, "")}`),
-    ...(gap !== null && gap !== seen?.gap ? [gap] : []),
-    ...(row.state.kind === "quiet" && seen?.quiet !== true
+    ...(gap === null ? [] : [gap]),
+    ...(quiet
       ? [`quiet: no new event since ${row.lastAt ?? "its start"}, and no login limit waited on`]
       : []),
-    ...(ending !== null && ending !== seen?.ending ? [`ended ${ending}`] : []),
+    ...gained.map((said, at) => `ended ${said}${at === stands ? "" : ", and went on"}`),
   ];
 }
 
@@ -209,12 +239,13 @@ function newsOf(row: Row, seen: Seen | undefined): string[] {
  */
 export function alertsOf(
   before: AlertState | null,
-  answers: readonly { readonly host: string; readonly said: HostRows | null }[],
+  answers: readonly Answer[],
 ): { lines: string[]; next: AlertState } {
   const down = answers.flatMap(({ host, said }) => (said === null ? [host] : []));
   const heard = answers.flatMap(({ host, said }) => (said === null ? [] : [{ host, said }]));
   const answered = new Set(heard.map(({ host }) => host));
   const held = new Set(heard.flatMap(({ said }) => said.held));
+  const retired = new Set(heard.flatMap(({ said }) => said.retired));
   // A name two hosts or two worktrees hold is the one with a writer, as a run mid-move is.
   const current = new Map(
     heard
@@ -224,24 +255,32 @@ export function alertsOf(
   );
   const lines: string[] = [];
   const next: Record<string, Seen> = {};
+  const looks = Object.fromEntries(down.map((host) => [host, (before?.looks?.[host] ?? 0) + 1]));
   for (const host of down) {
+    const silent = looks[host] ?? 1;
+    const open = Object.values(before?.runs ?? {}).some((seen) => seen.host === host && seen.ending === null);
     if (before !== null && !before.down.includes(host)) {
       lines.push(`${host}: gave no answer this tree reads; its runs stay as last seen`);
+    } else if (open && silent % SAID_AGAIN === 0) {
+      lines.push(
+        `${host}: gave no answer this tree reads for ${String(silent)} looks, with a run last seen open there`,
+      );
     }
   }
   for (const [name, seen] of Object.entries(before?.runs ?? {})) {
     if (current.has(name)) continue;
     if (held.has(name) || !answered.has(seen.host)) {
       next[name] = seen;
-    } else if (seen.ending === null) {
+    } else if (seen.ending === null && !retired.has(name)) {
       lines.push(`${name} (${seen.host}): left the registry with no ending seen`);
     }
   }
   for (const [name, { host, row }] of current) {
+    const now = seenOf(row, host);
     if (before !== null) {
-      lines.push(...newsOf(row, before.runs[name]).map((line) => `${name} (${host}): ${line}`));
+      lines.push(...newsOf(row, now, before.runs[name]).map((line) => `${name} (${host}): ${line}`));
     }
-    next[name] = seenOf(row, host);
+    next[name] = now;
   }
   if (before === null) {
     const silent = down.length === 0 ? "" : `; ${down.join(", ")} gave no answer this tree reads`;
@@ -249,39 +288,27 @@ export function alertsOf(
       `first look: recorded ${plural(current.size, "run")} on ${plural(heard.length, "host")}, and each later look prints what is new${silent}`,
     );
   }
-  return { lines, next: { down, runs: next } };
+  return { lines, next: { down, looks, runs: next } };
 }
 
-/** Whether `value` is a state the fold can read, every run in it included. */
-function wellFormed(value: unknown): value is AlertState {
-  const state = asRecord(value);
-  const seen = asRecord(state?.runs);
-  if (seen === null || !Array.isArray(state?.down)) return false;
-  return Object.values(seen).every((entry) => {
-    const run = asRecord(entry);
-    return (
-      run !== null &&
-      isString(run.host) &&
-      isNumber(run.promotions) &&
-      Array.isArray(run.reads) &&
-      (run.ending === null || isString(run.ending)) &&
-      (run.gap === null || isString(run.gap)) &&
-      isBoolean(run.quiet) &&
-      isNumber(run.kept)
-    );
-  });
-}
-
-/** The state file's last look, null where there is none or it could not be read, which `torn` says. */
+/** The state file's last look, null where there is none or it could not be read, which `torn` says:
+ *  a torn file and JSON of the wrong form read alike. */
 function lastLook(path: string): { before: AlertState | null; torn: boolean } {
   if (!existsSync(path)) return { before: null, torn: false };
-  try {
-    const before = capturedJsonParse(readFileSync(path, "utf8"));
-    if (wellFormed(before)) return { before, torn: false };
-  } catch {
-    // A torn file is no JSON; it falls through to the same answer as JSON of the wrong form.
-  }
-  return { before: null, torn: true };
+  const before = answerOf(ALERT_STATE, [readFileSync(path, "utf8")]);
+  return { before, torn: before === null };
+}
+
+/** What this machine and every host `ANA_HOSTS` lists answer one look. */
+async function looked(): Promise<Answer[]> {
+  const away = await asked(["alerts", "--rows"]);
+  return [
+    { host: HERE, said: rowsHere(Date.now()) },
+    ...away.map(({ host, lines }) => ({
+      host: host.name,
+      said: answerOf(HOST_ROWS, lines),
+    })),
+  ];
 }
 
 /** `bun run runs alerts`. */
@@ -298,11 +325,7 @@ export async function alerts(args: readonly string[]): Promise<void> {
     return;
   }
   const { before, torn } = lastLook(values.state);
-  const away = await asked(["alerts", "--rows"]);
-  const { lines, next } = alertsOf(before, [
-    { host: HERE, said: rowsHere(Date.now()) },
-    ...away.map(({ host, lines: said }) => ({ host: host.name, said: answerOf(said) })),
-  ]);
+  const { lines, next } = alertsOf(before, await looked());
   if (torn) console.log(`${values.state} could not be read, so this look is a first look`);
   for (const line of lines) console.log(line);
   remember(values.state, capturedJsonStringify(next));

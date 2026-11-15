@@ -18,8 +18,11 @@
  * refused, renaming the denied directory itself is refused, and renaming its parent succeeds and
  * returns the canary at exit 0. These rules refuse that last rename.
  *
- * The hole belongs to the allow-by-default posture the command wall needs, so that a command
- * reaches the network and the host's programs (`isolation.ts`).
+ * The command wall refuses a write outside the seat's root, which closes most of that hole, and
+ * these rules close the rest: a command may also write in a folder named as `mktemp` names one in
+ * the per-user temporary directory (`userTempRules`), so a denied root lying in such a folder, as a
+ * rehearsal's or a test's repository does, has an ancestor the command can rename. With the rules
+ * left out, `test/solve-sandbox.test.ts`'s rename returned the canary (11 November).
  *
  * Two deliberate departures from upstream:
  * - No `(with message ...)` log tag. Upstream tags its rules so a log stream can attribute
@@ -32,6 +35,11 @@
 import { posixContainsPath } from "../meta/path-containment.ts";
 import { ancestorDirectories } from "./policy.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
+
+/** Upstream's pair. `file-write-unlink` covers the rename's source and `file-write-create` its
+ *  destination, so neither moving a protected path away nor putting a symlink in its place is
+ *  available. */
+const MOVE_OPS = ["file-write-unlink", "file-write-create"] as const;
 
 /** Whether a deny rooted at `root` reaches `target`. SBPL paths are always "/"-separated. */
 export function covers(root: string, target: string): boolean {
@@ -46,11 +54,6 @@ export function sbRule(verb: string, form: "subpath" | "literal", paths: readonl
     ? []
     : [`(${verb}`, ...paths.map((path) => `  (${form} ${capturedJsonStringify(path)})`), ")"];
 }
-
-/** Upstream's pair. `file-write-unlink` covers the rename's source and `file-write-create` its
- *  destination, so neither moving a protected path away nor putting a symlink in its place is
- *  available. */
-const MOVE_OPS = ["file-write-unlink", "file-write-create"] as const;
 
 /**
  * Deny rules that keep `protectedRoots` reachable only at the paths the read denies name. Sorted

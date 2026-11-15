@@ -2,7 +2,7 @@
  * How a side's passes got there, one row a comparison: the median calls a pass, and how many orders of
  * tools its passes took.
  *
- *   bun tools/wri/routes.ts <log>
+ *   bun tools/wri/wri.ts reader routes --log <log>
  *
  * `TOOLS CALLED` counts tools over a harness's solves, and `ANSWER FROM A PROGRAM` opens on a won task
  * reached quickly, so nothing sets a side's passes beside the other's. New on 5 November: no script of v1
@@ -13,10 +13,9 @@
  * are not independent, so each log counts once. It is a lead and decides nothing: fewer calls can be a
  * program that closed a search or a solver that stopped looking.
  */
-import { read } from "#src/kernel/log.ts";
 import type { JsonValue } from "#src/meta/json-shape.ts";
 import { median } from "#src/meta/tally.ts";
-import { type Index, indexOf, printRows, type Solve, text } from "./folds.ts";
+import { type Index, type Solve, text } from "./folds.ts";
 
 function sideOf(scoring: readonly Solve[], harness: JsonValue | undefined): string {
   const passes = scoring.filter((solve) => solve.harness === harness && solve.outcome === "pass");
@@ -37,5 +36,3 @@ export function routeRows(index: Index): string[] {
   );
   return rows.length === 0 ? ["routes: no comparison holds a solve"] : rows;
 }
-
-if (import.meta.main) printRows("routes", (log) => routeRows(indexOf(read(log))));

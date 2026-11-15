@@ -33,6 +33,7 @@
  * unresolved, what each fork leaves out on purpose, and whether each fork carried the ids its
  * parent's runs did not hold. A fork from before the per-run files reads as "no per-run files".
  */
+import { DAY_MS } from "#src/meta/clock.ts";
 import { existsSync, readdirSync, readFileSync, statSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
@@ -41,14 +42,16 @@ import { compareCodeUnits } from "#src/meta/stable-json.ts";
 import { countBy } from "#src/meta/tally.ts";
 import { plural, textOr } from "#src/meta/text.ts";
 import { epochsOf } from "#src/campaign/climb.ts";
+import { endingOf } from "#src/kernel/reports.ts";
 import { isCampaign, logEvents, packOf, type Run } from "../runs/registry.ts";
 import {
   forkOf,
-  idsOf,
+  launchForks,
   ledgerFiles,
   carryOf,
   OUTCOMES,
   outcomesOf,
+  owedOf,
   pullOf,
   sectionOf as linesUnder,
 } from "./ledger.ts";
@@ -124,7 +127,6 @@ const PREDICTED = new RegExp(`\\b(${PREDICTIONS.join("|")})\\b`, "u");
 /** A ledger's column that resolves its predictions: `held, falsified or unreached` and its kin. */
 const RESOLVED = /^(verdict|resolution|outcome|held, falsified)/u;
 const RECENT_DAYS = 14;
-const DAY_MS = 86_400_000;
 const DATE = /(\d{4})-?(\d{2})-?(\d{2})/u;
 /** The per-run ledgers of a cycle folder, `<kind>-<run>.md`. */
 const PER_RUN = ["predictions", "outcomes", "still-missing"] as const;
@@ -444,8 +446,7 @@ function movedRows(
     const epochs = epochsOf(events);
     const promoted = epochs.filter(({ promoted: harness }) => harness !== null).length;
     const confirmed = epochs.filter(({ confirmed: read }) => read === true).length;
-    const ending =
-      last.kind === "campaign.ended" && isString(last.data.ending) ? last.data.ending : "no ending";
+    const ending = endingOf(events) ?? "no ending";
     return [
       [last.at.slice(0, 10), ...head, ending, `${String(promoted)}, ${String(confirmed)} confirmed`, ...tail],
     ];
@@ -521,7 +522,11 @@ function pullRows(root: string, entries: readonly Entry[], known: readonly strin
       const parents = planned.flatMap(({ folder, campaigns }) =>
         campaigns.map((run) => perRunOf(root, [root, join(root, folder)], run)),
       );
-      const forks = [...new Set(known.filter((name) => forkOf(name) === pull))]
+      // A fork at a child of the pull request is named by its iteration's `launch` deviation (`madeBy`).
+      const deviated = planned.flatMap(({ folder }) =>
+        launchForks(textAt(join(root, folder, "deviations.md")) ?? ""),
+      );
+      const forks = [...new Set([...known.filter((name) => forkOf(name) === pull), ...deviated])]
         .toSorted(compareCodeUnits)
         .map((name) => perRunOf(root, dirs, name));
       const held = forks.filter(({ files, conflicts }) => Object.keys(files).length + conflicts.length > 0);
@@ -556,7 +561,7 @@ function pullRows(root: string, entries: readonly Entry[], known: readonly strin
           held
             .flatMap(({ name, files: { predictions = "", outcomes: resolved = "" } }) => {
               const outcome = outcomesOf(resolved);
-              return idsOf(predictions)
+              return owedOf(predictions)
                 .filter((id) => !outcome.has(id))
                 .map((id) => `${name}:${id}`);
             })

@@ -35,7 +35,6 @@ import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { pooled } from "../meta/pool.ts";
 import { answerFormatFault, type Contract } from "./contract.ts";
 import type { LogEvent } from "./log.ts";
-import { checkerVerdict } from "./solves.ts";
 import {
   applicableTruthChecks,
   type Brief,
@@ -121,19 +120,10 @@ export interface Read {
   readonly width: number;
 }
 
-/** One answer a log holds a verdict for, under another checker. */
-export interface Regraded {
-  readonly solve: string;
-  readonly task: string;
-  /** The verdict the log holds, and the other checker's of the same answer, each as `spelled`. */
-  readonly was: string;
-  readonly now: string;
-}
-
 /** Every control answer through the checks, twice, `width` at once. A control answer of a task the pack does not
  *  hold is the caller's error, not the checker's, and a verifier that cannot decide stops the run,
  *  as it stops task admission (`decided`): a wall that is not there is no fault of a check's. */
-export function runControls(
+function runControls(
   verify: Verifier,
   tasks: readonly Task[],
   controls: readonly Control[],
@@ -216,11 +206,7 @@ export function doNothingFaults(idle: readonly Idle[]): string[] {
 }
 
 /** Why a control answer's run is not what its label says, or null when it is. */
-export function controlFault({
-  taskId,
-  refusedBy,
-  verdicts: [first, second],
-}: ControlAnswerRun): string | null {
+function controlFault({ taskId, refusedBy, verdicts: [first, second] }: ControlAnswerRun): string | null {
   const named = refusedBy === null ? `the accept control of ${taskId}` : `a reject control of ${taskId}`;
   if (spelled(first) !== spelled(second)) {
     return `${named} got two verdicts from one answer: ${spelled(first)}, then ${spelled(second)}`;
@@ -413,38 +399,4 @@ export function departure(events: readonly LogEvent[], own: Checker): string | n
   return moved.length === 0
     ? null
     : `the log froze another ${moved.join(" and ")}; a changed checker takes a campaign of its own`;
-}
-
-/**
- * Every answer the log holds a checker's verdict for, graded again by `verify` over `tasks`, a
- * repaired checker's own: the last verdict of each solve beside the repaired checker's of the same
- * bytes, `width` at once. No solve is run, since the log holds each answer whole.
- *
- * It is what a repair costs before it is adopted. A verdict that moves is a task whose state rested
- * on the old checker, and one that stays is a refusal the repair did not touch. A task the repaired
- * pack no longer holds is reported so, and a verifier that cannot decide stops the run (`decided`).
- */
-export function regraded(
-  events: readonly LogEvent[],
-  tasks: readonly Task[],
-  verify: Verifier,
-  width: number,
-): Promise<Regraded[]> {
-  const byId = new Map(tasks.map((task) => [task.taskId, task]));
-  const last = new Map(
-    events.flatMap(({ kind, data }) =>
-      kind === "verdict" && isString(data.solve) ? [[data.solve, data]] : [],
-    ),
-  );
-  const held = [...last].flatMap(([solve, data]) => {
-    const verdict = checkerVerdict(data);
-    return verdict === null || !isString(data.task) || data.answer === undefined
-      ? []
-      : [{ solve, task: data.task, answer: data.answer, was: spelled(verdict) }];
-  });
-  return pooled(held, width, async ({ solve, task, answer, was }) => {
-    const own = byId.get(task);
-    const now = own === undefined ? "no task" : spelled(await decided(verify, own, answer));
-    return { solve, task, was, now };
-  });
 }

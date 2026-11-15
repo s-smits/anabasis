@@ -198,6 +198,8 @@ describe("a campaign's reading", () => {
         ...comparison,
         id: "b-1",
         reading: "step",
+        grain: null,
+        repeat: null,
         tally: { wins: 4, losses: 0, ties: 0 },
         valid: { old: [4, 0, 0], fresh: [0, 0, 4] },
         rulings: { earned: 1, "check-defect": 0, unclear: 0 },
@@ -211,6 +213,9 @@ describe("a campaign's reading", () => {
         ...comparison,
         id: "g-1",
         reading: null,
+        // An attempt on the tasks the one before it drew, read from the log as no report stores it.
+        grain: null,
+        repeat: { with: "b-1", tasks: 4 },
         tally: null,
         valid: null,
         rulings: { earned: 0, "check-defect": 0, unclear: 0 },
@@ -290,6 +295,34 @@ describe("unfinished comparisons", () => {
     expect(viewLines("truss", campaignOf(c.events()), Date.now())[2]).toMatch(
       /no report.*cut.*1 solve ended.*1 cut/u,
     );
+  });
+});
+
+describe("how far a comparison's tasks are independent draws", () => {
+  it("says the largest family's share and the attempt before it on the same tasks, naming no family", () => {
+    const c = campaign();
+    const families = (...sizes: number[]) =>
+      Object.fromEntries(
+        sizes.map((ties, nth) => [`kin-${String(nth)}`, { frontier: { wins: 0, losses: 0, ties } }]),
+      );
+    c.compared("g-1", { old: STARTER, fresh: HA }, { ...tallied("no-step", 0, 4), families: families(3, 1) });
+    c.compared("g-2", { old: STARTER, fresh: HB }, tallied("step", 4, 0));
+    c.compared(
+      "g-3",
+      { old: STARTER, fresh: HB },
+      { ...tallied("no-step", 0, 4), families: families(1, 1, 1, 1) },
+    );
+    // HB promoted: its starter comparison is no repeat of the attempts under the starter.
+    c.compared("g-4", { old: HB, fresh: STARTER }, tallied("no-step", 0, 4));
+    const lines = viewLines("truss", campaignOf(c.events()), Date.now()).slice(2);
+    expect(lines[0]).toContain("3 of 4 tallied frontier tasks in one family");
+    expect(lines[0]).not.toContain("also drawn");
+    expect(lines[1]).toContain("4 of 4 tasks also drawn by g-1");
+    expect(lines[1]).not.toContain("one family");
+    expect(lines[2]).toContain("4 of 4 tasks also drawn by g-2");
+    expect(lines[2]).not.toContain("one family");
+    expect(lines[3]).not.toMatch(/also drawn|one family/u);
+    expect(lines.join("\n")).not.toContain("kin-");
   });
 });
 
@@ -393,7 +426,9 @@ describe("the Builder's filter over that reading", () => {
     // A killed session's ending names no harness, and its last checkpoint is still what it left.
     c.record("build.finished", { session: "b-1", ended: "killed", turns: 9, seconds: 60, billed: 1 });
     const killed = startTold(campaignOf(c.events()), HB, "b-2");
-    expect(killed).toMatch(/\bbbbbbbbb\b.*\bb-1\b.*\bkilled\b/su);
+    expect(killed).toMatch(/\bbbbbbbbb\b.*\bb-1\b.*\bcut\b/su);
+    // What the cut left and what it did not, so the session reopens knowing where its memory is.
+    expect(killed).toMatch(/\bonly its notes and the harness above remain\b/u);
     expect(killed).not.toContain("no Builder session");
     // A checkpoint of the parent itself changed nothing, so no session left the starter.
     const same = campaign();

@@ -30,7 +30,7 @@
  */
 import { Type } from "typebox";
 import { type SeatTool, textsOf } from "#src/agent/session.ts";
-import { Refused, stopRule } from "#src/campaign/admission.ts";
+import { comparisonFloor, Refused, stopRule } from "#src/campaign/admission.ts";
 import { CRASHES, decide, practiceDue } from "#src/campaign/decide.ts";
 import { comparisonsOf, crashedRun } from "#src/campaign/ground.ts";
 import { campaignOf } from "#src/campaign/handover.ts";
@@ -60,12 +60,14 @@ import { keptAs, openCampaign, PROMOTED, packNamed } from "./campaign.ts";
 import {
   comparisonOf,
   examinerRun,
-  flag,
   idleOf,
   MOVED,
+  moved,
   nextId,
   opened,
   packOf,
+  prepared,
+  promoteMade,
   type Seats,
   type Turn,
   turnOf,
@@ -73,8 +75,6 @@ import {
 } from "./campaign-terms.ts";
 import { checkpointCommand } from "./checkpoint.ts";
 import { waitCrashed } from "./host.ts";
-import { prepareCommand } from "./prepare.ts";
-import { promoteCommand } from "./promote.ts";
 import { type Campaign, type Seated, solved } from "./round.ts";
 
 /** The two moves a live Builder makes by a tool, each under the tool's name. */
@@ -254,12 +254,7 @@ async function runAction(
   const begin = (made: JsonObject) => {
     begun = read(context.log).length + 1;
     context.used += 1;
-    append(context.log, MOVED, {
-      move,
-      code: named ? decided.code : LED,
-      why: named ? decided.why : CHOSE,
-      ...made,
-    });
+    moved(context.log, { move, code: named ? decided.code : LED, why: named ? decided.why : CHOSE }, made);
   };
   const { host } = context.seats;
   // The conversation's deadline clock stops while the action runs, a wait for the provider included.
@@ -400,21 +395,14 @@ export async function releaseOwed(context: CampaignContext, cause: string, bench
   const before = taskSets(turn.events).released.length;
   const due = practiceDue(turn.events, turn.plan.practice, turn.plan.wanted.level);
   if (due === null) return false;
-  // The campaign's terms, so what it prints of a comparison's size is the campaign's.
-  const prepare = context.seats.prepare ?? prepareCommand;
-  const result = await prepare(
-    [...packOf(context.values), "--practice", String(due.to), ...flag("level", context.values.level)],
-    comparing,
-  );
-  if (result !== 0) throw new Error("the practice release was refused");
+  if ((await prepared(context, String(due.to), comparing)) !== 0) {
+    throw new Error("the practice release was refused");
+  }
   if (bench !== undefined) await refreshCampaign(context, bench);
   if (taskSets(read(context.log)).released.length === before) return false;
   context.used += 1;
-  append(context.log, MOVED, {
-    move: "prepare",
-    code: "practice",
-    why: `${due.said}, and ${cause}: the host releases the practice owed`,
-  });
+  const why = `${due.said}, and ${cause}: the host releases the practice owed`;
+  moved(context.log, { move: "prepare", code: "practice", why });
   return true;
 }
 
@@ -514,7 +502,8 @@ const compareTool = (context: CampaignContext, bench: Bench): SeatTool =>
     const step = campaignOf(events).steps.findLast(
       (each) => each.step === "comparison" && each.id === session,
     );
-    const tally = comparisonsTold(step === undefined ? [] : [step])[0] ?? "The comparison has no tally yet.";
+    // The tally stands once, as the last in the facts the result ends with, so one with none says so.
+    const tallied = comparisonsTold(step === undefined ? [] : [step]).length > 0;
     const scored = events.findLast(
       ({ kind, data }) => kind === "comparison.reported" && data.session === session,
     )?.data.versions;
@@ -528,7 +517,12 @@ const compareTool = (context: CampaignContext, bench: Bench): SeatTool =>
     // rather than at the next conversation: until 5 November the Builder's own move did.
     if (promoted.length === 0) await releaseOwed(context, `comparison ${session} reported`, bench);
     return {
-      said: [tally, ...size, ...(named.note === "" ? [] : [named.note]), ...promoted].join("\n"),
+      said: [
+        ...(tallied ? [] : ["The comparison has no tally yet."]),
+        ...size,
+        ...(named.note === "" ? [] : [named.note]),
+        ...promoted,
+      ].join("\n"),
     };
   });
 
@@ -555,13 +549,7 @@ async function promoteOwed(context: CampaignContext, bench: Bench): Promise<stri
   const owed = actionTurn(context).decided;
   if (owed.move !== "promote" || context.used >= context.maxMoves) return [];
   context.used += 1;
-  append(context.log, MOVED, {
-    move: "promote",
-    code: owed.code,
-    why: owed.why,
-    harness: owed.harness,
-  });
-  await promoteCommand(["--name", context.values.name ?? "", "--harness", owed.harness, "--yes"]);
+  await promoteMade(context.log, context.values.name, owed);
   await refreshCampaign(context, bench);
   return [
     `Harness ${short(owed.harness)} read a step against the reference, and the host has made it the campaign's reference.`,
@@ -654,6 +642,23 @@ function halted(context: CampaignContext, bench: Bench) {
 }
 
 /**
+ * What the two counts amount to before a first comparison, where the Builder chooses between
+ * comparing and waiting: the practice still to come and when the host releases it (`practiceDue`),
+ * and what a comparison of the tasks held now can read (`sizeLines`). It reads the counts and the
+ * plan alone, which no outcome of a held-out task moves (rule 3).
+ */
+function firstFacts({ practice, wanted }: Turn["plan"], held: number, released: number): string {
+  const [size = ""] = sizeLines(Math.min(wanted.target, held), wanted.level);
+  if (practice === null) return `${size}.`;
+  // The first release has no such bound (`practiceDue`'s allowance).
+  const more =
+    released > 0 && released < practice
+      ? `, and another only while more than ${String(comparisonFloor(wanted.level))} tasks stay held out`
+      : "";
+  return `Released for practice: ${String(released)} of the ${plural(practice, "task")} the campaign names${more}. ${size}.`;
+}
+
+/**
  * What the Builder is told of its campaign, where it can have moved (a campaign tool's result):
  * what was written and released, what is left of the total, the last tally and what was spent.
  * Until 5 November it ended with the table's move as a suggestion. Reading it is also where the
@@ -678,7 +683,7 @@ function campaignStatus(context: CampaignContext, bench: Bench): string {
         ]),
     // The last tally stands here; `read_opening` holds every one.
     tallies.length === 0
-      ? "No comparison has a tally yet."
+      ? `No comparison has a tally yet. ${firstFacts(turn.plan, sets.held.length, sets.released.length)}`
       : `${plural(tallies.length, "comparison")} with a tally; the last:\n${tallies.at(-1) ?? ""}`,
     ...examinedLines(turn.events, writing),
     ...spentLines(turn),

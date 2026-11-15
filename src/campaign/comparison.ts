@@ -115,7 +115,7 @@ export interface Report {
   /** Each family's tallies on the two sets, from the same rows, so they sum to the whole. They show
    *  concentration; a family name can hide correlated tasks, and they establish no independence. */
   readonly families: Readonly<Record<string, { readonly frontier: Tally }>> | null;
-  /** The preceding comparison of the same two harnesses, and their initial draws' intersection. */
+  /** The last comparison of its kind under the same reference (`overlapOf`), and the draws' overlap. */
   readonly overlap: { readonly with: string; readonly tasks: readonly string[] } | null;
   /** The reference harness against itself on halves of its own solves mirrored in time, the A/A comparison,
    *  where it holds an even number of a task: how often two of its solves of a task
@@ -359,9 +359,7 @@ function setsOf(
   aside: readonly string[],
 ) {
   const kept = new Set(fixed.retained);
-  const named = new Map(
-    proposalsOf(events).flatMap(({ version, family }) => (family === null ? [] : [[version, family]])),
-  );
+  const named = new Map(proposalsOf(events).map(({ version, family }) => [version, family ?? "unnamed"]));
   const familyOf = (task: string) => named.get(task) ?? "unnamed";
   const part = (set: "frontier" | "retained") =>
     pairs.filter(({ task }) => kept.has(task) === (set === "retained"));
@@ -372,16 +370,14 @@ function setsOf(
     const of = tallied[set].map(({ task }) => task);
     return { tasks: fixed.tasks.filter(within), aside: aside.filter(within), ...scored(tallied[set]), of };
   };
-  const ofFamily = (family: string): Tally => {
+  const families = [...new Set(fixed.tasks.map(familyOf))].map((family) => {
     const { wins, losses, ties } = scored(tallied.frontier.filter(({ task }) => familyOf(task) === family));
-    return { wins, losses, ties };
-  };
+    return [family, { frontier: { wins, losses, ties } }] as const;
+  });
   return {
     frontier: setOf("frontier"),
     retained: tallied.retained.length > 0 ? setOf("retained") : UNMEASURED,
-    families: Object.fromEntries(
-      [...new Set(fixed.tasks.map(familyOf))].map((family) => [family, { frontier: ofFamily(family) }]),
-    ),
+    families: Object.fromEntries(families),
   };
 }
 
@@ -530,16 +526,19 @@ function flipsOf(pairs: readonly Paired[]): number | null {
   return each.length === 0 ? null : each.reduce((sum, one) => sum + one, 0) / each.length;
 }
 
-/** The preceding comparison of the same two harnesses, on either side, and the intersection of the
- *  two comparisons' initial draws; null where none began before `fixed`. A starter read swaps the
- *  sides of the comparison that promoted. Until 6 November the gathered record held null in all 9
- *  reports with only a swapped comparison before them, 5 of which share 48 tasks with it. */
-function overlapOf(events: readonly LogEvent[], fixed: Fixed) {
+/** The comparison of the same kind under the same reference that began last before `fixed`, and
+ *  the intersection of the two initial draws; null where none did. The kind is a promotion attempt
+ *  or a starter comparison, so a candidate scored on tasks an earlier candidate drew names that
+ *  attempt, though the test counts those tasks as fresh draws. */
+export function overlapOf(events: readonly LogEvent[], fixed: Fixed) {
   const began = events.findIndex(({ kind, data }) => kind === STARTED && data.session === fixed.id);
-  const pair = new Set<unknown>([fixed.old, fixed.fresh]);
+  const kindOf = (fresh: JsonValue | undefined) => fresh === fixed.starter;
   const before = events
     .slice(0, Math.max(0, began))
-    .findLast(({ kind, data }) => kind === STARTED && pair.has(data.old) && pair.has(data.fresh));
+    .findLast(
+      ({ kind, data }) =>
+        kind === STARTED && data.old === fixed.old && kindOf(data.fresh) === kindOf(fixed.fresh),
+    );
   if (before === undefined || !isString(before.data.session)) return null;
   const drawnThen = new Set(Array.isArray(before.data.tasks) ? before.data.tasks.filter(isString) : []);
   return { with: before.data.session, tasks: fixed.tasks.filter((task) => drawnThen.has(task)) };

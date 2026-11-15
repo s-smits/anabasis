@@ -35,7 +35,16 @@ describe("withSet", () => {
     );
     expect(() => withSet(answer, ["reagents[1].mm=3"])).toThrow("$.reagents[1].mm is no field of the answer");
     expect(() => withSet(answer, ["$.reagents[2].mM=3"])).toThrow("no field of the answer");
+    // A lane wrote an index with a dot (12 November); the refusal names the form that is read.
+    expect(() => withSet(answer, ["reagents.1.mM=3"])).toThrow("an index goes in brackets");
     expect(() => withSet(answer, ["$.note"])).toThrow("no field of the answer");
+  });
+
+  it("prints a long value cut, with its length, and replaces it whole", () => {
+    // A replaced field can be an answer's whole text, which a lane's report then carried.
+    const { answer: changed, said } = withSet({ text: "a".repeat(200) }, [`$.text="${"b".repeat(78)}"`]);
+    expect(changed).toEqual({ text: "b".repeat(78) });
+    expect(said).toEqual([`set $.text: "${"a".repeat(79)}... (202 characters) -> "${"b".repeat(78)}"`]);
   });
 
   it("refuses a value of another JSON type, and one that is not JSON", () => {

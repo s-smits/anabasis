@@ -41,13 +41,13 @@ const scratch = mkdtempSync(join(tmpdir(), "ana-review-"));
 const programs = new Map<string, string>();
 let readings = 0;
 const UNSETTLED = { ruling: "unclear", reason: "Not settled.", probes: [] };
+const toolUse = { stopReason: "toolUse" } as const;
+
 /** A check that refuses spans over 10, where the rule allows 12. */
 const verify = async (_task: Task, answer: JsonValue | undefined): Promise<Verdict> => {
   const span = asRecord(answer)?.span;
   return isNumber(span) && span > 10 ? { kind: "fail", blocking: ["span"] } : { kind: "pass" };
 };
-const toolUse = { stopReason: "toolUse" } as const;
-
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 beforeAll(() => {

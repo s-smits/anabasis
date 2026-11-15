@@ -103,7 +103,6 @@ describe("the solve isolation's policy", () => {
     // Both path forms of the repository, or the symlink form stays readable and the isolation leaks.
     expect(policy.deniedReadRoots).toContain(repoRoot);
     expect(policy.deniedReadRoots).toContain(realpathSync.native(repoRoot));
-    expect(policy.deniedWriteRoots.length).toBeGreaterThan(0);
     expect(policy.allowedReadRoots.every((root) => root.startsWith(`${homedir()}/`))).toBe(true);
     expect(policy.allowedReadRoots.some((root) => root.includes("/.ssh") || root.includes("/.claude"))).toBe(
       false,
@@ -121,7 +120,6 @@ describe("the solve isolation's policy", () => {
       profileId: HOST_SOLVE_ISOLATION_PROFILE_ID,
       policyHash: "fixture",
       deniedReadRoots: [repoRoot],
-      deniedWriteRoots: [repoRoot],
       allowedReadRoots: [],
       mechanismPath: "/usr/bin/bwrap",
       mechanismId: LINUX_BWRAP_ID,
@@ -311,6 +309,107 @@ describe("the rename guard", () => {
       expect(output).not.toContain("RENAMED-CANARY");
       expect(existsSync(join(repoRoot, "canary.txt"))).toBe(true);
       expect(existsSync(moved)).toBe(false);
+    });
+  }, 60_000);
+});
+
+// Seatbelt confines a process and its children, not what it asks of a process outside: each case
+// asks an unconfined one to act and checks that nothing came back. Under `(allow default)` the first
+// two read a denied file and reached a socket (11 November). Linux's pid namespace and overmounts
+// answer the same questions by construction.
+describe.skipIf(!onDarwin)("the Darwin wall's edges", () => {
+  it("is not started by `open` on an app the command wrote", async () => {
+    const repoRoot = workRepo();
+    writeFileSync(join(repoRoot, "secret.txt"), "OPEN-CANARY\n");
+    await inSeat(repoRoot, [], async (wall, run) => {
+      const app = join(wall.dirs.root, "Probe.app");
+      const leak = join(wall.dirs.root, "leak.txt");
+      mkdirSync(join(app, "Contents", "MacOS"), { recursive: true });
+      writeFileSync(
+        join(app, "Contents", "MacOS", "Probe"),
+        `#!/bin/sh\ncat ${repoRoot}/secret.txt > ${leak}\n`,
+        {
+          mode: 0o755,
+        },
+      );
+      writeFileSync(
+        join(app, "Contents", "Info.plist"),
+        '<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Probe</string>' +
+          "<key>LSBackgroundOnly</key><true/></dict></plist>",
+      );
+      const output = await run(`echo started; open -g -j ${app} 2>/dev/null; echo "open=$?"; sleep 3`);
+      expect(output).toStartWith("started\n");
+      expect(output).not.toContain("open=0");
+      expect(existsSync(leak)).toBe(false);
+    });
+  }, 60_000);
+
+  it("reaches a socket in the seat's root and the resolver's, and no other listener's", async () => {
+    // A folder no path rule closes, so that only the rule on sockets stands between the command
+    // and the listener: the VPN daemon's and the print server's sockets lie in such a folder.
+    const cache = Bun.spawnSync(["/usr/bin/getconf", "DARWIN_USER_CACHE_DIR"]).stdout.toString().trim();
+    const unclosed = mkdtempSync(join(cache, "ana-wall-"));
+    made.push(unclosed);
+    let heard = 0;
+    const listener = Bun.listen({
+      unix: join(unclosed, "s"),
+      socket: {
+        open: () => {
+          heard += 1;
+        },
+        data: () => {},
+      },
+    });
+    const client = (path: string) =>
+      `python3 -I -c 'import socket,sys;socket.socket(socket.AF_UNIX).connect(sys.argv[1])' ${path} 2>/dev/null && echo reached || echo refused`;
+    // The seat's own is named from its temporary folder, as a socket's path is cut at 104 bytes.
+    const probes = (own: string) =>
+      `${client(join(unclosed, "s"))}; cd "$TMPDIR" && python3 -I -c 'import socket,sys;s=socket.socket(socket.AF_UNIX);s.bind(sys.argv[1]);s.listen();s.accept()' ${own} & sleep 1; cd "$TMPDIR"; ${client(own)}; ${client("/var/run/mDNSResponder")}`;
+    try {
+      await inSeat(workRepo(), [], async (wall, run) => {
+        const reach = async (own: string, under = wall) =>
+          (await run(probes(own), under)).split("\n").slice(0, 3);
+        expect(await reach("o")).toEqual(["refused", "reached", "reached"]);
+        // A check's wall, which has no network: its own socket still, and the resolver's no more.
+        const offline = { ...wall, base: { ...wall.base, network: false } };
+        expect(await reach("p", offline)).toEqual(["refused", "reached", "refused"]);
+      });
+      await Bun.sleep(200);
+      expect(heard).toBe(0);
+    } finally {
+      listener.stop(true);
+    }
+  }, 60_000);
+
+  it("does not run launchctl, whose requests launchd takes from a walled process too", async () => {
+    await inSeat(workRepo(), [], async (_wall, run) => {
+      const output = await run(
+        `id -un >/dev/null && echo id; launchctl print "gui/$(id -u)" >/dev/null 2>&1; echo "launchctl=$?"`,
+      );
+      expect(output.split("\n").slice(0, 2)).toEqual(["id", "launchctl=126"]);
+    });
+  }, 60_000);
+
+  it("keeps another process's command line out of reach", async () => {
+    const marker = `ARGV-CANARY-${String(runtimeProcess.pid)}`;
+    const other = Bun.spawn(["/bin/sh", "-c", `sleep 30; : ${marker}`]);
+    try {
+      await inSeat(workRepo(), [], async (_wall, run) => {
+        const output = await run(`echo started; pgrep -lf ${marker} 2>/dev/null; true`);
+        expect(output).toStartWith("started\n");
+        expect(output).not.toContain(`: ${marker}`);
+      });
+    } finally {
+      other.kill();
+    }
+  }, 60_000);
+
+  it("runs a process substitution and writes to its own standard streams, while /tmp stays closed", async () => {
+    await inSeat(workRepo(), [], async (_wall, run) => {
+      const output = await run(
+        `diff <(echo a) <(echo a) && echo same; echo out > /dev/stdout; python3 -I -c 'open("/dev/stderr","w").write("err\\n")' 2>&1; (echo x > /tmp/wall-probe) 2>/dev/null || echo closed`,
+      );
+      expect(output.split("\n").slice(0, 4)).toEqual(["same", "out", "err", "closed"]);
     });
   }, 60_000);
 });

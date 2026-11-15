@@ -25,11 +25,12 @@ to go in one sitting, is the session's judgement. Read the script first and deci
 | --- | --- | --- |
 | starting, resuming or woken with nothing named | `wri2p2.ts due`, then `cycle.md` | the live run's trigger it lists, else the longest-standing step; `next <dir>` prints it whole |
 | a report, promotion, starter read or ending lands | `runs view <name>`; comparison-reading's `starter-reads.ts` after a promotion | "Milestones"; resolve that run's predictions with the log's length; at a trigger, `wri2p2.ts open` |
-| a slot is free | `runs active`, `runs usage`, the cycle's `run-queue.md` | the iteration's step 5: its `predictions-<run>.md`, the dry run, then `runs fresh` |
+| a slot is free | `runs active`, `runs usage`, `runs loadwatch --once` (its last line: the machines, least loaded first), the cycle's `run-queue.md` | the iteration's step 5: its `predictions-<run>.md`, the dry run, then `runs fresh` |
 | lanes are out, or a synthesis is written | `wri2p2.ts next <dir>`, `wri2p2.ts ledger <dir>` | the iteration's steps 2 and 3 |
 | a fix is ready | stack-pr's `stack.ts`, repository-practice's `preflight.ts` | step 4, its before-and-after, then step 5 |
 | a run bills while its milestone stays put | `runs pulse <name>`, `wri.ts read --log <log>` | "A stall", then "The walk" |
 | a step has stood for two days, or two sessions hold one step | the hours `due` prints; the rows of `cycle.md` | take it, pass it in `deviations.md`, or name its one holder in `cycle.md` |
+| a jobstat run has promoted twice, or has stopped with a promoted reference no read has scored | the last read's prediction file; `score.ts table` over the store | "The outside aim": the prediction, the dry run, the rollouts started detached, the run's row in `outside-reads.md`, and the iteration's next step at once |
 | a handover is due, or a timer fires with nothing to do | `timers.ts <the session's transcripts>` | "Timers": retire or retime it; then the five points |
 
 ## The release cycle
@@ -76,7 +77,8 @@ never copied.
   `references/lanes.md`, "Labels"); needing another lane means the label is wrong. Its group is
   `first` (code no run has run), `again` (run before under another condition) or `off-run` (no seat
   reads it; settled by a landing, a reader or the launch). `outcomes-<run>.md` gives each of its ids,
-  and no other, one outcome, `held`, `falsified`, `unreached`, or `pending` while a live run's event
+  and each `<parent run>:<id>` its `## Carried` names as a row under that whole name, and no other,
+  one outcome, `held`, `falsified`, `unreached`, or `pending` while a live run's event
   has not come, and records the log's length it was read at on a line of its own,
   `Log events at resolution: <n>`, which `next` prints; once the log grows past it, `next` reopens
   every `unreached` or `pending` row, since a run continued after its trigger may yet reach them.
@@ -88,10 +90,12 @@ never copied.
 - The views are derived and never written by hand:
   `bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts ledger <dir>` prints, for a cycle's
   or an investigation's folder, the cycle view (every prediction of its runs with its outcome, a
-  stale one marked) and each run's still-missing view (the ids it did not hold beside its plan's two
-  sections). Until 8 November a cycle's `Predictions.md` kept resolutions of its own and each run a
-  `still-missing-<run>.md` that restated the plan, so each fact had two owners (`AGENTS.md` rule 12);
-  those files stay as written and are still read, and no new one is written.
+  stale one marked), the dropped view (each `unreached` or `falsified` id that no `## Carried`
+  names as `<run>:<id>` and no `## Intentionally opposed` of its plan names; a `## Not done` line
+  takes nothing up; write each into a live run's file or that section until the view reads `none`;
+  the ids of a run at rest that no investigation names are listed apart as unread) and each run's
+  still-missing view (the ids it did not hold beside its plan's two sections). An old
+  `Predictions.md` or `still-missing-<run>.md` is still read, and no new one is written.
 
 A review that finds a run's `predictions-<run>.md` missing writes it first, marked as written after
 launch with the run's solves at that moment.
@@ -104,7 +108,7 @@ asking. One script reads where every run and iteration stands and prints the nex
 command:
 
 ```sh
-bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts [<part> ...] [--promotions 2] [--hours 12] [--days 2]
+bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts [<part> ...] [--days 2]
 bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts due [<part> ...] [--days 2]
 bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts open <name>[,<name>] [--out <dir>]
 bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts next <dir>
@@ -119,12 +123,13 @@ owed steps only, as a timer takes it.
 1. **Trigger.** Whichever comes first: two promotions, twelve hours since the opening, a scored
    comparison that left no task untied, or an ending after a comparison. At a live run's trigger
    `wri2p2.ts` prints `pause`: run its command (`runs pause <name> --after reported --yes`, with
-   nohup), which stops the run at the first point after its next comparison reports with no
-   comparison, Examiner session or draft open (operator, 10 November). The comparison's tally and
+   nohup), which stops the run at the first point after its next comparison reports with nothing
+   but the Builder's conversation open (operator, 10 November). The comparison's tally and
    reading are one event written once every solve has finished, so nothing of it is lost; a step
    the pause lands between its report and its promotion is promoted at the run's next move
-   (`decide`, "read a step, and was not promoted"). After two promotions that next comparison is
-   the starter read, so the pause also leaves the second promotion confirmable. While the pause
+   (`decide`, "read a step, and was not promoted"). Past a promotion the pause waits until that
+   promotion's starter comparison has tallied (`heldBy`), whichever comparison reports first,
+   so a run rests with its newest promotion read. While the pause
    waits the step is `waits`, which `due` does not count. Resolve the run's predictions into
    `outcomes-<run>.md`, with the log's length.
 2. **Investigate** with whole-run-investigation, opened by `wri2p2.ts open` with the other triggered
@@ -164,14 +169,18 @@ owed steps only, as a timer takes it.
    swarm writes are stacked by the primary with `git apply --3way`, and the composed gate runs on the
    top, since commits that pass alone can interact.
 5. **Predict, then fork at that head** with `--as forkedPR<N>`, by which `next` finds the runs that
-   measure it. Take each name from the dry run of `runs fresh` and write its
-   `predictions-<run>.md` first, with a `## Carried` section naming each id the parent runs did not
-   hold, as `<parent run>:<id>`. A slot an ended run frees goes at once to the first entry of
-   `run-queue.md` marked `ready: yes`, and where the queue holds none, to a fresh run at the current
-   top only where the cycle's word covers it; idle capacity measures nothing.
+   measure it (a fork at another pull request's head is named in the folder's `launch` deviation).
+   Take each name from the dry run of `runs fresh` and write its `predictions-<run>.md` first, with
+   a `## Carried` section naming each id the parent runs did not hold, as `<parent run>:<id>`, and a
+   row for each prediction the plan defines (`next` owes `carry` for a plan id no fork's file and no
+   `## Not done` names). A run starts for what it adds, never to fill a slot: its file opens by
+   naming the component no live run measures (the fix it forks at, or one term or prompt it ablates
+   or tunes) with a `first` row for each. A freed slot goes to the first `ready: yes` entry of
+   `run-queue.md` that has such a component, and otherwise stays empty.
 
 `next` walks these gates in order: `open`, `instruct`, `lanes`, `reports`, `isolated`, `synthesise`;
-for each run `predictions`, `outcomes` and, for a fork, `carry`; then `vet`,
+for each run `predictions`, `outcomes`, for a fork `carry` and, for a jobstat run, `outside` (its
+row in `outside-reads.md`, "The outside aim"); then `vet`,
 `across`, `plan`, `implement`, `launch`, `forks` and `done`. A folder without `iteration.json` takes
 the shared gates only. Every gate but `done` is a default rather than a wall: a row
 `| <step> | <reason> |` in the folder's `deviations.md` (the step, or `<step>:<run>`) passes it, and
@@ -187,7 +196,8 @@ each pull request stacks on the one before. Nothing in an iteration is merged; t
    request head, naming any pull request above it. For a cycle, fork one fresh campaign per runner
    host, or the set the operator names, after a dry run:
    `runs fresh <pack> --host <host> --at <commit> --login N --as <suffix> --yes`. Take hosts from
-   `ANA_HOSTS` (`hostsOf`) after `runs hosts --health`, and launch them one after another, since
+   `ANA_HOSTS` (`hostsOf`) after `runs hosts --health` and `runs loadwatch --once`, whose last line
+   orders them least loaded first, and launch them one after another, since
    concurrent `fresh --host` launches from one checkout fail. Ordinary forks let `fresh` place them;
    placement does not ask whether a peer holds the pack's prompt, so a pack whose prompt only the
    central host holds takes `--host here`. Name a pull request's head by its number in the ledger
@@ -264,6 +274,20 @@ unconfirmed for good (`AGENTS.md`, factor 1). Two promotions trigger the pause a
 comparison, which is that starter read, and the investigation after it; `--promotions N` remains
 available (run-management).
 
+### Decision points
+
+Two promotions is the default count and not the only one. [decision-points](../decision-points/SKILL.md)
+holds, for each point of a run's life (a comparison without a step, the first promotion, the second,
+those past it, an ending), what the operator decided there and how often: when a run rests at one,
+goes on to three, four or six, or is given up without a promotion, which run goes when slots are
+short, when a fresh fork is worth its slot and what each kind of release asks of its proof run. With
+two runs live it also splits the slots: the older run is the long one, taken to three or four
+promotions on the session's judgement, and the other is turned over to the newest head at each proved
+upgrade. Read it before a pause, a stop, a continue or a fork that the trigger alone does not settle;
+a run kept past its trigger on one of its rows takes the row `| pause:<run> | <reason> |` in an
+investigation's `deviations.md`, and `wri2p2.ts` then prints `kept` for it, which `due` does not
+list, until the row is removed or the run stops.
+
 ## Resume
 
 Read the local handover, then the evidence:
@@ -294,9 +318,202 @@ Open and close each pass with these per campaign, and say which point the pass m
 The closing report is `bun tools/d2/close.ts --name <name> --to <scratch dir>`, with `--to` outside
 the repository or under `data/harnesses/`.
 
-promotion-tuner's `scripts/table.ts` (`--rows recent`, `--rows groups`) sets this cycle's runs beside
-earlier ones; read room first, since hours without room say nothing about ability. A changed level,
-target or solves a side changes the instrument, not the harness, and is the operator's.
+promotion-tuner's `scripts/table.ts` lists this cycle's runs, and its `scripts/trend.ts` sets them
+against the weeks before, each difference tested against the spread between runs and the climb's
+speed read beside what holds it (`--pack buffer --back 4` is the control read of `AGENTS.md`
+section 10). Read room first, since hours without room say nothing about ability, and a row that
+reads `moved` as a lead and no gain: the windows span releases. A changed level, target or solves a
+side changes the instrument, not the harness, and is the operator's.
+
+## The outside aim: Harness² on JobBench
+
+The v1.0 bar's outside row (system-audit, "The pillars and the v1.0 bar"; its value in
+`docs/plan.md`) asks whether a harness built blind to a benchmark stands against Harness² on unseen
+tasks under that benchmark's own grader. The operator's aim (11 November 2026) is JobBench: parity
+with Harness²'s held-out arm, then above it (`docs/backlog/jobbench-scoring.md`;
+`docs/backlog/v1-bar.md`, item 2); the bar's threshold for the row stays unset. That is why jobstat
+takes the effort first and buffer is its control. Harness² knows the benchmark's tasks and
+Anabasis does not: every rollout Harness² builds on answers a real JobBench request with its
+files, though no session of it is shown a rubric or a grade, and it writes no task of its own; its
+own arm adapts on the task it is scored on, and its held-out arm is built on the task before in
+the same profession. Anabasis's Examiner writes every task its harness is built on from a
+description of the domain. So a score close to the held-out arm's, within the spread of two
+rollouts, already answers the row, level with it is a strong reading, and above it is the aim
+(`studies/harness2/README.md`, "Read every result against how uneven the comparison is").
+
+The loop serves the aim in three ways:
+
+- **Indirectly, in every pass.** A campaign optimises one thing, a promotion confirmed on its own
+  held-out tasks. What a bench read teaches reaches a plan only as a shape, stripped of the
+  benchmark's name, the direction and the score, and is falsified by a count in a campaign's own
+  log before any further bench (comparison-review, `references/backtrack.md`). The two shapes on
+  record are leads, untested forward: a harness's program bound to the workspace it was built in,
+  and a harness selected on one measure spending less on work no comparison rewards. A jobstat
+  run's predictions therefore carry the two rows that say whether its climb is likely to carry:
+  whether any step is won on validity instead of the objective alone, and whether a reference
+  still wins the tasks written since its promotion (`starter-reads.ts`).
+- **In the carrying.** A kept harness reaches JobBench through an export
+  (`studies/shared/claude-export.ts`). A defect in what the export carries or tells the solver (the
+  backlog's items 5 and 12 to 14) is fixed at its owner before the next read, since it is wrong
+  whichever side led, and it is the one lever on the score that touches no campaign.
+- **Directly, by reading it**: each jobstat run's newest promoted reference on the tasks below,
+  once the run has promoted twice or has stopped.
+
+Nothing of the benchmark crosses into a campaign. No seat, prompt, check or query hears its tasks,
+rubrics or scores (`AGENTS.md`, section 1, "An outside benchmark against fitting the query to it";
+rules 2, 3 and 9); the query is the operator's and is bounded against its origin; and a bench score
+promotes nothing and is never a step.
+
+### One jobstat run always, read at its second promotion
+
+One of the live full runs is always a jobstat run, also where one slot is all there is (operator,
+12 November 2026), so a freed slot goes to jobstat first wherever none is live. A jobstat run's
+newest promoted reference is read on the eight tasks below, confirmed or not, at the first of two
+moments:
+
+- **Its second promotion**, once the run rests at its pause: the read waits neither for the
+  investigation nor for lane 27's audit, whose grade and weight join the row when the lane reports.
+  A reference the audit then grades inferior is still scored, which is how the record shows whether
+  the grade predicts the benchmark.
+- **Its stop at another trigger with one promotion.** The audit comes first: where lane 27 puts the
+  reference's soundness at 2 or below (broken, fitted or churn) or reads it as bloat, the read is
+  skipped, and otherwise its grade and weight go into the prediction file before any rollout.
+
+The read's row in `outside-reads.md` in the cycle's folder is the receipt. The run's investigation
+checks for it: `wri2p2.ts next` holds a jobstat run's folder at its `outside` gate, after the run's
+ledgers and before the vetting, until a row names the run. A row is one of three kinds, counts
+only:
+
+- **scored**, once the eight tasks are judged;
+- **skipped**, with the audit's grade, or because the run promoted nothing;
+- **owed**, with what the read waits for: its own rollouts still under way (with the time they
+  started), the read ahead of it on the machine, or a login with room. The dry run still runs at
+  once, since it exports the reference's tree into the store while the campaign's installed
+  packages exist. An owed row passes the gate and holds no fork back.
+
+```text
+| run | digest | step: tally, measure that carried it | starter read: confirmed, written-after tally | audit: soundness, weight | fair five: reference, Starter beside it | first task and outside pair: reference, Starter | scored, skipped or owed |
+```
+
+Owed reads are rolled together, oldest first, in the first sitting a login has room, ahead of any
+other paid simulation, with one fresh Starter at two rollouts a task beside them all instead of one
+for each. Each pass's report counts the rows still owed.
+
+`score.ts table --out <store> --tasks <the eight>` over the whole store is the full comparison
+table: every arm on record, task by task, with its sums over the fair five. It is printed into the
+iteration's report after every sitting, the arms of earlier sittings marked with their date, since
+arms scored on different days are confounded with the day.
+
+The table is the ablation of the loop's own readings against the benchmark: whether a step, a
+confirmation or the audit's grade tells in advance what the benchmark rewards. No column is read
+against another before six rows hold a score, and a skipped row holds none, so the audit's skips are
+the part of it the table cannot test.
+
+### A reference's read
+
+The benchmark set is 20 of JobBench's 65 tasks, in the professions nearest the query (the
+backlog's item 17). A read uses eight of them: three were taken from the pilot's eight on
+9 November 2026 with their stored scores in view, and five were added on 10 November by rule, with
+no score read. `score.ts` calls another set "the pilot's eight" and takes it where `--tasks` is
+missing, so every command names its tasks.
+
+| Part | Tasks | What it can read |
+| --- | --- | --- |
+| the fair five | `biostatisticians/task2`, `statisticians/task2`, `statisticians/task3`, `social_science_research_assistants/task2`, `social_science_research_assistants/task3` | the reference against the Starter, and against Harness²'s held-out arm, which has a score on these five only |
+| the first task | `statisticians/task1` | the reference against the Starter where Harness²'s held-out arm has no harness, so it is read alone and never summed with the five. Its record (26 of 116 in six built rollouts, 36 in two of the Starter's) reads no defect of the carrying: three rubrics every arm passes make the 26, and the Starter's two further tens came from two different rubrics, each by one criterion |
+| the outside pair | `supply_chain_managers/task2`, `sociology_teachers_postsecondary/task2` | the reference against the Starter in two professions outside the query; Harness² has no arm there, so the pair is reported apart and feeds no decision before the 20-task comparison |
+
+```text
+fair five     biostatisticians/task2,statisticians/task2,statisticians/task3,social_science_research_assistants/task2,social_science_research_assistants/task3
+first task    statisticians/task1
+outside pair  supply_chain_managers/task2,sociology_teachers_postsecondary/task2
+```
+
+Size decides what a read can say. Five tasks at one rollout cannot clear 0.02 even at five to none
+(a sign-flip p of 1/32); the Starter's own two rollouts on record differ by 36 of 250 points on
+three tasks; and arms scored on different days are confounded with the day (the backlog's item 7;
+`compare.ts`, head comment). The judge also reads at most 200,000 characters of each file (the
+backlog's item 16). Every workbook on record for `social_science_research_assistants/task2` passes
+that (15 of 15, its two data sheets ahead of its summary sheets), and that task alone gives 16 of
+the Starter's 36; the memo of `statisticians/task1` passes it in 6 of 13 deliverables. A score on
+either task therefore partly reads how long a file ran, which `score.ts table` shows: it marks a
+cell whose deliverable the judge's reader cut `CUT <n>`, and its `fair uncut` block sums each arm
+over the fair tasks on which no arm's record holds a cut file. So a
+Starter is rolled
+beside the reference in the same sitting, and the fair five at two rollouts a side (20 rollouts)
+reads more than the eight at one (16), since it gives the Starter's spread on the tasks compared.
+
+1. **Arms.** The run's newest promoted reference that no read has scored, named to
+   `--harness` by its letter or whole digest (`runs view <name>` prints the letter beside the
+   digest's head), under a label taken from the digest, since a label binds one exported tree and
+   one rollout a task for good. Beside it
+   a Starter under a new label, on the same tasks. A further rollout of either takes a further
+   label. `heldout` stands on its stored record of the fair five, or is rolled again under a new
+   label in the same sitting where the operator asks for all three side by side. A change to the
+   export or to `score.ts` since an arm's last rollout makes that rollout another condition, so the
+   arm is rolled afresh on every task.
+2. **Predict first**, in the cycle's folder as `jobbench-<label>-prediction.md` before any rollout:
+   the tasks, the arms with their digests, the size, the export's defects still open, the dry run's
+   line, and rows that `score.ts table` settles by a count: the reference against the Starter beside
+   it on the fair five; against `heldout`'s stored sum, with the Starter's spread as the margin; the
+   first task and the outside pair where they are bought; the dollars.
+3. **Prove the path without a model.** A read runs on the machine `ABLATION_HOST` names in
+   `.env.runs`, which `runs retire` keeps clear of retired campaigns, and on this machine where it is
+   unset. A campaign that ran on that machine is exported before its retire archives it (a day
+   after it goes idle): the copy that replaces it holds no installed package. The store, the JobBench checkout and the
+   judge's shim are named in the last read's prediction file and in `cycle.md`; every sitting
+   scores into that one store, so that one table holds every arm.
+
+   ```sh
+   bun studies/harness2/score.ts score --arm <campaign> --harness <kept> --name <label> \
+     --out <store> --jb <checkout> --api-base <shim url> --judge-log <shim log> --tasks <list> --dry-run
+   ```
+
+   It resolves the kept harness and every task, and writes the exported tree to
+   `<store>/trees/<label>` and no record. Where it cannot find the kept harness of a run another
+   host holds, fetch the run first (`bun run runs fetch <name>`). Without `--judge-log` no
+   judgement's dollars are recorded and the table prints `judge ?`.
+4. **Run, detached, on the operator's standing word**, which covers the moment and the size
+   above: the eight tasks, the reference and a Starter beside it at one rollout a task, on a login
+   with room chosen as a keeper chooses one; each read's login and bill go into `cycle.md`. A larger
+   size (two rollouts a side, the 20-task comparison, a rejudge) takes the operator's word again. A
+   bench is a paid simulation beside the live runs: the same command with `--yes`, from a worktree
+   at a published commit, with the shim running, the arms in turn and never two processes on one
+   store, since a judgement's dollars are the shim log's rows inside its window. It is started so
+   that it outlives the session and is never waited for. An arm rolls one task at a time and judges it before the next, nothing else runs on the machine beside it, and
+   what an arm left in the machine's temporary folder is cleared before the next arm begins, so that
+   every rollout meets the same machine (operator, 12 November 2026). Every arm
+   keeps the one condition `score.ts` states in its head comment. On the two bills on record a
+   rollout costs 9 to 11 dollars with its judging, most of it the judge (124 dollars for 11 on
+   5 November 2026, about 85 for 9 on 9 November). Where no judge noise is on record,
+   `compare.ts rejudge` and `agree` read it from the existing deliverables for tens of dollars, and
+   come before any new arm (the backlog's item 15); a reading under a wider cut than the judge's
+   (`rejudge --cap`) is judged apart, on the operator's word, and never replaces the official score.
+5. **Read** with one `score.ts table --out <store> --tasks <list>` for each part, since the table
+   sums an arm only where it holds every task named and counts every task but a profession's first
+   as fair, and report its `fair uncut` block beside the fair one. A session that a login's limit or the provider cut is refused: it stays unjudged, and
+   the same command rolls it again (rule 7). A rollout that ended at its own 5 dollars or 3600 s is
+   scored on what it delivered, as a solve that ends at a limit is its side's fail. No rollout is
+   run again because its score disappoints.
+6. **Claim nothing inside the Starter's spread.** A difference between two arms smaller than the
+   difference between the Starter's own rollouts on the same tasks is no reading; a larger one is a
+   direction and names no winner (rule 6). A reading that names a winner or parity needs two
+   rollouts a side and a Starter A/A on the 20, on terms `compare.ts plan` fixes first and
+   `compare.ts read` prints (the backlog's items 3 and 15).
+7. **Review the result** with comparison-review, its ledger in the cycle's folder, before any
+   change follows from it: a task read to explain a result is burned for an arm built from that
+   reading.
+8. **Resolve and record.** Settle each prediction in the read's file with the table's counts, add
+   one row to `cycle.md`, and carry the outside row's new value to `docs/plan.md` in the
+   iteration's pull request. promotion-tuner's `trend.ts --bench <store>` then sets every arm on
+   record beside the promotion it names, where a climb the benchmark does not reward shows. A read
+   moves no campaign, query or promotion however it falls. Below
+   the Starter beyond its spread, check the carrying first. Inside the spread, nothing follows but
+   the next read. Above Harness²'s held-out arm beyond the spread, ask the operator for the 20-task
+   comparison, the only reading that can claim it.
+9. **Clear up after every bench**: once an arm's records are in `judged/`, move its rollout
+   workspaces (`hevo_ws_cc` under the temporary directory) to the Trash, and keep the store's
+   `trees/`, `dataset/` and `judged/`, which the records point to.
 
 ## Milestones
 
@@ -335,7 +552,7 @@ at 5; a promotion at 8) and stop at the first link that fails. Lane 21 of
 | 4 | session | 1 | the Builder changed something the solver uses | unchanged `build.finished`, idle sessions, all practice passed | `src/builder/prompt.ts`, `tools/d2/campaign-actions.ts`, `idleOf` (`tools/d2/campaign-terms.ts`) |
 | 5 | size | 2 | enough untied tasks and power at the margins | many ties, near miss, high `scored.detectable` | `--target` of the next campaign; lastingly link 1 |
 | 6 | host | 2 | loads read at each solve start | `HOST LOADED`, `LOAD MOVED`, long `campaign.waited` | campaigns per host |
-| 7 | promotion | 2 | the comparison reads `step` | `no-step` near the level, retained loss, A/A step | links 1 and 5 first; `stepOf` |
+| 7 | promotion | 2 | the comparison reads `step` | `no-step` near the level, retained loss, A/A step | links 1 and 5 first; `readsStep` |
 | 8 | next epoch | 1 | the Examiner writes for the new reference with room | refused drafts, few frontier tasks after promotion | `make` (`tools/d2/harness-builder.ts`), `ROWS` (`src/campaign/decide.ts`) |
 
 `scored.detectable` is power (the smallest winning share detected four times in five at these
@@ -359,7 +576,8 @@ tasks together.
 3. **Predict** in a ledger outside campaign folders, before the first solve: a run's `predictions-<run>.md`
    in a cycle, and `bun tools/d2/checkpoint.ts <flags> --predict "<sentence>"` for a comparison by hand.
    Use counts ("`contract.frozen` before `build.started`", "the first comparison unties at least six
-   tasks", "the A/A reads no step"), including one row on the link and one on honesty.
+   tasks"), including one row on the link and one on honesty, and name for each row the reader that
+   counts it as worded (an A/A step "either way" is `reading.ts`'s, not `runs view`'s one-sided count).
 4. **Launch fresh** through [run-management](../run-management/SKILL.md) with `bun run runs fresh
    <pack>`, the authorised budget and terms, `--hitl` only on request, the dry run and the launch as
    separate commands, and at most two campaigns a host (one for a cycle's forks).
@@ -397,6 +615,40 @@ run or a folder, and none repeats a fact one of these reports. Keep each timer w
 and authority in `cycle.md`; [references/timers.md](references/timers.md) holds each timer's map and
 what its prompt carries.
 
+Where one run's event calls for a judgement the pulse does not single out, the session waits on
+the log in a background command that ends at the event, the run's ending or the hours named, and so
+wakes it (its head comment says the rest). A wait ends with its session, so `cycle.md` names each
+beside the timers:
+
+```sh
+bun .claude/skills/run-improvement-campaign/scripts/until.ts <log | folder | name> \
+  --at harness.promoted --hours 9 --say "<what to read next>"
+```
+
+### A hook where the reaction is one fixed command
+
+A timer and a wake both need a session that is alive and idle, so a step that must not wait for one
+is written as a hook: code with no model in the loop, tied to the event. The pause at a second
+promotion is the case. The alert says the promotion within minutes, yet until a session armed
+`runs pause <name> --after reported --yes` the run went on, and overnight nobody may be awake.
+
+Two places take a hook. The local job that runs `runs alerts` pipes each look's new lines to a
+script, which acts on the line it names; this suits a step on a run, since it needs no session. A
+Claude Code hook (`Stop`, `UserPromptSubmit` or `PreToolUse` in a `settings.json`) runs inside a
+session's own loop, as the anti-stall hook does, and suits what must reach or hold a session: a
+wake, a fact put before it, a refusal ahead of a command. A reaction that needs judgement is a
+skill with its scripts instead, which a hook can name in the line it writes.
+
+A hook takes only the step the protocol already grants at that event, here the pause at a trigger,
+and never a launch, a merge or another decision of `AGENTS.md` section 3. It writes one line to the
+log the alerts job writes, so that a session reads what was done and `wri2p2.ts due` then prints
+`waits` instead of `pause`. It starts a command that waits in a session of its own, since the job
+that fed it must end. And it carries a dry mode that prints the command, a way to leave one named
+run out, and in its head comment the operator's words it rests on. Hooks of the operator's own
+machines are listed in the local skill `operator-machines`.
+
+### A firing
+
 Every firing follows one protocol; what it reads and concludes between steps is the session's
 judgement.
 
@@ -410,9 +662,8 @@ judgement.
    disagreeing recount adds a row; a falsified row opens a row in the one triage list (problem,
    link, event, status), ranked by first failed link and then by how many runs show it.
 3. **Chain or rest**: where `due` still lists a step this session can take, set a one-shot ten
-   minutes on that carries the same prompt; otherwise one at the next event a log predicts (for a
-   comparison, scored tasks × solves a side × 2 × median solve minutes ÷ concurrent solves). Delete
-   replaced timers by id.
+   minutes on that carries the same prompt; otherwise wait on the next event with `until.ts`, and
+   set a one-shot only at a deadline no event marks. Delete replaced timers by id.
 4. **Log** one row where something changed: the time the clock gave, what moved, the rows resolved
    and the timer changes. Speak to the operator only when a milestone landed, a run stalled or
    ended, or a prediction resolved.
@@ -420,8 +671,11 @@ judgement.
 | Timer | When | It wakes the session to |
 | --- | --- | --- |
 | none: the pulse and the alerts | as an event lands; the pulse every 290 s through the hook, or where a session has none, one Monitor on `bun run runs pulse --every 290 --state <file>` | read that milestone and follow the protocol: a triggered run starts an iteration, a freed slot goes as the iteration's step 5 says |
+| none: a hook | at its event, with no model and no session | run the one command the protocol grants there: at a second promotion, the pause after the next comparison |
+| none: the alerts log | as a run owes a step; one `Monitor` on the log the alerts job writes (`tail -n 0 -F`, run-management), re-armed when it expires | take the loop's step for that run |
 | driver | recurring, every two hours, with its ten-minute chain while steps are owed | the protocol, for a step no event announces |
-| milestone | one-shot at a predicted event or deadline | that milestone or row |
+| none: a wait on the run's log | at the event `until.ts` was given, the run's ending or its hours | read that event and resolve the rows it settles |
+| milestone | one-shot at a deadline no event marks | that row |
 | open decisions | recurring, every four hours | decide the routine doubts, each with what would overturn it, and list for the operator those section 3 reserves |
 | morning read | recurring, once a day after the nightly local jobs | read what changes once a night and no job reports: those jobs' outcome and last exit, the hosts' disks, where the stack stands on `main` |
 | handover | one-shot at the agreed time | the five points, changes, open decisions and the loop's own measures |
@@ -430,15 +684,19 @@ At a handover the timers are counted with `timers.ts` instead of asked
 ([references/timers.md](references/timers.md), "Reading the timers"), and the loop's own measures
 are recorded as [references/cycle-ledger.md](references/cycle-ledger.md) lays them out.
 
-The pulse is the one recurring watch of a run, and a one-off wait never stands in for it. A
-`Monitor` expires within half an hour and each re-arm is a model turn, so it serves a bounded wait.
+The pulse says every event of a run and the alerts log each step a run owes, so a session whose
+hook is paused follows that log with one `Monitor`, or the pulse with `--every` where no local job
+writes the log, and wakes at a step alone. A `Monitor` expires
+within half an hour and each re-arm is a model turn, so it serves a bounded wait.
 A `CronCreate` timer lives only in its session, fires only while it is idle, and expires after seven
 days if recurring, so each prompt stands alone after compaction, carrying what
 [references/timers.md](references/timers.md) lists.
 
 ## Which skill each step uses
 
-run-management runs the campaigns, whole-run-investigation reads them, system-path-simulation proves
+run-management runs the campaigns, decision-points says how far each is taken,
+whole-run-investigation reads them, system-path-simulation proves
 paths, stack-pr implements and lands, attribution-and-proof precedes a claim, harness-audit a
-handover, and oracle-handover takes what the repository cannot settle. Change this skill where a pass
+handover, comparison-review reads an outside comparison, and oracle-handover takes what the
+repository cannot settle. Change this skill where a pass
 exposes duplicated work or a wrong decision, replacing the rule at its owner.

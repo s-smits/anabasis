@@ -77,19 +77,28 @@ async function removeWhole(root: string): Promise<void> {
 /**
  * Darwin's, as Linux ends a pid namespace: kill every process working in `root` or running a
  * program from it, every process of `group` where a walled command's end names its process group
- * (`runWalled`), and every live descendant of those, for a few passes while one that forks leaves
+ * (`runWalled`), and every live descendant of those, in passes while one that forks leaves
  * another. A descendant is found by its parent, as Bun's `--no-orphans` walks them, which catches
  * one that left the group with `setsid` while its parent lives; one that left both the group and
  * the root after its parent ended is out of reach. Each pass kills from one listing, since a kill
  * changes what the next listing shows.
+ *
+ * The passes end at the second in a row that finds nothing to kill, or after a second. One
+ * empty pass after a kill proves nothing: a pass lists the pids and then reads each, and a killed
+ * parent can finish a fork in between, so that it reads as gone while its child is in no listing
+ * yet. With eight loops forking at once, a release that ended at its first empty pass, or after
+ * five, left a child running in 4 of 800 (11 November); ending at the second left none in 1,920,
+ * the longest taking 349 ms.
  */
-export function endHolders(root: string, group?: number): void {
+export function endHolders(root: string, group?: number, table: typeof processTable = processTable): void {
   if (runtimeProcess.platform !== "darwin" || !existsSync(root)) return;
   // libproc names a file by its real path, and a root under /var is /private/var to it.
   const real = realpathSync.native(root);
-  for (let pass = 0; pass < 5; pass++) {
-    const holders = holdersOf(real, group);
-    if (holders.length === 0) return;
+  const until = performance.now() + 1000;
+  for (let settled = true; performance.now() < until; ) {
+    const holders = holdersOf(real, group, table());
+    if (holders.length === 0 && settled) return;
+    settled = holders.length === 0;
     for (const pid of holders) {
       try {
         runtimeProcess.kill(pid, "SIGKILL");
@@ -100,12 +109,12 @@ export function endHolders(root: string, group?: number): void {
   }
 }
 
-/** The pids, but this process's and launchd's, whose working directory or program lies in `root`
- *  (`processTable`, libproc, which reads them as lsof named them: by their real paths), or whose
+/** The pids of `rows`, but this process's and launchd's, whose working directory or program lies in
+ *  `root` (`processTable`, libproc, which reads them as lsof named them: by their real paths), or whose
  *  process group is `group`, with every descendant of theirs. */
-function holdersOf(root: string, group: number | undefined): number[] {
+function holdersOf(root: string, group: number | undefined, rows: ReturnType<typeof processTable>): number[] {
   const inRoot = (path: string | null) => path !== null && (path === root || path.startsWith(`${root}/`));
-  const table = processTable().filter(({ pid }) => pid > 1 && pid !== runtimeProcess.pid);
+  const table = rows.filter(({ pid }) => pid > 1 && pid !== runtimeProcess.pid);
   const held = new Set(
     table.filter((row) => row.pgid === group || inRoot(row.cwd) || inRoot(row.program)).map(({ pid }) => pid),
   );

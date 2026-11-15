@@ -26,7 +26,6 @@ procedures and never run inside an investigation.
 | Is a run alive, and what did it last do? | `bun run runs pulse` |
 | Is there supply for a comparison? | `bun run runs view <name>` |
 | Does the checker stand on fresh controls? | `bun tools/c/accept.ts <the campaign's flags>` |
-| What does a repaired checker move? | `bun tools/c/repaired.ts --log <log> --bundle <repaired pack>` |
 | What do set-aside rejections read once labelled? | `bun tools/d2/settle.ts <the campaign's flags> --session <id>` |
 | Did another model answer any seat? | `bun tools/runs/degradations.ts <name>` (and `data/runs/degradations/`) |
 | Which sessions ran, from which parent, with which reading? | `bun tools/wri/wri.ts read --log <log>`, row F and `CHAIN` |
@@ -34,7 +33,8 @@ procedures and never run inside an investigation.
 | How far had each campaign got at each work hour? | `bun tools/wri/wri.ts trajectory --log <log>,<log> [--grades <report>] [--hours 2,4,8]` (a description; rule 1 keeps "better" for a comparison) |
 | Did tasks and harnesses grow across campaigns, graded blind? | `bun tools/wri/wri.ts packets --log <log>,<log> --out <dir> --graders 2`, launch its `launch.json`, then `packets --out <dir> --join` and `trajectory --grades <dir>/grades.tsv` |
 | What did earlier investigations find? | `bun tools/wri/wri.ts index [--root <dir>] [--out <file>]`, which rewrites `.ana/wri/INDEX.md` and stays under `.ana/` |
-| How does this run's cost a promotion compare with its release? | `bun .claude/skills/promotion-tuner/scripts/table.ts --rows groups` (or `--name <part> --rows promotions`) |
+| How does this run's cost a promotion compare with its release? | `bun .claude/skills/promotion-tuner/scripts/table.ts --name <part> --rows promotions`, read against `trend.ts --pack <pack>` |
+| Is this pack's climb faster or slower than in the weeks before, and does it hold? | `bun .claude/skills/promotion-tuner/scripts/trend.ts --pack <pack>` |
 
 ## The procedure
 
@@ -48,7 +48,7 @@ under `.ana/wri/<date>-<campaign>/` on the central host.
    (`bun run runs stop <name> --yes`), or pass `--snapshot`. With
    `bun --env-file=.env.runs tools/wri/wri.ts ... --log <name>`, a remote campaign is fetched into
    `data/runs/<host>/<name>/` (`runs fetch <name>` refreshes it). Where the last receipt names
-   another commit, `start` checks it out as `anabasis-wri-<commit>` so lanes can run readers as they
+   another commit, `start` checks it out as `anabasis-at-<commit>` so lanes can run readers as they
    ran. Later verbs reread the stored paths; a new snapshot is a new investigation.
    *Check:* use the tree the `host-code digest` line names, or mark each source claim as concerning
    another tree (the receipt, not the digest, gives the commit). Settle rows A to F.
@@ -102,12 +102,15 @@ source.
 | 6 | `synthesis --out <dir>` | `synthesis-prompt.md` |
 | lanes 1, 3, 4 | `grade --log <log> [--bundle <pack>] (--task <taskId> --answer <file> \| --solve <id> \| --answers <dir>) [--set <path>=<json>]...` | nothing: one verdict line an answer, the recorded verdict beside a regraded solve, and with `--set` the same answer with one field changed (`--bundle` only for a stored pack) |
 | any | `derive (--log <log>[,<log>...] \| --all) [--verbose] [--force] [--no-embed]` | `data/derived/<campaign>@<path>/` (one folder a log): one file a reader and `manifest.json` |
+| any | `reader <name> --log <log>` | nothing: one reader's text, as `derive` writes it to its file |
 
 ### The readers, derived
 
-Deterministic readers each map one log to text (`READERS`, `tools/wri/derive.ts`, 44 of them on
-10 November; `bun run runs pulse` runs the same list), and each entry says in one line what its file
-holds. The file the open lanes share carries that list as a table, a campaign a column with each
+Deterministic readers each map one log to text (`READERS`, `tools/wri/derive.ts`, 43 of them on
+11 November; `bun run runs pulse` runs the same list), and each entry says in one line what its file
+holds. All but eleven are functions of the log's events, called on one parse of it; the eleven that
+need more (a campaign found by name, the embedding model, the kept harnesses) keep a process of
+their own. `wri.ts reader <name> --log <log>` prints any one. The file the open lanes share carries that list as a table, a campaign a column with each
 file's lines, beside the tools a lane runs with arguments (`## Tools a lane runs`,
 [the catalogue](references/lanes.md)), and a lane's own prompt names, under its triggers, the file
 that holds the rows each fired trigger counted (`ROWS`, `tools/wri/investigation.ts`). The same
@@ -115,12 +118,12 @@ section tells the lane that the record behind every table stays open to it. An i
 lane is given none of this. A reader that finds its campaign by name (`view`, `loop`, `source`,
 `logged`, `cost`, `table`) is not run on a snapshot or a second copy, whose name finds another log;
 its file says so in one line. Left out are tools that read no run
-(`comparison-reading/scripts/size.ts`, `examiner-complexity/scripts/rungs.ts`,
+(`comparison-reading/scripts/size.ts`, `examiner-complexity/scripts/grades.ts rungs`,
 `system-audit/scripts/recent.ts`), that need more than a campaign
-(`examiner-complexity/scripts/grades.ts`, `oracle-handover/scripts/slice.ts`, `tools/c/repaired.ts`,
+(`examiner-complexity/scripts/grades.ts`, `oracle-handover/scripts/slice.ts`,
 `tools/runs/search.ts`, `wri.ts grade`), that write (`wri.ts start`, `lanes`, `collect`, `synthesis`,
 `index` and `derive`, `wri2p2.ts open`, `tools/c/rejections.ts`, `tools/d2/close.ts`) or that call a
-paid model (`system-path-simulation/scripts/live-seat.ts` and `referee-seat.ts`,
+paid model (`system-path-simulation/scripts/live-seat.ts`,
 `compare-systems/scripts/systems.ts`).
 `derive` writes `data/derived/<campaign>@<path>/<reader>.txt` in the main worktree, one folder a
 log path, so a snapshot and the live log never share one, rewriting a folder only when its log or
@@ -149,7 +152,9 @@ in the one that wrote each report before the next lane. With a smaller budget, r
 3. **Harness (12 to 16)**, lane 12 first.
 4. **Supply (7 to 11), solve (24), economy (25), runs (26).**
 5. **Climb (21 to 23, 27, 28, 30, 31)**: open it before anyone is told a campaign improved a harness. Lane 27
-   runs from the start.
+   runs from the start. In a jobstat run's iteration its grade also decides whether the newest
+   promoted reference is read on the outside benchmark, and the iteration's `outside` gate asks
+   whether that read has a row yet (run-improvement-campaign, "The outside aim").
 
 In a release cycle, launch every lane at once and synthesise from the reports in hand within the
 twelve-hour improvement window (run-improvement-campaign). `--lanes` builds a named lane without its
@@ -190,7 +195,7 @@ them unless the primary deletes them.
   traces; a finding handed to a seat that writes the harness or the tasks is the leak lane 12 looks
   for.
 - **A `pack/` finding is a decision, never a patch.** It goes to the checker's owner, and a repair is
-  another campaign (`accept.ts --freeze`, `repaired.ts`).
+  another campaign (`accept.ts --freeze`).
 - **Verify every session's model from its transcript** before using its report.
 
 ## Editing the shared instructions
@@ -198,7 +203,9 @@ them unless the primary deletes them.
 `<dir>/shared-instructions.md` goes whole into the file the open lanes share and into the synthesis;
 an isolated lane gets only its campaign and hard-rule sections. A table of the prior state whose
 header has an `id` and a `lanes` column is read as predictions: each lane a row names is handed that
-row in its own prompt and owes it a line. A blank `##` section refuses `lanes`, and deleting a
+row in its own prompt and owes it a line, with how often the row's trigger occurred in the log and
+how often its mechanism's event followed, so that the vetting can name each change's rung
+(`AGENTS.md`, section 9) from counts. A blank `##` section refuses `lanes`, and deleting a
 heading drops that section on purpose.
 
 | section | written by | holds |

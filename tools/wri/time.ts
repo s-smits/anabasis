@@ -28,12 +28,14 @@ import type { LogEvent } from "#src/kernel/log.ts";
 import { AT_A_LIMIT } from "#src/kernel/reports.ts";
 import { degradations, type Turn, tracesIn } from "#src/kernel/trace.ts";
 import { roleOf, spendOf } from "#src/kernel/meter.ts";
+import { HOUR_MS, MINUTE_MS } from "#src/meta/clock.ts";
 import { isNumber, type JsonValue } from "#src/meta/json-shape.ts";
 import { countBy, median } from "#src/meta/tally.ts";
 import { plural } from "#src/meta/text.ts";
 import {
   type Compared,
   fired,
+  firedIf,
   type Index,
   measured,
   percent,
@@ -85,11 +87,10 @@ const SPANS = [
 const BETWEEN_MOVES = "between moves";
 /** The recorded waits by what they waited for, in the order the hours line names them. */
 const WAIT_KINDS = ["provider", "network", "load"] as const;
-const MINUTE_MS = 60_000;
-const HOUR_MS = 3_600_000;
 
 interface Span {
   readonly part: string;
+  readonly id: string;
   readonly from: number;
   readonly until: number;
 }
@@ -129,14 +130,11 @@ function limitTriggers(log: Index): Trigger[] {
       return share(mine.filter(atALimit).length, mine.length);
     };
     const { at, of } = detail(missed);
-    return at === 0
-      ? []
-      : [
-          fired(
-            "MISSES AT A LIMIT",
-            `${session}: ${side(own.old)} reference misses and ${side(own.fresh)} new at a limit ${of}`,
-          ),
-        ];
+    return firedIf(
+      at !== 0,
+      "MISSES AT A LIMIT",
+      `${session}: ${side(own.old)} reference misses and ${side(own.fresh)} new at a limit ${of}`,
+    );
   });
   // An Examiner's admission solve names its session where a comparison's names the comparison.
   const started = new Set(log.of("comparison.started").map((start) => text(start.session)));
@@ -144,14 +142,11 @@ function limitTriggers(log: Index): Trigger[] {
   const { at, of } = detail(outside);
   return [
     ...compared,
-    ...(at > 0
-      ? [
-          fired(
-            "MISSES AT A LIMIT",
-            `outside a comparison: ${share(at, outside.length)} misses at a limit ${of}`,
-          ),
-        ]
-      : []),
+    ...firedIf(
+      at > 0,
+      "MISSES AT A LIMIT",
+      `outside a comparison: ${share(at, outside.length)} misses at a limit ${of}`,
+    ),
   ];
 }
 
@@ -170,29 +165,22 @@ function servedTriggers(log: Index, results: ReturnType<typeof scoredOf>): Trigg
     const other = scoring.filter((solve) => servedBy.has(solve.id));
     const under = other.filter((solve) => solve.harness === own.old).length;
     const models = other.flatMap((solve) => (servedBy.get(solve.id) ?? []).map((row) => row.served));
-    return other.length === 0
-      ? []
-      : [
-          fired(
-            "SERVED ANOTHER MODEL",
-            `${session}: ${share(other.length, scoring.length)} solves, ${String(under)} of them under the reference harness; ${tally(
-              countBy(models, (model) => model),
-            )}`,
-          ),
-        ];
+    return firedIf(
+      other.length > 0,
+      "SERVED ANOTHER MODEL",
+      `${session}: ${share(other.length, scoring.length)} solves, ${String(under)} of them under the reference harness; ${tally(
+        countBy(models, (model) => model),
+      )}`,
+    );
   });
   // A campaign whose comparisons scored none of the solves another model answered still opens the
   // lane: recode's every seat ran on claude-opus-5 under a check-defects reading.
   const turns = degraded.reduce((sum, row) => sum + row.turns, 0);
-  const anywhere =
-    otherModel.length === 0 && turns > 0
-      ? [
-          fired(
-            "SERVED ANOTHER MODEL",
-            `the campaign: ${plural(turns, "turn")} in ${String(new Set(degraded.map((row) => row.id)).size)} sessions and solves, none a comparison's scored solve; served by ${[...new Set(degraded.map((row) => row.served))].join(", ")}`,
-          ),
-        ]
-      : [];
+  const anywhere = firedIf(
+    otherModel.length === 0 && turns > 0,
+    "SERVED ANOTHER MODEL",
+    `the campaign: ${plural(turns, "turn")} in ${String(new Set(degraded.map((row) => row.id)).size)} sessions and solves, none a comparison's scored solve; served by ${[...new Set(degraded.map((row) => row.served))].join(", ")}`,
+  );
   return [...otherModel, ...anywhere];
 }
 
@@ -260,14 +248,11 @@ export function deadlineTriggers(log: Index): Trigger[] {
       const order = solves.map((solve) => (solve.harness === own.old ? "o" : "f")).join("");
       return !MIRRORS.some((mirror) => mirror.repeat(order.length).startsWith(order));
     }).length;
-    return late > 0 && own.old !== own.fresh
-      ? [
-          fired(
-            "STARTS OUT OF TURN",
-            `${session}: ${share(late, tasks.size)} tasks started their harnesses' solves out of turn`,
-          ),
-        ]
-      : [];
+    return firedIf(
+      late > 0 && own.old !== own.fresh,
+      "STARTS OUT OF TURN",
+      `${session}: ${share(late, tasks.size)} tasks started their harnesses' solves out of turn`,
+    );
   });
   const middles = loads.flatMap(({ halves }) => halves);
   const [calmest, busiest] = [Math.min(...middles), Math.max(...middles)];
@@ -278,14 +263,11 @@ export function deadlineTriggers(log: Index): Trigger[] {
     ...loaded,
     ...outOfTurn,
     ...servedTriggers(log, results),
-    ...(moved
-      ? [
-          fired(
-            "LOAD MOVED",
-            `median load when each comparison's solves started, its first half then its second: ${loads.map(({ session, halves }) => `${session} ${halves.map((half) => half.toFixed(1)).join(" then ")}`).join("; ")}`,
-          ),
-        ]
-      : []),
+    ...firedIf(
+      moved,
+      "LOAD MOVED",
+      `median load when each comparison's solves started, its first half then its second: ${loads.map(({ session, halves }) => `${session} ${halves.map((half) => half.toFixed(1)).join(" then ")}`).join("; ")}`,
+    ),
   ];
 }
 
@@ -293,36 +275,37 @@ export function deadlineTriggers(log: Index): Trigger[] {
  *  its start to its end. One a stop cut ends at the campaign's ending, which a stop writes. A
  *  comparison so cut goes on under its id with no second start, so it opens again where the campaign
  *  resumes: buffer's g-1 ran 13.3 minutes so on 12 October that had read as between moves. */
-function spansOf(log: Index): Span[] {
+export function spansOf(events: readonly LogEvent[]): Span[] {
   const spans: Span[] = [];
-  const open = new Map<string, { part: string; from: number }>();
+  const open = new Map<string, Omit<Span, "until">>();
   const close = (key: string, until: number) => {
     const started = open.get(key);
     if (started !== undefined) spans.push({ ...started, until });
     open.delete(key);
   };
-  let cut: [string, { part: string; from: number }][] = [];
-  for (const { at, kind, data } of log.events) {
+  let cut: [string, Omit<Span, "until">][] = [];
+  for (const { at, kind, data } of events) {
     const time = Date.parse(at);
-    for (const [key, { part }] of cut.splice(0)) open.set(key, { part, from: time });
+    for (const [key, span] of cut.splice(0)) open.set(key, { ...span, from: time });
     // One exam is drafted at a time, so a draft that starts ends one left open: until 28 October a
     // draft cut at 90 seconds counted to the log's end, 21.5 of truss v4's 33.3 Examiner hours.
     for (const key of open.keys()) if (kind === "draft.started" && key.startsWith(kind)) close(key, time);
     for (const [part, start, end] of SPANS) {
-      const key = `${start}:${text(data.session)}`;
-      if (kind === start && !open.has(key)) open.set(key, { part, from: time });
+      const id = text(data.session);
+      const key = `${start}:${id}`;
+      if (kind === start && !open.has(key)) open.set(key, { part, id, from: time });
       if (kind === end) close(key, time);
     }
     if (kind === "campaign.ended") cut = [...open].filter(([, span]) => span.part === "comparisons");
     if (kind === "campaign.ended") for (const key of open.keys()) close(key, time);
   }
-  const last = Date.parse(log.events.at(-1)?.at ?? "");
+  const last = Date.parse(events.at(-1)?.at ?? "");
   for (const key of open.keys()) close(key, last);
   return spans;
 }
 
 /** The union of intervals, so concurrent sessions or provider waits count their overlap once. */
-function unionMs(windows: readonly { readonly from: number; readonly until: number }[]): number {
+export function unionMs(windows: readonly { readonly from: number; readonly until: number }[]): number {
   let [held, reached] = [0, -Infinity];
   for (const { from, until } of windows.toSorted((a, b) => a.from - b.from)) {
     held += Math.max(0, until - Math.max(from, reached));
@@ -401,7 +384,7 @@ export function overloadOf(events: readonly LogEvent[]): (from: number, to: numb
  *  (`waitsOf`) with the hours a promotion with and without it. The load half is an indicator: other
  *  solves run while one waits for the load. */
 export function hoursLine(log: Index): string {
-  const spans = spansOf(log);
+  const spans = spansOf(log.events);
   const [first, last] = [Date.parse(log.events[0]?.at ?? ""), Date.parse(log.events.at(-1)?.at ?? "")];
   const whole = Number.isNaN(first) ? 0 : last - first;
   const parts = new Map<string, number>();
@@ -460,7 +443,7 @@ export function costTriggers(log: Index): Trigger[] {
     .flatMap((at, index) => (index > 0 && at - (times[index - 1] ?? at) > threshold ? [index] : []))
     .map((index) => ({ index, gap: (times[index] ?? 0) - (times[index - 1] ?? 0) }))
     .toSorted((a, b) => b.gap - a.gap);
-  const spans = spansOf(log);
+  const spans = spansOf(log.events);
   const named = gaps.slice(0, SILENCES_NAMED).map(
     // The log's lines either side, from 1 as `sed -n` counts: 11 of 13 lane 25 sessions to 10 November found them again.
     ({ index, gap }) =>
@@ -470,16 +453,15 @@ export function costTriggers(log: Index): Trigger[] {
   const total = spend.reduce((sum, [, dollars]) => sum + dollars, 0);
   const [[leader, most] = ["", 0]] = spend;
   return [
-    ...(gaps.length > 0
-      ? [
-          fired(
-            "LONG SILENCES",
-            `${plural(gaps.length, "gap")} over ${(threshold / MINUTE_MS).toFixed(1)} min, ${why}: ${named.join("; ")}`,
-          ),
-        ]
-      : []),
-    ...(total > 0 && leader !== "solver" && most > total / 2
-      ? [fired("SPEND LED BY A ROLE", `${leader}: ${percent(most / total)} of billed dollars`)]
-      : []),
+    ...firedIf(
+      gaps.length > 0,
+      "LONG SILENCES",
+      `${plural(gaps.length, "gap")} over ${(threshold / MINUTE_MS).toFixed(1)} min, ${why}: ${named.join("; ")}`,
+    ),
+    ...firedIf(
+      total > 0 && leader !== "solver" && most > total / 2,
+      "SPEND LED BY A ROLE",
+      `${leader}: ${percent(most / total)} of billed dollars`,
+    ),
   ];
 }

@@ -176,9 +176,9 @@ harnesses, weighted to checks that refused nothing, and say from the published r
 answer could still get wrong: an unread field, an uncited rule, a looser tolerance. An `author`
 instrument means only that the author's computation agreed, and a named tool is a field engine only
 if it does the decisive work. With no pass, the check rows are the whole lane. For `VERIFIER TOOLS
-MOVED` or a checker trigger, say under which tool tree or checker each result counted; carried tasks
-are read with `tools/c/repaired.ts`, `wri.ts grade` tests a constructed answer, and `grade --solve
-<id> --set <path>=<json>` regrades a recorded one with one field changed. A `try-` task, or a solve
+MOVED` or a checker trigger, say under which tool tree or checker each result counted; `wri.ts grade`
+tests a constructed answer, and `grade --solve <id> --set <path>=<json>` regrades a recorded one
+with one field changed. A `try-` task, or a solve
 an Examiner session asked for, is a rehearsal and never scored; `checks.txt` counts it under
 `examiner`. Read no pass rate. The decision: whether a pass means a right answer or a well-shaped one. Routes to
 `pack/evaluator`, `pack/brief`, `pack/controls` and `operator` (a freeze `despite` faults).
@@ -302,8 +302,7 @@ Label: `supply`.
 Importance: 0.65.
 Marks: none.
 
-Starts from `SUPPLY THIN (lane 7)`, `GATE REFUSED (lane 7)`, `SCORED AFTER RELEASE (lane 7)` and
-`SAFEGUARD-8 PROMOTION ON AUTHOR ROOM (lane 7)`.
+Starts from `SUPPLY THIN (lane 7)`, `GATE REFUSED (lane 7)` and `SCORED AFTER RELEASE (lane 7)`.
 
 Where are tasks lost between proposal and scored set, and was each refusal right? For each
 `task.gate` refusal (`packageGate`; `try_task` in an older log), say whether it named a real defect
@@ -311,9 +310,7 @@ the Examiner could act on. Count what left after admission, and hold the frontie
 (`SIZE`; `refusals` needs `sweepOf(level)`). Never propose loosening admission from yield alone.
 `SCORED AFTER RELEASE` counts the released tasks a comparison named after their release, retained
 ones included: a task the Builder practised on was then scored, which the wall forbids.
-`SAFEGUARD-8` names a promotion that clears only on room the author's own answer and objective
-create: read both before the promotion is reported. The decision: whether another Examiner
-session is bought first. Routes to `examiner-prompt` (`src/examiner/prompt.ts`) and `host`
+The decision: whether another Examiner session is bought first. Routes to `examiner-prompt` (`src/examiner/prompt.ts`) and `host`
 (`src/kernel/task.ts`).
 
 **8. Whether validity separates.**
@@ -326,16 +323,16 @@ Starts from `TIES BETWEEN VALID ANSWERS (lane 8)` and
 `SAFEGUARD-9 PROMOTION BEYOND VALIDITY (lane 8)`.
 
 Which measure carried each reading: validity, the objective or the bill (`pointsOf`,
-`src/kernel/compare.ts`)? Give each comparison's tally and p as scored, without the bill (`stepOf`,
-`unbilled`) and on validity alone. `TIES BETWEEN VALID ANSWERS` means only the objective (floor
-`ROOM`) and the bill separate most tasks; `SAFEGUARD-9` names a promotion that fails on validity
-alone, so count the tasks each measure won (`replay.txt`; `scores.txt` gives each comparison's
-tally on validity alone and on the objective alone, beside the A/A halves). The check program
-stands at `<campaign folder>/exams/<exam hash>/checks/`. Say whether a step rests on answers the
-reference could not give or on better answers to shared tasks. A drafted exam's objective is its
-author's computation, so check its arithmetic first. The decision: how
-a promotion is worded, and whether the objective measures quality. Routes to `operator`, and `host`
-(`src/kernel/compare.ts`) where the tallies disagree with the report.
+`src/kernel/compare.ts`)? Give each comparison's tally and p as scored, without the bill
+(`readsStep`, `unbilled`) and on validity alone. `TIES BETWEEN VALID ANSWERS` means only the
+objective (floor `ROOM`) and the bill separate most tasks; `SAFEGUARD-9` names a promotion that
+fails on validity alone, so count the tasks each measure won (`replay.txt`; `scores.txt` gives each
+comparison's tally on validity alone and on the objective alone, beside the A/A halves). The check
+program stands at `<campaign folder>/exams/<exam hash>/checks/`. Say whether a step rests on answers
+the reference could not give or on better answers to shared tasks. A drafted exam's objective is its
+author's computation, so check its arithmetic first. The decision: how a promotion is worded, and
+whether the objective measures quality. Routes to `operator`, and `host` (`src/kernel/compare.ts`)
+where the tallies disagree with the report.
 
 **9. Ties and the budget.**
 
@@ -417,8 +414,9 @@ the last practised state; name the later edits. Only the diff inventories the ch
 writes leave no `edit` call, and limits come from the condition (`agent/config.yaml` is ignored).
 Check every program for the Builder's one limit: no task id, text or answer, which would score
 higher on exactly those tasks and nowhere else (`names.txt` lists where a kept harness's own files
-name a task id, prefix, family or rare identifier, each hit with its length and how many tasks hold
-it; a hit is a place to read, since short names recur by chance). A search and a filter against the
+name a task id, prefix, family or rare identifier, or copy a span of six or more words of a task's
+public input, each hit with its length and how many tasks hold it; a hit is a place to read, since
+short names and stock phrases recur by chance). A search and a filter against the
 public rules are
 allowed, and the solver decides what it submits. The decision:
 what a step is attributed to, and whether the harness helped the solver or answered for it. Routes to
@@ -529,8 +527,9 @@ Starts from `STEP CARRIERS (lane 17)`.
 
 Does a step generalise across the scored tasks, or rest on a few that share something else?
 `STEP CARRIERS` gives each step's untied tasks and how many top wins it could lose and still clear.
-From `readings.txt`, `tasks.txt` and `scores.txt` (each step's p without each win, its wins to
-spare, and its tallies by writing session and family; `nearness.txt` for tasks that read alike):
+From `readings.txt`, `tasks.txt`, `scores.txt` (each step's p without each win and its wins to
+spare) and `pairs.txt` (its tallies by writing session and family; `nearness.txt` for tasks that
+read alike):
 
 1. find the smallest set of wins whose removal takes the step below its level;
 2. say what they share: a unit or scale, a family, the session that wrote them, a convention, a reach
@@ -551,17 +550,17 @@ Marks: `standing`.
 Starts from `NOTHING SCORED (lane 18)`, `CUT BY ITS CAP (lane 18)` and
 `SET SHORT (lane 18)`, and is standing.
 
-What could each test detect at its sample size (`flipP`, `stepOf`, `src/kernel/compare.ts`; at 0.02
-it clears at 6-0, 8-1, 10-2 or 12-3)? For each comparison read the untied tasks, wins and losses, p,
-`detectable` and `falseRate`, frontier and retained apart, then one line: a `not-scored` or a
-comparison `CUT BY ITS CAP` tested nothing, an underpowered `no-step` is no evidence of no gain (say
-how many more wins would have cleared), and a `step` rests on its untied tasks alone.
-`readings.txt` prints each comparison's p, the p read for the reference, the wins to spare or
-losses short of a step, the wins its losses would need on equal margins, and its cap against the
-test's price at the rate billed before it started. Say whether the
-tasks that left (`SET SHORT`) could move the reading. Every attempt adds false-step risk at the
-level, and terms are never topped up (rule 4). The decision: whether the operator enlarges future comparisons. Routes to
-`operator`, and `host` only for an arithmetic fault.
+What could each test detect at its sample size (`flipP`, `readsStep`, `src/kernel/compare.ts`; at
+0.02 it clears at 6-0, 8-1, 10-2 or 12-3)? For each comparison read the untied tasks, wins and
+losses, p, `detectable` and `falseRate`, frontier and retained apart, then one line: a `not-scored`
+or a comparison `CUT BY ITS CAP` tested nothing, an underpowered `no-step` is no evidence of no gain
+(say how many more wins would have cleared), and a `step` rests on its untied tasks alone.
+`readings.txt` prints each comparison's p, the p read for the reference, the wins to spare or losses
+short of a step, the wins its losses would need on equal margins, and its cap against the test's
+price at the rate billed before it started. Say whether the tasks that left (`SET SHORT`) could move
+the reading. Every attempt adds false-step risk at the level, and terms are never topped up (rule
+4). The decision: whether the operator enlarges future comparisons. Routes to `operator`, and `host`
+only for an arithmetic fault.
 
 **19. The starter.**
 
@@ -641,9 +640,15 @@ What stops the campaign climbing now, as one link with its count? Walk the lates
 
 `tools/wri/table-timeline.ts <log>` replays the table at each change beside the moves made: how
 long each named move stood, how much of that passed inside Builder waits, and what admission
-refused. A row without `=` ran under other code, so its replay is a counterfactual. `readings.txt`
+refused. Its `admissible` row marks where a first comparison could first start, and each `compare`
+move names the tasks held out and released as it began, so the Builder's calls between the two
+rows are what it chose instead of comparing. A row without `=` ran under other code, so its replay
+is a counterfactual. `readings.txt`
 prints each comparison's cap, its reserve and the test's price, and whether it was cut. Name the
-link, its count against what it needed, and its owner. Count promotions within this campaign only. The decision: what runs next. Routes to `examiner-prompt`, `builder-prompt`,
+link, its count against what it needed, and its owner, and for that link each change new since the
+parent run that sits on it (the prior state lists them), with how often its trigger occurred and its
+event followed: a change whose event never fired on the binding link has not been measured, whatever
+the link reads. Count promotions within this campaign only. The decision: what runs next. Routes to `examiner-prompt`, `builder-prompt`,
 `operator` (size or stop) and `host` (`src/campaign/decide.ts`).
 
 **22. The promotion and the climb after it.**
@@ -661,7 +666,10 @@ Read this lane before saying a campaign improved a harness, in five parts kept a
 
 1. **The rule.** `PROMOTED` gives the harness, its parent, who promoted it (the table, or
    `tools/d2/promote.ts` with any `despite`) and its comparisons with tally, p, level and A/A; the
-   A/A is evidence about variance, never a second threshold. Say whether lane 19 finds it confirmed,
+   A/A is evidence about variance, never a second threshold. Count the candidate's wins by validity
+   and by the objective alone, and say whether the starter comparison was the first comparison of
+   its epoch to tally a task, since a Builder comparison that reads first leaves the promotion
+   unconfirmed for good. Say whether lane 19 finds it confirmed,
    and what the tasks written after it read alone (`after`, `starter-reads.ts`); where every win is an objective margin, read lane 29 before calling the step
    an effect.
 2. **What the step measured.** `STARTER BARE` means the reference answered nothing on most tasks, so
@@ -917,13 +925,16 @@ Marks: none.
 
 Starts from `MARGINS INSIDE THE NOISE (lane 29)`.
 
-Did each step whose untied tasks all tie on validity win by more than the reference's own spread?
+Did each step whose untied tasks all tie on validity win by more than either side's own spread?
 Such a step is carried by the objective alone, each win a margin between two valid answers
 (`pointsOf`, `src/kernel/compare.ts`). `MARGINS INSIDE THE NOISE` names each where more than half
-of the wins are no larger than the difference of that report's own A/A (`noise`) on the same task,
-the reference read against itself under the same setting, so one outlier task sets no ceiling for
-the rest. It counts the wins on tasks whose A/A tied, which clear only a zero difference, and the
-other objective-only steps most of whose wins were of that kind, which give no spread to read. For
+of the wins are no larger than the wider of the two sides' own differences on the same task, each
+side read against itself under the same setting (the reference's is that report's own A/A,
+`noise`), so one outlier task sets no ceiling for the rest. A win on a task both sides repeated
+exactly is the difference of two repeated answers: an effect on that instance, counted outside, of
+which the question is how far it carries (lane 17). A win larger than both sides' differences
+where only the reference repeated is counted outside too, so a step silent here whose sides repeat
+on some tasks is read from `pairs.txt` by lane 17. For
 each step, read the wins' margins beside the A/A's distribution (`pairs.txt` gives each task's
 margin beside its stored and rebuilt A/A, the A/A's quantiles, the reading on first and on second
 solves alone, the count of wins inside, level with and outside their own task's A/A, and each
@@ -965,7 +976,7 @@ tasks written after it. Four parts, kept apart:
    each task written after the promotion a fair sign at its recorded margin. Count the draws that
    would still read `confirmed` at the level. That count is how often this read confirms by
    selection alone. `starter-reads.txt` prints it for each read, over every sign draw of the untied
-   tasks written after (`stepCount`, `tools/wri/selection.ts`), and says where every such task tied
+   tasks written after (`stepCount`, comparison-reading's `selection.ts`), and says where every such task tied
    whether the other tasks alone confirm. Show the draw's size and its count, not a single rate.
 3. **The fleet.** Across every read under review: reads confirmed, reads confirmed on the tasks
    written after alone (`starter-reads.ts --all` prints both), and the number the selection-only

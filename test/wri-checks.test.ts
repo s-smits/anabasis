@@ -39,6 +39,8 @@ describe("checkRows", () => {
   });
 
   it("passes the lane guard as a lane runs it", () => {
-    expect(refusalOf("Bash", { command: "bun tools/wri/checks.ts data/runs/here/x/log.jsonl" })).toBeNull();
+    expect(
+      refusalOf("Bash", { command: "bun tools/wri/wri.ts reader checks --log data/runs/here/x/log.jsonl" }),
+    ).toBeNull();
   });
 });

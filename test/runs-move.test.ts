@@ -13,6 +13,7 @@ import { join } from "../src/meta/path.ts";
 import { move } from "../tools/runs/move.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 import { writeReceipt } from "../tools/runs/receipt.ts";
+import { Misused } from "../tools/runs/registry.ts";
 
 const roots: string[] = [];
 afterAll(() => {
@@ -147,6 +148,50 @@ describe("moving a campaign to another machine", () => {
     expect(result.out).toContain("--project kept-project");
     expect(existsSync(join(made.into, "launch-run-1.json"))).toBe(true);
   });
+
+  it("counts room against the receipt's login unless --login names another", () => {
+    const made = seedMove();
+    writeReceipt(join(made.folder, "log.jsonl"), "run-1", {
+      at: new Date().toISOString(),
+      pid: 42,
+      flags: ["--project", "kept-project"],
+      envFile: null,
+      commit: made.commit,
+      dirty: false,
+      load: 0,
+      cores: 2,
+      login: "3",
+    });
+    const capped = { ANA_LOGIN_RUNS: "3:0" };
+    const kept = made.move(["--hold"], capped);
+    expect(kept.code).toBe(1);
+    expect(kept.err).toContain("login 3");
+    expect(existsSync(made.folder)).toBe(true);
+    expect(made.move(["--hold", "--login", "2"], capped).code).toBe(0);
+    expect(existsSync(made.folder)).toBe(false);
+  });
+
+  it("refuses a destination that lacks the run's login before anything is paused or copied", () => {
+    const made = seedMove();
+    writeReceipt(join(made.folder, "log.jsonl"), "run-1", {
+      at: new Date().toISOString(),
+      pid: 42,
+      flags: ["--project", "kept-project"],
+      envFile: null,
+      commit: made.commit,
+      dirty: false,
+      load: 0,
+      cores: 2,
+      login: "3",
+    });
+    // The fake host's environment holds no login, and its own `active --here --login` says so.
+    const refused = made.move([]);
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain("login 3 must be carried");
+    expect(existsSync(made.folder)).toBe(true);
+    expect(existsSync(made.into)).toBe(false);
+    expect(made.recorded().some(({ tool }) => tool === "rsync")).toBe(false);
+  });
 });
 
 describe("recovering interrupted moves", () => {
@@ -217,7 +262,7 @@ describe("recovering interrupted moves", () => {
   it("refuses a move to where the campaign is, asking no host", async () => {
     const own = hostname().split(".")[0] ?? "";
     for (const flags of [["--to", "here"], ["--to", own], ["--from", own, "--to", "here"], []]) {
-      await expect(move(["c", ...flags])).rejects.toThrow(/usage:/);
+      await expect(move(["c", ...flags])).rejects.toBeInstanceOf(Misused);
     }
   });
 });

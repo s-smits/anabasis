@@ -54,6 +54,7 @@ import {
   writeFileSync,
 } from "#src/meta/filesystem.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
+import { endingOf } from "#src/kernel/reports.ts";
 import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { tmpdir } from "#src/meta/os.ts";
@@ -67,11 +68,19 @@ import { receipts } from "./receipt.ts";
 import { hostNamed } from "./host-config.ts";
 import { rsync, sideOf, sshScript } from "./host-command.ts";
 import { verbOn } from "./hosts.ts";
-import { HERE, isCampaign, logEvents, readable, type Run, standing, wholeLines } from "./registry.ts";
-import { readableAcross, syncRuns } from "./snapshots.ts";
+import {
+  HERE,
+  isCampaign,
+  logEvents,
+  Misused,
+  readable,
+  type Run,
+  standing,
+  wholeLines,
+} from "./registry.ts";
+import { derived, readableAcross, syncRuns } from "./snapshots.ts";
 
 const LEVELS = ["light", "medium", "verbose"] as const;
-const CAMPAIGN_ENDED = "campaign.ended";
 const PROMOTED = "harness.promoted";
 const CHOOSING = ["latest", "minPromotions", "minTime", "since", "until"] as const;
 const MOMENT = /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2}))?$/;
@@ -127,19 +136,6 @@ const GROUPS: readonly (readonly [name: string, holds: string, level: Level, pat
   ["rest", "anything else in the run's folder", "verbose", /^/],
 ];
 
-/** Folders of installed packages, caches and built bundles, by name; a pip target is known by its
- *  `.dist-info`. A harness's `.bundle-snapshots` were 30 of the 38 MB its states held on 2026-10-08. */
-const DERIVED = new Set([
-  "node_modules",
-  ".bundle-snapshots",
-  "__pycache__",
-  ".git",
-  ".cache",
-  ".cargo",
-  ".local",
-  ".matplotlib",
-  "Library",
-]);
 const SECRET = /^(auth\.json|.*\.env|\.DS_Store)$/;
 const LIGHT_MAX = 2 * 1024 * 1024;
 const SOURCE = ["src", "tools", "docs", "package.json"];
@@ -167,9 +163,7 @@ function unfit(root: string, path: string): string | null {
   const stat = lstatSync(path);
   if (stat.isSymbolicLink()) return linkedIn(root, path) === null ? "a link out of its folder" : null;
   if (SECRET.test(basename(path))) return "a secret's name";
-  const installed =
-    stat.isDirectory() &&
-    (DERIVED.has(basename(path)) || readdirSync(path).some((name) => name.endsWith(".dist-info")));
+  const installed = stat.isDirectory() && derived(basename(path), readdirSync(path));
   return installed ? "installed, cached or built" : null;
 }
 
@@ -274,8 +268,6 @@ function gather(chosen: readonly Run[], level: Level, stage: string) {
     const now = standing(run.tree);
     const last = log.findLast(({ kind }) => kind === run.end)?.data;
     const reading = last?.reading ?? asRecord(last?.ending)?.outcome;
-    // A campaign's ending is its log's last event: one that goes on after an ending has none.
-    const ended = log.at(-1)?.kind === CAMPAIGN_ENDED ? log.at(-1)?.data.ending : undefined;
     return {
       name: run.name,
       log: join(basename(run.tree), folder, basename(run.path)),
@@ -286,7 +278,7 @@ function gather(chosen: readonly Run[], level: Level, stage: string) {
       ...now,
       events: log.length,
       reading: isString(reading) ? reading : null,
-      ended: isString(ended) ? ended : null,
+      ended: endingOf(log),
     };
   });
   return { schema: "runs-zip/v1", level, made: new Date().toISOString(), runs: told, files, left };
@@ -446,9 +438,7 @@ export async function zipRuns(args: readonly string[]): Promise<void> {
   const levels = LEVELS.filter((level) => values[level]);
   const [level] = levels;
   if (level === undefined || levels.length > 1) {
-    throw new Error(
-      "usage: bun run runs zip [<name> ...] --light|--medium|--verbose [--out FILE] [--max-mb N] [--note FILE] [--from HOST] [--latest N] [--minPromotions N] [--minTime 2h] [--since WHEN] [--until WHEN]",
-    );
+    throw new Misused();
   }
   const megabytes = values["max-mb"];
   const { choice, forwarded } = choiceOf(values);

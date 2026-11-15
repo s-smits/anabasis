@@ -1,22 +1,25 @@
 /**
  * What each comparison's reading rests on, a block a comparison, for lanes 8 and 17:
  *
- *   bun tools/wri/scores.ts <log>
+ *   bun tools/wri/wri.ts reader scores --log <log>
  *
  * The block recounts the report's task scores with this tree's `differenceOf` over the pairs the
  * report made (`pairsReported`), matched to the recorded scores by task (`testedOf().of`), and says
  * how many differ. It then gives three tallies: as scored, on validity alone and on the objective
  * alone, each beside the same three of the reference's A/A halves. It counts the tasks on which every
  * new solve beat every reference solve: valid against invalid, or by the objective by at least the
- * gap floor (`gainOver`, `ROOM`).
+ * gap floor (`gainOver`, `ROOM`). Two last tallies split the scores by whether a task of the same
+ * family was practice before the comparison began, over every tested task and over those no
+ * earlier comparison tested (`practisedLines`).
  *
  * For a step it adds:
  * - p with each win removed;
- * - the wins to spare and the fewest whose removal loses the step (`spareOf`, `clearance.ts`);
- * - the tally by the Examiner session that wrote each task and by its family.
+ * - the wins to spare and the fewest whose removal loses the step (`spareOf`, `clearance.ts`).
  *
  * A comparison cut short or left open has no recorded scores. Its block counts the solves it began
- * and says the report is absent. The task by task table is `pairs.ts`'s.
+ * and says the report is absent. The task by task table, with every tally by writing session and by
+ * family, is `pairs.ts`'s; a step read on one task a family is the replay's (`promotion-tuner`,
+ * `unit=first`).
  *
  * Evidence: 9 of 12 lane-17 sessions between 3 and 10 November recomputed a step's p by hand without
  * one win and then without two. 4 of 7 lane-8 sessions split a tally by measure in their own
@@ -24,7 +27,6 @@
  * answers were valid, the other everywhere.
  */
 import type { LogEvent } from "#src/kernel/log.ts";
-import { read } from "#src/kernel/log.ts";
 import {
   differenceOf,
   flipP,
@@ -39,9 +41,9 @@ import {
 import { proposalsOf } from "#src/kernel/history.ts";
 import { lastReports, pairsReported, type Reported } from "#src/kernel/reports.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
+import { taskSets } from "#src/kernel/task.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { spareOf } from "./clearance.ts";
-import { printRows } from "./folds.ts";
 import { pSaid, testedOf, testSaid } from "./promotion.ts";
 
 const LEVEL = 0.02;
@@ -104,46 +106,55 @@ function withoutEach(scores: readonly number[], level: number): string {
   return `p from ${pSaid(Math.min(...ps))} to ${pSaid(Math.max(...ps))}; ${String(losing)} of ${String(wins.length)} single removals lose the step`;
 }
 
-/** The tally of `tested` by a key of each task: its writing session or its family. */
-function tallyBy(
-  tested: readonly Paired[],
-  scores: readonly number[],
-  keyOf: (task: string) => string,
-): string {
-  const groups = Map.groupBy(
-    scores.map((score, at) => ({ score, key: keyOf(tested[at]?.task ?? "") })),
-    ({ key }) => key,
-  );
-  const sorted = [...groups].toSorted(([one], [other]) => one.localeCompare(other));
-  const alone = sorted.filter(([, rows]) => rows.length === 1).flatMap(([, rows]) => rows);
-  return [
-    ...sorted
-      .filter(([, rows]) => rows.length > 1)
-      .map(([key, rows]) => `${key} ${tallied(rows.map(({ score }) => score))}`),
-    ...(alone.length === 0
-      ? []
-      : [`${String(alone.length)} of one task each ${tallied(alone.map(({ score }) => score))}`]),
-  ].join("; ");
-}
-
-/** A step's extra lines: removals, spare wins and the tally by writer and family. */
-function stepLines(
-  events: readonly LogEvent[],
-  tested: readonly Paired[],
-  scores: readonly number[],
-  level: number,
-): string[] {
-  const proposals = new Map(proposalsOf(events).map((each) => [each.version, each]));
+/** A step's extra lines: removals and spare wins. */
+function stepLines(scores: readonly number[], level: number): string[] {
   const spare = spareOf(scores, level);
   const wins = scores.filter((score) => score > 0).length;
   return [
     `  without each win: ${withoutEach(scores, level)}`,
     `  wins to spare, largest first (spareOf): ${String(spare)}; the step is lost once the ${String(Math.min(spare + 1, wins))} largest are removed`,
-    `  by writer: ${tallyBy(tested, scores, (task) => proposals.get(task)?.session ?? UNNAMED)}`,
-    `  by family: ${tallyBy(tested, scores, (task) => {
-      const family = proposals.get(task)?.family;
-      return isString(family) ? family : UNNAMED;
-    })}`,
+  ];
+}
+
+/**
+ * The scores by whether a task of the same family (the Examiner's own label; a task that names none
+ * has none) had been released for practice before the comparison began, or before its report where
+ * no start is on record, since a harness can climb on the kinds of task its Builder practised alone.
+ * The second line is the same split over the tasks no earlier report tested, the one to sum over a
+ * campaign, since a Builder compares candidates one after another on the tasks held. It decides nothing.
+ */
+function practisedLines(
+  events: readonly LogEvent[],
+  { session, index }: Reported,
+  tested: readonly Paired[],
+  scores: readonly number[],
+): string[] {
+  const began = events.findLastIndex(
+    ({ kind, data }, at) => at < index && kind === STARTED && data.session === session,
+  );
+  const family = new Map(proposalsOf(events).map((each) => [each.version, each.family]));
+  const practised = new Set(
+    taskSets(events.slice(0, began === -1 ? index : began)).released.map((version) => family.get(version)),
+  );
+  const split = (counted: (task: string) => boolean) => {
+    const [kin, none] = [true, false].map((wanted) =>
+      scores.filter((_, at) => {
+        const task = tested[at]?.task ?? "";
+        const named = family.get(task) ?? null;
+        return counted(task) && (named !== null && practised.has(named)) === wanted;
+      }),
+    );
+    return `a task of the family was practice before the start ${tallied(kin ?? [])}; none was ${tallied(none ?? [])}`;
+  };
+  const before = new Set(
+    lastReports(events)
+      .filter((report) => report.index < index)
+      .flatMap(({ data }) => testedOf(data).of),
+  );
+  const first = (task: string) => !before.has(task);
+  return [
+    `  by practice: ${split(() => true)}`,
+    `  first tested here, ${String(tested.filter(({ task }) => first(task)).length)} of ${String(tested.length)} tasks: ${split(first)}`,
   ];
 }
 
@@ -176,8 +187,9 @@ function reportedLines(events: readonly LogEvent[], report: Reported): string[] 
       ([name, measure]) => `  ${name}: ${tallied(tested.map(measure))}; A/A halves ${aa(measure)}`,
     ),
     `  every new solve beat every reference solve: ${String(tested.filter(beatsAll).length)} of ${String(tested.length)} tasks`,
+    ...practisedLines(events, report, tested, recorded),
   ];
-  return readsStep(recorded, level) ? [...lines, ...stepLines(events, tested, recorded, level)] : lines;
+  return readsStep(recorded, level) ? [...lines, ...stepLines(recorded, level)] : lines;
 }
 
 /** The block of a comparison begun with no report: the solves it began, by harness, and how many ended. */
@@ -212,5 +224,3 @@ export function scoreRows(events: readonly LogEvent[]): string[] {
     }),
   ];
 }
-
-if (import.meta.main) printRows("scores", (log) => scoreRows(read(log)));

@@ -193,7 +193,7 @@ spend. These are what they left.
     section 1 lists. The wall tests pass because the fake runs bill every task alike. Settled by a
     wall case whose held-out bills differ with the task the candidate won.
 39. **A step can be read and not promoted when a pause lands between the report and
-    `harness.promoted`** (plausible, `restsAfter` under `pauseAt`, `tools/runs/manage.ts`). Settled
+    `harness.promoted`** (plausible, `heldBy` under `pauseAt`, `tools/runs/manage.ts`). Settled
     by a replay of every log for a `comparison.reported` reading `step` with no
     `harness.promoted` before the next `campaign.word`.
 40. **`holdAlone` can wait for good on a reused process id in a lock of the older format**

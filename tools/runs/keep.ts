@@ -1,7 +1,7 @@
 /**
  * Keep a campaign going until it ends on its own terms.
  *
- *   bun --env-file=<file> run runs keep <name> [--logins 2,3,4] [--wait-hours 0.25] [--yes]
+ *   bun --env-file=<file> run runs keep <name> [--logins 2,3,4] [--wait-hours 0.25] [--yes | --here]
  *
  * `launch`, `continue` and so `fresh` and `move` leave a run on a numbered login its keeper by
  * themselves (`keepsItself`, `manage.ts`); this verb attaches one to a run already live, or to a run
@@ -30,10 +30,12 @@
  * provider answered (`turnsIn`) is left: something the keeper cannot mend ends it each time.
  *
  * With `--yes` the verb leaves a keeper running by itself, its output in `keep.out` beside the log,
- * and ends: one keeper a run, and `runs stop`, `pause` or `continue --after` of the run end it. Until
+ * and ends: one keeper a run, and `runs stop`, `pause` or `continue --after` of the run end it. That
+ * keeper is this verb under `--here` (`KEEPING`), which keeps the run in this process. Until
  * 15 October this was three shell loops of the operator's and a wrapper a login, each moving one run.
  */
 import type { LogEvent } from "#src/kernel/log.ts";
+import { HOUR_MS } from "#src/meta/clock.ts";
 import { mainTree } from "#src/meta/git.ts";
 import { join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
@@ -43,6 +45,7 @@ import { payerOf } from "./live.ts";
 import {
   allowedLogins,
   atCap,
+  asGathered,
   billsLogin,
   type Env,
   fiveHourWith,
@@ -55,7 +58,7 @@ import {
 } from "./logins.ts";
 import type { Live } from "./live.ts";
 import { lastRun, leaveKeeper, rerun, said, start, WAIT_HOURS } from "./manage.ts";
-import { keepers, logEvents, processes, type Run, runNamed } from "./registry.ts";
+import { keepers, logEvents, Misused, processes, type Run, runNamed } from "./registry.ts";
 import { stop } from "./stop.ts";
 
 export type Turn = "watch" | "move" | "continue" | "done";
@@ -77,7 +80,6 @@ const LOOK_MS = 60_000;
 /** How long a keeper with nowhere to go waits before it reads the logins again: a reading may cost a
  *  one-token request a login (`readLogins`), and a week's wait lasts for days. */
 const ASK_MS = 10 * 60_000;
-const HOUR = 3_600_000;
 /** Goings-on in a row with no model turn, after which a keeper leaves its run. */
 const BARREN = 3;
 
@@ -173,6 +175,8 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
   let worked = -1;
   let waitedOn = "";
   let askAt = 0;
+  // Each act under the time of the look, since a wait and a giving up write no event.
+  const act = (now: number, what: string) => hands.say(`${new Date(now).toISOString()} ${name}: ${what}`);
   return async (now: number): Promise<boolean> => {
     const events = hands.events();
     const state = hands.stands(events, now);
@@ -213,7 +217,7 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
       target === null ? null : startRefusal(hands.env, payerOf(target, flags), "here", await counted(), name);
     if (target === null || full !== null) {
       const reason = full ?? (why === "" ? "no login to go on with" : why);
-      if (reason !== waitedOn) hands.say(`${name}: ${reason}; left waiting`);
+      if (reason !== waitedOn) act(now, `${reason}; left waiting`);
       waitedOn = reason;
       askAt = now + ASK_MS;
       return false;
@@ -224,12 +228,10 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
     barren = turn === "continue" && turns === worked ? barren + 1 : 0;
     worked = turns;
     if (barren >= BARREN) {
-      hands.say(`${name} went on ${String(BARREN)} times and no seat took a model turn: kept no longer`);
+      act(now, `went on ${String(BARREN)} times and no seat took a model turn: kept no longer`);
       return true;
     }
-    hands.say(
-      `${new Date(now).toISOString()} ${name}: ${turn} ${target === undefined ? "without a login" : `on login ${target}`}`,
-    );
+    act(now, `${turn} ${target === undefined ? "without a login" : `on login ${target}`}`);
     try {
       if (turn === "move") await hands.stop();
       await hands.start(target);
@@ -271,7 +273,7 @@ async function keepGoing(run: Run, pool: () => Promise<readonly string[]>, waitM
     events: () => logEvents(run.path),
     stands: (events, now) => runState(run, events, processes(), now),
     last: () => lastRun(run),
-    fleet: () => liveEverywhere("configured"),
+    fleet: async () => asGathered(await liveEverywhere("configured")),
     read: readNotClosed,
     stop: () => stop([run.name, "--yes"]),
     start: (login) => start(run, rerun(lastRun(run).flags, undefined), login, undefined),
@@ -298,9 +300,7 @@ export async function keep(args: readonly string[]): Promise<void> {
   const named = values.logins?.split(",").filter((login) => login !== "");
   const logins = named ?? allowedLogins(runtimeProcess.env);
   if (name === undefined) {
-    throw new Error(
-      `usage: bun --env-file=<file> run runs keep <name> --logins 2,3,4 [--wait-hours ${WAIT_HOURS}] [--yes]`,
-    );
+    throw new Misused();
   }
   const run = runNamed(name);
   if (
@@ -315,7 +315,7 @@ export async function keep(args: readonly string[]): Promise<void> {
       named === undefined
         ? poolOf(join(mainTree(run.tree), ".env.runs"), runtimeProcess.env)
         : async () => named;
-    return keepGoing(run, pool, Number(values["wait-hours"]) * HOUR);
+    return keepGoing(run, pool, Number(values["wait-hours"]) * HOUR_MS);
   }
   if (keepers(name).length > 0) throw new Error(`${name} is kept already`);
   if (!values.yes) return said(run, `would be kept going on logins ${logins.join(", ")}`);

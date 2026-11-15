@@ -47,12 +47,14 @@ src/tools/      command (the one launch of a command), coding (pi's tools), answ
 src/harness/    the starter, a kept state opened for a solver (open, shim)
 src/examiner/   draft (the drafting session), shell (the walled home)
 src/campaign/   handover (a campaign's reading), decide and ground (the move table), names
-tools/c/        the check program: accept, carry, rejections, repaired
+tools/c/        the check program: accept, rejections
 tools/d1b/      examine, draft
 tools/d2/       the campaign's commands and the solve queue (host)
 tools/runs/     the run registry, receipts, logins, hosts
 tools/runtime/  test and lint wrappers, the commit check, gate, pre-push, land, moments
 packages/ui/    a loopback server over the folds (src/server) and four panes (src/views); DESIGN.md
 studies/        measurements outside a campaign (`studies/README.md`)
-.claude/skills/ the procedures; main/ parses the skill scripts' `--host`
+.claude/skills/ the procedures; main/ is the scripts' shared library: cli (arguments, `--host`),
+                logs (campaign logs), runs (one row a run), print (tables), stats (the
+                permutation test between groups of runs)
 ```

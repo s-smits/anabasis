@@ -129,6 +129,15 @@ console.log(String(await freshLogin(undefined, [], read)));`;
     expect(named.code).toBe(1);
     expect(named.err).toContain("runner carries 1 live codex run(s), at most 1 a machine");
     expect(made.run(gpt).out).toContain("nothing is launched without --yes");
+    // A Claude Builder over a GPT solver on the plain login is counted as a Codex run once live
+    // (`payerOf`, `liveHere`), so placement holds it to the same cap before it starts.
+    const mixed =
+      'import { fresh } from "REPOSITORY/tools/runs/fresh.ts"; await fresh(["sample", "--host", "runner", "--", "--solver", "openai-codex/gpt-6.1-sol"]);';
+    const plain = { ...there, CLAUDE_CODE_OAUTH_TOKEN: "fixture" };
+    expect(made.run(mixed, plain).err).toContain("runner carries 1 live codex run(s)");
+    expect(made.run(mixed, { CLAUDE_CODE_OAUTH_TOKEN: "fixture" }).out).toContain(
+      "nothing is launched without --yes",
+    );
     expect(made.run(gpt, { ...there, ANA_LOGIN_RUNS: "codex:2" }).out).toContain(
       "nothing is launched without --yes",
     );

@@ -68,42 +68,32 @@ const triggered = (log: readonly LogEvent[]) => {
 };
 
 /**
- * A promotion read twice on `author` tasks the gate held on their author's answer alone, every
- * reference solve valid at one measure and the author's better, and `spread` held on reference
- * answers apart by the objective. Every frontier task is won in each reading, `by` the new side's
- * better measure or its bill of half the reference's; on validity alone they tie, unless the
- * reference `fails` each of its solves.
+ * A promotion read twice on `count` tasks, every reference solve of them valid at one measure. A
+ * gate holds only its outcome, as since 1 November. Every frontier task is won in each reading,
+ * `by` the new side's better measure or its bill of half the reference's (the new side then
+ * measuring as the reference does); on validity alone they tie, unless the reference `fails` its
+ * first solve of each task.
  */
 function leaning({
-  author,
-  spread,
+  count,
   fails,
   by = "objective",
 }: {
-  author: number;
-  spread: number;
+  count: number;
   fails: boolean;
   by?: "objective" | "bill";
 }) {
   const { log: events, put } = campaign();
-  const tasks = Array.from({ length: author + spread }, (_, at) => `t${String(at)}`);
+  const tasks = Array.from({ length: count }, (_, at) => `t${String(at)}`);
   put("campaign.opened", { budget: 300, terms: {} });
   put("exam.started", { session: "x-1" });
-  for (const [at, version] of tasks.entries()) {
+  for (const version of tasks) {
     put("task.proposed", { version, taskId: version });
-    const condition = conditionOf(version, "hbase");
-    put("condition.recorded", { id: conditionId(condition), condition: requireJsonValue(condition) });
-    for (const [solve, measure] of [1, at < author ? 1 : 1.5, 1].entries()) {
-      const id = `${version}-gate-${String(solve)}`;
-      put("solve.started", { solve: id, condition: conditionId(condition), comparison: "x-1" });
-      put("verdict", { solve: id, kind: "pass", objective: measure });
-      put("solve.finished", { solve: id, ending: { outcome: "pass" }, turns: 3 });
-    }
-    put("task.gate", { version, gate: 1, outcome: "passed", reference: { valid: 3, solves: 3 } });
+    put("task.gate", { version, gate: 1, outcome: "passed" });
     put("task.feasible", { version, session: "x-1", objective: { direction: "lower", measure: 0.5 } });
   }
   for (const session of ["g-1", "g-2"]) {
-    const outcomes = Object.fromEntries(tasks.map((task) => [task, fails ? "FF PP" : "PP PP"]));
+    const outcomes = Object.fromEntries(tasks.map((task) => [task, fails ? "FP PP" : "PP PP"]));
     const { events: solves, terms } = roundSolves(session, ["hbase", "hn"], outcomes);
     put("comparison.started", { session, old: "hbase", fresh: "hn", ...terms });
     let fresh = false;
@@ -111,10 +101,11 @@ function leaning({
       if (kind === "condition.recorded") fresh = asRecord(data.condition)?.harness === "hn";
       const passed = kind === "solve.finished" && asRecord(data.ending)?.outcome === "pass";
       if (passed) {
+        const reference = by === "bill" ? 1 : 1.5;
         put("verdict", {
           solve: data.solve ?? "",
           kind: "pass",
-          objective: by === "bill" || fresh ? 1 : 1.5,
+          objective: fresh && by === "objective" ? 1 : reference,
         });
       }
       put(kind, passed ? { ...data, billed: by === "objective" || fresh ? 1 : 2 } : data);
@@ -262,6 +253,43 @@ describe("lane 22: a promotion and the climb after it", () => {
     expect(carriers).toMatch(/g-2 won 6 .*6 untied, none to spare; g-3 won 8 .*8 untied, 2 to spare/);
   });
 
+  it("adds a step's retained tally where it lost more of those tasks than it won, and only then", () => {
+    const scores = [...Array.from({ length: 17 }, () => 1), -1, -1, -1, -1, 0, 0, 0];
+    const carried = (reading: string, retained: readonly number[]) => {
+      const { log, compare } = held();
+      const scored = { ...STEP.scored, unbilled: scores };
+      compare("g-1", "hbase", "hn", {
+        ...STEP,
+        level: 0.02,
+        scored,
+        retained: { differences: [...retained] },
+        reading,
+      })();
+      return triggered(log)("STEP CARRIERS");
+    };
+    const [plain = ""] = carried("step", [0, 0, 0]);
+    expect(plain).toMatch(/^g-1 won 17 of 21 untied, \w+ to spare$/);
+    expect(carried("step", [-1, -1, -1, -1])).toEqual([`${plain}, its retained tasks 0-4-0`]);
+    expect(carried("no-step", [-1, -1, -1, -1])).toEqual([]);
+  });
+
+  it("says where a step that scored several families won tasks in one only", () => {
+    const tally = (wins: number, ties = 1) => ({ frontier: { wins, losses: 0, ties } });
+    const carried = (families: Record<string, ReturnType<typeof tally>>) => {
+      const { log, compare } = held();
+      const scored = { ...STEP.scored, unbilled: [1, 1, 1, 1, 1, 1, 0] };
+      compare("g-1", "hbase", "hn", { ...STEP, level: 0.02, scored, families })();
+      return triggered(log)("STEP CARRIERS");
+    };
+    const [plain = ""] = carried({ a: tally(4), b: tally(2), c: tally(0) });
+    expect(plain).toMatch(/ to spare$/);
+    expect(carried({ a: tally(6), b: tally(0), c: tally(0) })).toEqual([
+      `${plain}, every win in one of its 3 families`,
+    ]);
+    // A step that tallied one family alone says nothing of where its wins fell, whatever families its retained tasks hold.
+    expect(carried({ a: tally(6), b: tally(0, 0) })).toEqual([plain]);
+  });
+
   it("reads a promotion on the differences its step tested: the frontier and the retained tasks since 20 October, the frontier alone before", () => {
     const frontier = { differences: [4, 4], of: ["a", "b"] };
     const retained = { differences: [-4], of: ["c"] };
@@ -270,8 +298,8 @@ describe("lane 22: a promotion and the climb after it", () => {
     expect(testedOf(before)).toEqual({ differences: [4, 4], of: ["a", "b"] });
     expect(testedOf(since)).toEqual({ differences: [4, 4, -4], of: ["a", "b", "c"] });
     expect(testedOf({ ...since, retained: "unmeasured" }).differences).toEqual([4, 4]);
-    // A task two readings tested counts once, its differences summed; one in `without` drops out.
-    expect(joinedTest([since, since], new Set(["a"])).toSorted((x, y) => x - y)).toEqual([-8, 8]);
+    // A task two readings tested counts once, its differences summed.
+    expect(joinedTest([since, since]).toSorted((x, y) => x - y)).toEqual([-8, 8, 8]);
   });
 
   it.each(["/tmp", "/private/tmp", "/var/tmp", "/private/var/tmp"])(
@@ -293,6 +321,28 @@ describe("lane 22: a promotion and the climb after it", () => {
       expect(triggered(log)("SHARED TEMPORARY FOLDER")).toEqual([]);
     },
   );
+
+  it("files an Examiner's try apart from a comparison's two sides", () => {
+    // A try names its Examiner session where a comparison's solve names its comparison, and no
+    // comparison starts under it: on 11 November esp32's 19 tries read as "x-1 new".
+    const { log, put, compare } = held();
+    compare("g-1", "hbase", "hn", STEP);
+    for (const [solve, harness, comparison] of [
+      ["s1", "hbase", "x-1"],
+      ["s2", "hbase", "g-1"],
+      ["s3", "hn", "g-1"],
+    ] as const) {
+      const ran = conditionOf("v1", harness);
+      put("condition.recorded", { id: conditionId(ran), condition: requireJsonValue(ran) });
+      put("solve.started", { solve, condition: conditionId(ran), comparison });
+      put("solve.call", { solve, tool: "bash", args: { command: "cat /tmp/scratch" }, isError: false });
+    }
+    const [said = ""] = triggered(log)("SHARED TEMPORARY FOLDER");
+    expect(said).toContain("3 solves by side:");
+    for (const side of ["x-1 try hbase", "g-1 reference hbase", "g-1 new hn"]) {
+      expect(said).toContain(`${side} 1`);
+    }
+  });
 });
 
 describe("lane 22 across campaigns", () => {
@@ -334,17 +384,11 @@ describe("lane 22 across campaigns", () => {
     expect(cells[3]?.slice(1, 7)).toEqual(["building", "none", "default", "none yet", "-", "none reported"]);
   });
 
-  it("distinguishes author room, objective and bill dependence from promotions that need neither", () => {
+  it("tells a promotion the objective or the bill decided from one that validity carries", () => {
     for (const [input, expected] of [
       [
-        { author: 4, spread: 2, fails: false },
+        { count: 6, fails: false },
         [
-          {
-            lane: 7,
-            name: "SAFEGUARD-8 PROMOTION ON AUTHOR ROOM",
-            detail:
-              "hn 6-0 p 0.016 joined at level 0.02, 2-0 p 0.250 without the tasks held on their author's answer alone",
-          },
           {
             lane: 8,
             name: "SAFEGUARD-9 PROMOTION BEYOND VALIDITY",
@@ -354,7 +398,7 @@ describe("lane 22 across campaigns", () => {
         ],
       ],
       [
-        { author: 0, spread: 6, fails: false, by: "bill" },
+        { count: 6, fails: false, by: "bill" },
         [
           {
             lane: 8,
@@ -364,8 +408,9 @@ describe("lane 22 across campaigns", () => {
           },
         ],
       ],
-      [{ author: 1, spread: 6, fails: true }, []],
-      [{ author: 4, spread: 1, fails: false }, []],
+      // A task the reference fails once is won on validity, and five tasks read no step to lean on.
+      [{ count: 6, fails: true }, []],
+      [{ count: 5, fails: false }, []],
     ] as const) {
       expect(safeguardTriggers(indexOf(leaning(input)))).toEqual([...expected]);
     }

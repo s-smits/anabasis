@@ -49,6 +49,14 @@ const LIMITS = {
   shellMaxSeconds: 900,
   concurrency: 4,
 };
+/** A comparison `g-1` about to start against the starter, and a session `b-2` with none after it. */
+const ASKED = {
+  id: "g-1",
+  reference: "starter",
+  wanted: WANTED,
+  own: () => undefined,
+  seats: "paid",
+} as const;
 const event = (kind: EventKind, data: JsonObject): LogEvent => ({ at: AT, kind, data });
 const heldOut = (version: string): LogEvent[] => [
   event("task.proposed", { version }),
@@ -83,14 +91,6 @@ function logOf(events: readonly LogEvent[]): string {
 /** Six held-out tasks, with whatever `more` adds. */
 const six = (more: readonly LogEvent[] = []) =>
   logOf([...["v1", "v2", "v3", "v4", "v5", "v6"].flatMap(heldOut), ...more]);
-/** A comparison `g-1` about to start against the starter, and a session `b-2` with none after it. */
-const ASKED = {
-  id: "g-1",
-  reference: "starter",
-  wanted: WANTED,
-  own: () => undefined,
-  seats: "paid",
-} as const;
 const SESSION = { id: "b-2", wanted: { cap: WANTED.cap }, seats: "paid" } as const;
 /** A campaign of patience three whose three comparisons could each have shown a gain and showed
  *  none: the plan's stop rule has stopped it. */
@@ -173,6 +173,21 @@ describe("what the gate refuses, by its code", () => {
       }
     }
     expect(codes({ ...SETS, held: 8 }, { ...wanted, target: 6 })).toEqual(["held-short"]);
+  });
+
+  it("held-short: counts every held-out task, a family's siblings too", () => {
+    // Read on 13 November: with one task a family scored, today's draw refused 20 of 27 recorded
+    // jobstat comparison starts, and the 8 comparisons since read no step on 8 tasks each. A
+    // family's tally is reported beside the reading (`compared`) and decides nothing.
+    const wanted = { ...WANTED, level: 0.02 };
+    const nine = ["a", "b", "c", "d", "e", "f", "g", "h", "i"].flatMap((version, place) => [
+      event("task.proposed", { version, family: `f${String(place % 4)}` }),
+      event("task.gate", { version, gate: 1, outcome: "passed" }),
+    ]);
+    expect(supplyOf(nine)).toMatchObject({ held: 9 });
+    expect(codes(supplyOf([READ, ...nine]), wanted)).toEqual([]);
+    // The nearest case that is refused: seven tasks, whatever their families.
+    expect(codes(supplyOf([READ, ...nine.slice(0, 14)]), wanted)).toEqual(["held-short"]);
   });
 
   it("no-held: a log with no held-out task to score", () => {

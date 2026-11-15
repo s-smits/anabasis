@@ -3,7 +3,7 @@
  * side's solves did, the task's score and what carried it, the reference against itself as its
  * report stored it and as this tree rebuilds it, the new side against itself, and of a tie, its kind.
  *
- *   bun tools/wri/pairs.ts <log>
+ *   bun tools/wri/wri.ts reader pairs --log <log>
  *
  * Lanes 9, 17, 18, 20 and 29 read a comparison task by task. Between 3 and 10 November 11 of 17
  * lane-9 sessions built this table by hand (`ties.py`, `tiecost.py`, `rep.py`), 4 of 4 lane-29
@@ -17,7 +17,7 @@
  * the starter won, and `starter-reads.ts --tasks`, which gives the reference's margin over the
  * starter, has the opposite sign on the same task. Under each comparison's rows one line counts its
  * new side's wins whose `diff` stands inside, level with or outside that task's rebuilt A/A, and
- * apart those whose task has no A/A. A report stores its A/A (`noise`) aligned with `versions`; since 9a9528bf5 this
+ * apart those whose task has no A/A, and a `grain` line names no family. A report stores its A/A (`noise`) aligned with `versions`; since 9a9528bf5 this
  * tree mirrors the A/A's halves from one task to the next, so the rebuilt A/A can differ from the
  * stored one on an older log, and both are printed. Tasks the report did not tally have a row too,
  * by the list that holds them (`aside`, `short`, `disputed`, `flagged`, `withdrawn`), `unpaired`
@@ -29,7 +29,7 @@
  * not measured on each), and `cancelling` (gains of the two sides cancelling over the pairings).
  * The origin a starter read gives each task is `starter-reads.ts --tasks`'s column
  * (`comparison-reading`), so no column here repeats it. `x_best` gives each side's median ratio to
- * the best answer on record for the task, reference then new (1.00 is the best; `sideGap`, `gap.ts`,
+ * the best answer on record for the task, reference then new (1.00 is the best; `sideGap`, `reading.ts`'s gap line,
  * which prints the same per comparison): half of lane 11's sessions of 3 to 10 November set it
  * beside each task's writer by hand. It comes from hidden values, so the output stays on the exam
  * side: it names task versions and families and no task text, answer or measure.
@@ -41,21 +41,36 @@ import {
   gapAgainst,
   type Paired,
   pointsOf,
+  ROOM,
   scoresIn,
   testOf,
   unsolved,
 } from "#src/kernel/compare.ts";
+import { campaignOf } from "#src/campaign/handover.ts";
 import { proposalsOf } from "#src/kernel/history.ts";
-import { type LogEvent, read } from "#src/kernel/log.ts";
-import { sideGap } from "#skills/comparison-reading/scripts/gap.ts";
+import type { LogEvent } from "#src/kernel/log.ts";
 import { lastReports, pairsReported, poolOf, type Reported } from "#src/kernel/reports.ts";
 import { ended, passed, type Ran, ranUnder } from "#src/kernel/solves.ts";
 import { asRecord, isNumber, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
-import { NO_TRACES, printRows } from "./folds.ts";
+import { median } from "#src/meta/tally.ts";
 
 /** The kind of a tied task, by its solves. */
 type TieKind = "both-invalid" | "exact-repeat" | "within-room" | "both-valid" | "cancelling";
+
+/** One side of one comparison, read against the best on record. */
+export interface SideGap {
+  /** The median over tasks of a task's median ratio to the best; null where no task gave one. */
+  readonly ratio: number | null;
+  readonly atBest: number;
+  /** The tasks that gave a ratio. */
+  readonly read: number;
+  /** The tasks the side answered validly that gave none: no best on record, or a measure at or below zero. */
+  readonly unread: number;
+}
+
+/** A comparison's family grain, as production reads it (`grain`, `src/campaign/handover.ts`). */
+type Grain = { readonly largest: number; readonly of: number } | null;
 
 /** A finished counted solve, with the place its start stands in the log. */
 type Counted = Ran & { readonly finished: number; readonly end: JsonObject };
@@ -287,16 +302,12 @@ function againstNoise(context: Context, pair: Paired): "inside" | "level" | "out
 
 /**
  * One comparison's tally by the session that wrote each task, or by its family: the new side's
- * won, lost and tied, its summed `diff`, and its wins outside their task's A/A, the largest group
- * first. Both lane sessions of 10 November grouped the rows by hand for this, one several times
- * and one with two count errors; `starter-reads.ts` splits a starter read by origin alone.
+ * won, lost and tied, its summed `diff`, its wins outside their task's A/A and its retained tasks,
+ * the largest group first. A group counts every tallied task, and a report's family tallies, which
+ * `runs view`'s grain reads, the frontier alone.
  */
 function groupsSaid(context: Context, pairs: readonly Paired[], by: "writer" | "family"): string {
-  const groups = new Map<string, Paired[]>();
-  for (const pair of pairs) {
-    const key = originOf(context, pair.task)[by === "writer" ? 0 : 1];
-    groups.set(key, [...(groups.get(key) ?? []), pair]);
-  }
+  const groups = Map.groupBy(pairs, ({ task }) => originOf(context, task)[by === "writer" ? 0 : 1]);
   const said = [...groups]
     .toSorted(([, one], [, other]) => other.length - one.length)
     .map(([key, some]) => {
@@ -304,9 +315,32 @@ function groupsSaid(context: Context, pairs: readonly Paired[], by: "writer" | "
       const count = (sign: number) => String(diffs.filter((diff) => Math.sign(diff) === sign).length);
       const net = diffs.reduce((sum, diff) => sum + diff, 0);
       const outside = some.filter((pair) => againstNoise(context, pair) === "outside").length;
-      return `${key} ${count(1)}-${count(-1)}-${count(0)}, diff ${net > 0 ? "+" : ""}${String(net)}, ${String(outside)} outside`;
+      const retained = some.filter(({ task }) => context.retained.has(task)).length;
+      return `${key} ${count(1)}-${count(-1)}-${count(0)}, diff ${net > 0 ? "+" : ""}${String(net)}, ${String(outside)} outside${retained === 0 ? "" : `, ${String(retained)} retained`}`;
     });
   return `== ${context.session} by ${by} (won-lost-tied of the new side, summed diff, wins outside their task's A/A): ${said.join("; ")}`;
+}
+
+/**
+ * One comparison's grain in a line that names no family: production's (`grain`, as `runs view` gives
+ * it), and whether one task's `diff` is larger than the others' together, in which case that task
+ * alone sets the summed score's sign. The test counts siblings as independent draws and weighs a task
+ * by its `diff`, so both say what a reading rests on, a no-step as much as a step.
+ */
+function grainSaid(context: Context, pairs: readonly Paired[], grain: Grain): string {
+  const [largest = 0, ...rest] = pairs
+    .map((pair) => Math.abs(differenceOf(pair)))
+    .toSorted((one, other) => other - one);
+  const others = rest.reduce((sum, size) => sum + size, 0);
+  const family =
+    grain === null
+      ? "no family tallies"
+      : `the largest family holds ${String(grain.largest)} of ${String(grain.of)} tallied frontier tasks`;
+  const carried =
+    rest.length > 0 && largest > others
+      ? `one task's diff (${String(largest)} in size) exceeds the other ${String(rest.length)} together (${String(others)})`
+      : "no task's diff exceeds the others together";
+  return `== ${context.session} grain, naming no family: ${family}; ${carried}`;
 }
 
 /** The summary line of one comparison's tallied pairs. */
@@ -372,6 +406,7 @@ function comparisonRows(
   start: JsonObject,
   report: Reported | undefined,
   shared: Pick<Context, "writers" | "ran" | "bests">,
+  grain: Grain = null,
 ): string[] {
   const data = report?.data ?? start;
   const [old, fresh] = [isString(data.old) ? data.old : "", isString(data.fresh) ? data.fresh : ""];
@@ -413,6 +448,7 @@ function comparisonRows(
     winsAgainstNoise(context, pairs),
     groupsSaid(context, pairs, "writer"),
     groupsSaid(context, pairs, "family"),
+    grainSaid(context, pairs, grain),
     summaryOf(context, report.data, pairs, untallied),
   ];
 }
@@ -437,8 +473,11 @@ export function pairRows(events: readonly LogEvent[]): string[] {
       solve.under.side === "test" ? [[solve.id, solve] as const] : [],
     ),
   );
+  const grains = new Map(
+    campaignOf(events).steps.flatMap((step) => (step.step === "comparison" ? [[step.id, step.grain]] : [])),
+  );
   const rows = [...starts].flatMap(([session, start]) =>
-    comparisonRows(events, start, reports.get(session), { writers, ran, bests }),
+    comparisonRows(events, start, reports.get(session), { writers, ran, bests }, grains.get(session)),
   );
   const unaligned = [...reports.values()].filter(
     ({ data }) => asRecord(data.noise) !== null && storedOf(data).size === 0,
@@ -450,4 +489,29 @@ export function pairRows(events: readonly LogEvent[]): string[] {
   ];
 }
 
-if (import.meta.main) printRows("pairs", (log) => pairRows(read(log, NO_TRACES)));
+/** What `pairs` read of `side`, against `bests` by task. */
+export function sideGap(
+  pairs: readonly Paired[],
+  side: "old" | "fresh",
+  bests: ReadonlyMap<string, number>,
+): SideGap {
+  const ratios: number[] = [];
+  let unread = 0;
+  for (const { task, objective } of pairs) {
+    const measures = objective?.[side].filter((measure) => measure !== null) ?? [];
+    if (measures.length === 0) continue;
+    const best = bests.get(task) ?? 0;
+    const own = measures.filter((measure) => measure > 0);
+    const ratio = median(
+      own.map((measure) => (objective?.direction === "lower" ? measure / best : best / measure)),
+    );
+    if (best > 0 && ratio !== null) ratios.push(ratio);
+    else unread += 1;
+  }
+  return {
+    ratio: median(ratios),
+    atBest: ratios.filter((ratio) => ratio <= 1 + ROOM).length,
+    read: ratios.length,
+    unread,
+  };
+}

@@ -162,7 +162,7 @@ describe("the first record of a campaign that already holds solves", () => {
 
   it("is the setting those solves ran under, named as flags where a command names another", () => {
     const forgot = settingAsked({}, null);
-    expect(forgot.first).toBe(true);
+    expect(forgot.record).not.toBeNull();
     const mismatch = firstRecord(forgot, { ...forgot.named, solver }, ran);
     for (const fact of [
       "--solver claude/claude-sonnet-5-5",

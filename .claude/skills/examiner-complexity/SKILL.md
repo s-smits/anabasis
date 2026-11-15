@@ -1,6 +1,6 @@
 ---
 name: examiner-complexity
-description: "Tune the ambition of the Examiner's exam: the reach scale and worked examples (src/examiner/ladder.ts), the drafting prompt (src/examiner/draft.ts) and the writing prompt's \"How hard\" (src/examiner/prompt.ts), so tasks leave the reference room and stay answerable. Scripts grade the record blind (grades.ts), re-rate example rungs (rungs.ts), list drafts with the gate's reading (exams.ts) and read admissions and time to first comparison (ambition.ts); edits go through paired live seats and fresh campaigns. Use when the operator asks whether tasks are hard enough, to tune the ladder or an example, to calibrate easy to very hard, or whether an exam change raised supply."
+description: "Tune the ambition of the Examiner's exam: the reach scale and worked examples (src/examiner/ladder.ts), the drafting prompt (src/examiner/draft.ts) and the writing prompt's \"How hard\" (src/examiner/prompt.ts), so tasks leave the reference room and stay answerable. Scripts grade the record blind (grades.ts), re-rate example rungs (grades.ts rungs), list drafts with the gate's reading (exams.ts) and read admissions and time to first comparison (ambition.ts); edits go through paired live seats and fresh campaigns. Use when the operator asks whether tasks are hard enough, to tune the ladder or an example, to calibrate easy to very hard, or whether an exam change raised supply."
 ---
 
 # Examiner complexity
@@ -58,8 +58,8 @@ reason in the module's head comment.
 Overhaul an example on a blind re-rating, never its author's grade:
 
 ```sh
-bun .claude/skills/examiner-complexity/scripts/rungs.ts packet > <packet.md>
-bun .claude/skills/examiner-complexity/scripts/rungs.ts compare <rungs.tsv>...
+bun .claude/skills/examiner-complexity/scripts/grades.ts rungs packet > <packet.md>
+bun .claude/skills/examiner-complexity/scripts/grades.ts rungs compare <rungs.tsv>...
 ```
 
 At least two graders who have read neither the ladder nor this conversation grade the packet as
@@ -78,7 +78,7 @@ steps 5 to 8: one login and host, a writing position only where the exam offers 
 ## 5. Read a fresh pair to its first comparison
 
 ```sh
-bun .claude/skills/examiner-complexity/scripts/zone.ts <log or campaign name>...
+bun .claude/skills/comparison-reading/scripts/reading.ts --zone <log or campaign name>...
 ```
 
 prints per comparison the reference's tasks with no, some and every solve valid, the untied tasks
@@ -95,8 +95,11 @@ bun .claude/skills/examiner-complexity/scripts/ambition.ts <control folder> <arm
 
 It prints hours, solves and dollars to the first `comparison.started` and `harness.promoted`, and
 per Examiner session the reference in force, drafts held, admission words (`every`, `some`,
-`none, proved`) and dollars. Read in order: the arm received its text, the share reading `every`,
-drafts held, answerability, time to first comparison.
+`none, proved`) and dollars; a writing session also reads what it was asked for, how it stands
+and its proposals by family with its turn at each, so supply is read as held against asked, and
+an open session against how an ended one stood at the same turn, never against its end. Count
+families here or in `exams.ts`, never by `data.family` of `task.proposed`. Read in order: the arm received its text, the share reading `every`, drafts held, answerability, time to
+first comparison.
 
 ## 6. What may be claimed
 

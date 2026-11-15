@@ -9,22 +9,24 @@
  *
  *   bun run runs catalogue
  */
+import { Type } from "typebox";
 import { LOG_FILE, type LogEvent } from "#src/kernel/log.ts";
 import { openingOf } from "#src/campaign/opening.ts";
 import { existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync } from "#src/meta/filesystem.ts";
-import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
-import { asRecord, isString, isBoolean, isNumber } from "#src/meta/json-shape.ts";
+import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
+import { isNumber } from "#src/meta/json-shape.ts";
 import { dirname, isAbsolute, join } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { pooled } from "#src/meta/pool.ts";
-import { runtimeProcess } from "#src/meta/process.ts";
+import { runtimeProcess, warn } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { asked } from "./hosts.ts";
+import { asked, answerOf } from "./hosts.ts";
 import { type Host, hostNamed, hostsOf } from "./host-config.ts";
 import { quoted, rsync, sideOf, sshScript } from "./host-command.ts";
 import { runTextOrThrow } from "#src/meta/subprocess.ts";
 import { hold, release } from "./holder.ts";
 import {
+  ARCHIVE,
   archiveOf,
   HERE,
   keepers,
@@ -52,6 +54,18 @@ interface RemoteRun {
 
 type Depth = "record" | "whole";
 const EXCLUDED = ["--exclude=.env", "--exclude=.env.*", "--exclude=*.env", "--exclude=auth.json"];
+/** Folders of installed packages, caches and built bundles, by name. */
+const DERIVED = new Set([
+  "node_modules",
+  ".bundle-snapshots",
+  "__pycache__",
+  ".git",
+  ".cache",
+  ".cargo",
+  ".local",
+  ".matplotlib",
+  "Library",
+]);
 // The seed's mark comes too, so a copy of a rehearsal's seed is no paid campaign to a reader: until
 // 29 October the gather left it out, and two compare-systems seeds counted as campaigns in a replay.
 const RECORD = [
@@ -60,6 +74,18 @@ const RECORD = [
   `--include=/${SEED_FILE}`,
   "--exclude=/*",
 ];
+/** A host's answer to `catalogue`. `kept` and `bytes` are read where a host's tree sends them. */
+const CATALOGUE = Type.Array(
+  Type.Object({
+    name: Type.String(),
+    path: Type.String(),
+    project: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+    open: Type.Boolean(),
+    kept: Type.Optional(Type.Unknown()),
+    stderr: Type.Union([Type.String(), Type.Null()]),
+    bytes: Type.Optional(Type.Unknown()),
+  }),
+);
 /** How many copies are refreshed at once. Each is one rsync over the host's shared ssh connection,
  *  which carries ten sessions at most by sshd's default. */
 const AT_ONCE = 6;
@@ -68,6 +94,12 @@ const WAIT_MS = 200;
 
 /** The text only an opening's line holds. A line that merely quotes it is parsed and passed over. */
 const OPENED = `"kind":"campaign.opened"`;
+
+/** Whether a folder of this name, holding these entries, is installed, cached or built: one named so
+ *  (`DERIVED`), or a pip target, known by a `.dist-info` in it. Neither a copy of a campaign nor a zip
+ *  holds one, since the log names what was installed and nothing here reads the packages. */
+export const derived = (name: string, entries: readonly string[]): boolean =>
+  DERIVED.has(name) || entries.some((entry) => entry.endsWith(".dist-info"));
 
 /** One original campaign's identity and project, as a catalogue lists it. Only the openings are
  *  parsed: every refresh asks each host for its catalogue, and parsing every line of every log for
@@ -101,55 +133,68 @@ export const localCatalogue = () => originals().map(entryOf);
 /** Validate before a remote record can name a transfer source or local destination. */
 export function remoteRuns(lines: readonly string[] | null, host: Host): RemoteRun[] {
   if (lines === null) throw new Error(`${host.name}: no campaign catalogue; copies were not refreshed`);
-  const value = capturedJsonParse(lines.join("\n"));
-  if (!Array.isArray(value)) throw new Error(`${host.name}: campaign catalogue is not a list`);
-  return value.map((entry) => {
-    const run = asRecord(entry);
+  const said = answerOf(CATALOGUE, lines);
+  if (said === null) throw new Error(`${host.name}: invalid campaign catalogue`);
+  return said.map(({ name, path, project, open, kept, stderr, bytes }) => {
     if (
-      run === null ||
-      !isString(run.name) ||
-      !isSafePathSegment(run.name) ||
-      !isString(run.path) ||
-      !isAbsolute(run.path)
+      !isSafePathSegment(name) ||
+      !isAbsolute(path) ||
+      !path.endsWith(`/${name}/${LOG_FILE}`) ||
+      path.includes("\n")
     ) {
-      throw new Error(`${host.name}: invalid campaign catalogue entry`);
-    }
-    if (!run.path.endsWith(`/${run.name}/${LOG_FILE}`) || run.path.includes("\n")) {
       throw new Error(`${host.name}: campaign path does not name its log`);
     }
-    if (run.project !== undefined && run.project !== null && !isString(run.project)) {
-      throw new Error(`${host.name}: invalid campaign project`);
-    }
-    if (!isBoolean(run.open) || !(run.stderr === null || isString(run.stderr))) {
-      throw new Error(`${host.name}: invalid campaign observation`);
-    }
     return {
-      name: run.name,
-      path: run.path,
-      project: isString(run.project) ? run.project : null,
-      open: run.open,
-      kept: run.kept === true,
-      stderr: run.stderr,
-      bytes: isNumber(run.bytes) ? run.bytes : null,
+      name,
+      path,
+      project: project ?? null,
+      open,
+      kept: kept === true,
+      stderr,
+      bytes: isNumber(bytes) ? bytes : null,
     };
   });
 }
 
-/** The files of a remote folder that a disk which folds case cannot hold beside another named the
- *  same but for case: all of each such group but its last in byte order, the most lower-case, to
- *  which `terminfo`'s upper-case aliases link. Until 10 November 4 of 118 whole copies of the Linux
- *  host failed every night: `N/NCR260VT300WPP`, a link to `../n/ncr260vt300wpp`, became a link to
- *  itself here, and an Examiner's `w/t1.py` beside its `w/T1.py` aborted rsync. */
-async function caseTwins(host: Host, folder: string): Promise<string[]> {
+/** The files and links of a remote folder, each by its path from it, in byte order. */
+async function filesOf(host: Host, folder: string): Promise<string[]> {
   const listed = await runTextOrThrow(sshScript(host, `cd ${quoted(folder)} && find . ! -type d -print0`));
-  const paths = listed
+  return listed
     .split("\0")
     .filter((path) => path.startsWith("./"))
     .map((path) => path.slice(2))
     .toSorted();
+}
+
+/** The folders among a campaign's `paths` that a copy leaves on its host (`derived`), each the
+ *  outermost such folder: the packages a harness or the Examiner installed, and caches. A copy
+ *  therefore opens as no harness (`keptAs` refuses a kept state short of its programs): a campaign
+ *  runs on from its original. */
+function installs(paths: readonly string[]): string[] {
+  const found = new Set<string>();
+  for (const path of paths) {
+    const parts = path.split("/");
+    const at = parts.findIndex(
+      (part, index) => index + 1 < parts.length && derived(part, parts.slice(index + 1, index + 2)),
+    );
+    if (at !== -1) found.add(parts.slice(0, at + 1).join("/"));
+  }
+  const outer = [...found].toSorted();
+  return outer.filter((folder) => !outer.some((other) => folder.startsWith(`${other}/`)));
+}
+
+/** The files among `paths` that a disk which folds case cannot hold beside another named the same
+ *  but for case: all of each such group but its last in byte order, the most lower-case, to which
+ *  `terminfo`'s upper-case aliases link. Until 10 November 4 of 118 whole copies of the Linux host
+ *  failed every night: `N/NCR260VT300WPP`, a link to `../n/ncr260vt300wpp`, became a link to itself
+ *  here, and an Examiner's `w/t1.py` beside its `w/T1.py` aborted rsync. */
+function caseTwins(paths: readonly string[]): string[] {
   const last = new Map(paths.map((path) => [path.toLowerCase(), path]));
   return paths.filter((path) => last.get(path.toLowerCase()) !== path);
 }
+
+/** The rsync flag that leaves one path of the copied folder where it is. */
+const leaving = (path: string): string => `--exclude=/${path.replaceAll(/[*?[]/gu, String.raw`\$&`)}`;
 
 /** Refresh one copy under its holder (`holder.ts`), which a fetch keeps however long it transfers and
  *  the next takes over once its process is gone. The stage sits beside the holder, so a fetch killed
@@ -174,10 +219,11 @@ async function refresh(run: RemoteRun, into: string, host: Host, depth: Depth): 
     rmSync(stage, { recursive: true, force: true });
     mkdirSync(folder, { recursive: true });
     const reused = existsSync(into) ? [`--link-dest=${into}`] : [];
-    const twins =
-      depth === "whole" && existsSync(dirname(into).toUpperCase())
-        ? await caseTwins(host, dirname(run.path))
-        : [];
+    const paths = depth === "whole" ? await filesOf(host, dirname(run.path)) : [];
+    const left = installs(paths);
+    const twins = existsSync(dirname(into).toUpperCase())
+      ? caseTwins(paths.filter((path) => !left.some((install) => path.startsWith(`${install}/`))))
+      : [];
     if (twins.length > 0) {
       console.log(
         `${run.name}: ${String(twins.length)} paths named as another but for case stay on ${host.name} alone`,
@@ -188,7 +234,8 @@ async function refresh(run: RemoteRun, into: string, host: Host, depth: Depth): 
       `${folder}/`,
       ...reused,
       ...EXCLUDED,
-      ...twins.map((path) => `--exclude=/${path.replaceAll(/[*?[]/gu, String.raw`\$&`)}`),
+      ...left.map((install) => leaving(`${install}/`)),
+      ...twins.map(leaving),
       ...(depth === "record" ? RECORD : []),
     );
     const log = join(folder, LOG_FILE);
@@ -258,7 +305,7 @@ export async function syncRuns(
         .filter((run) => matches(run.name) && (options.closed !== true || !(run.open || run.kept)))
         .map((run) => ({ host, run }));
     }
-    console.error(`${host.name}: no campaign catalogue; its copies were left as they were`);
+    warn(`${host.name}: no campaign catalogue; its copies were left as they were`);
     silent.add(host.name);
     return [];
   });
@@ -268,7 +315,7 @@ export async function syncRuns(
     if (owners.has(one.run.name)) {
       const twice = `${one.run.name}: more than one original campaign, including ${one.host.name}`;
       if (options.match === "exact") throw new Error(twice);
-      console.error(`${twice}; that copy is left out`);
+      warn(`${twice}; that copy is left out`);
       continue;
     }
     owners.add(one.run.name);
@@ -298,6 +345,77 @@ export async function syncRuns(
     throw new Error(`${String(failed.length)} of ${String(kept.length)} copies failed: ${failed.join("; ")}`);
   }
   return [...brought.filter((log) => log !== null), ...left.map((run) => run.path)];
+}
+
+/**
+ * Take over the campaigns `host`, the one `ABLATION_HOST` names, has retired, so that it stays clear
+ * for ablations: each its own retire moved into its archive (that retire alone decides when a
+ * campaign is finished), which no process writes or keeps there and of which this machine holds
+ * every file a copy takes byte for byte, joins this machine's own archive and is deleted there.
+ * Nothing else deletes an original, and a campaign still in its worktree there is left alone. The
+ * proof is one checksummed dry run of rsync, so a campaign with a path left there for its case
+ * (`caseTwins`) stays; credentials and installs are never copied (`EXCLUDED`, `installs`), so a
+ * campaign taken over is a record. The copy moves first, so a sweep killed before the deletion is
+ * finished by the next; the deletion runs only while the log there is as long as the catalogue
+ * said, and one that grew stays, its copy the host's again; one that fails part way leaves the copy
+ * this machine's own. Asked to `describe`, it says what it would do.
+ */
+export async function takeRetired(host: Host, act: "take" | "describe"): Promise<void> {
+  const archive = archiveOf(runtimeProcess.cwd());
+  const [answer] = await asked(["catalogue"], [host]);
+  const failed: string[] = [];
+  for (const run of remoteRuns(answer?.lines ?? null, host)) {
+    const from = dirname(run.path);
+    const copy = join(archive, host.name, run.name);
+    const own = join(archive, HERE, run.name);
+    const held = [own, copy].find((folder) => existsSync(join(folder, LOG_FILE)));
+    const retired = run.path.endsWith(`/${join(ARCHIVE, HERE, run.name, LOG_FILE)}`);
+    if (!retired || run.open || run.kept || run.bytes === null || held === undefined) continue;
+    try {
+      const differing = (
+        await rsync(
+          `${sideOf(host, from)}/`,
+          `${held}/`,
+          "-n",
+          "-c",
+          "--itemize-changes",
+          ...EXCLUDED,
+          ...installs(await filesOf(host, from)).map((folder) => leaving(`${folder}/`)),
+        )
+      )
+        .split("\n")
+        // A line that opens with a point names a path whose times or modes alone differ.
+        .filter((line) => line !== "" && !line.startsWith("."));
+      if (differing.length > 0) {
+        console.log(
+          `${host.name} ${run.name}: stays there, ${String(differing.length)} paths differ from the copy here, the first ${differing[0] ?? ""}`,
+        );
+        continue;
+      }
+      console.log(
+        `${act === "take" ? "" : "would: "}${host.name} ${run.name}: held in ${own}, ${from} deleted there`,
+      );
+      if (act === "describe") continue;
+      mkdirSync(dirname(own), { recursive: true });
+      if (held === copy) renameSync(copy, own);
+      const folder = quoted(from);
+      const said = await runTextOrThrow(
+        sshScript(
+          host,
+          `if test "$(wc -c < ${quoted(run.path)} | tr -d ' ')" = ${String(run.bytes)}; then chmod -R u+w ${folder}; rm -rf -- ${folder}; else echo grown; fi`,
+        ),
+      );
+      if (said.includes("grown")) {
+        if (held === copy) renameSync(own, copy);
+        failed.push(`${run.name}: its log there is no longer the length its catalogue gave, so it stays`);
+      }
+    } catch (error) {
+      failed.push(`${run.name}: ${errorMessage(error)}`);
+    }
+  }
+  if (failed.length > 0) {
+    throw new Error(`${String(failed.length)} campaigns were not taken over: ${failed.join("; ")}`);
+  }
 }
 
 /** Resolve a path as given, or refresh a named campaign before reading its existing archive copy. */

@@ -3,6 +3,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { append, LOG_FILE } from "../src/kernel/log.ts";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -10,7 +11,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import { join } from "../src/meta/path.ts";
+import { dirname, join } from "../src/meta/path.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
 import { held } from "../tools/runs/holder.ts";
 import { quoted, treeBun } from "../tools/runs/host-command.ts";
@@ -305,6 +306,33 @@ describe("campaign snapshots", () => {
     );
   });
 
+  it("leaves on its host what a campaign installed and cached, and copies a harness's own files", () => {
+    const remote = campaign();
+    const { made } = remote;
+    const files = [
+      "examiner-home/.cache/pip/wheel",
+      "examiner-home/draft.md",
+      "states/tree-a/lib/numpy-2.0.dist-info/METADATA",
+      "states/tree-a/lib/numpy/__pycache__/core.pyc",
+      "states/tree-a/lib/numpy/core.py",
+      "states/tree-a/src/tool.py",
+    ];
+    for (const file of files) {
+      mkdirSync(dirname(join(made.root, "remote", "distant", file)), { recursive: true });
+      writeFileSync(join(made.root, "remote", "distant", file), file);
+    }
+    const listing = ["log.jsonl", ...files].map((file) => `./${file}\n`).join("");
+    expect(made.run(sync, { ...remote.env, FAKE_FILES: listing }).code).toBe(0);
+    const transfer = made.recorded().find((call) => call.tool === "rsync");
+    // Each install by its outermost folder: the cache inside the pip target is named by it.
+    expect(transfer?.args.filter((arg) => /^--exclude=\/./u.test(arg))).toEqual([
+      "--exclude=/examiner-home/.cache/",
+      "--exclude=/states/tree-a/lib/",
+    ]);
+    const copied = (file: string) => existsSync(join(made.main, "data", "runs", "runner", "distant", file));
+    expect(files.map(copied)).toEqual([false, true, false, false, false, true]);
+  });
+
   it("brings every other copy of a host where one copy fails, names it, and still fails the read", () => {
     const made = fixture();
     // One more campaign than a sync copies at once, the failing one first: until 10 November its
@@ -403,6 +431,12 @@ describe("campaign snapshots", () => {
     ]) {
       expect(made.run(sync, extra).code).toBe(1);
     }
+    // A host that answers with an entry this tree cannot read refuses the read, as an unsafe path does.
+    const misshapen = made.run(sync, {
+      FAKE_CATALOGUE: JSON.stringify([{ name: "distant", path: remote.log, open: "yes" }]),
+    });
+    expect(misshapen.code).toBe(1);
+    expect(misshapen.err).toContain("runner: invalid campaign catalogue");
     const silent = made.run(sync, { FAKE_OFFLINE: "1" });
     expect(silent.code).toBe(0);
     expect(silent.err).toContain("runner: no campaign catalogue");
@@ -487,7 +521,7 @@ describe("named snapshot readers", () => {
     );
     expect({ code: audit.code, err: audit.err }).toEqual({ code: 0, err: "" });
     const tuning = made.run(
-      'import { campaignLogs } from "REPOSITORY/.claude/skills/promotion-tuner/scripts/tree.ts"; console.log(await campaignLogs(null, ["distant"], "2000"));',
+      'import { campaignLogs } from "REPOSITORY/.claude/skills/main/logs.ts"; console.log(await campaignLogs(null, ["distant"], "2000"));',
       remote.env,
     );
     expect(tuning.code).toBe(0);
@@ -562,6 +596,25 @@ describe("snapshot depth", () => {
   });
 });
 
+/** A host kept for ablations: where a campaign its retire archived lies there, where one still in
+ *  its worktree does, where a copy lies here, and a campaign with one artefact as the catalogue
+ *  lists it. */
+function ablation() {
+  const made = fixture();
+  const there = (name: string, file = "") =>
+    join(made.root, "remote", "main", "data", "runs", "here", name, file);
+  const resting = (name: string, file = "") =>
+    join(made.root, "remote", `tree-${name}`, ".ana", "d2", name, file);
+  const here = (from: string, name: string, file = "") => join(made.main, "data", "runs", from, name, file);
+  const listed = (name: string, at: typeof there, more: { readonly kept?: boolean } = {}) => {
+    mkdirSync(at(name, "memory"), { recursive: true });
+    writeFileSync(at(name, "memory/note.txt"), "kept");
+    append(at(name, LOG_FILE), "campaign.word", { word: "fixture" });
+    return { name, path: at(name, LOG_FILE), bytes: lstatSync(at(name, LOG_FILE)).size, ...more };
+  };
+  return { made, there, resting, here, listed };
+}
+
 describe("the daily retire's host step", () => {
   it("brings a closed campaign whole and an open one as its record, and asks a silent host again at the next sweep", () => {
     const remote = campaign();
@@ -601,6 +654,115 @@ describe("the daily retire's host step", () => {
     expect(existsSync(copy("waiting", LOG_FILE))).toBe(true);
     expect(existsSync(copy("waiting", "memory"))).toBe(false);
   });
+
+  it("takes over what the ablation host has archived once the copy here matches it, and leaves every other campaign there", () => {
+    const { made, there, resting, here, listed } = ablation();
+    const ahead = listed("ahead", there);
+    const env = {
+      FAKE_CATALOGUE: JSON.stringify([
+        listed("over", there),
+        listed("resting", resting),
+        listed("kept", there, { kept: true }),
+        // The log there is longer than its catalogue said, as one gone on with since would be.
+        { ...ahead, bytes: ahead.bytes - 1 },
+      ]),
+    };
+    const sweep = (extra: Record<string, string>) =>
+      made.run('import { retire } from "REPOSITORY/tools/runs/retire.ts"; await retire(["--yes"]);', {
+        ...env,
+        ...extra,
+      });
+    // A sweep that only describes copies nothing first, so it names no take-over of a campaign it
+    // has yet to copy, and says that one with --yes can take more.
+    const dry = made.run('import { retire } from "REPOSITORY/tools/runs/retire.ts"; await retire([]);', {
+      ...env,
+      ABLATION_HOST: "runner",
+    });
+    expect(dry.code).toBe(0);
+    expect(dry.out).not.toContain("over: held in");
+    expect(dry.out).toContain("can take more");
+    expect([existsSync(there("over")), existsSync(here("runner", "over"))]).toEqual([true, false]);
+    // With no ablation host named, a sweep copies every campaign and deletes none, and a name no
+    // host holds is refused.
+    expect(sweep({}).code).toBe(0);
+    expect([existsSync(there("over")), existsSync(here("runner", "over", LOG_FILE))]).toEqual([true, true]);
+    const unknown = sweep({ ABLATION_HOST: "nowhere" });
+    expect([unknown.code, unknown.err.includes("no host nowhere")]).toEqual([1, true]);
+
+    const taken = sweep({ ABLATION_HOST: "runner" });
+    // The archived campaign is this machine's own now, whole, and gone from the host.
+    expect(readFileSync(here("here", "over", "memory/note.txt"), "utf8")).toBe("kept");
+    expect([existsSync(there("over")), existsSync(here("runner", "over"))]).toEqual([false, false]);
+    // One still in its worktree, one a keeper holds and one that went on stay where they are.
+    for (const [name, at] of [
+      ["resting", resting],
+      ["kept", there],
+      ["ahead", there],
+    ] as const) {
+      expect([existsSync(at(name, LOG_FILE)), existsSync(here("here", name))]).toEqual([true, false]);
+      expect(existsSync(here("runner", name, LOG_FILE))).toBe(true);
+    }
+    expect(taken.code).toBe(1);
+    expect(taken.err).toContain("1 campaigns were not taken over: ahead:");
+  });
+
+  it("says what it would take without --yes, and keeps on its host a campaign whose copy here lacks a path", () => {
+    const { made, there, here, listed } = ablation();
+    const env = { FAKE_CATALOGUE: JSON.stringify([listed("over", there), listed("apart", there)]) };
+    const snapshots = 'import { takeRetired, syncRuns } from "REPOSITORY/tools/runs/snapshots.ts";';
+    expect(made.run(`${snapshots} await syncRuns([]);`, env).code).toBe(0);
+    writeFileSync(there("apart", "late.txt"), "written since the copy");
+    const extract = (act: "take" | "describe") =>
+      made.run(
+        `${snapshots} import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; await takeRetired(hostsOf()[0]!, "${act}");`,
+        env,
+      );
+    const dry = extract("describe");
+    expect(dry.out).toContain(`would: runner over: held in ${here("here", "over")}`);
+    expect([existsSync(there("over")), existsSync(here("here", "over"))]).toEqual([true, false]);
+    expect(extract("take").out).toContain("runner apart: stays there, 1 paths differ from the copy here");
+    expect([existsSync(there("apart", LOG_FILE)), existsSync(here("runner", "apart", LOG_FILE))]).toEqual([
+      true,
+      true,
+    ]);
+    expect([existsSync(there("over")), existsSync(here("here", "over", LOG_FILE))]).toEqual([false, true]);
+  });
+});
+
+describe("a take-over of a campaign that installed packages", () => {
+  it("takes it once the copy holds all but the packages, and leaves it where the copy lacks a file of its own", () => {
+    const { made, there, here, listed } = ablation();
+    const env = {
+      FAKE_CATALOGUE: JSON.stringify([listed("over", there), listed("apart", there)]),
+      FAKE_FILES: ["log.jsonl", "memory/note.txt", "tree/lib/pkg-1.dist-info/METADATA", "tree/own.py"]
+        .map((file) => `./${file}\n`)
+        .join(""),
+    };
+    for (const name of ["over", "apart"]) {
+      mkdirSync(there(name, "tree/lib/pkg-1.dist-info"), { recursive: true });
+      writeFileSync(there(name, "tree/lib/pkg-1.dist-info/METADATA"), "installed");
+      writeFileSync(there(name, "tree/own.py"), "the Builder's");
+    }
+    const snapshots = 'import { takeRetired, syncRuns } from "REPOSITORY/tools/runs/snapshots.ts";';
+    expect(made.run(`${snapshots} await syncRuns([]);`, env).code).toBe(0);
+    expect(existsSync(here("runner", "over", "tree/lib"))).toBe(false);
+    // The copy of one loses a file of the harness's own, which no rule leaves out.
+    rmSync(here("runner", "apart", "tree/own.py"));
+    const taken = made.run(
+      `${snapshots} import { hostsOf } from "REPOSITORY/tools/runs/host-config.ts"; await takeRetired(hostsOf()[0]!, "take");`,
+      env,
+    );
+    expect(taken.out).toContain("runner apart: stays there, 1 paths differ from the copy here");
+    expect([existsSync(there("apart", "tree/lib")), existsSync(here("here", "apart"))]).toEqual([
+      true,
+      false,
+    ]);
+    expect([existsSync(there("over")), readFileSync(here("here", "over", "tree/own.py"), "utf8")]).toEqual([
+      false,
+      "the Builder's",
+    ]);
+    expect(existsSync(here("here", "over", "tree/lib"))).toBe(false);
+  });
 });
 
 describe("the fleet pulse", () => {
@@ -619,17 +781,20 @@ describe("the fleet pulse", () => {
     expect(remote).not.toContain(state);
     expect(remote).toContain("--here");
     expect(remote).toContain("--no-readers");
+    // A host is said in one warning when it stops answering and in one when it answers again, and in
+    // none while it stays down, and no look fails on it.
     const failed = made.run(command, { FAKE_OFFLINE: "1" });
-    expect(failed.code).toBe(1);
-    expect(failed.out).toContain("pulse unavailable");
-    // A host that stays silent is said at the look that found it so, and at the one that reaches it again.
+    expect(failed.code).toBe(0);
+    const offline = failed.out.split("\n").filter((line) => line.includes("offline"));
+    expect(offline).toHaveLength(1);
+    expect(offline[0]).toMatch(/^⚠ \S+ is offline: no answer in /u);
     const still = made.run(command, { FAKE_OFFLINE: "1" });
     expect(still.code).toBe(0);
-    expect(still.out).not.toContain("pulse unavailable");
+    expect(still.out).not.toContain("offline");
     const back = made.run(command);
     expect(back.code).toBe(0);
-    expect(back.out).toContain("answers again");
-    expect(made.run(command).out).not.toContain("answers again");
+    expect(back.out).toMatch(/^⚠ \S+ is online again$/mu);
+    expect(made.run(command).out).not.toContain("online again");
     const local = fixture();
     expect(
       local.run(

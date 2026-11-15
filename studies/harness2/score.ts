@@ -8,21 +8,32 @@
  *
  *   bun studies/harness2/score.ts score --arm <arm> --name <name> --out <dir> --jb <checkout>
  *     --api-base <url> [--harness <kept>] [--tasks <profession/taskN,...>] [--judge-log <shim.jsonl>]
- *     [--solve-only] [--rubrics <file>] [--dry-run] --yes
+ *     [--solve-only] [--rubrics <file>] [--cap <chars>] [--dry-run] --yes
  *   bun studies/harness2/score.ts table --out <dir> [--tasks <profession/taskN,...>]
  *
  * An arm is `base` (Harness²'s base harness, the pilot's Base), `starter` or a campaign's name
  * (its kept harness written out by `claude-export.ts`, `--harness` as `keptAs` takes it),
+ * `pi:starter` or `pi:<campaign>` (the harness as kept, solved inside by `../shared/pi-solve.ts`,
+ * where its own tools exist and its programs lead the path, which the export loses),
  * `tree:<dir>` (any Claude Code tree), `heldout` (task N under the sweep's final harness of task
  * N-1) or `sweep:base1` and `sweep:agg1` (the sweep's own rollouts in `--out`, judged and rolled
  * by nothing else). Scoring into the sweep's `--out` keeps every arm in one store, as the pilot's
  * `runs/jb/dataset` was. The tasks default to the pilot's eight, the fair five for `heldout`.
- * Rollouts run three at a time as `score.sh` ran them; judgements run one at a time, so a
- * judgement's dollars are the shim log's rows inside its window. One record a task lands in
+ * Rollouts run one at a time and each is judged before the next begins, so that no rollout's clock
+ * or deadline depends on another's load on the machine (`score.sh` ran three, and until
+ * 12 November 2026 so did this; the operator's word that day), and a judgement's dollars are the
+ * shim log's rows inside its window. One record a task lands in
  * `<out>/judged/<name>/`, and `table` prints the pilot's arms table from them: every arm over all
  * the tasks (the pilot's eight unless named) and over those that are not a profession's first.
+ * A record also names the files judge.py's reader cut at 200,000 characters before the judge read
+ * them (`cut`: each file with its length, or null where that reader did not run), since a score on
+ * a cut file partly reads how long the file ran. `table` marks such a cell `CUT <n>` and prints a
+ * third block, `fair uncut`, over the fair tasks on which no record of any arm in the store holds a
+ * cut file; a record written before `cut` existed counts as holding none.
  * `compare.ts` runs a whole comparison through `score`: `--solve-only` leaves a block's judging for
- * afterwards, and `again:<side>` with `--rubrics` judges a deliverable it copied once more.
+ * afterwards, and `again:<side>` with `--rubrics` judges a deliverable it copied once more,
+ * under a wider cut than judge.py's where `--cap` names one, recorded as `cap` with `cut` counted
+ * against it; no other arm takes `--cap`.
  *
  * What is the same for every arm: the task and its prompt, Opus 5.5 at high with $5 and 3600 s an
  * attempt and a second attempt only when none is delivered, one harness frozen for the whole arm,
@@ -44,10 +55,13 @@
  * docx, pdfplumber, mammoth) 88 and 54 times, where Base's met it 12 times and k=1's never.
  * Here every arm gets the sweep's PATH (`pilotClaude`).
  */
+import { openHarness } from "#src/harness/open.ts";
 import { billedAll } from "#src/kernel/meter.ts";
 import { read } from "#src/kernel/log.ts";
+import { TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
 import {
   appendFileSync,
+  cpSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -59,19 +73,39 @@ import {
 } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { isNumber, isRecord, isString, type JsonObject, type JsonValue } from "#src/meta/json-shape.ts";
-import { keyIfDefined } from "#src/meta/optional-key.ts";
-import { dirname, join, resolve } from "#src/meta/path.ts";
-import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
+import { keyIfDefined, keysIf } from "#src/meta/optional-key.ts";
+import { tmpdir } from "#src/meta/os.ts";
+import { basename, dirname, join, resolve } from "#src/meta/path.ts";
+import { capturedExecPath, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
+import { runSync } from "#src/meta/subprocess.ts";
+import { LIMITS } from "#tools/d2/campaign.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
+import { foreignPrograms, HARNESS_DIR, HERE, placeHarness } from "../shared/bundle.ts";
 import { exportForClaudeCode } from "../shared/claude-export.ts";
-import { inGroup, REFUSED } from "./h2/claude.ts";
+import { RESULT_FILE, TRACE_FILE } from "../shared/pi-solve.ts";
+import { inGroup, REFUSED, type Agent, type Claude } from "./h2/claude.ts";
 import { NAMESPACE } from "./h2/recursion.ts";
-import { envOf, jobBench, pilotClaude, SCRUB } from "./jobbench.ts";
+import { cutOf, envOf, jobBench, MAX_CHARS_PER_FILE, pilotClaude, SCRUB } from "./jobbench.ts";
 
 /** The judge as the pilot ran it (`h2l1.sh`, `judge-arm.sh`, `_run_judge`). */
 const JUDGE = { model: "anthropic/claude-opus-5-5", effort: "medium", timeoutS: 1800 } as const;
 const DETAILS = "claude-opus-5-5_judge.json";
+/**
+ * judge.py run whole under a wider cut: loaded as a module, as `EXTRACT_DRIVER` loads it, with its
+ * `MAX_CHARS_PER_FILE` set before `main()` reads its flags from `sys.argv` through argparse;
+ * `extract_all_file_contents` reads that global at each call.
+ */
+const WIDER = `import importlib.util, sys
+
+judge_py, cap = sys.argv[1], int(sys.argv[2])
+spec = importlib.util.spec_from_file_location("_jb_judge_wider", judge_py)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+mod.MAX_CHARS_PER_FILE = cap
+sys.argv = [judge_py, *sys.argv[3:]]
+mod.main()
+`;
 /** `_JUDGE_FAILURE_PREFIXES`: a rubric whose reasoning opens so was never judged. */
 const FAILED = [
   "opus judge failed",
@@ -89,8 +123,14 @@ export const PILOT_TASKS = [
   "social_science_research_assistants/task2",
   "social_science_research_assistants/task3",
 ];
-const AT_ONCE = 3;
 const STAGES = ["base1", "inv1", "dom1", "agg1"];
+const PI = "pi:";
+const PI_SOLVE = join(import.meta.dir, "..", "shared", "pi-solve.ts");
+/** A `pi-solve.ts` ending as Claude Code's log names it: a spent budget gets no second attempt, and
+ *  a session that threw or the provider failed is a non-result, rolled again (rule 7). */
+const PI_RESULT = new Map(
+  Object.entries({ submitted: "success", budget: "error_max_budget_usd", crash: REFUSED, provider: REFUSED }),
+);
 
 /** What a score's build cost: `of` names what was built, so an arm counts each build once. */
 interface Build {
@@ -120,8 +160,45 @@ export interface Values {
   readonly "judge-log"?: string;
   readonly rubrics?: string;
   readonly "solve-only"?: boolean;
+  readonly cap?: string;
   readonly "dry-run"?: boolean;
   readonly yes?: boolean;
+}
+
+/** How one judgement runs: the transport, the shim's log, the rubrics and any wider cut. */
+interface Judging {
+  readonly apiBase: string;
+  readonly shimLog: string | undefined;
+  readonly rubrics: string | undefined;
+  readonly cap: number | undefined;
+}
+
+const OPTIONS = {
+  arm: { type: "string" },
+  name: { type: "string" },
+  harness: { type: "string" },
+  tasks: { type: "string" },
+  out: { type: "string" },
+  jb: { type: "string" },
+  "api-base": { type: "string" },
+  "judge-log": { type: "string" },
+  rubrics: { type: "string" },
+  "solve-only": { type: "boolean" },
+  cap: { type: "string" },
+  "dry-run": { type: "boolean" },
+  yes: { type: "boolean" },
+} as const;
+
+/** `--cap` as a count of characters: a whole number above judge.py's own cut, or a refusal. */
+export function capOf(cap: string | undefined): number | undefined {
+  if (cap === undefined) return undefined;
+  const chars = Number(cap);
+  if (!Number.isInteger(chars) || chars <= MAX_CHARS_PER_FILE) {
+    throw new Error(
+      `--cap takes a whole number of characters above judge.py's ${String(MAX_CHARS_PER_FILE)}`,
+    );
+  }
+  return chars;
 }
 
 export const keyOf = (task: string): string => task.replace("/", "__");
@@ -147,7 +224,8 @@ const text = (value: JsonValue | undefined): string =>
  * The runner's own log of one label, as the pilot's `costs.py` and `walls.py` read it: the dollars
  * of every attempt in every log, and the newest log's start to its last attempt. `ran` is false
  * where no attempt of the newest log reached a `result` of the arm's own, which is a dead agent or
- * a refused session (`REFUSED`), never a zero.
+ * a refused session (`REFUSED`), and where that log lacks the line a rollout closes with, which is
+ * one that threw or was killed before its delivery: neither is a zero.
  */
 function rolloutLog(store: string, task: string, label: string) {
   const dir = join(store, ".harness2-logs");
@@ -155,9 +233,10 @@ function rolloutLog(store: string, task: string, label: string) {
   const logs = (existsSync(dir) ? readdirSync(dir) : [])
     .filter((name) => name.startsWith(prefix) && /^\d{8}_\d{6}\.log$/u.test(name.slice(prefix.length)))
     .toSorted();
-  const attempts = logs.map((name) =>
+  const texts = logs.map((name) => readFileSync(join(dir, name), "utf8"));
+  const attempts = texts.map((log) =>
     [
-      ...readFileSync(join(dir, name), "utf8").matchAll(
+      ...log.matchAll(
         /\[(\d\d):(\d\d):(\d\d)\] attempt \d+: rc=-?\d+ result=(\S*) turns=\d+ tools=\d+ cost_usd=([\d.]+)/gu,
       ),
     ].map((match) => ({
@@ -182,9 +261,70 @@ function rolloutLog(store: string, task: string, label: string) {
   return {
     usd: attempts.flat().reduce((sum, attempt) => sum + attempt.usd, 0),
     attempts: last.length,
-    ran: last.some((attempt) => attempt.result !== "None" && attempt.result !== REFUSED),
+    ran:
+      /^\[[\d:]+\] (?:output -> |NO OUTPUT for )/mu.test(texts.at(-1) ?? "") &&
+      last.some((attempt) => attempt.result !== "None" && attempt.result !== REFUSED),
     seconds,
   };
+}
+
+/** Where one attempt's solver writes: outside `model_traj`, whose files a record reads flat. */
+const piLogs = (traj: string): string => join(tmpdir(), "pi-solve-logs", basename(traj, ".jsonl"));
+
+/** One attempt of a pi arm: `pi-solve.ts` inside the placed harness on the pilot's model, effort and
+ *  dollars, its wall two minutes inside the hold; its trace is copied, as the store is another mount. */
+export function piAgent(claude: Claude): Agent {
+  return {
+    argv: ({ prompt, treeDir, traj }) => {
+      const logs = piLogs(traj);
+      rmSync(logs, { recursive: true, force: true });
+      mkdirSync(logs, { recursive: true });
+      writeFileSync(join(logs, "instruction.md"), prompt);
+      const flags = {
+        harness: join(treeDir, HARNESS_DIR),
+        instruction: join(logs, "instruction.md"),
+        solver: `claude/${claude.model}`,
+        effort: claude.effort,
+        "wall-minutes": String(Math.floor(claude.timeoutS / 60) - 2),
+        "budget-usd": claude.budgetUsd,
+        prompts: String(LIMITS.turns),
+        logs,
+      };
+      return [
+        capturedExecPath,
+        PI_SOLVE,
+        ...Object.entries(flags).flatMap(([name, value]) => [`--${name}`, value]),
+      ];
+    },
+    seen: (traj) => {
+      const logs = piLogs(traj);
+      const result = readJson(join(logs, RESULT_FILE));
+      const trace = join(logs, TRACE_FILE);
+      const calls = existsSync(trace) ? read(trace).filter(({ kind }) => kind === "solve.call").length : 0;
+      if (existsSync(trace)) cpSync(trace, traj);
+      rmSync(logs, { recursive: true, force: true });
+      const ending = text(field(result, "ending"));
+      const [turns, reported, billed] = ["turns", "reportedCost", "billed"].map((key) => field(result, key));
+      return {
+        turns: isNumber(turns) ? turns : 0,
+        subtype: ending === "" ? "None" : (PI_RESULT.get(ending) ?? ending),
+        tools: calls,
+        costUsd: isNumber(reported) ? reported : isNumber(billed) ? billed : 0,
+      };
+    },
+  };
+}
+
+/** The solver's own dry run of a pi arm, no model called: its tools and programs, or a refusal. */
+function piDry(claude: Claude, tree: string): string {
+  const traj = join(tmpdir(), `pi-dry-${String(runtimeProcess.pid)}.jsonl`);
+  const argv = piAgent(claude).argv({ prompt: "A dry run.", treeDir: tree, workspace: tmpdir(), traj });
+  runSync([...argv, "--dry-run"], { cwd: tmpdir() });
+  const result = readJson(join(piLogs(traj), RESULT_FILE));
+  rmSync(piLogs(traj), { recursive: true, force: true });
+  if (field(result, "ending") !== "dry-run") throw new Error(`pi-solve cannot open ${tree}: ${text(result)}`);
+  const found = text(field(result, "found")).trim().split("\n").filter(Boolean);
+  return `  pi-solve: tools ${text(field(result, "tools"))}; ${String(found.length)} installed programs${found.length === 0 ? "" : `: ${found.join(", ")}`}`;
 }
 
 /** What the sweep in `out` spent to build the harness of `task` before the `except` rollouts. */
@@ -265,16 +405,34 @@ async function armOf(values: Values, out: string, baseHarness: string): Promise<
     );
   }
   if (arm === "") throw new Error("name --arm");
+  const pi = arm.startsWith(PI);
+  const from = pi ? arm.slice(PI.length) : arm;
+  const source =
+    from === "starter" ? "starter" : { campaign: from, ...keyIfDefined("harness", values.harness) };
   // An arm's name binds its tree, written once: another harness takes another name.
   const into = join(out, "trees", name);
   if (!existsSync(into)) {
-    await exportForClaudeCode(
-      into,
-      arm === "starter" ? "starter" : { campaign: arm, ...keyIfDefined("harness", values.harness) },
-    );
+    if (pi) {
+      const part = `${into}.part-${String(runtimeProcess.pid)}`;
+      await placeHarness(join(part, HARNESS_DIR), source);
+      renameSync(part, into);
+    } else await exportForClaudeCode(into, source);
   }
-  const digest = field(readJson(join(into, "export.json")), "harness");
-  const build = { of: arm, usd: arm === "starter" ? 0 : billedAll(read(await logAcross(arm))) };
+  const record = readJson(join(into, "export.json"));
+  const digest = pi ? (await openHarness(join(into, HARNESS_DIR))).digest : field(record, "harness");
+  // A rollout runs here, outside a container, on the programs a campaign's host built.
+  const toolchain = pi ? join(HARNESS_DIR, TOOL_TREE_DIR) : field(record, "toolchain");
+  if (isString(toolchain)) await foreignPrograms(join(into, toolchain), HERE);
+  // The build is priced once, beside the tree and outside what a solver is given, so a tree copied
+  // to another machine rolls there without the campaign's log, which stays on its own host.
+  const priced = `${into}.build.json`;
+  if (!existsSync(priced)) {
+    const usd = from === "starter" ? 0 : billedAll(read(await logAcross(from)));
+    writeFileSync(priced, `${capturedJsonStringify({ of: from, usd })}\n`);
+  }
+  const [of, usd] = [field(readJson(priced), "of"), field(readJson(priced), "usd")];
+  if (!isString(of) || !isNumber(usd)) throw new Error(`${priced} names no build`);
+  const build = { of, usd };
   return rolled(
     isString(digest) ? digest : into,
     () => into,
@@ -324,12 +482,13 @@ function shimDollars(log: string, from: number, to: number): number {
 async function judge(
   jb: string,
   place: { store: string; task: string; label: string },
-  apiBase: string,
-  shimLog: string | undefined,
-  rubrics = join(jb, "dataset", "main", place.task, "RUBRICS.json"),
+  how: Judging,
 ): Promise<{ details: JsonObject; usd: number | null } | string> {
+  const { apiBase, shimLog, cap } = how;
+  const rubrics = how.rubrics ?? join(jb, "dataset", "main", place.task, "RUBRICS.json");
   const output = join(place.store, place.task, "model_output", place.label);
   const details = join(place.store, place.task, "eval_result", `eval_${place.label}`, DETAILS);
+  const judgePy = join(jb, "eval", "judge.py");
   let usd: number | null = null;
   if (!existsSync(details) || statSync(details).size === 0) {
     mkdirSync(dirname(details), { recursive: true });
@@ -338,7 +497,7 @@ async function judge(
     const code = await inGroup(
       [
         join(jb, ".venv", "bin", "python"),
-        join(jb, "eval", "judge.py"),
+        ...(cap === undefined ? [judgePy] : ["-c", WIDER, judgePy, String(cap)]),
         "--output-dir",
         output,
         "--rubrics-file",
@@ -385,30 +544,21 @@ async function judge(
   return why;
 }
 
-const OPTIONS = {
-  arm: { type: "string" },
-  name: { type: "string" },
-  harness: { type: "string" },
-  tasks: { type: "string" },
-  out: { type: "string" },
-  jb: { type: "string" },
-  "api-base": { type: "string" },
-  "judge-log": { type: "string" },
-  rubrics: { type: "string" },
-  "solve-only": { type: "boolean" },
-  "dry-run": { type: "boolean" },
-  yes: { type: "boolean" },
-} as const;
-
 export async function score(values: Values): Promise<void> {
   if (values.out === undefined || values["api-base"] === undefined || values.jb === undefined) {
     throw new Error("score needs --arm, --name, --out, --jb and --api-base");
+  }
+  // An official record keeps judge.py's own cut, so a wider one reads only a deliverable judged again.
+  const cap = capOf(values.cap);
+  if (cap !== undefined && !(values.arm ?? "").startsWith("again:")) {
+    throw new Error("--cap judges only an again: arm, so no official record is made under another cut");
   }
   const jb = resolve(values.jb);
   const out = resolve(values.out);
   const store = join(out, "dataset");
   const claude = pilotClaude(jb);
-  const bench = jobBench(jb, store, claude);
+  const pi = (values.arm ?? "").startsWith(PI);
+  const bench = jobBench(jb, store, claude, pi ? piAgent(claude) : undefined);
   const arm = await armOf(values, out, bench.baseHarness);
   const tasks = tasksOf(values.tasks, values.arm === "heldout" ? fair(PILOT_TASKS) : PILOT_TASKS);
   const python = join(jb, ".venv", "bin", "python");
@@ -422,7 +572,9 @@ export async function score(values: Values): Promise<void> {
     const needs = [
       join(jb, "dataset", "main", task, "task_folder", "TASK_INSTRUCTIONS.txt"),
       join(jb, "dataset", "main", task, "RUBRICS.json"),
-      tree === null ? join(store, task, "model_output", arm.label(task)) : join(tree, "CLAUDE.md"),
+      tree === null
+        ? join(store, task, "model_output", arm.label(task))
+        : join(tree, pi ? HARNESS_DIR : "CLAUDE.md"),
     ];
     const missing = needs.find((need) => !existsSync(need));
     if (missing !== undefined) throw new Error(`${task}: ${missing} is missing`);
@@ -430,9 +582,12 @@ export async function score(values: Values): Promise<void> {
   const judged = join(out, "judged", arm.name);
   console.log(`arm ${arm.name}: ${arm.harness}, ${tasks.length} tasks into ${judged}`);
   console.log(
-    `  solve: ${claude.model} at ${claude.effort}, $${claude.budgetUsd} and ${claude.timeoutS} s an attempt, 2 attempts, ${AT_ONCE} at once`,
+    `  solve: ${claude.model} at ${claude.effort}${pi ? " on pi-durable, inside the harness itself" : ""}, $${claude.budgetUsd} and ${claude.timeoutS} s an attempt, 2 attempts, one rollout at a time`,
   );
-  console.log(`  judge: ${JUDGE.model} at ${JUDGE.effort} through ${values["api-base"]}, one at a time`);
+  if (pi) console.log(piDry(claude, arm.tree(tasks[0] ?? "") ?? ""));
+  console.log(
+    `  judge: ${JUDGE.model} at ${JUDGE.effort} through ${values["api-base"]}, one at a time, each file cut at ${String(cap ?? MAX_CHARS_PER_FILE)} characters`,
+  );
   for (const task of tasks) {
     console.log(`  ${task}: ${arm.label(task)} under ${arm.tree(task) ?? "the sweep's rollout"}`);
   }
@@ -446,7 +601,13 @@ export async function score(values: Values): Promise<void> {
   const scoreOne = async (task: string): Promise<void> => {
     const label = arm.label(task);
     const place = { store, task, label };
-    const got = await judge(jb, place, values["api-base"] ?? "", values["judge-log"], values.rubrics);
+    const output = join(store, task, "model_output", label);
+    const got = await judge(jb, place, {
+      apiBase: values["api-base"] ?? "",
+      shimLog: values["judge-log"],
+      rubrics: values.rubrics,
+      cap,
+    });
     if (isString(got)) {
       console.log(`${task}: not judged (${got})`);
       runtimeProcess.exitCode = 1;
@@ -462,7 +623,7 @@ export async function score(values: Values): Promise<void> {
       harness: arm.harness,
       task,
       label,
-      delivered: readdirSync(join(store, task, "model_output", label)).length > 0,
+      delivered: readdirSync(output).length > 0,
       points: got.details.total_score ?? null,
       total: got.details.max_score ?? null,
       passed: got.details.passed_count ?? null,
@@ -473,38 +634,33 @@ export async function score(values: Values): Promise<void> {
       attempts: log.attempts,
       build: arm.build(task),
       peeked: needles.filter((needle) => traces.some((trace) => trace.includes(needle))),
+      cut: cutOf(jb, output, cap),
+      ...keyIfDefined("cap", cap),
+      ...keysIf(pi, () => ({ runtime: "pi-durable" })),
     };
     mkdirSync(judged, { recursive: true });
     writeFileSync(join(judged, `${keyOf(task)}.json`), `${capturedJsonStringify(record, null, 2)}\n`);
     console.log(`${task}: ${text(record.points)}/${text(record.total)}, $${log.usd.toFixed(4)} solved`);
   };
-  const queue = tasks.filter((task) => !existsSync(join(judged, `${keyOf(task)}.json`)));
-  let judging = Promise.resolve();
-  const worker = async (): Promise<void> => {
-    for (let task = queue.shift(); task !== undefined; task = queue.shift()) {
-      const tree = arm.tree(task);
-      const label = arm.label(task);
-      // The runner's SKIP: a rollout on record, delivered or not, is this arm's one solve.
-      if (tree !== null && !rolloutLog(store, task, label).ran) {
-        try {
-          await bench.execute(task, tree, `${arm.name}/${task}`);
-        } catch (error) {
-          console.log(`${task}: ${errorMessage(error)}`);
-        }
+  for (const task of tasks.filter((one) => !existsSync(join(judged, `${keyOf(one)}.json`)))) {
+    const tree = arm.tree(task);
+    const label = arm.label(task);
+    // The runner's SKIP: a rollout on record, delivered or not, is this arm's one solve.
+    if (tree !== null && !rolloutLog(store, task, label).ran) {
+      try {
+        await bench.execute(task, tree, `${arm.name}/${task}`);
+      } catch (error) {
+        console.log(`${task}: ${errorMessage(error)}`);
       }
-      if (tree !== null && !rolloutLog(store, task, label).ran) {
-        console.log(`${task}: no attempt reached a result, a non-result; scoring again rolls it again`);
-        runtimeProcess.exitCode = 1;
-        continue;
-      }
-      // `compare.ts run` solves a block's sides side by side and judges them in turn afterwards.
-      if (values["solve-only"] === true) continue;
-      const due = task;
-      judging = judging.then(async () => await scoreOne(due));
     }
-  };
-  await Promise.all(Array.from({ length: AT_ONCE }, worker));
-  await judging;
+    if (tree !== null && !rolloutLog(store, task, label).ran) {
+      console.log(`${task}: no rollout ended with a result, a non-result; scoring again rolls it again`);
+      runtimeProcess.exitCode = 1;
+      continue;
+    }
+    // `compare.ts run` solves a block's sides side by side and judges them in turn afterwards.
+    if (values["solve-only"] !== true) await scoreOne(task);
+  }
 }
 
 /** The pilot's arms table (`final.py`) from the records under `<out>/judged/`. */
@@ -519,9 +675,15 @@ function table(out: string, tasks: readonly string[]): void {
   const arms = [...new Set(records.map((record) => text(record.arm)))].toSorted();
   const money = (value: number | null): string => (value === null ? "?" : value.toFixed(2));
   const width = Math.max(10, ...arms.map((arm) => arm.length));
+  const cuts = (record: JsonObject | undefined): number =>
+    Array.isArray(record?.cut) ? record.cut.length : 0;
+  const uncut = fair(tasks).filter(
+    (task) => !records.some((record) => record.task === task && cuts(record) > 0),
+  );
   for (const [title, set] of [
     ["all", tasks],
     ["fair", fair(tasks)],
+    ["fair uncut", uncut],
   ] as const) {
     console.log(`${title} ${set.length}`);
     for (const arm of arms) {
@@ -563,7 +725,8 @@ function table(out: string, tasks: readonly string[]): void {
     const cells = arms.flatMap((arm) => {
       const row = records.find((record) => record.arm === arm && record.task === task);
       const peeked = Array.isArray(row?.peeked) && row.peeked.length > 0 ? " PEEKED" : "";
-      return row === undefined ? [] : [`${arm} ${text(row.points)}/${text(row.total)}${peeked}`];
+      const cut = cuts(row) > 0 ? ` CUT ${String(cuts(row))}` : "";
+      return row === undefined ? [] : [`${arm} ${text(row.points)}/${text(row.total)}${peeked}${cut}`];
     });
     if (cells.length > 0) console.log(`${task}: ${cells.join(", ")}`);
   }

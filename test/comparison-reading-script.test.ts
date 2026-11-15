@@ -5,13 +5,13 @@
  */
 import { describe, expect, it } from "bun:test";
 import { drawLines, drawOf } from "#skills/comparison-reading/scripts/draw.ts";
-import { gapLines, sideGap } from "#skills/comparison-reading/scripts/gap.ts";
+import { sideGap } from "#tools/wri/pairs.ts";
 import { scoresRead, sizeOf } from "#skills/comparison-reading/scripts/size.ts";
-import { rowsOf } from "#skills/comparison-reading/scripts/reading.ts";
-import { starterReads } from "../src/campaign/climb.ts";
+import { rowsOf, zoneRows } from "#skills/comparison-reading/scripts/reading.ts";
+import { epochLine, epochsOf, starterReads } from "../src/campaign/climb.ts";
 import { flipP } from "../src/kernel/compare.ts";
 import { clearing } from "../src/kernel/size.ts";
-import { LOG_FILE, type LogEvent } from "../src/kernel/log.ts";
+import { type EventKind, LOG_FILE, type LogEvent } from "../src/kernel/log.ts";
 import { mkdtempSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { capturedJsonStringify } from "../src/meta/json-runtime.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
@@ -246,13 +246,13 @@ describe("a promotion's starter read, split by what its tasks had been through",
 
   /** A promotion on the seven chosen tasks, then a starter read of those, of `before` tasks written
    *  before it and drawn only now, and of `after` tasks written after it, each with its outcomes. */
-  const readOf = (before: number, after: Readonly<Record<string, string>>) => {
+  const logOf = (before: number, after: Readonly<Record<string, string>>): LogEvent[] => {
     const undrawn = Array.from({ length: before }, (_, nth) => `undrawn-${String(nth)}`);
     const outcomes = {
       ...Object.fromEntries([...chose, ...undrawn].map((task) => [task, "PP FF"])),
       ...after,
     };
-    return starterReads([
+    return [
       ...[...chose, ...undrawn].flatMap((task) => gate(task)),
       ...comparison("g-1", [STARTER, NEW], Object.fromEntries(chose.map((task) => [task, "FF PP"])), {
         reading: "step",
@@ -261,8 +261,13 @@ describe("a promotion's starter read, split by what its tasks had been through",
       { at: AT, kind: "harness.promoted", data: { harness: NEW, from: STARTER, rests: [] } },
       ...Object.keys(after).flatMap((task) => gate(task, "x-1")),
       ...comparison("g-2", [NEW, STARTER], outcomes, { reading: "step", differences: scores(7 + before, 0) }),
-    ])[0]?.after;
+    ];
   };
+  const readOf = (before: number, after: Readonly<Record<string, string>>) =>
+    starterReads(logOf(before, after))[0]?.after;
+  /** The climb's line of the epoch a log's first promotion opens, with the log's starter reads. */
+  const climbLine = (events: readonly LogEvent[]) =>
+    epochsOf(events).map((epoch) => epochLine(epoch, undefined, starterReads(events)))[1];
   const six = (outcome: string) =>
     Object.fromEntries(Array.from({ length: 6 }, (_, nth) => [`after-${String(nth)}`, outcome]));
 
@@ -275,6 +280,21 @@ describe("a promotion's starter read, split by what its tasks had been through",
   it("reads no step from six tasks written before the promotion and won, which leaving out the chosen tasks alone would", () => {
     expect(readOf(6, {})).toBe("too few");
     expect(readOf(6, { lost: "FF PP" })).toBe("too few");
+  });
+
+  it("says the tasks written after apart on the climb line with the sessions that wrote them, and nothing where the read held none", () => {
+    expect(climbLine(log)).toContain(
+      "against the starter 8 won, 1 lost, 1 tied, a step, so its promotion is confirmed, of which 0 won, 1 lost, 1 tied on the tasks 2 Examiner sessions wrote after it, alone too few;",
+    );
+    expect(climbLine(logOf(0, six("FF PP")))).toContain(
+      "of which 0 won, 6 lost, 0 tied on the tasks 1 Examiner session wrote after it, alone a step for the starter;",
+    );
+    // A read whose every task was written before the promotion has no such slice to say.
+    expect(climbLine(logOf(6, {}))).toContain("0 won, 13 lost, 0 tied, no step;");
+    // A caller without the reads prints the pooled tally alone, as every line did before.
+    expect(epochsOf(log).map((epoch) => epochLine(epoch))[1]).toContain(
+      "1 tied, a step, so its promotion is confirmed;",
+    );
   });
 
   it("finds no read before a starter comparison reports, and none in a log with no promotion", () => {
@@ -354,6 +374,11 @@ describe("a log's comparisons read again", () => {
     const said = decodeOutput(whole.stdout);
     expect(["g-1", "g-2", "g-3", "g-4", "g-5"].every((session) => said.includes(`${session}  `))).toBe(true);
     expect(runSync([capturedExecPath, script, folder, "--comparison", "g-9"]).exitCode).toBe(1);
+    // These reports tally no pair, so the TSV across logs holds its header alone.
+    const zone = runSync([capturedExecPath, script, "--zone", folder, folder]);
+    const header = decodeOutput(zone.stdout).trim().split("\n");
+    expect([header.length, header[0]?.startsWith("campaign\tcomparison\t")]).toEqual([1, true]);
+    expect(runSync([capturedExecPath, script, folder, folder]).exitCode).not.toBe(0);
   });
 });
 
@@ -361,8 +386,9 @@ describe("what the next comparison would score", () => {
   /** A task's hidden value, which no line of the draw may carry. */
   const HIDDEN = "hidden-canary-5e4";
 
-  /** A log over a read checker whose Examiner held `held` drafts and released `released`. */
-  function exam(held: number, released: number): LogEvent[] {
+  /** A log over a read checker whose Examiner held `held` drafts and released `released`, each task
+   *  of the family `familyOf` names for its place, or of none. */
+  function exam(held: number, released: number, familyOf?: (at: number) => string | undefined): LogEvent[] {
     const events: LogEvent[] = [];
     const add = (kind: LogEvent["kind"], data: JsonObject) =>
       events.push({ at: `2026-10-30T00:${String(events.length).padStart(2, "0")}:00.000Z`, kind, data });
@@ -370,7 +396,13 @@ describe("what the next comparison would score", () => {
     add("checker.read", { faults: [] });
     for (let at = 0; at < held + released; at += 1) {
       const [version, taskId] = [`v-${String(at)}`, `task-${String(at)}`];
-      add("task.proposed", { version, taskId, task: { taskId, publicInput: {}, hidden: { value: HIDDEN } } });
+      const task = {
+        taskId,
+        ...keyIfDefined("family", familyOf?.(at)),
+        publicInput: {},
+        hidden: { value: HIDDEN },
+      };
+      add("task.proposed", { version, taskId, task });
       add("task.gate", {
         version,
         gate: 1,
@@ -397,6 +429,34 @@ describe("what the next comparison would score", () => {
     const lines = drawLines(exam(5, 2), { target: 24, level: 0.02 });
     expect(lines.find((line) => line.startsWith("admission "))).toContain("refused held-short");
     for (const canary of [HIDDEN, "task-", "v-"]) expect(lines.join("\n")).not.toContain(canary);
+  });
+
+  /** `log` with a comparison g-1 that read no step on the tasks numbered `from` to `to`. */
+  function compared(log: readonly LogEvent[], from: number, to: number): LogEvent[] {
+    const of = Array.from({ length: to - from + 1 }, (_, at) => `v-${String(from + at)}`);
+    const differences = of.map((_, at) => [5, -5][at] ?? 0);
+    const data = { session: "g-1", reading: "no-step", frontier: { differences, of } };
+    const reported: LogEvent = { at: "2026-10-30T01:00:00.000Z", kind: "comparison.reported", data };
+    return [...log, reported];
+  }
+
+  it("counts the tasks the comparison before scored, and the set's families, naming neither", () => {
+    // The hostile cases: a pool that is the last comparison's tasks less one draws that comparison
+    // again, and on 14 November 19 tasks in families of 18 and 1 read as 19 independent ones.
+    const lines = (log: readonly LogEvent[]) => drawLines(log, { target: 24, level: 0.02 }).join("\n");
+    const repeat = compared(exam(8, 2), 1, 9);
+    expect(lines(repeat)).toContain("of those tasks, 8 of 8 scored in the comparison before (g-1)");
+    expect(drawOf(compared(exam(8, 2), 2, 4), 24, "c1").before).toStrictEqual({ session: "g-1", again: 3 });
+    expect(lines(exam(8, 2))).not.toContain("comparison before");
+    const siblings = exam(19, 2, (at) => (at === 2 ? "kin-alone" : "kin-many"));
+    expect(lines(siblings)).toContain(
+      "the set's grain, naming no family: 19 tasks in 2 families, the largest 18\n",
+    );
+    for (const log of [repeat, siblings]) expect(lines(log)).not.toMatch(/v-|kin-/);
+    const mixed = exam(8, 2, (at) => (at < 6 ? "kin-many" : undefined));
+    expect(drawOf(mixed, 24, "c1").families).toStrictEqual({ sizes: [4], unnamed: 4 });
+    expect(lines(mixed)).toContain("8 tasks in 1 family, the largest 4, and 4 that name none");
+    expect(lines(exam(8, 2))).toContain("8 tasks, none of which names a family");
   });
 });
 
@@ -444,8 +504,143 @@ describe("how far a comparison's sides stood from the best on record", () => {
     expect(sideGap(pairs, "old", bests)).toEqual({ ratio: null, atBest: 0, read: 0, unread: 3 });
     expect(sideGap(pairs, "fresh", bests).read).toBe(2);
   });
+});
 
-  it("prints no line for a log with no comparison under an objective", () => {
-    expect(gapLines([START])).toEqual([]);
+describe("where a comparison's tasks sat for the reference", () => {
+  const event = (minutes: number, kind: EventKind, data: JsonObject): LogEvent => ({
+    at: new Date(Date.UTC(2026, 9, 31, 0, minutes)).toISOString(),
+    kind,
+    data,
+  });
+  const reported = (
+    session: string,
+    harnesses: readonly [string, string],
+    terms: JsonObject,
+    more: JsonObject,
+  ) =>
+    event(9, "comparison.reported", {
+      session,
+      old: harnesses[0],
+      fresh: harnesses[1],
+      starter: "h1",
+      reading: "no-step",
+      scored: { wins: 0, losses: 0, ties: 0 },
+      ...terms,
+      ...more,
+    });
+  const held = (...tasks: readonly string[]) =>
+    tasks.flatMap((task) => [
+      event(0, "task.proposed", { version: task, taskId: task }),
+      event(0, "task.gate", { version: task, gate: 1, outcome: "passed" }),
+    ]);
+  // A verdict for each solve of `events`, in order, carrying its objective.
+  const measured = (events: readonly LogEvent[], measures: readonly number[]) =>
+    events
+      .filter(({ kind }) => kind === "solve.started")
+      .map(({ data }, index) =>
+        event(8, "verdict", {
+          solve: data.solve ?? "",
+          kind: "pass",
+          answer: {},
+          objective: measures[index] ?? 0,
+        }),
+      );
+
+  it("counts the reference's tasks and what untied them, beside the A/A's untied tasks", () => {
+    const outcomes = { all: "PP PP", some: "PF PP", none: "FF PP", neither: "FF FF" };
+    const { events, terms } = roundSolves("g-1", ["h1", "h2"], outcomes);
+    const noise = { differences: [0, 0.6, -0.6, 0], wins: 1, losses: 1, ties: 2, p: 1 };
+    const log = [
+      ...held(...Object.keys(outcomes)),
+      ...events,
+      reported("g-1", ["h1", "h2"], terms, { noise }),
+    ];
+    expect(zoneRows("c", log)).toEqual([
+      [
+        "c",
+        "g-1",
+        "candidate",
+        "0",
+        "no-step",
+        "4",
+        "2",
+        "1",
+        "1",
+        "0.38",
+        "2",
+        "0",
+        "2",
+        "0.50",
+        "2",
+        "0.50",
+      ],
+    ]);
+  });
+
+  it("ties a task whose objective points round to nothing, as the comparison's report does", () => {
+    const { events, terms } = roundSolves("g-1", ["h1", "h2"], { near: "PP PP" });
+    const log = [
+      ...held("near"),
+      ...events,
+      ...measured(events, [100, 112, 106, 106]),
+      reported("g-1", ["h1", "h2"], terms, { objective: { direction: "lower" } }),
+    ];
+    expect(zoneRows("c", log)[0]?.slice(10, 13)).toEqual(["0", "0", "1"]);
+  });
+
+  it("calls a task untied on the objective only past its floor, and only with validity tied", () => {
+    const { events, terms } = roundSolves("g-1", ["h1", "h2"], { apart: "PP PP" });
+    const close = roundSolves("g-2", ["h1", "h2"], { close: "PP PP" });
+    const objective = { objective: { direction: "lower" } };
+    const log = [
+      ...held("apart", "close"),
+      ...events,
+      ...measured(events, [10, 10, 5, 5]),
+      reported("g-1", ["h1", "h2"], terms, objective),
+      ...close.events,
+      ...measured(close.events, [10, 10, 10.01, 10.01]),
+      reported("g-2", ["h1", "h2"], close.terms, objective),
+    ];
+    const untied = zoneRows("c", log).map((row) => row.slice(10, 13));
+    expect(untied).toEqual([
+      ["0", "1", "0"],
+      ["0", "0", "1"],
+    ]);
+    // No best is on record for either task, so each side's valid answers are counted and left unread.
+    const unread = { ratio: null, atBest: 0, read: 0, unread: 1 };
+    expect(rowsOf(log, null, null).map(({ gap }) => gap)).toEqual([
+      { old: unread, fresh: unread },
+      { old: unread, fresh: unread },
+    ]);
+  });
+
+  it("names a starter comparison by its sides and its epoch by the promotions before it", () => {
+    const { events, terms } = roundSolves("g-1", ["h2", "h1"], { task: "PP PF" });
+    const log = [
+      ...held("task"),
+      event(1, "harness.promoted", { harness: "h2" }),
+      ...events,
+      reported("g-1", ["h2", "h1"], terms, {}),
+    ];
+    expect(zoneRows("c", log)[0]?.slice(2, 4)).toEqual(["starter", "1"]);
+  });
+
+  it("leaves the A/A blank where a comparison held none, and a comparison that tallied nothing out", () => {
+    const { events, terms } = roundSolves("g-1", ["h1", "h2"], { task: "PP PP" });
+    const log = [
+      ...held("task"),
+      ...events,
+      reported("g-1", ["h1", "h2"], terms, {}),
+      reported("g-2", ["h1", "h2"], terms, { scored: null }),
+    ];
+    const rows = zoneRows("c", log);
+    expect(rows.map((row) => row[1])).toEqual(["g-1"]);
+    expect(rows[0]?.slice(14)).toEqual(["", ""]);
+    // Without an objective neither comparison has a gap, and one that tallied nothing has no zone.
+    const read = rowsOf(log, null, null).map(({ zone, gap }) => [zone === null, gap]);
+    expect(read).toEqual([
+      [false, null],
+      [true, null],
+    ]);
   });
 });

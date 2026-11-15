@@ -16,18 +16,26 @@ afterAll(() => {
   for (const root of folders) rmSync(root, { recursive: true, force: true });
 });
 
-const row = (more: Partial<Row> = {}): Row => ({
-  name: "r",
-  promotions: [],
-  state: { kind: "live", kept: true },
-  owed: true,
-  lastAt: "2026-11-06T10:00:00.000Z",
-  kept: [],
-  ...more,
-});
+/** A row, whose endings are by default the one its state stands on. */
+const row = (more: Partial<Row> = {}): Row => {
+  const state = more.state ?? { kind: "live", kept: true };
+  const ending = "ending" in state ? state.ending : undefined;
+  return {
+    name: "r",
+    promotions: [],
+    state,
+    owed: true,
+    lastAt: "2026-11-06T10:00:00.000Z",
+    kept: [],
+    paused: false,
+    endings: ending === undefined ? [] : [ending],
+    ...more,
+  };
+};
 const heldAs = (rows: readonly Row[], more: readonly string[] = []): HostRows => ({
   rows,
   held: [...rows.map(({ name }) => name), ...more],
+  retired: [],
 });
 const here = (...rows: Row[]) => [{ host: "here", said: heldAs(rows) }];
 const unread = (digest: string) => ({ digest, read: null });
@@ -125,6 +133,9 @@ describe("the fold of one look", () => {
       [{ state: { kind: "kept" } }, "no writer process; its keeper lives"],
       [{ state: STOPPED }, "no writer process and no keeper"],
       [{ state: STOPPED, owed: false }, "no writer process"],
+      // A run its launch's pause stopped is paused, owed a keeper or not.
+      [{ state: STOPPED, paused: true }, "paused"],
+      [{ state: STOPPED, owed: false, paused: true }, "paused"],
     ] as const;
     for (const [state, says] of gaps) {
       const once = alertsOf(start, here(row(state)));
@@ -147,6 +158,33 @@ describe("the fold of one look", () => {
     expect(alertsOf(first.next, here(kept)).lines).toEqual([]);
     const again = alertsOf(alertsOf(first.next, here(row())).next, here(kept));
     expect(again.lines).toContain("r (here): ended environment");
+  });
+
+  it("says each ending a run went on past between two looks, and none the look before saw it stand on", () => {
+    // 13 November: three endings in 41 minutes, each gone on from within 36 s, and a look every ten.
+    const twice = row({ endings: ["environment", "environment"], kept: ["T r: continue on login 2"] });
+    const { lines, next } = alertsOf(lookedAt(row({ endings: [] })), here(twice));
+    expect(lines).toEqual([
+      "r (here): keeper: T continue on login 2",
+      "r (here): ended environment, and went on",
+      "r (here): ended environment, and went on",
+    ]);
+    expect(alertsOf(next, here(twice)).lines).toEqual([]);
+    // An ending a look saw the log stand on is said then, and not again as the run goes on.
+    const standing = (endings: string[]): Row =>
+      row({ state: { kind: "kept", ending: "environment" }, endings });
+    const ended = (said: readonly string[]): string[] => said.filter((line) => line.includes("ended"));
+    const stood = alertsOf(lookedAt(row({ endings: ["budget"] })), here(standing(["budget", "environment"])));
+    expect(ended(stood.lines)).toEqual(["r (here): ended environment"]);
+    expect(alertsOf(stood.next, here(standing(["budget", "environment"]))).lines).toEqual([]);
+    const onwards = row({ endings: ["budget", "environment", "environment"] });
+    expect(alertsOf(stood.next, here(onwards)).lines).toEqual(["r (here): ended environment, and went on"]);
+    // A run that went on and stands on the same ending again has ended anew, though the word is the same.
+    const again = standing(["budget", "environment", "environment"]);
+    expect(ended(alertsOf(stood.next, here(again)).lines)).toEqual(["r (here): ended environment"]);
+    // A run first seen fires on no history, and a run seen with more endings than it now has on none.
+    expect(alertsOf(lookedAt(), here(twice)).lines).toEqual([]);
+    expect(alertsOf(lookedAt(twice), here(row())).lines).toEqual([]);
   });
 
   it("says a stall once, and again once the run has moved and stalled afresh", () => {
@@ -185,6 +223,32 @@ describe("the fold of one look", () => {
     expect(alertsOf(back.next, away).lines).toHaveLength(1);
   });
 
+  it("says a host still down again at each sixth look while a run last seen open is there", () => {
+    const away = [
+      { host: "here", said: heldAs([]) },
+      { host: "peer", said: null },
+    ];
+    const said = (rows: Row[]) => {
+      let state = alertsOf(null, [
+        { host: "here", said: heldAs([]) },
+        { host: "peer", said: heldAs(rows) },
+      ]).next;
+      return Array.from({ length: 12 }, () => {
+        const look = alertsOf(state, away);
+        state = look.next;
+        return look.lines;
+      });
+    };
+    const open = said([row()]);
+    expect(open.map((lines) => lines.length)).toEqual([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1]);
+    expect(open[5]?.[0]).toBe(
+      "peer: gave no answer this tree reads for 6 looks, with a run last seen open there",
+    );
+    // The nearest hostile case: a host whose runs all ended is said once, as a Mac asleep is.
+    const ended = said([row({ state: ENDED })]);
+    expect(ended.map((lines) => lines.length)).toEqual([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+  });
+
   it("says a live run that left the registry once, forgets it, and says nothing of one that ended", () => {
     const gone = alertsOf(lookedAt(row()), here());
     expect(gone.lines).toEqual(["r (here): left the registry with no ending seen"]);
@@ -193,6 +257,15 @@ describe("the fold of one look", () => {
     const ended = alertsOf(lookedAt(row({ state: ENDED })), here());
     expect(ended.lines).toEqual([]);
     expect(ended.next.runs).toEqual({});
+    // One `runs retire` moved into the archive of a host that answered is said nothing of, and forgotten.
+    const retired = alertsOf(lookedAt(row({ state: STOPPED })), [
+      { host: "here", said: { ...heldAs([]), retired: ["r"] } },
+    ]);
+    expect(retired.lines).toEqual([]);
+    expect(retired.next.runs).toEqual({});
+    // A peer that names no archive says it as before.
+    const older = alertsOf(lookedAt(row({ state: STOPPED })), [{ host: "here", said: heldAs([]) }]);
+    expect(older.lines).toEqual(["r (here): left the registry with no ending seen"]);
   });
 
   it("keeps quiet of a run still held though the rows left it out, and it reads on when it returns", () => {
@@ -298,12 +371,14 @@ describe("the fold of one look", () => {
 });
 
 describe("the verb over real logs", () => {
-  /** A fixture host with one campaign's log, read by the real CLI under `extra`. */
+  const RECEIPT = "launch-run-1.json";
+  /** A fixture host with one launched campaign's log, read by the real CLI under `extra`. */
   function host(extra: Record<string, string> = { ANA_HOSTS: "[]" }) {
     const made = fakeHosts();
     folders.push(made.root);
     const folder = join(made.main, ".ana", "d2", "the-run");
     mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, RECEIPT), JSON.stringify({ at: "2026-11-06T07:00:00.000Z" }));
     const log = join(folder, "log.jsonl");
     const event = (kind: string, data: JsonObject) =>
       writeFileSync(log, `${JSON.stringify({ at: new Date().toISOString(), kind, data })}\n`, { flag: "a" });
@@ -317,18 +392,21 @@ describe("the verb over real logs", () => {
   const HARNESS = `abcd1234${"e".repeat(56)}`;
   const SECOND = `cdef5678${"f".repeat(56)}`;
 
-  it("leaves out a seed a rehearsal writes, and reads one a launch continued", () => {
-    const { folder } = host();
+  it("leaves out a campaign no launch kept a receipt of, a seed or a test's, and reads one a launch continued", () => {
+    const { made } = host();
+    const folder = join(made.main, ".ana", "d2", "scripted");
+    mkdirSync(folder);
     const run = {
-      name: "the-run",
+      name: "scripted",
       path: join(folder, "log.jsonl"),
       tree: "",
       end: "comparison.reported" as const,
       seed: true,
     };
     expect(onAlerts(run, "open", 0)).toBe(false);
-    expect(onAlerts({ ...run, seed: false }, "open", 0)).toBe(true);
-    writeFileSync(join(folder, "launch-run-1.json"), JSON.stringify({ at: "2026-11-06T07:00:00.000Z" }));
+    // A test's campaign is no seed, and a check wrote its "no writer process" among the alerts.
+    expect(onAlerts({ ...run, seed: false }, "open", 0)).toBe(false);
+    writeFileSync(join(folder, RECEIPT), JSON.stringify({ at: "2026-11-06T07:00:00.000Z" }));
     // Continued, it is read as any run: closed and written lately (a keeper between two starts), or not.
     expect(onAlerts(run, "open", 0)).toBe(true);
     expect(onAlerts(run, "closed", 0)).toBe(onAlerts({ ...run, seed: false }, "closed", 0));
@@ -416,7 +494,7 @@ describe("the verb over real logs", () => {
       FAKE_FLEET: JSON.stringify({ [made.host.ssh]: { alerts } }),
     });
     const peer = (promotions: Row["promotions"]) =>
-      JSON.stringify({ rows: [row({ name: "away", promotions })], held: ["away"] });
+      JSON.stringify({ rows: [row({ name: "away", promotions })], held: ["away"], retired: [] });
     expect(look(fleet(peer([]))).out).toContain("recorded 2 runs on 2 hosts");
     const down = look(fleet("no list here"));
     expect(down.out).toBe(`${made.host.name}: gave no answer this tree reads; its runs stay as last seen\n`);
@@ -437,7 +515,7 @@ describe("the verb over real logs", () => {
         [made.host.ssh]: {
           alerts: JSON.stringify(heldAs([row({ name: "away", promotions: current })])),
         },
-        [behind.ssh]: { alerts: `{"rows":[${aged}],"held":["aged"]}` },
+        [behind.ssh]: { alerts: `{"rows":[${aged}],"held":["aged"],"retired":[]}` },
       }),
     });
     const first = look(fleet([], JSON.stringify(whole)));
@@ -472,6 +550,26 @@ describe("the verb over real logs", () => {
     const answer = parseJsonAs<HostRows>(out);
     expect(answer.held).toEqual(["the-run"]);
     expect(answer.rows[0]?.promotions[0]?.digest).toBe("abcd1234");
+    expect(answer.rows[0]?.paused).toBe(false);
+    expect(answer.retired).toEqual([]);
     expect(() => readFileSync(state, "utf8")).toThrow();
+  });
+
+  it("reads a pause left in the run's current launch, and none left before it", () => {
+    const { made, folder, event, state } = host();
+    const rows = () =>
+      parseJsonAs<HostRows>(
+        made.runScript(CLI, ["alerts", "--rows", "--state", state], { ANA_HOSTS: "[]" }).out,
+      ).rows[0];
+    event("campaign.word", { word: "pause", why: "two promotions" });
+    expect(rows()?.paused).toBe(true);
+    // A launch after it is the run gone on, and its pause was for the process that stopped.
+    writeFileSync(
+      join(folder, "launch-run-2.json"),
+      JSON.stringify({ at: new Date(Date.now() + 1000).toISOString() }),
+    );
+    event("build.started", { session: "b-2" });
+    const later = rows();
+    expect(later?.paused).toBe(false);
   });
 });

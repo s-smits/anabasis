@@ -6,7 +6,6 @@ import { gitText } from "#src/meta/git.ts";
 import { bundle } from "#skills/oracle-handover/scripts/bundle.ts";
 import { declarationLines, sanitised, sectionLines } from "#skills/oracle-handover/scripts/document.ts";
 import { groupsOf, parseSelector, pick, slice } from "#skills/oracle-handover/scripts/slice.ts";
-import { follow, hazards, targetOf } from "#skills/stack-pr/scripts/follow.ts";
 import { itself, pairLines } from "#skills/compare-systems/scripts/systems.ts";
 import { censusOf, newsOf } from "#skills/system-path-simulation/scripts/live-seat.ts";
 import {
@@ -17,8 +16,8 @@ import {
   replayedHeads,
   republish,
 } from "#skills/stack-pr/scripts/republish.ts";
-import { offMain, told as stackTold } from "#skills/stack-pr/scripts/stack.ts";
-import { chains, firstStack, type Pull, stackHolding } from "#tools/runtime/pulls.ts";
+import { follow, hazards, targetOf } from "#tools/runtime/follow.ts";
+import { chains, firstStack, offMain, type Pull, stackHolding, stackTold } from "#tools/runtime/pulls.ts";
 import {
   existsSync,
   mkdirSync,
@@ -179,6 +178,25 @@ describe("the hourly follow's reasons not to move", () => {
     expect(readFileSync(join(co, "shared.txt"), "utf8"), "nothing moved").toBe("mine\n");
   });
 
+  it("does not count the follow that asks as work running in the checkout", () => {
+    // The verb runs from tools/runtime/, a path the hazards read as work, with the checkout as its
+    // working folder; a probe of the same shape stands in for it.
+    const clean = join(root, "safe-own");
+    git(root, "clone", "-q", up, clean);
+    const probe = join(root, "tools", "runtime", "probe.ts");
+    mkdirSync(join(root, "tools", "runtime"), { recursive: true });
+    writeFileSync(
+      probe,
+      [
+        `import { hazards, targetOf } from ${capturedJsonStringify(join(import.meta.dir, "..", "tools", "runtime", "follow.ts"))};`,
+        `const target = targetOf([{ number: 1, headRefName: "claude/top", baseRefName: "main" }], "main");`,
+        `console.log(JSON.stringify(hazards(${capturedJsonStringify(clean)}, target, Date.now() + 3_600_000)));`,
+      ].join("\n"),
+    );
+    const asked = runSync([capturedExecPath, probe], { cwd: clean });
+    expect(decodeOutput(asked.stdout).trim(), decodeOutput(asked.stderr)).toBe("[]");
+  });
+
   it("refuses to switch over an ignored file the top adds, and keeps it", () => {
     const kept = join(root, "safe-ignored");
     git(root, "clone", "-q", up, kept);
@@ -242,6 +260,7 @@ describe("republishing a consolidated stack", () => {
       "gh 'stack' 'unstack' '7'",
       "gh 'pr' 'edit' '1' '--base' 'main'",
       "gh 'pr' 'edit' '2' '--base' 'main'",
+      "gh 'pr' 'edit' '3' '--base' 'main'",
       `git ${pushArgs(plan, "no-verify")
         .map((arg) => `'${arg}'`)
         .join(" ")}`,
@@ -252,7 +271,7 @@ describe("republishing a consolidated stack", () => {
     ]);
   });
 
-  it("unstacks and retargets every survivor before pushing leased heads, then sets bases, closes and relinks", () => {
+  it("unstacks and retargets every survivor and absorbed pull request before pushing leased heads, then sets bases, closes and relinks", () => {
     const plan = planConsolidation(co, pulls, heads, absorbed, "main");
     expect(plan.moves.map((move) => [move.pull.number, move.to, move.base])).toStrictEqual([
       [1, a1, "main"],
@@ -284,11 +303,16 @@ describe("republishing a consolidated stack", () => {
         .join(" ")}`,
     );
     expect([sha(up, "a"), sha(up, "b"), sha(up, "c")]).toStrictEqual([a1, b1, c0]);
-    expect(asked, "heads must be pushed only after unstacking and retargeting every survivor").toStrictEqual([
+    // #3 stands on #2's branch, and #2's new head could hold its commits: left there, the push merges it.
+    expect(
+      asked,
+      "heads must be pushed only after unstacking and retargeting every pull request",
+    ).toStrictEqual([
       "api repos/{owner}/{repo}/stacks",
       "stack unstack 7",
       "pr edit 1 --base main",
       "pr edit 2 --base main",
+      "pr edit 3 --base main",
       "git push",
       "pr edit 1 --base main",
       "pr edit 2 --base a",

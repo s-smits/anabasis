@@ -18,6 +18,7 @@ import {
 } from "#skills/promotion-tuner/scripts/record.ts";
 import { differenceOf, flipP } from "../src/kernel/compare.ts";
 import type { LogEvent } from "../src/kernel/log.ts";
+import { chainLog } from "./helpers/starter-chain.ts";
 
 const LEVEL = 0.02;
 const die = (why: string): never => {
@@ -33,6 +34,7 @@ const solve = (billed: number, measure: number | null = null, valid = true): Sol
 });
 const task = (old: readonly Solve[], fresh: readonly Solve[], direction: Task["direction"] = null): Task => ({
   task: "t",
+  family: null,
   direction,
   retained: false,
   old,
@@ -65,6 +67,13 @@ describe("knobs at today's values", () => {
     );
     for (const each of grid) expect(today.score(each)).toBe(differenceOf(paired(each)));
     expect(grid.length).toBe(3 * 9 * 9 * 3 * 3);
+  });
+
+  it("round a half point as production does", () => {
+    // Validity in two of the four pairings and a quarter's gain in the other two: 300 and 37.5 points.
+    const half = task([solve(1, 75), solve(1, null, false)], [solve(1, 100), solve(1, 100)], "higher");
+    expect(differenceOf(paired(half))).toBe(338);
+    expect(knobbed(TODAY, "today").score(half)).toBe(338);
   });
 
   it("read a step where the sign-flip test does, and nowhere else", () => {
@@ -130,6 +139,24 @@ describe("a resource as a guard", () => {
   });
 });
 
+describe("the unit a test counts", () => {
+  it("reads six wins of one family as one unit, six of six families or of none as six, and a family by its mean or first task", () => {
+    const scored = (old: number, fresh: number) =>
+      task([solve(1, old), solve(1, old)], [solve(1, fresh), solve(1, fresh)], "lower");
+    const of = (family: string | null, one: Task): Task => ({ ...one, family });
+    const siblings = Array.from({ length: 6 }, () => of("one", scored(100, 50)));
+    const apart = siblings.map((one, nth) => of(`f${String(nth)}`, one));
+    const alone = siblings.map((one) => of(null, one));
+    // Each family's first task is won by 150 points and its second lost by 225.
+    const mixed = apart.flatMap((one) => [one, of(one.family, scored(25, 100))]);
+    expect(steps(knobbed(TODAY, "today"), siblings)).toBe(true);
+    const read = (unit: string) =>
+      [siblings, apart, alone, mixed, mixed.toReversed()].map((tasks) => steps(mechanism(unit), tasks));
+    expect(read("unit=family")).toStrictEqual([false, true, true, false, false]);
+    expect(read("unit=first")).toStrictEqual([false, true, true, true, false]);
+  });
+});
+
 describe("a spec", () => {
   it("refuses a knob or a value it does not know", () => {
     expect(() => knobsOf("bil=0.1", die)).toThrow("no knob bil");
@@ -154,10 +181,28 @@ describe("the record", () => {
       tasks: [tied(1)],
       aa: [],
       after: { promoted: [], readings: 0 },
+      confirmed: null,
     });
     expect(
       once([of("fork", 2), of("parent", 1), of("other", 3, "c")]).map(({ campaign }) => campaign),
     ).toEqual(["parent", "other"]);
+  });
+
+  it("gives each task its family, and a step the confirmation of the promotion it made", () => {
+    const read = (events: readonly LogEvent[]) =>
+      Object.fromEntries(comparisonsIn("c", events).map(({ session, confirmed }) => [session, confirmed]));
+    // The first promotion's starter read is 7 to 3, no step; the second's is 10 to 0 or 7 to 3. A
+    // starter read made no promotion, so it holds none.
+    expect(read(chainLog("won"))).toEqual({ "g-1": false, "g-2": null, "g-3": true, "g-4": null });
+    expect(read(chainLog("lost"))["g-3"]).toBe(false);
+    // Before its starter read reports, a promotion is unread, which is not unconfirmed.
+    const log = chainLog("won");
+    const started = log.findIndex(
+      ({ kind, data }) => kind === "comparison.started" && data.session === "g-4",
+    );
+    expect(read(log.slice(0, started))["g-3"]).toBeNull();
+    const families = comparisonsIn("c", log).flatMap(({ tasks }) => tasks.map(({ family }) => family));
+    expect(families).toEqual(Array.from({ length: 34 }, () => "fixture"));
   });
 
   it("reads no comparison from a log with none that scored a task", () => {

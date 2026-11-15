@@ -1,24 +1,16 @@
 /**
  * The per-run ledgers of an iteration, read one way for every reader: `predictions-<run>.md` and
- * `outcomes-<run>.md` in a cycle's folder, and the tables of an investigation's own files. The
- * operator asked on 7 November for each run's predictions and their outcomes as a linked pair, with
- * what the run still lacks and what it lacks on purpose ("Intentionally opposed") beside them, so a
- * loop of iterations can be read whole. Before that, a cycle kept one `Predictions.md` and nothing
- * showed whether a given run's rows were resolved.
- *
- * Each fact has one hand-written owner: a prediction its `predictions-<run>.md`, its outcome its
- * `outcomes-<run>.md`, and what stays undone or opposed the `plan.md` of the iteration that read the
- * run. The cycle view and each run's still-missing view are derived here (`cycleViewOf`,
- * `stillMissingOf`) and never written by hand. Until 8 November a cycle's `Predictions.md` kept
- * resolutions beside the per-run outcomes, and `still-missing-<run>.md` restated the plan's
- * `## Not done`, so each fact had two owners (`AGENTS.md` rule 12); a file of either kind written
- * before then is still read, and none is rewritten.
+ * `outcomes-<run>.md` in a cycle's folder, and the tables of an investigation's own files, so a loop
+ * of iterations can be read whole. Each fact has one hand-written owner: a prediction its
+ * `predictions-<run>.md`, its outcome its `outcomes-<run>.md`, and what stays undone or opposed the
+ * `plan.md` of the iteration that read the run (an older run's `still-missing-<run>.md` is still
+ * read). The cycle, dropped and still-missing views are derived here and never written by hand.
  *
  * A table counts only where its header's first cell names it (`id` for a ledger), so a second
  * table, a heading or prose is never read as a prediction; comments and code fences are skipped,
  * so a heading inside an example does not count as the section.
  */
-import { existsSync, readdirSync } from "#src/meta/filesystem.ts";
+import { existsSync, readdirSync, readFileSync, statSync } from "#src/meta/filesystem.ts";
 import { join } from "#src/meta/path.ts";
 
 /** One parent run's name and its two ledgers' text, for what a fork of it carries. */
@@ -28,10 +20,19 @@ export interface Parent {
   readonly outcomes: string;
 }
 
+/** One predictions ledger's `## Carried` section and the run whose ledger it is. */
+interface Carried {
+  readonly run: string;
+  readonly text: string;
+}
+
 /** One run's ledgers for the derived views: its two hand-written files and its iteration's plan. */
 interface RunLedgers extends Parent {
   /** The `plan.md` of the iteration that read the run, or "" before one is written. */
   readonly plan: string;
+  /** Whether a plan of its own can still place the run's rows: an investigation names it, or it is
+   *  live, and a live run's investigation opens at its trigger. */
+  readonly awaited: boolean;
   /** The run's `still-missing-<run>.md` written before 8 November, or "": read where the plan has no
    *  `## Intentionally opposed`, so an older run's trade-offs are shown rather than "none". */
   readonly older: string;
@@ -90,10 +91,20 @@ export const outcomesOf = (text: string): Map<string, string> =>
     ]),
   );
 
-/** The ids of a predictions ledger whose outcome in the outcomes ledger is not `held`. */
-function unheldOf(predictions: string, outcomes: string): string[] {
+/** The ids a predictions ledger owes one outcome each in its outcomes ledger: those of its `id`
+ *  tables, and each `<run>:<id>` its `## Carried` section names, resolved under that whole name. */
+export const owedOf = (predictions: string): string[] => [
+  ...new Set([
+    ...idsOf(predictions),
+    ...((sectionOf(predictions, "Carried") ?? []).join("\n").match(/(?<![\w.-])[a-z][\w.-]*:[A-Z]\w*/gu) ??
+      []),
+  ]),
+];
+
+/** The ids among `ids` whose outcome in the outcomes ledger is not `held`. */
+function unheldOf(ids: readonly string[], outcomes: string): string[] {
   const outcome = outcomesOf(outcomes);
-  return idsOf(predictions).filter((id) => outcome.get(id) !== "held");
+  return ids.filter((id) => outcome.get(id) !== "held");
 }
 
 /** The log's event count an outcomes ledger was resolved at, or null where it records none. */
@@ -116,7 +127,7 @@ export function staleOf(outcomes: string, events: number | null): string[] {
 }
 
 /** The non-blank lines under every `## Not done` heading of a plan, whatever follows the words. */
-function notDoneOf(plan: string): string[] {
+export function notDoneOf(plan: string): string[] {
   return stripped(plan)
     .split("\n")
     .filter((line) => /^## Not done\b/u.test(line))
@@ -136,8 +147,52 @@ export function cycleViewOf(runs: readonly RunLedgers[]): string[] {
     "| run | id | outcome |",
     "| --- | --- | --- |",
     ...runs.flatMap((run) =>
-      idsOf(run.predictions).map((id) => `| ${run.name} | ${id} | ${shownOutcome(run, id)} |`),
+      owedOf(run.predictions).map((id) => `| ${run.name} | ${id} | ${shownOutcome(run, id)} |`),
     ),
+  ];
+}
+
+/**
+ * The dropped view: each prediction a run left `unreached` or `falsified` that nothing took up, named
+ * neither as `<run>:<id>` in another run's `## Carried` section (`carried`) nor under the
+ * `## Intentionally opposed` of the plan that read its run; a `## Not done` line takes up nothing.
+ * A run whose plan is not yet written has dropped nothing. A run that is neither live nor named by an
+ * investigation has no plan to come, so its rows are listed apart as unread, where only a carry takes
+ * them.
+ */
+export function droppedOf(runs: readonly RunLedgers[], carried: readonly Carried[]): string[] {
+  const linesOf = (among: readonly RunLedgers[]) =>
+    among.flatMap((run) => {
+      const outcome = outcomesOf(run.outcomes);
+      const opposed = (sectionOf(run.plan, "Intentionally opposed") ?? []).join("\n");
+      const others = carried
+        .filter((each) => each.run !== run.name)
+        .map(({ text }) => text)
+        .join("\n");
+      const left = owedOf(run.predictions)
+        .map((id) => ({ id, read: outcome.get(id) ?? "" }))
+        .filter(({ read }) => read === "unreached" || read === "falsified")
+        .filter(
+          ({ id }) => !names(others, id.includes(":") ? id : `${run.name}:${id}`) && !names(opposed, id),
+        );
+      return left.length === 0
+        ? []
+        : [`- ${run.name}: ${left.map(({ id, read }) => `${id} (${read})`).join(", ")}`];
+    });
+  const dropped = linesOf(runs.filter(({ plan }) => plan !== ""));
+  const unread = linesOf(runs.filter(({ awaited }) => !awaited));
+  return [
+    "# Dropped: unreached or falsified, carried by no run and opposed by no plan",
+    "",
+    ...(dropped.length === 0 ? ["- none"] : dropped),
+    ...(unread.length === 0
+      ? []
+      : [
+          "",
+          "# Unread: unreached or falsified in a run at rest no investigation names, carried by no run",
+          "",
+          ...unread,
+        ]),
   ];
 }
 
@@ -148,7 +203,7 @@ export function cycleViewOf(runs: readonly RunLedgers[]): string[] {
  */
 export function stillMissingOf(run: RunLedgers): string[] {
   const listed = (lines: readonly string[]) => (lines.length === 0 ? ["- none"] : lines);
-  const unheld = unheldOf(run.predictions, run.outcomes);
+  const unheld = unheldOf(owedOf(run.predictions), run.outcomes);
   return [
     `# Still missing: ${run.name}`,
     "",
@@ -179,7 +234,7 @@ export function carryOf(
   parents: readonly Parent[],
 ): { owed: string[]; missing: string[] } {
   const owed = parents.flatMap(({ name, predictions: theirs, outcomes }) =>
-    unheldOf(theirs, outcomes).map((id) => `${name}:${id}`),
+    unheldOf(idsOf(theirs), outcomes).map((id) => `${name}:${id}`),
   );
   const carried = (sectionOf(predictions, "Carried") ?? []).join("\n");
   return { owed, missing: owed.filter((token) => !names(carried, token)) };
@@ -213,15 +268,34 @@ export const names = (text: string, token: string): boolean =>
  * for a cycle. More than one is a conflict the reader names, never a choice by listing order.
  */
 export function ledgerFiles(root: string, dir: string, file: string): string[] {
+  return ledgerFolders(root, dir)
+    .map((folder) => join(folder, file))
+    .filter((path) => existsSync(path));
+}
+
+/** The folders a ledger is read in: the investigation `dir` and each cycle's folder under `root`. */
+function ledgerFolders(root: string, dir: string): string[] {
   const cycles = existsSync(root)
     ? readdirSync(root)
         .filter((entry) => /-cycle-/u.test(entry))
         .map((entry) => join(root, entry))
     : [];
-  return [...new Set([dir, ...cycles])]
-    .map((folder) => join(folder, file))
-    .filter((path) => existsSync(path));
+  return [...new Set([dir, ...cycles])];
 }
+
+/** Every `## Carried` section of the predictions ledgers in those folders, each with its run's name.
+ *  A file under `root` whose name holds `-cycle-` is no folder and holds none. */
+export const carriedIn = (root: string, dir: string): Carried[] =>
+  ledgerFolders(root, dir)
+    .filter((folder) => existsSync(folder) && statSync(folder).isDirectory())
+    .flatMap((folder) =>
+      readdirSync(folder)
+        .filter((file) => /^predictions-.+\.md$/u.test(file))
+        .map((file) => ({
+          run: file.slice("predictions-".length, -".md".length),
+          text: (sectionOf(readFileSync(join(folder, file), "utf8"), "Carried") ?? []).join("\n"),
+        })),
+    );
 
 /** The one path `ledgerFiles` finds, or null where it finds none or several (a conflict to name). */
 export function ledgerOf(root: string, dir: string, file: string): string | null {
@@ -229,8 +303,23 @@ export function ledgerOf(root: string, dir: string, file: string): string | null
   return found.length === 1 ? (found[0] ?? null) : null;
 }
 
+/** The forks the `launch` row of an iteration's `deviations` names, as one launched at a child of
+ *  the plan's pull request carries the child's number. A bare `forkedPR<N>` names no run. */
+export const launchForks = (deviations: string): string[] =>
+  rowsOf(deviations, "step")
+    .filter(([step]) => step === "launch")
+    .flatMap(([, reason = ""]) => reason.match(/[\w.-]+-forkedPR\d+(?:-\w+)*/gu) ?? []);
+
 /** The pull request a fork measures, from `forkedPR<N>` in its name, or null. */
 export function forkOf(name: string): number | null {
   const pull = /forkedPR(\d+)(?!\d)/u.exec(name)?.[1];
   return pull === undefined ? null : Number(pull);
+}
+
+/** Whether the iteration whose `plan` and `deviations` these are made the run `name`: it forks the
+ *  plan's pull request, by the whole number, or the `launch` deviation names it. A plan that names
+ *  no pull request makes no run by its name. */
+export function madeBy(plan: string, deviations: string, name: string): boolean {
+  const pull = pullOf(plan);
+  return (pull !== null && forkOf(name) === pull) || launchForks(deviations).includes(name);
 }

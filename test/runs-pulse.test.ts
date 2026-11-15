@@ -13,6 +13,9 @@ import { chainLog, objectiveLog } from "./helpers/starter-chain.ts";
 const round: Run = { name: "r1", tree: "/wt", path: "/wt/.ana/d2/r1/log.jsonl", end: "comparison.reported" };
 /** A run the investigation's trigger is never read on: one solve, which climbs nothing. */
 const lone: Run = { ...round, end: "solve.finished" };
+/** A run a process writes, and one nothing writes or keeps. */
+const OPEN = { writing: true, kept: false };
+const CLOSED = { writing: false, kept: false };
 const START = Date.parse("2026-10-08T12:00:00Z");
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -27,14 +30,15 @@ const event = (minute: number, kind: EventKind, data: JsonObject): LogEvent => (
 const lookedAt = (lines: number) => ({ lines, open: true, quiet: false });
 
 const built = [event(0, "build.started", { session: "r1-b" })];
-/** A look that reads the investigation's triggers in this process, as `wri.ts read` would print them. */
+/** A look that reads the investigation's triggers in this process, as `wri.ts read` would print them,
+ *  as the look does each time the readers' rows move. */
 const pulse = (
   run: Run,
   log: readonly LogEvent[],
   process: "open" | "closed",
   before: Parameters<typeof pulseOf>[3],
   now: number,
-) => pulseOf(run, log, process, before, { now, alarms: () => overview(log).triggers });
+) => pulseOf(run, log, process === "open" ? OPEN : CLOSED, before, { now, alarms: overview(log).triggers });
 /** The index of the `nth` event of `kind` in `log`. */
 const nthOf = (log: readonly LogEvent[], kind: EventKind, nth: number) =>
   log.flatMap((each, index) => (each.kind === kind ? [index] : []))[nth] ?? -1;
@@ -185,6 +189,25 @@ describe("the runs pulse", () => {
     }
   });
 
+  it("says of a build's harness only what its event holds", () => {
+    // A session a stop cut is ended on record by the host (`endCut`), whose event holds neither
+    // `changed` nor `broken`; a session that ended itself writes both.
+    for (const [data, line] of [
+      [{ session: "r1-b", ended: "killed", crash: null }, "◆ build ended at killed"],
+      [
+        { session: "r1-b", ended: "finished", changed: false, broken: null },
+        "◆ build ended at finished and left the harness as it was",
+      ],
+      [
+        { session: "r1-b", ended: "wall", changed: true, broken: "no guide" },
+        "◆ build ended at wall and changed the harness, broken: no guide",
+      ],
+    ] satisfies [JsonObject, string][]) {
+      const events = [...built, event(5, "build.finished", data)];
+      expect(pulse(round, events, "closed", lookedAt(built.length), START).said[0]).toBe(line);
+    }
+  });
+
   it("reads a report in its factors, and marks one whose A/A cleared the level or whose supply is under the floor", () => {
     const report = (noise: JsonObject, informative: number) => ({
       reading: "no-step",
@@ -225,7 +248,13 @@ describe("the runs pulse", () => {
     const first = [...built, crashed(1, "x-1")];
     const baseline = pulse(round, first, "open", undefined, START + 2 * MINUTE);
     expect(baseline.said).toEqual([]);
-    const second = [...first, crashed(2, "x-2")];
+    // A session the provider's limit ended is waited out, and is no alarm.
+    const limit = event(2, "build.finished", {
+      session: "b-9",
+      ended: "crashed",
+      crash: "You've hit your weekly limit · resets Oct 15 at 9pm (Europe/Amsterdam)",
+    });
+    const second = [...first, limit, crashed(2, "x-2")];
     const moved = pulse(round, second, "open", baseline.seen, START + 3 * MINUTE);
     expect(moved.said.filter((line) => line.includes("SESSION CRASHED"))).toEqual([
       "⚠ economy: SESSION CRASHED (lane 24): x-1, x-2",
@@ -326,8 +355,8 @@ describe("the runs pulse", () => {
       event(1, "comparison.reported", { reading: "no-step", scored: { wins: 3, losses: 1 } }),
     ];
     const due = (said: readonly string[]) => said.filter((line) => line.includes("investigation due"));
-    // A live run is paused after its next comparison before its investigation opens; a stopped one opens.
-    const command = "bun run runs pause r1 --after reported --yes";
+    // A live run's step is the driver's to name, since a deviation may keep the run; a stopped one opens.
+    const command = "bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts due";
     const opens = "bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts open r1";
     const waiting = { ...lookedAt(log.length), due: false };
     const early = pulse(round, log, "open", waiting, START + 2 * HOUR);
@@ -335,6 +364,8 @@ describe("the runs pulse", () => {
     expect(early.seen.due).toBe(false);
     const late = pulse(round, log, "open", early.seen, START + 13 * HOUR);
     expect(due(late.said)).toEqual([`⚠ investigation due, 13.0 h since its opening: ${command}`]);
+    // The hostile case: a look arms nothing for a run a `pause:<run>` deviation keeps.
+    expect(due(late.said).join("\n")).not.toContain("runs pause");
     // Its hours grow at every look, and it is said at the one that found it due.
     expect(due(pulse(round, log, "open", late.seen, START + 14 * HOUR).said)).toEqual([]);
     // A first look and a state from before the trigger was read only remember it.
@@ -346,11 +377,11 @@ describe("the runs pulse", () => {
     expect(due(pulse(lone, log, "open", waiting, START + 13 * HOUR).said)).toEqual([]);
     expect(due(pulse({ ...round, seed: true }, log, "open", waiting, START + 13 * HOUR).said)).toEqual([]);
     // A campaign nothing writes or keeps is due once it compared; one its keeper holds runs on.
-    const closed = { now: START + 2 * HOUR, alarms: () => null };
-    expect(due(pulseOf(round, log, "closed", waiting, closed).said)).toEqual([
+    const at = { now: START + 2 * HOUR };
+    expect(due(pulseOf(round, log, CLOSED, waiting, at).said)).toEqual([
       `⚠ investigation due, closed: ${opens}`,
     ]);
-    expect(due(pulseOf(round, log, "closed", waiting, { ...closed, live: true }).said)).toEqual([]);
+    expect(due(pulseOf(round, log, { writing: false, kept: true }, waiting, at).said)).toEqual([]);
   });
 
   it("says the exam's milestones in counts, warns of a checker read or a freeze with a fault, and carries no text of the exam", () => {
@@ -439,6 +470,18 @@ describe("the runs pulse", () => {
         line.startsWith("◆ honesty: MARGINS INSIDE THE NOISE (lane 29)"),
       ),
     ).toHaveLength(1);
+    // A promotion the objective carried is how this score promotes, so it is a reading, not an alarm
+    // that wakes a session; a crashed session read in the same look is still a warning.
+    const alarms = [
+      { name: "SAFEGUARD-9 PROMOTION BEYOND VALIDITY", lane: 8, detail: "0123abcd 7-0 p 0.008 joined" },
+      { name: "SESSION CRASHED", lane: 24, detail: "x-1" },
+    ];
+    const looked = { ...lookedAt(built.length), triggers: {} };
+    const graded = pulseOf(round, built, OPEN, looked, { now: START + MINUTE, alarms }).said;
+    expect(graded).toEqual([
+      "◆ honesty: SAFEGUARD-9 PROMOTION BEYOND VALIDITY (lane 8): 0123abcd 7-0 p 0.008 joined",
+      "⚠ economy: SESSION CRASHED (lane 24): x-1",
+    ]);
   });
 
   it("recognises a campaign ending while drafting and warns for an unfinished draft", () => {
@@ -456,6 +499,50 @@ describe("the runs pulse", () => {
     const gone = pulse(round, drafting, "closed", lookedAt(2), START + 3 * MINUTE).said;
     expect(gone).toHaveLength(1);
     expect(gone[0]).toMatch(/^⚠.*campaign[.]ended/);
+  });
+
+  it("reads where the run stands once, with its keeper, and remembers it beside the cursor", () => {
+    const log = [...built, event(1, "solve.started", { solve: "s-1", task: "t-1" })];
+    const kept = { writing: false, kept: true };
+    const stands = (life: typeof OPEN, now: number) => pulseOf(round, log, life, lookedAt(1), { now });
+    expect(stands(kept, START + 2 * MINUTE).state).toEqual({ kind: "kept" });
+    expect(stands(kept, START + 2 * MINUTE).seen.state).toBe("kept");
+    expect(stands(CLOSED, START + 2 * MINUTE).state).toEqual({ kind: "stopped" });
+    // A keeper leaves a written run's quiet as it is: it is said once, and the state carries the keeper.
+    const quiet = stands({ writing: true, kept: true }, START + 30 * MINUTE);
+    expect(quiet.state).toMatchObject({ kind: "quiet", kept: true });
+    expect(quiet.said).toEqual(["⚠ quiet for 29m"]);
+    expect(quiet.seen).toMatchObject({ lines: log.length, open: true, quiet: true, state: "quiet" });
+    expect(stands(OPEN, START + 2 * MINUTE).state).toEqual({ kind: "live", kept: false });
+  });
+
+  it("says nothing of the triggers where the rows did not move, and keeps what it last read of them", () => {
+    const crashed = [...built, event(1, "exam.finished", { session: "x-1", ended: "crashed" })];
+    const before = { ...lookedAt(built.length), triggers: { "SESSION CRASHED": "" } };
+    const still = pulseOf(round, crashed, OPEN, before, { now: START + 2 * MINUTE });
+    expect(still.said.some((line) => line.includes("SESSION CRASHED"))).toBe(false);
+    expect(still.seen.triggers).toEqual(before.triggers);
+    // A reading trigger is said when the rows move, whatever event the look ends on.
+    const chain = chainLog("lost");
+    const moved = pulse(
+      round,
+      [...chain, event(9, "build.started", { session: "b-9" })],
+      "open",
+      {
+        ...lookedAt(chain.length),
+        triggers: {},
+      },
+      START + 7 * MINUTE,
+    );
+    expect(moved.said.filter((line) => line.startsWith("◆ climb: CHAIN AGAINST THE STARTER"))).toHaveLength(
+      1,
+    );
+  });
+
+  it("carries the readers' cursor and what it said from the last look", () => {
+    const before = { ...lookedAt(1), rowsAt: 7, said: ["a1"], moments: [], due: false };
+    const look = pulseOf(lone, built, OPEN, before, { now: START + MINUTE });
+    expect(look.seen).toMatchObject({ rowsAt: 7, said: ["a1"], moments: [], due: false });
   });
 
   it("counts omitted runs and names the archive's newest", () => {

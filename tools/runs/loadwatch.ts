@@ -1,7 +1,8 @@
 /**
  * `bun run runs loadwatch [<seconds>] [--once]`: the CPU and the load of this machine and of every
  * host `ANA_HOSTS` lists, live in the terminal, refreshed every `<seconds>` (5 by default); `--once`
- * prints one frame and ends.
+ * prints one frame and ends it with the machines in order of load, the least loaded first, which
+ * is the line a session reads before it places a run.
  *
  * A deadline counts elapsed time, so a solve on a loaded host has less of the machine than one on a
  * quiet host under the same setting (`AGENTS.md`, section 10, item 4), and the solve queue only
@@ -22,6 +23,7 @@ import { capturedSpawn, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { killProcessGroup } from "#src/meta/subprocess.ts";
 import { hostsOf, ownName } from "./host-config.ts";
 import { shellOn } from "./host-command.ts";
+import { Misused } from "./registry.ts";
 
 interface Sample {
   readonly cores: number;
@@ -46,7 +48,6 @@ const ESC = "\u001B";
 const [RESET, DIM, BOLD] = [`${ESC}[0m`, `${ESC}[2m`, `${ESC}[1m`];
 const [GREEN, YELLOW, RED] = [`${ESC}[32m`, `${ESC}[33m`, `${ESC}[31m`];
 const ROWS = ["cpu now ", "load 1m ", "load 5m ", "load 15m"] as const;
-const USAGE = "usage: runs loadwatch [<seconds>] [--once]";
 // Each sample is "<cores>\n<1m> <5m> <15m>\n<idle percent>\n---\n". @I@ is the interval in seconds.
 const LOOP = String.raw`
 if [ -r /proc/stat ]; then
@@ -148,6 +149,16 @@ function frame(watched: readonly Watched[], seconds: string): string[] {
   ];
 }
 
+/** The machines that answered, least loaded first, by the one-minute load a core: the queue a
+ *  solve started now would join. A machine that did not answer is left out, never read as idle. */
+function ranking(watched: readonly Watched[]): string {
+  const read = watched.flatMap(({ label, state }) =>
+    state === "connecting" || state === "unreachable" ? [] : [{ label, share: state.loads[0] / state.cores }],
+  );
+  const order = read.toSorted((a, b) => a.share - b.share);
+  return `least loaded first, 1m load a core: ${order.map(({ label, share }) => `${label} ${share.toFixed(2)}`).join(", ")}`;
+}
+
 /** Repaint the lines that changed since `before`, all of them after a resize, in one write. */
 function paint(lines: readonly string[], before: readonly string[]): void {
   const changed = lines.flatMap((line, row) =>
@@ -167,7 +178,7 @@ export async function loadwatch(args: readonly string[]): Promise<void> {
   });
   const [given = "5", extra] = positionals;
   const seconds = Number(given);
-  if (extra !== undefined || !Number.isFinite(seconds) || seconds <= 0) throw new Error(USAGE);
+  if (extra !== undefined || !Number.isFinite(seconds) || seconds <= 0) throw new Misused();
   const script = LOOP.replaceAll("@I@", String(Math.max(seconds, 0.5))).replaceAll(
     "@W@",
     String(Math.max(1, Math.round(seconds))),
@@ -183,7 +194,7 @@ export async function loadwatch(args: readonly string[]): Promise<void> {
   const intervalMs = seconds * 1000;
   if (values.once) {
     await Promise.all(watched.map((each) => stream(each, intervalMs, "first")));
-    console.log(frame(watched, given).join("\n"));
+    console.log([...frame(watched, given), ranking(watched)].join("\n"));
     return;
   }
   for (const each of watched) {

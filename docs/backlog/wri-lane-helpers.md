@@ -143,8 +143,10 @@ and 21 of the 23 lane prompts are 2,400 to 6,800, the other two 14,000 and 23,00
   the recent sessions did the join by hand) was proposed as `wri.ts export` and not built: it would
   write hidden answers to a new file outside the log. `log.ts events --kind verdict --full` and
   `tasks.ts --task` give the two halves.
-- **`tools/c/repaired.ts` cannot regrade a drafted exam**: it looks for the old checks beside the
-  log, where a drafted exam keeps them under `exams/`.
+- **The repaired-checker command (`be75806fc:tools/c/repaired.ts`) could not regrade a drafted
+  exam**: it looked for the old checks beside the log, where a drafted exam keeps them under
+  `exams/`. No session ran it, and it was removed; `wri.ts grade --solve` regrades one recorded
+  answer.
 - **The trigger functions of `tools/wri/folds.ts` and `tools/wri/read.ts`** (781 and 797 nonblank
   lines of 800) could move to files of their own, as `time.ts` holds the cost triggers.
 

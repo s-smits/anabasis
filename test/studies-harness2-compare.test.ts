@@ -21,12 +21,13 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "../src/meta/json-runtime.ts";
-import { isRecord, type JsonValue } from "../src/meta/json-shape.ts";
+import { isRecord, isString, type JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
@@ -388,7 +389,10 @@ describe("a comparison run through the scorer, on stand-ins", () => {
     `import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 const args = process.argv.slice(2);
 const flag = (name) => args[args.indexOf(name) + 1];
-if (args[0] === "-c") process.exit(1);
+// A wider cut's launch is python -c <driver> <judge.py> <cap> <judge.py's flags>; judgeExtract's has no cap.
+const capped = args[0] === "-c" && /^\\d+$/.test(args[3] ?? "");
+if (args[0] === "-c" && !capped) process.exit(1);
+if (capped) appendFileSync(${JSON.stringify(join(place, "capped.jsonl"))}, JSON.stringify(args) + "\\n");
 appendFileSync(${JSON.stringify(seen)}, JSON.stringify({ judge: flag("--evaluated-model") }) + "\\n");
 const handed = JSON.parse(readFileSync(flag("--rubrics-file"), "utf8")).rubrics;
 const rubrics = handed.map((rubric, index) => ({ index, weight: rubric.weight, result: { passed: true, score: rubric.weight, criteria_passed: 1, criteria_count: 1, overall_reasoning: "stand-in" } }));
@@ -511,6 +515,111 @@ for (const event of [{ type: "system", subtype: "init", cwd: process.cwd(), mode
     expect(after.match(/"solve"/gu)).toHaveLength(4);
     expect(after.match(/"judge"/gu)).toHaveLength(6);
     const agreed = compare("agree", "--out", out, "--of", one, "--of", other, "--times", "1");
+    expect(decodeOutput(agreed.stdout)).toContain("judged 2 times: 2 rubrics, 0 moved");
+  });
+
+  it("judges under a wider cut only a deliverable judged again, under a name of its own", () => {
+    const SCORE = new URL("../studies/harness2/score.ts", import.meta.url).pathname;
+    const capped = join(place, "capped.jsonl");
+    const seenBefore = readFileSync(seen, "utf8");
+    const official = (cap: string, arm: string) =>
+      runSync(
+        [capturedExecPath, SCORE, "score", "--arm", arm, "--name", "wide", "--tasks", "alpha/task1"].concat([
+          "--out",
+          out,
+          "--jb",
+          jb,
+          "--api-base",
+          "http://127.0.0.1:9/v1",
+          "--cap",
+          cap,
+          "--yes",
+        ]),
+        { env, timeout: 120_000 },
+      );
+    const wrongArm = official("400000", `tree:${tree}`);
+    expect(wrongArm.exitCode).not.toBe(0);
+    expect(decodeOutput(wrongArm.stderr)).toContain("--cap judges only an again: arm");
+    expect(official("200000", "again:any").exitCode).not.toBe(0);
+    expect(readFileSync(seen, "utf8")).toBe(seenBefore);
+    expect(existsSync(capped)).toBe(false);
+    const { sides } = sidesOf([`tree:${tree}`], 2, "s4lt");
+    const [one = "", other = ""] = sides;
+    const shared = [
+      "--out",
+      out,
+      "--jb",
+      jb,
+      "--api-base",
+      "http://127.0.0.1:9/v1",
+      "--of",
+      one,
+      "--of",
+      other,
+    ];
+    const equalCap = compare(
+      "rejudge",
+      ...shared,
+      "--times",
+      "1",
+      "--tasks",
+      "alpha/task1",
+      "--cap",
+      "200000",
+      "--salt",
+      "s4lt",
+      "--yes",
+    );
+    expect(equalCap.exitCode).not.toBe(0);
+    expect(readdirSync(join(out, "dataset", "alpha", "task1", "model_output")).join(" ")).not.toContain(
+      "-c200000-",
+    );
+    const judged = compare(
+      "rejudge",
+      ...shared,
+      "--times",
+      "1",
+      "--tasks",
+      "alpha/task1",
+      "--cap",
+      "400000",
+      "--salt",
+      "s4lt",
+      "--yes",
+    );
+    expect(judged.exitCode).toBe(0);
+    const launches = readFileSync(capped, "utf8")
+      .split("\n")
+      .filter((line) => line !== "")
+      .map((line) => capturedJsonParse(line));
+    expect(launches).toHaveLength(2);
+    for (const argv of launches) {
+      if (!Array.isArray(argv)) throw new Error("a launch is an argv");
+      expect(isString(argv[1]) ? argv[1] : "").toContain("mod.MAX_CHARS_PER_FILE = cap");
+      expect([argv[0], argv[2], argv[3], argv[4]]).toStrictEqual([
+        "-c",
+        join(jb, "eval", "judge.py"),
+        "400000",
+        "--output-dir",
+      ]);
+    }
+    const record = capturedJsonParse(
+      readFileSync(join(out, "judged", `${one}-c400000-j1`, "alpha__task1.json"), "utf8"),
+    );
+    expect(isRecord(record) ? record.cap : null).toBe(400_000);
+    const agreed = compare(
+      "agree",
+      "--out",
+      out,
+      "--of",
+      one,
+      "--of",
+      other,
+      "--times",
+      "1",
+      "--cap",
+      "400000",
+    );
     expect(decodeOutput(agreed.stdout)).toContain("judged 2 times: 2 rubrics, 0 moved");
   });
 });

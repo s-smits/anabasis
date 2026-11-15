@@ -5,26 +5,24 @@
  * investigation's own files, through `wri.ts`, and the marker `open` leaves; it stops, launches and
  * merges nothing.
  *
- *   bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts [<part> ...] [--promotions 2] [--hours 12] [--days 2]
+ *   bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts [<part> ...] [--days 2]
  *   bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts due [<part> ...] [--days 2]
  *   bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts open <name>[,<name>...] [--out <dir>]
  *   bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts next <dir>
  *   bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts ledger <dir>
  *
- * - With no verb it reads every campaign this machine reads whose log moved in the last `--days`
- *   (`readable`: the worktrees' and the copies the central host's ten-minute gather keeps of every
- *   peer's, live ones included, each with the liveness its host last reported) and prints one row a
- *   run and its step: `run` while no trigger fired, `pause` once one did on a live run, `open` once
- *   the run has stopped, or the investigation's next step once one reads it. The trigger is
- *   whichever comes first (operator, 4 November): the promotions, the hours since the opening, a
- *   scored comparison that left no task untied ("they likely won't promote so that's a bit ironic
- *   that we need to wait"), or an ending. At a live run's trigger the step is a pause at the first
- *   clean point after its next comparison (`runs pause --after reported`, which waits for no session
- *   to be open), and the investigation opens once the run has stopped, so its synthesis reads that
- *   comparison (operator, 10 November: "pause it after next comparison (ensure the comparison pause
- *   actually includes the synthesis of this)", "not directly after solves"). Until then a live run
- *   was investigated on a frozen copy taken at the trigger, and the proof run of v0.11.0 promoted
- *   once more and read two comparisons its synthesis never saw.
+ * - With no verb it reads every campaign this machine reads that is live or whose last event lies in
+ *   the last `--days` (`readable`: the worktrees' and the copies the central host's ten-minute gather
+ *   keeps of every peer's, live ones included, each with the liveness its host last reported) and
+ *   prints one row a run and its step: `run` while no trigger fired, `pause` once one did on a live
+ *   run, `open` once the run has stopped, or the investigation's next step once one reads it. The
+ *   trigger is whichever comes first (operator, 4 November; `triggerOf`): the promotions, the hours
+ *   since the opening, a scored comparison that left no task untied ("they likely won't promote so
+ *   that's a bit ironic that we need to wait"), or an ending. At a live run's trigger the step is a
+ *   pause at the first clean point after its next comparison (`runs pause --after reported`, which
+ *   waits for no session to be open), and the investigation opens once the run has stopped, so its
+ *   synthesis reads that comparison (operator, 10 November: "pause it after next comparison (ensure
+ *   the comparison pause actually includes the synthesis of this)", "not directly after solves").
  * - `due` is the same reading as a timer takes it (`dueLines`): a head line with the count of steps
  *   owed and the oldest's hours, one line a step, and for each live run the count of files of the
  *   code a solve runs (`codeOf`, `tools/d2/campaign.ts`) that differ at the commit the command runs
@@ -32,33 +30,33 @@
  * - `open` starts the investigation of one run, or of several as equals, under `.ana/wri/` of the
  *   main checkout, reading a frozen copy of any one still live (`wri.ts start --snapshot`), and marks
  *   the folder an iteration (`iteration.json`). Opening a live run is a deviation from the `pause`
- *   step, kept for a run the operator leaves running.
- * - `next` reads an investigation's folder and prints the one step left, as a list of gates in the
- *   iteration's order (`gatesOf`). Every folder passes the shared instructions, the lanes, the lane
- *   reports, the synthesis, the vetting, the plan, the pull request (`Pull request: #N` in
- *   `plan.md`) and the fresh runs at its head (`runs fresh --as forkedPR<N>`), which are launched
- *   without asking. An iteration's folder also passes the isolated lanes' decision, each run's
- *   ledgers (`predictions-<run>.md` resolved id by id in `outcomes-<run>.md`, and for a fork what it
- *   carries from the iteration that made it), the vetting of every prediction, the read across
- *   domains (`cross-domain.md`), a plan that answers both and says under "Intentionally opposed"
- *   what it leaves out on purpose, and each fork's ledger.
+ *   step, kept for a run the operator leaves running. A live run kept past its trigger has no folder
+ *   yet, so its row `| pause:<run> | <reason> |` stands in any investigation's `deviations.md`
+ *   (`keptIn`): its step is then `kept`, which owes nothing, until the row goes or the run stops.
+ * - `next` reads an investigation's folder and prints the one step left, the first owed of a list of
+ *   gates in the iteration's order (`gatesOf`). Every folder passes the shared instructions, the
+ *   lanes, the lane reports, the synthesis, the vetting, the plan, the pull request
+ *   (`Pull request: #N` in `plan.md`) and the fresh runs at its head (`runs fresh --as forkedPR<N>`),
+ *   which are launched without asking. An iteration's folder also passes the isolated lanes'
+ *   decision, each run's ledgers (`predictions-<run>.md` resolved id by id in `outcomes-<run>.md`,
+ *   and for a fork what it carries from the iteration that made it), the vetting of every
+ *   prediction, the read across domains (`cross-domain.md`), a plan that answers both and says under
+ *   "Intentionally opposed" what it leaves out on purpose, each fork's ledger, and the plan's own
+ *   predictions carried into a fork's (`planOwed`); a jobstat run's also passes its row in
+ *   `outside-reads.md` (`outsideGate`).
  * - `ledger` prints the views derived from those files and never written by hand: the cycle view,
- *   every prediction of the folder's runs with its outcome, and each run's still-missing view, what
- *   it did not hold beside its plan's `## Not done` and `## Intentionally opposed`.
+ *   every prediction of the folder's runs with its outcome; the dropped view, each unreached or
+ *   falsified id that no `## Carried` and no plan's `## Intentionally opposed` names; and each run's still-missing
+ *   view, what it did not hold beside its plan's `## Not done` and `## Intentionally opposed`.
  *
  * Every gate is a default, never a wall (operator, 7 November: "to-be-deviated-from each time"): a
  * row `| <step> | <reason> |` in the folder's `deviations.md` passes it, and `next` prints the
  * deviation with the step it reaches, so a session's judgment is kept on the record beside the rule
- * it set aside. An audit of the same day found the loop open where a file only had to exist: a fork
- * carried nothing from its parent, `#60` read the runs of `#600` as its own, and a ledger was picked
- * by the order a folder happened to list.
- *
- * Until 4 November `cycle.ts` read a release cycle's named runs by asking each host to run it in its
- * own tree, printed `stop` at the threshold, and investigated only once no run was live; an
- * iteration there waited on the operator's stop of a run that would never promote, and the step
- * after `investigate` was read by hand from the folder.
+ * it set aside.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
+import { lastAt } from "#skills/main/logs.ts";
+import { HOUR_MS } from "#src/meta/clock.ts";
 import {
   existsSync,
   mkdirSync,
@@ -72,43 +70,42 @@ import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { basename, dirname, join, resolve } from "#src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "#src/meta/process.ts";
 import { runSync } from "#src/meta/subprocess.ts";
-import { stillRunning } from "#tools/runs/diagnosis.ts";
 import { CODE_TREES } from "#tools/d2/campaign.ts";
+import { stillRunning } from "#tools/runs/diagnosis.ts";
 import { lastLaunch } from "#tools/runs/receipt.ts";
 import {
-  DRIVER,
-  openingCommand,
-  type Progress,
-  progressOf,
-  TRIGGER_AT,
-  triggerOf,
-} from "#tools/runs/said.ts";
-import {
-  type Run,
-  type Running,
   HERE,
   isCampaign,
   logEvents,
   processes,
+  type Run,
+  type Running,
   readable,
   readNamed,
   waiters,
+  wholeLines,
 } from "#tools/runs/registry.ts";
+import { DRIVER, openingCommand, type Progress, progressOf, triggerOf } from "#tools/runs/said.ts";
 import { catalogueText, lanesOf } from "#tools/wri/catalogue.ts";
 import { INVESTIGATION, SHARED, SYNTHESIS, VETTING } from "#tools/wri/index.ts";
 import { blankSections, reportPath } from "#tools/wri/investigation.ts";
 import {
-  carryOf,
   COUNTED_LINE,
+  carriedIn,
+  carryOf,
   countedOf,
   cycleViewOf,
-  forkOf,
+  droppedOf,
   idsOf,
+  launchForks,
   ledgerFiles,
   ledgerOf,
+  madeBy,
   names,
+  notDoneOf,
   OUTCOMES,
   outcomesOf,
+  owedOf,
   pullOf,
   rowsOf,
   sectionOf,
@@ -123,20 +120,24 @@ const MARKER = "iteration.json";
 const PLAN = "plan.md";
 /** The gates a session passed on purpose, each with its reason. */
 const DEVIATIONS = "deviations.md";
+/** One row a stopped jobstat run, in a cycle's folder: its reference's read on the outside benchmark. */
+const OUTSIDE = "outside-reads.md";
+/** The row of `deviations.md` that passes every gate of the forks' ledgers at once. */
+const FORKS = "forks";
 const LEVERS = join(import.meta.dir, "..", "references", "levers.md");
-const USAGE = `usage: bun ${DRIVER} [due] [<part> ...] [--promotions 2] [--hours 12] [--days 2] | open <name>[,<name>] [--out <dir>] | next <dir> | ledger <dir>`;
-const OPTIONS = { promotions: "int", hours: "int", days: "int", out: "abs" } as const;
-const HOUR_MS = 3_600_000;
+const USAGE = `usage: bun ${DRIVER} [due] [<part> ...] [--days 2] | open <name>[,<name>] [--out <dir>] | next <dir> | ledger <dir>`;
+const OPTIONS = { days: "int", out: "abs" } as const;
 const WRI = "tools/wri/wri.ts";
 /** The first line of a step as `nextOf` prints it: its gate, then what the gate owes. */
 const STEP = /^step: (?<name>[a-z]+)(?: · (?<rest>.*))?$/u;
+/** The steps that owe nobody anything: a run that runs on, is kept past its trigger, waits for its
+ *  pause or is measured. */
+const QUIET = new Set(["", "run", "kept", "waits", "done"]);
 const OPPOSED =
   '"## Intentionally opposed" with at least one line ("none" counts): what stays missing on purpose, each as a trade-off, what leaving it out buys, what it costs and why (a trade-off of AGENTS.md section 1, a principle or the operator\'s word)';
 
 /** One run as its log reads. */
 type Row = Progress & { readonly name: string; readonly host: string };
-
-type Kind = "iteration" | "investigation";
 
 /** One run as the driver reads it: its row, the commit its last launch's receipt names, the
  *  investigation that reads it and the lines of its step. */
@@ -149,21 +150,30 @@ interface Standing {
   readonly step: readonly string[];
 }
 
-/** One gate: its step, the run it reads or null, and the lines it prints while it is owed. */
-type Gate = readonly [step: string, run: string | null, owed: () => string[] | null];
-
-/** Where a run's ledgers are read: the cycles' folders under `root`, and the investigation `dir`;
- *  and how long each run's log is now, or null where this machine cannot read it. */
-interface Ledgers {
-  readonly root: string;
-  readonly dir: string;
-  readonly lengthOf: (run: string) => number | null;
+/** One gate of the iteration. */
+interface Gate {
+  readonly step: string;
+  /** The rows of `deviations.md` that pass it, the one it is printed under first: its own
+   *  (`<step>:<run>` for a gate of one run's ledgers), its step's, then its group's. None passes `done`. */
+  readonly keys: readonly string[];
+  /** Null once it is met; else what follows `step: <step> · `, then any lines after that one. */
+  readonly owed: () => readonly string[] | null;
 }
+
+/** What a step is read from beside its folder: the folder that holds the cycles' (`.ana/wri/`), the
+ *  names of the campaigns this machine reads, among which a pull request's forks are found, and how
+ *  long each run's log is now, or null where this machine cannot read it. */
+interface Known {
+  readonly root?: string;
+  readonly campaigns?: readonly string[];
+  readonly lengthOf?: (run: string) => number | null;
+}
+type Where = Required<Known> & { readonly dir: string };
 
 const read = (path: string) => (existsSync(path) ? readFileSync(path, "utf8") : "");
 
-/** Which gates the folder `dir` takes, read from its one record of that, `iteration.json`. */
-const kindOf = (dir: string): Kind => (existsSync(join(dir, MARKER)) ? "iteration" : "investigation");
+/** Whether the folder `dir` takes an iteration's gates, read from its one record of that. */
+const marked = (dir: string) => existsSync(join(dir, MARKER));
 
 /** The campaigns the investigation `dir` reads, by name. */
 function runsOf(dir: string): string[] {
@@ -180,11 +190,7 @@ function investigations(root: string): { dir: string; names: string[] }[] {
   return readdirSync(root)
     .filter((entry) => existsSync(join(root, entry, INVESTIGATION)))
     .map((entry) => join(root, entry))
-    .map((dir) => ({
-      dir,
-      iteration: Number(kindOf(dir) === "iteration"),
-      at: statSync(join(dir, INVESTIGATION)).mtimeMs,
-    }))
+    .map((dir) => ({ dir, iteration: Number(marked(dir)), at: statSync(join(dir, INVESTIGATION)).mtimeMs }))
     .toSorted((one, other) => other.iteration - one.iteration || other.at - one.at)
     .map(({ dir }) => ({ dir, names: runsOf(dir) }));
 }
@@ -205,15 +211,6 @@ const sessionsIn = (dir: string) =>
       ).sessions,
   );
 
-/** The lane sessions a manifest of `dir` launched whose reports are not all written. */
-function owing(dir: string): { name: string; task: string }[] {
-  return sessionsIn(dir).filter(
-    // A session that names no report it owns can never be seen to finish, so it owes until a
-    // deviation says it ran.
-    ({ ownedPaths = [] }) => ownedPaths.length === 0 || ownedPaths.some((path) => !existsSync(path)),
-  );
-}
-
 /** `name`'s two ledgers as the investigation `dir` reads them; "" for each it has not got, and for
  *  both where its predictions are in two folders, which its own predictions gate names. */
 function ledgersOf(root: string, dir: string, name: string) {
@@ -222,233 +219,104 @@ function ledgersOf(root: string, dir: string, name: string) {
   return { name, predictions: read(path ?? ""), outcomes };
 }
 
+/** What the outcomes ledger of `run`, beside its predictions at `path`, has left to resolve: each id
+ *  its predictions owe (`owedOf`), its carried rows by their `<run>:<id>` included. */
+function outcomesOwed({ lengthOf }: Where, run: string, path: string): string[] | null {
+  const beside = path === "" ? "" : join(dirname(path), `outcomes-${run}.md`);
+  const predicted = owedOf(read(path));
+  const text = read(beside);
+  const outcomes = outcomesOf(text);
+  const known: readonly string[] = OUTCOMES;
+  const unsettled = predicted.filter((id) => !known.includes(outcomes.get(id) ?? ""));
+  const stray = [...outcomes.keys()].filter((id) => !predicted.includes(id));
+  const events = lengthOf(run);
+  // A row left unreached or pending reopens once the log of a run that has stopped grows past the
+  // count it was read at, since a run continued after its trigger may yet reach it.
+  const stale = staleOf(text, events);
+  const counted = countedOf(text);
+  const record = events === null ? "" : `, and record "${COUNTED_LINE} ${String(events)}" on its own line`;
+  const parts = [
+    unsettled.length > 0
+      ? `resolve ${unsettled.join(", ")} from the log as ${OUTCOMES.join(", ")} (pending only while its event has not come), each with its count or event and the time${record}`
+      : "",
+    stale.length > 0
+      ? `${stale.join(", ")} read unreached or pending at ${counted === null ? "no recorded count" : `${String(counted)} events`} and the log holds ${String(events)} now: resolve them again${record}`
+      : "",
+    stray.length > 0 ? `${stray.join(", ")} predicted nowhere in ${path}` : "",
+  ].filter((part) => part !== "");
+  return parts.length === 0 ? null : [`${beside}: ${parts.join("; ")}`];
+}
+
 /**
- * What a fork owes the iteration that made it: in its `## Carried` section, each id the parent
- * iteration's runs did not hold, as `<run>:<id>`. A run that is no fork, or whose parent wrote no
- * plan, owes nothing.
+ * What `run`, whose predictions are at `path`, owes the iterations that made it (`madeBy`): in its
+ * `## Carried` section, each id their runs did not hold, as `<run>:<id>`. A run no iteration made
+ * owes nothing.
  */
-function carryOwed(where: Ledgers, run: string, predictions: string): string[] | null {
-  const pull = forkOf(run);
-  if (pull === null) return null;
-  const parents = investigations(where.root)
-    .filter(({ dir }) => pullOf(read(join(dir, PLAN))) === pull)
-    .flatMap(({ dir, names: runs }) => runs.map((name) => ledgersOf(where.root, dir, name)));
-  const { missing: absent } = carryOf(read(predictions), parents);
+function carryOwed({ root }: Where, run: string, path: string): string[] | null {
+  const parents = investigations(root)
+    .filter(({ dir }) => madeBy(read(join(dir, PLAN)), read(join(dir, DEVIATIONS)), run))
+    .flatMap(({ dir, names: runs }) => runs.map((name) => ledgersOf(root, dir, name)));
+  const { missing } = carryOf(read(path), parents);
+  return missing.length === 0
+    ? null
+    : [
+        `the "## Carried" section of ${path} names ${missing.join(", ")}: each id the iteration that made this fork did not hold`,
+      ];
+}
+
+/** What an iteration's `plan` owes the predictions it writes itself: each id of its own `id` tables
+ *  named in a fork's `predictions-<run>.md` or under its `## Not done`. */
+function planOwed({ root, dir }: Where, plan: string, forks: readonly string[]): string[] | null {
+  const taken = [
+    ...forks.map((fork) => read(ledgerOf(root, dir, `predictions-${fork}.md`) ?? "")),
+    ...notDoneOf(plan),
+  ].join("\n");
+  const absent = idsOf(plan).filter((id) => !names(taken, id));
   return absent.length === 0
     ? null
     : [
-        `step: carry · the "## Carried" section of ${predictions} names ${absent.join(", ")}: each id the iteration that made this fork did not hold`,
+        `${join(dir, PLAN)} predicts ${absent.join(", ")}, which no fork's predictions file names: write each into a fork's predictions-<run>.md, or under the plan's "## Not done" with why no run reads it`,
       ];
 }
 
 /** The gates of `run`'s ledgers: its predictions, their outcomes and what it carries. */
-function runGates(where: Ledgers, run: string): Gate[] {
+function runGates(where: Where, run: string, group: readonly string[] = []): Gate[] {
   const file = `predictions-${run}.md`;
-  const predictions = () => ledgerOf(where.root, where.dir, file) ?? "";
-  const beside = (kind: string) => join(dirname(predictions()), `${kind}-${run}.md`);
   // Two copies of the ledger hold every gate of the run, so none reads a copy by listing order and a
   // deviation passes the conflict only at the gate it names.
-  const gate = (step: string, owed: () => string[] | null): Gate => [
+  const gate = (step: string, owed: (predictions: string) => readonly string[] | null): Gate => ({
     step,
-    run,
-    () => {
+    keys: [`${step}:${run}`, step, ...group],
+    owed: () => {
       const found = ledgerFiles(where.root, where.dir, file);
-      return found.length > 1 ? [`step: ${step} · ${file} is in ${found.join(" and ")}: keep one`] : owed();
+      return found.length > 1 ? [`${file} is in ${found.join(" and ")}: keep one`] : owed(found[0] ?? "");
     },
-  ];
+  });
   return [
-    gate("predictions", () => {
-      if (predictions() === "") {
-        return [
-          `step: predictions · ${run} has no ${file}: write it in its cycle's folder under ${where.root}, marked as written after its launch`,
-        ];
-      }
-      return idsOf(read(predictions())).length > 0
-        ? null
-        : [`step: predictions · ${predictions()} holds no table whose first column is "id"`];
+    gate("predictions", (path) => {
+      const absent = `${run} has no ${file}: write it in its cycle's folder under ${where.root}, marked as written after its launch`;
+      const empty = `${path} holds no table whose first column is "id"`;
+      return path !== "" && idsOf(read(path)).length > 0 ? null : [path === "" ? absent : empty];
     }),
-    gate("outcomes", () => {
-      const predicted = idsOf(read(predictions()));
-      const text = read(beside("outcomes"));
-      const outcomes = outcomesOf(text);
-      const known: readonly string[] = OUTCOMES;
-      const unsettled = predicted.filter((id) => !known.includes(outcomes.get(id) ?? ""));
-      const stray = [...outcomes.keys()].filter((id) => !predicted.includes(id));
-      const events = where.lengthOf(run);
-      // A row left unreached or pending reopens once the log of a run that has stopped grows past
-      // the count it was read at, since a run continued after its trigger may yet reach it.
-      const stale = staleOf(text, events);
-      const counted = countedOf(text);
-      const record =
-        events === null ? "" : `, and record "${COUNTED_LINE} ${String(events)}" on its own line`;
-      const parts = [
-        unsettled.length > 0
-          ? `resolve ${unsettled.join(", ")} from the log as ${OUTCOMES.join(", ")} (pending only while its event has not come), each with its count or event and the time${record}`
-          : "",
-        stale.length > 0
-          ? `${stale.join(", ")} read unreached or pending at ${counted === null ? "no recorded count" : `${String(counted)} events`} and the log holds ${String(events)} now: resolve them again${record}`
-          : "",
-        stray.length > 0 ? `${stray.join(", ")} predicted nowhere in ${predictions()}` : "",
-      ].filter((part) => part !== "");
-      return parts.length === 0 ? null : [`step: outcomes · ${beside("outcomes")}: ${parts.join("; ")}`];
-    }),
-    gate("carry", () => carryOwed(where, run, predictions())),
+    gate("outcomes", (path) => outcomesOwed(where, run, path)),
+    gate("carry", (path) => carryOwed(where, run, path)),
   ];
 }
 
-/** The rows of the folder `dir`'s `deviations.md`, each step with its reason. */
-function deviationsOf(dir: string): Map<string, string> {
-  return new Map(
-    rowsOf(read(join(dir, DEVIATIONS)), "step")
-      .map(([step = "", reason = ""]) => [step, reason] as const)
-      .filter(([, reason]) => reason !== ""),
-  );
+/** The outside read a jobstat run owes once it has stopped (run-improvement-campaign, "The outside
+ *  aim"): a row that names it in a cycle's `outside-reads.md`, scored, skipped or still owed. */
+function outsideGate({ root, dir }: Where, run: string): Gate[] {
+  if (!run.startsWith("jobstat")) return [];
+  const named = () =>
+    ledgerFiles(root, dir, OUTSIDE).some((path) => rowsOf(read(path), "run").some(([name]) => name === run));
+  const owed = `${run} has no row in ${OUTSIDE} of its cycle's folder under ${root}: read its newest promoted reference on the eight tasks beside a fresh Starter (run-improvement-campaign, "A reference's read"), then add the row whose first cell is the run's name, with its scores, "skipped" with lane 27's grade or no promotion, or "owed" with what the read waits for`;
+  return [{ step: "outside", keys: [`outside:${run}`, "outside"], owed: () => (named() ? null : [owed]) }];
 }
 
-/** The first gate owed and not deviated from, as its lines, with each deviation passed on the way. */
-function firstOwed(
-  gates: readonly Gate[],
-  deviated: ReadonlyMap<string, string>,
-  passed: string[],
-): string[] | null {
-  for (const [step, run, owed] of gates) {
-    const lines = owed();
-    if (lines === null) continue;
-    const key = run === null ? step : `${step}:${run}`;
-    const reason = step === "done" ? undefined : (deviated.get(key) ?? deviated.get(step));
-    if (reason === undefined) return lines;
-    passed.push(`deviated: ${key} · ${reason}`);
-  }
-  return null;
-}
-
-/** The iteration's gates for the folder `dir`, in order; an unmarked folder takes the common ones. */
-function gatesOf(where: Ledgers, launchedAt: (pull: number) => string[], passed: string[]): Gate[] {
-  const { root, dir } = where;
-  const at = (file: string) => join(dir, file);
-  const wri = (verb: string, more = "") => `  bun ${WRI} ${verb} --out ${dir}${more}`;
-  const runs = runsOf(dir);
-  const pull = () => pullOf(read(at(PLAN))) ?? 0;
-  const kind = kindOf(dir);
-  const only = (gates: Gate[]): Gate[] => (kind === "iteration" ? gates : []);
-  return [
-    [
-      "instruct",
-      null,
-      () => {
-        const blank = blankSections(read(at(SHARED)));
-        return blank.length === 0
-          ? null
-          : [`step: instruct · write ${blank.map((heading) => `"${heading}"`).join(", ")} in ${at(SHARED)}`];
-      },
-    ],
-    ["lanes", null, () => (manifests(dir).length > 0 ? null : ["step: lanes", wri("lanes", " --agents 4")])],
-    [
-      "reports",
-      null,
-      () => {
-        const owed = owing(dir);
-        return owed.length === 0
-          ? null
-          : [
-              `step: reports · ${String(owed.length)} lane session(s) owe a report; hand each its line to a wri-lane agent, all in one message`,
-              ...owed.map(({ name, task }) => `  ${name}: ${task}`),
-            ];
-      },
-    ],
-    ...only([
-      [
-        "isolated",
-        null,
-        () =>
-          // A lane by the report its session owns, at the path `wri.ts lanes` gave it, whatever its
-          // manifest is named: until 9 November the gate read lane numbers from file names, and a
-          // lone lane built in the first manifest, `launch.json`, was owed for good.
-          sessionsIn(dir).some(({ ownedPaths = [] }) =>
-            ownedPaths.some((path) => LONE.some((lane) => path === reportPath(dir, lane))),
-          )
-            ? null
-            : [
-                `step: isolated · lanes ${LONE.join(" and ")} run alone, after the reports they wait on: build each whose trigger fired (\`wri.ts lanes\` named it) with${wri("lanes", " --lanes <n>").slice(1)} and launch it alone, or record why not in ${at(DEVIATIONS)} as "| isolated | <reason> |"`,
-              ],
-      ],
-    ]),
-    [
-      "synthesise",
-      null,
-      () =>
-        existsSync(at(SYNTHESIS))
-          ? null
-          : [
-              "step: synthesise · collect, render the prompt, and hand it to one session that writes synthesis.md",
-              `${wri("collect")} && bun ${WRI} synthesis --out ${dir}`,
-            ],
-    ],
-    ...only(runs.flatMap((run) => runGates(where, run))),
-    ["vet", null, () => vetOwed(dir, root, runs, kind)],
-    ...only([
-      [
-        "across",
-        null,
-        () =>
-          existsSync(at(ACROSS))
-            ? null
-            : [
-                `step: across · one read-only wri-lane session reads the vetted investigations of the other domains (the newest 5 to 10, none from before the previous minor release) beside ${at(VETTING)}, and writes ${at(ACROSS)}: for each confirmed problem, whether those domains show it and whether an earlier investigation's fix for it should have held here; for each candidate fix, what it changes there and how to keep that intact`,
-              ],
-      ],
-    ]),
-    ["plan", null, () => planOwed(where, runs, kind)],
-    [
-      "implement",
-      null,
-      () =>
-        pull() === 0
-          ? [
-              `step: implement · one pull request on the top of the stack, then name it in plan.md as "Pull request: #N"`,
-            ]
-          : null,
-    ],
-    [
-      "launch",
-      null,
-      () =>
-        launchedAt(pull()).length > 0
-          ? null
-          : [
-              `step: launch · take each run's name from the dry run, write its predictions-<run>.md in the cycle's folder (a "## Carried" section for what this iteration did not hold), then fork at #${String(pull())}'s head on the host and login with room`,
-              `  bun run runs fresh <pack> --at <#${String(pull())} head> --as forkedPR${String(pull())} --yes`,
-            ],
-    ],
-    ...only([
-      [
-        "forks",
-        null,
-        () =>
-          firstOwed(
-            launchedAt(pull()).flatMap((fork) =>
-              runGates(where, fork).filter(([step]) => step === "predictions" || step === "carry"),
-            ),
-            deviationsOf(dir),
-            passed,
-          ),
-      ],
-    ]),
-    ["done", null, () => [`step: done · #${String(pull())} is measured by ${launchedAt(pull()).join(", ")}`]],
-  ];
-}
-
-/**
- * The vetting's step: it exists, and in an iteration it has a row for each run's predictions. An id
- * two runs share must be named as `<run>:<id>`, since one bare mention cannot backtrack both.
- */
-function vetOwed(dir: string, root: string, runs: readonly string[], kind: Kind): string[] | null {
-  const path = join(dir, VETTING);
-  if (!existsSync(path)) {
-    return [`step: vet · recount each finding of ${join(dir, SYNTHESIS)} into ${path}, predictions first`];
-  }
-  if (kind === "investigation") return null;
-  const text = read(path);
+/** An iteration's vetting has a row for each prediction of its runs. An id two runs share must be
+ *  named as `<run>:<id>`, since one bare mention cannot backtrack both. */
+function unvetted({ root, dir }: Where, runs: readonly string[]): string[] | null {
+  const text = read(join(dir, VETTING));
   const ids = runs.map(
     (run) => [run, idsOf(read(ledgerOf(root, dir, `predictions-${run}.md`) ?? ""))] as const,
   );
@@ -461,80 +329,178 @@ function vetOwed(dir: string, root: string, runs: readonly string[], kind: Kind)
   return absent.length === 0
     ? null
     : [
-        `step: vet · ${path} has no row for ${absent.join(", ")}: backtrack every prediction first, an id two runs share as <run>:<id>`,
+        `${join(dir, VETTING)} has no row for ${absent.join(", ")}: backtrack every prediction first, an id two runs share as <run>:<id>`,
       ];
 }
 
 /**
- * The plan's step: it exists, and in an iteration it answers the vetting and the read across domains:
- * each confirmed vetting row named as `vet-<n>`, `cross-domain.md` named, and three levers of
- * `references/levers.md` by id (its rule: a plan with repairs only names the three that came closest);
- * and it says what it leaves out on purpose, the one owner of that fact for each run it read. An
- * iteration whose every run kept the section in a `still-missing-<run>.md`, as runs did until
- * 8 November, has said it there.
+ * An iteration's plan answers the vetting and the read across domains: each confirmed vetting row
+ * named as `vet-<n>`, `cross-domain.md` named, and three levers of `references/levers.md` by id (its
+ * rule: a plan with repairs only names the three that came closest); and it says what it leaves out
+ * on purpose, the one owner of that fact for each run it read. An iteration whose every run kept the
+ * section in a `still-missing-<run>.md`, as runs did until 8 November, has said it there.
  */
-function planOwed({ root, dir }: Ledgers, runs: readonly string[], kind: Kind): string[] | null {
-  const path = join(dir, PLAN);
-  if (!existsSync(path)) {
-    return [
-      `step: plan · repairs and tunings in ${path}, each lever of references/levers.md the run selects a row`,
-    ];
-  }
-  if (kind === "investigation") return null;
-  const text = read(path);
+function unanswered({ root, dir }: Where, runs: readonly string[]): string[] | null {
+  const text = read(join(dir, PLAN));
   const confirmed = rowsOf(read(join(dir, VETTING)), "#")
     .filter((cells) => cells.some((cell) => cell.toLowerCase().startsWith("confirmed")))
     .map(([row = ""]) => `vet-${row}`);
-  const levers = rowsOf(read(LEVERS), "#")
-    .map(([id = ""]) => id)
-    .filter((id) => names(text, id));
+  const levers = rowsOf(read(LEVERS), "#").filter(([id = ""]) => names(text, id)).length;
   const absent = [...confirmed, ACROSS].filter((token) => !names(text, token));
   const opposed = (of: string) => (sectionOf(of, "Intentionally opposed") ?? []).length > 0;
   const kept =
     opposed(text) ||
     (runs.length > 0 &&
       runs.every((run) => opposed(read(ledgerOf(root, dir, `still-missing-${run}.md`) ?? ""))));
-  if (absent.length === 0 && levers.length >= 3 && kept) return null;
   const parts = [
     absent.length > 0 ? `name ${absent.join(", ")}` : "",
-    levers.length < 3 ? `name at least three levers by id (${String(levers.length)} named)` : "",
+    levers < 3 ? `name at least three levers by id (${String(levers)} named)` : "",
     kept ? "" : `add ${OPPOSED}`,
   ].filter((part) => part !== "");
-  return [`step: plan · ${path}: ${parts.join("; ")}`];
+  return parts.length === 0 ? null : [`${join(dir, PLAN)}: ${parts.join("; ")}`];
 }
 
-/** The step left in the investigation `dir`, as lines, given the runs launched at a pull request. */
-export function nextOf(
-  dir: string,
-  launchedAt: (pull: number) => string[],
-  root = dirname(dir),
-  lengthOf: Ledgers["lengthOf"] = () => null,
-): string[] {
+/** The iteration's gates for the folder `where.dir`, in order; an unmarked folder takes the shared
+ *  ones, as the sequence it was started under had them. */
+function gatesOf(where: Where): Gate[] {
+  const { dir } = where;
+  const at = (file: string) => join(dir, file);
+  const wri = (verb: string, more = "") => `  bun ${WRI} ${verb} --out ${dir}${more}`;
+  const gate = (step: string, owed: Gate["owed"]): Gate => ({ step, keys: [step], owed });
+  const present = (step: string, file: string, ...owed: string[]) =>
+    gate(step, () => (existsSync(at(file)) ? null : owed));
+  const only = (gates: Gate[]): Gate[] => (marked(dir) ? gates : []);
+  const runs = runsOf(dir);
+  const plan = read(at(PLAN));
+  const deviations = read(at(DEVIATIONS));
+  const pull = String(pullOf(plan) ?? 0);
+  // The forks of this iteration: each campaign read here that forks its plan's pull request, and
+  // each its `launch` deviation names, which this machine need not read.
+  const forks = [...new Set([...where.campaigns, ...launchForks(deviations)])].filter((name) =>
+    madeBy(plan, deviations, name),
+  );
+  return [
+    gate("instruct", () => {
+      const blank = blankSections(read(at(SHARED)));
+      return blank.length === 0
+        ? null
+        : [`write ${blank.map((heading) => `"${heading}"`).join(", ")} in ${at(SHARED)}`];
+    }),
+    gate("lanes", () => (manifests(dir).length > 0 ? null : ["", wri("lanes", " --agents 4")])),
+    gate("reports", () => {
+      // A session that names no report it owns can never be seen to finish, so it owes until a
+      // deviation says it ran.
+      const owed = sessionsIn(dir).filter(
+        ({ ownedPaths = [] }) => ownedPaths.length === 0 || ownedPaths.some((path) => !existsSync(path)),
+      );
+      return owed.length === 0
+        ? null
+        : [
+            `${String(owed.length)} lane session(s) owe a report; hand each its line to a wri-lane agent, all in one message`,
+            ...owed.map(({ name, task }) => `  ${name}: ${task}`),
+          ];
+    }),
+    ...only([
+      gate("isolated", () =>
+        // A lane by the report its session owns, at the path `wri.ts lanes` gave it, whatever its
+        // manifest is named.
+        sessionsIn(dir).some(({ ownedPaths = [] }) =>
+          ownedPaths.some((path) => LONE.some((lane) => path === reportPath(dir, lane))),
+        )
+          ? null
+          : [
+              `lanes ${LONE.join(" and ")} run alone, after the reports they wait on: build each whose trigger fired (\`wri.ts lanes\` named it) with${wri("lanes", " --lanes <n>").slice(1)} and launch it alone, or record why not in ${at(DEVIATIONS)} as "| isolated | <reason> |"`,
+            ],
+      ),
+    ]),
+    present(
+      "synthesise",
+      SYNTHESIS,
+      "collect, render the prompt, and hand it to one session that writes synthesis.md",
+      `${wri("collect")} && bun ${WRI} synthesis --out ${dir}`,
+    ),
+    ...only(runs.flatMap((run) => [...runGates(where, run), ...outsideGate(where, run)])),
+    present(
+      "vet",
+      VETTING,
+      `recount each finding of ${at(SYNTHESIS)} into ${at(VETTING)}, predictions first`,
+    ),
+    ...only([
+      gate("vet", () => unvetted(where, runs)),
+      present(
+        "across",
+        ACROSS,
+        `one read-only wri-lane session reads the vetted investigations of the other domains (the newest 5 to 10, none from before the previous minor release) beside ${at(VETTING)}, and writes ${at(ACROSS)}: for each confirmed problem, whether those domains show it and whether an earlier investigation's fix for it should have held here; for each candidate fix, what it changes there and how to keep that intact`,
+      ),
+    ]),
+    present(
+      "plan",
+      PLAN,
+      `repairs and tunings in ${at(PLAN)}, each lever of references/levers.md the run selects a row`,
+    ),
+    ...only([gate("plan", () => unanswered(where, runs))]),
+    gate("implement", () =>
+      pull === "0"
+        ? [`one pull request on the top of the stack, then name it in plan.md as "Pull request: #N"`]
+        : null,
+    ),
+    gate("launch", () =>
+      forks.length > 0
+        ? null
+        : [
+            `take each run's name from the dry run, write its predictions-<run>.md in the cycle's folder (a "## Carried" section for what this iteration did not hold), then fork at #${pull}'s head on the host and login with room`,
+            `  bun run runs fresh <pack> --at <#${pull} head> --as forkedPR${pull} --yes`,
+          ],
+    ),
+    // A fork owes its own predictions and what it carries; its outcomes are its own iteration's.
+    ...only(
+      forks.flatMap((fork) => runGates(where, fork, [FORKS]).filter(({ step }) => step !== "outcomes")),
+    ),
+    // The plan's own predictions are carried as its runs' are, and only a reason of their own passes it.
+    ...only([{ step: "carry", keys: ["carry:plan"], owed: () => planOwed(where, plan, forks) }]),
+    { step: "done", keys: [], owed: () => [`#${pull} is measured by ${forks.join(", ")}`] },
+  ];
+}
+
+/** The step left in the investigation `dir`, as lines: the first gate owed that no row of its
+ *  `deviations.md` passes, then each deviation passed on the way, with its reason. */
+export function nextOf(dir: string, known: Known = {}): string[] {
   if (!existsSync(join(dir, INVESTIGATION))) return [`step: open · no investigation in ${dir}`];
-  const passed: string[] = [];
-  const owed =
-    firstOwed(gatesOf({ root, dir, lengthOf }, launchedAt, passed), deviationsOf(dir), passed) ?? [];
-  return [...owed, ...passed];
+  const { root = dirname(dir), campaigns = [], lengthOf = () => null } = known;
+  const deviated = new Map(
+    rowsOf(read(join(dir, DEVIATIONS)), "step").map(([step = "", reason = ""]) => [step, reason] as const),
+  );
+  const passed = new Set<string>();
+  for (const { step, keys, owed } of gatesOf({ root, campaigns, lengthOf, dir })) {
+    const lines = owed();
+    if (lines === null) continue;
+    // A row with no reason records no judgment, so it passes nothing.
+    const key = keys.find((each) => (deviated.get(each) ?? "") !== "");
+    if (key === undefined) {
+      const [rest = "", ...more] = lines;
+      return [`step: ${step}${rest === "" ? "" : ` · ${rest}`}`, ...more, ...passed];
+    }
+    passed.add(`deviated: ${key === step ? (keys[0] ?? key) : key} · ${deviated.get(key) ?? ""}`);
+  }
+  return [...passed];
 }
-
-/** Each campaign `among` holds that forks `pull`: `forkedPR60` is never a fork of #600. */
-const launchedFrom = (among: readonly Run[]) => (pull: number) =>
-  among.filter((run) => isCampaign(run) && forkOf(run.name) === pull).map(({ name }) => name);
 
 /** How long each campaign `among` holds by a name is now, read once a name; null for one it does not
  *  hold or that may still write its log (`stillRunning`), whose log grows on every look and so would
- *  reopen its unreached and pending rows at each `next` (review of v0.10.2). */
+ *  reopen its unreached and pending rows at each `next`. */
 export function lengthsIn(
   among: readonly Run[],
   running: () => readonly Running[] = processes,
-): Ledgers["lengthOf"] {
+): Where["lengthOf"] {
   const lengths = new Map<string, number | null>();
   let looked: readonly Running[] | undefined;
   return (name) => {
     if (!lengths.has(name)) {
       const run = among.find((each) => isCampaign(each) && each.name === name);
       looked ??= running();
-      lengths.set(name, run === undefined || stillRunning(run, looked) ? null : logEvents(run.path).length);
+      // Its whole lines counted, which is its events without parsing each.
+      const events = () => wholeLines(run?.path ?? "").split("\n").length - 1;
+      lengths.set(name, run === undefined || stillRunning(run, looked) ? null : events());
     }
     return lengths.get(name) ?? null;
   };
@@ -543,22 +509,69 @@ export function lengthsIn(
 /** The folder every iteration's ledgers are read under: `.ana/wri/` of the main checkout. */
 const wriRoot = (repo: string) => join(mainTree(repo), ".ana", "wri");
 
-/** The standings whose run is live or whose log's last event lies in the last `days`. A file's time
- *  only says which logs to open: a fetch writes a run's copy again, and on 10 November 113 of the
- *  119 archived logs written in two days held no event of those days, so 18 steps read as owed. */
-export const movedIn = <S extends Pick<Standing, "row" | "last">>(
-  all: readonly S[],
+/** What every step one command prints is read from, beside its folder, and whether a campaign of
+ *  that name may still write its log, for the views. */
+const knownIn = (repo: string, known: readonly Run[], running: () => readonly Running[] = processes) => {
+  let looked: readonly Running[] | undefined;
+  // One look at the processes serves both readers.
+  const once = () => (looked ??= running());
+  return {
+    root: wriRoot(repo),
+    campaigns: known.filter(isCampaign).map(({ name }) => name),
+    lengthOf: lengthsIn(known, once),
+    liveOf: (name: string) =>
+      known.some((run) => isCampaign(run) && run.name === name && stillRunning(run, once())),
+  };
+};
+
+/** What `reader` says of the log at `path`, or null where the log has gone since the registry listed
+ *  it, as a test suite's campaigns do within seconds. A log that is there and cannot be read throws. */
+function held<T>(path: string, reader: (path: string) => T): T | null {
+  try {
+    return reader(path);
+  } catch (cause) {
+    if (existsSync(path)) throw cause;
+    return null;
+  }
+}
+
+/** The campaigns of `known` that are live or whose log's last event lies in the last `days`, each
+ *  with whether it is live, and only those whose name holds one of `parts` where any is given. A
+ *  log's last event is read from its tail (`lastAt`), never its file's time, which a fetch moves, so
+ *  a view opens only the logs it shows. A campaign whose log has gone is left out (`held`). */
+export const movedIn = (
+  known: readonly Run[],
+  running: readonly Running[],
   now: number,
   days: number,
-) => all.filter(({ row, last }) => row.live || now - last < days * 24 * HOUR_MS);
+  parts: readonly string[] = [],
+) =>
+  known
+    .filter((run) => isCampaign(run) && run.seed !== true)
+    .filter((run) => parts.length === 0 || parts.some((part) => run.name.includes(part)))
+    .flatMap((run) => {
+      const last = held(run.path, lastAt);
+      const live = stillRunning(run, running);
+      const moved = last !== null && (live || now - Date.parse(last) < days * 24 * HOUR_MS);
+      return moved ? [{ run, live }] : [];
+    });
+
+/** The reason the first row `pause:<run>` among these `deviations.md` texts gives for keeping the
+ *  live run `name` past its trigger, or null: a row with no reason records no judgment. */
+export const keptIn = (deviations: readonly string[], name: string): string | null =>
+  deviations
+    .flatMap((text) => rowsOf(text, "step"))
+    .find(([step, reason = ""]) => step === `pause:${name}` && reason !== "")?.[1] ?? null;
 
 /** The step of a run no investigation reads yet: `run` before its trigger; at the trigger of a live
- *  run, a pause after its next comparison, or `waits` once a pause of it is armed here; and `open` once
- *  it has stopped, so the investigation reads the comparison the pause waited for. */
+ *  run, a pause after its next comparison, `waits` once a pause of it is armed here, or `kept` where
+ *  a deviation keeps it (`keptIn`); and `open` once it has stopped, so the investigation reads the
+ *  comparison the pause waited for. */
 export function openingOf(
   row: { readonly name: string; readonly host: string; readonly live: boolean },
   trigger: string | null,
   running: readonly Running[],
+  kept: string | null = null,
 ): string[] {
   if (trigger === null) return ["step: run"];
   const command = `  ${openingCommand(row.name, row.live, row.host === HERE ? "" : `on ${row.host} `)}`;
@@ -566,6 +579,7 @@ export function openingOf(
   if (waiters(row.name, running).length > 0) {
     return [`step: waits · ${trigger}; its pause after the next comparison is armed`];
   }
+  if (kept !== null) return [`step: kept · ${trigger}`, `deviated: pause:${row.name} · ${kept}`];
   return [
     `step: pause · ${trigger}; the investigation opens once the run stops after its next comparison`,
     command,
@@ -576,38 +590,23 @@ export function openingOf(
 function standings(args: CommandArgs, repo: string, known: readonly Run[], parts = args.positionals) {
   const now = Date.now();
   const days = args.int("days") ?? 2;
-  const limits = {
-    promotions: args.int("promotions") ?? TRIGGER_AT.promotions,
-    hours: args.int("hours") ?? TRIGGER_AT.hours,
-  };
   const running = processes();
-  const root = wriRoot(repo);
-  const folders = investigations(root);
-  const chosen = known.filter(
-    (run) =>
-      isCampaign(run) &&
-      run.seed !== true &&
-      (parts.length === 0 || parts.some((part) => run.name.includes(part))) &&
-      now - statSync(run.path).mtimeMs < days * 24 * HOUR_MS,
-  );
-  const opened = chosen.map((run): Standing => {
-    const events = logEvents(run.path);
-    const row = progressOf(
-      { name: run.name, host: run.archived ?? HERE, live: stillRunning(run, running) },
-      events,
-      now,
-    );
+  const iteration = knownIn(repo, known, () => running);
+  const folders = investigations(iteration.root);
+  const deviations = folders.map(({ dir }) => read(join(dir, DEVIATIONS)));
+  const all = movedIn(known, running, now, days, parts).flatMap(({ run, live }): Standing[] => {
+    // A log can also go between the look at its tail and this read of it.
+    const events = held(run.path, logEvents);
+    if (events === null) return [];
+    const row = progressOf({ name: run.name, host: run.archived ?? HERE, live }, events, now);
     const folder = folders.find(({ names: seen }) => seen.includes(row.name));
-    const opening = openingOf(row, triggerOf(row, limits), running);
-    return {
-      row,
-      last: Date.parse(events.at(-1)?.at ?? ""),
-      commit: lastLaunch(run.path)?.commit ?? null,
-      dir: folder?.dir ?? null,
-      step: folder === undefined ? opening : nextOf(folder.dir, launchedFrom(known), root, lengthsIn(known)),
-    };
+    const step =
+      folder === undefined
+        ? openingOf(row, triggerOf(row), running, keptIn(deviations, row.name))
+        : nextOf(folder.dir, iteration);
+    const commit = lastLaunch(run.path)?.commit ?? null;
+    return [{ row, last: Date.parse(events.at(-1)?.at ?? ""), commit, dir: folder?.dir ?? null, step }];
   });
-  const all = movedIn(opened, now, days);
   const shown = all.filter(({ row }) => row.live || row.compared > 0);
   return { shown, silent: all.length - shown.length, moved: all.length, days, now };
 }
@@ -632,9 +631,7 @@ function rows(args: CommandArgs, repo: string, known: readonly Run[]): number {
  * step that is owed, a live run's unread trigger first and then the longest-standing, with the
  * command that prints the step whole. Runs that share a folder's step share its line. A step is
  * timed from the last write under its folder (`writtenAt`), a closed run's unread trigger from its
- * last event, and one that has stood for `days` or more is only counted, since nobody is taking it:
- * until 10 November the view with no verb listed such a folder's every owed lane at each look, and
- * fourteen iterations stood at `plan` unseen.
+ * last event, and one that has stood for `days` or more is only counted, since nobody is taking it.
  */
 export function dueLines(
   standing: readonly Pick<Standing, "row" | "last" | "dir" | "step">[],
@@ -642,43 +639,40 @@ export function dueLines(
   now: number,
   days = 2,
 ): string[] {
-  const owed = new Map<
-    string,
-    { name: string; rest: string; command: string; dir: string | null; since: number | null; runs: string[] }
-  >();
+  const owed = new Map<string, { name: string; where: string; hours: number; runs: string[] }>();
   for (const { row, last, dir, step } of standing) {
     const { name = "", rest = "" } = step.map((line) => STEP.exec(line)?.groups).find(Boolean) ?? {};
-    if (name === "" || name === "run" || name === "waits" || name === "done") continue;
-    const key = `${dir ?? row.name} ${name}`;
-    const unread = row.live ? null : last;
-    const since = dir === null ? unread : writtenAt(dir);
+    if (QUIET.has(name)) continue;
     const command = step.find((line) => line.startsWith("  "))?.trim() ?? `bun ${DRIVER} open ${row.name}`;
-    owed.set(key, { name, rest, command, dir, since, runs: [...(owed.get(key)?.runs ?? []), row.name] });
+    // A live run's trigger has stood for no time a clock here reads, so it is new: listed first,
+    // and never among those left standing.
+    const unread = row.live ? Number.NEGATIVE_INFINITY : last;
+    const [since, where] =
+      dir === null ? [unread, `${rest} · ${command}`] : [writtenAt(dir), `bun ${DRIVER} next ${dir}`];
+    const key = `${dir ?? row.name} ${name}`;
+    const runs = [...(owed.get(key)?.runs ?? []), row.name];
+    owed.set(key, { name, where, hours: (now - since) / HOUR_MS, runs });
   }
-  const timed = [...owed.values()].map((each) => ({
-    ...each,
-    hours: each.since === null ? null : (now - each.since) / HOUR_MS,
-  }));
-  const left = timed.filter(({ hours }) => hours !== null && hours >= days * 24);
-  const taken = timed
-    .filter((each) => !left.includes(each))
-    .toSorted((one, other) => (other.hours ?? Infinity) - (one.hours ?? Infinity));
-  const oldest = Math.max(0, ...taken.map(({ hours }) => hours ?? 0));
+  const stood = ({ hours }: { hours: number }) => Number.isFinite(hours) && hours >= days * 24;
+  const taken = [...owed.values()]
+    .filter((each) => !stood(each))
+    .toSorted((one, other) => other.hours - one.hours);
+  const left = owed.size - taken.length;
+  const oldest = Math.max(0, ...taken.map(({ hours }) => hours).filter(Number.isFinite));
   const listed = taken.length === 0 ? "" : `, the oldest listed for ${oldest.toFixed(1)} h`;
   const live = standing.filter(({ row }) => row.live).length;
   return [
     `due at ${new Date(now).toISOString().slice(0, 16)}Z · ${
-      timed.length === 0 ? "nothing owed" : `${String(timed.length)} step(s) owed${listed}`
+      owed.size === 0 ? "nothing owed" : `${String(owed.size)} step(s) owed${listed}`
     } · ${String(live)} run(s) live`,
-    ...taken.map(({ name, rest, command, dir, runs: [first = "", ...others], hours }) => {
+    ...taken.map(({ name, where, runs: [run = "", ...others], hours }) => {
       const more = others.length > 0 ? ` and ${String(others.length)} more` : "";
-      const where = dir === null ? `${rest} · ${command}` : `bun ${DRIVER} next ${dir}`;
-      return `${name} · ${hours === null ? "new" : `${hours.toFixed(1)} h`} · ${first}${more} · ${where}`;
+      return `${name} · ${Number.isFinite(hours) ? `${hours.toFixed(1)} h` : "new"} · ${run}${more} · ${where}`;
     }),
-    ...(left.length === 0
+    ...(left === 0
       ? []
       : [
-          `and ${String(left.length)} of them owed for ${String(days)} day(s) or more: take each or pass it with a row in its deviations.md`,
+          `and ${String(left)} of them owed for ${String(days)} day(s) or more: take each or pass it with a row in its deviations.md`,
         ]),
   ];
 }
@@ -703,7 +697,7 @@ function changedAt(dir: string): number {
  *  solve runs (`codeOf`'s trees, `package.json` and `bun.lock`) that differ there, which no run has
  *  yet measured. The run's commit is its last launch's receipt, which a gathered copy carries beside
  *  its log. */
-export function unmeasured(repo: string, head: string, { row, commit }: Standing): string {
+export function unmeasured(repo: string, head: string, { row, commit }: Pick<Standing, "row" | "commit">) {
   if (commit === null) return `measures · ${row.name} · no launch receipt names its commit`;
   // Files and not commits: a landing beneath replays a pull request onto new commits of one tree.
   const paths = [...CODE_TREES, "package.json", "bun.lock"];
@@ -732,8 +726,7 @@ function open(args: CommandArgs, repo: string): number {
   const logs = runs.map((name) => readNamed(name, repo).path);
   const day = new Date().toISOString().slice(0, 10);
   const out = resolve(args.value("out") ?? join(wriRoot(repo), `${day}-${runs.join("+")}`));
-  // The record first, so a crash before the start reads `step: open` (until 9 November it came after,
-  // and a crash between left an iteration read as a plain investigation, skipping its own gates).
+  // The record first, so a crash before the start reads `step: open`, never a plain investigation.
   mkdirSync(out, { recursive: true });
   writeFileSync(
     join(out, MARKER),
@@ -741,34 +734,38 @@ function open(args: CommandArgs, repo: string): number {
   );
   const started = runSync(
     [capturedExecPath, WRI, "start", "--log", logs.join(","), "--out", out, "--snapshot"],
-    {
-      cwd: repo,
-    },
+    { cwd: repo },
   );
   runtimeProcess.stdout.write(started.stdout);
   runtimeProcess.stderr.write(started.stderr);
   if (started.exitCode !== 0) return started.exitCode ?? 1;
-  for (const line of nextOf(out, () => [], wriRoot(repo))) console.log(line);
+  for (const line of nextOf(out, { root: wriRoot(repo) })) console.log(line);
   return 0;
 }
 
 /**
  * The views derived from the ledgers of `dir`, an investigation's folder or a cycle's: the cycle view
- * of every run it holds, then each run's still-missing view beside the plan of the iteration that
- * read it (`dir`'s own, or the latest that names the run).
+ * of every run it holds, the rows among them that nothing took up (`droppedOf`), then each run's
+ * still-missing view beside the plan of the iteration that read it (`dir`'s own, or the latest that
+ * names the run). `liveOf` says which runs may still write their logs, whose rows no plan is late for.
  */
-export function ledgerViews(dir: string, root: string, lengthOf: Ledgers["lengthOf"]): string[] {
-  const runs = existsSync(join(dir, INVESTIGATION))
+export function ledgerViews(
+  dir: string,
+  root: string,
+  lengthOf: Where["lengthOf"],
+  liveOf: (run: string) => boolean = () => false,
+): string[] {
+  const own = existsSync(join(dir, INVESTIGATION));
+  const runs = own
     ? runsOf(dir)
     : readdirSync(dir).flatMap((file) => /^predictions-(.+)\.md$/u.exec(file)?.[1] ?? []);
-  const readers = investigations(root);
+  const readers = own ? [] : investigations(root);
   const ledgers = runs.map((name) => {
-    const iteration = existsSync(join(dir, INVESTIGATION))
-      ? dir
-      : readers.find(({ names: theirs }) => theirs.includes(name))?.dir;
+    const iteration = own ? dir : readers.find(({ names: theirs }) => theirs.includes(name))?.dir;
     const plan = iteration === undefined ? "" : read(join(iteration, PLAN));
     const older = read(ledgerOf(root, dir, `still-missing-${name}.md`) ?? "");
-    return { ...ledgersOf(root, dir, name), plan, older, events: lengthOf(name) };
+    const awaited = iteration !== undefined || liveOf(name);
+    return { ...ledgersOf(root, dir, name), plan, awaited, older, events: lengthOf(name) };
   });
   return [
     `# Ledger views of ${dir}`,
@@ -776,31 +773,27 @@ export function ledgerViews(dir: string, root: string, lengthOf: Ledgers["length
     "Derived from each run's predictions and outcomes and its iteration's plan: never write them by hand.",
     "",
     ...cycleViewOf(ledgers),
+    "",
+    ...droppedOf(ledgers, carriedIn(root, dir)),
     ...ledgers.flatMap((run) => ["", ...stillMissingOf(run)]),
   ];
 }
 
-async function main(args: CommandArgs): Promise<number> {
+function main(args: CommandArgs): number {
   const repo = runtimeProcess.cwd();
-  const [verb] = args.positionals;
+  const [verb, dir] = args.positionals;
   if (verb === "open") return open(args, repo);
-  if (verb === "next") {
-    const dir = args.positionals[1];
-    if (dir === undefined) args.die(USAGE);
-    const known = readable(repo);
-    const lines = nextOf(resolve(dir), launchedFrom(known), wriRoot(repo), lengthsIn(known));
-    for (const line of lines) console.log(line);
-    return 0;
-  }
-  if (verb === "ledger") {
-    const dir = args.positionals[1];
-    if (dir === undefined) args.die(USAGE);
-    for (const line of ledgerViews(resolve(dir), wriRoot(repo), lengthsIn(readable(repo)))) {
-      console.log(line);
-    }
-    return 0;
-  }
-  return verb === "due" ? due(args, repo, readable(repo)) : rows(args, repo, readable(repo));
+  const known = readable(repo);
+  if (verb === "due") return due(args, repo, known);
+  if (verb !== "next" && verb !== "ledger") return rows(args, repo, known);
+  if (dir === undefined) args.die(USAGE);
+  const iteration = knownIn(repo, known);
+  const lines =
+    verb === "next"
+      ? nextOf(resolve(dir), iteration)
+      : ledgerViews(resolve(dir), iteration.root, iteration.lengthOf, iteration.liveOf);
+  for (const line of lines) console.log(line);
+  return 0;
 }
 
 if (import.meta.main) {

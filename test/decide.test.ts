@@ -32,8 +32,10 @@ const PLAN: Plan = {
   left: null,
   promotions: null,
 };
-const event = (kind: EventKind, data: JsonObject): LogEvent => ({ at, kind, data });
 const EXAM_FINISHED = "exam.finished" as const;
+/** A comparison in which both harnesses answered every task in every solve: no room. */
+const FULL = { tally: [0, 0, 12], valid: { old: ALL, fresh: ALL } } as const;
+const event = (kind: EventKind, data: JsonObject): LogEvent => ({ at, kind, data });
 const heldOut = (version: string) => [
   event("task.proposed", { version, taskId: version }),
   event("task.gate", { version, gate: 1, outcome: "passed" }),
@@ -104,8 +106,6 @@ function compared(
     }),
   ];
 }
-/** A comparison in which both harnesses answered every task in every solve: no room. */
-const FULL = { tally: [0, 0, 12], valid: { old: ALL, fresh: ALL } } as const;
 const full = (id: string) => compared(id, "h1", "no-step", FULL);
 /** Every held task, both targets' worth, answered by both in every solve: none is left unread. */
 const EVERY = Object.fromEntries([...HELD, ...REPEAT].map((version) => [version, "PP PP"]));
@@ -512,11 +512,19 @@ describe("room for the reference", () => {
     expect(newReference).toMatchObject({ move: "examine", code: "no-room" });
     expect(newReference.why).toContain("h1");
     expect(move([...promotedHalf, ...examined("x-1")])).toMatchObject({ move: "build" });
+    // A session the provider crashed or a stop killed is owed again, with tasks held or none. In a
+    // jobstat run of 14 November the sessions written for two new references were cut at 6 and 4
+    // tasks held, none followed either, and the scored set fell from 22 tasks to 14 in three
+    // comparisons.
     const crashed = { ended: "crashed", crash: "x" };
-    expect(move([...promotedHalf, ...examined("x-1", [], crashed)])).toMatchObject({ move: "examine" });
-    expect(move([...promotedHalf, ...examined("x-1", ["v13"], crashed)])).toMatchObject({
-      move: "compare",
-    });
+    const killed = { ended: "killed", crash: null };
+    for (const cut of [crashed, killed]) {
+      expect(move([...promotedHalf, ...examined("x-1", [], cut)])).toMatchObject({ move: "examine" });
+      expect(move([...promotedHalf, ...examined("x-1", ["v13"], cut)])).toMatchObject({ move: "examine" });
+      // The session after it that ends on its own is the one written for the reference.
+      const whole = [...promotedHalf, ...examined("x-1", ["v13"], cut), ...examined("x-2", ["v14"])];
+      expect(move(whole)).toMatchObject({ move: "compare" });
+    }
     const stepped = [
       ...FIRST,
       ...compared("g-1", "h1", "step", { tally: [8, 0, 4] }),
@@ -838,6 +846,22 @@ describe("the build conditions", () => {
     expect(owed(read, 1000, 0.1)).toBe(poolOf(read).practiceFrontier.length - 6);
     // A campaign that names no practice is owed none.
     expect(practiceDue(read, null, 0.1)).toBeNull();
+  });
+
+  it("counts each task in the allowance, a family's siblings too, as admission does", () => {
+    const seeds = (families: readonly string[]) => [
+      ...SIX,
+      built("b-1", "h1"),
+      ...families.flatMap((family, place) => [
+        event("task.proposed", { version: `s${String(place)}`, taskId: `s${String(place)}`, family }),
+        event("task.gate", { version: `s${String(place)}`, gate: 1, outcome: "passed" }),
+      ]),
+      ...compared("g-1", "h1", "no-step"),
+    ];
+    // Six tasks and four seeds of one family: four above the floor of six.
+    expect(owed(seeds(["one", "one", "one", "one"]), 1000, 0.1)).toBe(4);
+    // The nearest case: one seed is one above it.
+    expect(owed(seeds(["one"]), 1000, 0.1)).toBe(1);
   });
 
   it("leaves owed practice to the host, so no row reads it", () => {

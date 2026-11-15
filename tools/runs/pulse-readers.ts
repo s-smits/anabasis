@@ -360,8 +360,19 @@ function whyNot(store: string): string {
 
 const labelOf = ({ kind, session, harness }: Moment) => [kind, session, harness].filter(Boolean).join(" ");
 
+/** Of a trigger's line that counts every session of a kind in turn (`g-1: ...; g-2: ...`), the parts
+ *  naming this one behind the line's head: the others were said at their own moments, and a line cut
+ *  at its width loses its newest part first. A line whose parts do not each open on a session is whole. */
+function ownPart(line: string, named: RegExp): string {
+  const parts = (TRIGGER_LINE.exec(line)?.[3] ?? "").split(/(?:; | · )(?=[a-z]-\d+\b)/);
+  const mine = parts.filter((part) => named.test(part));
+  const counted = parts.length > 1 && parts.every((part) => /^[a-z]-\d+\b/.test(part));
+  return counted && mine.length > 0 ? `${line.slice(0, line.indexOf("): ") + 3)}${mine.join("; ")}` : line;
+}
+
 /** The lines of `reader`'s text on `moment`: a failure's last line, else those naming its session or
- *  harness, else those its gist picks, leaving out a trigger the look says itself. */
+ *  harness (of a line that counts every session, its own part), else those its gist picks, leaving
+ *  out a trigger the look says itself. */
 function linesOf(asked: ReadersAsked, reader: Listed, moment: Moment): string[] {
   const result = resultOf(asked.store, asked.log, reader.name);
   const lines = textOf(asked.store, asked.log, reader.name)
@@ -379,7 +390,7 @@ function linesOf(asked: ReadersAsked, reader: Listed, moment: Moment): string[] 
   );
   const gist = reader.gist;
   const picked = naming.length > 0 || gist === undefined ? naming : own.filter((line) => gist.test(line));
-  return picked.map((line) => `◆ ${reader.name}: ${short(line)}`);
+  return picked.map((line) => `◆ ${reader.name}: ${short(ownPart(line, named))}`);
 }
 
 /** What each reader that has read `moment` says of it, at most `PER_READER` each, and who has not. */
@@ -435,8 +446,15 @@ export function readersSaid(asked: ReadersAsked) {
   const named: Moment[] = [];
   const owed: Moment[] = [];
   const earlier = (asked.owed ?? []).map((moment) => ({ moment, at: null }));
-  for (const { moment, at } of [...momentsIn(asked.fresh, size, listed), ...earlier]) {
-    const one = listed.length === 0 ? { found: [], left: moment.left } : foundOf(asked, moment, at, listed);
+  const moments = [...momentsIn(asked.fresh, size, listed), ...earlier];
+  // A gist picks from what a reader read last, which is the log as the newest moment of a kind
+  // left it: on 15 November an owed `comparison.started` said the next comparison's draw as its own.
+  const plain = listed.map(({ name, at }) => ({ name, ...keyIfDefined("at", at) }));
+  const overtaken = (one: Moment) =>
+    moments.some(({ moment }) => moment.kind === one.kind && moment.size > one.size);
+  for (const { moment, at } of moments) {
+    const readers = overtaken(moment) ? plain : listed;
+    const one = listed.length === 0 ? { found: [], left: moment.left } : foundOf(asked, moment, at, readers);
     found.push(...one.found);
     if (one.left?.length === 0) continue;
     const kept: Moment = { ...moment, ...keyIfDefined("left", one.left) };

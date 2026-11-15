@@ -12,7 +12,7 @@
  * `campaign.opened` is no campaign's, and one under `--min-events` ended before it did any work (a
  * refused login or provider leaves about 14). Newest last event first: a file's time is no guide,
  * since the gather job and `retire` rewrite an archive copy whose campaign ended days before. The
- * order reads each log's tail only, as 176 logs hold 1.7 GB.
+ * order reads each log's tail only (`lastAt`, `main/logs.ts`), as 176 logs hold 1.7 GB.
  *
  * On 29 October two audit batches each wrote this inventory by hand: 213 candidates with copies of
  * one campaign under several paths, and a note telling every session to deduplicate them and to
@@ -20,9 +20,10 @@
  * read. This prints those identities once, so every session cites the same snapshot.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
+import { lastAt } from "#skills/main/logs.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { sha256 } from "#src/meta/digest.ts";
-import { closeSync, existsSync, fstatSync, openSync, readSync } from "#src/meta/filesystem.ts";
+import { existsSync } from "#src/meta/filesystem.ts";
 import { capturedJsonStringify, parseJsonAs } from "#src/meta/json-runtime.ts";
 import { compareCodeUnits } from "#src/meta/stable-json.ts";
 import { receipts } from "#tools/runs/receipt.ts";
@@ -33,8 +34,6 @@ const USAGE = `usage:
 
 const LIMIT = 12;
 const MIN_EVENTS = 50;
-/** Enough of a log's end to hold its last whole event; a longer one is read whole. */
-const TAIL = 1 << 16;
 
 interface Snapshot {
   readonly name: string;
@@ -48,22 +47,6 @@ interface Snapshot {
   readonly sha256: string;
   /** The commits its launches ran, oldest first, each once. */
   readonly commits: readonly string[];
-}
-
-/** When the last whole event of the log at `path` was appended, read from its tail, or from the
- *  whole log where one event is longer than the tail. */
-export function lastAt(path: string): string {
-  const fd = openSync(path, "r");
-  try {
-    const start = Math.max(0, fstatSync(fd).size - TAIL);
-    const buffer = Buffer.alloc(TAIL);
-    const tail = buffer.subarray(0, readSync(fd, buffer, 0, TAIL, start)).toString("utf8");
-    const lines = (start > 0 && tail.split("\n").length > 2 ? tail : wholeLines(path)).split("\n");
-    const last = lines.at(-2);
-    return last === undefined || last === "" ? "" : parseJsonAs<LogEvent>(last).at;
-  } finally {
-    closeSync(fd);
-  }
 }
 
 export function snapshotOf(name: string, from: string, path: string, least: number): Snapshot | null {

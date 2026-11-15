@@ -3,7 +3,7 @@
  * each side of every comparison measured on the tasks each session wrote, against the best answer
  * its author has on record:
  *
- *   bun tools/wri/aim.ts --log <log>
+ *   bun tools/wri/wri.ts reader aim --log <log>
  *
  * Lanes 11, 28 and 31 ask whether the tasks written after a promotion were written against the
  * reference in force, and a starter read pools them with the rest. Between 3 and 10 November 14 of
@@ -29,12 +29,11 @@ import { REFERENCE_HOME } from "#src/examiner/shell.ts";
 import { gapAgainst, type Paired } from "#src/kernel/compare.ts";
 import { conditionsOf } from "#src/kernel/condition.ts";
 import { proposalsOf } from "#src/kernel/history.ts";
-import { type LogEvent, read } from "#src/kernel/log.ts";
+import type { LogEvent } from "#src/kernel/log.ts";
 import { lastReports, pairsReported, type Reported, taskRecords } from "#src/kernel/reports.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
 import { type Call, tracesIn } from "#src/kernel/trace.ts";
 import { asRecord, isBoolean, isString, type JsonObject } from "#src/meta/json-shape.ts";
-import { parseArgs } from "#src/meta/process.ts";
 import { median } from "#src/meta/tally.ts";
 
 /** A comparison's last report with the pairs it tallied. */
@@ -331,11 +330,4 @@ export function aimRows(events: readonly LogEvent[]): string[] {
       sessions.map(({ session }) => session),
     ),
   ];
-}
-
-if (import.meta.main) {
-  const { values, positionals } = parseArgs({ options: { log: { type: "string" } }, allowPositionals: true });
-  const log = values.log ?? positionals[0];
-  if (log === undefined) throw new Error("name a log: bun tools/wri/aim.ts --log <log>");
-  console.log(aimRows(read(log)).join("\n"));
 }

@@ -147,6 +147,9 @@ const SOLVE_HOME = "(the solve's own home directory)";
 /** The harness's tool tree, as a path in the Builder's home. */
 export const HOME_TOOL_TREE = `harness/${TOOL_TREE_DIR}`;
 
+/** What a practice line says of the harness a solve ran under, by the tool's `under`. */
+const UNDER = { harness: "", reference: " under the reference harness" } as const;
+
 /** An ending as the Builder is shown it: the outcome and its kind. A non-result's reason can name a
  *  check, so only a broken harness's reason, which is the harness's own, is shown. */
 function endingText(ending: Ending): string {
@@ -428,9 +431,6 @@ export function practiceLeft({ request, spent }: Bench, events: readonly LogEven
   );
   return Math.max(0, Math.min(counted, afforded));
 }
-
-/** What a practice line says of the harness a solve ran under, by the tool's `under`. */
-const UNDER = { harness: "", reference: " under the reference harness" } as const;
 
 /** A task's practice record under each harness `roles` names, each digest once with all its roles,
  *  and under an objective each valid answer's measure. Until 27 October it named harness/ and the

@@ -110,6 +110,43 @@ describe("a seat's root", () => {
     20_000,
   );
 
+  // A killed parent can finish a fork between a pass's listing and the pass's read of it: it then
+  // reads as gone, and its child is in no listing until the next. The listing here keeps the second
+  // process back until the pass after the one that read the first as gone.
+  it.skipIf(!onDarwin)(
+    "ends a child no listing held until its parent read as gone",
+    async () => {
+      const { parent, root } = unclaimed();
+      claimRoot(root);
+      const home = join(root, "home");
+      mkdirSync(home);
+      const working = () =>
+        Bun.spawn(["/bin/sleep", "60"], { cwd: home, stdio: ["ignore", "ignore", "ignore"] });
+      const first = working();
+      const child = working();
+      const reads = (pid: number, rows = processTable()) =>
+        rows.some((row) => row.pid === pid && row.cwd !== null);
+      let gone = false;
+      const listing = () => {
+        const rows = processTable();
+        const shown = gone ? rows : rows.filter(({ pid }) => pid !== child.pid);
+        gone ||= !reads(first.pid, rows);
+        return shown;
+      };
+      try {
+        await ready(() => reads(first.pid) && reads(child.pid));
+        endHolders(root, undefined, listing);
+        await ready(() => first.signalCode === "SIGKILL" && child.signalCode === "SIGKILL");
+      } finally {
+        first.kill("SIGKILL");
+        child.kill("SIGKILL");
+        await releaseRoot(root);
+        rmSync(parent, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
+
   // The release's passes run a few milliseconds apart since the listing became libproc's, where each
   // waited 240 ms on lsof: a child forked between a pass's listing and its kill is the next pass's.
   it.skipIf(!onDarwin)(

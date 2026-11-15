@@ -114,7 +114,7 @@ const READ_MS = 60_000;
 const APPLY_MS = 900_000;
 const INSTALL = "tools/runtime/router/install.ts";
 const TREE = join(import.meta.dir, "..", "..");
-/** What the installed runner is made of, `hosts.js` bundling the last three among them. */
+/** What the installed runner is made of, `run.js` bundling the last three among them. */
 const RUNNER_SOURCE = [
   "tools/runtime/router",
   "tools/runs/host-config.ts",
@@ -285,17 +285,13 @@ export function runnerLags(tree: string, commit: string): boolean {
   return gitMaybe(tree, ...same) === null;
 }
 
-function runnerFinding(machine: Machine, facts: Facts, { hosts, force }: Options): Finding | null {
+function runnerFinding(machine: Machine, facts: Facts, { hosts }: Options): Finding | null {
   const { host } = machine;
   if (hosts.length === 0 || facts.runner === null || !runnerLags(TREE, facts.runner)) return null;
-  const everyCheckHere = host === undefined && !hosts.some(({ checks }) => checks !== undefined);
   return {
     line: `runner installed from ${facts.runner}, whose source this tree's has moved past`,
     seats: false,
-    blocked:
-      everyCheckHere && !force
-        ? "no host in ANA_HOSTS sets `checks`, so this install would run every check on this machine: set them first, or --force"
-        : null,
+    blocked: null,
     apply: () => {
       if (host !== undefined) return scriptOn(host, INSTALL, []);
       return runOn(machine, `${quoted(capturedExecPath)} ${quoted(join(TREE, INSTALL))}`);

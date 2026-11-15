@@ -16,16 +16,16 @@ import { draftOf } from "#src/examiner/draft.ts";
 import type { Session } from "#src/examiner/session.ts";
 import { append, type LogEvent, read } from "#src/kernel/log.ts";
 import { PATIENCE } from "#src/kernel/reports.ts";
-import { taskStates, taskVersion } from "#src/kernel/task.ts";
 import { mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { dirname } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { sameJsonValue } from "#src/meta/stable-json.ts";
-import { projectOf } from "./campaign.ts";
+import { PACK_OPTIONS, projectOf } from "./campaign.ts";
 import type { Host } from "./host.ts";
-import { PRACTICE, type prepareCommand } from "./prepare.ts";
+import { PRACTICE, prepareCommand, ungated } from "./prepare.ts";
+import { promoteCommand } from "./promote.ts";
 import { type Campaign, COMPARISON_OPTIONS, capRead, SESSION_OPTIONS, type Seated, solved } from "./round.ts";
 import { SETTING_OPTIONS } from "./setting.ts";
 
@@ -60,11 +60,7 @@ export interface Turn {
 export type Values = ReturnType<typeof flagsOf>;
 
 const OPTIONS = {
-  root: SESSION_OPTIONS.root,
-  sweep: SESSION_OPTIONS.sweep,
-  cycle: SESSION_OPTIONS.cycle,
-  bundle: SESSION_OPTIONS.bundle,
-  name: SESSION_OPTIONS.name,
+  ...PACK_OPTIONS,
   project: { type: "string" },
   prompt: { type: "string" },
   "prompt-file": { type: "string" },
@@ -162,6 +158,34 @@ const SCRIPTED = "claude/claude-opus-5-5";
 
 export const flag = (name: string, value: string | undefined): string[] =>
   value === undefined ? [] : [`--${name}`, value];
+
+/** Record a move as it begins (`campaign.move`), so that one that throws is on record with its reason. */
+export const moved = (
+  log: string,
+  { move, code, why }: Pick<Decided, "move" | "code" | "why">,
+  named: JsonObject = {},
+) => append(log, MOVED, { move, code, why, ...named });
+
+/** Release practice under the campaign's terms, so what it prints of a comparison's size is the campaign's. */
+export const prepared = (
+  { seats, values }: Pick<Turn, "seats" | "values">,
+  practice: string | undefined,
+  heldBack?: Parameters<typeof prepareCommand>[1],
+): Promise<number> =>
+  (seats.prepare ?? prepareCommand)(
+    [...packOf(values), ...flag("practice", practice), ...flag("level", values.level)],
+    heldBack,
+  );
+
+/** Make the promotion `owed` names, between conversations (`make`) and as the reading that names it reports. */
+export async function promoteMade(
+  log: string,
+  name: string | undefined,
+  owed: Extract<Decided, { move: "promote" }>,
+): Promise<void> {
+  moved(log, owed, { harness: owed.harness });
+  await promoteCommand([...flag("name", name), "--harness", owed.harness, "--yes"]);
+}
 
 export function flagsOf(args: readonly string[]) {
   return parseArgs({ args: [...args], options: OPTIONS, allowNegative: true }).values;
@@ -330,7 +354,7 @@ export function idleOf(events: readonly LogEvent[]): number {
   const since = events.slice(events.findLastIndex(({ kind }) => kind === "campaign.ended") + 1);
   const named = since.flatMap(({ data }) => (isString(data.session) ? [data.session] : []));
   const cut = new Set([
-    ...since.flatMap((event) => (cutShort(event) ? [event.data.session] : [])),
+    ...since.filter(cutShort).map(({ data }) => data.session),
     // A move whose session nothing else names never started: the host's refusal (`actionTool`).
     ...named.filter((session) => named.indexOf(session) === named.lastIndexOf(session)),
   ]);
@@ -457,7 +481,6 @@ export function turnOf(source: {
 }): Turn {
   const { log, values, opening, seats, held, campaign } = source;
   const events = read(log);
-  const states = taskStates(events);
   return {
     events,
     opening,
@@ -467,7 +490,7 @@ export function turnOf(source: {
     plan: planOf(
       events,
       {
-        unprepared: campaign?.tasks.some((task) => !states.has(taskVersion(campaign.pack(task)))) ?? false,
+        unprepared: campaign !== null && ungated(campaign, events).length > 0,
         level: Number(values.level ?? COMPARISON_OPTIONS.level.default),
         target: values.target === undefined ? undefined : Number(values.target),
         pastStop: values["past-stop"],

@@ -96,15 +96,7 @@ export interface Recorded {
 }
 
 /** The flags of a setting, as a command's parsed arguments hold them. */
-interface SettingFlags {
-  readonly solver?: string | undefined;
-  readonly "solver-effort"?: string | undefined;
-  readonly "solver-window"?: string | undefined;
-  readonly "solve-minutes"?: string | undefined;
-  readonly "solve-model-turns"?: string | undefined;
-  readonly target?: string | undefined;
-  readonly solves?: string | undefined;
-}
+type SettingFlags = Readonly<Partial<Record<keyof typeof SETTING_OPTIONS | "target", string | undefined>>>;
 
 /** What a command runs under: the solver and the limits, the size of the scored draw,
  *  and the record to keep where the campaign has none yet or takes another; null where it stands. */
@@ -112,10 +104,9 @@ export interface AskedSetting {
   readonly named: NamedSetting;
   readonly target: number;
   readonly solves: number;
+  /** The record to keep, which is then the campaign's first: it is held to what the log's solves
+   *  ran under (`firstRecord`). */
   readonly record: Recorded | null;
-  /** Whether the record would be the campaign's first, with no word from the operator that the
-   *  setting is new: it is then held to what the log's solves ran under (`firstRecord`). */
-  readonly first: boolean;
 }
 
 /** Who a command solves as, where its caller knows, and what it holds a solve to. */
@@ -245,17 +236,9 @@ export function settingNamed(values: SettingFlags): NamedSetting {
 }
 
 /** The flags that are given, without the ones that are not: a key that holds nothing would stand
- *  over the record or the default it is spread onto. */
+ *  over the record or the default it is spread onto. A command's other flags ride along unread. */
 function defined(values: SettingFlags): SettingFlags {
-  return {
-    ...keyIfDefined("solver", values.solver),
-    ...keyIfDefined("solver-effort", values["solver-effort"]),
-    ...keyIfDefined("solver-window", values["solver-window"]),
-    ...keyIfDefined("solve-minutes", values["solve-minutes"]),
-    ...keyIfDefined("solve-model-turns", values["solve-model-turns"]),
-    ...keyIfDefined("target", values.target),
-    ...keyIfDefined("solves", values.solves),
-  };
+  return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined));
 }
 
 /** A record as the flags that name it. */
@@ -350,7 +333,6 @@ export function settingAsked(values: SettingFlags, recorded: Recorded | null): A
     target: asked.target,
     solves: asked.solves,
     record: recorded === null ? asked : null,
-    first: recorded === null,
   };
 }
 
@@ -390,11 +372,11 @@ export function commandSeconds(wallSeconds: number): Pick<Limits, "shellDefaultS
  * are not read here: a log's conditions hold them, and no flag names them.
  */
 export function firstRecord(
-  asked: Pick<AskedSetting, "first">,
+  asked: Pick<AskedSetting, "record">,
   named: Solving,
   ran: ReturnType<typeof solverLast>,
 ): string | undefined {
-  if (!asked.first || ran === null) return undefined;
+  if (asked.record === null || ran === null) return undefined;
   const { solver, limits } = named;
   const same =
     (solver === undefined || (solver.model === ran.model && solver.effort === ran.effort)) &&

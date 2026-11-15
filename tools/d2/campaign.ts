@@ -184,6 +184,14 @@ export const FOLLOWED = "ana-followed";
 
 /** The flags that name a stored pack together. */
 const PACK_FLAGS = 4;
+/** The flags that name a campaign and the stored pack it opens over (`packNamed`). */
+export const PACK_OPTIONS = {
+  root: { type: "string" },
+  sweep: { type: "string" },
+  cycle: { type: "string" },
+  bundle: { type: "string" },
+  name: { type: "string" },
+} as const;
 /** The agent runtime's packages, pinned in `package.json`; the SDK pins the Claude Code binary. */
 const RUNTIME = ["@anthropic-ai/claude-agent-sdk", "@earendil-works/pi-ai", "@earendil-works/pi-durable"];
 /** The trees of the host's code a solve runs (`codeOf`), beside the production packages that

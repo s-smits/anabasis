@@ -13,6 +13,10 @@ import { conditionOf } from "./helpers/logged-round.ts";
 // Each task's objective a side (null for a failed solve) and the score its report recorded. v-1 to v-8:
 // the new side valid, the reference not, v-1 recorded otherwise than it recounts. v-9: both valid,
 // 0.5% apart, under the gap floor. v-10: both valid, the new answer better by a sixth.
+interface Recorded {
+  task: string;
+  recorded: number;
+}
 const SOLVED = [
   ...Array.from({ length: 8 }, (_, at) => ({
     task: `v-${String(at + 1)}`,
@@ -61,6 +65,22 @@ function solved(
   ];
 }
 
+/** A scored report over `solved`, its frontier in the order given and its versions in the reverse. */
+const reported = (session: string, reading: string, frontier: readonly Recorded[], scored: JsonObject) =>
+  event("comparison.reported", {
+    session,
+    old: "h-old",
+    fresh: "h-new",
+    setting: settingId(conditionOf("any", "any")),
+    solves: 1,
+    level: 0.02,
+    objective: { direction: "higher" },
+    reading,
+    versions: frontier.map(({ task }) => task).toReversed(),
+    scored,
+    frontier: { differences: frontier.map(({ recorded }) => recorded), of: frontier.map(({ task }) => task) },
+  });
+
 const tasks = SOLVED.map(({ task }) => task);
 const events: LogEvent[] = [
   ...tasks.flatMap((task, at) => proposed(task, at < 5 ? "x-1" : "x-2")),
@@ -68,23 +88,8 @@ const events: LogEvent[] = [
     ...solved(`n-${task}`, "h-new", task, fresh),
     ...solved(`o-${task}`, "h-old", task, old),
   ]),
-  event("comparison.reported", {
-    session: "g-1",
-    old: "h-old",
-    fresh: "h-new",
-    setting: settingId(conditionOf("any", "any")),
-    solves: 1,
-    level: 0.02,
-    objective: { direction: "higher" },
-    reading: "step",
-    versions: tasks,
-    scored: { wins: 9, losses: 0, ties: 1 },
-    // Recorded in the reverse order of `versions`, so pairing by position would mismatch every task.
-    frontier: {
-      differences: SOLVED.map(({ recorded }) => recorded).toReversed(),
-      of: tasks.toReversed(),
-    },
-  }),
+  // Recorded in the reverse order of `versions`, so pairing by position would mismatch every task.
+  reported("g-1", "step", SOLVED.toReversed(), { wins: 9, losses: 0, ties: 1 }),
   event("comparison.started", { session: "g-2" }),
   ...solved("n-open", "h-new", "v-1", 5, "g-2").slice(0, 2),
   event("comparison.started", { session: "g-3" }),
@@ -141,20 +146,66 @@ describe("a step", () => {
     expect(lineOf("g-1", "without each win")).toContain("0 of 9 single removals lose the step");
   });
 
-  it("tallies the scores by the Examiner session that wrote each task", () => {
-    expect(lineOf("g-1", "by writer")).toBe("  by writer: x-1 5-0-0 p 0.031; x-2 4-0-1 p 0.063");
+  it("leaves every grouping by writer or family to pairs.ts and the replay", () => {
+    expect(
+      block("g-1").filter((line) => /^\s*(by (writer|family)\b|on one task a family)/u.test(line)),
+    ).toStrictEqual([]);
   });
 });
 
-describe("a comparison with no recorded scores", () => {
-  it("says the report is absent for one begun and never reported, and recounts nothing", () => {
-    expect(block("g-2")[0]).toContain("report absent");
-    expect(block("g-2").join("\n")).not.toContain("recount:");
-    expect(lineOf("g-2", "solves begun")).toBe("  solves begun 1, ended 0");
-  });
+describe("the tally by practice", () => {
+  const sibling = [...proposed("p-1", "x-1"), event("task.state", { version: "p-1", state: "released" })];
+  const reportAt = events.findIndex(
+    ({ kind, data }) => kind === "comparison.reported" && data.session === "g-1",
+  );
+  const said = (log: readonly LogEvent[]) =>
+    scoreRows(log).find((line) => line.trimStart().startsWith("by practice")) ?? "";
 
-  it("prints no recount beside a report that scored nothing", () => {
-    expect(block("g-3").join("\n")).toContain("no task scores recorded, so no recount");
-    expect(block("g-3").join("\n")).not.toContain("recount:");
+  it("puts every score on the practised side only where a sibling was practice before the start", () => {
+    const tally = (practised: string, none: string) =>
+      `  by practice: a task of the family was practice before the start ${practised}; none was ${none}`;
+    const [all, nothing] = ["9-0-1 p 0.002", "0-0-0 p 1.000"];
+    const afterReport = [...events.slice(0, reportAt + 1), ...sibling, ...events.slice(reportAt + 1)];
+    const afterStart = [event("comparison.started", { session: "g-1" }), ...sibling, ...events];
+    for (const [log, practised] of [
+      [[...sibling, ...events], true],
+      [events, false],
+      [afterReport, false],
+      [afterStart, false],
+    ] as const) {
+      expect(said(log)).toBe(practised ? tally(all, nothing) : tally(nothing, all));
+    }
+  });
+});
+
+describe("the tasks a comparison is the first to test", () => {
+  // g-4 tests v-10, which g-1 tested, and two tasks no comparison has: a sum of the `by practice`
+  // lines over g-1 and g-4 counts v-10 twice, and a sum of these lines counts each task once.
+  const again = [
+    { task: "w-2", recorded: 600 },
+    { task: "w-1", recorded: 600 },
+    { task: "v-10", recorded: 50 },
+  ];
+  const later = [
+    ...events,
+    ...["w-1", "w-2"].flatMap((task) => proposed(task, "x-3")),
+    ...again.flatMap(({ task }) => [
+      ...solved(`n4-${task}`, "h-new", task, task === "v-10" ? 12 : 5, "g-4"),
+      ...solved(`o4-${task}`, "h-old", task, task === "v-10" ? 10 : null, "g-4"),
+    ]),
+    reported("g-4", "no-step", again, { wins: 3, losses: 0, ties: 0 }),
+  ];
+  const first = (session: string) => {
+    const all = scoreRows(later);
+    const from = all.findIndex((line) => line.startsWith(`${session}:`));
+    return all.slice(from).find((line) => line.trimStart().startsWith("first tested here")) ?? "";
+  };
+
+  it("leaves out of the second tally a task an earlier comparison tested, and counts every task before", () => {
+    expect(first("g-4")).toBe(
+      "  first tested here, 2 of 3 tasks: a task of the family was practice before the start 0-0-0 p 1.000; none was 2-0-0 p 0.250",
+    );
+    expect(first("g-1")).toContain("first tested here, 10 of 10 tasks:");
+    expect(first("g-1")).toContain("none was 9-0-1 p 0.002");
   });
 });

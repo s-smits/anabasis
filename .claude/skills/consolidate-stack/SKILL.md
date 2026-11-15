@@ -181,13 +181,22 @@ Cherry-pick the lanes' deltas onto the base, keep the tip (`git branch consolida
 `GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash origin/main`, resolving from a lane's
 `-squash-check` tree where one exists. `git diff consolidate/pre HEAD` must print nothing, since a
 resolution can silently drop a hunk. Then run step 4's checks again at every group head, and
-typecheck every commit where it sits (`git rebase --exec 'bun run typecheck' origin/main`).
+typecheck and the source gate at every commit where it sits
+(`git rebase --exec 'bun run typecheck && bun tools/loc/source-policy.ts' origin/main`). A landing
+proves each commit alone, and the source gate reads the whole tree: an `export` assembled into the
+commit that changes a symbol, while its first reader outside the file comes in a later group,
+passes typecheck and strict lint at every commit and fails the gate at each one between the two
+(16 commits on 15 November). Move the `export` to the commit that first reads it.
 
 ## 8. Regroup and publish
 
-Make each group one pull request. The survivor is the one whose subject is widest, not the highest
-on the stack; its head becomes the group's top. It takes the highest importance it absorbed.
-Retitle it to cover the group (stack-pr, "Title and body") and rewrite its body: one line naming
+Make each group one pull request, and keep one of the group's own as its survivor: the one whose
+change matters most to the system (the highest importance, then the widest subject), not the highest
+on the stack. Its branch takes the group's top, and where step 3's verdict is a rewrite, the rewrite
+becomes its commits. A consolidation so keeps about one pull request in three open under its own
+number, with its thread; opening new pull requests for the groups and closing every old one takes
+the operator's word. The survivor takes the highest importance it absorbed. Retitle it to cover the
+group (stack-pr, "Title and body") and rewrite its body: one line naming
 what it carries, then each problem from step 1 with the part that answers it, and "Not done" for any
 problem the group no longer answers, with why. The importance stays a label, never a title prefix.
 
@@ -198,8 +207,9 @@ bun .claude/skills/stack-pr/scripts/republish.ts <the same> --yes [--no-verify]
 
 Give `--head` bottom to top; an unnamed survivor keeps its head and old order. The script refuses
 unless the bottom holds `origin/main`'s head and each head holds the one beneath. With `--yes` it
-unstacks, retargets every survivor to `main` before any head moves (else GitHub can mark one merged
-into an intermediate branch), pushes all heads in one `git push --atomic` with a lease each, sets
+unstacks, retargets every survivor and absorbed pull request to `main` before any head moves (else
+GitHub marks one merged into an intermediate branch), pushes all heads in one `git push --atomic`
+with a lease each, sets
 the bases bottom up, closes each absorbed pull request with a comment naming its survivor, and
 relinks the stack (`gh extension install github/gh-stack` once). If a step fails it stops: read
 heads, bases and the native stack before recovering. `--no-verify` only on the operator's word, and
@@ -216,6 +226,9 @@ passes its old bytes had, so a regroup is proved again in full.
   the old and new head.
 - **Leases are on what GitHub showed.** A lease refuses a branch its owner moved meanwhile; read the
   stack again and map again.
+- **A fold crosses another session's commits.** The operator's word for the consolidation covers
+  rewriting them. A pair that adds a thing and removes it again folds even where a third pull
+  request edits the thing in between, and that edit goes with it; say so in the survivor's body.
 - **A regroup with adjacent folds only keeps every head.** Folding each pull request into the one
   above it moves no commit, so its passes stand; publish such a regroup first where the rest waits
   on reviews.

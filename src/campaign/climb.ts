@@ -200,7 +200,7 @@ export function tasksByEpoch(events: readonly LogEvent[]): string[][] {
 }
 
 /** The starter harness's digest, as the first comparison's terms name it; null before one. */
-function starterIn(events: readonly LogEvent[]): string | null {
+export function starterIn(events: readonly LogEvent[]): string | null {
   const named = events.find(({ kind }) => kind === "comparison.started")?.data.starter;
   return isString(named) ? named : null;
 }
@@ -327,12 +327,23 @@ function falsePromotionOf(
   };
 }
 
-/** The epoch's starter comparison as the line prints it, nothing in the first epoch. */
-function starterOf({ reference, starter_tally: tally, confirmed }: Epoch): string {
+const tallied = ({ wins, losses, ties }: Tally) =>
+  `${String(wins)} won, ${String(losses)} lost, ${String(ties)} tied`;
+
+/** The epoch's starter comparison as the line prints it, nothing in the first epoch; with its `read`,
+ *  the tasks written after the promotion said apart, as the pooled tally holds those that chose it. */
+function starterOf({ reference, starter_tally: tally, confirmed }: Epoch, read?: StarterRead): string {
   if (reference === "starter") return "";
   if (tally === null) return ", against the starter unread";
-  const read = confirmed === true ? "a step, so its promotion is confirmed" : "no step";
-  return `, against the starter ${String(tally.wins)} won, ${String(tally.losses)} lost, ${String(tally.ties)} tied, ${read}`;
+  const step = confirmed === true ? "a step, so its promotion is confirmed" : "no step";
+  const writers = new Set(
+    read?.rows.filter(({ origin }) => origin === ORIGINS[2]).map(({ writer }) => writer),
+  ).size;
+  const since =
+    read === undefined || writers === 0
+      ? ""
+      : `, of which ${tallied(read.origins[ORIGINS[2]].whole)} on the tasks ${plural(writers, "Examiner session")} wrote after it, alone ${read.after}`;
+  return `, against the starter ${tallied(tally)}, ${step}${since}`;
 }
 
 /** The tally from the reference's side of `pairs`, which holds it on the old side. */
@@ -433,15 +444,18 @@ export function starterReads(events: readonly LogEvent[]): StarterRead[] {
 }
 
 /** One line an epoch, as the view prints them, each harness `called` as the view names it, and the
- *  promotion that ends it. */
-export function epochLine(epoch: Epoch, called: Called = short): string {
+ *  promotion that ends it; `reads` are the log's starter reads, where the caller has them. */
+export function epochLine(epoch: Epoch, called: Called = short, reads: readonly StarterRead[] = []): string {
   const reference = epoch.reference === "starter" ? "the starter" : called(epoch.reference);
   const readings = epoch.comparisons.map(({ id, reading }) => `${id} ${reading}`).join(", ") || "none";
   // The first harness promoted over the Starter is set-up, epoch 0, and the climb counts from it.
   const rung = epoch.nth === 1 ? "as set-up (epoch 0)" : `as rung ${String(epoch.nth - 1)} of the climb`;
   const end = epoch.promoted === null ? "open" : `promoted ${called(epoch.promoted)} ${rung}`;
   const risk = epoch.falsePromotion;
-  return `epoch ${String(epoch.nth)}: reference ${reference}; ${String(epoch.tasks.length)} tasks admitted; ${plural(epoch.sessions, "Builder session")}; comparisons ${readings}${starterOf(epoch)}; ${plural(risk.attempts, ATTEMPT)} under this reference, a false promotion among them estimated at ${percent(risk.union)}; ${sourceOf(risk)}; ${end}`;
+  return `epoch ${String(epoch.nth)}: reference ${reference}; ${String(epoch.tasks.length)} tasks admitted; ${plural(epoch.sessions, "Builder session")}; comparisons ${readings}${starterOf(
+    epoch,
+    reads.find(({ session }) => session === epoch.starter_read),
+  )}; ${plural(risk.attempts, ATTEMPT)} under this reference, a false promotion among them estimated at ${percent(risk.union)}; ${sourceOf(risk)}; ${end}`;
 }
 
 /** A chance in whole percent, or to a tenth under ten, where an attempt's rate of 1.8% read as 2%;

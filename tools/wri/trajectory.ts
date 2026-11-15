@@ -47,6 +47,7 @@ import type { LogEvent } from "#src/kernel/log.ts";
 import { lastReports } from "#src/kernel/reports.ts";
 import { practiceRan } from "#src/kernel/solves.ts";
 import { AGENT_DIR, GUIDE_FILE, TOOL_TREE_DIR } from "#src/meta/bundle-layout.ts";
+import { HOUR_MS } from "#src/meta/clock.ts";
 import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync } from "#src/meta/filesystem.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
 import { dirname, join } from "#src/meta/path.ts";
@@ -55,11 +56,13 @@ import { median } from "#src/meta/tally.ts";
 import { waitsOf } from "./time.ts";
 
 export const HOURS = [2, 4, 6, 8, 12, 16, 24] as const;
-const HOUR = 3_600_000;
 const SILENCE = 30 * 60 * 1000;
 /** Path segments of what a harness installed rather than wrote. */
 const INSTALLED =
   /(^|\/)(python|site-packages|dist-packages|node_modules|\.?venv|vendor|include|__pycache__)(\/|$)/;
+/** A bundled interpreter's home, known by the library folder its build lays out, whatever the home
+ *  is named. The tool tree itself is no such home: a harness keeps its own programs there. */
+const HOME = /\/lib\/python\d[\d.]*\//;
 /** An installed package's metadata folder, and what follows its package's name in that folder's name. */
 const METADATA = /\.(?:dist-info|egg-info)$/;
 const PAST_NAME = /(?:-[^/]*)?\.(?:dist-info|egg-info)$/;
@@ -138,7 +141,7 @@ export function clockOf(events: readonly LogEvent[]): (at: string) => number {
   return (at) => {
     const to = Date.parse(at);
     const lost = merged.reduce((sum, [from, until]) => sum + Math.max(0, Math.min(until, to) - from), 0);
-    return (to - start - Math.min(lost, to - start)) / HOUR;
+    return (to - start - Math.min(lost, to - start)) / HOUR_MS;
   };
 }
 
@@ -237,7 +240,7 @@ export function trajectoryOf(name: string, events: readonly LogEvent[], grades: 
   return {
     name,
     opened: events[0]?.at ?? "",
-    elapsed: (Date.parse(end) - Date.parse(events[0]?.at ?? end)) / HOUR,
+    elapsed: (Date.parse(end) - Date.parse(events[0]?.at ?? end)) / HOUR_MS,
     work: clock(end),
     ending: isString(ending) ? ending : null,
     cut: isString(open) && !hourOfSession.has(open) ? open : null,
@@ -306,17 +309,20 @@ function installedBy(files: readonly { readonly path: string }[], recordOf: (pat
  *  of the tree by its path, or gives null): not an installed folder (`INSTALLED`, a wheel's `.libs`),
  *  not a file an installed package's metadata names, and not a binary-sized file. A harness's own
  *  module beside installed packages stays: until 10 November one `.dist-info` dropped the whole folder
- *  that held it, which hid a jobstat harness's own `pylib/statkit.py` behind thirteen packages. */
+ *  that held it, which hid a jobstat harness's own `pylib/statkit.py` behind thirteen packages. A
+ *  bundled interpreter's home goes whole (`HOME`), whatever the harness named it. */
 export function ownPrograms(
   files: readonly { readonly path: string; readonly bytes: number }[],
   recordOf: (path: string) => string | null = () => null,
 ): string[] {
   const installed = installedBy(files, recordOf);
+  const homes = [...new Set(files.map(({ path }) => path.slice(0, path.search(HOME) + 1)))].filter(Boolean);
   return files
     .filter(
       ({ path, bytes }) =>
         bytes <= WRITTEN_BYTES &&
         !INSTALLED.test(path) &&
+        !homes.some((home) => path.startsWith(home)) &&
         !LIBS.test(path) &&
         !installed.paths.has(path) &&
         !installed.folders.some((folder) => path.startsWith(folder)),

@@ -3,11 +3,11 @@
  *
  *   bun tools/runtime/router/install.ts
  *
- * The router is `bun` in this folder, installed as `~/.local/bin/bun`, with `lib.sh`, `run.sh`,
- * `host.sh` and `hosts.js` (this folder's `hosts.ts`, bundled) in `~/.local/share/ana-runner/`: it
- * runs the Bun a tree pins and sends the tree's check tasks to a host `ANA_HOSTS` lists (`run.sh`
- * says how). Each file goes to a new name and is renamed over the old, since a running `run.sh` still
- * reads its folder, and nothing changes when every installed byte already matches. The first install
+ * The router is `bun` in this folder, installed as `~/.local/bin/bun`, with `run.js` (this folder's
+ * `run.ts`, bundled) and `task.sh` in `~/.local/share/ana-runner/`: it runs the Bun a tree pins and
+ * runs the tree's check tasks here or on a host `ANA_HOSTS` lists (`run.ts` says how). One installed
+ * runner serves every tree, whatever its commit. The folder is renamed over the old one, since a
+ * running task still reads its own, and nothing changes when every installed byte already matches. The first install
  * over something it did not write moves that aside as `<path>.before-router-<time>`. `INSTALLED` keeps
  * the commit it came from, which `bun run runs sync` reads. It edits no shell startup file, since
  * where PATH is set is the operator's, and says so where a login shell's `bun` is not the router.
@@ -26,8 +26,6 @@ import { capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { gitMaybe } from "#src/meta/git.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
 
-/** The scripts copied as they are; `run.sh` is the one run by its path. */
-const SCRIPTS = ["lib.sh", "run.sh", "host.sh"] as const;
 const RECEIPT = "INSTALLED";
 const TREE = join(import.meta.dir, "..", "..", "..");
 
@@ -41,16 +39,15 @@ function textAt(path: string): string | null {
 
 /** Every file of the runner's folder, by name, as this tree makes it. */
 async function payload(): Promise<Map<string, string>> {
-  const files = new Map<string, string>(
-    SCRIPTS.map((name) => [name, readFileSync(join(import.meta.dir, name), "utf8")]),
-  );
-  const built = await Bun.build({ entrypoints: [join(import.meta.dir, "hosts.ts")], target: "bun" });
+  const built = await Bun.build({ entrypoints: [join(import.meta.dir, "run.ts")], target: "bun" });
   const [bundle] = built.outputs;
   if (!built.success || bundle === undefined) {
-    throw new Error(`hosts.ts did not bundle: ${built.logs.map(String).join("\n")}`);
+    throw new Error(`run.ts did not bundle: ${built.logs.map(String).join("\n")}`);
   }
-  files.set("hosts.js", await bundle.text());
-  return files;
+  return new Map([
+    ["task.sh", readFileSync(join(import.meta.dir, "task.sh"), "utf8")],
+    ["run.js", await bundle.text()],
+  ]);
 }
 
 /** Says so where a login shell does not find the router as `bun`. */
@@ -95,10 +92,7 @@ async function main(): Promise<void> {
     }
     const staging = `${dir}.new-${String(runtimeProcess.pid)}`;
     mkdirSync(staging, { recursive: true });
-    // Each file is new, so its mode is the one it is created with; `run.sh` is run by its path.
-    for (const [name, text] of files) {
-      writeFileSync(join(staging, name), text, { mode: name === "run.sh" ? 0o755 : 0o644 });
-    }
+    for (const [name, text] of files) writeFileSync(join(staging, name), text);
     const receipt = { commit: `${commit}${dirty}`, tree: TREE, installed: stamp };
     writeFileSync(join(staging, RECEIPT), `${capturedJsonStringify(receipt, null, 2)}\n`);
     if (present(dir)) {

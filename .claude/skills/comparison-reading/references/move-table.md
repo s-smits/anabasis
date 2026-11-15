@@ -19,8 +19,9 @@ code, printed on the view's last line:
 6. `step`: a step names the harness to promote, the newest where several wait (`unpromoted` says why
    another is not).
 7. `no-room`: the reference's last comparison left it nothing to gain, so the Examiner writes tasks
-   it fails. After a promotion, which reads room by construction, this row names one Examiner
-   session for the new reference.
+   it fails. After a promotion, which reads room by construction, this row names an Examiner
+   session for the new reference until one has ended on its own: one the provider crashed or a stop
+   killed is owed again, with tasks held or none.
 8. `unread`: tasks held since the last reading are compared (`heldSince`); a harness no comparison
    has read waits for the Builder's own `compare`. After a promotion, until a comparison tallies a
    task in the epoch, this is a **starter comparison**, drawing those tasks first and then older

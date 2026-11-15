@@ -25,7 +25,9 @@ import { capturedExecPath } from "../src/meta/process.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
 
 const FIRST = "alpha/task1";
-const TASKS = [FIRST, "alpha/task2", "beta/task1", "gamma/task1"];
+/** The task every arm that is only a tree is scored on. */
+const BETA = "beta/task1";
+const TASKS = [FIRST, "alpha/task2", BETA, "gamma/task1"];
 const SWEEP = new URL("../studies/harness2/jobbench.ts", import.meta.url).pathname;
 const MARKER = '"pass_rate": 1';
 const REJECTED = "YOUR PREVIOUS ATTEMPT WAS REJECTED";
@@ -51,6 +53,9 @@ if (args.includes("stream-json")) {
   const dead = guide.includes("DEAD");
   const empty = (label.endsWith("alpha__task1__base1") && attempt === 1) || guide.includes("EMPTY") || dead;
   if (!empty) writeFileSync(join(ws, "output", "report.md"), (label.includes("gamma") ? ${JSON.stringify(`${MARKER}\n`)} : "") + "report by " + label + "\\n" + guide);
+  if (guide.includes("LONG")) for (const [name, size] of [["long.csv", 200001], ["exact.csv", 200000], ["data.db", 200001]]) writeFileSync(join(ws, "output", name), "x".repeat(size));
+  // CUT leaves a file where its deliverable folder belongs, so that the rollout throws at its delivery.
+  if (guide.includes("CUT")) writeFileSync(join(process.env.TASKS_BASE_DIR, "beta", "task1", "model_output", label), "in the way");
   const said = guide.includes("PEEK") ? { type: "tool_use", name: "Bash", input: { command: "cat ../RUBRICS.json" } } : { type: "text", text: "working" };
   const events = [{ type: "system", subtype: "init" }, { type: "assistant", message: { content: [said] } }, { type: "result", subtype: "success", num_turns: 1, total_cost_usd: empty ? 0.125 : 0.25 }];
   for (const event of dead ? events.slice(0, 1) : events) console.log(JSON.stringify(event));
@@ -161,7 +166,7 @@ describe("one Harness² k=1 sweep on a stand-in claude", () => {
 
   it("runs R = 4 rollouts, P = 3 sessions and one experience session a task, with their dollars summed", () => {
     expect(ran.exitCode).toBe(1);
-    for (const task of [FIRST, "alpha/task2", "beta/task1"]) {
+    for (const task of [FIRST, "alpha/task2", BETA]) {
       const summary = summaryOf(task);
       expect(summary.status).toBe("ok");
       const ledger = field(summary, "modes", "agg", "ledger");
@@ -238,7 +243,7 @@ describe("one Harness² k=1 sweep on a stand-in claude", () => {
     for (const job of ["inv", "dom", "agg"]) {
       expect(read(FIRST, job)).toBeNull();
       expect(read("alpha/task2", job)).toEqual(["alpha__task1"]);
-      expect(read("beta/task1", job)).toBeNull();
+      expect(read(BETA, job)).toBeNull();
     }
     expect(
       readFileSync(join(library, "alpha", "harnesses", "alpha__task1", "EXPERIENCE.md"), "utf8"),
@@ -258,6 +263,12 @@ const JUDGE_STAND_IN = `import { appendFileSync, existsSync, readFileSync, readd
 import { join } from "node:path";
 const args = process.argv.slice(2);
 const flag = (name) => args[args.indexOf(name) + 1];
+// judgeExtract's launch, python -c <driver> <judge.py> <dir>: each file's text, as the driver prints it.
+if (args[0] === "-c") {
+  const dir = args[3];
+  console.log(JSON.stringify({ files: Object.fromEntries(readdirSync(dir).sort().map((name) => [name, readFileSync(join(dir, name), "utf8")])), flat: "", images: [] }));
+  process.exit(0);
+}
 appendFileSync(${JSON.stringify(join(root, "judge.jsonl"))}, JSON.stringify({ args, cwd: process.cwd(), effort: process.env.JUDGE_REASONING_EFFORT, key: process.env.JUDGE_API_KEY, scrubbed: process.env.ANTHROPIC_API_KEY ?? null }) + "\\n");
 const dir = flag("--output-dir");
 const names = existsSync(dir) ? readdirSync(dir) : [];
@@ -290,7 +301,15 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
     `#!/bin/sh\nexec '${capturedExecPath}' '${join(root, "judge.mjs")}' "$@"\n`,
   );
   chmodSync(join(jb, ".venv", "bin", "python"), 0o755);
-  for (const word of ["PEEK", "DEAD", "EMPTY", "FLAKY"]) {
+  // A second fair task, solved only by the arm whose deliverable the judge's reader cuts.
+  const LONG = "beta/task2";
+  mkdirSync(join(jb, "dataset", "main", LONG, "task_folder"), { recursive: true });
+  writeFileSync(join(jb, "dataset", "main", LONG, "task_folder", "TASK_INSTRUCTIONS.txt"), "Report.\n");
+  writeFileSync(
+    join(jb, "dataset", "main", LONG, "RUBRICS.json"),
+    readFileSync(join(jb, "dataset", "main", FIRST, "RUBRICS.json")),
+  );
+  for (const word of ["PEEK", "DEAD", "EMPTY", "FLAKY", "LONG", "CUT"]) {
     mkdirSync(join(root, "trees", word), { recursive: true });
     writeFileSync(join(root, "trees", word, "CLAUDE.md"), `# ${word}\n`);
   }
@@ -314,23 +333,51 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
       ].concat(["--api-base", "http://127.0.0.1:9/v1", "--judge-log", join(root, "shim.jsonl"), ...flags]),
       { env: { ...env, ANTHROPIC_API_KEY: "never-reaches-the-judge" }, timeout: 280_000 },
     );
+  // Two exported arms already in the store: one whose tool tree holds a program for a processor no
+  // host of the suite has (32-bit Arm), one holding the opening bytes of the Bun this test runs on.
+  const armElf = Buffer.alloc(20);
+  armElf.writeUInt32BE(0x7f_45_4c_46, 0);
+  armElf.writeUInt16LE(40, 18);
+  for (const [name, program] of [
+    ["foreign", armElf],
+    ["native", readFileSync(capturedExecPath).subarray(0, 128)],
+  ] as const) {
+    mkdirSync(join(out, "trees", name, "scripts", "toolchain", "bin"), { recursive: true });
+    writeFileSync(join(out, "trees", name, "scripts", "toolchain", "bin", "tool"), program);
+    writeFileSync(join(out, "trees", name, "CLAUDE.md"), `# ${name}\n`);
+    writeFileSync(
+      join(out, "trees", name, "export.json"),
+      JSON.stringify({ harness: name, toolchain: "scripts/toolchain" }),
+    );
+  }
+  const foreignArm = scored("starter", "foreign", FIRST, "--dry-run");
+  const nativeArm = scored("starter", "native", FIRST, "--dry-run");
   const alpha = "alpha/task1,alpha/task2";
   const refused = scored("base", "base", alpha);
   const planned = scored("base", "base", alpha, "--dry-run");
   const calledBefore = rowsOf(calls).length;
+  const treeArm = (word: string) =>
+    scored(`tree:${join(root, "trees", word)}`, word.toLowerCase(), BETA, "--yes");
   const runs = {
     base: scored("base", "base", alpha, "--yes"),
     starter: scored("starter", "starter", FIRST, "--yes"),
     heldout: scored("heldout", "heldout", "alpha/task2", "--yes"),
     k1: scored("sweep:agg1", "k1", alpha, "--yes"),
-    peek: scored(`tree:${join(root, "trees", "PEEK")}`, "peek", "beta/task1", "--yes"),
-    dead: scored(`tree:${join(root, "trees", "DEAD")}`, "dead", "beta/task1", "--yes"),
-    empty: scored(`tree:${join(root, "trees", "EMPTY")}`, "empty", "beta/task1", "--yes"),
-    flaky: scored(`tree:${join(root, "trees", "FLAKY")}`, "flaky", "beta/task1", "--yes"),
+    peek: treeArm("PEEK"),
+    dead: treeArm("DEAD"),
+    empty: treeArm("EMPTY"),
+    flaky: treeArm("FLAKY"),
+    long: scored(`tree:${join(root, "trees", "LONG")}`, "long", LONG, "--yes"),
+    cut: treeArm("CUT"),
+    cutAgain: treeArm("CUT"),
   };
   const rolledOnce = rowsOf(calls).length;
   const again = scored("base", "base", alpha, "--yes");
   const tabled = runSync([capturedExecPath, SCORE, "table", "--out", out, "--tasks", alpha], { env });
+  const tabledFair = runSync(
+    [capturedExecPath, SCORE, "table", "--out", out, "--tasks", `alpha/task2,${LONG}`],
+    { env },
+  );
   const rolls = rowsOf(calls).slice(before);
   const judges = rowsOf(join(root, "judge.jsonl"));
   const record = (name: string, task: string): JsonValue =>
@@ -345,9 +392,16 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
     expect(calledBefore).toBe(before);
   });
 
+  it("refuses an arm whose programs this machine cannot run, and plans one whose programs it can", () => {
+    expect(foreignArm.exitCode).not.toBe(0);
+    expect(decodeOutput(foreignArm.stderr)).toContain("holds 1 programs this machine");
+    expect(decodeOutput(foreignArm.stderr)).toContain("bin/tool (an ELF binary for machine 40)");
+    expect(nativeArm.exitCode).toBe(0);
+    expect(decodeOutput(nativeArm.stdout)).toContain(join(out, "trees", "native"));
+  });
+
   it("solves each task once under the arm's tree, with the sweep's PATH and cap, and no grader in reach", () => {
     expect(runs.base.exitCode).toBe(0);
-    // Rollouts run three at a time, so they finish in any order.
     expect(
       rollsOf("base")
         .map((row) => text(field(row, "label")))
@@ -433,11 +487,11 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
     expect(field(record("k1", "alpha/task2"), "build")).toEqual({ of: "sweep alpha/task2", usd: 2.3125 });
     expect(field(record("k1", FIRST), "solveUsd")).toBe(0.25);
     expect(field(record("starter", FIRST), "harness")).toMatch(/^[0-9a-f]{16,}$/u);
-    expect(field(record("peek", "beta/task1"), "peeked")).toEqual(["RUBRICS.json"]);
+    expect(field(record("peek", BETA), "peeked")).toEqual(["RUBRICS.json"]);
   });
 
   it("judges an empty delivery as zero, and records neither a dead agent nor an unanswered rubric", () => {
-    const empty = record("empty", "beta/task1");
+    const empty = record("empty", BETA);
     expect([field(empty, "delivered"), field(empty, "points"), field(empty, "attempts")]).toEqual([
       false,
       0,
@@ -453,11 +507,21 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
     expect(readdirSync(failed)).toContain("claude-opus-5-5_judge.json.judge_failed");
   });
 
+  it("reads a rollout that threw at its delivery as a non-result, and rolls it again", () => {
+    for (const run of [runs.cut, runs.cutAgain]) {
+      expect(run.exitCode).toBe(1);
+      expect(decodeOutput(run.stdout)).toContain("a non-result");
+    }
+    expect(rollsOf("cut")).toHaveLength(2);
+    expect(judges.filter((row) => text(field(row, "args")).includes("cut__beta__task1"))).toEqual([]);
+    expect(existsSync(join(out, "judged", "cut"))).toBe(false);
+  });
+
   it("prints the pilot's arms table over all the tasks and the fair ones", () => {
     const lines = decodeOutput(tabled.stdout).split("\n");
     expect(tabled.exitCode).toBe(0);
     const fairAt = lines.indexOf("fair 1");
-    const [all, fairLines] = [lines.slice(0, fairAt), lines.slice(fairAt)];
+    const [all, fairLines] = [lines.slice(0, fairAt), lines.slice(fairAt, lines.indexOf("fair uncut 1"))];
     expect(all).toContain("all 2");
     expect(all).toContain("  heldout    1 of 2 tasks scored");
     for (const [part, pattern] of [
@@ -471,5 +535,25 @@ describe("every arm scored on the sweep's rollout and JobBench's judge, on stand
       expect(part.filter((line) => pattern.test(line))).toHaveLength(1);
     }
     expect(lines).toContain("alpha/task1: base 3/5, k1 5/5, starter 3/5");
+  });
+
+  it("records the files the judge's reader cuts, a database and a file of exactly the cap not among them", () => {
+    expect(runs.long.exitCode).toBe(0);
+    expect(field(record("long", LONG), "cut")).toEqual([{ file: "long.csv", chars: 200_001 }]);
+    for (const [name, task] of [
+      ["base", FIRST],
+      ["base", "alpha/task2"],
+      ["heldout", "alpha/task2"],
+      ["k1", FIRST],
+    ] as const) {
+      expect(field(record(name, task), "cut")).toEqual([]);
+    }
+    const lines = decodeOutput(tabledFair.stdout).split("\n");
+    expect(lines).toContain(`${LONG}: long 3/5 CUT 1`);
+    const uncutAt = lines.indexOf("fair uncut 1");
+    expect(uncutAt).toBeGreaterThan(lines.indexOf("fair 2"));
+    const uncut = lines.slice(uncutAt);
+    expect(uncut.filter((line) => /^ {2}heldout +score 5\/5 /u.test(line))).toHaveLength(1);
+    expect(uncut.filter((line) => /^ {2}long +0 of 1 tasks scored$/u.test(line))).toHaveLength(1);
   });
 });

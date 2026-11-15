@@ -4,6 +4,7 @@
  * alone (`room`, `keep.ts`).
  *
  *   bun --env-file=<file> run runs usage [N ...] [--json] [--open] [--closed]
+ *   bun run runs active [--here [--login N]]
  *
  * A login is `CLAUDE_CODE_OAUTH_TOKEN<N>` in this process's environment, which Bun's own
  * `--env-file` loads: the verb opens no file of credentials, and prints no token. With no number it
@@ -24,7 +25,9 @@
  *
  * `bun run runs active` names the runs a process writes, by the login each run's last launch named,
  * and the live seats of `system-path-simulation`, by the login each seat names (`liveHere`), on this
- * machine and every host `ANA_HOSTS` lists (`liveEverywhere`), and asks no provider. `usage` puts
+ * machine and every host `ANA_HOSTS` lists (`liveEverywhere`), and asks no provider; `--here` prints
+ * this machine's alone as JSON, which is what each host is asked, and with `--login N` whether this
+ * machine's environment holds that login. `usage` puts
  * each login's count on its head line, out of the most `ANA_LOGIN_RUNS` or its subscription in
  * `ANA_LOGIN_SUBS` lets that login carry (`capOf`), and sums the subscriptions' most under the logins.
  *
@@ -41,6 +44,7 @@
  */
 import { openingOf, SEATS } from "#src/campaign/opening.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
+import { HOUR_MS } from "#src/meta/clock.ts";
 import { mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse, capturedJsonStringify } from "#src/meta/json-runtime.ts";
 import { asRecord, isNumber, isString, type JsonValue } from "#src/meta/json-shape.ts";
@@ -55,6 +59,7 @@ import { recordedSetting } from "../d2/setting.ts";
 import { asked } from "./hosts.ts";
 import { hostsOf } from "./host-config.ts";
 import { CODEX, countedAgainst, type Live, liveHere, liveOf } from "./live.ts";
+import { archived, isCampaign } from "./registry.ts";
 import {
   closedResets,
   historyFile,
@@ -88,7 +93,8 @@ export interface Window {
 
 interface Read {
   readonly via: "oauth-usage" | "ratelimit-headers";
-  readonly fiveHour: Window;
+  /** Null where the login's plan has no five-hour limit (`planned`). */
+  readonly fiveHour: Window | null;
   readonly sevenDay: Window;
   readonly notes: readonly string[];
 }
@@ -111,10 +117,9 @@ const PLAIN = "";
 const BASE = "https://api.anthropic.com";
 const BETA = "oauth-2025-04-20";
 const TIMEOUT_MS = 30_000;
-const HOUR = 3_600_000;
 /** The readings kept, for `usage-model.ts`'s longest window; the per-run rate reads the last `RATE_MS`. */
-const KEPT_MS = 28 * 24 * HOUR;
-const RATE_MS = 8 * 24 * HOUR;
+const KEPT_MS = 28 * 24 * HOUR_MS;
+const RATE_MS = 8 * 24 * HOUR_MS;
 /** The share of a day a run is read active for the runs a week fits: 16 of 24 hours (operator, 22 October). */
 const ACTIVE_SHARE = 16 / 24;
 /** The hours a run is read to live: the release cycle stops its runs twelve hours after their
@@ -138,13 +143,14 @@ const NOTED = [
   ["seven_day_routines", "routines"],
 ] as const;
 
-/** The live runs each subscription carries, by provider (operator, 4 November): a Claude login two
- *  on `max` and four on `ultra`, the Codex login two on `pro100` and four on `pro200`, which counts
- *  a machine as its cap does. */
+/** The live runs each subscription carries, by provider: a Claude login one on `max` and two on
+ *  `ultra`, the Codex login two on `pro100` and four on `pro200`, counted as a machine's cap is. */
 const SUBS: Readonly<Record<"claude" | "codex", Readonly<Record<string, string>>>> = {
-  claude: { max: "2", ultra: "4" },
+  claude: { max: "1", ultra: "2" },
   codex: { pro100: "2", pro200: "4" },
 };
+
+const FLAG = { type: "boolean", default: false } as const;
 
 /** Every login `env` holds, by its number. A key left empty holds none: a copied `.env.example`
  *  names `CLAUDE_CODE_OAUTH_TOKEN2=`, and until 5 November that made a login nobody can pay with, so
@@ -266,11 +272,17 @@ export function startRefusal(
     : fullOn(env, payer, host, others);
 }
 
-/** Refuse to start `name` on `host` for `payer` where `startRefusal` says why. */
-export async function roomToStart(payer: string | undefined, host: string, name: string): Promise<void> {
+/** Refuse to start `name` on `host` for `payer` where `startRefusal` says why, saying how it `stands`. */
+export async function roomToStart(
+  payer: string | undefined,
+  host: string,
+  name: string,
+  stands = "nothing was stopped or started",
+): Promise<void> {
   if (payer === undefined) return;
-  const refused = startRefusal(runtimeProcess.env, payer, host, await liveEverywhere("configured"), name);
-  if (refused !== null) throw new Error(`${name}: ${refused}; nothing was stopped or started`);
+  const counted = asGathered(await liveEverywhere("configured"));
+  const refused = startRefusal(runtimeProcess.env, payer, host, counted, name);
+  if (refused !== null) throw new Error(`${name}: ${refused}; ${stands}`);
 }
 
 /** The usage endpoint's window `value`: its share used and its reset. */
@@ -375,7 +387,17 @@ async function viaRateLimitHeaders(token: string, agent: string): Promise<Read |
   return { via: "ratelimit-headers", fiveHour: win("5h"), sevenDay: win("7d"), notes };
 }
 
-/** Each of `wanted` read from `env`, by the first route that answers. */
+/** `reading` as its login's plan holds it: without its five-hour window where a login `ANA_LOGIN_SUBS`
+ *  names `ultra` reports none, since a verified ultra account has no five-hour limit and the
+ *  provider names no share, reset or status for it. One that still reports the window keeps it, and
+ *  any other plan's unread window stays unread, so a keeper never reads such a login as unread. */
+export function planned(reading: Reading, env: Env): Reading {
+  const five = "error" in reading ? null : reading.fiveHour;
+  const silent = five?.pct === null && five.resetsAt === null && five.status === undefined;
+  return silent && subOf(env, reading.login)?.sub === "ultra" ? { ...reading, fiveHour: null } : reading;
+}
+
+/** Each of `wanted` read from `env`, by the first route that answers, as its plan holds it (`planned`). */
 export async function readLogins(wanted: readonly string[], env: Env): Promise<Reading[]> {
   const version = zeroExitText(runSync(["claude", "--version"]))?.split(/\s+/)[0];
   // CodexBar's fallbackClaudeCodeVersion where no CLI answers.
@@ -389,9 +411,9 @@ export async function readLogins(wanted: readonly string[], env: Env): Promise<R
       const plain = env[TOKEN] === token;
       try {
         const first = await viaOAuthUsage(token, agent);
-        if (!("error" in first)) return { login, plain, ...first };
+        if (!("error" in first)) return planned({ login, plain, ...first }, env);
         const second = await viaRateLimitHeaders(token, agent);
-        if (!("error" in second)) return { login, plain, ...second };
+        if (!("error" in second)) return planned({ login, plain, ...second }, env);
         return { login, plain, error: `${first.error}; ${second.error}` };
       } catch (error) {
         return { login, plain, error: errorMessage(error) };
@@ -419,7 +441,7 @@ export function room(
       !allowed.includes(reading.login) ||
       spent.has(reading.login) ||
       !windowOpen(reading.sevenDay) ||
-      !windowOpen(reading.fiveHour)
+      (reading.fiveHour !== null && !windowOpen(reading.fiveHour))
         ? []
         : [{ login: reading.login, reset: resetOf(reading.sevenDay.resetsAt) ?? Number.POSITIVE_INFINITY }],
     )
@@ -444,16 +466,18 @@ function atReset(window: Window, length: number, now: number): number | null {
  * pace, and what its window holds came from runs that have left, so it reads the window's share and
  * `RUN_FIVE_HOUR` to its reset. A person's own session on a login is charged to its runs, as in
  * `perRunRate`, and a window minutes old reads high until the next look. The week's forecast cannot
- * answer this: the readings kept hold no five-hour share, and a run's rate is in % of a week.
+ * answer this: the readings kept hold no five-hour share, and a run's rate is in % of a week. A login
+ * whose plan has no five-hour limit (`planned`) reads 0, since no run added there can reach one.
  */
 export function fiveHourWith(reading: Reading, on: number, now: number): number | null {
   if ("error" in reading) return null;
   const { fiveHour } = reading;
+  if (fiveHour === null) return 0;
   const { pct } = fiveHour;
   const reset = resetOf(fiveHour.resetsAt);
   if (pct === null || (pct > 0 && reset === null)) return null;
   if (on > 0) return pct + (((atReset(fiveHour, FIVE_HOURS, now) ?? pct) - pct) * (on + 1)) / on;
-  return pct + RUN_FIVE_HOUR * (reset === null ? FIVE_HOURS / 60 : Math.max(0, (reset - now) / HOUR));
+  return pct + RUN_FIVE_HOUR * (reset === null ? FIVE_HOURS / 60 : Math.max(0, (reset - now) / HOUR_MS));
 }
 
 /** When `window` of `length` minutes runs out at the pace it was used so far: it opened `length`
@@ -505,7 +529,7 @@ export function perRunRate(history: readonly Snapshot[]): number | null {
   const sorted = byTime(history);
   const spans = sorted.flatMap((then, at) => {
     const next = sorted[at + 1];
-    const hours = next === undefined ? 0 : (next.at - then.at) / HOUR;
+    const hours = next === undefined ? 0 : (next.at - then.at) / HOUR_MS;
     if (next === undefined || hours < 0.25 || hours > 3) return [];
     return Object.entries(then.runs ?? {}).flatMap(([login, runs]) => {
       const [was, now] = [then.weeks[login], next.weeks[login]];
@@ -530,7 +554,7 @@ export function perRunHour(week: Week, on: number, rate: number | null, now: num
  *  `perHour` of it an hour; null without a rate. */
 export function fitOf(week: Week, perHour: number | null, now: number): number | null {
   if (perHour === null) return null;
-  const need = perHour * Math.max(0, Math.min(RUN_HOURS, (week.reset - now) / HOUR));
+  const need = perHour * Math.max(0, Math.min(RUN_HOURS, (week.reset - now) / HOUR_MS));
   return need <= 0 ? Number.POSITIVE_INFINITY : Math.floor(Math.max(0, 100 - week.pct) / need);
 }
 
@@ -541,7 +565,10 @@ export function carried(on: number, cap: string | null, fit: number | null): str
   const fits = fit !== null && Number.isFinite(fit) ? fit : null;
   const most = [cap === null ? null : Number(cap), fits].filter((one): one is number => one !== null);
   const of = most.length === 0 ? "" : `/${String(Math.min(...most))}`;
-  return `${String(on)}${of} active${fits !== null && on > fits ? " · oversubscribed" : ""}`;
+  // `active` and the verbs count against the cap alone, so a week that fits fewer names both.
+  const week =
+    fits !== null && cap !== null && fits < Number(cap) ? `, its week's fit under a cap of ${cap}` : "";
+  return `${String(on)}${of} active${week}${fits !== null && on > fits ? " · oversubscribed" : ""}`;
 }
 
 /** The runs a process writes on this machine and on every host that answered, and the hosts that
@@ -558,6 +585,21 @@ export async function liveEverywhere(
   return {
     live: [...liveHere(), ...answers.flatMap(({ live }) => live ?? [])],
     unasked: answers.flatMap(({ host, live }) => (live === null ? [host] : [])),
+  };
+}
+
+/** A count with each unasked host counted as the gather last copied its campaigns among `copies`,
+ *  by what each fetch saw (`lifeOf`), so that one silent peer does not refuse every start on the
+ *  fleet; one with no copy stays unasked, and a run it started since is not seen. A start reads it;
+ *  placement and `sync`, which act on the host itself, do not. */
+export function asGathered({ live, unasked }: { live: Live[]; unasked: string[] }, copies = archived()) {
+  const gathered = unasked.map((host) => ({
+    host,
+    own: copies.filter((run) => run.archived === host && isCampaign(run)),
+  }));
+  return {
+    live: [...live, ...gathered.flatMap(({ host, own }) => liveHere(host, [], own))],
+    unasked: gathered.flatMap(({ host, own }) => (own.length === 0 ? [host] : [])),
   };
 }
 
@@ -612,8 +654,6 @@ export async function active(args: readonly string[]): Promise<void> {
   const { live, unasked } = await liveEverywhere();
   console.log(activeLines(live, allowedLogins(runtimeProcess.env), unasked, runtimeProcess.env).join("\n"));
 }
-
-const FLAG = { type: "boolean", default: false } as const;
 
 /** `bun run runs usage`. */
 export async function logins(args: readonly string[]): Promise<void> {
@@ -682,7 +722,7 @@ export async function logins(args: readonly string[]): Promise<void> {
     console.log(
       "error" in reading
         ? `${head}\n  ${reading.error}`
-        : `${head}\n  5h    ${shown(reading.fiveHour, 5 * 60, now)}\n  week  ${shown(reading.sevenDay, 7 * 1440, now, forecast?.ends?.get(reading.login))}${reading.notes.length > 0 ? `\n  ${reading.notes.join(" · ")}` : ""}`,
+        : `${head}${reading.fiveHour === null ? "" : `\n  5h    ${shown(reading.fiveHour, 5 * 60, now)}`}\n  week  ${shown(reading.sevenDay, 7 * 1440, now, forecast?.ends?.get(reading.login))}${reading.notes.length > 0 ? `\n  ${reading.notes.join(" · ")}` : ""}`,
     );
   }
   const subs = held.flatMap((login) => subOf(runtimeProcess.env, login) ?? []);

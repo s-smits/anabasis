@@ -14,20 +14,21 @@ import { comparisonFloor } from "#src/campaign/admission.ts";
 import { BARS, epochsOf, starterReads } from "#src/campaign/climb.ts";
 import { readsStepEitherWay, scoresIn, type Tally, testOf } from "#src/kernel/compare.ts";
 import type { EventKind, LogEvent } from "#src/kernel/log.ts";
+import { endingOf } from "#src/kernel/reports.ts";
 import { clearing, sizeLines } from "#src/kernel/size.ts";
-import { asRecord, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
+import { HOUR_MS } from "#src/meta/clock.ts";
+import { asRecord, isBoolean, isNumber, isString, type JsonObject } from "#src/meta/json-shape.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { plural } from "#src/meta/text.ts";
 
 export const REPORTED = "comparison.reported";
 export const PROMOTED = "harness.promoted";
 export const ENDED = "campaign.ended";
-const HOUR_MS = 3_600_000;
 const DIGEST_CHARS = 8;
 
 /** Where a run owes its next step, which names an investigation and stops nothing: two promotions
  *  or twelve hours, and two starter comparisons read before a pause. */
-export const TRIGGER_AT = { promotions: 2, hours: 12 } as const;
+const TRIGGER_AT = { promotions: 2, hours: 12 } as const;
 /** The loop's driver, whose `open` a look names where a stopped run's investigation is due. */
 export const DRIVER = ".claude/skills/run-improvement-campaign/scripts/wri2p2.ts";
 
@@ -168,9 +169,12 @@ export const SAID: Partial<Record<EventKind, (data: JsonObject) => string | null
   },
   "build.started": (data) => `· build ${word(data.session)} started on ${word(data.model)}`,
   "exam.started": (data) => `· exam ${word(data.session)} started on ${word(data.model)}`,
-  "build.finished": (data) =>
-    `◆ build ended at ${word(data.ended)} and ${data.changed === true ? "changed the harness" : "left the harness as it was"}` +
-    `${data.broken === null ? "" : `, broken: ${short(data.broken)}`}${cost(data)}`,
+  // A session a stop cut writes neither `changed` nor `broken` (`endCut`), so its line says neither.
+  "build.finished": (data) => {
+    const harness = data.changed === true ? "changed the harness" : "left the harness as it was";
+    const broken = short(data.broken);
+    return `◆ build ended at ${word(data.ended)}${isBoolean(data.changed) ? ` and ${harness}` : ""}${broken === "" ? "" : `, broken: ${broken}`}${cost(data)}`;
+  },
   "exam.finished": (data) => {
     const head = `◆ exam ${word(data.session)} ended${cost(data)}`;
     if (!isNumber(data.proposed)) return head;
@@ -305,20 +309,17 @@ export function progressOf<Run extends { readonly live: boolean }>(
       const scored = asRecord(data.scored);
       return data.reading !== "not-scored" && scored?.wins === 0 && scored.losses === 0;
     }),
-    ending: last?.kind === ENDED && isString(last.data.ending) ? last.data.ending : null,
+    ending: endingOf(events),
     // A live run is timed to now: one in a long wait writes nothing, and its clock still runs.
     hours: Number.isNaN(opened) ? 0 : ((seen.live ? now : Date.parse(last?.at ?? "")) - opened) / HOUR_MS,
   };
 }
 
 /** Why an investigation opens on `row` now, or null while it runs on. */
-export function triggerOf(
-  row: Progress,
-  limits: { promotions: number; hours: number } = TRIGGER_AT,
-): string | null {
-  if (row.promotions >= limits.promotions) return `${String(row.promotions)} promotions`;
+export function triggerOf(row: Progress): string | null {
+  if (row.promotions >= TRIGGER_AT.promotions) return `${String(row.promotions)} promotions`;
   if (row.allTied) return "a comparison left no task untied";
-  if (row.hours >= limits.hours) return `${row.hours.toFixed(1)} h since its opening`;
+  if (row.hours >= TRIGGER_AT.hours) return `${row.hours.toFixed(1)} h since its opening`;
   // A run that ended before any comparison measured nothing an iteration could read.
   if (!row.live && row.compared > 0) return `closed${row.ending === null ? "" : ` (${row.ending})`}`;
   return null;

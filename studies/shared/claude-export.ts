@@ -8,11 +8,14 @@
  *
  * The harness is found and checked by the owner the study's container bundle uses (`placeHarness`,
  * `bundle.ts`), so the digest and origin a score is read beside are the same. Of its four parts:
- * - the guide becomes `CLAUDE.md`, under a note that says what of a campaign's solve is not here;
+ * - the guide becomes `CLAUDE.md`, under a note that says what of a campaign's solve is not here:
+ *   its task and answer files and `submit`, and, for every harness alike, whatever the guide says of
+ *   a limit on turns or time, of checking or submitting an answer, or of scoring;
  * - `.toolchain/` is copied to `scripts/toolchain/`, and the note names its program directories in
  *   the order a solve's shell searches them (`toolTreeSearchDirs`, `src/wall/isolation.ts`), as
  *   facts: it puts nothing ahead of the machine's own programs, since the 9 November pilot's line
- *   that did so hid the machine's openpyxl, docx and matplotlib behind the harness's Python;
+ *   that did so hid the machine's openpyxl, docx and matplotlib behind the harness's Python, and it
+ *   says that programs written for the campaign's own files find none of them here;
  * - `agent/tools-spec.json` and `agent/tools.ts` are dropped: Claude Code has its own tools and no
  *   loader for a harness's, so the note names each declared tool as unavailable, and `export.json`
  *   lists both files.
@@ -63,7 +66,7 @@ export async function exportForClaudeCode(
   const note = [
     "# How this harness reaches you",
     "",
-    "The guide below was written for another runner, where a task came as `input.json`, the answer went into `answer.json` and a `submit` tool sent it. None of those is here: the task prompt is the whole task and says where the deliverable goes, and the files you leave are the answer, whatever the guide says of those three.",
+    "The guide below was written for another runner, where a task came as `input.json`, the answer went into `answer.json` and a `submit` tool sent it. None of those is here: the task prompt is the whole task and says where the deliverable goes, and the files you leave are the answer, whatever the guide says of those three. Whatever it says of a limit on turns or time, of checking or submitting an answer, or of how an answer is scored also belongs to that runner and does not hold here.",
     ...(unavailable.length === 0
       ? []
       : [
@@ -74,7 +77,7 @@ export async function exportForClaudeCode(
       ? []
       : [
           "",
-          `Its programs are in \`${TOOLCHAIN}/\`, in ${searched.map((dir) => `\`${dir}\``).join(", ")}, and nothing puts them on your PATH. This machine's own programs, its \`python3\` among them, are on it as usual, and may hold packages the harness's interpreter lacks, or the reverse.`,
+          `Its programs are in \`${TOOLCHAIN}/\`, in ${searched.map((dir) => `\`${dir}\``).join(", ")}, and nothing puts them on your PATH. Those written for that runner's files (they open \`input.json\` or a \`public/\` folder, or check \`answer.json\`) find none of them here. This machine's own programs, its \`python3\` among them, are on it as usual, and may hold packages the harness's interpreter lacks, or the reverse.`,
         ]),
     "",
   ];

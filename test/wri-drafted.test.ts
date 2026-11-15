@@ -88,7 +88,8 @@ describe("draft", () => {
       "2 read, 1 decided by their author; frozen with 0 admitted (none); author-decided and not admitted: check-R1",
     );
     expect(rows).toContain("drafting calls: 3, 1 failed");
-    expect(rows).toContain("  d-1 turn 4 write: EROFS here");
+    expect(rows).toContain("  d-1 turn 4 write");
+    expect(rows.join("\n")).not.toContain("EROFS");
   });
 
   it("reads an older log without the bill, the checker reading or a standing draft as not recorded or none", () => {

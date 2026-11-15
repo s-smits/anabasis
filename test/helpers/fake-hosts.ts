@@ -17,8 +17,11 @@ import { decodeOutput, runSync } from "../../src/meta/subprocess.ts";
 const COMMIT = "a".repeat(40);
 const REPO = join(import.meta.dir, "../..");
 
-const RECORD = `import { appendFileSync } from "node:fs";
+// A file `NAME` in `FAKE_NOW`, once written, stands for the variable at each later call: a child of a
+// verb sees no change to the verb's environment, as a count or table that moves while the verb waits.
+const RECORD = `import { appendFileSync, existsSync, readFileSync } from "node:fs";
 const args = process.argv.slice(2);
+const fake = (name) => existsSync(process.env.FAKE_NOW + "/" + name) ? readFileSync(process.env.FAKE_NOW + "/" + name, "utf8") : process.env[name];
 appendFileSync(process.env.FAKE_CALLS, JSON.stringify({tool: process.argv[1].split("/").at(-1), args}) + "\\n");`;
 
 const SCRIPTS = {
@@ -30,14 +33,14 @@ if (peer.timeout && script.includes("ANA_HOP")) await Bun.sleep(50000);
 if (peer.freshExit && script.includes("ANA_HOP") && script.includes("fresh")) process.exit(peer.freshExit);
 if (peer.active !== undefined && peer.execute && script.includes("'active'")) { console.log(peer.active); process.exit(0); }
 if (peer.alerts !== undefined && script.includes("'alerts'")) { console.log(peer.alerts); process.exit(0); }
-if (process.env.FAKE_EXECUTE === "1" || peer.execute || (process.env.FAKE_PREPARE_EXECUTE === "1" && !script.includes("ANA_HOP"))) {
+if (process.env.FAKE_EXECUTE === "1" || peer.execute || script.includes("rm -rf -- ") || (process.env.FAKE_PREPARE_EXECUTE === "1" && !script.includes("ANA_HOP"))) {
   const env = {...process.env, ...(peer.env ?? {})};
   const child = Bun.spawn(["sh", "-c", script], {env, stdout:"inherit", stderr:"inherit"});
   process.exit(await child.exited);
 }
 if (script.includes("--health")) console.log(JSON.stringify(peer.health ?? JSON.parse(process.env.FAKE_HEALTH ?? "null")));
 else if (script.includes("catalogue")) console.log(JSON.stringify((peer.catalogue ?? JSON.parse(process.env.FAKE_CATALOGUE ?? "[]")).map((run) => ({open:false,stderr:null,...run}))));
-else if (script.includes("active")) console.log(script.includes("--login") ? peer.loginPresent ?? process.env.FAKE_LOGIN_PRESENT ?? "true" : JSON.stringify(peer.active ?? JSON.parse(process.env.FAKE_ACTIVE ?? "[]")));
+else if (script.includes("active")) console.log(script.includes("--login") ? peer.loginPresent ?? process.env.FAKE_LOGIN_PRESENT ?? "true" : JSON.stringify(peer.active ?? JSON.parse(fake("FAKE_ACTIVE") ?? "[]")));
 else if (script.includes("pulse")) console.log(peer.pulse ?? "◆ reported step");
 else if (script.includes("find . ")) process.stdout.write((process.env.FAKE_FILES ?? "").replaceAll("\\n", "\\0"));
 else if (script.includes("holds")) console.log((peer.holds ?? [process.env.FAKE_HOLDS ?? ""]).join("\\n"));
@@ -45,28 +48,37 @@ else if (script.includes("status") && script.includes("ANA_HOP")) console.log(pe
 else console.log(process.env.FAKE_PREPARED);`,
   "rsync": `${RECORD}
 import { cpSync, mkdirSync, writeFileSync } from "node:fs";
-import { basename, dirname, resolve } from "node:path";
+import { basename, dirname, relative, resolve } from "node:path";
 const source = args.at(-2);
 const remote = source.includes(":");
 const quoted = remote ? source.split(":").slice(1).join(":").slice(0,-1) : "";
 const from = remote ? quoted.slice(1,-1).replaceAll("'\\\\''", "'") : source;
 const target = args.at(-1);
 const into = target.includes(":") ? target.split(":").slice(1).join(":").replace(/\\/$/, "").slice(1,-1) + "/" : target;
+const left = args.filter((arg) => arg.startsWith("--exclude=/") && arg !== "--exclude=/*");
+if (args.includes("-n")) { const real = Bun.spawnSync(["/usr/bin/rsync", "-a", "-n", "-c", "--itemize-changes", ...left, from + "/", into], {env: {...process.env, PATH: "/usr/bin:/bin"}}); process.stdout.write(real.stdout); process.exit(real.exitCode); }
 if (process.env.FAKE_TRANSFER_FAIL === "1" || (process.env.FAKE_TRANSFER_FAIL_FROM !== undefined && from.includes(process.env.FAKE_TRANSFER_FAIL_FROM))) { mkdirSync(into, {recursive: true}); writeFileSync(into + "log.jsonl", "partial"); process.exit(23); }
 const kept = args.filter((arg) => arg.startsWith("--include=/")).map((arg) => new RegExp("^" + arg.slice(11).replaceAll(".", "[.]").replaceAll("*", ".*") + "$"));
-cpSync(from, into, {recursive: true, verbatimSymlinks: true, filter: (file) => !args.includes("--exclude=/*") || resolve(file) === resolve(from) || (dirname(file) === resolve(from) && kept.some((name) => name.test(basename(file))))});`,
+const gone = left.map((arg) => arg.slice(11).replace(/\\/$/, ""));
+cpSync(from, into, {recursive: true, verbatimSymlinks: true, filter: (file) => gone.includes(relative(resolve(from), resolve(file))) ? false : !args.includes("--exclude=/*") || resolve(file) === resolve(from) || (dirname(file) === resolve(from) && kept.some((name) => name.test(basename(file))))});`,
+  // A written `FAKE_FETCH_STARTS` names a log that gains a comparison's start at the next fetch alone.
   "git": `${RECORD}
 import { mkdirSync, rmSync } from "node:fs";
-if (args.includes("fetch")) process.exit(process.env.FAKE_FETCH_FAIL === "1" ? 1 : 0);
+if (args.includes("fetch")) {
+  const moving = fake("FAKE_FETCH_STARTS");
+  if (moving !== undefined) rmSync(process.env.FAKE_NOW + "/FAKE_FETCH_STARTS");
+  if (moving !== undefined) (await import(process.env.FAKE_REPO + "/src/kernel/log.ts")).append(moving, "comparison.started", { session: "g-2" });
+  process.exit(process.env.FAKE_FETCH_FAIL === "1" ? 1 : 0);
+}
 if (args.includes("merge-base") || args.includes("for-each-ref")) console.log(process.env.FAKE_ANCESTOR ?? process.env.FAKE_COMMIT);
 else if (args.includes("rev-parse")) console.log(args.includes("--git-common-dir") ? process.env.FAKE_GIT : args.includes("--show-toplevel") ? process.env.FAKE_MAIN : args.includes("--verify") && process.env.FAKE_AT !== undefined ? process.env.FAKE_AT : args.includes("-C") ? process.env.FAKE_COMMIT : process.env.FAKE_REMOTE_COMMIT ?? process.env.FAKE_COMMIT);
-else if (args.includes("status")) console.log(process.env.FAKE_DIRTY ?? "");
+else if (args.includes("status")) console.log(fake("FAKE_DIRTY") ?? "");
 else if (args.includes("branch")) console.log(process.env.FAKE_UNPUBLISHED === "1" ? "" : "origin/main");
 else if (args.includes("ls-remote")) console.log(process.env.FAKE_TAGGED === "1" ? process.env.FAKE_COMMIT + "\\trefs/tags/run/r/1" : "");
 else if (args.includes("worktree") && args.includes("list")) console.log("worktree " + process.env.FAKE_MAIN);
 else if (args.includes("worktree") && args.includes("add")) mkdirSync(args.at(-2), {recursive: true});
 else if (args.includes("worktree") && args.includes("remove")) rmSync(args.at(-1), {recursive: true, force: true});`,
-  "ps": `${RECORD}\nif (process.env.FAKE_PS_FAIL === "1") process.exit(1); console.log(JSON.parse(process.env.FAKE_PS_TABLE ?? "{}")[args.join(" ")] ?? process.env.FAKE_PS ?? "");`,
+  "ps": `${RECORD}\nif (process.env.FAKE_PS_FAIL === "1") process.exit(1); console.log(JSON.parse(process.env.FAKE_PS_TABLE ?? "{}")[args.join(" ")] ?? fake("FAKE_PS") ?? "");`,
   "lsof": `${RECORD}\nconsole.log(process.env.FAKE_CWDS ?? "");`,
   "host-bun": `${RECORD}
 import { mkdirSync } from "node:fs";
@@ -95,6 +107,7 @@ export function fakeHosts() {
   mkdirSync(bin);
   mkdirSync(main);
   mkdirSync(join(root, "git"));
+  mkdirSync(join(root, "now"));
   const executable = (name: string, body: string) => {
     const path = join(bin, name);
     writeFileSync(path, `#!${capturedExecPath}\n${body}\n`);
@@ -117,6 +130,7 @@ export function fakeHosts() {
     FAKE_GIT: join(root, "git"),
     FAKE_COMMIT: COMMIT,
     FAKE_PREPARED: join(root, "prepared"),
+    FAKE_NOW: join(root, "now"),
   };
   const run = (code: string, extra: Record<string, string> = {}) => {
     const driver = join(root, "driver.ts");

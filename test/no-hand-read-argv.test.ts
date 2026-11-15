@@ -11,17 +11,16 @@ import { describe, it } from "bun:test";
 import { lintRules } from "./helpers/lint-rule.ts";
 
 const SCRIPT = `
-import { exitWith, parseOrDie, runCommand } from "#skills/main/cli.ts";
-const die = exitWith("example");
-const SPEC = { values: ["run"] };
+import { parseCliArgs, runCommand } from "#skills/main/cli.ts";
+const SPEC = { options: { run: "text" } };
 const bun = Bun.argv[0]; // ADMITTED the executable, which a script re-spawns with
-parseOrDie(die, SPEC, Bun.argv.slice(2)); // ADMITTED the library reads the slice
-parseOrDie(die, SPEC, import.meta.main ? Bun.argv.slice(2) : []); // ADMITTED still the library, behind the entry test
+parseCliArgs(Bun.argv.slice(2), SPEC); // ADMITTED the library reads the slice
+parseCliArgs(import.meta.main ? Bun.argv.slice(2) : []); // ADMITTED still the library, behind the entry test
 function main(argv) {
   return parse(argv);
 }
 function parse(argv) {
-  return parseOrDie(die, SPEC, argv);
+  return parseCliArgs(argv);
 }
 main(Bun.argv.slice(2)); // ADMITTED forwarded to the library through two local functions
 const run = (argv) => runCommand({ name: "x", usage: "x" }, () => 0, argv);
@@ -34,7 +33,7 @@ const spec = Bun.argv[2]; // REPORT an index past the executable is an argument
 const [command, ...rest] = runtimeProcess.argv.slice(2); // REPORT a destructure is a parser
 if (process.argv.includes("--json")) console.log(bun); // REPORT a membership test ignores a misspelling
 const held = Bun.argv.slice(2); // REPORT a named slice the rule cannot follow, and nothing needs the name
-parseOrDie(die, SPEC, held);
+parseCliArgs(held);
 console.log(command, rest, spec, bun);
 `.trimStart();
 

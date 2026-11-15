@@ -72,7 +72,7 @@ export const NOTHING_SPENT: Spent = { turns: 0, tokens: NO_TOKENS, billed: 0, re
 
 /** The events that carry what their own model turns were billed, in a `billed` field: the end of
  *  each of those, and a reviewer's reading. */
-export const BILLED: ReadonlySet<string> = new Set([
+const BILLED: ReadonlySet<string> = new Set([
   ...METERED.map(({ of }) => `${of}.finished`),
   "referee.finding",
   "diagnosis.recorded",
@@ -285,6 +285,10 @@ export function billedAll(events: readonly LogEvent[]): number {
   for (const event of events) total += billedOn(event) ?? 0;
   return unfinished(events).reduce((all, { dollars }) => all + dollars, total);
 }
+
+/** One ask's share of its conversation's backend total, null where either read gave none. */
+export const reportedShare = (total: number | null, before: number | null) =>
+  total === null || before === null ? null : Math.max(0, total - before);
 
 /**
  * The billed dollars of the stretch from event `from` to event `to` (the log's end where none):

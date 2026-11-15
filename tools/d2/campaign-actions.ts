@@ -30,7 +30,7 @@
  */
 import { Type } from "typebox";
 import { type SeatTool, textsOf } from "#src/agent/session.ts";
-import { Refused, stopRule } from "#src/campaign/admission.ts";
+import { comparisonFloor, Refused, stopRule } from "#src/campaign/admission.ts";
 import { CRASHES, decide, practiceDue } from "#src/campaign/decide.ts";
 import { comparisonsOf, crashedRun } from "#src/campaign/ground.ts";
 import { campaignOf } from "#src/campaign/handover.ts";
@@ -502,7 +502,8 @@ const compareTool = (context: CampaignContext, bench: Bench): SeatTool =>
     const step = campaignOf(events).steps.findLast(
       (each) => each.step === "comparison" && each.id === session,
     );
-    const tally = comparisonsTold(step === undefined ? [] : [step])[0] ?? "The comparison has no tally yet.";
+    // The tally stands once, as the last in the facts the result ends with, so one with none says so.
+    const tallied = comparisonsTold(step === undefined ? [] : [step]).length > 0;
     const scored = events.findLast(
       ({ kind, data }) => kind === "comparison.reported" && data.session === session,
     )?.data.versions;
@@ -516,7 +517,12 @@ const compareTool = (context: CampaignContext, bench: Bench): SeatTool =>
     // rather than at the next conversation: until 5 November the Builder's own move did.
     if (promoted.length === 0) await releaseOwed(context, `comparison ${session} reported`, bench);
     return {
-      said: [tally, ...size, ...(named.note === "" ? [] : [named.note]), ...promoted].join("\n"),
+      said: [
+        ...(tallied ? [] : ["The comparison has no tally yet."]),
+        ...size,
+        ...(named.note === "" ? [] : [named.note]),
+        ...promoted,
+      ].join("\n"),
     };
   });
 
@@ -636,6 +642,23 @@ function halted(context: CampaignContext, bench: Bench) {
 }
 
 /**
+ * What the two counts amount to before a first comparison, where the Builder chooses between
+ * comparing and waiting: the practice still to come and when the host releases it (`practiceDue`),
+ * and what a comparison of the tasks held now can read (`sizeLines`). It reads the counts and the
+ * plan alone, which no outcome of a held-out task moves (rule 3).
+ */
+function firstFacts({ practice, wanted }: Turn["plan"], held: number, released: number): string {
+  const [size = ""] = sizeLines(Math.min(wanted.target, held), wanted.level);
+  if (practice === null) return `${size}.`;
+  // The first release has no such bound (`practiceDue`'s allowance).
+  const more =
+    released > 0 && released < practice
+      ? `, and another only while more than ${String(comparisonFloor(wanted.level))} tasks stay held out`
+      : "";
+  return `Released for practice: ${String(released)} of the ${plural(practice, "task")} the campaign names${more}. ${size}.`;
+}
+
+/**
  * What the Builder is told of its campaign, where it can have moved (a campaign tool's result):
  * what was written and released, what is left of the total, the last tally and what was spent.
  * Until 5 November it ended with the table's move as a suggestion. Reading it is also where the
@@ -660,7 +683,7 @@ function campaignStatus(context: CampaignContext, bench: Bench): string {
         ]),
     // The last tally stands here; `read_opening` holds every one.
     tallies.length === 0
-      ? "No comparison has a tally yet."
+      ? `No comparison has a tally yet. ${firstFacts(turn.plan, sets.held.length, sets.released.length)}`
       : `${plural(tallies.length, "comparison")} with a tally; the last:\n${tallies.at(-1) ?? ""}`,
     ...examinedLines(turn.events, writing),
     ...spentLines(turn),

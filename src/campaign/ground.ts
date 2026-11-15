@@ -93,24 +93,34 @@ export const heldOut = (data: JsonObject) => Array.isArray(data.held) && data.he
 export const cutShort = (event: LogEvent) =>
   sessionEnded(event) && CUT.has(event.data.ended) && !heldOut(event.data);
 
-/** The sessions in a row, up to the log's end and since the campaign last
- *  ended, that the provider failed before they held out a task or changed a harness, with what
- *  the last session's crash said where it crashed. Such a session held out no task and left no harness because its provider
- *  refused it, not because the domain gave it nothing: on 11 October six Examiner sessions of one
- *  campaign crashed in a row on a provider's session limit, and the campaign ended `no-room`
- *  where the account was out. The table ends such a campaign on its environment after `CRASHES`
- *  of them (`decide.ts`), and the count starts again after that ending, so that the command run
- *  again by the campaign's name goes on once the provider is back. */
+/** The sessions in a row, to the log's end and since the campaign last ended, that the provider
+ *  failed before they held out a task or changed a harness, with the last one's crash. The table
+ *  ends a campaign on its environment after `CRASHES` of them (`decide.ts`) instead of `no-room`
+ *  (six on a session limit, 11 October), and the count starts again after that ending. */
 export function crashedRun(events: readonly LogEvent[]) {
   // A wait for the provider's named reset starts the count again as an ending does (`waitOut`).
   const since = events.findLastIndex(
     ({ kind, data }) => kind === "campaign.ended" || (kind === "campaign.waited" && data.for === "provider"),
   );
-  // A session the host stopped says nothing of the provider, and is passed over: until 14 October
-  // a Builder halted as a third crash ended the campaign read as whole, the count went back to
-  // nought, and the command exited with no ending on record.
-  const sessions = events
-    .slice(since + 1)
+  const tail = events.slice(since + 1);
+  // It starts again at the first turn served to a session that does not crash, as the provider was
+  // back; only a first turn counts, as a Builder is served one after each Examiner crash beside it.
+  const crashed = new Set(
+    tail
+      .filter((event) => sessionEnded(event) && event.data.ended === "crashed")
+      .map(({ data }) => data.session),
+  );
+  // Each turn the provider served a seat's session (a solve's and a Referee's name none); the map,
+  // filled last turn first, keeps each session's first.
+  const served = tail.flatMap(({ kind, data }, at) =>
+    kind.endsWith(".turn") && isString(data.session) && !isString(data.error) && !crashed.has(data.session)
+      ? [[data.session, at] as const]
+      : [],
+  );
+  const back = Math.max(-1, ...new Map(served.toReversed()).values());
+  // A session the host stopped says nothing of the provider, and is passed over.
+  const sessions = tail
+    .slice(back + 1)
     .filter((event) => sessionEnded(event) && event.data.ended !== "stopped")
     .toReversed();
   // A session moved the campaign whatever its ending where an Examiner's held a task out: one that
@@ -118,18 +128,14 @@ export function crashedRun(events: readonly LogEvent[]) {
   // is written whatever `ended` says). A Builder's moved it where its harness is one the campaign
   // goes on from (`latestBuilt`), which a crashed session's is only where a harness snapshot was kept: one
   // that edited and then crashed leaves the next session the same parent, so it counts as a crash.
-  const kept = new Set(
-    events.slice(since + 1).flatMap(({ kind, data }) => (kind === "build.checkpoint" ? [data.session] : [])),
-  );
+  const kept = new Set(tail.flatMap(({ kind, data }) => (kind === "build.checkpoint" ? [data.session] : [])));
   const moved = (data: JsonObject) =>
     heldOut(data) ||
     (isNumber(data.tries) && data.tries > 0) ||
     (data.changed === true && (data.ended !== "crashed" || kept.has(data.session)));
   const whole = sessions.findIndex(({ data }) => data.ended !== "crashed" || moved(data));
   const count = whole === -1 ? sessions.length : whole;
-  // What the last session's crash said, counted or not: a Builder checkpointed before the
-  // provider's limit moved the campaign, and the limit is still the next session's. Until
-  // 15 October it was not waited for, and recode-pr169-sonnet's b-2 opened into it and crashed.
+  // What the last session's crash said, counted or not, as its limit is still the next session's.
   const [last] = sessions;
   return {
     count,

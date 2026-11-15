@@ -741,6 +741,21 @@ describe("the short view a timer reads", () => {
     // A part of a name narrows the view to the runs that hold it.
     expect(names(3, ["ended", "live"])).toEqual(["r-ended", "r-live live"]);
   });
+
+  it("leaves out a campaign whose log has gone since it was listed, closed or written, and reads the rest", () => {
+    const tree = join(base, "gone");
+    const opened = [opening(59), reported(60, 1, 1, 0)];
+    const kept = campaign(tree, "r-kept", opened);
+    // A test suite in a gate's own worktree registers a campaign and removes it seconds later.
+    const closed = campaign(tree, "test-1", opened);
+    const open = campaign(tree, "test-2", opened);
+    for (const { path } of [closed, open]) rmSync(dirname(path), { recursive: true });
+    const moved = movedIn([closed, kept, open], [writing(tree, open.name)], now, 2);
+    expect(moved.map(({ run }) => run.name)).toEqual(["r-kept"]);
+    // Hostile: a log that is there and cannot be read is no vanished one, and still stops the view.
+    writeFileSync(kept.path, "not an event\n");
+    expect(() => movedIn([kept], [], now, 2)).toThrow();
+  });
 });
 
 describe("what a live run does not measure", () => {

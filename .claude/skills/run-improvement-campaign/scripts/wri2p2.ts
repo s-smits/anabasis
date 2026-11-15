@@ -540,11 +540,25 @@ const knownIn = (repo: string, known: readonly Run[], running: () => readonly Ru
   };
 };
 
+/** What `reader` says of the log at `path`, or null where the log has gone since the registry listed
+ *  it: a test suite run in a gate's own worktree registers campaigns there and removes each within
+ *  seconds, and on 15 November 2026 one removed between the listing and the read ended `due` with
+ *  nothing printed. A log that is there and cannot be read still throws. */
+function held<T>(path: string, reader: (path: string) => T): T | null {
+  try {
+    return reader(path);
+  } catch (cause) {
+    if (existsSync(path)) throw cause;
+    return null;
+  }
+}
+
 /** The campaigns of `known` that are live or whose log's last event lies in the last `days`, each
  *  with whether it is live, and only those whose name holds one of `parts` where any is given. A
  *  log's last event is read from its tail (`lastAt`), so a view opens only the logs it shows. Its
  *  file's time says nothing: a fetch writes a run's copy again, and on 10 November 113 of the 119
- *  archived logs written in two days held no event of those days, so 18 steps read as owed. */
+ *  archived logs written in two days held no event of those days, so 18 steps read as owed. A
+ *  campaign whose log has gone since it was listed is left out, written or not (`held`). */
 export const movedIn = (
   known: readonly Run[],
   running: readonly Running[],
@@ -555,8 +569,12 @@ export const movedIn = (
   known
     .filter((run) => isCampaign(run) && run.seed !== true)
     .filter((run) => parts.length === 0 || parts.some((part) => run.name.includes(part)))
-    .map((run) => ({ run, live: stillRunning(run, running) }))
-    .filter(({ run, live }) => live || now - Date.parse(lastAt(run.path)) < days * 24 * HOUR_MS);
+    .flatMap((run) => {
+      const last = held(run.path, lastAt);
+      const live = stillRunning(run, running);
+      const moved = last !== null && (live || now - Date.parse(last) < days * 24 * HOUR_MS);
+      return moved ? [{ run, live }] : [];
+    });
 
 /** The step of a run no investigation reads yet: `run` before its trigger; at the trigger of a live
  *  run, a pause after its next comparison, or `waits` once a pause of it is armed here; and `open` once
@@ -585,17 +603,16 @@ function standings(args: CommandArgs, repo: string, known: readonly Run[], parts
   const running = processes();
   const iteration = knownIn(repo, known, () => running);
   const folders = investigations(iteration.root);
-  const all = movedIn(known, running, now, days, parts).map(({ run, live }): Standing => {
-    const events = logEvents(run.path);
+  const all = movedIn(known, running, now, days, parts).flatMap(({ run, live }): Standing[] => {
+    // A log can also go between the look at its tail and this read of it.
+    const events = held(run.path, logEvents);
+    if (events === null) return [];
     const row = progressOf({ name: run.name, host: run.archived ?? HERE, live }, events, now);
     const folder = folders.find(({ names: seen }) => seen.includes(row.name));
-    return {
-      row,
-      last: Date.parse(events.at(-1)?.at ?? ""),
-      commit: lastLaunch(run.path)?.commit ?? null,
-      dir: folder?.dir ?? null,
-      step: folder === undefined ? openingOf(row, triggerOf(row), running) : nextOf(folder.dir, iteration),
-    };
+    const step =
+      folder === undefined ? openingOf(row, triggerOf(row), running) : nextOf(folder.dir, iteration);
+    const commit = lastLaunch(run.path)?.commit ?? null;
+    return [{ row, last: Date.parse(events.at(-1)?.at ?? ""), commit, dir: folder?.dir ?? null, step }];
   });
   const shown = all.filter(({ row }) => row.live || row.compared > 0);
   return { shown, silent: all.length - shown.length, moved: all.length, days, now };

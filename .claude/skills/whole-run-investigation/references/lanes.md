@@ -302,8 +302,7 @@ Label: `supply`.
 Importance: 0.65.
 Marks: none.
 
-Starts from `SUPPLY THIN (lane 7)`, `GATE REFUSED (lane 7)`, `SCORED AFTER RELEASE (lane 7)` and
-`SAFEGUARD-8 PROMOTION ON AUTHOR ROOM (lane 7)`.
+Starts from `SUPPLY THIN (lane 7)`, `GATE REFUSED (lane 7)` and `SCORED AFTER RELEASE (lane 7)`.
 
 Where are tasks lost between proposal and scored set, and was each refusal right? For each
 `task.gate` refusal (`packageGate`; `try_task` in an older log), say whether it named a real defect
@@ -311,9 +310,7 @@ the Examiner could act on. Count what left after admission, and hold the frontie
 (`SIZE`; `refusals` needs `sweepOf(level)`). Never propose loosening admission from yield alone.
 `SCORED AFTER RELEASE` counts the released tasks a comparison named after their release, retained
 ones included: a task the Builder practised on was then scored, which the wall forbids.
-`SAFEGUARD-8` names a promotion that clears only on room the author's own answer and objective
-create: read both before the promotion is reported. The decision: whether another Examiner
-session is bought first. Routes to `examiner-prompt` (`src/examiner/prompt.ts`) and `host`
+The decision: whether another Examiner session is bought first. Routes to `examiner-prompt` (`src/examiner/prompt.ts`) and `host`
 (`src/kernel/task.ts`).
 
 **8. Whether validity separates.**
@@ -326,16 +323,16 @@ Starts from `TIES BETWEEN VALID ANSWERS (lane 8)` and
 `SAFEGUARD-9 PROMOTION BEYOND VALIDITY (lane 8)`.
 
 Which measure carried each reading: validity, the objective or the bill (`pointsOf`,
-`src/kernel/compare.ts`)? Give each comparison's tally and p as scored, without the bill (`stepOf`,
-`unbilled`) and on validity alone. `TIES BETWEEN VALID ANSWERS` means only the objective (floor
-`ROOM`) and the bill separate most tasks; `SAFEGUARD-9` names a promotion that fails on validity
-alone, so count the tasks each measure won (`replay.txt`; `scores.txt` gives each comparison's
-tally on validity alone and on the objective alone, beside the A/A halves). The check program
-stands at `<campaign folder>/exams/<exam hash>/checks/`. Say whether a step rests on answers the
-reference could not give or on better answers to shared tasks. A drafted exam's objective is its
-author's computation, so check its arithmetic first. The decision: how
-a promotion is worded, and whether the objective measures quality. Routes to `operator`, and `host`
-(`src/kernel/compare.ts`) where the tallies disagree with the report.
+`src/kernel/compare.ts`)? Give each comparison's tally and p as scored, without the bill
+(`readsStep`, `unbilled`) and on validity alone. `TIES BETWEEN VALID ANSWERS` means only the
+objective (floor `ROOM`) and the bill separate most tasks; `SAFEGUARD-9` names a promotion that
+fails on validity alone, so count the tasks each measure won (`replay.txt`; `scores.txt` gives each
+comparison's tally on validity alone and on the objective alone, beside the A/A halves). The check
+program stands at `<campaign folder>/exams/<exam hash>/checks/`. Say whether a step rests on answers
+the reference could not give or on better answers to shared tasks. A drafted exam's objective is its
+author's computation, so check its arithmetic first. The decision: how a promotion is worded, and
+whether the objective measures quality. Routes to `operator`, and `host` (`src/kernel/compare.ts`)
+where the tallies disagree with the report.
 
 **9. Ties and the budget.**
 
@@ -417,8 +414,9 @@ the last practised state; name the later edits. Only the diff inventories the ch
 writes leave no `edit` call, and limits come from the condition (`agent/config.yaml` is ignored).
 Check every program for the Builder's one limit: no task id, text or answer, which would score
 higher on exactly those tasks and nowhere else (`names.txt` lists where a kept harness's own files
-name a task id, prefix, family or rare identifier, each hit with its length and how many tasks hold
-it; a hit is a place to read, since short names recur by chance). A search and a filter against the
+name a task id, prefix, family or rare identifier, or copy a span of six or more words of a task's
+public input, each hit with its length and how many tasks hold it; a hit is a place to read, since
+short names and stock phrases recur by chance). A search and a filter against the
 public rules are
 allowed, and the solver decides what it submits. The decision:
 what a step is attributed to, and whether the harness helped the solver or answered for it. Routes to
@@ -529,8 +527,9 @@ Starts from `STEP CARRIERS (lane 17)`.
 
 Does a step generalise across the scored tasks, or rest on a few that share something else?
 `STEP CARRIERS` gives each step's untied tasks and how many top wins it could lose and still clear.
-From `readings.txt`, `tasks.txt` and `scores.txt` (each step's p without each win, its wins to
-spare, and its tallies by writing session and family; `nearness.txt` for tasks that read alike):
+From `readings.txt`, `tasks.txt`, `scores.txt` (each step's p without each win and its wins to
+spare) and `pairs.txt` (its tallies by writing session and family; `nearness.txt` for tasks that
+read alike):
 
 1. find the smallest set of wins whose removal takes the step below its level;
 2. say what they share: a unit or scale, a family, the session that wrote them, a convention, a reach
@@ -551,17 +550,17 @@ Marks: `standing`.
 Starts from `NOTHING SCORED (lane 18)`, `CUT BY ITS CAP (lane 18)` and
 `SET SHORT (lane 18)`, and is standing.
 
-What could each test detect at its sample size (`flipP`, `stepOf`, `src/kernel/compare.ts`; at 0.02
-it clears at 6-0, 8-1, 10-2 or 12-3)? For each comparison read the untied tasks, wins and losses, p,
-`detectable` and `falseRate`, frontier and retained apart, then one line: a `not-scored` or a
-comparison `CUT BY ITS CAP` tested nothing, an underpowered `no-step` is no evidence of no gain (say
-how many more wins would have cleared), and a `step` rests on its untied tasks alone.
-`readings.txt` prints each comparison's p, the p read for the reference, the wins to spare or
-losses short of a step, the wins its losses would need on equal margins, and its cap against the
-test's price at the rate billed before it started. Say whether the
-tasks that left (`SET SHORT`) could move the reading. Every attempt adds false-step risk at the
-level, and terms are never topped up (rule 4). The decision: whether the operator enlarges future comparisons. Routes to
-`operator`, and `host` only for an arithmetic fault.
+What could each test detect at its sample size (`flipP`, `readsStep`, `src/kernel/compare.ts`; at
+0.02 it clears at 6-0, 8-1, 10-2 or 12-3)? For each comparison read the untied tasks, wins and
+losses, p, `detectable` and `falseRate`, frontier and retained apart, then one line: a `not-scored`
+or a comparison `CUT BY ITS CAP` tested nothing, an underpowered `no-step` is no evidence of no gain
+(say how many more wins would have cleared), and a `step` rests on its untied tasks alone.
+`readings.txt` prints each comparison's p, the p read for the reference, the wins to spare or losses
+short of a step, the wins its losses would need on equal margins, and its cap against the test's
+price at the rate billed before it started. Say whether the tasks that left (`SET SHORT`) could move
+the reading. Every attempt adds false-step risk at the level, and terms are never topped up (rule
+4). The decision: whether the operator enlarges future comparisons. Routes to `operator`, and `host`
+only for an arithmetic fault.
 
 **19. The starter.**
 
@@ -641,7 +640,10 @@ What stops the campaign climbing now, as one link with its count? Walk the lates
 
 `tools/wri/table-timeline.ts <log>` replays the table at each change beside the moves made: how
 long each named move stood, how much of that passed inside Builder waits, and what admission
-refused. A row without `=` ran under other code, so its replay is a counterfactual. `readings.txt`
+refused. Its `admissible` row marks where a first comparison could first start, and each `compare`
+move names the tasks held out and released as it began, so the Builder's calls between the two
+rows are what it chose instead of comparing. A row without `=` ran under other code, so its replay
+is a counterfactual. `readings.txt`
 prints each comparison's cap, its reserve and the test's price, and whether it was cut. Name the
 link, its count against what it needed, and its owner, and for that link each change new since the
 parent run that sits on it (the prior state lists them), with how often its trigger occurred and its

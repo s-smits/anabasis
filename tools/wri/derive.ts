@@ -459,8 +459,7 @@ export const READERS: readonly Reader[] = [
   },
   {
     name: "scores",
-    answers:
-      "each comparison recounted by task: tallies by measure, A/A halves, a step's removals and writers",
+    answers: "each comparison recounted by task: tallies by measure, A/A halves, a step's removals",
     read: ({ events }) => scoreRows(events),
   },
   {
@@ -519,7 +518,7 @@ export const READERS: readonly Reader[] = [
   at(
     {
       name: "names",
-      answers: "where a kept harness's own files name a task id, prefix, family or rare identifier",
+      answers: "where a kept harness's own files name a task or copy six words of its public input",
       read: ({ log, events }) => nameRows(events, join(dirname(log), "states")),
     },
     [PROMOTED],

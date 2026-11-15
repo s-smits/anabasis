@@ -9,12 +9,9 @@
  * scoredSet selects tasks under the frozen contract. tasksByEpoch groups frontier tasks, while
  * comparisonFloor, refusals, supplyOf and sizeLines explain admission and sample size. The default
  * target and level come from planOn, as in the run view; flags override them for this inspection.
- *
- * Output contains counts and refusal codes, without task identities. Stored-pack tasks have no
- * admission epoch in tasksByEpoch, so they do not enter the epoch-based draw. This reports the
- * production behaviour rather than constructing another draw.
- *
- * Written on 30 October, when AGENTS.md section 7 moved into comparison-reading.
+ * Two lines say how far the set is independent evidence: its families (the test reads siblings as
+ * independent) and how many of its tasks the last comparison scored. It names no task or family.
+ * Stored-pack tasks have no admission epoch, so they stay out of the epoch-based draw.
  */
 import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { comparisonFloor, refusals, supplyOf } from "#src/campaign/admission.ts";
@@ -22,14 +19,16 @@ import { askedOf } from "#src/campaign/ground.ts";
 import { tasksByEpoch } from "#src/campaign/climb.ts";
 import { scoredSet } from "#src/campaign/round.ts";
 import { frozenChecker } from "#src/kernel/acceptance.ts";
+import { familySizes } from "#skills/main/families.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { keyIfNotNull } from "#src/meta/optional-key.ts";
-import { poolOf } from "#src/kernel/reports.ts";
+import { lastReports, poolOf } from "#src/kernel/reports.ts";
 import { sizeLines } from "#src/kernel/size.ts";
 import { plural } from "#src/meta/text.ts";
 import { logEvents } from "#tools/runs/registry.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
 import { planOn } from "#tools/runs/view.ts";
+import { testedOf } from "#tools/wri/promotion.ts";
 
 const USAGE = `usage: draw.ts <log.jsonl | campaign name> [--target <n>] [--level <n>]
 
@@ -48,7 +47,14 @@ export function drawOf(events: readonly LogEvent[], target: number, contract: st
     }))
     .toReversed()
     .filter(({ drawn }) => drawn > 0);
+  const before = lastReports(events).at(-1);
+  const tested = new Set(before === undefined ? [] : testedOf(before.data).of);
   return {
+    families: familySizes(events, tasks),
+    before:
+      before === undefined
+        ? null
+        : { session: before.session, again: tasks.filter((task) => tested.has(task)).length },
     pool: {
       scorable: pool.scorable.length,
       frontier: pool.frontier.length,
@@ -62,6 +68,16 @@ export function drawOf(events: readonly LogEvent[], target: number, contract: st
     byEpoch,
     epochs: epochs.length,
   };
+}
+
+function grainLine({ sizes, unnamed }: ReturnType<typeof drawOf>["families"]): string {
+  const tasks = plural(unnamed + sizes.reduce((sum, size) => sum + size, 0), "task");
+  const [largest] = sizes;
+  return `the set's grain, naming no family: ${
+    largest === undefined
+      ? `${tasks}, none of which names a family`
+      : `${tasks} in ${String(sizes.length)} ${sizes.length === 1 ? "family" : "families"}, the largest ${String(largest)}${unnamed === 0 ? "" : `, and ${String(unnamed)} that name none`}`
+  }`;
 }
 
 /** The lines this script prints for `events`. */
@@ -78,6 +94,12 @@ export function drawLines(
   return [
     `held-out pool: ${String(pool.scorable)} scorable (${String(pool.frontier)} frontier, ${String(pool.retained)} retained, of which ${String(pool.exhausted)} exhausted), ${String(pool.awaiting)} awaiting task review and left out; ${String(pool.practiceFrontier)} on the reference's own frontier for practice`,
     `next comparison at target ${String(target)}: ${plural(drawn.scored, "frontier task")} and ${plural(drawn.retained, "retained task")} (one for every three frontier)`,
+    grainLine(drawn.families),
+    ...(drawn.before === null
+      ? []
+      : [
+          `of those tasks, ${String(drawn.before.again)} of ${String(drawn.scored + drawn.retained)} scored in the comparison before (${drawn.before.session})`,
+        ]),
     `frontier by epoch, newest first: ${drawn.byEpoch.map(({ nth, drawn: count }) => `epoch ${String(nth)} of ${String(drawn.epochs)}: ${String(count)}`).join(", ") || "none from task admission"}`,
     `admission at level ${String(level)}: a floor of ${String(comparisonFloor(level))} frontier tasks; ${refused.length === 0 ? "no refusal" : `refused ${refused.map(({ code }) => code).join(", ")}`}`,
     ...sizeLines(drawn.scored, level),

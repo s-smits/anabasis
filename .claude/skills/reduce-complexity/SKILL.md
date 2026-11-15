@@ -28,15 +28,16 @@ working files. `#<n>` is a pull request, resolved through `gh`.
 | group | measures | note |
 | --- | --- | --- |
 | size | source files, nonblank source and test lines | tests rising with source flat suggests a mechanism got proved |
-| branching | decision points, per 100 lines | textual `DECISION` tokens (`if`, `for`, `while`, `case`, `catch`, `&&`, `\|\|`, `??`, `?.`, ternary; in shell the keywords that open a line, `&&` and `\|\|`); no threshold (`tools/oxlint/HABITS.md`, 12.10) |
+| branching | decision points, per 100 lines | textual `DECISION` tokens (`if`, `for`, `while`, `case`, `catch`, `&&`, `\|\|`, `??`, `?.`, ternary; in shell the keywords that open a line, `&&` and `\|\|`; in Python the keywords that open a line, `and` and `or`); no threshold (`tools/oxlint/HABITS.md`, 12.10) |
 | coupling | import edges, mean fan-out, hub files, max fan-in | textual; a hub is at the 90th fan-out percentile or above |
 | interface | exports, optional fields, signatures with 5+ parameters | each `?:` is a case every reader must handle |
 | rules | refusal codes, environment knobs | regex proxies, not live counts |
 | exemptions | `tools/oxlint/not-slop.tsv` rows, `copiedFileLimits` in `tools/loc/source-policy.json` | `bun run not-slop -- prune` |
 | model-read text | prompt literal bytes, overall and per composer | a proxy over `PROMPT_FILES`; register a new composer there |
 
-Source (`SOURCE_ROOTS`) is code under `src`, `tools`, `packages` and `.claude/skills`, shell (`.sh`)
-included so that a move between shell and TypeScript reads as a move, less tests, generated files
+Source (`SOURCE_ROOTS`) is code under `src`, `tools`, `packages` and `.claude/skills`, shell
+included (`.sh`, and in `stack-complexity.py` a file without a suffix whose first line names a
+shell) so that a move between shell and TypeScript reads as a move, less tests, generated files
 and `vendor`.
 
 The first revision is read at the merge base, so work landed on `main` later is not charged to the

@@ -29,6 +29,18 @@ const TYPED = `export function pick(hosts: readonly string[]): string[] {
   return named;
 }
 `;
+// The same function in Python: its prose says "and" and "or", which are no decisions there.
+const PYTHON = `def count(hosts):
+    """Names that are set, or none where there are no hosts and nothing to do."""
+    if not hosts:
+        return []
+    named = []
+    for host in hosts:
+        # a host and its name, or neither
+        if host:
+            named.append(host)
+    return named
+`;
 
 const scripts = join(import.meta.dir, "..", ".claude/skills/reduce-complexity/scripts");
 const repo = realpathSync(mkdtempSync(join(tmpdir(), "ana-complexity-")));
@@ -48,17 +60,31 @@ describe("the complexity instrument", () => {
   git("rm", "-q", "tools/pick.sh");
   git("add", ".");
   git("commit", "-q", "-m", "in TypeScript");
+  git("tag", "typed");
+  // A second move: the function in Python, and the shell again in a file named without a suffix.
+  writeFileSync(join(repo, "tools/count.py"), PYTHON);
+  writeFileSync(join(repo, "tools/shim"), SHELL);
+  // Hostile: a file without a suffix whose first line names no shell is no source.
+  writeFileSync(join(repo, "tools/NOTES"), SHELL.replace("#!/bin/sh", "pick, in words"));
+  git("add", ".");
+  git("commit", "-q", "-m", "in Python and a shim");
+  writeFileSync(join(repo, "tools/count.ts"), TYPED.replace("pick", "count"));
+  writeFileSync(join(repo, "tools/shim.ts"), TYPED.replace("pick", "shim"));
+  git("rm", "-q", "tools/count.py", "tools/shim");
+  git("add", ".");
+  git("commit", "-q", "-m", "both in TypeScript");
 
-  it("reads a function moved from shell to TypeScript as no net lines, files or decisions", () => {
+  /** The table's first two columns for `label`, between two revisions. */
+  const rowsOf = (from: string, to: string): ((label: string) => string[] | undefined) => {
     const table = runTextSyncOrThrow([
       "python3",
       join(scripts, "stack-complexity.py"),
       "--repo",
       repo,
-      "HEAD~1",
-      "HEAD",
+      from,
+      to,
     ]);
-    const row = (label: string) =>
+    return (label) =>
       table
         .split("\n")
         .find((line) => line.startsWith(label))
@@ -66,14 +92,25 @@ describe("the complexity instrument", () => {
         .trim()
         .split(/\s+/)
         .slice(0, 2);
+  };
+
+  it("reads a function moved from shell to TypeScript as no net lines, files or decisions", () => {
+    const row = rowsOf("typed~1", "typed");
     expect(row("source files")).toEqual(["1", "1"]);
     expect(row("nonblank source lines")).toEqual(["10", "10"]);
     expect(row("decision points (proxy)")).toEqual(["3", "3"]);
   });
 
+  it("reads Python's decisions and a shim named by its first line, so both moves read as moves", () => {
+    const row = rowsOf("HEAD~1", "HEAD");
+    expect(row("source files")).toEqual(["3", "3"]);
+    expect(row("nonblank source lines")).toEqual(["30", "30"]);
+    expect(row("decision points (proxy)")).toEqual(["9", "9"]);
+  });
+
   it("budgets the same move as lines out and in, and names the function as moved", () => {
     const diff = join(repo, "scope.diff");
-    writeFileSync(diff, git("diff", "HEAD~1", "HEAD"));
+    writeFileSync(diff, git("diff", "typed~1", "typed"));
     const said = runTextSyncOrThrow(["python3", join(scripts, "measure.py"), "--diff", diff, "-C", repo]);
     expect(said).toContain("prod nonblank: +10 -10, net +0");
     expect(said).toContain("new production functions: 0; moved or re-declared: pick");

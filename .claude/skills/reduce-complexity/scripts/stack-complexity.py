@@ -34,8 +34,9 @@ narrower `AUTHORED_ROOTS`.
                               at the expense of nothing and a mechanism nobody proved does not
 
   How much branching
-    decisions                 if/for/while/case/catch/&&/||/??/?./ternary, and in shell the keywords
-                              that open a line with && and ||. A McCabe proxy, not McCabe:
+    decisions                 if/for/while/case/catch/&&/||/??/?./ternary; in shell the keywords
+                              that open a line with && and ||; in Python the keywords that open a
+                              line with `and` and `or`. A McCabe proxy, not McCabe:
                               comparable between two revisions of one tree and nothing else.
     per 100 lines             the same count against the source it sits in. v1 read exact branching
                               debt off `complexity-baseline.json`; v2 holds no baseline and no
@@ -142,6 +143,13 @@ DECISION = re.compile(
 )
 # Shell's own: a keyword that opens a line, and the two operators. A `case` counts once, not an arm.
 SHELL_DECISION = re.compile(r"^\s*(?:if|elif|for|while|until|case)\b|&&|\|\|", re.M)
+# A file named without a suffix is shell where its first line says so (the check router's shim).
+SHEBANG = re.compile(r"#!.*\b(?:sh|bash|zsh)\b")
+# Python's own: the keywords that open a line and the two word operators, read outside comments and
+# docstrings, where prose says "and" and "or". Until 15 November a Python file matched almost no
+# token, so a function moved from Python to TypeScript read as decisions written.
+PY_DECISION = re.compile(r"^\s*(?:if|elif|for|while|except)\b|\band\b|\bor\b", re.M)
+PY_PROSE = re.compile(r'""".*?"""|#[^\n]*', re.S)
 EXPORT = re.compile(r"^\s*export\s+(?:const|function|class|interface|type|enum|async)\b", re.M)
 # A declared property or parameter that may be absent. `a ?: b` in an expression needs a space
 # before `?`, which this does not match; `foo?.(` is a call, excluded by requiring `:` next.
@@ -250,8 +258,15 @@ def blob(repo: str, rev: str, path: str) -> str:
     return done.stdout if done.returncode == 0 else ""
 
 
-def is_source(path: str) -> bool:
-    return path.startswith(SOURCE_ROOTS) and path.endswith(SOURCE_SUFFIX) and EXCLUDE.search(path) is None
+def is_source(path: str, suffixes: tuple[str, ...] = SOURCE_SUFFIX) -> bool:
+    return path.startswith(SOURCE_ROOTS) and path.endswith(suffixes) and EXCLUDE.search(path) is None
+
+
+def decisions(path: str, text: str) -> int:
+    if path.endswith(".py"):
+        return len(PY_DECISION.findall(PY_PROSE.sub("", text)))
+    shell = path.endswith(".sh") or SHEBANG.match(text) is not None
+    return len((SHELL_DECISION if shell else DECISION).findall(text))
 
 
 def is_test(path: str) -> bool:
@@ -331,13 +346,16 @@ def measure(repo: str, rev: str, per_file: bool) -> tuple[Measure, dict[str, int
         if is_test(path) and path.endswith(SOURCE_SUFFIX):
             total.test_nonblank += sum(1 for line in blob(repo, rev, path).split("\n") if line.strip())
             continue
-        if not is_source(path):
+        bare = "." not in path.rsplit("/", 1)[-1] and is_source(path, ("",))
+        if not (bare or is_source(path)):
             continue
         text = blob(repo, rev, path)
+        if bare and SHEBANG.match(text) is None:
+            continue
         nonblank = sum(1 for line in text.split("\n") if line.strip())
         total.files += 1
         total.nonblank += nonblank
-        total.decisions += len((SHELL_DECISION if path.endswith(".sh") else DECISION).findall(text))
+        total.decisions += decisions(path, text)
         total.exports += len(EXPORT.findall(text))
         total.optional_fields += len(OPTIONAL.findall(text))
         total.wide_signatures += wide_signatures(text)

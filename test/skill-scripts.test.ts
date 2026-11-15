@@ -8,6 +8,7 @@ import { declarationLines, sanitised, sectionLines } from "#skills/oracle-handov
 import { groupsOf, parseSelector, pick, slice } from "#skills/oracle-handover/scripts/slice.ts";
 import { itself, pairLines } from "#skills/compare-systems/scripts/systems.ts";
 import { censusOf, newsOf } from "#skills/system-path-simulation/scripts/live-seat.ts";
+import { differing } from "#skills/system-path-simulation/scripts/wall-probe.ts";
 import {
   keptRepublish,
   pairs,
@@ -1053,5 +1054,24 @@ describe("compare-systems reads a candidate against the baseline as a comparison
     );
     const lines = itself(system("a"), later, at).join("\n");
     expect(lines).toContain("a (other half) won 2, lost 2, tied 0");
+  });
+});
+
+describe("a wall probe's two tables", () => {
+  it("names a command whose exit code or words moved, and none that answered alike", () => {
+    const row = (label: string, exit: string, said: string) => ({ label, exit, said });
+    const before = [
+      row("same", "0", "ok"),
+      row("exit", "0", "rc=0"),
+      row("words", "0", "events 1"),
+      row("gone", "0", "ok"),
+    ];
+    const after = [
+      row("words", "0", "error EMFILE events 0"),
+      row("exit", "126", "rc=0"),
+      row("same", "0", "ok"),
+    ];
+    expect(differing(before, after).map(({ label }) => label)).toStrictEqual(["exit", "words"]);
+    expect(differing(before, before)).toStrictEqual([]);
   });
 });

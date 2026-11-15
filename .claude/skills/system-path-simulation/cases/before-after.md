@@ -31,6 +31,7 @@ Readers take the same logs by name. A seed is cut in each fork from the same sou
 | A reader | `runs view`, `wri.ts read --log`, `runs pulse`, `runs replay`, `close.ts --to <dir>` | the moved lines, counted, over how many logs |
 | A decision | `bun tools/d2/harness-builder.ts --name <seed> --dry-run` | the row, the move and the facts it read |
 | A path | `bun run runs rehearse` with one script | readings, endings, event counts by kind |
+| The command wall | `scripts/wall-probe.ts <before> <after>`, one battery of shell commands under each tree's wall, no model | the commands whose exit code or words moved: what the change refuses a seat and what it newly allows |
 | A model seat | `scripts/live-seat.ts start` on each seed, on the operator's word for both | one draw an arm; a difference is a lead unless the change forces it. Repeated rounds are [optimize](optimize.md) |
 
 Run each reader twice per arm before diffing, since time, load and process state differ from run to

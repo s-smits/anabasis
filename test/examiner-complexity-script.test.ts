@@ -110,10 +110,11 @@ describe("ambition", () => {
     expect(none).not.toContain("proposed in");
   });
 
-  it("says the turn a session's first proposal came at, counted in its own turns", () => {
+  it("says the turn each of a session's proposals came at, counted in its own turns", () => {
     // The hostile case: an event's `turn` numbers the conversation, so a second session's first
     // turn is no 1 there; another seat's turns fall between, and a session with no turn before its
-    // proposal, or with no proposal, names no turn.
+    // proposal, or with no proposal, names no turn. The second proposal's turn is what the first
+    // alone left out: how a session stood at any turn an open one has reached.
     const turn = (minutes: number, session: string, nth: number) =>
       event(minutes, "exam.turn", { session, turn: nth });
     const proposed = (minutes: number, session: string) => {
@@ -139,8 +140,8 @@ describe("ambition", () => {
       turn(14, "x-4", 6),
     ];
     const [first, second, early, none] = sessionLines(pace);
-    expect(first).toContain("2 proposed in 1 families, largest 2, the first at turn 2 ·");
-    expect(second).toContain("1 proposed in 1 families, largest 1, the first at turn 1 ·");
+    expect(first).toContain("2 proposed in 1 families, largest 2, at turns 2, 3 ·");
+    expect(second).toContain("1 proposed in 1 families, largest 1, at turns 1 ·");
     expect(early).toContain("1 proposed in 1 families, largest 1 ·");
     expect(none).not.toContain("proposed in");
   });

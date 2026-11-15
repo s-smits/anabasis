@@ -58,11 +58,13 @@ function askedOf(start: LogEvent, step: Extract<Handover, { step: "examiner" }>)
  *  field read "one family" of sessions that wrote two on 12 and again on 13 November, the second
  *  time into a ledger and to the operator. A comparison's tasks are independent draws only as far
  *  as their families differ, so the grain is read here beside the supply it belongs to. The turn
- *  the session stood at when its first proposal came is the other half of its pace: on 14 November
- *  an open session at 81 turns with 2 proposed was read against two that ended with 9 and 10, and
- *  only a one-off count showed its first at turn 62 where theirs came at 39 and 46. The turns are
- *  counted as the campaign's fold counts a session's, since an event's own `turn` numbers the
- *  Examiner's conversation and runs on from the session before. */
+ *  the session stood at when each proposal came is the other half of its pace, since an open
+ *  session is read against how an ended one stood at the same turn and never against its end: on
+ *  14 November one at 81 turns with 2 proposed was read against two that ended with 9 and 10, and
+ *  on 15 November one at 156 turns with 4 against seven first sessions' ends, where the first
+ *  proposal's turn alone gave no standing at 156. The turns are counted as the campaign's fold
+ *  counts a session's, since an event's own `turn` numbers the Examiner's conversation and runs on
+ *  from the session before; a session with no turn before its last proposal names none. */
 function familiesOf(events: readonly LogEvent[], session: string): string {
   const sizes = new Map<string, number>();
   for (const { family } of proposalsOf(events).filter((each) => each.session === session)) {
@@ -71,11 +73,14 @@ function familiesOf(events: readonly LogEvent[], session: string): string {
   }
   const proposed = [...sizes.values()].reduce((sum, size) => sum + size, 0);
   if (proposed === 0) return "";
-  const first = events.findIndex(({ kind, data }) => kind === "task.proposed" && data.session === session);
-  const before = events
-    .slice(0, first)
-    .filter(({ kind, data }) => kind === "exam.turn" && data.session === session);
-  const turn = before.length === 0 ? "" : `, the first at turn ${String(before.length)}`;
+  const at: number[] = [];
+  let turns = 0;
+  for (const { kind, data } of events) {
+    if (data.session !== session) continue;
+    if (kind === "exam.turn") turns += 1;
+    if (kind === "task.proposed") at.push(turns);
+  }
+  const turn = at.at(-1) === 0 ? "" : `, at turns ${at.join(", ")}`;
   return ` · ${String(proposed)} proposed in ${String(sizes.size)} families, largest ${String(Math.max(...sizes.values()))}${turn}`;
 }
 

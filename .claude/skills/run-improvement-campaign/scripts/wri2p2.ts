@@ -30,7 +30,9 @@
  * - `open` starts the investigation of one run, or of several as equals, under `.ana/wri/` of the
  *   main checkout, reading a frozen copy of any one still live (`wri.ts start --snapshot`), and marks
  *   the folder an iteration (`iteration.json`). Opening a live run is a deviation from the `pause`
- *   step, kept for a run the operator leaves running.
+ *   step, kept for a run the operator leaves running. A live run kept past its trigger has no folder
+ *   yet, so its row `| pause:<run> | <reason> |` stands in any investigation's `deviations.md`
+ *   (`keptIn`): its step is then `kept`, which owes nothing, until the row goes or the run stops.
  * - `next` reads an investigation's folder and prints the one step left, the first owed of a list of
  *   gates in the iteration's order (`gatesOf`). Every folder passes the shared instructions, the
  *   lanes, the lane reports, the synthesis, the vetting, the plan, the pull request
@@ -128,8 +130,9 @@ const OPTIONS = { days: "int", out: "abs" } as const;
 const WRI = "tools/wri/wri.ts";
 /** The first line of a step as `nextOf` prints it: its gate, then what the gate owes. */
 const STEP = /^step: (?<name>[a-z]+)(?: · (?<rest>.*))?$/u;
-/** The steps that owe nobody anything: a run that runs on, waits for its pause or is measured. */
-const QUIET = new Set(["", "run", "waits", "done"]);
+/** The steps that owe nobody anything: a run that runs on, is kept past its trigger, waits for its
+ *  pause or is measured. */
+const QUIET = new Set(["", "run", "kept", "waits", "done"]);
 const OPPOSED =
   '"## Intentionally opposed" with at least one line ("none" counts): what stays missing on purpose, each as a trade-off, what leaving it out buys, what it costs and why (a trade-off of AGENTS.md section 1, a principle or the operator\'s word)';
 
@@ -553,13 +556,22 @@ export const movedIn = (
       return moved ? [{ run, live }] : [];
     });
 
+/** The reason the first row `pause:<run>` among these `deviations.md` texts gives for keeping the
+ *  live run `name` past its trigger, or null: a row with no reason records no judgment. */
+export const keptIn = (deviations: readonly string[], name: string): string | null =>
+  deviations
+    .flatMap((text) => rowsOf(text, "step"))
+    .find(([step, reason = ""]) => step === `pause:${name}` && reason !== "")?.[1] ?? null;
+
 /** The step of a run no investigation reads yet: `run` before its trigger; at the trigger of a live
- *  run, a pause after its next comparison, or `waits` once a pause of it is armed here; and `open` once
- *  it has stopped, so the investigation reads the comparison the pause waited for. */
+ *  run, a pause after its next comparison, `waits` once a pause of it is armed here, or `kept` where
+ *  a deviation keeps it (`keptIn`); and `open` once it has stopped, so the investigation reads the
+ *  comparison the pause waited for. */
 export function openingOf(
   row: { readonly name: string; readonly host: string; readonly live: boolean },
   trigger: string | null,
   running: readonly Running[],
+  kept: string | null = null,
 ): string[] {
   if (trigger === null) return ["step: run"];
   const command = `  ${openingCommand(row.name, row.live, row.host === HERE ? "" : `on ${row.host} `)}`;
@@ -567,6 +579,7 @@ export function openingOf(
   if (waiters(row.name, running).length > 0) {
     return [`step: waits · ${trigger}; its pause after the next comparison is armed`];
   }
+  if (kept !== null) return [`step: kept · ${trigger}`, `deviated: pause:${row.name} · ${kept}`];
   return [
     `step: pause · ${trigger}; the investigation opens once the run stops after its next comparison`,
     command,
@@ -580,6 +593,7 @@ function standings(args: CommandArgs, repo: string, known: readonly Run[], parts
   const running = processes();
   const iteration = knownIn(repo, known, () => running);
   const folders = investigations(iteration.root);
+  const deviations = folders.map(({ dir }) => read(join(dir, DEVIATIONS)));
   const all = movedIn(known, running, now, days, parts).flatMap(({ run, live }): Standing[] => {
     // A log can also go between the look at its tail and this read of it.
     const events = held(run.path, logEvents);
@@ -587,7 +601,9 @@ function standings(args: CommandArgs, repo: string, known: readonly Run[], parts
     const row = progressOf({ name: run.name, host: run.archived ?? HERE, live }, events, now);
     const folder = folders.find(({ names: seen }) => seen.includes(row.name));
     const step =
-      folder === undefined ? openingOf(row, triggerOf(row), running) : nextOf(folder.dir, iteration);
+      folder === undefined
+        ? openingOf(row, triggerOf(row), running, keptIn(deviations, row.name))
+        : nextOf(folder.dir, iteration);
     const commit = lastLaunch(run.path)?.commit ?? null;
     return [{ row, last: Date.parse(events.at(-1)?.at ?? ""), commit, dir: folder?.dir ?? null, step }];
   });

@@ -4,6 +4,7 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import {
   dueLines,
+  keptIn,
   ledgerViews,
   lengthsIn,
   movedIn,
@@ -113,6 +114,26 @@ describe("a run's step at its trigger", () => {
     );
     expect(openingOf({ ...row, live: false }, "2 promotions", armed)[0]).toBe("step: open · 2 promotions");
     expect(openingOf(row, null, [])).toEqual(["step: run"]);
+  });
+
+  it("keeps a live run past its trigger on a `pause:<run>` row with a reason, and owes nothing for it", () => {
+    const rows = (...lines: string[]) => ["| step | reason |", "| --- | --- |", ...lines].join("\n");
+    const clock = "12.0 h since its opening";
+    const reason = keptIn(["", rows("| isolated | none |", "| pause:r1 | the long run |")], "r1");
+    expect(reason).toBe("the long run");
+    const step = openingOf(row, clock, [], reason);
+    expect(step).toEqual([`step: kept · ${clock}`, "deviated: pause:r1 · the long run"]);
+    const standing = { row: rowOf(row, [opening()], OPENED), last: OPENED, dir: null, step };
+    expect(dueLines([standing], () => OPENED, OPENED)[0]).toContain("nothing owed · 1 run(s) live");
+    // Another run's row, a row with no reason and prose that names the run keep nothing.
+    expect(
+      keptIn([rows("| pause:r2 | the long run |", "| pause:r1 | |", "| the run r1 | kept |")], "r1"),
+    ).toBeNull();
+    expect(openingOf(row, clock, [], null)[0]).toStartWith("step: pause");
+    // An armed pause and a stopped run are said as they are, whatever the row says.
+    const armed = pausing(["bun", "tools/runs/cli.ts", "pause", "r1", "--after", "reported", "--yes"]);
+    expect(openingOf(row, clock, armed, reason)[0]).toStartWith("step: waits");
+    expect(openingOf({ ...row, live: false }, clock, [], reason)[0]).toStartWith("step: open");
   });
 
   it("pauses a peer's run on its own host", () => {

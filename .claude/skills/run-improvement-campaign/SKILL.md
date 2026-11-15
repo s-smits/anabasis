@@ -284,7 +284,9 @@ short, when a fresh fork is worth its slot and what each kind of release asks of
 two runs live it also splits the slots: the older run is the long one, taken to three or four
 promotions on the session's judgement, and the other is turned over to the newest head at each proved
 upgrade. Read it before a pause, a stop, a continue or a fork that the trigger alone does not settle;
-a run kept past its trigger on one of its rows takes a line in `deviations.md`.
+a run kept past its trigger on one of its rows takes the row `| pause:<run> | <reason> |` in an
+investigation's `deviations.md`, and `wri2p2.ts` then prints `kept` for it, which `due` does not
+list, until the row is removed or the run stops.
 
 ## Resume
 

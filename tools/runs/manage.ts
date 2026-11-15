@@ -165,17 +165,30 @@ const countOf = (events: readonly LogEvent[], kinds: readonly string[]) =>
  *  any other comparison, and on 13 November opened a writing session 5 seconds after one, past which
  *  a pause would have rested the run before that read. A word naming `promoted` rests at it. */
 export function restsAfter(events: readonly LogEvent[], after: string, base: number): boolean {
-  if (countOf(events, kindsOf(after)) <= base) return false;
+  return heldBy(events, after, base).length === 0;
+}
+
+/** What still holds a pause after `after` from stopping the run whose log is `events`, past `base`
+ *  events of its kinds, each hold in words; none where it may stop (`restsAfter`). The dry form
+ *  prints it with the count as it stands, so the wait is read before the pause is armed: on
+ *  15 November what `reported` would wait for at a trigger, with a promotion unread, was read from
+ *  this source instead. */
+export function heldBy(events: readonly LogEvent[], after: string, base: number): string[] {
+  const kinds = kindsOf(after);
+  const more = countOf(events, kinds) > base ? [] : [`one more ${kinds.join(" or ")}, past ${String(base)}`];
   const open = unfinished(events);
-  if (after === "next") return !open.some(({ of }) => of === "solve");
+  const solving = open.some(({ of }) => of === "solve");
+  if (after === "next") return [...more, ...(solving ? ["its open solves"] : [])];
   const last = epochsOf(events).at(-1);
-  if (after === "reported" && last?.reference !== "starter" && last?.starter_tally === null) return false;
+  const unread = after === "reported" && last?.reference !== "starter" && last?.starter_tally === null;
   const led = events.slice(events.findLastIndex(({ kind }) => kind === "build.started"));
-  return (
-    !open.some(({ of }) => of === "exam" || of === "draft") &&
-    openComparisons(events).length === 0 &&
-    unfinished(led).every(({ of }) => of === "build")
-  );
+  return [
+    ...more,
+    ...(unread ? ["a starter comparison that tallies a task under the newest promotion"] : []),
+    ...(open.some(({ of }) => of === "exam" || of === "draft") ? ["the open Examiner session or draft"] : []),
+    ...(openComparisons(events).length === 0 ? [] : ["the open comparison"]),
+    ...(unfinished(led).every(({ of }) => of === "build") ? [] : ["the open solve or Referee reading"]),
+  ];
 }
 
 /** How long a pause at the next step lets the open solves of the run whose log is `events` finish:
@@ -471,6 +484,14 @@ export async function pause(args: readonly string[]): Promise<void> {
   const after = values.after ?? "next";
   kindsOf(after);
   const run = runNamed(name);
-  if (!values.yes) return said(run, `would be stopped after its next ${after === "next" ? "step" : after}`);
+  if (!values.yes) {
+    // Armed now, the pause would count from the log as it stands, so that count is the base.
+    const events = logEvents(run.path);
+    const holds = heldBy(events, after, countOf(events, kindsOf(after)));
+    return said(
+      run,
+      `would be stopped after its next ${after === "next" ? "step" : after}; armed now it would wait for ${holds.join(", and for ")}`,
+    );
+  }
   await pauseAt(run, after);
 }

@@ -7,7 +7,7 @@ import type { JsonObject } from "../src/meta/json-shape.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, runtimeProcess } from "../src/meta/process.ts";
 import { LIMITS } from "../tools/d2/campaign.ts";
-import { loginEnv, restsAfter, solvesMs } from "../tools/runs/manage.ts";
+import { heldBy, loginEnv, restsAfter, solvesMs } from "../tools/runs/manage.ts";
 import { type Receipt, writeReceipt } from "../tools/runs/receipt.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
@@ -103,6 +103,18 @@ describe("going on with a campaign", () => {
       event("harness.promoted", { harness: "c" }),
     ];
     expect(restsAfter(again, "reported", 0)).toBe(false);
+    // What the dry form says a pause armed now would wait for, each hold apart: the unread promotion
+    // is named for `reported` alone, and a read that tallied leaves only the next report.
+    const READ = "a starter comparison";
+    expect(heldBy(promoted, "reported", 1).filter((hold) => hold.includes(READ))).toHaveLength(1);
+    expect(heldBy(promoted, "reported", 1)).toHaveLength(2);
+    expect(heldBy(promoted, "promoted", 1).some((hold) => hold.includes(READ))).toBe(false);
+    expect(heldBy([...promoted, ...starter], "reported", 2)).toEqual([
+      "one more comparison.reported, past 2",
+    ]);
+    expect(heldBy([...promoted, ...starter], "reported", 0)).toEqual([]);
+    const open = [...promoted, event("comparison.started", { session: "g-2", starter: "s" })];
+    expect(heldBy(open, "reported", 1)).toHaveLength(3);
   });
 
   it("pauses at a promotion or an Examiner session's end, or at the first of the words joined by |", () => {

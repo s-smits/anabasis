@@ -152,8 +152,11 @@ run. The words are `compacted` (a compaction of any seat: `build`, `exam`, `draf
 (`exam.finished`) and `finished` (`build.finished`); words joined by `|`, as `reported|promoted`,
 wait for the first of their events. `reported` alone waits out a promotion whose starter comparison
 has not tallied, so the run rests with its newest promotion read; a pause that names `promoted`
-rests at the promotion and leaves that comparison unread. No seat's conversation outlives its process (pi-durable's in-memory store, and
-Claude Code without a saved session), so a compaction is no better point to pause than another: a
+rests at the promotion and leaves that comparison unread. The count starts where the verb is armed:
+armed while a comparison is open it rests at that report, armed after it a whole further comparison
+is waited for, and without `--yes` the verb says what it would wait for on the log as it stands. No
+seat's conversation outlives its process (pi-durable's in-memory store, and Claude Code without a
+saved session), so a compaction is no better point to pause than another: a
 pause cuts the Builder's conversation and a resting Examiner's. The continued campaign opens a new
 Builder conversation on the cut one's notes, from the last harness it practised or froze, and tells
 it so (`startTold`); the next Examiner ask opens on the whole record and its kept home. Only

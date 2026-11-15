@@ -43,7 +43,7 @@
  * after `--` under a name that said opus.
  */
 import { existsSync } from "#src/meta/filesystem.ts";
-import { gitText, mainTree } from "#src/meta/git.ts";
+import { gitMaybe, gitText, mainTree } from "#src/meta/git.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
@@ -318,5 +318,14 @@ async function startFresh(pack: string, login: string | undefined, start: Start)
   }
   gitText(here, "worktree", "add", "-q", "--detach", tree, start.commit);
   runtimeProcess.chdir(tree);
-  await launch([name, ...(login === undefined ? [] : ["--login", login]), "--yes", "--", ...flags]);
+  try {
+    await launch([name, ...(login === undefined ? [] : ["--login", login]), "--yes", "--", ...flags]);
+  } catch (error) {
+    // A refusal before the campaign's folder is made (the install, the dry run) left an empty tree,
+    // whose name sent the next fresh of the pack to `-r2` (13 November). Without force, a tree that
+    // holds anything but ignored files stays.
+    runtimeProcess.chdir(here);
+    if (!existsSync(join(tree, ".ana", "d2", name))) gitMaybe(here, "worktree", "remove", tree);
+    throw error;
+  }
 }

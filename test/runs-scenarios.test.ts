@@ -178,6 +178,29 @@ it("S3: view and fleet pulse explain a dead remote run using its newest bounded 
   expect(later.out).not.toContain("newest startup failure");
 });
 
+it("a local fresh refused after its worktree is made removes that worktree, so the next fresh takes the plain name", () => {
+  // On 13 November a fresh refused at its launch left an empty worktree, and the next fresh of the
+  // pack took `-r2`. The install here fails, the tree holding no package.json, before any campaign
+  // folder is made.
+  const made = fixture();
+  mkdirSync(join(made.root, "anabasis-prompts"));
+  writeFileSync(join(made.root, "anabasis-prompts", "sample-prompt.txt"), "fixture prompt\n");
+  const fresh = (yes: boolean) =>
+    made.runScript(CLI, ["fresh", "sample", "--model", "gpt", "--host", "here", ...(yes ? ["--yes"] : [])]);
+  const planned = (out: string) => /would make (\S+) at/.exec(out)?.[1];
+  const tree = planned(fresh(false).out);
+  expect(tree).toBeDefined();
+  const refused = fresh(true);
+  expect(refused.code).toBe(1);
+  expect(existsSync(tree ?? "")).toBe(false);
+  expect(
+    made
+      .recorded()
+      .some(({ tool, args }) => tool === "git" && args.includes("remove") && args.at(-1) === tree),
+  ).toBe(true);
+  expect(planned(fresh(false).out)).toBe(tree);
+});
+
 it("S4: fresh prepares the selected host at the requested published commit without a host argument", () => {
   const made = fixture();
   const result = made.runScript(CLI, ["fresh", "sample", "--model", "gpt", "--at", made.commit, "--yes"], {

@@ -46,7 +46,7 @@
  *   `outside-reads.md` (`outsideGate`).
  * - `ledger` prints the views derived from those files and never written by hand: the cycle view,
  *   every prediction of the folder's runs with its outcome; the dropped view, each unreached or
- *   falsified id that no `## Carried` and no plan's `## Not done` names; and each run's still-missing
+ *   falsified id that no `## Carried` and no plan's `## Intentionally opposed` names; and each run's still-missing
  *   view, what it did not hold beside its plan's `## Not done` and `## Intentionally opposed`.
  *
  * Every gate is a default, never a wall (operator, 7 November: "to-be-deviated-from each time"): a

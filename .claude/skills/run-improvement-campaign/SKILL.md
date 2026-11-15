@@ -91,8 +91,9 @@ never copied.
   `bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts ledger <dir>` prints, for a cycle's
   or an investigation's folder, the cycle view (every prediction of its runs with its outcome, a
   stale one marked), the dropped view (each `unreached` or `falsified` id that no `## Carried`
-  names as `<run>:<id>` and no `## Not done` of its plan names; write each into a live run's file
-  or its plan until the view reads `none`; a run at rest that no investigation names has no plan,
+  names as `<run>:<id>` and no `## Intentionally opposed` of its plan names, since a `## Not done`
+  line that defers it to a later fork takes nothing up; write each into a live run's file or that
+  section until the view reads `none`; a run at rest that no investigation names has no plan,
   so its ids are listed apart as unread until a `## Carried` takes them or its investigation
   opens, and a live run's are not, since its trigger opens one) and each run's still-missing view
   (the ids it did not hold beside its plan's two sections). A `Predictions.md` or `still-missing-<run>.md` from before

@@ -167,10 +167,12 @@ export function cycleViewOf(runs: readonly RunLedgers[]): string[] {
 
 /**
  * The dropped view: each prediction a run left `unreached` or `falsified` that nothing took up, named
- * neither as `<run>:<id>` in another run's `## Carried` section (`carried`) nor under a `## Not done`
- * of the plan that read its run; a row the run carries itself is carried on under its own name. A
- * run whose investigation has no plan yet has
- * dropped nothing, since that plan has still to place its rows. A run at rest that no investigation
+ * neither as `<run>:<id>` in another run's `## Carried` section (`carried`) nor under the
+ * `## Intentionally opposed` of the plan that read its run; a row the run carries itself is carried
+ * on under its own name. A `## Not done` line takes up nothing: on 13 November 2026 one that deferred
+ * a buffer fork's falsified `E2` and `E3` to a next fork never launched kept both out of this view,
+ * and one that named another run's `C4` by its bare id hid this run's (NI20). A run whose
+ * investigation has no plan yet has dropped nothing, since that plan has still to place its rows. A run at rest that no investigation
  * names has no plan to come, so its rows are listed apart as unread, where only a `## Carried` can
  * take them: on 13 November 2026 a fork at rest with nothing compared left 20 `unreached` rows that
  * the view passed over while it read `none`. A live run is not listed there, since its investigation
@@ -182,7 +184,7 @@ export function droppedOf(runs: readonly RunLedgers[], carried: readonly Carried
   const linesOf = (among: readonly RunLedgers[]) =>
     among.flatMap((run) => {
       const outcome = outcomesOf(run.outcomes);
-      const undone = notDoneOf(run.plan).join("\n");
+      const opposed = (sectionOf(run.plan, "Intentionally opposed") ?? []).join("\n");
       const others = carried
         .filter((each) => each.run !== run.name)
         .map(({ text }) => text)
@@ -191,7 +193,7 @@ export function droppedOf(runs: readonly RunLedgers[], carried: readonly Carried
         .map((id) => ({ id, read: outcome.get(id) ?? "" }))
         .filter(({ read }) => read === "unreached" || read === "falsified")
         .filter(
-          ({ id }) => !names(others, id.includes(":") ? id : `${run.name}:${id}`) && !names(undone, id),
+          ({ id }) => !names(others, id.includes(":") ? id : `${run.name}:${id}`) && !names(opposed, id),
         );
       return left.length === 0
         ? []
@@ -200,7 +202,7 @@ export function droppedOf(runs: readonly RunLedgers[], carried: readonly Carried
   const dropped = linesOf(runs.filter(({ plan }) => plan !== ""));
   const unread = linesOf(runs.filter(({ awaited }) => !awaited));
   return [
-    "# Dropped: unreached or falsified, carried by no run and under no plan's Not done",
+    "# Dropped: unreached or falsified, carried by no run and opposed by no plan",
     "",
     ...(dropped.length === 0 ? ["- none"] : dropped),
     ...(unread.length === 0

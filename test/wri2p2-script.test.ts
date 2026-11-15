@@ -466,7 +466,7 @@ describe("the next step of an investigation", () => {
       "| r | P2 | unreached |",
       "| r | P3 | unresolved |",
       "",
-      "# Dropped: unreached or falsified, carried by no run and under no plan's Not done",
+      "# Dropped: unreached or falsified, carried by no run and opposed by no plan",
       "",
       "- r: P2 (unreached)",
       "",
@@ -504,7 +504,7 @@ describe("the next step of an investigation", () => {
     expect(views(50).slice(-1)).toEqual(["- the solve limits stay"]);
   });
 
-  it("names each unreached or falsified row that no fork carries and no plan leaves undone", () => {
+  it("names each unreached or falsified row that no fork carries and no plan opposes", () => {
     const { root, cycle, write, ledger } = folder("dropped", "r", true);
     ledger("predictions-r.md", table(["P1", "P2", "P3", "P20"]));
     ledger(OUTCOMES_R, `${table(["P1"], "held")}| P2 | unreached |\n| P3 | falsified |\n| P20 | pending |\n`);
@@ -523,7 +523,11 @@ describe("the next step of an investigation", () => {
     expect(dropped()).toEqual(["- r: P2 (unreached), P3 (falsified)"]);
     ledger("predictions-f.md", `${table(["F1"])}\n## Carried\n\n- r:P2\n`);
     expect(dropped()).toEqual(["- r: P3 (falsified)"]);
-    write(PLAN_FILE, `${PLAN}\n## Not done\n\n- P3: no run of this cycle reaches its event\n`);
+    // A Not done line that defers a row to a next fork takes it up nowhere until that fork carries it;
+    // only a fork's carry or the plan's opposed section takes a row up.
+    write(PLAN_FILE, `${PLAN}\n## Not done\n\n- P3: waits for the next fork, which carries it\n`);
+    expect(dropped()).toEqual(["- r: P3 (falsified)"]);
+    write(PLAN_FILE, PLAN.replace("- none", "- P3: no run of this cycle reaches its event"));
     expect(dropped()).toEqual(["- none"]);
     // A run no investigation names has no plan to come: its rows are listed apart until a fork
     // carries them, and a row still pending, or a run with nothing left, adds no line.
@@ -555,7 +559,7 @@ describe("the next step of an investigation", () => {
       () => true,
     );
     expect(views).toContain("- r: P3 (falsified)");
-    write(PLAN_FILE, `${PLAN}\n## Not done\n\n- P3: no run of this cycle reaches its event\n`);
+    write(PLAN_FILE, PLAN.replace("- none", "- P3: no run of this cycle reaches its event"));
     ledger("predictions-f.md", `${table(["F1"])}\n## Carried\n\n- r:P2, s:S1, s:S2\n`);
     expect(unread()).toEqual([]);
   });

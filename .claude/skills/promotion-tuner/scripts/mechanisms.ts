@@ -175,7 +175,9 @@ function partsOf(task: Task, knobs: Knobs) {
   }
   const each = POINTS / Math.max(1, task.fresh.length * task.old.length);
   return {
-    answers: (sums.validity * knobs.validity + sums.objective * knobs.objective) * each,
+    // Each answer measure is scaled before the sum, in production's order (`pointsOf`): summed first,
+    // 300 points of validity and 37.5 of the objective came to a float under 337.5 and rounded down.
+    answers: sums.validity * knobs.validity * each + sums.objective * knobs.objective * each,
     resources: (sums.bill * knobs.bill + sums.turns * knobs.turns + sums.seconds * knobs.seconds) * each,
   };
 }

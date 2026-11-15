@@ -69,6 +69,13 @@ describe("knobs at today's values", () => {
     expect(grid.length).toBe(3 * 9 * 9 * 3 * 3);
   });
 
+  it("round a half point as production does", () => {
+    // Validity in two of the four pairings and a quarter's gain in the other two: 300 and 37.5 points.
+    const half = task([solve(1, 75), solve(1, null, false)], [solve(1, 100), solve(1, 100)], "higher");
+    expect(differenceOf(paired(half))).toBe(338);
+    expect(knobbed(TODAY, "today").score(half)).toBe(338);
+  });
+
   it("read a step where the sign-flip test does, and nowhere else", () => {
     const today = knobbed(TODAY, "today");
     const won = Array.from({ length: 6 }, () => validOnlyNew(1));

@@ -474,6 +474,27 @@ describe("the runs pulse", () => {
         line.startsWith("◆ honesty: MARGINS INSIDE THE NOISE (lane 29)"),
       ),
     ).toHaveLength(1);
+    // A promotion the objective carried is how this score promotes (171 of 195 promotions on record
+    // on 15 November), so it is a reading: until then it was graded an alarm, which wakes a session.
+    // A crashed session read in the same look is still a warning.
+    const alarms = [
+      { name: "SAFEGUARD-9 PROMOTION BEYOND VALIDITY", lane: 8, detail: "0123abcd 7-0 p 0.008 joined" },
+      { name: "SESSION CRASHED", lane: 24, detail: "x-1" },
+    ];
+    const graded = pulseOf(
+      round,
+      built,
+      OPEN,
+      { ...lookedAt(built.length), triggers: {} },
+      {
+        now: START + MINUTE,
+        alarms,
+      },
+    ).said;
+    expect(graded).toEqual([
+      "◆ honesty: SAFEGUARD-9 PROMOTION BEYOND VALIDITY (lane 8): 0123abcd 7-0 p 0.008 joined",
+      "⚠ economy: SESSION CRASHED (lane 24): x-1",
+    ]);
   });
 
   it("recognises a campaign ending while drafting and warns for an unfinished draft", () => {

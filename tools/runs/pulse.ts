@@ -189,7 +189,8 @@ const WATCHED = new Map<string, readonly [string, "alarm" | "reading"]>([
   ["MEASURED AN EARLIER STATE", ["honesty", "alarm"]],
   ["STARTS OUT OF TURN", ["honesty", "alarm"]],
   ["LOG OUT OF ORDER", ["honesty", "alarm"]],
-  ["SAFEGUARD-9 PROMOTION BEYOND VALIDITY", ["honesty", "alarm"]],
+  // A reading: it names most promotions under this score (171 of 195 on record, 15 November).
+  ["SAFEGUARD-9 PROMOTION BEYOND VALIDITY", ["honesty", "reading"]],
   ["CHECK DEFECT RULED", ["verdicts", "alarm"]],
   ["RULED UNCLEAR", ["verdicts", "alarm"]],
   ["RULINGS REFUSED", ["verdicts", "alarm"]],

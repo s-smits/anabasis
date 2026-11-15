@@ -111,13 +111,10 @@ export function testedOf(report: JsonObject): { differences: number[]; of: (stri
 }
 
 /** The differences a promotion's readings tested (`testedOf`) joined, a task more than one scored
- *  counted once with its differences summed, less the tasks in `without`. Until 19 October a
+ *  counted once with its differences summed. Until 19 October a
  *  promotion read a step and its repeat so (`readTwice`), and a campaign of then is read by that
  *  rule. */
-export function joinedTest(
-  reports: readonly JsonObject[],
-  without: ReadonlySet<string> = new Set(),
-): number[] {
+export function joinedTest(reports: readonly JsonObject[]): number[] {
   const sums = new Map<string, number>();
   const unnamed: number[] = [];
   for (const report of reports) {
@@ -125,7 +122,7 @@ export function joinedTest(
     for (const [at, difference] of differences.entries()) {
       const task = of[at];
       if (task === undefined) unnamed.push(difference);
-      else if (!without.has(task)) sums.set(task, (sums.get(task) ?? 0) + difference);
+      else sums.set(task, (sums.get(task) ?? 0) + difference);
     }
   }
   return [...sums.values(), ...unnamed];

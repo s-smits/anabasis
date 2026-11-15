@@ -302,8 +302,7 @@ Label: `supply`.
 Importance: 0.65.
 Marks: none.
 
-Starts from `SUPPLY THIN (lane 7)`, `GATE REFUSED (lane 7)`, `SCORED AFTER RELEASE (lane 7)` and
-`SAFEGUARD-8 PROMOTION ON AUTHOR ROOM (lane 7)`.
+Starts from `SUPPLY THIN (lane 7)`, `GATE REFUSED (lane 7)` and `SCORED AFTER RELEASE (lane 7)`.
 
 Where are tasks lost between proposal and scored set, and was each refusal right? For each
 `task.gate` refusal (`packageGate`; `try_task` in an older log), say whether it named a real defect
@@ -311,9 +310,7 @@ the Examiner could act on. Count what left after admission, and hold the frontie
 (`SIZE`; `refusals` needs `sweepOf(level)`). Never propose loosening admission from yield alone.
 `SCORED AFTER RELEASE` counts the released tasks a comparison named after their release, retained
 ones included: a task the Builder practised on was then scored, which the wall forbids.
-`SAFEGUARD-8` names a promotion that clears only on room the author's own answer and objective
-create: read both before the promotion is reported. The decision: whether another Examiner
-session is bought first. Routes to `examiner-prompt` (`src/examiner/prompt.ts`) and `host`
+The decision: whether another Examiner session is bought first. Routes to `examiner-prompt` (`src/examiner/prompt.ts`) and `host`
 (`src/kernel/task.ts`).
 
 **8. Whether validity separates.**

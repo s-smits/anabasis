@@ -13,15 +13,7 @@
  */
 import { epochsOf as epochsRead } from "#src/campaign/climb.ts";
 import { short } from "#src/campaign/move.ts";
-import {
-  differenceOf,
-  flipP,
-  readsStep,
-  gapAgainst,
-  type Paired,
-  pointsOf,
-  wholePoints,
-} from "#src/kernel/compare.ts";
+import { differenceOf, flipP, readsStep, type Paired, pointsOf, wholePoints } from "#src/kernel/compare.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
 import { asRecord, isNumber } from "#src/meta/json-shape.ts";
 import { validityOf } from "#tools/d2/close.ts";
@@ -157,14 +149,12 @@ export function climbTable(campaigns: readonly Campaign[]): string {
  * own-time wall (`Bench.within`, 2), `attemptsOf` (3) and the opening's terms (7) answer; they went
  * on 19 October. 5 went at birth, as `waitOut` waits out a named reset, and 6 is HOST LOADED.
  *
- * 8 and 9 are what buffer-fresh-opus-forkedPR223_v0_5_4-r3 leaned on, the first campaign from a
- * prompt to promote three times (19 October). 8: the joined frontier clears the level only with
- * the tasks whose room in the comparisons it rests on was their author's answer alone, every
- * reference solve of them there valid and alike and the author's better than each (`authorRoom`).
- * Its second promotion
- * read 8-0 joined and 5-0 (p 0.031) without them, its third 8-0 and 3-0 (p 0.125): such a task's
- * room is the author's answer measured by the author's objective, and the promotion is as sound as
- * both. 9: the joined frontier on validity alone does not clear the level, so the objective or the
+ * 9 is what buffer-fresh-opus-forkedPR223_v0_5_4-r3 leaned on, the first campaign from a prompt to
+ * promote three times (19 October). 8 named a promotion that cleared the level only with the tasks
+ * whose reference solves were valid and alike and whose author's answer was better, and went on
+ * 15 November for 9: of the 195 promotions on record it named 73, each of which 9 names too, and
+ * every promotion over a reference that repeats its answers, where each task won is such a task.
+ * 9: the joined frontier on validity alone does not clear the level, so the objective or the
  * bill decided it, as one did all three of r3's (1-0, 0-0 and 1-0 on validity); a drafted exam's
  * objective is its author's own computation, which nothing outside it has checked. It reads the
  * frontier without the bill beside, since until 22 October it named every such promotion "by the
@@ -187,40 +177,20 @@ export function safeguardTriggers(log: Index): Trigger[] {
     if (rests.length === 0 || !readsStep(joined, level)) return [];
     const harness = `${short(text(data.harness))} ${said(joined)} joined at level ${String(level)}`;
     const settled = rests.map(({ last, pairs }) => ({ tested: new Set(testedOf(last).of), pairs: pairs() }));
-    const without = joinedTest(
-      reports,
-      authorRoom(
-        log.events,
-        settled.flatMap(({ pairs }) => pairs),
-      ),
-    );
     const valid = measuredOf(settled, (pair) => wholePoints(pointsOf(pair).validity));
-    return [{ level, harness, without, valid, scored: measuredOf(settled, differenceOf) }];
+    return [{ level, harness, valid, scored: measuredOf(settled, differenceOf) }];
   });
-  const author = promotions.filter(({ without, level }) => !readsStep(without, level));
   const beyond = promotions.filter(({ valid, level }) => !readsStep(valid, level));
-  return [
-    ...firedIf(
-      author.length > 0,
-      "SAFEGUARD-8 PROMOTION ON AUTHOR ROOM",
-      author
-        .map(
-          ({ harness, without }) =>
-            `${harness}, ${said(without)} without the tasks held on their author's answer alone`,
-        )
-        .join("; "),
-    ),
-    ...firedIf(
-      beyond.length > 0,
-      "SAFEGUARD-9 PROMOTION BEYOND VALIDITY",
-      beyond
-        .map(
-          ({ harness, valid, scored }) =>
-            `${harness}, ${said(valid)} on validity alone, ${said(scored)} by the current score`,
-        )
-        .join("; "),
-    ),
-  ];
+  return firedIf(
+    beyond.length > 0,
+    "SAFEGUARD-9 PROMOTION BEYOND VALIDITY",
+    beyond
+      .map(
+        ({ harness, valid, scored }) =>
+          `${harness}, ${said(valid)} on validity alone, ${said(scored)} by the current score`,
+      )
+      .join("; "),
+  );
 }
 
 /** Each tested task's score (`testedOf`) by `scoreOf`, from the settled pairs (`pairsReported`),
@@ -236,30 +206,6 @@ function measuredOf(
     }
   }
   return [...sums.values()];
-}
-
-/** The tasks of a promotion's settled `pairs` whose room was their author's answer alone: in a
- *  comparison's own reference solves every one valid and their measures alike (no gap among them, `gapAgainst`), and an answer
- *  of the author's on record (`task.feasible`) better than one by the floor, the room `informative`
- *  reads only with the author's measure (since 19 October). */
-function authorRoom(events: readonly LogEvent[], pairs: readonly Paired[]): Set<string> {
-  const authored = new Map<string, number[]>();
-  for (const { kind, data } of events) {
-    const measure = asRecord(data.objective)?.measure;
-    const version = text(data.version);
-    if (kind === "task.feasible" && isNumber(measure)) {
-      authored.set(version, [...(authored.get(version) ?? []), measure]);
-    }
-  }
-  return new Set(
-    pairs.flatMap((pair) =>
-      pair.old.every(Boolean) &&
-      !gapAgainst(pair, "old", []) &&
-      gapAgainst(pair, "old", authored.get(pair.task) ?? [])
-        ? [pair.task]
-        : [],
-    ),
-  );
 }
 
 /** Each path under `/tmp` a campaign's calls named, first naming first. */

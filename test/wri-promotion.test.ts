@@ -3,7 +3,7 @@
 import { describe, expect, it } from "bun:test";
 import { conditionId } from "../src/kernel/condition.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
-import { asRecord, isString, type JsonObject } from "../src/meta/json-shape.ts";
+import { asRecord, type JsonObject } from "../src/meta/json-shape.ts";
 import { requireJsonValue } from "../src/meta/stable-json.ts";
 import { climbTable, safeguardTriggers } from "../tools/wri/climb.ts";
 import { indexOf, type TRIGGERS } from "../tools/wri/folds.ts";
@@ -68,26 +68,23 @@ const triggered = (log: readonly LogEvent[]) => {
 };
 
 /**
- * A promotion read twice on `author` tasks whose room is their author's answer alone, every
- * reference solve of them valid at one measure and the author's better, and `spread` tasks whose
- * two reference answers lie 25% apart by the objective. A gate holds only its outcome, as since
- * 1 November. Every frontier task is won in each reading, `by` the new side's better measure or its
- * bill of half the reference's (the new side then measuring as the reference does); on validity
- * alone they tie, unless the reference `fails` its first solve of each task.
+ * A promotion read twice on `count` tasks, every reference solve of them valid at one measure. A
+ * gate holds only its outcome, as since 1 November. Every frontier task is won in each reading,
+ * `by` the new side's better measure or its bill of half the reference's (the new side then
+ * measuring as the reference does); on validity alone they tie, unless the reference `fails` its
+ * first solve of each task.
  */
 function leaning({
-  author,
-  spread,
+  count,
   fails,
   by = "objective",
 }: {
-  author: number;
-  spread: number;
+  count: number;
   fails: boolean;
   by?: "objective" | "bill";
 }) {
   const { log: events, put } = campaign();
-  const tasks = Array.from({ length: author + spread }, (_, at) => `t${String(at)}`);
+  const tasks = Array.from({ length: count }, (_, at) => `t${String(at)}`);
   put("campaign.opened", { budget: 300, terms: {} });
   put("exam.started", { session: "x-1" });
   for (const version of tasks) {
@@ -100,19 +97,11 @@ function leaning({
     const { events: solves, terms } = roundSolves(session, ["hbase", "hn"], outcomes);
     put("comparison.started", { session, old: "hbase", fresh: "hn", ...terms });
     let fresh = false;
-    let apart = false;
-    let nth = 0;
     for (const { kind, data } of solves) {
-      if (kind === "condition.recorded") {
-        const condition = asRecord(data.condition);
-        fresh = condition?.harness === "hn";
-        apart = isString(condition?.task) && tasks.indexOf(condition.task) >= author;
-        nth = 0;
-      }
-      if (kind === "solve.started") nth += 1;
+      if (kind === "condition.recorded") fresh = asRecord(data.condition)?.harness === "hn";
       const passed = kind === "solve.finished" && asRecord(data.ending)?.outcome === "pass";
       if (passed) {
-        const reference = (by === "bill" ? 1 : 1.5) * (apart && nth === 2 ? 1.25 : 1);
+        const reference = by === "bill" ? 1 : 1.5;
         put("verdict", {
           solve: data.solve ?? "",
           kind: "pass",
@@ -309,8 +298,8 @@ describe("lane 22: a promotion and the climb after it", () => {
     expect(testedOf(before)).toEqual({ differences: [4, 4], of: ["a", "b"] });
     expect(testedOf(since)).toEqual({ differences: [4, 4, -4], of: ["a", "b", "c"] });
     expect(testedOf({ ...since, retained: "unmeasured" }).differences).toEqual([4, 4]);
-    // A task two readings tested counts once, its differences summed; one in `without` drops out.
-    expect(joinedTest([since, since], new Set(["a"])).toSorted((x, y) => x - y)).toEqual([-8, 8]);
+    // A task two readings tested counts once, its differences summed.
+    expect(joinedTest([since, since]).toSorted((x, y) => x - y)).toEqual([-8, 8, 8]);
   });
 
   it.each(["/tmp", "/private/tmp", "/var/tmp", "/private/var/tmp"])(
@@ -395,17 +384,11 @@ describe("lane 22 across campaigns", () => {
     expect(cells[3]?.slice(1, 7)).toEqual(["building", "none", "default", "none yet", "-", "none reported"]);
   });
 
-  it("distinguishes author room, objective and bill dependence from promotions that need neither", () => {
+  it("tells a promotion the objective or the bill decided from one that validity carries", () => {
     for (const [input, expected] of [
       [
-        { author: 4, spread: 2, fails: false },
+        { count: 6, fails: false },
         [
-          {
-            lane: 7,
-            name: "SAFEGUARD-8 PROMOTION ON AUTHOR ROOM",
-            detail:
-              "hn 6-0 p 0.016 joined at level 0.02, 2-0 p 0.250 without the tasks held on their author's answer alone",
-          },
           {
             lane: 8,
             name: "SAFEGUARD-9 PROMOTION BEYOND VALIDITY",
@@ -415,7 +398,7 @@ describe("lane 22 across campaigns", () => {
         ],
       ],
       [
-        { author: 0, spread: 6, fails: false, by: "bill" },
+        { count: 6, fails: false, by: "bill" },
         [
           {
             lane: 8,
@@ -425,21 +408,9 @@ describe("lane 22 across campaigns", () => {
           },
         ],
       ],
-      // Tasks whose own reference answers lie apart leave room without the author's answer.
-      [
-        { author: 0, spread: 6, fails: false },
-        [
-          {
-            lane: 8,
-            name: "SAFEGUARD-9 PROMOTION BEYOND VALIDITY",
-            detail:
-              "hn 6-0 p 0.016 joined at level 0.02, 0-0 p 1.000 on validity alone, 6-0 p 0.016 by the current score",
-          },
-        ],
-      ],
-      // A task the reference fails once has room on validity, whatever its author answered.
-      [{ author: 4, spread: 2, fails: true }, []],
-      [{ author: 4, spread: 1, fails: false }, []],
+      // A task the reference fails once is won on validity, and five tasks read no step to lean on.
+      [{ count: 6, fails: true }, []],
+      [{ count: 5, fails: false }, []],
     ] as const) {
       expect(safeguardTriggers(indexOf(leaning(input)))).toEqual([...expected]);
     }

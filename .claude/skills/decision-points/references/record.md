@@ -76,6 +76,7 @@ changed four times, each by the operator's word:
 | 12 October | no count: stop "the least promising", "stalled" or "outdated" run; three for runs that "promoted too easily" | "okay cap at 6 promotions and milestone at 6 as well" (25 October) |
 | 25 October | six promotions or twelve hours, whichever comes first | "stop every run after two promotions except for the job stat ones" (3 November) |
 | 3 November | two, first as an automatic stop | "we should not automatically stop it, but we should get a notification and then pause it" (6 November), then "pause ... after next comparison (bit more realistic than promotion)" (8 November) |
+| 15 November | two slots: "pausing one of the two and to keep the other one going until like longer, like 3 or 4 promotions, like based on what you think is best", the other "based on the latest", for consecutive runs on different potential upgrades | in force; given after this reading, so no count above is of runs under it |
 
 Exceptions to two, about 14 words: one promotion, five times (a hard domain, or "mainly for proving
 for merging" a patch); three, twice; six or more, five times (a run let on to nine, "let it try to

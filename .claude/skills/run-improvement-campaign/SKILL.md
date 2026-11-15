@@ -280,9 +280,11 @@ Two promotions is the default count and not the only one. [decision-points](../d
 holds, for each point of a run's life (a comparison without a step, the first promotion, the second,
 those past it, an ending), what the operator decided there and how often: when a run rests at one,
 goes on to three, four or six, or is given up without a promotion, which run goes when slots are
-short, when a fresh fork is worth its slot and what each kind of release asks of its proof run. Read
-it before a pause, a stop, a continue or a fork that the trigger alone does not settle; a run kept
-past its trigger on one of its rows takes a line in `deviations.md`.
+short, when a fresh fork is worth its slot and what each kind of release asks of its proof run. With
+two runs live it also splits the slots: the older run is the long one, taken to three or four
+promotions on the session's judgement, and the other is turned over to the newest head at each proved
+upgrade. Read it before a pause, a stop, a continue or a fork that the trigger alone does not settle;
+a run kept past its trigger on one of its rows takes a line in `deviations.md`.
 
 ## Resume
 

@@ -40,7 +40,7 @@ import { isNumber, isRecord, isString, type JsonObject, type JsonValue } from "#
 import { dirname, join, resolve, sep } from "#src/meta/path.ts";
 import { capturedExecPath, parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { decodeOutput, runSync } from "#src/meta/subprocess.ts";
-import { improve, renderEvents, rollout, type Claude } from "./h2/claude.ts";
+import { improve, renderEvents, rollout, type Agent, type Claude } from "./h2/claude.ts";
 import type { Evidence } from "./h2/context.ts";
 import { Library } from "./h2/library.ts";
 import { prompt, readSections } from "./h2/prompts.ts";
@@ -215,6 +215,7 @@ export function jobBench(
   jb: string,
   store: string,
   claude: Claude,
+  agent?: Agent,
 ): Omit<Bench, "sections"> & { cache: Map<string, Extract> } {
   const dataset = (task: string): string => {
     if (!task.includes("/") || task.includes("..") || task.startsWith("/")) {
@@ -277,7 +278,12 @@ export function jobBench(
         MAX_BUDGET_USD: claude.budgetUsd,
       };
       const env = { ...claude.env, ...runner, TIMEOUT_PER_TASK: String(claude.timeoutS), MAX_RETRIES: "2" };
-      const usd = await rollout({ store, task, label }, harnessDir ?? BASE_HARNESS, { ...claude, env });
+      const usd = await rollout(
+        { store, task, label },
+        harnessDir ?? BASE_HARNESS,
+        { ...claude, env },
+        agent,
+      );
       if (isDir(out) && readdirSync(out).length > 0) return { runDir: out, usd };
       // `_has_events`: at least one line of a trajectory reads as a JSON event.
       const traced =

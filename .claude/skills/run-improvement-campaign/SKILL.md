@@ -286,7 +286,9 @@ promotions on the session's judgement, and the other is turned over to the newes
 upgrade. Read it before a pause, a stop, a continue or a fork that the trigger alone does not settle;
 a run kept past its trigger on one of its rows takes the row `| pause:<run> | <reason> |` in an
 investigation's `deviations.md`, and `wri2p2.ts` then prints `kept` for it, which `due` does not
-list, until the row is removed or the run stops.
+list, until the row is removed, the run stops or it reaches a count of promotions the reason does not
+name: a row written at the clock keeps a run past the clock, and one that keeps it past its second
+promotion says "2 promotions".
 
 ## Resume
 

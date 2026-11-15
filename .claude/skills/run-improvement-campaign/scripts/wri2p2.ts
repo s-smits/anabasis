@@ -32,7 +32,8 @@
  *   the folder an iteration (`iteration.json`). Opening a live run is a deviation from the `pause`
  *   step, kept for a run the operator leaves running. A live run kept past its trigger has no folder
  *   yet, so its row `| pause:<run> | <reason> |` stands in any investigation's `deviations.md`
- *   (`keptIn`): its step is then `kept`, which owes nothing, until the row goes or the run stops.
+ *   (`keptIn`): its step is then `kept`, which owes nothing, until the row goes, the run stops or
+ *   it reaches a count of promotions the row's reason does not name.
  * - `next` reads an investigation's folder and prints the one step left, the first owed of a list of
  *   gates in the iteration's order (`gatesOf`). Every folder passes the shared instructions, the
  *   lanes, the lane reports, the synthesis, the vetting, the plan, the pull request
@@ -557,11 +558,18 @@ export const movedIn = (
     });
 
 /** The reason the first row `pause:<run>` among these `deviations.md` texts gives for keeping the
- *  live run `name` past its trigger, or null: a row with no reason records no judgment. */
-export const keptIn = (deviations: readonly string[], name: string): string | null =>
+ *  live run `name` past `trigger`, or null: a row with no reason records no judgment, and a count of
+ *  promotions is kept past only by a reason that names it, since each promotion is a decision of
+ *  its own and a row written at the clock says nothing of the second. */
+export const keptIn = (deviations: readonly string[], name: string, trigger: string): string | null =>
   deviations
     .flatMap((text) => rowsOf(text, "step"))
-    .find(([step, reason = ""]) => step === `pause:${name}` && reason !== "")?.[1] ?? null;
+    .find(
+      ([step, reason = ""]) =>
+        step === `pause:${name}` &&
+        reason !== "" &&
+        (!trigger.endsWith(" promotions") || reason.includes(trigger)),
+    )?.[1] ?? null;
 
 /** The step of a run no investigation reads yet: `run` before its trigger; at the trigger of a live
  *  run, a pause after its next comparison, `waits` once a pause of it is armed here, or `kept` where
@@ -600,9 +608,10 @@ function standings(args: CommandArgs, repo: string, known: readonly Run[], parts
     if (events === null) return [];
     const row = progressOf({ name: run.name, host: run.archived ?? HERE, live }, events, now);
     const folder = folders.find(({ names: seen }) => seen.includes(row.name));
+    const trigger = triggerOf(row);
     const step =
       folder === undefined
-        ? openingOf(row, triggerOf(row), running, keptIn(deviations, row.name))
+        ? openingOf(row, trigger, running, keptIn(deviations, row.name, trigger ?? ""))
         : nextOf(folder.dir, iteration);
     const commit = lastLaunch(run.path)?.commit ?? null;
     return [{ row, last: Date.parse(events.at(-1)?.at ?? ""), commit, dir: folder?.dir ?? null, step }];

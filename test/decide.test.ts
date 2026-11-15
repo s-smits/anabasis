@@ -840,9 +840,7 @@ describe("the build conditions", () => {
     expect(practiceDue(read, null, 0.1)).toBeNull();
   });
 
-  it("counts a family once in the allowance, as admission does", () => {
-    // jobstat, 12 November: nine frontier tasks of six families allowed one release at a floor of
-    // eight, which could take a family's only task from a comparison already two families short.
+  it("counts each task in the allowance, a family's siblings too, as admission does", () => {
     const seeds = (families: readonly string[]) => [
       ...SIX,
       built("b-1", "h1"),
@@ -852,10 +850,10 @@ describe("the build conditions", () => {
       ]),
       ...compared("g-1", "h1", "no-step"),
     ];
-    // Six families and four seeds of a seventh: one above the floor of six, whatever is named.
-    expect(owed(seeds(["one", "one", "one", "one"]), 1000, 0.1)).toBe(1);
-    // The nearest case: the same four tasks as four families are four above it.
-    expect(owed(seeds(["one", "two", "three", "four"]), 1000, 0.1)).toBe(4);
+    // Six tasks and four seeds of one family: four above the floor of six.
+    expect(owed(seeds(["one", "one", "one", "one"]), 1000, 0.1)).toBe(4);
+    // The nearest case: one seed is one above it.
+    expect(owed(seeds(["one"]), 1000, 0.1)).toBe(1);
   });
 
   it("leaves owed practice to the host, so no row reads it", () => {

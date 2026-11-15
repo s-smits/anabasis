@@ -8,9 +8,10 @@
  * It holds objective measures, which are exam-side, so a file written by `--record` goes under the
  * ignored `data/derived/` and out of every prompt, pull request and paste.
  */
+import { epochsOf } from "#src/campaign/climb.ts";
 import { startOf } from "#src/campaign/comparison.ts";
 import { objectiveRuleIn, pairsOf, type Paired } from "#src/kernel/compare.ts";
-import { failWrongPasses, wrongPasses } from "#src/kernel/history.ts";
+import { failWrongPasses, proposalsOf, wrongPasses } from "#src/kernel/history.ts";
 import { type EventKind, type LogEvent, read } from "#src/kernel/log.ts";
 import { lastReports, pairsReported, type Reported } from "#src/kernel/reports.ts";
 import { solvesIn } from "#src/kernel/solves.ts";
@@ -35,6 +36,8 @@ export interface Solve {
 /** One task of a comparison, each side's counted solves in the order they started. */
 export interface Task {
   readonly task: string;
+  /** The Examiner's label for the task's kind (`proposalsOf`); null where it gave none. */
+  readonly family: string | null;
   readonly direction: "lower" | "higher" | null;
   readonly retained: boolean;
   readonly old: readonly Solve[];
@@ -59,6 +62,9 @@ export interface Comparison {
   readonly aa: readonly Task[];
   /** What the campaign did after this report, for what became of a step a replay adds. */
   readonly after: { readonly promoted: readonly string[]; readonly readings: number };
+  /** Whether the promotion this comparison's step made was confirmed by its starter read (`epochsOf`);
+   *  null where the next promotion is of another harness, there is none, or no starter read reported. */
+  readonly confirmed: boolean | null;
 }
 
 /** How a log's first line opens, before its event's time. */
@@ -98,7 +104,12 @@ export function paired(task: Task): Paired {
 }
 
 /** A pair as a task of the record, with each solve's turns and seconds from its ending (`solvesIn`). */
-function taskOf(pair: Paired, retained: ReadonlySet<string>, ends: Map<string, JsonObject | null>): Task {
+function taskOf(
+  pair: Paired,
+  retained: ReadonlySet<string>,
+  ends: Map<string, JsonObject | null>,
+  families: ReadonlyMap<string, string | null>,
+): Task {
   const side = (which: "old" | "fresh"): Solve[] =>
     pair[which].map((valid, at) => {
       const end = ends.get(pair.solves?.[which][at] ?? "");
@@ -112,6 +123,7 @@ function taskOf(pair: Paired, retained: ReadonlySet<string>, ends: Map<string, J
     });
   return {
     task: pair.task,
+    family: families.get(pair.task) ?? null,
     direction: pair.objective?.direction ?? null,
     retained: retained.has(pair.task),
     old: side("old"),
@@ -148,6 +160,8 @@ export function comparisonsIn(name: string, events: readonly LogEvent[]): Compar
   const finished = new Map(solvesIn(events).map(({ id, end }) => [id, end]));
   const opened = Date.parse(events[0]?.at ?? "");
   const reports = lastReports(events);
+  const families = new Map(proposalsOf(events).map(({ version, family }) => [version, family]));
+  const epochs = epochsOf(events);
   const promotions = events.flatMap(({ kind, data }, index) =>
     kind === "harness.promoted" && isString(data.harness) ? [{ index, harness: data.harness }] : [],
   );
@@ -159,7 +173,8 @@ export function comparisonsIn(name: string, events: readonly LogEvent[]): Compar
     const retained = new Set(Array.isArray(start.retained) ? start.retained.filter(isString) : []);
     const starter = start.starter ?? report.data.starter;
     const versions = pairs.map(({ task }) => task);
-    const of = (pair: Paired) => taskOf(pair, retained, finished);
+    const of = (pair: Paired) => taskOf(pair, retained, finished, families);
+    const next = epochs.find(({ from }) => from > report.index);
     return [
       {
         campaign: name,
@@ -177,6 +192,7 @@ export function comparisonsIn(name: string, events: readonly LogEvent[]): Compar
           promoted: promotions.filter(({ index }) => index > report.index).map(({ harness }) => harness),
           readings: reports.length - at - 1,
         },
+        confirmed: next?.reference === fresh && next.starter_read !== null ? next.confirmed : null,
       },
     ];
   });

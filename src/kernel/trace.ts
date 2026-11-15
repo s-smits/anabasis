@@ -185,8 +185,7 @@ export function traced({ kind, at, data }: LogEvent, index: number): Traced | nu
   return { ...mark, part, billed: usages.reduce<number>((sum, usage) => sum + (costOf(usage) ?? 0), 0) };
 }
 
-/** The model each session or solve's start asked for, as `provider/model`, by its id; the Referee's
- *  turns have no start, so none is named for them. */
+/** The model (`provider/model`) each session or solve's start asked for, by its id. */
 export function askedOf(events: readonly LogEvent[]): Map<string, string> {
   const asked = new Map<string, string>();
   for (const { kind, data } of events) {

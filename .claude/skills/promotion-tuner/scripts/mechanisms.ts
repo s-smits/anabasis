@@ -26,6 +26,8 @@
  * - `test`: `flip` as production, `sign` (margins ignored) or `rank` (signed ranks). `level`: in place
  *   of the recorded one. `untied`: the fewest untied tasks a step may rest on.
  * - `retained`: `out` leaves the retained tasks out of the score.
+ * - `unit`: what the test counts once: each `task` as production, or each family (siblings repeat one
+ *   effect), by its mean score or its `first` task's; a task of no family stands alone.
  */
 import { flipP, ROOM, WEIGHTS, wholePoints } from "#src/kernel/compare.ts";
 import type { Solve, Task } from "./record.ts";
@@ -54,6 +56,7 @@ const CHOICES = {
   lead: ["any", "answers"],
   test: ["flip", "sign", "rank"],
   retained: ["in", "out"],
+  unit: ["task", "family", "first"],
 } as const;
 type Choice = keyof typeof CHOICES;
 
@@ -85,6 +88,7 @@ export const TODAY: Knobs = {
   lead: "any",
   test: "flip",
   retained: "in",
+  unit: "task",
 };
 
 /** What each form of the bill, of time and of the score's other choices reads, when none is named. */
@@ -118,6 +122,8 @@ export const STANDARD = [
   "level=0.01",
   "untied=8",
   "retained=out",
+  "unit=family",
+  "unit=first",
 ] as const;
 
 const POINTS = 1000;
@@ -168,7 +174,8 @@ function partsOf(task: Task, knobs: Knobs) {
   }
   const each = POINTS / Math.max(1, task.fresh.length * task.old.length);
   return {
-    answers: (sums.validity * knobs.validity + sums.objective * knobs.objective) * each,
+    // Each measure is scaled before the sum, in production's order (`pointsOf`), so floats round alike.
+    answers: sums.validity * knobs.validity * each + sums.objective * knobs.objective * each,
     resources: (sums.bill * knobs.bill + sums.turns * knobs.turns + sums.seconds * knobs.seconds) * each,
   };
 }
@@ -229,6 +236,15 @@ function withinCeilings(tasks: readonly Task[], knobs: Knobs): boolean {
   return ceilings.every(([resource, most]) => most === null || (ratioOf(tasks, resource) ?? 0) <= most);
 }
 
+/** The scores the test reads under `unit`, one a task or one a family. */
+function unitsOf(scores: readonly number[], tasks: readonly Task[], unit: Knobs["unit"]): number[] {
+  if (unit === "task") return [...scores];
+  const kin = Map.groupBy(scores, (_, at) => tasks[at]?.family ?? `task ${String(at)}`);
+  return [...kin.values()].map((each) =>
+    unit === "first" ? (each[0] ?? 0) : wholePoints(each.reduce((all, one) => all + one, 0) / each.length),
+  );
+}
+
 /** A mechanism from knobs. */
 export function knobbed(knobs: Knobs, name: string): Mechanism {
   const pOf = (scores: readonly number[]) => {
@@ -238,10 +254,14 @@ export function knobbed(knobs: Knobs, name: string): Mechanism {
   return {
     name,
     score: (task) => scoreOf(task, knobs),
-    test: (scores, level, tasks) =>
-      scores.filter((one) => one !== 0).length >= knobs.untied &&
-      pOf(scores) <= (knobs.level ?? level) &&
-      (knobs.lead === "any" || answersLead(tasks, knobs)),
+    test: (scores, level, tasks) => {
+      const units = unitsOf(scores, tasks, knobs.unit);
+      return (
+        units.filter((one) => one !== 0).length >= knobs.untied &&
+        pOf(units) <= (knobs.level ?? level) &&
+        (knobs.lead === "any" || answersLead(tasks, knobs))
+      );
+    },
     guard: (tasks) => withinCeilings(tasks, knobs),
   };
 }

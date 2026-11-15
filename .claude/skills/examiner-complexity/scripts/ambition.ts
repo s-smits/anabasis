@@ -28,6 +28,7 @@ import { runCommand } from "#skills/main/cli.ts";
 import { ownedBy } from "#src/kernel/trace.ts";
 import { validityOf } from "#tools/d2/close.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
+import { waitedMs, waitsOf } from "#tools/wri/time.ts";
 import { readingOf } from "#skills/system-path-simulation/scripts/live-seat.ts";
 
 export const STARTS = new Set<string>(["exam.started", "draft.started"]);
@@ -41,15 +42,29 @@ export function referenceAt(events: readonly LogEvent[], index: number): string 
 }
 
 /** What a writing session was asked for and how it stands: the tasks its start asked (`limits.tasks`,
- *  which no fold reads), then the ending, turns and last event of the campaign's own fold, the turns
- *  against the start's limit. On 13 November a row of a cycle's ledger gave five sessions' asks from
- *  memory, three of them wrong, where this line read "held 14 of 14" of a session asked for 17. */
-function askedOf(start: LogEvent, step: Extract<Handover, { step: "examiner" }>): string {
+ *  which no fold reads), then the ending and turns of the campaign's own fold, the turns against the
+ *  start's limit, and its `hours` (`wroteHours`). On 13 November a row of a cycle's ledger gave five
+ *  sessions' asks from memory, three of them wrong, where this line read "held 14 of 14" of a
+ *  session asked for 17. */
+function askedOf(start: LogEvent, step: Extract<Handover, { step: "examiner" }>, hours: number): string {
   const limits = asRecord(start.data.limits);
   const ask = isNumber(limits?.tasks) ? `asked ${String(limits.tasks)}, ` : "";
   const limit = isNumber(limits?.turns) ? ` of ${String(limits.turns)}` : "";
-  const hours = (Date.parse(step.last) - Date.parse(start.at)) / HOUR_MS;
   return `${ask}${step.ended ?? (step.cut ? "cut" : "open")} at ${String(step.turns)}${limit} turns in ${hours.toFixed(1)} h`;
+}
+
+/** The hours `session`, started at event `start`, spent writing: to the last event it wrote before
+ *  its end, less the waits on a provider or the network the log records between (`waitedMs`; a load
+ *  wait is some solve's, often another seat's, and stays in). A session at rest with its campaign
+ *  is closed when the campaign goes on, so hours to its ending read the rest as writing: on
+ *  15 November one that waited two days on a login read "35 turns in 52.8 h". */
+function wroteHours(events: readonly LogEvent[], start: number, end: number, session: string): number {
+  const mine = ({ kind, data }: LogEvent) => data.session === session && kind.startsWith("exam.");
+  const closed = events.findIndex((event, at) => at > start && mine(event) && event.kind === "exam.finished");
+  const wrote = events.slice(start, closed === -1 ? end : closed).findLast(mine) ?? events[start];
+  const [from, until] = [Date.parse(events[start]?.at ?? ""), Date.parse(wrote?.at ?? "")];
+  const rests = waitsOf(events).filter(({ kind }) => kind !== "load");
+  return (until - from - waitedMs(rests, from, until)) / HOUR_MS;
 }
 
 /** How many families a session's proposals name and how many tasks the largest holds, naming none,
@@ -104,7 +119,10 @@ export function sessionLines(events: readonly LogEvent[]): string[] {
     const turns = reading.turns === null ? "no valid room solve" : `median turns ${String(reading.turns[1])}`;
     const from = events[start];
     const step = from?.kind === "exam.started" ? written.find(({ id }) => id === session) : undefined;
-    const asked = from === undefined || step === undefined ? "" : ` · ${askedOf(from, step)}`;
+    const asked =
+      from === undefined || step === undefined
+        ? ""
+        : ` · ${askedOf(from, step, wroteHours(events, start, end, step.id))}`;
     const families = isString(session) ? familiesOf(events, session) : "";
     return `${isString(session) ? session : "?"} · reference ${reference} · held ${String(reading.held)} of ${String(gated)} (${words || "no task admission"})${asked}${families} · ${turns} · $${billedAll(own).toFixed(2)}`;
   });

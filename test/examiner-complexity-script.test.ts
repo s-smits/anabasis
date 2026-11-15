@@ -69,10 +69,11 @@ describe("ambition", () => {
       opened(1, "x-1", { tasks: 17, turns: 200 }),
       turn(2, "x-1"),
       ...gate(3, "passed", 1),
-      turn(4, "x-1"),
+      turn(121, "x-1"),
       event(121, "exam.finished", { session: "x-1", ended: "finished", proposed: 1, held: ["v3"] }),
       opened(122, "x-2", { tasks: 1, turns: 200 }),
       ...gate(123, "passed", 0),
+      turn(152, "x-2"),
       event(152, "exam.finished", { session: "x-2", ended: "supplied", proposed: 1, held: ["v123"] }),
       opened(153, "x-3", { tasks: 12, turns: 200 }),
       turn(183, "x-3"),
@@ -80,11 +81,29 @@ describe("ambition", () => {
     const [draft, short, met, open] = sessionLines(asked);
     // The hostile case: one task held of one gated reads as full supply where seventeen were asked.
     expect(short).toContain("held 1 of 1 (some 1) · asked 17, finished at 2 of 200 turns in 2.0 h");
-    expect(met).toContain("held 1 of 1 (none 1) · asked 1, supplied at 0 of 200 turns in 0.5 h");
+    expect(met).toContain("held 1 of 1 (none 1) · asked 1, supplied at 1 of 200 turns in 0.5 h");
     expect(open).toContain("asked 12, open at 1 of 200 turns in 0.5 h");
     expect(draft).not.toContain("asked");
     // A start that names no limits gives no ask, and a session the campaign went past reads cut.
     expect(sessionLines(log)[1]).toContain("(every 1, some 1) · cut at 0 turns in 0.0 h");
+    // The hostile case: a session at rest with its campaign is closed when the campaign goes on,
+    // and the days between its last turn and that ending are no writing time.
+    const rested = [
+      opened(0, "x-1", { tasks: 12, turns: 200 }),
+      turn(2, "x-1"),
+      turn(6, "x-1"),
+      turn(12, "x-1"),
+      event(2892, "exam.finished", { session: "x-1", ended: "killed", proposed: 0, held: [] }),
+    ];
+    expect(sessionLines(rested)[0]).toContain("asked 12, killed at 3 of 200 turns in 0.2 h");
+    // And one that wrote again once its login reset: the wait the log records is taken out.
+    const waited = [
+      ...rested.slice(0, 4),
+      event(13, "campaign.waited", { for: "provider", ms: 2 * 24 * 60 * 60_000 }),
+      turn(2892, "x-1"),
+      event(2892, "exam.finished", { session: "x-1", ended: "crashed", proposed: 0, held: [] }),
+    ];
+    expect(sessionLines(waited)[0]).toContain("asked 12, crashed at 4 of 200 turns in 0.2 h");
   });
 
   it("counts the families a session's proposals name where the label sits on the task", () => {

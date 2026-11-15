@@ -25,6 +25,7 @@ function comparison(
     readonly versions?: readonly string[];
     readonly more?: JsonObject;
     readonly reported?: boolean;
+    readonly families?: Readonly<Record<string, string>>;
   } = {},
 ): LogEvent[] {
   const { events, terms } = roundSolves("g-1", ["h1", "h2"], outcomes);
@@ -69,7 +70,12 @@ function comparison(
     ...options.more,
   });
   const proposed = Object.keys(outcomes).flatMap((task) => [
-    event("task.proposed", { version: task, taskId: task, session: "e-1", family: "fam" }),
+    event("task.proposed", {
+      version: task,
+      taskId: task,
+      session: "e-1",
+      family: options.families?.[task] ?? "fam",
+    }),
     event("task.gate", { version: task, gate: 1, outcome: "passed" }),
   ]);
   return [...proposed, start, ...events, ...verdicts, ...(options.reported === false ? [] : [report])];
@@ -209,6 +215,40 @@ describe("pairs", () => {
       "e-1 2-0-1, diff +900, 1 outside; the opening exam 0-1-0, diff -600, 0 outside",
     );
     expect(line("family")).toContain("fam 2-0-1, diff +900, 1 outside; - 0-1-0, diff -600, 0 outside");
+  });
+
+  it("gives production's grain without a label, and the retained tasks in the line by family", () => {
+    const families = { a: "kin-one", b: "kin-one", c: "kin-one", d: "kin-two" };
+    const outcomes = { a: "FF PP", b: "FF PP", c: "FF PP", d: "PP FF" };
+    const tally = (wins: number, losses: number) => ({ frontier: { wins, losses, ties: 0 } });
+    // A report's family tallies count the frontier alone: c is retained.
+    const more = { families: { "kin-one": tally(2, 0), "kin-two": tally(0, 1) } };
+    const line = (retained: readonly string[], part: string) =>
+      pairRows(comparison(outcomes, { families, retained, more })).find((row) => row.includes(part)) ?? "";
+    expect(line(["c"], " grain, ")).toContain(": the largest family holds 2 of 3 tallied frontier tasks; ");
+    expect(line(["c"], " grain, ")).not.toContain("kin-");
+    expect(line(["c"], " by family (")).toMatch(/kin-one 3-0-0, [^;]*, 1 retained; kin-two 0-1-0/u);
+    expect(line([], " by family (")).not.toContain("retained");
+    expect(pairRows(comparison(outcomes)).find((row) => row.includes(" grain, "))).toContain(
+      "no family tallies",
+    );
+  });
+
+  it("says where one task's score is larger than every other together, and not where two match it", () => {
+    const grain = (measures: Readonly<Record<string, readonly number[]>>) =>
+      pairRows(
+        comparison(Object.fromEntries(Object.keys(measures).map((task) => [task, "PP PP"])), { measures }),
+      )
+        .find((row) => row.includes(" grain, "))
+        ?.split("; ")
+        .at(-1) ?? "";
+    const small = { u: [100, 100, 97, 97], v: [100, 100, 96, 96] };
+    expect(grain({ t: [100, 100, 300, 300], ...small })).toMatch(
+      /^one task's diff \(\d+ in size\) exceeds the other 2 together \(\d+\)$/u,
+    );
+    expect(grain({ t: [100, 100, 300, 300], w: [100, 100, 300, 300], ...small })).toBe(
+      "no task's diff exceeds the others together",
+    );
   });
 
   it("tallies the first solves apart from the second as a description, never as a reading", () => {

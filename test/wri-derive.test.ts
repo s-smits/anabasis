@@ -215,11 +215,38 @@ describe("one reader, by name", () => {
     expect(decodeOutput(ran.stdout)).toBe(fileOf(done, "degradations"));
   });
 
-  it("refuses a name no reader has, naming those it has", () => {
-    const ran = reader("no-such-reader", "--log", log);
-    expect(ran.exitCode).not.toBe(0);
-    expect(decodeOutput(ran.stderr)).toContain("rows");
-    expect(decodeOutput(ran.stderr)).toContain("chain");
+  it("answers a refusal in one line with exit 2: no name, an unknown one naming those it has, or no log", () => {
+    for (const [args, said] of [
+      [[], "name a reader: rows, "],
+      [["no-such-reader", "--log", log], "name a reader: rows, "],
+      // Its own word after the verb is the reader's name, never a log.
+      [["degradations", log], "name one --log"],
+    ] as const) {
+      const ran = reader(...args);
+      const lines = decodeOutput(ran.stderr).trim().split("\n");
+      expect([ran.exitCode, lines.length]).toEqual([2, 1]);
+      expect(lines[0]).toStartWith(said);
+    }
+    expect(decodeOutput(reader().stderr)).toContain("chain");
+  });
+});
+
+describe("the investigation command's own arguments", () => {
+  const wri = (...args: string[]) => runSync([capturedExecPath, "tools/wri/wri.ts", ...args], { cwd: REPO });
+
+  it("reads a log after the verb as --log reads it, by path or folder, and prints the usage for --help", () => {
+    appendFileSync(log, STARTED);
+    const flagged = wri("read", "--log", log);
+    expect(flagged.exitCode).toBe(0);
+    for (const named of [log, dirname(log)]) {
+      const ran = wri("read", named);
+      expect([ran.exitCode, decodeOutput(ran.stdout)]).toEqual([0, decodeOutput(flagged.stdout)]);
+    }
+    expect(wri("climb").exitCode).not.toBe(0);
+    const help = wri("--help");
+    expect([help.exitCode, decodeOutput(help.stdout).startsWith("usage: bun tools/wri/wri.ts read")]).toEqual(
+      [0, true],
+    );
   });
 });
 

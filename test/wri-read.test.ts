@@ -38,6 +38,9 @@ const appendTo = (log: LogEvent[]) => (kind: EventKind, data: JsonObject) => {
   log.push({ at: new Date(START + log.length * 1000).toISOString(), kind, data });
 };
 const record = appendTo(events);
+/** What the trigger `name` says of `read`, where it opens a lane. */
+const detailOf = (read: readonly LogEvent[], name: string) =>
+  overview(read).triggers.find((trigger) => trigger.name === name)?.detail;
 
 const condition = (task: string, harness: string) =>
   conditionOf(task, harness, { wallSeconds: 100, turns: 8 });
@@ -393,7 +396,7 @@ describe("the reader of a round compared with another harness than its session s
         more(PROPOSED, { version: `w${String(index)}`, session: "x-1" });
         if (outcome !== null) more(GATE, { version: `w${String(index)}`, gate: 1, outcome, reason: "room" });
       }
-      return overview(exam).triggers.find(({ name }) => name === "SUPPLY THIN")?.detail;
+      return detailOf(exam, "SUPPLY THIN");
     };
     expect(thin(5, 1, 6)).toBeUndefined();
     expect(thin(1, 3, 2)).toBe("1 of 4 decided tasks passed task admission");
@@ -443,19 +446,17 @@ describe("the reader of a round compared with another harness than its session s
           ending: { outcome: "non-result", kind: "killed", reason: "cancelled", cancelledBy },
         });
       }
-      return overview(cut).triggers.find(({ name }) => name === "NON-RESULTS")?.detail ?? "";
+      return detailOf(cut, "NON-RESULTS") ?? "";
     };
     expect(killedBy(["admission", "admission"])).not.toContain("killed");
     expect(killedBy(["admission", "caller"])).toContain("killed 1");
   });
 
   it("does not diagnose an A/A step carried by the bill", () => {
-    const baselineNoise = overview(log).triggers.find(
-      ({ name }) => name === "REFERENCE AGAINST ITSELF",
-    )?.detail;
+    const baselineNoise = detailOf(log, "REFERENCE AGAINST ITSELF");
 
     const withUnbilled = (unbilled: readonly number[]) =>
-      overview(
+      detailOf(
         log.map((each) =>
           each.kind === REPORTED
             ? {
@@ -474,7 +475,8 @@ describe("the reader of a round compared with another harness than its session s
               }
             : each,
         ),
-      ).triggers.find(({ name }) => name === "REFERENCE AGAINST ITSELF")?.detail;
+        "REFERENCE AGAINST ITSELF",
+      );
     // Same tally and p; only whether the unbilled test supports the false step changes.
     const supported = withUnbilled([-2, -2, -2, -2]);
     expect(withUnbilled([0, 0, 0, 0])).not.toBe(supported);
@@ -499,13 +501,83 @@ describe("the reader of a round compared with another harness than its session s
     expect(edited(events)).toEqual(["b-1: agent/tools.mjs"]);
     expect(edited(unchanged)).toEqual([]);
     expect(edited(cut)).toEqual(edited(events));
+    // A killed session is ended on record at the relaunch, by a record that says nothing of `changed`.
+    const killed = events.map(
+      (event): LogEvent =>
+        event.kind === BUILD_FINISHED
+          ? { ...event, data: { session: "b-1", ended: "killed", crash: null, billed: 2 } }
+          : event,
+    );
+    expect(edited(killed)).toEqual(edited(events));
+    const changed = (read: readonly LogEvent[]) => detailOf(read, "HARNESS CHANGED");
+    expect(changed(killed)).toContain("hp to what a stop left unsaved");
+    // The harness a killed session froze or the host kept for it is what it left, and names it.
+    const kept = (read: readonly LogEvent[]) =>
+      read.flatMap((event): LogEvent[] =>
+        event.kind === BUILD_FINISHED
+          ? [{ ...event, kind: "build.checkpoint", data: { session: "b-1", harness: "hc" } }, event]
+          : [event],
+      );
+    expect(changed(kept(killed))).toContain("hp to hc");
+    // A killed session whose only calls on the tool tree ran a program there wrote nothing.
+    const ran = killed.map(
+      (event): LogEvent =>
+        event.kind === "build.call" && (event.data.tool === "write_file" || event.data.tool === "edit")
+          ? {
+              ...event,
+              data: { session: "b-1", tool: "bash", args: { command: "/h/.toolchain/bin/probe t1" } },
+            }
+          : event,
+    );
+    expect(edited(ran)).toEqual([]);
+    expect(changed(ran)).toBeUndefined();
+    // Where such a session left a harness of its own, that stands in and the shell's path is named.
+    expect(edited(kept(ran))).toEqual(["b-1: .toolchain"]);
+  });
+
+  it("counts a practice fail under a harness older than the session apart from its own", () => {
+    // A Builder practises the reference beside its own state, and the reference's fail is the baseline's.
+    const done = events.findIndex(({ kind }) => kind === BUILD_FINISHED);
+    const practised = (id: string, harness: string, outcome: "pass" | "fail"): LogEvent[] => {
+      const ran = condition("t1", harness);
+      return (
+        [
+          [CONDITION_RECORDED, { id: conditionId(ran), condition: requireJsonValue(ran) }],
+          [SOLVE_STARTED, { solve: id, condition: conditionId(ran), limits: { wallSeconds: 100 } }],
+          [SOLVE_FINISHED, { solve: id, ending: { outcome }, seconds: 2, responseModels: ["m-1"] }],
+        ] as const
+      ).map(([kind, data]) => ({ at: new Date(START).toISOString(), kind, data }));
+    };
+    const fails = (extra: readonly LogEvent[], early: readonly LogEvent[] = [], from = events) =>
+      detailOf([...early, ...from.slice(0, done), ...extra, ...from.slice(done)], "PRACTICE FAILS");
+    expect(fails([])).toBe(
+      "b-1: 1 fail under its own states, 0 ruled earned; the same task passed later under changed bytes 0, under the same bytes 0; 0 fails under a harness older than the session",
+    );
+    // The reference's fail is answered by no edit, though the session's own state passes after it.
+    expect(fails([...practised("p1", "hp", "fail"), ...practised("p2", "hb", "pass")])).toBe(
+      "b-1: 1 fail under its own states, 0 ruled earned; the same task passed later under changed bytes 0, under the same bytes 1; 1 fail under a harness older than the session",
+    );
+    // So is a fail under a harness a solve ran under before the session began: a session that
+    // followed a cut one begins from that one's state, and the reference is older than both.
+    expect(fails(practised("p3", "hold", "fail"), practised("p0", "hold", "pass"))).toContain(
+      "1 fail under its own states, 0 ruled earned",
+    );
+    expect(fails(practised("p3", "hold", "fail"))).toContain("2 fails under its own states");
+    // A session whose only practice fails are the reference's still opens the lane, saying so.
+    const own = events.findIndex(({ kind, data }) => kind === SOLVE_FINISHED && data.solve === "s1");
+    const passing = events.map(
+      (event, index): LogEvent =>
+        index === own ? { ...event, data: { ...event.data, ending: { outcome: "pass" } } } : event,
+    );
+    expect(fails(practised("p1", "hp", "fail"), [], passing)).toContain(
+      "0 fails under its own states, 0 ruled earned",
+    );
   });
 
   it("reads the tools a new harness called whether its Builder session finished or not", () => {
     // A led session freezes its harness for a comparison and may never finish: until 2 November
     // these triggers keyed on the finished harness and opened lane 16 in none of seven led runs.
-    const called = (read: readonly LogEvent[]) =>
-      overview(read).triggers.find(({ name }) => name === "TOOLS CALLED")?.detail;
+    const called = (read: readonly LogEvent[]) => detailOf(read, "TOOLS CALLED");
     const open = events.map(
       (event): LogEvent =>
         event.kind === BUILD_FINISHED
@@ -532,13 +604,11 @@ describe("the reader of a round compared with another harness than its session s
         event,
       ];
     });
-    const detail = overview(ran).triggers.find(({ name }) => name === "TOOLS CALLED")?.detail;
+    const detail = detailOf(ran, "TOOLS CALLED");
     expect(detail).toContain(
       "bash 12, submit 4; through bash: cat 4, echo 4, fit 4, grep 4, open-workspace 4, run 4",
     );
-    expect(overview(events).triggers.find(({ name }) => name === "TOOLS CALLED")?.detail).toContain(
-      "through bash: none",
-    );
+    expect(detailOf(events, "TOOLS CALLED")).toContain("through bash: none");
   });
 
   it("names a reading the set-aside moves only where the tests without the bill disagree", () => {
@@ -863,8 +933,7 @@ describe("the reader of comparisons the campaign command named apart from its Bu
         ? { ...event, data: { ...event.data, frontier: { of: ["v1", "v2"], differences: [3, 0] } } }
         : event,
     );
-    const quick = (read: readonly LogEvent[]) =>
-      overview(read).triggers.find(({ name }) => name === "WIN AT A SMALL WALL SHARE")?.detail;
+    const quick = (read: readonly LogEvent[]) => detailOf(read, "WIN AT A SMALL WALL SHARE");
     expect(quick(onObjective)).toContain("b-1: 2 passed solves of tasks the new harness won");
     // A led session is still open when its comparisons report: until 2 November its quick wins were
     // keyed on the harness it finished with, and seven led campaigns read none (WRI lane 19).
@@ -946,8 +1015,7 @@ describe("the reader of a harness that answered for its solver", () => {
       versions: ["v1"],
       reading: "no-step",
     });
-    const { triggers } = overview(log);
-    return triggers.find((trigger) => trigger.name === "ANSWER FROM A PROGRAM")?.detail;
+    return detailOf(log, "ANSWER FROM A PROGRAM");
   };
 
   it("counts judged program answers by side and rejects extra commands, writes and flags", () => {

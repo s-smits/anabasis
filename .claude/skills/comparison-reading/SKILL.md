@@ -45,9 +45,11 @@ bun .claude/skills/comparison-reading/scripts/starter-reads.ts <log.jsonl | camp
   an objective, a gap line gives each side's median ratio to the best answer on record and how
   often it came within the floor: a large gap can mean a strong candidate or a weak reference. The
   output is exam-side. `--zone` prints the zone counts with the A/A's untied share as one TSV row a
-  comparison across several logs.
+  comparison across several logs. What a reading rests on task by task, with how many of its
+  tallied frontier tasks the largest family holds, is `bun tools/wri/wri.ts reader pairs --log <name>`.
 - `draw.ts` predicts the next comparison: the held-out pool by part, the set it would fix, its
-  frontier by epoch, admission's floor and refusals (`held-short` among them) and the size lines, at
+  grain and its repeats of the comparison before, its frontier by epoch, admission's floor and
+  refusals (`held-short` among them) and the size lines, at
   the table's target and level by default.
 - `starter-reads.ts` asks what a confirmed promotion rests on. It splits each starter read into the
   tasks that selected the harness and those that did not (written before but undrawn, or after),

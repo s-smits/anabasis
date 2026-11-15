@@ -386,8 +386,9 @@ describe("what the next comparison would score", () => {
   /** A task's hidden value, which no line of the draw may carry. */
   const HIDDEN = "hidden-canary-5e4";
 
-  /** A log over a read checker whose Examiner held `held` drafts and released `released`. */
-  function exam(held: number, released: number): LogEvent[] {
+  /** A log over a read checker whose Examiner held `held` drafts and released `released`, each task
+   *  of the family `familyOf` names for its place, or of none. */
+  function exam(held: number, released: number, familyOf?: (at: number) => string | undefined): LogEvent[] {
     const events: LogEvent[] = [];
     const add = (kind: LogEvent["kind"], data: JsonObject) =>
       events.push({ at: `2026-10-30T00:${String(events.length).padStart(2, "0")}:00.000Z`, kind, data });
@@ -395,7 +396,13 @@ describe("what the next comparison would score", () => {
     add("checker.read", { faults: [] });
     for (let at = 0; at < held + released; at += 1) {
       const [version, taskId] = [`v-${String(at)}`, `task-${String(at)}`];
-      add("task.proposed", { version, taskId, task: { taskId, publicInput: {}, hidden: { value: HIDDEN } } });
+      const task = {
+        taskId,
+        ...keyIfDefined("family", familyOf?.(at)),
+        publicInput: {},
+        hidden: { value: HIDDEN },
+      };
+      add("task.proposed", { version, taskId, task });
       add("task.gate", {
         version,
         gate: 1,
@@ -422,6 +429,34 @@ describe("what the next comparison would score", () => {
     const lines = drawLines(exam(5, 2), { target: 24, level: 0.02 });
     expect(lines.find((line) => line.startsWith("admission "))).toContain("refused held-short");
     for (const canary of [HIDDEN, "task-", "v-"]) expect(lines.join("\n")).not.toContain(canary);
+  });
+
+  /** `log` with a comparison g-1 that read no step on the tasks numbered `from` to `to`. */
+  function compared(log: readonly LogEvent[], from: number, to: number): LogEvent[] {
+    const of = Array.from({ length: to - from + 1 }, (_, at) => `v-${String(from + at)}`);
+    const differences = of.map((_, at) => [5, -5][at] ?? 0);
+    const data = { session: "g-1", reading: "no-step", frontier: { differences, of } };
+    const reported: LogEvent = { at: "2026-10-30T01:00:00.000Z", kind: "comparison.reported", data };
+    return [...log, reported];
+  }
+
+  it("counts the tasks the comparison before scored, and the set's families, naming neither", () => {
+    // The hostile cases: a pool that is the last comparison's tasks less one draws that comparison
+    // again, and on 14 November 19 tasks in families of 18 and 1 read as 19 independent ones.
+    const lines = (log: readonly LogEvent[]) => drawLines(log, { target: 24, level: 0.02 }).join("\n");
+    const repeat = compared(exam(8, 2), 1, 9);
+    expect(lines(repeat)).toContain("of those tasks, 8 of 8 scored in the comparison before (g-1)");
+    expect(drawOf(compared(exam(8, 2), 2, 4), 24, "c1").before).toStrictEqual({ session: "g-1", again: 3 });
+    expect(lines(exam(8, 2))).not.toContain("comparison before");
+    const siblings = exam(19, 2, (at) => (at === 2 ? "kin-alone" : "kin-many"));
+    expect(lines(siblings)).toContain(
+      "the set's grain, naming no family: 19 tasks in 2 families, the largest 18\n",
+    );
+    for (const log of [repeat, siblings]) expect(lines(log)).not.toMatch(/v-|kin-/);
+    const mixed = exam(8, 2, (at) => (at < 6 ? "kin-many" : undefined));
+    expect(drawOf(mixed, 24, "c1").families).toStrictEqual({ sizes: [4], unnamed: 4 });
+    expect(lines(mixed)).toContain("8 tasks in 1 family, the largest 4, and 4 that name none");
+    expect(lines(exam(8, 2))).toContain("8 tasks, none of which names a family");
   });
 });
 

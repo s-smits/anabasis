@@ -203,14 +203,8 @@ describe("the runs pulse", () => {
         "◆ build ended at wall and changed the harness, broken: no guide",
       ],
     ] satisfies [JsonObject, string][]) {
-      const look = pulse(
-        round,
-        [...built, event(5, "build.finished", data)],
-        "closed",
-        lookedAt(built.length),
-        START,
-      );
-      expect(look.said[0]).toBe(line);
+      const events = [...built, event(5, "build.finished", data)];
+      expect(pulse(round, events, "closed", lookedAt(built.length), START).said[0]).toBe(line);
     }
   });
 
@@ -474,6 +468,18 @@ describe("the runs pulse", () => {
         line.startsWith("◆ honesty: MARGINS INSIDE THE NOISE (lane 29)"),
       ),
     ).toHaveLength(1);
+    // A promotion the objective carried is how this score promotes, so it is a reading, not an alarm
+    // that wakes a session; a crashed session read in the same look is still a warning.
+    const alarms = [
+      { name: "SAFEGUARD-9 PROMOTION BEYOND VALIDITY", lane: 8, detail: "0123abcd 7-0 p 0.008 joined" },
+      { name: "SESSION CRASHED", lane: 24, detail: "x-1" },
+    ];
+    const looked = { ...lookedAt(built.length), triggers: {} };
+    const graded = pulseOf(round, built, OPEN, looked, { now: START + MINUTE, alarms }).said;
+    expect(graded).toEqual([
+      "◆ honesty: SAFEGUARD-9 PROMOTION BEYOND VALIDITY (lane 8): 0123abcd 7-0 p 0.008 joined",
+      "⚠ economy: SESSION CRASHED (lane 24): x-1",
+    ]);
   });
 
   it("recognises a campaign ending while drafting and warns for an unfinished draft", () => {

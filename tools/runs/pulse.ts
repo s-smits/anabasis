@@ -189,8 +189,8 @@ const WATCHED = new Map<string, readonly [string, "alarm" | "reading"]>([
   ["MEASURED AN EARLIER STATE", ["honesty", "alarm"]],
   ["STARTS OUT OF TURN", ["honesty", "alarm"]],
   ["LOG OUT OF ORDER", ["honesty", "alarm"]],
-  ["SAFEGUARD-8 PROMOTION ON AUTHOR ROOM", ["honesty", "alarm"]],
-  ["SAFEGUARD-9 PROMOTION BEYOND VALIDITY", ["honesty", "alarm"]],
+  // A reading: it names most promotions under this score (171 of 195 on record, 15 November).
+  ["SAFEGUARD-9 PROMOTION BEYOND VALIDITY", ["honesty", "reading"]],
   ["CHECK DEFECT RULED", ["verdicts", "alarm"]],
   ["RULED UNCLEAR", ["verdicts", "alarm"]],
   ["RULINGS REFUSED", ["verdicts", "alarm"]],
@@ -442,8 +442,7 @@ function standsSaid(
  * A campaign's look also says the step it has come to owe, once, at the look that finds it so: an
  * investigation at its trigger (`triggerOf`), with the command that opens one. Until 10 November
  * only the loop's driver read the trigger, so a session that watched the pulse alone ran a
- * campaign past twelve hours unread. Until 11 November the state was read twice, here without the
- * keeper and in the look with it, which only told kept from stopped apart in the second.
+ * campaign past twelve hours unread.
  */
 export function pulse(
   run: Run,

@@ -28,6 +28,12 @@ export interface Parent {
   readonly outcomes: string;
 }
 
+/** One predictions ledger's `## Carried` section and the run whose ledger it is. */
+interface Carried {
+  readonly run: string;
+  readonly text: string;
+}
+
 /** One run's ledgers for the derived views: its two hand-written files and its iteration's plan. */
 interface RunLedgers extends Parent {
   /** The `plan.md` of the iteration that read the run, or "" before one is written. */
@@ -93,10 +99,25 @@ export const outcomesOf = (text: string): Map<string, string> =>
     ]),
   );
 
-/** The ids of a predictions ledger whose outcome in the outcomes ledger is not `held`. */
-function unheldOf(predictions: string, outcomes: string): string[] {
+/**
+ * The ids a predictions ledger owes one outcome each in its outcomes ledger: those of its `id` tables,
+ * and each `<run>:<id>` its `## Carried` section names, resolved there under that whole name. Until
+ * 15 November 2026 a carried row owed no outcome of its own, so a claim carried into a fork was
+ * resolved only where a vetting happened to recount it (NI3), and on 13 November another run's ids
+ * read beside a run's in a paragraph (a falsified `D1` and a held `D4`) stood in no file (NI26).
+ */
+export const owedOf = (predictions: string): string[] => [
+  ...new Set([
+    ...idsOf(predictions),
+    ...((sectionOf(predictions, "Carried") ?? []).join("\n").match(/(?<![\w.-])[a-z][\w.-]*:[A-Z]\w*/gu) ??
+      []),
+  ]),
+];
+
+/** The ids among `ids` whose outcome in the outcomes ledger is not `held`. */
+function unheldOf(ids: readonly string[], outcomes: string): string[] {
   const outcome = outcomesOf(outcomes);
-  return idsOf(predictions).filter((id) => outcome.get(id) !== "held");
+  return ids.filter((id) => outcome.get(id) !== "held");
 }
 
 /** The log's event count an outcomes ledger was resolved at, or null where it records none. */
@@ -139,15 +160,16 @@ export function cycleViewOf(runs: readonly RunLedgers[]): string[] {
     "| run | id | outcome |",
     "| --- | --- | --- |",
     ...runs.flatMap((run) =>
-      idsOf(run.predictions).map((id) => `| ${run.name} | ${id} | ${shownOutcome(run, id)} |`),
+      owedOf(run.predictions).map((id) => `| ${run.name} | ${id} | ${shownOutcome(run, id)} |`),
     ),
   ];
 }
 
 /**
  * The dropped view: each prediction a run left `unreached` or `falsified` that nothing took up, named
- * neither as `<run>:<id>` in a `## Carried` section (`carried`, every ledger's as one text) nor under
- * a `## Not done` of the plan that read its run. A run whose investigation has no plan yet has
+ * neither as `<run>:<id>` in another run's `## Carried` section (`carried`) nor under a `## Not done`
+ * of the plan that read its run; a row the run carries itself is carried on under its own name. A
+ * run whose investigation has no plan yet has
  * dropped nothing, since that plan has still to place its rows. A run at rest that no investigation
  * names has no plan to come, so its rows are listed apart as unread, where only a `## Carried` can
  * take them: on 13 November 2026 a fork at rest with nothing compared left 20 `unreached` rows that
@@ -156,15 +178,21 @@ export function cycleViewOf(runs: readonly RunLedgers[]): string[] {
  * no one could yet have read. The same day a count by hand found 11 of a cycle's 56 unreached
  * rows dropped, which no gate names once the fork that should have carried them has passed its own.
  */
-export function droppedOf(runs: readonly RunLedgers[], carried: string): string[] {
+export function droppedOf(runs: readonly RunLedgers[], carried: readonly Carried[]): string[] {
   const linesOf = (among: readonly RunLedgers[]) =>
     among.flatMap((run) => {
       const outcome = outcomesOf(run.outcomes);
       const undone = notDoneOf(run.plan).join("\n");
-      const left = idsOf(run.predictions)
+      const others = carried
+        .filter((each) => each.run !== run.name)
+        .map(({ text }) => text)
+        .join("\n");
+      const left = owedOf(run.predictions)
         .map((id) => ({ id, read: outcome.get(id) ?? "" }))
         .filter(({ read }) => read === "unreached" || read === "falsified")
-        .filter(({ id }) => !names(carried, `${run.name}:${id}`) && !names(undone, id));
+        .filter(
+          ({ id }) => !names(others, id.includes(":") ? id : `${run.name}:${id}`) && !names(undone, id),
+        );
       return left.length === 0
         ? []
         : [`- ${run.name}: ${left.map(({ id, read }) => `${id} (${read})`).join(", ")}`];
@@ -193,7 +221,7 @@ export function droppedOf(runs: readonly RunLedgers[], carried: string): string[
  */
 export function stillMissingOf(run: RunLedgers): string[] {
   const listed = (lines: readonly string[]) => (lines.length === 0 ? ["- none"] : lines);
-  const unheld = unheldOf(run.predictions, run.outcomes);
+  const unheld = unheldOf(owedOf(run.predictions), run.outcomes);
   return [
     `# Still missing: ${run.name}`,
     "",
@@ -224,7 +252,7 @@ export function carryOf(
   parents: readonly Parent[],
 ): { owed: string[]; missing: string[] } {
   const owed = parents.flatMap(({ name, predictions: theirs, outcomes }) =>
-    unheldOf(theirs, outcomes).map((id) => `${name}:${id}`),
+    unheldOf(idsOf(theirs), outcomes).map((id) => `${name}:${id}`),
   );
   const carried = (sectionOf(predictions, "Carried") ?? []).join("\n");
   return { owed, missing: owed.filter((token) => !names(carried, token)) };
@@ -273,17 +301,19 @@ function ledgerFolders(root: string, dir: string): string[] {
   return [...new Set([dir, ...cycles])];
 }
 
-/** Every `## Carried` section of the predictions ledgers in those folders, as one text. A file
- *  under `root` whose name holds `-cycle-` is no folder and holds none. */
-export const carriedIn = (root: string, dir: string): string =>
+/** Every `## Carried` section of the predictions ledgers in those folders, each with its run's name.
+ *  A file under `root` whose name holds `-cycle-` is no folder and holds none. */
+export const carriedIn = (root: string, dir: string): Carried[] =>
   ledgerFolders(root, dir)
     .filter((folder) => existsSync(folder) && statSync(folder).isDirectory())
     .flatMap((folder) =>
       readdirSync(folder)
         .filter((file) => /^predictions-.+\.md$/u.test(file))
-        .flatMap((file) => sectionOf(readFileSync(join(folder, file), "utf8"), "Carried") ?? []),
-    )
-    .join("\n");
+        .map((file) => ({
+          run: file.slice("predictions-".length, -".md".length),
+          text: (sectionOf(readFileSync(join(folder, file), "utf8"), "Carried") ?? []).join("\n"),
+        })),
+    );
 
 /** The one path `ledgerFiles` finds, or null where it finds none or several (a conflict to name). */
 export function ledgerOf(root: string, dir: string, file: string): string | null {

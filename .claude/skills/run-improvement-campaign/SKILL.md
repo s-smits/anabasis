@@ -77,7 +77,8 @@ never copied.
   `references/lanes.md`, "Labels"); needing another lane means the label is wrong. Its group is
   `first` (code no run has run), `again` (run before under another condition) or `off-run` (no seat
   reads it; settled by a landing, a reader or the launch). `outcomes-<run>.md` gives each of its ids,
-  and no other, one outcome, `held`, `falsified`, `unreached`, or `pending` while a live run's event
+  and each `<parent run>:<id>` its `## Carried` names, as a row under that whole name (another run's
+  claim read beside it goes there too, never in a paragraph), and no other, one outcome, `held`, `falsified`, `unreached`, or `pending` while a live run's event
   has not come, and records the log's length it was read at on a line of its own,
   `Log events at resolution: <n>`, which `next` prints; once the log grows past it, `next` reopens
   every `unreached` or `pending` row, since a run continued after its trigger may yet reach them.

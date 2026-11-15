@@ -32,6 +32,7 @@ import { dirname, join } from "../src/meta/path.ts";
 const live = { name: "r", host: "here", live: true };
 const SCRIPT = ".claude/skills/run-improvement-campaign/scripts/wri2p2.ts";
 const PLAN_FILE = "plan.md";
+const OUTCOMES_R = "outcomes-r.md";
 const PLAN =
   "# Plan\n\nvet-1 in cross-domain.md, by E1, B2 and S1.\n\nPull request: #602\n\n## Intentionally opposed\n\n- none\n";
 const DEVIATIONS = "| step | reason |\n| --- | --- |\n";
@@ -273,10 +274,10 @@ describe("the next step of an investigation", () => {
     ledger("predictions-r.md", table(["P1", "P2"]));
     expect(step()[0]).toContain("resolve P1, P2");
     // An outcome outside the four is unsettled, and an id predicted nowhere is named.
-    ledger("outcomes-r.md", `${table(["P1"], "held")}| P2 | maybe |\n| P9 | held |\n`);
+    ledger(OUTCOMES_R, `${table(["P1"], "held")}| P2 | maybe |\n| P9 | held |\n`);
     expect(step()[0]).toContain("resolve P2");
     expect(step()[0]).toContain("P9 predicted nowhere");
-    ledger("outcomes-r.md", `${table(["P1"], "held")}| P2 | pending |\n`);
+    ledger(OUTCOMES_R, `${table(["P1"], "held")}| P2 | pending |\n`);
     // What the run still lacks is derived, so no file of it is owed.
     expect(step()[0]).toStartWith("step: vet · recount");
     write("vetting.md", "| # | finding | verdict |\n| --- | --- | --- |\n| 1 | P1 held | confirmed |\n");
@@ -346,6 +347,29 @@ describe("the next step of an investigation", () => {
     ]);
   });
 
+  it("owes each row a run carries one outcome of its own, under its carried name, and shows it in the views", () => {
+    const { root, dir, write, ledger, step, lone } = folder("carried-outcomes", "r", true);
+    lone(4);
+    // The prose of the section, a time and a bare id among it, owes nothing.
+    ledger(
+      "predictions-r.md",
+      `${table(["P1"])}\n## Carried\n\nFrom q at 06:25Z, \`P2\` aside:\n\n- \`q-forkedPR601:P2\`\n- q-forkedPR601:E3\n`,
+    );
+    ledger(OUTCOMES_R, table(["P1"], "held"));
+    expect(step()[0]).toContain("resolve q-forkedPR601:P2, q-forkedPR601:E3 from the log");
+    ledger(OUTCOMES_R, `${table(["P1", "q-forkedPR601:P2"], "held")}| q-forkedPR601:E3 | falsified |\n`);
+    expect(step()[0]).toStartWith("step: vet · recount");
+    const views = () => ledgerViews(dir, root, () => null);
+    expect(views()).toContain("| r | q-forkedPR601:E3 | falsified |");
+    expect(views()).toContain("- q-forkedPR601:E3: falsified");
+    // A falsified carried row is dropped under its own name until a later fork carries it so.
+    const dropped = () => views()[views().findIndex((line) => line.startsWith("# Dropped")) + 2];
+    write(PLAN_FILE, PLAN);
+    expect(dropped()).toBe("- r: q-forkedPR601:E3 (falsified)");
+    ledger("predictions-s.md", `${table(["S1"])}\n## Carried\n\n- q-forkedPR601:E3\n`);
+    expect(dropped()).toBe("- none");
+  });
+
   it("reopens a row left unreached or pending once the log grows past its count, and keeps it while the log stands", () => {
     const { root, ledger, lone, step } = folder("stale", "r", true);
     lone(4);
@@ -355,17 +379,17 @@ describe("the next step of an investigation", () => {
     // A resolution names the count to record beside it.
     expect(first(120)).toContain("resolve P1, P2, P3");
     expect(first(120)).toContain('record "Log events at resolution: 120"');
-    ledger("outcomes-r.md", `Log events at resolution: 120\n\n${resolved}`);
+    ledger(OUTCOMES_R, `Log events at resolution: 120\n\n${resolved}`);
     expect(first(120)).toStartWith("step: vet");
     // The run went on: its unreached and pending rows are open again, and its held one is not.
     expect(first(121)).toBe(
-      `step: outcomes · ${join(root, "2026-11-07-cycle-test", "outcomes-r.md")}: P2, P3 read unreached or pending at 120 events and the log holds 121 now: resolve them again, and record "Log events at resolution: 121" on its own line`,
+      `step: outcomes · ${join(root, "2026-11-07-cycle-test", OUTCOMES_R)}: P2, P3 read unreached or pending at 120 events and the log holds 121 now: resolve them again, and record "Log events at resolution: 121" on its own line`,
     );
     // A ledger that records no count was read at none, and a log this machine cannot read stales nothing.
-    ledger("outcomes-r.md", resolved);
+    ledger(OUTCOMES_R, resolved);
     expect(first(120)).toContain("P2, P3 read unreached or pending at no recorded count");
     expect(first(null)).toStartWith("step: vet");
-    ledger("outcomes-r.md", `Log events at resolution: 121\n\n${table(["P1", "P2", "P3"], "held")}`);
+    ledger(OUTCOMES_R, `Log events at resolution: 121\n\n${table(["P1", "P2", "P3"], "held")}`);
     expect(first(400)).toStartWith("step: vet");
   });
 
@@ -429,7 +453,7 @@ describe("the next step of an investigation", () => {
   it("derives the cycle view and each run's still-missing view from its two ledgers and its plan", () => {
     const { root, dir, cycle, write, ledger } = folder("views", "r", true);
     ledger("predictions-r.md", table(["P1", "P2", "P3"]));
-    ledger("outcomes-r.md", `Log events at resolution: 50\n\n${table(["P1"], "held")}| P2 | unreached |\n`);
+    ledger(OUTCOMES_R, `Log events at resolution: 50\n\n${table(["P1"], "held")}| P2 | unreached |\n`);
     write(
       PLAN_FILE,
       "# Plan\n\n## Not done: the operator's decisions\n\n- engines for drafted exams\n\n## Intentionally opposed\n\n- the solve limits stay\n",
@@ -483,10 +507,7 @@ describe("the next step of an investigation", () => {
   it("names each unreached or falsified row that no fork carries and no plan leaves undone", () => {
     const { root, cycle, write, ledger } = folder("dropped", "r", true);
     ledger("predictions-r.md", table(["P1", "P2", "P3", "P20"]));
-    ledger(
-      "outcomes-r.md",
-      `${table(["P1"], "held")}| P2 | unreached |\n| P3 | falsified |\n| P20 | pending |\n`,
-    );
+    ledger(OUTCOMES_R, `${table(["P1"], "held")}| P2 | unreached |\n| P3 | falsified |\n| P20 | pending |\n`);
     const dropped = () => {
       const views = ledgerViews(cycle, root, () => null);
       return views.slice(views.findIndex((line) => line.startsWith("# Dropped")) + 2).slice(0, 1);

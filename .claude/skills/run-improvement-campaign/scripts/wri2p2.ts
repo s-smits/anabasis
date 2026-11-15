@@ -114,6 +114,7 @@ import {
   notDoneOf,
   OUTCOMES,
   outcomesOf,
+  owedOf,
   pullOf,
   rowsOf,
   sectionOf,
@@ -226,10 +227,11 @@ function ledgersOf(root: string, dir: string, name: string) {
   return { name, predictions: read(path ?? ""), outcomes };
 }
 
-/** What the outcomes ledger of `run`, beside its predictions at `path`, has left to resolve. */
+/** What the outcomes ledger of `run`, beside its predictions at `path`, has left to resolve: each id
+ *  its predictions owe (`owedOf`), its carried rows by their `<run>:<id>` included. */
 function outcomesOwed({ lengthOf }: Where, run: string, path: string): string[] | null {
   const beside = path === "" ? "" : join(dirname(path), `outcomes-${run}.md`);
-  const predicted = idsOf(read(path));
+  const predicted = owedOf(read(path));
   const text = read(beside);
   const outcomes = outcomesOf(text);
   const known: readonly string[] = OUTCOMES;

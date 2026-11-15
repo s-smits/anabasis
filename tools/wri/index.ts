@@ -47,12 +47,12 @@ import { lastAt } from "#skills/main/logs.ts";
 import { isCampaign, logEvents, packOf, type Run } from "../runs/registry.ts";
 import {
   forkOf,
-  idsOf,
   launchForks,
   ledgerFiles,
   carryOf,
   OUTCOMES,
   outcomesOf,
+  owedOf,
   pullOf,
   sectionOf as linesUnder,
 } from "./ledger.ts";
@@ -565,7 +565,7 @@ function pullRows(root: string, entries: readonly Entry[], known: readonly strin
           held
             .flatMap(({ name, files: { predictions = "", outcomes: resolved = "" } }) => {
               const outcome = outcomesOf(resolved);
-              return idsOf(predictions)
+              return owedOf(predictions)
                 .filter((id) => !outcome.has(id))
                 .map((id) => `${name}:${id}`);
             })

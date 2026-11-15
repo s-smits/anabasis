@@ -375,7 +375,7 @@ describe("the pull requests and their forks", () => {
   it("rows a pull request with its fork's outcomes, unresolved predictions, opposed items and carried ids", () => {
     const { text, rows } = index();
     expect(rowOfPull(text, "#60")).toBe(
-      `| #60 | \`2026-11-06-parent\` | \`${FORK}\` | held 1, falsified 0, unreached 0, pending 1 | ${FORK}:F3 | 2 | ${FORK}: 1 of 2 carried, missing ${PARENT}:N3 |`,
+      `| #60 | \`2026-11-06-parent\` | \`${FORK}\` | held 1, falsified 0, unreached 0, pending 1 | ${FORK}:F3, ${FORK}:${PARENT}:N2, ${FORK}:${PARENT}:N30 | 2 | ${FORK}: 1 of 2 carried, missing ${PARENT}:N3 |`,
     );
     expect(rows.pulls).toBe(5);
     expect(text).not.toContain("PER-RUN-SECRET");

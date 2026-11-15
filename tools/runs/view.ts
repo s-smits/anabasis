@@ -19,7 +19,9 @@
  * A step's line holds counts, harnesses, a tally, a reading and a cost. A harness is named by its
  * letter beside its digest's head (`namesOf`, `src/campaign/names.ts`; 14 October), since a run of
  * eight hex characters a line was what an operator had to match by eye across the view and the
- * closing report. It names no task, and it is for the operator and the session that stands in for
+ * closing report. A comparison's line also says how far its tasks are independent draws: the
+ * largest family's share of its frontier, and the tasks the comparison of its kind before it drew.
+ * It names no task and no family, and it is for the operator and the session that stands in for
  * the campaign's owner: what a Builder is told of the same rows is `src/builder/past.ts`.
  */
 import { barLines, epochLine, epochsOf, starterReads } from "#src/campaign/climb.ts";
@@ -94,7 +96,7 @@ function stepLine(step: Handover, now: number, called: Called): string {
       `Builder session, ${stateOf(step, now)}: ${from}, ${plural(step.practiceSolves, "practice solve")} · ${dollars(step.billed)}`,
     );
   }
-  const { tally, valid, rulings } = step;
+  const { tally, valid, rulings, grain, repeat } = step;
   // A comparison with no report is open or cut, as a session with no end is, and says its solves.
   const unended = `${plural(step.solved, "solve")} ended, ${String(step.begun - step.solved)} ${step.cut ? "cut" : "open"}`;
   const read =
@@ -110,6 +112,13 @@ function stepLine(step: Handover, now: number, called: Called): string {
     step.id,
     [
       `comparison of ${called(step.fresh)} with ${called(step.old)} on ${plural(step.tasks, "task")}, ${String(step.solves)} solves a side at ${String(step.level)}: ${read}`,
+      // How far its tasks are independent draws, named by no family: siblings, and a repeat.
+      ...(grain === null || grain.largest < 2
+        ? []
+        : [`${String(grain.largest)} of ${plural(grain.of, "tallied frontier task")} in one family`]),
+      ...(repeat === null
+        ? []
+        : [`${String(repeat.tasks)} of ${plural(step.tasks, "task")} also drawn by ${repeat.with}`]),
       ...(valid === null
         ? []
         : [

@@ -48,7 +48,7 @@ import { admissionsOf, taskSets } from "../kernel/task.ts";
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { type Supply, supplyOf } from "./admission.ts";
 import type { Ruling } from "../referee/referee.ts";
-import { reported, STARTED } from "./comparison.ts";
+import { fixedIn, overlapOf, reported, STARTED } from "./comparison.ts";
 
 /** A failed practice solve, and where it stands now by the task's later solves. */
 export interface PracticeFail {
@@ -127,6 +127,12 @@ interface Compared {
   readonly points: Measures | null;
   /** The tasks set aside for a person's labels. */
   readonly aside: number;
+  /** The frontier's tallied tasks and how many of them its largest family holds, from the
+   *  report's family tallies; null where it holds none. Siblings are not independent draws. */
+  readonly grain: { readonly largest: number; readonly of: number } | null;
+  /** The comparison of its kind before it under the same reference, and how many of its tasks that
+   *  one drew too (`overlapOf`), read from the log, so a report that stored none says it. */
+  readonly repeat: { readonly with: string; readonly tasks: number } | null;
   /** The Referee's last ruling of each of its rejected answers, by kind. */
   readonly rulings: Readonly<Record<Ruling, number>>;
   /** Its solves and their rulings, without the session a round ran before it. */
@@ -262,6 +268,9 @@ function compared(events: readonly LogEvent[], id: string): Compared {
         ? testOf(scoresIn(report.scored))
         : report.scored;
   const ruled = [...rulingsOf(events)].flatMap(([solve, ruling]) => (own.has(solve) ? [ruling] : []));
+  const sizes = Object.values(report?.families ?? {}).map(({ frontier: f }) => f.wins + f.losses + f.ties);
+  const fixed = fixedIn(events, id);
+  const repeat = fixed === null ? null : overlapOf(events, fixed);
   return {
     step: "comparison",
     id,
@@ -277,6 +286,11 @@ function compared(events: readonly LogEvent[], id: string): Compared {
     valid: report?.valid == null ? null : { old: report.valid.old, fresh: report.valid.fresh },
     points: report?.points ?? null,
     aside: report?.aside.length ?? 0,
+    grain:
+      report?.families == null
+        ? null
+        : { largest: Math.max(0, ...sizes), of: sizes.reduce((a, b) => a + b, 0) },
+    repeat: repeat === null ? null : { with: repeat.with, tasks: repeat.tasks.length },
     rulings: {
       earned: ruled.filter((ruling) => ruling === "earned").length,
       "check-defect": ruled.filter((ruling) => ruling === "check-defect").length,

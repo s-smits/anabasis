@@ -13,7 +13,7 @@ names.
 | --- | --- | --- | --- | --- | --- |
 | driver | the session that runs the cycle | `wri2p2.ts due`; `runs active` against the cap; the queue's first ready entry | which one step is taken now, or none | a step taken that no event had announced | `timers.ts` shows it quiet in three firings of four over two days: lengthen it, or move what it found into `due` |
 | chain | the firing that set it | `wri2p2.ts due` again | the next step, ten minutes after the last | `due` listed a step this session can take | `due` lists none; it sets no successor |
-| milestone | the prediction that names the event | one event in one log, or one deadline | that row's outcome | the prediction's own row | it fires once |
+| milestone | the prediction that names the deadline | one deadline no event marks (an event in a log is waited on with `until.ts`, which is no timer) | that row's outcome | the prediction's own row | it fires once |
 | open decisions | the session that runs the cycle | the open decisions of `cycle.md` and the plan | a routine doubt decided, or a row put to the operator | a decision written with what would overturn it | two firings in a row write nothing new |
 | morning read | the session that runs the cycle | the nightly local jobs' outcome and last exit, the hosts' disks, the stack against `main` | a finding in the backlog, or a row for the operator | a failure found that no line had announced | a local job writes these as lines the driver reads |
 | handover | the operator's agreed time | the five points, the stack, the loop's own measures ([cycle-ledger.md](cycle-ledger.md)) | what the next session or the operator takes up | the handover section in `cycle.md` | it fires once |

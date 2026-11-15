@@ -46,11 +46,12 @@ import { endingOf } from "#src/kernel/reports.ts";
 import { isCampaign, logEvents, packOf, type Run } from "../runs/registry.ts";
 import {
   forkOf,
-  idsOf,
+  launchForks,
   ledgerFiles,
   carryOf,
   OUTCOMES,
   outcomesOf,
+  owedOf,
   pullOf,
   sectionOf as linesUnder,
 } from "./ledger.ts";
@@ -521,7 +522,11 @@ function pullRows(root: string, entries: readonly Entry[], known: readonly strin
       const parents = planned.flatMap(({ folder, campaigns }) =>
         campaigns.map((run) => perRunOf(root, [root, join(root, folder)], run)),
       );
-      const forks = [...new Set(known.filter((name) => forkOf(name) === pull))]
+      // A fork at a child of the pull request is named by its iteration's `launch` deviation (`madeBy`).
+      const deviated = planned.flatMap(({ folder }) =>
+        launchForks(textAt(join(root, folder, "deviations.md")) ?? ""),
+      );
+      const forks = [...new Set([...known.filter((name) => forkOf(name) === pull), ...deviated])]
         .toSorted(compareCodeUnits)
         .map((name) => perRunOf(root, dirs, name));
       const held = forks.filter(({ files, conflicts }) => Object.keys(files).length + conflicts.length > 0);
@@ -556,7 +561,7 @@ function pullRows(root: string, entries: readonly Entry[], known: readonly strin
           held
             .flatMap(({ name, files: { predictions = "", outcomes: resolved = "" } }) => {
               const outcome = outcomesOf(resolved);
-              return idsOf(predictions)
+              return owedOf(predictions)
                 .filter((id) => !outcome.has(id))
                 .map((id) => `${name}:${id}`);
             })

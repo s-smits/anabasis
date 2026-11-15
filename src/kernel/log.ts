@@ -145,7 +145,7 @@ export interface LogEvent {
 }
 
 const KINDS: ReadonlySet<string> = new Set(EVENT_KINDS);
-const isKind = (value: unknown): value is EventKind => isString(value) && KINDS.has(value);
+export const isKind = (value: unknown): value is EventKind => isString(value) && KINDS.has(value);
 
 export function append(path: string, kind: EventKind, data: JsonObject): LogEvent {
   const event: LogEvent = { at: new Date().toISOString(), kind, data };

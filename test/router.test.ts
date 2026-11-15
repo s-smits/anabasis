@@ -219,6 +219,11 @@ function run(args: readonly string[], extra: Record<string, string | undefined> 
 const slot = (host: string, k: number): string =>
   join(homes, host, ".cache/ana-runner", `${MACHINE}-slot-${String(k)}`);
 const queueOf = (host: string): string => join(tmp, "ana-runner", host);
+/** The process each held slot of a queue names: a slot is a folder, and its one entry its holder. */
+const heldIn = (queue: string): string[] =>
+  readdirSync(queue, { withFileTypes: true }).flatMap((each) =>
+    each.isDirectory() ? readdirSync(join(queue, each.name)) : [],
+  );
 
 /** Each connection the stand-in ssh saw: its host, how it was carried, its socket and options. */
 function connections(): { host: string; how: string; socket: string; options: string[] }[] {
@@ -623,7 +628,7 @@ describe("the connections to a host", () => {
 describe("the slots", () => {
   const queue = queueOf("fake-mac");
   const jobs: [Bun.Subprocess, string][] = [];
-  async function started(name: string, extra: Record<string, string>) {
+  function spawned(name: string, extra: Record<string, string>) {
     const job = join(root, name);
     const child = capturedSpawn([shim, "test", `hold:${job}`], {
       cwd: source,
@@ -633,6 +638,10 @@ describe("the slots", () => {
       stderr: "ignore",
     });
     jobs.push([child, job]);
+    return [child, job] as const;
+  }
+  async function started(name: string, extra: Record<string, string>) {
+    const [child, job] = spawned(name, extra);
     await waitFor(() => existsSync(`${job}.ready`) || child.exitCode !== null);
     expect(child.exitCode).toBeNull();
     return [child, job] as const;
@@ -640,6 +649,14 @@ describe("the slots", () => {
   async function finish([child, job]: readonly [Bun.Subprocess, string]) {
     writeFileSync(`${job}.release`, "");
     expect(await child.exited).toBe(0);
+  }
+  /** Lets every task started so far end, and clears the queue for the next case. */
+  async function released(): Promise<void> {
+    for (const [child, job] of jobs) {
+      writeFileSync(`${job}.release`, "");
+      await child.exited;
+    }
+    rmSync(queue, { recursive: true, force: true });
   }
 
   it("gives each task of a host its own slot up to the host's count, another host unhindered, and a dead or older runner's slot to the next task", async () => {
@@ -659,19 +676,45 @@ describe("the slots", () => {
       expect(run(["test"], { RUN_REMOTE: "m1", ANA_RUNNER_QUEUE_WAIT: "5" }).status).toBe(0);
       await finish(other);
       await finish(second);
-      expect(readdirSync(queue)).toEqual([]);
-      // A holder that died, and a folder an older runner left, hold nothing.
-      symlinkSync("99999999", join(queue, "slot-1"));
-      mkdirSync(join(queue, "slot-2"));
-      await finish(await started("third", { RUN_REMOTE: "m1" }));
-      expect(readdirSync(queue)).toEqual(["slot-2"]);
+      expect(heldIn(queue)).toEqual([]);
+      // A holder that died holds nothing, whether it left a slot's entry or the link of the runner
+      // before, so each of the host's two slots goes to a next task.
+      mkdirSync(join(queue, "slot-1", "99999999"), { recursive: true });
+      rmSync(join(queue, "slot-2"), { recursive: true, force: true });
+      symlinkSync("99999999", join(queue, "slot-2"));
+      const third = await started("third", { RUN_REMOTE: "m1" });
+      const fourth = await started("fourth", { RUN_REMOTE: "m1" });
+      expect(heldIn(queue).length).toBe(2);
+      // A live task of the runner before still holds its link.
+      await finish(third);
+      await finish(fourth);
+      rmSync(join(queue, "slot-1"), { recursive: true, force: true });
+      symlinkSync(String(runtimeProcess.pid), join(queue, "slot-1"));
+      rmSync(join(queue, "slot-2"), { recursive: true, force: true });
+      symlinkSync(String(runtimeProcess.pid), join(queue, "slot-2"));
+      expect(run(["test"], { RUN_REMOTE: "m1", ANA_RUNNER_QUEUE_WAIT: "0" }).status).toBe(75);
     } finally {
       git(source, "checkout", "-q", "--", "edited");
-      rmSync(join(queue, "slot-2"), { recursive: true, force: true });
-      for (const [child, job] of jobs) {
-        writeFileSync(`${job}.release`, "");
-        await child.exited;
-      }
+      await released();
+    }
+  });
+
+  it("gives a free slot to one of the tasks that reach it together, and the host no more tasks than its slots", async () => {
+    fresh();
+    rmSync(queue, { recursive: true, force: true });
+    const together = Array.from({ length: 6 }, (_, at) =>
+      spawned(`together-${String(at)}`, { RUN_REMOTE: "m1", ANA_RUNNER_QUEUE_WAIT: "0" }),
+    );
+    try {
+      await waitFor(() =>
+        together.every(([child, job]) => child.exitCode !== null || existsSync(`${job}.ready`)),
+      );
+      // The host has two slots: two tasks run, each in a slot of its own, and four found none.
+      expect(together.filter(([child]) => child.exitCode === null).length).toBe(2);
+      expect(together.filter(([child]) => child.exitCode === 75).length).toBe(4);
+      expect(heldIn(queue).length).toBe(2);
+    } finally {
+      await released();
     }
   });
 });
@@ -700,13 +743,16 @@ describe("this machine", () => {
         ]).trim(),
       );
     const simulator = orphan(`${token}/campaigns/c/workspace/.toolchain/qemu/qemu-system-xtensa`);
-    const worker = orphan(`bun test --test-worker ${token}`);
+    // The stand-in runs under a name of its own, which this task's `ps` alone shows as a test
+    // worker: a task reaps every orphaned worker on its host, so one starting in another slot took a
+    // stand-in named as a real one before this task did, in 2 of 5 runs beside such starts.
+    const worker = orphan(`stand-in-test-worker ${token}`);
     const filtered = join(root, "filtered-ps");
     script(
       join(filtered, "ps"),
       `#!/bin/sh
 case "$*" in
-  *command=*) ${realPs} "$@" | awk -v t='${token}' 'index($0, t) || $1 == 1' ;;
+  *command=*) ${realPs} "$@" | awk -v t='${token}' '{ sub(/stand-in-test-worker/, "bun test --test-worker") } index($0, t) || $1 == 1' ;;
   *) exec ${realPs} "$@" ;;
 esac
 `,
@@ -715,6 +761,10 @@ esac
       spawnTextSync(realPs, ["-o", "ppid=", "-p", String(pid)]).stdout.trim();
     try {
       await waitFor(() => parentOf(worker) === "1", 5);
+      // No task but this one may take the stand-in: to the host's own `ps` it is no test worker.
+      expect(spawnTextSync(realPs, ["-o", "command=", "-p", String(worker)]).stdout).not.toContain(
+        "bun test --test-worker",
+      );
       fresh();
       const local = run(["test"], { RUN_REMOTE: "here", PATH: `${filtered}:${env.PATH ?? ""}` });
       expect(lastCall(home)).toMatchObject({ bun: pinned, active: "1" });
@@ -742,6 +792,6 @@ esac
     const quick = performance.now();
     expect(run(["test", "exit:4"], { RUN_REMOTE: "here", ANA_RUNNER_WALL: "30" }).status).toBe(4);
     expect(performance.now() - quick).toBeLessThan(3000);
-    expect(readdirSync(queueOf("local"))).toEqual([]);
+    expect(heldIn(queueOf("local"))).toEqual([]);
   });
 });

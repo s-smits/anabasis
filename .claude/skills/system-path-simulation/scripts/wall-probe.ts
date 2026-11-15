@@ -55,6 +55,18 @@ const BATTERY: readonly Probe[] = [
   },
   { label: "bun", run: "bun -e 'console.log(1+1)' 2>&1 | tail -n 1" },
   {
+    // The registry is asked first, so an install that hangs is told from a network that does: an
+    // alarm ends the install inside the wall's own limit, and the row then reads `install=142`.
+    label: "npm install",
+    run: `command -v npm >/dev/null || { echo absent; exit 0; }; curl -s -m 15 -o /dev/null -w 'registry=%{http_code} ' https://registry.npmjs.org/is-number; mkdir -p "$HOME/n" && cd "$HOME/n" && echo '{"name":"n","version":"1.0.0"}' > package.json && { perl -e 'alarm shift; exec @ARGV' 40 npm install --no-audit --no-fund --silent is-number >/dev/null; } 2>/dev/null; echo "install=$?"; node -e "try { require('is-number'); console.log('ok') } catch { console.log('missing') }"`,
+  },
+  {
+    // Headless, with a profile in the seat root, so no window opens; once as a browser starts by
+    // default and once without its own sandbox, which a wall around it may refuse to nest.
+    label: "headless browser",
+    run: `c="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"; [ -x "$c" ] || c="$(command -v chromium || command -v chromium-browser || command -v google-chrome)"; [ -x "$c" ] || { echo absent; exit 0; }; for flag in --disable-extensions --no-sandbox; do { perl -e 'alarm shift; exec @ARGV' 20 "$c" --headless=new --no-first-run --disable-gpu "$flag" --user-data-dir="$HOME/c$flag" --dump-dom 'data:text/html,<p id=a>ok</p>' | grep -c 'id="a"' | tr '\\n' ' '; echo "$flag=\${PIPESTATUS[0]}"; } 2>/dev/null; done`,
+  },
+  {
     label: "file watcher",
     run: `command -v node >/dev/null || { echo absent; exit 0; }; mkdir -p "$HOME/w" && cd "$HOME/w" && node -e "const fs=require('fs');let n=0;const w=fs.watch('.',()=>{n++});w.on('error',e=>console.log('error',e.code));setTimeout(()=>fs.writeFileSync('x','1'),500);setTimeout(()=>{console.log('events',n);process.exit()},2000)" 2>&1 | tail -n 2`,
   },

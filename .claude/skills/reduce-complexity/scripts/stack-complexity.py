@@ -34,7 +34,8 @@ narrower `AUTHORED_ROOTS`.
                               at the expense of nothing and a mechanism nobody proved does not
 
   How much branching
-    decisions                 if/for/while/case/catch/&&/||/??/?./ternary. A McCabe proxy, not McCabe:
+    decisions                 if/for/while/case/catch/&&/||/??/?./ternary, and in shell the keywords
+                              that open a line with && and ||. A McCabe proxy, not McCabe:
                               comparable between two revisions of one tree and nothing else.
     per 100 lines             the same count against the source it sits in. v1 read exact branching
                               debt off `complexity-baseline.json`; v2 holds no baseline and no
@@ -103,7 +104,9 @@ EXCLUDE = re.compile(
 # Skill scripts are code a reviewer reads as well. Until 21 October they were outside, so #322's
 # rewrite of the promotion tuner read 0 on every row and its decision points were counted by hand.
 SOURCE_ROOTS = ("src/", "tools/", "packages/", ".claude/skills/")
-SOURCE_SUFFIX = (".ts", ".tsx", ".mts", ".js", ".mjs", ".py")
+# Shell is source too: without it the check runner's move from 739 nonblank lines of shell to 661 of
+# TypeScript read as 332 lines and 55 decision points written (15 November).
+SOURCE_SUFFIX = (".ts", ".tsx", ".mts", ".js", ".mjs", ".py", ".sh")
 
 # Files that compose text a model receives in an ordinary session: system prompts, the loop's
 # continuation and advice text, and the descriptions and results of the tools a session calls.
@@ -137,6 +140,8 @@ POLICY_FILE = "tools/loc/source-policy.json"
 DECISION = re.compile(
     r"\bif\s*\(|\bfor\s*\(|\bwhile\s*\(|\bcase\s+|\bcatch\s*\(|&&|\|\||\?\?|\?\.|\s\?\s"
 )
+# Shell's own: a keyword that opens a line, and the two operators. A `case` counts once, not an arm.
+SHELL_DECISION = re.compile(r"^\s*(?:if|elif|for|while|until|case)\b|&&|\|\|", re.M)
 EXPORT = re.compile(r"^\s*export\s+(?:const|function|class|interface|type|enum|async)\b", re.M)
 # A declared property or parameter that may be absent. `a ?: b` in an expression needs a space
 # before `?`, which this does not match; `foo?.(` is a call, excluded by requiring `:` next.
@@ -332,7 +337,7 @@ def measure(repo: str, rev: str, per_file: bool) -> tuple[Measure, dict[str, int
         nonblank = sum(1 for line in text.split("\n") if line.strip())
         total.files += 1
         total.nonblank += nonblank
-        total.decisions += len(DECISION.findall(text))
+        total.decisions += len((SHELL_DECISION if path.endswith(".sh") else DECISION).findall(text))
         total.exports += len(EXPORT.findall(text))
         total.optional_fields += len(OPTIONAL.findall(text))
         total.wide_signatures += wide_signatures(text)

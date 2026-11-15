@@ -155,7 +155,8 @@ TEST_PATH = re.compile(r"(^|/)(test|tests|__tests__|fixtures)/|\.(test|spec)\.")
 IMPORT_STMT = re.compile(r"^\s*(?:import|export)\s+(?:type\s+)?(\{[^}]*\}|[^;\n{]*?)\s+from\s+[\"']([^\"']+)[\"']", re.M)
 FUNC_NAME = re.compile(r"^\s*(?:export\s+)?(?:default\s+)?(?:async\s+)?function\*?\s+([A-Za-z_$][\w$]*)"
                        r"|^\s*(?:export\s+)?(?:const|let)\s+([A-Za-z_$][\w$]*)\s*(?::[^=\n]+)?=\s*(?:async\s+)?"
-                       r"(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*(?::[^=\n]+)?=>", re.M)
+                       r"(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*(?::[^=\n]+)?=>"
+                       r"|^\s*([A-Za-z_][\w]*)\s*\(\)\s*\{", re.M)
 
 
 def imported_names(text):
@@ -170,7 +171,7 @@ def imported_names(text):
 
 
 def function_names(text):
-    return {a or b for a, b in FUNC_NAME.findall(text)}
+    return {a or b or c for a, b, c in FUNC_NAME.findall(text)}
 
 
 def diff_sections(path):
@@ -206,7 +207,8 @@ def budget(root, sections, base):
     tally = {"prod": [0, 0], "test": [0, 0]}
     new_files, gone_files, new_fns, gone_fns, imports = [], [], {}, set(), []
     for f, status, added, removed in sections:
-        if not SRC.search(f) or "node_modules" in f:
+        # Shell counts beside the files oxlint reads, so a function moved between the two reads as moved.
+        if not (SRC.search(f) or f.endswith(".sh")) or "node_modules" in f:
             continue
         kind = "test" if TEST_PATH.search(f) else "prod"
         {"new": new_files, "deleted": gone_files}.get(status, []).append(f)

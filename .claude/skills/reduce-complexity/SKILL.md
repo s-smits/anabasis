@@ -28,15 +28,16 @@ working files. `#<n>` is a pull request, resolved through `gh`.
 | group | measures | note |
 | --- | --- | --- |
 | size | source files, nonblank source and test lines | tests rising with source flat suggests a mechanism got proved |
-| branching | decision points, per 100 lines | textual `DECISION` tokens (`if`, `for`, `while`, `case`, `catch`, `&&`, `\|\|`, `??`, `?.`, ternary); no threshold (`tools/oxlint/HABITS.md`, 12.10) |
+| branching | decision points, per 100 lines | textual `DECISION` tokens (`if`, `for`, `while`, `case`, `catch`, `&&`, `\|\|`, `??`, `?.`, ternary; in shell the keywords that open a line, `&&` and `\|\|`); no threshold (`tools/oxlint/HABITS.md`, 12.10) |
 | coupling | import edges, mean fan-out, hub files, max fan-in | textual; a hub is at the 90th fan-out percentile or above |
 | interface | exports, optional fields, signatures with 5+ parameters | each `?:` is a case every reader must handle |
 | rules | refusal codes, environment knobs | regex proxies, not live counts |
 | exemptions | `tools/oxlint/not-slop.tsv` rows, `copiedFileLimits` in `tools/loc/source-policy.json` | `bun run not-slop -- prune` |
 | model-read text | prompt literal bytes, overall and per composer | a proxy over `PROMPT_FILES`; register a new composer there |
 
-Source (`SOURCE_ROOTS`) is code under `src`, `tools`, `packages` and `.claude/skills`, less tests,
-generated files and `vendor`.
+Source (`SOURCE_ROOTS`) is code under `src`, `tools`, `packages` and `.claude/skills`, shell (`.sh`)
+included so that a move between shell and TypeScript reads as a move, less tests, generated files
+and `vendor`.
 
 The first revision is read at the merge base, so work landed on `main` later is not charged to the
 branch (`--literal-base` compares tips as given). Fetch and name `origin/main`, since a stale local
@@ -55,9 +56,9 @@ against tip.
 base it prints. `measure.py` prints functions by branch count and length, exports by caller count
 (`UNUSED`, `one-caller`, from whole-word mentions, so leads only), functions over a ceiling, and:
 
-- **budget**: production and test lines net, files added and deleted, new functions net of moved
-  ones, and names each import source gained. To cost a repair, point `--base` at the head before
-  that change rather than the PR base.
+- **budget**: production and test lines net (shell counted), files added and deleted, new functions
+  net of moved ones, and names each import source gained. To cost a repair, point `--base` at the
+  head before that change rather than the PR base.
 - **repeats**: added three-line windows found elsewhere, leads for an existing owner.
 
 Branch counts come from `node_modules/oxlint/bin/oxlint` with every ceiling at 0 in a temporary

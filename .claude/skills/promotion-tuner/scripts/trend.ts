@@ -246,7 +246,7 @@ const cutShort = (run: Run) => run.live || run.ending === "no ending" || run.end
 /** A block's windows with every run read at its horizon by `at` (`loadRuns`), and the line that says
  *  so. Where no newest run was cut short past `FLOOR`, each run is read whole, and only runs cut
  *  short before the floor are left out. */
-export function atHorizon(windows: readonly Window[], at: (run: Run, hours: number) => Run) {
+function atHorizon(windows: readonly Window[], at: (run: Run, hours: number) => Run) {
   const ages = (windows[0]?.runs ?? []).flatMap((run) =>
     cutShort(run) && run.elapsed >= FLOOR ? [run.elapsed] : [],
   );

@@ -207,8 +207,9 @@ def budget(root, sections, base):
     tally = {"prod": [0, 0], "test": [0, 0]}
     new_files, gone_files, new_fns, gone_fns, imports = [], [], {}, set(), []
     for f, status, added, removed in sections:
-        # Shell counts beside the files oxlint reads, so a function moved between the two reads as moved.
-        if not (SRC.search(f) or f.endswith(".sh")) or "node_modules" in f:
+        # Shell and Python count beside the files oxlint reads, as `stack-complexity.py` counts them, so
+        # a function moved between languages reads as moved.
+        if not (SRC.search(f) or f.endswith((".sh", ".py"))) or "node_modules" in f:
             continue
         kind = "test" if TEST_PATH.search(f) else "prod"
         {"new": new_files, "deleted": gone_files}.get(status, []).append(f)

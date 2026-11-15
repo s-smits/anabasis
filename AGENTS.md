@@ -347,8 +347,8 @@ each difference against the spread between runs (`promotion-tuner`, `scripts/tre
 
 A real-model run spends the operator's money and needs their word for the runs it names. Its seats
 run behind Seatbelt or Bubblewrap, and an unavailable wall is a typed non-result, never an
-unconfined run. Skills own the procedures: what to run next and a run's life
-(`run-improvement-campaign`, `run-management`); proving a path or tuning a prompt
+unconfined run. Skills own the procedures: what to run next, how far a run is taken and a run's life
+(`run-improvement-campaign`, `decision-points`, `run-management`); proving a path or tuning a prompt
 (`system-path-simulation`, `examiner-complexity`); what a run or a comparison did
 (`whole-run-investigation`, `comparison-review`, `harness-audit`); the record across runs
 (`promotion-tuner`, `compare-systems`, `system-audit`); a claim (`attribution-and-proof`); a

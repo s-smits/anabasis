@@ -588,4 +588,13 @@ async function main(): Promise<number> {
   return step();
 }
 
-runtimeProcess.exitCode = await main();
+// A plain `Error` is what a verb refused (a name it lacks, a log that may still be written), as in
+// `tools/runs/cli.ts`: it is said in its one line and exits 2. Anything else is a defect and keeps
+// its stack. Until 15 November a refusal was an uncaught throw too, which read as a reader's crash.
+try {
+  runtimeProcess.exitCode = await main();
+} catch (error) {
+  if (!(error instanceof Error) || error.constructor !== Error) throw error;
+  console.error(error.message);
+  runtimeProcess.exitCode = 2;
+}

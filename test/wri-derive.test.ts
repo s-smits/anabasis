@@ -222,6 +222,22 @@ describe("one reader, by name", () => {
     expect(decodeOutput(ran.stderr)).toContain("chain");
   });
 
+  it("answers a missing or unknown name in one line and exits 2, with no stack", () => {
+    // Until 15 November every refusal of this command was an uncaught throw: the source line, the
+    // message and three frames, exit 1, which reads as a crash of the reader.
+    for (const args of [[], ["no-such-reader", "--log", log]]) {
+      const ran = reader(...args);
+      expect(ran.exitCode).toBe(2);
+      const said = decodeOutput(ran.stderr).trim().split("\n");
+      expect(said).toHaveLength(1);
+      expect(said[0]).toStartWith("name a reader: rows, ");
+    }
+    // A reader that runs still exits 0 (the first test), and a log's own refusal is one line too.
+    const unnamed = reader("degradations");
+    expect(unnamed.exitCode).toBe(2);
+    expect(decodeOutput(unnamed.stderr).trim()).toBe("name one --log");
+  });
+
   it("keeps its own word after the verb for the reader's name, never a log", () => {
     const ran = reader("degradations", log);
     expect(ran.exitCode).not.toBe(0);

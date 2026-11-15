@@ -446,8 +446,15 @@ export function readersSaid(asked: ReadersAsked) {
   const named: Moment[] = [];
   const owed: Moment[] = [];
   const earlier = (asked.owed ?? []).map((moment) => ({ moment, at: null }));
-  for (const { moment, at } of [...momentsIn(asked.fresh, size, listed), ...earlier]) {
-    const one = listed.length === 0 ? { found: [], left: moment.left } : foundOf(asked, moment, at, listed);
+  const moments = [...momentsIn(asked.fresh, size, listed), ...earlier];
+  // A gist picks from what a reader read last, which is the log as the newest moment of a kind
+  // left it: on 15 November an owed `comparison.started` said the next comparison's draw as its own.
+  const plain = listed.map(({ name, at }) => ({ name, ...keyIfDefined("at", at) }));
+  const overtaken = (one: Moment) =>
+    moments.some(({ moment }) => moment.kind === one.kind && moment.size > one.size);
+  for (const { moment, at } of moments) {
+    const readers = overtaken(moment) ? plain : listed;
+    const one = listed.length === 0 ? { found: [], left: moment.left } : foundOf(asked, moment, at, readers);
     found.push(...one.found);
     if (one.left?.length === 0) continue;
     const kept: Moment = { ...moment, ...keyIfDefined("left", one.left) };

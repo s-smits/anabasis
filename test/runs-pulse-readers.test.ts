@@ -156,6 +156,21 @@ describe("what a reader says of a moment", () => {
     expect(named.join("\n")).not.toContain("row 1 2");
   });
 
+  it("gives a gist's lines to the newest moment of a kind, never to an owed one a later moment overtook", () => {
+    const { store, log, look } = world([{ name: "cost", at: [REPORTED], gist: /^row\t/ }]);
+    const second: Moment = { kind: REPORTED, session: "g-2", size: 60, left: ["cost"] };
+    const third: Moment = { kind: REPORTED, session: "g-3", size: 90, left: ["cost"] };
+    const cost = (said: ReturnType<typeof readersSaid>) =>
+      allOf(said).filter((line) => line.startsWith("◆ cost"));
+    // One pass read the log past both moments, so its text is the state the third comparison left.
+    keepResult(store, log, "cost", result(100), "head\tcols\nrow\t3\t4\n");
+    const both = look({ owed: [second, third] });
+    expect(cost(both)).toEqual(["◆ cost on comparison.reported g-3: row 3 4"]);
+    expect(both.owed).toEqual([]);
+    // The nearest hostile case: an owed moment nothing overtook still takes the gist's lines, as late.
+    expect(cost(look({ owed: [second] }))).toEqual(["◆ cost on comparison.reported g-2: row 3 4"]);
+  });
+
   it("says each line once to an observer, whatever moment asks for it again, and once to each observer", () => {
     const { store, log, look } = world([{ name: "rows", at: [REPORTED, PROMOTED] }]);
     keepResult(store, log, "rows", result(100), "g-2 at 0123abcd\n");

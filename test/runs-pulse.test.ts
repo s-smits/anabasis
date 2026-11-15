@@ -355,8 +355,8 @@ describe("the runs pulse", () => {
       event(1, "comparison.reported", { reading: "no-step", scored: { wins: 3, losses: 1 } }),
     ];
     const due = (said: readonly string[]) => said.filter((line) => line.includes("investigation due"));
-    // A live run is paused after its next comparison before its investigation opens; a stopped one opens.
-    const command = "bun run runs pause r1 --after reported --yes";
+    // A live run's step is the driver's to name, since a deviation may keep the run; a stopped one opens.
+    const command = "bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts due";
     const opens = "bun .claude/skills/run-improvement-campaign/scripts/wri2p2.ts open r1";
     const waiting = { ...lookedAt(log.length), due: false };
     const early = pulse(round, log, "open", waiting, START + 2 * HOUR);
@@ -364,6 +364,8 @@ describe("the runs pulse", () => {
     expect(early.seen.due).toBe(false);
     const late = pulse(round, log, "open", early.seen, START + 13 * HOUR);
     expect(due(late.said)).toEqual([`⚠ investigation due, 13.0 h since its opening: ${command}`]);
+    // The hostile case: a look arms nothing for a run a `pause:<run>` deviation keeps.
+    expect(due(late.said).join("\n")).not.toContain("runs pause");
     // Its hours grow at every look, and it is said at the one that found it due.
     expect(due(pulse(round, log, "open", late.seen, START + 14 * HOUR).said)).toEqual([]);
     // A first look and a state from before the trigger was read only remember it.

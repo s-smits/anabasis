@@ -58,6 +58,7 @@ import { lastLaunch, unlaunchedSeed } from "./receipt.ts";
 import {
   climbAt,
   dollars,
+  DRIVER,
   ENDED,
   minutes,
   openingCommand,
@@ -440,9 +441,9 @@ function standsSaid(
  * last look, which reads past a moment, and `under` the readers' lines by each new event's place.
  *
  * A campaign's look also says the step it has come to owe, once, at the look that finds it so: an
- * investigation at its trigger (`triggerOf`), with the command that opens one. Until 10 November
- * only the loop's driver read the trigger, so a session that watched the pulse alone ran a
- * campaign past twelve hours unread.
+ * investigation at its trigger (`triggerOf`), with the command that opens one on a stopped run and
+ * the driver's `due` for a live one. Until 10 November only the loop's driver read the trigger, so
+ * a session that watched the pulse alone ran a campaign past twelve hours unread.
  */
 export function pulse(
   run: Run,
@@ -468,7 +469,9 @@ export function pulse(
   const live = open || life.kept;
   const due = read ? triggerOf(progressOf({ live }, log, now)) : null;
   if (due !== null && before?.due === false) {
-    lines.push(`⚠ investigation due, ${due}: ${openingCommand(run.name, live)}`);
+    // A live run's step has one reader, the driver's `due`: it alone reads the deviation that keeps
+    // a run past its trigger, and a peer that says this line holds no investigation's folder.
+    lines.push(`⚠ investigation due, ${due}: ${live ? `bun ${DRIVER} due` : openingCommand(run.name, live)}`);
   }
   return {
     state,

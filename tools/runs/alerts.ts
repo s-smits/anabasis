@@ -30,7 +30,7 @@ import { keepsItself } from "./manage.ts";
 import { launchedIn, type RunState, runState } from "./state.ts";
 import { onStatus } from "./pulse.ts";
 import { remember } from "./pulse-readers.ts";
-import { lastLaunch, unlaunchedSeed } from "./receipt.ts";
+import { lastLaunch } from "./receipt.ts";
 import { climbed, ENDED, type Promotion, promotionsOf, word } from "./said.ts";
 import {
   archived,
@@ -140,12 +140,14 @@ function rowOf(run: Run, running: readonly Running[], now: number): Row {
 }
 
 /**
- * Whether a look reads a run: as `status` shows it, less a seed no launch continued. A rehearsal
- * writes its seed, so `status` shows it, and on 6 November two reached the operator's notifications
- * as "first seen with 6 promotions" beside a real second promotion.
+ * Whether a look reads a run: as `status` shows it, where a launch with a model in every seat kept
+ * its receipt (`keepReceipt`). A rehearsal's seed and a test's campaign run scripted seats and keep
+ * none, and `status` shows both: on 6 November two seeds reached the operator's notifications as
+ * "first seen with 6 promotions" beside a real second promotion, and on 15 November the campaigns
+ * of one check were 21 of the alerts log's last 30 lines.
  */
 export const onAlerts = (run: Run, writing: "open" | "closed", age: number): boolean =>
-  !unlaunchedSeed(run) && onStatus(run, writing, age);
+  lastLaunch(run.path) !== undefined && onStatus(run, writing, age);
 
 /** This machine's rows, and the name of every campaign its worktrees hold. */
 function rowsHere(now: number): HostRows {

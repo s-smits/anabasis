@@ -345,12 +345,14 @@ describe("the fold of one look", () => {
 });
 
 describe("the verb over real logs", () => {
-  /** A fixture host with one campaign's log, read by the real CLI under `extra`. */
+  const RECEIPT = "launch-run-1.json";
+  /** A fixture host with one launched campaign's log, read by the real CLI under `extra`. */
   function host(extra: Record<string, string> = { ANA_HOSTS: "[]" }) {
     const made = fakeHosts();
     folders.push(made.root);
     const folder = join(made.main, ".ana", "d2", "the-run");
     mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, RECEIPT), JSON.stringify({ at: "2026-11-06T07:00:00.000Z" }));
     const log = join(folder, "log.jsonl");
     const event = (kind: string, data: JsonObject) =>
       writeFileSync(log, `${JSON.stringify({ at: new Date().toISOString(), kind, data })}\n`, { flag: "a" });
@@ -364,18 +366,21 @@ describe("the verb over real logs", () => {
   const HARNESS = `abcd1234${"e".repeat(56)}`;
   const SECOND = `cdef5678${"f".repeat(56)}`;
 
-  it("leaves out a seed a rehearsal writes, and reads one a launch continued", () => {
-    const { folder } = host();
+  it("leaves out a campaign no launch kept a receipt of, a seed or a test's, and reads one a launch continued", () => {
+    const { made } = host();
+    const folder = join(made.main, ".ana", "d2", "scripted");
+    mkdirSync(folder);
     const run = {
-      name: "the-run",
+      name: "scripted",
       path: join(folder, "log.jsonl"),
       tree: "",
       end: "comparison.reported" as const,
       seed: true,
     };
     expect(onAlerts(run, "open", 0)).toBe(false);
-    expect(onAlerts({ ...run, seed: false }, "open", 0)).toBe(true);
-    writeFileSync(join(folder, "launch-run-1.json"), JSON.stringify({ at: "2026-11-06T07:00:00.000Z" }));
+    // A test's campaign is no seed, and a check wrote its "no writer process" among the alerts.
+    expect(onAlerts({ ...run, seed: false }, "open", 0)).toBe(false);
+    writeFileSync(join(folder, RECEIPT), JSON.stringify({ at: "2026-11-06T07:00:00.000Z" }));
     // Continued, it is read as any run: closed and written lately (a keeper between two starts), or not.
     expect(onAlerts(run, "open", 0)).toBe(true);
     expect(onAlerts(run, "closed", 0)).toBe(onAlerts({ ...run, seed: false }, "closed", 0));

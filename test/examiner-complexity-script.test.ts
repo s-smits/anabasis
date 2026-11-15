@@ -4,7 +4,7 @@
 // ladder's rungs re-rated blind against their stated grades. A comparison's zone is the reading's
 // (`test/comparison-reading-script.test.ts`).
 import { describe, expect, it } from "bun:test";
-import { campaignLine, sessionLines } from "#skills/examiner-complexity/scripts/ambition.ts";
+import { campaignLine, proposedOf, sessionLines } from "#skills/examiner-complexity/scripts/ambition.ts";
 import { csvLines, draftRows } from "#skills/examiner-complexity/scripts/exams.ts";
 import {
   compareLines,
@@ -14,6 +14,7 @@ import {
 } from "#skills/examiner-complexity/scripts/grades.ts";
 import type { EventKind, LogEvent } from "../src/kernel/log.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
+import { keyIfDefined } from "../src/meta/optional-key.ts";
 
 const event = (minutes: number, kind: EventKind, data: JsonObject): LogEvent => ({
   at: new Date(Date.UTC(2026, 9, 31, 0, minutes)).toISOString(),
@@ -21,12 +22,24 @@ const event = (minutes: number, kind: EventKind, data: JsonObject): LogEvent => 
   data,
 });
 
+/** A writing session's start, with the limits it was given where a test reads them. */
+const opened = (minutes: number, session: string, limits?: JsonObject): LogEvent =>
+  event(minutes, "exam.started", limits === undefined ? { session } : { session, limits });
+
+/** One turn of `session`; its `turn` field numbers the whole conversation, as a seat's does. */
+const turn = (minutes: number, session: string) => event(minutes, "exam.turn", { session, turn: minutes });
+
 // A gate reads a proposed task, as every log holds it, so the campaign's fold can read the log whole.
-const gate = (minutes: number, outcome: string, valid: number) => {
+const gate = (minutes: number, outcome: string, valid: number, session?: string, family = "f") => {
   const version = `v${String(minutes)}`;
-  const task = { taskId: version, family: "f", publicInput: {} };
+  const task = { taskId: version, family, publicInput: {} };
   return [
-    event(minutes, "task.proposed", { version, taskId: version, task }),
+    event(minutes, "task.proposed", {
+      version,
+      taskId: version,
+      task,
+      ...keyIfDefined("session", session),
+    }),
     event(minutes, "task.gate", { version, outcome, reference: { solves: 3, valid } }),
   ];
 };
@@ -56,6 +69,37 @@ describe("ambition", () => {
     expect(draft).toContain("d-1 · reference starter · held 0 of 0");
     expect(first).toContain("x-1 · reference starter · held 1 of 2 (every 1, some 1)");
     expect(second).toContain("x-2 · reference abcdef01 · held 1 of 1");
+  });
+
+  it("reads a writing session's ask, writing hours and proposals by family, each at its own turn", () => {
+    // The hostile cases: one task held of one gated reads as full supply where seventeen were asked;
+    // a session at rest is closed only when the campaign goes on, so the days to that ending, like a
+    // provider wait, are no writing time; a proposal carries its family on the task alone; and an
+    // event's `turn` numbers the whole conversation, with another seat's turns between.
+    const written = [
+      event(0, "draft.started", { session: "d-1" }),
+      opened(1, "x-1", { tasks: 17, turns: 200 }),
+      turn(2, "x-1"),
+      event(3, "build.turn", { session: "b-1", turn: 40 }),
+      ...gate(4, "passed", 1, "x-1", "a"),
+      turn(5, "x-1"),
+      ...gate(6, "refused", 3, "x-1", "b").slice(0, 1),
+      ...gate(7, "refused", 3, "x-1", "a").slice(0, 1),
+      turn(121, "x-1"),
+      event(2892, "exam.finished", { session: "x-1", ended: "finished", proposed: 3, held: ["v4"] }),
+      opened(2893, "x-2", { tasks: 12, turns: 200 }),
+      turn(2923, "x-2"),
+      event(2924, "campaign.waited", { for: "provider", ms: 2 * 24 * 60 * 60_000 }),
+      turn(5804, "x-2"),
+    ];
+    const [draft, short, open] = sessionLines(written);
+    expect(short).toContain("held 1 of 1 (some 1) · asked 17, finished at 3 of 200 turns in 2.0 h");
+    expect(open).toContain("asked 12, open at 2 of 200 turns in 0.5 h");
+    expect(draft).not.toContain("asked");
+    // A start that names no limits gives no ask, and a session the campaign went past reads cut.
+    expect(sessionLines(log)[1]).toContain("· cut at 0 turns");
+    expect(proposedOf(written, "x-1")).toStrictEqual({ proposed: 3, families: 2, largest: 2, at: [1, 2, 2] });
+    expect(proposedOf(written, "x-2")).toBeNull();
   });
 
   it("bills a session its own end and tries, never the comparison or Builder spend before the next start", () => {

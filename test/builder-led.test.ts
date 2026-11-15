@@ -1264,6 +1264,11 @@ describe("a campaign tool where the table names more than the action", () => {
     expect(snapshots[0]).toMatchObject({ harness: first?.fresh });
     const [told] = said(name, "compare");
     expect(told).toContain("and the host has made it the campaign's reference");
+    // The comparison's tally is said once, as the last in the facts the result ends with: until
+    // 15 November it also led the result. A status read alone still holds it.
+    expect(told?.split(", which reads ")).toHaveLength(2);
+    expect(told).toContain("1 comparison with a tally; the last:\n- Harness ");
+    expect(told).not.toContain("The comparison has no tally yet.");
     // Beside it, what the host spent and counts: until 14 October the last tally alone.
     expect(told).toMatch(/Comparison g-1 took \d+ minutes? and billed \d+\.\d\d dollars\./);
     expect(told).toContain("Moves without a gain since the last step: 0 of the patience's ");

@@ -502,7 +502,9 @@ const compareTool = (context: CampaignContext, bench: Bench): SeatTool =>
     const step = campaignOf(events).steps.findLast(
       (each) => each.step === "comparison" && each.id === session,
     );
-    const tally = comparisonsTold(step === undefined ? [] : [step])[0] ?? "The comparison has no tally yet.";
+    // The tally stands once, as the last in the facts this result ends with (until 15 November it
+    // led the result too); a comparison without one says so, since the last is then an older one's.
+    const tallied = comparisonsTold(step === undefined ? [] : [step]).length > 0;
     const scored = events.findLast(
       ({ kind, data }) => kind === "comparison.reported" && data.session === session,
     )?.data.versions;
@@ -516,7 +518,12 @@ const compareTool = (context: CampaignContext, bench: Bench): SeatTool =>
     // rather than at the next conversation: until 5 November the Builder's own move did.
     if (promoted.length === 0) await releaseOwed(context, `comparison ${session} reported`, bench);
     return {
-      said: [tally, ...size, ...(named.note === "" ? [] : [named.note]), ...promoted].join("\n"),
+      said: [
+        ...(tallied ? [] : ["The comparison has no tally yet."]),
+        ...size,
+        ...(named.note === "" ? [] : [named.note]),
+        ...promoted,
+      ].join("\n"),
     };
   });
 

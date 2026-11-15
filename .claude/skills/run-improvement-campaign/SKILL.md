@@ -575,7 +575,10 @@ tasks together.
 3. **Predict** in a ledger outside campaign folders, before the first solve: a run's `predictions-<run>.md`
    in a cycle, and `bun tools/d2/checkpoint.ts <flags> --predict "<sentence>"` for a comparison by hand.
    Use counts ("`contract.frozen` before `build.started`", "the first comparison unties at least six
-   tasks", "the A/A reads no step"), including one row on the link and one on honesty.
+   tasks"), including one row on the link and one on honesty, and name for each row the reader that
+   counts as the row is worded: "no A/A reads a step either way" is the first line of
+   comparison-reading's `reading.ts` (`readsStepEitherWay`), where the epoch line of `runs view`
+   counts A/A steps by the one-sided rule that promotes.
 4. **Launch fresh** through [run-management](../run-management/SKILL.md) with `bun run runs fresh
    <pack>`, the authorised budget and terms, `--hitl` only on request, the dry run and the launch as
    separate commands, and at most two campaigns a host (one for a cycle's forks).

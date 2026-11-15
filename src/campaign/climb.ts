@@ -330,19 +330,19 @@ function falsePromotionOf(
 const tallied = ({ wins, losses, ties }: Tally) =>
   `${String(wins)} won, ${String(losses)} lost, ${String(ties)} tied`;
 
-/** The epoch's starter comparison as the line prints it, nothing in the first epoch. With its
- *  `read`, the tasks written after the promotion are said apart with the sessions that wrote them:
- *  the pooled tally also holds the tasks that chose the harness, which it wins again. */
+/** The epoch's starter comparison as the line prints it, nothing in the first epoch; with its `read`,
+ *  the tasks written after the promotion said apart, as the pooled tally holds those that chose it. */
 function starterOf({ reference, starter_tally: tally, confirmed }: Epoch, read?: StarterRead): string {
   if (reference === "starter") return "";
   if (tally === null) return ", against the starter unread";
   const step = confirmed === true ? "a step, so its promotion is confirmed" : "no step";
-  const after = read?.rows.flatMap(({ origin, writer }) => (origin === ORIGINS[2] ? [writer] : []));
-  const writers = new Set(after).size;
+  const writers = new Set(
+    read?.rows.filter(({ origin }) => origin === ORIGINS[2]).map(({ writer }) => writer),
+  ).size;
   const since =
     read === undefined || writers === 0
       ? ""
-      : `, of which ${tallied(read.origins[ORIGINS[2]].whole)} on the tasks ${plural(writers, "Examiner session")} wrote after it`;
+      : `, of which ${tallied(read.origins[ORIGINS[2]].whole)} on the tasks ${plural(writers, "Examiner session")} wrote after it, alone ${read.after}`;
   return `, against the starter ${tallied(tally)}, ${step}${since}`;
 }
 

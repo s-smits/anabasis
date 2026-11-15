@@ -860,6 +860,9 @@ describe("one Examiner conversation across the host's asks", () => {
       ["x-1", "supplied", 1],
       ["x-2", "finished", 3],
     ]);
+    // Each ask's record says the backend's total for it, null here where the backend reports none:
+    // until 14 November an ask closed at a rest left the field out, and the cost check read past it.
+    expect(s.of("exam.finished").map((ended) => "reportedCost" in ended)).toEqual([true, true]);
     // Each ask's turns and tasks are under its own id.
     expect(s.of("exam.turn").map(({ session }) => session)).toEqual(["x-1", "x-2", "x-2", "x-2"]);
     // A call that rests its ask and wakes in the next stays its own ask's.

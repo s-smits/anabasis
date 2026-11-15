@@ -544,13 +544,8 @@ function tallyReports(
  * tasks, which the step reads with the retained ones, and what the supply counts (`supplyOf`,
  * `admission.ts`).
  *
- * **Scorable** holds every such task, a family's siblings too. Siblings share a construction and
- * their results move together (over sixty days of Opus campaigns, read 12 November, of 55 promotions
- * with a starter comparison the 18 whose step still read at one task a family were confirmed 13
- * times, the other 37 12 times), so for a day the pool held one task a family. Read 13 November:
- * that draw refused 20 of 27 recorded jobstat comparison starts and admitted 7 at 8 to 11 tasks,
- * and the 8 comparisons run under it scored 8 tasks each and read no step. So the family reading is
- * reported beside the test (`compared`'s `families`, `tools/wri/scores.ts`) and decides nothing.
+ * **Scorable** holds a family's siblings too: one task a family refused 20 of 27 jobstat comparison
+ * starts, so families are reported beside the test (`compared`'s `families`) and decide nothing.
  *
  * **Known valid answers** are recorded for task versions: a solve's, under any harness
  * and at any limits, an author's answer the host saw pass on the task under its own id

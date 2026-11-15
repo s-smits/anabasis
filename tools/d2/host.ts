@@ -22,7 +22,8 @@
  *   on two hosts at once (`waitOut`, `src/solver/run.ts`, which a solve also calls).
  * - **A network that failed a session**, a minute after the first crash and five after the second:
  *   in buffer-149 on 13 October, Builder session b-2 began 2 s after b-1 crashed on a failed DNS
- *   lookup (`waitCrashed`).
+ *   lookup (`waitCrashed`). The provider's edge, whose 403 page ended a campaign on 13 November, is
+ *   on that route; a refusal the provider's own API writes (credit, a login, a model) gets no wait.
  *
  * Every wait but the reserve's, slots' and pause's is on record as `campaign.waited`, so a reader tells
  * the solver's time from the host's, and a provider's starts the crash rule's count again
@@ -71,7 +72,7 @@ export const HOST: Host = {
 const LOOKS = 60;
 const NETWORK_WAITS_MS = [60_000, 300_000];
 const NETWORK =
-  /\b(?:ENOTFOUND|EAI_AGAIN|ECONNRESET|ECONNREFUSED|ENETUNREACH|ETIMEDOUT|ConnectionRefused|FailedToOpenSocket)\b/;
+  /\b(?:ENOTFOUND|EAI_AGAIN|ECONNRESET|ECONNREFUSED|ENETUNREACH|ETIMEDOUT|ConnectionRefused|FailedToOpenSocket|Cloudflare)\b/;
 const WAITED = "campaign.waited";
 
 // External tests and skills still import this public name.

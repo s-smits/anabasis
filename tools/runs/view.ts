@@ -112,7 +112,6 @@ function stepLine(step: Handover, now: number, called: Called): string {
     step.id,
     [
       `comparison of ${called(step.fresh)} with ${called(step.old)} on ${plural(step.tasks, "task")}, ${String(step.solves)} solves a side at ${String(step.level)}: ${read}`,
-      // How far its tasks are independent draws, named by no family: siblings, and a repeat.
       ...(grain === null || grain.largest < 2
         ? []
         : [`${String(grain.largest)} of ${plural(grain.of, "tallied frontier task")} in one family`]),

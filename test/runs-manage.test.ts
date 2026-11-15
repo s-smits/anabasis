@@ -1,20 +1,36 @@
 // Campaign login isolation, clean-point pausing and dry-run refusals.
 import { afterAll, describe, expect, it } from "bun:test";
-import { append, type EventKind, type LogEvent } from "../src/kernel/log.ts";
+import { PAUSE, paused as holds } from "../src/campaign/word.ts";
+import { append, type EventKind, LOG_FILE, type LogEvent, read as readLog } from "../src/kernel/log.ts";
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { join } from "../src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, runtimeProcess } from "../src/meta/process.ts";
 import { LIMITS } from "../tools/d2/campaign.ts";
-import { loginEnv, restsAfter, solvesMs } from "../tools/runs/manage.ts";
+import { heldBy, loginEnv, solvesMs } from "../tools/runs/manage.ts";
 import { type Receipt, writeReceipt } from "../tools/runs/receipt.ts";
 import { fakeHosts } from "./helpers/fake-hosts.ts";
 
+/** Driver code run as a waiting verb reaches its point, given the log and a writer of a fake's state. */
+type Meanwhile = (log: string, set: (name: string, text: string) => string) => string;
+
 const KEY = "CLAUDE_CODE_OAUTH_TOKEN";
 const fixtures: string[] = [];
+const sleepers: { kill: () => void }[] = [];
 afterAll(() => {
   for (const root of fixtures) rmSync(root, { recursive: true, force: true });
+  for (const each of sleepers) each.kill();
 });
+/** A process that lives a minute, as a keeper or a writer the `ps` fake names. */
+function sleeper() {
+  const child = capturedSpawn(["sleep", "60"], { detached: true });
+  sleepers.push(child);
+  return child;
+}
+
+/** Whether a pause may stop the run: nothing holds it (`heldBy`). */
+const restsAfter = (events: readonly LogEvent[], after: string, base: number) =>
+  heldBy(events, after, base).length === 0;
 
 const event = (kind: EventKind, data: JsonObject): LogEvent => ({
   at: "2026-10-15T12:00:00.000Z",
@@ -42,22 +58,21 @@ describe("going on with a campaign", () => {
   });
 
   it("pauses past one more of the event, once no comparison, Examiner session or draft is open", () => {
-    const promoted = [
+    const reported = [
       event("build.started", { session: "b-1" }),
       event("comparison.started", { session: "g-2" }),
-      event("comparison.reported", { session: "g-2", reading: "step" }),
-      event("harness.promoted", { harness: "h" }),
+      event("comparison.reported", { session: "g-2", reading: "no-step" }),
     ];
     // The Builder's conversation is open throughout a led campaign, and a pause cuts it: the
     // campaign run again opens a new one on its notes.
-    expect(restsAfter(promoted, "reported", 0)).toBe(true);
-    expect(restsAfter(promoted, "reported", 1)).toBe(false);
+    expect(restsAfter(reported, "reported", 0)).toBe(true);
+    expect(restsAfter(reported, "reported", 1)).toBe(false);
     // `next` joined to another point names nothing: taken as that other point it would write no
     // pause word and rest with a solve open.
-    expect(restsAfter(promoted, "reported|promoted", 0)).toBe(true);
-    expect(() => restsAfter(promoted, "next|reported", 0)).toThrow("--after takes");
+    expect(restsAfter(reported, "reported|promoted", 0)).toBe(true);
+    expect(() => restsAfter(reported, "next|reported", 0)).toThrow("--after takes");
     // An old ladder's reading left open is no comparison: no move goes on with it.
-    const read = [...promoted, event("comparison.started", { session: "l-1", ladder: true })];
+    const read = [...reported, event("comparison.started", { session: "l-1", ladder: true })];
     expect(restsAfter(read, "reported", 0)).toBe(true);
     for (const open of [
       event("comparison.started", { session: "g-3" }),
@@ -66,6 +81,48 @@ describe("going on with a campaign", () => {
     ]) {
       expect(restsAfter([...read, open], "reported", 0)).toBe(false);
     }
+  });
+
+  it("holds a pause after a report from a promotion until its starter comparison has tallied", () => {
+    const report = (session: string, fresh: string, data: JsonObject) => [
+      event("comparison.started", { session, starter: "s" }),
+      event("comparison.reported", { session, old: "h", fresh, ...data }),
+    ];
+    const promoted = [
+      event("build.started", { session: "b-1" }),
+      event("comparison.started", { session: "g-1", starter: "s" }),
+      event("comparison.reported", { session: "g-1", old: "s", fresh: "h", reading: "step" }),
+      event("harness.promoted", { harness: "h" }),
+    ];
+    const starter = report("g-3", "s", { reading: "no-step", scored: { differences: [-1, 0] } });
+    const own = report("g-2", "c", { reading: "no-step", scored: { differences: [1] } });
+    const newer = [...report("g-4", "c", { reading: "step" }), event("harness.promoted", { harness: "c" })];
+    // A step promoted in the move the pause waited for is unread against the starter, which a word
+    // naming the promotion does not wait for; neither the Builder's own comparison nor a starter one
+    // that scored nothing is that read; it rests the run whatever it read, past the pause's own count;
+    // an earlier promotion's read stands for no newer one.
+    for (const [events, after, base, rests] of [
+      [promoted, "reported", 0, false],
+      [promoted, "promoted", 0, true],
+      [promoted, "reported|promoted", 0, true],
+      [[...promoted, ...own], "reported", 0, false],
+      [[...promoted, ...report("g-2", "s", { reading: "not-scored" })], "reported", 0, false],
+      [[...promoted, ...starter], "reported", 0, true],
+      [[...promoted, ...starter], "reported", 2, false],
+      [[...promoted, ...starter, ...newer], "reported", 0, false],
+    ] satisfies [LogEvent[], string, number, boolean][]) {
+      expect(restsAfter(events, after, base)).toBe(rests);
+    }
+    // The dry form names each hold apart: the unread promotion for `reported` alone, and once a read
+    // tallied, only the next report.
+    const read = (held: string[]) => held.map((hold) => hold.includes("a starter comparison"));
+    expect(read(heldBy(promoted, "reported", 1))).toEqual([false, true]);
+    expect(read(heldBy(promoted, "promoted", 1))).toEqual([false]);
+    expect(heldBy([...promoted, ...starter], "reported", 2)).toEqual([
+      "one more comparison.reported, past 2",
+    ]);
+    const open = [...promoted, event("comparison.started", { session: "g-2", starter: "s" })];
+    expect(heldBy(open, "reported", 1)).toHaveLength(3);
   });
 
   it("pauses at a promotion or an Examiner session's end, or at the first of the words joined by |", () => {
@@ -270,6 +327,138 @@ describe("going on with a campaign", () => {
       { FAKE_PS: row },
     );
     expect(raced.out.trim().split("\n").at(-1)).toBe("waits");
+  });
+
+  /** A campaign a keeper holds and `verb` on `flags` waiting for its next report, which the log gains
+   *  once the verb says it waits, after the driver code `meanwhile` returns (`set` writes a fake). */
+  function pointed(flags: readonly string[], meanwhile: Meanwhile = () => "", verb = "continueRun") {
+    const made = fakeHosts();
+    fixtures.push(made.root);
+    const folder = join(made.main, ".ana", "d2", "pointed");
+    mkdirSync(folder, { recursive: true });
+    const log = join(folder, LOG_FILE);
+    append(log, "build.started", { session: "b-1" });
+    mkdirSync(join(made.main, "tools", "d2"), { recursive: true });
+    writeFileSync(join(made.main, "tools", "d2", "harness-builder.ts"), "process.exit(0);\n");
+    const keeper = sleeper();
+    const set = (name: string, text: string) =>
+      `writeFileSync(${JSON.stringify(join(made.root, "now", name))}, ${JSON.stringify(text)});`;
+    const driver = [
+      'import { existsSync, writeFileSync } from "node:fs";',
+      'import { append } from "REPOSITORY/src/kernel/log.ts";',
+      "const sleep = Bun.sleep; Bun.sleep = (ms) => sleep(Math.min(Number(ms), 100));",
+      `const { ${verb} } = await import("REPOSITORY/tools/runs/manage.ts");`,
+      `const report = () => { ${meanwhile(log, set)} append(${JSON.stringify(log)}, "comparison.reported", { session: "g-1", reading: "no-step" }); };`,
+      'const say = console.log; console.log = (line) => { say(line); if (String(line).includes("waiting for")) report(); };',
+      `await ${verb}(${JSON.stringify(["pointed", "--after", "reported", ...flags, "--yes", "--", "--target", "8"])});`,
+    ].join("\n");
+    const row = `${String(keeper.pid)} ${capturedExecPath} tools/runs/cli.ts keep pointed --here`;
+    return {
+      made,
+      log,
+      row,
+      go: (extra: Record<string, string> = {}) => made.run(driver, { FAKE_PS: row, ...extra }),
+      ended: () => Promise.race([keeper.exited.then(() => true), Bun.sleep(500).then(() => false)]),
+    };
+  }
+  const words = (log: string) =>
+    readLog(log).flatMap(({ kind, data }, at) => (kind === "campaign.word" ? [{ at, word: data.word }] : []));
+  const filled = JSON.stringify([{ name: "other", login: "2", host: "runner" }]);
+  const capped = { ANA_LOGIN_RUNS: "1", [`${KEY}2`]: "a" };
+
+  it("leaves the pause's word at a named point once the point is ready, just before the stop", async () => {
+    for (const verb of ["continueRun", "pause"]) {
+      const { log, go, ended } = pointed([], () => "", verb);
+      go();
+      expect(await ended()).toBe(true);
+      // One word, after the report waited for, so that it held no solve during the wait.
+      const events = readLog(log);
+      const reported = events.findLastIndex(({ kind }) => kind === "comparison.reported");
+      expect(words(log)).toEqual([{ at: reported + 1, word: PAUSE }]);
+      // A continue's process begins after the word, and its solves are not held by it.
+      expect(holds(events, events.length, Date.now(), LIMITS.wallSeconds)).toBe(false);
+      expect(holds(events, 0, Date.now(), LIMITS.wallSeconds)).toBe(true);
+    }
+  });
+
+  it("asks at the point, before the stop, what the start would refuse, and leaves a refused run running with no word", async () => {
+    for (const [flags, meanwhile, extra, refusal] of [
+      [[], () => "", { FAKE_FETCH_FAIL: "1" }, "git exited 1"],
+      [["--login", "2"], (_log, set) => set("FAKE_ACTIVE", filled), capped, "login 2 is at its live-run cap"],
+      [[], (_log, set) => set("FAKE_DIRTY", " M src/kernel/log.ts"), {}, "holds a change no commit names"],
+    ] satisfies [string[], Meanwhile, Record<string, string>, string][]) {
+      const { log, go, ended } = pointed(flags, meanwhile);
+      const refused = go(extra);
+      expect(refused.code).not.toBe(0);
+      expect(refused.out).toContain("waiting for comparison.reported past 0");
+      expect(refused.err).toContain(refusal);
+      expect(await ended()).toBe(false);
+      expect(words(log)).toEqual([]);
+    }
+  });
+
+  it("says the run stands stopped with no keeper where its login fills between the stop and the start", () => {
+    // Once the stop has ended the keeper, `ps` lists nothing.
+    const { go } = pointed(["--login", "2"], (_log, set) =>
+      [
+        "const was = console.log;",
+        `console.log = (line) => { was(line); if (String(line).includes("its keeper")) { ${set("FAKE_ACTIVE", filled)} ${set("FAKE_PS", "")} } };`,
+      ].join(" "),
+    );
+    const refused = go(capped);
+    expect(refused.code).not.toBe(0);
+    expect(refused.err).toContain("at its live-run cap");
+    expect(refused.err).toContain("pointed is not running and has no keeper; nothing was started");
+  });
+
+  it("leaves a campaign that ended on its own terms during the wait, starting nothing", () => {
+    // The campaign ends instead of reporting (the `return` skips the report), and its keeper with it.
+    const { go } = pointed(
+      [],
+      (log, set) =>
+        `append(${JSON.stringify(log)}, "campaign.ended", { ending: "budget", why: "fixture" }); ${set("FAKE_PS", "")} return;`,
+    );
+    const left = go();
+    expect({ code: left.code, err: left.err }).toEqual({ code: 0, err: "" });
+    expect(left.out).toContain("pointed ended on budget during the wait");
+    expect(left.out).not.toContain(" pid ");
+  });
+
+  it("leaves a run its keeper has already moved onto the asked login and commit, stopping nothing", async () => {
+    const { made, log, row, go, ended } = pointed(["--login", "2"]);
+    const receipt = { pid: 42, flags: ["--target", "8"], envFile: null, dirty: false, load: 0, cores: 2 };
+    writeReceipt(log, "run-2", { ...receipt, at: new Date().toISOString(), commit: made.commit, login: "2" });
+    const writer = sleeper();
+    const writes = `${String(writer.pid)} ${capturedExecPath} tools/d2/harness-builder.ts --name pointed`;
+    const cwds = `p${String(writer.pid)}\nn${made.main}`;
+    const left = go({ FAKE_PS: `${writes}\n${row}`, FAKE_CWDS: cwds, ...capped });
+    expect({ code: left.code, err: left.err }).toEqual({ code: 0, err: "" });
+    expect(left.out).toContain(`pointed already runs on login 2 at ${made.commit.slice(0, 9)}`);
+    expect(await ended()).toBe(false);
+  });
+
+  it("reads the rest again after asking, so that a comparison begun meanwhile is waited for, whatever commit is asked", async () => {
+    // The fetch at the first point finds the run starting its next comparison, whose report the
+    // driver writes at the look after it.
+    const starts: Meanwhile = (log, set) =>
+      [
+        set("FAKE_FETCH_STARTS", log),
+        "const looked = Bun.sleep; let closed = false;",
+        `Bun.sleep = (ms) => { if (!closed && !existsSync(process.env.FAKE_NOW + "/FAKE_FETCH_STARTS")) { closed = true; append(${JSON.stringify(log)}, "comparison.reported", { session: "g-2", reading: "no-step" }); } return looked(ms); };`,
+      ].join(" ");
+    const AT = "b".repeat(40);
+    for (const [flags, extra, asked] of [
+      [[], {}, 3],
+      [["--at", AT], { FAKE_AT: AT }, 4],
+    ] satisfies [string[], Record<string, string>, number][]) {
+      const { made, go, ended } = pointed(flags, starts);
+      expect(go(extra).err).not.toContain("began and has not reported");
+      expect(await ended()).toBe(true);
+      // The remote is asked at the first point, at the second, and by the start after the stop (and its
+      // install of another commit): a stop at the first point, inside the comparison, would ask one less.
+      const fetches = made.recorded().filter(({ tool, args }) => tool === "git" && args.includes("fetch"));
+      expect(fetches).toHaveLength(asked);
+    }
   });
 
   it("refuses a second waiter on one run, which could start again a run the first had stopped", () => {

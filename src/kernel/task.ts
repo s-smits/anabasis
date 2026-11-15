@@ -207,7 +207,7 @@ export function foldsEvent(kind: EventKind): boolean {
  * Each task version's state, folded from the log: `task.proposed` holds it, a passing `task.gate`
  * makes it a held-out task, and `task.state` moves it. A history that proposes a task twice, puts
  * one to its task admission twice, moves one where it cannot go, or releases or disputes one whose package
- * never passed, is refused, as a torn line is.
+ * never passed, is refused, as a line that is no event is.
  */
 export function taskStates(events: readonly LogEvent[]): Map<string, TaskState> {
   return taskSets(events).states;

@@ -32,7 +32,7 @@ import { codeOf, FOLLOWED, LIMITS, starter, keptAs, openCampaign, treeFault } fr
 import { gitText } from "../src/meta/git.ts";
 import { checkpointCommand } from "../tools/d2/checkpoint.ts";
 import { importCommand } from "../tools/d2/import.ts";
-import { prepareCommand } from "../tools/d2/prepare.ts";
+import { prepareCommand, ungated } from "../tools/d2/prepare.ts";
 import { promoteCommand } from "../tools/d2/promote.ts";
 import {
   capNamed,
@@ -280,6 +280,16 @@ describe("a campaign", () => {
     // The pack's seven tasks are proposed and put to their one gate, with no solve and no stored
     // answer. Two of the eight held out are then released for practice, by the contract's draw.
     const versions = TASKS.map((task) => taskVersion(campaign.pack(task)));
+    // One of them as a command killed between its two appends leaves it, proposed and never put to
+    // its gate: it is still owed the gate. Until 13 November the task states answered for it, and it
+    // was never held out.
+    for (const cut of TASKS.slice(3, 4)) {
+      const { taskId, family } = cut;
+      append(campaign.log, "task.proposed", { version: taskVersion(campaign.pack(cut)), taskId, family });
+    }
+    expect(ungated(campaign, read(campaign.log)).map((task) => task.taskId)).toEqual(
+      TASKS.map((task) => task.taskId),
+    );
     const summary = ["6 held out, 2 released for practice", ...sizeLines(6, ASKED.level)].join("\n");
     // Each release is said by its task: a release cannot be taken back.
     const [proposed, ...lines] = (await prepare()).split("\n");

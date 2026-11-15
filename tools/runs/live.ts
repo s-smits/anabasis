@@ -5,17 +5,7 @@ import { looseFlagsOf } from "../d2/campaign-terms.ts";
 import { keysIf } from "#src/meta/optional-key.ts";
 import { lastLaunch } from "./receipt.ts";
 import { lifeOf } from "./diagnosis.ts";
-import {
-  archived,
-  flagOf,
-  isCampaign,
-  ownArgs,
-  processes,
-  type Run,
-  type Running,
-  runs,
-  SEAT,
-} from "./registry.ts";
+import { flagOf, ownArgs, processes, runs, SEAT } from "./registry.ts";
 import { answerOf } from "./hosts.ts";
 
 export interface Live {
@@ -68,40 +58,22 @@ export function seatsIn(table: readonly { readonly args: readonly string[] }[], 
   return [...new Map(seats.map((seat) => [seat.name, seat])).values()];
 }
 
-/** The runs a process writes or keeps on this machine, which `host` names, and the simulations: a
- *  seat's seed is counted on the login the seat names. A kept run between two starts holds its slot,
- *  since its keeper starts it again there, and says it is `unwritten` (`countedAgainst`). All of it
- *  is read from one table, `running`. */
-export function liveHere(host = "here", running = processes()): Live[] {
+/** The runs of `found` a process writes or keeps on this machine, which `host` names, and the
+ *  simulations: a seat's seed is counted on the login the seat names. A kept run between two starts
+ *  holds its slot, since its keeper starts it again there, and says it is `unwritten`
+ *  (`countedAgainst`). All of it is read from one table, `running`. */
+export function liveHere(host = "here", running = processes(), found = runs()): Live[] {
   const seats = seatsIn(running, host);
-  const live = livesOf(
-    runs().filter((run) => !seats.some(({ name }) => name === run.name)),
-    host,
-    running,
-  );
+  const live = found
+    .filter((run) => !seats.some(({ name }) => name === run.name))
+    .flatMap((run) => {
+      const { writing, kept } = lifeOf(run, running);
+      if (!writing && !kept) return [];
+      const launch = lastLaunch(run.path);
+      const login = payerOf(launch?.login, launch?.flags ?? []) ?? null;
+      return [{ name: run.name, login, host, ...keysIf(!writing, () => ({ unwritten: true as const })) }];
+    });
   return [...live, ...seats];
-}
-
-/** The runs of `found` that a process writes or keeps (`lifeOf`), each on the login its last launch
- *  paid by, on `host`. */
-function livesOf(found: readonly Run[], host: string, running: readonly Running[]): Live[] {
-  return found.flatMap((run) => {
-    const { writing, kept } = lifeOf(run, running);
-    if (!writing && !kept) return [];
-    const launch = lastLaunch(run.path);
-    const login = payerOf(launch?.login, launch?.flags ?? []) ?? null;
-    return [{ name: run.name, login, host, ...keysIf(!writing, () => ({ unwritten: true as const })) }];
-  });
-}
-
-/** The runs `host` wrote or kept when the gather last copied its campaigns into the archive, read
- *  from what each fetch saw there (`lifeOf`), or null where the archive holds none of its copies. A
- *  host that does not answer `active` is counted so, as last seen, instead of halting every start
- *  on the fleet: on 13 November one asleep peer refused a continue of a run on this machine onto a
- *  login with no run anywhere. A run started there since its last gather is not seen. */
-export function gatheredOn(host: string, copies: readonly Run[] = archived()): Live[] | null {
-  const own = copies.filter((run) => run.archived === host && isCampaign(run));
-  return own.length === 0 ? null : livesOf(own, host, []);
 }
 
 /** The runs of `live` that count against a start of `name` on their login: every other, but for an

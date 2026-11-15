@@ -16,9 +16,11 @@
  * the stack `bun run land --sanitize` replays itself, without unstacking.
  *
  * Without `--yes` it shows each branch before and after, and every operation in order. With it,
- * it unstacks, retargets every survivor to main, pushes moved heads atomically with leases on the
- * heads GitHub showed, sets bases bottom to top, closes absorbed pull requests with a comment naming
- * where their changes went, and relinks. Unnamed survivors follow the named ones in their old order
+ * it unstacks, retargets every survivor and every absorbed pull request to main, pushes moved heads
+ * atomically with leases on the heads GitHub showed, sets bases bottom to top, closes absorbed pull
+ * requests with a comment naming where their changes went, and relinks. An absorbed pull request
+ * left on its survivor's branch is marked merged by the push where the survivor's new head holds its
+ * commits, and GitHub then stacks the two itself and refuses the survivor's base (15 November). Unnamed survivors follow the named ones in their old order
  * and keep their heads; name every survivor when reordering the whole stack.
  *
  * The consolidation of 25 October did these steps by hand, and each went wrong once or nearly did: zsh
@@ -261,7 +263,9 @@ export function republish(
   );
   const push = pushArgs(plan, verify, held);
   if (push.length > 0) {
-    for (const { pull } of plan.moves) run("gh", ["pr", "edit", String(pull.number), "--base", plan.trunk]);
+    for (const { pull } of [...plan.moves, ...plan.absorbed]) {
+      run("gh", ["pr", "edit", String(pull.number), "--base", plan.trunk]);
+    }
     run("git", push);
   }
   for (const { pull, base } of plan.moves) run("gh", ["pr", "edit", String(pull.number), "--base", base]);

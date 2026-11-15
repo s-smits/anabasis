@@ -202,8 +202,9 @@ bun .claude/skills/stack-pr/scripts/republish.ts <the same> --yes [--no-verify]
 
 Give `--head` bottom to top; an unnamed survivor keeps its head and old order. The script refuses
 unless the bottom holds `origin/main`'s head and each head holds the one beneath. With `--yes` it
-unstacks, retargets every survivor to `main` before any head moves (else GitHub can mark one merged
-into an intermediate branch), pushes all heads in one `git push --atomic` with a lease each, sets
+unstacks, retargets every survivor and absorbed pull request to `main` before any head moves (else
+GitHub marks one merged into an intermediate branch), pushes all heads in one `git push --atomic`
+with a lease each, sets
 the bases bottom up, closes each absorbed pull request with a comment naming its survivor, and
 relinks the stack (`gh extension install github/gh-stack` once). If a step fails it stops: read
 heads, bases and the native stack before recovering. `--no-verify` only on the operator's word, and

@@ -260,6 +260,7 @@ describe("republishing a consolidated stack", () => {
       "gh 'stack' 'unstack' '7'",
       "gh 'pr' 'edit' '1' '--base' 'main'",
       "gh 'pr' 'edit' '2' '--base' 'main'",
+      "gh 'pr' 'edit' '3' '--base' 'main'",
       `git ${pushArgs(plan, "no-verify")
         .map((arg) => `'${arg}'`)
         .join(" ")}`,
@@ -270,7 +271,7 @@ describe("republishing a consolidated stack", () => {
     ]);
   });
 
-  it("unstacks and retargets every survivor before pushing leased heads, then sets bases, closes and relinks", () => {
+  it("unstacks and retargets every survivor and absorbed pull request before pushing leased heads, then sets bases, closes and relinks", () => {
     const plan = planConsolidation(co, pulls, heads, absorbed, "main");
     expect(plan.moves.map((move) => [move.pull.number, move.to, move.base])).toStrictEqual([
       [1, a1, "main"],
@@ -302,11 +303,16 @@ describe("republishing a consolidated stack", () => {
         .join(" ")}`,
     );
     expect([sha(up, "a"), sha(up, "b"), sha(up, "c")]).toStrictEqual([a1, b1, c0]);
-    expect(asked, "heads must be pushed only after unstacking and retargeting every survivor").toStrictEqual([
+    // #3 stands on #2's branch, and #2's new head could hold its commits: left there, the push merges it.
+    expect(
+      asked,
+      "heads must be pushed only after unstacking and retargeting every pull request",
+    ).toStrictEqual([
       "api repos/{owner}/{repo}/stacks",
       "stack unstack 7",
       "pr edit 1 --base main",
       "pr edit 2 --base main",
+      "pr edit 3 --base main",
       "git push",
       "pr edit 1 --base main",
       "pr edit 2 --base a",

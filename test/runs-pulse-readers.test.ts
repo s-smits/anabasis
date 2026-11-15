@@ -122,6 +122,22 @@ describe("what a reader says of a moment", () => {
     expect(said.owed).toEqual([]);
   });
 
+  it("says of a line that counts every comparison in turn only this one's part, and any other line whole", () => {
+    const { store, log, look } = world([{ name: "rows", at: [REPORTED] }]);
+    const whole = "b-1: 33 practice solves, reading g-1 no-step; g-2 no-step";
+    const text = [
+      "TIED TASKS (lane 9): g-1: 1 of 8; g-2: 2 of 8",
+      "VALID BY HARNESS (lane 19): g-1: old 8 · g-2: old 7",
+      whole,
+    ];
+    keepResult(store, log, "rows", result(100), `${text.join("\n")}\n`);
+    expect(allOf(look({ fresh: [eventOf(REPORTED, { session: "g-2" })] })).slice(0, 3)).toEqual([
+      "◆ rows: TIED TASKS (lane 9): g-2: 2 of 8",
+      "◆ rows: VALID BY HARNESS (lane 19): g-2: old 7",
+      `◆ rows: ${whole}`,
+    ]);
+  });
+
   it("names a promotion by its harness's first eight characters", () => {
     const { store, log, look } = world([{ name: "replay", at: [PROMOTED] }]);
     keepResult(store, log, "replay", result(100), "promoted 0123abcd on g-3\nanother 89abcdef\n");

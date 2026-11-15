@@ -150,8 +150,7 @@ export function recordCondition(log: string, condition: Condition): string {
   return id;
 }
 
-/** The host's code (`Condition.host`) the last condition in `events` names, which their latest
- *  solve ran under; undefined before any. */
+/** The host's code (`Condition.host`) of the last condition recorded, undefined before any. */
 export function lastHost(events: readonly LogEvent[]): string | undefined {
   const host = asRecord(events.findLast(({ kind }) => kind === RECORDED)?.data.condition)?.host;
   return isString(host) ? host : undefined;

@@ -22,8 +22,8 @@ afterAll(() => {
   for (const each of sleepers) each.kill();
 });
 /** A process that lives a minute, as a keeper or a writer the `ps` fake names. */
-function sleeper() {
-  const child = capturedSpawn(["sleep", "60"], { detached: true });
+function sleeper(cwd = ".") {
+  const child = capturedSpawn(["sleep", "60"], { detached: true, cwd });
   sleepers.push(child);
   return child;
 }
@@ -428,7 +428,8 @@ describe("going on with a campaign", () => {
     const { made, log, row, go, ended } = pointed(["--login", "2"]);
     const receipt = { pid: 42, flags: ["--target", "8"], envFile: null, dirty: false, load: 0, cores: 2 };
     writeReceipt(log, "run-2", { ...receipt, at: new Date().toISOString(), commit: made.commit, login: "2" });
-    const writer = sleeper();
+    // The writer stands in the tree, since Linux reads its cwd from /proc and not from lsof.
+    const writer = sleeper(made.main);
     const writes = `${String(writer.pid)} ${capturedExecPath} tools/d2/harness-builder.ts --name pointed`;
     const cwds = `p${String(writer.pid)}\nn${made.main}`;
     const left = go({ FAKE_PS: `${writes}\n${row}`, FAKE_CWDS: cwds, ...capped });

@@ -385,11 +385,9 @@ export function refereeNamed(
 /**
  * The campaign a round, a session or a standalone comparison runs in. The cap and the Referee are read before
  * it is opened, so a paid move without them starts nothing, and what the flags name of the setting
- * is held to the log's record before the campaign is opened under it (`setting.ts`). Once it is
- * open, who solves is known, and a paid command's first record of the setting is held to what the
- * log's last test-side solves ran under (`firstRecord`); a rehearsal is exempt, as from admission.
- * A led campaign's moves arrive seated through its solve queue and so read as scripted here: its own
- * opening has held the first record and kept it before the first move (`harness-builder.ts`).
+ * is held to the log's record before the campaign is opened under it (`setting.ts`); once open, a
+ * paid command's first record is held to the last test-side solves' (`firstRecord`). A led
+ * campaign's moves read as scripted here, its opening having held that (`harness-builder.ts`).
  */
 export async function campaignFor(
   values: Parameters<typeof capNamed>[0] &

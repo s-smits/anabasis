@@ -11,6 +11,7 @@ import {
   activeLines,
   asGathered,
   capOf,
+  carried,
   fitOf,
   perRunHour,
   perRunRate,
@@ -223,6 +224,14 @@ describe("how many runs a login's week carries", () => {
     expect(fitOf({ login: "3", pct: 95, reset: 42 * HOUR }, active, now)).toBe(0);
     expect(fitOf({ login: "2", pct: 33, reset: 9 * HOUR }, active, now)).toBe(11);
     expect(fitOf({ login: "2", pct: 33, reset: 9 * HOUR }, null, now)).toBeNull();
+  });
+
+  it("says where a login's most is its week's fit instead of the cap `active` counts against", () => {
+    expect(carried(1, "1", 0)).toBe("1/0 active, its week's fit under a cap of 1 · oversubscribed");
+    // The nearest hostile cases: a week that fits the cap or more, and one not yet measured, name the cap alone.
+    expect(carried(1, "2", 2)).toBe("1/2 active");
+    expect(carried(1, "2", Number.POSITIVE_INFINITY)).toBe("1/2 active");
+    expect(carried(1, "2", null)).toBe("1/2 active");
   });
 
   it("reads a week's own pace over its live runs until a rate is measured", () => {

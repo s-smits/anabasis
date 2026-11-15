@@ -237,7 +237,7 @@ line shows `open` or `closed until <reset>` and its live runs out of the most it
 its cap (`capOf`: its `N:most` in `ANA_LOGIN_RUNS`, else its subscription in `ANA_LOGIN_SUBS`, one
 for `max`, two for `ultra` or `pro100` and four for `pro200`, else the bare number) and the runs its
 week can fit (`fitOf`), with more marked `oversubscribed`. The fit is a forecast `usage` alone
-prints; the verbs refuse at the cap (`atCap`), which `active` counts against.
+prints, saying so where it is the lower; the verbs refuse at the cap (`atCap`), which `active` counts against.
 `active` names the live runs on each login across hosts, by each run's last launch; count it before a
 launch, continue or move, and add by hand any seat without `--login` or session on a numbered login.
 `active` and `usage` name a host that does not answer as not counted. A start and a keeper's move

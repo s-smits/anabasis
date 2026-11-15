@@ -565,7 +565,10 @@ export function carried(on: number, cap: string | null, fit: number | null): str
   const fits = fit !== null && Number.isFinite(fit) ? fit : null;
   const most = [cap === null ? null : Number(cap), fits].filter((one): one is number => one !== null);
   const of = most.length === 0 ? "" : `/${String(Math.min(...most))}`;
-  return `${String(on)}${of} active${fits !== null && on > fits ? " · oversubscribed" : ""}`;
+  // `active` and the verbs count against the cap alone, so a week that fits fewer names both.
+  const week =
+    fits !== null && cap !== null && fits < Number(cap) ? `, its week's fit under a cap of ${cap}` : "";
+  return `${String(on)}${of} active${week}${fits !== null && on > fits ? " · oversubscribed" : ""}`;
 }
 
 /** The runs a process writes on this machine and on every host that answered, and the hosts that

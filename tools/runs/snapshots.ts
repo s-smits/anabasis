@@ -54,8 +54,7 @@ interface RemoteRun {
 
 type Depth = "record" | "whole";
 const EXCLUDED = ["--exclude=.env", "--exclude=.env.*", "--exclude=*.env", "--exclude=auth.json"];
-/** Folders of installed packages, caches and built bundles, by name. A harness's `.bundle-snapshots`
- *  were 30 of the 38 MB its states held on 2026-10-08. */
+/** Folders of installed packages, caches and built bundles, by name. */
 const DERIVED = new Set([
   "node_modules",
   ".bundle-snapshots",
@@ -168,10 +167,9 @@ async function filesOf(host: Host, folder: string): Promise<string[]> {
 }
 
 /** The folders among a campaign's `paths` that a copy leaves on its host (`derived`), each the
- *  outermost such folder: the packages a harness or the Examiner installed, and caches. On
- *  12 November they were 25.1 of the 27.7 GB that 69 whole copies of one runner held here, in tool
- *  trees copied again at each freeze. A copy therefore opens as no harness (`keptAs` refuses a kept
- *  state short of its programs), which a copy never did: a campaign runs on from its original. */
+ *  outermost such folder: the packages a harness or the Examiner installed, and caches. A copy
+ *  therefore opens as no harness (`keptAs` refuses a kept state short of its programs): a campaign
+ *  runs on from its original. */
 function installs(paths: readonly string[]): string[] {
   const found = new Set<string>();
   for (const path of paths) {
@@ -350,24 +348,17 @@ export async function syncRuns(
 }
 
 /**
- * Take over the campaigns `host` has retired, the host being the one `ABLATION_HOST` names: each
- * that its own retire has moved into its archive, which no process writes or keeps there and of
- * which this machine holds every file a copy takes byte for byte, joins this machine's own archive,
- * and the original is deleted there, so that the host stays clear for ablations. Nothing else
- * deletes an original. That host's retire stays the one owner of when a campaign is finished (idle
- * for a day, `archiveIdle`, retire.ts): a log's ending would be a second one and a poor one, since
- * of the 69 campaigns one runner held on 12 November 10 ended in an ending and the rest were
- * stopped where they stood. A campaign still in its worktree there, which a `continue` can go on
- * with, is left alone. The proof
- * is one checksummed dry run of rsync, which names every path the copy lacks or holds differently,
- * so a campaign with a path left on its host for its case (`caseTwins`) stays there, named; a
- * credential file and what was installed there are never copied (`EXCLUDED`, `installs`) and go
- * with the original, so a campaign taken over is a record and runs no further. The copy moves
- * first, so a sweep killed before the deletion is finished by the next one, and the deletion runs
- * only while the log there is as long as the catalogue said: one that grew stays, and its copy is
- * the host's again. A deletion that fails part way leaves the copy this machine's own, since it is
- * then the one copy and a later refresh from what is left must not replace it. Asked to
- * `describe`, it says what it would do.
+ * Take over the campaigns `host`, the one `ABLATION_HOST` names, has retired, so that it stays clear
+ * for ablations: each its own retire moved into its archive (that retire alone decides when a
+ * campaign is finished), which no process writes or keeps there and of which this machine holds
+ * every file a copy takes byte for byte, joins this machine's own archive and is deleted there.
+ * Nothing else deletes an original, and a campaign still in its worktree there is left alone. The
+ * proof is one checksummed dry run of rsync, so a campaign with a path left there for its case
+ * (`caseTwins`) stays; credentials and installs are never copied (`EXCLUDED`, `installs`), so a
+ * campaign taken over is a record. The copy moves first, so a sweep killed before the deletion is
+ * finished by the next; the deletion runs only while the log there is as long as the catalogue
+ * said, and one that grew stays, its copy the host's again; one that fails part way leaves the copy
+ * this machine's own. Asked to `describe`, it says what it would do.
  */
 export async function takeRetired(host: Host, act: "take" | "describe"): Promise<void> {
   const archive = archiveOf(runtimeProcess.cwd());

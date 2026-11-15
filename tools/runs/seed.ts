@@ -113,11 +113,8 @@ export function treeAsRan(from: string, cut: Cut, repo: string): string {
   if (found !== undefined) return found;
   const made = launch === undefined ? null : treeAt(repo, launch.commit);
   if (made !== null && fits(made)) return made;
-  const ran =
-    host?.slice(0, 8) ?? `no condition yet, launched at ${launch?.commit.slice(0, 9) ?? "no receipt"}`;
-  throw new Error(
-    `no tree holds the code ${basename(from)} ran by event ${String(events.length)} (${ran}${launch?.dirty === true ? ", from a dirty tree" : ""}): ${made === null ? "this repository holds no commit of its launch" : `${made} holds ${hostOf(made)?.slice(0, 8) ?? "no host code"}`}`,
-  );
+  const ran = host?.slice(0, 8) ?? "before any condition";
+  throw new Error(`no tree holds the code ${basename(from)} ran by event ${String(events.length)}, ${ran}`);
 }
 
 /** The host's code as a condition names it (`codeOf`), for a tree that holds it. */
@@ -131,8 +128,8 @@ export function hostOf(tree: string): string | undefined {
  *  and Examiner session's start and a Builder's end, each promotion, each comparison's report and
  *  each starter read's start (`epochsOf`), and each Referee reading's first turn with the solve its
  *  finding names: a turn names its reader alone. */
-export function pointsOf(events: readonly LogEvent[]): string[] {
-  const starterReads = new Set(epochsOf(events).flatMap(({ starter_read }) => starter_read ?? []));
+function pointsOf(events: readonly LogEvent[]): string[] {
+  const starterReads = new Set<unknown>(epochsOf(events).flatMap(({ starter_read }) => starter_read ?? []));
   const reports = new Map(lastReports(events).map((report) => [report.index, report.data.reading]));
   const solveOf = new Map(
     events.flatMap(({ kind, data }) => (kind === "referee.finding" ? [[data.reader, data.solve]] : [])),
@@ -142,7 +139,7 @@ export function pointsOf(events: readonly LogEvent[]): string[] {
     const row = (...parts: unknown[]) => [[index, kind, ...parts].map(String).join(" ")];
     if (SESSION_STARTS.has(kind) || kind === "build.finished") return row(data.session);
     if (kind === "harness.promoted") return row(data.harness);
-    if (kind === "comparison.started" && isString(data.session) && starterReads.has(data.session)) {
+    if (kind === "comparison.started" && starterReads.has(data.session)) {
       return row(data.session, "starter read");
     }
     if (reports.has(index)) return row(data.session, reports.get(index));
@@ -249,14 +246,12 @@ export async function seed(args: readonly string[]): Promise<void> {
     },
   });
   const { from, name, before, events, points } = values;
-  if (from === undefined || (name === undefined && !points)) {
-    throw new Misused();
-  }
-  const source = existsSync(from) ? from : dirname(await logAcross(from, points ? "record" : "whole"));
-  if (points || name === undefined) {
-    console.log(pointsOf(logEvents(join(source, LOG_FILE))).join("\n"));
-    return;
-  }
+  if (from === undefined) throw new Misused();
+  const sourceOf = async (depth: "record" | "whole") =>
+    existsSync(from) ? from : dirname(await logAcross(from, depth));
+  if (points) return console.log(pointsOf(logEvents(join(await sourceOf("record"), LOG_FILE))).join("\n"));
+  if (name === undefined) throw new Misused();
+  const source = await sourceOf("whole");
   const repo = resolve(import.meta.dir, "..", "..");
   const tree = values["as-ran"] ? treeAsRan(source, { before, events }, repo) : repo;
   const { sets, ...made } = seedCampaign(source, join(tree, CAMPAIGNS, name), { before, events });

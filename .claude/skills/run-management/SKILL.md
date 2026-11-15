@@ -185,8 +185,8 @@ ending, or ended `environment`, it continues on the same login if that is ready 
 a `budget` ending, even inside a comparison, is one no login can finish, and only a raised total
 (`continue --budget N`, the operator's dollar cap) goes on with it.
 A run with no `claude/` seat restarts after a death but sits out provider waits. Three continues in a
-row without an answered model turn end the keeper. Restarts stay at the worktree's commit; output
-goes to `keep.out`, and `runs stop <name> --yes` ends run and keeper both.
+row without an answered model turn end the keeper. Restarts stay at the worktree's commit; `keep.out`
+holds each move, wait and giving up under its time, and `runs stop <name> --yes` ends run and keeper.
 
 ## Copy and move
 
@@ -221,9 +221,15 @@ model, the week pace and the per-run rate read the last held-out hours best (`mo
 line shows `open` or `closed until <reset>` and its live runs out of the most it carries: the lower of
 its cap (`capOf`: its `N:most` in `ANA_LOGIN_RUNS`, else its subscription in `ANA_LOGIN_SUBS`, one
 for `max`, two for `ultra` or `pro100` and four for `pro200`, else the bare number) and the runs its
-week can fit (`fitOf`), with more marked `oversubscribed`. `keep` and `fresh` read room the same way.
+week can fit (`fitOf`), with more marked `oversubscribed`. The fit is a forecast that `usage` alone
+prints: `fresh`, `keep`, `continue` and `move` refuse at the cap (`atCap`), the most `active` counts
+against, so one login can read 2/1 in `usage` and 2/2 in `active` in the same minute.
 `active` names the live runs on each login across hosts, by each run's last launch; count it before a
 launch, continue or move, and add by hand any seat without `--login` or session on a numbered login.
+A host that does not answer is counted as the archive last gathered it (`gatheredOn`, the liveness
+each fetch kept beside its copies), and the count says so; one the archive holds no copy of leaves
+the fleet uncounted, which refuses a continue, a move and a keeper's move. Placement still refuses
+any silent host.
 
 `status` hides stopped runs idle for a day unless `--all`, and names the archive's newest campaigns.
 `hosts --health` reports load against cores, the charger, disk sizes, Bun, controllers, live
@@ -287,8 +293,9 @@ the run lives, and the investigation's `open` once it has stopped. A closed run'
 when they turn, not at every look.
 
 `bun run runs alerts` is the cron watch: one stdout line per new promotion, starter comparison,
-keeper move, missing process, ending or stall, nothing otherwise, and exit 0. It prints the `runs
-pause` command once two promotions are read against the starter, and never runs it.
+keeper move, missing process, stall or ending (one a keeper went on past between two looks reads
+`ended <ending>, and went on`), nothing otherwise, and exit 0. It prints the `runs pause` command
+once two promotions are read against the starter, and never runs it.
 
 A session that waits on a few runs follows the log the local job writes these lines to with one
 `Monitor` (`tail -n 0 -F`), re-armed when it expires, and so wakes at each step a run owes. On a

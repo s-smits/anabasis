@@ -18,7 +18,7 @@ import { join, resolve } from "../src/meta/path.ts";
 import { runTextSyncOrThrow } from "../src/meta/subprocess.ts";
 import { codeOf } from "../tools/d2/campaign.ts";
 import { atCommit } from "../tools/runs/code.ts";
-import { codeLine, pointsOf, treeAsRan } from "../tools/runs/seed.ts";
+import { codeLine, treeAsRan } from "../tools/runs/seed.ts";
 
 const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-seed-test-")));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -80,11 +80,9 @@ describe("a seed under the code its run ran", () => {
     expect(codeLine(atCommit(main, a.commit), join(own, ".ana", "d2", "r"))).toContain("not the");
   });
 
-  it("refuses where no tree holds the recorded code, naming both digests", () => {
+  it("refuses where no tree holds the recorded code, naming it", () => {
     const folder = run("lost", "f".repeat(64));
-    expect(() => treeAsRan(folder, { before: "b-1" }, main)).toThrow(
-      `ffffffff): ${atCommit(main, a.commit)} holds ${a.host.slice(0, 8)}`,
-    );
+    expect(() => treeAsRan(folder, { before: "b-1" }, main)).toThrow("ran by event 1, ffffffff");
   });
 });
 
@@ -112,8 +110,19 @@ describe("the points a seed can be cut at", () => {
     }),
   ];
 
+  /** What `seed --points` prints of the campaign in `folder`. */
+  const points = (folder: string) =>
+    runTextSyncOrThrow([capturedExecPath, "tools/runs/cli.ts", "seed", "--from", folder, "--points"], {
+      cwd: resolve(import.meta.dir, ".."),
+    })
+      .trim()
+      .split("\n");
+
   it("lists each session, comparison, promotion, starter read and first Referee turn", () => {
-    expect(pointsOf(events)).toEqual([
+    const folder = join(root, "points");
+    mkdirSync(folder);
+    writeFileSync(join(folder, "log.jsonl"), `${events.map((one) => JSON.stringify(one)).join("\n")}\n`);
+    expect(points(folder)).toEqual([
       "0 build.started b-1",
       "2 build.finished b-1",
       "4 referee.turn solve v-1",
@@ -128,13 +137,7 @@ describe("the points a seed can be cut at", () => {
   it("prints a run's points and writes nothing", () => {
     const folder = run("listed");
     const before = readdirSync(own, { recursive: true });
-    const said = runTextSyncOrThrow(
-      [capturedExecPath, "tools/runs/cli.ts", "seed", "--from", folder, "--points"],
-      {
-        cwd: resolve(import.meta.dir, ".."),
-      },
-    );
-    expect(said.trim().split("\n")).toEqual(["1 build.started b-1", "3 build.started b-2"]);
+    expect(points(folder)).toEqual(["1 build.started b-1", "3 build.started b-2"]);
     expect(readdirSync(own, { recursive: true })).toEqual(before);
   });
 });

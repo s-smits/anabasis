@@ -3,7 +3,7 @@
 import { afterAll, expect, it } from "bun:test";
 import { runOf } from "#skills/main/runs.ts";
 import { backends } from "#src/agent/backends/models.ts";
-import { read } from "#src/kernel/log.ts";
+import { type LogEvent, read } from "#src/kernel/log.ts";
 import { sweepOptions } from "#tools/m0/stored-sweep.ts";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -111,4 +111,26 @@ it("leaves a starter comparison out of those a promotion could come from, though
   const run = runOf(found, read(found.path), []);
   expect(run?.reads).toBe(0);
   expect(run?.compared).toBe(1);
+});
+
+// Runs are read together only under one setting, so two that differ in the solves a side alone must
+// not read as one; and a campaign that went on after an ending has none, as production reads it.
+it("reads a run's setting whole from its record, and no ending once the campaign went on", () => {
+  const at = "2026-11-01T00:00:00.000Z";
+  const solver = { model: "claude/m", effort: "high" };
+  const runWith = (solves: number, more: readonly LogEvent[]) =>
+    runOf(
+      { name: "r", path: join(home, "none", "log.jsonl") },
+      [
+        { at, kind: "campaign.setting", data: { solver, minutes: 30, modelTurns: 20, target: 24, solves } },
+        { at, kind: "campaign.ended", data: { ending: "budget", why: "w" } },
+        ...more,
+      ],
+      [],
+    );
+  const wentOn: LogEvent = { at, kind: "build.started", data: { session: "b1", model: "claude/m" } };
+  expect([runWith(2, []), runWith(3, [wentOn])].map((run) => [run?.setting, run?.ending])).toStrictEqual([
+    ["m/high 30m 20t 24x2", "budget"],
+    ["m/high 30m 20t 24x3", "no ending"],
+  ]);
 });

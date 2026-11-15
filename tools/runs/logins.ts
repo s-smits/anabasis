@@ -58,7 +58,7 @@ import { looseFlagsOf } from "../d2/campaign-terms.ts";
 import { recordedSetting } from "../d2/setting.ts";
 import { asked } from "./hosts.ts";
 import { hostsOf } from "./host-config.ts";
-import { CODEX, countedAgainst, type Live, liveHere, liveOf } from "./live.ts";
+import { CODEX, countedAgainst, gatheredOn, type Live, liveHere, liveOf } from "./live.ts";
 import {
   closedResets,
   historyFile,
@@ -107,6 +107,18 @@ interface Failed {
 
 /** A process environment, as `runtimeProcess.env` holds it. */
 export type Env = Readonly<Record<string, string | undefined>>;
+
+/** The hosts a count of the fleet's live runs asked and got no answer from, and those of them it
+ *  counted instead as the archive last gathered them (`liveEverywhere`). */
+interface Silent {
+  readonly unasked: readonly string[];
+  readonly gathered?: readonly string[];
+}
+
+/** A count of the fleet's live runs. */
+export interface Counted extends Silent {
+  readonly live: readonly Live[];
+}
 
 export const TOKEN = "CLAUDE_CODE_OAUTH_TOKEN";
 /** A numbered login's key, with its number captured. */
@@ -261,11 +273,12 @@ export function startRefusal(
   env: Env,
   payer: string | undefined,
   host: string,
-  counted: { readonly live: readonly Live[]; readonly unasked: readonly string[] },
+  counted: Counted,
   name: string,
 ): string | null {
   if (payer === undefined) return null;
-  if (counted.unasked.length > 0) return uncounted(counted.unasked);
+  const blind = blindOf(counted);
+  if (blind.length > 0) return uncounted(blind);
   const others = countedAgainst(counted.live, name);
   return atCap(env, [payer], others).size > 0
     ? `login ${payer} is at its live-run cap across the fleet (ANA_LOGIN_RUNS, ANA_LOGIN_SUBS)`
@@ -563,31 +576,50 @@ export function carried(on: number, cap: string | null, fit: number | null): str
   return `${String(on)}${of} active${fits !== null && on > fits ? " · oversubscribed" : ""}`;
 }
 
-/** The runs a process writes on this machine and on every host that answered, and the hosts that
- *  did not. Each host answers `active --here` with one JSON list; any other answer leaves it
- *  uncounted, since on 22 October a tree that predates the verb answered with nothing and exit 0,
- *  which as lines would have read as no run live. */
+/** The runs a process writes on this machine and on every host that answered, the hosts that did
+ *  not, and those of them counted as the archive last gathered them (`gatheredOn`). Each host
+ *  answers `active --here` with one JSON list; any other answer leaves it unasked, since on
+ *  22 October a tree that predates the verb answered with nothing and exit 0, which as lines would
+ *  have read as no run live. */
 export async function liveEverywhere(
   mode: "prepared" | "configured" = "prepared",
-): Promise<{ live: Live[]; unasked: string[] }> {
-  const answers = (await asked(["active", "--here"], hostsOf(), mode)).map(({ host, lines }) => ({
-    host: host.name,
-    live: liveOf(host.name, lines),
-  }));
+): Promise<{ live: Live[]; unasked: string[]; gathered: string[] }> {
+  const answers = (await asked(["active", "--here"], hostsOf(), mode)).map(({ host, lines }) => {
+    const live = liveOf(host.name, lines);
+    return { host: host.name, live, copies: live === null ? gatheredOn(host.name) : null };
+  });
   return {
-    live: [...liveHere(), ...answers.flatMap(({ live }) => live ?? [])],
+    live: [...liveHere(), ...answers.flatMap(({ live, copies }) => live ?? copies ?? [])],
     unasked: answers.flatMap(({ host, live }) => (live === null ? [host] : [])),
+    gathered: answers.flatMap(({ host, copies }) => (copies === null ? [] : [host])),
   };
 }
 
+/** The hosts of `counted` whose runs went uncounted: those that did not answer, less those counted
+ *  as the archive last gathered them. */
+export const blindOf = ({ unasked, gathered = [] }: Silent): string[] =>
+  unasked.filter((host) => !gathered.includes(host));
+
 const uncounted = (hosts: readonly string[]) => `not counted on ${hosts.join(", ")}: no answer to \`active\``;
 
+/** What a count says of the hosts that did not answer `active`. */
+export function silence(counted: Silent): string[] {
+  const blind = blindOf(counted);
+  const gathered = counted.gathered ?? [];
+  return [
+    ...(gathered.length === 0
+      ? []
+      : [`counted on ${gathered.join(", ")} as the archive last gathered it: no answer to \`active\``]),
+    ...(blind.length === 0 ? [] : [uncounted(blind)]),
+  ];
+}
+
 /** One line a login of the runs in `live`, each login `allowed` names first, then any other a run
- *  names and the runs that name none, and the hosts in `unasked` that went uncounted. */
+ *  names and the runs that name none, and what the count says of the hosts that did not answer. */
 export function activeLines(
   live: readonly Live[],
   allowed: readonly string[],
-  unasked: readonly string[],
+  silent: Silent,
   env: Env = {},
 ): string[] {
   const named = [...new Set([...allowed, CODEX, ...live.flatMap(({ login }) => login ?? [])])];
@@ -607,7 +639,7 @@ export function activeLines(
       `${head.padEnd(10)}${count}${sub === null ? "" : ` (${sub.sub})`}${on.length === 0 ? "" : `: ${on.join(", ")}`}`,
     ];
   });
-  return unasked.length === 0 ? lines : [...lines, uncounted(unasked)];
+  return [...lines, ...silence(silent)];
 }
 
 /** `bun run runs active [--here]`: the live runs on each login, on every host; with `--here` this
@@ -628,8 +660,10 @@ export async function active(args: readonly string[]): Promise<void> {
     );
     return;
   }
-  const { live, unasked } = await liveEverywhere();
-  console.log(activeLines(live, allowedLogins(runtimeProcess.env), unasked, runtimeProcess.env).join("\n"));
+  const counted = await liveEverywhere();
+  console.log(
+    activeLines(counted.live, allowedLogins(runtimeProcess.env), counted, runtimeProcess.env).join("\n"),
+  );
 }
 
 /** `bun run runs usage`. */
@@ -714,9 +748,9 @@ export async function logins(args: readonly string[]): Promise<void> {
   }
   if (counted !== null && !values.json) {
     const codex = counted.live.filter((run) => run.login === CODEX);
-    console.log(activeLines(codex, [CODEX], [], runtimeProcess.env).join("\n"));
+    console.log(activeLines(codex, [CODEX], { unasked: [] }, runtimeProcess.env).join("\n"));
   }
-  if ((counted?.unasked.length ?? 0) > 0) console.log(uncounted(counted?.unasked ?? []));
+  for (const line of counted === null ? [] : silence(counted)) console.log(line);
   if (!whole) return;
   console.log(poolLine(weeks, held.length - weeks.length, now));
   console.log(

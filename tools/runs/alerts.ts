@@ -31,7 +31,7 @@ import { launchedIn, type RunState, runState } from "./state.ts";
 import { onStatus } from "./pulse.ts";
 import { remember } from "./pulse-readers.ts";
 import { lastLaunch, unlaunchedSeed } from "./receipt.ts";
-import { climbed, type Promotion, promotionsOf } from "./said.ts";
+import { climbed, ENDED, type Promotion, promotionsOf, word } from "./said.ts";
 import {
   archived,
   HERE,
@@ -56,8 +56,10 @@ export interface Row {
   readonly lastAt: string | null;
   /** What its keeper said it did, oldest first. */
   readonly kept: readonly string[];
-  /** Whether its current launch was left a pause (`pauseSince`); a peer on an older tree sends none. */
-  readonly paused?: boolean;
+  /** Whether its current launch was left a pause (`pauseSince`). */
+  readonly paused: boolean;
+  /** Each ending on its log, oldest first. */
+  readonly endings: readonly string[];
 }
 
 /** What a host answered: its rows, and every campaign it holds, which the rows leave out once they are
@@ -65,9 +67,9 @@ export interface Row {
 export interface HostRows {
   readonly rows: readonly Row[];
   readonly held: readonly string[];
-  /** The campaigns `runs retire` moved into this host's own archive; a peer on an older tree sends
-   *  none. A run that left the registry for it has not vanished. */
-  readonly retired?: readonly string[];
+  /** The campaigns `runs retire` moved into this host's own archive: a run that left the registry for
+   *  it has not vanished. */
+  readonly retired: readonly string[];
 }
 
 /** What one host answered a look, null for one that gave no answer the look can read. */
@@ -88,6 +90,7 @@ const SEEN = Type.Object({
   gap: MAYBE_TEXT,
   quiet: Type.Boolean(),
   kept: Type.Number(),
+  endings: Type.Optional(Type.Number()),
 });
 type Seen = Static<typeof SEEN>;
 /** The state file: the hosts the last look heard nothing from, and what it saw of each run. */
@@ -95,7 +98,8 @@ const ALERT_STATE = Type.Object({ down: Type.Array(Type.String()), runs: Type.Re
 export type AlertState = Static<typeof ALERT_STATE>;
 
 /** A host's answer to `alerts --rows`, checked for the parts a peer on an older tree lacks, such as
- *  `state`, so that such a peer reads as a host down. The rest of a row is this tree's own `Row`. */
+ *  `state` or `endings`, so that such a peer reads as a host down. The rest of a row is this tree's
+ *  own `Row`. */
 const HOST_ROWS = Type.Object({
   rows: Type.Array(
     Type.Unsafe<Row>(
@@ -103,6 +107,8 @@ const HOST_ROWS = Type.Object({
         name: Type.String(),
         state: Type.Object({ kind: Type.String() }),
         kept: Type.Array(Type.Unknown()),
+        paused: Type.Boolean(),
+        endings: Type.Array(Type.String()),
         promotions: Type.Array(
           Type.Object({
             digest: Type.String(),
@@ -113,7 +119,7 @@ const HOST_ROWS = Type.Object({
     ),
   ),
   held: Type.Array(Type.String()),
-  retired: Type.Optional(Type.Array(Type.String())),
+  retired: Type.Array(Type.String()),
 });
 
 /** The row of `run`, whose log is read at `now` among the processes `running`. */
@@ -129,6 +135,7 @@ function rowOf(run: Run, running: readonly Running[], now: number): Row {
     lastAt: last?.at ?? null,
     kept: existsSync(file) ? readFileSync(file, "utf8").split("\n").filter(keeperActed) : [],
     paused: pauseSince(events, launchedIn(run, events)) !== undefined,
+    endings: events.flatMap(({ kind, data }) => (kind === ENDED ? [word(data.ending)] : [])),
   };
 }
 
@@ -168,7 +175,7 @@ function gapOf({ state, owed, paused }: Row): string | null {
   if (state.kind === "ended") return null;
   if (state.kind === "kept") return "no writer process; its keeper lives";
   state.kind satisfies "stopped";
-  if (paused === true) return "paused";
+  if (paused) return "paused";
   return owed ? "no writer process and no keeper" : "no writer process";
 }
 
@@ -181,6 +188,7 @@ function seenOf(row: Row, host: string): Seen {
     gap: gapOf(row),
     quiet: row.state.kind === "quiet",
     kept: row.kept.length,
+    endings: row.endings.length,
   };
 }
 
@@ -193,10 +201,14 @@ function newsOf(row: Row, now: Seen, seen: Seen | undefined): string[] {
     last === undefined
       ? []
       : [`first seen with ${plural(row.promotions.length, "promotion")}, the last ${last.digest}`];
-  // What turned since `seen`: the gap and the ending where each is new, and whether the log went quiet.
+  // What turned since `seen`: the gap where it is new, and whether the log went quiet.
   const gap = now.gap === seen?.gap ? null : now.gap;
-  const ending = now.ending === seen?.ending ? null : now.ending;
   const quiet = now.quiet && seen?.quiet !== true;
+  // Each ending the log gained since `seen`, as a keeper goes on within a look, the last the one it
+  // stands on; where a look lacks the count, the ending it stands on where new.
+  const fresh = now.ending === null || now.ending === seen?.ending ? [] : [now.ending];
+  const gained = seen?.endings === undefined ? fresh : row.endings.slice(seen.endings);
+  const stands = now.ending === null ? -1 : gained.length - 1;
   return [
     ...(seen === undefined ? first : climbed(row, seen).map(({ line }) => line)),
     ...row.kept
@@ -206,7 +218,7 @@ function newsOf(row: Row, now: Seen, seen: Seen | undefined): string[] {
     ...(quiet
       ? [`quiet: no new event since ${row.lastAt ?? "its start"}, and no login limit waited on`]
       : []),
-    ...(ending === null ? [] : [`ended ${ending}`]),
+    ...gained.map((said, at) => `ended ${said}${at === stands ? "" : ", and went on"}`),
   ];
 }
 
@@ -222,7 +234,7 @@ export function alertsOf(
   const heard = answers.flatMap(({ host, said }) => (said === null ? [] : [{ host, said }]));
   const answered = new Set(heard.map(({ host }) => host));
   const held = new Set(heard.flatMap(({ said }) => said.held));
-  const retired = new Set(heard.flatMap(({ said }) => said.retired ?? []));
+  const retired = new Set(heard.flatMap(({ said }) => said.retired));
   // A name two hosts or two worktrees hold is the one with a writer, as a run mid-move is.
   const current = new Map(
     heard

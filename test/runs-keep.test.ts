@@ -318,6 +318,11 @@ describe("a keeper's looks, scripted", () => {
     expect(barren.state.said.at(-1)).toContain("kept no longer");
     expect(barren.state.said.every(keeperActed)).toBe(true);
     expect(keeperActed("  a refusal's own text, with a colon: in it")).toBe(false);
+    // A wait and a giving up write no event, so the line is the one place their time stands.
+    const acts = [moved, waiting, barren].flatMap(({ state }) => state.said.filter(keeperActed));
+    expect(acts.filter((line) => !/^\d{4}-\d{2}-\d{2}T[\d:.]+Z sample: /u.test(line))).toEqual([]);
+    expect(waiting.state.said[0]?.startsWith(`${new Date(NOW).toISOString()} sample: `)).toBe(true);
+    expect(barren.state.said.at(-1)?.startsWith(new Date(NOW + 3 * MINUTE).toISOString())).toBe(true);
   });
 
   it("leaves a run whose login recovers first to go on by itself", async () => {

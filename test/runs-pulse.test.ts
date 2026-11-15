@@ -189,6 +189,31 @@ describe("the runs pulse", () => {
     }
   });
 
+  it("says of a build's harness only what its event holds", () => {
+    // A session a stop cut is ended on record by the host (`endCut`), whose event holds neither
+    // `changed` nor `broken`; a session that ended itself writes both.
+    for (const [data, line] of [
+      [{ session: "r1-b", ended: "killed", crash: null }, "◆ build ended at killed"],
+      [
+        { session: "r1-b", ended: "finished", changed: false, broken: null },
+        "◆ build ended at finished and left the harness as it was",
+      ],
+      [
+        { session: "r1-b", ended: "wall", changed: true, broken: "no guide" },
+        "◆ build ended at wall and changed the harness, broken: no guide",
+      ],
+    ] satisfies [JsonObject, string][]) {
+      const look = pulse(
+        round,
+        [...built, event(5, "build.finished", data)],
+        "closed",
+        lookedAt(built.length),
+        START,
+      );
+      expect(look.said[0]).toBe(line);
+    }
+  });
+
   it("reads a report in its factors, and marks one whose A/A cleared the level or whose supply is under the floor", () => {
     const report = (noise: JsonObject, informative: number) => ({
       reading: "no-step",

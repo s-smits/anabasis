@@ -272,8 +272,7 @@ export function scriptedSeats(script: Script, graded: readonly Control[], straye
     const least = starter(campaign);
     /** How a script puts a file in the solver's home under each harness, by the harness's folder:
      *  through its shell where the harness selects one, so that each rehearsed solve runs a command
-     *  inside the wall, and with pi's `write` where it does not. Until 11 November 2026 `write` came
-     *  first, and a rehearsal of a wall change walled the checks and no solver command. */
+     *  inside the wall, and with pi's `write` where it does not. */
     const writers = new Map<string, Promise<readonly string[]>>();
     const selectedOf = (dir: string) => {
       const known = writers.get(dir) ?? openHarness(dir).then(({ presets }) => selectedCodingTools(presets));

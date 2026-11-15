@@ -672,6 +672,16 @@ describe("the daily retire's host step", () => {
         ...env,
         ...extra,
       });
+    // A sweep that only describes copies nothing first, so it names no take-over of a campaign it
+    // has yet to copy, and says that one with --yes can take more.
+    const dry = made.run('import { retire } from "REPOSITORY/tools/runs/retire.ts"; await retire([]);', {
+      ...env,
+      ABLATION_HOST: "runner",
+    });
+    expect(dry.code).toBe(0);
+    expect(dry.out).not.toContain("over: held in");
+    expect(dry.out).toContain("can take more");
+    expect([existsSync(there("over")), existsSync(here("runner", "over"))]).toEqual([true, false]);
     // With no ablation host named, a sweep copies every campaign and deletes none, and a name no
     // host holds is refused.
     expect(sweep({}).code).toBe(0);

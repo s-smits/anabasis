@@ -40,10 +40,8 @@
  * what it installed (`installs`), so the central host holds all a zip of a closed run can hold and
  * the zip fetches nothing. A host that does not answer is skipped with its copies as they were, and
  * the next sweep asks it again, so a Mac asleep for a night or a week catches up when it answers.
- * No original is deleted but on the host `ABLATION_HOST` names, which is kept clear for ablations:
- * a campaign that host's own retire has archived leaves it at this machine's next sweep, once this
- * machine holds byte for byte what a copy takes (`takeRetired`), where it would otherwise stay in
- * that host's archive for good. Without --yes it describes the sweep and changes nothing.
+ * No original is deleted but on the host `ABLATION_HOST` names, kept clear for ablations
+ * (`takeRetired`). Without --yes it describes the sweep and changes nothing.
  */
 import { DAY_MS } from "#src/meta/clock.ts";
 import { existsSync, lstatSync, mkdirSync, readdirSync, rmSync } from "#src/meta/filesystem.ts";
@@ -53,7 +51,7 @@ import { parseArgs, runtimeProcess, warn } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { controllersOf } from "./code.ts";
-import { ablationHost, hostsOf } from "./host-config.ts";
+import { hostNamed, hostsOf } from "./host-config.ts";
 import { takeRetired, syncRuns } from "./snapshots.ts";
 import { stillRunning } from "./diagnosis.ts";
 import { unlaunchedSeed } from "./receipt.ts";
@@ -247,8 +245,10 @@ export async function retire(args: readonly string[]): Promise<void> {
   const days = Number(values.days);
   if (!Number.isFinite(days) || days < 0) throw new Misused();
   const sweep: Sweep = { main: mainTree(runtimeProcess.cwd()), days, now: Date.now(), yes: values.yes };
-  // Read before the sweep, so a name no entry holds refuses before anything moves.
-  const cleared = ablationHost();
+  // The host kept clear for ablations, none where unset or `here`; read before the sweep, so a name no
+  // entry holds, which would leave that host to fill unseen, refuses before anything moves.
+  const ablation = runtimeProcess.env.ABLATION_HOST ?? "";
+  const cleared = ablation === "" || ablation === HERE ? undefined : hostNamed(ablation).name;
   console.log(
     `retire at ${new Date(sweep.now).toISOString()}${sweep.yes ? "" : ": nothing is done without --yes"}`,
   );
@@ -263,7 +263,9 @@ export async function retire(args: readonly string[]): Promise<void> {
         await syncRuns([], { from: host.name, depth: "record" });
         await syncRuns([], { from: host.name, depth: "whole", closed: true });
       }
-      if (host.name === cleared?.name) await takeRetired(host, sweep.yes ? "take" : "describe");
+      if (host.name !== cleared) continue;
+      say(sweep, `${host.name}: takes what its copy here holds whole; --yes copies first and can take more`);
+      await takeRetired(host, sweep.yes ? "take" : "describe");
     } catch (error) {
       // One host that does not answer holds up no other.
       console.error(`${host.name}: ${errorMessage(error)}`);

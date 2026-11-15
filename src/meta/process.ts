@@ -15,10 +15,8 @@ export function processAnswers(pid: number): boolean {
 }
 
 /**
- * Say `text` on stderr as a warning: a line the reader should know of, after which the command goes
- * on and ends as it would have. Bun prints every `console.error` line in red on a terminal, where a
- * warning then read as a failure; this one is yellow there, and plain in a pipe or a log, or where
- * `NO_COLOR` is set.
+ * Say `text` on stderr as a warning, in yellow on a terminal (Bun's red read as a failure), plain in
+ * a pipe or a log or under `NO_COLOR`.
  */
 export function warn(text: string): void {
   const coloured = runtimeProcess.stderr.isTTY && (runtimeProcess.env.NO_COLOR ?? "") === "";

@@ -121,9 +121,7 @@ export const atCommit = (repo: string, commit: string) =>
   join(dirname(mainTree(repo)), `anabasis-at-${commit.slice(0, 9)}`);
 
 /** A detached tree at `commit` with its dependencies installed, made where it is missing, for a
- *  reader or a seed that needs the code a run ran; null where the repository holds no such commit.
- *  On 4 November buffer583's own tree held no dependencies, so two investigation lanes ran this
- *  checkout's code instead, and the primary had checked the run's commit out by hand. */
+ *  reader or a seed that needs the code a run ran; null where the repository holds no such commit. */
 export function treeAt(repo: string, commit: string): string | null {
   if (gitMaybe(repo, "cat-file", "-e", `${commit}^{commit}`) === null) return null;
   const tree = atCommit(repo, commit);

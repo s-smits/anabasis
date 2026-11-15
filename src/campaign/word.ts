@@ -37,9 +37,8 @@ export interface Word {
  *  `wallSeconds` finish: their limit and a minute to end and be recorded. */
 export const pauseWaitMs = (wallSeconds: number): number => wallSeconds * 1000 + 60_000;
 
-/** The newest pause left at or after `since`, the place in the log the reading process began at,
- *  since one left before was for a process that is gone. The alerts read it to say a stopped run
- *  was paused. */
+/** The newest pause left since `since`, where the reading process began, as an older one was for a
+ *  process that is gone. */
 export const pauseSince = (events: readonly LogEvent[], since: number): LogEvent | undefined =>
   events.findLast(
     ({ kind, data }, place) => place >= since && kind === "campaign.word" && data.word === PAUSE,

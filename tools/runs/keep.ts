@@ -46,6 +46,8 @@ import {
   allowedLogins,
   atCap,
   billsLogin,
+  blindOf,
+  type Counted,
   type Env,
   fiveHourWith,
   liveEverywhere,
@@ -55,7 +57,6 @@ import {
   room,
   startRefusal,
 } from "./logins.ts";
-import type { Live } from "./live.ts";
 import { lastRun, leaveKeeper, rerun, said, start, WAIT_HOURS } from "./manage.ts";
 import { keepers, logEvents, Misused, processes, type Run, runNamed } from "./registry.ts";
 import { stop } from "./stop.ts";
@@ -67,7 +68,7 @@ interface Hands {
   readonly events: () => readonly LogEvent[];
   readonly stands: (events: readonly LogEvent[], now: number) => RunState;
   readonly last: () => { readonly login?: string | undefined; readonly flags: readonly string[] };
-  readonly fleet: () => Promise<{ live: Live[]; unasked: string[] }>;
+  readonly fleet: () => Promise<Counted>;
   readonly read: typeof readLogins;
   readonly stop: () => Promise<void>;
   readonly start: (login: string | undefined) => Promise<boolean>;
@@ -135,11 +136,12 @@ export async function nextLogin(
 export async function roomFor(
   logins: readonly string[],
   spent: ReadonlySet<string>,
-  { live, unasked }: { live: readonly Live[]; unasked: readonly string[] },
+  counted: Counted,
   read: typeof readLogins = readNotClosed,
   { env = runtimeProcess.env, now = Date.now() }: { env?: Env; now?: number } = {},
 ): Promise<{ logins: string[]; why: string }> {
-  if (unasked.length > 0) return { logins: [], why: "" };
+  if (blindOf(counted).length > 0) return { logins: [], why: "" };
+  const { live } = counted;
   const out = new Set([...spent, ...atCap(env, logins, live)]);
   const readings = await read(
     logins.filter((login) => !out.has(login)),
@@ -159,7 +161,8 @@ export async function roomFor(
 }
 
 /** Whether a line of `keep.out` says this keeper moved or restarted its run, left it waiting or gave it
- *  up (`keeperOf`), as against its error text and a run that ended by itself, which the log says. */
+ *  up (`keeperOf`), each under the time of its look, as against its error text and a run that ended by
+ *  itself, which the log says. */
 export const keeperActed = (line: string): boolean =>
   /: (?:move|continue) (?:on login|without a login)|; left waiting$|no seat took a model turn: kept no longer$/u.test(
     line,
@@ -174,6 +177,9 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
   let worked = -1;
   let waitedOn = "";
   let askAt = 0;
+  // What the keeper did or could not do, under the time of the look: a wait and a giving up write no
+  // event, so on 14 November two waits could be placed only by the gaps in their run's log.
+  const act = (now: number, what: string) => hands.say(`${new Date(now).toISOString()} ${name}: ${what}`);
   return async (now: number): Promise<boolean> => {
     const events = hands.events();
     const state = hands.stands(events, now);
@@ -214,7 +220,7 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
       target === null ? null : startRefusal(hands.env, payerOf(target, flags), "here", await counted(), name);
     if (target === null || full !== null) {
       const reason = full ?? (why === "" ? "no login to go on with" : why);
-      if (reason !== waitedOn) hands.say(`${name}: ${reason}; left waiting`);
+      if (reason !== waitedOn) act(now, `${reason}; left waiting`);
       waitedOn = reason;
       askAt = now + ASK_MS;
       return false;
@@ -225,12 +231,10 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
     barren = turn === "continue" && turns === worked ? barren + 1 : 0;
     worked = turns;
     if (barren >= BARREN) {
-      hands.say(`${name} went on ${String(BARREN)} times and no seat took a model turn: kept no longer`);
+      act(now, `went on ${String(BARREN)} times and no seat took a model turn: kept no longer`);
       return true;
     }
-    hands.say(
-      `${new Date(now).toISOString()} ${name}: ${turn} ${target === undefined ? "without a login" : `on login ${target}`}`,
-    );
+    act(now, `${turn} ${target === undefined ? "without a login" : `on login ${target}`}`);
     try {
       if (turn === "move") await hands.stop();
       await hands.start(target);

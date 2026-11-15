@@ -175,25 +175,19 @@ describe("what the gate refuses, by its code", () => {
     expect(codes({ ...SETS, held: 8 }, { ...wanted, target: 6 })).toEqual(["held-short"]);
   });
 
-  it("held-short: counts a family once, since a comparison scores one task of each", () => {
-    // Sixty days of Opus campaigns (read 12 November): a jobstat comparison scored 16 tasks of 4.7
-    // families, and of the 37 promotions whose step needed a family's second task 12 held against
-    // the starter, where 13 of the other 18 did. Nine tasks of four families are four results.
+  it("held-short: counts every held-out task, a family's siblings too", () => {
+    // Read on 13 November: with one task a family scored, today's draw refused 20 of 27 recorded
+    // jobstat comparison starts, and the 8 comparisons since read no step on 8 tasks each. A
+    // family's tally is reported beside the reading (`compared`) and decides nothing.
     const wanted = { ...WANTED, level: 0.02 };
-    const inFamily = (version: string, family: string) => [
-      event("task.proposed", { version, family }),
+    const nine = ["a", "b", "c", "d", "e", "f", "g", "h", "i"].flatMap((version, place) => [
+      event("task.proposed", { version, family: `f${String(place % 4)}` }),
       event("task.gate", { version, gate: 1, outcome: "passed" }),
-    ];
-    const nine = ["a", "b", "c", "d", "e", "f", "g", "h", "i"];
-    const four = nine.flatMap((version, place) => inFamily(version, `f${String(place % 4)}`));
-    expect(supplyOf(four)).toMatchObject({ held: 4 });
-    expect(codes(supplyOf([READ, ...four]), wanted)).toEqual(["held-short"]);
-    // The nearest case that passes: eight families, one of them holding two tasks.
-    const eight = nine.flatMap((version, place) => inFamily(version, `f${String(place % 8)}`));
-    expect(supplyOf(eight)).toMatchObject({ held: 8 });
-    expect(codes(supplyOf([READ, ...eight]), wanted)).toEqual([]);
-    // A task that names no family is a family of its own.
-    expect(supplyOf(nine.flatMap(heldOut))).toMatchObject({ held: 9 });
+    ]);
+    expect(supplyOf(nine)).toMatchObject({ held: 9 });
+    expect(codes(supplyOf([READ, ...nine]), wanted)).toEqual([]);
+    // The nearest case that is refused: seven tasks, whatever their families.
+    expect(codes(supplyOf([READ, ...nine.slice(0, 14)]), wanted)).toEqual(["held-short"]);
   });
 
   it("no-held: a log with no held-out task to score", () => {

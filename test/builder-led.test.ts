@@ -148,13 +148,12 @@ const builderScript = (base: Seated, calls: readonly Step[]): Seated => builderS
 const said = (name: string, tool: string): string[] =>
   of(name, CALLED).flatMap((call) => (call.tool === tool && isString(call.text) ? [call.text] : []));
 
-/** An Examiner's proposal of `count` further instances, each a family of its own, since a
- *  comparison scores one task of each (`poolOf`), and each of which task admission holds out. */
+/** An Examiner's proposal of `count` further instances, each of which task admission holds out. */
 const proposing = (count: number, from = 0): readonly [string, JsonObject] => [
   "propose_tasks",
   {
     tasks: Array.from({ length: count }, (_, n) => ({
-      family: `written-${String(n + from)}`,
+      family: "fixture",
       public_input: { base: 2, rehearsal_copy: { of: "t-1", n: n + from } },
       hidden: null,
     })),
@@ -1545,16 +1544,14 @@ describe("a campaign tool where the table names more than the action", () => {
     const grades = join(root, "grades", "s", "grades.tsv");
     writeFileSync(grades, readFileSync(grades, "utf8").replaceAll("verified-pass", "verified-fail"));
     const flags = [...FLAGS.slice(0, -LEVEL.length - 2), "--target", "8", ...LEVEL];
-    // g-1 draws t-1, t-2, t-4 to t-6, t-8, t-11 and t-12. No task is held out between the
-    // comparisons, so g-1's report releases one, t-8, the most a reading with nothing held out since
-    // the last release is owed, and g-2 draws t-9 in its place. Each ties six and the candidate wins
-    // two, t-11 and t-12; in the second campaign g-2 wins t-2 in place of t-11.
-    const tied = ["t-2", "t-1", "t-4", "t-5", "t-6"];
-    const first = [...tied, "t-8"];
-    const same = await everythingRead(`${STEM}-short-one`, { "g-1": first, "g-2": [...tied, "t-9"] }, flags);
+    // The comparisons draw t-2, t-4, t-6, t-8 to t-12. Each ties six and the candidate wins two; in
+    // the second campaign g-2 wins t-2 in place of t-11. No task is held out between them, so g-1's
+    // report releases one, the most a reading with nothing held out since the last release is owed.
+    const tied = ["t-2", "t-4", "t-6", "t-8", "t-9", "t-10"];
+    const same = await everythingRead(`${STEM}-short-one`, { "g-1": tied, "g-2": tied }, flags);
     const moved = await everythingRead(
       `${STEM}-short-two`,
-      { "g-1": first, "g-2": [...tied.slice(1), "t-9", "t-11"] },
+      { "g-1": tied, "g-2": [...tied.slice(1), "t-11"] },
       flags,
     );
     const awaiting = ["one", "two"].map((world) => supplyOf(logOf(`${STEM}-short-${world}`)).awaiting);

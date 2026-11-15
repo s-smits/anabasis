@@ -12,7 +12,15 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { type PassLabel, passesIn, predicted, swapped, toLabel } from "../src/campaign/comparison.ts";
+import {
+  fixedIn,
+  overlapOf,
+  type PassLabel,
+  passesIn,
+  predicted,
+  swapped,
+  toLabel,
+} from "../src/campaign/comparison.ts";
 import {
   type CheckpointRequest,
   checkpoint,
@@ -1630,16 +1638,43 @@ describe("a standalone comparison", () => {
     });
   });
 
-  it("finds the comparison before it of the same two harnesses with their sides swapped, and not of another pair", async () => {
-    const s = await setup([], step);
-    const reference = { dir: s.parent, digest: s.old };
-    await checkpoint(s.compare("g1", { tasks: ["s1", "s2"] }));
-    const against = await checkpoint(
-      s.compare("g2", { old: s.starter, fresh: reference, tasks: ["s2", "s3"] }),
-    );
-    expect(against.overlap).toEqual({ with: "g1", tasks: ["s2"] });
-    const other = await checkpoint(s.paired("g3", { tasks: ["s1", "s2"] }));
-    expect(other.overlap).toBeNull();
+  it("names the attempt before it under the same reference, whatever its candidate, and never one of another kind or reference", () => {
+    // The live jobstat fork of 15 November: a new candidate on the tasks an earlier one drew read
+    // null, so each report hid that its test counted them as fresh draws.
+    const tasks = Array.from({ length: 8 }, (_, nth) => `t${String(nth)}`);
+    const events: LogEvent[] = [];
+    const began = (id: string, old: string, fresh: string, drawn: readonly string[]) => {
+      events.push({
+        at: "2026-11-15T00:00:00.000Z",
+        kind: "comparison.started",
+        data: {
+          session: id,
+          old,
+          fresh,
+          starter: "s0",
+          setting: "x",
+          solves: 2,
+          level: 0.02,
+          tasks: [...drawn],
+        },
+      });
+      const fixed = fixedIn(events, id);
+      return fixed === null ? undefined : overlapOf(events, fixed);
+    };
+    expect(began("g-1", "s0", "h1", tasks)).toBeNull();
+    // (i) Another candidate against the same reference on 7 of the 8 tasks.
+    expect(began("g-2", "s0", "h2", [...tasks.slice(1), "t9"])).toEqual({
+      with: "g-1",
+      tasks: tasks.slice(1),
+    });
+    // (ii) The same pair again reads the comparison before it, as it always did.
+    expect(began("g-3", "s0", "h2", tasks)).toEqual({ with: "g-2", tasks: tasks.slice(1) });
+    // (iii) h2 promoted: its starter comparison reads none of the attempts under the starter, the
+    // first attempt under h2 reads neither those nor the starter comparison, and the second reads it.
+    expect(began("g-4", "h2", "s0", tasks)).toBeNull();
+    expect(began("g-5", "h2", "h3", tasks)).toBeNull();
+    expect(began("g-6", "h2", "h4", ["t0"])).toEqual({ with: "g-5", tasks: ["t0"] });
+    expect(began("g-7", "h2", "s0", ["t0", "t1"])).toEqual({ with: "g-4", tasks: ["t0", "t1"] });
   });
 
   it("stops at its dollar cap, reads not scored and is finished, whatever lanes it runs in", async () => {

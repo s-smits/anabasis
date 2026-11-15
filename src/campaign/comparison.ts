@@ -115,7 +115,8 @@ export interface Report {
   /** Each family's tallies on the two sets, from the same rows, so they sum to the whole. They show
    *  concentration; a family name can hide correlated tasks, and they establish no independence. */
   readonly families: Readonly<Record<string, { readonly frontier: Tally }>> | null;
-  /** The preceding comparison of the same two harnesses, and their initial draws' intersection. */
+  /** The preceding comparison of the same kind under the same reference (`overlapOf`), and the
+   *  initial draws' intersection; until 15 November, of the same two harnesses. */
   readonly overlap: { readonly with: string; readonly tasks: readonly string[] } | null;
   /** The reference harness against itself on halves of its own solves mirrored in time, the A/A comparison,
    *  where it holds an even number of a task: how often two of its solves of a task
@@ -530,16 +531,21 @@ function flipsOf(pairs: readonly Paired[]): number | null {
   return each.length === 0 ? null : each.reduce((sum, one) => sum + one, 0) / each.length;
 }
 
-/** The preceding comparison of the same two harnesses, on either side, and the intersection of the
- *  two comparisons' initial draws; null where none began before `fixed`. A starter read swaps the
- *  sides of the comparison that promoted. Until 6 November the gathered record held null in all 9
- *  reports with only a swapped comparison before them, 5 of which share 48 tasks with it. */
-function overlapOf(events: readonly LogEvent[], fixed: Fixed) {
+/** The comparison of the same kind under the same reference that began last before `fixed`, and
+ *  the intersection of the two initial draws; null where none did. The kind is a promotion attempt,
+ *  or a starter comparison where the starter is the new side, so a candidate scored on tasks an
+ *  earlier candidate drew names that attempt: the test counts them as fresh draws. Until
+ *  15 November it read the same two harnesses alone, so a new candidate read null, and a starter
+ *  comparison read the attempt that promoted, whose tasks `starterReads` splits off as selected. */
+export function overlapOf(events: readonly LogEvent[], fixed: Fixed) {
   const began = events.findIndex(({ kind, data }) => kind === STARTED && data.session === fixed.id);
-  const pair = new Set<unknown>([fixed.old, fixed.fresh]);
+  const kindOf = (fresh: JsonValue | undefined) => fresh === fixed.starter;
   const before = events
     .slice(0, Math.max(0, began))
-    .findLast(({ kind, data }) => kind === STARTED && pair.has(data.old) && pair.has(data.fresh));
+    .findLast(
+      ({ kind, data }) =>
+        kind === STARTED && data.old === fixed.old && kindOf(data.fresh) === kindOf(fixed.fresh),
+    );
   if (before === undefined || !isString(before.data.session)) return null;
   const drawnThen = new Set(Array.isArray(before.data.tasks) ? before.data.tasks.filter(isString) : []);
   return { with: before.data.session, tasks: fixed.tasks.filter((task) => drawnThen.has(task)) };

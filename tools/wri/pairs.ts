@@ -307,7 +307,7 @@ function groupsSaid(context: Context, pairs: readonly Paired[], by: "writer" | "
     const diffs = some.map((pair) => differenceOf(pair));
     const net = diffs.reduce((sum, diff) => sum + diff, 0);
     const outside = some.filter((pair) => againstNoise(context, pair) === "outside").length;
-    return `${key} ${wonLostTied(diffs)}, diff ${net > 0 ? "+" : ""}${String(net)}, ${String(outside)} outside`;
+    return `${key} ${wonLostTied(diffs)}, diff ${net > 0 ? "+" : ""}${String(net)}, ${String(outside)} outside${retainedSaid(context, some, ", ")}`;
   });
   return `== ${context.session} by ${by} (won-lost-tied of the new side, summed diff, wins outside their task's A/A): ${said.join("; ")}`;
 }
@@ -316,6 +316,13 @@ function groupsSaid(context: Context, pairs: readonly Paired[], by: "writer" | "
 function groupsOf(context: Context, pairs: readonly Paired[], by: "writer" | "family") {
   const groups = Map.groupBy(pairs, ({ task }) => originOf(context, task)[by === "writer" ? 0 : 1]);
   return [...groups].toSorted(([, one], [, other]) => other.length - one.length);
+}
+
+/** The retained tasks among `some`, said after `before`, or nothing: a group here counts every
+ *  tallied task, a report's `families` (`setsOf`, `src/campaign/comparison.ts`) the frontier alone. */
+function retainedSaid(context: Context, some: readonly Paired[], before: string): string {
+  const retained = some.filter(({ task }) => context.retained.has(task)).length;
+  return retained === 0 ? "" : `${before}${String(retained)} retained`;
 }
 
 /** `won-lost-tied` of the new side over `diffs`. */
@@ -335,7 +342,8 @@ function wonLostTied(diffs: readonly number[]): string {
  */
 function grainSaid(context: Context, pairs: readonly Paired[]): string {
   const families = groupsOf(context, pairs, "family").map(
-    ([, some]) => `${String(some.length)} ${wonLostTied(some.map((pair) => differenceOf(pair)))}`,
+    ([, some]) =>
+      `${String(some.length)} ${wonLostTied(some.map((pair) => differenceOf(pair)))}${retainedSaid(context, some, ", of them ")}`,
   );
   const sizes = pairs.map((pair) => Math.abs(differenceOf(pair))).toSorted((one, other) => other - one);
   const [largest = 0, ...rest] = sizes;

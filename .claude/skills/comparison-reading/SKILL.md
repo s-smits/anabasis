@@ -47,8 +47,8 @@ bun .claude/skills/comparison-reading/scripts/starter-reads.ts <log.jsonl | camp
   output is exam-side. `--zone` prints the zone counts with the A/A's untied share as one TSV row a
   comparison across several logs. What a reading rests on task by task, a no-step's as a step's, is
   `bun tools/wri/wri.ts reader pairs --log <name>`: each task's score, the tally by writer and by
-  family, and a `grain` line that gives the families by size without a label and says where one
-  task's score exceeds the others together.
+  family, and a `grain` line: the families by size without a label, the retained tasks in each
+  named (a report's `families` count the frontier alone), and whether one task outweighs the rest.
 - `draw.ts` predicts the next comparison: the held-out pool by part, the set it would fix, its
   families by count and the largest (naming none), how many
   of its tasks the comparison before scored, its frontier by epoch, admission's floor and refusals (`held-short` among them) and the size lines, at

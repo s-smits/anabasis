@@ -229,6 +229,19 @@ describe("pairs", () => {
     expect(rows.find((row) => row.includes(" by family (")) ?? "").toContain("kin-one 0-3-0");
   });
 
+  it("names a retained task in the family that holds it, since a report's family tallies count the frontier alone", () => {
+    const families = { a: "kin-one", b: "kin-one", c: "kin-one", d: "kin-two" };
+    const outcomes = { a: "FF PP", b: "FF PP", c: "FF PP", d: "PP FF" };
+    const line = (retained: readonly string[], part: string) =>
+      pairRows(comparison(outcomes, { families, retained })).find((row) => row.includes(part)) ?? "";
+    // The largest family holds 3 tallied tasks and 2 of the frontier, which is what a report tallies.
+    expect(line(["c"], " grain, ")).toContain("): 3 3-0-0, of them 1 retained; 1 0-1-0; ");
+    expect(line(["c"], " by family (")).toMatch(/kin-one 3-0-0, [^;]*, 1 retained; kin-two 0-1-0/);
+    // With nothing retained each line is the frontier's own count and says nothing more.
+    expect(line([], " grain, ")).toContain("): 3 3-0-0; 1 0-1-0; ");
+    expect(line([], " by family (")).not.toContain("retained");
+  });
+
   it("says where one task's score is larger than every other together, and not where two match it", () => {
     const grain = (measures: Readonly<Record<string, readonly number[]>>) =>
       pairRows(

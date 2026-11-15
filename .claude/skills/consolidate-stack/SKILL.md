@@ -181,7 +181,12 @@ Cherry-pick the lanes' deltas onto the base, keep the tip (`git branch consolida
 `GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash origin/main`, resolving from a lane's
 `-squash-check` tree where one exists. `git diff consolidate/pre HEAD` must print nothing, since a
 resolution can silently drop a hunk. Then run step 4's checks again at every group head, and
-typecheck every commit where it sits (`git rebase --exec 'bun run typecheck' origin/main`).
+typecheck and the source gate at every commit where it sits
+(`git rebase --exec 'bun run typecheck && bun tools/loc/source-policy.ts' origin/main`). A landing
+proves each commit alone, and the source gate reads the whole tree: an `export` assembled into the
+commit that changes a symbol, while its first reader outside the file comes in a later group,
+passes typecheck and strict lint at every commit and fails the gate at each one between the two
+(16 commits on 15 November). Move the `export` to the commit that first reads it.
 
 ## 8. Regroup and publish
 

@@ -223,6 +223,32 @@ describe("the fold of one look", () => {
     expect(alertsOf(back.next, away).lines).toHaveLength(1);
   });
 
+  it("says a host still down again at each sixth look while a run last seen open is there", () => {
+    const away = [
+      { host: "here", said: heldAs([]) },
+      { host: "peer", said: null },
+    ];
+    const said = (rows: Row[]) => {
+      let state = alertsOf(null, [
+        { host: "here", said: heldAs([]) },
+        { host: "peer", said: heldAs(rows) },
+      ]).next;
+      return Array.from({ length: 12 }, () => {
+        const look = alertsOf(state, away);
+        state = look.next;
+        return look.lines;
+      });
+    };
+    const open = said([row()]);
+    expect(open.map((lines) => lines.length)).toEqual([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1]);
+    expect(open[5]?.[0]).toBe(
+      "peer: gave no answer this tree reads for 6 looks, with a run last seen open there",
+    );
+    // The nearest hostile case: a host whose runs all ended is said once, as a Mac asleep is.
+    const ended = said([row({ state: ENDED })]);
+    expect(ended.map((lines) => lines.length)).toEqual([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+  });
+
   it("says a live run that left the registry once, forgets it, and says nothing of one that ended", () => {
     const gone = alertsOf(lookedAt(row()), here());
     expect(gone.lines).toEqual(["r (here): left the registry with no ending seen"]);

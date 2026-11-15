@@ -93,8 +93,17 @@ const SEEN = Type.Object({
   endings: Type.Optional(Type.Number()),
 });
 type Seen = Static<typeof SEEN>;
-/** The state file: the hosts the last look heard nothing from, and what it saw of each run. */
-const ALERT_STATE = Type.Object({ down: Type.Array(Type.String()), runs: Type.Record(Type.String(), SEEN) });
+/** The state file: the hosts the last look heard nothing from, for how many looks in a row where
+ *  the state is new enough to count them, and what it saw of each run. */
+const ALERT_STATE = Type.Object({
+  down: Type.Array(Type.String()),
+  looks: Type.Optional(Type.Record(Type.String(), Type.Number())),
+  runs: Type.Record(Type.String(), SEEN),
+});
+/** The looks after which a host still down is said again while a run last seen open is there: an
+ *  hour of the job's ten-minute looks. On 15 November every peer was unread for 3.4 hours beside
+ *  two live runs, and the one line of the first look was all that said so. */
+const SAID_AGAIN = 6;
 export type AlertState = Static<typeof ALERT_STATE>;
 
 /** A host's answer to `alerts --rows`, checked for the parts a peer on an older tree lacks, such as
@@ -246,9 +255,16 @@ export function alertsOf(
   );
   const lines: string[] = [];
   const next: Record<string, Seen> = {};
+  const looks = Object.fromEntries(down.map((host) => [host, (before?.looks?.[host] ?? 0) + 1]));
   for (const host of down) {
+    const silent = looks[host] ?? 1;
+    const open = Object.values(before?.runs ?? {}).some((seen) => seen.host === host && seen.ending === null);
     if (before !== null && !before.down.includes(host)) {
       lines.push(`${host}: gave no answer this tree reads; its runs stay as last seen`);
+    } else if (open && silent % SAID_AGAIN === 0) {
+      lines.push(
+        `${host}: gave no answer this tree reads for ${String(silent)} looks, with a run last seen open there`,
+      );
     }
   }
   for (const [name, seen] of Object.entries(before?.runs ?? {})) {
@@ -272,7 +288,7 @@ export function alertsOf(
       `first look: recorded ${plural(current.size, "run")} on ${plural(heard.length, "host")}, and each later look prints what is new${silent}`,
     );
   }
-  return { lines, next: { down, runs: next } };
+  return { lines, next: { down, looks, runs: next } };
 }
 
 /** The state file's last look, null where there is none or it could not be read, which `torn` says:

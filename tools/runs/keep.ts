@@ -45,9 +45,8 @@ import { payerOf } from "./live.ts";
 import {
   allowedLogins,
   atCap,
+  asGathered,
   billsLogin,
-  blindOf,
-  type Counted,
   type Env,
   fiveHourWith,
   liveEverywhere,
@@ -57,6 +56,7 @@ import {
   room,
   startRefusal,
 } from "./logins.ts";
+import type { Live } from "./live.ts";
 import { lastRun, leaveKeeper, rerun, said, start, WAIT_HOURS } from "./manage.ts";
 import { keepers, logEvents, Misused, processes, type Run, runNamed } from "./registry.ts";
 import { stop } from "./stop.ts";
@@ -68,7 +68,7 @@ interface Hands {
   readonly events: () => readonly LogEvent[];
   readonly stands: (events: readonly LogEvent[], now: number) => RunState;
   readonly last: () => { readonly login?: string | undefined; readonly flags: readonly string[] };
-  readonly fleet: () => Promise<Counted>;
+  readonly fleet: () => Promise<{ live: Live[]; unasked: string[] }>;
   readonly read: typeof readLogins;
   readonly stop: () => Promise<void>;
   readonly start: (login: string | undefined) => Promise<boolean>;
@@ -136,12 +136,11 @@ export async function nextLogin(
 export async function roomFor(
   logins: readonly string[],
   spent: ReadonlySet<string>,
-  counted: Counted,
+  { live, unasked }: { live: readonly Live[]; unasked: readonly string[] },
   read: typeof readLogins = readNotClosed,
   { env = runtimeProcess.env, now = Date.now() }: { env?: Env; now?: number } = {},
 ): Promise<{ logins: string[]; why: string }> {
-  if (blindOf(counted).length > 0) return { logins: [], why: "" };
-  const { live } = counted;
+  if (unasked.length > 0) return { logins: [], why: "" };
   const out = new Set([...spent, ...atCap(env, logins, live)]);
   const readings = await read(
     logins.filter((login) => !out.has(login)),
@@ -161,8 +160,7 @@ export async function roomFor(
 }
 
 /** Whether a line of `keep.out` says this keeper moved or restarted its run, left it waiting or gave it
- *  up (`keeperOf`), each under the time of its look, as against its error text and a run that ended by
- *  itself, which the log says. */
+ *  up (`keeperOf`), as against its error text and a run that ended by itself, which the log says. */
 export const keeperActed = (line: string): boolean =>
   /: (?:move|continue) (?:on login|without a login)|; left waiting$|no seat took a model turn: kept no longer$/u.test(
     line,
@@ -177,8 +175,7 @@ export function keeperOf(name: string, pool: () => Promise<readonly string[]>, w
   let worked = -1;
   let waitedOn = "";
   let askAt = 0;
-  // What the keeper did or could not do, under the time of the look: a wait and a giving up write no
-  // event, so on 14 November two waits could be placed only by the gaps in their run's log.
+  // Each act under the time of the look, since a wait and a giving up write no event.
   const act = (now: number, what: string) => hands.say(`${new Date(now).toISOString()} ${name}: ${what}`);
   return async (now: number): Promise<boolean> => {
     const events = hands.events();
@@ -276,7 +273,7 @@ async function keepGoing(run: Run, pool: () => Promise<readonly string[]>, waitM
     events: () => logEvents(run.path),
     stands: (events, now) => runState(run, events, processes(), now),
     last: () => lastRun(run),
-    fleet: () => liveEverywhere("configured"),
+    fleet: async () => asGathered(await liveEverywhere("configured")),
     read: readNotClosed,
     stop: () => stop([run.name, "--yes"]),
     start: (login) => start(run, rerun(lastRun(run).flags, undefined), login, undefined),

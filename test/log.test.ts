@@ -33,7 +33,7 @@ describe("the log", () => {
     expect(() => read(path)).toThrow(`${path}:1 is not a log event`);
   });
 
-  it("leaves out the kinds a reader names, and still refuses a line that is no event or a torn last line", () => {
+  it("leaves out the kinds a reader names, and still refuses a line that is no event", () => {
     const path = fresh();
     const started = append(path, "solve.started", { task: "t1" });
     append(path, "solve.call", { tool: "bash" });
@@ -50,21 +50,34 @@ describe("the log", () => {
     ]);
     appendFileSync(path, '{"at":"2026-10-30T00:00:00.000Z","kind":"solve.retried","data":{}}\n');
     expect(() => read(path, calls)).toThrow(`${path}:5 is not a log event`);
-    const torn = fresh();
-    append(torn, "solve.call", { tool: "bash" });
-    appendFileSync(torn, '{"at":"2026-10-30T00:00:00.000Z","kind":"solve.ca');
-    expect(() => read(torn, calls)).toThrow("the last line is torn");
   });
 
-  it("refuses reading or appending after a torn last line, whatever the event", () => {
+  it("reads to the last whole line, and an append cuts what a killed writer left after it", () => {
     const path = fresh();
-    append(path, "verdict", { pass: true });
-    appendFileSync(path, '{"at":"2026-10-07T00:00:00.000Z","kind":"verd');
-    const torn = readFileSync(path, "utf8");
-    expect(() => read(path)).toThrow("the last line is torn");
-    expect(() => append(path, "solve.started", { task: "t1" })).toThrow("the last line is torn");
-    expect(() => append(path, "task.proposed", { version: "v1" })).toThrow("the last line is torn");
-    expect(readFileSync(path, "utf8")).toBe(torn);
+    const whole = append(path, "verdict", { pass: true });
+    const kept = readFileSync(path, "utf8");
+    // A kill inside a write leaves a line without its newline, here longer than one block read back.
+    const left = `{"at":"2026-10-07T00:00:00.000Z","kind":"solve.call","data":{"text":"${"é".repeat(40_000)}`;
+    appendFileSync(path, left);
+    expect(read(path)).toEqual([whole]);
+    expect(read(path, new Set(["solve.call"] as const))).toEqual([whole]);
+    // A read cuts nothing: only an append, which holds the lock, knows no writer is in flight.
+    expect(readFileSync(path, "utf8")).toBe(kept + left);
+    const next = append(path, "solve.started", { task: "t1" });
+    expect(readFileSync(path, "utf8")).toBe(`${kept}${JSON.stringify(next)}\n`);
+    // An event the task states fold is validated against the whole lines, and written after them.
+    appendFileSync(path, left);
+    const proposed = append(path, "task.proposed", { version: "v1" });
+    expect(read(path)).toEqual([whole, next, proposed]);
+    // The hostile cases: a whole line that is no event still refuses, and a log that is one cut line
+    // and nothing else is an empty history that takes its first event.
+    appendFileSync(path, '{"at":"2026-10-07T00:00:00.000Z","kind":"verd\n');
+    expect(() => read(path)).toThrow(`${path}:4 is not a log event`);
+    const only = fresh();
+    appendFileSync(only, left);
+    expect(read(only)).toEqual([]);
+    const first = append(only, "verdict", { pass: true });
+    expect(readFileSync(only, "utf8")).toBe(`${JSON.stringify(first)}\n`);
   });
 
   it("cuts a short append back, so the log still reads and takes the next event", () => {

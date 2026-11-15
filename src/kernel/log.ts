@@ -3,20 +3,17 @@
  * over it, and nothing else is stored as truth.
  *
  * An append is written and synced before it returns, so an event the host acted on survives a crash.
- * A read refuses a torn or unknown line instead of skipping it: a view over a log with a hole in it
- * would be a view over a different history. A torn last line is a crash inside an append; nothing
- * cuts it, since a log is never edited (AGENTS.md section 5).
+ * A read refuses an unknown line instead of skipping it: a view over a log with a hole in it would be
+ * a view over a different history. A last line without its newline is no hole but an append in
+ * flight or one a killed process left, which the host never acted on (`append` returns only once
+ * the whole line is synced), so a read ends at the last whole line.
  *
- * An append refuses, writing nothing, an event that would make the log unreadable: any event after a
- * torn last line, and an event the task states read when folding it onto the log so far throws. A
- * reviewer's probe appended a second `task.proposed` and every later read threw. Only those events
- * can break the fold, so solves, verdicts and traces, the frequent ones, skip the read.
- * On 26 October the two-process transition test reproduced a release validated against held while
- * a dispute was appended, leaving an unreadable history. One exclusive descriptor lock now covers
- * validation, the complete line's write and its sync. Closing the descriptor releases it on every
- * path, and a short write throws instead of reporting an event the log does not hold whole. It also
- * cuts the file back to its size before the write, under the same lock: those bytes were never an
- * event, and until 30 October they tore the last line, after which every read and append refused.
+ * An append refuses, writing nothing, an event the task states read when folding it onto the log so
+ * far throws (a probe's second `task.proposed` made every later read throw); only those events can
+ * break the fold, so the frequent ones skip the read. One exclusive descriptor lock covers that
+ * validation, the whole line's write and its sync, as two processes once left an unreadable history
+ * (26 October). A short write throws and is cut back, and so is a dead writer's tail without its
+ * newline, since under the lock no other append is in flight.
  */
 import {
   closeSync,
@@ -156,11 +153,8 @@ export function append(path: string, kind: EventKind, data: JsonObject): LogEven
   try {
     lockExclusiveSync(fd);
     if (foldsEvent(kind)) taskStates([...read(path), event]);
-    const size = fstatSync(fd).size;
-    const last = Buffer.alloc(1);
-    if (size > 0 && readSync(fd, last, 0, 1, size - 1) === 1 && last[0] !== NEWLINE) {
-      throw new Error(`${path}: the last line is torn, so nothing is appended`);
-    }
+    const size = wholeSize(fd);
+    if (size !== fstatSync(fd).size) ftruncateSync(fd, size);
     const line = Buffer.from(`${capturedJsonStringify(event)}\n`, "utf8");
     let written = 0;
     try {
@@ -176,6 +170,20 @@ export function append(path: string, kind: EventKind, data: JsonObject): LogEven
   return event;
 }
 
+/** The log's size up to its last whole line, read back from its end a block at a time through the
+ *  locked descriptor, so the cut is of the file the lock holds whatever its path names by then. */
+function wholeSize(fd: number): number {
+  const block = Buffer.alloc(65_536);
+  let end = fstatSync(fd).size;
+  while (end > 0) {
+    const from = Math.max(0, end - block.length);
+    const newline = block.subarray(0, readSync(fd, block, 0, end - from, from)).lastIndexOf(NEWLINE);
+    if (newline !== -1) return from + newline + 1;
+    end = from;
+  }
+  return 0;
+}
+
 /** Every event in append order. A missing log is an empty history. A reader that reads no event of
  *  some kinds names them in `without`, and their lines are passed over unparsed: on 30 October the
  *  calls of solves and sessions were 72% of the bytes of 145 campaign logs, and reading the table of
@@ -184,8 +192,8 @@ export function append(path: string, kind: EventKind, data: JsonObject): LogEven
 export function read(path: string, without?: ReadonlySet<EventKind>): LogEvent[] {
   if (!existsSync(path)) return [];
   const text = readFileSync(path, "utf8");
-  if (text.length > 0 && !text.endsWith("\n")) throw new Error(`${path}: the last line is torn`);
   const events: LogEvent[] = [];
+  // What follows the last newline is no event (the head comment), and the split leaves it out.
   for (const [index, line] of text.split("\n").slice(0, -1).entries()) {
     const passed = without === undefined ? undefined : kindAt(line);
     if (passed !== undefined && without?.has(passed) === true) continue;

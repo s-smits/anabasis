@@ -50,7 +50,11 @@ unless its session is recorded as crashed (`goesOn`), and three provider-failed 
 that held no task and changed no harness (`crashedRun`, `src/campaign/ground.ts`); the row starts
 again at the first turn served to a session that does not crash. A comparison
 begun under other code refuses to continue, so resume it at its own code. Run again by name, a
-campaign continues from its log.
+campaign continues from its log, whatever ended the process: `test/campaign-kill.test.ts` ends the
+command with SIGKILL at six points and holds the run after it to what no kill may change. A killed
+writer's last line without its newline is no event; a read ends before it and the next append cuts
+it (`src/kernel/log.ts`). A pack task proposed and not yet gated is put to its gate (`ungated`,
+`tools/d2/prepare.ts`).
 
 **Operator words** (`tools/d2/word.ts`) are `campaign.word` events, read at the next move's boundary
 and by each campaign tool before it runs (`actionTurn`), never interrupting a move or being waited

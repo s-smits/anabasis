@@ -106,8 +106,7 @@ export const campaignsIn = (dir: string, tree: string): Run[] =>
 /** Whether `run` is a campaign, as against a live solve. */
 export const isCampaign = (run: Run) => run.end === CAMPAIGN_END;
 /** A verb given words it cannot act on: the CLI answers with the usage the head of the verb's file
- *  states, the one owner of it, under the message where there is one. Until 11 November each verb
- *  threw a usage line of its own, and 12 of the 18 had come to differ from the head's. */
+ *  states, the one owner of it, under the message where there is one. */
 export class Misused extends Error {}
 
 /** A campaign's pack, from its name, the one place a stored campaign keeps it: what stands before
@@ -231,7 +230,7 @@ export function runNamed(name: string, among: readonly Run[] = runs()): Run {
   return only;
 }
 
-/** A log's text up to its last whole line: a torn last line is an append in flight. */
+/** A log's text up to its last whole line: what follows is an append in flight or a killed one's. */
 export function wholeLines(path: string): string {
   const text = readFileSync(path, "utf8");
   return text.slice(0, text.lastIndexOf("\n") + 1);

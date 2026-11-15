@@ -103,7 +103,8 @@ bun tools/wri/wri.ts read --log .ana/d2/sim-<what>/log.jsonl
 
 ## Kill and resume
 
-Start it in the background, `kill -9` it part-way, and run the same command again: after
+`test/campaign-kill.test.ts` does this for the fixture pack at six points. For another seed, start
+it in the background, `kill -9` it part-way, and run the same command again: after
 `build.finished` it resumes from the log, and a kill inside the Builder session spends that session's
 id. `bun run runs stop sim-<what>` names the roots left by unfinished solves and sessions, and with
 `--yes` releases them (`leftOpen`, `releaseRoot`); it reads only what the seed wrote after its cut.

@@ -150,20 +150,29 @@ conversation is open (no comparison, Examiner ask, draft, solve or Referee readi
 run. The words are `compacted` (a compaction of any seat: `build`, `exam`, `draft`, `referee` or
 `solve`), `reported` (`comparison.reported`), `promoted` (`harness.promoted`), `examined`
 (`exam.finished`) and `finished` (`build.finished`); words joined by `|`, as `reported|promoted`,
-wait for the first of their events. A pause right after `promoted` leaves that promotion's starter
-comparison unread. No seat's conversation outlives its process (pi-durable's in-memory store, and
-Claude Code without a saved session), so a compaction is no better point to pause than another: a
+wait for the first of their events. `reported` alone also waits out a promotion whose starter
+comparison has not tallied; `promoted` rests at the promotion and leaves that comparison unread.
+The count starts where the verb is armed, and without `--yes` it says what it would wait for. No
+seat's conversation outlives its process (pi-durable's in-memory store, and Claude Code without a
+saved session), so a compaction is no better point to pause than another: a
 pause cuts the Builder's conversation and a resting Examiner's. The continued campaign opens a new
 Builder conversation on the cut one's notes, from the last harness it practised or froze, and tells
 it so (`startTold`); the next Examiner ask opens on the whole record and its kept home. Only
 `--after finished` loses nothing of the Builder's. `continue --after <event>`
-pauses and continues, which moves a run to another login or commit cleanly. `--after next`, the
+pauses and continues, which moves a run to another login or commit cleanly. At the point, before
+the stop, it asks again what its start would refuse (tree, remote, the login's room, the dry run),
+so a refusal leaves the run running; a run that ended or already stands where it would be put is
+said and left (`leftAt`). A waiting `pause` or `continue` is the process that stops the run, and a
+second is refused while it lives: start it with `nohup`, from a detached worktree at a published
+commit whose HEAD stays put until it ends, since what it leaves runs that tree as it then stands.
+`--after next`, the
 default, drains the run to save credit: no further solve starts, and it stops at the next finished
 solve or tool call, or a minute past the solve limit. Sessions spend until then; `runs stop` frees a
 login at once. Its pause word (`campaign.word`, `PAUSE`) is in the log once written and holds every
 new solve of the running process for the solve limit and two minutes, so a pause or `continue
 --after next` interrupted after it leaves the run idle that long; only a restarted process ignores
-it, so arm the command once the decision is made.
+it, so arm the command once the decision is made. At a named point the word is left only just
+before the stop, so a refusal there leaves none.
 
 A word (`tools/d2/word.ts --name <name>`) acts at the next move boundary and reaches no seat:
 `--stop "<why>"` ends the campaign `operator`; `--budget N` sets its total; `--tasks "<why>"` asks for
@@ -227,15 +236,12 @@ model, the week pace and the per-run rate read the last held-out hours best (`mo
 line shows `open` or `closed until <reset>` and its live runs out of the most it carries: the lower of
 its cap (`capOf`: its `N:most` in `ANA_LOGIN_RUNS`, else its subscription in `ANA_LOGIN_SUBS`, one
 for `max`, two for `ultra` or `pro100` and four for `pro200`, else the bare number) and the runs its
-week can fit (`fitOf`), with more marked `oversubscribed`. The fit is a forecast that `usage` alone
-prints: `fresh`, `keep`, `continue` and `move` refuse at the cap (`atCap`), the most `active` counts
-against, so one login can read 2/1 in `usage` and 2/2 in `active` in the same minute.
+week can fit (`fitOf`), with more marked `oversubscribed`. The fit is a forecast `usage` alone
+prints; the verbs refuse at the cap (`atCap`), which `active` counts against.
 `active` names the live runs on each login across hosts, by each run's last launch; count it before a
 launch, continue or move, and add by hand any seat without `--login` or session on a numbered login.
-A host that does not answer is counted as the archive last gathered it (`gatheredOn`, the liveness
-each fetch kept beside its copies), and the count says so; one the archive holds no copy of leaves
-the fleet uncounted, which refuses a continue, a move and a keeper's move. Placement still refuses
-any silent host.
+`active` and `usage` name a host that does not answer as not counted. A start and a keeper's move
+count it as the archive last gathered it (`asGathered`); with no copy there they refuse.
 
 `status` hides stopped runs idle for a day unless `--all`, and names the archive's newest campaigns.
 `hosts --health` reports load against cores, the charger, disk sizes, Bun, controllers, live
@@ -299,8 +305,8 @@ the run lives, and the investigation's `open` once it has stopped. A closed run'
 when they turn, not at every look.
 
 `bun run runs alerts` is the cron watch: one stdout line per new promotion, starter comparison,
-keeper move, missing process, stall or ending (one a keeper went on past between two looks reads
-`ended <ending>, and went on`), nothing otherwise, and exit 0. It prints the `runs pause` command
+keeper move, missing process, stall or ending (`ended <ending>, and went on` where a keeper went on
+between two looks), nothing otherwise, and exit 0. It prints the `runs pause` command
 once two promotions are read against the starter, and never runs it.
 
 A session that waits on a few runs follows the log the local job writes these lines to with one

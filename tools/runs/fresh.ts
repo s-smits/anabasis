@@ -24,8 +24,7 @@
  * `launch` leaves the run its keeper on the machine it runs on, unless `ANA_KEEP=off` (`keepsItself`).
  * Several packs are planned as one (`plan`): each pack's login and host are reserved in the counts
  * before the next is placed, the whole plan is printed, and nothing launches while a login it takes
- * is missing from its host. Until 11 November a batch planned, then called this verb again once a
- * pack, which read the fleet and the logins a second time.
+ * is missing from its host.
  *
  * Until 16 October each fresh launch was typed by hand: a worktree, a prompt file, eight seat
  * flags and a name, and one launch that left out `--login` ended on its environment.
@@ -43,7 +42,7 @@
  * after `--` under a name that said opus.
  */
 import { existsSync } from "#src/meta/filesystem.ts";
-import { gitText, mainTree } from "#src/meta/git.ts";
+import { gitMaybe, gitText, mainTree } from "#src/meta/git.ts";
 import { dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
@@ -65,9 +64,9 @@ import { everyRun, HERE, harnessesOf, Misused, ownArgs } from "./registry.ts";
 import { payerOf } from "./live.ts";
 import { billsLogin, readLogins } from "./logins.ts";
 
-interface Planning {
-  readonly login?: string;
-  readonly logins?: string;
+type Values = ReturnType<typeof parsed>["values"];
+
+interface Planning extends Pick<Values, "login" | "logins"> {
   /** The host the operator or a placing caller named, or undefined where placement chooses. */
   readonly named: string | undefined;
   /** The four seats' flags and those after `--`, which say who pays. */
@@ -82,15 +81,9 @@ interface Planned {
 }
 
 /** What a planned pack launches with: the verb's own values, the seats' flags and the commit. */
-interface Start {
-  readonly model: string;
+interface Start extends Values {
   readonly label: string;
   readonly seated: readonly string[];
-  readonly effort?: string;
-  readonly budget: string;
-  readonly as?: string;
-  readonly placed: boolean;
-  readonly yes: boolean;
   readonly more: readonly string[];
   readonly commit: string;
 }
@@ -102,6 +95,26 @@ const NAMED = {
   gpt: { id: "openai-codex/gpt-6.1-sol", effort: "hhhh" },
 } as const;
 const LEVELS = { l: "low", m: "medium", h: "high", x: "xhigh" } as const;
+
+/** The verb's own words, those before `--`. */
+function parsed(own: readonly string[]) {
+  return parseArgs({
+    args: [...own],
+    allowPositionals: true,
+    options: {
+      model: { type: "string", default: "opus" },
+      effort: { type: "string" },
+      login: { type: "string" },
+      logins: { type: "string" },
+      budget: { type: "string", default: "800" },
+      at: { type: "string", default: "HEAD" },
+      as: { type: "string" },
+      host: { type: "string" },
+      placed: { type: "boolean", default: false },
+      yes: { type: "boolean", default: false },
+    },
+  });
+}
 
 /**
  * `--model`: a named condition, or any model a backend serves as `<provider>/<id>`, at high in every
@@ -145,22 +158,7 @@ export function freeName(base: string, taken: (name: string) => boolean): string
 export async function fresh(args: readonly string[], read: typeof readLogins = readLogins): Promise<void> {
   const own = ownArgs(args);
   const more = args.slice(own.length + 1);
-  const { values, positionals } = parseArgs({
-    args: [...own],
-    allowPositionals: true,
-    options: {
-      model: { type: "string", default: "opus" },
-      effort: { type: "string" },
-      login: { type: "string" },
-      logins: { type: "string" },
-      budget: { type: "string", default: "800" },
-      at: { type: "string", default: "HEAD" },
-      as: { type: "string" },
-      host: { type: "string" },
-      placed: { type: "boolean", default: false },
-      yes: { type: "boolean", default: false },
-    },
-  });
+  const { values, positionals } = parsed(own);
   if (positionals.length === 0) {
     throw new Misused();
   }
@@ -187,7 +185,7 @@ export async function fresh(args: readonly string[], read: typeof readLogins = r
     } finally {
       runtimeProcess.chdir(here);
     }
-    if (planned.length > 1 && Number(runtimeProcess.exitCode ?? 0) !== 0) {
+    if (planned.length > 1 && Number(runtimeProcess.exitCode) > 0) {
       throw new Error(`${item.pack} did not launch; remaining packs were not started`);
     }
   }
@@ -200,7 +198,7 @@ async function plan(packs: readonly string[], o: Planning): Promise<Planned[]> {
   const allowed = loginPool(o.logins);
   let readings: ReturnType<typeof readLogins> | undefined;
   const once: typeof readLogins = (wanted, env) => (readings ??= o.read(wanted, env));
-  let choices: Awaited<ReturnType<typeof freshHosts>> | undefined;
+  let choices = o.named === undefined ? await freshHosts() : [];
   const planned: Planned[] = [];
   for (const [index, pack] of packs.entries()) {
     const login =
@@ -208,7 +206,6 @@ async function plan(packs: readonly string[], o: Planning): Promise<Planned[]> {
         ? await freshLogin(o.login, fleet, once, allowed)
         : undefined;
     const payer = payerOf(login, o.flags);
-    choices ??= o.named === undefined ? await freshHosts() : [];
     const host =
       o.named === undefined
         ? await placeFresh(pack, fleet, choices, payer)
@@ -318,5 +315,12 @@ async function startFresh(pack: string, login: string | undefined, start: Start)
   }
   gitText(here, "worktree", "add", "-q", "--detach", tree, start.commit);
   runtimeProcess.chdir(tree);
-  await launch([name, ...(login === undefined ? [] : ["--login", login]), "--yes", "--", ...flags]);
+  try {
+    await launch([name, ...(login === undefined ? [] : ["--login", login]), "--yes", "--", ...flags]);
+  } catch (error) {
+    // A tree refused before its campaign's folder is made would send the next fresh to `-r2`.
+    runtimeProcess.chdir(here);
+    if (!existsSync(join(tree, ".ana", "d2", name))) gitMaybe(here, "worktree", "remove", tree);
+    throw error;
+  }
 }

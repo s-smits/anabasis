@@ -6,9 +6,16 @@ import type { JsonObject } from "#src/meta/json-shape.ts";
 import { tmpdir } from "#src/meta/os.ts";
 import { join } from "#src/meta/path.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
-import { gatheredOn, liveOf, payerOf, seatsCodex, seatsIn } from "../tools/runs/live.ts";
-import type { Run } from "../tools/runs/registry.ts";
-import { activeLines, capOf, fitOf, perRunHour, perRunRate, startRefusal } from "../tools/runs/logins.ts";
+import { liveOf, payerOf, seatsCodex, seatsIn } from "../tools/runs/live.ts";
+import {
+  activeLines,
+  asGathered,
+  capOf,
+  fitOf,
+  perRunHour,
+  perRunRate,
+  startRefusal,
+} from "../tools/runs/logins.ts";
 
 describe("each login's live runs", () => {
   it("leaves a host uncounted whose answer is no list, as a tree before the verb answers", () => {
@@ -41,7 +48,7 @@ describe("each payer's cap", () => {
       { name: "g", login: "codex", host: "m1" },
     ];
     const env = { ANA_LOGIN_RUNS: "2,1:4" };
-    expect(activeLines(live, ["1", "2"], { unasked: [] }, env)).toEqual([
+    expect(activeLines(live, ["1", "2"], [], env)).toEqual([
       "login 1   0/4 live",
       "login 2   1/2 live: a (here)",
       "codex     1 live, at most 1 a machine: g (m1)",
@@ -62,7 +69,7 @@ describe("each payer's cap", () => {
       "4",
     ]);
     expect(capOf({ ANA_LOGIN_SUBS: "codex:ultra" }, "codex")).toBe("1");
-    expect(activeLines([], ["1"], { unasked: [] }, env)).toEqual([
+    expect(activeLines([], ["1"], [], env)).toEqual([
       "login 1   0/2 live (ultra)",
       "codex     0 live, at most 4 a machine (pro200)",
     ]);
@@ -126,14 +133,14 @@ describe("a host that does not answer", () => {
   it("is counted as the archive last gathered it, so a start on a login it carried nothing on goes ahead", () => {
     const dir = mkdtempSync(join(tmpdir(), "ana-gathered-"));
     try {
-      const copy = (name: string, from: string, observation: JsonObject, login: string): Run => {
+      const copy = (name: string, from: string, observation: JsonObject, login: string) => {
         mkdirSync(join(dir, from, name), { recursive: true });
         writeFileSync(join(dir, from, name, "log.jsonl"), "");
         writeFileSync(join(dir, from, name, "observation.json"), JSON.stringify(observation));
         const receipt = { at: "2026-11-13T00:00:00.000Z", pid: 1, flags: [], envFile: null, login };
         writeFileSync(join(dir, from, name, "launch-run-1.json"), JSON.stringify(receipt));
         const path = join(dir, from, name, "log.jsonl");
-        return { name, tree: dir, path, end: "comparison.reported", archived: from };
+        return { name, tree: dir, path, end: "comparison.reported" as const, archived: from };
       };
       const copies = [
         copy("open", "peer", { open: true, stderr: null }, "2"),
@@ -141,22 +148,24 @@ describe("a host that does not answer", () => {
         copy("closed", "peer", { open: false, stderr: null }, "4"),
         copy("elsewhere", "other", { open: true, stderr: null }, "4"),
       ];
-      const gathered = gatheredOn("peer", copies);
-      expect(gathered).toEqual([
-        { name: "open", login: "2", host: "peer" },
-        { name: "waiting", login: "2", host: "peer", unwritten: true },
-      ]);
-      expect(gatheredOn("never-gathered", copies)).toBeNull();
       const env = { ANA_LOGIN_RUNS: "2,4:1" };
-      const counted = { live: gathered ?? [], unasked: ["peer"], gathered: ["peer"] };
+      const counted = asGathered({ live: [], unasked: ["peer"] }, copies);
+      expect(counted).toEqual({
+        live: [
+          { name: "open", login: "2", host: "peer" },
+          { name: "waiting", login: "2", host: "peer", unwritten: true },
+        ],
+        unasked: [],
+      });
+      expect(asGathered({ live: [], unasked: ["never-gathered"] }, copies).unasked).toEqual([
+        "never-gathered",
+      ]);
       expect(startRefusal(env, "4", "here", counted, "moved")).toBeNull();
       // The copies still hold a login to its cap, and a host with no copies still refuses.
       expect(startRefusal(env, "2", "here", counted, "moved")).toContain("login 2 is at its live-run cap");
-      expect(startRefusal(env, "4", "here", { ...counted, unasked: ["peer", "linux"] }, "moved")).toBe(
+      const blind = asGathered({ live: [], unasked: ["peer", "linux"] }, copies);
+      expect(startRefusal(env, "4", "here", blind, "moved")).toBe(
         "not counted on linux: no answer to `active`",
-      );
-      expect(activeLines([], [], counted).at(-1)).toEqual(
-        "counted on peer as the archive last gathered it: no answer to `active`",
       );
     } finally {
       rmSync(dir, { recursive: true, force: true });

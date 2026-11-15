@@ -64,8 +64,10 @@ Owners and edges of the defaults in `AGENTS.md` section 6:
 - `--target` and `--solves` live in `SIZE` (`src/kernel/size.ts`); `ROOM` is one constant read by
   the tally, task admission, the frontier and `roomOf`.
 - The defect stop is `--defects` of a hand comparison only.
-- The reserve (`--reserve`) sits above the most a solve billed under the default limits; for longer
-  solves set it near an earlier log's `solve.finished.billed`.
+- The reserve (`--reserve`) sits above the most a solve billed under the default limits, and is the
+  one place a turn limit stands in for dollars: a solve is held at it when it starts and is not cut
+  once it runs. `scripts/bills.ts` counts the solves on record that billed past it; read it before
+  naming longer solves or a lower reserve.
 - `--parent latest` and `--reference promoted`.
 - A Builder session has 24 practice solves (`--practice-solves`), fewer where the total cannot
   reserve them (`practiceLeft`, `src/builder/tools.ts`); an Examiner session 240 minutes, 200 turns

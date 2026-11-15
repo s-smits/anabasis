@@ -263,11 +263,12 @@ async function startable(
   flags: readonly string[],
   login: string | undefined,
   at: string | undefined,
+  stands?: string,
 ): Promise<{ commit: string; target: string }> {
   const { commit, dirty } = standing(run.tree);
   if (dirty) throw new Error(`${run.tree} holds a change no commit names: a run's commit states its source`);
   const target = publishedAt(run.tree, at ?? commit);
-  await roomToStart(payerOf(login, flags), "here", run.name);
+  await roomToStart(payerOf(login, flags), "here", run.name, stands);
   return { commit, target };
 }
 
@@ -284,7 +285,11 @@ export async function start(
   if (writers(run, processes()).length > 0) {
     throw new Error(`${run.name} is already being written in ${run.tree}`);
   }
-  const { commit, target } = await startable(run, flags, login, at);
+  // No process writes the run, which a waiting verb or a keeper may have just stopped: until
+  // 15 November a refusal here said that nothing was stopped (13 November, once on record).
+  const kept = keepers(run.name).length > 0 ? "and its keeper goes on" : "and has no keeper";
+  const stands = `${run.name} is not running ${kept}; nothing was started`;
+  const { commit, target } = await startable(run, flags, login, at, stands);
   // Asked of a stopped run only: at a waiting verb's point a comparison that began during the asking
   // is waited for (`pauseAt`), never refused.
   const open = target === commit ? [] : openComparisons(logEvents(run.path));

@@ -285,11 +285,17 @@ export function startRefusal(
     : fullOn(env, payer, host, others);
 }
 
-/** Refuse to start `name` on `host` for `payer` where `startRefusal` says why. */
-export async function roomToStart(payer: string | undefined, host: string, name: string): Promise<void> {
+/** Refuse to start `name` on `host` for `payer` where `startRefusal` says why, and how the run then
+ *  `stands`: a refusal before a pause leaves it as it was. */
+export async function roomToStart(
+  payer: string | undefined,
+  host: string,
+  name: string,
+  stands = "nothing was stopped or started",
+): Promise<void> {
   if (payer === undefined) return;
   const refused = startRefusal(runtimeProcess.env, payer, host, await liveEverywhere("configured"), name);
-  if (refused !== null) throw new Error(`${name}: ${refused}; nothing was stopped or started`);
+  if (refused !== null) throw new Error(`${name}: ${refused}; ${stands}`);
 }
 
 /** The usage endpoint's window `value`: its share used and its reset. */

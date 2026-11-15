@@ -440,6 +440,38 @@ describe("going on with a campaign", () => {
     }
   });
 
+  it("says the run stands stopped with no keeper where its login fills between the stop and the start", async () => {
+    // Until 15 November the start's refusal said "nothing was stopped or started" of a run the pause
+    // had just stopped and whose keeper it had ended (13 November, once on record).
+    const filled = JSON.stringify([{ name: "other", login: "2", host: "runner" }]);
+    const answer = (root: string) => join(root, "active.json");
+    // Once the stop has ended the keeper, `ps` lists nothing.
+    const gone = (root: string) => join(root, "ps.txt");
+    const { made, driver, keeper, row } = pointed(["--login", "2"], (root) =>
+      [
+        "const was = console.log;",
+        `console.log = (line) => { was(line); if (String(line).includes("its keeper")) { writeFileSync(${JSON.stringify(answer(root))}, ${JSON.stringify(filled)}); writeFileSync(${JSON.stringify(gone(root))}, ""); } };`,
+      ].join(" "),
+    );
+    try {
+      const refused = made.run(driver, {
+        FAKE_PS: row,
+        FAKE_PS_FILE: gone(made.root),
+        FAKE_ACTIVE_FILE: answer(made.root),
+        ANA_LOGIN_RUNS: "1",
+        [`${KEY}2`]: "a",
+      });
+      expect(refused.code).not.toBe(0);
+      expect(refused.out).toContain("its keeper");
+      expect(refused.err).toContain("login 2 is at its live-run cap");
+      expect(refused.err).toContain(
+        "ANA_LOGIN_SUBS); pointed is not running and has no keeper; nothing was started",
+      );
+    } finally {
+      keeper.kill();
+    }
+  });
+
   it("asks at the point whether the tree is still clean, so that a change made during the wait leaves the run running", async () => {
     // The start refuses a tree with a change no commit names, and met it only after the stop.
     const dirt = (root: string) => join(root, "dirty");

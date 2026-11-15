@@ -85,7 +85,13 @@ else if (args.includes("ls-remote")) console.log(process.env.FAKE_TAGGED === "1"
 else if (args.includes("worktree") && args.includes("list")) console.log("worktree " + process.env.FAKE_MAIN);
 else if (args.includes("worktree") && args.includes("add")) mkdirSync(args.at(-2), {recursive: true});
 else if (args.includes("worktree") && args.includes("remove")) rmSync(args.at(-1), {recursive: true, force: true});`,
-  "ps": `${RECORD}\nif (process.env.FAKE_PS_FAIL === "1") process.exit(1); console.log(JSON.parse(process.env.FAKE_PS_TABLE ?? "{}")[args.join(" ")] ?? process.env.FAKE_PS ?? "");`,
+  // `FAKE_PS_FILE` names a file whose text, once it exists, is the table: processes that end while a
+  // verb waits.
+  "ps": `${RECORD}
+import { existsSync, readFileSync } from "node:fs";
+if (process.env.FAKE_PS_FAIL === "1") process.exit(1);
+const file = process.env.FAKE_PS_FILE;
+console.log(file !== undefined && existsSync(file) ? readFileSync(file, "utf8") : JSON.parse(process.env.FAKE_PS_TABLE ?? "{}")[args.join(" ")] ?? process.env.FAKE_PS ?? "");`,
   "lsof": `${RECORD}\nconsole.log(process.env.FAKE_CWDS ?? "");`,
   "host-bun": `${RECORD}
 import { mkdirSync } from "node:fs";

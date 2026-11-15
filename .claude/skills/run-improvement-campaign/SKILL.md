@@ -274,6 +274,16 @@ unconfirmed for good (`AGENTS.md`, factor 1). Two promotions trigger the pause a
 comparison, which is that starter read, and the investigation after it; `--promotions N` remains
 available (run-management).
 
+### Decision points
+
+Two promotions is the default count and not the only one. [decision-points](../decision-points/SKILL.md)
+holds, for each point of a run's life (a comparison without a step, the first promotion, the second,
+those past it, an ending), what the operator decided there and how often: when a run rests at one,
+goes on to three, four or six, or is given up without a promotion, which run goes when slots are
+short, when a fresh fork is worth its slot and what each kind of release asks of its proof run. Read
+it before a pause, a stop, a continue or a fork that the trigger alone does not settle; a run kept
+past its trigger on one of its rows takes a line in `deviations.md`.
+
 ## Resume
 
 Read the local handover, then the evidence:
@@ -680,7 +690,8 @@ days if recurring, so each prompt stands alone after compaction, carrying what
 
 ## Which skill each step uses
 
-run-management runs the campaigns, whole-run-investigation reads them, system-path-simulation proves
+run-management runs the campaigns, decision-points says how far each is taken,
+whole-run-investigation reads them, system-path-simulation proves
 paths, stack-pr implements and lands, attribution-and-proof precedes a claim, harness-audit a
 handover, comparison-review reads an outside comparison, and oracle-handover takes what the
 repository cannot settle. Change this skill where a pass

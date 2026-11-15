@@ -90,6 +90,7 @@ import {
   writers,
 } from "./registry.ts";
 import { stop } from "./stop.ts";
+import { GOES_ON, runState } from "./state.ts";
 import { installAt, publishedAt } from "./code.ts";
 
 /** The hours left in a provider wait below which a keeper leaves its run to the login's own reset. */
@@ -198,10 +199,10 @@ export function solvesMs(events: readonly LogEvent[]): number {
 }
 
 /** Stop `run` at the point `after` names. `ready` is asked at that point, before the stop, so that
- *  what it refuses leaves the run running; a pause at the next step asks nothing, having already left
- *  the word that starts no further solve. A pause at a named point leaves that word once the point
+ *  what it refuses or answers false leaves the run running; a pause at the next step asks nothing,
+ *  having already left the word that starts no further solve. A pause at a named point leaves that word once the point
  *  is ready, just before its stop. */
-async function pauseAt(run: Run, after: string, ready?: () => Promise<void>): Promise<void> {
+async function pauseAt(run: Run, after: string, ready?: () => Promise<boolean>): Promise<void> {
   const kinds = kindsOf(after);
   // One waiter a run: a `continue --after` would start again a run another's pause had stopped.
   const waiting = waiters(run.name);
@@ -235,7 +236,7 @@ async function pauseAt(run: Run, after: string, ready?: () => Promise<void>): Pr
       if (after === "next") return stop([run.name, "--yes"]);
       // The asking takes seconds (a fetch, a count across the fleet), in which the run can begin its
       // next comparison or session: the rest is read again, and a run that moved on is waited for.
-      await ready?.();
+      if ((await ready?.()) === false) return;
       if (ready === undefined || rests()) {
         // Left only now, since the word holds every new solve: the log then ends at a rest, not at a
         // process that vanished, and a refusal above leaves the run running without it.
@@ -418,6 +419,37 @@ export async function launch(args: readonly string[]): Promise<void> {
   await startKept(run, flags, { login: values.login, at: undefined });
 }
 
+/** Why a waiting `continue` leaves `run` as it stands, or null: its campaign ended on its own terms
+ *  past the `armed` events of its log (the environment's ending is gone on with), or a process writes
+ *  it as its newest receipt has it on the login, commit and flags asked. Until 15 November the verb
+ *  started such an ended campaign again, and stopped and started a run its keeper had moved onto the
+ *  asked login during the wait, cutting a Builder conversation for nothing. */
+function leftAt(
+  run: Run,
+  armed: number,
+  login: string | undefined,
+  commit: string,
+  flags: readonly string[],
+) {
+  const events = logEvents(run.path);
+  const running = processes();
+  const state = runState(run, events, running);
+  if (state.kind === "ended") {
+    return state.ending !== GOES_ON && events.length > armed
+      ? `ended on ${state.ending} during the wait`
+      : null;
+  }
+  const kept = lastLaunch(run.path);
+  const same =
+    kept !== undefined &&
+    kept.login === login &&
+    kept.commit === commit &&
+    rerun(kept.flags, undefined).join(" ") === flags.join(" ");
+  return same && writers(run, running).length > 0
+    ? `already runs on ${login === undefined ? "the unnumbered login" : `login ${login}`} at ${commit.slice(0, 9)}`
+    : null;
+}
+
 /** `bun run runs continue`. */
 export async function continueRun(args: readonly string[]): Promise<void> {
   const { values, positionals } = parseArgs({
@@ -468,9 +500,15 @@ export async function continueRun(args: readonly string[]): Promise<void> {
     const dry = () => dryRun(run, flags, loginEnv(runtimeProcess.env, login), commit);
     await roomToStart(payerOf(login, flags), "here", run.name);
     if ((target ?? commit) === commit) dry();
+    const armed = logEvents(run.path).length;
+    const left = () => leftAt(run, armed, login, target ?? commit, flags);
     await pauseAt(run, values.after, async () => {
+      if (left() !== null) return false;
       if ((await startable(run, flags, login, target)).target === commit) dry();
+      return true;
     });
+    const why = left();
+    if (why !== null) return console.log(`${run.name} ${why}: nothing was stopped or started`);
   }
   await startKept(run, flags, { login, at: target });
 }

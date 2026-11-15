@@ -165,7 +165,9 @@ pauses and continues, which moves a run to another login or commit cleanly. At t
 the stop, it asks again what its start would refuse (a clean tree, the remote for the commit, the
 login's room across the fleet, the command's dry run), so a login that filled during the wait ends
 the verb refused with the run still running, and then reads the rest again, so a run that began a
-comparison during the asking is waited for; `move --after` counts before its wait only. A waiting
+comparison during the asking is waited for; `move --after` counts before its wait only. A campaign
+that ended on its own terms during the wait, or a run a process writes already on the asked login,
+commit and flags (its keeper moved it), is said and left (`leftAt`). A waiting
 `pause` or `continue` is itself the process that stops the run, and a second one is refused while it
 lives, so start it with `nohup`: one started in a session's shell ends with the session, and the run
 then never rests. Start it from a detached worktree at a published commit and leave that HEAD where

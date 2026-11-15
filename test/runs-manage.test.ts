@@ -472,6 +472,65 @@ describe("going on with a campaign", () => {
     }
   });
 
+  it("leaves a campaign that ended on its own terms during the wait, starting nothing", async () => {
+    // Until 15 November the waiting continue found the run not running and started the ended
+    // campaign on the asked login. Here the campaign ends instead of reporting (the `return` skips
+    // the fixture's report), and its keeper ends with it.
+    const gone = (root: string) => join(root, "ps.txt");
+    const { made, driver, keeper, row } = pointed(
+      [],
+      (root, log) =>
+        `append(${JSON.stringify(log)}, "campaign.ended", { ending: "budget", why: "fixture" }); writeFileSync(${JSON.stringify(gone(root))}, ""); return;`,
+    );
+    try {
+      const left = made.run(driver, { FAKE_PS: row, FAKE_PS_FILE: gone(made.root) });
+      expect({ code: left.code, err: left.err }).toEqual({ code: 0, err: "" });
+      expect(left.out).toContain("pointed ended on budget during the wait: nothing was stopped or started");
+      expect(left.out).not.toContain(" pid ");
+    } finally {
+      keeper.kill();
+    }
+  });
+
+  it("leaves a run its keeper has already moved onto the asked login and commit, stopping nothing", async () => {
+    // Until 15 November the waiting continue stopped and started such a run at its point, cutting
+    // its Builder conversation for nothing, and its keeper ended with the stop.
+    const { made, driver, keeper, row, ended } = pointed(["--login", "2"]);
+    writeReceipt(join(made.main, ".ana", "d2", "pointed", LOG_FILE), "run-2", {
+      at: new Date().toISOString(),
+      pid: 42,
+      flags: ["--target", "8"],
+      envFile: null,
+      commit: made.commit,
+      dirty: false,
+      load: 0,
+      cores: 2,
+      login: "2",
+    });
+    const writer = capturedSpawn({
+      cmd: ["sleep", "60"],
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "ignore",
+      detached: true,
+    });
+    const writes = `${String(writer.pid)} ${capturedExecPath} tools/d2/harness-builder.ts --name pointed`;
+    try {
+      const left = made.run(driver, {
+        FAKE_PS: `${writes}\n${row}`,
+        FAKE_CWDS: `p${String(writer.pid)}\nn${made.main}`,
+        [`${KEY}2`]: "a",
+      });
+      expect({ code: left.code, err: left.err }).toEqual({ code: 0, err: "" });
+      expect(left.out).toContain(`pointed already runs on login 2 at ${made.commit.slice(0, 9)}`);
+      expect(left.out).not.toContain("its keeper");
+      expect(await ended()).toBe(false);
+    } finally {
+      keeper.kill();
+      writer.kill();
+    }
+  });
+
   it("asks at the point whether the tree is still clean, so that a change made during the wait leaves the run running", async () => {
     // The start refuses a tree with a change no commit names, and met it only after the stop.
     const dirt = (root: string) => join(root, "dirty");

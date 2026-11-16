@@ -36,7 +36,8 @@
  *
  * First of all, the seats' roots and the host's scratch folders that nobody will release go
  * (`releaseScratch`): what a killed campaign's solves, sessions, verifier cells and model homes left
- * in the temporary folder, told from what a live process holds by its claim.
+ * in the temporary folder, and the root a killed test suite left (`SUITE_SCRATCH_ROOT`), told from
+ * what a live process holds by its claim.
  *
  * Only the repository's worktrees are swept, so a separate clone is never read. Every host sweeps
  * its own originals with its own daily job, and this one then refreshes each configured host's
@@ -54,7 +55,7 @@ import { basename, dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess, warn } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
-import { SCRATCH_ROOTS } from "#src/wall/policy.ts";
+import { SCRATCH_ROOTS, SUITE_SCRATCH_ROOT } from "#src/wall/policy.ts";
 import { claimed, releaseLeft } from "#src/wall/seat-root.ts";
 import { controllersOf } from "./code.ts";
 import { hostNamed, hostsOf } from "./host-config.ts";
@@ -296,7 +297,7 @@ export async function retire(args: readonly string[]): Promise<void> {
     `retire at ${new Date(sweep.now).toISOString()}${sweep.yes ? "" : ": nothing is done without --yes"}`,
   );
   // Before the archive takes a run: its cut notes are kept into its own folder, which then moves whole.
-  await releaseScratch(sweep, SCRATCH_ROOTS);
+  await releaseScratch(sweep, [...SCRATCH_ROOTS, SUITE_SCRATCH_ROOT]);
   retireUnused(sweep, archiveIdle(sweep));
   for (const host of hostsOf()) {
     try {

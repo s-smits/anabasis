@@ -46,13 +46,19 @@
  *
  * Around the command: one fresh temporary root, and a check that every explicitly named test file
  * exists, since Bun treats an unknown path as a filter and would silently run only its neighbours.
+ * The root lies under `SUITE_SCRATCH_ROOT` and this process claims it, as a seat claims its own: a
+ * suite ended by SIGKILL, as a runner's deadline or a dead ssh shell ends one (`task.sh`), cannot
+ * remove it, and `bun run runs retire` releases it once its claimant is gone. Until 16 November the
+ * roots lay loose in the host's temporary folder and nothing removed what a killed suite left.
  */
 import { boundText } from "../../src/meta/bounded-text.ts";
-import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync } from "../../src/meta/filesystem.ts";
-import { availableParallelism, loadavg, tmpdir } from "../../src/meta/os.ts";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync } from "../../src/meta/filesystem.ts";
+import { availableParallelism, loadavg } from "../../src/meta/os.ts";
 import { join, resolve } from "../../src/meta/path.ts";
 import { processAnswers, runtimeProcess } from "../../src/meta/process.ts";
 import { compareCodeUnits } from "../../src/meta/stable-json.ts";
+import { SUITE_SCRATCH_ROOT } from "../../src/wall/policy.ts";
+import { claim, releaseRoot } from "../../src/wall/seat-root.ts";
 import {
   decodeOutput,
   interruptAndReapProcessGroup,
@@ -515,15 +521,18 @@ async function main(): Promise<number> {
   // Repository helpers inspect siblings around their temporary fixtures. Give them one fresh
   // parent under the host temp root without replacing TMPDIR: Darwin's compiler ignores TMPDIR,
   // while the isolation profiles use its original value to admit the real compiler scratch.
-  const temporaryRoot = mkdtempSync(join(tmpdir(), "ana-test-suite-"));
+  mkdirSync(SUITE_SCRATCH_ROOT, { recursive: true });
+  // As long as the loose `ana-test-suite-XXXXXX` of before, so no socket path a test makes grows.
+  const temporaryRoot = mkdtempSync(`${SUITE_SCRATCH_ROOT}/`);
+  claim(temporaryRoot);
   // A test may name the root by either spelling: Darwin's `/var` is a link to `/private/var`.
   const roots = [temporaryRoot, realpathSync(temporaryRoot)];
   const requested = Bun.argv.slice(2);
   const endOn = (signal: "SIGINT" | "SIGTERM" | "SIGHUP") => () => {
     if (active !== null) killProcessGroup(active, signal);
     endNaming(roots);
-    rmSync(temporaryRoot, { recursive: true, force: true });
-    runtimeProcess.exit(130);
+    const exit = () => runtimeProcess.exit(130);
+    releaseRoot(temporaryRoot).then(exit, exit);
   };
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) runtimeProcess.once(signal, endOn(signal));
   const relative = (files: Iterable<string>) =>
@@ -587,13 +596,9 @@ async function main(): Promise<number> {
     // A test the idle wall ended can leave something under the root its removal fails on: on
     // 15 October a disk image still attached threw over a rerun of 179 passes and no failure, and
     // the suite exited 1. Disk images went on 19 October; a process still writing remains.
-    try {
-      rmSync(temporaryRoot, { recursive: true, force: true });
-    } catch {
-      console.error(
-        `test-suite: ${temporaryRoot} is still in use, and is left to the host's temporary folder`,
-      );
-    }
+    await releaseRoot(temporaryRoot).catch(() => {
+      console.error(`test-suite: ${temporaryRoot} is still in use, and is left to the daily sweep`);
+    });
   }
 }
 

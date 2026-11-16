@@ -36,6 +36,10 @@ const HOST_SCRATCH_ROOT = join(tmpdir(), "ana-host");
 /** Both, as the folders every claimed root of this host lies in: what a sweep of the left reads. */
 export const SCRATCH_ROOTS: readonly string[] = [BUILT_COMMAND_SCRATCH_ROOT, HOST_SCRATCH_ROOT];
 
+/** The parent of each test suite's temporary root (`tools/runtime/test-suite.ts`), which the suite
+ *  claims as a seat claims its own, so the daily sweep releases what a killed suite left. */
+export const SUITE_SCRATCH_ROOT = join(tmpdir(), "ana-test-suite");
+
 /** Where under a home a toolchain installs itself, in the order the wall's path takes them. */
 export const TOOLCHAIN_HOME_ROOTS = [
   ".bun",

@@ -5,8 +5,9 @@
  */
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { join } from "../src/meta/path.ts";
+import { dirname, join } from "../src/meta/path.ts";
 import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
+import { SUITE_SCRATCH_ROOT } from "../src/wall/policy.ts";
 
 import { afterAll, describe, expect, it } from "bun:test";
 
@@ -97,6 +98,33 @@ it("starts a server and never stops it", () => {
   const left = alive();
   if (left) runtimeProcess.kill(pid, "SIGKILL");
   expect({ status: result.status, left }).toEqual({ status: 0, left: false });
+});
+
+it("claims its root under the suites' parent while it runs, and removes the root and the claim at its end", () => {
+  const work = mkdtempSync(join(fixture, "claim-"));
+  const seen = join(work, "seen");
+  const src = join(import.meta.dir, "..", "src");
+  writeFileSync(
+    join(work, "claims.test.ts"),
+    `import { it } from "bun:test";
+import { writeFileSync } from "node:fs";
+import { tmpdir } from ${JSON.stringify(join(src, "meta", "os.ts"))};
+import { claimed } from ${JSON.stringify(join(src, "wall", "seat-root.ts"))};
+it("reads its root and whether a live process claims it", () => {
+  writeFileSync(${JSON.stringify(seen)}, tmpdir() + "\\n" + String(claimed(tmpdir())));
+});
+`,
+  );
+  const result = spawnTextSync(capturedExecPath, [suite, "--cwd", work, "./claims.test.ts"], {
+    env: { ...Bun.env, ANA_TEST_WORKERS: "1" },
+    timeout: 120_000,
+  });
+  expect(result.status).toBe(0);
+  const [root = "", held] = readFileSync(seen, "utf8").split("\n");
+  // The parent the daily sweep reads, here under this suite's own root.
+  expect(dirname(root)).toBe(SUITE_SCRATCH_ROOT);
+  expect(held).toBe("true");
+  expect([existsSync(root), existsSync(`${root}.owner`)]).toEqual([false, false]);
 });
 
 describe("a failed test", () => {

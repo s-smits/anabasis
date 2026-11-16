@@ -45,6 +45,7 @@ import { type CommandArgs, runCommand } from "#skills/main/cli.ts";
 import { sideGap } from "#tools/wri/pairs.ts";
 import { campaignLogs, rehearsed } from "#skills/main/logs.ts";
 import {
+  aloneOf,
   ORIGINS,
   type Origin,
   type Split,
@@ -233,7 +234,7 @@ function totalLines(reads: readonly StarterRead[], campaigns?: number): string[]
   const alone = (reading: string) => slices.filter((slice) => slice.alone === reading).length;
   const over = campaigns === undefined ? "" : ` in ${plural(campaigns, "campaign")}`;
   return [
-    `${plural(reads.length, "starter read")}${over}, ${String(reads.filter(({ confirmed }) => confirmed).length)} confirmed; on the tasks written after alone, ${UNSELECTED.map((one) => `${one} ${String(reads.filter(({ after }) => after === one).length)}`).join(", ")}`,
+    `${plural(reads.length, "starter read")}${over}, ${String(reads.filter(({ confirmed }) => confirmed).length)} confirmed; ${aloneOf(reads)}`,
     ...ORIGINS.map((origin) =>
       originLine(origin, {
         whole: of(origin, "whole"),

@@ -346,6 +346,10 @@ function starterOf({ reference, starter_tally: tally, confirmed }: Epoch, read?:
   return `, against the starter ${tallied(tally)}, ${step}${since}`;
 }
 
+/** How many of `reads` read each way on the tasks written after their promotion alone. */
+export const aloneOf = (reads: readonly Pick<StarterRead, "after">[]) =>
+  `on the tasks written after alone, ${UNSELECTED.map((one) => `${one} ${String(reads.filter(({ after }) => after === one).length)}`).join(", ")}`;
+
 /** The tally from the reference's side of `pairs`, which holds it on the old side. */
 const tallyOf = (pairs: readonly Paired[]): Tally => {
   const { wins, losses, ties } = testOf(pairs.map((pair) => -differenceOf(pair)));

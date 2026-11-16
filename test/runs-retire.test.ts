@@ -2,8 +2,12 @@
 // whole, and readers find it there; a worktree nothing uses goes once it holds no run log, one with
 // an uncommitted change only after two weeks, and a branch no worktree holds once nothing used it
 // for a week. A commit nothing else keeps reachable keeps a tag. An idle seed is deleted instead,
-// the archive's too.
+// the archive's too. And the seats' roots a run left on the host go: those its log names once
+// nothing writes it, and those whose claimant is gone.
 import { afterAll, describe, expect, it } from "bun:test";
+import { lastKept, SCRATCHPAD_FILE, seedMemory } from "../src/builder/memory.ts";
+import { sessionDirs } from "../src/builder/session.ts";
+import { append } from "../src/kernel/log.ts";
 import {
   existsSync,
   mkdirSync,
@@ -11,14 +15,17 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import { tmpdir } from "../src/meta/os.ts";
-import { join } from "../src/meta/path.ts";
+import { hostname, tmpdir } from "../src/meta/os.ts";
+import { dirname, join } from "../src/meta/path.ts";
+import { capturedSpawn } from "../src/meta/process.ts";
 import { runTextSyncOrThrow } from "../src/meta/subprocess.ts";
+import { claimRoot, releaseRoot } from "../src/wall/seat-root.ts";
 
-import { archiveIdle, retireUnused, type Sweep } from "../tools/runs/retire.ts";
+import { archiveIdle, releaseScratch, retireUnused, type Sweep } from "../tools/runs/retire.ts";
 import { arrayWith } from "./helpers/matchers.ts";
 
 const DAY = 86_400_000;
@@ -182,5 +189,57 @@ describe("retiring", () => {
       false,
       true,
     ]);
+  });
+
+  // A campaign that was killed, and one continued after a kill, left the roots of what it had open
+  // for good: nothing but a stop released any (111 roots on one host on 16 November).
+  it("releases what a run nobody writes left open, its cut Builder's notes kept first, and nothing a live process claims", async () => {
+    // Named apart from every other run of this suite: a session's root is named for its campaign.
+    const suffix = crypto.randomUUID().slice(0, 8);
+    const cut = `cut-${suffix}`;
+    const held = `held-${suffix}`;
+    const logOf = (name: string) => join(main, ".ana", "d2", name, "log.jsonl");
+    const dirsOf = (name: string) => sessionDirs(logOf(name), "b-1");
+    for (const name of [cut, held]) {
+      campaign(main, name, 0);
+      append(logOf(name), "build.started", { session: "b-1" });
+    }
+    // The cut session's root as a killed campaign leaves it: no claimant alive, its notes in its home.
+    mkdirSync(dirsOf(cut).home, { recursive: true });
+    mkdirSync(dirsOf(cut).host);
+    writeFileSync(join(dirsOf(cut).home, SCRATCHPAD_FILE), "# Scratchpad\n\nNext: widen the sweep.\n");
+    // A root its run's log names as open and a live process claims: read as unwritten by the
+    // process table, as a writer this sweep cannot name would be, and held by its claim.
+    const releaseHeld = claimRoot(dirsOf(held).root);
+    // A verifier's cell whose claimant is gone, under a parent of this test's own.
+    const parent = join(root, "scratch");
+    mkdirSync(join(parent, "cell-left"), { recursive: true });
+    const gone = capturedSpawn(["true"]);
+    await gone.exited;
+    symlinkSync(
+      `${String(gone.pid)} ${hostname()} Thu Jan  1 00:00:00 1970`,
+      join(parent, "cell-left.owner"),
+    );
+    try {
+      await releaseScratch(sweep(0, false), [parent]);
+      expect([dirsOf(cut).root, join(parent, "cell-left")].map((path) => existsSync(path))).toEqual([
+        true,
+        true,
+      ]);
+      await releaseScratch(sweep(0, true), [parent]);
+      expect(
+        [dirsOf(cut).root, dirsOf(cut).host, join(parent, "cell-left"), dirsOf(held).root].map((path) =>
+          existsSync(path),
+        ),
+      ).toEqual([false, false, false, true]);
+      const memory = join(dirname(logOf(cut)), "memory");
+      const next = join(root, "b-2-home");
+      mkdirSync(next);
+      seedMemory(next, memory, lastKept(memory, ["b-1"]));
+      expect(readFileSync(join(next, SCRATCHPAD_FILE), "utf8")).toContain("Next: widen the sweep.");
+    } finally {
+      await releaseHeld();
+      await releaseRoot(dirsOf(cut).root);
+    }
   });
 });

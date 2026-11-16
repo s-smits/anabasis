@@ -5,8 +5,10 @@
 // it can find both, because the backend hands the CLI no other variable a test could set. It records
 // its cwd too. Its nth `get_usage` request is answered with the nth line of `$HOME/usage.jsonl`, the
 // session's ledger at that moment, where a test wrote one: a line `{"error": "<why>"}` refuses it
-// and a line `{"silent": true}` leaves it unanswered.
-import { appendFileSync, existsSync, readFileSync } from "node:fs";
+// and a line `{"silent": true}` leaves it unanswered. Where `$HOME/outlive` stands as it starts, it
+// writes its state under `$HOME/Library` again and again, HOME made anew where it is gone, until a
+// second after its input closed: Claude Code outlives its query's close so, writing as it goes.
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 /** A line the SDK wrote to the CLI. */
@@ -20,6 +22,14 @@ const home = Bun.env.HOME ?? "";
 if (home === "") throw new Error("the fake Claude Code CLI needs HOME");
 const launch = join(home, "launch.jsonl");
 let usages = 0;
+if (existsSync(join(home, "outlive"))) {
+  const state = join(home, "Library", "Caches");
+  const writing = setInterval(() => {
+    mkdirSync(state, { recursive: true });
+    writeFileSync(join(state, "late"), "");
+  }, 5);
+  process.stdin.on("end", () => setTimeout(() => clearInterval(writing), 1000));
+}
 
 /** The scripted answer to this launch's next usage request, an empty success where none is left,
  *  or null where the script leaves it unanswered. */

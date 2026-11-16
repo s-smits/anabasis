@@ -24,7 +24,7 @@ import { asked, answerOf } from "./hosts.ts";
 import { type Host, hostNamed, hostsOf } from "./host-config.ts";
 import { quoted, rsync, sideOf, sshScript } from "./host-command.ts";
 import { runTextOrThrow } from "#src/meta/subprocess.ts";
-import { hold, release } from "./holder.ts";
+import { hold, release } from "#src/meta/holder.ts";
 import {
   ARCHIVE,
   archiveOf,

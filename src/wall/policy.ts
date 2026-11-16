@@ -12,6 +12,7 @@ import { keysIf } from "../meta/optional-key.ts";
 import { homedir, tmpdir } from "../meta/os.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
+import { claim } from "./seat-root.ts";
 
 /** What a Darwin system command answered, by the command: each is asked once per process. */
 const darwinAnswers = new Map<string, string | undefined>();
@@ -32,6 +33,9 @@ export const BUILT_COMMAND_SCRATCH_ROOT = join(tmpdir(), "ana-built-bash");
  */
 const HOST_SCRATCH_ROOT = join(tmpdir(), "ana-host");
 
+/** Both, as the folders every claimed root of this host lies in: what a sweep of the left reads. */
+export const SCRATCH_ROOTS: readonly string[] = [BUILT_COMMAND_SCRATCH_ROOT, HOST_SCRATCH_ROOT];
+
 /** Where under a home a toolchain installs itself, in the order the wall's path takes them. */
 export const TOOLCHAIN_HOME_ROOTS = [
   ".bun",
@@ -49,13 +53,16 @@ export const TOOLCHAIN_HOME_ROOTS = [
 
 /** The two roots of the host's own above, in both path forms, for a wall to close whole. */
 export function hostRoots(): string[] {
-  return [BUILT_COMMAND_SCRATCH_ROOT, HOST_SCRATCH_ROOT].flatMap(canonicalForms).toSorted(compareCodeUnits);
+  return SCRATCH_ROOTS.flatMap(canonicalForms).toSorted(compareCodeUnits);
 }
 
-/** A fresh folder of the host's under `HOST_SCRATCH_ROOT`, named from `prefix`. */
+/** A fresh folder of the host's under `HOST_SCRATCH_ROOT`, named from `prefix` and claimed by this
+ *  process, which lets it go with `releaseRoot` (`seat-root.ts`). */
 export function hostScratch(prefix: string): string {
   mkdirSync(HOST_SCRATCH_ROOT, { recursive: true, mode: 0o700 });
-  return mkdtempSync(join(HOST_SCRATCH_ROOT, prefix));
+  const folder = mkdtempSync(join(HOST_SCRATCH_ROOT, prefix));
+  claim(folder);
+  return folder;
 }
 
 /** Both path forms of a root: a rule that names only the symlink form misses the access Seatbelt

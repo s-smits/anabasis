@@ -29,14 +29,7 @@
  * and a tool missing from it once ran the host's copy off the search path's later directories.
  */
 import { EVALUATOR_FILE } from "../meta/bundle-layout.ts";
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-} from "../meta/filesystem.ts";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "../meta/filesystem.ts";
 import { sha256OfFile } from "../meta/digest.ts";
 import { jsonPathTokens } from "../meta/json-evidence.ts";
 import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
@@ -49,7 +42,7 @@ import { compareCodeUnits } from "../meta/stable-json.ts";
 import { pooled } from "../meta/pool.ts";
 import { killProcessGroupId, terminateAndReapProcessGroupId } from "../meta/subprocess.ts";
 import { commandIsolationPolicy, isolatedArgv, toolTreeSearchDirs } from "../wall/isolation.ts";
-import { releaseRoot } from "../wall/seat-root.ts";
+import { hostFolder, releaseRoot } from "../wall/seat-root.ts";
 import { type SolveIsolationPolicy, solveIsolationPolicy } from "../wall/base.ts";
 import { hostScratch } from "../wall/policy.ts";
 import type { CheckChildInput, CheckChildResult } from "./check-child.ts";
@@ -473,7 +466,7 @@ async function runCheck(
     home: join(root, "home"),
     temp: join(root, "tmp"),
     kept: join(root, "kept"),
-    host: `${root}.host`,
+    host: hostFolder(root),
   };
   let child: Bun.Subprocess | null = null;
   let captured: Promise<{
@@ -556,7 +549,6 @@ async function runCheck(
     if (child !== null) await terminateAndReapProcessGroupId(child.pid);
     await releaseRoot(root);
     if (captured !== null) await captured.catch(() => undefined);
-    rmSync(dirs.host, { recursive: true, force: true });
   }
 }
 

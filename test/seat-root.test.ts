@@ -1,23 +1,60 @@
 // A seat's root, executed: claimed once, refused to a second claim, and released with whatever its
 // commands left working in it. On Linux a seat's leftovers end with its pid namespace, so only the
-// claim and the removal are read there (`src/wall/seat-root.ts`).
+// claim and the removal are read there (`src/wall/seat-root.ts`). Then what a killed claimant
+// leaves: a sweep releases it by its claim, and never a root a live process holds.
 import { describe, expect, it } from "bun:test";
 import {
   chmodSync,
   copyFileSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   realpathSync,
   rmSync,
+  utimesSync,
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { processTable } from "../src/meta/process-table.ts";
-import { runtimeProcess } from "../src/meta/process.ts";
-import { claimRoot, endHolders, releaseRoot } from "../src/wall/seat-root.ts";
+import { capturedExecPath, runtimeProcess } from "../src/meta/process.ts";
+import { hostScratch } from "../src/wall/policy.ts";
+import {
+  claimed,
+  claimRoot,
+  endHolders,
+  hostFolder,
+  releaseLeft,
+  releaseRoot,
+} from "../src/wall/seat-root.ts";
 
 const onDarwin = runtimeProcess.platform === "darwin";
+const DAY = 86_400_000;
+/** Whether `path` is there, as a claim whose link points nowhere is too. */
+const there = (path: string): boolean => lstatSync(path, { throwIfNoEntry: false }) !== undefined;
+/** Where the claim on `root` is written. */
+const claimOf = (root: string): string => `${root}.owner`;
+const quoted = (...parts: string[]): string => JSON.stringify(join(...parts));
+
+/** A process of its own that claims `root`, as a campaign claims a solve's, makes its host folder
+ *  and a home, and waits to be killed. */
+function claimant(root: string) {
+  const source = [
+    `const { claimRoot, hostFolder } = await import(${quoted(import.meta.dir, "..", "src", "wall", "seat-root.ts")});`,
+    `const { mkdirSync } = await import(${quoted(import.meta.dir, "..", "src", "meta", "filesystem.ts")});`,
+    `claimRoot(${quoted(root)});`,
+    `mkdirSync(hostFolder(${quoted(root)}));`,
+    `mkdirSync(${quoted(root, "home")});`,
+    "await Bun.sleep(60_000);",
+  ];
+  return Bun.spawn([capturedExecPath, "-e", source.join("\n")], { stdio: ["ignore", "ignore", "inherit"] });
+}
+
+/** `paths` as last written `days` ago, deepest first: a folder made in another moves that one's time. */
+function aged(days: number, ...paths: string[]): void {
+  const then = new Date(Date.now() - days * DAY);
+  for (const path of paths) utimesSync(path, then, then);
+}
 
 /** A root under a fresh parent, not yet claimed, and the parent to remove after. */
 function unclaimed(): { parent: string; root: string } {
@@ -178,6 +215,116 @@ describe("a seat's root", () => {
         loop.kill("SIGKILL");
         await releaseRoot(root);
         Bun.spawnSync(["/usr/bin/pkill", "-9", "-f", `sleep ${marker}`]);
+        rmSync(parent, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
+});
+
+describe("what a seat left", () => {
+  it("is let go whole by its release: the root, the host's folder beside it and the claim", async () => {
+    const { parent, root } = unclaimed();
+    const release = claimRoot(root);
+    mkdirSync(join(hostFolder(root), "model"), { recursive: true });
+    expect(claimed(root)).toBe(true);
+    await release();
+    expect([root, hostFolder(root), claimOf(root)].map(there)).toEqual([false, false, false]);
+    expect(claimed(root)).toBe(false);
+    rmSync(parent, { recursive: true, force: true });
+  });
+
+  it("claims a folder of the host's scratch as it is made, and lets it go the same way", async () => {
+    const folder = hostScratch("seat-root-test-");
+    expect(claimed(folder)).toBe(true);
+    await releaseRoot(folder);
+    expect([folder, claimOf(folder)].map(there)).toEqual([false, false]);
+  });
+
+  // A campaign that was killed released nothing, and nothing said whose its roots were: on
+  // 16 November 111 roots and 49 verifier cells stood on one host.
+  it("is released by a sweep once its claimant is gone, and never while that process lives", async () => {
+    const { parent, root } = unclaimed();
+    const holder = claimant(root);
+    try {
+      await ready(() => existsSync(join(root, "home")));
+      // Whatever the bound for an unclaimed root, and however old the root: a live claim holds.
+      aged(30, join(root, "home"), root, hostFolder(root));
+      expect(await releaseLeft([parent], Date.now() + DAY, "release")).toEqual([]);
+      expect(existsSync(join(root, "home"))).toBe(true);
+      holder.kill("SIGKILL");
+      await holder.exited;
+      // Written this instant, and released all the same: a dead claimant releases nothing itself.
+      mkdirSync(join(root, "tmp"));
+      expect(await releaseLeft([parent], 0, "describe")).toEqual([root]);
+      expect(existsSync(join(root, "home"))).toBe(true);
+      expect(await releaseLeft([parent], 0, "release")).toEqual([root]);
+      expect([root, hostFolder(root), claimOf(root)].map(there)).toEqual([false, false, false]);
+    } finally {
+      holder.kill("SIGKILL");
+      await holder.exited;
+      rmSync(parent, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  // What a tree from before the claim left: nothing names its owner, so only its age speaks, and a
+  // root a run still names is its caller's to hold.
+  it("takes an unclaimed root only once nothing has written it since the bound, and none it is told to spare", async () => {
+    const parent = mkdtempSync(join(tmpdir(), "ana-seat-root-"));
+    const at = (name: string) => join(parent, name);
+    for (const name of ["old", "fresh", "named", "written"]) {
+      mkdirSync(join(at(name), "home"), { recursive: true });
+    }
+    // A host's folder whose root went long ago, as 19,697 stood on one host that day.
+    mkdirSync(hostFolder(at("orphan")));
+    mkdirSync(hostFolder(at("written")));
+    aged(
+      8,
+      join(at("old"), "home"),
+      at("old"),
+      join(at("named"), "home"),
+      at("named"),
+      hostFolder(at("orphan")),
+    );
+    // Old but for the one folder a seat wrote yesterday.
+    aged(8, at("written"), hostFolder(at("written")));
+    aged(1, join(at("written"), "home"));
+    const released = await releaseLeft(
+      [parent, at("no-such-parent")],
+      Date.now() - 7 * DAY,
+      "release",
+      new Set([at("named")]),
+    );
+    expect(released.toSorted()).toEqual([at("old"), at("orphan")]);
+    expect([at("old"), hostFolder(at("orphan"))].map(there)).toEqual([false, false]);
+    expect(["fresh", "named", "written"].map((name) => there(at(name)))).toEqual([true, true, true]);
+    expect(there(hostFolder(at("written")))).toBe(true);
+    rmSync(parent, { recursive: true, force: true });
+  });
+
+  // Claude Code works in its home in the host's folder and lives on after its query closes: it
+  // wrote its state into a folder already removed, behind 19,697 solves that had ended well.
+  it.skipIf(!onDarwin)(
+    "ends a process working in the host's folder, so nothing is written back after the release",
+    async () => {
+      const { parent, root } = unclaimed();
+      const release = claimRoot(root);
+      const model = join(hostFolder(root), "model");
+      const caches = join(model, "Library", "Caches");
+      mkdirSync(model, { recursive: true });
+      const late = Bun.spawn(["/bin/sh", "-c", 'while :; do mkdir -p "$0"; touch "$0/f"; done', caches], {
+        cwd: model,
+        stdio: ["ignore", "ignore", "ignore"],
+      });
+      try {
+        await ready(() => existsSync(join(caches, "f")));
+        await release();
+        await late.exited;
+        expect(late.signalCode).toBe("SIGKILL");
+        expect(there(hostFolder(root))).toBe(false);
+      } finally {
+        late.kill("SIGKILL");
+        await late.exited;
         rmSync(parent, { recursive: true, force: true });
       }
     },

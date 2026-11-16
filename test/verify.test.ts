@@ -17,6 +17,7 @@ import { join } from "../src/meta/path.ts";
 import { killProcessGroupId } from "../src/meta/subprocess.ts";
 import { osIsolationSupport } from "../src/wall/os-isolation.ts";
 import { hostScratch } from "../src/wall/policy.ts";
+import { releaseRoot } from "../src/wall/seat-root.ts";
 
 const DETACHED_MARKER = `ana-verifier-deadline-child-${crypto.randomUUID()}`;
 
@@ -187,8 +188,9 @@ function killMarkedProcesses(): void {
   }
 }
 
-afterAll(() => {
-  for (const dir of [root, sibling]) rmSync(dir, { recursive: true, force: true });
+afterAll(async () => {
+  rmSync(root, { recursive: true, force: true });
+  await releaseRoot(sibling);
 });
 
 let verify: ReturnType<typeof openVerifier>;

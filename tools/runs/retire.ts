@@ -34,6 +34,10 @@
  * every head's commit time once: until 28 October it asked `ps`, `lsof` and `git log` once per tree
  * and `branch --contains` once per deleted tree, 4.7 s for a dry run over 224 trees.
  *
+ * First of all, the seats' roots and the host's scratch folders that nobody will release go
+ * (`releaseScratch`): what a killed campaign's solves, sessions, verifier cells and model homes left
+ * in the temporary folder, told from what a live process holds by its claim.
+ *
  * Only the repository's worktrees are swept, so a separate clone is never read. Every host sweeps
  * its own originals with its own daily job, and this one then refreshes each configured host's
  * records through snapshots.ts and brings every campaign no process writes there whole but for
@@ -50,12 +54,15 @@ import { basename, dirname, join } from "#src/meta/path.ts";
 import { parseArgs, runtimeProcess, warn } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { decodeOutput, runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
+import { SCRATCH_ROOTS } from "#src/wall/policy.ts";
+import { claimed, releaseLeft } from "#src/wall/seat-root.ts";
 import { controllersOf } from "./code.ts";
 import { hostNamed, hostsOf } from "./host-config.ts";
 import { takeRetired, syncRuns } from "./snapshots.ts";
 import { stillRunning } from "./diagnosis.ts";
 import { unlaunchedSeed } from "./receipt.ts";
 import { archived, archiveOf, HERE, Misused, processes, runs } from "./registry.ts";
+import { leftOpen, release } from "./stop.ts";
 
 /** What one sweep is asked: the main worktree, how long idle is, the time, and whether to act. */
 export interface Sweep {
@@ -110,6 +117,42 @@ export function archiveIdle(sweep: Sweep): Set<string> {
     runTextSyncOrThrow(["mv", from, to]);
   }
   return moved;
+}
+
+/**
+ * Every seat root and folder of the host's scratch on this machine that nobody will release
+ * (`src/wall/seat-root.ts`). A root a run here still names as open is that run's: once no process
+ * writes the run it is released as a stop would, with a cut Builder session's notes kept for the
+ * `continue` that reads them, and until then it is spared. The rest go by their claims: a dead
+ * claimant's at once, an unclaimed one after `TREE_DAYS` without a write.
+ *
+ * Until 16 November no sweep read these folders, and only a stop released any: a campaign that was
+ * killed, or continued after a kill, left its roots for good, and so did every verifier cell and
+ * model home a killed process held, with the check programs and hidden values in them.
+ */
+export async function releaseScratch(sweep: Sweep, parents: readonly string[]): Promise<void> {
+  const act = sweep.yes ? "release" : "describe";
+  const spared = new Set<string>();
+  for (const run of runs(sweep.main)) {
+    try {
+      const open = leftOpen(run);
+      for (const { root } of open) spared.add(root);
+      // The processes are read again for each run, as `archiveIdle` reads them. A root a live
+      // process claims is held whatever the process table is read to say of its run.
+      await release(
+        run,
+        processes(),
+        act,
+        open.filter(({ root }) => !claimed(root)),
+      );
+    } catch (error) {
+      // Unread, its roots cannot be told from those nobody holds, so none goes by its claim today.
+      warn(`${run.name}: ${errorMessage(error)}, so no root is released by its claim in this sweep`);
+      return;
+    }
+  }
+  const left = await releaseLeft(parents, sweep.now - TREE_DAYS * DAY_MS, act, spared);
+  say(sweep, `${String(left.length)} seat root(s) and host folder(s) nobody holds, released`);
 }
 
 /** Every process's command line and working directory, read at once: a tree any names is in use. */
@@ -252,6 +295,8 @@ export async function retire(args: readonly string[]): Promise<void> {
   console.log(
     `retire at ${new Date(sweep.now).toISOString()}${sweep.yes ? "" : ": nothing is done without --yes"}`,
   );
+  // Before the archive takes a run: its cut notes are kept into its own folder, which then moves whole.
+  await releaseScratch(sweep, SCRATCH_ROOTS);
   retireUnused(sweep, archiveIdle(sweep));
   for (const host of hostsOf()) {
     try {

@@ -58,11 +58,11 @@ import { durableSpend, seatMeter, type Spent } from "../kernel/meter.ts";
 import { type Seat as SeatKind, traceKind, whose } from "../kernel/trace.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { Cancellation } from "../kernel/solve.ts";
-import { rmSync } from "../meta/filesystem.ts";
 import { isString, type JsonObject } from "../meta/json-shape.ts";
 import { keysIf } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hostScratch } from "../wall/policy.ts";
+import { releaseRoot } from "../wall/seat-root.ts";
 
 /** A tool as a seat registers one with pi-durable (`defineTool`): its result's `output` is what the
  *  model reads, and `control.terminate` asks that the run end after the round. */
@@ -270,7 +270,16 @@ export async function sit(seat: Seat): Promise<Sat> {
     usage = (await harness?.usage(BACKGROUND_CONTEXT).catch(() => null)) ?? null;
     await harness?.close(BACKGROUND_CONTEXT);
     shutdown.removeEventListener("abort", wakeOnStop);
-    if (seat.home === undefined) rmSync(home, { recursive: true, force: true });
+  }
+  // Claude Code's last result where a query of this process served the seat, else pi-durable's. The
+  // home goes after it and by its release, which ends a Claude Code still working there: until
+  // 16 November it went before the read, and Claude Code, which outlives its query's close by up to
+  // three seconds, wrote its state into the folder again (419 such homes on the operator's host).
+  let ledger: Awaited<ReturnType<typeof claudeLedger>>;
+  try {
+    ledger = await claudeLedger(seat.id);
+  } finally {
+    if (seat.home === undefined) await releaseRoot(home);
   }
   const cut = stops.some((stop) => stop.aborted);
   const last = seat.turns.at(-1);
@@ -281,11 +290,7 @@ export async function sit(seat: Seat): Promise<Sat> {
       ? null
       : (frame.thrown ??
         (last?.stopReason === "error" ? (last.errorMessage ?? "the provider failed the turn") : null)),
-    // Claude Code's last result where a query of this process served the seat, else pi-durable's.
-    spent: meter.spent(
-      seat.turns,
-      (await claudeLedger(seat.id)) ?? (usage === null ? null : durableSpend(usage)),
-    ),
+    spent: meter.spent(seat.turns, ledger ?? (usage === null ? null : durableSpend(usage))),
   };
 }
 

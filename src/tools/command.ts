@@ -32,7 +32,7 @@ import {
 } from "../meta/filesystem.ts";
 import { join, resolve } from "../meta/path.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
-import { endHolders } from "../wall/seat-root.ts";
+import { endHolders, hostFolder } from "../wall/seat-root.ts";
 import { commandIsolationPolicy, shellQuote, stageCommandIsolation } from "../wall/isolation.ts";
 import { BUILT_COMMAND_SCRATCH_ROOT } from "../wall/policy.ts";
 import { type SolveIsolationPolicy, solveIsolationPolicy } from "../wall/base.ts";
@@ -186,7 +186,7 @@ export function solveDirs(id: string): SolveDirs {
     home: join(root, "home"),
     temp: join(root, "tmp"),
     kept: join(root, "kept"),
-    host: `${root}.host`,
+    host: hostFolder(root),
   };
 }
 

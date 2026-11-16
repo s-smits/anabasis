@@ -652,6 +652,5 @@ export async function build(request: BuildRequest): Promise<Built> {
     return await session(request, dirs, (bench) => walledTools(bench, wall, network), walledEnv(wall));
   } finally {
     await release();
-    rmSync(dirs.host, { recursive: true, force: true });
   }
 }

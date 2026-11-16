@@ -49,7 +49,7 @@ import { keyIfDefined } from "#src/meta/optional-key.ts";
 import { availableParallelism, loadavg } from "#src/meta/os.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
 import { capturedExecPath, capturedSpawn, runtimeProcess } from "#src/meta/process.ts";
-import { dropCutWrites, held, hold, release } from "./holder.ts";
+import { dropCutWrites, held, hold, release } from "#src/meta/holder.ts";
 
 /** How long a look waits for the pass. The hook kills a look at 40 s, a peer's answer is awaited for
  *  30 s, and a look has its own 2 to 4 s of reading besides. */

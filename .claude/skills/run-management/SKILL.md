@@ -35,7 +35,7 @@ campaign; `copy <name> --to <worktree>` brings one back.
 | `sync [--yes \| --check] [--force]` | aligns tools and Python across hosts | `sync.ts` |
 | `search <pattern> [--regex] [--ignore-case] [--here] [--in logs\|notes\|all] [--max <chars>]` | searches campaign folders, notes and docs on all hosts | `search.ts` |
 | `fetch [<name>] [--from <host>]` | copies a peer's campaign, or every peer's records, into the archive; a copy leaves installed packages and caches on its host, so it is read and never run | `move.ts` |
-| `retire [--days 1] [--yes]` | archives idle campaigns, deletes seeds and stale worktrees, refreshes peers' records, and takes over what the host `ABLATION_HOST` names has archived | `retire.ts` |
+| `retire [--days 1] [--yes]` | releases the seats' roots and host scratch folders nobody holds, archives idle campaigns, deletes seeds and stale worktrees, refreshes peers' records, and takes over what the host `ABLATION_HOST` names has archived | `retire.ts` |
 | `on <host> <verb ...>`, `hosts [--all] [--health]` | a verb on another host; each host's status or health | `hosts.ts` |
 | `loadwatch [<seconds>] [--once]` | each machine's CPU and load, live; `--once` prints one frame and ends it with the machines in order, least loaded first | `loadwatch.ts` |
 | `pulse [<part> ...] [--every 290] [--state <file>] [--no-readers]` | what each run gained since the last look | `pulse.ts` |
@@ -339,7 +339,9 @@ bun run runs stop <name> ... [--yes]
 ```
 
 `stop` ends the process writing each log and the processes it started, then releases the roots of
-every solve, session and draft left open; a dead run is cleaned up the same way. A stop is abrupt and
+every solve, session and draft left open; a dead run is cleaned up the same way, and the daily
+`retire` does it for every run nobody stopped, with each verifier cell and model home whose claiming
+process is gone (`releaseScratch`, `tools/runs/retire.ts`). A stop is abrupt and
 writes no ending. `continue` goes on from the log under the same name; the session the stop cut has
 spent its id, and an Examiner session's held-out tasks stay held. Prefer `pause` or a word where a
 clean point can be waited for. Whether to stop is a reading and the operator's word. Afterwards check

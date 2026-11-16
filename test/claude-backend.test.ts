@@ -22,13 +22,21 @@ import {
 } from "../src/agent/backends/claude.ts";
 import { sit } from "../src/agent/session.ts";
 import type { Spent } from "../src/kernel/meter.ts";
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  lstatSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { capturedJsonParse } from "../src/meta/json-runtime.ts";
 import { asRecord, isString, type JsonObject } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
+import { claimed } from "../src/wall/seat-root.ts";
 
 /** What one launch of the CLI saw: its arguments, its environment and the SDK's lines to it. */
 interface Launch {
@@ -546,6 +554,73 @@ describe("the Claude backend", () => {
     expect(sat.crash).toBeNull();
     expect(soFar?.billed).toBeCloseTo((recorded.cost.input * 41_000) / 1_000_000, 10);
   });
+
+  /** One session, on the fake, of a seat with no home of its own, where Claude Code may `outlive` its
+   *  close: the home the host made for it, and whether a live process claimed it while it sat. */
+  async function seated(outlive: boolean): Promise<{ made: string; held: boolean }> {
+    let made = "";
+    let held = false;
+    const sat = await sit({
+      models: (own, closing) => {
+        made = own;
+        writeFileSync(join(own, "replay.jsonl"), readFileSync(join(FIXTURES, TEXT), "utf8"));
+        if (outlive) writeFileSync(join(own, "outlive"), "");
+        const models = createModels({
+          authContext: {
+            env: async (name) => (name === "CLAUDE_CODE_OAUTH_TOKEN" ? "token" : undefined),
+            fileExists: async () => false,
+          },
+        });
+        models.setProvider(
+          claudeProvider({
+            executable,
+            compaction: { window: SWEEP_COMPACT_WINDOW },
+            home: own,
+            shutdown: closing,
+          }),
+        );
+        return models;
+      },
+      id: `seat-${String(solves)}`,
+      model: recorded,
+      effort: "medium",
+      system: "An examiner.",
+      opening: "Begin.",
+      tools: [],
+      turns: [],
+      stops: [],
+      next: async () => {
+        held = claimed(made);
+        return null;
+      },
+    });
+    expect(sat.crash).toBeNull();
+    return { made, held };
+  }
+  const there = (path: string): boolean => lstatSync(path, { throwIfNoEntry: false }) !== undefined;
+
+  // A reviewer's or the Examiner's Claude Code keeps what it read in a home of the host's scratch.
+  // Nothing said whose such a home was, so one a killed campaign left stood for good.
+  it("claims the home it makes for a seat that has none, and lets it go with the claim once the seat has sat", async () => {
+    const { made, held } = await seated(false);
+    expect(made).not.toBe("");
+    expect(held).toBe(true);
+    expect([made, `${made}.owner`].map(there)).toEqual([false, false]);
+  });
+
+  // Claude Code lives on for up to three seconds after its query closes and writes its state as it
+  // goes. Until 16 November the home went before the ledger was read, and what Claude Code wrote
+  // after stood: 419 such homes on one host. Linux ends no process by the folder it works in.
+  it.skipIf(runtimeProcess.platform !== "darwin")(
+    "leaves nothing of a Claude Code that outlives its close and writes into its home on the way out",
+    async () => {
+      const { made } = await seated(true);
+      // Longer than the fake writes on after its input closes.
+      await Bun.sleep(1500);
+      expect(there(made)).toBe(false);
+    },
+    20_000,
+  );
 
   // An abort listener never fires for a signal that has already aborted, so a turn asked under one
   // launched Claude Code and ran its query to the end.

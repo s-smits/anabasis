@@ -174,6 +174,5 @@ export async function inExaminerWall<T>(
     return result;
   } finally {
     await release();
-    rmSync(dirs.host, { recursive: true, force: true });
   }
 }

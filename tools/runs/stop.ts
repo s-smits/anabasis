@@ -24,7 +24,7 @@ import { keepCutNotes, sessionDirs, spent } from "#src/builder/session.ts";
 import { examinerDirs } from "#src/examiner/shell.ts";
 import { examinerSessions } from "#src/kernel/solves.ts";
 import { unfinished } from "#src/kernel/trace.ts";
-import { existsSync, rmSync } from "#src/meta/filesystem.ts";
+import { existsSync } from "#src/meta/filesystem.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { dirname } from "#src/meta/path.ts";
 import { parseArgs } from "#src/meta/process.ts";
@@ -122,23 +122,29 @@ async function end(run: Run, running: readonly Running[], yes: boolean): Promise
   return found.length;
 }
 
-/** Release the roots `run` left, where no process in `running` writes it any more. A root its release
- *  could not remove is named, and the stop goes on to the next. A root an earlier tree mounted a disk
- *  image at, before 19 October, is one: `hdiutil detach` it first. */
-async function release(run: Run, running: readonly Running[], yes: boolean): Promise<number> {
+/** Release the roots `run` left (`open`, its `leftOpen`), where no process in `running` writes it any
+ *  more, a cut Builder session's notes kept first. A root its release could not remove is named, and
+ *  the stop goes on to the next. A root an earlier tree mounted a disk image at, before 19 October,
+ *  is one: `hdiutil detach` it first. The daily sweep does the same for every run nobody stopped
+ *  (`releaseScratch`, `retire.ts`). */
+export async function release(
+  run: Run,
+  running: readonly Running[],
+  act: "release" | "describe",
+  open = leftOpen(run),
+): Promise<number> {
   if (writers(run, running).length > 0) return 0;
-  const left = leftOpen(run).filter(({ root }) => existsSync(root));
+  const left = open.filter(({ root }) => existsSync(root));
   if (left.length === 0) return 0;
   console.log(
     `${run.name} in ${run.tree}: ${String(left.length)} root(s) its solves and sessions left behind`,
   );
-  if (!yes) return left.length;
+  if (act === "describe") return left.length;
   let kept = 0;
-  for (const { root, host, build } of left) {
+  for (const { root, build } of left) {
     try {
       if (build !== undefined) keepCutNotes(run.path, build);
       await releaseRoot(root);
-      rmSync(host, { recursive: true, force: true });
     } catch (error) {
       kept++;
       console.log(`  ⚠ ${errorMessage(error)}`);
@@ -169,6 +175,6 @@ export async function stop(args: readonly string[]): Promise<void> {
   if (acted === 0) console.log("none of these is running");
   // Read again: what ended no longer writes, and one that would not end still does.
   const left = processes();
-  for (const run of named) acted += await release(run, left, values.yes);
+  for (const run of named) acted += await release(run, left, values.yes ? "release" : "describe");
   if (acted > 0 && !values.yes) console.log("nothing is ended or released without --yes");
 }

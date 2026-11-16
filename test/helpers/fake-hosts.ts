@@ -131,6 +131,9 @@ export function fakeHosts() {
     FAKE_COMMIT: COMMIT,
     FAKE_PREPARED: join(root, "prepared"),
     FAKE_NOW: join(root, "now"),
+    // A child's own temporary root, as the suite gives each test file. Without it a child resolved
+    // the machine's, and a sweep under test released the real seat roots there.
+    ANA_TEST_TMPDIR: root,
   };
   const run = (code: string, extra: Record<string, string> = {}) => {
     const driver = join(root, "driver.ts");

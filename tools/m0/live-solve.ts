@@ -220,7 +220,6 @@ async function shown(
     return `${prompt}\n\ntools: ${tools.map(({ name }) => name).join(", ")}`;
   } finally {
     await release();
-    rmSync(dirs.host, { recursive: true, force: true });
   }
 }
 

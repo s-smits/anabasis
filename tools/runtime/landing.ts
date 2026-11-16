@@ -8,7 +8,7 @@
 import { existsSync, lstatSync, readFileSync, rmSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
 import { processAnswers, runtimeProcess } from "../../src/meta/process.ts";
-import { hold, holderOf, recordIn, release } from "../runs/holder.ts";
+import { hold, holderOf, recordIn, release } from "#src/meta/holder.ts";
 import { git, lines, type Proof, short } from "./gate.ts";
 import { beneath, chainAbove, openPulls, type Pull } from "./pulls.ts";
 

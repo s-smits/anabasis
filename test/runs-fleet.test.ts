@@ -9,11 +9,12 @@ import {
   readFileSync,
   rmSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
-import { held } from "../tools/runs/holder.ts";
+import { held } from "../src/meta/holder.ts";
 import { quoted, treeBun } from "../tools/runs/host-command.ts";
 
 import { fakeHosts } from "./helpers/fake-hosts.ts";
@@ -372,7 +373,7 @@ describe("campaign snapshots", () => {
     const holder = Bun.spawn([
       process.execPath,
       "-e",
-      `import { hold } from ${JSON.stringify(join(import.meta.dir, "..", "tools", "runs", "holder.ts"))}; hold(${JSON.stringify(join(lock, "holder"))}); await Bun.sleep(30000);`,
+      `import { hold } from ${JSON.stringify(join(import.meta.dir, "..", "src", "meta", "holder.ts"))}; hold(${JSON.stringify(join(lock, "holder"))}); await Bun.sleep(30000);`,
     ]);
     const holding = performance.now() + 10_000;
     while (!held(join(lock, "holder")) && performance.now() < holding) await Bun.sleep(20);
@@ -643,11 +644,17 @@ describe("the daily retire's host step", () => {
         ...extra,
       });
     const copy = (name: string, file: string) => join(made.main, "data", "runs", "runner", name, file);
+    // The sweep reads the fixture's scratch and never the machine's: a root nobody claims, unwritten
+    // for a month, goes from there.
+    const left = join(made.root, "ana-built-bash", "solve-left");
+    mkdirSync(left, { recursive: true });
+    utimesSync(left, new Date(Date.now() - 30 * 86_400_000), new Date(Date.now() - 30 * 86_400_000));
     // A host that does not answer leaves nothing copied, and the sweep says so.
     expect(sweep({ FAKE_OFFLINE: "1" }).code).toBe(1);
     expect(existsSync(copy("distant", LOG_FILE))).toBe(false);
     // The next sweep finds it again: the closed campaign's folders come, the open one's record only.
     expect(sweep({}).code).toBe(0);
+    expect(existsSync(left)).toBe(false);
     expect(readFileSync(copy("distant", "memory/note.txt"), "utf8")).toBe("kept");
     expect(existsSync(copy("busy", LOG_FILE))).toBe(true);
     expect(existsSync(copy("busy", "memory/note.txt"))).toBe(false);

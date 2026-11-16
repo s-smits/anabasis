@@ -34,7 +34,7 @@ campaign; `copy <name> --to <worktree>` brings one back.
 | `active` | the runs and seats live on each login, by name | `logins.ts` |
 | `sync [--yes \| --check] [--force]` | aligns tools and Python across hosts | `sync.ts` |
 | `search <pattern> [--regex] [--ignore-case] [--here] [--in logs\|notes\|all] [--max <chars>]` | searches campaign folders, notes and docs on all hosts | `search.ts` |
-| `fetch [<name>] [--from <host>]` | copies a peer's campaign, or every peer's records, into the archive; a copy leaves installed packages and caches on its host, so it is read and never run | `move.ts` |
+| `fetch [<name>] [--from <host>]` | copies a peer's campaign, or every peer's records, into the archive; a copy leaves installed packages and caches on its host, so it is read and never run. With no name it also copies the benchmark score store from the machine `ABLATION_HOST` names into `data/bench/<machine>`, where `BENCH_STORE` names its folder there | `move.ts` |
 | `retire [--days 1] [--yes]` | releases the seats' roots and host scratch folders nobody holds, archives idle campaigns, deletes seeds and stale worktrees, refreshes peers' records, and takes over what the host `ABLATION_HOST` names has archived | `retire.ts` |
 | `on <host> <verb ...>`, `hosts [--all] [--health]` | a verb on another host; each host's status or health | `hosts.ts` |
 | `loadwatch [<seconds>] [--once]` | each machine's CPU and load, live; `--once` prints one frame and ends it with the machines in order, least loaded first | `loadwatch.ts` |

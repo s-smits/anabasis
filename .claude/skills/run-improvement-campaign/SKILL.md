@@ -466,7 +466,10 @@ reads more than the eight at one (16), since it gives the Starter's spread on th
    unset. A campaign that ran on that machine is exported before its retire archives it (a day
    after it goes idle): the copy that replaces it holds no installed package. The store, the JobBench checkout and the
    judge's shim are named in the last read's prediction file and in `cycle.md`; every sitting
-   scores into that one store, so that one table holds every arm.
+   scores into that one store, so that one table holds every arm. Where `.env.runs` names the
+   store's folder on that machine (`BENCH_STORE`), the gather (`bun run runs fetch`) keeps a copy
+   of every rollout and judgement in `data/bench/<machine>` here, which `score.ts table` and
+   `trend.ts --bench` read as they read the store itself.
 
    ```sh
    bun studies/harness2/score.ts score --arm <campaign> --harness <kept> --name <label> \

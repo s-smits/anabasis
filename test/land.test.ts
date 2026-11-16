@@ -30,7 +30,7 @@ import { capturedExecPath } from "../src/meta/process.ts";
 import { afterAll, beforeEach, describe, expect, it } from "bun:test";
 
 import { execTextSync, spawnTextSync } from "./helpers/bun-spawn-sync.ts";
-import { fakeBun, gatesRun, logLines } from "./helpers/fake-bun.ts";
+import { fakeBun, gatesRun, logLines, wherePassesRan } from "./helpers/fake-bun.ts";
 import { STACK_MEMBERS } from "../tools/runtime/pulls.ts";
 
 const land = join(import.meta.dir, "..", "tools", "runtime", "land.ts");
@@ -185,9 +185,11 @@ const stack = (top = upper, ...more: ReturnType<typeof pull>[]): string =>
     ...more,
   ]);
 
-const landEnv = (env: Record<string, string>): Record<string, string | undefined> => ({
+const landEnv = (env: Record<string, string | undefined>): Record<string, string | undefined> => ({
   ...Bun.env,
   ...fake,
+  // No host list, and the fixture's main worktree holds no `.env.runs`, so every proof stays here.
+  ANA_HOSTS: "",
   ANA_GH_LOG: ghLog,
   ANA_FAKE_PULLS: stack(),
   ANA_FAKE_STACK: "7 11,12",
@@ -198,7 +200,7 @@ const landEnv = (env: Record<string, string>): Record<string, string | undefined
 });
 
 /** One landing, as a session runs it with `--once`; following its stack is proved on its own. */
-function runLand(args: readonly string[], env: Record<string, string> = {}) {
+function runLand(args: readonly string[], env: Record<string, string | undefined> = {}) {
   return spawnTextSync(capturedExecPath, [land, ...args, "--once"], { cwd: work, env: landEnv(env) });
 }
 
@@ -445,6 +447,77 @@ describe("bun run land", () => {
       ]);
     });
   }
+
+  // Made-up hosts: nothing reaches them, since the fake Bun stands at every step the runner routes.
+  const host = (name: string, checks?: number) => ({
+    name,
+    ssh: name,
+    tree: "/srv/tree",
+    bun: "bun",
+    checks,
+  });
+  const twoHosts = JSON.stringify([host("alpha", 1), host("idle"), host("beta", 2)]);
+
+  it("spreads its proofs over the hosts that take checks where RUN_REMOTE is unset, the whole gate on the first", () => {
+    const result = runLand(["12", "--sanitize"], { ANA_HOSTS: twoHosts, RUN_REMOTE: undefined });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("proving on alpha (1), beta (2) at once");
+    expect(wherePassesRan(gateLog)).toContain(`${upper} alpha`);
+    expect(statuses(COMMIT)).toContain(`success ${upper}`);
+  });
+
+  it("caps a spread at --jobs, dealt over the hosts in turn, and keeps a single host's list to that host", () => {
+    const capped = runLand(["12", "--sanitize", "--jobs", "2"], {
+      ANA_HOSTS: JSON.stringify([host("alpha", 2), host("beta", 2)]),
+      RUN_REMOTE: undefined,
+    });
+    expect(capped.status).toBe(0);
+    expect(capped.stdout).toContain("proving on alpha (1), beta (1) at once");
+    const single = runLand(["12", "--sanitize"], {
+      ANA_HOSTS: JSON.stringify([host("alpha", 2)]),
+      RUN_REMOTE: undefined,
+    });
+    expect(single.status).toBe(0);
+    expect(single.stdout).toContain("proving on alpha (2) at once");
+  });
+
+  it("proves at the one place an explicit RUN_REMOTE names, whatever the host list holds", () => {
+    const result = runLand(["12", "--sanitize"], { ANA_HOSTS: twoHosts, RUN_REMOTE: "here" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).not.toContain("proving on");
+    // Every pass inherits the caller's RUN_REMOTE, which the runner reads as this machine.
+    const ran = wherePassesRan(gateLog);
+    expect(ran.length).toBeGreaterThan(0);
+    expect(ran.filter((line) => !line.endsWith(" here"))).toEqual([]);
+  });
+
+  it("reads the host list from the main worktree's .env.runs where the environment holds none", () => {
+    const repo = join(fixture, "hosts-repo");
+    mkdirSync(repo);
+    execTextSync("git", ["init", "-q"], { cwd: repo });
+    writeFileSync(join(repo, ".env.runs"), `ANA_HOSTS='${twoHosts}'\n`);
+    const landing = JSON.stringify(join(import.meta.dir, "..", "tools", "runtime", "landing.ts"));
+    const where = (jobs: string) =>
+      spawnTextSync(
+        capturedExecPath,
+        [
+          "-e",
+          `import { whereToProve } from ${landing}; console.log(JSON.stringify(whereToProve(process.cwd(), ${jobs}, () => undefined)));`,
+        ],
+        { cwd: repo, env: { ...Bun.env, ANA_HOSTS: "", RUN_REMOTE: undefined } },
+      ).stdout.trim();
+    expect(where("undefined")).toBe('[{"remote":"alpha","slots":1},{"remote":"beta","slots":2}]');
+    expect(where("1")).toBe('[{"remote":"alpha","slots":1}]');
+  });
+
+  it("refuses a host list it cannot read before it proves or posts anything", () => {
+    const result = runLand(["12", "--sanitize"], { ANA_HOSTS: "[{", RUN_REMOTE: undefined });
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain("land: ANA_HOSTS is not JSON");
+    expect(result.stderr).toContain("RUN_REMOTE=here proves on this machine");
+    expect(gatesRun(gateLog)).toEqual([]);
+    expect(logLines(ghLog).filter((line) => line.includes("/statuses/"))).toEqual([]);
+  });
 
   it("refuses a head that holds none of the heads the pull request beneath it had", () => {
     const result = runLand(["12", "--sanitize"], { ANA_FAKE_PULLS: stack(beside) });

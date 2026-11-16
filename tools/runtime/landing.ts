@@ -9,7 +9,9 @@ import { existsSync, lstatSync, readFileSync, rmSync } from "../../src/meta/file
 import { join } from "../../src/meta/path.ts";
 import { processAnswers, runtimeProcess } from "../../src/meta/process.ts";
 import { hold, holderOf, recordIn, release } from "#src/meta/holder.ts";
-import { git, lines, type Proof, short } from "./gate.ts";
+import { errorMessage } from "../../src/meta/runtime-values.ts";
+import { type Host, hostsFor } from "../runs/host-config.ts";
+import { git, lines, type Place, type Proof, short } from "./gate.ts";
 import { beneath, chainAbove, openPulls, type Pull } from "./pulls.ts";
 
 /** What a holder says of itself in the lock, after its record, and whether a newer one may end it. */
@@ -157,6 +159,46 @@ export function watching(Interrupted: new (message: string) => Error, moved: () 
     runtimeProcess.off("SIGINT", halt).off("SIGTERM", halt);
   };
   return { signal: stop.signal, end };
+}
+
+/**
+ * Where a landing in `root` proves its commits. `RUN_REMOTE` set, `here` among its values, names one
+ * place, as for any check; unset, the passes spread over every host `ANA_HOSTS` lists with `checks`,
+ * each taking as many at once as its `checks` says, and with no such host they stay on this machine.
+ * `--jobs N` is the most at once: N on one place, or N dealt in turn over the hosts' slots. A list
+ * that cannot be read is refused, null, before anything is proved or posted.
+ */
+export function whereToProve(
+  root: string,
+  jobs: number | undefined,
+  say: (line: string) => void,
+): readonly Place[] | null {
+  const one = [{ slots: jobs ?? 1 }];
+  if (runtimeProcess.env.RUN_REMOTE !== undefined) return one;
+  let listed: readonly Host[];
+  try {
+    listed = hostsFor(root);
+  } catch (error) {
+    console.error(
+      `land: ${errorMessage(error)}; RUN_REMOTE=here proves on this machine. Nothing was merged.`,
+    );
+    return null;
+  }
+  const hosts = listed.flatMap(({ name, checks }) => (checks === undefined ? [] : [{ name, checks }]));
+  if (hosts.length === 0) return one;
+  const dealt = new Map(hosts.map((host) => [host, 0]));
+  for (let left = jobs ?? Infinity; left > 0 && [...dealt].some(([host, slots]) => slots < host.checks); ) {
+    for (const [host, slots] of dealt) {
+      if (left > 0 && slots < host.checks) {
+        dealt.set(host, slots + 1);
+        left -= 1;
+      }
+    }
+  }
+  const places = [...dealt].flatMap(([host, slots]) => (slots === 0 ? [] : [{ remote: host.name, slots }]));
+  const named = places.map(({ remote, slots }) => `${remote} (${String(slots)})`).join(", ");
+  say(`proving on ${named} at once; RUN_REMOTE=<one> proves at that one.`);
+  return places;
 }
 
 /** The open pull requests by number, base and head, which say whether any of them moved. */

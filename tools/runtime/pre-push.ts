@@ -279,7 +279,7 @@ async function checked(
     tips
       .filter((tip) => source.some((commit) => holds(commit, tip)))
       .map((commit) => ({ commit, pass: "static" as const })),
-    { who: "pre-push", jobs: 1, say, mark: () => undefined },
+    { who: "pre-push", places: [{ slots: 1 }], say, mark: () => undefined },
   );
   if (failed === null) return true;
   if (failed.verdict) {

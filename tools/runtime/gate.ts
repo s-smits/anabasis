@@ -60,7 +60,7 @@ import {
   readFileSync,
 } from "../../src/meta/filesystem.ts";
 import { sha256, sha256OfFile } from "../../src/meta/digest.ts";
-import { keysIf } from "../../src/meta/optional-key.ts";
+import { keyIfDefined, keysIf } from "../../src/meta/optional-key.ts";
 import { availableParallelism, tmpdir } from "../../src/meta/os.ts";
 import { basename, dirname, isAbsolute, join, relative } from "../../src/meta/path.ts";
 import { parseArgs, runtimeProcess } from "../../src/meta/process.ts";
@@ -85,10 +85,23 @@ interface Failure {
   readonly verdict: boolean;
 }
 
+/** Where passes run, and how many at once there: `remote` is the `RUN_REMOTE` each carries to the
+ *  check runner, a host's name, and undefined leaves the caller's own as it stands. */
+export interface Place {
+  readonly remote?: string;
+  readonly slots: number;
+}
+
+/** A proof in the queue, with its place in the landing's line. */
+interface Queued extends Proof {
+  readonly index: number;
+}
+
 interface Prover {
   /** `land` or `pre-push`: what each line and each log is named after. */
   readonly who: string;
-  readonly jobs: number;
+  /** At least one; a place whose pass gave no verdict takes no more while another remains. */
+  readonly places: readonly Place[];
   readonly say: (line: string) => void;
   /** Told every verdict, recorded earlier or new, so land can post it as a status, and `pending` when
    *  a commit's proof starts, so a red left by an earlier landing clears once it is proved again. */
@@ -500,13 +513,77 @@ function checkerDigest(): string {
 }
 
 /**
- * Runs each commit's pass over a checkout of it, up to `jobs` at once, and returns the lowest
- * failure. The whole CI gate waits until every commit beneath it has passed. Nothing new starts after a
- * failure, since every commit above a fix changes id with it. Passes side by side share the cores:
- * each suite left to itself takes two fewer workers than the host has, and on 20 October three at
- * once took a host of 12 cores to a load of 42, where their browser files timed out by the dozen.
- * So a static pass gets its share of the cores, unless the caller's environment names
- * `ANA_TEST_WORKERS`.
+ * The places of one proof, each with the passes it runs now. A static pass takes the place with the
+ * most room, the first listed among equals; the whole pass takes the first place once nothing runs
+ * anywhere, so no host runs two suites of one landing. A place leaves only while another remains.
+ */
+function seating(places: readonly Place[]) {
+  const busy = new Map(places.map((place) => [place, 0]));
+  const room = ([place, running]: readonly [Place, number]): number => place.slots - running;
+  return {
+    /** The place `pass` now holds, or undefined until one has room for it. */
+    take(pass: Pass, running: number): Place | undefined {
+      const entries = [...busy];
+      const open =
+        pass === "whole"
+          ? entries.slice(0, running === 0 ? 1 : 0)
+          : entries.filter((entry) => room(entry) > 0).toSorted((one, other) => room(other) - room(one));
+      const place = open[0]?.[0];
+      if (place !== undefined) busy.set(place, (busy.get(place) ?? 0) + 1);
+      return place;
+    },
+    free(place: Place): void {
+      const running = busy.get(place);
+      if (running !== undefined) busy.set(place, running - 1);
+    },
+    /** Sets `place` aside where another place remains, and says whether it did. */
+    leave(place: Place): boolean {
+      if (![...busy.keys()].some((other) => other !== place)) return false;
+      busy.delete(place);
+      return true;
+    },
+  };
+}
+
+/** The clone's record of passes and what it remembers, unless `ANA_GATE_FRESH=1`, and the folder of
+ *  the passes' logs, cleared of those older than `LOG_DAYS`. */
+async function remembered(root: string) {
+  const [common = "", logs = ""] = lines(
+    git(root, ["rev-parse", "--path-format=absolute", "--git-common-dir", "--git-path", "ana-gate"]),
+  );
+  const record = join(common, "ana-gate-passed");
+  mkdirSync(logs, { recursive: true });
+  runSync(["find", logs, "-name", "*.log", "-mtime", `+${String(LOG_DAYS)}`, "-delete"]);
+  const fresh = runtimeProcess.env.ANA_GATE_FRESH === "1";
+  const text = fresh
+    ? ""
+    : await Bun.file(record)
+        .text()
+        .catch(() => "");
+  return { record, logs, passed: new Set(lines(text)) };
+}
+
+/** A pass that failed or gave no verdict, named by the step its log says did so, and printed. */
+function reported(who: string, commit: string, log: string, verdict: boolean): Failure {
+  const output = lines(readFileSync(log, "utf8"));
+  const said = output.map((line) => /^gate: step (\S+) (failed|gave no verdict)/u.exec(line));
+  const failedStep = said.findLast((line) => line !== null && (line[2] === "failed") === verdict)?.[1];
+  const failure = { commit, step: failedStep ?? "the gate", log, verdict };
+  console.error([...failedTests(output), ...output.slice(-30)].join("\n"));
+  console.error(`${who}: ${failedLine(failure)}. Log: ${log}`);
+  return failure;
+}
+
+/**
+ * Runs each commit's pass over a checkout of it, as many at once as `places` has slots, and returns
+ * the lowest failure. The whole CI gate waits until every commit beneath it has passed. Nothing new
+ * starts after a failure, since every commit above a fix changes id with it. A pass whose runner gave
+ * no verdict is proved again at another place, and its own takes no more, while one remains: a host
+ * that drops or has no slot in time costs its share alone. Passes side by side on this machine share
+ * its cores: each suite left to itself takes two fewer workers than the host has, and on 20 October
+ * three at once took a host of 12 cores to a load of 42, where their browser files timed out by the
+ * dozen. So a static pass at the caller's own place gets its share of the cores, unless the caller's
+ * environment names `ANA_TEST_WORKERS`; a host the runner reaches chooses its own (`task.sh`).
  */
 export async function proveCommits(
   root: string,
@@ -514,25 +591,16 @@ export async function proveCommits(
   prover: Prover,
 ): Promise<Failure | null> {
   const { who, say, mark, stop } = prover;
-  const [common = "", logs = ""] = lines(
-    git(root, ["rev-parse", "--path-format=absolute", "--git-common-dir", "--git-path", "ana-gate"]),
-  );
-  const record = join(common, "ana-gate-passed");
-  mkdirSync(logs, { recursive: true });
-  runSync(["find", logs, "-name", "*.log", "-mtime", `+${String(LOG_DAYS)}`, "-delete"]);
+  const { record, logs, passed } = await remembered(root);
   const checker = checkerDigest();
-  const remembered =
-    runtimeProcess.env.ANA_GATE_FRESH === "1"
-      ? ""
-      : await Bun.file(record)
-          .text()
-          .catch(() => "");
-  const passed = new Set(lines(remembered));
   const free: string[] = [];
   const made: string[] = [];
   const failures: (Failure & { index: number })[] = [];
-  const share = String(Math.max(2, Math.floor((availableParallelism() - 2) / prover.jobs)));
-  const run = async (at: string, index: number, commit: string, pass: Pass): Promise<void> => {
+  const seats = seating(prover.places);
+  const queue: Queued[] = proofs.map((proof, index) => ({ ...proof, index }));
+  const run = async (at: string, proof: Queued, pass: Pass, place: Place): Promise<void> => {
+    const { index, commit } = proof;
+    const share = String(Math.max(2, Math.floor((availableParallelism() - 2) / place.slots)));
     let tree = free.pop();
     if (tree === undefined) {
       tree = mkdtempSync(join(tmpdir(), "ana-gate-"));
@@ -543,7 +611,7 @@ export async function proveCommits(
     git(tree, ["checkout", "-q", "-f", "--detach", commit]);
     git(tree, ["clean", "-fdq"]);
     const log = join(logs, `${who}-${short(commit)}-${pass}.log`);
-    say(`${at}: ${WHAT[pass]}. Log: ${log}`);
+    say(`${at}: ${WHAT[pass]}${place.remote === undefined ? "" : ` on ${place.remote}`}. Log: ${log}`);
     mark(commit, "pending", WHAT[pass]);
     const fd = openSync(log, "w");
     const started = Date.now();
@@ -551,9 +619,10 @@ export async function proveCommits(
     const child = Bun.spawn(["bun", GATE, ...FLAGS[pass]], {
       cwd: tree,
       env: {
-        ...keysIf(pass === "static", () => ({ ANA_TEST_WORKERS: share })),
+        ...keysIf(pass === "static" && place.remote === undefined, () => ({ ANA_TEST_WORKERS: share })),
         ...runtimeProcess.env,
         ANA_TEST_BAIL: "1",
+        ...keyIfDefined("RUN_REMOTE", place.remote),
       },
       // Its own group, so a stop reaches the steps and the runner's ssh beneath it.
       detached: stop !== undefined,
@@ -568,6 +637,7 @@ export async function proveCommits(
     clearInterval(pulsing);
     closeSync(fd);
     free.push(tree);
+    seats.free(place);
     if (code !== 0 && stop?.aborted === true) {
       say(`${at}: stopped.`);
       return;
@@ -579,32 +649,44 @@ export async function proveCommits(
       return;
     }
     // The gate's exit says whether the commit failed; its log only names the step that said so.
-    const output = lines(readFileSync(log, "utf8"));
     const verdict = verdictOf(code) === "failed";
-    const said = output.map((line) => /^gate: step (\S+) (failed|gave no verdict)/u.exec(line));
-    const failedStep = said.findLast((line) => line !== null && (line[2] === "failed") === verdict)?.[1];
+    if (!verdict && seats.leave(place)) {
+      say(`${at}: ${place.remote ?? "its place"} gave no verdict, so takes no more; proving it elsewhere.`);
+      const above = queue.findIndex((other) => other.index > index);
+      queue.splice(above === -1 ? queue.length : above, 0, proof);
+      return;
+    }
+    failures.push({ index, ...reported(who, commit, log, verdict) });
     const state = verdict ? "failure" : "error";
-    const failure = { commit, step: failedStep ?? "the gate", log, verdict };
-    failures.push({ index, ...failure });
     mark(commit, state, FAILED[state]);
-    console.error([...failedTests(output), ...output.slice(-30)].join("\n"));
-    console.error(`${who}: ${failedLine(failure)}. Log: ${log}`);
   };
   const running = new Set<Promise<void>>();
   try {
-    for (const [index, { commit, pass }] of proofs.entries()) {
+    // Until the queue, into which a pass given no verdict comes back, and the passes under way are empty.
+    for (;;) {
+      const next = queue[0];
+      if (failures.length > 0 || stop?.aborted === true || (next === undefined && running.size === 0)) break;
+      if (next === undefined) {
+        await Promise.race(running);
+        continue;
+      }
+      const { index, commit, pass } = next;
       const at = `${String(index + 1)} of ${String(proofs.length)}, ${short(commit)}`;
       const had = (kind: Pass): boolean => passed.has(contentKey(root, commit, kind, checker));
       const earlier = had("whole") ? "whole" : pass !== null && had(pass) ? pass : null;
       if (pass === null || earlier !== null) {
+        queue.shift();
         say(`${at}: ${earlier === null ? "documentation only" : "passed earlier on these exact bytes"}.`);
         mark(commit, "success", earlier === null ? "documentation only" : PROVED[earlier]);
         continue;
       }
-      if (pass === "whole") await Promise.all(running);
-      while (running.size >= prover.jobs) await Promise.race(running);
-      if (failures.length > 0 || stop?.aborted === true) break;
-      const task: Promise<void> = run(at, index, commit, pass).then(() => {
+      const place = seats.take(pass, running.size);
+      if (place === undefined) {
+        await Promise.race(running);
+        continue;
+      }
+      queue.shift();
+      const task: Promise<void> = run(at, next, pass, place).then(() => {
         running.delete(task);
       });
       running.add(task);

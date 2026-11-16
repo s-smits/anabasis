@@ -26,7 +26,7 @@ import { holdAlone, sayingPulls } from "../tools/runtime/landing.ts";
 import { afterAll, beforeEach, describe, expect, it } from "bun:test";
 
 import { execTextSync, spawnTextSync } from "./helpers/bun-spawn-sync.ts";
-import { fakeBun, gatesRun } from "./helpers/fake-bun.ts";
+import { fakeBun, gatesRun, wherePassesRan } from "./helpers/fake-bun.ts";
 
 const fixture = mkdtempSync(join(tmpdir(), "ana-gate-"));
 const work = join(fixture, "work");
@@ -63,7 +63,13 @@ const proofs = Bun.argv.slice(2).map((pair) => {
 });
 const failed = await proveCommits(process.cwd(), proofs, {
   who: "land",
-  jobs: Number(process.env.DRIVER_JOBS ?? "1"),
+  // "alpha:1,beta:2" names made-up hosts and their slots, as land reads them from the host list.
+  places: process.env.DRIVER_PLACES
+    ? process.env.DRIVER_PLACES.split(",").map((place) => {
+        const [remote = "", slots = ""] = place.split(":");
+        return { remote, slots: Number(slots) };
+      })
+    : [{ slots: Number(process.env.DRIVER_JOBS ?? "1") }],
   // As land stops its proofs once a head moved under one, or on a signal.
   stop: process.env.DRIVER_STOP_MS ? AbortSignal.timeout(Number(process.env.DRIVER_STOP_MS)) : undefined,
   say: (line) => console.error("prove: " + line),
@@ -252,6 +258,49 @@ describe("proveCommits", () => {
     expect(result.status).toBe(3);
     expect(prove([`${source}:static`]).stderr).toContain("passed earlier on these exact bytes");
   });
+
+  it("spreads static passes over the places by their room, and gives the whole pass the first once nothing runs", () => {
+    const spread = prove([`${second}:static`, `${source}:static`], {
+      DRIVER_PLACES: "alpha:1,beta:2",
+      ANA_FAKE_TOGETHER: "2",
+    });
+    expect(spread.status).toBe(0);
+    // beta has the more room, so it takes the first; then each has one free and alpha is listed first.
+    expect(wherePassesRan(log)).toEqual([`${second} beta`, `${source} alpha`]);
+    forgetPasses();
+    rmSync(log, { force: true });
+    expect(prove(landing, { DRIVER_PLACES: "alpha:1,beta:2" }).status).toBe(0);
+    expect(wherePassesRan(log)).toEqual([`${source} beta`, `${second} alpha`]);
+  });
+
+  it("proves a pass again elsewhere where its place gave no verdict, and sends that place no more", () => {
+    const pairs = [`${source}:static`, `${second}:static`];
+    const result = prove(pairs, { DRIVER_PLACES: "alpha:2,beta:1", ANA_FAKE_DOWN: "alpha" });
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain("alpha gave no verdict, so takes no more; proving it elsewhere");
+    const ran = wherePassesRan(log);
+    expect(ran.slice(0, 2)).toEqual([`${source} alpha`, `${second} alpha`]);
+    expect(ran.slice(2).toSorted()).toEqual([`${source} beta`, `${second} beta`].toSorted());
+    // Each pass is remembered as any other, whichever place proved it.
+    rmSync(log, { force: true });
+    expect(prove(pairs).status).toBe(0);
+    expect(gatesRun(log)).toEqual([]);
+  });
+
+  // A dropped connection, and no slot in time (`tools/runtime/router/run.ts`).
+  for (const code of ["255", "75"]) {
+    it(`gives no verdict as before where its one place exited ${code} twice`, () => {
+      const result = prove([`${source}:static`], {
+        DRIVER_PLACES: "alpha:2",
+        ANA_FAKE_DOWN: "alpha",
+        ANA_FAKE_DROP_CODE: code,
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).not.toContain("takes no more");
+      expect(result.stderr.trimEnd().split("\n").at(-1)).toStartWith("FAILS secrets Log: ");
+      expect(wherePassesRan(log)).toEqual([`${source} alpha`]);
+    });
+  }
 
   it("stops at the commit that fails and names the failing step and its log", () => {
     const result = prove(landing, { ANA_FAKE_FAIL: `${source} lint` });

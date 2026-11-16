@@ -712,7 +712,9 @@ allowed only where the table names it (`readAgainst`). `ENDED AND WENT ON` is ri
 `finished`, `environment` or a crash, and a fault after `budget`, `stop` or `no-room` without an
 operator's word between. Recount each ending's count (`idleOf`, `tools/d2/campaign-terms.ts`;
 `roomless`, `src/campaign/decide.ts`). `OPERATOR WORDS` tallies `campaign.word` events and answers
-(`pendingWords`, `src/campaign/word.ts`); no seat may see a word. `launches.txt` puts each launch
+(`pendingWords`, `src/campaign/word.ts`), and names beside a pause the verb that left it and its point
+(`runs pause --after next`, `runs continue on login N --after reported`) where the log holds them; no
+seat may see a word. `launches.txt` puts each launch
 beside its stretch of the log (its last event, the endings, the steps left open, the killed sessions
 and solves, the hours to the next launch) and never says who ended a run; `ending.ts --at` gives the
 ending as it stood at one line or time. The decision: whether moves and

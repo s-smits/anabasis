@@ -362,7 +362,9 @@ describe("going on with a campaign", () => {
     };
   }
   const words = (log: string) =>
-    readLog(log).flatMap(({ kind, data }, at) => (kind === "campaign.word" ? [{ at, word: data.word }] : []));
+    readLog(log).flatMap(({ kind, data }, at) =>
+      kind === "campaign.word" ? [{ at, word: data.word, why: data.why }] : [],
+    );
   const filled = JSON.stringify([{ name: "other", login: "2", host: "runner" }]);
   const capped = { ANA_LOGIN_RUNS: "1", [`${KEY}2`]: "a" };
 
@@ -374,7 +376,9 @@ describe("going on with a campaign", () => {
       // One word, after the report waited for, so that it held no solve during the wait.
       const events = readLog(log);
       const reported = events.findLastIndex(({ kind }) => kind === "comparison.reported");
-      expect(words(log)).toEqual([{ at: reported + 1, word: PAUSE }]);
+      // The word names the verb that left it and the point, which a later reader cannot tell apart.
+      const by = verb === "pause" ? "runs pause" : "runs continue on the unnumbered login";
+      expect(words(log)).toEqual([{ at: reported + 1, word: PAUSE, why: `${by} --after reported` }]);
       // A continue's process begins after the word, and its solves are not held by it.
       expect(holds(events, events.length, Date.now(), LIMITS.wallSeconds)).toBe(false);
       expect(holds(events, 0, Date.now(), LIMITS.wallSeconds)).toBe(true);

@@ -172,9 +172,12 @@ export function solvesMs(events: readonly LogEvent[]): number {
 }
 
 /** Stop `run` at the point `after` names, first leaving the word that starts no further solve, once
- *  `ready`, asked there, neither refused nor said false; `next` asks nothing, its word left at once. */
-async function pauseAt(run: Run, after: string, ready = async () => true): Promise<void> {
+ *  `ready`, asked there, neither refused nor said false; `next` asks nothing, its word left at once.
+ *  The word says which verb left it (`by`) and at which point, since a log read later cannot tell a
+ *  pause from a move to another login: two readers of one run named two writers (16 November 2026). */
+async function pauseAt(run: Run, after: string, by: string, ready = async () => true): Promise<void> {
   const kinds = kindsOf(after);
+  const word = { word: PAUSE, why: `${by} --after ${after}` };
   // One waiter a run: a `continue --after` would start again a run another's pause had stopped.
   const waiting = waiters(run.name);
   if (waiting.length > 0) {
@@ -189,7 +192,7 @@ async function pauseAt(run: Run, after: string, ready = async () => true): Promi
       : `${run.name}: waiting for ${kinds.join(", ")} past ${String(base)}, with nothing but the Builder's conversation open${after === "reported" ? " and no promotion left unread against the starter" : ""}`,
   );
   if (after === "next" && writers(run, processes()).length > 0) {
-    append(run.path, "campaign.word", { word: PAUSE });
+    append(run.path, "campaign.word", word);
   }
   const patience = Date.now() + allowed;
   // A log runs to tens of megabytes, and one that did not grow says what it said.
@@ -208,7 +211,7 @@ async function pauseAt(run: Run, after: string, ready = async () => true): Promi
       if (!(await ready())) return;
       // The asking takes seconds, in which the run can begin its next comparison: read the rest again.
       if (rests()) {
-        append(run.path, "campaign.word", { word: PAUSE });
+        append(run.path, "campaign.word", word);
         return stop([run.name, "--yes"]);
       }
     }
@@ -440,7 +443,7 @@ export async function continueRun(args: readonly string[]): Promise<void> {
         ? `already runs on ${payer} at ${kept.commit.slice(0, 9)}`
         : null;
     };
-    await pauseAt(run, values.after, async () => {
+    await pauseAt(run, values.after, `runs continue on ${payer}`, async () => {
       if (left() !== null) return false;
       const stands = "nothing was stopped or started";
       if ((await startable(run, flags, { login, at: target, stands })).target === commit) dry();
@@ -474,5 +477,5 @@ export async function pause(args: readonly string[]): Promise<void> {
       `would be stopped after its next ${after === "next" ? "step" : after}; it waits for ${holds}`,
     );
   }
-  await pauseAt(run, after);
+  await pauseAt(run, after, "runs pause");
 }

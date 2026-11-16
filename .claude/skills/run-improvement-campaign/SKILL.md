@@ -139,7 +139,8 @@ owed steps only, as a timer takes it.
    (`wri.ts start --snapshot`), a deviation for a run the operator keeps going, and writes
    `iteration.json` (`{ "opened": <ISO>, "runs": [<names>] }`), which the later gates require. Then
    follow `wri2p2.ts next <dir>` through the instructions, `lanes --agents 4` with
-   one subagent a lane, the collection and the synthesis. Before the vetting, `next` waits until each
+   one subagent a lane, the record read across runs while the lanes work (`record.md`,
+   whole-run-investigation, step 4), the collection and the synthesis. Before the vetting, `next` waits until each
    run has its two files, looking only in `*-cycle-*` folders and the investigation's own, and
    refuses where two of them hold the same file.
 3. **Vet, read across domains, plan.** Vet each finding against the logs and the head (a fix may
@@ -179,7 +180,7 @@ owed steps only, as a timer takes it.
    or tunes) with a `first` row for each. A freed slot goes to the first `ready: yes` entry of
    `run-queue.md` that has such a component, and otherwise stays empty.
 
-`next` walks these gates in order: `open`, `instruct`, `lanes`, `reports`, `isolated`, `synthesise`;
+`next` walks these gates in order: `open`, `instruct`, `lanes`, `reports`, `record`, `isolated`, `synthesise`;
 for each run `predictions`, `outcomes`, for a fork `carry` and, for a jobstat run, `outside` (its
 row in `outside-reads.md`, "The outside aim"); then `vet`,
 `across`, `plan`, `implement`, `launch`, `forks` and `done`. A folder without `iteration.json` takes

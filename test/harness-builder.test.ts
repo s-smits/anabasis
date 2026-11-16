@@ -425,23 +425,30 @@ describe("a campaign run by its log", () => {
     const terms = ["--practice", "2", "--target", "8", "--patience", "1"];
     const flags = [...seeded(name), ...terms];
     const strayed: string[] = [];
+    // An Examiner that proposes eight tasks once `ready` settles.
+    const written = [41, 42, 43, 44, 45, 46, 47, 48].map((base) => ({
+      family: "fixture",
+      public_input: { base },
+      hidden: null,
+    }));
+    const proposingAfter =
+      (ready: Promise<void>): Seats["examine"] =>
+      (request) =>
+        examine({
+          ...request,
+          ...scripted([
+            {
+              wait: async () => {
+                await ready;
+                return ["propose_tasks", { tasks: written }];
+              },
+            },
+            ["finish", { note: "Eight more." }],
+            ["finish", { note: "Eight more." }],
+          ]),
+        });
     // Under the new harness every held-out task is answered, and under the reference none.
-    const seats: Seats = {
-      seated: answering(strayed),
-      examine: (request) => {
-        const tasks = [41, 42, 43, 44, 45, 46, 47, 48].map((base) => ({
-          family: "fixture",
-          public_input: { base },
-          hidden: null,
-        }));
-        const script = scripted([
-          ["propose_tasks", { tasks }],
-          ["finish", { note: "Eight more." }],
-          ["finish", { note: "Eight more." }],
-        ]);
-        return examine({ ...request, ...script });
-      },
-    };
+    const seats: Seats = { seated: answering(strayed), examine: proposingAfter(Promise.resolve()) };
     // The host is loaded once, at the first look after the first comparison began: its first solve
     // waits in the solve queue until the load falls.
     let loaded = true;
@@ -498,7 +505,26 @@ describe("a campaign run by its log", () => {
 
     // Given the word back, the harness is promoted. No budget leaves the promoted harness
     // failing half its solves, so the tasks have to change: an Examiner session.
-    const next = await harnessBuilder([...flags, "--no-hitl", "--moves", "3"], seats);
+    // The Builder asks to compare while the Examiner session the host started beside it still
+    // writes, the order a loaded host gave: that session's end then releases practice, the run's
+    // third move, and the compare waiting on it must still be held to `--moves`.
+    const asked = Promise.withResolvers<void>();
+    const next = await harnessBuilder([...flags, "--no-hitl", "--moves", "3"], {
+      seated: (campaign, given) => ({
+        ...seats.seated(campaign, given),
+        builder: scripted([
+          ["bash", { command: `printf '\\nA line.\\n' >> "$HOME/harness/agent/BUILT_AGENTS.md"` }],
+          {
+            wait: async () => {
+              asked.resolve();
+              return ["compare", {}];
+            },
+          },
+          ["finish", { note: "Nothing more." }],
+        ]),
+      }),
+      examine: proposingAfter(asked.promise),
+    });
     expect(of(name, OPENED).at(-1)).not.toHaveProperty("attended");
     expect(of(name, "harness.promoted")).toMatchObject([{ harness: first?.fresh }]);
     expect(of(name, "comparison.reported").map(({ settled }) => settled)).toEqual(["unsettled"]);

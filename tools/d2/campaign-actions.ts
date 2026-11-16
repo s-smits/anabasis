@@ -218,9 +218,8 @@ async function runAction(
     bench.halt.abort();
     return text(message);
   };
-  if (context.used >= context.maxMoves) {
-    return halt("The campaign move limit has been reached; the host will stop this conversation.");
-  }
+  const spent = "The campaign move limit has been reached; the host will stop this conversation.";
+  if (context.used >= context.maxMoves) return halt(spent);
   if (signal?.aborted === true) return text("The campaign has been stopped by the host.");
   // An Examiner session writes beside the conversation, and a comparison goes on beside it: its
   // draw is fixed as it starts (rule 4), so tasks held out later join the next one, and each of
@@ -234,9 +233,12 @@ async function runAction(
   // Between a promotion and the next comparison, a compare waits for the session writing for the
   // new reference, so the starter comparison it owes reads every task written for it (`heldSince`):
   // in the rehearsal of 5 November a compare before that read a second harness on the old
-  // reference's tasks, and a step there would have promoted twice on one epoch's tasks.
+  // reference's tasks, and a step there would have promoted twice on one epoch's tasks. The
+  // session's end can release practice, a move of its own, so the limit is read again after the
+  // wait, as `promoteOwed` reads it after its own.
   if (move === "compare" && writing != null && uncompared(read(context.log))) {
     await bench.within(() => writing.done);
+    if (context.used >= context.maxMoves) return halt(spent);
   }
   if (context.failed !== null) return text("The campaign has been stopped by the host.");
   const { turn, decided } = actionTurn(context);

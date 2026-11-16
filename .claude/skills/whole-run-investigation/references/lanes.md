@@ -755,8 +755,8 @@ Label: `economy`.
 Importance: 0.35.
 Marks: none.
 
-Starts from `LONG SILENCES (lane 25)`, `SPEND LED BY A ROLE (lane 25)` and
-`BUILDER COMPACTED (lane 25)`.
+Starts from `LONG SILENCES (lane 25)`, `SPEND LED BY A ROLE (lane 25)`,
+`FIRST COMPARISON HELD OFF (lane 25)` and `BUILDER COMPACTED (lane 25)`.
 
 Where did the hours and dollars go, does the bill hold all of them, and what was each long silence?
 First the bill's completeness: a gap of more than a few percent between the backend's totals and
@@ -769,7 +769,11 @@ For `BUILDER COMPACTED`, read each compaction's `tokensBefore`, seconds and `err
 calls repeated a move. Spend comes from `spendOf`, and row A sets hours beside dollars by role.
 `LONG SILENCES` names the five longest gaps by what ended them and the log lines either side;
 confirm each from the events around it (`log.ts events --kind <kind>,<kind>` prints several kinds in
-log order). Estimate the next round's cost, and read the economy factor from the closing report
+log order). `FIRST COMPARISON HELD OFF` fires where a first comparison stood admissible for 75
+minutes or more before one began, with the hours of it inside Builder waits: read
+`table-timeline.txt` between its `admissible` row and the first `compare` for the move the table
+named and what each `wait` result said, and name the host message that kept an idle Builder from
+comparing, or the work a busy one did. Estimate the next round's cost, and read the economy factor from the closing report
 (`tools/d2/close.ts`; `worthOf`, `src/campaign/climb.ts`). The decision: what the next round costs,
 whether the bill can be believed, and whether each role earns its spend. Routes to `operator`,
 `host` and `environment`.

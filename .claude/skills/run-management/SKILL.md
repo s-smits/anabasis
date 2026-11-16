@@ -301,7 +301,10 @@ exam's milestones in counts, what a comparison can read as it starts, a promotio
 should wait for its starter comparison", each starter comparison under its report, `ready to pause`
 with its command at the second read, and once, when a campaign reaches it, `⚠ investigation due`
 with the command that names the step: `wri2p2.ts due` while the run lives, which prints its pause
-or the deviation that keeps it, and the investigation's `open` once it has stopped. A closed run's reason and a host that stops answering are said
+or the deviation that keeps it, and the investigation's `open` once it has stopped. A live campaign
+whose first comparison has stood admissible for 75 minutes without beginning says so once
+(`⚠ a first comparison admissible`, `heldOff`, `tools/runs/view.ts`); `runs view` then says the move
+the table names, and the line stops nothing. A closed run's reason and a host that stops answering are said
 when they turn, not at every look.
 
 `bun run runs alerts` is the cron watch: one stdout line per new promotion, starter comparison,

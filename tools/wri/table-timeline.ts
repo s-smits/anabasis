@@ -28,18 +28,16 @@
  * start, so a log of 50,000 events takes tens of seconds: this is a tool a lane runs, not a derived
  * reader. It prints ids, codes, digest heads and hours, never a task.
  */
-import { refusals, supplyOf } from "#src/campaign/admission.ts";
-import { askedOf } from "#src/campaign/ground.ts";
 import { type Decided, short } from "#src/campaign/move.ts";
 import { decide } from "#src/campaign/decide.ts";
 import type { EventKind, LogEvent } from "#src/kernel/log.ts";
-import { type Call, tracesIn } from "#src/kernel/trace.ts";
+import type { Call } from "#src/kernel/trace.ts";
 import { HOUR_MS, MINUTE_MS } from "#src/meta/clock.ts";
 import { asRecord, isNumber, isString } from "#src/meta/json-shape.ts";
 import { resolve } from "#src/meta/path.ts";
 import { codeOf } from "#tools/d2/campaign.ts";
 import { logEvents } from "#tools/runs/registry.ts";
-import { planOn } from "#tools/runs/view.ts";
+import { builderWaits, heldOff, planOn, poolOn, waitedIn } from "#tools/runs/view.ts";
 import { printRows } from "./folds.ts";
 import { openAt } from "./launches.ts";
 
@@ -136,54 +134,6 @@ function changesOf(events: readonly LogEvent[], tableAt: (upTo: number) => Table
     before = point;
   }
   return changes;
-}
-
-/** Hours of `[from, to)` spent inside the Builder's `wait` calls. */
-function waitedIn(waits: readonly Call[], from: string, to: string): number {
-  const [start, end] = [Date.parse(from), Date.parse(to)];
-  let total = 0;
-  for (const { at, ms } of waits) {
-    const [began, ended] = [Date.parse(at) - (ms ?? 0), Date.parse(at)];
-    total += Math.max(0, Math.min(end, ended) - Math.max(start, began));
-  }
-  return total / HOUR_MS;
-}
-
-/** The Builder's `wait` calls. */
-const builderWaits = (events: readonly LogEvent[]) =>
-  tracesIn(events).filter(
-    (each): each is Call => each.seat === "build" && each.part === "call" && each.tool === "wait",
-  );
-
-/** The pool on the first `upTo` events and what comparison admission refuses there. */
-function poolOn(events: readonly LogEvent[], upTo: number) {
-  const prefix = events.slice(0, upTo);
-  const supply = supplyOf(prefix);
-  const codes = refusals(supply, askedOf(planOn(prefix))).map(({ code }) => code);
-  const refused = codes.length === 0 ? "nothing" : codes.join(", ");
-  return {
-    open: codes.length === 0,
-    text: `${String(supply.held)} held out, ${String(supply.released)} released · admission refuses ${refused}`,
-  };
-}
-
-/** The line at which admission first refused a first comparison nothing, and what the campaign then
- *  took to begin one (to the log's end where none began): the hours, and those of them inside
- *  Builder waits. Null where none became admissible. On 15 November a campaign held eight tasks at
- *  3.0 hours and compared at 5.6, and its hours to a first comparison read as the Examiner's. */
-export function heldOff(events: readonly LogEvent[]) {
-  const first = events.findIndex(({ kind }) => kind === "comparison.started");
-  const index = events
-    .slice(0, first === -1 ? events.length : first)
-    .findIndex(
-      ({ kind }, at) => (kind.startsWith("task.") || POINTS.has(kind)) && poolOn(events, at + 1).open,
-    );
-  if (index === -1) return null;
-  const from = events[index]?.at ?? "";
-  const to = events[first === -1 ? events.length - 1 : first]?.at ?? from;
-  const hours = (Date.parse(to) - Date.parse(from)) / HOUR_MS;
-  const said = `${hours.toFixed(2)} h ${first === -1 ? "to the log's end, none begun" : "before one began"}, ${waitedIn(builderWaits(events), from, to).toFixed(2)} h of it inside Builder waits`;
-  return { index, said };
 }
 
 /** Each change with how long it stood: until the move it names begins, the table names another, or

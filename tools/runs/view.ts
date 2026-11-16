@@ -26,13 +26,15 @@
  */
 import { barLines, epochLine, epochsOf, starterReads } from "#src/campaign/climb.ts";
 import { decide } from "#src/campaign/decide.ts";
-import type { Plan } from "#src/campaign/ground.ts";
+import { refusals, supplyOf } from "#src/campaign/admission.ts";
+import { askedOf, type Plan } from "#src/campaign/ground.ts";
 import { type Decided, decidedLine, short } from "#src/campaign/move.ts";
 import { type Called, calledBy, namesOf } from "#src/campaign/names.ts";
 import { openingOf, planOf } from "#src/campaign/opening.ts";
 import { type Campaign, campaignOf, type Handover, openSteps } from "#src/campaign/handover.ts";
 import type { LogEvent } from "#src/kernel/log.ts";
-import { MINUTE_MS } from "#src/meta/clock.ts";
+import { type Call, tracesIn } from "#src/kernel/trace.ts";
+import { HOUR_MS, MINUTE_MS } from "#src/meta/clock.ts";
 import { parseArgs } from "#src/meta/process.ts";
 import { gitText } from "#src/meta/git.ts";
 import { resolve } from "#src/meta/path.ts";
@@ -45,6 +47,12 @@ import { dollars } from "./said.ts";
 import { lastLaunch } from "./receipt.ts";
 import { runReason, runState } from "./state.ts";
 
+/** How long a first comparison may stand admissible and not begun before it is called long. Over
+ *  nine campaigns to 16 November the seven oldest took 7 to 65 minutes and the two newest 82 and
+ *  154, the Builder waiting on practice tasks the move table asked for. It is a lead, not a fault:
+ *  of the 130 recorded campaigns that reached the position 77 stood this long, many with a Builder
+ *  at work, which the hours inside its waits tell apart. */
+const HELD_OFF_MS = 75 * MINUTE_MS;
 /** The flags the table is asked with: the campaign command's, with the same names. */
 const VIEW_OPTIONS = {
   level: { type: "string" },
@@ -234,4 +242,52 @@ export async function view(args: readonly string[]): Promise<void> {
   ]) {
     console.log(line);
   }
+}
+
+/** Hours of `[from, to)` spent inside the Builder's `wait` calls. */
+export function waitedIn(waits: readonly Call[], from: string, to: string): number {
+  const [start, end] = [Date.parse(from), Date.parse(to)];
+  let total = 0;
+  for (const { at, ms } of waits) {
+    const [began, ended] = [Date.parse(at) - (ms ?? 0), Date.parse(at)];
+    total += Math.max(0, Math.min(end, ended) - Math.max(start, began));
+  }
+  return total / HOUR_MS;
+}
+
+/** The Builder's `wait` calls. */
+export const builderWaits = (events: readonly LogEvent[]) =>
+  tracesIn(events).filter(
+    (each): each is Call => each.seat === "build" && each.part === "call" && each.tool === "wait",
+  );
+
+/** The pool on the first `upTo` events and what comparison admission refuses there. */
+export function poolOn(events: readonly LogEvent[], upTo: number) {
+  const prefix = events.slice(0, upTo);
+  const supply = supplyOf(prefix);
+  const codes = refusals(supply, askedOf(planOn(prefix))).map(({ code }) => code);
+  const refused = codes.length === 0 ? "nothing" : codes.join(", ");
+  return {
+    open: codes.length === 0,
+    text: `${String(supply.held)} held out, ${String(supply.released)} released · admission refuses ${refused}`,
+  };
+}
+
+/** The line at which admission first refused a first comparison nothing, and what the campaign then
+ *  took to begin one (to the log's end where none began): the hours, those of them inside Builder
+ *  waits, and whether the hours are long (`HELD_OFF_MS`). Null where none became admissible. On
+ *  15 November a campaign held eight tasks at 3.0 hours and compared at 5.6, and its hours to a
+ *  first comparison read as the Examiner's. */
+export function heldOff(events: readonly LogEvent[]) {
+  const first = events.findIndex(({ kind }) => kind === "comparison.started");
+  const index = events.slice(0, first === -1 ? events.length : first).findIndex(
+    // The pool moves with a task and the terms with the opening or a word.
+    ({ kind }, at) => /^(task|campaign)\./.test(kind) && poolOn(events, at + 1).open,
+  );
+  if (index === -1) return null;
+  const from = events[index]?.at ?? "";
+  const to = events[first === -1 ? events.length - 1 : first]?.at ?? from;
+  const hours = (Date.parse(to) - Date.parse(from)) / HOUR_MS;
+  const said = `${hours.toFixed(2)} h ${first === -1 ? "to the log's end, none begun" : "before one began"}, ${waitedIn(builderWaits(events), from, to).toFixed(2)} h of it inside Builder waits`;
+  return { index, said, hours, long: hours * HOUR_MS >= HELD_OFF_MS };
 }

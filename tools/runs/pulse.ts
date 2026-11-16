@@ -51,6 +51,7 @@ import { parseArgs, runtimeProcess } from "#src/meta/process.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { mainTree } from "#src/meta/git.ts";
 import { plural } from "#src/meta/text.ts";
+import { heldOff } from "./view.ts";
 import { type Life, lifeOf } from "./diagnosis.ts";
 import { asked, hosts } from "./hosts.ts";
 import { hostsOf } from "./host-config.ts";
@@ -102,6 +103,8 @@ interface Seen {
   readonly lines: number;
   readonly open: boolean;
   readonly quiet: boolean;
+  /** Whether the look said a first comparison stood admissible for long without beginning. */
+  readonly heldOff?: boolean;
   /** Each watched investigation trigger's detail at the last look that read them. */
   readonly triggers?: Readonly<Record<string, string>>;
   /** The log's bytes the `rows` reader had read at the last look that read its triggers. */
@@ -159,7 +162,8 @@ const RECENT_MS = DAY_MS;
 const NEWEST = 3;
 const GIB = 2 ** 30;
 /** The events that start something a run then has to finish. */
-const STARTS: ReadonlySet<string> = new Set(["build.started", "exam.started", "comparison.started"]);
+const BEGAN = "comparison.started";
+const STARTS: ReadonlySet<string> = new Set(["build.started", "exam.started", BEGAN]);
 
 /**
  * The investigation's triggers a watch says, by the factor each bears on (`AGENTS.md`, section 1).
@@ -473,6 +477,14 @@ export function pulse(
     // a run past its trigger, and a peer that says this line holds no investigation's folder.
     lines.push(`⚠ investigation due, ${due}: ${live ? `bun ${DRIVER} due` : openingCommand(run.name, live)}`);
   }
+  // A first comparison admission would begin and none has, said once where a look finds it long:
+  // on 15 November one stood so for 2.6 hours and no look said it.
+  const waits = read && open && before?.heldOff !== true && !log.some(({ kind }) => kind === BEGAN);
+  const held = waits ? heldOff(log) : null;
+  // A wait still open is not in the log yet, so the line leaves out the hours inside waits.
+  if (held?.long === true) {
+    lines.push(`⚠ a first comparison admissible for ${held.hours.toFixed(2)} h, none begun`);
+  }
   return {
     state,
     status: status(run, log, stand, open, now),
@@ -485,6 +497,7 @@ export function pulse(
       quiet: state.kind === "quiet",
       state: state.kind,
       ...keyIfDefined("due", read ? due !== null : undefined),
+      ...keyIfDefined("heldOff", held?.long === true ? true : undefined),
       ...keyIfDefined("triggers", triggers.now),
     },
   };

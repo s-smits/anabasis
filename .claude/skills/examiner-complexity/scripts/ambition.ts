@@ -20,7 +20,7 @@ import { familySizes } from "#skills/main/families.ts";
 import { ownedBy } from "#src/kernel/trace.ts";
 import { validityOf } from "#tools/d2/close.ts";
 import { logAcross } from "#tools/runs/snapshots.ts";
-import { heldOff } from "#tools/wri/table-timeline.ts";
+import { heldOff } from "#tools/runs/view.ts";
 import { waitedMs, waitsOf } from "#tools/wri/time.ts";
 import { readingOf } from "#skills/system-path-simulation/scripts/live-seat.ts";
 

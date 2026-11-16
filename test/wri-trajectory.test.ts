@@ -63,7 +63,7 @@ describe("what a harness wrote", () => {
     const own = ownPrograms([
       file("bin/check"),
       file("lib/model.py"),
-      file("python/py/lib/os.py"),
+      file("python/lib/python3.13/os.py"),
       file("pylib/numpy/__init__.py"),
       file("pylib/numpy-2.0.dist-info/RECORD"),
       file("bun/bun", 90_000_000),
@@ -86,6 +86,16 @@ describe("what a harness wrote", () => {
 
   test("a harness's own folder named like a package stays without an install mark", () => {
     expect(ownPrograms([file("lib/numpy/own.py")])).toEqual(["lib/numpy/own.py"]);
+  });
+
+  test("a harness's own modules under lib/python stay, and packages and an interpreter's home beside them go", () => {
+    const own = ownPrograms([
+      file("lib/python/own.py"),
+      file("lib/python/site-packages/pkg/mod.py"),
+      file("py/lib/python3.13/os.py"),
+      file("bin/python"),
+    ]);
+    expect(own).toEqual(["lib/python/own.py", "bin/python"]);
   });
 });
 
